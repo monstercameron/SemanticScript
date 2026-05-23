@@ -7,14 +7,14 @@ contract.
 ## Storage
 
 ```semanticscript
-storage module immutable zeroCount I64 0
-storage module mutable lastRevision I64 zeroCount
+storage module immutable zeroCount Int64 0
+storage module mutable lastRevision Int64 zeroCount
 
 operation updateRevision
-output updateRevision I64
+output updateRevision Int64
 
-storage local immutable incrementStep I64 1
-storage local mutable currentRevision I64 lastRevision
+storage local immutable incrementStep Int64 1
+storage local mutable currentRevision Int64 lastRevision
 ```
 
 Schema:
@@ -53,11 +53,11 @@ is known.
 ## Shared State
 
 ```semanticscript
-sharedState process mutable accountLookupFailureCount I64 zeroCount
+sharedState process mutable accountLookupFailureCount Int64 zeroCount
 sharedStateOwner accountLookupFailureCount accountLookupRuntime
 sharedStateGuard accountLookupFailureCount accountLookupGuardToken
 
-read sharedState currentFailureCount I64 accountLookupFailureCount protectedBy accountLookupGuardToken
+read sharedState currentFailureCount Int64 accountLookupFailureCount protectedBy accountLookupGuardToken
 ```
 
 Schemas:
@@ -122,7 +122,7 @@ call loadByteCall pointer.loadByte
 argument loadByteCall buffer TYPE sourceBuffer
 argument loadByteCall offset TYPE currentOffset
 run loadByteCall
-bind value loadedByte CSignedByte loadByteCall
+bind value loadedByte Int8 loadByteCall
 
 call storeByteCall pointer.storeByte
 argument storeByteCall buffer TYPE destinationBuffer

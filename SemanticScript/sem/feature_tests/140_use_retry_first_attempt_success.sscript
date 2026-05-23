@@ -5,14 +5,14 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-storage module immutable fortyTwoValue I64 42
-storage module immutable zeroValue I64 0
+errorCase MainError Placeholder Int32
+storage module immutable fortyTwoValue Int64 42
+storage module immutable zeroValue Int64 0
 retryPolicy threeAttemptPolicy
 retryMaxAttempts threeAttemptPolicy 3
 operation returnFortyTwoImmediately
-input operation returnFortyTwoImmediately trigger I64
-output operation returnFortyTwoImmediately I64
+input operation returnFortyTwoImmediately trigger Int64
+output operation returnFortyTwoImmediately Int64
 return value fortyTwoValue
 operation main
 input operation main console Console
@@ -25,12 +25,12 @@ invariant operation main "Output is 42 (the success value), produced after exact
 label startMain
 useRetry firstAttemptSuccessCall threeAttemptPolicy
 call firstAttemptSuccessCall returnFortyTwoImmediately
-argument firstAttemptSuccessCall trigger I64 zeroValue
+argument firstAttemptSuccessCall trigger Int64 zeroValue
 run firstAttemptSuccessCall
-bind value successResult I64 firstAttemptSuccessCall
+bind value successResult Int64 firstAttemptSuccessCall
 call writeSuccessCall console.writeIntegerLine
 argument writeSuccessCall console Console console
-argument writeSuccessCall value I64 successResult
+argument writeSuccessCall value Int64 successResult
 run writeSuccessCall
 ignore void source writeSuccessCall
 storage module immutable successfulExitCode ExitCode 0

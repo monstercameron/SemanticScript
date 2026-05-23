@@ -15,23 +15,23 @@ async main no
 purpose operation main "storage local mutable behaves like a real mutable slot."
 invariant operation main "First print shows initial value, second shows post-set value."
 label startMain
-storage module immutable initialValueLiteral I64 10
-storage module immutable incrementStepValue I64 3
-storage local mutable mutableLocalCounterValue I64 initialValueLiteral
+storage module immutable initialValueLiteral Int64 10
+storage module immutable incrementStepValue Int64 3
+storage local mutable mutableLocalCounterValue Int64 initialValueLiteral
 call writeInitialCall console.writeIntegerLine
 argument writeInitialCall console Console console
-argument writeInitialCall value I64 mutableLocalCounterValue
+argument writeInitialCall value Int64 mutableLocalCounterValue
 run writeInitialCall
 ignore void source writeInitialCall
-call addStepCall math.addI64
-argument addStepCall left I64 mutableLocalCounterValue
-argument addStepCall right I64 incrementStepValue
+call addStepCall math.addInt64
+argument addStepCall left Int64 mutableLocalCounterValue
+argument addStepCall right Int64 incrementStepValue
 run addStepCall
-bind value addStepResult I64 addStepCall
+bind value addStepResult Int64 addStepCall
 set memory mutableLocalCounterValue addStepResult
 call writeUpdatedCall console.writeIntegerLine
 argument writeUpdatedCall console Console console
-argument writeUpdatedCall value I64 mutableLocalCounterValue
+argument writeUpdatedCall value Int64 mutableLocalCounterValue
 run writeUpdatedCall
 ignore void source writeUpdatedCall
 storage module immutable successfulExitCode ExitCode 0

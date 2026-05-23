@@ -45,10 +45,10 @@ invariant operation main "Pointer is 8 bytes; int32 is 4; int64 is 8; double is 
 label startMain
 
 # byteSizeOfOpaquePointer == 8
-storage module immutable eightExpected CSignedInt64 8
-call checkPointerSizeCall math.equalI64
-argument checkPointerSizeCall left I64 byteSizeOfOpaquePointer
-argument checkPointerSizeCall right I64 eightExpected
+storage module immutable eightExpected Int64 8
+call checkPointerSizeCall math.equalInt64
+argument checkPointerSizeCall left Int64 byteSizeOfOpaquePointer
+argument checkPointerSizeCall right Int64 eightExpected
 run checkPointerSizeCall
 bind value pointerSizeOk Bool checkPointerSizeCall
 branch if condition pointerSizeOk target pointerSizeHolds
@@ -56,10 +56,10 @@ branch else target smokeAssertionFailed
 label pointerSizeHolds
 
 # byteSizeOfSignedInt32 == 4
-storage module immutable fourExpected CSignedInt64 4
-call checkInt32SizeCall math.equalI64
-argument checkInt32SizeCall left I64 byteSizeOfSignedInt32
-argument checkInt32SizeCall right I64 fourExpected
+storage module immutable fourExpected Int64 4
+call checkInt32SizeCall math.equalInt64
+argument checkInt32SizeCall left Int64 byteSizeOfSignedInt32
+argument checkInt32SizeCall right Int64 fourExpected
 run checkInt32SizeCall
 bind value int32SizeOk Bool checkInt32SizeCall
 branch if condition int32SizeOk target int32SizeHolds
@@ -67,27 +67,27 @@ branch else target smokeAssertionFailed
 label int32SizeHolds
 
 # byteSizeOfFloat64 == 8
-call checkFloat64SizeCall math.equalI64
-argument checkFloat64SizeCall left I64 byteSizeOfFloat64
-argument checkFloat64SizeCall right I64 eightExpected
+call checkFloat64SizeCall math.equalInt64
+argument checkFloat64SizeCall left Int64 byteSizeOfFloat64
+argument checkFloat64SizeCall right Int64 eightExpected
 run checkFloat64SizeCall
 bind value float64SizeOk Bool checkFloat64SizeCall
 branch if condition float64SizeOk target float64SizeHolds
 branch else target smokeAssertionFailed
 label float64SizeHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

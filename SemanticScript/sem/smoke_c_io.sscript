@@ -5,7 +5,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
 input operation main console Console
@@ -23,63 +23,63 @@ invariant operation main "Each c.* call writes a single observable line of stdou
 
 label startMain
 
-storage module immutable smokeIoBannerText CNullTerminatedByteString "=== smoke_c_io ==="
-storage module immutable smokeIoPutsDemoLineText CNullTerminatedByteString "via c.puts: hello from puts"
-storage module immutable smokeIoPrintfFiveCharFormatText CNullTerminatedByteString "via c.printf: %c%c%c%c%c\n"
-storage module immutable smokeIoGetenvProbeName CNullTerminatedByteString "PATH"
-storage module immutable smokeIoGetenvReportFormatText CNullTerminatedByteString "via c.getenv: PATH is reachable (sentinel=%d)\n"
+storage module immutable smokeIoBannerText String "=== smoke_c_io ==="
+storage module immutable smokeIoPutsDemoLineText String "via c.puts: hello from puts"
+storage module immutable smokeIoPrintfFiveCharFormatText String "via c.printf: %c%c%c%c%c\n"
+storage module immutable smokeIoGetenvProbeName String "PATH"
+storage module immutable smokeIoGetenvReportFormatText String "via c.getenv: PATH is reachable (sentinel=%d)\n"
 
 # ASCII code points spelling "Hello" — printed individually through printf %c
-# to demonstrate that variadic CSignedInt32 args round-trip through the c.* ABI.
-storage module immutable helloAsciiCapitalH CSignedInt32 72
-storage module immutable helloAsciiLowercaseE CSignedInt32 101
-storage module immutable helloAsciiLowercaseLFirst CSignedInt32 108
-storage module immutable helloAsciiLowercaseLSecond CSignedInt32 108
-storage module immutable helloAsciiLowercaseO CSignedInt32 111
+# to demonstrate that variadic Int32 args round-trip through the c.* ABI.
+storage module immutable helloAsciiCapitalH Int32 72
+storage module immutable helloAsciiLowercaseE Int32 101
+storage module immutable helloAsciiLowercaseLFirst Int32 108
+storage module immutable helloAsciiLowercaseLSecond Int32 108
+storage module immutable helloAsciiLowercaseO Int32 111
 
 # c.puts — direct libc invocation, no console.* wrapper.
 call writeBannerPutsCall c.puts
-argument writeBannerPutsCall text CNullTerminatedByteString smokeIoBannerText
+argument writeBannerPutsCall text String smokeIoBannerText
 run writeBannerPutsCall
 ignore void source writeBannerPutsCall
-bind error writeBannerPutsError CSignedInt32 writeBannerPutsCall
+bind error writeBannerPutsError Int32 writeBannerPutsCall
 branch error source writeBannerPutsCall target writeBannerPutsFailed
 
 call writePutsDemoLineCall c.puts
-argument writePutsDemoLineCall text CNullTerminatedByteString smokeIoPutsDemoLineText
+argument writePutsDemoLineCall text String smokeIoPutsDemoLineText
 run writePutsDemoLineCall
 ignore void source writePutsDemoLineCall
-bind error writePutsDemoLineError CSignedInt32 writePutsDemoLineCall
+bind error writePutsDemoLineError Int32 writePutsDemoLineCall
 branch error source writePutsDemoLineCall target writePutsDemoLineFailed
 
 # c.printf with five %c args — emits the string "Hello" one char at a time.
 call writeHelloByCharsCall c.printf
-argument writeHelloByCharsCall format CNullTerminatedByteString smokeIoPrintfFiveCharFormatText
-argument writeHelloByCharsCall firstChar CSignedInt32 helloAsciiCapitalH
-argument writeHelloByCharsCall secondChar CSignedInt32 helloAsciiLowercaseE
-argument writeHelloByCharsCall thirdChar CSignedInt32 helloAsciiLowercaseLFirst
-argument writeHelloByCharsCall fourthChar CSignedInt32 helloAsciiLowercaseLSecond
-argument writeHelloByCharsCall fifthChar CSignedInt32 helloAsciiLowercaseO
+argument writeHelloByCharsCall format String smokeIoPrintfFiveCharFormatText
+argument writeHelloByCharsCall firstChar Int32 helloAsciiCapitalH
+argument writeHelloByCharsCall secondChar Int32 helloAsciiLowercaseE
+argument writeHelloByCharsCall thirdChar Int32 helloAsciiLowercaseLFirst
+argument writeHelloByCharsCall fourthChar Int32 helloAsciiLowercaseLSecond
+argument writeHelloByCharsCall fifthChar Int32 helloAsciiLowercaseO
 run writeHelloByCharsCall
 ignore void source writeHelloByCharsCall
-bind error writeHelloByCharsError CSignedInt32 writeHelloByCharsCall
+bind error writeHelloByCharsError Int32 writeHelloByCharsCall
 branch error source writeHelloByCharsCall target writeHelloByCharsFailed
 
 # c.getenv — confirms the runtime resolves the symbol and returns a pointer.
 # The returned char* is not deref'd here (would need pointer.loadByte); we
 # only confirm the call shape works by printing a sentinel value of 1.
 call getenvPathCall c.getenv
-argument getenvPathCall name CNullTerminatedByteString smokeIoGetenvProbeName
+argument getenvPathCall name String smokeIoGetenvProbeName
 run getenvPathCall
-bind value environmentPathPointer COpaqueMemoryAddress getenvPathCall
+bind value environmentPathPointer OpaquePointer getenvPathCall
 
-storage module immutable getenvCallReachedSentinel CSignedInt32 1
+storage module immutable getenvCallReachedSentinel Int32 1
 call writeGetenvReportCall c.printf
-argument writeGetenvReportCall format CNullTerminatedByteString smokeIoGetenvReportFormatText
-argument writeGetenvReportCall sentinel CSignedInt32 getenvCallReachedSentinel
+argument writeGetenvReportCall format String smokeIoGetenvReportFormatText
+argument writeGetenvReportCall sentinel Int32 getenvCallReachedSentinel
 run writeGetenvReportCall
 ignore void source writeGetenvReportCall
-bind error writeGetenvReportError CSignedInt32 writeGetenvReportCall
+bind error writeGetenvReportError Int32 writeGetenvReportCall
 branch error source writeGetenvReportCall target writeGetenvReportFailed
 
 storage module immutable successfulExitCode ExitCode 0

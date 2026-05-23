@@ -5,40 +5,40 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation sumTo
-input operation sumTo accumulator CSignedInt64
-input operation sumTo remaining CSignedInt64
-output operation sumTo Result CSignedInt64 Void
+input operation sumTo accumulator Int64
+input operation sumTo remaining Int64
+output operation sumTo Result Int64 Void
 memory sumTo heap no
 async sumTo no
 purpose operation sumTo "Tail-recursive accumulator: when `remaining` reaches 0, return `accumulator`; otherwise sumTo(accumulator + remaining, remaining - 1)."
 invariant operation sumTo "Computes sum(1..n) in O(n) recursion depth."
 label startSumTo
-storage module immutable zeroBase CSignedInt64 0
-storage module immutable oneStep CSignedInt64 1
-call doneCheckCall math.equalI64
-argument doneCheckCall left CSignedInt64 remaining
-argument doneCheckCall right I64 zeroBase
+storage module immutable zeroBase Int64 0
+storage module immutable oneStep Int64 1
+call doneCheckCall math.equalInt64
+argument doneCheckCall left Int64 remaining
+argument doneCheckCall right Int64 zeroBase
 run doneCheckCall
 bind value isDone Bool doneCheckCall
 branch if condition isDone target baseCaseSumTo
-call newAccumCall math.addI64
-argument newAccumCall left I64 accumulator
-argument newAccumCall right I64 remaining
+call newAccumCall math.addInt64
+argument newAccumCall left Int64 accumulator
+argument newAccumCall right Int64 remaining
 run newAccumCall
-bind value newAccumulator CSignedInt64 newAccumCall
-call decRemainingCall math.subtractI64
-argument decRemainingCall left CSignedInt64 remaining
-argument decRemainingCall right CSignedInt64 oneStep
+bind value newAccumulator Int64 newAccumCall
+call decRemainingCall math.subtractInt64
+argument decRemainingCall left Int64 remaining
+argument decRemainingCall right Int64 oneStep
 run decRemainingCall
-bind value nextRemaining CSignedInt64 decRemainingCall
+bind value nextRemaining Int64 decRemainingCall
 call recurseCall sumTo
-argument recurseCall accumulator CSignedInt64 newAccumulator
-argument recurseCall remaining CSignedInt64 nextRemaining
+argument recurseCall accumulator Int64 newAccumulator
+argument recurseCall remaining Int64 nextRemaining
 run recurseCall
-bind ok recursiveResult CSignedInt64 recurseCall
+bind ok recursiveResult Int64 recurseCall
 return ok recursiveResult
 label baseCaseSumTo
 return ok accumulator
@@ -52,18 +52,18 @@ async main no
 purpose operation main "sumTo(0, 10) == 0+10+9+...+1 == 55."
 invariant operation main "Verifies a 2-arg recursive accumulator can reach a base case 10 levels deep."
 label startMain
-storage module immutable zeroAccum CSignedInt64 0
-storage module immutable tenInitial CSignedInt64 10
+storage module immutable zeroAccum Int64 0
+storage module immutable tenInitial Int64 10
 call computeCall sumTo
-argument computeCall accumulator CSignedInt64 zeroAccum
-argument computeCall remaining CSignedInt64 tenInitial
+argument computeCall accumulator Int64 zeroAccum
+argument computeCall remaining Int64 tenInitial
 run computeCall
-bind ok computedSum CSignedInt64 computeCall
-memory main mutable sumStorage I64 0
+bind ok computedSum Int64 computeCall
+memory main mutable sumStorage Int64 0
 set memory sumStorage computedSum
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 sumStorage
+argument writeCall value Int64 sumStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

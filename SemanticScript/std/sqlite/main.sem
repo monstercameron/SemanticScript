@@ -11,31 +11,30 @@
 # enum, constant, and capability contracts for that intrinsic namespace.
 
 module standard.sqlite
-nativeRuntimeSource standard.sqlite "SemanticScript/runtime/native_sqlite/sem_sqlite_runtime.c"
 purpose module standard.sqlite "Standard-library namespace and contracts for native SQLite database intrinsics."
 moduleOwns standard.sqlite "The official import path `standard.sqlite`, semantic SQLite type aliases, enum tokens, reusable database capabilities, and the compiler-owned `sqlite.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.sqlite "Application schemas, migrations, query text, transaction policy, native SQLite runtime internals, or caller-owned statement lifetimes."
 invariant module standard.sqlite "The standard module entry is this file; new modules may import it as alias `sqlite` before using compiler-owned targets in the `sqlite.*` namespace."
 
-type SqliteDatabase COpaqueMemoryAddress
-type SqliteStatement COpaqueMemoryAddress
-type SqliteRowId CSignedInt64
-type SqlText CNullTerminatedByteString
-type SqliteText CNullTerminatedByteString
-type SqliteBlob COpaqueMemoryAddress
-type SqliteByteCount CByteCount
+type SqliteDatabase OpaquePointer
+type SqliteStatement OpaquePointer
+type SqliteRowId Int64
+type SqlText String
+type SqliteText String
+type SqliteBlob OpaquePointer
+type SqliteByteCount ByteCount
 
-enum SqliteOpenMode repr CSignedInt32
+enum SqliteOpenMode repr Int32
 enumCase SqliteOpenMode readOnlySqliteOpenMode 1
 enumCase SqliteOpenMode readWriteSqliteOpenMode 2
 enumCase SqliteOpenMode readWriteCreateSqliteOpenMode 6
 enumCase SqliteOpenMode inMemorySqliteOpenMode 14
 
-enum SqliteStepResult repr CSignedInt32
+enum SqliteStepResult repr Int32
 enumCase SqliteStepResult rowSqliteStepResult 100
 enumCase SqliteStepResult doneSqliteStepResult 101
 
-enum SqliteColumnType repr CSignedInt32
+enum SqliteColumnType repr Int32
 enumCase SqliteColumnType integerSqliteColumnType 1
 enumCase SqliteColumnType floatSqliteColumnType 2
 enumCase SqliteColumnType textSqliteColumnType 3
@@ -105,16 +104,3 @@ capability sqliteDatabaseReadWriter database readWrite
 purpose operation sqliteDatabaseReadWriter "Authority to execute read-or-write SQL — prepareStatement of any statement plus sqlite.exec for DDL — against an open SqliteDatabase handle."
 
 storage module immutable sqliteModuleVersionText SqliteText "standard.sqlite 0.1"
-
-operation execStatus
-input operation execStatus database SqliteDatabase
-input operation execStatus sql SqlText
-output operation execStatus CSignedInt32
-effect execStatus readWrite database
-memory execStatus heap no
-async execStatus no
-useCapability execStatus sqliteDatabaseReadWriter
-operationBody execStatus runtimeBinding
-purpose operation execStatus "Execute one SQLite SQL script without bind parameters and return the native SQLite adapter status code."
-runtimeBindingPrecondition execStatus "database is an open SQLite handle and sql is a null-terminated SQL script that does not require bind parameters."
-runtimeBinding execStatus native.ss_sqlite_exec

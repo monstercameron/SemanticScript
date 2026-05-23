@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -13,30 +13,30 @@ effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose operation main "Pass a CFloat64 const directly to c.isnan (no user-op indirection). 3.14 is not NaN, so result is 0."
+purpose operation main "Pass a Float64 const directly to c.isnan (no user-op indirection). 3.14 is not NaN, so result is 0."
 invariant operation main "Exercises the FP classifier const-arg path."
 label startMain
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
-storage module immutable piApprox CFloat64 3.14
+storage module immutable piApprox Float64 3.14
 call isnanCall c.isnan
-argument isnanCall value CFloat64 piApprox
+argument isnanCall value Float64 piApprox
 run isnanCall
-bind value isnanResult CSignedInt64 isnanCall
-memory main mutable resultStorage I64 0
+bind value isnanResult Int64 isnanCall
+memory main mutable resultStorage Int64 0
 set memory resultStorage isnanResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultStorage
+argument writeCall value Int64 resultStorage
 run writeCall
 ignore void source writeCall
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

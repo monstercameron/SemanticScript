@@ -24,7 +24,7 @@ purpose operation sqliteRoundTripDatabase "Authority to open the in-memory sqlit
 capability sqliteRoundTripStdout console.stdout write
 purpose operation sqliteRoundTripStdout "Authority to print the SQL body round-trip marker to stdout"
 
-storage module immutable databasePath CNullTerminatedByteString ":memory:"
+storage module immutable databasePath String ":memory:"
 storage module immutable createTableSql SqlText
 sql body createTableSql
   CREATE TABLE markers (body TEXT NOT NULL)
@@ -37,7 +37,7 @@ storage module immutable selectMarkerSql SqlText
 sql body selectMarkerSql
   SELECT body FROM markers
 
-storage module immutable firstColumnIndex CSignedInt32 0
+storage module immutable firstColumnIndex Int32 0
 storage module immutable successExitCode ExitCode 0
 
 operation main
@@ -55,7 +55,7 @@ invariant operation main "stdout matches the sql body marker iff sql body consta
 label startMain
 
 call openCall sqlite.openDatabase
-argument openCall path CNullTerminatedByteString databasePath
+argument openCall path String databasePath
 argument openCall mode SqliteOpenMode inMemorySqliteOpenMode
 run openCall
 bind ok roundTripDatabase SqliteDatabase openCall
@@ -99,13 +99,13 @@ branch error source stepSelectCall target stepFailed
 
 call readMarkerCall sqlite.columnText
 argument readMarkerCall statement SqliteStatement selectStatement
-argument readMarkerCall columnIndex CSignedInt32 firstColumnIndex
+argument readMarkerCall columnIndex Int32 firstColumnIndex
 run readMarkerCall
-bind value selectedMarkerText CNullTerminatedByteString readMarkerCall
+bind value selectedMarkerText String readMarkerCall
 
 call writeMarkerCall console.writeLine
 argument writeMarkerCall console Console console
-argument writeMarkerCall text CNullTerminatedByteString selectedMarkerText
+argument writeMarkerCall text String selectedMarkerText
 run writeMarkerCall
 ignore void source writeMarkerCall
 bind error consoleWriteError ConsoleWriteError writeMarkerCall

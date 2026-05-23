@@ -209,6 +209,11 @@
           "default": false,
           "description": "Also pass --emit-ir while compiling from VS Code, writing LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
         },
+        "semanticScript.compiler.emitOptimizedLlvmIr": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also pass --emit-optimized-ir while compiling from VS Code, writing optimized LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
+        },
         "semanticScript.compiler.buildDir": {
           "type": "string",
           "default": "",

@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError CustomCode CSignedInt32
+errorCase MainError CustomCode Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -14,18 +14,18 @@ async main no
 purpose operation main "returnError should propagate the makeError payload value as exit code."
 invariant operation main "Exit code reflects the actual payload, not a hardcoded 1."
 label startMain
-storage module immutable oneCount I64 1
-storage module immutable oneCompare I64 1
-memory main mutable x I64 oneCount
-call eqCall math.equalI64
-argument eqCall left I64 x
-argument eqCall right I64 oneCompare
+storage module immutable oneCount Int64 1
+storage module immutable oneCompare Int64 1
+memory main mutable x Int64 oneCount
+call eqCall math.equalInt64
+argument eqCall left Int64 x
+argument eqCall right Int64 oneCompare
 run eqCall
 bind value alwaysTrue Bool eqCall
 branch if condition alwaysTrue target errorLeg
 branch else target successLeg
 label errorLeg
-storage module immutable customExitCode CSignedInt32 42
+storage module immutable customExitCode Int32 42
 makeError customFailure MainError.CustomCode customExitCode
 return error customFailure
 label successLeg

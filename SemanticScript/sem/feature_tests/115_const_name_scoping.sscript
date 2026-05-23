@@ -5,18 +5,18 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation getSeven
-output operation getSeven Result CSignedInt64 Void
+output operation getSeven Result Int64 Void
 label startGetSeven
-storage module immutable answer CSignedInt64 7
+storage module immutable answer Int64 7
 return ok answer
 
 operation getFortyTwo
-output operation getFortyTwo Result CSignedInt64 Void
+output operation getFortyTwo Result Int64 Void
 label startGetFortyTwo
-storage module immutable answer CSignedInt64 42
+storage module immutable answer Int64 42
 return ok answer
 
 operation main
@@ -30,23 +30,23 @@ invariant operation main "Output: 7 then 42."
 label startMain
 call sevenCall getSeven
 run sevenCall
-bind ok sevenResult CSignedInt64 sevenCall
-memory main mutable s1 I64 0
+bind ok sevenResult Int64 sevenCall
+memory main mutable s1 Int64 0
 set memory s1 sevenResult
 call w1 console.writeIntegerLine
 argument w1 console Console console
-argument w1 value I64 s1
+argument w1 value Int64 s1
 run w1
 ignore void source w1
 
 call fortytwoCall getFortyTwo
 run fortytwoCall
-bind ok fortytwoResult CSignedInt64 fortytwoCall
-memory main mutable s2 I64 0
+bind ok fortytwoResult Int64 fortytwoCall
+memory main mutable s2 Int64 0
 set memory s2 fortytwoResult
 call w2 console.writeIntegerLine
 argument w2 console Console console
-argument w2 value I64 s2
+argument w2 value Int64 s2
 run w2
 ignore void source w2
 

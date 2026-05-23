@@ -15,44 +15,44 @@ async main no
 purpose operation main "Three-way branch on a value's range."
 invariant operation main "Picks medium for 50."
 label startMain
-storage module immutable valueInitial I64 50
-storage module immutable lowThreshold I64 10
-storage module immutable highThreshold I64 100
-memory main mutable value I64 valueInitial
-call lowCheckCall math.lessThanI64
-argument lowCheckCall left I64 value
-argument lowCheckCall right I64 lowThreshold
+storage module immutable valueInitial Int64 50
+storage module immutable lowThreshold Int64 10
+storage module immutable highThreshold Int64 100
+memory main mutable value Int64 valueInitial
+call lowCheckCall math.lessThanInt64
+argument lowCheckCall left Int64 value
+argument lowCheckCall right Int64 lowThreshold
 run lowCheckCall
 bind value isLow Bool lowCheckCall
 branch if condition isLow target lowBranch
-call highCheckCall math.greaterThanI64
-argument highCheckCall left I64 value
-argument highCheckCall right I64 highThreshold
+call highCheckCall math.greaterThanInt64
+argument highCheckCall left Int64 value
+argument highCheckCall right Int64 highThreshold
 run highCheckCall
 bind value isHigh Bool highCheckCall
 branch if condition isHigh target highBranch
 branch else target mediumBranch
 label lowBranch
-storage module immutable lowText CNullTerminatedByteString "low"
+storage module immutable lowText String "low"
 call lowWriteCall console.writeLine
 argument lowWriteCall console Console console
-argument lowWriteCall text CNullTerminatedByteString lowText
+argument lowWriteCall text String lowText
 run lowWriteCall
 ignore void source lowWriteCall
 jump target endLabel
 label mediumBranch
-storage module immutable mediumText CNullTerminatedByteString "medium"
+storage module immutable mediumText String "medium"
 call mediumWriteCall console.writeLine
 argument mediumWriteCall console Console console
-argument mediumWriteCall text CNullTerminatedByteString mediumText
+argument mediumWriteCall text String mediumText
 run mediumWriteCall
 ignore void source mediumWriteCall
 jump target endLabel
 label highBranch
-storage module immutable highText CNullTerminatedByteString "high"
+storage module immutable highText String "high"
 call highWriteCall console.writeLine
 argument highWriteCall console Console console
-argument highWriteCall text CNullTerminatedByteString highText
+argument highWriteCall text String highText
 run highWriteCall
 ignore void source highWriteCall
 jump target endLabel

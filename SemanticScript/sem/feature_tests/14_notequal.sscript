@@ -12,32 +12,32 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "math.notEqualI64 returns true when args differ."
+purpose operation main "math.notEqualInt64 returns true when args differ."
 invariant operation main "Picks 'different' branch."
 label startMain
-storage module immutable aInitial I64 1
-storage module immutable bCompare I64 2
-memory main mutable leftOp I64 aInitial
-call neCall math.notEqualI64
-argument neCall left I64 leftOp
-argument neCall right I64 bCompare
+storage module immutable aInitial Int64 1
+storage module immutable bCompare Int64 2
+memory main mutable leftOp Int64 aInitial
+call neCall math.notEqualInt64
+argument neCall left Int64 leftOp
+argument neCall right Int64 bCompare
 run neCall
 bind value isDifferent Bool neCall
 branch if condition isDifferent target diffLabel
 branch else target sameLabel
 label diffLabel
-storage module immutable diffText CNullTerminatedByteString "different"
+storage module immutable diffText String "different"
 call writeDiffCall console.writeLine
 argument writeDiffCall console Console console
-argument writeDiffCall text CNullTerminatedByteString diffText
+argument writeDiffCall text String diffText
 run writeDiffCall
 ignore void source writeDiffCall
 jump target endLabel
 label sameLabel
-storage module immutable sameText CNullTerminatedByteString "same"
+storage module immutable sameText String "same"
 call writeSameCall console.writeLine
 argument writeSameCall console Console console
-argument writeSameCall text CNullTerminatedByteString sameText
+argument writeSameCall text String sameText
 run writeSameCall
 ignore void source writeSameCall
 jump target endLabel

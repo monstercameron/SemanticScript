@@ -5,7 +5,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError WriteFailed CSignedInt32
+errorCase MainError WriteFailed Int32
 
 # ============================================================
 # Sanity-check demo: exercises a handful of std/* operations
@@ -18,8 +18,8 @@ errorCase MainError WriteFailed CSignedInt32
 # ============================================================
 
 operation putByte
-input operation putByte byteValue CSignedInt32
-output operation putByte Result CSignedInt32 Void
+input operation putByte byteValue Int32
+output operation putByte Result Int32 Void
 effect putByte write console.stdout
 memory putByte heap no
 memory putByte stack max 1KiB
@@ -29,14 +29,14 @@ invariant operation putByte "Returns the byte written when c.putchar reports a n
 
 label startPutByte
 call putByteHostCall c.putchar
-argument putByteHostCall c CSignedInt32 byteValue
+argument putByteHostCall c Int32 byteValue
 run putByteHostCall
-bind value putByteResult CSignedInt32 putByteHostCall
+bind value putByteResult Int32 putByteHostCall
 return ok putByteResult
 
 operation putString
-input operation putString sourceText CNullTerminatedByteString
-output operation putString Result CByteCount Void
+input operation putString sourceText String
+output operation putString Result ByteCount Void
 effect putString write console.stdout
 effect putString read memory.buffer
 memory putString heap no
@@ -46,34 +46,34 @@ purpose operation putString "Walk a C-string and emit each byte via putByte unti
 invariant operation putString "At putStringLoop, cursorIndex bytes have already been written to stdout."
 
 label startPutString
-storage module immutable zeroIndex CByteCount 0
-storage module immutable oneIndex CByteCount 1
-memory putString mutable cursorIndex CByteCount zeroIndex
+storage module immutable zeroIndex ByteCount 0
+storage module immutable oneIndex ByteCount 1
+memory putString mutable cursorIndex ByteCount zeroIndex
 
 label putStringLoop
 call loadByteCall pointer.loadByte
-argument loadByteCall buffer CNullTerminatedByteString sourceText
-argument loadByteCall offset CByteCount cursorIndex
+argument loadByteCall buffer String sourceText
+argument loadByteCall offset ByteCount cursorIndex
 run loadByteCall
-bind value currentByte I8 loadByteCall
+bind value currentByte Int8 loadByteCall
 
-call isNulCall math.equalI64
-argument isNulCall left I8 currentByte
-argument isNulCall right I64 zeroIndex
+call isNulCall math.equalInt64
+argument isNulCall left Int8 currentByte
+argument isNulCall right Int64 zeroIndex
 run isNulCall
 bind value reachedNul Bool isNulCall
 branch if condition reachedNul target putStringDone
 
 call emitByteCall putByte
-argument emitByteCall byteValue CSignedInt32 currentByte
+argument emitByteCall byteValue Int32 currentByte
 run emitByteCall
-ignore ok source emitByteCall type CSignedInt32
+ignore ok source emitByteCall type Int32
 
-call advanceCursorCall math.addI64
-argument advanceCursorCall left I64 cursorIndex
-argument advanceCursorCall right I64 oneIndex
+call advanceCursorCall math.addInt64
+argument advanceCursorCall left Int64 cursorIndex
+argument advanceCursorCall right Int64 oneIndex
 run advanceCursorCall
-bind value nextCursor CByteCount advanceCursorCall
+bind value nextCursor ByteCount advanceCursorCall
 set memory cursorIndex nextCursor
 jump target putStringLoop
 
@@ -81,8 +81,8 @@ label putStringDone
 return ok cursorIndex
 
 operation putLine
-input operation putLine sourceText CNullTerminatedByteString
-output operation putLine Result CByteCount Void
+input operation putLine sourceText String
+output operation putLine Result ByteCount Void
 effect putLine write console.stdout
 effect putLine read memory.buffer
 memory putLine heap no
@@ -93,27 +93,27 @@ invariant operation putLine "totalBytesWritten always equals putString's count p
 
 label startPutLine
 call putLineBodyCall putString
-argument putLineBodyCall sourceText CNullTerminatedByteString sourceText
+argument putLineBodyCall sourceText String sourceText
 run putLineBodyCall
-bind ok bodyByteCount CByteCount putLineBodyCall
+bind ok bodyByteCount ByteCount putLineBodyCall
 
-storage module immutable newlineByte CSignedInt32 10
+storage module immutable newlineByte Int32 10
 call putLineNewlineCall putByte
-argument putLineNewlineCall byteValue CSignedInt32 newlineByte
+argument putLineNewlineCall byteValue Int32 newlineByte
 run putLineNewlineCall
-ignore ok source putLineNewlineCall type CSignedInt32
+ignore ok source putLineNewlineCall type Int32
 
-storage module immutable oneNewline CByteCount 1
-call totalBytesCall math.addI64
-argument totalBytesCall left I64 bodyByteCount
-argument totalBytesCall right I64 oneNewline
+storage module immutable oneNewline ByteCount 1
+call totalBytesCall math.addInt64
+argument totalBytesCall left Int64 bodyByteCount
+argument totalBytesCall right Int64 oneNewline
 run totalBytesCall
-bind value totalBytesWritten CByteCount totalBytesCall
+bind value totalBytesWritten ByteCount totalBytesCall
 return ok totalBytesWritten
 
 operation putIntegerDecimal
-input operation putIntegerDecimal numberToPrint CSignedInt64
-output operation putIntegerDecimal Result CByteCount Void
+input operation putIntegerDecimal numberToPrint Int64
+output operation putIntegerDecimal Result ByteCount Void
 effect putIntegerDecimal write console.stdout
 effect putIntegerDecimal allocate heap
 effect putIntegerDecimal free heap
@@ -127,26 +127,26 @@ invariant operation putIntegerDecimal "At digitDecomposeLoop, digitCount equals 
 invariant operation putIntegerDecimal "digitBuffer is allocated on entry to decompose and freed on exit from emitDone."
 
 label startPutIntegerDecimal
-storage module immutable zeroValue CSignedInt64 0
-storage module immutable oneValue CSignedInt64 1
-storage module immutable tenValue CSignedInt64 10
-storage module immutable negativeOneValue CSignedInt64 -1
-storage module immutable asciiZeroOffset CSignedInt64 48
-storage module immutable asciiMinusByte CSignedInt32 45
-storage module immutable digitBufferBytes CByteCount 32
+storage module immutable zeroValue Int64 0
+storage module immutable oneValue Int64 1
+storage module immutable tenValue Int64 10
+storage module immutable negativeOneValue Int64 -1
+storage module immutable asciiZeroOffset Int64 48
+storage module immutable asciiMinusByte Int32 45
+storage module immutable digitBufferBytes ByteCount 32
 
 call allocBufferCall c.malloc
-argument allocBufferCall size CByteCount digitBufferBytes
+argument allocBufferCall size ByteCount digitBufferBytes
 run allocBufferCall
-bind value digitBuffer COpaqueMemoryAddress allocBufferCall
+bind value digitBuffer OpaquePointer allocBufferCall
 
-memory putIntegerDecimal mutable workingMagnitude CSignedInt64 zeroValue
+memory putIntegerDecimal mutable workingMagnitude Int64 zeroValue
 set memory workingMagnitude numberToPrint
-memory putIntegerDecimal mutable negativeFlag CSignedInt64 zeroValue
+memory putIntegerDecimal mutable negativeFlag Int64 zeroValue
 
-call signCheckCall math.lessThanI64
-argument signCheckCall left CSignedInt64 numberToPrint
-argument signCheckCall right CSignedInt64 zeroValue
+call signCheckCall math.lessThanInt64
+argument signCheckCall left Int64 numberToPrint
+argument signCheckCall right Int64 zeroValue
 run signCheckCall
 bind value isNegativeBool Bool signCheckCall
 branch if condition isNegativeBool target flipSign
@@ -154,81 +154,81 @@ branch else target signDone
 
 label flipSign
 set memory negativeFlag oneValue
-call negateCall math.multiplyI64
-argument negateCall left CSignedInt64 numberToPrint
-argument negateCall right CSignedInt64 negativeOneValue
+call negateCall math.multiplyInt64
+argument negateCall left Int64 numberToPrint
+argument negateCall right Int64 negativeOneValue
 run negateCall
-bind value negatedValue CSignedInt64 negateCall
+bind value negatedValue Int64 negateCall
 set memory workingMagnitude negatedValue
 jump target signDone
 
 label signDone
-call isZeroCheckCall math.equalI64
-argument isZeroCheckCall left CSignedInt64 workingMagnitude
-argument isZeroCheckCall right I64 zeroValue
+call isZeroCheckCall math.equalInt64
+argument isZeroCheckCall left Int64 workingMagnitude
+argument isZeroCheckCall right Int64 zeroValue
 run isZeroCheckCall
 bind value isZeroValue Bool isZeroCheckCall
 branch if condition isZeroValue target emitZeroDigit
 branch else target decomposeDigits
 
 label emitZeroDigit
-storage module immutable asciiZeroByte CSignedInt32 48
+storage module immutable asciiZeroByte Int32 48
 call putZeroDigitCall putByte
-argument putZeroDigitCall byteValue CSignedInt32 asciiZeroByte
+argument putZeroDigitCall byteValue Int32 asciiZeroByte
 run putZeroDigitCall
-ignore ok source putZeroDigitCall type CSignedInt32
+ignore ok source putZeroDigitCall type Int32
 jump target emitDone
 
 label decomposeDigits
-storage module immutable zeroIndexDec CByteCount 0
-storage module immutable oneIndexDec CByteCount 1
-memory putIntegerDecimal mutable digitCount CByteCount zeroIndexDec
+storage module immutable zeroIndexDec ByteCount 0
+storage module immutable oneIndexDec ByteCount 1
+memory putIntegerDecimal mutable digitCount ByteCount zeroIndexDec
 
 label digitDecomposeLoop
-call extractDigitCall math.moduloI64
-argument extractDigitCall left CSignedInt64 workingMagnitude
-argument extractDigitCall right CSignedInt64 tenValue
+call extractDigitCall math.moduloInt64
+argument extractDigitCall left Int64 workingMagnitude
+argument extractDigitCall right Int64 tenValue
 run extractDigitCall
-bind value digitValue CSignedInt64 extractDigitCall
+bind value digitValue Int64 extractDigitCall
 
-call digitToAsciiCall math.addI64
-argument digitToAsciiCall left I64 digitValue
-argument digitToAsciiCall right I64 asciiZeroOffset
+call digitToAsciiCall math.addInt64
+argument digitToAsciiCall left Int64 digitValue
+argument digitToAsciiCall right Int64 asciiZeroOffset
 run digitToAsciiCall
-bind value digitAsciiByte CSignedInt32 digitToAsciiCall
+bind value digitAsciiByte Int32 digitToAsciiCall
 
 call storeDigitCall pointer.storeByte
-argument storeDigitCall buffer COpaqueMemoryAddress digitBuffer
-argument storeDigitCall offset CByteCount digitCount
-argument storeDigitCall value CSignedInt32 digitAsciiByte
+argument storeDigitCall buffer OpaquePointer digitBuffer
+argument storeDigitCall offset ByteCount digitCount
+argument storeDigitCall value Int32 digitAsciiByte
 run storeDigitCall
 
-call incrementCountCall math.addI64
-argument incrementCountCall left I64 digitCount
-argument incrementCountCall right I64 oneIndexDec
+call incrementCountCall math.addInt64
+argument incrementCountCall left Int64 digitCount
+argument incrementCountCall right Int64 oneIndexDec
 run incrementCountCall
-bind value nextDigitCount CByteCount incrementCountCall
+bind value nextDigitCount ByteCount incrementCountCall
 set memory digitCount nextDigitCount
 
-call divideByTenCall math.divideI64
-argument divideByTenCall left CSignedInt64 workingMagnitude
-argument divideByTenCall right CSignedInt64 tenValue
+call divideByTenCall math.divideInt64
+argument divideByTenCall left Int64 workingMagnitude
+argument divideByTenCall right Int64 tenValue
 run divideByTenCall
-bind value nextMagnitude CSignedInt64 divideByTenCall
+bind value nextMagnitude Int64 divideByTenCall
 set memory workingMagnitude nextMagnitude
 
-call hasMoreCall math.greaterThanI64
-argument hasMoreCall left CSignedInt64 workingMagnitude
-argument hasMoreCall right CSignedInt64 zeroValue
+call hasMoreCall math.greaterThanInt64
+argument hasMoreCall left Int64 workingMagnitude
+argument hasMoreCall right Int64 zeroValue
 run hasMoreCall
 bind value hasMoreDigits Bool hasMoreCall
 branch if condition hasMoreDigits target digitDecomposeLoop
 branch else target emitSignByte
 
 label emitSignByte
-call needsSignCall math.equalI64
-argument needsSignCall left CSignedInt64 negativeFlag
-argument needsSignCall right I64 oneValue
+call needsSignCall math.equalInt64
+argument needsSignCall left Int64 negativeFlag
+argument needsSignCall right Int64 oneValue
 run needsSignCall
 bind value needsMinusSign Bool needsSignCall
 branch if condition needsMinusSign target emitMinusSign
@@ -236,52 +236,52 @@ branch else target emitDigitsForward
 
 label emitMinusSign
 call putMinusCall putByte
-argument putMinusCall byteValue CSignedInt32 asciiMinusByte
+argument putMinusCall byteValue Int32 asciiMinusByte
 run putMinusCall
-ignore ok source putMinusCall type CSignedInt32
+ignore ok source putMinusCall type Int32
 jump target emitDigitsForward
 
 label emitDigitsForward
-memory putIntegerDecimal mutable emitCursor CByteCount zeroIndexDec
+memory putIntegerDecimal mutable emitCursor ByteCount zeroIndexDec
 set memory emitCursor digitCount
 
 label emitNextDigit
-call cursorAtZeroCall math.equalI64
-argument cursorAtZeroCall left CByteCount emitCursor
-argument cursorAtZeroCall right I64 zeroValue
+call cursorAtZeroCall math.equalInt64
+argument cursorAtZeroCall left ByteCount emitCursor
+argument cursorAtZeroCall right Int64 zeroValue
 run cursorAtZeroCall
 bind value cursorIsZero Bool cursorAtZeroCall
 branch if condition cursorIsZero target emitDone
 
-call decrementCursorCall math.subtractI64
-argument decrementCursorCall left CByteCount emitCursor
-argument decrementCursorCall right CByteCount oneIndexDec
+call decrementCursorCall math.subtractInt64
+argument decrementCursorCall left ByteCount emitCursor
+argument decrementCursorCall right ByteCount oneIndexDec
 run decrementCursorCall
-bind value decrementedCursor CByteCount decrementCursorCall
+bind value decrementedCursor ByteCount decrementCursorCall
 set memory emitCursor decrementedCursor
 
 call loadDigitByteCall pointer.loadByte
-argument loadDigitByteCall buffer COpaqueMemoryAddress digitBuffer
-argument loadDigitByteCall offset CByteCount decrementedCursor
+argument loadDigitByteCall buffer OpaquePointer digitBuffer
+argument loadDigitByteCall offset ByteCount decrementedCursor
 run loadDigitByteCall
-bind value digitByteToEmit I8 loadDigitByteCall
+bind value digitByteToEmit Int8 loadDigitByteCall
 
 call putDigitByteCall putByte
-argument putDigitByteCall byteValue CSignedInt32 digitByteToEmit
+argument putDigitByteCall byteValue Int32 digitByteToEmit
 run putDigitByteCall
-ignore ok source putDigitByteCall type CSignedInt32
+ignore ok source putDigitByteCall type Int32
 jump target emitNextDigit
 
 label emitDone
 call freeBufferCall c.free
-argument freeBufferCall ptr COpaqueMemoryAddress digitBuffer
+argument freeBufferCall ptr OpaquePointer digitBuffer
 run freeBufferCall
-storage module immutable finishedByteCount CByteCount 1
+storage module immutable finishedByteCount ByteCount 1
 return ok finishedByteCount
 
 operation strlen
-input operation strlen sourceText CNullTerminatedByteString
-output operation strlen Result CByteCount Void
+input operation strlen sourceText String
+output operation strlen Result ByteCount Void
 effect strlen read memory.buffer
 memory strlen heap no
 memory strlen stack max 1KiB
@@ -290,29 +290,29 @@ purpose operation strlen "Pure-SemanticScript strlen: walk bytes from sourceText
 invariant operation strlen "At strlenLoop, cursorByteCount equals the number of non-NUL bytes seen so far."
 
 label startStrlen
-storage module immutable zeroByteCount CByteCount 0
-storage module immutable oneByteCount CByteCount 1
-memory strlen mutable cursorByteCount CByteCount zeroByteCount
+storage module immutable zeroByteCount ByteCount 0
+storage module immutable oneByteCount ByteCount 1
+memory strlen mutable cursorByteCount ByteCount zeroByteCount
 
 label strlenLoop
 call probeByteCall pointer.loadByte
-argument probeByteCall buffer CNullTerminatedByteString sourceText
-argument probeByteCall offset CByteCount cursorByteCount
+argument probeByteCall buffer String sourceText
+argument probeByteCall offset ByteCount cursorByteCount
 run probeByteCall
-bind value probedByte I8 probeByteCall
+bind value probedByte Int8 probeByteCall
 
-call probeIsNulCall math.equalI64
-argument probeIsNulCall left I8 probedByte
-argument probeIsNulCall right I64 zeroByteCount
+call probeIsNulCall math.equalInt64
+argument probeIsNulCall left Int8 probedByte
+argument probeIsNulCall right Int64 zeroByteCount
 run probeIsNulCall
 bind value probeReachedNul Bool probeIsNulCall
 branch if condition probeReachedNul target strlenDone
 
-call advanceProbeCall math.addI64
-argument advanceProbeCall left I64 cursorByteCount
-argument advanceProbeCall right I64 oneByteCount
+call advanceProbeCall math.addInt64
+argument advanceProbeCall left Int64 cursorByteCount
+argument advanceProbeCall right Int64 oneByteCount
 run advanceProbeCall
-bind value nextProbeIndex CByteCount advanceProbeCall
+bind value nextProbeIndex ByteCount advanceProbeCall
 set memory cursorByteCount nextProbeIndex
 jump target strlenLoop
 
@@ -320,8 +320,8 @@ label strlenDone
 return ok cursorByteCount
 
 operation factorial
-input operation factorial upperLimit CSignedInt64
-output operation factorial Result CSignedInt64 Void
+input operation factorial upperLimit Int64
+output operation factorial Result Int64 Void
 memory factorial heap no
 memory factorial stack max 1KiB
 async factorial no
@@ -329,39 +329,39 @@ purpose operation factorial "Compute upperLimit! using a multiplicative loop; re
 invariant operation factorial "At factorialLoop, runningProduct equals factorial(currentCounter - 1)."
 
 label startFactorial
-storage module immutable zeroFactorial CSignedInt64 0
-storage module immutable oneFactorial CSignedInt64 1
+storage module immutable zeroFactorial Int64 0
+storage module immutable oneFactorial Int64 1
 
-call upperLimitNonPositiveCall math.lessThanOrEqualI64
-argument upperLimitNonPositiveCall left CSignedInt64 upperLimit
-argument upperLimitNonPositiveCall right CSignedInt64 zeroFactorial
+call upperLimitNonPositiveCall math.lessThanOrEqualInt64
+argument upperLimitNonPositiveCall left Int64 upperLimit
+argument upperLimitNonPositiveCall right Int64 zeroFactorial
 run upperLimitNonPositiveCall
 bind value upperLimitNonPositive Bool upperLimitNonPositiveCall
 branch if condition upperLimitNonPositive target factorialReturnsOne
 
-memory factorial mutable runningProduct CSignedInt64 oneFactorial
-memory factorial mutable currentCounter CSignedInt64 oneFactorial
+memory factorial mutable runningProduct Int64 oneFactorial
+memory factorial mutable currentCounter Int64 oneFactorial
 
 label factorialLoop
-call counterPastLimitCall math.greaterThanI64
-argument counterPastLimitCall left CSignedInt64 currentCounter
-argument counterPastLimitCall right CSignedInt64 upperLimit
+call counterPastLimitCall math.greaterThanInt64
+argument counterPastLimitCall left Int64 currentCounter
+argument counterPastLimitCall right Int64 upperLimit
 run counterPastLimitCall
 bind value counterPastLimit Bool counterPastLimitCall
 branch if condition counterPastLimit target factorialReturnProduct
 
-call multiplyAccumulatorCall math.multiplyI64
-argument multiplyAccumulatorCall left CSignedInt64 runningProduct
-argument multiplyAccumulatorCall right CSignedInt64 currentCounter
+call multiplyAccumulatorCall math.multiplyInt64
+argument multiplyAccumulatorCall left Int64 runningProduct
+argument multiplyAccumulatorCall right Int64 currentCounter
 run multiplyAccumulatorCall
-bind value nextProduct CSignedInt64 multiplyAccumulatorCall
+bind value nextProduct Int64 multiplyAccumulatorCall
 set memory runningProduct nextProduct
 
-call advanceCounterCall math.addI64
-argument advanceCounterCall left I64 currentCounter
-argument advanceCounterCall right I64 oneFactorial
+call advanceCounterCall math.addInt64
+argument advanceCounterCall left Int64 currentCounter
+argument advanceCounterCall right Int64 oneFactorial
 run advanceCounterCall
-bind value nextCounter CSignedInt64 advanceCounterCall
+bind value nextCounter Int64 advanceCounterCall
 set memory currentCounter nextCounter
 jump target factorialLoop
 
@@ -391,78 +391,78 @@ invariant operation main "Each demo line completes successfully before the next 
 
 label startMain
 
-storage module immutable greetingText CNullTerminatedByteString "SemanticScript stdlib sanity check"
+storage module immutable greetingText String "SemanticScript stdlib sanity check"
 call printGreetingCall putLine
-argument printGreetingCall sourceText CNullTerminatedByteString greetingText
+argument printGreetingCall sourceText String greetingText
 run printGreetingCall
-ignore ok source printGreetingCall type CByteCount
+ignore ok source printGreetingCall type ByteCount
 
-storage module immutable strlenLabelText CNullTerminatedByteString "strlen(\"Hello, SemanticScript!\") = "
+storage module immutable strlenLabelText String "strlen(\"Hello, SemanticScript!\") = "
 call printStrlenLabelCall putString
-argument printStrlenLabelCall sourceText CNullTerminatedByteString strlenLabelText
+argument printStrlenLabelCall sourceText String strlenLabelText
 run printStrlenLabelCall
-ignore ok source printStrlenLabelCall type CByteCount
+ignore ok source printStrlenLabelCall type ByteCount
 
-storage module immutable sampleText CNullTerminatedByteString "Hello, SemanticScript!"
+storage module immutable sampleText String "Hello, SemanticScript!"
 call measureSampleCall strlen
-argument measureSampleCall sourceText CNullTerminatedByteString sampleText
+argument measureSampleCall sourceText String sampleText
 run measureSampleCall
-bind ok sampleByteCount CByteCount measureSampleCall
+bind ok sampleByteCount ByteCount measureSampleCall
 
 call printSampleLengthCall putIntegerDecimal
-argument printSampleLengthCall numberToPrint CSignedInt64 sampleByteCount
+argument printSampleLengthCall numberToPrint Int64 sampleByteCount
 run printSampleLengthCall
-ignore ok source printSampleLengthCall type CByteCount
+ignore ok source printSampleLengthCall type ByteCount
 
-storage module immutable newlineByteValue CSignedInt32 10
+storage module immutable newlineByteValue Int32 10
 call newlineAfterStrlenCall putByte
-argument newlineAfterStrlenCall byteValue CSignedInt32 newlineByteValue
+argument newlineAfterStrlenCall byteValue Int32 newlineByteValue
 run newlineAfterStrlenCall
-ignore ok source newlineAfterStrlenCall type CSignedInt32
+ignore ok source newlineAfterStrlenCall type Int32
 
-storage module immutable factorialFiveLabelText CNullTerminatedByteString "5! = "
+storage module immutable factorialFiveLabelText String "5! = "
 call printFactorialFiveLabelCall putString
-argument printFactorialFiveLabelCall sourceText CNullTerminatedByteString factorialFiveLabelText
+argument printFactorialFiveLabelCall sourceText String factorialFiveLabelText
 run printFactorialFiveLabelCall
-ignore ok source printFactorialFiveLabelCall type CByteCount
+ignore ok source printFactorialFiveLabelCall type ByteCount
 
-storage module immutable factorialFiveInput CSignedInt64 5
+storage module immutable factorialFiveInput Int64 5
 call computeFactorialFiveCall factorial
-argument computeFactorialFiveCall upperLimit CSignedInt64 factorialFiveInput
+argument computeFactorialFiveCall upperLimit Int64 factorialFiveInput
 run computeFactorialFiveCall
-bind ok factorialFiveResult CSignedInt64 computeFactorialFiveCall
+bind ok factorialFiveResult Int64 computeFactorialFiveCall
 
 call printFactorialFiveCall putIntegerDecimal
-argument printFactorialFiveCall numberToPrint CSignedInt64 factorialFiveResult
+argument printFactorialFiveCall numberToPrint Int64 factorialFiveResult
 run printFactorialFiveCall
-ignore ok source printFactorialFiveCall type CByteCount
+ignore ok source printFactorialFiveCall type ByteCount
 
 call newlineAfterFactorialFiveCall putByte
-argument newlineAfterFactorialFiveCall byteValue CSignedInt32 newlineByteValue
+argument newlineAfterFactorialFiveCall byteValue Int32 newlineByteValue
 run newlineAfterFactorialFiveCall
-ignore ok source newlineAfterFactorialFiveCall type CSignedInt32
+ignore ok source newlineAfterFactorialFiveCall type Int32
 
-storage module immutable factorialTenLabelText CNullTerminatedByteString "10! = "
+storage module immutable factorialTenLabelText String "10! = "
 call printFactorialTenLabelCall putString
-argument printFactorialTenLabelCall sourceText CNullTerminatedByteString factorialTenLabelText
+argument printFactorialTenLabelCall sourceText String factorialTenLabelText
 run printFactorialTenLabelCall
-ignore ok source printFactorialTenLabelCall type CByteCount
+ignore ok source printFactorialTenLabelCall type ByteCount
 
-storage module immutable factorialTenInput CSignedInt64 10
+storage module immutable factorialTenInput Int64 10
 call computeFactorialTenCall factorial
-argument computeFactorialTenCall upperLimit CSignedInt64 factorialTenInput
+argument computeFactorialTenCall upperLimit Int64 factorialTenInput
 run computeFactorialTenCall
-bind ok factorialTenResult CSignedInt64 computeFactorialTenCall
+bind ok factorialTenResult Int64 computeFactorialTenCall
 
 call printFactorialTenCall putIntegerDecimal
-argument printFactorialTenCall numberToPrint CSignedInt64 factorialTenResult
+argument printFactorialTenCall numberToPrint Int64 factorialTenResult
 run printFactorialTenCall
-ignore ok source printFactorialTenCall type CByteCount
+ignore ok source printFactorialTenCall type ByteCount
 
 call newlineAfterFactorialTenCall putByte
-argument newlineAfterFactorialTenCall byteValue CSignedInt32 newlineByteValue
+argument newlineAfterFactorialTenCall byteValue Int32 newlineByteValue
 run newlineAfterFactorialTenCall
-ignore ok source newlineAfterFactorialTenCall type CSignedInt32
+ignore ok source newlineAfterFactorialTenCall type Int32
 
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

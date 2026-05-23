@@ -1,401 +1,106 @@
 # SemanticScript standard-library canonical module: standard.array.
 
 module standard.array
-purpose module standard.array "Canonical standard-library module for array helpers."
-moduleOwns standard.array "The official import path `standard.array` and this module's implementation body."
-moduleDoesNotOwn standard.array "App-specific wrappers, compatibility aliases, or generated build artifacts."
-invariant module standard.array "The standard module entry is this file; tests live beside it as `main.test.sem`."
+purpose module standard.array "Canonical standard-library module for fixed-array structural helpers."
+moduleOwns standard.array "The official import path `standard.array` and the executable `array.*` helper surface."
+moduleDoesNotOwn standard.array "Byte-buffer scans, mutable buffer utilities, or collection declaration metadata."
+invariant module standard.array "This module owns structural helpers for fixed arrays; raw byte scans live under `standard.bytes` and mutable byte-buffer edits live under `standard.buffer`."
 
 exportConstant standard.array arrayModuleVersionText
-storage module immutable arrayModuleVersionText CNullTerminatedByteString "standard.array 0.1"
+storage module immutable arrayModuleVersionText String "standard.array 0.2"
 
-# Canonical standard-library implementation body.
-# ============================================================
-# SEMANTICSCRIPT STANDARD LIBRARY: byte-buffer array helpers
-# ============================================================
-#
-# rationale: scans and in-place mutations over byte buffers.
-#   The refined surface treats predicates as Bool (does the
-#   buffer contain a byte? returns Bool, not 0/1) and lifts the
-#   total scans (sum / min / max / count / reverse) out of the
-#   Result wrapper. Byte normalization through (raw + 256) % 256
-#   stays â€” pointer.loadByte sign-extends so this is needed for
-#   "unsigned byte" semantics.
-#
-# invariant: every operation reads at most `byteCount` bytes
-#   from byteBuffer. The caller is responsible for ensuring
-#   that range is in-bounds â€” there is no capacity argument or
-#   bounds enforcement here.
-#
-# security: all operations are read-only except
-#   reverseBytesInBufferInPlace, which both reads and writes.
-#   Out-of-bounds bytes are undefined behavior; the caller's
-#   byteCount must match the actual allocation.
-#
-# timing: every operation is O(byteCount). No allocation.
-#
-# observability: no logs; consumers wrap when needed.
+domainLiteral arrayZeroValue Int64 0
+domainLiteralTrust arrayZeroValue trustedStaticLiteral
+domainLiteral arrayOneValue Int64 1
+domainLiteralTrust arrayOneValue trustedStaticLiteral
+domainLiteral arrayMissingIndexSentinel Int64 -1
+domainLiteralTrust arrayMissingIndexSentinel trustedStaticLiteral
 
-# Pure-module file: smoke + extended tests live in
-# std/array/main.test.sem.
+storage module immutable arrayTrue Bool true
+storage module immutable arrayFalse Bool false
 
-domainLiteral integerOneStepValue CSignedInt64 1
-domainLiteralTrust integerOneStepValue trustedStaticLiteral
-domainLiteral byteRoleAdjustmentValue CSignedInt64 256
-domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
-domainLiteral emptyBufferMinimumSentinel CSignedInt64 256
-domainLiteralTrust emptyBufferMinimumSentinel trustedStaticLiteral
-domainLiteral emptyBufferMaximumSentinel CSignedInt64 -1
-domainLiteralTrust emptyBufferMaximumSentinel trustedStaticLiteral
+operation array.length
+input operation array.length arrayLength Int64
+output operation array.length Int64
+memory array.length heap no
+async array.length no
+purpose operation array.length "Return the fixed logical length of an array."
+guarantee array.length "Total."
+return value arrayLength
 
-# section array.aggregateScans
+operation array.isEmpty
+input operation array.isEmpty arrayLength Int64
+output operation array.isEmpty Bool
+memory array.isEmpty heap no
+async array.isEmpty no
+purpose operation array.isEmpty "Return true when arrayLength is zero."
+guarantee array.isEmpty "Total."
+call arrayIsEmptyCheckCall math.equalInt64
+argument arrayIsEmptyCheckCall left Int64 arrayLength
+argument arrayIsEmptyCheckCall right Int64 arrayZeroValue
+run arrayIsEmptyCheckCall
+bind value arrayIsEmptyResult Bool arrayIsEmptyCheckCall
+return value arrayIsEmptyResult
 
-operation sumSignedByteValuesInBuffer
-input operation sumSignedByteValuesInBuffer byteBuffer CNullTerminatedByteString
-input operation sumSignedByteValuesInBuffer byteCount CByteCount
-output operation sumSignedByteValuesInBuffer CSignedInt64
-memory sumSignedByteValuesInBuffer heap no
-async sumSignedByteValuesInBuffer no
-purpose operation sumSignedByteValuesInBuffer "Returns the sum of byte values in the first byteCount bytes of byteBuffer (each byte treated as an unsigned 0..255 value)."
-invariant operation sumSignedByteValuesInBuffer "Result is non-negative when byteCount fits within the buffer's allocation."
-warning sumSignedByteValuesInBuffer "Overflows silently when byteCount * 255 exceeds CSignedInt64 (~3.6Ã—10^16 bytes)."
-guarantee sumSignedByteValuesInBuffer "Total."
-label startSumSignedByteValuesInBuffer
-memory sumSignedByteValuesInBuffer mutable bufferRunningSum I64 0
-memory sumSignedByteValuesInBuffer mutable bufferReadCursor I64 0
-label sumLoop
-call detectSumDoneCall math.greaterThanOrEqualI64
-argument detectSumDoneCall left I64 bufferReadCursor
-argument detectSumDoneCall right I64 byteCount
-run detectSumDoneCall
-bind value sumLoopDone Bool detectSumDoneCall
-branch if condition sumLoopDone target sumDone
-call loadByteForSumCall pointer.loadByte
-argument loadByteForSumCall buffer COpaqueMemoryAddress byteBuffer
-argument loadByteForSumCall offset CByteCount bufferReadCursor
-run loadByteForSumCall
-bind value rawSignExtendedByte I8 loadByteForSumCall
-call shiftByteForUnsignedSumCall math.addI64
-argument shiftByteForUnsignedSumCall left I64 rawSignExtendedByte
-argument shiftByteForUnsignedSumCall right I64 byteRoleAdjustmentValue
-run shiftByteForUnsignedSumCall
-bind value shiftedByteForSum I64 shiftByteForUnsignedSumCall
-call moduloByteForUnsignedSumCall math.moduloI64
-argument moduloByteForUnsignedSumCall left I64 shiftedByteForSum
-argument moduloByteForUnsignedSumCall right I64 byteRoleAdjustmentValue
-run moduloByteForUnsignedSumCall
-bind value unsignedByteValue I64 moduloByteForUnsignedSumCall
-call addByteToRunningSumCall math.addI64
-argument addByteToRunningSumCall left I64 bufferRunningSum
-argument addByteToRunningSumCall right I64 unsignedByteValue
-run addByteToRunningSumCall
-bind value updatedRunningSum I64 addByteToRunningSumCall
-set memory bufferRunningSum updatedRunningSum
-call advanceSumCursorCall math.addI64
-argument advanceSumCursorCall left I64 bufferReadCursor
-argument advanceSumCursorCall right I64 integerOneStepValue
-run advanceSumCursorCall
-bind value nextSumCursorPosition I64 advanceSumCursorCall
-set memory bufferReadCursor nextSumCursorPosition
-jump target sumLoop
-label sumDone
-return value bufferRunningSum
+operation array.containsIndex
+input operation array.containsIndex arrayLength Int64
+input operation array.containsIndex index Int64
+output operation array.containsIndex Bool
+memory array.containsIndex heap no
+async array.containsIndex no
+purpose operation array.containsIndex "Return true when index is within [0, arrayLength)."
+guarantee array.containsIndex "Total."
+call arrayIndexIsNegativeCall math.lessThanInt64
+argument arrayIndexIsNegativeCall left Int64 index
+argument arrayIndexIsNegativeCall right Int64 arrayZeroValue
+run arrayIndexIsNegativeCall
+bind value arrayIndexIsNegative Bool arrayIndexIsNegativeCall
+branch if condition arrayIndexIsNegative target arrayContainsIndexFalse
+call arrayIndexPastEndCall math.greaterThanOrEqualInt64
+argument arrayIndexPastEndCall left Int64 index
+argument arrayIndexPastEndCall right Int64 arrayLength
+run arrayIndexPastEndCall
+bind value arrayIndexPastEnd Bool arrayIndexPastEndCall
+branch if condition arrayIndexPastEnd target arrayContainsIndexFalse
+return value arrayTrue
+label arrayContainsIndexFalse
+return value arrayFalse
 
-operation findMinimumSignedByteInBuffer
-input operation findMinimumSignedByteInBuffer byteBuffer CNullTerminatedByteString
-input operation findMinimumSignedByteInBuffer byteCount CByteCount
-output operation findMinimumSignedByteInBuffer CSignedInt64
-memory findMinimumSignedByteInBuffer heap no
-async findMinimumSignedByteInBuffer no
-purpose operation findMinimumSignedByteInBuffer "Returns the smallest unsigned-byte value in [0, byteCount). For an empty buffer returns 256 (an out-of-byte-range sentinel)."
-invariant operation findMinimumSignedByteInBuffer "Result is in [0, 255] for non-empty input; 256 for empty input."
-guarantee findMinimumSignedByteInBuffer "Total."
-label startFindMinimumSignedByteInBuffer
-memory findMinimumSignedByteInBuffer mutable runningMinimumValue I64 256
-memory findMinimumSignedByteInBuffer mutable minSearchCursor I64 0
-label minSearchLoop
-call detectMinSearchDoneCall math.greaterThanOrEqualI64
-argument detectMinSearchDoneCall left I64 minSearchCursor
-argument detectMinSearchDoneCall right I64 byteCount
-run detectMinSearchDoneCall
-bind value minSearchDone Bool detectMinSearchDoneCall
-branch if condition minSearchDone target minSearchComplete
-call loadByteForMinSearchCall pointer.loadByte
-argument loadByteForMinSearchCall buffer COpaqueMemoryAddress byteBuffer
-argument loadByteForMinSearchCall offset CByteCount minSearchCursor
-run loadByteForMinSearchCall
-bind value minSearchRawByte I8 loadByteForMinSearchCall
-call shiftByteForMinSearchCall math.addI64
-argument shiftByteForMinSearchCall left I64 minSearchRawByte
-argument shiftByteForMinSearchCall right I64 byteRoleAdjustmentValue
-run shiftByteForMinSearchCall
-bind value shiftedMinSearchByte I64 shiftByteForMinSearchCall
-call normalizeMinSearchByteCall math.moduloI64
-argument normalizeMinSearchByteCall left I64 shiftedMinSearchByte
-argument normalizeMinSearchByteCall right I64 byteRoleAdjustmentValue
-run normalizeMinSearchByteCall
-bind value normalizedMinSearchByte I64 normalizeMinSearchByteCall
-call compareForNewMinimumCall math.lessThanI64
-argument compareForNewMinimumCall left I64 normalizedMinSearchByte
-argument compareForNewMinimumCall right I64 runningMinimumValue
-run compareForNewMinimumCall
-bind value newMinimumDiscovered Bool compareForNewMinimumCall
-branch if condition newMinimumDiscovered target recordNewMinimum
-branch else target advanceMinSearchCursor
-label recordNewMinimum
-set memory runningMinimumValue normalizedMinSearchByte
-jump target advanceMinSearchCursor
-label advanceMinSearchCursor
-call advanceMinSearchCursorCall math.addI64
-argument advanceMinSearchCursorCall left I64 minSearchCursor
-argument advanceMinSearchCursorCall right I64 integerOneStepValue
-run advanceMinSearchCursorCall
-bind value nextMinSearchCursor I64 advanceMinSearchCursorCall
-set memory minSearchCursor nextMinSearchCursor
-jump target minSearchLoop
-label minSearchComplete
-return value runningMinimumValue
+operation array.firstIndex
+input operation array.firstIndex arrayLength Int64
+output operation array.firstIndex Int64
+memory array.firstIndex heap no
+async array.firstIndex no
+purpose operation array.firstIndex "Return 0 for a non-empty array, otherwise -1."
+guarantee array.firstIndex "Total."
+call arrayFirstIndexEmptyCall math.equalInt64
+argument arrayFirstIndexEmptyCall left Int64 arrayLength
+argument arrayFirstIndexEmptyCall right Int64 arrayZeroValue
+run arrayFirstIndexEmptyCall
+bind value arrayFirstIndexEmpty Bool arrayFirstIndexEmptyCall
+branch if condition arrayFirstIndexEmpty target arrayFirstIndexMissing
+return value arrayZeroValue
+label arrayFirstIndexMissing
+return value arrayMissingIndexSentinel
 
-operation findMaximumSignedByteInBuffer
-input operation findMaximumSignedByteInBuffer byteBuffer CNullTerminatedByteString
-input operation findMaximumSignedByteInBuffer byteCount CByteCount
-output operation findMaximumSignedByteInBuffer CSignedInt64
-memory findMaximumSignedByteInBuffer heap no
-async findMaximumSignedByteInBuffer no
-purpose operation findMaximumSignedByteInBuffer "Returns the largest unsigned-byte value in [0, byteCount). For an empty buffer returns -1 (an out-of-byte-range sentinel)."
-invariant operation findMaximumSignedByteInBuffer "Result is in [0, 255] for non-empty input; -1 for empty input."
-guarantee findMaximumSignedByteInBuffer "Total."
-label startFindMaximumSignedByteInBuffer
-memory findMaximumSignedByteInBuffer mutable runningMaximumValue I64 -1
-memory findMaximumSignedByteInBuffer mutable maxSearchCursor I64 0
-label maxSearchLoop
-call detectMaxSearchDoneCall math.greaterThanOrEqualI64
-argument detectMaxSearchDoneCall left I64 maxSearchCursor
-argument detectMaxSearchDoneCall right I64 byteCount
-run detectMaxSearchDoneCall
-bind value maxSearchDone Bool detectMaxSearchDoneCall
-branch if condition maxSearchDone target maxSearchComplete
-call loadByteForMaxSearchCall pointer.loadByte
-argument loadByteForMaxSearchCall buffer COpaqueMemoryAddress byteBuffer
-argument loadByteForMaxSearchCall offset CByteCount maxSearchCursor
-run loadByteForMaxSearchCall
-bind value maxSearchRawByte I8 loadByteForMaxSearchCall
-call shiftByteForMaxSearchCall math.addI64
-argument shiftByteForMaxSearchCall left I64 maxSearchRawByte
-argument shiftByteForMaxSearchCall right I64 byteRoleAdjustmentValue
-run shiftByteForMaxSearchCall
-bind value shiftedMaxSearchByte I64 shiftByteForMaxSearchCall
-call normalizeMaxSearchByteCall math.moduloI64
-argument normalizeMaxSearchByteCall left I64 shiftedMaxSearchByte
-argument normalizeMaxSearchByteCall right I64 byteRoleAdjustmentValue
-run normalizeMaxSearchByteCall
-bind value normalizedMaxSearchByte I64 normalizeMaxSearchByteCall
-call compareForNewMaximumCall math.greaterThanI64
-argument compareForNewMaximumCall left I64 normalizedMaxSearchByte
-argument compareForNewMaximumCall right I64 runningMaximumValue
-run compareForNewMaximumCall
-bind value newMaximumDiscovered Bool compareForNewMaximumCall
-branch if condition newMaximumDiscovered target recordNewMaximum
-branch else target advanceMaxSearchCursor
-label recordNewMaximum
-set memory runningMaximumValue normalizedMaxSearchByte
-jump target advanceMaxSearchCursor
-label advanceMaxSearchCursor
-call advanceMaxSearchCursorCall math.addI64
-argument advanceMaxSearchCursorCall left I64 maxSearchCursor
-argument advanceMaxSearchCursorCall right I64 integerOneStepValue
-run advanceMaxSearchCursorCall
-bind value nextMaxSearchCursor I64 advanceMaxSearchCursorCall
-set memory maxSearchCursor nextMaxSearchCursor
-jump target maxSearchLoop
-label maxSearchComplete
-return value runningMaximumValue
-
-# section array.searches
-
-operation bufferContainsSignedByteValue
-input operation bufferContainsSignedByteValue byteBuffer CNullTerminatedByteString
-input operation bufferContainsSignedByteValue byteCount CByteCount
-input operation bufferContainsSignedByteValue targetValue CSignedInt32
-output operation bufferContainsSignedByteValue Bool
-memory bufferContainsSignedByteValue heap no
-async bufferContainsSignedByteValue no
-purpose operation bufferContainsSignedByteValue "Returns true if any byte in [0, byteCount) of byteBuffer equals targetValue."
-invariant operation bufferContainsSignedByteValue "Short-circuits on the first match; never scans past byteCount."
-guarantee bufferContainsSignedByteValue "Total."
-label startBufferContainsSignedByteValue
-memory bufferContainsSignedByteValue mutable containsSearchCursor I64 0
-label containsSearchLoop
-call detectContainsDoneCall math.greaterThanOrEqualI64
-argument detectContainsDoneCall left I64 containsSearchCursor
-argument detectContainsDoneCall right I64 byteCount
-run detectContainsDoneCall
-bind value containsSearchDone Bool detectContainsDoneCall
-branch if condition containsSearchDone target containsNotFound
-call loadByteForContainsCall pointer.loadByte
-argument loadByteForContainsCall buffer COpaqueMemoryAddress byteBuffer
-argument loadByteForContainsCall offset CByteCount containsSearchCursor
-run loadByteForContainsCall
-bind value containsRawByte I8 loadByteForContainsCall
-# Normalize the sign-extended byte to unsigned [0,255] before the
-# comparison, matching this module's unsigned-byte contract (sum / min /
-# max all normalize the same way). Without this, a byte >= 128 loads as a
-# negative I8 and would never match a targetValue in [128,255] — including
-# the value returned by findMaximumSignedByteInBuffer.
-call shiftByteForContainsCall math.addI64
-argument shiftByteForContainsCall left I64 containsRawByte
-argument shiftByteForContainsCall right I64 byteRoleAdjustmentValue
-run shiftByteForContainsCall
-bind value shiftedContainsByte I64 shiftByteForContainsCall
-call normalizeContainsByteCall math.moduloI64
-argument normalizeContainsByteCall left I64 shiftedContainsByte
-argument normalizeContainsByteCall right I64 byteRoleAdjustmentValue
-run normalizeContainsByteCall
-bind value normalizedContainsByte I64 normalizeContainsByteCall
-call detectContainsMatchCall math.equalI64
-argument detectContainsMatchCall left I64 normalizedContainsByte
-argument detectContainsMatchCall right I64 targetValue
-run detectContainsMatchCall
-bind value containsMatchFound Bool detectContainsMatchCall
-branch if condition containsMatchFound target containsFoundTarget
-call advanceContainsCursorCall math.addI64
-argument advanceContainsCursorCall left I64 containsSearchCursor
-argument advanceContainsCursorCall right I64 integerOneStepValue
-run advanceContainsCursorCall
-bind value nextContainsCursor I64 advanceContainsCursorCall
-set memory containsSearchCursor nextContainsCursor
-jump target containsSearchLoop
-label containsFoundTarget
-storage module immutable containsTrueResult Bool true
-return value containsTrueResult
-label containsNotFound
-storage module immutable containsFalseResult Bool false
-return value containsFalseResult
-
-operation countSignedByteValueInBuffer
-input operation countSignedByteValueInBuffer byteBuffer CNullTerminatedByteString
-input operation countSignedByteValueInBuffer byteCount CByteCount
-input operation countSignedByteValueInBuffer targetValue CSignedInt32
-output operation countSignedByteValueInBuffer CSignedInt64
-memory countSignedByteValueInBuffer heap no
-async countSignedByteValueInBuffer no
-purpose operation countSignedByteValueInBuffer "Returns the number of bytes in [0, byteCount) that equal targetValue."
-invariant operation countSignedByteValueInBuffer "Result is in [0, byteCount]."
-guarantee countSignedByteValueInBuffer "Total."
-label startCountSignedByteValueInBuffer
-memory countSignedByteValueInBuffer mutable matchCounter I64 0
-memory countSignedByteValueInBuffer mutable countSearchCursor I64 0
-label countSearchLoop
-call detectCountDoneCall math.greaterThanOrEqualI64
-argument detectCountDoneCall left I64 countSearchCursor
-argument detectCountDoneCall right I64 byteCount
-run detectCountDoneCall
-bind value countSearchDone Bool detectCountDoneCall
-branch if condition countSearchDone target countSearchComplete
-call loadByteForCountCall pointer.loadByte
-argument loadByteForCountCall buffer COpaqueMemoryAddress byteBuffer
-argument loadByteForCountCall offset CByteCount countSearchCursor
-run loadByteForCountCall
-bind value countSearchRawByte I8 loadByteForCountCall
-# Normalize the sign-extended byte to unsigned [0,255] before the
-# comparison, matching this module's unsigned-byte contract (sum / min /
-# max normalize the same way). Without this, bytes >= 128 are never
-# counted against a targetValue in [128,255].
-call shiftByteForCountCall math.addI64
-argument shiftByteForCountCall left I64 countSearchRawByte
-argument shiftByteForCountCall right I64 byteRoleAdjustmentValue
-run shiftByteForCountCall
-bind value shiftedCountByte I64 shiftByteForCountCall
-call normalizeCountByteCall math.moduloI64
-argument normalizeCountByteCall left I64 shiftedCountByte
-argument normalizeCountByteCall right I64 byteRoleAdjustmentValue
-run normalizeCountByteCall
-bind value normalizedCountByte I64 normalizeCountByteCall
-call detectCountMatchCall math.equalI64
-argument detectCountMatchCall left I64 normalizedCountByte
-argument detectCountMatchCall right I64 targetValue
-run detectCountMatchCall
-bind value countMatchFound Bool detectCountMatchCall
-branch if condition countMatchFound target incrementMatchCounter
-branch else target advanceCountCursor
-label incrementMatchCounter
-call incrementMatchCounterCall math.addI64
-argument incrementMatchCounterCall left I64 matchCounter
-argument incrementMatchCounterCall right I64 integerOneStepValue
-run incrementMatchCounterCall
-bind value updatedMatchCounter I64 incrementMatchCounterCall
-set memory matchCounter updatedMatchCounter
-jump target advanceCountCursor
-label advanceCountCursor
-call advanceCountCursorCall math.addI64
-argument advanceCountCursorCall left I64 countSearchCursor
-argument advanceCountCursorCall right I64 integerOneStepValue
-run advanceCountCursorCall
-bind value nextCountCursor I64 advanceCountCursorCall
-set memory countSearchCursor nextCountCursor
-jump target countSearchLoop
-label countSearchComplete
-return value matchCounter
-
-# section array.mutations
-
-operation reverseBytesInBufferInPlace
-input operation reverseBytesInBufferInPlace byteBuffer COpaqueMemoryAddress
-input operation reverseBytesInBufferInPlace byteCount CByteCount
-output operation reverseBytesInBufferInPlace CByteCount
-memory reverseBytesInBufferInPlace heap no
-async reverseBytesInBufferInPlace no
-purpose operation reverseBytesInBufferInPlace "Reverses the order of the first byteCount bytes of byteBuffer in place. Returns byteCount."
-invariant operation reverseBytesInBufferInPlace "Self-inverse: reverseBytesInBufferInPlace(reverseBytesInBufferInPlace(buf, n), n) restores buf."
-guarantee reverseBytesInBufferInPlace "Total."
-label startReverseBytesInBufferInPlace
-memory reverseBytesInBufferInPlace mutable reverseLeftCursor I64 0
-memory reverseBytesInBufferInPlace mutable reverseRightCursor I64 0
-call computeInitialRightCursorCall math.subtractI64
-argument computeInitialRightCursorCall left I64 byteCount
-argument computeInitialRightCursorCall right I64 integerOneStepValue
-run computeInitialRightCursorCall
-bind value initialRightCursorValue I64 computeInitialRightCursorCall
-set memory reverseRightCursor initialRightCursorValue
-label reverseLoop
-call detectReverseDoneCall math.greaterThanOrEqualI64
-argument detectReverseDoneCall left I64 reverseLeftCursor
-argument detectReverseDoneCall right I64 reverseRightCursor
-run detectReverseDoneCall
-bind value reverseDone Bool detectReverseDoneCall
-branch if condition reverseDone target reverseComplete
-call loadLeftByteForReverseCall pointer.loadByte
-argument loadLeftByteForReverseCall buffer COpaqueMemoryAddress byteBuffer
-argument loadLeftByteForReverseCall offset CByteCount reverseLeftCursor
-run loadLeftByteForReverseCall
-bind value leftByteForReverse I8 loadLeftByteForReverseCall
-call loadRightByteForReverseCall pointer.loadByte
-argument loadRightByteForReverseCall buffer COpaqueMemoryAddress byteBuffer
-argument loadRightByteForReverseCall offset CByteCount reverseRightCursor
-run loadRightByteForReverseCall
-bind value rightByteForReverse I8 loadRightByteForReverseCall
-call storeRightAtLeftCall pointer.storeByte
-argument storeRightAtLeftCall buffer COpaqueMemoryAddress byteBuffer
-argument storeRightAtLeftCall offset CByteCount reverseLeftCursor
-argument storeRightAtLeftCall value CSignedInt64 rightByteForReverse
-run storeRightAtLeftCall
-call storeLeftAtRightCall pointer.storeByte
-argument storeLeftAtRightCall buffer COpaqueMemoryAddress byteBuffer
-argument storeLeftAtRightCall offset CByteCount reverseRightCursor
-argument storeLeftAtRightCall value CSignedInt64 leftByteForReverse
-run storeLeftAtRightCall
-call advanceLeftCursorCall math.addI64
-argument advanceLeftCursorCall left I64 reverseLeftCursor
-argument advanceLeftCursorCall right I64 integerOneStepValue
-run advanceLeftCursorCall
-bind value nextLeftCursorPosition I64 advanceLeftCursorCall
-set memory reverseLeftCursor nextLeftCursorPosition
-call retreatRightCursorCall math.subtractI64
-argument retreatRightCursorCall left I64 reverseRightCursor
-argument retreatRightCursorCall right I64 integerOneStepValue
-run retreatRightCursorCall
-bind value nextRightCursorPosition I64 retreatRightCursorCall
-set memory reverseRightCursor nextRightCursorPosition
-jump target reverseLoop
-label reverseComplete
-return value byteCount
+operation array.lastIndex
+input operation array.lastIndex arrayLength Int64
+output operation array.lastIndex Int64
+memory array.lastIndex heap no
+async array.lastIndex no
+purpose operation array.lastIndex "Return arrayLength - 1 for a non-empty array, otherwise -1."
+guarantee array.lastIndex "Total."
+call arrayLastIndexEmptyCall math.equalInt64
+argument arrayLastIndexEmptyCall left Int64 arrayLength
+argument arrayLastIndexEmptyCall right Int64 arrayZeroValue
+run arrayLastIndexEmptyCall
+bind value arrayLastIndexEmpty Bool arrayLastIndexEmptyCall
+branch if condition arrayLastIndexEmpty target arrayLastIndexMissing
+call arrayLastIndexValueCall math.subtractInt64
+argument arrayLastIndexValueCall left Int64 arrayLength
+argument arrayLastIndexValueCall right Int64 arrayOneValue
+run arrayLastIndexValueCall
+bind value arrayLastIndexValue Int64 arrayLastIndexValueCall
+return value arrayLastIndexValue
+label arrayLastIndexMissing
+return value arrayMissingIndexSentinel

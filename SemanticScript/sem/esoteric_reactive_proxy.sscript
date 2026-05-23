@@ -10,7 +10,7 @@ mode capturedOutputReplay
 
 entry console main
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError

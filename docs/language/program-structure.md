@@ -123,7 +123,7 @@ library-like and declarative files can still compile and link.
 Routed `target webServer` programs are the exception. When `webServer` and
 `route` metadata are present, `semsc.py` emits a native HTTP/1.1 entrypoint and
 exact method/path dispatcher. Route handlers must use the native HTTP ABI:
-`HttpRequest`, `HttpResponse`, and `CSignedInt32`.
+`HttpRequest`, `HttpResponse`, and `Int32`.
 
 `target windowsGui` uses the normal entry shape: `entry console OPERATION`.
 The compiler role should stay narrow: select the Windows GUI bridge, link the
@@ -152,7 +152,7 @@ importModule gui standard.gui
 storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
 storage module immutable height GuiPixels 480
-storage module immutable resizable CSignedInt32 1
+storage module immutable resizable Int32 1
 
 operation main
 output main ExitCode
@@ -178,7 +178,7 @@ call setMainWindow gui.applicationSetMainWindow
 argument setMainWindow application GuiApplication app
 argument setMainWindow window GuiWindow window
 run setMainWindow
-ignore value source setMainWindow type CSignedInt32
+ignore value source setMainWindow type Int32
 call runApp gui.applicationRun
 argument runApp application GuiApplication app
 run runApp
@@ -198,7 +198,7 @@ GUI ABI when a handler is wired into the runtime:
 operation closeRequested
 input closeRequested session GuiSession
 input closeRequested event GuiEvent
-output closeRequested CSignedInt32
+output closeRequested Int32
 ```
 
 Handler return `0` means success. Non-zero handler returns are reserved as
@@ -310,7 +310,7 @@ Rules:
   `main.sem`.
 - The `bind value X Ordering ...` form, or any type alias declared in `main.sem`, is
   not resolvable through the linter's per-file view of the test. Bind the
-  underlying primitive instead, for example `bind value X CSignedInt32 ...`, when a
+  underlying primitive instead, for example `bind value X Int32 ...`, when a
   test file consumes a typed alias from its imported module.
 
 The harness `tests/test_stdlib.py` runs `std/<module>/main.test.sem` for every

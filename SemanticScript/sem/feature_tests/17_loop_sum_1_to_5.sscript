@@ -15,38 +15,38 @@ async main no
 purpose operation main "Accumulate sum 1+2+3+4+5 via var+add+branchIf loop."
 invariant operation main "Result is 15."
 label startMain
-storage module immutable oneInitial I64 1
-storage module immutable fiveBound I64 5
-storage module immutable oneStep I64 1
-storage module immutable zeroInitial I64 0
-memory main mutable counter I64 oneInitial
-memory main mutable accumulator I64 zeroInitial
+storage module immutable oneInitial Int64 1
+storage module immutable fiveBound Int64 5
+storage module immutable oneStep Int64 1
+storage module immutable zeroInitial Int64 0
+memory main mutable counter Int64 oneInitial
+memory main mutable accumulator Int64 zeroInitial
 label loopHead
-call checkCall math.lessThanOrEqualI64
-argument checkCall left I64 counter
-argument checkCall right I64 fiveBound
+call checkCall math.lessThanOrEqualInt64
+argument checkCall left Int64 counter
+argument checkCall right Int64 fiveBound
 run checkCall
 bind value shouldContinue Bool checkCall
 branch if condition shouldContinue target loopBody
 branch else target loopExit
 label loopBody
-call addAccCall math.addI64
-argument addAccCall left I64 accumulator
-argument addAccCall right I64 counter
+call addAccCall math.addInt64
+argument addAccCall left Int64 accumulator
+argument addAccCall right Int64 counter
 run addAccCall
-bind value nextAccumulator I64 addAccCall
+bind value nextAccumulator Int64 addAccCall
 set memory accumulator nextAccumulator
-call incCall math.addI64
-argument incCall left I64 counter
-argument incCall right I64 oneStep
+call incCall math.addInt64
+argument incCall left Int64 counter
+argument incCall right Int64 oneStep
 run incCall
-bind value nextCounter I64 incCall
+bind value nextCounter Int64 incCall
 set memory counter nextCounter
 jump target loopHead
 label loopExit
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 accumulator
+argument writeCall value Int64 accumulator
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

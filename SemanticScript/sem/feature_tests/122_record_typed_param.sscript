@@ -10,24 +10,24 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 record Point layout row align 8
-field Point x I64
-field Point y I64
+field Point x Int64
+field Point y Int64
 
 operation sumPoint
 input operation sumPoint p Point
-output operation sumPoint Result I64 Void
+output operation sumPoint Result Int64 Void
 memory sumPoint heap no
 async sumPoint no
 purpose operation sumPoint "Return p.x + p.y. Exercises a record-typed input parameter: callee reads each field via fieldGet directly on the param name."
 invariant operation sumPoint "Returns x + y."
 label startSumPoint
-fieldGet xVal I64 p x
-fieldGet yVal I64 p y
-call addCall math.addI64
-argument addCall left I64 xVal
-argument addCall right I64 yVal
+fieldGet xVal Int64 p x
+fieldGet yVal Int64 p y
+call addCall math.addInt64
+argument addCall left Int64 xVal
+argument addCall right Int64 yVal
 run addCall
-bind value sumRes I64 addCall
+bind value sumRes Int64 addCall
 return ok sumRes
 
 operation main
@@ -40,19 +40,19 @@ purpose operation main "Construct a Point {x:7,y:12} and call sumPoint(p). Expec
 invariant operation main "Output is '19\\n'."
 label startMain
 new myPoint Point
-storage module immutable xInit I64 7
-storage module immutable yInit I64 12
+storage module immutable xInit Int64 7
+storage module immutable yInit Int64 12
 fieldSet myPoint x xInit
 fieldSet myPoint y yInit
 call sumPointCall sumPoint
 argument sumPointCall p Point myPoint
 run sumPointCall
-bind value sumResult I64 sumPointCall
-memory main mutable sumVar I64 xInit
+bind value sumResult Int64 sumPointCall
+memory main mutable sumVar Int64 xInit
 set memory sumVar sumResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 sumVar
+argument writeCall value Int64 sumVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

@@ -1,0 +1,149 @@
+# SemanticScript standard-library canonical module: standard.small_list.
+
+module standard.small_list
+purpose module standard.small_list "Canonical standard-library module for small-list inline/spill helpers."
+moduleOwns standard.small_list "The official import path `standard.small_list` and the executable `smallList.*` helper surface."
+moduleDoesNotOwn standard.small_list "Actual spill allocation or typed element storage."
+invariant module standard.small_list "This module owns structural small-list helpers over logical length plus inline/spill capacities."
+
+exportConstant standard.small_list smallListModuleVersionText
+storage module immutable smallListModuleVersionText String "standard.small_list 0.1"
+
+domainLiteral smallListZeroValue Int64 0
+domainLiteralTrust smallListZeroValue trustedStaticLiteral
+domainLiteral smallListOneValue Int64 1
+domainLiteralTrust smallListOneValue trustedStaticLiteral
+domainLiteral smallListFailureSentinel Int64 -1
+domainLiteralTrust smallListFailureSentinel trustedStaticLiteral
+
+storage module immutable smallListTrue Bool true
+storage module immutable smallListFalse Bool false
+
+operation smallList.length
+input operation smallList.length currentLength Int64
+output operation smallList.length Int64
+memory smallList.length heap no
+async smallList.length no
+purpose operation smallList.length "Return the current logical small-list length."
+return value currentLength
+
+operation smallList.isEmpty
+input operation smallList.isEmpty currentLength Int64
+output operation smallList.isEmpty Bool
+memory smallList.isEmpty heap no
+async smallList.isEmpty no
+purpose operation smallList.isEmpty "Return true when currentLength is zero."
+call smallListIsEmptyCall math.equalInt64
+argument smallListIsEmptyCall left Int64 currentLength
+argument smallListIsEmptyCall right Int64 smallListZeroValue
+run smallListIsEmptyCall
+bind value smallListIsEmptyResult Bool smallListIsEmptyCall
+return value smallListIsEmptyResult
+
+operation smallList.usesInlineStorage
+input operation smallList.usesInlineStorage currentLength Int64
+input operation smallList.usesInlineStorage inlineCapacity Int64
+output operation smallList.usesInlineStorage Bool
+memory smallList.usesInlineStorage heap no
+async smallList.usesInlineStorage no
+purpose operation smallList.usesInlineStorage "Return true when currentLength is less than or equal to inlineCapacity."
+call smallListUsesInlineCall math.lessThanOrEqualInt64
+argument smallListUsesInlineCall left Int64 currentLength
+argument smallListUsesInlineCall right Int64 inlineCapacity
+run smallListUsesInlineCall
+bind value smallListUsesInlineResult Bool smallListUsesInlineCall
+return value smallListUsesInlineResult
+
+operation smallList.usesSpillStorage
+input operation smallList.usesSpillStorage currentLength Int64
+input operation smallList.usesSpillStorage inlineCapacity Int64
+output operation smallList.usesSpillStorage Bool
+memory smallList.usesSpillStorage heap no
+async smallList.usesSpillStorage no
+purpose operation smallList.usesSpillStorage "Return true when currentLength exceeds inlineCapacity."
+call smallListUsesSpillCall math.greaterThanInt64
+argument smallListUsesSpillCall left Int64 currentLength
+argument smallListUsesSpillCall right Int64 inlineCapacity
+run smallListUsesSpillCall
+bind value smallListUsesSpillResult Bool smallListUsesSpillCall
+return value smallListUsesSpillResult
+
+operation smallList.canAppend
+input operation smallList.canAppend currentLength Int64
+input operation smallList.canAppend spillCapacity Int64
+output operation smallList.canAppend Bool
+memory smallList.canAppend heap no
+async smallList.canAppend no
+purpose operation smallList.canAppend "Return true when currentLength is strictly less than spillCapacity."
+call smallListCanAppendCall math.lessThanInt64
+argument smallListCanAppendCall left Int64 currentLength
+argument smallListCanAppendCall right Int64 spillCapacity
+run smallListCanAppendCall
+bind value smallListCanAppendResult Bool smallListCanAppendCall
+return value smallListCanAppendResult
+
+operation smallList.remainingInlineCapacity
+input operation smallList.remainingInlineCapacity currentLength Int64
+input operation smallList.remainingInlineCapacity inlineCapacity Int64
+output operation smallList.remainingInlineCapacity Int64
+memory smallList.remainingInlineCapacity heap no
+async smallList.remainingInlineCapacity no
+purpose operation smallList.remainingInlineCapacity "Return max(inlineCapacity - currentLength, 0)."
+call smallListInlineFullCall math.greaterThanOrEqualInt64
+argument smallListInlineFullCall left Int64 currentLength
+argument smallListInlineFullCall right Int64 inlineCapacity
+run smallListInlineFullCall
+bind value smallListInlineFull Bool smallListInlineFullCall
+branch if condition smallListInlineFull target smallListRemainingInlineZero
+call smallListRemainingInlineValueCall math.subtractInt64
+argument smallListRemainingInlineValueCall left Int64 inlineCapacity
+argument smallListRemainingInlineValueCall right Int64 currentLength
+run smallListRemainingInlineValueCall
+bind value smallListRemainingInlineValue Int64 smallListRemainingInlineValueCall
+return value smallListRemainingInlineValue
+label smallListRemainingInlineZero
+return value smallListZeroValue
+
+operation smallList.remainingTotalCapacity
+input operation smallList.remainingTotalCapacity currentLength Int64
+input operation smallList.remainingTotalCapacity spillCapacity Int64
+output operation smallList.remainingTotalCapacity Int64
+memory smallList.remainingTotalCapacity heap no
+async smallList.remainingTotalCapacity no
+purpose operation smallList.remainingTotalCapacity "Return max(spillCapacity - currentLength, 0)."
+call smallListTotalFullCall math.greaterThanOrEqualInt64
+argument smallListTotalFullCall left Int64 currentLength
+argument smallListTotalFullCall right Int64 spillCapacity
+run smallListTotalFullCall
+bind value smallListTotalFull Bool smallListTotalFullCall
+branch if condition smallListTotalFull target smallListRemainingTotalZero
+call smallListRemainingTotalValueCall math.subtractInt64
+argument smallListRemainingTotalValueCall left Int64 spillCapacity
+argument smallListRemainingTotalValueCall right Int64 currentLength
+run smallListRemainingTotalValueCall
+bind value smallListRemainingTotalValue Int64 smallListRemainingTotalValueCall
+return value smallListRemainingTotalValue
+label smallListRemainingTotalZero
+return value smallListZeroValue
+
+operation smallList.lengthAfterAppend
+input operation smallList.lengthAfterAppend currentLength Int64
+input operation smallList.lengthAfterAppend spillCapacity Int64
+output operation smallList.lengthAfterAppend Int64
+memory smallList.lengthAfterAppend heap no
+async smallList.lengthAfterAppend no
+purpose operation smallList.lengthAfterAppend "Return currentLength + 1 when append is valid, otherwise -1."
+call smallListLengthAfterAppendCanCall smallList.canAppend
+argument smallListLengthAfterAppendCanCall currentLength Int64 currentLength
+argument smallListLengthAfterAppendCanCall spillCapacity Int64 spillCapacity
+run smallListLengthAfterAppendCanCall
+bind value smallListLengthAfterAppendCan Bool smallListLengthAfterAppendCanCall
+branch if condition smallListLengthAfterAppendCan target smallListLengthAfterAppendDo
+return value smallListFailureSentinel
+label smallListLengthAfterAppendDo
+call smallListLengthAfterAppendValueCall math.addInt64
+argument smallListLengthAfterAppendValueCall left Int64 currentLength
+argument smallListLengthAfterAppendValueCall right Int64 smallListOneValue
+run smallListLengthAfterAppendValueCall
+bind value smallListLengthAfterAppendValue Int64 smallListLengthAfterAppendValueCall
+return value smallListLengthAfterAppendValue

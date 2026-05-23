@@ -56,11 +56,10 @@ BUILTIN_ARGUMENT_TYPES: dict[tuple[str, str], str] = {
     ("gui.controlOnEvent", "handler"): "GuiEventHandler",
     ("http.responseText", "contentType"): "HttpContentType",
     ("sqlite.openDatabase", "mode"): "SqliteOpenMode",
-    ("sqlite.exec", "sql"): "CNullTerminatedByteString",
-    ("bcrypt.hashPassword", "cost"): "CSignedInt32",
-    ("math.equalCSignedInt32", "right"): "CSignedInt32",
-    ("math.equalI64", "right"): "I64",
-    ("math.equalCSignedInt64", "right"): "CSignedInt64",
+    ("sqlite.exec", "sql"): "String",
+    ("bcrypt.hashPassword", "cost"): "Int32",
+    ("math.equalInt32", "right"): "Int32",
+    ("math.equalInt64", "right"): "Int64",
 }
 
 
@@ -370,7 +369,7 @@ def migrate_text(source: str, *, global_context: Context | None = None) -> Migra
             else:
                 replacement = ["ignore", "value", "source", tokens[1], "type", tokens[2]]
         elif verb == "ignoreOk" and len(tokens) == 3:
-            if tokens[2] in {"Void", "CVoid"}:
+            if tokens[2] in {"Void", "Void"}:
                 replacement = ["ignore", "void", "source", tokens[1]]
             else:
                 replacement = ["ignore", "ok", "source", tokens[1], "type", tokens[2]]
@@ -378,7 +377,7 @@ def migrate_text(source: str, *, global_context: Context | None = None) -> Migra
             replacement = ["ignore", "error", "source", tokens[1]]
         elif (verb == "ignore" and len(tokens) == 6 and tokens[1] == "ok"
               and tokens[2] == "source" and tokens[4] == "type"
-              and tokens[5] in {"Void", "CVoid"}):
+              and tokens[5] in {"Void", "Void"}):
             replacement = ["ignore", "void", "source", tokens[3]]
 
         if replacement is None:

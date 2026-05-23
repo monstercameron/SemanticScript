@@ -40,19 +40,19 @@ purpose operation main "Smoke-test every classifier and case mapper; print OK on
 invariant operation main "Every predicate asserted is satisfied or the assertion-failure path runs."
 label startMain
 
-storage module immutable digit5Code CSignedInt32 53
-storage module immutable lowerHCode CSignedInt32 104
-storage module immutable upperHCode CSignedInt32 72
-storage module immutable exclamationMarkCode CSignedInt32 33
-storage module immutable upperFHexCode CSignedInt32 70
-storage module immutable nullByteCode CSignedInt32 0
-storage module immutable tabByteCode CSignedInt32 9
-storage module immutable lineFeedByteCode CSignedInt32 10
-storage module immutable spaceByteCode CSignedInt32 32
+storage module immutable digit5Code Int32 53
+storage module immutable lowerHCode Int32 104
+storage module immutable upperHCode Int32 72
+storage module immutable exclamationMarkCode Int32 33
+storage module immutable upperFHexCode Int32 70
+storage module immutable nullByteCode Int32 0
+storage module immutable tabByteCode Int32 9
+storage module immutable lineFeedByteCode Int32 10
+storage module immutable spaceByteCode Int32 32
 
 # isAsciiDecimalDigitCode('5') == true
 call assertDigit5Call isAsciiDecimalDigitCode
-argument assertDigit5Call characterCode CSignedInt32 digit5Code
+argument assertDigit5Call characterCode Int32 digit5Code
 run assertDigit5Call
 bind value digit5IsDigit Bool assertDigit5Call
 branch if condition digit5IsDigit target digit5Holds
@@ -61,7 +61,7 @@ label digit5Holds
 
 # isAsciiLetterCode('h') == true
 call assertLetterHCall isAsciiLetterCode
-argument assertLetterHCall characterCode CSignedInt32 lowerHCode
+argument assertLetterHCall characterCode Int32 lowerHCode
 run assertLetterHCall
 bind value lowerHIsLetter Bool assertLetterHCall
 branch if condition lowerHIsLetter target letterHHolds
@@ -70,7 +70,7 @@ label letterHHolds
 
 # isAsciiLetterOrDigitCode('5') == true
 call assertAlnumDigitCall isAsciiLetterOrDigitCode
-argument assertAlnumDigitCall characterCode CSignedInt32 digit5Code
+argument assertAlnumDigitCall characterCode Int32 digit5Code
 run assertAlnumDigitCall
 bind value digit5IsAlnum Bool assertAlnumDigitCall
 branch if condition digit5IsAlnum target alnumDigitHolds
@@ -79,14 +79,14 @@ label alnumDigitHolds
 
 # isAsciiLetterOrDigitCode('!') == false
 call assertAlnumPunctCall isAsciiLetterOrDigitCode
-argument assertAlnumPunctCall characterCode CSignedInt32 exclamationMarkCode
+argument assertAlnumPunctCall characterCode Int32 exclamationMarkCode
 run assertAlnumPunctCall
 bind value exclamationIsAlnum Bool assertAlnumPunctCall
 branch if condition exclamationIsAlnum target smokeAssertionFailed
 
 # isAsciiHexDigitCode('F') == true
 call assertHexCall isAsciiHexDigitCode
-argument assertHexCall characterCode CSignedInt32 upperFHexCode
+argument assertHexCall characterCode Int32 upperFHexCode
 run assertHexCall
 bind value upperFIsHexDigit Bool assertHexCall
 branch if condition upperFIsHexDigit target hexHolds
@@ -95,7 +95,7 @@ label hexHolds
 
 # isAsciiWhitespaceCode(' ') == true
 call assertWhitespaceSpaceCall isAsciiWhitespaceCode
-argument assertWhitespaceSpaceCall characterCode CSignedInt32 spaceByteCode
+argument assertWhitespaceSpaceCall characterCode Int32 spaceByteCode
 run assertWhitespaceSpaceCall
 bind value spaceIsWhitespace Bool assertWhitespaceSpaceCall
 branch if condition spaceIsWhitespace target whitespaceSpaceHolds
@@ -104,7 +104,7 @@ label whitespaceSpaceHolds
 
 # isAsciiBlankCode('\t') == true
 call assertBlankTabCall isAsciiBlankCode
-argument assertBlankTabCall characterCode CSignedInt32 tabByteCode
+argument assertBlankTabCall characterCode Int32 tabByteCode
 run assertBlankTabCall
 bind value tabIsBlank Bool assertBlankTabCall
 branch if condition tabIsBlank target blankTabHolds
@@ -113,14 +113,14 @@ label blankTabHolds
 
 # isAsciiBlankCode('\n') == false
 call assertBlankLineFeedCall isAsciiBlankCode
-argument assertBlankLineFeedCall characterCode CSignedInt32 lineFeedByteCode
+argument assertBlankLineFeedCall characterCode Int32 lineFeedByteCode
 run assertBlankLineFeedCall
 bind value lineFeedIsBlank Bool assertBlankLineFeedCall
 branch if condition lineFeedIsBlank target smokeAssertionFailed
 
 # isAsciiControlCode(0) == true
 call assertControlNullCall isAsciiControlCode
-argument assertControlNullCall characterCode CSignedInt32 nullByteCode
+argument assertControlNullCall characterCode Int32 nullByteCode
 run assertControlNullCall
 bind value nullIsControl Bool assertControlNullCall
 branch if condition nullIsControl target controlNullHolds
@@ -129,7 +129,7 @@ label controlNullHolds
 
 # isAsciiPrintableCode(' ') == true
 call assertPrintableSpaceCall isAsciiPrintableCode
-argument assertPrintableSpaceCall characterCode CSignedInt32 spaceByteCode
+argument assertPrintableSpaceCall characterCode Int32 spaceByteCode
 run assertPrintableSpaceCall
 bind value spaceIsPrintable Bool assertPrintableSpaceCall
 branch if condition spaceIsPrintable target printableSpaceHolds
@@ -138,14 +138,14 @@ label printableSpaceHolds
 
 # isAsciiGraphicalCode(' ') == false (space is not graphical)
 call assertGraphicalSpaceCall isAsciiGraphicalCode
-argument assertGraphicalSpaceCall characterCode CSignedInt32 spaceByteCode
+argument assertGraphicalSpaceCall characterCode Int32 spaceByteCode
 run assertGraphicalSpaceCall
 bind value spaceIsGraphical Bool assertGraphicalSpaceCall
 branch if condition spaceIsGraphical target smokeAssertionFailed
 
 # isAsciiPunctuationCode('!') == true
 call assertPunctuationExclamationCall isAsciiPunctuationCode
-argument assertPunctuationExclamationCall characterCode CSignedInt32 exclamationMarkCode
+argument assertPunctuationExclamationCall characterCode Int32 exclamationMarkCode
 run assertPunctuationExclamationCall
 bind value exclamationIsPunctuation Bool assertPunctuationExclamationCall
 branch if condition exclamationIsPunctuation target punctuationExclamationHolds
@@ -154,12 +154,12 @@ label punctuationExclamationHolds
 
 # convertAsciiLetterCodeToUppercase('h') == 'H'
 call assertToUpperCall convertAsciiLetterCodeToUppercase
-argument assertToUpperCall characterCode CSignedInt32 lowerHCode
+argument assertToUpperCall characterCode Int32 lowerHCode
 run assertToUpperCall
-bind value upperConversionResult CSignedInt32 assertToUpperCall
-call checkToUpperCall math.equalI64
-argument checkToUpperCall left I64 upperConversionResult
-argument checkToUpperCall right I64 upperHCode
+bind value upperConversionResult Int32 assertToUpperCall
+call checkToUpperCall math.equalInt64
+argument checkToUpperCall left Int64 upperConversionResult
+argument checkToUpperCall right Int64 upperHCode
 run checkToUpperCall
 bind value toUpperOk Bool checkToUpperCall
 branch if condition toUpperOk target toUpperHolds
@@ -168,12 +168,12 @@ label toUpperHolds
 
 # convertAsciiLetterCodeToLowercase('H') == 'h'
 call assertToLowerCall convertAsciiLetterCodeToLowercase
-argument assertToLowerCall characterCode CSignedInt32 upperHCode
+argument assertToLowerCall characterCode Int32 upperHCode
 run assertToLowerCall
-bind value lowerConversionResult CSignedInt32 assertToLowerCall
-call checkToLowerCall math.equalI64
-argument checkToLowerCall left I64 lowerConversionResult
-argument checkToLowerCall right I64 lowerHCode
+bind value lowerConversionResult Int32 assertToLowerCall
+call checkToLowerCall math.equalInt64
+argument checkToLowerCall left Int64 lowerConversionResult
+argument checkToLowerCall right Int64 lowerHCode
 run checkToLowerCall
 bind value toLowerOk Bool checkToLowerCall
 branch if condition toLowerOk target toLowerHolds
@@ -188,17 +188,17 @@ label toLowerHolds
 # outside check).
 # ============================================================
 
-storage module immutable lowerACode CSignedInt32 97
-storage module immutable upperACode CSignedInt32 65
-storage module immutable lowerFHexCode CSignedInt32 102
-storage module immutable letterGNotHexCode CSignedInt32 71
-storage module immutable digit0Code CSignedInt32 48
-storage module immutable tildeCode CSignedInt32 126
-storage module immutable deleteCode CSignedInt32 127
+storage module immutable lowerACode Int32 97
+storage module immutable upperACode Int32 65
+storage module immutable lowerFHexCode Int32 102
+storage module immutable letterGNotHexCode Int32 71
+storage module immutable digit0Code Int32 48
+storage module immutable tildeCode Int32 126
+storage module immutable deleteCode Int32 127
 
 # isAsciiLowercaseLetterCode('a') == true
 call lowerATrueCall isAsciiLowercaseLetterCode
-argument lowerATrueCall characterCode CSignedInt32 lowerACode
+argument lowerATrueCall characterCode Int32 lowerACode
 run lowerATrueCall
 bind value lowerATrueResult Bool lowerATrueCall
 branch if condition lowerATrueResult target lowerATrueHolds
@@ -207,7 +207,7 @@ label lowerATrueHolds
 
 # isAsciiLowercaseLetterCode('A') == false
 call lowerAFalseCall isAsciiLowercaseLetterCode
-argument lowerAFalseCall characterCode CSignedInt32 upperACode
+argument lowerAFalseCall characterCode Int32 upperACode
 run lowerAFalseCall
 bind value lowerAFalseResult Bool lowerAFalseCall
 branch if condition lowerAFalseResult target smokeAssertionFailed
@@ -216,7 +216,7 @@ label lowerAFalseHolds
 
 # isAsciiUppercaseLetterCode('A') == true
 call upperATrueCall isAsciiUppercaseLetterCode
-argument upperATrueCall characterCode CSignedInt32 upperACode
+argument upperATrueCall characterCode Int32 upperACode
 run upperATrueCall
 bind value upperATrueResult Bool upperATrueCall
 branch if condition upperATrueResult target upperATrueHolds
@@ -225,7 +225,7 @@ label upperATrueHolds
 
 # isAsciiUppercaseLetterCode('a') == false
 call upperAFalseCall isAsciiUppercaseLetterCode
-argument upperAFalseCall characterCode CSignedInt32 lowerACode
+argument upperAFalseCall characterCode Int32 lowerACode
 run upperAFalseCall
 bind value upperAFalseResult Bool upperAFalseCall
 branch if condition upperAFalseResult target smokeAssertionFailed
@@ -234,7 +234,7 @@ label upperAFalseHolds
 
 # isAsciiDecimalDigitCode('a') == false (letter outside digit range)
 call digitNonCall isAsciiDecimalDigitCode
-argument digitNonCall characterCode CSignedInt32 lowerACode
+argument digitNonCall characterCode Int32 lowerACode
 run digitNonCall
 bind value digitNonResult Bool digitNonCall
 branch if condition digitNonResult target smokeAssertionFailed
@@ -243,7 +243,7 @@ label digitNonHolds
 
 # isAsciiDecimalDigitCode('0') == true (boundary)
 call digitZeroCall isAsciiDecimalDigitCode
-argument digitZeroCall characterCode CSignedInt32 digit0Code
+argument digitZeroCall characterCode Int32 digit0Code
 run digitZeroCall
 bind value digitZeroResult Bool digitZeroCall
 branch if condition digitZeroResult target digitZeroHolds
@@ -252,7 +252,7 @@ label digitZeroHolds
 
 # isAsciiLetterCode('5') == false (digit not letter)
 call letterNonCall isAsciiLetterCode
-argument letterNonCall characterCode CSignedInt32 digit5Code
+argument letterNonCall characterCode Int32 digit5Code
 run letterNonCall
 bind value letterNonResult Bool letterNonCall
 branch if condition letterNonResult target smokeAssertionFailed
@@ -261,7 +261,7 @@ label letterNonHolds
 
 # isAsciiHexDigitCode('f') == true (lowercase hex digit)
 call hexLowerCall isAsciiHexDigitCode
-argument hexLowerCall characterCode CSignedInt32 lowerFHexCode
+argument hexLowerCall characterCode Int32 lowerFHexCode
 run hexLowerCall
 bind value hexLowerResult Bool hexLowerCall
 branch if condition hexLowerResult target hexLowerHolds
@@ -270,7 +270,7 @@ label hexLowerHolds
 
 # isAsciiHexDigitCode('G') == false (just past F)
 call hexGFalseCall isAsciiHexDigitCode
-argument hexGFalseCall characterCode CSignedInt32 letterGNotHexCode
+argument hexGFalseCall characterCode Int32 letterGNotHexCode
 run hexGFalseCall
 bind value hexGFalseResult Bool hexGFalseCall
 branch if condition hexGFalseResult target smokeAssertionFailed
@@ -279,7 +279,7 @@ label hexGFalseHolds
 
 # isAsciiControlCode(' ') == false (space is not control)
 call controlSpaceCall isAsciiControlCode
-argument controlSpaceCall characterCode CSignedInt32 spaceByteCode
+argument controlSpaceCall characterCode Int32 spaceByteCode
 run controlSpaceCall
 bind value controlSpaceResult Bool controlSpaceCall
 branch if condition controlSpaceResult target smokeAssertionFailed
@@ -288,7 +288,7 @@ label controlSpaceHolds
 
 # isAsciiControlCode(127) == true (DEL is control)
 call controlDelCall isAsciiControlCode
-argument controlDelCall characterCode CSignedInt32 deleteCode
+argument controlDelCall characterCode Int32 deleteCode
 run controlDelCall
 bind value controlDelResult Bool controlDelCall
 branch if condition controlDelResult target controlDelHolds
@@ -298,9 +298,9 @@ label controlDelHolds
 # Regression: isAsciiControlCode(-1) == false. A 0xFF byte loaded via
 # pointer.loadByte sign-extends to -1; the pre-fix `<= 31` check (with no
 # lower floor) misclassified it as a control character.
-storage module immutable negativeOneByteCode CSignedInt32 -1
+storage module immutable negativeOneByteCode Int32 -1
 call controlNegativeCall isAsciiControlCode
-argument controlNegativeCall characterCode CSignedInt32 negativeOneByteCode
+argument controlNegativeCall characterCode Int32 negativeOneByteCode
 run controlNegativeCall
 bind value controlNegativeResult Bool controlNegativeCall
 branch if condition controlNegativeResult target smokeAssertionFailed
@@ -309,7 +309,7 @@ label controlNegativeHolds
 
 # isAsciiPrintableCode(0) == false (NUL not printable)
 call printNonCall isAsciiPrintableCode
-argument printNonCall characterCode CSignedInt32 nullByteCode
+argument printNonCall characterCode Int32 nullByteCode
 run printNonCall
 bind value printNonResult Bool printNonCall
 branch if condition printNonResult target smokeAssertionFailed
@@ -318,7 +318,7 @@ label printNonHolds
 
 # isAsciiPrintableCode('~') == true (last printable)
 call printTildeCall isAsciiPrintableCode
-argument printTildeCall characterCode CSignedInt32 tildeCode
+argument printTildeCall characterCode Int32 tildeCode
 run printTildeCall
 bind value printTildeResult Bool printTildeCall
 branch if condition printTildeResult target printTildeHolds
@@ -327,12 +327,12 @@ label printTildeHolds
 
 # convertAsciiLetterCodeToUppercase('H') == 'H' (already upper, identity)
 call upperIdCall convertAsciiLetterCodeToUppercase
-argument upperIdCall characterCode CSignedInt32 upperHCode
+argument upperIdCall characterCode Int32 upperHCode
 run upperIdCall
-bind value upperIdResult CSignedInt32 upperIdCall
-call upperIdCheckCall math.equalI64
-argument upperIdCheckCall left I64 upperIdResult
-argument upperIdCheckCall right I64 upperHCode
+bind value upperIdResult Int32 upperIdCall
+call upperIdCheckCall math.equalInt64
+argument upperIdCheckCall left Int64 upperIdResult
+argument upperIdCheckCall right Int64 upperHCode
 run upperIdCheckCall
 bind value upperIdOk Bool upperIdCheckCall
 branch if condition upperIdOk target upperIdHolds
@@ -341,12 +341,12 @@ label upperIdHolds
 
 # convertAsciiLetterCodeToLowercase('5') == '5' (non-letter identity)
 call lowerNonLetterCall convertAsciiLetterCodeToLowercase
-argument lowerNonLetterCall characterCode CSignedInt32 digit5Code
+argument lowerNonLetterCall characterCode Int32 digit5Code
 run lowerNonLetterCall
-bind value lowerNonLetterResult CSignedInt32 lowerNonLetterCall
-call lowerNonLetterCheckCall math.equalI64
-argument lowerNonLetterCheckCall left I64 lowerNonLetterResult
-argument lowerNonLetterCheckCall right I64 digit5Code
+bind value lowerNonLetterResult Int32 lowerNonLetterCall
+call lowerNonLetterCheckCall math.equalInt64
+argument lowerNonLetterCheckCall left Int64 lowerNonLetterResult
+argument lowerNonLetterCheckCall right Int64 digit5Code
 run lowerNonLetterCheckCall
 bind value lowerNonLetterOk Bool lowerNonLetterCheckCall
 branch if condition lowerNonLetterOk target lowerNonLetterHolds
@@ -355,34 +355,34 @@ label lowerNonLetterHolds
 
 # Property: convertToUpper(convertToLower('H')) == 'H' (round-trip)
 call propLowerCall convertAsciiLetterCodeToLowercase
-argument propLowerCall characterCode CSignedInt32 upperHCode
+argument propLowerCall characterCode Int32 upperHCode
 run propLowerCall
-bind value propLowerResult CSignedInt32 propLowerCall
+bind value propLowerResult Int32 propLowerCall
 call propUpperCall convertAsciiLetterCodeToUppercase
-argument propUpperCall characterCode CSignedInt32 propLowerResult
+argument propUpperCall characterCode Int32 propLowerResult
 run propUpperCall
-bind value propUpperResult CSignedInt32 propUpperCall
-call propRoundTripCheckCall math.equalI64
-argument propRoundTripCheckCall left I64 propUpperResult
-argument propRoundTripCheckCall right I64 upperHCode
+bind value propUpperResult Int32 propUpperCall
+call propRoundTripCheckCall math.equalInt64
+argument propRoundTripCheckCall left Int64 propUpperResult
+argument propRoundTripCheckCall right Int64 upperHCode
 run propRoundTripCheckCall
 bind value propRoundTripOk Bool propRoundTripCheckCall
 branch if condition propRoundTripOk target propRoundTripHolds
 branch else target smokeAssertionFailed
 label propRoundTripHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

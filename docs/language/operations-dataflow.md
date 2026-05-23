@@ -8,9 +8,9 @@ another operation or when compiling library-style files.
 
 ```semanticscript
 operation addInvoiceAmounts
-input addInvoiceAmounts invoiceSubtotal I64
-input addInvoiceAmounts taxAmount I64
-output addInvoiceAmounts I64
+input addInvoiceAmounts invoiceSubtotal Int64
+input addInvoiceAmounts taxAmount Int64
+output addInvoiceAmounts Int64
 effect addInvoiceAmounts read memory.none
 memory addInvoiceAmounts noHeapAllocation
 async addInvoiceAmounts no
@@ -29,11 +29,11 @@ console environment process httpRequest databaseClient clock
 Every call is a named object.
 
 ```semanticscript
-call invoiceTotalCall math.addI64
-argument invoiceTotalCall left I64 invoiceSubtotal
-argument invoiceTotalCall right I64 taxAmount
+call invoiceTotalCall math.addInt64
+argument invoiceTotalCall left Int64 invoiceSubtotal
+argument invoiceTotalCall right Int64 taxAmount
 run invoiceTotalCall
-bind value invoiceTotal I64 invoiceTotalCall
+bind value invoiceTotal Int64 invoiceTotalCall
 ```
 
 Lifecycle:
@@ -53,27 +53,27 @@ branch on it.
 
 ```semanticscript
 operation addTwoValues
-input operation addTwoValues leftValue I64
-input operation addTwoValues rightValue I64
-output operation addTwoValues I64
+input operation addTwoValues leftValue Int64
+input operation addTwoValues rightValue Int64
+output operation addTwoValues Int64
 
-call sumCall math.addI64
-argument sumCall left I64 leftValue
-argument sumCall right I64 rightValue
+call sumCall math.addInt64
+argument sumCall left Int64 leftValue
+argument sumCall right Int64 rightValue
 run sumCall
-bind value sumValue I64 sumCall
+bind value sumValue Int64 sumCall
 return value sumValue
 
 operation main
 output operation main ExitCode
 
-storage local immutable leftInput I64 40
-storage local immutable rightInput I64 2
+storage local immutable leftInput Int64 40
+storage local immutable rightInput Int64 2
 call answerCall addTwoValues
-argument answerCall leftValue I64 leftInput
-argument answerCall rightValue I64 rightInput
+argument answerCall leftValue Int64 leftInput
+argument answerCall rightValue Int64 rightInput
 run answerCall
-bind value answerValue I64 answerCall
+bind value answerValue Int64 answerCall
 return value answerValue
 ```
 
@@ -89,13 +89,13 @@ For a same-file user operation call:
 ## Mutable Storage
 
 ```semanticscript
-storage local mutable runningTotal I64 0
+storage local mutable runningTotal Int64 0
 
-call nextTotalCall math.addI64
-argument nextTotalCall left I64 runningTotal
-argument nextTotalCall right I64 stepAmount
+call nextTotalCall math.addInt64
+argument nextTotalCall left Int64 runningTotal
+argument nextTotalCall right Int64 stepAmount
 run nextTotalCall
-bind value nextTotal I64 nextTotalCall
+bind value nextTotal Int64 nextTotalCall
 set local runningTotal nextTotal
 ```
 
@@ -112,9 +112,9 @@ Labels are named basic blocks.
 ```semanticscript
 label loopStart
 
-call doneCheckCall math.greaterThanI64
-argument doneCheckCall left I64 currentIndex
-argument doneCheckCall right I64 finalIndex
+call doneCheckCall math.greaterThanInt64
+argument doneCheckCall left Int64 currentIndex
+argument doneCheckCall right Int64 finalIndex
 run doneCheckCall
 bind value isDone Bool doneCheckCall
 branch if condition isDone target loopDone
@@ -144,9 +144,9 @@ return void
 explicit alternate target when a chain should not fall through.
 
 Use `return void` for operations declared `output operation OP Void` or
-`output operation OP CVoid`.
+`output operation OP Void`.
 The user-operation ABI still lowers that path to the internal zero sentinel, but
-the source no longer has to carry a fake `CSignedInt32` value just to satisfy the
+the source no longer has to carry a fake `Int32` value just to satisfy the
 ABI. `return void` is rejected on non-Void outputs; non-Void operations should
 use `return value`, `return ok`, or `return error` as appropriate.
 
@@ -168,7 +168,7 @@ effect renameFirstTodoHandler write json.document.tree
 storage local immutable documentCapacity JsonCapacityBytes 4096
 storage local immutable scratchCapacity JsonCapacityBytes 4096
 storage local immutable todosPath JsonPath ".todos"
-storage local immutable firstTodoIndex I64 0
+storage local immutable firstTodoIndex Int64 0
 storage local immutable titleField JsonFieldName "title"
 storage local immutable replacementTitle JsonStringValue "ship json"
 
@@ -192,7 +192,7 @@ branch error source todosCursorCall target todosCursorFailed
 call firstTodoCall json.arrayElementAt
 argument firstTodoCall document JsonDocument document
 argument firstTodoCall cursor JsonCursor todosCursor
-argument firstTodoCall index I64 firstTodoIndex
+argument firstTodoCall index Int64 firstTodoIndex
 run firstTodoCall
 bind ok firstTodoCursor JsonCursor firstTodoCall
 bind error firstTodoError JsonAccessError firstTodoCall
@@ -204,7 +204,7 @@ argument setTitleCall cursor JsonCursor firstTodoCursor
 argument setTitleCall fieldName JsonFieldName titleField
 argument setTitleCall value JsonStringValue replacementTitle
 run setTitleCall
-ignore ok source setTitleCall type CSignedInt32
+ignore ok source setTitleCall type Int32
 bind error setTitleError JsonAccessError setTitleCall
 branch error source setTitleCall target setTitleFailed
 
@@ -247,7 +247,7 @@ Ignoring a value is explicit:
 
 ```semanticscript
 ignore ok source writeGreetingCall type Void
-ignore value source metricsFlushCall type I64
+ignore value source metricsFlushCall type Int64
 ```
 
 Use these only when the discard is a real part of the contract. Fallible calls

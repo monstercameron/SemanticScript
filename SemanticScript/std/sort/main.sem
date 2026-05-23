@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.sort "App-specific wrappers, compatibility aliases, or
 invariant module standard.sort "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.sort sortModuleVersionText
-storage module immutable sortModuleVersionText CNullTerminatedByteString "standard.sort 0.1"
+storage module immutable sortModuleVersionText String "standard.sort 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -32,19 +32,19 @@ storage module immutable sortModuleVersionText CNullTerminatedByteString "standa
 # Pure-module file: smoke + extended tests live in
 # std/sort/main.test.sem.
 
-domainLiteral integerOneStepValue CSignedInt64 1
+domainLiteral integerOneStepValue Int64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
-domainLiteral integerZeroBoundaryForSort CSignedInt64 0
+domainLiteral integerZeroBoundaryForSort Int64 0
 domainLiteralTrust integerZeroBoundaryForSort trustedStaticLiteral
-domainLiteral byteRoleAdjustmentValue CSignedInt64 256
+domainLiteral byteRoleAdjustmentValue Int64 256
 domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
 
 # section sort.bubbleSort
 
 operation sortBytesWithBubbleSortInPlace
-input operation sortBytesWithBubbleSortInPlace byteBuffer COpaqueMemoryAddress
-input operation sortBytesWithBubbleSortInPlace byteCount CByteCount
-output operation sortBytesWithBubbleSortInPlace CByteCount
+input operation sortBytesWithBubbleSortInPlace byteBuffer OpaquePointer
+input operation sortBytesWithBubbleSortInPlace byteCount ByteCount
+output operation sortBytesWithBubbleSortInPlace ByteCount
 memory sortBytesWithBubbleSortInPlace heap no
 async sortBytesWithBubbleSortInPlace no
 purpose operation sortBytesWithBubbleSortInPlace "In-place bubble sort of the first byteCount bytes of byteBuffer in non-decreasing order. Returns byteCount."
@@ -52,115 +52,115 @@ invariant operation sortBytesWithBubbleSortInPlace "After return, areBytesSorted
 warning sortBytesWithBubbleSortInPlace "O(byteCount^2) running time â€” not suitable for buffers larger than a few thousand bytes."
 guarantee sortBytesWithBubbleSortInPlace "Total."
 label startSortBytesWithBubbleSortInPlace
-memory sortBytesWithBubbleSortInPlace mutable bubbleOuterIndex I64 0
-memory sortBytesWithBubbleSortInPlace mutable bubbleArrayLength I64 0
+memory sortBytesWithBubbleSortInPlace mutable bubbleOuterIndex Int64 0
+memory sortBytesWithBubbleSortInPlace mutable bubbleArrayLength Int64 0
 # Per-pass swap flag: when a full inner pass performs no swaps the buffer
 # is already sorted and the outer loop exits early, giving O(n) on
 # already-sorted / nearly-sorted input instead of an unconditional O(n^2).
-memory sortBytesWithBubbleSortInPlace mutable bubbleSwappedThisPass I64 0
+memory sortBytesWithBubbleSortInPlace mutable bubbleSwappedThisPass Int64 0
 set memory bubbleArrayLength byteCount
 label bubbleOuterHead
-call detectBubbleOuterDoneCall math.greaterThanOrEqualI64
-argument detectBubbleOuterDoneCall left I64 bubbleOuterIndex
-argument detectBubbleOuterDoneCall right I64 bubbleArrayLength
+call detectBubbleOuterDoneCall math.greaterThanOrEqualInt64
+argument detectBubbleOuterDoneCall left Int64 bubbleOuterIndex
+argument detectBubbleOuterDoneCall right Int64 bubbleArrayLength
 run detectBubbleOuterDoneCall
 bind value bubbleOuterDone Bool detectBubbleOuterDoneCall
 branch if condition bubbleOuterDone target bubbleSortComplete
 set memory bubbleSwappedThisPass integerZeroBoundaryForSort
-memory sortBytesWithBubbleSortInPlace mutable bubbleInnerIndex I64 0
+memory sortBytesWithBubbleSortInPlace mutable bubbleInnerIndex Int64 0
 label bubbleInnerHead
-call computeBubbleInnerLengthCall math.subtractI64
-argument computeBubbleInnerLengthCall left I64 bubbleArrayLength
-argument computeBubbleInnerLengthCall right I64 bubbleOuterIndex
+call computeBubbleInnerLengthCall math.subtractInt64
+argument computeBubbleInnerLengthCall left Int64 bubbleArrayLength
+argument computeBubbleInnerLengthCall right Int64 bubbleOuterIndex
 run computeBubbleInnerLengthCall
-bind value bubbleInnerLength I64 computeBubbleInnerLengthCall
-call computeBubbleInnerBoundCall math.subtractI64
-argument computeBubbleInnerBoundCall left I64 bubbleInnerLength
-argument computeBubbleInnerBoundCall right I64 integerOneStepValue
+bind value bubbleInnerLength Int64 computeBubbleInnerLengthCall
+call computeBubbleInnerBoundCall math.subtractInt64
+argument computeBubbleInnerBoundCall left Int64 bubbleInnerLength
+argument computeBubbleInnerBoundCall right Int64 integerOneStepValue
 run computeBubbleInnerBoundCall
-bind value bubbleInnerBound I64 computeBubbleInnerBoundCall
-call detectBubbleInnerDoneCall math.greaterThanOrEqualI64
-argument detectBubbleInnerDoneCall left I64 bubbleInnerIndex
-argument detectBubbleInnerDoneCall right I64 bubbleInnerBound
+bind value bubbleInnerBound Int64 computeBubbleInnerBoundCall
+call detectBubbleInnerDoneCall math.greaterThanOrEqualInt64
+argument detectBubbleInnerDoneCall left Int64 bubbleInnerIndex
+argument detectBubbleInnerDoneCall right Int64 bubbleInnerBound
 run detectBubbleInnerDoneCall
 bind value bubbleInnerDone Bool detectBubbleInnerDoneCall
 branch if condition bubbleInnerDone target bubbleOuterAdvance
 call loadBubbleLeftCall pointer.loadByte
-argument loadBubbleLeftCall buffer COpaqueMemoryAddress byteBuffer
-argument loadBubbleLeftCall offset CByteCount bubbleInnerIndex
+argument loadBubbleLeftCall buffer OpaquePointer byteBuffer
+argument loadBubbleLeftCall offset ByteCount bubbleInnerIndex
 run loadBubbleLeftCall
-bind value bubbleLeftRawByte I8 loadBubbleLeftCall
-call computeBubbleRightIndexCall math.addI64
-argument computeBubbleRightIndexCall left I64 bubbleInnerIndex
-argument computeBubbleRightIndexCall right I64 integerOneStepValue
+bind value bubbleLeftRawByte Int8 loadBubbleLeftCall
+call computeBubbleRightIndexCall math.addInt64
+argument computeBubbleRightIndexCall left Int64 bubbleInnerIndex
+argument computeBubbleRightIndexCall right Int64 integerOneStepValue
 run computeBubbleRightIndexCall
-bind value bubbleRightIndex I64 computeBubbleRightIndexCall
+bind value bubbleRightIndex Int64 computeBubbleRightIndexCall
 call loadBubbleRightCall pointer.loadByte
-argument loadBubbleRightCall buffer COpaqueMemoryAddress byteBuffer
-argument loadBubbleRightCall offset CByteCount bubbleRightIndex
+argument loadBubbleRightCall buffer OpaquePointer byteBuffer
+argument loadBubbleRightCall offset ByteCount bubbleRightIndex
 run loadBubbleRightCall
-bind value bubbleRightRawByte I8 loadBubbleRightCall
-call shiftBubbleLeftCall math.addI64
-argument shiftBubbleLeftCall left I64 bubbleLeftRawByte
-argument shiftBubbleLeftCall right I64 byteRoleAdjustmentValue
+bind value bubbleRightRawByte Int8 loadBubbleRightCall
+call shiftBubbleLeftCall math.addInt64
+argument shiftBubbleLeftCall left Int64 bubbleLeftRawByte
+argument shiftBubbleLeftCall right Int64 byteRoleAdjustmentValue
 run shiftBubbleLeftCall
-bind value shiftedBubbleLeft I64 shiftBubbleLeftCall
-call normalizeBubbleLeftCall math.moduloI64
-argument normalizeBubbleLeftCall left I64 shiftedBubbleLeft
-argument normalizeBubbleLeftCall right I64 byteRoleAdjustmentValue
+bind value shiftedBubbleLeft Int64 shiftBubbleLeftCall
+call normalizeBubbleLeftCall math.moduloInt64
+argument normalizeBubbleLeftCall left Int64 shiftedBubbleLeft
+argument normalizeBubbleLeftCall right Int64 byteRoleAdjustmentValue
 run normalizeBubbleLeftCall
-bind value unsignedBubbleLeft I64 normalizeBubbleLeftCall
-call shiftBubbleRightCall math.addI64
-argument shiftBubbleRightCall left I64 bubbleRightRawByte
-argument shiftBubbleRightCall right I64 byteRoleAdjustmentValue
+bind value unsignedBubbleLeft Int64 normalizeBubbleLeftCall
+call shiftBubbleRightCall math.addInt64
+argument shiftBubbleRightCall left Int64 bubbleRightRawByte
+argument shiftBubbleRightCall right Int64 byteRoleAdjustmentValue
 run shiftBubbleRightCall
-bind value shiftedBubbleRight I64 shiftBubbleRightCall
-call normalizeBubbleRightCall math.moduloI64
-argument normalizeBubbleRightCall left I64 shiftedBubbleRight
-argument normalizeBubbleRightCall right I64 byteRoleAdjustmentValue
+bind value shiftedBubbleRight Int64 shiftBubbleRightCall
+call normalizeBubbleRightCall math.moduloInt64
+argument normalizeBubbleRightCall left Int64 shiftedBubbleRight
+argument normalizeBubbleRightCall right Int64 byteRoleAdjustmentValue
 run normalizeBubbleRightCall
-bind value unsignedBubbleRight I64 normalizeBubbleRightCall
-call detectBubbleOutOfOrderCall math.greaterThanI64
-argument detectBubbleOutOfOrderCall left I64 unsignedBubbleLeft
-argument detectBubbleOutOfOrderCall right I64 unsignedBubbleRight
+bind value unsignedBubbleRight Int64 normalizeBubbleRightCall
+call detectBubbleOutOfOrderCall math.greaterThanInt64
+argument detectBubbleOutOfOrderCall left Int64 unsignedBubbleLeft
+argument detectBubbleOutOfOrderCall right Int64 unsignedBubbleRight
 run detectBubbleOutOfOrderCall
 bind value bubbleOutOfOrder Bool detectBubbleOutOfOrderCall
 branch if condition bubbleOutOfOrder target swapBubblePair
 branch else target bubbleInnerAdvance
 label swapBubblePair
 call storeBubbleRightAtLeftCall pointer.storeByte
-argument storeBubbleRightAtLeftCall buffer COpaqueMemoryAddress byteBuffer
-argument storeBubbleRightAtLeftCall offset CByteCount bubbleInnerIndex
-argument storeBubbleRightAtLeftCall value CSignedInt64 bubbleRightRawByte
+argument storeBubbleRightAtLeftCall buffer OpaquePointer byteBuffer
+argument storeBubbleRightAtLeftCall offset ByteCount bubbleInnerIndex
+argument storeBubbleRightAtLeftCall value Int64 bubbleRightRawByte
 run storeBubbleRightAtLeftCall
 call storeBubbleLeftAtRightCall pointer.storeByte
-argument storeBubbleLeftAtRightCall buffer COpaqueMemoryAddress byteBuffer
-argument storeBubbleLeftAtRightCall offset CByteCount bubbleRightIndex
-argument storeBubbleLeftAtRightCall value CSignedInt64 bubbleLeftRawByte
+argument storeBubbleLeftAtRightCall buffer OpaquePointer byteBuffer
+argument storeBubbleLeftAtRightCall offset ByteCount bubbleRightIndex
+argument storeBubbleLeftAtRightCall value Int64 bubbleLeftRawByte
 run storeBubbleLeftAtRightCall
 set memory bubbleSwappedThisPass integerOneStepValue
 jump target bubbleInnerAdvance
 label bubbleInnerAdvance
-call advanceBubbleInnerCall math.addI64
-argument advanceBubbleInnerCall left I64 bubbleInnerIndex
-argument advanceBubbleInnerCall right I64 integerOneStepValue
+call advanceBubbleInnerCall math.addInt64
+argument advanceBubbleInnerCall left Int64 bubbleInnerIndex
+argument advanceBubbleInnerCall right Int64 integerOneStepValue
 run advanceBubbleInnerCall
-bind value nextBubbleInner I64 advanceBubbleInnerCall
+bind value nextBubbleInner Int64 advanceBubbleInnerCall
 set memory bubbleInnerIndex nextBubbleInner
 jump target bubbleInnerHead
 label bubbleOuterAdvance
 # A pass with no swaps means the buffer is sorted; stop early.
-call detectNoSwapsThisPassCall math.equalI64
-argument detectNoSwapsThisPassCall left I64 bubbleSwappedThisPass
-argument detectNoSwapsThisPassCall right I64 integerZeroBoundaryForSort
+call detectNoSwapsThisPassCall math.equalInt64
+argument detectNoSwapsThisPassCall left Int64 bubbleSwappedThisPass
+argument detectNoSwapsThisPassCall right Int64 integerZeroBoundaryForSort
 run detectNoSwapsThisPassCall
 bind value bubbleNoSwapsThisPass Bool detectNoSwapsThisPassCall
 branch if condition bubbleNoSwapsThisPass target bubbleSortComplete
-call advanceBubbleOuterCall math.addI64
-argument advanceBubbleOuterCall left I64 bubbleOuterIndex
-argument advanceBubbleOuterCall right I64 integerOneStepValue
+call advanceBubbleOuterCall math.addInt64
+argument advanceBubbleOuterCall left Int64 bubbleOuterIndex
+argument advanceBubbleOuterCall right Int64 integerOneStepValue
 run advanceBubbleOuterCall
-bind value nextBubbleOuter I64 advanceBubbleOuterCall
+bind value nextBubbleOuter Int64 advanceBubbleOuterCall
 set memory bubbleOuterIndex nextBubbleOuter
 jump target bubbleOuterHead
 label bubbleSortComplete
@@ -169,8 +169,8 @@ return value byteCount
 # section sort.predicate
 
 operation areBytesSortedAscending
-input operation areBytesSortedAscending byteBuffer CNullTerminatedByteString
-input operation areBytesSortedAscending byteCount CByteCount
+input operation areBytesSortedAscending byteBuffer String
+input operation areBytesSortedAscending byteCount ByteCount
 output operation areBytesSortedAscending Bool
 memory areBytesSortedAscending heap no
 async areBytesSortedAscending no
@@ -178,71 +178,71 @@ purpose operation areBytesSortedAscending "Returns true when every adjacent pair
 invariant operation areBytesSortedAscending "Short-circuits on the first out-of-order pair; empty / single-element buffers return true."
 guarantee areBytesSortedAscending "Total."
 label startAreBytesSortedAscending
-call detectSingleElementCall math.lessThanOrEqualI64
-argument detectSingleElementCall left I64 byteCount
-argument detectSingleElementCall right I64 integerOneStepValue
+call detectSingleElementCall math.lessThanOrEqualInt64
+argument detectSingleElementCall left Int64 byteCount
+argument detectSingleElementCall right Int64 integerOneStepValue
 run detectSingleElementCall
 bind value hasAtMostOneElement Bool detectSingleElementCall
 branch if condition hasAtMostOneElement target returnIsSortedTrue
-memory areBytesSortedAscending mutable sortedCheckIndex I64 0
-call computeSortedCheckBoundCall math.subtractI64
-argument computeSortedCheckBoundCall left I64 byteCount
-argument computeSortedCheckBoundCall right I64 integerOneStepValue
+memory areBytesSortedAscending mutable sortedCheckIndex Int64 0
+call computeSortedCheckBoundCall math.subtractInt64
+argument computeSortedCheckBoundCall left Int64 byteCount
+argument computeSortedCheckBoundCall right Int64 integerOneStepValue
 run computeSortedCheckBoundCall
-bind value sortedCheckBound I64 computeSortedCheckBoundCall
+bind value sortedCheckBound Int64 computeSortedCheckBoundCall
 label sortedCheckLoop
-call detectSortedCheckDoneCall math.greaterThanOrEqualI64
-argument detectSortedCheckDoneCall left I64 sortedCheckIndex
-argument detectSortedCheckDoneCall right I64 sortedCheckBound
+call detectSortedCheckDoneCall math.greaterThanOrEqualInt64
+argument detectSortedCheckDoneCall left Int64 sortedCheckIndex
+argument detectSortedCheckDoneCall right Int64 sortedCheckBound
 run detectSortedCheckDoneCall
 bind value sortedCheckDone Bool detectSortedCheckDoneCall
 branch if condition sortedCheckDone target returnIsSortedTrue
 call loadSortedLeftCall pointer.loadByte
-argument loadSortedLeftCall buffer COpaqueMemoryAddress byteBuffer
-argument loadSortedLeftCall offset CByteCount sortedCheckIndex
+argument loadSortedLeftCall buffer OpaquePointer byteBuffer
+argument loadSortedLeftCall offset ByteCount sortedCheckIndex
 run loadSortedLeftCall
-bind value sortedLeftRawByte I8 loadSortedLeftCall
-call computeSortedRightIndexCall math.addI64
-argument computeSortedRightIndexCall left I64 sortedCheckIndex
-argument computeSortedRightIndexCall right I64 integerOneStepValue
+bind value sortedLeftRawByte Int8 loadSortedLeftCall
+call computeSortedRightIndexCall math.addInt64
+argument computeSortedRightIndexCall left Int64 sortedCheckIndex
+argument computeSortedRightIndexCall right Int64 integerOneStepValue
 run computeSortedRightIndexCall
-bind value sortedRightIndex I64 computeSortedRightIndexCall
+bind value sortedRightIndex Int64 computeSortedRightIndexCall
 call loadSortedRightCall pointer.loadByte
-argument loadSortedRightCall buffer COpaqueMemoryAddress byteBuffer
-argument loadSortedRightCall offset CByteCount sortedRightIndex
+argument loadSortedRightCall buffer OpaquePointer byteBuffer
+argument loadSortedRightCall offset ByteCount sortedRightIndex
 run loadSortedRightCall
-bind value sortedRightRawByte I8 loadSortedRightCall
-call shiftSortedLeftCall math.addI64
-argument shiftSortedLeftCall left I64 sortedLeftRawByte
-argument shiftSortedLeftCall right I64 byteRoleAdjustmentValue
+bind value sortedRightRawByte Int8 loadSortedRightCall
+call shiftSortedLeftCall math.addInt64
+argument shiftSortedLeftCall left Int64 sortedLeftRawByte
+argument shiftSortedLeftCall right Int64 byteRoleAdjustmentValue
 run shiftSortedLeftCall
-bind value shiftedSortedLeft I64 shiftSortedLeftCall
-call normalizeSortedLeftCall math.moduloI64
-argument normalizeSortedLeftCall left I64 shiftedSortedLeft
-argument normalizeSortedLeftCall right I64 byteRoleAdjustmentValue
+bind value shiftedSortedLeft Int64 shiftSortedLeftCall
+call normalizeSortedLeftCall math.moduloInt64
+argument normalizeSortedLeftCall left Int64 shiftedSortedLeft
+argument normalizeSortedLeftCall right Int64 byteRoleAdjustmentValue
 run normalizeSortedLeftCall
-bind value unsignedSortedLeft I64 normalizeSortedLeftCall
-call shiftSortedRightCall math.addI64
-argument shiftSortedRightCall left I64 sortedRightRawByte
-argument shiftSortedRightCall right I64 byteRoleAdjustmentValue
+bind value unsignedSortedLeft Int64 normalizeSortedLeftCall
+call shiftSortedRightCall math.addInt64
+argument shiftSortedRightCall left Int64 sortedRightRawByte
+argument shiftSortedRightCall right Int64 byteRoleAdjustmentValue
 run shiftSortedRightCall
-bind value shiftedSortedRight I64 shiftSortedRightCall
-call normalizeSortedRightCall math.moduloI64
-argument normalizeSortedRightCall left I64 shiftedSortedRight
-argument normalizeSortedRightCall right I64 byteRoleAdjustmentValue
+bind value shiftedSortedRight Int64 shiftSortedRightCall
+call normalizeSortedRightCall math.moduloInt64
+argument normalizeSortedRightCall left Int64 shiftedSortedRight
+argument normalizeSortedRightCall right Int64 byteRoleAdjustmentValue
 run normalizeSortedRightCall
-bind value unsignedSortedRight I64 normalizeSortedRightCall
-call detectSortedOutOfOrderCall math.greaterThanI64
-argument detectSortedOutOfOrderCall left I64 unsignedSortedLeft
-argument detectSortedOutOfOrderCall right I64 unsignedSortedRight
+bind value unsignedSortedRight Int64 normalizeSortedRightCall
+call detectSortedOutOfOrderCall math.greaterThanInt64
+argument detectSortedOutOfOrderCall left Int64 unsignedSortedLeft
+argument detectSortedOutOfOrderCall right Int64 unsignedSortedRight
 run detectSortedOutOfOrderCall
 bind value sortedOutOfOrder Bool detectSortedOutOfOrderCall
 branch if condition sortedOutOfOrder target returnIsSortedFalse
-call advanceSortedIndexCall math.addI64
-argument advanceSortedIndexCall left I64 sortedCheckIndex
-argument advanceSortedIndexCall right I64 integerOneStepValue
+call advanceSortedIndexCall math.addInt64
+argument advanceSortedIndexCall left Int64 sortedCheckIndex
+argument advanceSortedIndexCall right Int64 integerOneStepValue
 run advanceSortedIndexCall
-bind value nextSortedIndex I64 advanceSortedIndexCall
+bind value nextSortedIndex Int64 advanceSortedIndexCall
 set memory sortedCheckIndex nextSortedIndex
 jump target sortedCheckLoop
 label returnIsSortedTrue
@@ -255,108 +255,108 @@ return value isSortedFalseResult
 # section sort.insertionSort
 
 operation sortBytesWithInsertionSortInPlace
-input operation sortBytesWithInsertionSortInPlace byteBuffer COpaqueMemoryAddress
-input operation sortBytesWithInsertionSortInPlace byteCount CByteCount
-output operation sortBytesWithInsertionSortInPlace CByteCount
+input operation sortBytesWithInsertionSortInPlace byteBuffer OpaquePointer
+input operation sortBytesWithInsertionSortInPlace byteCount ByteCount
+output operation sortBytesWithInsertionSortInPlace ByteCount
 memory sortBytesWithInsertionSortInPlace heap no
 async sortBytesWithInsertionSortInPlace no
 purpose operation sortBytesWithInsertionSortInPlace "In-place insertion sort. O(n) on nearly-sorted input; O(n^2) worst case."
 invariant operation sortBytesWithInsertionSortInPlace "After return, areBytesSortedAscending(byteBuffer, byteCount) == true."
 guarantee sortBytesWithInsertionSortInPlace "Total."
 label startSortBytesWithInsertionSortInPlace
-memory sortBytesWithInsertionSortInPlace mutable insertionOuterIndex I64 1
+memory sortBytesWithInsertionSortInPlace mutable insertionOuterIndex Int64 1
 label insertionOuterHead
-call detectInsertionOuterDoneCall math.greaterThanOrEqualI64
-argument detectInsertionOuterDoneCall left I64 insertionOuterIndex
-argument detectInsertionOuterDoneCall right I64 byteCount
+call detectInsertionOuterDoneCall math.greaterThanOrEqualInt64
+argument detectInsertionOuterDoneCall left Int64 insertionOuterIndex
+argument detectInsertionOuterDoneCall right Int64 byteCount
 run detectInsertionOuterDoneCall
 bind value insertionOuterDone Bool detectInsertionOuterDoneCall
 branch if condition insertionOuterDone target insertionSortComplete
 call loadInsertionKeyCall pointer.loadByte
-argument loadInsertionKeyCall buffer COpaqueMemoryAddress byteBuffer
-argument loadInsertionKeyCall offset CByteCount insertionOuterIndex
+argument loadInsertionKeyCall buffer OpaquePointer byteBuffer
+argument loadInsertionKeyCall offset ByteCount insertionOuterIndex
 run loadInsertionKeyCall
-bind value insertionKeyRawByte I8 loadInsertionKeyCall
-call shiftInsertionKeyCall math.addI64
-argument shiftInsertionKeyCall left I64 insertionKeyRawByte
-argument shiftInsertionKeyCall right I64 byteRoleAdjustmentValue
+bind value insertionKeyRawByte Int8 loadInsertionKeyCall
+call shiftInsertionKeyCall math.addInt64
+argument shiftInsertionKeyCall left Int64 insertionKeyRawByte
+argument shiftInsertionKeyCall right Int64 byteRoleAdjustmentValue
 run shiftInsertionKeyCall
-bind value shiftedInsertionKey I64 shiftInsertionKeyCall
-call normalizeInsertionKeyCall math.moduloI64
-argument normalizeInsertionKeyCall left I64 shiftedInsertionKey
-argument normalizeInsertionKeyCall right I64 byteRoleAdjustmentValue
+bind value shiftedInsertionKey Int64 shiftInsertionKeyCall
+call normalizeInsertionKeyCall math.moduloInt64
+argument normalizeInsertionKeyCall left Int64 shiftedInsertionKey
+argument normalizeInsertionKeyCall right Int64 byteRoleAdjustmentValue
 run normalizeInsertionKeyCall
-bind value unsignedInsertionKey I64 normalizeInsertionKeyCall
-memory sortBytesWithInsertionSortInPlace mutable insertionInnerIndex I64 0
-call initializeInsertionInnerCall math.subtractI64
-argument initializeInsertionInnerCall left I64 insertionOuterIndex
-argument initializeInsertionInnerCall right I64 integerOneStepValue
+bind value unsignedInsertionKey Int64 normalizeInsertionKeyCall
+memory sortBytesWithInsertionSortInPlace mutable insertionInnerIndex Int64 0
+call initializeInsertionInnerCall math.subtractInt64
+argument initializeInsertionInnerCall left Int64 insertionOuterIndex
+argument initializeInsertionInnerCall right Int64 integerOneStepValue
 run initializeInsertionInnerCall
-bind value initialInsertionInner I64 initializeInsertionInnerCall
+bind value initialInsertionInner Int64 initializeInsertionInnerCall
 set memory insertionInnerIndex initialInsertionInner
 label insertionShiftLoop
-call detectInsertionInnerNegativeCall math.lessThanI64
-argument detectInsertionInnerNegativeCall left I64 insertionInnerIndex
-argument detectInsertionInnerNegativeCall right I64 integerZeroBoundaryForSort
+call detectInsertionInnerNegativeCall math.lessThanInt64
+argument detectInsertionInnerNegativeCall left Int64 insertionInnerIndex
+argument detectInsertionInnerNegativeCall right Int64 integerZeroBoundaryForSort
 run detectInsertionInnerNegativeCall
 bind value insertionInnerNegative Bool detectInsertionInnerNegativeCall
 branch if condition insertionInnerNegative target insertionShiftDone
 call loadInsertionScanCall pointer.loadByte
-argument loadInsertionScanCall buffer COpaqueMemoryAddress byteBuffer
-argument loadInsertionScanCall offset CByteCount insertionInnerIndex
+argument loadInsertionScanCall buffer OpaquePointer byteBuffer
+argument loadInsertionScanCall offset ByteCount insertionInnerIndex
 run loadInsertionScanCall
-bind value insertionScanRawByte I8 loadInsertionScanCall
-call shiftInsertionScanCall math.addI64
-argument shiftInsertionScanCall left I64 insertionScanRawByte
-argument shiftInsertionScanCall right I64 byteRoleAdjustmentValue
+bind value insertionScanRawByte Int8 loadInsertionScanCall
+call shiftInsertionScanCall math.addInt64
+argument shiftInsertionScanCall left Int64 insertionScanRawByte
+argument shiftInsertionScanCall right Int64 byteRoleAdjustmentValue
 run shiftInsertionScanCall
-bind value shiftedInsertionScan I64 shiftInsertionScanCall
-call normalizeInsertionScanCall math.moduloI64
-argument normalizeInsertionScanCall left I64 shiftedInsertionScan
-argument normalizeInsertionScanCall right I64 byteRoleAdjustmentValue
+bind value shiftedInsertionScan Int64 shiftInsertionScanCall
+call normalizeInsertionScanCall math.moduloInt64
+argument normalizeInsertionScanCall left Int64 shiftedInsertionScan
+argument normalizeInsertionScanCall right Int64 byteRoleAdjustmentValue
 run normalizeInsertionScanCall
-bind value unsignedInsertionScan I64 normalizeInsertionScanCall
-call detectInsertionScanGreaterThanKeyCall math.greaterThanI64
-argument detectInsertionScanGreaterThanKeyCall left I64 unsignedInsertionScan
-argument detectInsertionScanGreaterThanKeyCall right I64 unsignedInsertionKey
+bind value unsignedInsertionScan Int64 normalizeInsertionScanCall
+call detectInsertionScanGreaterThanKeyCall math.greaterThanInt64
+argument detectInsertionScanGreaterThanKeyCall left Int64 unsignedInsertionScan
+argument detectInsertionScanGreaterThanKeyCall right Int64 unsignedInsertionKey
 run detectInsertionScanGreaterThanKeyCall
 bind value scanIsGreaterThanKey Bool detectInsertionScanGreaterThanKeyCall
 branch if condition scanIsGreaterThanKey target shiftInsertionScanRight
 branch else target insertionShiftDone
 label shiftInsertionScanRight
-call computeInsertionShiftTargetCall math.addI64
-argument computeInsertionShiftTargetCall left I64 insertionInnerIndex
-argument computeInsertionShiftTargetCall right I64 integerOneStepValue
+call computeInsertionShiftTargetCall math.addInt64
+argument computeInsertionShiftTargetCall left Int64 insertionInnerIndex
+argument computeInsertionShiftTargetCall right Int64 integerOneStepValue
 run computeInsertionShiftTargetCall
-bind value insertionShiftTarget I64 computeInsertionShiftTargetCall
+bind value insertionShiftTarget Int64 computeInsertionShiftTargetCall
 call storeShiftedScanCall pointer.storeByte
-argument storeShiftedScanCall buffer COpaqueMemoryAddress byteBuffer
-argument storeShiftedScanCall offset CByteCount insertionShiftTarget
-argument storeShiftedScanCall value CSignedInt64 insertionScanRawByte
+argument storeShiftedScanCall buffer OpaquePointer byteBuffer
+argument storeShiftedScanCall offset ByteCount insertionShiftTarget
+argument storeShiftedScanCall value Int64 insertionScanRawByte
 run storeShiftedScanCall
-call retreatInsertionInnerCall math.subtractI64
-argument retreatInsertionInnerCall left I64 insertionInnerIndex
-argument retreatInsertionInnerCall right I64 integerOneStepValue
+call retreatInsertionInnerCall math.subtractInt64
+argument retreatInsertionInnerCall left Int64 insertionInnerIndex
+argument retreatInsertionInnerCall right Int64 integerOneStepValue
 run retreatInsertionInnerCall
-bind value nextInsertionInner I64 retreatInsertionInnerCall
+bind value nextInsertionInner Int64 retreatInsertionInnerCall
 set memory insertionInnerIndex nextInsertionInner
 jump target insertionShiftLoop
 label insertionShiftDone
-call computeInsertionInsertTargetCall math.addI64
-argument computeInsertionInsertTargetCall left I64 insertionInnerIndex
-argument computeInsertionInsertTargetCall right I64 integerOneStepValue
+call computeInsertionInsertTargetCall math.addInt64
+argument computeInsertionInsertTargetCall left Int64 insertionInnerIndex
+argument computeInsertionInsertTargetCall right Int64 integerOneStepValue
 run computeInsertionInsertTargetCall
-bind value insertionInsertTarget I64 computeInsertionInsertTargetCall
+bind value insertionInsertTarget Int64 computeInsertionInsertTargetCall
 call storeInsertionKeyCall pointer.storeByte
-argument storeInsertionKeyCall buffer COpaqueMemoryAddress byteBuffer
-argument storeInsertionKeyCall offset CByteCount insertionInsertTarget
-argument storeInsertionKeyCall value CSignedInt64 insertionKeyRawByte
+argument storeInsertionKeyCall buffer OpaquePointer byteBuffer
+argument storeInsertionKeyCall offset ByteCount insertionInsertTarget
+argument storeInsertionKeyCall value Int64 insertionKeyRawByte
 run storeInsertionKeyCall
-call advanceInsertionOuterCall math.addI64
-argument advanceInsertionOuterCall left I64 insertionOuterIndex
-argument advanceInsertionOuterCall right I64 integerOneStepValue
+call advanceInsertionOuterCall math.addInt64
+argument advanceInsertionOuterCall left Int64 insertionOuterIndex
+argument advanceInsertionOuterCall right Int64 integerOneStepValue
 run advanceInsertionOuterCall
-bind value nextInsertionOuter I64 advanceInsertionOuterCall
+bind value nextInsertionOuter Int64 advanceInsertionOuterCall
 set memory insertionOuterIndex nextInsertionOuter
 jump target insertionOuterHead
 label insertionSortComplete

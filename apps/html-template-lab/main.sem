@@ -24,22 +24,22 @@ label startMain
 
 call renderDashboardPageCall todoPages.renderTodoDashboardPage
 run renderDashboardPageCall
-bind value dashboardHtml CNullTerminatedByteString renderDashboardPageCall
+bind value dashboardHtml String renderDashboardPageCall
 
 call writeDashboardHtmlCall console.writeLine
-argument writeDashboardHtmlCall text CNullTerminatedByteString dashboardHtml
+argument writeDashboardHtmlCall text String dashboardHtml
 run writeDashboardHtmlCall
-ignore ok source writeDashboardHtmlCall type CSignedInt32
-bind error writeDashboardHtmlError CSignedInt32 writeDashboardHtmlCall
+ignore ok source writeDashboardHtmlCall type Int32
+bind error writeDashboardHtmlError Int32 writeDashboardHtmlCall
 branch error source writeDashboardHtmlCall target writeDashboardHtmlFailed
 
 return value successCode
 
 label writeDashboardHtmlFailed
-storage local immutable writeDashboardExpectedFailure CSignedInt32 0
-call observeWriteDashboardHtmlErrorCall math.equalCSignedInt32
-argument observeWriteDashboardHtmlErrorCall left CSignedInt32 writeDashboardHtmlError
-argument observeWriteDashboardHtmlErrorCall right CSignedInt32 writeDashboardExpectedFailure
+storage local immutable writeDashboardExpectedFailure Int32 0
+call observeWriteDashboardHtmlErrorCall math.equalInt32
+argument observeWriteDashboardHtmlErrorCall left Int32 writeDashboardHtmlError
+argument observeWriteDashboardHtmlErrorCall right Int32 writeDashboardExpectedFailure
 run observeWriteDashboardHtmlErrorCall
 ignore value source observeWriteDashboardHtmlErrorCall type Bool
 return value failureCode

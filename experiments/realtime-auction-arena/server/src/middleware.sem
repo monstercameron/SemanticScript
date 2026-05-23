@@ -7,7 +7,7 @@ invariant module app.realtime_auction_arena.server.middleware "Request logs and 
 record RequestIdContract
 field RequestIdContract header String
 field RequestIdContract acceptedCharacters String
-field RequestIdContract maxBytes I64
+field RequestIdContract maxBytes Int64
 field RequestIdContract missingFallback String
 field RequestIdContract propagationRule String
 field RequestIdContract generationRuntimeGap String
@@ -30,24 +30,24 @@ record ContentTypeContract
 field ContentTypeContract writeRouteMethods String
 field ContentTypeContract requiredMediaType String
 field ContentTypeContract acceptedMediaTypePrefix String
-field ContentTypeContract missingOrInvalidStatus I64
+field ContentTypeContract missingOrInvalidStatus Int64
 field ContentTypeContract missingOrInvalidErrorCode String
 field ContentTypeContract runtimeGap String
 
 record SecurityLimitContract
-field SecurityLimitContract maxJsonBodyBytes I64
-field SecurityLimitContract maxRouteParamBytes I64
-field SecurityLimitContract maxChatMessageBytes I64
-field SecurityLimitContract maxTitleBytes I64
-field SecurityLimitContract maxDescriptionBytes I64
-field SecurityLimitContract oversizedStatus I64
+field SecurityLimitContract maxJsonBodyBytes Int64
+field SecurityLimitContract maxRouteParamBytes Int64
+field SecurityLimitContract maxChatMessageBytes Int64
+field SecurityLimitContract maxTitleBytes Int64
+field SecurityLimitContract maxDescriptionBytes Int64
+field SecurityLimitContract oversizedStatus Int64
 field SecurityLimitContract oversizedErrorCode String
 
 record IdempotencyContract
 field IdempotencyContract header String
 field IdempotencyContract requiredMethods String
 field IdempotencyContract requiredRouteScope String
-field IdempotencyContract keyMaxBytes I64
+field IdempotencyContract keyMaxBytes Int64
 field IdempotencyContract requestHashRule String
 field IdempotencyContract replayRule String
 field IdempotencyContract conflictErrorCode String
@@ -79,8 +79,8 @@ field AuditContract runtimeGap String
 record RateLimitPolicyContract
 field RateLimitPolicyContract name String
 field RateLimitPolicyContract subject String
-field RateLimitPolicyContract windowMillis I64
-field RateLimitPolicyContract limitCount I64
+field RateLimitPolicyContract windowMillis Int64
+field RateLimitPolicyContract limitCount Int64
 field RateLimitPolicyContract publicError String
 field RateLimitPolicyContract auditRule String
 
@@ -106,8 +106,8 @@ field SseTransportContract route String
 field SseTransportContract contentType String
 field SseTransportContract authRule String
 field SseTransportContract replayRule String
-field SseTransportContract heartbeatMillis I64
-field SseTransportContract subscriberQueueLimit I64
+field SseTransportContract heartbeatMillis Int64
+field SseTransportContract subscriberQueueLimit Int64
 field SseTransportContract disconnectRule String
 field SseTransportContract runtimeStatus String
 

@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.string "App-specific wrappers, compatibility aliases, 
 invariant module standard.string "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.string stringModuleVersionText
-storage module immutable stringModuleVersionText CNullTerminatedByteString "standard.string 0.1"
+storage module immutable stringModuleVersionText String "standard.string 0.1"
 
 exportOperation standard.string findFirstCharacterInCString
 exportOperation standard.string countInitialCStringBytesInAcceptSet
@@ -70,8 +70,8 @@ capability heapAllocationCapability heap allocate
 
 # ---- stringByteLength(s) -> byte count up to NUL ----
 operation stringByteLength
-input operation stringByteLength inputText CNullTerminatedByteString
-output operation stringByteLength CByteCount
+input operation stringByteLength inputText String
+output operation stringByteLength ByteCount
 useCapability stringByteLength memoryBufferReadCapability
 effect stringByteLength read memory.buffer
 memory stringByteLength heap no
@@ -81,26 +81,26 @@ purpose operation stringByteLength "Pure-SemanticScript stringByteLength: walk b
 invariant operation stringByteLength "Walks forward from offset 0 until the first NUL byte; returns that offset as the byte count."
 
 label startStringByteLength
-storage module immutable zeroI64 I64 0
-storage module immutable oneI64 I64 1
-memory stringByteLength mutable cursor I64 0
+storage module immutable zeroInt64 Int64 0
+storage module immutable oneInt64 Int64 1
+memory stringByteLength mutable cursor Int64 0
 label strlenLoop
 call loadCall pointer.loadByte
-argument loadCall buffer COpaqueMemoryAddress inputText
-argument loadCall offset CByteCount cursor
+argument loadCall buffer OpaquePointer inputText
+argument loadCall offset ByteCount cursor
 run loadCall
-bind value byteValue I8 loadCall
-call isNullCall math.equalI64
-argument isNullCall left I64 byteValue
-argument isNullCall right I64 zeroI64
+bind value byteValue Int8 loadCall
+call isNullCall math.equalInt64
+argument isNullCall left Int64 byteValue
+argument isNullCall right Int64 zeroInt64
 run isNullCall
 bind value isNull Bool isNullCall
 branch if condition isNull target strlenDone
-call incCall math.addI64
-argument incCall left I64 cursor
-argument incCall right I64 oneI64
+call incCall math.addInt64
+argument incCall left Int64 cursor
+argument incCall right Int64 oneInt64
 run incCall
-bind value nextCursor I64 incCall
+bind value nextCursor Int64 incCall
 set memory cursor nextCursor
 jump target strlenLoop
 label strlenDone
@@ -108,9 +108,9 @@ return value cursor
 
 # ---- compareCString(a, b) -> 0 if equal, signed diff otherwise ----
 operation compareCString
-input operation compareCString leftValue CNullTerminatedByteString
-input operation compareCString rightValue CNullTerminatedByteString
-output operation compareCString CSignedInt32
+input operation compareCString leftValue String
+input operation compareCString rightValue String
+output operation compareCString Int32
 useCapability compareCString memoryBufferReadCapability
 effect compareCString read memory.buffer
 memory compareCString heap no
@@ -120,55 +120,55 @@ purpose operation compareCString "Pure-SemanticScript compareCString: returns 0 
 invariant operation compareCString "Walks both strings byte-by-byte; returns at the first differing byte or at the first NUL on either side."
 
 label startCompareCString
-storage module immutable zeroI64a I64 0
-storage module immutable oneI64a I64 1
-memory compareCString mutable idx I64 0
+storage module immutable zeroInt64a Int64 0
+storage module immutable oneInt64a Int64 1
+memory compareCString mutable idx Int64 0
 label strcmpLoop
 call loadACall pointer.loadByte
-argument loadACall buffer COpaqueMemoryAddress leftValue
-argument loadACall offset CByteCount idx
+argument loadACall buffer OpaquePointer leftValue
+argument loadACall offset ByteCount idx
 run loadACall
-bind value aByte I8 loadACall
+bind value aByte Int8 loadACall
 call loadBCall pointer.loadByte
-argument loadBCall buffer COpaqueMemoryAddress rightValue
-argument loadBCall offset CByteCount idx
+argument loadBCall buffer OpaquePointer rightValue
+argument loadBCall offset ByteCount idx
 run loadBCall
-bind value bByte I8 loadBCall
-call diffCall math.subtractI64
-argument diffCall left I64 aByte
-argument diffCall right I64 bByte
+bind value bByte Int8 loadBCall
+call diffCall math.subtractInt64
+argument diffCall left Int64 aByte
+argument diffCall right Int64 bByte
 run diffCall
-bind value diff I64 diffCall
-call diffNonzeroCall math.notEqualI64
-argument diffNonzeroCall left I64 diff
-argument diffNonzeroCall right I64 zeroI64a
+bind value diff Int64 diffCall
+call diffNonzeroCall math.notEqualInt64
+argument diffNonzeroCall left Int64 diff
+argument diffNonzeroCall right Int64 zeroInt64a
 run diffNonzeroCall
 bind value diffNonzero Bool diffNonzeroCall
 branch if condition diffNonzero target strcmpReturnDiff
-call atEndCall math.equalI64
-argument atEndCall left I64 aByte
-argument atEndCall right I64 zeroI64a
+call atEndCall math.equalInt64
+argument atEndCall left Int64 aByte
+argument atEndCall right Int64 zeroInt64a
 run atEndCall
 bind value atEnd Bool atEndCall
 branch if condition atEnd target strcmpReturnEqual
-call incIdxCall math.addI64
-argument incIdxCall left I64 idx
-argument incIdxCall right I64 oneI64a
+call incIdxCall math.addInt64
+argument incIdxCall left Int64 idx
+argument incIdxCall right Int64 oneInt64a
 run incIdxCall
-bind value nextIdx I64 incIdxCall
+bind value nextIdx Int64 incIdxCall
 set memory idx nextIdx
 jump target strcmpLoop
 label strcmpReturnDiff
 return value diff
 label strcmpReturnEqual
-return value zeroI64a
+return value zeroInt64a
 
 # ---- compareCStringPrefixBytes(a, b, n) -> like compareCString but max n bytes ----
 operation compareCStringPrefixBytes
-input operation compareCStringPrefixBytes leftValue CNullTerminatedByteString
-input operation compareCStringPrefixBytes rightValue CNullTerminatedByteString
-input operation compareCStringPrefixBytes maxByteCount CByteCount
-output operation compareCStringPrefixBytes CSignedInt32
+input operation compareCStringPrefixBytes leftValue String
+input operation compareCStringPrefixBytes rightValue String
+input operation compareCStringPrefixBytes maxByteCount ByteCount
+output operation compareCStringPrefixBytes Int32
 useCapability compareCStringPrefixBytes memoryBufferReadCapability
 effect compareCStringPrefixBytes read memory.buffer
 memory compareCStringPrefixBytes heap no
@@ -178,60 +178,60 @@ purpose operation compareCStringPrefixBytes "Pure-SemanticScript compareCStringP
 invariant operation compareCStringPrefixBytes "At most maxByteCount bytes inspected; equality on the prefix yields 0 even if the full strings differ beyond."
 
 label startCompareCStringPrefixBytes
-storage module immutable zeroI64b I64 0
-storage module immutable oneI64b I64 1
-memory compareCStringPrefixBytes mutable nidx I64 0
+storage module immutable zeroInt64b Int64 0
+storage module immutable oneInt64b Int64 1
+memory compareCStringPrefixBytes mutable nidx Int64 0
 label strncmpLoop
-call nLimitCall math.greaterThanOrEqualI64
-argument nLimitCall left I64 nidx
-argument nLimitCall right I64 maxByteCount
+call nLimitCall math.greaterThanOrEqualInt64
+argument nLimitCall left Int64 nidx
+argument nLimitCall right Int64 maxByteCount
 run nLimitCall
 bind value nReached Bool nLimitCall
 branch if condition nReached target strncmpReturnEqual
 call loadAnCall pointer.loadByte
-argument loadAnCall buffer COpaqueMemoryAddress leftValue
-argument loadAnCall offset CByteCount nidx
+argument loadAnCall buffer OpaquePointer leftValue
+argument loadAnCall offset ByteCount nidx
 run loadAnCall
-bind value anByte I8 loadAnCall
+bind value anByte Int8 loadAnCall
 call loadBnCall pointer.loadByte
-argument loadBnCall buffer COpaqueMemoryAddress rightValue
-argument loadBnCall offset CByteCount nidx
+argument loadBnCall buffer OpaquePointer rightValue
+argument loadBnCall offset ByteCount nidx
 run loadBnCall
-bind value bnByte I8 loadBnCall
-call ndiffCall math.subtractI64
-argument ndiffCall left I64 anByte
-argument ndiffCall right I64 bnByte
+bind value bnByte Int8 loadBnCall
+call ndiffCall math.subtractInt64
+argument ndiffCall left Int64 anByte
+argument ndiffCall right Int64 bnByte
 run ndiffCall
-bind value ndiff I64 ndiffCall
-call ndiffNzCall math.notEqualI64
-argument ndiffNzCall left I64 ndiff
-argument ndiffNzCall right I64 zeroI64b
+bind value ndiff Int64 ndiffCall
+call ndiffNzCall math.notEqualInt64
+argument ndiffNzCall left Int64 ndiff
+argument ndiffNzCall right Int64 zeroInt64b
 run ndiffNzCall
 bind value ndiffNz Bool ndiffNzCall
 branch if condition ndiffNz target strncmpReturnDiff
-call nEndCall math.equalI64
-argument nEndCall left I64 anByte
-argument nEndCall right I64 zeroI64b
+call nEndCall math.equalInt64
+argument nEndCall left Int64 anByte
+argument nEndCall right Int64 zeroInt64b
 run nEndCall
 bind value nEnd Bool nEndCall
 branch if condition nEnd target strncmpReturnEqual
-call nIncCall math.addI64
-argument nIncCall left I64 nidx
-argument nIncCall right I64 oneI64b
+call nIncCall math.addInt64
+argument nIncCall left Int64 nidx
+argument nIncCall right Int64 oneInt64b
 run nIncCall
-bind value nNext I64 nIncCall
+bind value nNext Int64 nIncCall
 set memory nidx nNext
 jump target strncmpLoop
 label strncmpReturnDiff
 return value ndiff
 label strncmpReturnEqual
-return value zeroI64b
+return value zeroInt64b
 
 # ---- findFirstCharacterInCString(s, c) -> offset of first c, -1 if absent ----
 operation findFirstCharacterInCString
-input operation findFirstCharacterInCString inputText CNullTerminatedByteString
-input operation findFirstCharacterInCString characterCode CSignedInt32
-output operation findFirstCharacterInCString CSignedInt64
+input operation findFirstCharacterInCString inputText String
+input operation findFirstCharacterInCString characterCode Int32
+output operation findFirstCharacterInCString Int64
 useCapability findFirstCharacterInCString memoryBufferReadCapability
 effect findFirstCharacterInCString read memory.buffer
 memory findFirstCharacterInCString heap no
@@ -241,45 +241,45 @@ purpose operation findFirstCharacterInCString "Pure-SemanticScript findFirstChar
 invariant operation findFirstCharacterInCString "Walks forward from offset 0; returns the first offset where the byte equals targetCharacter, or -1."
 
 label startFindFirstCharacterInCString
-storage module immutable zeroI64c I64 0
-storage module immutable oneI64c I64 1
-storage module immutable negOneI64c I64 -1
-memory findFirstCharacterInCString mutable chIdx I64 0
+storage module immutable zeroInt64c Int64 0
+storage module immutable oneInt64c Int64 1
+storage module immutable negOneInt64c Int64 -1
+memory findFirstCharacterInCString mutable chIdx Int64 0
 label strchrLoop
 call chLoadCall pointer.loadByte
-argument chLoadCall buffer COpaqueMemoryAddress inputText
-argument chLoadCall offset CByteCount chIdx
+argument chLoadCall buffer OpaquePointer inputText
+argument chLoadCall offset ByteCount chIdx
 run chLoadCall
-bind value chByte I8 chLoadCall
-call chMatchCall math.equalI64
-argument chMatchCall left I64 chByte
-argument chMatchCall right I64 characterCode
+bind value chByte Int8 chLoadCall
+call chMatchCall math.equalInt64
+argument chMatchCall left Int64 chByte
+argument chMatchCall right Int64 characterCode
 run chMatchCall
 bind value chMatch Bool chMatchCall
 branch if condition chMatch target strchrFound
-call chEndCall math.equalI64
-argument chEndCall left I64 chByte
-argument chEndCall right I64 zeroI64c
+call chEndCall math.equalInt64
+argument chEndCall left Int64 chByte
+argument chEndCall right Int64 zeroInt64c
 run chEndCall
 bind value chAtEnd Bool chEndCall
 branch if condition chAtEnd target strchrNotFound
-call chIncCall math.addI64
-argument chIncCall left I64 chIdx
-argument chIncCall right I64 oneI64c
+call chIncCall math.addInt64
+argument chIncCall left Int64 chIdx
+argument chIncCall right Int64 oneInt64c
 run chIncCall
-bind value chNext I64 chIncCall
+bind value chNext Int64 chIncCall
 set memory chIdx chNext
 jump target strchrLoop
 label strchrFound
 return value chIdx
 label strchrNotFound
-return value negOneI64c
+return value negOneInt64c
 
 # ---- findLastCharacterInCString(s, c) -> offset of LAST c, -1 if absent ----
 operation findLastCharacterInCString
-input operation findLastCharacterInCString inputText CNullTerminatedByteString
-input operation findLastCharacterInCString characterCode CSignedInt32
-output operation findLastCharacterInCString CSignedInt64
+input operation findLastCharacterInCString inputText String
+input operation findLastCharacterInCString characterCode Int32
+output operation findLastCharacterInCString Int64
 useCapability findLastCharacterInCString memoryBufferReadCapability
 effect findLastCharacterInCString read memory.buffer
 memory findLastCharacterInCString heap no
@@ -289,19 +289,19 @@ purpose operation findLastCharacterInCString "Pure-SemanticScript findLastCharac
 invariant operation findLastCharacterInCString "Walks forward and remembers the most recent match; returns the last offset where the byte equals targetCharacter, or -1."
 
 label startFindLastCharacterInCString
-storage module immutable zeroI64d I64 0
-storage module immutable oneI64d I64 1
-memory findLastCharacterInCString mutable rcIdx I64 0
-memory findLastCharacterInCString mutable rcLastSeen I64 -1
+storage module immutable zeroInt64d Int64 0
+storage module immutable oneInt64d Int64 1
+memory findLastCharacterInCString mutable rcIdx Int64 0
+memory findLastCharacterInCString mutable rcLastSeen Int64 -1
 label strrchrLoop
 call rcLoadCall pointer.loadByte
-argument rcLoadCall buffer COpaqueMemoryAddress inputText
-argument rcLoadCall offset CByteCount rcIdx
+argument rcLoadCall buffer OpaquePointer inputText
+argument rcLoadCall offset ByteCount rcIdx
 run rcLoadCall
-bind value rcByte I8 rcLoadCall
-call rcMatchCall math.equalI64
-argument rcMatchCall left I64 rcByte
-argument rcMatchCall right I64 characterCode
+bind value rcByte Int8 rcLoadCall
+call rcMatchCall math.equalInt64
+argument rcMatchCall left Int64 rcByte
+argument rcMatchCall right Int64 characterCode
 run rcMatchCall
 bind value rcMatch Bool rcMatchCall
 branch if condition rcMatch target strrchrRecord
@@ -310,17 +310,17 @@ label strrchrRecord
 set memory rcLastSeen rcIdx
 jump target strrchrSkipRecord
 label strrchrSkipRecord
-call rcEndCall math.equalI64
-argument rcEndCall left I64 rcByte
-argument rcEndCall right I64 zeroI64d
+call rcEndCall math.equalInt64
+argument rcEndCall left Int64 rcByte
+argument rcEndCall right Int64 zeroInt64d
 run rcEndCall
 bind value rcAtEnd Bool rcEndCall
 branch if condition rcAtEnd target strrchrDone
-call rcIncCall math.addI64
-argument rcIncCall left I64 rcIdx
-argument rcIncCall right I64 oneI64d
+call rcIncCall math.addInt64
+argument rcIncCall left Int64 rcIdx
+argument rcIncCall right Int64 oneInt64d
 run rcIncCall
-bind value rcNext I64 rcIncCall
+bind value rcNext Int64 rcIncCall
 set memory rcIdx rcNext
 jump target strrchrLoop
 label strrchrDone
@@ -328,9 +328,9 @@ return value rcLastSeen
 
 # ---- findSubstringInCString(haystack, needle) -> offset of first needle occurrence ----
 operation findSubstringInCString
-input operation findSubstringInCString searchText CNullTerminatedByteString
-input operation findSubstringInCString targetSubstring CNullTerminatedByteString
-output operation findSubstringInCString CSignedInt64
+input operation findSubstringInCString searchText String
+input operation findSubstringInCString targetSubstring String
+output operation findSubstringInCString Int64
 useCapability findSubstringInCString memoryBufferReadCapability
 effect findSubstringInCString read memory.buffer
 memory findSubstringInCString heap no
@@ -340,92 +340,92 @@ purpose operation findSubstringInCString "Pure-SemanticScript naive substring se
 invariant operation findSubstringInCString "For each starting offset in haystack, walks needle forward; returns the first start where every needle byte matches."
 
 label startFindSubstringInCString
-storage module immutable zeroI64e I64 0
-storage module immutable oneI64e I64 1
-storage module immutable negOneI64e I64 -1
-memory findSubstringInCString mutable hStart I64 0
+storage module immutable zeroInt64e Int64 0
+storage module immutable oneInt64e Int64 1
+storage module immutable negOneInt64e Int64 -1
+memory findSubstringInCString mutable hStart Int64 0
 
 label strstrOuter
 call peekNeedleCall pointer.loadByte
-argument peekNeedleCall buffer COpaqueMemoryAddress targetSubstring
-argument peekNeedleCall offset CByteCount zeroI64e
+argument peekNeedleCall buffer OpaquePointer targetSubstring
+argument peekNeedleCall offset ByteCount zeroInt64e
 run peekNeedleCall
-bind value needleHead I8 peekNeedleCall
-call needleEmptyCall math.equalI64
-argument needleEmptyCall left I64 needleHead
-argument needleEmptyCall right I64 zeroI64e
+bind value needleHead Int8 peekNeedleCall
+call needleEmptyCall math.equalInt64
+argument needleEmptyCall left Int64 needleHead
+argument needleEmptyCall right Int64 zeroInt64e
 run needleEmptyCall
 bind value needleEmpty Bool needleEmptyCall
 branch if condition needleEmpty target strstrFound
 
 call peekHaystackCall pointer.loadByte
-argument peekHaystackCall buffer COpaqueMemoryAddress searchText
-argument peekHaystackCall offset CByteCount hStart
+argument peekHaystackCall buffer OpaquePointer searchText
+argument peekHaystackCall offset ByteCount hStart
 run peekHaystackCall
-bind value haystackHere I8 peekHaystackCall
-call haystackEndCall math.equalI64
-argument haystackEndCall left I64 haystackHere
-argument haystackEndCall right I64 zeroI64e
+bind value haystackHere Int8 peekHaystackCall
+call haystackEndCall math.equalInt64
+argument haystackEndCall left Int64 haystackHere
+argument haystackEndCall right Int64 zeroInt64e
 run haystackEndCall
 bind value haystackAtEnd Bool haystackEndCall
 branch if condition haystackAtEnd target strstrNotFound
 
-memory findSubstringInCString mutable matchOffset I64 0
+memory findSubstringInCString mutable matchOffset Int64 0
 label strstrInner
 call innerNeedleCall pointer.loadByte
-argument innerNeedleCall buffer COpaqueMemoryAddress targetSubstring
-argument innerNeedleCall offset CByteCount matchOffset
+argument innerNeedleCall buffer OpaquePointer targetSubstring
+argument innerNeedleCall offset ByteCount matchOffset
 run innerNeedleCall
-bind value innerNeedleByte I8 innerNeedleCall
-call innerNeedleEndCall math.equalI64
-argument innerNeedleEndCall left I64 innerNeedleByte
-argument innerNeedleEndCall right I64 zeroI64e
+bind value innerNeedleByte Int8 innerNeedleCall
+call innerNeedleEndCall math.equalInt64
+argument innerNeedleEndCall left Int64 innerNeedleByte
+argument innerNeedleEndCall right Int64 zeroInt64e
 run innerNeedleEndCall
 bind value innerNeedleEnd Bool innerNeedleEndCall
 branch if condition innerNeedleEnd target strstrFound
 
-call innerHaystackOffsetCall math.addI64
-argument innerHaystackOffsetCall left I64 hStart
-argument innerHaystackOffsetCall right I64 matchOffset
+call innerHaystackOffsetCall math.addInt64
+argument innerHaystackOffsetCall left Int64 hStart
+argument innerHaystackOffsetCall right Int64 matchOffset
 run innerHaystackOffsetCall
-bind value innerHaystackOffset I64 innerHaystackOffsetCall
+bind value innerHaystackOffset Int64 innerHaystackOffsetCall
 call innerHaystackLoadCall pointer.loadByte
-argument innerHaystackLoadCall buffer COpaqueMemoryAddress searchText
-argument innerHaystackLoadCall offset CByteCount innerHaystackOffset
+argument innerHaystackLoadCall buffer OpaquePointer searchText
+argument innerHaystackLoadCall offset ByteCount innerHaystackOffset
 run innerHaystackLoadCall
-bind value innerHaystackByte I8 innerHaystackLoadCall
+bind value innerHaystackByte Int8 innerHaystackLoadCall
 
-call innerHEndCall math.equalI64
-argument innerHEndCall left I64 innerHaystackByte
-argument innerHEndCall right I64 zeroI64e
+call innerHEndCall math.equalInt64
+argument innerHEndCall left Int64 innerHaystackByte
+argument innerHEndCall right Int64 zeroInt64e
 run innerHEndCall
 bind value innerHAtEnd Bool innerHEndCall
 branch if condition innerHAtEnd target strstrAdvance
 
-call innerEqCall math.equalI64
-argument innerEqCall left I64 innerNeedleByte
-argument innerEqCall right I64 innerHaystackByte
+call innerEqCall math.equalInt64
+argument innerEqCall left Int64 innerNeedleByte
+argument innerEqCall right Int64 innerHaystackByte
 run innerEqCall
 bind value innerEq Bool innerEqCall
 branch if condition innerEq target strstrInnerAdvance
 branch else target strstrAdvance
 
 label strstrInnerAdvance
-call innerIncCall math.addI64
-argument innerIncCall left I64 matchOffset
-argument innerIncCall right I64 oneI64e
+call innerIncCall math.addInt64
+argument innerIncCall left Int64 matchOffset
+argument innerIncCall right Int64 oneInt64e
 run innerIncCall
-bind value matchNext I64 innerIncCall
+bind value matchNext Int64 innerIncCall
 set memory matchOffset matchNext
 jump target strstrInner
 
 label strstrAdvance
-set memory matchOffset zeroI64e
-call outerIncCall math.addI64
-argument outerIncCall left I64 hStart
-argument outerIncCall right I64 oneI64e
+set memory matchOffset zeroInt64e
+call outerIncCall math.addInt64
+argument outerIncCall left Int64 hStart
+argument outerIncCall right Int64 oneInt64e
 run outerIncCall
-bind value hStartNext I64 outerIncCall
+bind value hStartNext Int64 outerIncCall
 set memory hStart hStartNext
 jump target strstrOuter
 
@@ -433,13 +433,13 @@ label strstrFound
 return value hStart
 
 label strstrNotFound
-return value negOneI64e
+return value negOneInt64e
 
 # ---- countInitialCStringBytesInAcceptSet(s, accept) -> length of leading run of bytes in accept ----
 operation countInitialCStringBytesInAcceptSet
-input operation countInitialCStringBytesInAcceptSet inputText CNullTerminatedByteString
-input operation countInitialCStringBytesInAcceptSet acceptedCharacters CNullTerminatedByteString
-output operation countInitialCStringBytesInAcceptSet CByteCount
+input operation countInitialCStringBytesInAcceptSet inputText String
+input operation countInitialCStringBytesInAcceptSet acceptedCharacters String
+output operation countInitialCStringBytesInAcceptSet ByteCount
 useCapability countInitialCStringBytesInAcceptSet memoryBufferReadCapability
 effect countInitialCStringBytesInAcceptSet read memory.buffer
 memory countInitialCStringBytesInAcceptSet heap no
@@ -449,59 +449,59 @@ purpose operation countInitialCStringBytesInAcceptSet "Length of the longest pre
 invariant operation countInitialCStringBytesInAcceptSet "Walks forward while the current byte appears in acceptSet; stops at the first byte outside the set or NUL."
 
 label startCountInitialCStringBytesInAcceptSet
-storage module immutable zeroI64f I64 0
-storage module immutable oneI64f I64 1
-memory countInitialCStringBytesInAcceptSet mutable sIdx I64 0
+storage module immutable zeroInt64f Int64 0
+storage module immutable oneInt64f Int64 1
+memory countInitialCStringBytesInAcceptSet mutable sIdx Int64 0
 
 label spnSLoop
 call spnLoadSCall pointer.loadByte
-argument spnLoadSCall buffer COpaqueMemoryAddress inputText
-argument spnLoadSCall offset CByteCount sIdx
+argument spnLoadSCall buffer OpaquePointer inputText
+argument spnLoadSCall offset ByteCount sIdx
 run spnLoadSCall
-bind value spnSByte I8 spnLoadSCall
-call spnSEndCall math.equalI64
-argument spnSEndCall left I64 spnSByte
-argument spnSEndCall right I64 zeroI64f
+bind value spnSByte Int8 spnLoadSCall
+call spnSEndCall math.equalInt64
+argument spnSEndCall left Int64 spnSByte
+argument spnSEndCall right Int64 zeroInt64f
 run spnSEndCall
 bind value spnSAtEnd Bool spnSEndCall
 branch if condition spnSAtEnd target spnDone
 
-memory countInitialCStringBytesInAcceptSet mutable aIdx I64 0
+memory countInitialCStringBytesInAcceptSet mutable aIdx Int64 0
 label spnALoop
 call spnLoadACall pointer.loadByte
-argument spnLoadACall buffer COpaqueMemoryAddress acceptedCharacters
-argument spnLoadACall offset CByteCount aIdx
+argument spnLoadACall buffer OpaquePointer acceptedCharacters
+argument spnLoadACall offset ByteCount aIdx
 run spnLoadACall
-bind value spnAByte I8 spnLoadACall
-call spnAEndCall math.equalI64
-argument spnAEndCall left I64 spnAByte
-argument spnAEndCall right I64 zeroI64f
+bind value spnAByte Int8 spnLoadACall
+call spnAEndCall math.equalInt64
+argument spnAEndCall left Int64 spnAByte
+argument spnAEndCall right Int64 zeroInt64f
 run spnAEndCall
 bind value spnAAtEnd Bool spnAEndCall
 branch if condition spnAAtEnd target spnDone
 
-call spnMatchCall math.equalI64
-argument spnMatchCall left I64 spnAByte
-argument spnMatchCall right I64 spnSByte
+call spnMatchCall math.equalInt64
+argument spnMatchCall left Int64 spnAByte
+argument spnMatchCall right Int64 spnSByte
 run spnMatchCall
 bind value spnMatch Bool spnMatchCall
 branch if condition spnMatch target spnAdvanceS
 
-call spnAIncCall math.addI64
-argument spnAIncCall left I64 aIdx
-argument spnAIncCall right I64 oneI64f
+call spnAIncCall math.addInt64
+argument spnAIncCall left Int64 aIdx
+argument spnAIncCall right Int64 oneInt64f
 run spnAIncCall
-bind value spnANext I64 spnAIncCall
+bind value spnANext Int64 spnAIncCall
 set memory aIdx spnANext
 jump target spnALoop
 
 label spnAdvanceS
-set memory aIdx zeroI64f
-call spnSIncCall math.addI64
-argument spnSIncCall left I64 sIdx
-argument spnSIncCall right I64 oneI64f
+set memory aIdx zeroInt64f
+call spnSIncCall math.addInt64
+argument spnSIncCall left Int64 sIdx
+argument spnSIncCall right Int64 oneInt64f
 run spnSIncCall
-bind value spnSNext I64 spnSIncCall
+bind value spnSNext Int64 spnSIncCall
 set memory sIdx spnSNext
 jump target spnSLoop
 
@@ -510,9 +510,9 @@ return value sIdx
 
 # ---- copyCStringToDestinationBuffer(dest, src) -> bytes copied including NUL ----
 operation copyCStringToDestinationBuffer
-input operation copyCStringToDestinationBuffer destinationBuffer COpaqueMemoryAddress
-input operation copyCStringToDestinationBuffer sourceBuffer CNullTerminatedByteString
-output operation copyCStringToDestinationBuffer CByteCount
+input operation copyCStringToDestinationBuffer destinationBuffer OpaquePointer
+input operation copyCStringToDestinationBuffer sourceBuffer String
+output operation copyCStringToDestinationBuffer ByteCount
 useCapability copyCStringToDestinationBuffer memoryBufferReadCapability
 effect copyCStringToDestinationBuffer read memory.buffer
 useCapability copyCStringToDestinationBuffer memoryBufferWriteCapability
@@ -524,52 +524,52 @@ purpose operation copyCStringToDestinationBuffer "Pure-SemanticScript strcpy: co
 invariant operation copyCStringToDestinationBuffer "Copies bytes (and the NUL terminator) from source to destination; returns the byte count not including the terminator."
 
 label startCopyCStringToDestinationBuffer
-storage module immutable zeroI64g I64 0
-storage module immutable oneI64g I64 1
-memory copyCStringToDestinationBuffer mutable cpIdx I64 0
+storage module immutable zeroInt64g Int64 0
+storage module immutable oneInt64g Int64 1
+memory copyCStringToDestinationBuffer mutable cpIdx Int64 0
 label cpLoop
 call cpLoadCall pointer.loadByte
-argument cpLoadCall buffer COpaqueMemoryAddress sourceBuffer
-argument cpLoadCall offset CByteCount cpIdx
+argument cpLoadCall buffer OpaquePointer sourceBuffer
+argument cpLoadCall offset ByteCount cpIdx
 run cpLoadCall
-bind value cpByte I8 cpLoadCall
+bind value cpByte Int8 cpLoadCall
 
 call cpStoreCall pointer.storeByte
-argument cpStoreCall buffer COpaqueMemoryAddress destinationBuffer
-argument cpStoreCall offset CByteCount cpIdx
-argument cpStoreCall value CSignedInt64 cpByte
+argument cpStoreCall buffer OpaquePointer destinationBuffer
+argument cpStoreCall offset ByteCount cpIdx
+argument cpStoreCall value Int64 cpByte
 run cpStoreCall
 
-call cpEndCall math.equalI64
-argument cpEndCall left I64 cpByte
-argument cpEndCall right I64 zeroI64g
+call cpEndCall math.equalInt64
+argument cpEndCall left Int64 cpByte
+argument cpEndCall right Int64 zeroInt64g
 run cpEndCall
 bind value cpAtEnd Bool cpEndCall
 branch if condition cpAtEnd target cpDone
 
-call cpIncCall math.addI64
-argument cpIncCall left I64 cpIdx
-argument cpIncCall right I64 oneI64g
+call cpIncCall math.addInt64
+argument cpIncCall left Int64 cpIdx
+argument cpIncCall right Int64 oneInt64g
 run cpIncCall
-bind value cpNext I64 cpIncCall
+bind value cpNext Int64 cpIncCall
 set memory cpIdx cpNext
 jump target cpLoop
 
 label cpDone
-call cpFinalCall math.addI64
-argument cpFinalCall left I64 cpIdx
-argument cpFinalCall right I64 oneI64g
+call cpFinalCall math.addInt64
+argument cpFinalCall left Int64 cpIdx
+argument cpFinalCall right Int64 oneInt64g
 run cpFinalCall
-bind value cpFinal CByteCount cpFinalCall
+bind value cpFinal ByteCount cpFinalCall
 return value cpFinal
 
 # ---- appendCStringToDestinationBuffer(dest, src) -> total bytes in dest after the append ----
 # Append src to the end of dest's existing NUL-terminated content.
 # Caller must ensure dest has enough room.
 operation appendCStringToDestinationBuffer
-input operation appendCStringToDestinationBuffer destinationBuffer COpaqueMemoryAddress
-input operation appendCStringToDestinationBuffer sourceBuffer CNullTerminatedByteString
-output operation appendCStringToDestinationBuffer CByteCount
+input operation appendCStringToDestinationBuffer destinationBuffer OpaquePointer
+input operation appendCStringToDestinationBuffer sourceBuffer String
+output operation appendCStringToDestinationBuffer ByteCount
 useCapability appendCStringToDestinationBuffer memoryBufferReadCapability
 effect appendCStringToDestinationBuffer read memory.buffer
 useCapability appendCStringToDestinationBuffer memoryBufferWriteCapability
@@ -581,75 +581,75 @@ purpose operation appendCStringToDestinationBuffer "Pure-SemanticScript appendCS
 invariant operation appendCStringToDestinationBuffer "First walks destination to its NUL, then copies source bytes plus a new NUL at that offset; returns the destination byte count after the append."
 
 label startAppendCStringToDestinationBuffer
-storage module immutable zeroCat I64 0
-storage module immutable oneCat I64 1
+storage module immutable zeroCat Int64 0
+storage module immutable oneCat Int64 1
 
 # Find end of dest.
-memory appendCStringToDestinationBuffer mutable destEnd I64 0
+memory appendCStringToDestinationBuffer mutable destEnd Int64 0
 label catFindEnd
 call catLoadCall pointer.loadByte
-argument catLoadCall buffer COpaqueMemoryAddress destinationBuffer
-argument catLoadCall offset CByteCount destEnd
+argument catLoadCall buffer OpaquePointer destinationBuffer
+argument catLoadCall offset ByteCount destEnd
 run catLoadCall
-bind value catByte I8 catLoadCall
-call catEndCall math.equalI64
-argument catEndCall left I64 catByte
-argument catEndCall right I64 zeroCat
+bind value catByte Int8 catLoadCall
+call catEndCall math.equalInt64
+argument catEndCall left Int64 catByte
+argument catEndCall right Int64 zeroCat
 run catEndCall
 bind value catAtEnd Bool catEndCall
 branch if condition catAtEnd target catEndFound
-call catIncCall math.addI64
-argument catIncCall left I64 destEnd
-argument catIncCall right I64 oneCat
+call catIncCall math.addInt64
+argument catIncCall left Int64 destEnd
+argument catIncCall right Int64 oneCat
 run catIncCall
-bind value catNext I64 catIncCall
+bind value catNext Int64 catIncCall
 set memory destEnd catNext
 jump target catFindEnd
 
 label catEndFound
 
 # Copy src bytes (including NUL) starting at offset destEnd in dest.
-memory appendCStringToDestinationBuffer mutable catSrcIdx I64 0
+memory appendCStringToDestinationBuffer mutable catSrcIdx Int64 0
 label catCopyLoop
 call catSrcLoadCall pointer.loadByte
-argument catSrcLoadCall buffer COpaqueMemoryAddress sourceBuffer
-argument catSrcLoadCall offset CByteCount catSrcIdx
+argument catSrcLoadCall buffer OpaquePointer sourceBuffer
+argument catSrcLoadCall offset ByteCount catSrcIdx
 run catSrcLoadCall
-bind value catSrcByte I8 catSrcLoadCall
+bind value catSrcByte Int8 catSrcLoadCall
 
-call catWriteOffsetCall math.addI64
-argument catWriteOffsetCall left I64 destEnd
-argument catWriteOffsetCall right I64 catSrcIdx
+call catWriteOffsetCall math.addInt64
+argument catWriteOffsetCall left Int64 destEnd
+argument catWriteOffsetCall right Int64 catSrcIdx
 run catWriteOffsetCall
-bind value catWriteOffset I64 catWriteOffsetCall
+bind value catWriteOffset Int64 catWriteOffsetCall
 
 call catStoreCall pointer.storeByte
-argument catStoreCall buffer COpaqueMemoryAddress destinationBuffer
-argument catStoreCall offset CByteCount catWriteOffset
-argument catStoreCall value CSignedInt64 catSrcByte
+argument catStoreCall buffer OpaquePointer destinationBuffer
+argument catStoreCall offset ByteCount catWriteOffset
+argument catStoreCall value Int64 catSrcByte
 run catStoreCall
 
-call catSrcEndCall math.equalI64
-argument catSrcEndCall left I64 catSrcByte
-argument catSrcEndCall right I64 zeroCat
+call catSrcEndCall math.equalInt64
+argument catSrcEndCall left Int64 catSrcByte
+argument catSrcEndCall right Int64 zeroCat
 run catSrcEndCall
 bind value catSrcAtEnd Bool catSrcEndCall
 branch if condition catSrcAtEnd target catDone
 
-call catSrcIncCall math.addI64
-argument catSrcIncCall left I64 catSrcIdx
-argument catSrcIncCall right I64 oneCat
+call catSrcIncCall math.addInt64
+argument catSrcIncCall left Int64 catSrcIdx
+argument catSrcIncCall right Int64 oneCat
 run catSrcIncCall
-bind value catSrcNext I64 catSrcIncCall
+bind value catSrcNext Int64 catSrcIncCall
 set memory catSrcIdx catSrcNext
 jump target catCopyLoop
 
 label catDone
-call catTotalCall math.addI64
-argument catTotalCall left I64 destEnd
-argument catTotalCall right I64 catSrcIdx
+call catTotalCall math.addInt64
+argument catTotalCall left Int64 destEnd
+argument catTotalCall right Int64 catSrcIdx
 run catTotalCall
-bind value catTotal CByteCount catTotalCall
+bind value catTotal ByteCount catTotalCall
 return value catTotal
 
 # ---- copyCStringPrefixToDestinationBuffer(dest, src, n) -> bytes written ----
@@ -657,10 +657,10 @@ return value catTotal
 # with NUL up to n bytes (matching C copyCStringPrefixToDestinationBuffer semantics). Does NOT
 # guarantee NUL-termination if stringByteLength(src) >= n.
 operation copyCStringPrefixToDestinationBuffer
-input operation copyCStringPrefixToDestinationBuffer destinationBuffer COpaqueMemoryAddress
-input operation copyCStringPrefixToDestinationBuffer sourceBuffer CNullTerminatedByteString
-input operation copyCStringPrefixToDestinationBuffer maxByteCount CByteCount
-output operation copyCStringPrefixToDestinationBuffer CByteCount
+input operation copyCStringPrefixToDestinationBuffer destinationBuffer OpaquePointer
+input operation copyCStringPrefixToDestinationBuffer sourceBuffer String
+input operation copyCStringPrefixToDestinationBuffer maxByteCount ByteCount
+output operation copyCStringPrefixToDestinationBuffer ByteCount
 useCapability copyCStringPrefixToDestinationBuffer memoryBufferReadCapability
 effect copyCStringPrefixToDestinationBuffer read memory.buffer
 useCapability copyCStringPrefixToDestinationBuffer memoryBufferWriteCapability
@@ -672,42 +672,42 @@ purpose operation copyCStringPrefixToDestinationBuffer "Pure-SemanticScript copy
 invariant operation copyCStringPrefixToDestinationBuffer "Copies up to byteCount bytes from source; pads with NUL bytes if source is shorter; matches strncpy semantics."
 
 label startCopyCStringPrefixToDestinationBuffer
-storage module immutable zeroNcp I64 0
-storage module immutable oneNcp I64 1
-memory copyCStringPrefixToDestinationBuffer mutable ncpIdx I64 0
-memory copyCStringPrefixToDestinationBuffer mutable ncpReachedNul I64 0
+storage module immutable zeroNcp Int64 0
+storage module immutable oneNcp Int64 1
+memory copyCStringPrefixToDestinationBuffer mutable ncpIdx Int64 0
+memory copyCStringPrefixToDestinationBuffer mutable ncpReachedNul Int64 0
 label ncpLoop
-call ncpDoneCall math.greaterThanOrEqualI64
-argument ncpDoneCall left I64 ncpIdx
-argument ncpDoneCall right I64 maxByteCount
+call ncpDoneCall math.greaterThanOrEqualInt64
+argument ncpDoneCall left Int64 ncpIdx
+argument ncpDoneCall right Int64 maxByteCount
 run ncpDoneCall
 bind value ncpDone Bool ncpDoneCall
 branch if condition ncpDone target strncpyReturn
 
-call ncpReachedCheckCall math.equalI64
-argument ncpReachedCheckCall left I64 ncpReachedNul
-argument ncpReachedCheckCall right I64 oneNcp
+call ncpReachedCheckCall math.equalInt64
+argument ncpReachedCheckCall left Int64 ncpReachedNul
+argument ncpReachedCheckCall right Int64 oneNcp
 run ncpReachedCheckCall
 bind value ncpAlreadyAtEnd Bool ncpReachedCheckCall
 branch if condition ncpAlreadyAtEnd target ncpPadZero
 
 call ncpLoadCall pointer.loadByte
-argument ncpLoadCall buffer COpaqueMemoryAddress sourceBuffer
-argument ncpLoadCall offset CByteCount ncpIdx
+argument ncpLoadCall buffer OpaquePointer sourceBuffer
+argument ncpLoadCall offset ByteCount ncpIdx
 run ncpLoadCall
-bind value ncpByte I8 ncpLoadCall
+bind value ncpByte Int8 ncpLoadCall
 
-call ncpIsEndCall math.equalI64
-argument ncpIsEndCall left I64 ncpByte
-argument ncpIsEndCall right I64 zeroNcp
+call ncpIsEndCall math.equalInt64
+argument ncpIsEndCall left Int64 ncpByte
+argument ncpIsEndCall right Int64 zeroNcp
 run ncpIsEndCall
 bind value ncpIsEnd Bool ncpIsEndCall
 branch if condition ncpIsEnd target ncpEnterPadMode
 
 call ncpStoreCall pointer.storeByte
-argument ncpStoreCall buffer COpaqueMemoryAddress destinationBuffer
-argument ncpStoreCall offset CByteCount ncpIdx
-argument ncpStoreCall value CSignedInt64 ncpByte
+argument ncpStoreCall buffer OpaquePointer destinationBuffer
+argument ncpStoreCall offset ByteCount ncpIdx
+argument ncpStoreCall value Int64 ncpByte
 run ncpStoreCall
 jump target ncpAdvance
 
@@ -717,18 +717,18 @@ jump target ncpPadZero
 
 label ncpPadZero
 call ncpZeroStoreCall pointer.storeByte
-argument ncpZeroStoreCall buffer COpaqueMemoryAddress destinationBuffer
-argument ncpZeroStoreCall offset CByteCount ncpIdx
-argument ncpZeroStoreCall value CSignedInt64 zeroNcp
+argument ncpZeroStoreCall buffer OpaquePointer destinationBuffer
+argument ncpZeroStoreCall offset ByteCount ncpIdx
+argument ncpZeroStoreCall value Int64 zeroNcp
 run ncpZeroStoreCall
 jump target ncpAdvance
 
 label ncpAdvance
-call ncpIncCall math.addI64
-argument ncpIncCall left I64 ncpIdx
-argument ncpIncCall right I64 oneNcp
+call ncpIncCall math.addInt64
+argument ncpIncCall left Int64 ncpIdx
+argument ncpIncCall right Int64 oneNcp
 run ncpIncCall
-bind value ncpNext I64 ncpIncCall
+bind value ncpNext Int64 ncpIncCall
 set memory ncpIdx ncpNext
 jump target ncpLoop
 
@@ -736,9 +736,9 @@ label strncpyReturn
 return value maxByteCount
 
 operation countInitialCStringBytesNotInRejectSet
-input operation countInitialCStringBytesNotInRejectSet inputText CNullTerminatedByteString
-input operation countInitialCStringBytesNotInRejectSet rejectedCharacters CNullTerminatedByteString
-output operation countInitialCStringBytesNotInRejectSet CByteCount
+input operation countInitialCStringBytesNotInRejectSet inputText String
+input operation countInitialCStringBytesNotInRejectSet rejectedCharacters String
+output operation countInitialCStringBytesNotInRejectSet ByteCount
 useCapability countInitialCStringBytesNotInRejectSet memoryBufferReadCapability
 effect countInitialCStringBytesNotInRejectSet read memory.buffer
 memory countInitialCStringBytesNotInRejectSet heap no
@@ -748,59 +748,59 @@ purpose operation countInitialCStringBytesNotInRejectSet "Length of leading pref
 invariant operation countInitialCStringBytesNotInRejectSet "Walks forward while the current byte does NOT appear in rejectSet; stops at the first byte in the set or NUL."
 
 label startCountInitialCStringBytesNotInRejectSet
-storage module immutable zeroCs I64 0
-storage module immutable oneCs I64 1
-memory countInitialCStringBytesNotInRejectSet mutable csIdx I64 0
+storage module immutable zeroCs Int64 0
+storage module immutable oneCs Int64 1
+memory countInitialCStringBytesNotInRejectSet mutable csIdx Int64 0
 
 label cspnSLoop
 call cspnLoadSCall pointer.loadByte
-argument cspnLoadSCall buffer COpaqueMemoryAddress inputText
-argument cspnLoadSCall offset CByteCount csIdx
+argument cspnLoadSCall buffer OpaquePointer inputText
+argument cspnLoadSCall offset ByteCount csIdx
 run cspnLoadSCall
-bind value cspnSByte I8 cspnLoadSCall
-call cspnSEndCall math.equalI64
-argument cspnSEndCall left I64 cspnSByte
-argument cspnSEndCall right I64 zeroCs
+bind value cspnSByte Int8 cspnLoadSCall
+call cspnSEndCall math.equalInt64
+argument cspnSEndCall left Int64 cspnSByte
+argument cspnSEndCall right Int64 zeroCs
 run cspnSEndCall
 bind value cspnSAtEnd Bool cspnSEndCall
 branch if condition cspnSAtEnd target cspnDone
 
-memory countInitialCStringBytesNotInRejectSet mutable aIdxCs I64 0
+memory countInitialCStringBytesNotInRejectSet mutable aIdxCs Int64 0
 label cspnALoop
 call cspnLoadACall pointer.loadByte
-argument cspnLoadACall buffer COpaqueMemoryAddress rejectedCharacters
-argument cspnLoadACall offset CByteCount aIdxCs
+argument cspnLoadACall buffer OpaquePointer rejectedCharacters
+argument cspnLoadACall offset ByteCount aIdxCs
 run cspnLoadACall
-bind value cspnAByte I8 cspnLoadACall
-call cspnAEndCall math.equalI64
-argument cspnAEndCall left I64 cspnAByte
-argument cspnAEndCall right I64 zeroCs
+bind value cspnAByte Int8 cspnLoadACall
+call cspnAEndCall math.equalInt64
+argument cspnAEndCall left Int64 cspnAByte
+argument cspnAEndCall right Int64 zeroCs
 run cspnAEndCall
 bind value cspnAAtEnd Bool cspnAEndCall
 branch if condition cspnAAtEnd target cspnAdvanceS
 
-call cspnMatchCall math.equalI64
-argument cspnMatchCall left I64 cspnAByte
-argument cspnMatchCall right I64 cspnSByte
+call cspnMatchCall math.equalInt64
+argument cspnMatchCall left Int64 cspnAByte
+argument cspnMatchCall right Int64 cspnSByte
 run cspnMatchCall
 bind value cspnMatch Bool cspnMatchCall
 branch if condition cspnMatch target cspnDone
 
-call cspnAIncCall math.addI64
-argument cspnAIncCall left I64 aIdxCs
-argument cspnAIncCall right I64 oneCs
+call cspnAIncCall math.addInt64
+argument cspnAIncCall left Int64 aIdxCs
+argument cspnAIncCall right Int64 oneCs
 run cspnAIncCall
-bind value cspnANext I64 cspnAIncCall
+bind value cspnANext Int64 cspnAIncCall
 set memory aIdxCs cspnANext
 jump target cspnALoop
 
 label cspnAdvanceS
 set memory aIdxCs zeroCs
-call cspnSIncCall math.addI64
-argument cspnSIncCall left I64 csIdx
-argument cspnSIncCall right I64 oneCs
+call cspnSIncCall math.addInt64
+argument cspnSIncCall left Int64 csIdx
+argument cspnSIncCall right Int64 oneCs
 run cspnSIncCall
-bind value cspnSNext I64 cspnSIncCall
+bind value cspnSNext Int64 cspnSIncCall
 set memory csIdx cspnSNext
 jump target cspnSLoop
 
@@ -808,9 +808,9 @@ label cspnDone
 return value csIdx
 
 operation findFirstCStringByteInAcceptSet
-input operation findFirstCStringByteInAcceptSet inputText CNullTerminatedByteString
-input operation findFirstCStringByteInAcceptSet acceptedCharacters CNullTerminatedByteString
-output operation findFirstCStringByteInAcceptSet CSignedInt64
+input operation findFirstCStringByteInAcceptSet inputText String
+input operation findFirstCStringByteInAcceptSet acceptedCharacters String
+output operation findFirstCStringByteInAcceptSet Int64
 useCapability findFirstCStringByteInAcceptSet memoryBufferReadCapability
 effect findFirstCStringByteInAcceptSet read memory.buffer
 memory findFirstCStringByteInAcceptSet heap no
@@ -820,60 +820,60 @@ purpose operation findFirstCStringByteInAcceptSet "Offset of the first byte of s
 invariant operation findFirstCStringByteInAcceptSet "Walks forward and returns the first offset where the byte appears in acceptSet, or -1."
 
 label startFindFirstCStringByteInAcceptSet
-storage module immutable zeroPb I64 0
-storage module immutable oneIPb I64 1
-storage module immutable negOnePb I64 -1
-memory findFirstCStringByteInAcceptSet mutable pbIdx I64 0
+storage module immutable zeroPb Int64 0
+storage module immutable oneIPb Int64 1
+storage module immutable negOnePb Int64 -1
+memory findFirstCStringByteInAcceptSet mutable pbIdx Int64 0
 
 label pbSLoop
 call pbLoadSCall pointer.loadByte
-argument pbLoadSCall buffer COpaqueMemoryAddress inputText
-argument pbLoadSCall offset CByteCount pbIdx
+argument pbLoadSCall buffer OpaquePointer inputText
+argument pbLoadSCall offset ByteCount pbIdx
 run pbLoadSCall
-bind value pbSByte I8 pbLoadSCall
-call pbSEndCall math.equalI64
-argument pbSEndCall left I64 pbSByte
-argument pbSEndCall right I64 zeroPb
+bind value pbSByte Int8 pbLoadSCall
+call pbSEndCall math.equalInt64
+argument pbSEndCall left Int64 pbSByte
+argument pbSEndCall right Int64 zeroPb
 run pbSEndCall
 bind value pbAtEnd Bool pbSEndCall
 branch if condition pbAtEnd target pbNotFound
 
-memory findFirstCStringByteInAcceptSet mutable pbAidx I64 0
+memory findFirstCStringByteInAcceptSet mutable pbAidx Int64 0
 label pbALoop
 call pbLoadACall pointer.loadByte
-argument pbLoadACall buffer COpaqueMemoryAddress acceptedCharacters
-argument pbLoadACall offset CByteCount pbAidx
+argument pbLoadACall buffer OpaquePointer acceptedCharacters
+argument pbLoadACall offset ByteCount pbAidx
 run pbLoadACall
-bind value pbAByte I8 pbLoadACall
-call pbAEndCall math.equalI64
-argument pbAEndCall left I64 pbAByte
-argument pbAEndCall right I64 zeroPb
+bind value pbAByte Int8 pbLoadACall
+call pbAEndCall math.equalInt64
+argument pbAEndCall left Int64 pbAByte
+argument pbAEndCall right Int64 zeroPb
 run pbAEndCall
 bind value pbAEnd Bool pbAEndCall
 branch if condition pbAEnd target pbAdvanceS
 
-call pbEqCall math.equalI64
-argument pbEqCall left I64 pbAByte
-argument pbEqCall right I64 pbSByte
+call pbEqCall math.equalInt64
+argument pbEqCall left Int64 pbAByte
+argument pbEqCall right Int64 pbSByte
 run pbEqCall
 bind value pbEq Bool pbEqCall
 branch if condition pbEq target pbFound
 
-call pbAIncCall math.addI64
-argument pbAIncCall left I64 pbAidx
-argument pbAIncCall right I64 oneIPb
+call pbAIncCall math.addInt64
+argument pbAIncCall left Int64 pbAidx
+argument pbAIncCall right Int64 oneIPb
 run pbAIncCall
-bind value pbANext I64 pbAIncCall
+bind value pbANext Int64 pbAIncCall
 set memory pbAidx pbANext
 jump target pbALoop
 
 label pbAdvanceS
 set memory pbAidx zeroPb
-call pbSIncCall math.addI64
-argument pbSIncCall left I64 pbIdx
-argument pbSIncCall right I64 oneIPb
+call pbSIncCall math.addInt64
+argument pbSIncCall left Int64 pbIdx
+argument pbSIncCall right Int64 oneIPb
 run pbSIncCall
-bind value pbSNext I64 pbSIncCall
+bind value pbSNext Int64 pbSIncCall
 set memory pbIdx pbSNext
 jump target pbSLoop
 
@@ -883,8 +883,8 @@ label pbNotFound
 return value negOnePb
 
 operation duplicateCStringIntoOwnedMemory
-input operation duplicateCStringIntoOwnedMemory inputText CNullTerminatedByteString
-output operation duplicateCStringIntoOwnedMemory COpaqueMemoryAddress
+input operation duplicateCStringIntoOwnedMemory inputText String
+output operation duplicateCStringIntoOwnedMemory OpaquePointer
 useCapability duplicateCStringIntoOwnedMemory memoryBufferReadCapability
 useCapability duplicateCStringIntoOwnedMemory heapAllocationCapability
 effect duplicateCStringIntoOwnedMemory read memory.buffer
@@ -899,30 +899,30 @@ invariant operation duplicateCStringIntoOwnedMemory "Computes source length, all
 label startDuplicateCStringIntoOwnedMemory
 # len = stringByteLength(s)
 call lenCall stringByteLength
-argument lenCall s CNullTerminatedByteString inputText
+argument lenCall s String inputText
 run lenCall
-bind value lenV CByteCount lenCall
+bind value lenV ByteCount lenCall
 
-storage module immutable oneIDup CByteCount 1
-call allocSizeCall math.addI64
-argument allocSizeCall left I64 lenV
-argument allocSizeCall right I64 oneIDup
+storage module immutable oneIDup ByteCount 1
+call allocSizeCall math.addInt64
+argument allocSizeCall left Int64 lenV
+argument allocSizeCall right Int64 oneIDup
 run allocSizeCall
-bind value allocSize CByteCount allocSizeCall
+bind value allocSize ByteCount allocSizeCall
 
 call mallocCall c.malloc
-argument mallocCall size CByteCount allocSize
+argument mallocCall size ByteCount allocSize
 run mallocCall
-bind value dest COpaqueMemoryAddress mallocCall
-bind error duplicateCStringMallocError CSignedInt32 mallocCall
+bind value dest OpaquePointer mallocCall
+bind error duplicateCStringMallocError Int32 mallocCall
 branch error source mallocCall target strdupAllocationFailed
 
 # Otherwise copy via copyCStringToDestinationBuffer.
 call copyCall copyCStringToDestinationBuffer
-argument copyCall dest COpaqueMemoryAddress dest
-argument copyCall src CNullTerminatedByteString inputText
+argument copyCall dest OpaquePointer dest
+argument copyCall src String inputText
 run copyCall
-ignore ok source copyCall type CByteCount
+ignore ok source copyCall type ByteCount
 
 return value dest
 
@@ -933,10 +933,10 @@ label strdupAllocationFailed
 return value duplicateCStringMallocError
 
 operation appendCStringPrefixToDestinationBuffer
-input operation appendCStringPrefixToDestinationBuffer destinationBuffer COpaqueMemoryAddress
-input operation appendCStringPrefixToDestinationBuffer sourceBuffer CNullTerminatedByteString
-input operation appendCStringPrefixToDestinationBuffer maxByteCount CByteCount
-output operation appendCStringPrefixToDestinationBuffer CByteCount
+input operation appendCStringPrefixToDestinationBuffer destinationBuffer OpaquePointer
+input operation appendCStringPrefixToDestinationBuffer sourceBuffer String
+input operation appendCStringPrefixToDestinationBuffer maxByteCount ByteCount
+output operation appendCStringPrefixToDestinationBuffer ByteCount
 useCapability appendCStringPrefixToDestinationBuffer memoryBufferReadCapability
 effect appendCStringPrefixToDestinationBuffer read memory.buffer
 useCapability appendCStringPrefixToDestinationBuffer memoryBufferWriteCapability
@@ -947,89 +947,89 @@ async appendCStringPrefixToDestinationBuffer no
 purpose operation appendCStringPrefixToDestinationBuffer "Append at most n bytes from src to dest's existing NUL-terminated content. Always writes a NUL terminator after the appended bytes."
 invariant operation appendCStringPrefixToDestinationBuffer "Walks destination to its NUL, then copies up to byteCount source bytes plus a final NUL; returns destination byte count after append."
 label startAppendCStringPrefixToDestinationBuffer
-storage module immutable zeroNc I64 0
-storage module immutable oneNc I64 1
+storage module immutable zeroNc Int64 0
+storage module immutable oneNc Int64 1
 # Find end of dest.
-memory appendCStringPrefixToDestinationBuffer mutable dEnd I64 0
+memory appendCStringPrefixToDestinationBuffer mutable dEnd Int64 0
 label ncFindEnd
 call ncLoadCall pointer.loadByte
-argument ncLoadCall buffer COpaqueMemoryAddress destinationBuffer
-argument ncLoadCall offset CByteCount dEnd
+argument ncLoadCall buffer OpaquePointer destinationBuffer
+argument ncLoadCall offset ByteCount dEnd
 run ncLoadCall
-bind value ncByte I8 ncLoadCall
-call ncEndCall math.equalI64
-argument ncEndCall left I64 ncByte
-argument ncEndCall right I64 zeroNc
+bind value ncByte Int8 ncLoadCall
+call ncEndCall math.equalInt64
+argument ncEndCall left Int64 ncByte
+argument ncEndCall right Int64 zeroNc
 run ncEndCall
 bind value ncAtEnd Bool ncEndCall
 branch if condition ncAtEnd target ncEndFound
-call ncIncCall math.addI64
-argument ncIncCall left I64 dEnd
-argument ncIncCall right I64 oneNc
+call ncIncCall math.addInt64
+argument ncIncCall left Int64 dEnd
+argument ncIncCall right Int64 oneNc
 run ncIncCall
-bind value ncNext I64 ncIncCall
+bind value ncNext Int64 ncIncCall
 set memory dEnd ncNext
 jump target ncFindEnd
 label ncEndFound
 # Copy up to n bytes (stop early on src NUL)
-memory appendCStringPrefixToDestinationBuffer mutable srcIdx I64 0
+memory appendCStringPrefixToDestinationBuffer mutable srcIdx Int64 0
 label ncCopyLoop
-call ncDoneCall math.greaterThanOrEqualI64
-argument ncDoneCall left I64 srcIdx
-argument ncDoneCall right I64 maxByteCount
+call ncDoneCall math.greaterThanOrEqualInt64
+argument ncDoneCall left Int64 srcIdx
+argument ncDoneCall right Int64 maxByteCount
 run ncDoneCall
 bind value ncDone Bool ncDoneCall
 branch if condition ncDone target ncWriteNul
 call ncSrcLoadCall pointer.loadByte
-argument ncSrcLoadCall buffer COpaqueMemoryAddress sourceBuffer
-argument ncSrcLoadCall offset CByteCount srcIdx
+argument ncSrcLoadCall buffer OpaquePointer sourceBuffer
+argument ncSrcLoadCall offset ByteCount srcIdx
 run ncSrcLoadCall
-bind value ncSrcByte I8 ncSrcLoadCall
-call ncSrcEndCall math.equalI64
-argument ncSrcEndCall left I64 ncSrcByte
-argument ncSrcEndCall right I64 zeroNc
+bind value ncSrcByte Int8 ncSrcLoadCall
+call ncSrcEndCall math.equalInt64
+argument ncSrcEndCall left Int64 ncSrcByte
+argument ncSrcEndCall right Int64 zeroNc
 run ncSrcEndCall
 bind value ncSrcAtEnd Bool ncSrcEndCall
 branch if condition ncSrcAtEnd target ncWriteNul
-call ncWriteOffCall math.addI64
-argument ncWriteOffCall left I64 dEnd
-argument ncWriteOffCall right I64 srcIdx
+call ncWriteOffCall math.addInt64
+argument ncWriteOffCall left Int64 dEnd
+argument ncWriteOffCall right Int64 srcIdx
 run ncWriteOffCall
-bind value writeOff I64 ncWriteOffCall
+bind value writeOff Int64 ncWriteOffCall
 call ncStoreCall pointer.storeByte
-argument ncStoreCall buffer COpaqueMemoryAddress destinationBuffer
-argument ncStoreCall offset CByteCount writeOff
-argument ncStoreCall value CSignedInt64 ncSrcByte
+argument ncStoreCall buffer OpaquePointer destinationBuffer
+argument ncStoreCall offset ByteCount writeOff
+argument ncStoreCall value Int64 ncSrcByte
 run ncStoreCall
-call ncIdxIncCall math.addI64
-argument ncIdxIncCall left I64 srcIdx
-argument ncIdxIncCall right I64 oneNc
+call ncIdxIncCall math.addInt64
+argument ncIdxIncCall left Int64 srcIdx
+argument ncIdxIncCall right Int64 oneNc
 run ncIdxIncCall
-bind value ncIdxNext I64 ncIdxIncCall
+bind value ncIdxNext Int64 ncIdxIncCall
 set memory srcIdx ncIdxNext
 jump target ncCopyLoop
 label ncWriteNul
-call ncNulOffCall math.addI64
-argument ncNulOffCall left I64 dEnd
-argument ncNulOffCall right I64 srcIdx
+call ncNulOffCall math.addInt64
+argument ncNulOffCall left Int64 dEnd
+argument ncNulOffCall right Int64 srcIdx
 run ncNulOffCall
-bind value nulOff I64 ncNulOffCall
+bind value nulOff Int64 ncNulOffCall
 call ncNulStoreCall pointer.storeByte
-argument ncNulStoreCall buffer COpaqueMemoryAddress destinationBuffer
-argument ncNulStoreCall offset CByteCount nulOff
-argument ncNulStoreCall value CSignedInt64 zeroNc
+argument ncNulStoreCall buffer OpaquePointer destinationBuffer
+argument ncNulStoreCall offset ByteCount nulOff
+argument ncNulStoreCall value Int64 zeroNc
 run ncNulStoreCall
-call ncTotalCall math.addI64
-argument ncTotalCall left I64 dEnd
-argument ncTotalCall right I64 srcIdx
+call ncTotalCall math.addInt64
+argument ncTotalCall left Int64 dEnd
+argument ncTotalCall right Int64 srcIdx
 run ncTotalCall
-bind value ncTotalRes CByteCount ncTotalCall
+bind value ncTotalRes ByteCount ncTotalCall
 return value ncTotalRes
 
 operation cstringBeginsWithPrefix
-input operation cstringBeginsWithPrefix inputText CNullTerminatedByteString
-input operation cstringBeginsWithPrefix prefixText CNullTerminatedByteString
-output operation cstringBeginsWithPrefix CSignedInt32
+input operation cstringBeginsWithPrefix inputText String
+input operation cstringBeginsWithPrefix prefixText String
+output operation cstringBeginsWithPrefix Int32
 useCapability cstringBeginsWithPrefix memoryBufferReadCapability
 effect cstringBeginsWithPrefix read memory.buffer
 memory cstringBeginsWithPrefix heap no
@@ -1038,47 +1038,47 @@ async cstringBeginsWithPrefix no
 purpose operation cstringBeginsWithPrefix "1 if s starts with prefix; 0 otherwise. Pure SemanticScript via byte-by-byte compare."
 invariant operation cstringBeginsWithPrefix "Returns true when every byte of prefixText matches the corresponding byte in inputText starting at offset 0."
 label startCstringBeginsWithPrefix
-storage module immutable zeroBw I64 0
-storage module immutable oneBw I64 1
-storage module immutable trueBw CSignedInt32 1
-storage module immutable falseBw CSignedInt32 0
-memory cstringBeginsWithPrefix mutable bwIdx I64 0
+storage module immutable zeroBw Int64 0
+storage module immutable oneBw Int64 1
+storage module immutable trueBw Int32 1
+storage module immutable falseBw Int32 0
+memory cstringBeginsWithPrefix mutable bwIdx Int64 0
 label bwLoop
 call bwPrefLoadCall pointer.loadByte
-argument bwPrefLoadCall buffer COpaqueMemoryAddress prefixText
-argument bwPrefLoadCall offset CByteCount bwIdx
+argument bwPrefLoadCall buffer OpaquePointer prefixText
+argument bwPrefLoadCall offset ByteCount bwIdx
 run bwPrefLoadCall
-bind value bwPrefByte I8 bwPrefLoadCall
-call bwPrefEndCall math.equalI64
-argument bwPrefEndCall left I64 bwPrefByte
-argument bwPrefEndCall right I64 zeroBw
+bind value bwPrefByte Int8 bwPrefLoadCall
+call bwPrefEndCall math.equalInt64
+argument bwPrefEndCall left Int64 bwPrefByte
+argument bwPrefEndCall right Int64 zeroBw
 run bwPrefEndCall
 bind value bwPrefAtEnd Bool bwPrefEndCall
 branch if condition bwPrefAtEnd target bwAllMatched
 call bwSLoadCall pointer.loadByte
-argument bwSLoadCall buffer COpaqueMemoryAddress inputText
-argument bwSLoadCall offset CByteCount bwIdx
+argument bwSLoadCall buffer OpaquePointer inputText
+argument bwSLoadCall offset ByteCount bwIdx
 run bwSLoadCall
-bind value bwSByte I8 bwSLoadCall
-call bwSEndCall math.equalI64
-argument bwSEndCall left I64 bwSByte
-argument bwSEndCall right I64 zeroBw
+bind value bwSByte Int8 bwSLoadCall
+call bwSEndCall math.equalInt64
+argument bwSEndCall left Int64 bwSByte
+argument bwSEndCall right Int64 zeroBw
 run bwSEndCall
 bind value bwSAtEnd Bool bwSEndCall
 branch if condition bwSAtEnd target bwMismatch
-call bwEqCall math.equalI64
-argument bwEqCall left I64 bwPrefByte
-argument bwEqCall right I64 bwSByte
+call bwEqCall math.equalInt64
+argument bwEqCall left Int64 bwPrefByte
+argument bwEqCall right Int64 bwSByte
 run bwEqCall
 bind value bwEqB Bool bwEqCall
 branch if condition bwEqB target bwAdvance
 branch else target bwMismatch
 label bwAdvance
-call bwIncCall math.addI64
-argument bwIncCall left I64 bwIdx
-argument bwIncCall right I64 oneBw
+call bwIncCall math.addInt64
+argument bwIncCall left Int64 bwIdx
+argument bwIncCall right Int64 oneBw
 run bwIncCall
-bind value bwNext I64 bwIncCall
+bind value bwNext Int64 bwIncCall
 set memory bwIdx bwNext
 jump target bwLoop
 label bwAllMatched
@@ -1087,9 +1087,9 @@ label bwMismatch
 return value falseBw
 
 operation cstringEndsWithSuffix
-input operation cstringEndsWithSuffix inputText CNullTerminatedByteString
-input operation cstringEndsWithSuffix suffixText CNullTerminatedByteString
-output operation cstringEndsWithSuffix CSignedInt32
+input operation cstringEndsWithSuffix inputText String
+input operation cstringEndsWithSuffix suffixText String
+output operation cstringEndsWithSuffix Int32
 useCapability cstringEndsWithSuffix memoryBufferReadCapability
 effect cstringEndsWithSuffix read memory.buffer
 memory cstringEndsWithSuffix heap no
@@ -1098,72 +1098,72 @@ async cstringEndsWithSuffix no
 purpose operation cstringEndsWithSuffix "1 if s ends with suffix; 0 otherwise. Implemented as: stringByteLength(suffix) <= stringByteLength(s), then compare last stringByteLength(suffix) bytes of s with suffix."
 invariant operation cstringEndsWithSuffix "Computes both lengths via stringByteLength, then matches suffixText against inputText starting at the offset (inputLength - suffixLength)."
 label startCstringEndsWithSuffix
-storage module immutable trueEw CSignedInt32 1
-storage module immutable falseEw CSignedInt32 0
-storage module immutable oneEw I64 1
+storage module immutable trueEw Int32 1
+storage module immutable falseEw Int32 0
+storage module immutable oneEw Int64 1
 
 call sLenCall stringByteLength
-argument sLenCall s CNullTerminatedByteString inputText
+argument sLenCall s String inputText
 run sLenCall
-bind value sLen CByteCount sLenCall
+bind value sLen ByteCount sLenCall
 
 call suffLenCall stringByteLength
-argument suffLenCall s CNullTerminatedByteString suffixText
+argument suffLenCall s String suffixText
 run suffLenCall
-bind value suffLen CByteCount suffLenCall
+bind value suffLen ByteCount suffLenCall
 
 # If suffix longer than s -> false
-call suffLongerCall math.greaterThanI64
-argument suffLongerCall left I64 suffLen
-argument suffLongerCall right I64 sLen
+call suffLongerCall math.greaterThanInt64
+argument suffLongerCall left Int64 suffLen
+argument suffLongerCall right Int64 sLen
 run suffLongerCall
 bind value suffLonger Bool suffLongerCall
 branch if condition suffLonger target ewFalse
 
 # Start offset in s = sLen - suffLen
-call startOffCall math.subtractI64
-argument startOffCall left I64 sLen
-argument startOffCall right I64 suffLen
+call startOffCall math.subtractInt64
+argument startOffCall left Int64 sLen
+argument startOffCall right Int64 suffLen
 run startOffCall
-bind value ewStart I64 startOffCall
+bind value ewStart Int64 startOffCall
 
-memory cstringEndsWithSuffix mutable ewIdx I64 0
+memory cstringEndsWithSuffix mutable ewIdx Int64 0
 label ewLoop
-call ewDoneCall math.greaterThanOrEqualI64
-argument ewDoneCall left I64 ewIdx
-argument ewDoneCall right I64 suffLen
+call ewDoneCall math.greaterThanOrEqualInt64
+argument ewDoneCall left Int64 ewIdx
+argument ewDoneCall right Int64 suffLen
 run ewDoneCall
 bind value ewDoneB Bool ewDoneCall
 branch if condition ewDoneB target ewTrue
 
 call ewSuffLoadCall pointer.loadByte
-argument ewSuffLoadCall buffer COpaqueMemoryAddress suffixText
-argument ewSuffLoadCall offset CByteCount ewIdx
+argument ewSuffLoadCall buffer OpaquePointer suffixText
+argument ewSuffLoadCall offset ByteCount ewIdx
 run ewSuffLoadCall
-bind value ewSuffByte I8 ewSuffLoadCall
-call ewSOffCall math.addI64
-argument ewSOffCall left I64 ewStart
-argument ewSOffCall right I64 ewIdx
+bind value ewSuffByte Int8 ewSuffLoadCall
+call ewSOffCall math.addInt64
+argument ewSOffCall left Int64 ewStart
+argument ewSOffCall right Int64 ewIdx
 run ewSOffCall
-bind value ewSOff I64 ewSOffCall
+bind value ewSOff Int64 ewSOffCall
 call ewSLoadCall pointer.loadByte
-argument ewSLoadCall buffer COpaqueMemoryAddress inputText
-argument ewSLoadCall offset CByteCount ewSOff
+argument ewSLoadCall buffer OpaquePointer inputText
+argument ewSLoadCall offset ByteCount ewSOff
 run ewSLoadCall
-bind value ewSByte I8 ewSLoadCall
-call ewEqCall math.equalI64
-argument ewEqCall left I64 ewSuffByte
-argument ewEqCall right I64 ewSByte
+bind value ewSByte Int8 ewSLoadCall
+call ewEqCall math.equalInt64
+argument ewEqCall left Int64 ewSuffByte
+argument ewEqCall right Int64 ewSByte
 run ewEqCall
 bind value ewEqB Bool ewEqCall
 branch if condition ewEqB target ewAdv
 branch else target ewFalse
 label ewAdv
-call ewIncCall math.addI64
-argument ewIncCall left I64 ewIdx
-argument ewIncCall right I64 oneEw
+call ewIncCall math.addInt64
+argument ewIncCall left Int64 ewIdx
+argument ewIncCall right Int64 oneEw
 run ewIncCall
-bind value ewNext I64 ewIncCall
+bind value ewNext Int64 ewIncCall
 set memory ewIdx ewNext
 jump target ewLoop
 

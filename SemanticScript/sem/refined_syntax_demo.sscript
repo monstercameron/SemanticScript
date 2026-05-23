@@ -11,12 +11,12 @@
 #   /tmp/d.exe
 #
 # Expected stdout, in order:
-#   5            <- math.addI64(2, 3)
+#   5            <- math.addInt64(2, 3)
 #   1            <- isLeapYear(2024) — true
 #   0            <- compareCString("hello", "hello") — strcmp equal
 #   5            <- stringByteLength("hello") — strlen
 #   150          <- retryPolicy.delayForAttempt(_, 2) implemented in .sem
-#   15           <- metrics.computeIncrementI64(_, 10, 5) implemented in .sem
+#   15           <- metrics.computeIncrementInt64(_, 10, 5) implemented in .sem
 
 project RefinedSyntaxDemo
 target console
@@ -46,36 +46,36 @@ errorCase MetricsWriteError IncrementFailed
 
 # ----- intrinsic-bodied math op -----
 
-operation math.addI64
-input operation math.addI64 left I64
-input operation math.addI64 right I64
-output operation math.addI64 I64
-effect math.addI64 read left
-effect math.addI64 read right
-memory math.addI64 heap no
-async math.addI64 no
-operationBody math.addI64 intrinsic
-purpose operation math.addI64 "Signed 64-bit integer addition"
-intrinsicName math.addI64 arithmetic.addI64
+operation math.addInt64
+input operation math.addInt64 left Int64
+input operation math.addInt64 right Int64
+output operation math.addInt64 Int64
+effect math.addInt64 read left
+effect math.addInt64 read right
+memory math.addInt64 heap no
+async math.addInt64 no
+operationBody math.addInt64 intrinsic
+purpose operation math.addInt64 "Signed 64-bit integer addition"
+intrinsicName math.addInt64 arithmetic.addInt64
 
-operation math.multiplyI64
-input operation math.multiplyI64 left I64
-input operation math.multiplyI64 right I64
-output operation math.multiplyI64 I64
-effect math.multiplyI64 read left
-effect math.multiplyI64 read right
-memory math.multiplyI64 heap no
-async math.multiplyI64 no
-operationBody math.multiplyI64 intrinsic
-purpose operation math.multiplyI64 "Signed 64-bit integer multiplication"
-intrinsicName math.multiplyI64 arithmetic.multiplyI64
+operation math.multiplyInt64
+input operation math.multiplyInt64 left Int64
+input operation math.multiplyInt64 right Int64
+output operation math.multiplyInt64 Int64
+effect math.multiplyInt64 read left
+effect math.multiplyInt64 read right
+memory math.multiplyInt64 heap no
+async math.multiplyInt64 no
+operationBody math.multiplyInt64 intrinsic
+purpose operation math.multiplyInt64 "Signed 64-bit integer multiplication"
+intrinsicName math.multiplyInt64 arithmetic.multiplyInt64
 
 # ----- libc-bodied string ops -----
 
 operation compareCString
-input operation compareCString left CNullTerminatedByteString
-input operation compareCString right CNullTerminatedByteString
-output operation compareCString Result CSignedInt32 CStringCompareError
+input operation compareCString left String
+input operation compareCString right String
+output operation compareCString Result Int32 CStringCompareError
 effect compareCString read left
 effect compareCString read right
 memory compareCString heap no
@@ -85,8 +85,8 @@ purpose operation compareCString "Compare two null-terminated byte strings; wrap
 runtimeBinding compareCString runtime.cstring.compare
 
 operation stringByteLength
-input operation stringByteLength inputText CNullTerminatedByteString
-output operation stringByteLength Result CByteCount CStringLengthError
+input operation stringByteLength inputText String
+output operation stringByteLength Result ByteCount CStringLengthError
 effect stringByteLength read inputText
 memory stringByteLength heap no
 async stringByteLength no
@@ -97,49 +97,49 @@ runtimeBinding stringByteLength runtime.cstring.byteLength
 # ----- SemanticScript-bodied calendar op -----
 
 operation isLeapYear
-input operation isLeapYear candidateYear CSignedInt64
+input operation isLeapYear candidateYear Int64
 output operation isLeapYear Result Bool TimePredicateError
 effect isLeapYear read candidateYear
 memory isLeapYear heap no
 async isLeapYear no
 purpose operation isLeapYear "True iff candidateYear is a leap year under the proleptic Gregorian rule."
 label startLeapYear
-storage module immutable leapFour CSignedInt64 4
-storage module immutable leapHundred CSignedInt64 100
-storage module immutable leapFourHundred CSignedInt64 400
-storage module immutable leapZero CSignedInt64 0
-storage module immutable leapTrueSeed CSignedInt64 1
-storage module immutable leapFalseSeed CSignedInt64 0
-call leapMod400Call math.moduloI64
-argument leapMod400Call left CSignedInt64 candidateYear
-argument leapMod400Call right CSignedInt64 leapFourHundred
+storage module immutable leapFour Int64 4
+storage module immutable leapHundred Int64 100
+storage module immutable leapFourHundred Int64 400
+storage module immutable leapZero Int64 0
+storage module immutable leapTrueSeed Int64 1
+storage module immutable leapFalseSeed Int64 0
+call leapMod400Call math.moduloInt64
+argument leapMod400Call left Int64 candidateYear
+argument leapMod400Call right Int64 leapFourHundred
 run leapMod400Call
-bind value leapMod400 CSignedInt64 leapMod400Call
-call leapEq400Call math.equalI64
-argument leapEq400Call left CSignedInt64 leapMod400
-argument leapEq400Call right CSignedInt64 leapZero
+bind value leapMod400 Int64 leapMod400Call
+call leapEq400Call math.equalInt64
+argument leapEq400Call left Int64 leapMod400
+argument leapEq400Call right Int64 leapZero
 run leapEq400Call
 bind value leapDivisibleBy400 Bool leapEq400Call
 branch if condition leapDivisibleBy400 target leapReturnTrue
-call leapMod100Call math.moduloI64
-argument leapMod100Call left CSignedInt64 candidateYear
-argument leapMod100Call right CSignedInt64 leapHundred
+call leapMod100Call math.moduloInt64
+argument leapMod100Call left Int64 candidateYear
+argument leapMod100Call right Int64 leapHundred
 run leapMod100Call
-bind value leapMod100 CSignedInt64 leapMod100Call
-call leapEq100Call math.equalI64
-argument leapEq100Call left CSignedInt64 leapMod100
-argument leapEq100Call right CSignedInt64 leapZero
+bind value leapMod100 Int64 leapMod100Call
+call leapEq100Call math.equalInt64
+argument leapEq100Call left Int64 leapMod100
+argument leapEq100Call right Int64 leapZero
 run leapEq100Call
 bind value leapDivisibleBy100 Bool leapEq100Call
 branch if condition leapDivisibleBy100 target leapReturnFalse
-call leapMod4Call math.moduloI64
-argument leapMod4Call left CSignedInt64 candidateYear
-argument leapMod4Call right CSignedInt64 leapFour
+call leapMod4Call math.moduloInt64
+argument leapMod4Call left Int64 candidateYear
+argument leapMod4Call right Int64 leapFour
 run leapMod4Call
-bind value leapMod4 CSignedInt64 leapMod4Call
-call leapEq4Call math.equalI64
-argument leapEq4Call left CSignedInt64 leapMod4
-argument leapEq4Call right CSignedInt64 leapZero
+bind value leapMod4 Int64 leapMod4Call
+call leapEq4Call math.equalInt64
+argument leapEq4Call left Int64 leapMod4
+argument leapEq4Call right Int64 leapZero
 run leapEq4Call
 bind value leapDivisibleBy4 Bool leapEq4Call
 branch if condition leapDivisibleBy4 target leapReturnTrue
@@ -154,7 +154,7 @@ return ok leapTrue
 
 operation retryPolicy.delayForAttempt
 input operation retryPolicy.delayForAttempt policy RetryPolicy
-input operation retryPolicy.delayForAttempt attemptIndex I64
+input operation retryPolicy.delayForAttempt attemptIndex Int64
 output operation retryPolicy.delayForAttempt Result DurationMilliseconds RetryPolicyError
 effect retryPolicy.delayForAttempt read policy
 effect retryPolicy.delayForAttempt read attemptIndex
@@ -162,39 +162,39 @@ memory retryPolicy.delayForAttempt heap no
 async retryPolicy.delayForAttempt no
 purpose operation retryPolicy.delayForAttempt "Compute the delay before retry attempt N using the demo policy's 50ms linear backoff."
 label startDelayForAttempt
-storage module immutable retryDelayOne I64 1
-storage module immutable retryDelayStepMilliseconds I64 50
-call delayAttemptOrdinalCall math.addI64
-argument delayAttemptOrdinalCall left I64 attemptIndex
-argument delayAttemptOrdinalCall right I64 retryDelayOne
+storage module immutable retryDelayOne Int64 1
+storage module immutable retryDelayStepMilliseconds Int64 50
+call delayAttemptOrdinalCall math.addInt64
+argument delayAttemptOrdinalCall left Int64 attemptIndex
+argument delayAttemptOrdinalCall right Int64 retryDelayOne
 run delayAttemptOrdinalCall
-bind value delayAttemptOrdinal I64 delayAttemptOrdinalCall
-call delayMillisecondsCall math.multiplyI64
-argument delayMillisecondsCall left I64 delayAttemptOrdinal
-argument delayMillisecondsCall right I64 retryDelayStepMilliseconds
+bind value delayAttemptOrdinal Int64 delayAttemptOrdinalCall
+call delayMillisecondsCall math.multiplyInt64
+argument delayMillisecondsCall left Int64 delayAttemptOrdinal
+argument delayMillisecondsCall right Int64 retryDelayStepMilliseconds
 run delayMillisecondsCall
 bind value computedDelayMilliseconds DurationMilliseconds delayMillisecondsCall
 return ok computedDelayMilliseconds
 
 # ----- SemanticScript-bodied metrics-increment op -----
 
-operation metrics.computeIncrementI64
-input operation metrics.computeIncrementI64 runtime MetricsRuntime
-input operation metrics.computeIncrementI64 current I64
-input operation metrics.computeIncrementI64 step I64
-output operation metrics.computeIncrementI64 Result I64 MetricsWriteError
-effect metrics.computeIncrementI64 read runtime
-effect metrics.computeIncrementI64 read current
-effect metrics.computeIncrementI64 read step
-memory metrics.computeIncrementI64 heap no
-async metrics.computeIncrementI64 no
-purpose operation metrics.computeIncrementI64 "Compute (current + step) through explicit SemanticScript arithmetic."
+operation metrics.computeIncrementInt64
+input operation metrics.computeIncrementInt64 runtime MetricsRuntime
+input operation metrics.computeIncrementInt64 current Int64
+input operation metrics.computeIncrementInt64 step Int64
+output operation metrics.computeIncrementInt64 Result Int64 MetricsWriteError
+effect metrics.computeIncrementInt64 read runtime
+effect metrics.computeIncrementInt64 read current
+effect metrics.computeIncrementInt64 read step
+memory metrics.computeIncrementInt64 heap no
+async metrics.computeIncrementInt64 no
+purpose operation metrics.computeIncrementInt64 "Compute (current + step) through explicit SemanticScript arithmetic."
 label startComputeIncrement
-call metricsIncrementAddCall math.addI64
-argument metricsIncrementAddCall left I64 current
-argument metricsIncrementAddCall right I64 step
+call metricsIncrementAddCall math.addInt64
+argument metricsIncrementAddCall left Int64 current
+argument metricsIncrementAddCall right Int64 step
 run metricsIncrementAddCall
-bind value computedIncrement I64 metricsIncrementAddCall
+bind value computedIncrement Int64 metricsIncrementAddCall
 return ok computedIncrement
 
 # ----- driver -----
@@ -212,97 +212,97 @@ invariant operation main "Output is the six lines documented at the top of this 
 
 label startMain
 
-# 1) math.addI64(2, 3) = 5
-storage module immutable twoVal I64 2
-storage module immutable threeVal I64 3
-call addCall math.addI64
-argument addCall left I64 twoVal
-argument addCall right I64 threeVal
+# 1) math.addInt64(2, 3) = 5
+storage module immutable twoVal Int64 2
+storage module immutable threeVal Int64 3
+call addCall math.addInt64
+argument addCall left Int64 twoVal
+argument addCall right Int64 threeVal
 run addCall
-bind value addResult I64 addCall
-memory main mutable addVar I64 twoVal
+bind value addResult Int64 addCall
+memory main mutable addVar Int64 twoVal
 set memory addVar addResult
 call printAddCall console.writeIntegerLine
 argument printAddCall console Console console
-argument printAddCall value I64 addVar
+argument printAddCall value Int64 addVar
 run printAddCall
 ignore void source printAddCall
 
 # 2) isLeapYear(2024) = 1 (true)
-storage module immutable yr2024 CSignedInt64 2024
+storage module immutable yr2024 Int64 2024
 call leapCall isLeapYear
-argument leapCall candidateYear CSignedInt64 yr2024
+argument leapCall candidateYear Int64 yr2024
 run leapCall
 bind ok leapResult Bool leapCall
-memory main mutable leapVar I64 twoVal
+memory main mutable leapVar Int64 twoVal
 set memory leapVar leapResult
 call printLeapCall console.writeIntegerLine
 argument printLeapCall console Console console
-argument printLeapCall value I64 leapVar
+argument printLeapCall value Int64 leapVar
 run printLeapCall
 ignore void source printLeapCall
 
 # 3) compareCString("hello", "hello") = 0
-storage module immutable greetLeft CNullTerminatedByteString "hello"
-storage module immutable greetRight CNullTerminatedByteString "hello"
+storage module immutable greetLeft String "hello"
+storage module immutable greetRight String "hello"
 call cmpCall compareCString
-argument cmpCall left CNullTerminatedByteString greetLeft
-argument cmpCall right CNullTerminatedByteString greetRight
+argument cmpCall left String greetLeft
+argument cmpCall right String greetRight
 run cmpCall
-bind ok cmpResult CSignedInt32 cmpCall
-memory main mutable cmpVar I64 twoVal
+bind ok cmpResult Int32 cmpCall
+memory main mutable cmpVar Int64 twoVal
 set memory cmpVar cmpResult
 call printCmpCall console.writeIntegerLine
 argument printCmpCall console Console console
-argument printCmpCall value I64 cmpVar
+argument printCmpCall value Int64 cmpVar
 run printCmpCall
 ignore void source printCmpCall
 
 # 4) stringByteLength("hello") = 5
-storage module immutable greetText CNullTerminatedByteString "hello"
+storage module immutable greetText String "hello"
 call lenCall stringByteLength
-argument lenCall inputText CNullTerminatedByteString greetText
+argument lenCall inputText String greetText
 run lenCall
-bind ok lenResult CByteCount lenCall
-memory main mutable lenVar I64 twoVal
+bind ok lenResult ByteCount lenCall
+memory main mutable lenVar Int64 twoVal
 set memory lenVar lenResult
 call printLenCall console.writeIntegerLine
 argument printLenCall console Console console
-argument printLenCall value I64 lenVar
+argument printLenCall value Int64 lenVar
 run printLenCall
 ignore void source printLenCall
 
 # 5) retryPolicy.delayForAttempt(_, 2) = 150
 storage module immutable policyHandle RetryPolicy 0
-storage module immutable attemptTwo I64 2
+storage module immutable attemptTwo Int64 2
 call delayCall retryPolicy.delayForAttempt
 argument delayCall policy RetryPolicy policyHandle
-argument delayCall attemptIndex I64 attemptTwo
+argument delayCall attemptIndex Int64 attemptTwo
 run delayCall
 bind ok delayResult DurationMilliseconds delayCall
-memory main mutable delayVar I64 twoVal
+memory main mutable delayVar Int64 twoVal
 set memory delayVar delayResult
 call printDelayCall console.writeIntegerLine
 argument printDelayCall console Console console
-argument printDelayCall value I64 delayVar
+argument printDelayCall value Int64 delayVar
 run printDelayCall
 ignore void source printDelayCall
 
-# 6) metrics.computeIncrementI64(_, 10, 5) = 15
+# 6) metrics.computeIncrementInt64(_, 10, 5) = 15
 storage module immutable runtimeHandle MetricsRuntime 0
-storage module immutable tenVal I64 10
-storage module immutable fiveVal I64 5
-call incCall metrics.computeIncrementI64
+storage module immutable tenVal Int64 10
+storage module immutable fiveVal Int64 5
+call incCall metrics.computeIncrementInt64
 argument incCall runtime MetricsRuntime runtimeHandle
-argument incCall current I64 tenVal
-argument incCall step I64 fiveVal
+argument incCall current Int64 tenVal
+argument incCall step Int64 fiveVal
 run incCall
-bind ok incResult I64 incCall
-memory main mutable incVar I64 twoVal
+bind ok incResult Int64 incCall
+memory main mutable incVar Int64 twoVal
 set memory incVar incResult
 call printIncCall console.writeIntegerLine
 argument printIncCall console Console console
-argument printIncCall value I64 incVar
+argument printIncCall value Int64 incVar
 run printIncCall
 ignore void source printIncCall
 

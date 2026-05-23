@@ -32,43 +32,43 @@ effect main write console.stdout
 Canonical targets:
 
 ```text
-math.addI64
-math.subtractI64
-math.multiplyI64
-math.divideI64
-math.moduloI64
-math.equalI64
-math.notEqualI64
-math.lessThanI64
-math.lessThanOrEqualI64
-math.greaterThanI64
-math.greaterThanOrEqualI64
-math.checkedMultiplyI64
-math.equalCSignedInt32
-math.notEqualCSignedInt32
-math.lessThanCSignedInt32
-math.lessThanOrEqualCSignedInt32
-math.greaterThanCSignedInt32
-math.greaterThanOrEqualCSignedInt32
+math.addInt64
+math.subtractInt64
+math.multiplyInt64
+math.divideInt64
+math.moduloInt64
+math.equalInt64
+math.notEqualInt64
+math.lessThanInt64
+math.lessThanOrEqualInt64
+math.greaterThanInt64
+math.greaterThanOrEqualInt64
+math.checkedMultiplyInt64
+math.equalInt32
+math.notEqualInt32
+math.lessThanInt32
+math.lessThanOrEqualInt32
+math.greaterThanInt32
+math.greaterThanOrEqualInt32
 ```
 
-Short aliases such as `math.subI64`, `math.mulI64`, `math.divI64`, `math.eqI64`,
-and `math.ltI64` are normalized to canonical targets.
+Short aliases such as `math.subInt64`, `math.mulInt64`, `math.divInt64`, `math.eqInt64`,
+and `math.ltInt64` are normalized to canonical targets.
 
-Math target names are width contracts. `math.*I64` requires I64-shaped
-operands, and `math.*CSignedInt32` requires CSignedInt32-shaped operands. The
+Math target names are width contracts. `math.*Int64` requires Int64-shaped
+operands, and `math.*Int32` requires Int32-shaped operands. The
 compiler does not widen or narrow these operands implicitly; use an explicit
 conversion operation when the conversion is intended.
 
-`math.checkedMultiplyI64` returns a product plus an overflow predicate
+`math.checkedMultiplyInt64` returns a product plus an overflow predicate
 internally. Handle it like a fallible call:
 
 ```semanticscript
-call multiplyCall math.checkedMultiplyI64
-argument multiplyCall left I64 leftValue
-argument multiplyCall right I64 rightValue
+call multiplyCall math.checkedMultiplyInt64
+argument multiplyCall left Int64 leftValue
+argument multiplyCall right Int64 rightValue
 run multiplyCall
-bind ok productValue I64 multiplyCall
+bind ok productValue Int64 multiplyCall
 bind error multiplyOverflow ArithmeticError multiplyCall
 branch error source multiplyCall target overflowLabel
 ```
@@ -76,34 +76,34 @@ branch error source multiplyCall target overflowLabel
 ## Floating-Point Math
 
 ```text
-math.addF64
-math.subtractF64
-math.multiplyF64
-math.divideF64
-math.equalF64
-math.notEqualF64
-math.lessThanF64
-math.lessThanOrEqualF64
-math.greaterThanF64
-math.greaterThanOrEqualF64
+math.addFloat64
+math.subtractFloat64
+math.multiplyFloat64
+math.divideFloat64
+math.equalFloat64
+math.notEqualFloat64
+math.lessThanFloat64
+math.lessThanOrEqualFloat64
+math.greaterThanFloat64
+math.greaterThanOrEqualFloat64
 ```
 
 Conversions:
 
 ```text
-math.intToFloat
-math.floatToInt
-math.signExtendCSignedInt32ToCSignedInt64
-math.truncateCSignedInt64ToCSignedInt32
+math.convertInt64ToFloat64
+math.convertFloat64ToInt64
+math.signExtendInt32ToInt64
+math.truncateInt64ToInt32
 math.convertSignedInt64ToFloat64
 math.convertFloat64ToSignedInt64
 math.convertSignedInt32ToSignedInt64
 math.convertSignedInt64ToSignedInt32
 ```
 
-F64 math requires F64-shaped operands. `math.intToFloat` accepts I64 input, and
-`math.floatToInt` accepts F64 input. `math.signExtendCSignedInt32ToCSignedInt64`
-and `math.truncateCSignedInt64ToCSignedInt32` are the explicit integer width
+Float64 math requires Float64-shaped operands. `math.convertInt64ToFloat64` accepts Int64 input, and
+`math.convertFloat64ToInt64` accepts Float64 input. `math.signExtendInt32ToInt64`
+and `math.truncateInt64ToInt32` are the explicit integer width
 conversion targets; the `math.convert*` names are normalized aliases.
 
 C macro-style classifiers are available as `c.*` calls and lower inline:
@@ -179,7 +179,7 @@ A target of the shape `TypeName.methodName` can lower to a primitive operation
 when `TypeName` aliases an integer or floating type.
 
 ```semanticscript
-type CountdownValue I64
+type CountdownValue Int64
 
 call decrementCall CountdownValue.subtractPositiveStep
 argument decrementCall left CountdownValue currentCountdownValue
@@ -206,7 +206,7 @@ emits a direct LLVM call.
 
 ```semanticscript
 call helperCall writeStandardOutputLine
-argument helperCall text CNullTerminatedByteString outputText
+argument helperCall text String outputText
 run helperCall
 bind error helperError ConsoleWriteError helperCall
 branch error source helperCall target helperFailed
@@ -220,11 +220,11 @@ maintainable source. The current compiler dispatches by callee input order.
 `c.<function>` routes through `SemanticScript/compiler/libc_registry.py`.
 
 ```semanticscript
-storage local immutable byteCount CByteCount 64
+storage local immutable byteCount ByteCount 64
 call allocateBufferCall c.malloc
-argument allocateBufferCall size CByteCount byteCount
+argument allocateBufferCall size ByteCount byteCount
 run allocateBufferCall
-bind value allocatedBuffer COpaqueMemoryAddress allocateBufferCall
+bind value allocatedBuffer OpaquePointer allocateBufferCall
 ```
 
 The registry covers hosted C library functions across headers such as

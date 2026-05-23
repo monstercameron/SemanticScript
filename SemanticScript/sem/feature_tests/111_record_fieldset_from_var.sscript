@@ -5,11 +5,11 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Counter layout row align 8
-purpose operation Counter "A single I64 counter wrapped in a record."
-field Counter value I64
+purpose operation Counter "A single Int64 counter wrapped in a record."
+field Counter value Int64
 
 operation main
 input operation main console Console
@@ -20,23 +20,23 @@ async main no
 purpose operation main "Mutate a local var (compute 25 via add), then store it into a record field via fieldSet."
 invariant operation main "Counter.value ends at 25; print it."
 label startMain
-storage module immutable fifteenC I64 15
-storage module immutable tenC I64 10
-memory main mutable localVal I64 fifteenC
-call sumCall math.addI64
-argument sumCall left I64 localVal
-argument sumCall right I64 tenC
+storage module immutable fifteenC Int64 15
+storage module immutable tenC Int64 10
+memory main mutable localVal Int64 fifteenC
+call sumCall math.addInt64
+argument sumCall left Int64 localVal
+argument sumCall right Int64 tenC
 run sumCall
-bind value sumResult I64 sumCall
+bind value sumResult Int64 sumCall
 set memory localVal sumResult
 new myCounter Counter
 fieldSet myCounter value localVal
-fieldGet readValue I64 myCounter value
-memory main mutable displayStore I64 0
+fieldGet readValue Int64 myCounter value
+memory main mutable displayStore Int64 0
 set memory displayStore readValue
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 displayStore
+argument writeCall value Int64 displayStore
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

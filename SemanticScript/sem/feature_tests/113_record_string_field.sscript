@@ -5,10 +5,10 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Greeting layout row align 8
-field Greeting text CNullTerminatedByteString
+field Greeting text String
 
 operation main
 input operation main console Console
@@ -19,13 +19,13 @@ async main no
 purpose operation main "Store a string-const into a record field, read, print."
 invariant operation main "hello goes in and comes out."
 label startMain
-storage module immutable helloStr CNullTerminatedByteString "hello"
+storage module immutable helloStr String "hello"
 new myGreeting Greeting
 fieldSet myGreeting text helloStr
-fieldGet readText CNullTerminatedByteString myGreeting text
+fieldGet readText String myGreeting text
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString readText
+argument writeCall text String readText
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

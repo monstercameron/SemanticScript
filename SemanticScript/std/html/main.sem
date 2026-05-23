@@ -26,9 +26,9 @@ moduleOwns standard.html "The official import path `standard.html`, explicit HTM
 moduleDoesNotOwn standard.html "Application templates, page/component module boundaries, HTTP response writing, or the compiler's HTML parser and code generator."
 invariant module standard.html "The standard module entry is this file; application modules import it as alias `html` before using generated targets in the `html.hydrate.*` namespace."
 
-type HtmlFragment CNullTerminatedByteString
-type HtmlTrustedFragment CNullTerminatedByteString
-type HtmlDocument CNullTerminatedByteString
+type HtmlFragment String
+type HtmlTrustedFragment String
+type HtmlDocument String
 
 exportType standard.html HtmlFragment
 exportType standard.html HtmlTrustedFragment

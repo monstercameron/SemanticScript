@@ -1746,8 +1746,8 @@ dependencyExports database.postgres DatabaseClient DatabaseConnection DatabaseOp
 module account
 
 type AccountId UuidV7
-type MoneyCents I64
-type DurationMilliseconds I64
+type MoneyCents Int64
+type DurationMilliseconds Int64
 type AccountBalanceResult Result AccountBalance AccountLookupError
 
 record AccountBalance layout row align 16

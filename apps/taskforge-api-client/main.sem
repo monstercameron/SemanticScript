@@ -15,7 +15,7 @@ import net standard.net
 exportOperation app.taskforge_api_client main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 capability outboundFetch network.http.client write
 purpose operation outboundFetch "Authority to perform outbound HTTP client work through standard.net."
@@ -32,13 +32,13 @@ storage module immutable taskForgeTodosUrl Url "http://127.0.0.1:18090/api/todos
 storage module immutable timeoutMillis NetworkTimeoutMilliseconds 3000
 storage module immutable maxBodyBytes ResponseBodyLimitBytes 1048576
 storage module immutable redirectLimit HttpRedirectLimit 5
-storage module immutable requestCancellationToken COpaqueMemoryAddress 0
+storage module immutable requestCancellationToken OpaquePointer 0
 storage module immutable successfulExitCode ExitCode 0
 
-storage module immutable startedText CNullTerminatedByteString "started TaskForge fetches before awaiting"
-storage module immutable healthLabelText CNullTerminatedByteString "TaskForge /health response:"
-storage module immutable versionLabelText CNullTerminatedByteString "TaskForge /api/version response:"
-storage module immutable todosLabelText CNullTerminatedByteString "TaskForge /api/todos unauthenticated response:"
+storage module immutable startedText String "started TaskForge fetches before awaiting"
+storage module immutable healthLabelText String "TaskForge /health response:"
+storage module immutable versionLabelText String "TaskForge /api/version response:"
+storage module immutable todosLabelText String "TaskForge /api/todos unauthenticated response:"
 
 operation main
 input operation main console Console
@@ -95,10 +95,10 @@ start todosFetchCall
 
 call startedLineCall console.writeLine
 argument startedLineCall console Console console
-argument startedLineCall text CNullTerminatedByteString startedText
+argument startedLineCall text String startedText
 run startedLineCall
 ignore void source startedLineCall
-bind error startedLineError CSignedInt32 startedLineCall
+bind error startedLineError Int32 startedLineCall
 branch error source startedLineCall target startedLineWriteFailed
 
 label waitNextFetch
@@ -117,14 +117,14 @@ fieldGet healthBody HttpClientBodyText healthResponse body
 
 call printHealthLabelCall console.writeLine
 argument printHealthLabelCall console Console console
-argument printHealthLabelCall text CNullTerminatedByteString healthLabelText
+argument printHealthLabelCall text String healthLabelText
 run printHealthLabelCall
 ignore void source printHealthLabelCall
 ignore error source printHealthLabelCall
 
 call printHealthBodyCall console.writeLine
 argument printHealthBodyCall console Console console
-argument printHealthBodyCall text CNullTerminatedByteString healthBody
+argument printHealthBodyCall text String healthBody
 run printHealthBodyCall
 ignore void source printHealthBodyCall
 ignore error source printHealthBodyCall
@@ -144,14 +144,14 @@ fieldGet versionBody HttpClientBodyText versionResponse body
 
 call printVersionLabelCall console.writeLine
 argument printVersionLabelCall console Console console
-argument printVersionLabelCall text CNullTerminatedByteString versionLabelText
+argument printVersionLabelCall text String versionLabelText
 run printVersionLabelCall
 ignore void source printVersionLabelCall
 ignore error source printVersionLabelCall
 
 call printVersionBodyCall console.writeLine
 argument printVersionBodyCall console Console console
-argument printVersionBodyCall text CNullTerminatedByteString versionBody
+argument printVersionBodyCall text String versionBody
 run printVersionBodyCall
 ignore void source printVersionBodyCall
 ignore error source printVersionBodyCall
@@ -171,14 +171,14 @@ fieldGet todosBody HttpClientBodyText todosResponse body
 
 call printTodosLabelCall console.writeLine
 argument printTodosLabelCall console Console console
-argument printTodosLabelCall text CNullTerminatedByteString todosLabelText
+argument printTodosLabelCall text String todosLabelText
 run printTodosLabelCall
 ignore void source printTodosLabelCall
 ignore error source printTodosLabelCall
 
 call printTodosBodyCall console.writeLine
 argument printTodosBodyCall console Console console
-argument printTodosBodyCall text CNullTerminatedByteString todosBody
+argument printTodosBodyCall text String todosBody
 run printTodosBodyCall
 ignore void source printTodosBodyCall
 ignore error source printTodosBodyCall

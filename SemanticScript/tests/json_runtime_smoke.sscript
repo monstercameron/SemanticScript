@@ -12,7 +12,7 @@ entry console main
 
 error MainError
 errorCase MainError JsonAccessFailed JsonAccessError
-errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError RoundTripMismatch Int32
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability jsonScratch console.stdout write
@@ -25,12 +25,12 @@ purpose operation heapFreeCapability "Authority to free scratch buffers at defer
 storage module immutable defaultJsonCapacity JsonCapacityBytes 4096
 storage module immutable scratchCapacity JsonCapacityBytes 512
 storage module immutable successExit ExitCode 0
-storage module immutable objectRootKind CSignedInt32 0
-storage module immutable expectedId CSignedInt64 42
-storage module immutable missingIntDefault CSignedInt64 -1
-storage module immutable missingBoolDefault CSignedInt32 -1
-storage module immutable falseValue CSignedInt32 0
-storage module immutable mismatchCode CSignedInt32 1
+storage module immutable objectRootKind Int32 0
+storage module immutable expectedId Int64 42
+storage module immutable missingIntDefault Int64 -1
+storage module immutable missingBoolDefault Int32 -1
+storage module immutable falseValue Int32 0
+storage module immutable mismatchCode Int32 1
 
 operation main
 input operation main console Console
@@ -52,7 +52,7 @@ label startMain
 
 call createDocumentCall json.createEmptyDocument
 argument createDocumentCall capacityBytes JsonCapacityBytes defaultJsonCapacity
-argument createDocumentCall rootKind CSignedInt32 objectRootKind
+argument createDocumentCall rootKind Int32 objectRootKind
 run createDocumentCall
 bind ok smokeDocument JsonDocument createDocumentCall
 bind error createDocumentError JsonAccessError createDocumentCall
@@ -63,54 +63,54 @@ argument rootCursorCall document JsonDocument smokeDocument
 run rootCursorCall
 bind value rootCursor JsonCursor rootCursorCall
 
-storage local immutable idFieldName CNullTerminatedByteString "id"
+storage local immutable idFieldName String "id"
 call setIdCall json.setObjectFieldInt64
 argument setIdCall document JsonDocument smokeDocument
 argument setIdCall cursor JsonCursor rootCursor
-argument setIdCall fieldName CNullTerminatedByteString idFieldName
-argument setIdCall value CSignedInt64 expectedId
+argument setIdCall fieldName String idFieldName
+argument setIdCall value Int64 expectedId
 run setIdCall
-ignore ok source setIdCall type CSignedInt32
+ignore ok source setIdCall type Int32
 bind error setIdError JsonAccessError setIdCall
 branch error source setIdCall target jsonAccessFailed
 
-storage local immutable titleFieldName CNullTerminatedByteString "title"
-storage local immutable titleValue CNullTerminatedByteString "hello \"json\"\\world\nline\t\x01"
+storage local immutable titleFieldName String "title"
+storage local immutable titleValue String "hello \"json\"\\world\nline\t\x01"
 call setTitleCall json.setObjectFieldString
 argument setTitleCall document JsonDocument smokeDocument
 argument setTitleCall cursor JsonCursor rootCursor
-argument setTitleCall fieldName CNullTerminatedByteString titleFieldName
-argument setTitleCall value CNullTerminatedByteString titleValue
+argument setTitleCall fieldName String titleFieldName
+argument setTitleCall value String titleValue
 run setTitleCall
-ignore ok source setTitleCall type CSignedInt32
+ignore ok source setTitleCall type Int32
 bind error setTitleError JsonAccessError setTitleCall
 branch error source setTitleCall target jsonAccessFailed
 
-storage local immutable doneFieldName CNullTerminatedByteString "done"
+storage local immutable doneFieldName String "done"
 call setDoneCall json.setObjectFieldBool
 argument setDoneCall document JsonDocument smokeDocument
 argument setDoneCall cursor JsonCursor rootCursor
-argument setDoneCall fieldName CNullTerminatedByteString doneFieldName
-argument setDoneCall value CSignedInt32 falseValue
+argument setDoneCall fieldName String doneFieldName
+argument setDoneCall value Int32 falseValue
 run setDoneCall
-ignore ok source setDoneCall type CSignedInt32
+ignore ok source setDoneCall type Int32
 bind error setDoneError JsonAccessError setDoneCall
 branch error source setDoneCall target jsonAccessFailed
 
-storage local immutable completedAtFieldName CNullTerminatedByteString "completedAt"
+storage local immutable completedAtFieldName String "completedAt"
 call setCompletedAtCall json.setObjectFieldNull
 argument setCompletedAtCall document JsonDocument smokeDocument
 argument setCompletedAtCall cursor JsonCursor rootCursor
-argument setCompletedAtCall fieldName CNullTerminatedByteString completedAtFieldName
+argument setCompletedAtCall fieldName String completedAtFieldName
 run setCompletedAtCall
-ignore ok source setCompletedAtCall type CSignedInt32
+ignore ok source setCompletedAtCall type Int32
 bind error setCompletedAtError JsonAccessError setCompletedAtCall
 branch error source setCompletedAtCall target jsonAccessFailed
 
 call idCursorCall json.objectFieldAt
 argument idCursorCall document JsonDocument smokeDocument
 argument idCursorCall cursor JsonCursor rootCursor
-argument idCursorCall fieldName CNullTerminatedByteString idFieldName
+argument idCursorCall fieldName String idFieldName
 run idCursorCall
 bind ok idCursor JsonCursor idCursorCall
 bind error idCursorError JsonAccessError idCursorCall
@@ -119,13 +119,13 @@ branch error source idCursorCall target jsonAccessFailed
 call readIdCall json.cursorInt64
 argument readIdCall document JsonDocument smokeDocument
 argument readIdCall cursor JsonCursor idCursor
-argument readIdCall missingDefault CSignedInt64 missingIntDefault
+argument readIdCall missingDefault Int64 missingIntDefault
 run readIdCall
-bind value recoveredId CSignedInt64 readIdCall
+bind value recoveredId Int64 readIdCall
 
-call idMatchCall math.equalI64
-argument idMatchCall left CSignedInt64 recoveredId
-argument idMatchCall right I64 expectedId
+call idMatchCall math.equalInt64
+argument idMatchCall left Int64 recoveredId
+argument idMatchCall right Int64 expectedId
 run idMatchCall
 bind value idMatched Bool idMatchCall
 branch if condition idMatched target idMatchOk
@@ -135,7 +135,7 @@ label idMatchOk
 call doneCursorCall json.objectFieldAt
 argument doneCursorCall document JsonDocument smokeDocument
 argument doneCursorCall cursor JsonCursor rootCursor
-argument doneCursorCall fieldName CNullTerminatedByteString doneFieldName
+argument doneCursorCall fieldName String doneFieldName
 run doneCursorCall
 bind ok doneCursor JsonCursor doneCursorCall
 bind error doneCursorError JsonAccessError doneCursorCall
@@ -144,7 +144,7 @@ branch error source doneCursorCall target jsonAccessFailed
 call readDoneCall json.cursorBool
 argument readDoneCall document JsonDocument smokeDocument
 argument readDoneCall cursor JsonCursor doneCursor
-argument readDoneCall missingDefault CSignedInt32 missingBoolDefault
+argument readDoneCall missingDefault Int32 missingBoolDefault
 run readDoneCall
 bind value recoveredDone Bool readDoneCall
 branch if condition recoveredDone target roundTripMismatch
@@ -152,7 +152,7 @@ branch if condition recoveredDone target roundTripMismatch
 call completedAtCursorCall json.objectFieldAt
 argument completedAtCursorCall document JsonDocument smokeDocument
 argument completedAtCursorCall cursor JsonCursor rootCursor
-argument completedAtCursorCall fieldName CNullTerminatedByteString completedAtFieldName
+argument completedAtCursorCall fieldName String completedAtFieldName
 run completedAtCursorCall
 bind ok completedAtCursor JsonCursor completedAtCursorCall
 bind error completedAtCursorError JsonAccessError completedAtCursorCall
@@ -170,12 +170,12 @@ label completedAtNullOk
 call allocateScratchCall c.malloc
 argument allocateScratchCall size JsonCapacityBytes scratchCapacity
 run allocateScratchCall
-bind value titleScratch COpaqueMemoryAddress allocateScratchCall
+bind value titleScratch OpaquePointer allocateScratchCall
 
 call titleCursorCall json.objectFieldAt
 argument titleCursorCall document JsonDocument smokeDocument
 argument titleCursorCall cursor JsonCursor rootCursor
-argument titleCursorCall fieldName CNullTerminatedByteString titleFieldName
+argument titleCursorCall fieldName String titleFieldName
 run titleCursorCall
 bind ok titleCursor JsonCursor titleCursorCall
 bind error titleCursorError JsonAccessError titleCursorCall
@@ -184,45 +184,45 @@ branch error source titleCursorCall target jsonAccessFailed
 call readTitleCall json.cursorString
 argument readTitleCall document JsonDocument smokeDocument
 argument readTitleCall cursor JsonCursor titleCursor
-argument readTitleCall scratch COpaqueMemoryAddress titleScratch
+argument readTitleCall scratch OpaquePointer titleScratch
 argument readTitleCall scratchCapacity JsonCapacityBytes scratchCapacity
 run readTitleCall
-bind ok recoveredTitle CNullTerminatedByteString readTitleCall
+bind ok recoveredTitle String readTitleCall
 bind error readTitleError JsonAccessError readTitleCall
 branch error source readTitleCall target jsonAccessFailed
 
 call titleNullCheckCall pointer.isNull
-argument titleNullCheckCall pointer CNullTerminatedByteString recoveredTitle
+argument titleNullCheckCall pointer String recoveredTitle
 run titleNullCheckCall
 bind value titleIsNull Bool titleNullCheckCall
 branch if condition titleIsNull target roundTripMismatch
 
 call serializeDocumentCall json.serializeDocument
 argument serializeDocumentCall document JsonDocument smokeDocument
-argument serializeDocumentCall scratch COpaqueMemoryAddress titleScratch
+argument serializeDocumentCall scratch OpaquePointer titleScratch
 argument serializeDocumentCall scratchCapacity JsonCapacityBytes scratchCapacity
 run serializeDocumentCall
 bind ok serializedDocument JsonText serializeDocumentCall
 bind error serializeDocumentError JsonAccessError serializeDocumentCall
 branch error source serializeDocumentCall target jsonAccessFailed
 
-storage local immutable successMarker CNullTerminatedByteString "jsonRuntimeSmokeOk"
+storage local immutable successMarker String "jsonRuntimeSmokeOk"
 call writeMarkerCall console.writeLine
 argument writeMarkerCall console Console console
-argument writeMarkerCall text CNullTerminatedByteString successMarker
+argument writeMarkerCall text String successMarker
 run writeMarkerCall
 ignore void source writeMarkerCall
 bind error consoleWriteError ConsoleWriteError writeMarkerCall
 branch error source writeMarkerCall target consoleWriteFailed
 
 call releaseScratchCall c.free
-argument releaseScratchCall ptr COpaqueMemoryAddress titleScratch
+argument releaseScratchCall ptr OpaquePointer titleScratch
 run releaseScratchCall
 
 call destroyDocumentCall json.destroyDocument
 argument destroyDocumentCall document JsonDocument smokeDocument
 run destroyDocumentCall
-ignore ok source destroyDocumentCall type CSignedInt32
+ignore ok source destroyDocumentCall type Int32
 
 return ok successExit
 

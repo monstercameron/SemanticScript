@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError ForcedFailureForTest CSignedInt32
+errorCase MainError ForcedFailureForTest Int32
 operation printCleanupBeforeError
 input operation printCleanupBeforeError console Console
-output operation printCleanupBeforeError I32
-storage module immutable cleanupBeforeErrorMessage CNullTerminatedByteString "cleanupBeforeError"
+output operation printCleanupBeforeError Int32
+storage module immutable cleanupBeforeErrorMessage String "cleanupBeforeError"
 call writeCleanupCall console.writeLine
 argument writeCleanupCall console Console console
-argument writeCleanupCall text CNullTerminatedByteString cleanupBeforeErrorMessage
+argument writeCleanupCall text String cleanupBeforeErrorMessage
 run writeCleanupCall
 ignore void source writeCleanupCall
-storage module immutable cleanupExitValue I32 0
+storage module immutable cleanupExitValue Int32 0
 return value cleanupExitValue
 operation alwaysReturnsNegative
-input operation alwaysReturnsNegative trigger I64
-output operation alwaysReturnsNegative Result I64 MainError
+input operation alwaysReturnsNegative trigger Int64
+output operation alwaysReturnsNegative Result Int64 MainError
 makeError alwaysFailValue MainError.ForcedFailureForTest
 return error alwaysFailValue
 operation main
@@ -31,13 +31,13 @@ async main no
 purpose operation main "branchIfError jumps to failure label; the defer cleanup fires before returnError."
 invariant operation main "Output is exactly one line of 'cleanupBeforeError'; exit code is the variant index (1)."
 label startMain
-storage module immutable zeroTrigger I64 0
+storage module immutable zeroTrigger Int64 0
 defer earlyReturnCleanup printCleanupBeforeError console
 call failingHelperCall alwaysReturnsNegative
-argument failingHelperCall trigger I64 zeroTrigger
+argument failingHelperCall trigger Int64 zeroTrigger
 run failingHelperCall
-bind ok failingHelperOk I64 failingHelperCall
-bind error failingHelperErrorVal I64 failingHelperCall
+bind ok failingHelperOk Int64 failingHelperCall
+bind error failingHelperErrorVal Int64 failingHelperCall
 branch error source failingHelperCall target handleEarlyFailure
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

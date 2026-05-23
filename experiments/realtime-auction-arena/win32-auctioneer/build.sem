@@ -42,9 +42,9 @@ field BuildModules main BuildModule
 record BuildTarget
 field BuildTarget runtime String
 field BuildTarget nativeRuntime String
-field BuildTarget nativeRuntimeVersion I64
+field BuildTarget nativeRuntimeVersion Int64
 field BuildTarget profile String
-field BuildTarget optLevel I64
+field BuildTarget optLevel Int64
 field BuildTarget runtimeChecks String
 field BuildTarget persistLlvmIr String
 field BuildTarget emitLlvmIr String
@@ -53,7 +53,7 @@ field BuildTarget buildFolderName String
 field BuildTarget cpuBaseline String
 field BuildTarget cpuTune String
 field BuildTarget cpuFeatureCheck String
-field BuildTarget formatterLineWidth I64
+field BuildTarget formatterLineWidth Int64
 field BuildTarget linterMaxTier String
 field BuildTarget docsOutput String
 field BuildTarget nativeOutput String

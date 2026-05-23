@@ -5,19 +5,19 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation cmpStrs
-input operation cmpStrs left CNullTerminatedByteString
-input operation cmpStrs right CNullTerminatedByteString
-output operation cmpStrs Result CSignedInt64 Void
+input operation cmpStrs left String
+input operation cmpStrs right String
+output operation cmpStrs Result Int64 Void
 purpose operation cmpStrs "Compare two strings via c.strcmp; return the result as i64."
 label startCmp
 call cmpCall c.strcmp
-argument cmpCall left CNullTerminatedByteString left
-argument cmpCall right CNullTerminatedByteString right
+argument cmpCall left String left
+argument cmpCall right String right
 run cmpCall
-bind value cmpResult CSignedInt64 cmpCall
+bind value cmpResult Int64 cmpCall
 return ok cmpResult
 
 operation main
@@ -27,18 +27,18 @@ effect main write console.stdout
 memory main heap no
 async main no
 label startMain
-storage module immutable a CNullTerminatedByteString "hello"
-storage module immutable b CNullTerminatedByteString "hello"
+storage module immutable a String "hello"
+storage module immutable b String "hello"
 call doCmp cmpStrs
-argument doCmp left CNullTerminatedByteString a
-argument doCmp right CNullTerminatedByteString b
+argument doCmp left String a
+argument doCmp right String b
 run doCmp
-bind ok cmpVal CSignedInt64 doCmp
-memory main mutable displayStore I64 0
+bind ok cmpVal Int64 doCmp
+memory main mutable displayStore Int64 0
 set memory displayStore cmpVal
 call w console.writeIntegerLine
 argument w console Console console
-argument w value I64 displayStore
+argument w value Int64 displayStore
 run w
 ignore void source w
 storage module immutable okExit ExitCode 0

@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -15,25 +15,25 @@ async main no
 purpose operation main "Compute (4 * 5) + 3 = 23 via two sequential ops."
 invariant operation main "First mul, then add, then print."
 label startMain
-storage module immutable fourLit I64 4
-storage module immutable fiveLit I64 5
-storage module immutable threeLit I64 3
-memory main mutable leftMul I64 fourLit
-call mulCall math.multiplyI64
-argument mulCall left I64 leftMul
-argument mulCall right I64 fiveLit
+storage module immutable fourLit Int64 4
+storage module immutable fiveLit Int64 5
+storage module immutable threeLit Int64 3
+memory main mutable leftMul Int64 fourLit
+call mulCall math.multiplyInt64
+argument mulCall left Int64 leftMul
+argument mulCall right Int64 fiveLit
 run mulCall
-bind value mulResult I64 mulCall
-call addCall math.addI64
-argument addCall left I64 mulResult
-argument addCall right I64 threeLit
+bind value mulResult Int64 mulCall
+call addCall math.addInt64
+argument addCall left Int64 mulResult
+argument addCall right Int64 threeLit
 run addCall
-bind value addResult I64 addCall
-memory main mutable resultVar I64 fourLit
+bind value addResult Int64 addCall
+memory main mutable resultVar Int64 fourLit
 set memory resultVar addResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

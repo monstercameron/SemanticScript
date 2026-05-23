@@ -5,41 +5,41 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation accumulateFloatDoubled
-input operation accumulateFloatDoubled value CFloat64
-input operation accumulateFloatDoubled remainingSteps CSignedInt64
-output operation accumulateFloatDoubled Result CFloat64 Void
+input operation accumulateFloatDoubled value Float64
+input operation accumulateFloatDoubled remainingSteps Int64
+output operation accumulateFloatDoubled Result Float64 Void
 memory accumulateFloatDoubled heap no
 async accumulateFloatDoubled no
-purpose operation accumulateFloatDoubled "Recursive: when remainingSteps == 0 return value; otherwise return accumulateFloatDoubled(value * 2.0, remainingSteps - 1). Exercises recursion with CFloat64 return."
+purpose operation accumulateFloatDoubled "Recursive: when remainingSteps == 0 return value; otherwise return accumulateFloatDoubled(value * 2.0, remainingSteps - 1). Exercises recursion with Float64 return."
 invariant operation accumulateFloatDoubled "Doubles value `remainingSteps` times."
 label startAccumulateFloatDoubled
-storage module immutable zeroSteps CSignedInt64 0
-call doneCheckCall math.equalI64
-argument doneCheckCall left CSignedInt64 remainingSteps
-argument doneCheckCall right I64 zeroSteps
+storage module immutable zeroSteps Int64 0
+call doneCheckCall math.equalInt64
+argument doneCheckCall left Int64 remainingSteps
+argument doneCheckCall right Int64 zeroSteps
 run doneCheckCall
 bind value isDone Bool doneCheckCall
 branch if condition isDone target returnValueAsIs
-storage module immutable twoFactor CFloat64 2.0
-call doubleValueCall math.multiplyF64
-argument doubleValueCall left CFloat64 value
-argument doubleValueCall right CFloat64 twoFactor
+storage module immutable twoFactor Float64 2.0
+call doubleValueCall math.multiplyFloat64
+argument doubleValueCall left Float64 value
+argument doubleValueCall right Float64 twoFactor
 run doubleValueCall
-bind value doubledValue CFloat64 doubleValueCall
-storage module immutable oneStep CSignedInt64 1
-call subtractStepCall math.subtractI64
-argument subtractStepCall left CSignedInt64 remainingSteps
-argument subtractStepCall right CSignedInt64 oneStep
+bind value doubledValue Float64 doubleValueCall
+storage module immutable oneStep Int64 1
+call subtractStepCall math.subtractInt64
+argument subtractStepCall left Int64 remainingSteps
+argument subtractStepCall right Int64 oneStep
 run subtractStepCall
-bind value nextRemaining CSignedInt64 subtractStepCall
+bind value nextRemaining Int64 subtractStepCall
 call recurseCall accumulateFloatDoubled
-argument recurseCall value CFloat64 doubledValue
-argument recurseCall remainingSteps CSignedInt64 nextRemaining
+argument recurseCall value Float64 doubledValue
+argument recurseCall remainingSteps Int64 nextRemaining
 run recurseCall
-bind ok recursiveResult CFloat64 recurseCall
+bind ok recursiveResult Float64 recurseCall
 return ok recursiveResult
 label returnValueAsIs
 return ok value
@@ -51,18 +51,18 @@ effect main write console.stdout
 memory main heap no
 async main no
 purpose operation main "Compute 1.0 doubled 3 times == 8.0 via recursion."
-invariant operation main "Exercises CFloat64 recursion plus writeFloatLine."
+invariant operation main "Exercises Float64 recursion plus writeFloatLine."
 label startMain
-storage module immutable startingValue CFloat64 1.0
-storage module immutable stepCount CSignedInt64 3
+storage module immutable startingValue Float64 1.0
+storage module immutable stepCount Int64 3
 call runIterationCall accumulateFloatDoubled
-argument runIterationCall value CFloat64 startingValue
-argument runIterationCall remainingSteps CSignedInt64 stepCount
+argument runIterationCall value Float64 startingValue
+argument runIterationCall remainingSteps Int64 stepCount
 run runIterationCall
-bind ok finalValue CFloat64 runIterationCall
+bind ok finalValue Float64 runIterationCall
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 finalValue
+argument writeCall value Float64 finalValue
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

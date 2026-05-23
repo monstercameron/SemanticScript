@@ -134,13 +134,13 @@ def _user_operation_wait_set_source(
     storage_lines = [
         "storage module immutable successfulExitCode ExitCode 0",
         "storage module immutable failedExitCode ExitCode 1",
-        "storage module immutable one I64 1",
-        "storage module immutable two I64 2",
-        "storage module immutable three I64 3",
-        "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+        "storage module immutable one Int64 1",
+        "storage module immutable two Int64 2",
+        "storage module immutable three Int64 3",
+        "storage module immutable cancellationToken OpaquePointer 0",
     ]
     for index, _call_name in enumerate(calls, start=10):
-        storage_lines.append(f"storage module immutable value{index} I64 {index}")
+        storage_lines.append(f"storage module immutable value{index} Int64 {index}")
 
     lines = [
         "project AsyncWaitSetUserOps",
@@ -152,17 +152,17 @@ def _user_operation_wait_set_source(
         *storage_lines,
         "",
         "operation addPair",
-        "input operation addPair left I64",
-        "input operation addPair right I64",
-        "output operation addPair I64",
+        "input operation addPair left Int64",
+        "input operation addPair right Int64",
+        "output operation addPair Int64",
         "memory addPair heap no",
         "async addPair no",
         "purpose operation addPair \"Return the sum of two integers.\"",
-        "call addCall math.addI64",
-        "argument addCall left I64 left",
-        "argument addCall right I64 right",
+        "call addCall math.addInt64",
+        "argument addCall left Int64 left",
+        "argument addCall right Int64 right",
         "run addCall",
-        "bind value sum I64 addCall",
+        "bind value sum Int64 addCall",
         "return value sum",
         "",
         "operation main",
@@ -180,13 +180,13 @@ def _user_operation_wait_set_source(
         ])
         if target == "addPair":
             lines.extend([
-                f"argument {call_name} left I64 value{index}",
-                f"argument {call_name} right I64 one",
+                f"argument {call_name} left Int64 value{index}",
+                f"argument {call_name} right Int64 one",
             ])
         else:
             lines.extend([
                 f"argument {call_name} console Console console",
-                f"argument {call_name} text CNullTerminatedByteString one",
+                f"argument {call_name} text String one",
             ])
         lines.extend([
             f"timeout {call_name} 3000ms",
@@ -247,7 +247,7 @@ def _user_operation_wait_set_source(
     for call_name in calls:
         lines.extend([
             f"label {call_name}Ready",
-            f"bind ok {call_name}Result I64 {call_name}",
+            f"bind ok {call_name}Result Int64 {call_name}",
             "jump target waitNextResult",
         ])
         if handler_await:
@@ -262,14 +262,14 @@ def _user_operation_wait_set_source(
         lines.extend([
             "label secondRound",
             "call thirdAddCall addPair",
-            "argument thirdAddCall left I64 two",
-            "argument thirdAddCall right I64 one",
+            "argument thirdAddCall left Int64 two",
+            "argument thirdAddCall right Int64 one",
             "timeout thirdAddCall 3000ms",
             "cancelOn thirdAddCall cancellationToken",
             "start thirdAddCall",
             "call fourthAddCall addPair",
-            "argument fourthAddCall left I64 three",
-            "argument fourthAddCall right I64 one",
+            "argument fourthAddCall left Int64 three",
+            "argument fourthAddCall right Int64 one",
             "timeout fourthAddCall 3000ms",
             "cancelOn fourthAddCall cancellationToken",
             "start fourthAddCall",
@@ -282,7 +282,7 @@ def _user_operation_wait_set_source(
         for call_name in second_calls:
             lines.extend([
                 f"label {call_name}Ready",
-                f"bind ok {call_name}Result I64 {call_name}",
+                f"bind ok {call_name}Result Int64 {call_name}",
                 "jump target waitNextResultAgain",
             ])
             if handler_await:
@@ -314,7 +314,7 @@ def _fetch_wait_set_source(case_count: int = 2, *, handler_await: bool = False) 
         "storage module immutable timeoutMillis NetworkTimeoutMilliseconds 3000",
         "storage module immutable maxBodyBytes ResponseBodyLimitBytes 1048576",
         "storage module immutable redirectLimit HttpRedirectLimit 5",
-        "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+        "storage module immutable cancellationToken OpaquePointer 0",
         "storage module immutable successfulExitCode ExitCode 0",
         "storage module immutable failedExitCode ExitCode 1",
         "",
@@ -467,7 +467,7 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
     def test_work_arg_before_work_declaration_is_preserved(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "output operation main ExitCode",
-            "output operation main I64",
+            "output operation main Int64",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
@@ -488,7 +488,7 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
     def test_non_target_duplicate_work_before_submit_uses_prior_target(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "output operation main ExitCode",
-            "output operation main I64",
+            "output operation main Int64",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
@@ -513,7 +513,7 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
             "entry console main\nworkerPool resultPool maxWorkers 4\nimport math standard.math",
         ).replace(
             "output operation main ExitCode",
-            "output operation main I64",
+            "output operation main Int64",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
@@ -538,10 +538,10 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
             "import math standard.math\n",
             "",
         ).replace(
-            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "storage module immutable cancellationToken OpaquePointer 0",
             "\n".join([
-                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
-                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+                "storage module immutable cancellationToken OpaquePointer 0",
+                'storage module immutable handlerMessage String "handler"',
             ]),
         ).replace(
             'purpose operation main "Exercise await wait-set lowering."',
@@ -556,16 +556,16 @@ class TestAsyncWaitSetCompilerPositive(unittest.TestCase):
             "\n".join([
                 "call handlerWriteCall console.writeLine",
                 "argument handlerWriteCall console Console console",
-                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "argument handlerWriteCall text String handlerMessage",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "run handlerWriteCall",
-                "ignore ok source handlerWriteCall type CSignedInt32",
-                "bind error handlerWriteError CSignedInt32 handlerWriteCall",
+                "ignore ok source handlerWriteCall type Int32",
+                "bind error handlerWriteError Int32 handlerWriteCall",
                 "jump target waitNextResult",
             ]),
         )
@@ -580,10 +580,10 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "storage module immutable cancellationToken OpaquePointer 0",
             "\n".join([
-                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
-                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+                "storage module immutable cancellationToken OpaquePointer 0",
+                'storage module immutable handlerMessage String "handler"',
             ]),
         ).replace(
             'purpose operation main "Exercise await wait-set lowering."',
@@ -598,15 +598,15 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "\n".join([
                 "call handlerWriteCall console.writeLine",
                 "argument handlerWriteCall console Console console",
-                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "argument handlerWriteCall text String handlerMessage",
                 "run handlerWriteCall",
-                "ignore ok source handlerWriteCall type CSignedInt32",
+                "ignore ok source handlerWriteCall type Int32",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "ignore error source handlerWriteCall",
                 "jump target waitNextResult",
             ]),
@@ -615,10 +615,10 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
 
     def test_strict_mixed_run_and_run_checked_same_fallible_call_fails(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
-            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "storage module immutable cancellationToken OpaquePointer 0",
             "\n".join([
-                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
-                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+                "storage module immutable cancellationToken OpaquePointer 0",
+                'storage module immutable handlerMessage String "handler"',
             ]),
         ).replace(
             'purpose operation main "Exercise await wait-set lowering."',
@@ -633,9 +633,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "\n".join([
                 "call handlerWriteCall console.writeLine",
                 "argument handlerWriteCall console Console console",
-                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "argument handlerWriteCall text String handlerMessage",
                 "run handlerWriteCall",
-                "runChecked handlerWriteCall ok handlerWriteStatus CSignedInt32 error handlerWriteError CSignedInt32 else handlerWriteFailed",
+                "runChecked handlerWriteCall ok handlerWriteStatus Int32 error handlerWriteError Int32 else handlerWriteFailed",
                 "label waitNextResult",
             ]),
         ).replace(
@@ -682,16 +682,16 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             'invariant operation main "Fallible grouped calls use one execution shape."',
             "memory main heap no",
             "async main no",
-            'storage module immutable message CNullTerminatedByteString "hello"',
+            'storage module immutable message String "hello"',
             "storage module immutable successfulExitCode ExitCode 0",
             "storage module immutable failedExitCode ExitCode 1",
             "label startMain",
             "taskGroup writeGroup",
             "call writeLineCall console.writeLine",
             "argument writeLineCall console Console console",
-            "argument writeLineCall text CNullTerminatedByteString message",
+            "argument writeLineCall text String message",
             "startInGroup writeLineCall writeGroup",
-            "runChecked writeLineCall ok writeStatus CSignedInt32 error writeError CSignedInt32 else writeFailed",
+            "runChecked writeLineCall ok writeStatus Int32 error writeError Int32 else writeFailed",
             "awaitGroup writeGroup",
             "return value successfulExitCode",
             "label writeFailed",
@@ -717,12 +717,12 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             'invariant operation main "Fallible dispositions follow execution."',
             "memory main heap no",
             "async main no",
-            'storage module immutable message CNullTerminatedByteString "hello"',
+            'storage module immutable message String "hello"',
             "label startMain",
             "call writeLineCall console.writeLine",
             "argument writeLineCall console Console console",
-            "argument writeLineCall text CNullTerminatedByteString message",
-            "ignore ok source writeLineCall type CSignedInt32",
+            "argument writeLineCall text String message",
+            "ignore ok source writeLineCall type Int32",
             "bind error writeError MainError writeLineCall",
             "branch error source writeLineCall target writeFailed",
             "run writeLineCall",
@@ -778,7 +778,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "runChecked missingCall ok missingValue I64 error missingError I64 else checkedFailed",
+                "runChecked missingCall ok missingValue Int64 error missingError Int64 else checkedFailed",
                 "return value missingValue",
                 "label checkedFailed",
                 "return value failedExitCode",
@@ -796,11 +796,11 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
 
     def test_case_call_must_be_started_before_wait_set(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"], start_all=False).replace(
-            "label firstAddCallReady\nbind ok firstAddCallResult I64 firstAddCall",
+            "label firstAddCallReady\nbind ok firstAddCallResult Int64 firstAddCall",
             "\n".join([
                 "label firstAddCallReady",
                 "start firstAddCall",
-                "bind ok firstAddCallResult I64 firstAddCall",
+                "bind ok firstAddCallResult Int64 firstAddCall",
             ]),
         )
         _assert_fails_with(self, source, "was not started with async lowering")
@@ -1025,10 +1025,10 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok firstAddCallResult I64 firstAddCall",
-                "bind ok stolenSecondResult I64 secondAddCall",
+                "bind ok firstAddCallResult Int64 firstAddCall",
+                "bind ok stolenSecondResult Int64 secondAddCall",
                 "jump target waitNextResult",
             ]),
         )
@@ -1039,12 +1039,12 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "call totalCall math.addI64",
-                "argument totalCall left I64 firstAddCallResult",
-                "argument totalCall right I64 secondAddCallResult",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 firstAddCallResult",
+                "argument totalCall right Int64 secondAddCallResult",
                 "run totalCall",
                 "jump target waitNextResult",
             ]),
@@ -1058,9 +1058,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call totalCall math.addI64",
-                "argument totalCall left I64 one",
-                "argument totalCall right I64 secondAddCallResult",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 one",
+                "argument totalCall right Int64 secondAddCallResult",
                 "label waitNextResult",
             ]),
         ).replace(
@@ -1068,7 +1068,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "\n".join([
                 "label allDone",
                 "run totalCall",
-                "bind value totalResult I64 totalCall",
+                "bind value totalResult Int64 totalCall",
                 "return value totalResult",
             ]),
         )
@@ -1081,15 +1081,15 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call totalCall math.addI64",
-                "argument totalCall left I64 one",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 one",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "argument totalCall right I64 secondAddCallResult",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "argument totalCall right Int64 secondAddCallResult",
                 "jump target waitNextResult",
             ]),
         ).replace(
@@ -1097,7 +1097,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "\n".join([
                 "label allDone",
                 "run totalCall",
-                "bind value totalResult I64 totalCall",
+                "bind value totalResult Int64 totalCall",
                 "return value totalResult",
             ]),
         )
@@ -1109,11 +1109,11 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "secondAddCall",
         ]).replace(
             "label waitNextResult",
-            "memory main mutable leaked I64 0\nlabel waitNextResult",
+            "memory main mutable leaked Int64 0\nlabel waitNextResult",
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "set memory leaked secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -1130,8 +1130,8 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
                 "import math standard.math",
                 "",
                 "record Point layout row align 8",
-                "field Point x I64",
-                "field Point y I64",
+                "field Point x Int64",
+                "field Point y Int64",
                 "",
                 "storage module",
             ]),
@@ -1143,9 +1143,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "fieldSet leakedPoint x secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -1160,7 +1160,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "memory main mutable leaked I64 secondAddCallResult",
+                "memory main mutable leaked Int64 secondAddCallResult",
                 "return value leaked",
             ]),
         )
@@ -1175,7 +1175,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "\n".join([
                 "label allDone",
                 "send resultChannel secondAddCallResult",
-                "receive leaked I64 resultChannel",
+                "receive leaked Int64 resultChannel",
                 "return value leaked",
             ]),
         )
@@ -1186,9 +1186,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "send resultChannel secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -1196,7 +1196,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "receive leaked I64 resultChannel",
+                "receive leaked Int64 resultChannel",
                 "return value leaked",
             ]),
         )
@@ -1207,10 +1207,10 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "memory main mutable privateChannel I64 0",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "memory main mutable privateChannel Int64 0",
                 "send privateChannel secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -1218,7 +1218,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "receive leaked I64 privateChannel",
+                "receive leaked Int64 privateChannel",
                 "return value leaked",
             ]),
         )
@@ -1285,9 +1285,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "defer cleanupSecondAdd addPair secondAddCallResult one",
                 "jump target waitNextResult",
             ]),
@@ -1299,10 +1299,10 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "storage local mutable privateStore I64 0",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "storage local mutable privateStore Int64 0",
                 "set storage privateStore secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -1310,7 +1310,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "read local leaked I64 privateStore",
+                "read local leaked Int64 privateStore",
                 "return value leaked",
             ]),
         )
@@ -1329,9 +1329,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "workArg sumWork left secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -1417,13 +1417,13 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "call checkedTotalCall math.addI64",
-                "argument checkedTotalCall left I64 secondAddCallResult",
-                "argument checkedTotalCall right I64 one",
-                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else allDone",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "call checkedTotalCall math.addInt64",
+                "argument checkedTotalCall left Int64 secondAddCallResult",
+                "argument checkedTotalCall right Int64 one",
+                "runChecked checkedTotalCall ok checkedTotal Int64 error checkedError Int64 else allDone",
                 "jump target waitNextResult",
             ]),
         )
@@ -1436,22 +1436,22 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call checkedTotalCall math.addI64",
-                "argument checkedTotalCall right I64 one",
+                "call checkedTotalCall math.addInt64",
+                "argument checkedTotalCall right Int64 one",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "argument checkedTotalCall left I64 secondAddCallResult",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "argument checkedTotalCall left Int64 secondAddCallResult",
                 "jump target waitNextResult",
             ]),
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else checkedFailed",
+                "runChecked checkedTotalCall ok checkedTotal Int64 error checkedError Int64 else checkedFailed",
                 "return value checkedTotal",
                 "label checkedFailed",
                 "return value failedExitCode",
@@ -1472,9 +1472,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "workArg sumWork left secondAddCallResult",
                 "submitWork sumWork resultPool",
                 "awaitWork sumWork",
@@ -1493,17 +1493,17 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call totalCall math.addI64",
-                "argument totalCall left I64 one",
-                "argument totalCall right I64 two",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 one",
+                "argument totalCall right Int64 two",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
-            "bind ok secondAddCallResult I64 secondAddCall\nrun totalCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\nrun totalCall\njump target waitNextResult",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
-            "label allDone\nbind ok totalResult I64 totalCall\nreturn value totalResult",
+            "label allDone\nbind ok totalResult Int64 totalCall\nreturn value totalResult",
         )
         _assert_fails_with(self, source, "totalCall` value may only be read inside handler label `secondAddCallReady`")
 
@@ -1544,8 +1544,8 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "label startMain",
             "label retryStart",
         ).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
-            "bind ok firstAddCallResult I64 firstAddCall\njump target retryStart",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target retryStart",
         )
         _assert_fails_with(self, source, "can be re-entered")
 
@@ -1554,8 +1554,8 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
-            "bind ok firstAddCallResult I64 firstAddCall\nreturn value successfulExitCode",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\nreturn value successfulExitCode",
         )
         _assert_fails_with(self, source, "must jump back to `waitNextResult`")
 
@@ -1565,9 +1565,9 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
 
     def test_case_call_cannot_be_restarted_after_consumption(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok firstAddCallResult I64 firstAddCall",
+                "bind ok firstAddCallResult Int64 firstAddCall",
                 "start firstAddCall",
                 "jump target waitNextResult",
             ]),
@@ -1585,7 +1585,7 @@ class TestAsyncWaitSetCompilerNegative(unittest.TestCase):
                 "case firstAddCall firstAddCallAgain",
                 "done secondDone",
                 "label firstAddCallAgain",
-                "bind ok again I64 firstAddCall",
+                "bind ok again Int64 firstAddCall",
                 "jump target secondWait",
                 "label secondDone",
                 "return value successfulExitCode",
@@ -1637,7 +1637,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "runChecked missingCall ok missingValue I64 error missingError I64 else checkedFailed",
+                "runChecked missingCall ok missingValue Int64 error missingError Int64 else checkedFailed",
                 "return value missingValue",
                 "label checkedFailed",
                 "return value failedExitCode",
@@ -1707,16 +1707,16 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "\n".join([
                 "call handlerWriteCall console.writeLine",
                 "argument handlerWriteCall console Console console",
-                "argument handlerWriteCall text CNullTerminatedByteString one",
+                "argument handlerWriteCall text String one",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "run handlerWriteCall",
-                "ignore ok source handlerWriteCall type CSignedInt32",
-                "bind error handlerWriteError CSignedInt32 handlerWriteCall",
+                "ignore ok source handlerWriteCall type Int32",
+                "bind error handlerWriteError Int32 handlerWriteCall",
                 "jump target waitNextResult",
             ]),
         )
@@ -1740,13 +1740,13 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "\n".join([
                 "call handlerWriteCall console.writeLine",
                 "argument handlerWriteCall console Console console",
-                "argument handlerWriteCall text CNullTerminatedByteString one",
+                "argument handlerWriteCall text String one",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "run handlerWriteCall",
                 "ignore error source handlerWriteCall",
                 "jump target waitNextResult",
@@ -1769,25 +1769,25 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "storage module immutable cancellationToken COpaqueMemoryAddress 0",
+            "storage module immutable cancellationToken OpaquePointer 0",
             "\n".join([
-                "storage module immutable cancellationToken COpaqueMemoryAddress 0",
-                'storage module immutable handlerMessage CNullTerminatedByteString "handler"',
+                "storage module immutable cancellationToken OpaquePointer 0",
+                'storage module immutable handlerMessage String "handler"',
             ]),
         ).replace(
             "label waitNextResult",
             "\n".join([
                 "call handlerWriteCall console.writeLine",
                 "argument handlerWriteCall console Console console",
-                "argument handlerWriteCall text CNullTerminatedByteString handlerMessage",
+                "argument handlerWriteCall text String handlerMessage",
                 "run handlerWriteCall",
-                "ignore ok source handlerWriteCall type CSignedInt32",
+                "ignore ok source handlerWriteCall type Int32",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "ignore error source handlerWriteCall",
                 "jump target waitNextResult",
             ]),
@@ -1806,9 +1806,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
 
     def test_restart_after_wait_set_case_is_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok firstAddCallResult I64 firstAddCall",
+                "bind ok firstAddCallResult Int64 firstAddCall",
                 "start firstAddCall",
                 "jump target waitNextResult",
             ]),
@@ -1829,10 +1829,10 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "call checkedTotalCall math.addI64",
-                "argument checkedTotalCall left I64 one",
-                "argument checkedTotalCall right I64 two",
-                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else checkedFailed",
+                "call checkedTotalCall math.addInt64",
+                "argument checkedTotalCall left Int64 one",
+                "argument checkedTotalCall right Int64 two",
+                "runChecked checkedTotalCall ok checkedTotal Int64 error checkedError Int64 else checkedFailed",
                 "return value checkedTotal",
                 "label checkedFailed",
                 "return value failedExitCode",
@@ -1868,7 +1868,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 "case firstAddCall firstAddCallAgain",
                 "done secondDone",
                 "label firstAddCallAgain",
-                "bind ok again I64 firstAddCall",
+                "bind ok again Int64 firstAddCall",
                 "jump target secondWait",
                 "label secondDone",
                 "return value successfulExitCode",
@@ -2241,10 +2241,10 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok firstAddCallResult I64 firstAddCall",
-                "bind ok stolenSecondResult I64 secondAddCall",
+                "bind ok firstAddCallResult Int64 firstAddCall",
+                "bind ok stolenSecondResult Int64 secondAddCall",
                 "jump target waitNextResult",
             ]),
         )
@@ -2264,12 +2264,12 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "call totalCall math.addI64",
-                "argument totalCall left I64 firstAddCallResult",
-                "argument totalCall right I64 secondAddCallResult",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 firstAddCallResult",
+                "argument totalCall right Int64 secondAddCallResult",
                 "run totalCall",
                 "jump target waitNextResult",
             ]),
@@ -2292,9 +2292,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call totalCall math.addI64",
-                "argument totalCall left I64 one",
-                "argument totalCall right I64 secondAddCallResult",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 one",
+                "argument totalCall right Int64 secondAddCallResult",
                 "label waitNextResult",
             ]),
         ).replace(
@@ -2302,7 +2302,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "\n".join([
                 "label allDone",
                 "run totalCall",
-                "bind value totalResult I64 totalCall",
+                "bind value totalResult Int64 totalCall",
                 "return value totalResult",
             ]),
         )
@@ -2324,15 +2324,15 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call totalCall math.addI64",
-                "argument totalCall left I64 one",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 one",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "argument totalCall right I64 secondAddCallResult",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "argument totalCall right Int64 secondAddCallResult",
                 "jump target waitNextResult",
             ]),
         ).replace(
@@ -2340,7 +2340,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "\n".join([
                 "label allDone",
                 "run totalCall",
-                "bind value totalResult I64 totalCall",
+                "bind value totalResult Int64 totalCall",
                 "return value totalResult",
             ]),
         )
@@ -2361,11 +2361,11 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "secondAddCall",
         ]).replace(
             "label waitNextResult",
-            "memory main mutable leaked I64 0\nlabel waitNextResult",
+            "memory main mutable leaked Int64 0\nlabel waitNextResult",
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "set memory leaked secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -2391,8 +2391,8 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 "import math standard.math",
                 "",
                 "record Point layout row align 8",
-                "field Point x I64",
-                "field Point y I64",
+                "field Point x Int64",
+                "field Point y Int64",
                 "",
                 "storage module",
             ]),
@@ -2404,9 +2404,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "fieldSet leakedPoint x secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -2430,7 +2430,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "memory main mutable leaked I64 secondAddCallResult",
+                "memory main mutable leaked Int64 secondAddCallResult",
                 "return value leaked",
             ]),
         )
@@ -2454,7 +2454,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "\n".join([
                 "label allDone",
                 "send resultChannel secondAddCallResult",
-                "receive leaked I64 resultChannel",
+                "receive leaked Int64 resultChannel",
                 "return value leaked",
             ]),
         )
@@ -2474,9 +2474,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "send resultChannel secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -2484,7 +2484,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "receive leaked I64 resultChannel",
+                "receive leaked Int64 resultChannel",
                 "return value leaked",
             ]),
         )
@@ -2504,10 +2504,10 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "memory main mutable privateChannel I64 0",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "memory main mutable privateChannel Int64 0",
                 "send privateChannel secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -2515,7 +2515,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "receive leaked I64 privateChannel",
+                "receive leaked Int64 privateChannel",
                 "return value leaked",
             ]),
         )
@@ -2619,9 +2619,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "defer cleanupSecondAdd addPair secondAddCallResult one",
                 "jump target waitNextResult",
             ]),
@@ -2642,10 +2642,10 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "storage local mutable privateStore I64 0",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "storage local mutable privateStore Int64 0",
                 "set storage privateStore secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -2653,7 +2653,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "read local leaked I64 privateStore",
+                "read local leaked Int64 privateStore",
                 "return value leaked",
             ]),
         )
@@ -2814,7 +2814,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
     def test_submit_work_late_duplicate_work_after_valid_declaration_is_not_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "output operation main ExitCode",
-            "output operation main I64",
+            "output operation main Int64",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
@@ -2843,7 +2843,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
     def test_submit_work_late_duplicate_arg_after_valid_arg_is_not_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "output operation main ExitCode",
-            "output operation main I64",
+            "output operation main Int64",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
@@ -2872,7 +2872,7 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
     def test_submit_work_non_target_duplicate_before_submit_is_not_linted(self) -> None:
         source = _user_operation_wait_set_source(["firstAddCall"]).replace(
             "output operation main ExitCode",
-            "output operation main I64",
+            "output operation main Int64",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
@@ -2911,9 +2911,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "workArg sumWork left secondAddCallResult",
                 "jump target waitNextResult",
             ]),
@@ -2942,13 +2942,13 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "call checkedTotalCall math.addI64",
-                "argument checkedTotalCall left I64 secondAddCallResult",
-                "argument checkedTotalCall right I64 one",
-                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else allDone",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "call checkedTotalCall math.addInt64",
+                "argument checkedTotalCall left Int64 secondAddCallResult",
+                "argument checkedTotalCall right Int64 one",
+                "runChecked checkedTotalCall ok checkedTotal Int64 error checkedError Int64 else allDone",
                 "jump target waitNextResult",
             ]),
         )
@@ -2970,22 +2970,22 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call checkedTotalCall math.addI64",
-                "argument checkedTotalCall right I64 one",
+                "call checkedTotalCall math.addInt64",
+                "argument checkedTotalCall right Int64 one",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
-                "argument checkedTotalCall left I64 secondAddCallResult",
+                "bind ok secondAddCallResult Int64 secondAddCall",
+                "argument checkedTotalCall left Int64 secondAddCallResult",
                 "jump target waitNextResult",
             ]),
         ).replace(
             "label allDone\nreturn value successfulExitCode",
             "\n".join([
                 "label allDone",
-                "runChecked checkedTotalCall ok checkedTotal I64 error checkedError I64 else checkedFailed",
+                "runChecked checkedTotalCall ok checkedTotal Int64 error checkedError Int64 else checkedFailed",
                 "return value checkedTotal",
                 "label checkedFailed",
                 "return value failedExitCode",
@@ -3015,9 +3015,9 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
             "\n".join([
-                "bind ok secondAddCallResult I64 secondAddCall",
+                "bind ok secondAddCallResult Int64 secondAddCall",
                 "workArg sumWork left secondAddCallResult",
                 "submitWork sumWork resultPool",
                 "awaitWork sumWork",
@@ -3045,17 +3045,17 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
         ]).replace(
             "label waitNextResult",
             "\n".join([
-                "call totalCall math.addI64",
-                "argument totalCall left I64 one",
-                "argument totalCall right I64 two",
+                "call totalCall math.addInt64",
+                "argument totalCall left Int64 one",
+                "argument totalCall right Int64 two",
                 "label waitNextResult",
             ]),
         ).replace(
-            "bind ok secondAddCallResult I64 secondAddCall\njump target waitNextResult",
-            "bind ok secondAddCallResult I64 secondAddCall\nrun totalCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\njump target waitNextResult",
+            "bind ok secondAddCallResult Int64 secondAddCall\nrun totalCall\njump target waitNextResult",
         ).replace(
             "label allDone\nreturn value successfulExitCode",
-            "label allDone\nbind ok totalResult I64 totalCall\nreturn value totalResult",
+            "label allDone\nbind ok totalResult Int64 totalCall\nreturn value totalResult",
         )
         diagnostics = _lint_source(source)
 
@@ -3119,8 +3119,8 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "label startMain",
             "label retryStart",
         ).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
-            "bind ok firstAddCallResult I64 firstAddCall\njump target retryStart",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target retryStart",
         )
         diagnostics = _lint_source(source)
 
@@ -3138,8 +3138,8 @@ class TestAsyncWaitSetLinter(unittest.TestCase):
             "firstAddCall",
             "secondAddCall",
         ]).replace(
-            "bind ok firstAddCallResult I64 firstAddCall\njump target waitNextResult",
-            "bind ok firstAddCallResult I64 firstAddCall\nreturn value successfulExitCode",
+            "bind ok firstAddCallResult Int64 firstAddCall\njump target waitNextResult",
+            "bind ok firstAddCallResult Int64 firstAddCall\nreturn value successfulExitCode",
         )
         diagnostics = _lint_source(source)
 

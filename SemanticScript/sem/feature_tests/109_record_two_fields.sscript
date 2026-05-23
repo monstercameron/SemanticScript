@@ -5,12 +5,12 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Point layout row align 8
 purpose operation Point "A two-dimensional integer point."
-field Point x I64
-field Point y I64
+field Point x Int64
+field Point y Int64
 
 operation main
 input operation main console Console
@@ -21,23 +21,23 @@ async main no
 purpose operation main "Build a Point record, set both fields, read them back, print x+y."
 invariant operation main "Output is '19\\n' (7 + 12)."
 label startMain
-storage module immutable xVal I64 7
-storage module immutable yVal I64 12
+storage module immutable xVal Int64 7
+storage module immutable yVal Int64 12
 new myPoint Point
 fieldSet myPoint x xVal
 fieldSet myPoint y yVal
-fieldGet xRead I64 myPoint x
-fieldGet yRead I64 myPoint y
-call sumCall math.addI64
-argument sumCall left I64 xRead
-argument sumCall right I64 yRead
+fieldGet xRead Int64 myPoint x
+fieldGet yRead Int64 myPoint y
+call sumCall math.addInt64
+argument sumCall left Int64 xRead
+argument sumCall right Int64 yRead
 run sumCall
-bind value sumResult I64 sumCall
-memory main mutable sumStore I64 0
+bind value sumResult Int64 sumCall
+memory main mutable sumStore Int64 0
 set memory sumStore sumResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 sumStore
+argument writeCall value Int64 sumStore
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

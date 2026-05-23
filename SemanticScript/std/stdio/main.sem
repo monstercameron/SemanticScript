@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.stdio "App-specific wrappers, compatibility aliases, o
 invariant module standard.stdio "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.stdio stdioModuleVersionText
-storage module immutable stdioModuleVersionText CNullTerminatedByteString "standard.stdio 0.1"
+storage module immutable stdioModuleVersionText String "standard.stdio 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -54,36 +54,36 @@ capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
 # section stdio.constants
-domainLiteral asciiNewlineByteCode CSignedInt32 10
+domainLiteral asciiNewlineByteCode Int32 10
 domainLiteralTrust asciiNewlineByteCode trustedStaticLiteral
-domainLiteral asciiMinusByteCode CSignedInt32 45
+domainLiteral asciiMinusByteCode Int32 45
 domainLiteralTrust asciiMinusByteCode trustedStaticLiteral
-domainLiteral asciiZeroByteCode CSignedInt32 48
+domainLiteral asciiZeroByteCode Int32 48
 domainLiteralTrust asciiZeroByteCode trustedStaticLiteral
-domainLiteral asciiZeroByteCodeAsInt64 CSignedInt64 48
+domainLiteral asciiZeroByteCodeAsInt64 Int64 48
 domainLiteralTrust asciiZeroByteCodeAsInt64 trustedStaticLiteral
-domainLiteral asciiLowercaseAOffsetForHex CSignedInt64 87
+domainLiteral asciiLowercaseAOffsetForHex Int64 87
 domainLiteralTrust asciiLowercaseAOffsetForHex trustedStaticLiteral
-domainLiteral hexadecimalBase CSignedInt64 16
+domainLiteral hexadecimalBase Int64 16
 domainLiteralTrust hexadecimalBase trustedStaticLiteral
-domainLiteral hexadecimalLetterThreshold CSignedInt64 10
+domainLiteral hexadecimalLetterThreshold Int64 10
 domainLiteralTrust hexadecimalLetterThreshold trustedStaticLiteral
-domainLiteral decimalBase CSignedInt64 10
+domainLiteral decimalBase Int64 10
 domainLiteralTrust decimalBase trustedStaticLiteral
-domainLiteral integerOneStepValue CSignedInt64 1
+domainLiteral integerOneStepValue Int64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
-domainLiteral integerNegativeOneMultiplier CSignedInt64 -1
+domainLiteral integerNegativeOneMultiplier Int64 -1
 domainLiteralTrust integerNegativeOneMultiplier trustedStaticLiteral
-domainLiteral integerZeroBoundaryForStdio CSignedInt64 0
+domainLiteral integerZeroBoundaryForStdio Int64 0
 domainLiteralTrust integerZeroBoundaryForStdio trustedStaticLiteral
-domainLiteral digitBufferByteSize CByteCount 32
+domainLiteral digitBufferByteSize ByteCount 32
 domainLiteralTrust digitBufferByteSize trustedStaticLiteral
 
 # section stdio.bytePrimitive
 
 operation writeByteToStandardOutput
-input operation writeByteToStandardOutput characterCode CSignedInt32
-output operation writeByteToStandardOutput CSignedInt32
+input operation writeByteToStandardOutput characterCode Int32
+output operation writeByteToStandardOutput Int32
 useCapability writeByteToStandardOutput stdoutWriteCapability
 effect writeByteToStandardOutput write console.stdout
 memory writeByteToStandardOutput heap no
@@ -95,12 +95,12 @@ warning writeByteToStandardOutput "Writes are unbuffered at the SemanticScript l
 guarantee writeByteToStandardOutput "Always returns; never throws."
 label startWriteByteToStandardOutput
 call libcPutcharCall c.putchar
-argument libcPutcharCall c CSignedInt32 characterCode
+argument libcPutcharCall c Int32 characterCode
 run libcPutcharCall
-ignore ok source libcPutcharCall type CSignedInt32
-bind error libcPutcharErrorCodeError CSignedInt32 libcPutcharCall
+ignore ok source libcPutcharCall type Int32
+bind error libcPutcharErrorCodeError Int32 libcPutcharCall
 branch error source libcPutcharCall target returnPutcharErrorPath
-bind value libcPutcharResult CSignedInt32 libcPutcharCall
+bind value libcPutcharResult Int32 libcPutcharCall
 return value libcPutcharResult
 # On putchar error (typically EOF) propagate the negative return
 # to the caller; higher-level writers absorb this via ignoreValue.
@@ -109,78 +109,78 @@ return value libcPutcharErrorCodeError
 
 # section stdio.stringWriters
 
-operation writeCStringToStandardOutput
-input operation writeCStringToStandardOutput inputText CNullTerminatedByteString
-output operation writeCStringToStandardOutput CByteCount
-useCapability writeCStringToStandardOutput stdoutWriteCapability
-effect writeCStringToStandardOutput write console.stdout
-memory writeCStringToStandardOutput heap no
-memory writeCStringToStandardOutput stack max 1024
-async writeCStringToStandardOutput no
-purpose operation writeCStringToStandardOutput "Writes every byte of inputText to stdout (byte-by-byte through writeByteToStandardOutput) until the NUL terminator is reached. Returns the byte count, NOT including the terminator."
-invariant operation writeCStringToStandardOutput "Walks the string forward; stops at the first byte equal to 0."
-warning writeCStringToStandardOutput "No length check â€” caller's responsibility to ensure inputText is properly NUL-terminated."
-guarantee writeCStringToStandardOutput "Total."
-label startWriteCStringToStandardOutput
-memory writeCStringToStandardOutput mutable writeCStringCursor I64 0
+operation writeStringToStandardOutput
+input operation writeStringToStandardOutput inputText String
+output operation writeStringToStandardOutput ByteCount
+useCapability writeStringToStandardOutput stdoutWriteCapability
+effect writeStringToStandardOutput write console.stdout
+memory writeStringToStandardOutput heap no
+memory writeStringToStandardOutput stack max 1024
+async writeStringToStandardOutput no
+purpose operation writeStringToStandardOutput "Writes every byte of inputText to stdout (byte-by-byte through writeByteToStandardOutput) until the NUL terminator is reached. Returns the byte count, NOT including the terminator."
+invariant operation writeStringToStandardOutput "Walks the string forward; stops at the first byte equal to 0."
+warning writeStringToStandardOutput "No length check - caller's responsibility to ensure inputText is properly NUL-terminated."
+guarantee writeStringToStandardOutput "Total."
+label startWriteStringToStandardOutput
+memory writeStringToStandardOutput mutable writeCStringCursor Int64 0
 label writeCStringLoop
 call loadByteForWriteCStringCall pointer.loadByte
-argument loadByteForWriteCStringCall buffer COpaqueMemoryAddress inputText
-argument loadByteForWriteCStringCall offset CByteCount writeCStringCursor
+argument loadByteForWriteCStringCall buffer OpaquePointer inputText
+argument loadByteForWriteCStringCall offset ByteCount writeCStringCursor
 run loadByteForWriteCStringCall
-bind value currentCStringByte I8 loadByteForWriteCStringCall
-call detectCStringTerminatorCall math.equalI64
-argument detectCStringTerminatorCall left I64 currentCStringByte
-argument detectCStringTerminatorCall right I64 integerZeroBoundaryForStdio
+bind value currentCStringByte Int8 loadByteForWriteCStringCall
+call detectCStringTerminatorCall math.equalInt64
+argument detectCStringTerminatorCall left Int64 currentCStringByte
+argument detectCStringTerminatorCall right Int64 integerZeroBoundaryForStdio
 run detectCStringTerminatorCall
 bind value cstringTerminatorReached Bool detectCStringTerminatorCall
 branch if condition cstringTerminatorReached target writeCStringComplete
 call emitCStringByteCall writeByteToStandardOutput
-argument emitCStringByteCall characterCode CSignedInt32 currentCStringByte
+argument emitCStringByteCall characterCode Int32 currentCStringByte
 run emitCStringByteCall
-ignore value source emitCStringByteCall type CSignedInt32
-call advanceCStringCursorCall math.addI64
-argument advanceCStringCursorCall left I64 writeCStringCursor
-argument advanceCStringCursorCall right I64 integerOneStepValue
+ignore value source emitCStringByteCall type Int32
+call advanceCStringCursorCall math.addInt64
+argument advanceCStringCursorCall left Int64 writeCStringCursor
+argument advanceCStringCursorCall right Int64 integerOneStepValue
 run advanceCStringCursorCall
-bind value nextCStringCursor I64 advanceCStringCursorCall
+bind value nextCStringCursor Int64 advanceCStringCursorCall
 set memory writeCStringCursor nextCStringCursor
 jump target writeCStringLoop
 label writeCStringComplete
 return value writeCStringCursor
 
-operation writeCStringLineToStandardOutput
-input operation writeCStringLineToStandardOutput inputText CNullTerminatedByteString
-output operation writeCStringLineToStandardOutput CByteCount
-useCapability writeCStringLineToStandardOutput stdoutWriteCapability
-effect writeCStringLineToStandardOutput write console.stdout
-memory writeCStringLineToStandardOutput heap no
-memory writeCStringLineToStandardOutput stack max 1024
-async writeCStringLineToStandardOutput no
-purpose operation writeCStringLineToStandardOutput "Writes inputText followed by a newline to stdout. Returns the total byte count (string length + 1 for the LF)."
-invariant operation writeCStringLineToStandardOutput "Always emits exactly one trailing newline byte after the string contents."
-guarantee writeCStringLineToStandardOutput "Total."
-label startWriteCStringLineToStandardOutput
-call writeBodyCall writeCStringToStandardOutput
-argument writeBodyCall inputText CNullTerminatedByteString inputText
+operation writeStringLineToStandardOutput
+input operation writeStringLineToStandardOutput inputText String
+output operation writeStringLineToStandardOutput ByteCount
+useCapability writeStringLineToStandardOutput stdoutWriteCapability
+effect writeStringLineToStandardOutput write console.stdout
+memory writeStringLineToStandardOutput heap no
+memory writeStringLineToStandardOutput stack max 1024
+async writeStringLineToStandardOutput no
+purpose operation writeStringLineToStandardOutput "Writes inputText followed by a newline to stdout. Returns the total byte count (string length + 1 for the LF)."
+invariant operation writeStringLineToStandardOutput "Always emits exactly one trailing newline byte after the string contents."
+guarantee writeStringLineToStandardOutput "Total."
+label startWriteStringLineToStandardOutput
+call writeBodyCall writeStringToStandardOutput
+argument writeBodyCall inputText String inputText
 run writeBodyCall
-bind value bodyByteCount CByteCount writeBodyCall
+bind value bodyByteCount ByteCount writeBodyCall
 call emitTerminatingNewlineCall writeByteToStandardOutput
-argument emitTerminatingNewlineCall characterCode CSignedInt32 asciiNewlineByteCode
+argument emitTerminatingNewlineCall characterCode Int32 asciiNewlineByteCode
 run emitTerminatingNewlineCall
-ignore value source emitTerminatingNewlineCall type CSignedInt32
-call addNewlineToCountCall math.addI64
-argument addNewlineToCountCall left I64 bodyByteCount
-argument addNewlineToCountCall right I64 integerOneStepValue
+ignore value source emitTerminatingNewlineCall type Int32
+call addNewlineToCountCall math.addInt64
+argument addNewlineToCountCall left Int64 bodyByteCount
+argument addNewlineToCountCall right Int64 integerOneStepValue
 run addNewlineToCountCall
-bind value totalLineByteCount CByteCount addNewlineToCountCall
+bind value totalLineByteCount ByteCount addNewlineToCountCall
 return value totalLineByteCount
 
 # section stdio.integerFormatters
 
 operation writeSignedInt64DecimalToStandardOutput
-input operation writeSignedInt64DecimalToStandardOutput inputValue CSignedInt64
-output operation writeSignedInt64DecimalToStandardOutput CByteCount
+input operation writeSignedInt64DecimalToStandardOutput inputValue Int64
+output operation writeSignedInt64DecimalToStandardOutput ByteCount
 useCapability writeSignedInt64DecimalToStandardOutput stdoutWriteCapability
 useCapability writeSignedInt64DecimalToStandardOutput heapAllocationCapability
 useCapability writeSignedInt64DecimalToStandardOutput heapFreeCapability
@@ -197,130 +197,130 @@ warning writeSignedInt64DecimalToStandardOutput "INT64_MIN negation overflows ba
 guarantee writeSignedInt64DecimalToStandardOutput "Total over the non-INT64_MIN domain."
 label startWriteSignedInt64DecimalToStandardOutput
 call allocateDecimalScratchCall c.malloc
-argument allocateDecimalScratchCall size CByteCount digitBufferByteSize
+argument allocateDecimalScratchCall size ByteCount digitBufferByteSize
 run allocateDecimalScratchCall
-bind value decimalScratchBuffer COpaqueMemoryAddress allocateDecimalScratchCall
-bind error decimalScratchAllocationError CSignedInt32 allocateDecimalScratchCall
+bind value decimalScratchBuffer OpaquePointer allocateDecimalScratchCall
+bind error decimalScratchAllocationError Int32 allocateDecimalScratchCall
 branch error source allocateDecimalScratchCall target decimalScratchAllocationFailedReturn
 defer releaseAllocateDecimalScratchCall c.free decimalScratchBuffer
 # Initialize workingDecimalValue to inputValue, then negate on the
 # negative branch. Reading workingDecimalValue in the negation
 # call's arg keeps the dead-store check satisfied.
-memory writeSignedInt64DecimalToStandardOutput mutable workingDecimalValue I64 0
+memory writeSignedInt64DecimalToStandardOutput mutable workingDecimalValue Int64 0
 set memory workingDecimalValue inputValue
-memory writeSignedInt64DecimalToStandardOutput mutable decimalSignFlag I64 0
-call detectInputIsNegativeForDecimalCall math.lessThanI64
-argument detectInputIsNegativeForDecimalCall left I64 inputValue
-argument detectInputIsNegativeForDecimalCall right I64 integerZeroBoundaryForStdio
+memory writeSignedInt64DecimalToStandardOutput mutable decimalSignFlag Int64 0
+call detectInputIsNegativeForDecimalCall math.lessThanInt64
+argument detectInputIsNegativeForDecimalCall left Int64 inputValue
+argument detectInputIsNegativeForDecimalCall right Int64 integerZeroBoundaryForStdio
 run detectInputIsNegativeForDecimalCall
 bind value decimalInputIsNegative Bool detectInputIsNegativeForDecimalCall
 branch if condition decimalInputIsNegative target flipDecimalSign
 branch else target decimalSignProcessed
 label flipDecimalSign
 set memory decimalSignFlag integerOneStepValue
-call negateDecimalInputCall math.multiplyI64
-argument negateDecimalInputCall left I64 workingDecimalValue
-argument negateDecimalInputCall right I64 integerNegativeOneMultiplier
+call negateDecimalInputCall math.multiplyInt64
+argument negateDecimalInputCall left Int64 workingDecimalValue
+argument negateDecimalInputCall right Int64 integerNegativeOneMultiplier
 run negateDecimalInputCall
-bind value negatedDecimalInput I64 negateDecimalInputCall
+bind value negatedDecimalInput Int64 negateDecimalInputCall
 set memory workingDecimalValue negatedDecimalInput
 jump target decimalSignProcessed
 label decimalSignProcessed
-call detectDecimalIsZeroCall math.equalI64
-argument detectDecimalIsZeroCall left I64 workingDecimalValue
-argument detectDecimalIsZeroCall right I64 integerZeroBoundaryForStdio
+call detectDecimalIsZeroCall math.equalInt64
+argument detectDecimalIsZeroCall left Int64 workingDecimalValue
+argument detectDecimalIsZeroCall right Int64 integerZeroBoundaryForStdio
 run detectDecimalIsZeroCall
 bind value decimalIsZero Bool detectDecimalIsZeroCall
 branch if condition decimalIsZero target emitDecimalZero
 branch else target decomposeDecimalDigits
 label emitDecimalZero
 call emitDecimalZeroByteCall writeByteToStandardOutput
-argument emitDecimalZeroByteCall characterCode CSignedInt32 asciiZeroByteCode
+argument emitDecimalZeroByteCall characterCode Int32 asciiZeroByteCode
 run emitDecimalZeroByteCall
-ignore value source emitDecimalZeroByteCall type CSignedInt32
+ignore value source emitDecimalZeroByteCall type Int32
 jump target emitDecimalTrailingNewline
 label decomposeDecimalDigits
-memory writeSignedInt64DecimalToStandardOutput mutable decimalDigitCount I64 0
+memory writeSignedInt64DecimalToStandardOutput mutable decimalDigitCount Int64 0
 label decimalDigitLoop
-call extractDecimalDigitCall math.moduloI64
-argument extractDecimalDigitCall left I64 workingDecimalValue
-argument extractDecimalDigitCall right I64 decimalBase
+call extractDecimalDigitCall math.moduloInt64
+argument extractDecimalDigitCall left Int64 workingDecimalValue
+argument extractDecimalDigitCall right Int64 decimalBase
 run extractDecimalDigitCall
-bind value extractedDecimalDigit I64 extractDecimalDigitCall
-call computeDecimalDigitByteCall math.addI64
-argument computeDecimalDigitByteCall left I64 extractedDecimalDigit
-argument computeDecimalDigitByteCall right I64 asciiZeroByteCodeAsInt64
+bind value extractedDecimalDigit Int64 extractDecimalDigitCall
+call computeDecimalDigitByteCall math.addInt64
+argument computeDecimalDigitByteCall left Int64 extractedDecimalDigit
+argument computeDecimalDigitByteCall right Int64 asciiZeroByteCodeAsInt64
 run computeDecimalDigitByteCall
-bind value decimalDigitByteValue CSignedInt32 computeDecimalDigitByteCall
+bind value decimalDigitByteValue Int32 computeDecimalDigitByteCall
 call storeDecimalDigitCall pointer.storeByte
-argument storeDecimalDigitCall buffer COpaqueMemoryAddress decimalScratchBuffer
-argument storeDecimalDigitCall offset CByteCount decimalDigitCount
-argument storeDecimalDigitCall value CSignedInt64 decimalDigitByteValue
+argument storeDecimalDigitCall buffer OpaquePointer decimalScratchBuffer
+argument storeDecimalDigitCall offset ByteCount decimalDigitCount
+argument storeDecimalDigitCall value Int64 decimalDigitByteValue
 run storeDecimalDigitCall
-call advanceDecimalDigitCountCall math.addI64
-argument advanceDecimalDigitCountCall left I64 decimalDigitCount
-argument advanceDecimalDigitCountCall right I64 integerOneStepValue
+call advanceDecimalDigitCountCall math.addInt64
+argument advanceDecimalDigitCountCall left Int64 decimalDigitCount
+argument advanceDecimalDigitCountCall right Int64 integerOneStepValue
 run advanceDecimalDigitCountCall
-bind value nextDecimalDigitCount I64 advanceDecimalDigitCountCall
+bind value nextDecimalDigitCount Int64 advanceDecimalDigitCountCall
 set memory decimalDigitCount nextDecimalDigitCount
-call divideWorkingDecimalByTenCall math.divideI64
-argument divideWorkingDecimalByTenCall left I64 workingDecimalValue
-argument divideWorkingDecimalByTenCall right I64 decimalBase
+call divideWorkingDecimalByTenCall math.divideInt64
+argument divideWorkingDecimalByTenCall left Int64 workingDecimalValue
+argument divideWorkingDecimalByTenCall right Int64 decimalBase
 run divideWorkingDecimalByTenCall
-bind value workingDecimalAfterDivide I64 divideWorkingDecimalByTenCall
+bind value workingDecimalAfterDivide Int64 divideWorkingDecimalByTenCall
 set memory workingDecimalValue workingDecimalAfterDivide
-call detectMoreDecimalDigitsCall math.greaterThanI64
-argument detectMoreDecimalDigitsCall left I64 workingDecimalValue
-argument detectMoreDecimalDigitsCall right I64 integerZeroBoundaryForStdio
+call detectMoreDecimalDigitsCall math.greaterThanInt64
+argument detectMoreDecimalDigitsCall left Int64 workingDecimalValue
+argument detectMoreDecimalDigitsCall right Int64 integerZeroBoundaryForStdio
 run detectMoreDecimalDigitsCall
 bind value moreDecimalDigitsRemain Bool detectMoreDecimalDigitsCall
 branch if condition moreDecimalDigitsRemain target decimalDigitLoop
 branch else target emitDecimalSign
 label emitDecimalSign
-call detectDecimalNeedsMinusCall math.equalI64
-argument detectDecimalNeedsMinusCall left I64 decimalSignFlag
-argument detectDecimalNeedsMinusCall right I64 integerOneStepValue
+call detectDecimalNeedsMinusCall math.equalInt64
+argument detectDecimalNeedsMinusCall left Int64 decimalSignFlag
+argument detectDecimalNeedsMinusCall right Int64 integerOneStepValue
 run detectDecimalNeedsMinusCall
 bind value decimalNeedsMinus Bool detectDecimalNeedsMinusCall
 branch if condition decimalNeedsMinus target emitDecimalMinus
 branch else target emitDecimalDigitsForward
 label emitDecimalMinus
 call emitDecimalMinusCall writeByteToStandardOutput
-argument emitDecimalMinusCall characterCode CSignedInt32 asciiMinusByteCode
+argument emitDecimalMinusCall characterCode Int32 asciiMinusByteCode
 run emitDecimalMinusCall
-ignore value source emitDecimalMinusCall type CSignedInt32
+ignore value source emitDecimalMinusCall type Int32
 jump target emitDecimalDigitsForward
 label emitDecimalDigitsForward
-memory writeSignedInt64DecimalToStandardOutput mutable decimalEmitCursor I64 0
+memory writeSignedInt64DecimalToStandardOutput mutable decimalEmitCursor Int64 0
 set memory decimalEmitCursor decimalDigitCount
 label emitNextDecimalDigit
-call detectDecimalAtCursorZeroCall math.equalI64
-argument detectDecimalAtCursorZeroCall left I64 decimalEmitCursor
-argument detectDecimalAtCursorZeroCall right I64 integerZeroBoundaryForStdio
+call detectDecimalAtCursorZeroCall math.equalInt64
+argument detectDecimalAtCursorZeroCall left Int64 decimalEmitCursor
+argument detectDecimalAtCursorZeroCall right Int64 integerZeroBoundaryForStdio
 run detectDecimalAtCursorZeroCall
 bind value decimalAtCursorZero Bool detectDecimalAtCursorZeroCall
 branch if condition decimalAtCursorZero target emitDecimalTrailingNewline
-call retreatDecimalCursorCall math.subtractI64
-argument retreatDecimalCursorCall left I64 decimalEmitCursor
-argument retreatDecimalCursorCall right I64 integerOneStepValue
+call retreatDecimalCursorCall math.subtractInt64
+argument retreatDecimalCursorCall left Int64 decimalEmitCursor
+argument retreatDecimalCursorCall right Int64 integerOneStepValue
 run retreatDecimalCursorCall
-bind value retreatedDecimalCursor I64 retreatDecimalCursorCall
+bind value retreatedDecimalCursor Int64 retreatDecimalCursorCall
 set memory decimalEmitCursor retreatedDecimalCursor
 call loadDecimalDigitCall pointer.loadByte
-argument loadDecimalDigitCall buffer COpaqueMemoryAddress decimalScratchBuffer
-argument loadDecimalDigitCall offset CByteCount retreatedDecimalCursor
+argument loadDecimalDigitCall buffer OpaquePointer decimalScratchBuffer
+argument loadDecimalDigitCall offset ByteCount retreatedDecimalCursor
 run loadDecimalDigitCall
-bind value decimalDigitToEmit I8 loadDecimalDigitCall
+bind value decimalDigitToEmit Int8 loadDecimalDigitCall
 call emitDecimalDigitCall writeByteToStandardOutput
-argument emitDecimalDigitCall characterCode CSignedInt32 decimalDigitToEmit
+argument emitDecimalDigitCall characterCode Int32 decimalDigitToEmit
 run emitDecimalDigitCall
-ignore value source emitDecimalDigitCall type CSignedInt32
+ignore value source emitDecimalDigitCall type Int32
 jump target emitNextDecimalDigit
 label emitDecimalTrailingNewline
 call emitDecimalNewlineCall writeByteToStandardOutput
-argument emitDecimalNewlineCall characterCode CSignedInt32 asciiNewlineByteCode
+argument emitDecimalNewlineCall characterCode Int32 asciiNewlineByteCode
 run emitDecimalNewlineCall
-ignore value source emitDecimalNewlineCall type CSignedInt32
+ignore value source emitDecimalNewlineCall type Int32
 return value decimalDigitCount
 
 # Allocation-failure leg for the decimal formatter: c.malloc
@@ -330,8 +330,8 @@ label decimalScratchAllocationFailedReturn
 return value decimalScratchAllocationError
 
 operation writeUnsignedInt64DecimalToStandardOutput
-input operation writeUnsignedInt64DecimalToStandardOutput inputValue CSignedInt64
-output operation writeUnsignedInt64DecimalToStandardOutput CByteCount
+input operation writeUnsignedInt64DecimalToStandardOutput inputValue Int64
+output operation writeUnsignedInt64DecimalToStandardOutput ByteCount
 useCapability writeUnsignedInt64DecimalToStandardOutput stdoutWriteCapability
 useCapability writeUnsignedInt64DecimalToStandardOutput heapAllocationCapability
 useCapability writeUnsignedInt64DecimalToStandardOutput heapFreeCapability
@@ -346,88 +346,88 @@ purpose operation writeUnsignedInt64DecimalToStandardOutput "Print inputValue as
 invariant operation writeUnsignedInt64DecimalToStandardOutput "No '-' sign is ever emitted; the high bit of negative inputs is interpreted unsigned."
 guarantee writeUnsignedInt64DecimalToStandardOutput "Total."
 label startWriteUnsignedInt64DecimalToStandardOutput
-call detectUnsignedIsZeroCall math.equalI64
-argument detectUnsignedIsZeroCall left I64 inputValue
-argument detectUnsignedIsZeroCall right I64 integerZeroBoundaryForStdio
+call detectUnsignedIsZeroCall math.equalInt64
+argument detectUnsignedIsZeroCall left Int64 inputValue
+argument detectUnsignedIsZeroCall right Int64 integerZeroBoundaryForStdio
 run detectUnsignedIsZeroCall
 bind value unsignedIsZero Bool detectUnsignedIsZeroCall
 branch if condition unsignedIsZero target emitUnsignedZero
 call allocateUnsignedScratchCall c.malloc
-argument allocateUnsignedScratchCall size CByteCount digitBufferByteSize
+argument allocateUnsignedScratchCall size ByteCount digitBufferByteSize
 run allocateUnsignedScratchCall
-bind value unsignedScratchBuffer COpaqueMemoryAddress allocateUnsignedScratchCall
-bind error unsignedScratchAllocationError CSignedInt32 allocateUnsignedScratchCall
+bind value unsignedScratchBuffer OpaquePointer allocateUnsignedScratchCall
+bind error unsignedScratchAllocationError Int32 allocateUnsignedScratchCall
 branch error source allocateUnsignedScratchCall target unsignedScratchAllocationFailedReturn
 defer releaseAllocateUnsignedScratchCall c.free unsignedScratchBuffer
-memory writeUnsignedInt64DecimalToStandardOutput mutable workingUnsignedValue I64 0
+memory writeUnsignedInt64DecimalToStandardOutput mutable workingUnsignedValue Int64 0
 set memory workingUnsignedValue inputValue
-memory writeUnsignedInt64DecimalToStandardOutput mutable unsignedDigitCount I64 0
+memory writeUnsignedInt64DecimalToStandardOutput mutable unsignedDigitCount Int64 0
 label unsignedDigitLoop
-call extractUnsignedDigitCall math.moduloI64
-argument extractUnsignedDigitCall left I64 workingUnsignedValue
-argument extractUnsignedDigitCall right I64 decimalBase
+call extractUnsignedDigitCall math.moduloInt64
+argument extractUnsignedDigitCall left Int64 workingUnsignedValue
+argument extractUnsignedDigitCall right Int64 decimalBase
 run extractUnsignedDigitCall
-bind value extractedUnsignedDigit I64 extractUnsignedDigitCall
-call computeUnsignedDigitByteCall math.addI64
-argument computeUnsignedDigitByteCall left I64 extractedUnsignedDigit
-argument computeUnsignedDigitByteCall right I64 asciiZeroByteCodeAsInt64
+bind value extractedUnsignedDigit Int64 extractUnsignedDigitCall
+call computeUnsignedDigitByteCall math.addInt64
+argument computeUnsignedDigitByteCall left Int64 extractedUnsignedDigit
+argument computeUnsignedDigitByteCall right Int64 asciiZeroByteCodeAsInt64
 run computeUnsignedDigitByteCall
-bind value unsignedDigitByteValue CSignedInt32 computeUnsignedDigitByteCall
+bind value unsignedDigitByteValue Int32 computeUnsignedDigitByteCall
 call storeUnsignedDigitCall pointer.storeByte
-argument storeUnsignedDigitCall buffer COpaqueMemoryAddress unsignedScratchBuffer
-argument storeUnsignedDigitCall offset CByteCount unsignedDigitCount
-argument storeUnsignedDigitCall value CSignedInt64 unsignedDigitByteValue
+argument storeUnsignedDigitCall buffer OpaquePointer unsignedScratchBuffer
+argument storeUnsignedDigitCall offset ByteCount unsignedDigitCount
+argument storeUnsignedDigitCall value Int64 unsignedDigitByteValue
 run storeUnsignedDigitCall
-call advanceUnsignedDigitCountCall math.addI64
-argument advanceUnsignedDigitCountCall left I64 unsignedDigitCount
-argument advanceUnsignedDigitCountCall right I64 integerOneStepValue
+call advanceUnsignedDigitCountCall math.addInt64
+argument advanceUnsignedDigitCountCall left Int64 unsignedDigitCount
+argument advanceUnsignedDigitCountCall right Int64 integerOneStepValue
 run advanceUnsignedDigitCountCall
-bind value nextUnsignedDigitCount I64 advanceUnsignedDigitCountCall
+bind value nextUnsignedDigitCount Int64 advanceUnsignedDigitCountCall
 set memory unsignedDigitCount nextUnsignedDigitCount
-call divideWorkingUnsignedCall math.divideI64
-argument divideWorkingUnsignedCall left I64 workingUnsignedValue
-argument divideWorkingUnsignedCall right I64 decimalBase
+call divideWorkingUnsignedCall math.divideInt64
+argument divideWorkingUnsignedCall left Int64 workingUnsignedValue
+argument divideWorkingUnsignedCall right Int64 decimalBase
 run divideWorkingUnsignedCall
-bind value workingUnsignedAfterDivide I64 divideWorkingUnsignedCall
+bind value workingUnsignedAfterDivide Int64 divideWorkingUnsignedCall
 set memory workingUnsignedValue workingUnsignedAfterDivide
-call detectMoreUnsignedDigitsCall math.greaterThanI64
-argument detectMoreUnsignedDigitsCall left I64 workingUnsignedValue
-argument detectMoreUnsignedDigitsCall right I64 integerZeroBoundaryForStdio
+call detectMoreUnsignedDigitsCall math.greaterThanInt64
+argument detectMoreUnsignedDigitsCall left Int64 workingUnsignedValue
+argument detectMoreUnsignedDigitsCall right Int64 integerZeroBoundaryForStdio
 run detectMoreUnsignedDigitsCall
 bind value moreUnsignedDigitsRemain Bool detectMoreUnsignedDigitsCall
 branch if condition moreUnsignedDigitsRemain target unsignedDigitLoop
 branch else target emitUnsignedDigitsForward
 label emitUnsignedDigitsForward
-memory writeUnsignedInt64DecimalToStandardOutput mutable unsignedEmitCursor I64 0
+memory writeUnsignedInt64DecimalToStandardOutput mutable unsignedEmitCursor Int64 0
 set memory unsignedEmitCursor unsignedDigitCount
 label emitNextUnsignedDigit
-call detectUnsignedAtCursorZeroCall math.equalI64
-argument detectUnsignedAtCursorZeroCall left I64 unsignedEmitCursor
-argument detectUnsignedAtCursorZeroCall right I64 integerZeroBoundaryForStdio
+call detectUnsignedAtCursorZeroCall math.equalInt64
+argument detectUnsignedAtCursorZeroCall left Int64 unsignedEmitCursor
+argument detectUnsignedAtCursorZeroCall right Int64 integerZeroBoundaryForStdio
 run detectUnsignedAtCursorZeroCall
 bind value unsignedAtCursorZero Bool detectUnsignedAtCursorZeroCall
 branch if condition unsignedAtCursorZero target emitUnsignedTrailingNewline
-call retreatUnsignedCursorCall math.subtractI64
-argument retreatUnsignedCursorCall left I64 unsignedEmitCursor
-argument retreatUnsignedCursorCall right I64 integerOneStepValue
+call retreatUnsignedCursorCall math.subtractInt64
+argument retreatUnsignedCursorCall left Int64 unsignedEmitCursor
+argument retreatUnsignedCursorCall right Int64 integerOneStepValue
 run retreatUnsignedCursorCall
-bind value retreatedUnsignedCursor I64 retreatUnsignedCursorCall
+bind value retreatedUnsignedCursor Int64 retreatUnsignedCursorCall
 set memory unsignedEmitCursor retreatedUnsignedCursor
 call loadUnsignedDigitCall pointer.loadByte
-argument loadUnsignedDigitCall buffer COpaqueMemoryAddress unsignedScratchBuffer
-argument loadUnsignedDigitCall offset CByteCount retreatedUnsignedCursor
+argument loadUnsignedDigitCall buffer OpaquePointer unsignedScratchBuffer
+argument loadUnsignedDigitCall offset ByteCount retreatedUnsignedCursor
 run loadUnsignedDigitCall
-bind value unsignedDigitToEmit I8 loadUnsignedDigitCall
+bind value unsignedDigitToEmit Int8 loadUnsignedDigitCall
 call emitUnsignedDigitCall writeByteToStandardOutput
-argument emitUnsignedDigitCall characterCode CSignedInt32 unsignedDigitToEmit
+argument emitUnsignedDigitCall characterCode Int32 unsignedDigitToEmit
 run emitUnsignedDigitCall
-ignore value source emitUnsignedDigitCall type CSignedInt32
+ignore value source emitUnsignedDigitCall type Int32
 jump target emitNextUnsignedDigit
 label emitUnsignedTrailingNewline
 call emitUnsignedNewlineCall writeByteToStandardOutput
-argument emitUnsignedNewlineCall characterCode CSignedInt32 asciiNewlineByteCode
+argument emitUnsignedNewlineCall characterCode Int32 asciiNewlineByteCode
 run emitUnsignedNewlineCall
-ignore value source emitUnsignedNewlineCall type CSignedInt32
+ignore value source emitUnsignedNewlineCall type Int32
 return value unsignedDigitCount
 
 # Allocation-failure leg for the unsigned formatter.
@@ -435,19 +435,19 @@ label unsignedScratchAllocationFailedReturn
 return value unsignedScratchAllocationError
 label emitUnsignedZero
 call emitUnsignedZeroByteCall writeByteToStandardOutput
-argument emitUnsignedZeroByteCall characterCode CSignedInt32 asciiZeroByteCode
+argument emitUnsignedZeroByteCall characterCode Int32 asciiZeroByteCode
 run emitUnsignedZeroByteCall
-ignore value source emitUnsignedZeroByteCall type CSignedInt32
+ignore value source emitUnsignedZeroByteCall type Int32
 call emitUnsignedZeroNewlineCall writeByteToStandardOutput
-argument emitUnsignedZeroNewlineCall characterCode CSignedInt32 asciiNewlineByteCode
+argument emitUnsignedZeroNewlineCall characterCode Int32 asciiNewlineByteCode
 run emitUnsignedZeroNewlineCall
-ignore value source emitUnsignedZeroNewlineCall type CSignedInt32
-storage module immutable unsignedZeroByteCount CByteCount 1
+ignore value source emitUnsignedZeroNewlineCall type Int32
+storage module immutable unsignedZeroByteCount ByteCount 1
 return value unsignedZeroByteCount
 
 operation writeSignedInt64HexToStandardOutput
-input operation writeSignedInt64HexToStandardOutput inputValue CSignedInt64
-output operation writeSignedInt64HexToStandardOutput CByteCount
+input operation writeSignedInt64HexToStandardOutput inputValue Int64
+output operation writeSignedInt64HexToStandardOutput ByteCount
 useCapability writeSignedInt64HexToStandardOutput stdoutWriteCapability
 useCapability writeSignedInt64HexToStandardOutput heapAllocationCapability
 useCapability writeSignedInt64HexToStandardOutput heapFreeCapability
@@ -463,113 +463,113 @@ invariant operation writeSignedInt64HexToStandardOutput "Output digits are 0-9 /
 warning writeSignedInt64HexToStandardOutput "Negative inputs print sign-extended in two's complement (large positive-looking hex)."
 guarantee writeSignedInt64HexToStandardOutput "Total."
 label startWriteSignedInt64HexToStandardOutput
-call detectHexIsZeroCall math.equalI64
-argument detectHexIsZeroCall left I64 inputValue
-argument detectHexIsZeroCall right I64 integerZeroBoundaryForStdio
+call detectHexIsZeroCall math.equalInt64
+argument detectHexIsZeroCall left Int64 inputValue
+argument detectHexIsZeroCall right Int64 integerZeroBoundaryForStdio
 run detectHexIsZeroCall
 bind value hexIsZero Bool detectHexIsZeroCall
 branch if condition hexIsZero target emitHexZero
 call allocateHexScratchCall c.malloc
-argument allocateHexScratchCall size CByteCount digitBufferByteSize
+argument allocateHexScratchCall size ByteCount digitBufferByteSize
 run allocateHexScratchCall
-bind value hexScratchBuffer COpaqueMemoryAddress allocateHexScratchCall
-bind error hexScratchAllocationError CSignedInt32 allocateHexScratchCall
+bind value hexScratchBuffer OpaquePointer allocateHexScratchCall
+bind error hexScratchAllocationError Int32 allocateHexScratchCall
 branch error source allocateHexScratchCall target hexScratchAllocationFailedReturn
 defer releaseAllocateHexScratchCall c.free hexScratchBuffer
-memory writeSignedInt64HexToStandardOutput mutable workingHexValue I64 0
+memory writeSignedInt64HexToStandardOutput mutable workingHexValue Int64 0
 set memory workingHexValue inputValue
-memory writeSignedInt64HexToStandardOutput mutable hexDigitCount I64 0
+memory writeSignedInt64HexToStandardOutput mutable hexDigitCount Int64 0
 # hexNibbleAsciiValue is overwritten on every loop iteration by one
 # of the two computeNibble* branches; the value at this declaration
 # is never observed, but `var` requires an initial value so we set
 # zero as a no-op default.
-memory writeSignedInt64HexToStandardOutput mutable hexNibbleAsciiValue I64 0
+memory writeSignedInt64HexToStandardOutput mutable hexNibbleAsciiValue Int64 0
 label hexDigitLoop
-call extractHexNibbleCall math.moduloI64
-argument extractHexNibbleCall left I64 workingHexValue
-argument extractHexNibbleCall right I64 hexadecimalBase
+call extractHexNibbleCall math.moduloInt64
+argument extractHexNibbleCall left Int64 workingHexValue
+argument extractHexNibbleCall right Int64 hexadecimalBase
 run extractHexNibbleCall
-bind value currentHexNibble I64 extractHexNibbleCall
-call detectNibbleIsDigitCall math.lessThanI64
-argument detectNibbleIsDigitCall left I64 currentHexNibble
-argument detectNibbleIsDigitCall right I64 hexadecimalLetterThreshold
+bind value currentHexNibble Int64 extractHexNibbleCall
+call detectNibbleIsDigitCall math.lessThanInt64
+argument detectNibbleIsDigitCall left Int64 currentHexNibble
+argument detectNibbleIsDigitCall right Int64 hexadecimalLetterThreshold
 run detectNibbleIsDigitCall
 bind value nibbleIsDigit Bool detectNibbleIsDigitCall
 branch if condition nibbleIsDigit target computeNibbleAsciiAsDigit
 branch else target computeNibbleAsciiAsLetter
 label computeNibbleAsciiAsDigit
-call addAsciiZeroToNibbleCall math.addI64
-argument addAsciiZeroToNibbleCall left I64 currentHexNibble
-argument addAsciiZeroToNibbleCall right I64 asciiZeroByteCodeAsInt64
+call addAsciiZeroToNibbleCall math.addInt64
+argument addAsciiZeroToNibbleCall left Int64 currentHexNibble
+argument addAsciiZeroToNibbleCall right Int64 asciiZeroByteCodeAsInt64
 run addAsciiZeroToNibbleCall
-bind value nibbleAsDigitChar I64 addAsciiZeroToNibbleCall
+bind value nibbleAsDigitChar Int64 addAsciiZeroToNibbleCall
 set memory hexNibbleAsciiValue nibbleAsDigitChar
 # Digit nibble resolved; jump to the shared store site.
 jump target storeHexNibble
 label computeNibbleAsciiAsLetter
-call addAsciiLowerAOffsetCall math.addI64
-argument addAsciiLowerAOffsetCall left I64 currentHexNibble
-argument addAsciiLowerAOffsetCall right I64 asciiLowercaseAOffsetForHex
+call addAsciiLowerAOffsetCall math.addInt64
+argument addAsciiLowerAOffsetCall left Int64 currentHexNibble
+argument addAsciiLowerAOffsetCall right Int64 asciiLowercaseAOffsetForHex
 run addAsciiLowerAOffsetCall
-bind value nibbleAsLetterChar I64 addAsciiLowerAOffsetCall
+bind value nibbleAsLetterChar Int64 addAsciiLowerAOffsetCall
 set memory hexNibbleAsciiValue nibbleAsLetterChar
 jump target storeHexNibble
 label storeHexNibble
 call storeHexNibbleCall pointer.storeByte
-argument storeHexNibbleCall buffer COpaqueMemoryAddress hexScratchBuffer
-argument storeHexNibbleCall offset CByteCount hexDigitCount
-argument storeHexNibbleCall value CSignedInt64 hexNibbleAsciiValue
+argument storeHexNibbleCall buffer OpaquePointer hexScratchBuffer
+argument storeHexNibbleCall offset ByteCount hexDigitCount
+argument storeHexNibbleCall value Int64 hexNibbleAsciiValue
 run storeHexNibbleCall
-call advanceHexDigitCountCall math.addI64
-argument advanceHexDigitCountCall left I64 hexDigitCount
-argument advanceHexDigitCountCall right I64 integerOneStepValue
+call advanceHexDigitCountCall math.addInt64
+argument advanceHexDigitCountCall left Int64 hexDigitCount
+argument advanceHexDigitCountCall right Int64 integerOneStepValue
 run advanceHexDigitCountCall
-bind value nextHexDigitCount I64 advanceHexDigitCountCall
+bind value nextHexDigitCount Int64 advanceHexDigitCountCall
 set memory hexDigitCount nextHexDigitCount
-call divideWorkingHexCall math.divideI64
-argument divideWorkingHexCall left I64 workingHexValue
-argument divideWorkingHexCall right I64 hexadecimalBase
+call divideWorkingHexCall math.divideInt64
+argument divideWorkingHexCall left Int64 workingHexValue
+argument divideWorkingHexCall right Int64 hexadecimalBase
 run divideWorkingHexCall
-bind value workingHexAfterDivide I64 divideWorkingHexCall
+bind value workingHexAfterDivide Int64 divideWorkingHexCall
 set memory workingHexValue workingHexAfterDivide
-call detectMoreHexDigitsCall math.greaterThanI64
-argument detectMoreHexDigitsCall left I64 workingHexValue
-argument detectMoreHexDigitsCall right I64 integerZeroBoundaryForStdio
+call detectMoreHexDigitsCall math.greaterThanInt64
+argument detectMoreHexDigitsCall left Int64 workingHexValue
+argument detectMoreHexDigitsCall right Int64 integerZeroBoundaryForStdio
 run detectMoreHexDigitsCall
 bind value moreHexDigitsRemain Bool detectMoreHexDigitsCall
 branch if condition moreHexDigitsRemain target hexDigitLoop
 branch else target emitHexDigitsForward
 label emitHexDigitsForward
-memory writeSignedInt64HexToStandardOutput mutable hexEmitCursor I64 0
+memory writeSignedInt64HexToStandardOutput mutable hexEmitCursor Int64 0
 set memory hexEmitCursor hexDigitCount
 label emitNextHexDigit
-call detectHexAtCursorZeroCall math.equalI64
-argument detectHexAtCursorZeroCall left I64 hexEmitCursor
-argument detectHexAtCursorZeroCall right I64 integerZeroBoundaryForStdio
+call detectHexAtCursorZeroCall math.equalInt64
+argument detectHexAtCursorZeroCall left Int64 hexEmitCursor
+argument detectHexAtCursorZeroCall right Int64 integerZeroBoundaryForStdio
 run detectHexAtCursorZeroCall
 bind value hexAtCursorZero Bool detectHexAtCursorZeroCall
 branch if condition hexAtCursorZero target emitHexTrailingNewline
-call retreatHexCursorCall math.subtractI64
-argument retreatHexCursorCall left I64 hexEmitCursor
-argument retreatHexCursorCall right I64 integerOneStepValue
+call retreatHexCursorCall math.subtractInt64
+argument retreatHexCursorCall left Int64 hexEmitCursor
+argument retreatHexCursorCall right Int64 integerOneStepValue
 run retreatHexCursorCall
-bind value retreatedHexCursor I64 retreatHexCursorCall
+bind value retreatedHexCursor Int64 retreatHexCursorCall
 set memory hexEmitCursor retreatedHexCursor
 call loadHexDigitCall pointer.loadByte
-argument loadHexDigitCall buffer COpaqueMemoryAddress hexScratchBuffer
-argument loadHexDigitCall offset CByteCount retreatedHexCursor
+argument loadHexDigitCall buffer OpaquePointer hexScratchBuffer
+argument loadHexDigitCall offset ByteCount retreatedHexCursor
 run loadHexDigitCall
-bind value hexDigitToEmit I8 loadHexDigitCall
+bind value hexDigitToEmit Int8 loadHexDigitCall
 call emitHexDigitCall writeByteToStandardOutput
-argument emitHexDigitCall characterCode CSignedInt32 hexDigitToEmit
+argument emitHexDigitCall characterCode Int32 hexDigitToEmit
 run emitHexDigitCall
-ignore value source emitHexDigitCall type CSignedInt32
+ignore value source emitHexDigitCall type Int32
 jump target emitNextHexDigit
 label emitHexTrailingNewline
 call emitHexNewlineCall writeByteToStandardOutput
-argument emitHexNewlineCall characterCode CSignedInt32 asciiNewlineByteCode
+argument emitHexNewlineCall characterCode Int32 asciiNewlineByteCode
 run emitHexNewlineCall
-ignore value source emitHexNewlineCall type CSignedInt32
+ignore value source emitHexNewlineCall type Int32
 return value hexDigitCount
 
 # Allocation-failure leg for the hex formatter.
@@ -577,12 +577,12 @@ label hexScratchAllocationFailedReturn
 return value hexScratchAllocationError
 label emitHexZero
 call emitHexZeroByteCall writeByteToStandardOutput
-argument emitHexZeroByteCall characterCode CSignedInt32 asciiZeroByteCode
+argument emitHexZeroByteCall characterCode Int32 asciiZeroByteCode
 run emitHexZeroByteCall
-ignore value source emitHexZeroByteCall type CSignedInt32
+ignore value source emitHexZeroByteCall type Int32
 call emitHexZeroNewlineCall writeByteToStandardOutput
-argument emitHexZeroNewlineCall characterCode CSignedInt32 asciiNewlineByteCode
+argument emitHexZeroNewlineCall characterCode Int32 asciiNewlineByteCode
 run emitHexZeroNewlineCall
-ignore value source emitHexZeroNewlineCall type CSignedInt32
-storage module immutable hexZeroByteCount CByteCount 1
+ignore value source emitHexZeroNewlineCall type Int32
+storage module immutable hexZeroByteCount ByteCount 1
 return value hexZeroByteCount

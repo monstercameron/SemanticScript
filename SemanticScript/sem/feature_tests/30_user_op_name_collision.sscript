@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation doubleIt
-input operation doubleIt n CSignedInt64
-output operation doubleIt Result CSignedInt64 Void
+input operation doubleIt n Int64
+output operation doubleIt Result Int64 Void
 memory doubleIt heap no
 async doubleIt no
 purpose operation doubleIt "Doubles input. Param name `n` collides with main's `var n`."
 invariant operation doubleIt "Result is 2n."
 label startDoubleIt
-storage module immutable twoLit I64 2
-call mulCall math.multiplyI64
-argument mulCall left CSignedInt64 n
-argument mulCall right I64 twoLit
+storage module immutable twoLit Int64 2
+call mulCall math.multiplyInt64
+argument mulCall left Int64 n
+argument mulCall right Int64 twoLit
 run mulCall
-bind value productResult I64 mulCall
+bind value productResult Int64 mulCall
 return ok productResult
 
 operation main
@@ -32,17 +32,17 @@ async main no
 purpose operation main "Call doubleIt(5) and print."
 invariant operation main "Outputs 10."
 label startMain
-storage module immutable fiveInitial I64 5
-memory main mutable n I64 fiveInitial
+storage module immutable fiveInitial Int64 5
+memory main mutable n Int64 fiveInitial
 call dblCall doubleIt
-argument dblCall n CSignedInt64 n
+argument dblCall n Int64 n
 run dblCall
-bind ok dblResult I64 dblCall
-memory main mutable resultVar I64 fiveInitial
+bind ok dblResult Int64 dblCall
+memory main mutable resultVar Int64 fiveInitial
 set memory resultVar dblResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -15,13 +15,13 @@ async main no
 purpose operation main "Emit two bytes via c.putchar (A=65, B=66)."
 invariant operation main "Direct libc passthrough to putchar."
 label startMain
-storage module immutable charA CSignedInt32 65
-storage module immutable charB CSignedInt32 66
+storage module immutable charA Int32 65
+storage module immutable charB Int32 66
 call writeACall c.putchar
-argument writeACall c CSignedInt32 charA
+argument writeACall c Int32 charA
 run writeACall
 call writeBCall c.putchar
-argument writeBCall c CSignedInt32 charB
+argument writeBCall c Int32 charB
 run writeBCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

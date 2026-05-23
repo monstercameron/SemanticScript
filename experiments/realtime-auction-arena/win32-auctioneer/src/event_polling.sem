@@ -5,17 +5,17 @@ moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.event_pollin
 invariant module experiment.realtime_auction_arena.win32_auctioneer.event_polling "Polling is the first transport model; SSE is documented as a later replacement only after the Win32 runtime can safely coordinate long-lived responses with the message loop."
 moduleWarning experiment.realtime_auction_arena.win32_auctioneer.event_polling "Current standard.gui handlers are synchronous and standard.net async fetches are not integrated with UI-thread dispatch, so this module is parseable design scaffolding."
 
-type AuctionId CNullTerminatedByteString
-type AccessJwt CNullTerminatedByteString
-type ApiBaseUrl CNullTerminatedByteString
-type AuctionEventSequence I64
-type PollIntervalMillis I64
-type PollStatusText CNullTerminatedByteString
+type AuctionId String
+type AccessJwt String
+type ApiBaseUrl String
+type AuctionEventSequence Int64
+type PollIntervalMillis Int64
+type PollStatusText String
 
 record PollCursor
 field PollCursor auctionId AuctionId
 field PollCursor lastSequence AuctionEventSequence
-field PollCursor lastSnapshotRevision I64
+field PollCursor lastSnapshotRevision Int64
 field PollCursor pollingEnabled Bool
 
 record PollRequest
@@ -53,7 +53,7 @@ return value cursor
 operation enablePolling
 input operation enablePolling auctionId AuctionId
 input operation enablePolling lastSequence AuctionEventSequence
-input operation enablePolling lastSnapshotRevision I64
+input operation enablePolling lastSnapshotRevision Int64
 output operation enablePolling PollPlan
 memory enablePolling heap yes
 async enablePolling no

@@ -4,10 +4,10 @@ runtime AgentRuntime 0.1
 
 entry console main
 
-type FizzBuzzCounter I64
-type FizzBuzzDivisor I64
-type PositiveFizzBuzzStep I64
-type FizzBuzzRemainder I64
+type FizzBuzzCounter Int64
+type FizzBuzzDivisor Int64
+type PositiveFizzBuzzStep Int64
+type FizzBuzzRemainder Int64
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError

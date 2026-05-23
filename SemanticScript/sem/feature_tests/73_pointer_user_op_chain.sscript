@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation skipFirstCharacter
-input operation skipFirstCharacter buffer CNullTerminatedByteString
-output operation skipFirstCharacter Result CNullTerminatedByteString Void
+input operation skipFirstCharacter buffer String
+output operation skipFirstCharacter Result String Void
 memory skipFirstCharacter heap no
 async skipFirstCharacter no
 purpose operation skipFirstCharacter "Return a pointer to the second byte of `buffer` (skip one byte forward)."
 invariant operation skipFirstCharacter "Used to demonstrate that pointer-returning user ops chain — `c.strlen(skipFirstCharacter(s))` should compute strlen(s) - 1 for non-empty input."
 label startSkipFirstCharacter
-storage module immutable oneByte CSignedInt64 1
+storage module immutable oneByte Int64 1
 call advanceCall pointer.offset
-argument advanceCall base CNullTerminatedByteString buffer
-argument advanceCall offset CSignedInt64 oneByte
+argument advanceCall base String buffer
+argument advanceCall offset Int64 oneByte
 run advanceCall
-bind value advancedPointer COpaqueMemoryAddress advanceCall
+bind value advancedPointer OpaquePointer advanceCall
 return ok advancedPointer
 
 operation main
@@ -33,20 +33,20 @@ async main no
 purpose operation main "Take 'shello' (6 chars), skip the first, c.strlen the result == 5. Verifies pointer-returning user op + pointer arg to libc."
 invariant operation main "Output is 5."
 label startMain
-storage module immutable fullText CNullTerminatedByteString "shello"
+storage module immutable fullText String "shello"
 call shortenCall skipFirstCharacter
-argument shortenCall buffer CNullTerminatedByteString fullText
+argument shortenCall buffer String fullText
 run shortenCall
-bind ok shortenedPointer CNullTerminatedByteString shortenCall
+bind ok shortenedPointer String shortenCall
 call lengthCall c.strlen
-argument lengthCall s CNullTerminatedByteString shortenedPointer
+argument lengthCall s String shortenedPointer
 run lengthCall
-bind value measuredLength CByteCount lengthCall
-memory main mutable measurementStorage I64 0
+bind value measuredLength ByteCount lengthCall
+memory main mutable measurementStorage Int64 0
 set memory measurementStorage measuredLength
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 measurementStorage
+argument writeCall value Int64 measurementStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

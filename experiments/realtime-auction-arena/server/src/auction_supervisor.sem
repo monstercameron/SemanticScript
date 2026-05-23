@@ -21,8 +21,8 @@ importType EventStatusCode event EventStatusCode
 record SupervisorContract
 field SupervisorContract ownershipModel String
 field SupervisorContract commandTypes String
-field SupervisorContract commandQueueCapacity I64
-field SupervisorContract subscriberQueueCapacity I64
+field SupervisorContract commandQueueCapacity Int64
+field SupervisorContract subscriberQueueCapacity Int64
 field SupervisorContract replyRule String
 field SupervisorContract orderingRule String
 field SupervisorContract timerRule String
@@ -106,11 +106,11 @@ storage module immutable supervisorExpectedFifthEvent EventId 5
 storage module immutable supervisorExpectedSixthEvent EventId 6
 storage module immutable supervisorExpectedSeventhEvent EventId 7
 storage module immutable supervisorQueueFullEventId EventId -4
-storage module immutable supervisorNullCancelToken COpaqueMemoryAddress 0
+storage module immutable supervisorNullCancelToken OpaquePointer 0
 storage module immutable supervisorNullBuffer EventOutputBuffer 0
 storage module immutable supervisorNullBufferCapacity EventBufferCapacity 0
-storage module immutable supervisorSuccessStatus CSignedInt32 0
-storage module immutable supervisorFailureStatus CSignedInt32 1
+storage module immutable supervisorSuccessStatus Int32 0
+storage module immutable supervisorFailureStatus Int32 1
 
 operation getSupervisorContract
 output operation getSupervisorContract SupervisorContract
@@ -126,7 +126,7 @@ output operation supervisorEventIdEquals Bool
 memory supervisorEventIdEquals heap no
 async supervisorEventIdEquals yes
 operationBody supervisorEventIdEquals intrinsic
-intrinsicName supervisorEventIdEquals arithmetic.equalI64
+intrinsicName supervisorEventIdEquals arithmetic.equalInt64
 purpose operation supervisorEventIdEquals "Compare supervisor EventId values, including negative status ids."
 
 operation openAuctionSupervisorCommandQueue
@@ -284,7 +284,7 @@ bind value closeQueueStatus EventStatusCode closeQueueCall
 return value closeQueueStatus
 
 operation auctionSupervisorAsyncOrderingSmoke
-output operation auctionSupervisorAsyncOrderingSmoke CSignedInt32
+output operation auctionSupervisorAsyncOrderingSmoke Int32
 effect auctionSupervisorAsyncOrderingSmoke open event.stream
 effect auctionSupervisorAsyncOrderingSmoke read event.stream
 effect auctionSupervisorAsyncOrderingSmoke write event.stream
@@ -593,7 +593,7 @@ ignore value source closeSmokeQueueCall type EventStatusCode
 return value supervisorSuccessStatus
 
 operation auctionSupervisorQueueBackpressureSmoke
-output operation auctionSupervisorQueueBackpressureSmoke CSignedInt32
+output operation auctionSupervisorQueueBackpressureSmoke Int32
 effect auctionSupervisorQueueBackpressureSmoke open event.stream
 effect auctionSupervisorQueueBackpressureSmoke write event.stream
 effect auctionSupervisorQueueBackpressureSmoke close event.stream

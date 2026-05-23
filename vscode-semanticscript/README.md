@@ -20,7 +20,7 @@ explicit runtime checks, and refinement-only documentation forms.
 ## Current Status
 
 Active editor tooling. Version `1.0.5` supports highlighting, semantic tokens,
-hovers, same-file navigation, completions, lint integration, and direct
+hovers, project-aware navigation, completions, lint integration, and direct
 `semsc.py` executable builds from VS Code. The package also includes a
 SemanticScript gallery icon, language file icon fallback, and selectable
 SemanticScript file icon theme.
@@ -57,13 +57,17 @@ builds after accepting the publisher metadata constraint for the target release.
   inputs, storage slots, call objects, labels, bindings, failures, fields,
   groups, collection declarations, and work items.
 - Go to Definition for same-file SemanticScript symbols.
+- Go to Definition for build-tape module registrations and project imports,
+  including `registerModule ... "path"` rows and `import ... module.path`
+  lookups resolved through the nearest `build.sem`.
 - Outline/Breadcrumb support through document symbols for operations, routes,
   records, fields, capabilities, constants, storage, calls, labels, and key
   project declarations.
 - Completion suggestions for verbs, primitive/native call targets, and same-file
   symbols, including `html.hydrate.TemplateName` targets declared by local
   `html template` rows.
-- Optional diagnostics from the canonical `semlint.py` engine.
+- Optional diagnostics from the canonical `semlint.py` engine, including
+  related-span links plus quick fixes for auto-applicable single-line fixes.
 - `SemanticScript: Compile Current File` runs `semsc.py --emit-exe` with
   configurable build profile, runtime checks, and LLVM IR persistence.
 
@@ -87,14 +91,22 @@ The extension recognizes the recent syntax families from the refined example:
   `dependencyFailure`, `precondition`, `pinsNullBodyFailurePath`,
   `responseBodyForwarder`, `rationale`, and explicit `return void` control flow.
 - Native web server declarations:
-  `webServer`, `serverHost`, `serverPort`, `route`, `routeTimeout`,
+  `webServer`, `serverHost`, `serverPort`, `route`, `routeNotFound`,
+  `routeMethodNotAllowed`, `routeTimeout`,
   `routeMiddleware`, `routeTimeoutOptOut`, and `routeMiddlewareOptOut`.
+- RuntimeBinding async hooks:
+  `runtimeBindingAsyncStart` and `runtimeBindingAsyncAwait` for generic
+  `start` / `await` lowering on runtime-bound operations.
 - Native HTTP call targets:
   `http.requestMethod`, `http.requestPath`, `http.requestHeader`,
   `http.requestQueryParam`, `http.requestBodyText`, `http.requestBodyBytes`,
   `http.requestBodyLength`, `http.requestPathParam`, `http.requestCookie`,
   `http.responseHtml`, `http.responseText`, `http.responseBytes`,
   `http.responseFile`, `http.responseHeader`, `http.responseSseEvent`,
+  `http.openSseStream`, `http.writeSseEvent`, `http.writeSseEventWithId`,
+  `http.writeSseHeartbeat`, `http.closeSseStream`,
+  `http.clientDisconnected`, `http.serverIsShuttingDown`,
+  `http.clientGet`, `http.clientPost`, `http.escapeHtml`,
   `http.ensureDirectory`, `http.nowMillis`, and multipart helpers such as
   `http.multipartPartText`, `http.multipartPartBytes`,
   `http.multipartPartLength`, `http.multipartPartFilename`, and
@@ -144,7 +156,9 @@ The extension recognizes the recent syntax families from the refined example:
 - Standard native targets:
   `net.fetchText`, `net.fetchBytes`, `net.freeTextBody`, expanded SQLite targets
   including `sqlite.finalizeStatement`, `sqlite.resetStatement`,
-  `sqlite.columnBlob`, `sqlite.columnByteCount`, and standard exported type/value
+  `sqlite.columnBlob`, `sqlite.columnByteCount`, `sqlite.execStatus`, JWT
+  helpers such as `jwt.hs256VerifyToken` and
+  `jwt.formatBearerLoginEnvelope`, and standard exported type/value
   surfaces for `standard.gui`, `standard.json`, `standard.sqlite`,
   `standard.net`, and `standard.bcrypt`.
 - Groups, guards, and defers:
@@ -283,6 +297,7 @@ Then reload VS Code.
   "semanticScript.compiler.persistLlvmIr": "auto",
   "semanticScript.compiler.optLevel": "default",
   "semanticScript.compiler.emitLlvmIr": false,
+  "semanticScript.compiler.emitOptimizedLlvmIr": false,
   "semanticScript.compiler.buildDir": "",
   "semanticScript.compiler.buildRoot": "",
   "semanticScript.compiler.buildFolderName": "",
@@ -309,6 +324,8 @@ Then reload VS Code.
 `semanticScript.compiler.persistLlvmIr` can be `auto`, `yes`, or `no`.
 
 `semanticScript.compiler.optLevel` can be `default`, `0`, `1`, `2`, or `3`.
+
+`semanticScript.compiler.emitOptimizedLlvmIr` passes `--emit-optimized-ir`.
 
 `semanticScript.compiler.cpuBaseline` can be `default`, `generic`, `native`,
 `x86_64_v1`, `x86_64_v2`, `x86_64_v3`, `x86_64_v4`, `arm64_generic`, or

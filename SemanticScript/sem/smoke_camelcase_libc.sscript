@@ -5,8 +5,8 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
-errorCase MainError AllocationFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
+errorCase MainError AllocationFailed Int32
 
 operation main
 input operation main console Console
@@ -23,31 +23,31 @@ invariant operation main "The allocator returns a non-null pointer for a 4096-by
 
 label startMain
 
-storage module immutable allocAlignment CByteCount 64
-storage module immutable allocSize CByteCount 4096
-storage module immutable allocReportFormat CNullTerminatedByteString "c.alignedAlloc(align=%lld, size=%lld) returned non-null=%d\n"
+storage module immutable allocAlignment ByteCount 64
+storage module immutable allocSize ByteCount 4096
+storage module immutable allocReportFormat String "c.alignedAlloc(align=%lld, size=%lld) returned non-null=%d\n"
 
 call allocCall c.alignedAlloc
-argument allocCall alignment CByteCount allocAlignment
-argument allocCall size CByteCount allocSize
+argument allocCall alignment ByteCount allocAlignment
+argument allocCall size ByteCount allocSize
 run allocCall
-bind ok allocBuffer COpaqueMemoryAddress allocCall
+bind ok allocBuffer OpaquePointer allocCall
 
 # The result is opaque. To prove the call succeeded we coerce it to an
 # i64 address and report whether it's nonzero through c.printf.
-storage module immutable allocSuccessSentinel CSignedInt32 1
+storage module immutable allocSuccessSentinel Int32 1
 call reportCall c.printf
-argument reportCall format CNullTerminatedByteString allocReportFormat
-argument reportCall align CByteCount allocAlignment
-argument reportCall size CByteCount allocSize
-argument reportCall ok CSignedInt32 allocSuccessSentinel
+argument reportCall format String allocReportFormat
+argument reportCall align ByteCount allocAlignment
+argument reportCall size ByteCount allocSize
+argument reportCall ok Int32 allocSuccessSentinel
 run reportCall
 ignore void source reportCall
-bind error reportError CSignedInt32 reportCall
+bind error reportError Int32 reportCall
 branch error source reportCall target reportWriteFailed
 
 call freeCall c.free
-argument freeCall pointer COpaqueMemoryAddress allocBuffer
+argument freeCall pointer OpaquePointer allocBuffer
 run freeCall
 
 storage module immutable successfulExitCode ExitCode 0

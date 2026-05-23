@@ -5,12 +5,12 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 # Multi-level type alias chain. Distance is an alias of Metric, which
-# is an alias of CFloat64. The compiler must resolve through both
+# is an alias of Float64. The compiler must resolve through both
 # levels to detect that Distance values should be emitted as `double`.
-type Metric CFloat64
+type Metric Float64
 type Distance Metric
 type Velocity Distance
 
@@ -19,11 +19,11 @@ input operation tripleVelocity speed Velocity
 output operation tripleVelocity Result Velocity Void
 memory tripleVelocity heap no
 async tripleVelocity no
-purpose operation tripleVelocity "Multiply a Velocity (== Distance == Metric == CFloat64) by 3.0."
+purpose operation tripleVelocity "Multiply a Velocity (== Distance == Metric == Float64) by 3.0."
 invariant operation tripleVelocity "Verifies the alias chain resolves to double for both the param and the result."
 label startTripleVelocity
 storage module immutable threeFactor Velocity 3.0
-call multCall math.multiplyF64
+call multCall math.multiplyFloat64
 argument multCall left Velocity speed
 argument multCall right Velocity threeFactor
 run multCall
@@ -36,7 +36,7 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "tripleVelocity(3.0) == 9.0. Exercises 3-level type-alias resolution to CFloat64."
+purpose operation main "tripleVelocity(3.0) == 9.0. Exercises 3-level type-alias resolution to Float64."
 invariant operation main "Output is 9.000000."
 label startMain
 storage module immutable startSpeed Velocity 3.0

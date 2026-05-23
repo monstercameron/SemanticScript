@@ -15,25 +15,25 @@ async main no
 purpose operation main "(3 + 2) * 5 = 25 via chained binds."
 invariant operation main "Bind result of first op feeds second op."
 label startMain
-storage module immutable threeInitial I64 3
-storage module immutable twoLit I64 2
-storage module immutable fiveLit I64 5
-memory main mutable leftOp I64 threeInitial
-call addCall math.addI64
-argument addCall left I64 leftOp
-argument addCall right I64 twoLit
+storage module immutable threeInitial Int64 3
+storage module immutable twoLit Int64 2
+storage module immutable fiveLit Int64 5
+memory main mutable leftOp Int64 threeInitial
+call addCall math.addInt64
+argument addCall left Int64 leftOp
+argument addCall right Int64 twoLit
 run addCall
-bind value sumResult I64 addCall
-call mulCall math.multiplyI64
-argument mulCall left I64 sumResult
-argument mulCall right I64 fiveLit
+bind value sumResult Int64 addCall
+call mulCall math.multiplyInt64
+argument mulCall left Int64 sumResult
+argument mulCall right Int64 fiveLit
 run mulCall
-bind value productResult I64 mulCall
-memory main mutable resultVar I64 threeInitial
+bind value productResult Int64 mulCall
+memory main mutable resultVar Int64 threeInitial
 set memory resultVar productResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

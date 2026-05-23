@@ -18,7 +18,7 @@ c.fwrite    # item count
 Those values are not canonical SemanticScript operation status codes. If an operation only needs to report success or failure, normalize the return:
 
 ```semanticscript
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 
@@ -26,14 +26,14 @@ call writeJsonCall c.fprintf
 argument writeJsonCall stream TYPE saveFileHandle
 argument writeJsonCall format TYPE saveFormat
 run writeJsonCall
-ignore value source writeJsonCall type CSignedInt32
+ignore value source writeJsonCall type Int32
 return value SaveSucceeded
 ```
 
 Avoid this shape:
 
 ```semanticscript
-bind value writeJsonResult CSignedInt32 writeJsonCall
+bind value writeJsonResult Int32 writeJsonCall
 return value writeJsonResult
 ```
 
@@ -60,7 +60,7 @@ operation and can interact badly with the current user-operation ABI, where the
 success payload is the concrete return slot. Use a plain output instead:
 
 ```semanticscript
-output copyStringBuffer CSignedInt64
+output copyStringBuffer Int64
 ```
 
 `semlint.py` reports `resultVoidErrorWithoutFailurePath` when an operation
@@ -217,7 +217,7 @@ Prefer one of these shapes:
 Avoid this shape for user-editable content:
 
 ```semanticscript
-storage local immutable itemFormat CNullTerminatedByteString "{\"title\":\"%s\"}\n"
+storage local immutable itemFormat String "{\"title\":\"%s\"}\n"
 call writeItemCall c.fprintf
 argument writeItemCall stream TYPE fileHandle
 argument writeItemCall format TYPE itemFormat
@@ -253,25 +253,25 @@ optimization.
 
 `semlint.py` reports SS3203 `performanceDiscipline.stringAccumulatorAppendInLoop`
 when `c.strcat`/`c.strncat` style appends appear inside a back-edge loop.
-It also reports SS3205 `performanceDiscipline.snprintfI32OffsetWithoutWidening`
+It also reports SS3205 `performanceDiscipline.snprintfInt32OffsetWithoutWidening`
 when a `c.snprintf` byte count is added directly to an i64 cursor; widen it
-with `math.signExtendCSignedInt32ToCSignedInt64` first.
+with `math.signExtendInt32ToInt64` first.
 
 Prefer a cursor-based builder:
 
 ```semanticscript
-storage local mutable writeOffset CSignedInt64 zeroIndex
+storage local mutable writeOffset Int64 zeroIndex
 call copyChunkCall memory.copy
 argument copyChunkCall destination TYPE outputBuffer
 argument copyChunkCall destinationOffset TYPE writeOffset
 argument copyChunkCall source TYPE chunkBuffer
 argument copyChunkCall byteCount TYPE chunkLength
 run copyChunkCall
-call nextOffsetCall math.addI64
+call nextOffsetCall math.addInt64
 argument nextOffsetCall left TYPE writeOffset
 argument nextOffsetCall right TYPE chunkLength
 run nextOffsetCall
-bind value nextOffset CSignedInt64 nextOffsetCall
+bind value nextOffset Int64 nextOffsetCall
 set local writeOffset nextOffset
 ```
 
@@ -295,13 +295,13 @@ same literal in two constants. This keeps later capacity changes from silently
 under-allocating or over-allocating:
 
 ```semanticscript
-storage local immutable todoCapacity CSignedInt64 128
-storage local immutable doneFlagByteWidth CSignedInt64 1
-call todoArrayBytesCall math.multiplyI64
+storage local immutable todoCapacity Int64 128
+storage local immutable doneFlagByteWidth Int64 1
+call todoArrayBytesCall math.multiplyInt64
 argument todoArrayBytesCall left TYPE todoCapacity
 argument todoArrayBytesCall right TYPE doneFlagByteWidth
 run todoArrayBytesCall
-bind value todoArrayBytes CByteCount todoArrayBytesCall
+bind value todoArrayBytes ByteCount todoArrayBytesCall
 ```
 
 For scalar state, keep widths consistent across direct assignment. `semlint.py`
@@ -310,7 +310,7 @@ known 32-bit scalar into a known 64-bit scalar, or the reverse, without an
 explicit widening or narrowing operation.
 
 Keep C vararg format strings aligned with argument width. If a value is
-`CSignedInt32`, use a 32-bit conversion such as `%d`, or explicitly widen the
+`Int32`, use a 32-bit conversion such as `%d`, or explicitly widen the
 value before using a 64-bit conversion such as `%lld`. The compiler cannot infer
 the vararg contract from the format string at lowering time.
 
@@ -410,12 +410,12 @@ output saveTodosToJson Result Void SaveTodosError
 Use an explicit status type when the operation is intentionally status-only:
 
 ```semanticscript
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveOpenFailed 1
 ```
 
-Do not use bare `CSignedInt32` as a dumping ground for byte counts, OS statuses, exit codes, and typed semantic status. If several meanings share the same primitive shape, create aliases or enums so the source carries the distinction. Prefer enums for closed status domains; they give linters enough context to reject accidental comparisons through the wrong primitive width, such as sending a `CSignedInt32` status enum through an `I64` comparison target.
+Do not use bare `Int32` as a dumping ground for byte counts, OS statuses, exit codes, and typed semantic status. If several meanings share the same primitive shape, create aliases or enums so the source carries the distinction. Prefer enums for closed status domains; they give linters enough context to reject accidental comparisons through the wrong primitive width, such as sending a `Int32` status enum through an `Int64` comparison target.
 
 When an operation returns an enum-typed status, return enum cases at the
 operation boundary:
@@ -432,10 +432,10 @@ Use math targets that match the value width. For C status bytes, key codes, and
 pointer-loaded bytes, prefer:
 
 ```semanticscript
-call doneCheckCall math.equalCSignedInt32
+call doneCheckCall math.equalInt32
 ```
 
-over routing those values through `math.equalI64`. `semlint.py` reports
+over routing those values through `math.equalInt64`. `semlint.py` reports
 `mathOperandWidthDrift` when any math target receives an operand with a
 different numeric shape. The compiler rejects those mismatches too; use a
 width-specific math target or an explicit conversion operation.
@@ -443,23 +443,23 @@ width-specific math target or an explicit conversion operation.
 For intentional integer width changes, call the conversion target directly:
 
 ```semanticscript
-call widenCall math.signExtendCSignedInt32ToCSignedInt64
+call widenCall math.signExtendInt32ToInt64
 argument widenCall inputValue TYPE statusCode
 ```
 
 Keep byte and flag helpers byte-shaped. A parser that reads a JSON `0`/`1`
 field or a value loaded with `pointer.loadByte` should normally return
-`CSignedInt32`, not `CSignedInt64`; indexes, lengths, capacities, and counters
-remain the I64-shaped values.
+`Int32`, not `Int64`; indexes, lengths, capacities, and counters
+remain the Int64-shaped values.
 
 Use domain aliases and enums once raw primitives start carrying application
-state. Key input can use a domain alias over `CSignedInt32`, while closed modal
+state. Key input can use a domain alias over `Int32`, while closed modal
 or screen state should be an enum:
 
 ```semanticscript
-type TuiKeyCode CSignedInt32
+type TuiKeyCode Int32
 
-enum ScreenMode repr CSignedInt64
+enum ScreenMode repr Int64
 enumCase ScreenMode ListMode 0
 enumCase ScreenMode EditMode 1
 ```
@@ -511,27 +511,27 @@ declaration line to paste.
 
 ## ASCII Byte Literals
 
-Storage lines that hold ASCII codepoints (`storage * immutable * CSignedInt32
+Storage lines that hold ASCII codepoints (`storage * immutable * Int32
 V` for `V` in 32..126) should name the codepoint's role, not its byte value,
 and either declare them at module scope or add a `# rationale:` comment that
 identifies the character:
 
 ```semanticscript
 # rationale: 34 = ASCII double quote; emitted by saveTodosToJson around titles.
-storage module immutable asciiDoubleQuote CSignedInt32 34
-storage module immutable asciiBackslash CSignedInt32 92
+storage module immutable asciiDoubleQuote Int32 34
+storage module immutable asciiBackslash Int32 92
 ```
 
 Avoid this shape, where the value-as-character mapping lives only in the
 reader's head:
 
 ```semanticscript
-storage local immutable quoteByte CSignedInt32 34
-storage local immutable backslashByte CSignedInt32 92
+storage local immutable quoteByte Int32 34
+storage local immutable backslashByte Int32 92
 ```
 
 `semlint.py` reports `SS4402 styleDiscipline.magicAsciiByteLiteral` (T4 style,
-info severity) when a `storage local immutable NAME CSignedInt32 V` declares a
+info severity) when a `storage local immutable NAME Int32 V` declares a
 printable-ASCII byte value (V in 32..126) without a `# rationale:` comment
 naming the character. The diagnostic is suppressed when SS4401 already flags
 the same name as a cross-operation duplicate so the same line isn't piled with
@@ -551,9 +551,9 @@ the offsets in lockstep:
 #   ,"done":     = 9 bytes  → doneValueOffset = 10 + 9 = 19
 #   ,"title":"   = 11 bytes → titleValueOffset = 19 + 11 = 30
 # Any edit to itemPrefixFormatText must update these three offsets in lockstep.
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
-storage local immutable titleValueOffset CSignedInt64 30
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
+storage local immutable titleValueOffset Int64 30
 ```
 
 The `warning` line on the loader operation should also point at the produces
@@ -576,15 +576,15 @@ is dead. Replace the initializer with the real first value:
 ```semanticscript
 # rationale: readIndex starts at valueOffset so the loop begins past the
 # `"title":"` prefix. The earlier zeroIndex initializer was dead.
-storage local mutable readIndex CSignedInt64 valueOffset
+storage local mutable readIndex Int64 valueOffset
 ```
 
 Avoid this shape, where the initial value misleads a reader about where the
 loop actually starts:
 
 ```semanticscript
-storage local mutable readIndex CSignedInt64 zeroIndex
-storage local mutable writeIndex CSignedInt64 zeroIndex
+storage local mutable readIndex Int64 zeroIndex
+storage local mutable writeIndex Int64 zeroIndex
 set local readIndex valueOffset
 ```
 
@@ -643,7 +643,7 @@ argument sameStatusCall left TYPE titleWriteStatus
 argument sameStatusCall right TYPE SaveSucceeded
 
 # Avoid:
-call sameStatusCall math.equalCSignedInt32
+call sameStatusCall math.equalInt32
 argument sameStatusCall left TYPE titleWriteStatus
 argument sameStatusCall right TYPE SaveSucceeded
 ```
@@ -879,7 +879,7 @@ job that belongs elsewhere.
 operation tracingMiddleware
 input tracingMiddleware request HttpRequest
 input tracingMiddleware response HttpResponse
-output tracingMiddleware CSignedInt32
+output tracingMiddleware Int32
 effect tracingMiddleware read http.request.path
 effect tracingMiddleware write http.response    # SS3602 requires this
 memory tracingMiddleware arena request
@@ -916,7 +916,7 @@ call queryReadCall http.requestQueryParam
 argument queryReadCall request TYPE request
 argument queryReadCall name TYPE nameQueryName
 run queryReadCall
-bind value queryValue CNullTerminatedByteString queryReadCall
+bind value queryValue String queryReadCall
 
 call queryMissingCheckCall pointer.isNull
 argument queryMissingCheckCall pointer TYPE queryValue
@@ -1033,8 +1033,8 @@ Prefer the high-level JSON surface over direct stack-buffer formatting:
 Legacy `json.encode.<Primitive>` stack-allocates a per-call-site buffer that
 lives only for the lifetime of the enclosing operation:
 
-- 32B for numerics (I64, CSignedInt32, Duration/Monotonic/UtcMilliseconds, Bool, F64/CFloat64/CFloat32)
-- 256B for strings (String, CNullTerminatedByteString)
+- 32B for numerics (Int64, Int32, Duration/Monotonic/UtcMilliseconds, Bool, Float64/Float64/Float32)
+- 256B for strings (String, String)
 
 Two consequences:
 
@@ -1055,17 +1055,17 @@ before the scratch storage is released.
 
 ## Math Operand Width Discipline
 
-The `math.*I64` family requires both operands to already be i64-shaped.
-Codegen does **not** widen or narrow implicitly. CByteCount, DurationMilliseconds,
-MonotonicMilliseconds, UtcMilliseconds, CSignedByteCount, CAddressOffset,
-CUnixSecondsSinceEpoch, CCpuClockTicks, CFileByteOffset, and Bool all
+The `math.*Int64` family requires both operands to already be i64-shaped.
+Codegen does **not** widen or narrow implicitly. ByteCount, DurationMilliseconds,
+MonotonicMilliseconds, UtcMilliseconds, SignedByteCount, AddressOffset,
+UnixSecondsSinceEpoch, CpuClockTicks, FileByteOffset, and Bool all
 lower as i64 and are accepted as i64 operands by the math intrinsics.
-Bool's lowering as i64 means math.equalI64 / math.greaterThanI64 over Bool
-values work but are usually a code smell — use `math.equalCSignedInt32`
+Bool's lowering as i64 means math.equalInt64 / math.greaterThanInt64 over Bool
+values work but are usually a code smell — use `math.equalInt32`
 or the bool-specific branches instead.
 
-For 32-bit comparisons, prefer `math.equalCSignedInt32` /
-`math.lessThanCSignedInt32` over the I64 path — the i32 comparison avoids
+For 32-bit comparisons, prefer `math.equalInt32` /
+`math.lessThanInt32` over the Int64 path — the i32 comparison avoids
 routing status/count values through a needless extend, and lints under
 SS4303 (`mathOperandWidthDrift`) flag the wrong width directly.
 
@@ -1115,7 +1115,7 @@ binding (and every operation bound via `routeMiddleware`) MUST declare
 its `HttpRequest` input under the canonical name `request` and its
 `HttpResponse` input under the canonical name `response`. The native
 dispatcher binds positionally (`[HttpRequest, HttpResponse,
-CSignedInt32]`) so a handler with `req`/`resp` *compiles and runs*,
+Int32]`) so a handler with `req`/`resp` *compiles and runs*,
 but every other name-based lookup in the toolchain breaks silently:
 
 - `semlint`'s SS3603 transitive-body walk resolves the response slot
@@ -1150,7 +1150,7 @@ between POST and PUT semantics), it MUST declare the matching effect:
 operation methodAwareHandler
 input methodAwareHandler request HttpRequest
 input methodAwareHandler response HttpResponse
-output methodAwareHandler CSignedInt32
+output methodAwareHandler Int32
 effect methodAwareHandler read http.request.method  # required when inspecting method
 effect methodAwareHandler write http.response
 ```
@@ -1175,14 +1175,14 @@ output gauntletMiddleware MiddlewareControl
 return value continueMiddlewareControl
 ```
 
-`MiddlewareControl` is a compiler-registered enum backed by `CSignedInt32`.
+`MiddlewareControl` is a compiler-registered enum backed by `Int32`.
 `continueMiddlewareControl` runs the route handler. `shortCircuitMiddlewareControl`
 skips the handler and sends the response already written by the middleware.
 The dispatcher makes a missing short-circuit body visible as a 500 response
 instead of treating it as success.
 
 `semlint.py` reports SS3610 `middlewareReturnNotMiddlewareControl` when an
-operation bound via `routeMiddleware` still declares `output OP CSignedInt32` or
+operation bound via `routeMiddleware` still declares `output OP Int32` or
 another non-`MiddlewareControl` output. This is an ERROR with
 `blocksCompile=True`, even though the source-level enforcement still lives in
 the linter rather than in the parser.
@@ -1238,10 +1238,10 @@ don't silence the test, fix the drift.
 ## Void Output Operations Use `return void`
 
 The user-op ABI returns i32 even for operations declared
-`output OP Void` / `output OP CVoid` — the type system maps Void to
+`output OP Void` / `output OP Void` — the type system maps Void to
 i32 at the return slot, and codegen tolerates any sentinel value.
 That tolerance has a cost: a Void op that ends with `return value
-someI32Zero` says one thing at the output line ("no caller-actionable
+someInt32Zero` says one thing at the output line ("no caller-actionable
 value") and another at the return site ("here is an integer
 sentinel"), and a future agent reading either half in isolation has
 to recognise the ABI quirk to reconcile them.
@@ -1271,7 +1271,7 @@ around the result-contract checker.
 `semlint` SS3612 `voidReturnValueShouldBeReturnVoid` flags Void-output
 ops that still use `return value NAME`. The fix candidate is
 auto-applicable: drop the `storage local immutable zeroSentinel
-CSignedInt32 0` line and rewrite `return value zeroSentinel` →
+Int32 0` line and rewrite `return value zeroSentinel` →
 `return void`. SS3612 is WARNING by default (the older form may still compile
 correctly); `--strict` promotes it to fatal for CI pipelines that
 want source-level honesty enforced.
@@ -1328,7 +1328,7 @@ safe — the native runtime defaults a NULL `contentType` to
 `"application/octet-stream"`. So this pattern is well-defined:
 
 ```semanticscript
-bind value uploadFileContentType CNullTerminatedByteString uploadFileContentTypeReadCall
+bind value uploadFileContentType String uploadFileContentTypeReadCall
 # safe to pass straight to http.responseBytes — runtime defaults NULL → octet-stream
 argument uploadFileBytesResponseCall contentType TYPE uploadFileContentType
 ```

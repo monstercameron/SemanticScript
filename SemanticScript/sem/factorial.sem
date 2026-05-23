@@ -4,9 +4,9 @@ runtime AgentRuntime 1.0
 
 entry console main
 
-type FactorialCounter I64
-type FactorialAccumulator I64
-type PositiveFactorialStep I64
+type FactorialCounter Int64
+type FactorialAccumulator Int64
+type PositiveFactorialStep Int64
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
@@ -40,7 +40,7 @@ storage local immutable factorialAccumulatorInitial FactorialAccumulator 1
 storage local mutable currentFactorialCounter FactorialCounter factorialLowerLimit
 storage local mutable currentFactorialAccumulator FactorialAccumulator factorialAccumulatorInitial
 
-# rationale: Confirm factorialUpperLimit stays inside the range where I64 factorial accumulation is provably safe.
+# rationale: Confirm factorialUpperLimit stays inside the range where Int64 factorial accumulation is provably safe.
 # The largest factorialUpperLimit whose factorial fits in a signed 64-bit integer is twenty, so any request
 # beyond that must be rejected with a typed MainError variant rather than silently overflowing.
 call factorialUpperLimitSafetyCheckCall FactorialCounter.lessThanOrEqual
@@ -104,7 +104,7 @@ storage local immutable successfulExitCode ExitCode 0
 return ok successfulExitCode
 
 label factorialUpperLimitRejected
-# failure: The configured factorialUpperLimit exceeds the I64 overflow-safe limit; reject before any multiplication runs.
+# failure: The configured factorialUpperLimit exceeds the Int64 overflow-safe limit; reject before any multiplication runs.
 makeError factorialUpperLimitRejectedFailure MainError.FactorialUpperLimitTooLarge
 return error factorialUpperLimitRejectedFailure
 

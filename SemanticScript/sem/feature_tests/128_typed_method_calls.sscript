@@ -10,7 +10,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation main
 input operation main console Console
@@ -25,47 +25,47 @@ label startMain
 # These calls have no real implementation — they hit the external-module
 # fallback in _emit_run that emits zero results. We bind each so the emit path
 # exercises both call+arg+run+bind while the linter carries the runtime warning.
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
-storage module immutable fakeList I64 0
-storage module immutable fakeItem I64 0
+storage module immutable fakeList Int64 0
+storage module immutable fakeItem Int64 0
 call listAppendCall TaskList.append
-argument listAppendCall list I64 fakeList
-argument listAppendCall item I64 fakeItem
+argument listAppendCall list Int64 fakeList
+argument listAppendCall item Int64 fakeItem
 run listAppendCall
-bind ok newList I64 listAppendCall
+bind ok newList Int64 listAppendCall
 
-storage module immutable fakeMap I64 0
-storage module immutable fakeKey I64 0
+storage module immutable fakeMap Int64 0
+storage module immutable fakeKey Int64 0
 call mapGetCall TaskMap.get
-argument mapGetCall map I64 fakeMap
-argument mapGetCall key I64 fakeKey
+argument mapGetCall map Int64 fakeMap
+argument mapGetCall key Int64 fakeKey
 run mapGetCall
-bind ok taskValue I64 mapGetCall
+bind ok taskValue Int64 mapGetCall
 
-storage module immutable fakeJson I64 0
+storage module immutable fakeJson Int64 0
 call jsonDecodeCall json.parse.Task
-argument jsonDecodeCall bytes I64 fakeJson
+argument jsonDecodeCall bytes Int64 fakeJson
 run jsonDecodeCall
-bind ok decodedTask I64 jsonDecodeCall
+bind ok decodedTask Int64 jsonDecodeCall
 
 call jsonEncodeCall json.stringify.Task
-argument jsonEncodeCall value I64 decodedTask
+argument jsonEncodeCall value Int64 decodedTask
 run jsonEncodeCall
-bind ok encodedBytes I64 jsonEncodeCall
+bind ok encodedBytes Int64 jsonEncodeCall
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 
-storage module immutable okText CNullTerminatedByteString "ok"
+storage module immutable okText String "ok"
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString okText
+argument writeCall text String okText
 run writeCall
 ignore void source writeCall
 

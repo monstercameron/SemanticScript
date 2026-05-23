@@ -334,7 +334,7 @@ importModule gui standard.gui
 storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
 storage module immutable height GuiPixels 480
-storage module immutable resizable CSignedInt32 1
+storage module immutable resizable Int32 1
 
 operation main
 output main ExitCode
@@ -360,7 +360,7 @@ call setMainWindow gui.applicationSetMainWindow
 argument setMainWindow application GuiApplication app
 argument setMainWindow window GuiWindow window
 run setMainWindow
-ignore value source setMainWindow type CSignedInt32
+ignore value source setMainWindow type Int32
 call runApp gui.applicationRun
 argument runApp application GuiApplication app
 run runApp
@@ -437,7 +437,7 @@ exportConstant app.todo maxTodoCount
 
 type TodoItem TodoItemRecord
 error MainError
-storage module immutable maxTodoCount CSignedInt64 128
+storage module immutable maxTodoCount Int64 128
 
 operation main
 ...
@@ -570,7 +570,7 @@ importModule persistence app.todo.persistence
 call loadCall persistence.loadTodos
 input saveHandler todo persistence.TodoItem
 useCapability saveHandler persistence.todoStoreReader
-argument limitCall max CSignedInt64 persistence.maxTodoCount
+argument limitCall max Int64 persistence.maxTodoCount
 ```
 
 Rules:

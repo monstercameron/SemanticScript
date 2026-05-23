@@ -56,7 +56,7 @@ RESULT_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "console.writeIntegerLine",
     "console.writeInteger",
     "console.writeFloatLine",
-    "math.checkedMultiplyI64",
+    "math.checkedMultiplyInt64",
     "sqlite.openDatabase",
     "sqlite.closeDatabase",
     "sqlite.exec",

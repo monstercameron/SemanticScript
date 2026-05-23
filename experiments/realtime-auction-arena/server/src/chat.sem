@@ -16,20 +16,20 @@ exportOperation app.realtime_auction_arena.server.chat chatRateLimitAllowsNextMe
 exportOperation app.realtime_auction_arena.server.chat chatRevisionUnchanged
 exportOperation app.realtime_auction_arena.server.chat chatNextEventSequence
 
-storage module immutable chatMinMessageBytes CSignedInt64 1
-storage module immutable chatMaxMessageBytes CSignedInt64 1000
-storage module immutable chatRateLimitWindowMillis CSignedInt64 10000
-storage module immutable chatRateLimitWindowCount CSignedInt64 5
-storage module immutable chatBidderRoleCode CSignedInt64 10
-storage module immutable chatAuctioneerRoleCode CSignedInt64 20
-storage module immutable chatAdminRoleCode CSignedInt64 30
-storage module immutable chatSequenceIncrement CSignedInt64 1
+storage module immutable chatMinMessageBytes Int64 1
+storage module immutable chatMaxMessageBytes Int64 1000
+storage module immutable chatRateLimitWindowMillis Int64 10000
+storage module immutable chatRateLimitWindowCount Int64 5
+storage module immutable chatBidderRoleCode Int64 10
+storage module immutable chatAuctioneerRoleCode Int64 20
+storage module immutable chatAdminRoleCode Int64 30
+storage module immutable chatSequenceIncrement Int64 1
 
 record ChatContract
 field ChatContract postRoute String
 field ChatContract deleteRoute String
 field ChatContract reportRoute String
-field ChatContract maxMessageBytes I64
+field ChatContract maxMessageBytes Int64
 field ChatContract rateLimitRule String
 field ChatContract postRole String
 field ChatContract reportRole String
@@ -76,48 +76,48 @@ purpose operation getChatContract "Return the static chat contract."
 return value chatContract
 
 operation chatActorCanPost
-input operation chatActorCanPost actorRole CSignedInt64
+input operation chatActorCanPost actorRole Int64
 output operation chatActorCanPost Bool
 memory chatActorCanPost heap no
 async chatActorCanPost no
 purpose operation chatActorCanPost "Return true only for the bidder role allowed to post chat messages."
 label startChatActorCanPost
-call bidderRoleMatchCall math.equalI64
-argument bidderRoleMatchCall left I64 actorRole
-argument bidderRoleMatchCall right I64 chatBidderRoleCode
+call bidderRoleMatchCall math.equalInt64
+argument bidderRoleMatchCall left Int64 actorRole
+argument bidderRoleMatchCall right Int64 chatBidderRoleCode
 run bidderRoleMatchCall
 bind value bidderRoleMatches Bool bidderRoleMatchCall
 return value bidderRoleMatches
 
 operation chatActorCanReport
-input operation chatActorCanReport actorRole CSignedInt64
+input operation chatActorCanReport actorRole Int64
 output operation chatActorCanReport Bool
 memory chatActorCanReport heap no
 async chatActorCanReport no
 purpose operation chatActorCanReport "Return true only for the bidder role allowed to report chat messages."
 label startChatActorCanReport
 call reportRoleCall chatActorCanPost
-argument reportRoleCall actorRole CSignedInt64 actorRole
+argument reportRoleCall actorRole Int64 actorRole
 run reportRoleCall
 bind value reportRoleAccepted Bool reportRoleCall
 return value reportRoleAccepted
 
 operation chatActorCanModerate
-input operation chatActorCanModerate actorRole CSignedInt64
+input operation chatActorCanModerate actorRole Int64
 output operation chatActorCanModerate Bool
 memory chatActorCanModerate heap no
 async chatActorCanModerate no
 purpose operation chatActorCanModerate "Return true for auctioneer or admin roles allowed to delete chat messages."
 label startChatActorCanModerate
-call auctioneerRoleMatchCall math.equalI64
-argument auctioneerRoleMatchCall left I64 actorRole
-argument auctioneerRoleMatchCall right I64 chatAuctioneerRoleCode
+call auctioneerRoleMatchCall math.equalInt64
+argument auctioneerRoleMatchCall left Int64 actorRole
+argument auctioneerRoleMatchCall right Int64 chatAuctioneerRoleCode
 run auctioneerRoleMatchCall
 bind value auctioneerRoleMatches Bool auctioneerRoleMatchCall
 branch if condition auctioneerRoleMatches target chatModerationAccepted
-call adminRoleMatchCall math.equalI64
-argument adminRoleMatchCall left I64 actorRole
-argument adminRoleMatchCall right I64 chatAdminRoleCode
+call adminRoleMatchCall math.equalInt64
+argument adminRoleMatchCall left Int64 actorRole
+argument adminRoleMatchCall right Int64 chatAdminRoleCode
 run adminRoleMatchCall
 bind value adminRoleMatches Bool adminRoleMatchCall
 branch if condition adminRoleMatches target chatModerationAccepted
@@ -126,66 +126,66 @@ label chatModerationAccepted
 return value true
 
 operation chatMessageByteLengthAccepted
-input operation chatMessageByteLengthAccepted byteLength CSignedInt64
+input operation chatMessageByteLengthAccepted byteLength Int64
 output operation chatMessageByteLengthAccepted Bool
 memory chatMessageByteLengthAccepted heap no
 async chatMessageByteLengthAccepted no
 purpose operation chatMessageByteLengthAccepted "Return true when a chat message body is non-empty and at or below the 1000-byte limit."
 label startChatMessageByteLengthAccepted
-call minLengthCall math.greaterThanOrEqualI64
-argument minLengthCall left I64 byteLength
-argument minLengthCall right I64 chatMinMessageBytes
+call minLengthCall math.greaterThanOrEqualInt64
+argument minLengthCall left Int64 byteLength
+argument minLengthCall right Int64 chatMinMessageBytes
 run minLengthCall
 bind value minLengthAccepted Bool minLengthCall
 branch if condition minLengthAccepted target chatLengthCheckMax
 return value false
 label chatLengthCheckMax
-call maxLengthCall math.lessThanOrEqualI64
-argument maxLengthCall left I64 byteLength
-argument maxLengthCall right I64 chatMaxMessageBytes
+call maxLengthCall math.lessThanOrEqualInt64
+argument maxLengthCall left Int64 byteLength
+argument maxLengthCall right Int64 chatMaxMessageBytes
 run maxLengthCall
 bind value maxLengthAccepted Bool maxLengthCall
 return value maxLengthAccepted
 
 operation chatRateLimitAllowsNextMessage
-input operation chatRateLimitAllowsNextMessage currentWindowCount CSignedInt64
+input operation chatRateLimitAllowsNextMessage currentWindowCount Int64
 output operation chatRateLimitAllowsNextMessage Bool
 memory chatRateLimitAllowsNextMessage heap no
 async chatRateLimitAllowsNextMessage no
 purpose operation chatRateLimitAllowsNextMessage "Return true when adding one more chat message would remain under the per-window actor limit."
 label startChatRateLimitAllowsNextMessage
-call rateLimitAvailableCall math.lessThanI64
-argument rateLimitAvailableCall left I64 currentWindowCount
-argument rateLimitAvailableCall right I64 chatRateLimitWindowCount
+call rateLimitAvailableCall math.lessThanInt64
+argument rateLimitAvailableCall left Int64 currentWindowCount
+argument rateLimitAvailableCall right Int64 chatRateLimitWindowCount
 run rateLimitAvailableCall
 bind value rateLimitAvailable Bool rateLimitAvailableCall
 return value rateLimitAvailable
 
 operation chatRevisionUnchanged
-input operation chatRevisionUnchanged beforeRevision CSignedInt64
-input operation chatRevisionUnchanged afterRevision CSignedInt64
+input operation chatRevisionUnchanged beforeRevision Int64
+input operation chatRevisionUnchanged afterRevision Int64
 output operation chatRevisionUnchanged Bool
 memory chatRevisionUnchanged heap no
 async chatRevisionUnchanged no
 purpose operation chatRevisionUnchanged "Return true when chat persistence leaves the auction revision unchanged."
 label startChatRevisionUnchanged
-call revisionEqualCall math.equalI64
-argument revisionEqualCall left I64 beforeRevision
-argument revisionEqualCall right I64 afterRevision
+call revisionEqualCall math.equalInt64
+argument revisionEqualCall left Int64 beforeRevision
+argument revisionEqualCall right Int64 afterRevision
 run revisionEqualCall
 bind value revisionUnchanged Bool revisionEqualCall
 return value revisionUnchanged
 
 operation chatNextEventSequence
-input operation chatNextEventSequence currentSequence CSignedInt64
-output operation chatNextEventSequence CSignedInt64
+input operation chatNextEventSequence currentSequence Int64
+output operation chatNextEventSequence Int64
 memory chatNextEventSequence heap no
 async chatNextEventSequence no
 purpose operation chatNextEventSequence "Return the next auction event sequence consumed by a chat create/delete/report event."
 label startChatNextEventSequence
-call nextSequenceCall math.addI64
-argument nextSequenceCall left I64 currentSequence
-argument nextSequenceCall right I64 chatSequenceIncrement
+call nextSequenceCall math.addInt64
+argument nextSequenceCall left Int64 currentSequence
+argument nextSequenceCall right Int64 chatSequenceIncrement
 run nextSequenceCall
-bind value nextSequence CSignedInt64 nextSequenceCall
+bind value nextSequence Int64 nextSequenceCall
 return value nextSequence

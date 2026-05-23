@@ -19,13 +19,13 @@ purpose operation httpRequestReader "Authority to read the matched :slug capture
 capability httpResponseWriter http.response write
 purpose operation httpResponseWriter "Authority to write the echo response"
 
-storage module immutable okStatus CSignedInt32 200
-storage module immutable badRequestStatus CSignedInt32 400
+storage module immutable okStatus Int32 200
+storage module immutable badRequestStatus Int32 400
 
 operation echoSlugHandler
 input operation echoSlugHandler request HttpRequest
 input operation echoSlugHandler response HttpResponse
-output operation echoSlugHandler CSignedInt32
+output operation echoSlugHandler Int32
 effect echoSlugHandler read http.request.path
 effect echoSlugHandler write http.response
 memory echoSlugHandler arena request
@@ -37,34 +37,34 @@ invariant operation echoSlugHandler "The dispatcher only routes /echo/<value> to
 
 label startEchoSlugHandler
 
-storage local immutable slugParamName CNullTerminatedByteString "slug"
-storage local immutable slugMissingBody CNullTerminatedByteString "missing path param: slug\n"
+storage local immutable slugParamName String "slug"
+storage local immutable slugMissingBody String "missing path param: slug\n"
 
 call slugReadCall http.requestPathParam
 argument slugReadCall request HttpRequest request
-argument slugReadCall name CNullTerminatedByteString slugParamName
+argument slugReadCall name String slugParamName
 run slugReadCall
-bind value slugValue CNullTerminatedByteString slugReadCall
+bind value slugValue String slugReadCall
 
 call slugMissingCheckCall pointer.isNull
-argument slugMissingCheckCall pointer CNullTerminatedByteString slugValue
+argument slugMissingCheckCall pointer String slugValue
 run slugMissingCheckCall
 bind value slugMissing Bool slugMissingCheckCall
 branch if condition slugMissing target slugMissingPath
 
 call slugResponseCall http.responseText
 argument slugResponseCall response HttpResponse response
-argument slugResponseCall status CSignedInt32 okStatus
-argument slugResponseCall body CNullTerminatedByteString slugValue
+argument slugResponseCall status Int32 okStatus
+argument slugResponseCall body String slugValue
 run slugResponseCall
-bind value slugResponseStatus CSignedInt32 slugResponseCall
+bind value slugResponseStatus Int32 slugResponseCall
 return value slugResponseStatus
 
 label slugMissingPath
 call slugMissingResponseCall http.responseText
 argument slugMissingResponseCall response HttpResponse response
-argument slugMissingResponseCall status CSignedInt32 badRequestStatus
-argument slugMissingResponseCall body CNullTerminatedByteString slugMissingBody
+argument slugMissingResponseCall status Int32 badRequestStatus
+argument slugMissingResponseCall body String slugMissingBody
 run slugMissingResponseCall
-bind value slugMissingResponseStatus CSignedInt32 slugMissingResponseCall
+bind value slugMissingResponseStatus Int32 slugMissingResponseCall
 return value slugMissingResponseStatus

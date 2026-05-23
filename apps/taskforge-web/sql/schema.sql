@@ -56,5 +56,5 @@ CREATE INDEX IF NOT EXISTS todo_images_todo_idx ON todo_images(todo_id);
 -- deployment that ran the schema once installed a publicly-known
 -- credential. The seed has been moved to `sql/dev-seed.sql` and is now
 -- applied only when build.sem declares `buildConstant todoWebPro
--- applyDevSeed CNullTerminatedByteString "yes"`. Production builds
+-- applyDevSeed String "yes"`. Production builds
 -- set applyDevSeed to "no" and the demo account is never installed.

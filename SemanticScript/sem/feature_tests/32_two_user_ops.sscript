@@ -5,38 +5,38 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation addThree
-input operation addThree x CSignedInt64
-output operation addThree Result CSignedInt64 Void
+input operation addThree x Int64
+output operation addThree Result Int64 Void
 memory addThree heap no
 async addThree no
 purpose operation addThree "Returns x + 3."
 invariant operation addThree "Constant offset."
 label startAddThree
-storage module immutable threeLit I64 3
-call addCall math.addI64
-argument addCall left I64 x
-argument addCall right I64 threeLit
+storage module immutable threeLit Int64 3
+call addCall math.addInt64
+argument addCall left Int64 x
+argument addCall right Int64 threeLit
 run addCall
-bind value addResult I64 addCall
+bind value addResult Int64 addCall
 return ok addResult
 
 operation doubleIt
-input operation doubleIt y CSignedInt64
-output operation doubleIt Result CSignedInt64 Void
+input operation doubleIt y Int64
+output operation doubleIt Result Int64 Void
 memory doubleIt heap no
 async doubleIt no
 purpose operation doubleIt "Returns y * 2."
 invariant operation doubleIt "Doubles its input."
 label startDoubleIt
-storage module immutable twoLit I64 2
-call mulCall math.multiplyI64
-argument mulCall left CSignedInt64 y
-argument mulCall right I64 twoLit
+storage module immutable twoLit Int64 2
+call mulCall math.multiplyInt64
+argument mulCall left Int64 y
+argument mulCall right Int64 twoLit
 run mulCall
-bind value mulResult I64 mulCall
+bind value mulResult Int64 mulCall
 return ok mulResult
 
 operation main
@@ -48,21 +48,21 @@ async main no
 purpose operation main "Chain user ops: doubleIt(addThree(4)) = (4+3)*2 = 14."
 invariant operation main "Outputs 14."
 label startMain
-storage module immutable fourInitial I64 4
-memory main mutable inputValue I64 fourInitial
+storage module immutable fourInitial Int64 4
+memory main mutable inputValue Int64 fourInitial
 call addOpCall addThree
-argument addOpCall x CSignedInt64 inputValue
+argument addOpCall x Int64 inputValue
 run addOpCall
-bind ok addOpResult I64 addOpCall
+bind ok addOpResult Int64 addOpCall
 call dblOpCall doubleIt
-argument dblOpCall y CSignedInt64 addOpResult
+argument dblOpCall y Int64 addOpResult
 run dblOpCall
-bind ok dblOpResult I64 dblOpCall
-memory main mutable resultVar I64 fourInitial
+bind ok dblOpResult Int64 dblOpCall
+memory main mutable resultVar Int64 fourInitial
 set memory resultVar dblOpResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

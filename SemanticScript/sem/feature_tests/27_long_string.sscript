@@ -15,10 +15,10 @@ async main no
 purpose operation main "Long string literal with spaces and punctuation."
 invariant operation main "Output is the literal verbatim plus newline."
 label startMain
-storage module immutable pangramText CNullTerminatedByteString "The quick brown fox jumps over the lazy dog."
+storage module immutable pangramText String "The quick brown fox jumps over the lazy dog."
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString pangramText
+argument writeCall text String pangramText
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation doubleIt
-input operation doubleIt x CSignedInt64
-output operation doubleIt Result CSignedInt64 Void
+input operation doubleIt x Int64
+output operation doubleIt Result Int64 Void
 memory doubleIt heap no
 async doubleIt no
 purpose operation doubleIt "Return 2x."
 invariant operation doubleIt "Doubles input."
 label startDoubleIt
-storage module immutable twoLit I64 2
-call mulCall math.multiplyI64
-argument mulCall left CSignedInt64 x
-argument mulCall right I64 twoLit
+storage module immutable twoLit Int64 2
+call mulCall math.multiplyInt64
+argument mulCall left Int64 x
+argument mulCall right Int64 twoLit
 run mulCall
-bind value productResult I64 mulCall
+bind value productResult Int64 mulCall
 return ok productResult
 
 operation main
@@ -32,35 +32,35 @@ async main no
 purpose operation main "Loop counter 1..5 and print doubleIt(counter) each iteration."
 invariant operation main "Outputs 2,4,6,8,10."
 label startMain
-storage module immutable oneInitial I64 1
-storage module immutable fiveBound I64 5
-storage module immutable oneStep I64 1
-memory main mutable counter I64 oneInitial
+storage module immutable oneInitial Int64 1
+storage module immutable fiveBound Int64 5
+storage module immutable oneStep Int64 1
+memory main mutable counter Int64 oneInitial
 label loopHead
-call checkCall math.lessThanOrEqualI64
-argument checkCall left I64 counter
-argument checkCall right I64 fiveBound
+call checkCall math.lessThanOrEqualInt64
+argument checkCall left Int64 counter
+argument checkCall right Int64 fiveBound
 run checkCall
 bind value shouldContinue Bool checkCall
 branch if condition shouldContinue target loopBody
 branch else target loopExit
 label loopBody
 call dblCall doubleIt
-argument dblCall x CSignedInt64 counter
+argument dblCall x Int64 counter
 run dblCall
-bind ok doubledValue I64 dblCall
-memory main mutable doubledVar I64 oneInitial
+bind ok doubledValue Int64 dblCall
+memory main mutable doubledVar Int64 oneInitial
 set memory doubledVar doubledValue
 call printCall console.writeIntegerLine
 argument printCall console Console console
-argument printCall value I64 doubledVar
+argument printCall value Int64 doubledVar
 run printCall
 ignore void source printCall
-call incCall math.addI64
-argument incCall left I64 counter
-argument incCall right I64 oneStep
+call incCall math.addInt64
+argument incCall left Int64 counter
+argument incCall right Int64 oneStep
 run incCall
-bind value nextCounter I64 incCall
+bind value nextCounter Int64 incCall
 set memory counter nextCounter
 jump target loopHead
 label loopExit

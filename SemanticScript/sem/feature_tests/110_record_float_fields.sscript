@@ -5,12 +5,12 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Measurement layout row align 8
-purpose operation Measurement "A single measurement reading with two CFloat64 components."
-field Measurement reading CFloat64
-field Measurement scale CFloat64
+purpose operation Measurement "A single measurement reading with two Float64 components."
+field Measurement reading Float64
+field Measurement scale Float64
 
 operation main
 input operation main console Console
@@ -21,21 +21,21 @@ async main no
 purpose operation main "Build a Measurement record with float fields, sum the two fields, print the sum as a float."
 invariant operation main "1.5 + 3.0 = 4.5 → '4.500000\\n'."
 label startMain
-storage module immutable oneHalfF CFloat64 1.5
-storage module immutable threeF CFloat64 3.0
+storage module immutable oneHalfF Float64 1.5
+storage module immutable threeF Float64 3.0
 new myReading Measurement
 fieldSet myReading reading oneHalfF
 fieldSet myReading scale threeF
-fieldGet readingF CFloat64 myReading reading
-fieldGet scaleF CFloat64 myReading scale
-call sumCall math.addF64
-argument sumCall left CFloat64 readingF
-argument sumCall right CFloat64 scaleF
+fieldGet readingF Float64 myReading reading
+fieldGet scaleF Float64 myReading scale
+call sumCall math.addFloat64
+argument sumCall left Float64 readingF
+argument sumCall right Float64 scaleF
 run sumCall
-bind value sumF CFloat64 sumCall
+bind value sumF Float64 sumCall
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 sumF
+argument writeCall value Float64 sumF
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

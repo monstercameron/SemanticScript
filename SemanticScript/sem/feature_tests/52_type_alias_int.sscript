@@ -3,11 +3,11 @@
 project TypeAliasInt
 target console
 runtime AgentRuntime 0.1
-type SmallInt I64
-type SmallStep I64
+type SmallInt Int64
+type SmallStep Int64
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -15,16 +15,16 @@ effect main write console.stdout
 memory main heap no
 async main no
 purpose operation main "var x SmallInt + const SmallStep should print 17."
-invariant operation main "Type aliases resolving to I64 work transparently."
+invariant operation main "Type aliases resolving to Int64 work transparently."
 label startMain
 storage module immutable tenInitial SmallInt 10
 storage module immutable sevenStep SmallStep 7
 memory main mutable x SmallInt tenInitial
-call addCall math.addI64
-argument addCall left I64 x
-argument addCall right I64 sevenStep
+call addCall math.addInt64
+argument addCall left Int64 x
+argument addCall right Int64 sevenStep
 run addCall
-bind value sumValue I64 addCall
+bind value sumValue Int64 addCall
 memory main mutable resultVar SmallInt tenInitial
 set memory resultVar sumValue
 call writeCall console.writeIntegerLine

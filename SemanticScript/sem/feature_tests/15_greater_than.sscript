@@ -12,32 +12,32 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "math.greaterThanI64: 9 > 3."
+purpose operation main "math.greaterThanInt64: 9 > 3."
 invariant operation main "Strict > selects yes."
 label startMain
-storage module immutable nineInitial I64 9
-storage module immutable threeCompare I64 3
-memory main mutable leftOp I64 nineInitial
-call gtCall math.greaterThanI64
-argument gtCall left I64 leftOp
-argument gtCall right I64 threeCompare
+storage module immutable nineInitial Int64 9
+storage module immutable threeCompare Int64 3
+memory main mutable leftOp Int64 nineInitial
+call gtCall math.greaterThanInt64
+argument gtCall left Int64 leftOp
+argument gtCall right Int64 threeCompare
 run gtCall
 bind value isGreater Bool gtCall
 branch if condition isGreater target yesLabel
 branch else target noLabel
 label yesLabel
-storage module immutable yesText CNullTerminatedByteString "yes"
+storage module immutable yesText String "yes"
 call writeYesCall console.writeLine
 argument writeYesCall console Console console
-argument writeYesCall text CNullTerminatedByteString yesText
+argument writeYesCall text String yesText
 run writeYesCall
 ignore void source writeYesCall
 jump target endLabel
 label noLabel
-storage module immutable noText CNullTerminatedByteString "no"
+storage module immutable noText String "no"
 call writeNoCall console.writeLine
 argument writeNoCall console Console console
-argument writeNoCall text CNullTerminatedByteString noText
+argument writeNoCall text String noText
 run writeNoCall
 ignore void source writeNoCall
 jump target endLabel

@@ -12,22 +12,22 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "math.moduloI64: 10 % 3 = 1."
+purpose operation main "math.moduloInt64: 10 % 3 = 1."
 invariant operation main "Modulo emits correct srem-based remainder."
 label startMain
-storage module immutable tenInitial I64 10
-storage module immutable threeDivisor I64 3
-memory main mutable counter I64 tenInitial
-call modCall math.moduloI64
-argument modCall left I64 counter
-argument modCall right I64 threeDivisor
+storage module immutable tenInitial Int64 10
+storage module immutable threeDivisor Int64 3
+memory main mutable counter Int64 tenInitial
+call modCall math.moduloInt64
+argument modCall left Int64 counter
+argument modCall right Int64 threeDivisor
 run modCall
-bind value remainderResult I64 modCall
-memory main mutable remainderVar I64 tenInitial
+bind value remainderResult Int64 modCall
+memory main mutable remainderVar Int64 tenInitial
 set memory remainderVar remainderResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 remainderVar
+argument writeCall value Int64 remainderVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

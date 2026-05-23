@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -15,20 +15,20 @@ async main no
 purpose operation main "Two distinct channels do not share storage."
 invariant operation main "channelAlpha carries 11, channelBeta carries 22; reads of each see their own value."
 label startMain
-storage module immutable elevenValue I64 11
-storage module immutable twentyTwoValue I64 22
+storage module immutable elevenValue Int64 11
+storage module immutable twentyTwoValue Int64 22
 send channelAlpha elevenValue
 send channelBeta twentyTwoValue
-receive receivedFromAlpha I64 channelAlpha
-receive receivedFromBeta I64 channelBeta
+receive receivedFromAlpha Int64 channelAlpha
+receive receivedFromBeta Int64 channelBeta
 call writeFirstCall console.writeIntegerLine
 argument writeFirstCall console Console console
-argument writeFirstCall value I64 receivedFromAlpha
+argument writeFirstCall value Int64 receivedFromAlpha
 run writeFirstCall
 ignore void source writeFirstCall
 call writeSecondCall console.writeIntegerLine
 argument writeSecondCall console Console console
-argument writeSecondCall value I64 receivedFromBeta
+argument writeSecondCall value Int64 receivedFromBeta
 run writeSecondCall
 ignore void source writeSecondCall
 storage module immutable successfulExitCode ExitCode 0

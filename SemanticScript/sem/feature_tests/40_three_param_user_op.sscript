@@ -5,28 +5,28 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation tripleProduct
-input operation tripleProduct a CSignedInt64
-input operation tripleProduct b CSignedInt64
-input operation tripleProduct c CSignedInt64
-output operation tripleProduct Result CSignedInt64 Void
+input operation tripleProduct a Int64
+input operation tripleProduct b Int64
+input operation tripleProduct c Int64
+output operation tripleProduct Result Int64 Void
 memory tripleProduct heap no
 async tripleProduct no
 purpose operation tripleProduct "Return a * b * c."
 invariant operation tripleProduct "Three-param multiply."
 label startTripleProduct
-call firstMulCall math.multiplyI64
-argument firstMulCall left CSignedInt64 a
-argument firstMulCall right CSignedInt64 b
+call firstMulCall math.multiplyInt64
+argument firstMulCall left Int64 a
+argument firstMulCall right Int64 b
 run firstMulCall
-bind value firstProduct I64 firstMulCall
-call secondMulCall math.multiplyI64
-argument secondMulCall left I64 firstProduct
-argument secondMulCall right CSignedInt64 c
+bind value firstProduct Int64 firstMulCall
+call secondMulCall math.multiplyInt64
+argument secondMulCall left Int64 firstProduct
+argument secondMulCall right Int64 c
 run secondMulCall
-bind value secondProduct I64 secondMulCall
+bind value secondProduct Int64 secondMulCall
 return ok secondProduct
 
 operation main
@@ -38,23 +38,23 @@ async main no
 purpose operation main "tripleProduct(2,3,4) = 24."
 invariant operation main "Outputs 24."
 label startMain
-storage module immutable twoInitial I64 2
-storage module immutable threeInitial I64 3
-storage module immutable fourInitial I64 4
-memory main mutable aValue I64 twoInitial
-memory main mutable bValue I64 threeInitial
-memory main mutable cValue I64 fourInitial
+storage module immutable twoInitial Int64 2
+storage module immutable threeInitial Int64 3
+storage module immutable fourInitial Int64 4
+memory main mutable aValue Int64 twoInitial
+memory main mutable bValue Int64 threeInitial
+memory main mutable cValue Int64 fourInitial
 call computeCall tripleProduct
-argument computeCall a CSignedInt64 aValue
-argument computeCall b CSignedInt64 bValue
-argument computeCall c CSignedInt64 cValue
+argument computeCall a Int64 aValue
+argument computeCall b Int64 bValue
+argument computeCall c Int64 cValue
 run computeCall
-bind ok computeResult I64 computeCall
-memory main mutable outputVar I64 twoInitial
+bind ok computeResult Int64 computeCall
+memory main mutable outputVar Int64 twoInitial
 set memory outputVar computeResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 outputVar
+argument writeCall value Int64 outputVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

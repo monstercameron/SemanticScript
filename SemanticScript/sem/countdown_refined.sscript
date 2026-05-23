@@ -24,8 +24,8 @@ entry console main
 
 section program.countdownRefined.types
 
-type CountdownValue I64
-type PositiveCountdownStep I64
+type CountdownValue Int64
+type PositiveCountdownStep Int64
 
 section program.countdownRefined.errors
 

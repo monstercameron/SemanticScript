@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.bool "App-specific wrappers, compatibility aliases, or
 invariant module standard.bool "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.bool boolModuleVersionText
-storage module immutable boolModuleVersionText CNullTerminatedByteString "standard.bool 0.1"
+storage module immutable boolModuleVersionText String "standard.bool 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -18,7 +18,7 @@ storage module immutable boolModuleVersionText CNullTerminatedByteString "standa
 #   needed an integer compatibility layer. SemanticScript has Bool as a
 #   first-class primitive (`Bool` = LLVM i1, see docs/ast.md section 5), so this
 #   module exposes total Boolean combinators returning Bool directly.
-#   Two ABI-bridge ops translate between Bool and CSignedInt32 0/1
+#   Two ABI-bridge ops translate between Bool and Int32 0/1
 #   for FFI calls that still expect the C contract.
 #
 # invariant: every operation in this module is total â€” no input
@@ -44,8 +44,8 @@ storage module immutable boolModuleVersionText CNullTerminatedByteString "standa
 #   areBooleansEquivalent(firstOperand, secondOperand)        -> Bool
 #
 # ABI bridges (only for C-FFI callers):
-#   convertBooleanToCSignedInt32(sourceBoolean)               -> CSignedInt32
-#   convertCSignedInt32ToBoolean(sourceCSignedInt32Value)     -> Bool
+#   convertBooleanToInt32(sourceBoolean)               -> Int32
+#   convertInt32ToBoolean(sourceInt32Value)     -> Bool
 
 # This is a pure-module (library) file: it exports operations
 # consumed by other programs (notably std/bool/main.test.sem which
@@ -79,9 +79,9 @@ guarantee negateBoolean "Total: defined for every Bool input."
 #   i1-level negation without branching on a secret-dependent bit.
 label startNegateBoolean
 storage module immutable falseSentinel Bool false
-call detectInputIsFalseCall math.equalI64
-argument detectInputIsFalseCall left I64 valueToNegate
-argument detectInputIsFalseCall right I64 falseSentinel
+call detectInputIsFalseCall math.equalInt64
+argument detectInputIsFalseCall left Int64 valueToNegate
+argument detectInputIsFalseCall right Int64 falseSentinel
 run detectInputIsFalseCall
 bind value isInputCurrentlyFalse Bool detectInputIsFalseCall
 return value isInputCurrentlyFalse
@@ -138,9 +138,9 @@ invariant operation exclusiveOrBooleans "Self-inverse: exclusiveOrBooleans(x, x)
 invariant operation exclusiveOrBooleans "Identity over false: exclusiveOrBooleans(x, false) == x."
 guarantee exclusiveOrBooleans "Total: defined for every (Bool, Bool) input pair."
 label startExclusiveOrBooleans
-call detectDistinctOperandsCall math.notEqualI64
-argument detectDistinctOperandsCall left I64 firstOperand
-argument detectDistinctOperandsCall right I64 secondOperand
+call detectDistinctOperandsCall math.notEqualInt64
+argument detectDistinctOperandsCall left Int64 firstOperand
+argument detectDistinctOperandsCall right Int64 secondOperand
 run detectDistinctOperandsCall
 bind value operandsDiffer Bool detectDistinctOperandsCall
 return value operandsDiffer
@@ -157,51 +157,51 @@ invariant operation areBooleansEquivalent "Reflexive: areBooleansEquivalent(x, x
 invariant operation areBooleansEquivalent "Symmetric: areBooleansEquivalent(a, b) == areBooleansEquivalent(b, a)."
 guarantee areBooleansEquivalent "Total: defined for every (Bool, Bool) input pair."
 label startAreBooleansEquivalent
-call detectMatchingOperandsCall math.equalI64
-argument detectMatchingOperandsCall left I64 firstOperand
-argument detectMatchingOperandsCall right I64 secondOperand
+call detectMatchingOperandsCall math.equalInt64
+argument detectMatchingOperandsCall left Int64 firstOperand
+argument detectMatchingOperandsCall right Int64 secondOperand
 run detectMatchingOperandsCall
 bind value operandsMatch Bool detectMatchingOperandsCall
 return value operandsMatch
 
 # section bool.abiBridge
-# rationale: convert between Bool and the C-style 0/1 CSignedInt32 contract.
+# rationale: convert between Bool and the C-style 0/1 Int32 contract.
 
-# ----- convertBooleanToCSignedInt32 -----
-operation convertBooleanToCSignedInt32
-input operation convertBooleanToCSignedInt32 sourceBoolean Bool
-output operation convertBooleanToCSignedInt32 CSignedInt32
-memory convertBooleanToCSignedInt32 heap no
-async convertBooleanToCSignedInt32 no
-purpose operation convertBooleanToCSignedInt32 "Widen a Bool (i1) to the canonical C 0/1 CSignedInt32 result FFI callers expect."
-invariant operation convertBooleanToCSignedInt32 "Output is exactly 0 or 1; no other bit pattern is reachable."
-guarantee convertBooleanToCSignedInt32 "Total: defined for every Bool input."
+# ----- convertBooleanToInt32 -----
+operation convertBooleanToInt32
+input operation convertBooleanToInt32 sourceBoolean Bool
+output operation convertBooleanToInt32 Int32
+memory convertBooleanToInt32 heap no
+async convertBooleanToInt32 no
+purpose operation convertBooleanToInt32 "Widen a Bool (i1) to the canonical C 0/1 Int32 result FFI callers expect."
+invariant operation convertBooleanToInt32 "Output is exactly 0 or 1; no other bit pattern is reachable."
+guarantee convertBooleanToInt32 "Total: defined for every Bool input."
 # security: zero-extension (not sign-extension) so a true Bool widens
 #   to 1 not -1 â€” matches C `_Bool` ABI exactly and avoids the
 #   sign-extension trap that bit a refined-syntax demo earlier in the
 #   project.
-label startConvertBooleanToCSignedInt32
-storage module immutable zeroCSignedInt32 CSignedInt32 0
-storage module immutable oneCSignedInt32 CSignedInt32 1
+label startConvertBooleanToInt32
+storage module immutable zeroInt32 Int32 0
+storage module immutable oneInt32 Int32 1
 branch if condition sourceBoolean target returnCanonicalOne
-return value zeroCSignedInt32
+return value zeroInt32
 label returnCanonicalOne
-return value oneCSignedInt32
+return value oneInt32
 
-# ----- convertCSignedInt32ToBoolean -----
-operation convertCSignedInt32ToBoolean
-input operation convertCSignedInt32ToBoolean sourceCSignedInt32Value CSignedInt32
-output operation convertCSignedInt32ToBoolean Bool
-memory convertCSignedInt32ToBoolean heap no
-async convertCSignedInt32ToBoolean no
-purpose operation convertCSignedInt32ToBoolean "Narrow a C-style 0/non-zero CSignedInt32 to Bool; any non-zero input yields true."
-invariant operation convertCSignedInt32ToBoolean "Output is true iff sourceCSignedInt32Value is not equal to zero."
-guarantee convertCSignedInt32ToBoolean "Total: defined for every CSignedInt32 input."
-label startConvertCSignedInt32ToBoolean
-storage module immutable zeroComparisonOperand I64 0
-call detectNonZeroInputCall math.notEqualI64
-argument detectNonZeroInputCall left I64 sourceCSignedInt32Value
-argument detectNonZeroInputCall right I64 zeroComparisonOperand
+# ----- convertInt32ToBoolean -----
+operation convertInt32ToBoolean
+input operation convertInt32ToBoolean sourceInt32Value Int32
+output operation convertInt32ToBoolean Bool
+memory convertInt32ToBoolean heap no
+async convertInt32ToBoolean no
+purpose operation convertInt32ToBoolean "Narrow a C-style 0/non-zero Int32 to Bool; any non-zero input yields true."
+invariant operation convertInt32ToBoolean "Output is true iff sourceInt32Value is not equal to zero."
+guarantee convertInt32ToBoolean "Total: defined for every Int32 input."
+label startConvertInt32ToBoolean
+storage module immutable zeroComparisonOperand Int64 0
+call detectNonZeroInputCall math.notEqualInt64
+argument detectNonZeroInputCall left Int64 sourceInt32Value
+argument detectNonZeroInputCall right Int64 zeroComparisonOperand
 run detectNonZeroInputCall
 bind value sourceIsNonZero Bool detectNonZeroInputCall
 return value sourceIsNonZero

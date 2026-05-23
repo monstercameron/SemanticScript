@@ -53,11 +53,11 @@ lowering. If an example is metadata or future-runtime syntax, say so directly.
 Good:
 
 ```semanticscript
-call sumCall math.addI64
+call sumCall math.addInt64
 argument sumCall left TYPE leftValue
 argument sumCall right TYPE rightValue
 run sumCall
-bind value sumValue I64 sumCall
+bind value sumValue Int64 sumCall
 ```
 
 Bad:

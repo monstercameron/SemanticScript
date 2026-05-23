@@ -23,13 +23,13 @@ moduleSecurity standard.bcrypt "Authentication flows SHOULD keep bcrypt cost as 
 
 # ----- trust types -----
 
-type BcryptPlaintextPassword CNullTerminatedByteString
-type BcryptPasswordHash CNullTerminatedByteString
-type BcryptHashBuffer COpaqueMemoryAddress
-type BcryptRandomBuffer COpaqueMemoryAddress
-type SessionToken CNullTerminatedByteString
-type SessionTokenBuffer COpaqueMemoryAddress
-type Base64UrlBuffer COpaqueMemoryAddress
+type BcryptPlaintextPassword String
+type BcryptPasswordHash String
+type BcryptHashBuffer OpaquePointer
+type BcryptRandomBuffer OpaquePointer
+type SessionToken String
+type SessionTokenBuffer OpaquePointer
+type Base64UrlBuffer OpaquePointer
 
 exportType standard.bcrypt BcryptPlaintextPassword
 exportType standard.bcrypt BcryptPasswordHash
@@ -55,31 +55,31 @@ typeInvariant Base64UrlBuffer "Caller-owned byte buffer for base64url output. Re
 
 # ----- recommended defaults -----
 
-storage module immutable bcryptModuleVersionText CNullTerminatedByteString "standard.bcrypt 0.1"
+storage module immutable bcryptModuleVersionText String "standard.bcrypt 0.1"
 
 # Production cost factor: ~250ms per hash on a typical 2026 server CPU.
 # Increase to 13-14 for a higher security margin if the registration /
 # login latency budget can absorb 0.5s+ per hash.
-storage module immutable bcryptRecommendedCost CSignedInt32 12
+storage module immutable bcryptRecommendedCost Int32 12
 
 # Lower bound on the bcrypt format itself; below this the work factor
 # is so small that brute-forcing is trivial.
-storage module immutable bcryptMinimumCost CSignedInt32 4
+storage module immutable bcryptMinimumCost Int32 4
 
 # Format ceiling. Cost 31 takes ~16 hours per hash on modern CPUs and
 # is impractical for interactive auth — listed only so apps can refuse
 # nonsensical caller-supplied values upfront.
-storage module immutable bcryptMaximumCost CSignedInt32 31
+storage module immutable bcryptMaximumCost Int32 31
 
 # Output-buffer sizes the native runtime requires. Apps that hash
 # passwords must allocate a buffer of at least this many bytes; the
 # native adapter rejects undersized buffers with SS_BCRYPT_ERR_CONFIG.
-storage module immutable bcryptHashBufferRequiredBytes CSignedInt32 61
+storage module immutable bcryptHashBufferRequiredBytes Int32 61
 
 # Recommended session-token entropy: 32 bytes (256 bits) of CSPRNG
 # output, base64url-encoded to a 43-char string + null terminator.
-storage module immutable sessionTokenEntropyByteCount CSignedInt32 32
-storage module immutable sessionTokenBufferRequiredBytes CSignedInt32 44
+storage module immutable sessionTokenEntropyByteCount Int32 32
+storage module immutable sessionTokenBufferRequiredBytes Int32 44
 
 exportConstant standard.bcrypt bcryptModuleVersionText
 exportConstant standard.bcrypt bcryptRecommendedCost

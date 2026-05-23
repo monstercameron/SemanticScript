@@ -20,7 +20,7 @@ def check(label, predicate, message=""):
 def test_golden_old_rows_convert_to_new_rows():
     source = """module example.migrate
 importModule math standard.math
-type SearchResult Result I64 SearchError
+type SearchResult Result Int64 SearchError
 modulePurpose example.migrate "Search values."
 moduleInvariant example.migrate "Only counter mutates."
 htmlTemplate CardTemplate
@@ -30,16 +30,16 @@ htmlBody CardTemplate
 purpose helper "Compute a candidate."
 invariant helper "Inputs are stable."
 operation helper
-input helper left I64
-input helper right I64
-output helper I64
+input helper left Int64
+input helper right Int64
+output helper Int64
 returnValue left
 operation main
-input main needle I64
+input main needle Int64
 output main Result ExitCode MainError
-const target I64 42
-let low I64 0
-var high I64 9
+const target Int64 42
+let low Int64 0
+var high Int64 9
 memoryHeap main no
 effect main write storage.searchAttempts
 authority main storage.searchAttempts write
@@ -49,8 +49,8 @@ call helperCall helper
 arg helperCall left low
 arg helperCall right target
 run helperCall
-bind mid I64 helperCall
-bindOk foundIndex I64 searchCall
+bind mid Int64 helperCall
+bindOk foundIndex Int64 searchCall
 bindError searchError SearchError searchCall
 branchIf isMatch found checkBelow
 branchIfError searchCall reportFailure
@@ -61,8 +61,8 @@ returnOk foundIndex
 label reportFailure
 returnError searchError
 label reportSuccess
-ignoreValue printCall I32
-ignoreOk writeCall I32
+ignoreValue printCall Int32
+ignoreOk writeCall Int32
 ignoreOk flushOkCall Void
 ignoreError stopServerCall
 ignoreValue flushCall Void
@@ -70,7 +70,7 @@ returnVoid
 """
     expected = """module example.migrate
 import math standard.math
-type SearchResult result ok I64 error SearchError
+type SearchResult result ok Int64 error SearchError
 purpose module example.migrate "Search values."
 invariant module example.migrate "Only counter mutates."
 html template CardTemplate
@@ -79,27 +79,27 @@ html body template CardTemplate
 purpose operation helper "Compute a candidate."
 invariant operation helper "Inputs are stable."
 operation helper
-input operation helper left I64
-input operation helper right I64
-output operation helper I64
+input operation helper left Int64
+input operation helper right Int64
+output operation helper Int64
 return value left
 operation main
-input operation main needle I64
+input operation main needle Int64
 output operation main Result ExitCode MainError
-storage module immutable target I64 42
-memory main mutable low I64 0
-memory main mutable high I64 9
+storage module immutable target Int64 42
+memory main mutable low Int64 0
+memory main mutable high Int64 9
 memory main heap no
 effect main write storage.searchAttempts
 authority main write storage.searchAttempts
 set memory high nextHigh
 set storage searchAttempts nextAttempts
 call helperCall helper
-argument helperCall left I64 low
-argument helperCall right I64 target
+argument helperCall left Int64 low
+argument helperCall right Int64 target
 run helperCall
-bind value mid I64 helperCall
-bind ok foundIndex I64 searchCall
+bind value mid Int64 helperCall
+bind ok foundIndex Int64 searchCall
 bind error searchError SearchError searchCall
 branch if condition isMatch target found
 branch else target checkBelow
@@ -111,8 +111,8 @@ return ok foundIndex
 label reportFailure
 return error searchError
 label reportSuccess
-ignore value source printCall type I32
-ignore ok source writeCall type I32
+ignore value source printCall type Int32
+ignore ok source writeCall type Int32
 ignore void source flushOkCall
 ignore error source stopServerCall
 ignore void source flushCall
@@ -145,18 +145,18 @@ return value ok
 def test_idempotent_on_new_syntax():
     source = """module example.current
 import math standard.math
-type SearchResult result ok I64 error SearchError
+type SearchResult result ok Int64 error SearchError
 purpose module example.current "Already current."
 html template CardTemplate
 html body template CardTemplate
   <h1>{titleText}</h1>
 operation main
-input operation main needle I64
+input operation main needle Int64
 output operation main SearchResult
-memory main mutable low I64 0
+memory main mutable low Int64 0
 call helperCall helper
-argument helperCall needle I64 needle
-bind value value I64 helperCall
+argument helperCall needle Int64 needle
+bind value value Int64 helperCall
 branch if condition ready target found
 branch else target missing
 jump target done

@@ -6,12 +6,12 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
-storage module immutable zeroInitialValue I64 0
-storage module immutable newValueOneHundred I64 100
-storage module mutable counterAcrossOperations I64 zeroInitialValue
+storage module immutable zeroInitialValue Int64 0
+storage module immutable newValueOneHundred Int64 100
+storage module mutable counterAcrossOperations Int64 zeroInitialValue
 operation setValueOperation
-input operation setValueOperation valueToStore I64
-output operation setValueOperation I64
+input operation setValueOperation valueToStore Int64
+output operation setValueOperation Int64
 set storage counterAcrossOperations valueToStore
 return value valueToStore
 operation main
@@ -24,12 +24,12 @@ purpose operation main "Cross-op: set via helper, then read in main, expect upda
 invariant operation main "Helper writes 100; main reads back 100."
 label startMain
 call setHelperCall setValueOperation
-argument setHelperCall valueToStore I64 newValueOneHundred
+argument setHelperCall valueToStore Int64 newValueOneHundred
 run setHelperCall
-ignore value source setHelperCall type I64
+ignore value source setHelperCall type Int64
 call writeUpdatedCall console.writeIntegerLine
 argument writeUpdatedCall console Console console
-argument writeUpdatedCall value I64 counterAcrossOperations
+argument writeUpdatedCall value Int64 counterAcrossOperations
 run writeUpdatedCall
 ignore void source writeUpdatedCall
 storage module immutable successfulExitCode ExitCode 0

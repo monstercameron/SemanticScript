@@ -29,11 +29,11 @@ class TestFormatSource(unittest.TestCase):
 
     def test_preserves_quoted_string_spelling_byte_for_byte(self) -> None:
         source = (
-            'storage   module immutable   modalTopText   CNullTerminatedByteString   '
+            'storage   module immutable   modalTopText   String   '
             '"\\n  +----+\\n  | Edit note |"\n'
         )
         expected = (
-            'storage module immutable modalTopText CNullTerminatedByteString '
+            'storage module immutable modalTopText String '
             '"\\n  +----+\\n  | Edit note |"\n'
         )
         self.assertEqual(semfmt.format_source(source), expected)
@@ -190,35 +190,35 @@ class TestFormatSource(unittest.TestCase):
     def test_formats_new_cutover_row_spacing(self) -> None:
         source = (
             "import   math   standard.math\n"
-            "type   SearchResult   result   ok   I64   error   SearchError\n"
+            "type   SearchResult   result   ok   Int64   error   SearchError\n"
             'purpose   operation   binarySearch   "Return index."\n'
-            "input   operation   binarySearch   needle   I64\n"
+            "input   operation   binarySearch   needle   Int64\n"
             "output   operation   binarySearch   SearchResult\n"
-            "storage   module   immutable   target   I64   42\n"
-            "memory   binarySearch   mutable   low   I64   0\n"
+            "storage   module   immutable   target   Int64   42\n"
+            "memory   binarySearch   mutable   low   Int64   0\n"
             "memory   binarySearch   heap   no\n"
             "call   elementCall   array.tryGet\n"
-            "argument   elementCall   index   I64   mid\n"
+            "argument   elementCall   index   Int64   mid\n"
             "run   elementCall\n"
             "bind   value   isMatch   Bool   matchCall\n"
-            "bind   ok   midValue   I64   elementCall\n"
+            "bind   ok   midValue   Int64   elementCall\n"
             "bind   error   lookupFailure   SearchError   elementCall\n"
             "jump   target   searchLoop\n"
         )
         expected = (
             "import math standard.math\n"
-            "type SearchResult result ok I64 error SearchError\n"
+            "type SearchResult result ok Int64 error SearchError\n"
             'purpose operation binarySearch "Return index."\n'
-            "input operation binarySearch needle I64\n"
+            "input operation binarySearch needle Int64\n"
             "output operation binarySearch SearchResult\n"
-            "storage module immutable target I64 42\n"
-            "memory binarySearch mutable low I64 0\n"
+            "storage module immutable target Int64 42\n"
+            "memory binarySearch mutable low Int64 0\n"
             "memory binarySearch heap no\n"
             "call elementCall array.tryGet\n"
-            "argument elementCall index I64 mid\n"
+            "argument elementCall index Int64 mid\n"
             "run elementCall\n"
             "bind value isMatch Bool matchCall\n"
-            "bind ok midValue I64 elementCall\n"
+            "bind ok midValue Int64 elementCall\n"
             "bind error lookupFailure SearchError elementCall\n"
             "jump target searchLoop\n"
         )
@@ -227,27 +227,27 @@ class TestFormatSource(unittest.TestCase):
     def test_formats_return_ignore_and_bind_variants(self) -> None:
         source = (
             "bind   value   exitCode   ExitCode   exitCall\n"
-            "bind   ok   foundIndex   I64   searchCall\n"
+            "bind   ok   foundIndex   Int64   searchCall\n"
             "bind   error   searchError   SearchError   searchCall\n"
             "return   value   ExitCode.Ok\n"
             "return   ok   foundIndex\n"
             "return   error   searchError\n"
             "return   void\n"
-            "ignore   value   source   printCall   type   I32\n"
-            "ignore   ok   source   writeCall   type   I32\n"
+            "ignore   value   source   printCall   type   Int32\n"
+            "ignore   ok   source   writeCall   type   Int32\n"
             "ignore   error   source   metricLogCall\n"
             "ignore   void   source   flushCall\n"
         )
         expected = (
             "bind value exitCode ExitCode exitCall\n"
-            "bind ok foundIndex I64 searchCall\n"
+            "bind ok foundIndex Int64 searchCall\n"
             "bind error searchError SearchError searchCall\n"
             "return value ExitCode.Ok\n"
             "return ok foundIndex\n"
             "return error searchError\n"
             "return void\n"
-            "ignore value source printCall type I32\n"
-            "ignore ok source writeCall type I32\n"
+            "ignore value source printCall type Int32\n"
+            "ignore ok source writeCall type Int32\n"
             "ignore error source metricLogCall\n"
             "ignore void source flushCall\n"
         )
@@ -286,21 +286,21 @@ class TestFormatSource(unittest.TestCase):
     def test_rejects_replaced_old_syntax_rows(self) -> None:
         rows = [
             "importModule math standard.math\n",
-            "type SearchResult Result I64 SearchError\n",
+            "type SearchResult Result Int64 SearchError\n",
             'purpose binarySearch "Return index."\n',
-            "input binarySearch needle I64\n",
+            "input binarySearch needle Int64\n",
             "output binarySearch SearchResult\n",
-            "const target I64 42\n",
-            "let low I64 0\n",
-            "var high I64 0\n",
+            "const target Int64 42\n",
+            "let low Int64 0\n",
+            "var high Int64 0\n",
             "memoryHeap binarySearch no\n",
             "htmlTemplate CardTemplate\n",
             "htmlArg CardTemplate titleText String\n",
             "htmlBody CardTemplate\n",
             "set local high newHigh\n",
             "set module searchAttempts nextAttempts\n",
-            "bind lengthValue I64 lengthCall\n",
-            "bindOk foundIndex I64 searchCall\n",
+            "bind lengthValue Int64 lengthCall\n",
+            "bindOk foundIndex Int64 searchCall\n",
             "bindError searchError SearchError searchCall\n",
             "arg elementCall index mid\n",
             "branchIf isMatch found\n",
@@ -310,12 +310,12 @@ class TestFormatSource(unittest.TestCase):
             "returnOk okResponse\n",
             "returnError parseError\n",
             "returnVoid\n",
-            "ignoreValue printCall I32\n",
-            "ignoreOk writeCall I32\n",
+            "ignoreValue printCall Int32\n",
+            "ignoreOk writeCall Int32\n",
             "ignoreError stopServerCall\n",
             "ignore value source flushCall type Void\n",
             "call.fn elementCall array.tryGet\n",
-            "argument call=elementCall name=index type=I64 value=mid\n",
+            "argument call=elementCall name=index type=Int64 value=mid\n",
             "@operation binarySearch\n",
         ]
         for row in rows:

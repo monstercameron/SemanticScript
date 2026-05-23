@@ -5,16 +5,16 @@ moduleDoesNotOwn app.realtime_auction_arena.server.auction_events "Auction rule 
 invariant module app.realtime_auction_arena.server.auction_events "Every persisted auction event carries schemaVersion and a monotonically increasing per-auction sequence; replay happens before live subscription."
 
 record EventContract
-field EventContract schemaVersion I64
+field EventContract schemaVersion Int64
 field EventContract eventTypes String
 field EventContract sequenceRule String
 field EventContract replayRule String
 field EventContract replayBeforeLiveRule String
 field EventContract heartbeatRule String
-field EventContract heartbeatMillis I64
+field EventContract heartbeatMillis Int64
 field EventContract disconnectRule String
 field EventContract backpressureRule String
-field EventContract subscriberQueueLimit I64
+field EventContract subscriberQueueLimit Int64
 field EventContract slowClientMetric String
 field EventContract sseTransportStatus String
 field EventContract executableNow String

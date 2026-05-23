@@ -278,7 +278,7 @@ GUI handler operations use:
 ```text
 input HANDLER session GuiSession
 input HANDLER event GuiEvent
-output HANDLER CSignedInt32
+output HANDLER Int32
 ```
 
 Reserved GUI opaque types are `GuiApplication`, `GuiSession`, `GuiEvent`,
@@ -363,7 +363,7 @@ fallback.
 runtimeBinding NAME TARGET
 runtimeBindingPrecondition NAME "text"
 runtimeBindingFailure NAME ERROR.VARIANT
-intrinsicName NAME arithmetic.addI64
+intrinsicName NAME arithmetic.addInt64
 ```
 
 The compiler has direct lowering for selected runtime bindings and arithmetic

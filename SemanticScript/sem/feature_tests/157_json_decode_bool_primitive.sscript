@@ -6,9 +6,9 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError DecodeFailed CSignedInt32
-errorCase MainError RoundTripMismatch CSignedInt32
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError DecodeFailed Int32
+errorCase MainError RoundTripMismatch Int32
+errorCase MainError ConsoleWriteFailed Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -18,10 +18,10 @@ async main no
 purpose operation main "json.parse.Bool returns true for true input and false for false."
 invariant operation main "Output markers depend on parsed bool control flow."
 label startMain
-storage module immutable trueJsonToken CNullTerminatedByteString "true"
-storage module immutable falseJsonToken CNullTerminatedByteString "false"
+storage module immutable trueJsonToken String "true"
+storage module immutable falseJsonToken String "false"
 call parseTrueCall json.parse.Bool
-argument parseTrueCall jsonText CNullTerminatedByteString trueJsonToken
+argument parseTrueCall jsonText String trueJsonToken
 run parseTrueCall
 bind ok decodedTrueValue Bool parseTrueCall
 bind error trueDecodeError JsonDecodeError parseTrueCall
@@ -29,25 +29,25 @@ branch error source parseTrueCall target decodeFailed
 branch if condition decodedTrueValue target trueOk
 branch else target roundTripMismatch
 label trueOk
-storage module immutable trueMarker CNullTerminatedByteString "parsedTrue"
+storage module immutable trueMarker String "parsedTrue"
 call writeTrueDecodedCall console.writeLine
 argument writeTrueDecodedCall console Console console
-argument writeTrueDecodedCall text CNullTerminatedByteString trueMarker
+argument writeTrueDecodedCall text String trueMarker
 run writeTrueDecodedCall
 ignore void source writeTrueDecodedCall
 bind error writeTrueError ConsoleWriteError writeTrueDecodedCall
 branch error source writeTrueDecodedCall target consoleWriteFailed
 call parseFalseCall json.parse.Bool
-argument parseFalseCall jsonText CNullTerminatedByteString falseJsonToken
+argument parseFalseCall jsonText String falseJsonToken
 run parseFalseCall
 bind ok decodedFalseValue Bool parseFalseCall
 bind error falseDecodeError JsonDecodeError parseFalseCall
 branch error source parseFalseCall target decodeFailed
 branch if condition decodedFalseValue target roundTripMismatch
-storage module immutable falseMarker CNullTerminatedByteString "parsedFalse"
+storage module immutable falseMarker String "parsedFalse"
 call writeFalseDecodedCall console.writeLine
 argument writeFalseDecodedCall console Console console
-argument writeFalseDecodedCall text CNullTerminatedByteString falseMarker
+argument writeFalseDecodedCall text String falseMarker
 run writeFalseDecodedCall
 ignore void source writeFalseDecodedCall
 bind error writeFalseError ConsoleWriteError writeFalseDecodedCall

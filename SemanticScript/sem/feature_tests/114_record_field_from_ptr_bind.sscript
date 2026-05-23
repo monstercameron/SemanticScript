@@ -5,16 +5,16 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Greeting layout row align 8
-field Greeting text CNullTerminatedByteString
+field Greeting text String
 
 operation getWorld
-output operation getWorld Result CNullTerminatedByteString Void
+output operation getWorld Result String Void
 purpose operation getWorld "Return a string-const as a pointer-typed bind result."
 label startGetWorld
-storage module immutable worldStr CNullTerminatedByteString "world"
+storage module immutable worldStr String "world"
 return ok worldStr
 
 operation main
@@ -28,13 +28,13 @@ invariant operation main "Print 'world'."
 label startMain
 call getCall getWorld
 run getCall
-bind ok strBind CNullTerminatedByteString getCall
+bind ok strBind String getCall
 new myGreeting Greeting
 fieldSet myGreeting text strBind
-fieldGet readText CNullTerminatedByteString myGreeting text
+fieldGet readText String myGreeting text
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString readText
+argument writeCall text String readText
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

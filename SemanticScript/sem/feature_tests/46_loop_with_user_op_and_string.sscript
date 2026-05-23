@@ -8,8 +8,8 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation identity
-input operation identity x CSignedInt64
-output operation identity Result CSignedInt64 Void
+input operation identity x Int64
+output operation identity Result Int64 Void
 memory identity heap no
 async identity no
 purpose operation identity "Return input unchanged."
@@ -26,48 +26,48 @@ async main no
 purpose operation main "Print 'counting:', 1,2,3, then 'done'."
 invariant operation main "Mixes writeLine, writeIntegerLine, user op call, loop."
 label startMain
-storage module immutable oneInitial I64 1
-storage module immutable threeBound I64 3
-storage module immutable oneStep I64 1
-storage module immutable countingText CNullTerminatedByteString "counting:"
-storage module immutable doneText CNullTerminatedByteString "done"
-memory main mutable counter I64 oneInitial
+storage module immutable oneInitial Int64 1
+storage module immutable threeBound Int64 3
+storage module immutable oneStep Int64 1
+storage module immutable countingText String "counting:"
+storage module immutable doneText String "done"
+memory main mutable counter Int64 oneInitial
 call writeCountingCall console.writeLine
 argument writeCountingCall console Console console
-argument writeCountingCall text CNullTerminatedByteString countingText
+argument writeCountingCall text String countingText
 run writeCountingCall
 ignore void source writeCountingCall
 label loopHead
-call checkCall math.lessThanOrEqualI64
-argument checkCall left I64 counter
-argument checkCall right I64 threeBound
+call checkCall math.lessThanOrEqualInt64
+argument checkCall left Int64 counter
+argument checkCall right Int64 threeBound
 run checkCall
 bind value shouldContinue Bool checkCall
 branch if condition shouldContinue target loopBody
 branch else target loopExit
 label loopBody
 call idCall identity
-argument idCall x CSignedInt64 counter
+argument idCall x Int64 counter
 run idCall
-bind ok idResult I64 idCall
-memory main mutable idVar I64 oneInitial
+bind ok idResult Int64 idCall
+memory main mutable idVar Int64 oneInitial
 set memory idVar idResult
 call printCall console.writeIntegerLine
 argument printCall console Console console
-argument printCall value I64 idVar
+argument printCall value Int64 idVar
 run printCall
 ignore void source printCall
-call incCall math.addI64
-argument incCall left I64 counter
-argument incCall right I64 oneStep
+call incCall math.addInt64
+argument incCall left Int64 counter
+argument incCall right Int64 oneStep
 run incCall
-bind value nextCounter I64 incCall
+bind value nextCounter Int64 incCall
 set memory counter nextCounter
 jump target loopHead
 label loopExit
 call writeDoneCall console.writeLine
 argument writeDoneCall console Console console
-argument writeDoneCall text CNullTerminatedByteString doneText
+argument writeDoneCall text String doneText
 run writeDoneCall
 ignore void source writeDoneCall
 storage module immutable successfulExitCode ExitCode 0

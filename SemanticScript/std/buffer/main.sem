@@ -1,0 +1,141 @@
+# SemanticScript standard-library canonical module: standard.buffer.
+
+module standard.buffer
+purpose module standard.buffer "Canonical standard-library module for mutable byte-buffer operations."
+moduleOwns standard.buffer "The official import path `standard.buffer` and the executable `buffer.*` helper surface."
+moduleDoesNotOwn standard.buffer "Read-only byte scans, fixed-array helpers, or raw pointer intrinsics."
+invariant module standard.buffer "The standard mutable byte-buffer entry point is this file; read-only scans live under `standard.bytes`."
+
+import memory standard.memory
+
+exportConstant standard.buffer bufferModuleVersionText
+storage module immutable bufferModuleVersionText String "standard.buffer 0.2"
+
+domainLiteral integerOneStepValue Int64 1
+domainLiteralTrust integerOneStepValue trustedStaticLiteral
+
+operation buffer.copy
+input operation buffer.copy destinationBuffer OpaquePointer
+input operation buffer.copy sourceBuffer OpaquePointer
+input operation buffer.copy byteCount ByteCount
+output operation buffer.copy ByteCount
+memory buffer.copy heap no
+async buffer.copy no
+purpose operation buffer.copy "Copy byteCount bytes from sourceBuffer to destinationBuffer."
+guarantee buffer.copy "Total."
+call delegateBufferCopyCall copyMemoryBytes
+argument delegateBufferCopyCall destinationBuffer OpaquePointer destinationBuffer
+argument delegateBufferCopyCall sourceBuffer OpaquePointer sourceBuffer
+argument delegateBufferCopyCall byteCount ByteCount byteCount
+run delegateBufferCopyCall
+bind value bufferCopyResult ByteCount delegateBufferCopyCall
+return value bufferCopyResult
+
+operation buffer.move
+input operation buffer.move destinationBuffer OpaquePointer
+input operation buffer.move sourceBuffer OpaquePointer
+input operation buffer.move byteCount ByteCount
+output operation buffer.move ByteCount
+memory buffer.move heap no
+async buffer.move no
+purpose operation buffer.move "Move byteCount bytes from sourceBuffer to destinationBuffer, allowing overlap."
+guarantee buffer.move "Total."
+call delegateBufferMoveCall moveMemoryBytesAllowOverlap
+argument delegateBufferMoveCall destinationBuffer OpaquePointer destinationBuffer
+argument delegateBufferMoveCall sourceBuffer OpaquePointer sourceBuffer
+argument delegateBufferMoveCall byteCount ByteCount byteCount
+run delegateBufferMoveCall
+bind value bufferMoveResult ByteCount delegateBufferMoveCall
+return value bufferMoveResult
+
+operation buffer.fill
+input operation buffer.fill byteBuffer OpaquePointer
+input operation buffer.fill targetValue Int32
+input operation buffer.fill byteCount ByteCount
+output operation buffer.fill ByteCount
+memory buffer.fill heap no
+async buffer.fill no
+purpose operation buffer.fill "Write byteCount copies of targetValue into byteBuffer."
+guarantee buffer.fill "Total."
+call delegateBufferFillCall fillMemoryBytesWithValue
+argument delegateBufferFillCall byteBuffer OpaquePointer byteBuffer
+argument delegateBufferFillCall targetValue Int32 targetValue
+argument delegateBufferFillCall byteCount ByteCount byteCount
+run delegateBufferFillCall
+bind value bufferFillResult ByteCount delegateBufferFillCall
+return value bufferFillResult
+
+operation buffer.clear
+input operation buffer.clear byteBuffer OpaquePointer
+input operation buffer.clear byteCount ByteCount
+output operation buffer.clear ByteCount
+memory buffer.clear heap no
+async buffer.clear no
+purpose operation buffer.clear "Write byteCount zero bytes into byteBuffer."
+guarantee buffer.clear "Total."
+call delegateBufferClearCall zeroMemoryBytes
+argument delegateBufferClearCall byteBuffer OpaquePointer byteBuffer
+argument delegateBufferClearCall byteCount ByteCount byteCount
+run delegateBufferClearCall
+bind value bufferClearResult ByteCount delegateBufferClearCall
+return value bufferClearResult
+
+operation buffer.reverseInPlace
+input operation buffer.reverseInPlace byteBuffer OpaquePointer
+input operation buffer.reverseInPlace byteCount ByteCount
+output operation buffer.reverseInPlace ByteCount
+memory buffer.reverseInPlace heap no
+async buffer.reverseInPlace no
+purpose operation buffer.reverseInPlace "Reverse the first byteCount bytes of byteBuffer in place."
+invariant operation buffer.reverseInPlace "Self-inverse: calling reverseInPlace twice restores the original buffer."
+guarantee buffer.reverseInPlace "Total."
+memory buffer.reverseInPlace mutable reverseLeftCursor Int64 0
+memory buffer.reverseInPlace mutable reverseRightCursor Int64 0
+call computeInitialRightCursorCall math.subtractInt64
+argument computeInitialRightCursorCall left Int64 byteCount
+argument computeInitialRightCursorCall right Int64 integerOneStepValue
+run computeInitialRightCursorCall
+bind value initialRightCursorValue Int64 computeInitialRightCursorCall
+set memory reverseRightCursor initialRightCursorValue
+label reverseLoop
+call detectReverseDoneCall math.greaterThanOrEqualInt64
+argument detectReverseDoneCall left Int64 reverseLeftCursor
+argument detectReverseDoneCall right Int64 reverseRightCursor
+run detectReverseDoneCall
+bind value reverseDone Bool detectReverseDoneCall
+branch if condition reverseDone target reverseComplete
+call loadLeftByteForReverseCall pointer.loadByte
+argument loadLeftByteForReverseCall buffer OpaquePointer byteBuffer
+argument loadLeftByteForReverseCall offset ByteCount reverseLeftCursor
+run loadLeftByteForReverseCall
+bind value leftByteForReverse Int8 loadLeftByteForReverseCall
+call loadRightByteForReverseCall pointer.loadByte
+argument loadRightByteForReverseCall buffer OpaquePointer byteBuffer
+argument loadRightByteForReverseCall offset ByteCount reverseRightCursor
+run loadRightByteForReverseCall
+bind value rightByteForReverse Int8 loadRightByteForReverseCall
+call storeRightAtLeftCall pointer.storeByte
+argument storeRightAtLeftCall buffer OpaquePointer byteBuffer
+argument storeRightAtLeftCall offset ByteCount reverseLeftCursor
+argument storeRightAtLeftCall value Int64 rightByteForReverse
+run storeRightAtLeftCall
+call storeLeftAtRightCall pointer.storeByte
+argument storeLeftAtRightCall buffer OpaquePointer byteBuffer
+argument storeLeftAtRightCall offset ByteCount reverseRightCursor
+argument storeLeftAtRightCall value Int64 leftByteForReverse
+run storeLeftAtRightCall
+call advanceLeftCursorCall math.addInt64
+argument advanceLeftCursorCall left Int64 reverseLeftCursor
+argument advanceLeftCursorCall right Int64 integerOneStepValue
+run advanceLeftCursorCall
+bind value nextLeftCursorPosition Int64 advanceLeftCursorCall
+set memory reverseLeftCursor nextLeftCursorPosition
+call retreatRightCursorCall math.subtractInt64
+argument retreatRightCursorCall left Int64 reverseRightCursor
+argument retreatRightCursorCall right Int64 integerOneStepValue
+run retreatRightCursorCall
+bind value nextRightCursorPosition Int64 retreatRightCursorCall
+set memory reverseRightCursor nextRightCursorPosition
+jump target reverseLoop
+label reverseComplete
+return value byteCount

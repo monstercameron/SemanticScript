@@ -22,9 +22,9 @@ storage module immutable selectedGreetingStatusText GuiText "Selected greeting i
 storage module immutable greetingsClearedStatusText GuiText "Greeting list cleared"
 storage module immutable windowWidth GuiPixels 640
 storage module immutable windowHeight GuiPixels 400
-storage module immutable maxGreetingLength CSignedInt32 200
-storage module immutable yesGuiFlag CSignedInt32 1
-storage module immutable noGuiFlag CSignedInt32 0
+storage module immutable maxGreetingLength Int32 200
+storage module immutable yesGuiFlag Int32 1
+storage module immutable noGuiFlag Int32 0
 storage module mutable greetingInputHandle GuiTextBox 0
 storage module mutable greetingListHandle GuiListBox 0
 storage module mutable statusLabelHandle GuiTextLabel 0
@@ -57,7 +57,7 @@ argument createWindowCall title GuiText helloGuiTitle
 argument createWindowCall width GuiPixels windowWidth
 argument createWindowCall height GuiPixels windowHeight
 argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
-argument createWindowCall resizable CSignedInt32 yesGuiFlag
+argument createWindowCall resizable Int32 yesGuiFlag
 run createWindowCall
 bind value mainWindow GuiWindow createWindowCall
 
@@ -70,11 +70,11 @@ call addTitleLabelCall gui.windowAddControl
 argument addTitleLabelCall window GuiWindow mainWindow
 argument addTitleLabelCall control GuiControl titleLabel
 run addTitleLabelCall
-ignore value source addTitleLabelCall type CSignedInt32
+ignore value source addTitleLabelCall type Int32
 
 call createTaskInputCall gui.textBoxCreate
 argument createTaskInputCall placeholder GuiText greetingPlaceholder
-argument createTaskInputCall maxLength CSignedInt32 maxGreetingLength
+argument createTaskInputCall maxLength Int32 maxGreetingLength
 run createTaskInputCall
 bind value taskInput GuiTextBox createTaskInputCall
 
@@ -82,12 +82,12 @@ call addTaskInputCall gui.windowAddControl
 argument addTaskInputCall window GuiWindow mainWindow
 argument addTaskInputCall control GuiControl taskInput
 run addTaskInputCall
-ignore value source addTaskInputCall type CSignedInt32
+ignore value source addTaskInputCall type Int32
 set storage greetingInputHandle taskInput
 
 call createAddButtonCall gui.buttonCreate
 argument createAddButtonCall text GuiText sayHelloText
-argument createAddButtonCall isDefault CSignedInt32 yesGuiFlag
+argument createAddButtonCall isDefault Int32 yesGuiFlag
 run createAddButtonCall
 bind value addButton GuiButton createAddButtonCall
 
@@ -95,7 +95,7 @@ call addAddButtonCall gui.windowAddControl
 argument addAddButtonCall window GuiWindow mainWindow
 argument addAddButtonCall control GuiControl addButton
 run addAddButtonCall
-ignore value source addAddButtonCall type CSignedInt32
+ignore value source addAddButtonCall type Int32
 
 call createTaskListCall gui.listBoxCreate
 argument createTaskListCall selectionMode GuiListBoxSelectionMode singleGuiListBoxSelectionMode
@@ -106,12 +106,12 @@ call addTaskListCall gui.windowAddControl
 argument addTaskListCall window GuiWindow mainWindow
 argument addTaskListCall control GuiControl taskList
 run addTaskListCall
-ignore value source addTaskListCall type CSignedInt32
+ignore value source addTaskListCall type Int32
 set storage greetingListHandle taskList
 
 call createCompleteButtonCall gui.buttonCreate
 argument createCompleteButtonCall text GuiText inspectSelectedText
-argument createCompleteButtonCall isDefault CSignedInt32 noGuiFlag
+argument createCompleteButtonCall isDefault Int32 noGuiFlag
 run createCompleteButtonCall
 bind value completeButton GuiButton createCompleteButtonCall
 
@@ -119,11 +119,11 @@ call addCompleteButtonCall gui.windowAddControl
 argument addCompleteButtonCall window GuiWindow mainWindow
 argument addCompleteButtonCall control GuiControl completeButton
 run addCompleteButtonCall
-ignore value source addCompleteButtonCall type CSignedInt32
+ignore value source addCompleteButtonCall type Int32
 
 call createClearButtonCall gui.buttonCreate
 argument createClearButtonCall text GuiText clearGreetingsText
-argument createClearButtonCall isDefault CSignedInt32 noGuiFlag
+argument createClearButtonCall isDefault Int32 noGuiFlag
 run createClearButtonCall
 bind value clearButton GuiButton createClearButtonCall
 
@@ -131,7 +131,7 @@ call addClearButtonCall gui.windowAddControl
 argument addClearButtonCall window GuiWindow mainWindow
 argument addClearButtonCall control GuiControl clearButton
 run addClearButtonCall
-ignore value source addClearButtonCall type CSignedInt32
+ignore value source addClearButtonCall type Int32
 
 call createStatusLabelCall gui.textLabelCreate
 argument createStatusLabelCall text GuiText statusReadyText
@@ -142,7 +142,7 @@ call addStatusLabelCall gui.windowAddControl
 argument addStatusLabelCall window GuiWindow mainWindow
 argument addStatusLabelCall control GuiControl statusLabel
 run addStatusLabelCall
-ignore value source addStatusLabelCall type CSignedInt32
+ignore value source addStatusLabelCall type Int32
 set storage statusLabelHandle statusLabel
 
 call registerAddButtonClickCall gui.controlOnEvent
@@ -150,34 +150,34 @@ argument registerAddButtonClickCall control GuiControl addButton
 argument registerAddButtonClickCall eventKind GuiEventKind clickGuiEventKind
 argument registerAddButtonClickCall handler GuiEventHandler appendGreetingFromInput
 run registerAddButtonClickCall
-ignore value source registerAddButtonClickCall type CSignedInt32
+ignore value source registerAddButtonClickCall type Int32
 
 call registerTaskInputEnterCall gui.controlOnEvent
 argument registerTaskInputEnterCall control GuiControl taskInput
 argument registerTaskInputEnterCall eventKind GuiEventKind enterPressedGuiEventKind
 argument registerTaskInputEnterCall handler GuiEventHandler appendGreetingFromInput
 run registerTaskInputEnterCall
-ignore value source registerTaskInputEnterCall type CSignedInt32
+ignore value source registerTaskInputEnterCall type Int32
 
 call registerCompleteButtonClickCall gui.controlOnEvent
 argument registerCompleteButtonClickCall control GuiControl completeButton
 argument registerCompleteButtonClickCall eventKind GuiEventKind clickGuiEventKind
 argument registerCompleteButtonClickCall handler GuiEventHandler inspectSelectedGreeting
 run registerCompleteButtonClickCall
-ignore value source registerCompleteButtonClickCall type CSignedInt32
+ignore value source registerCompleteButtonClickCall type Int32
 
 call registerClearButtonClickCall gui.controlOnEvent
 argument registerClearButtonClickCall control GuiControl clearButton
 argument registerClearButtonClickCall eventKind GuiEventKind clickGuiEventKind
 argument registerClearButtonClickCall handler GuiEventHandler clearGreetings
 run registerClearButtonClickCall
-ignore value source registerClearButtonClickCall type CSignedInt32
+ignore value source registerClearButtonClickCall type Int32
 
 call setMainWindowCall gui.applicationSetMainWindow
 argument setMainWindowCall application GuiApplication application
 argument setMainWindowCall window GuiWindow mainWindow
 run setMainWindowCall
-ignore value source setMainWindowCall type CSignedInt32
+ignore value source setMainWindowCall type Int32
 
 call runApplicationCall gui.applicationRun
 argument runApplicationCall application GuiApplication application
@@ -188,7 +188,7 @@ return value guiExitCode
 operation appendGreetingFromInput
 input operation appendGreetingFromInput session GuiSession
 input operation appendGreetingFromInput event GuiEvent
-output operation appendGreetingFromInput CSignedInt32
+output operation appendGreetingFromInput Int32
 effect appendGreetingFromInput read gui.control.textBox.text
 effect appendGreetingFromInput write gui.control.textBox.text
 effect appendGreetingFromInput write gui.control.listBox.items
@@ -211,30 +211,30 @@ bind value greetingText GuiText readTitleCall
 call appendTaskCall gui.listBoxAppendItem
 argument appendTaskCall session GuiSession session
 argument appendTaskCall listBox GuiListBox greetingListHandle
-argument appendTaskCall text CNullTerminatedByteString greetingText
+argument appendTaskCall text String greetingText
 run appendTaskCall
-bind value appendTaskStatus CSignedInt32 appendTaskCall
+bind value appendTaskStatus Int32 appendTaskCall
 
 call clearTaskInputCall gui.textBoxSetText
 argument clearTaskInputCall session GuiSession session
 argument clearTaskInputCall textBox GuiTextBox greetingInputHandle
-argument clearTaskInputCall text CNullTerminatedByteString emptyGuiText
+argument clearTaskInputCall text String emptyGuiText
 run clearTaskInputCall
-ignore value source clearTaskInputCall type CSignedInt32
+ignore value source clearTaskInputCall type Int32
 
 call setAddedStatusCall gui.textLabelSetText
 argument setAddedStatusCall session GuiSession session
 argument setAddedStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setAddedStatusCall text GuiText greetingAddedStatusText
 run setAddedStatusCall
-ignore value source setAddedStatusCall type CSignedInt32
+ignore value source setAddedStatusCall type Int32
 
 return value appendTaskStatus
 
 operation inspectSelectedGreeting
 input operation inspectSelectedGreeting session GuiSession
 input operation inspectSelectedGreeting event GuiEvent
-output operation inspectSelectedGreeting CSignedInt32
+output operation inspectSelectedGreeting Int32
 effect inspectSelectedGreeting read gui.control.listBox.selection
 effect inspectSelectedGreeting write gui.control.textLabel.text
 authority inspectSelectedGreeting read gui.control.listBox.selection
@@ -248,11 +248,11 @@ call selectedIndexCall gui.listBoxSelectedIndex
 argument selectedIndexCall session GuiSession session
 argument selectedIndexCall listBox GuiListBox greetingListHandle
 run selectedIndexCall
-bind value selectedTaskIndex CSignedInt32 selectedIndexCall
+bind value selectedTaskIndex Int32 selectedIndexCall
 
-call observeSelectedTaskIndexCall math.greaterThanOrEqualCSignedInt32
-argument observeSelectedTaskIndexCall left CSignedInt32 selectedTaskIndex
-argument observeSelectedTaskIndexCall right CSignedInt32 noGuiFlag
+call observeSelectedTaskIndexCall math.greaterThanOrEqualInt32
+argument observeSelectedTaskIndexCall left Int32 selectedTaskIndex
+argument observeSelectedTaskIndexCall right Int32 noGuiFlag
 run observeSelectedTaskIndexCall
 ignore value source observeSelectedTaskIndexCall type Bool
 
@@ -261,14 +261,14 @@ argument setCompletedStatusCall session GuiSession session
 argument setCompletedStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setCompletedStatusCall text GuiText selectedGreetingStatusText
 run setCompletedStatusCall
-bind value completeStatusUpdate CSignedInt32 setCompletedStatusCall
+bind value completeStatusUpdate Int32 setCompletedStatusCall
 
 return value completeStatusUpdate
 
 operation clearGreetings
 input operation clearGreetings session GuiSession
 input operation clearGreetings event GuiEvent
-output operation clearGreetings CSignedInt32
+output operation clearGreetings Int32
 effect clearGreetings write gui.control.listBox.items
 effect clearGreetings write gui.control.textLabel.text
 authority clearGreetings write gui.control.listBox.items
@@ -282,13 +282,13 @@ call clearTaskListCall gui.listBoxClear
 argument clearTaskListCall session GuiSession session
 argument clearTaskListCall listBox GuiListBox greetingListHandle
 run clearTaskListCall
-bind value clearTaskListStatus CSignedInt32 clearTaskListCall
+bind value clearTaskListStatus Int32 clearTaskListCall
 
 call setClearedStatusCall gui.textLabelSetText
 argument setClearedStatusCall session GuiSession session
 argument setClearedStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setClearedStatusCall text GuiText greetingsClearedStatusText
 run setClearedStatusCall
-ignore value source setClearedStatusCall type CSignedInt32
+ignore value source setClearedStatusCall type Int32
 
 return value clearTaskListStatus

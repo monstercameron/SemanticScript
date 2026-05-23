@@ -45,48 +45,48 @@ invariant operation main "INT8_MAX == 127, INT32_MAX == 2147483647, CHAR_BIT == 
 
 label startMain
 
-storage module immutable oneHundredTwentySeven CSignedInt64 127
-call checkInt8MaxCall math.equalI64
-argument checkInt8MaxCall left I64 maximumSignedInt8Value
-argument checkInt8MaxCall right I64 oneHundredTwentySeven
+storage module immutable oneHundredTwentySeven Int64 127
+call checkInt8MaxCall math.equalInt64
+argument checkInt8MaxCall left Int64 maximumSignedInt8Value
+argument checkInt8MaxCall right Int64 oneHundredTwentySeven
 run checkInt8MaxCall
 bind value int8MaxOk Bool checkInt8MaxCall
 branch if condition int8MaxOk target int8MaxHolds
 branch else target smokeAssertionFailed
 label int8MaxHolds
 
-storage module immutable twoToThirtyOneMinusOne CSignedInt64 2147483647
-call checkInt32MaxCall math.equalI64
-argument checkInt32MaxCall left I64 maximumSignedInt32Value
-argument checkInt32MaxCall right I64 twoToThirtyOneMinusOne
+storage module immutable twoToThirtyOneMinusOne Int64 2147483647
+call checkInt32MaxCall math.equalInt64
+argument checkInt32MaxCall left Int64 maximumSignedInt32Value
+argument checkInt32MaxCall right Int64 twoToThirtyOneMinusOne
 run checkInt32MaxCall
 bind value int32MaxOk Bool checkInt32MaxCall
 branch if condition int32MaxOk target int32MaxHolds
 branch else target smokeAssertionFailed
 label int32MaxHolds
 
-storage module immutable eightBits CSignedInt64 8
-call checkCharBitCall math.equalI64
-argument checkCharBitCall left I64 bitCountPerByte
-argument checkCharBitCall right I64 eightBits
+storage module immutable eightBits Int64 8
+call checkCharBitCall math.equalInt64
+argument checkCharBitCall left Int64 bitCountPerByte
+argument checkCharBitCall right Int64 eightBits
 run checkCharBitCall
 bind value charBitOk Bool checkCharBitCall
 branch if condition charBitOk target charBitHolds
 branch else target smokeAssertionFailed
 label charBitHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

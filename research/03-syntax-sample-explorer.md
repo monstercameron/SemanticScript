@@ -118,7 +118,7 @@ Rejected sample traits:
 #label found
 call.fn elementCall array.get
 branch condition isMatch targetTrue found targetFalse checkBelow
-argument call=elementCall name=index type=I64 value=mid
+argument call=elementCall name=index type=Int64 value=mid
 set target high source newHigh
 ```
 

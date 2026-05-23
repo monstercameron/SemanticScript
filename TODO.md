@@ -208,7 +208,7 @@ future is pending.
 - [x] Detect routed `webServer` declarations during no-entry codegen.
 - [x] Collect route handler operation names before declaring user op functions.
 - [x] Validate that route handlers declare `HttpRequest` then `HttpResponse`.
-- [x] Validate that route handlers return `CSignedInt32` / i32.
+- [x] Validate that route handlers return `Int32` / i32.
 - [x] Emit a real native `main` for routed webserver programs.
 - [x] Emit an in-memory route table from `route` metadata.
 - [x] Emit native server config from `serverHost`, `serverPort`, and routes.
@@ -279,6 +279,112 @@ future is pending.
 - [x] Decide how to treat the 30 expected-failure feature tests before 1.0.
   - [x] Scope 1.0 to the Python reference compiler.
   - [x] Remove the stale compiler-stage xfail workflow from the active tree.
+
+## P0 - 2026-05-23 Production Readiness Sweep
+
+This five-pass sweep reran `python SemanticScript/tests/run_suite.py ci-fast`,
+`python -m unittest SemanticScript.tests.test_app_runtime_smoke -v`,
+`python apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`,
+`python apps/taskforge-web/scripts/test_taskforge_web.py`,
+`npm --prefix vscode-semanticscript run check`, and a repo-wide
+`sem check --json` pass over every first-party `build.sem` surface.
+
+Current `sem check --json` project sweep status:
+
+- green: `apps/desktop-window-smoke`, `apps/event-stream-smoke`,
+      `apps/html-template-lab`, `experiments/realtime-auction-arena/win32-auctioneer`
+- green-with-warnings: `apps/http-runtime-gauntlet`,
+      `apps/taskforge-api-client`, `apps/taskforge-tui`,
+      `experiments/kilo-port`, `experiments/realtime-auction-arena/server`
+- red: `apps/taskforge-web`,
+      `experiments/realtime-auction-arena/browser-sse-client`
+
+### Pass 1 - Supported Surface Inventory
+
+- [ ] Add a machine-readable supported-surface manifest.
+  - [ ] Separate supported 1.0 product surfaces from experiments, reference
+        examples, and research trees.
+  - [ ] Validate README/docs claims against that manifest so a red surface
+        cannot still be described as a working flagship demo.
+  - [ ] Decide whether `apps/taskforge-web` remains a supported 1.0 surface
+        while semantic preflight is red.
+  - [ ] Decide whether
+        `experiments/realtime-auction-arena/browser-sse-client` should stay in
+        generic project sweeps while `sem check --json` is red.
+
+### Pass 2 - CI And Command Contracts
+
+- [ ] Get `ci-fast` green again.
+  - [ ] Fix the stale expectations in
+        `SemanticScript/tests/test_command_contracts.py` for
+        `sem test --json experiments/realtime-auction-arena/server`; the
+        surface is now `ok-with-warnings`, so the tests should stop expecting a
+        red preflight exit.
+  - [ ] Add a fast project sweep that runs `sem check --json` for every
+        first-party `build.sem` project so supported-surface regressions are
+        caught before native-build lanes.
+- [ ] Tighten app-harness preflight contracts.
+  - [ ] Make `apps/taskforge-web/scripts/test_taskforge_web.py` run
+        `sem check --json` or `SemanticScript/linter/semlint.py --summary`
+        instead of treating `semsc.py --lint --parse-only` as the lint gate.
+  - [ ] Align `SemanticScript/tests/test_app_runtime_smoke.py` and the
+        app-local harness output so a project cannot print `lint clean` while
+        the same surface is red under `sem check`.
+- [ ] Add real VS Code extension behavior tests.
+  - [ ] Keep `npm run check` for syntax/JSON validation.
+  - [ ] Add a minimal activation/command smoke so packaging proves more than
+        `extension.js` syntax and static JSON validity.
+
+### Pass 3 - Supported App Surface Repairs
+
+- [ ] Repair `apps/taskforge-web` against the current strict import,
+      capability, and type contract.
+  - [ ] Replace private or renamed `standard.sqlite` call sites such as
+        `sqlite.exec` with the exported surface that the current compiler and
+        linter accept.
+  - [ ] Fix implicit singular-import drift such as `openLogFile`, `logInfo`,
+        and `logWarn` so the app matches the current import contract.
+  - [ ] Repair the missing capability/value declarations and current type
+        mismatches called out by `sem check --json apps/taskforge-web`.
+  - [ ] Re-run `python apps/taskforge-web/scripts/test_taskforge_web.py` and
+        `python -m unittest SemanticScript.tests.test_app_runtime_smoke -v`.
+- [ ] Burn down warning noise on supported green apps.
+  - [ ] Clear the remaining warning-only `sem check` findings in
+        `apps/http-runtime-gauntlet`, `apps/taskforge-api-client`, and
+        `apps/taskforge-tui` so the supported lane has less diagnostic fog.
+  - [ ] Add per-app warning budgets when a warning is intentionally deferred.
+
+### Pass 4 - Experiment Containment
+
+- [ ] Decide what "green enough" means for experiments.
+  - [ ] Either repair
+        `experiments/realtime-auction-arena/browser-sse-client` until
+        `sem check --json` is green or explicitly exclude it from generic
+        supported-surface and release sweeps.
+  - [ ] Triage the auction server's warning-heavy preflight so intentionally
+        deferred warnings are separated from useful signal.
+  - [ ] Document which experiment surfaces may stay warning-heavy and which
+        ones must stay clean to preserve agent trust in `sem check`.
+
+### Pass 5 - Release, Docs, And Encoding Hygiene
+
+- [ ] Remove stale security-contact wording from release tracking.
+  - [x] `SECURITY.md` no longer contains the literal public-release placeholder
+        text.
+  - [ ] Update `RELEASE.md` and this TODO so the remaining work is choosing a
+        monitored reporting channel, not "replacing a placeholder."
+  - [ ] Publish an actual vulnerability-reporting channel and
+        acknowledgement window before any public release.
+- [ ] Add release-manifest tooling instead of manifest policy prose only.
+  - [ ] Add a `releases/` tree or a generator that writes
+        `releases/<TAG>/manifest.json`.
+  - [ ] Fail release validation when that manifest is missing for a public tag.
+- [ ] Normalize UTF-8 text and add a mojibake scan.
+  - [ ] Fix the current mojibake sequences in first-party docs and
+        standard-library comments.
+  - [ ] Add a repo check that fails on obvious mojibake outside `third_party/`.
+- [ ] Reconcile docs with observed support after the supported/experimental
+      surface decisions land.
 
 ## P1 - Agent Product Contract Parity
 
@@ -810,11 +916,11 @@ in standard-library modules or native runtime adapters.
         status mapping must come from the JSON runtime.
   - [x] Add negative compiler/runtime tests for `json.stringify.String` with
         `"`, `\`, `\n`, `\r`, `\t`, and byte `0x01`.
-  - [x] Add negative tests for `json.parse.I64` on `""`, `"abc"`, `"1x"`,
+  - [x] Add negative tests for `json.parse.Int64` on `""`, `"abc"`, `"1x"`,
         `"1.5"`, `true`, `null`, and overflow-sized integers.
   - [x] Add negative tests for `json.parse.Bool` on `"falsex"`, `"0"`,
         `"TRUE"`, `null`, and empty input.
-  - [x] Add negative tests for `json.parse.F64` on malformed and trailing-junk
+  - [x] Add negative tests for `json.parse.Float64` on malformed and trailing-junk
         numbers.
   - [x] Keep the native JSON health demo as the byte-for-byte escaping oracle,
         and add a SemanticScript executable smoke that reaches the same paths
@@ -847,8 +953,8 @@ in standard-library modules or native runtime adapters.
   - [x] Move `retryPolicy.delayForAttempt` behavior out of `semsc.py`; the
         fixed `50 * (attempt + 1)` rule belongs in a standard retry module or
         runtime adapter that can read policy fields.
-  - [x] Move `metrics.computeIncrementI64` out of compiler special cases unless
-        it is just a normal `math.addI64` stdlib wrapper.
+  - [x] Move `metrics.computeIncrementInt64` out of compiler special cases unless
+        it is just a normal `math.addInt64` stdlib wrapper.
   - [x] Replace `metricsLock.acquire` / `metricsLock.release` sentinel returns
         with real stdlib/runtime behavior, or reject executable lowering until
         a lock runtime exists.
@@ -1106,8 +1212,8 @@ requiring a separate linter invocation.
 ### Nullable And Non-Null Values
 
 - [ ] Add nullable ABI aliases.
-  - [ ] Add `NullableCNullTerminatedByteString`.
-  - [ ] Add `NullableCOpaqueMemoryAddress`.
+  - [ ] Add `NullableString`.
+  - [ ] Add `NullableOpaquePointer`.
   - [ ] Decide whether nullable aliases are first-class type constructors or
         named aliases only.
   - [x] Document which built-in call targets can return nullable values.
@@ -1243,8 +1349,8 @@ requiring a separate linter invocation.
   - [ ] Decide whether return-position coercions are rejected or only warned
         during migration.
 - [ ] Remove implicit conversions in strict mode.
-  - [ ] Reject `CSignedInt32` passed to `math.addI64`.
-  - [ ] Reject `CSignedInt32` passed to C varargs expecting a 64-bit format
+  - [ ] Reject `Int32` passed to `math.addInt64`.
+  - [ ] Reject `Int32` passed to C varargs expecting a 64-bit format
         unless explicitly widened.
   - [ ] Reject GUI i64 values passed to i32 GUI args unless explicitly
         narrowed.
@@ -1278,7 +1384,7 @@ requiring a separate linter invocation.
   - [x] Add diagnostics that point to the `route` row.
 - [ ] Move middleware ABI validation into the compiler.
   - [x] Require middleware output `MiddlewareControl`.
-  - [x] Reject bare `CSignedInt32` middleware output in strict mode.
+  - [x] Reject bare `Int32` middleware output in strict mode.
   - [x] Require middleware handler input names and types to match the native
         ABI.
   - [ ] Validate short-circuit response expectations where possible.
@@ -1286,7 +1392,7 @@ requiring a separate linter invocation.
   - [x] Require route handler input names `request` and `response` in strict
         mode.
   - [x] Require route handler input types `HttpRequest` and `HttpResponse`.
-  - [ ] Require route handler output `CSignedInt32` or the future strict HTTP
+  - [ ] Require route handler output `Int32` or the future strict HTTP
         result type if introduced.
   - [ ] Point diagnostics to both the `route` row and handler operation
         header.
@@ -1299,7 +1405,7 @@ requiring a separate linter invocation.
         or always active when `webServer` rows exist.
 - [ ] Add web schema tests.
   - [x] Negative test: invalid method fails without `--lint`.
-  - [x] Negative test: middleware returns bare `CSignedInt32`.
+  - [x] Negative test: middleware returns bare `Int32`.
   - [x] Negative test: route handler has wrong input names.
   - [ ] Negative test: route missing timeout without opt-out.
   - [x] Positive test: valid middleware and handler shape compiles.
@@ -1643,11 +1749,11 @@ is the preferred source shape.
 - [x] Define GUI handler operations as
       `input HANDLER session GuiSession`,
       `input HANDLER event GuiEvent`,
-      and `output HANDLER CSignedInt32`.
+      and `output HANDLER Int32`.
 - [ ] Reject GUI event handlers with missing `GuiSession` input.
 - [ ] Reject GUI event handlers with missing `GuiEvent` input.
 - [ ] Reject GUI event handlers with extra native ABI inputs.
-- [ ] Reject GUI event handlers whose output is not `CSignedInt32`.
+- [ ] Reject GUI event handlers whose output is not `Int32`.
 - [x] Define that handler return `0` means handled successfully.
 - [x] Define non-zero handler returns as runtime-level event failure.
 - [ ] Decide whether non-zero handler returns close the window, log and
@@ -2095,11 +2201,31 @@ product".
     new JSON-handling bullets here; extend that section instead.
 - [x] Implement generic `codec` runtime or keep it as explicit metadata-only
       syntax for 1.0.
-- [ ] Implement typed collection runtime for `TaskList.append`, `TaskMap.get`,
-      and related collection operations.
-  - [ ] Define allocation ownership for list/map storage.
-  - [ ] Define bounds and missing-key behavior.
-  - [ ] Add tests for append/get/update failure paths.
+- [x] Primitive and collection cutover landed.
+  - [x] The user-facing scalar surface is now `Bool`, `Int2/4/8/16/32/64`,
+        `UInt2/4/8/16/32/64`, `Float16/32/64`, `Char`, `String`, and `Void`.
+  - [x] Compiler/linter lowering, diagnostics, JSON helpers, sqlite helpers,
+        formatter/tests, and migration tooling were updated around the new
+        scalar families.
+  - [x] First-party `apps/` and `experiments/` no longer carry legacy
+        primitive spellings or `standard.array` imports.
+  - [x] Collection declarations stayed minimal: `arrayType`, `sliceType`,
+        `listType`, `smallListType`, and `mapType` remain the only collection
+        declaration families.
+  - [x] `standard.array` now means structural fixed-array helpers only, while
+        byte-oriented helpers live under `standard.bytes` / `standard.buffer`
+        with no compatibility relay.
+  - [x] The minimum committed stdlib helper surface is now present and tested
+        for arrays, slices, lists, small lists, maps, bytes, and buffers.
+
+- [ ] Extend the minimal collection helper layer into a richer storage-backed
+      runtime only when the language is ready to commit executable collection
+      mutation semantics.
+  - [ ] Decide whether future storage-backed operations like `tryGet`, `set`,
+        `append`, `remove`, `clear`, and traversal APIs belong in 1.0 source or
+        should wait for a later runtime milestone.
+  - [ ] When that richer runtime lands, define ownership, bounds, allocation,
+        and failure semantics explicitly before adding new collection calls.
 - [ ] Replace dotted-target zero-result fallback for partial collection/codec
       calls with diagnostics when a source claims runtime behavior.
   - [x] Add semlint diagnostics for record JSON codec, generic codec, and
@@ -2118,26 +2244,26 @@ would fail under a no-op lowering.
 
 #### standard.json Types, Error, And Enum
 
-- [x] Add `type JsonDocument COpaqueMemoryAddress` to
+- [x] Add `type JsonDocument OpaquePointer` to
       `SemanticScript/std/json/main.sem` with `exportType standard.json JsonDocument`.
   - [x] Add a `typeInvariant JsonDocument` stating the handle is created by
         `json.createDocument` / `json.createEmptyDocument` and freed via
         `defer json.destroyDocument`; backing buffer grows up to `capacityBytes`
         and surfaces `JsonAccessError.CapacityExceeded` past that bound.
-- [x] Add `type JsonCursor CSignedInt64` with `exportType standard.json JsonCursor`.
+- [x] Add `type JsonCursor Int64` with `exportType standard.json JsonCursor`.
   - [x] Add a `typeInvariant JsonCursor` documenting the stable-index contract
         and the structural-mutation invalidation list
         (`removeObjectField`, `removeArrayElementAt`, `clearObject`, `clearArray`,
         `setObjectFieldObject`, `setObjectFieldArray`,
         `insertArrayElement*`, `replaceArrayElement*` when the new value is a
         container) — cross-reference SYNTAX.md:446 sqlite column-pointer lifetime.
-- [x] Add `type JsonPath CNullTerminatedByteString` with
+- [x] Add `type JsonPath String` with
       `exportType standard.json JsonPath`.
   - [x] Add a `typeInvariant JsonPath` pinning the grammar: `.fieldName` object
         steps, `[index]` array steps, anything else returns
         `JsonAccessError.MalformedPath`.
 - [x] Add the `JsonValueKind` enum in `SemanticScript/std/json/main.sem`.
-  - [x] Declare `enum JsonValueKind repr CSignedInt32`.
+  - [x] Declare `enum JsonValueKind repr Int32`.
   - [x] Declare cases `objectJsonValueKind 0`, `arrayJsonValueKind 1`,
         `stringJsonValueKind 2`, `integerJsonValueKind 3`,
         `doubleJsonValueKind 4`, `booleanJsonValueKind 5`,
@@ -2146,21 +2272,21 @@ would fail under a no-op lowering.
         enum table the same way `SqliteColumnType` is registered.
 - [x] Add the `JsonAccessError` declaration in `SemanticScript/std/json/main.sem`.
   - [x] Declare `error JsonAccessError`.
-  - [x] Declare `errorCase JsonAccessError PathNotFound CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError WrongType CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError IndexOutOfRange CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError FieldNameTooLong CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError DocumentNotMutable CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError CapacityExceeded CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError MalformedPath CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError ScratchTooSmall CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError PathNotFound Int32`.
+  - [x] Declare `errorCase JsonAccessError WrongType Int32`.
+  - [x] Declare `errorCase JsonAccessError IndexOutOfRange Int32`.
+  - [x] Declare `errorCase JsonAccessError FieldNameTooLong Int32`.
+  - [x] Declare `errorCase JsonAccessError DocumentNotMutable Int32`.
+  - [x] Declare `errorCase JsonAccessError CapacityExceeded Int32`.
+  - [x] Declare `errorCase JsonAccessError MalformedPath Int32`.
+  - [x] Declare `errorCase JsonAccessError ScratchTooSmall Int32`.
   - [x] Add `exportError standard.json JsonAccessError`.
 - [x] Add `JsonEncodeError` and `JsonDecodeError` declarations in the same file.
   - [x] `JsonEncodeError` cases: `CapacityExceeded`, `WrongType`,
-        `OutputBufferTooSmall`, each carrying `CSignedInt32`.
+        `OutputBufferTooSmall`, each carrying `Int32`.
   - [x] `JsonDecodeError` cases: `UnexpectedToken`, `MissingRequired`,
         `WrongType`, `Oversize`, `Truncated`, `EscapeMalformed`,
-        each carrying `CSignedInt32`.
+        each carrying `Int32`.
 
 #### Native JSON Document Runtime
 
@@ -2297,7 +2423,7 @@ would fail under a no-op lowering.
       labels.
 - [x] Register `json.serializeDocument` returning
       `Result JsonText JsonAccessError`.
-- [x] Register `json.documentLength` returning a plain `CSignedInt64`.
+- [x] Register `json.documentLength` returning a plain `Int64`.
 - [x] Register `json.documentRoot` returning a plain `JsonCursor` (root is
       always defined, no error path).
 - [x] Register `json.objectFieldAt`, `json.arrayElementAt`,
@@ -2311,7 +2437,7 @@ would fail under a no-op lowering.
 - [x] Register the mutator calls (`setObjectField*`, `appendArrayElement*`,
       `insertArrayElement*`, `replaceArrayElement*`, `removeObjectField`,
       `removeArrayElementAt`, `clearObject`, `clearArray`) returning
-      `CSignedInt32` status with `ignore ok` + `bind error CSignedInt32` +
+      `Int32` status with `ignore ok` + `bind error Int32` +
       `branch error`, matching the existing `json.field*` shape.
 - [x] Add `json.document.tree` to the effect-axis validator so
       `effect OP read json.document.tree` and
@@ -2344,7 +2470,7 @@ would fail under a no-op lowering.
         line+column of the offending byte.
 - [ ] Type-check the parsed literal against the declared storage type.
   - [x] `JsonText`: store the canonicalized JSON bytes as a
-        `CNullTerminatedByteString` constant.
+        `String` constant.
   - [x] `record`: enforce every required field is present, every type
         matches, no unknown keys are present, and nested record literals
         recurse through the same rule.
@@ -2380,7 +2506,7 @@ would fail under a no-op lowering.
 
 - [x] Add `json.stringify.<TypeName>` dispatch in
       `SemanticScript/compiler/semsc.py`.
-  - [x] For primitive `TypeName` (I64, Bool, F64, String,
+  - [x] For primitive `TypeName` (Int64, Bool, Float64, String,
         width-specific C ABI integers) reuse the existing
         `json.encode.<Primitive>` lowering at SYNTAX.md:428.
   - [x] For record `TypeName` generate a field-by-field encoder that walks
@@ -2501,18 +2627,18 @@ would fail under a no-op lowering.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
       primitive and one per record codec; each deep-audit asserts the
       lowered behavior cannot be a no-op.
-  - [x] `json.stringify.I64` feature coverage emits and prints the JSON
+  - [x] `json.stringify.Int64` feature coverage emits and prints the JSON
         decimal text through the high-level alias.
   - [x] `json.stringify.Bool` feature coverage emits and prints both JSON
         boolean tokens through the high-level alias.
   - [x] `json.stringify.String` feature coverage emits and prints quoted
         ASCII JSON string text through the high-level alias.
-  - [x] `json.parse.I64` feature coverage parses a literal JSON integer
+  - [x] `json.parse.Int64` feature coverage parses a literal JSON integer
         through the high-level alias.
   - [x] `json.parse.Bool` feature coverage parses literal `true` and
         `false` tokens and drives observable control flow.
   - [x] Add a regression feature test for parsing a negative integer through
-        `json.parse.I64` so `branch error` cannot mistake the decoded value
+        `json.parse.Int64` so `branch error` cannot mistake the decoded value
         for an error status.
 - [x] Confirm JSON compiler feature cases are covered by the maintained
       reference-compiler tests with zero expected-failure metadata.
@@ -2826,7 +2952,7 @@ the maintained reference-compiler test path before marking a batch complete.
         after `semfmt`.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests.
   - [ ] Stringify and re-parse for every primitive type
-        (I64, Bool, F64, String, width-specific C integers, F32).
+        (Int64, Bool, Float64, String, width-specific C integers, Float32).
   - [ ] Stringify and re-parse for a record with every primitive field
         type at once.
   - [ ] Stringify and re-parse for a record carrying an array-of-records
@@ -4016,7 +4142,7 @@ workstreams.
   - [x] Add or document `Url`.
   - [x] Add or document `NetworkTimeoutMilliseconds`.
   - [x] Add or document `ResponseBodyLimitBytes`.
-  - [x] Decide whether URLs are plain `CNullTerminatedByteString` in MVP or a
+  - [x] Decide whether URLs are plain `String` in MVP or a
         trusted/sanitized domain type.
 - [ ] Define runtime fetch effects and capabilities.
   - [x] Add canonical capability path `network.http.client`.
@@ -5002,7 +5128,7 @@ assign cleanly.
         allowed when documented in the matrix.
 
 - [ ] Add a real security contact before public release.
-  - [ ] Replace the `TODO` contact placeholder in `SECURITY.md`.
+  - [x] Remove the old placeholder wording from `SECURITY.md`.
   - [ ] Decide the reporting channel: email address, GitHub security advisory,
         private issue tracker, or another maintained channel.
   - [ ] Document expected acknowledgement timing.
@@ -5010,6 +5136,8 @@ assign cleanly.
   - [ ] Document which versions are supported for security fixes.
   - [ ] Confirm the contact can receive reports before tagging a public
         release.
+  - [ ] Update `RELEASE.md` so the release gate checks for a real contact and
+        acknowledgement policy rather than the deleted placeholder string.
   - [x] Add a release checklist item that fails if `SECURITY.md` still contains
         a public-release contact placeholder.
 

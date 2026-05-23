@@ -26,13 +26,13 @@ purpose operation jwtMemoryBufferRead "Authority to read JWT inputs and token st
 capability jwtMemoryBufferWrite memory.buffer write
 purpose operation jwtMemoryBufferWrite "Authority to write JWT outputs and auth envelopes into caller-owned buffers."
 
-type JwtAccessToken CNullTerminatedByteString
-type JwtSecret CNullTerminatedByteString
-type JwtPayloadTemplate CNullTerminatedByteString
-type JwtClaimName CNullTerminatedByteString
-type JwtOutputBuffer COpaqueMemoryAddress
-type JwtClaimBuffer COpaqueMemoryAddress
-type AuthEnvelopeBuffer COpaqueMemoryAddress
+type JwtAccessToken String
+type JwtSecret String
+type JwtPayloadTemplate String
+type JwtClaimName String
+type JwtOutputBuffer OpaquePointer
+type JwtClaimBuffer OpaquePointer
+type AuthEnvelopeBuffer OpaquePointer
 
 exportType standard.jwt JwtAccessToken
 exportType standard.jwt JwtSecret
@@ -52,17 +52,17 @@ typeInvariant JwtOutputBuffer "Caller-owned byte buffer for compact JWT output."
 typeInvariant JwtClaimBuffer "Caller-owned byte buffer for decoded string claim output."
 typeInvariant AuthEnvelopeBuffer "Caller-owned byte buffer for JSON auth envelopes containing generated tokens."
 
-storage module immutable jwtModuleVersionText CNullTerminatedByteString "standard.jwt 0.1"
-storage module immutable jwtStatusOk CSignedInt32 0
-storage module immutable jwtStatusMatch CSignedInt32 1
-storage module immutable jwtStatusMismatch CSignedInt32 0
-storage module immutable jwtStatusConfigError CSignedInt32 -1
-storage module immutable jwtStatusRandomError CSignedInt32 -2
-storage module immutable jwtStatusMalformedError CSignedInt32 -3
-storage module immutable jwtStatusOutputTooSmallError CSignedInt32 -4
-storage module immutable jwtAccessTokenBufferRequiredBytes CSignedInt32 512
-storage module immutable jwtAuthEnvelopeBufferRequiredBytes CSignedInt32 2048
-storage module immutable jwtClaimBufferRequiredBytes CSignedInt32 128
+storage module immutable jwtModuleVersionText String "standard.jwt 0.1"
+storage module immutable jwtStatusOk Int32 0
+storage module immutable jwtStatusMatch Int32 1
+storage module immutable jwtStatusMismatch Int32 0
+storage module immutable jwtStatusConfigError Int32 -1
+storage module immutable jwtStatusRandomError Int32 -2
+storage module immutable jwtStatusMalformedError Int32 -3
+storage module immutable jwtStatusOutputTooSmallError Int32 -4
+storage module immutable jwtAccessTokenBufferRequiredBytes Int32 512
+storage module immutable jwtAuthEnvelopeBufferRequiredBytes Int32 2048
+storage module immutable jwtClaimBufferRequiredBytes Int32 128
 
 exportConstant standard.jwt jwtModuleVersionText
 exportConstant standard.jwt jwtStatusOk
@@ -87,8 +87,8 @@ operation hs256SignJsonPayloadWithRandomJti
 input operation hs256SignJsonPayloadWithRandomJti secret JwtSecret
 input operation hs256SignJsonPayloadWithRandomJti payloadTemplate JwtPayloadTemplate
 input operation hs256SignJsonPayloadWithRandomJti outBuffer JwtOutputBuffer
-input operation hs256SignJsonPayloadWithRandomJti outCapacity CSignedInt32
-output operation hs256SignJsonPayloadWithRandomJti CSignedInt32
+input operation hs256SignJsonPayloadWithRandomJti outCapacity Int32
+output operation hs256SignJsonPayloadWithRandomJti Int32
 effect hs256SignJsonPayloadWithRandomJti read memory.buffer
 effect hs256SignJsonPayloadWithRandomJti write memory.buffer
 memory hs256SignJsonPayloadWithRandomJti heap no
@@ -104,7 +104,7 @@ runtimeBinding hs256SignJsonPayloadWithRandomJti native.ss_jwt_hs256_sign_json_p
 operation hs256VerifyToken
 input operation hs256VerifyToken token JwtAccessToken
 input operation hs256VerifyToken secret JwtSecret
-output operation hs256VerifyToken CSignedInt32
+output operation hs256VerifyToken Int32
 effect hs256VerifyToken read memory.buffer
 memory hs256VerifyToken heap no
 async hs256VerifyToken no
@@ -119,8 +119,8 @@ operation readStringClaim
 input operation readStringClaim token JwtAccessToken
 input operation readStringClaim claimName JwtClaimName
 input operation readStringClaim outBuffer JwtClaimBuffer
-input operation readStringClaim outCapacity CSignedInt32
-output operation readStringClaim CNullTerminatedByteString
+input operation readStringClaim outCapacity Int32
+output operation readStringClaim String
 effect readStringClaim read memory.buffer
 effect readStringClaim write memory.buffer
 memory readStringClaim heap no
@@ -136,8 +136,8 @@ runtimeBinding readStringClaim native.ss_jwt_read_string_claim
 operation readInt64Claim
 input operation readInt64Claim token JwtAccessToken
 input operation readInt64Claim claimName JwtClaimName
-input operation readInt64Claim missingDefault CSignedInt64
-output operation readInt64Claim CSignedInt64
+input operation readInt64Claim missingDefault Int64
+output operation readInt64Claim Int64
 effect readInt64Claim read memory.buffer
 memory readInt64Claim heap no
 async readInt64Claim no
@@ -150,15 +150,15 @@ runtimeBinding readInt64Claim native.ss_jwt_read_int64_claim
 
 operation formatBearerLoginEnvelope
 input operation formatBearerLoginEnvelope accessToken JwtAccessToken
-input operation formatBearerLoginEnvelope refreshToken CNullTerminatedByteString
-input operation formatBearerLoginEnvelope userId CNullTerminatedByteString
-input operation formatBearerLoginEnvelope username CNullTerminatedByteString
-input operation formatBearerLoginEnvelope displayName CNullTerminatedByteString
-input operation formatBearerLoginEnvelope roleName CNullTerminatedByteString
-input operation formatBearerLoginEnvelope scopesJson CNullTerminatedByteString
+input operation formatBearerLoginEnvelope refreshToken String
+input operation formatBearerLoginEnvelope userId String
+input operation formatBearerLoginEnvelope username String
+input operation formatBearerLoginEnvelope displayName String
+input operation formatBearerLoginEnvelope roleName String
+input operation formatBearerLoginEnvelope scopesJson String
 input operation formatBearerLoginEnvelope outBuffer AuthEnvelopeBuffer
-input operation formatBearerLoginEnvelope outCapacity CSignedInt32
-output operation formatBearerLoginEnvelope CSignedInt32
+input operation formatBearerLoginEnvelope outCapacity Int32
+output operation formatBearerLoginEnvelope Int32
 effect formatBearerLoginEnvelope read memory.buffer
 effect formatBearerLoginEnvelope write memory.buffer
 memory formatBearerLoginEnvelope heap no
@@ -173,10 +173,10 @@ runtimeBinding formatBearerLoginEnvelope native.ss_jwt_format_bearer_login_envel
 
 operation formatBearerRefreshEnvelope
 input operation formatBearerRefreshEnvelope accessToken JwtAccessToken
-input operation formatBearerRefreshEnvelope refreshToken CNullTerminatedByteString
+input operation formatBearerRefreshEnvelope refreshToken String
 input operation formatBearerRefreshEnvelope outBuffer AuthEnvelopeBuffer
-input operation formatBearerRefreshEnvelope outCapacity CSignedInt32
-output operation formatBearerRefreshEnvelope CSignedInt32
+input operation formatBearerRefreshEnvelope outCapacity Int32
+output operation formatBearerRefreshEnvelope Int32
 effect formatBearerRefreshEnvelope read memory.buffer
 effect formatBearerRefreshEnvelope write memory.buffer
 memory formatBearerRefreshEnvelope heap no

@@ -44,38 +44,38 @@ invariant operation main "SIGKILL == 9, SIGHUP == 1, SIGUSR1 == 10."
 
 label startMain
 
-storage module immutable nineExpected CSignedInt32 9
-call checkKillCall math.equalI64
-argument checkKillCall left I64 killSignalNumber
-argument checkKillCall right I64 nineExpected
+storage module immutable nineExpected Int32 9
+call checkKillCall math.equalInt64
+argument checkKillCall left Int64 killSignalNumber
+argument checkKillCall right Int64 nineExpected
 run checkKillCall
 bind value killOk Bool checkKillCall
 branch if condition killOk target killHolds
 branch else target smokeAssertionFailed
 label killHolds
 
-storage module immutable oneExpected CSignedInt32 1
-call checkHangupCall math.equalI64
-argument checkHangupCall left I64 hangupSignalNumber
-argument checkHangupCall right I64 oneExpected
+storage module immutable oneExpected Int32 1
+call checkHangupCall math.equalInt64
+argument checkHangupCall left Int64 hangupSignalNumber
+argument checkHangupCall right Int64 oneExpected
 run checkHangupCall
 bind value hangupOk Bool checkHangupCall
 branch if condition hangupOk target hangupHolds
 branch else target smokeAssertionFailed
 label hangupHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

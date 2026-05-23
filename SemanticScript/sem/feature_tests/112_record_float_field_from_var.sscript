@@ -5,11 +5,11 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Sample layout row align 8
-purpose operation Sample "A single CFloat64 measurement."
-field Sample value CFloat64
+purpose operation Sample "A single Float64 measurement."
+field Sample value Float64
 
 operation main
 input operation main console Console
@@ -17,24 +17,24 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "Build value via float var + math.addF64, then fieldSet from the float var."
+purpose operation main "Build value via float var + math.addFloat64, then fieldSet from the float var."
 invariant operation main "5.0 + 2.5 = 7.5, stored in Sample.value, read back, printed."
 label startMain
-storage module immutable fiveF CFloat64 5.0
-storage module immutable twoAndHalfF CFloat64 2.5
-memory main mutable liveF CFloat64 fiveF
-call addCall math.addF64
-argument addCall left CFloat64 liveF
-argument addCall right CFloat64 twoAndHalfF
+storage module immutable fiveF Float64 5.0
+storage module immutable twoAndHalfF Float64 2.5
+memory main mutable liveF Float64 fiveF
+call addCall math.addFloat64
+argument addCall left Float64 liveF
+argument addCall right Float64 twoAndHalfF
 run addCall
-bind value sumF CFloat64 addCall
+bind value sumF Float64 addCall
 set memory liveF sumF
 new mySample Sample
 fieldSet mySample value liveF
-fieldGet finalF CFloat64 mySample value
+fieldGet finalF Float64 mySample value
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 finalF
+argument writeCall value Float64 finalF
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

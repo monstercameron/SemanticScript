@@ -6,9 +6,9 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
-storage module immutable initialModuleCounterValue I64 5
-storage module immutable moduleIncrementStepValue I64 7
-storage module mutable persistentCounterValue I64 initialModuleCounterValue
+storage module immutable initialModuleCounterValue Int64 5
+storage module immutable moduleIncrementStepValue Int64 7
+storage module mutable persistentCounterValue Int64 initialModuleCounterValue
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -20,18 +20,18 @@ invariant operation main "Initial print is 5; after set the print is 12."
 label startMain
 call writeInitialCall console.writeIntegerLine
 argument writeInitialCall console Console console
-argument writeInitialCall value I64 persistentCounterValue
+argument writeInitialCall value Int64 persistentCounterValue
 run writeInitialCall
 ignore void source writeInitialCall
-call addStepCall math.addI64
-argument addStepCall left I64 persistentCounterValue
-argument addStepCall right I64 moduleIncrementStepValue
+call addStepCall math.addInt64
+argument addStepCall left Int64 persistentCounterValue
+argument addStepCall right Int64 moduleIncrementStepValue
 run addStepCall
-bind value addStepResult I64 addStepCall
+bind value addStepResult Int64 addStepCall
 set storage persistentCounterValue addStepResult
 call writeUpdatedCall console.writeIntegerLine
 argument writeUpdatedCall console Console console
-argument writeUpdatedCall value I64 persistentCounterValue
+argument writeUpdatedCall value Int64 persistentCounterValue
 run writeUpdatedCall
 ignore void source writeUpdatedCall
 storage module immutable successfulExitCode ExitCode 0

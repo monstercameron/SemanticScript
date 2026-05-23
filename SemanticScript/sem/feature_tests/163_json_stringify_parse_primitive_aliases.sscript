@@ -12,19 +12,19 @@ dependency standard.json version 0.1 source standard
 entry console main
 
 error MainError
-errorCase MainError EncodeFailed CSignedInt32
-errorCase MainError DecodeFailed CSignedInt32
-errorCase MainError RoundTripMismatch CSignedInt32
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError EncodeFailed Int32
+errorCase MainError DecodeFailed Int32
+errorCase MainError RoundTripMismatch Int32
+errorCase MainError ConsoleWriteFailed Int32
 
 capability jsonAliasStdout console.stdout write
 purpose operation jsonAliasStdout "Authority to write the primitive JSON alias smoke output."
 
 storage module immutable successExit ExitCode 0
-storage module immutable encodeFailedCode CSignedInt32 1
-storage module immutable decodeFailedCode CSignedInt32 2
-storage module immutable mismatchCode CSignedInt32 3
-storage module immutable consoleFailedCode CSignedInt32 4
+storage module immutable encodeFailedCode Int32 1
+storage module immutable decodeFailedCode Int32 2
+storage module immutable mismatchCode Int32 3
+storage module immutable consoleFailedCode Int32 4
 
 operation main
 input operation main console Console
@@ -33,14 +33,14 @@ effect main write console.stdout
 memory main heap no
 async main no
 useCapability main jsonAliasStdout
-purpose operation main "Round-trip I64 and Bool values through json.stringify/json.parse primitive aliases and print byte-observable markers."
+purpose operation main "Round-trip Int64 and Bool values through json.stringify/json.parse primitive aliases and print byte-observable markers."
 invariant operation main "A no-op alias lowering cannot satisfy this test: stdout depends on real JSON text and parsed primitive control flow."
 
 label startMain
 
-storage module immutable fortyTwoValue I64 42
-call stringifyIntegerCall json.stringify.I64
-argument stringifyIntegerCall value I64 fortyTwoValue
+storage module immutable fortyTwoValue Int64 42
+call stringifyIntegerCall json.stringify.Int64
+argument stringifyIntegerCall value Int64 fortyTwoValue
 run stringifyIntegerCall
 bind ok encodedInteger JsonText stringifyIntegerCall
 bind error stringifyIntegerError JsonEncodeError stringifyIntegerCall
@@ -54,16 +54,16 @@ ignore void source writeEncodedIntegerCall
 bind error writeEncodedIntegerError ConsoleWriteError writeEncodedIntegerCall
 branch error source writeEncodedIntegerCall target consoleWriteFailed
 
-call parseIntegerCall json.parse.I64
+call parseIntegerCall json.parse.Int64
 argument parseIntegerCall jsonText JsonText encodedInteger
 run parseIntegerCall
-bind ok decodedInteger I64 parseIntegerCall
+bind ok decodedInteger Int64 parseIntegerCall
 bind error parseIntegerError JsonDecodeError parseIntegerCall
 branch error source parseIntegerCall target decodeFailed
 
 call writeDecodedIntegerCall console.writeIntegerLine
 argument writeDecodedIntegerCall console Console console
-argument writeDecodedIntegerCall value I64 decodedInteger
+argument writeDecodedIntegerCall value Int64 decodedInteger
 run writeDecodedIntegerCall
 ignore void source writeDecodedIntegerCall
 bind error writeDecodedIntegerError ConsoleWriteError writeDecodedIntegerCall
@@ -96,10 +96,10 @@ branch if condition decodedTrue target parsedTrueOk
 branch else target roundTripMismatch
 
 label parsedTrueOk
-storage module immutable parsedTrueMarker CNullTerminatedByteString "parsedTrue"
+storage module immutable parsedTrueMarker String "parsedTrue"
 call writeParsedTrueCall console.writeLine
 argument writeParsedTrueCall console Console console
-argument writeParsedTrueCall text CNullTerminatedByteString parsedTrueMarker
+argument writeParsedTrueCall text String parsedTrueMarker
 run writeParsedTrueCall
 ignore void source writeParsedTrueCall
 bind error writeParsedTrueError ConsoleWriteError writeParsedTrueCall
@@ -130,10 +130,10 @@ branch error source parseFalseCall target decodeFailed
 
 branch if condition decodedFalse target roundTripMismatch
 
-storage module immutable parsedFalseMarker CNullTerminatedByteString "parsedFalse"
+storage module immutable parsedFalseMarker String "parsedFalse"
 call writeParsedFalseCall console.writeLine
 argument writeParsedFalseCall console Console console
-argument writeParsedFalseCall text CNullTerminatedByteString parsedFalseMarker
+argument writeParsedFalseCall text String parsedFalseMarker
 run writeParsedFalseCall
 ignore void source writeParsedFalseCall
 bind error writeParsedFalseError ConsoleWriteError writeParsedFalseCall

@@ -5,28 +5,28 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "Round-trip an int through math.intToFloat and math.floatToInt: 42 -> 42.0 -> 42."
+purpose operation main "Round-trip an int through math.convertInt64ToFloat64 and math.convertFloat64ToInt64: 42 -> 42.0 -> 42."
 invariant operation main "Exercises both conversion primitives."
 label startMain
-storage module immutable fortyTwo I64 42
-call toFloatCall math.intToFloat
-argument toFloatCall value I64 fortyTwo
+storage module immutable fortyTwo Int64 42
+call toFloatCall math.convertInt64ToFloat64
+argument toFloatCall value Int64 fortyTwo
 run toFloatCall
-bind value asFloat CFloat64 toFloatCall
-call backToIntCall math.floatToInt
-argument backToIntCall value CFloat64 asFloat
+bind value asFloat Float64 toFloatCall
+call backToIntCall math.convertFloat64ToInt64
+argument backToIntCall value Float64 asFloat
 run backToIntCall
-bind value asIntAgain I64 backToIntCall
+bind value asIntAgain Int64 backToIntCall
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 asIntAgain
+argument writeCall value Int64 asIntAgain
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

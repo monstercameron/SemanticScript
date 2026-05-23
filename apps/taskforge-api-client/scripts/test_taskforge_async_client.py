@@ -206,10 +206,10 @@ storage module immutable maxBodyBytes ResponseBodyLimitBytes 1048576
 storage module immutable redirectLimit HttpRedirectLimit 5
 storage module immutable successfulExitCode ExitCode 0
 storage module immutable failedExitCode ExitCode 1
-storage module immutable startedText CNullTerminatedByteString "started user-operation fetches before awaiting"
-storage module immutable healthBodyLabelText CNullTerminatedByteString "generic /health response:"
-storage module immutable versionBodyLabelText CNullTerminatedByteString "generic /api/version response:"
-storage module immutable todosBodyLabelText CNullTerminatedByteString "generic /api/todos response:"
+storage module immutable startedText String "started user-operation fetches before awaiting"
+storage module immutable healthBodyLabelText String "generic /health response:"
+storage module immutable versionBodyLabelText String "generic /api/version response:"
+storage module immutable todosBodyLabelText String "generic /api/todos response:"
 
 operation fetchTaskForgeBody
 input operation fetchTaskForgeBody url Url
@@ -258,7 +258,7 @@ start todosBodyCall
 
 call startedLineCall console.writeLine
 argument startedLineCall console Console console
-argument startedLineCall text CNullTerminatedByteString startedText
+argument startedLineCall text String startedText
 run startedLineCall
 ignore void source startedLineCall
 
@@ -276,13 +276,13 @@ bind ok healthBody HttpClientBodyText healthBodyCall
 
 call printHealthLabelCall console.writeLine
 argument printHealthLabelCall console Console console
-argument printHealthLabelCall text CNullTerminatedByteString healthBodyLabelText
+argument printHealthLabelCall text String healthBodyLabelText
 run printHealthLabelCall
 ignore void source printHealthLabelCall
 
 call printHealthCall console.writeLine
 argument printHealthCall console Console console
-argument printHealthCall text CNullTerminatedByteString healthBody
+argument printHealthCall text String healthBody
 run printHealthCall
 ignore void source printHealthCall
 
@@ -299,13 +299,13 @@ bind ok versionBody HttpClientBodyText versionBodyCall
 
 call printVersionLabelCall console.writeLine
 argument printVersionLabelCall console Console console
-argument printVersionLabelCall text CNullTerminatedByteString versionBodyLabelText
+argument printVersionLabelCall text String versionBodyLabelText
 run printVersionLabelCall
 ignore void source printVersionLabelCall
 
 call printVersionCall console.writeLine
 argument printVersionCall console Console console
-argument printVersionCall text CNullTerminatedByteString versionBody
+argument printVersionCall text String versionBody
 run printVersionCall
 ignore void source printVersionCall
 
@@ -322,13 +322,13 @@ bind ok todosBody HttpClientBodyText todosBodyCall
 
 call printTodosLabelCall console.writeLine
 argument printTodosLabelCall console Console console
-argument printTodosLabelCall text CNullTerminatedByteString todosBodyLabelText
+argument printTodosLabelCall text String todosBodyLabelText
 run printTodosLabelCall
 ignore void source printTodosLabelCall
 
 call printTodosCall console.writeLine
 argument printTodosCall console Console console
-argument printTodosCall text CNullTerminatedByteString todosBody
+argument printTodosCall text String todosBody
 run printTodosCall
 ignore void source printTodosCall
 
@@ -389,27 +389,27 @@ entry console main
 module app.generic_scalar_async_client
 purpose module app.generic_scalar_async_client "Probe programmable async with scalar-returning user operations."
 
-storage module immutable one I64 1
-storage module immutable two I64 2
-storage module immutable three I64 3
-storage module immutable four I64 4
-storage module immutable ten I64 10
+storage module immutable one Int64 1
+storage module immutable two Int64 2
+storage module immutable three Int64 3
+storage module immutable four Int64 4
+storage module immutable ten Int64 10
 storage module immutable successfulExitCode ExitCode 0
 storage module immutable failedExitCode ExitCode 1
-storage module immutable scalarOkText CNullTerminatedByteString "generic scalar async result ok"
+storage module immutable scalarOkText String "generic scalar async result ok"
 
 operation addPair
-input operation addPair left I64
-input operation addPair right I64
-output operation addPair I64
+input operation addPair left Int64
+input operation addPair right Int64
+output operation addPair Int64
 memory addPair heap no
 async addPair no
 purpose operation addPair "Return the arithmetic sum of two integer inputs."
-call addCall math.addI64
-argument addCall left I64 left
-argument addCall right I64 right
+call addCall math.addInt64
+argument addCall left Int64 left
+argument addCall right Int64 right
 run addCall
-bind value sum I64 addCall
+bind value sum Int64 addCall
 return value sum
 
 operation main
@@ -423,30 +423,30 @@ purpose operation main "Start two scalar user operations, await both, combine th
 label startMain
 
 call firstAddCall addPair
-argument firstAddCall left I64 one
-argument firstAddCall right I64 two
+argument firstAddCall left Int64 one
+argument firstAddCall right Int64 two
 start firstAddCall
 
 call secondAddCall addPair
-argument secondAddCall left I64 three
-argument secondAddCall right I64 four
+argument secondAddCall left Int64 three
+argument secondAddCall right Int64 four
 start secondAddCall
 
 await firstAddCall
-bind ok firstResult I64 firstAddCall
+bind ok firstResult Int64 firstAddCall
 
 await secondAddCall
-bind ok secondResult I64 secondAddCall
+bind ok secondResult Int64 secondAddCall
 
-call totalCall math.addI64
-argument totalCall left I64 firstResult
-argument totalCall right I64 secondResult
+call totalCall math.addInt64
+argument totalCall left Int64 firstResult
+argument totalCall right Int64 secondResult
 run totalCall
-bind value total I64 totalCall
+bind value total Int64 totalCall
 
-call totalOkCall math.equalI64
-argument totalOkCall left I64 total
-argument totalOkCall right I64 ten
+call totalOkCall math.equalInt64
+argument totalOkCall left Int64 total
+argument totalOkCall right Int64 ten
 run totalOkCall
 bind value totalOk Bool totalOkCall
 branch if condition totalOk target scalarResultOk
@@ -457,7 +457,7 @@ label scalarResultOk
 
 call writeOkCall console.writeLine
 argument writeOkCall console Console console
-argument writeOkCall text CNullTerminatedByteString scalarOkText
+argument writeOkCall text String scalarOkText
 run writeOkCall
 ignore void source writeOkCall
 

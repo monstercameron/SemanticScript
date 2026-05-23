@@ -5,7 +5,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
 input operation main console Console
@@ -23,34 +23,34 @@ invariant operation main "The probed string comes from c.getenv so its length ca
 
 label startMain
 
-storage module immutable pathEnvName CNullTerminatedByteString "PATH"
-storage module immutable iterationLimit I64 200000000
-storage module immutable iterationStep I64 1
+storage module immutable pathEnvName String "PATH"
+storage module immutable iterationLimit Int64 200000000
+storage module immutable iterationStep Int64 1
 
 # Resolve the runtime probe string from PATH. If PATH is unset, getenv
 # returns NULL — in that case strlen(NULL) is undefined and the benchmark
 # is not meaningful, but in any normal environment PATH is set.
 call getenvCall c.getenv
-argument getenvCall name CNullTerminatedByteString pathEnvName
+argument getenvCall name String pathEnvName
 run getenvCall
-bind value environmentProbeText CNullTerminatedByteString getenvCall
+bind value environmentProbeText String getenvCall
 
 # Note: when PATH isn't set, getenv returns NULL. For benchmarking purposes
 # we substitute the fallback only when needed; the test runs against PATH
 # in normal environments so this branch isn't exercised.
 
-memory main mutable accumulator I64 0
-memory main mutable currentIteration I64 0
+memory main mutable accumulator Int64 0
+memory main mutable currentIteration Int64 0
 
 call startClockCall c.clock
 run startClockCall
-bind value startClockTicks CCpuClockTicks startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
 
 label benchmarkLoopHead
 
-call shouldContinueCmpCall math.lessThanI64
-argument shouldContinueCmpCall left I64 currentIteration
-argument shouldContinueCmpCall right I64 iterationLimit
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
 run shouldContinueCmpCall
 bind value benchmarkShouldContinue Bool shouldContinueCmpCall
 branch if condition benchmarkShouldContinue target benchmarkLoopBody
@@ -59,22 +59,22 @@ branch else target benchmarkFinished
 label benchmarkLoopBody
 
 call strlenCall c.strlen
-argument strlenCall text CNullTerminatedByteString environmentProbeText
+argument strlenCall text String environmentProbeText
 run strlenCall
-bind value currentLength CByteCount strlenCall
+bind value currentLength ByteCount strlenCall
 
-call accumulateCall math.addI64
-argument accumulateCall left I64 accumulator
-argument accumulateCall right I64 currentLength
+call accumulateCall math.addInt64
+argument accumulateCall left Int64 accumulator
+argument accumulateCall right Int64 currentLength
 run accumulateCall
-bind value nextAccumulator I64 accumulateCall
+bind value nextAccumulator Int64 accumulateCall
 set memory accumulator nextAccumulator
 
-call incrementCall math.addI64
-argument incrementCall left I64 currentIteration
-argument incrementCall right I64 iterationStep
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
 run incrementCall
-bind value nextIteration I64 incrementCall
+bind value nextIteration Int64 incrementCall
 set memory currentIteration nextIteration
 jump target benchmarkLoopHead
 
@@ -82,23 +82,23 @@ label benchmarkFinished
 
 call endClockCall c.clock
 run endClockCall
-bind value endClockTicks CCpuClockTicks endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
 
-call elapsedTicksCall math.subtractI64
-argument elapsedTicksCall left CCpuClockTicks endClockTicks
-argument elapsedTicksCall right CCpuClockTicks startClockTicks
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
 run elapsedTicksCall
-bind value elapsedClockTicks I64 elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
 
-storage module immutable reportFormatText CNullTerminatedByteString "iterations=%lld accumulator=%lld clockTicks=%lld\n"
+storage module immutable reportFormatText String "iterations=%lld accumulator=%lld clockTicks=%lld\n"
 call reportCall c.printf
-argument reportCall format CNullTerminatedByteString reportFormatText
-argument reportCall iterations I64 iterationLimit
-argument reportCall accumulator I64 accumulator
-argument reportCall ticks I64 elapsedClockTicks
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Int64 accumulator
+argument reportCall ticks Int64 elapsedClockTicks
 run reportCall
 ignore void source reportCall
-bind error reportError CSignedInt32 reportCall
+bind error reportError Int32 reportCall
 branch error source reportCall target consoleWriteFailed
 
 storage module immutable successfulExitCode ExitCode 0

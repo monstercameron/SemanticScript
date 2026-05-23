@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation main
 input operation main console Console
@@ -17,12 +17,12 @@ purpose operation main "Smoke: every channel / lock / interval / select / worker
 invariant operation main "Exits 0 and prints 'ok'."
 label startMain
 
-storage module immutable zeroVal I64 0
+storage module immutable zeroVal Int64 0
 
 # Channels (spec §22): synchronous-only no-op lowering. `receive` registers
 # its OUT name as a zero bind.
 send myChannel zeroVal
-receive recvVal I64 myChannel
+receive recvVal Int64 myChannel
 branchIfChannelClosed myChannel done
 
 # Locks (spec §22): drop.
@@ -53,10 +53,10 @@ label barBranch
 jump target done
 
 label done
-storage module immutable okText CNullTerminatedByteString "ok"
+storage module immutable okText String "ok"
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString okText
+argument writeCall text String okText
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

@@ -6,7 +6,7 @@ entry console main
 import html standard.html
 importConstant importedHtmlModuleVersionText html htmlModuleVersionText
 
-storage module immutable okText CNullTerminatedByteString "OK"
+storage module immutable okText String "OK"
 storage module immutable successCode ExitCode 0
 
 operation main
@@ -18,8 +18,8 @@ async main no
 purpose operation main "Smoke-test the canonical standard.html import path from its module folder."
 
 call writeCall console.writeLine
-argument writeCall text CNullTerminatedByteString okText
+argument writeCall text String okText
 run writeCall
-ignore value source writeCall type CSignedInt32
+ignore value source writeCall type Int32
 
 return value successCode

@@ -5,40 +5,40 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation sumFive
-input operation sumFive a CSignedInt64
-input operation sumFive b CSignedInt64
-input operation sumFive c CSignedInt64
-input operation sumFive d CSignedInt64
-input operation sumFive e CSignedInt64
-output operation sumFive Result CSignedInt64 Void
+input operation sumFive a Int64
+input operation sumFive b Int64
+input operation sumFive c Int64
+input operation sumFive d Int64
+input operation sumFive e Int64
+output operation sumFive Result Int64 Void
 memory sumFive heap no
 async sumFive no
-purpose operation sumFive "Add five CSignedInt64 inputs. Exercises the 5-arg user-op call site emission."
+purpose operation sumFive "Add five Int64 inputs. Exercises the 5-arg user-op call site emission."
 invariant operation sumFive "All five params are i64."
 label startSumFive
-call sumAbCall math.addI64
-argument sumAbCall left I64 a
-argument sumAbCall right I64 b
+call sumAbCall math.addInt64
+argument sumAbCall left Int64 a
+argument sumAbCall right Int64 b
 run sumAbCall
-bind value sumAb CSignedInt64 sumAbCall
-call sumAbcCall math.addI64
-argument sumAbcCall left I64 sumAb
-argument sumAbcCall right I64 c
+bind value sumAb Int64 sumAbCall
+call sumAbcCall math.addInt64
+argument sumAbcCall left Int64 sumAb
+argument sumAbcCall right Int64 c
 run sumAbcCall
-bind value sumAbc CSignedInt64 sumAbcCall
-call sumAbcdCall math.addI64
-argument sumAbcdCall left I64 sumAbc
-argument sumAbcdCall right I64 d
+bind value sumAbc Int64 sumAbcCall
+call sumAbcdCall math.addInt64
+argument sumAbcdCall left Int64 sumAbc
+argument sumAbcdCall right Int64 d
 run sumAbcdCall
-bind value sumAbcd CSignedInt64 sumAbcdCall
-call sumAbcdeCall math.addI64
-argument sumAbcdeCall left I64 sumAbcd
-argument sumAbcdeCall right I64 e
+bind value sumAbcd Int64 sumAbcdCall
+call sumAbcdeCall math.addInt64
+argument sumAbcdeCall left Int64 sumAbcd
+argument sumAbcdeCall right Int64 e
 run sumAbcdeCall
-bind value total CSignedInt64 sumAbcdeCall
+bind value total Int64 sumAbcdeCall
 return ok total
 
 operation main
@@ -50,24 +50,24 @@ async main no
 purpose operation main "sumFive(1,2,3,2,4) == 12."
 invariant operation main "Exercises 5-arg user-op call from main."
 label startMain
-storage module immutable valOne CSignedInt64 1
-storage module immutable valTwo CSignedInt64 2
-storage module immutable valThree CSignedInt64 3
-storage module immutable valFour CSignedInt64 2
-storage module immutable valFive CSignedInt64 4
+storage module immutable valOne Int64 1
+storage module immutable valTwo Int64 2
+storage module immutable valThree Int64 3
+storage module immutable valFour Int64 2
+storage module immutable valFive Int64 4
 call sumCall sumFive
-argument sumCall a CSignedInt64 valOne
-argument sumCall b CSignedInt64 valTwo
-argument sumCall c CSignedInt64 valThree
-argument sumCall d CSignedInt64 valFour
-argument sumCall e CSignedInt64 valFive
+argument sumCall a Int64 valOne
+argument sumCall b Int64 valTwo
+argument sumCall c Int64 valThree
+argument sumCall d Int64 valFour
+argument sumCall e Int64 valFive
 run sumCall
-bind ok total CSignedInt64 sumCall
-memory main mutable totalStorage I64 0
+bind ok total Int64 sumCall
+memory main mutable totalStorage Int64 0
 set memory totalStorage total
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 totalStorage
+argument writeCall value Int64 totalStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

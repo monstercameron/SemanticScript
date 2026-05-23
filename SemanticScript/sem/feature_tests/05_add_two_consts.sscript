@@ -12,22 +12,22 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "Add 8+7 via math.addI64, print result."
+purpose operation main "Add 8+7 via math.addInt64, print result."
 invariant operation main "Computes 15 and emits it."
 label startMain
-storage module immutable eightInitial I64 8
-memory main mutable leftOperand I64 eightInitial
-storage module immutable sevenAdd I64 7
-call addCall math.addI64
-argument addCall left I64 leftOperand
-argument addCall right I64 sevenAdd
+storage module immutable eightInitial Int64 8
+memory main mutable leftOperand Int64 eightInitial
+storage module immutable sevenAdd Int64 7
+call addCall math.addInt64
+argument addCall left Int64 leftOperand
+argument addCall right Int64 sevenAdd
 run addCall
-bind value sumResult I64 addCall
-memory main mutable sumVar I64 eightInitial
+bind value sumResult Int64 addCall
+memory main mutable sumVar Int64 eightInitial
 set memory sumVar sumResult
 call writeSumCall console.writeIntegerLine
 argument writeSumCall console Console console
-argument writeSumCall value I64 sumVar
+argument writeSumCall value Int64 sumVar
 run writeSumCall
 ignore void source writeSumCall
 storage module immutable successfulExitCode ExitCode 0

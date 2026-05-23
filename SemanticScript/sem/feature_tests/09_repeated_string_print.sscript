@@ -16,20 +16,20 @@ async main no
 purpose operation main "Same string const referenced three times in separate calls; verifies per-call (not per-const) puts emission."
 invariant operation main "Output line count equals call count, not unique-const count."
 label startMain
-storage module immutable pingText CNullTerminatedByteString "ping"
+storage module immutable pingText String "ping"
 call writeOneCall console.writeLine
 argument writeOneCall console Console console
-argument writeOneCall text CNullTerminatedByteString pingText
+argument writeOneCall text String pingText
 run writeOneCall
 ignore void source writeOneCall
 call writeTwoCall console.writeLine
 argument writeTwoCall console Console console
-argument writeTwoCall text CNullTerminatedByteString pingText
+argument writeTwoCall text String pingText
 run writeTwoCall
 ignore void source writeTwoCall
 call writeThreeCall console.writeLine
 argument writeThreeCall console Console console
-argument writeThreeCall text CNullTerminatedByteString pingText
+argument writeThreeCall text String pingText
 run writeThreeCall
 ignore void source writeThreeCall
 storage module immutable successfulExitCode ExitCode 0

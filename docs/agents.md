@@ -122,11 +122,11 @@ Current JSON surfaces:
   sem.doctor.v0  # provisional environment surface
 
 Good:
-  call totalCall math.addI64
-  argument totalCall left I64 subtotalAmount
-  argument totalCall right I64 taxAmount
+  call totalCall math.addInt64
+  argument totalCall left Int64 subtotalAmount
+  argument totalCall right Int64 taxAmount
   run totalCall
-  bind value totalAmount I64 totalCall
+  bind value totalAmount Int64 totalCall
 
 Bad:
   total = subtotal + tax
@@ -153,7 +153,7 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   entry console main
 
   error ConsoleWriteError
-  errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+  errorCase ConsoleWriteError ConsoleWriteFailed Int32
   capability stdoutWriter console.stdout write
 
   operation main
@@ -163,9 +163,9 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   async main no
   purpose main "Do the thing exactly"
   useCapability main stdoutWriter
-  storage local immutable outputText CNullTerminatedByteString "hello world"
+  storage local immutable outputText String "hello world"
   call outputWriteCall console.writeLine
-  argument outputWriteCall text CNullTerminatedByteString outputText
+  argument outputWriteCall text String outputText
   run outputWriteCall
   ignore ok source outputWriteCall type Void
   bind error outputWriteError ConsoleWriteError outputWriteCall
@@ -247,7 +247,7 @@ Standard GUI source shape:
 GUI handler ABI:
   input saveClicked session GuiSession
   input saveClicked event GuiEvent
-  output saveClicked CSignedInt32
+  output saveClicked Int32
 
 Reserved gui.* targets live under standard.gui contracts:
   gui.applicationCreate gui.windowCreate gui.buttonCreate
@@ -293,20 +293,20 @@ score`. Any declared effect needs useCapability or authority.
 
 == types/values ==
   Bool -> i1
-  I8/CSignedByte/CUnsignedByte -> i8
-  I16/CSignedInt16/CUnsignedInt16 -> i16
-  I32/ExitCode/CSignedInt32/CUnsignedInt32 -> i32
-  I64/CSignedInt64/CUnsignedInt64 -> i64
-  F32/CFloat32 -> f32
-  F64/CFloat64 -> f64
-  String/CNullTerminatedByteString -> i8*
-  COpaqueMemoryAddress/CFileHandle/VoidPtr -> i8*
-  Void/CVoid -> void where valid
+  Int8/UInt8 -> i8
+  Int16/UInt16 -> i16
+  Int32/ExitCode/UInt32 -> i32
+  Int64/UInt64 -> i64
+  Float32 -> f32
+  Float64 -> f64
+  String -> i8*
+  OpaquePointer/FileHandle -> i8*
+  Void -> void where valid
 
-  type AccountId CNullTerminatedByteString
+  type AccountId String
   type LookupResult Result AccountBalance LookupError
   typeInvariant AccountId "non-empty"
-  typeRepresentation AccountId CNullTerminatedByteString utf8 nullByte
+  typeRepresentation AccountId String utf8 nullByte
   typeTrust AccountId trustedInternal
   typeMemory AccountId inline
   typeLayout AccountId packed
@@ -314,16 +314,16 @@ score`. Any declared effect needs useCapability or authority.
   typeLiteralEncoding AccountId utf8
   typeLiteralTerminator AccountId nullByte
 
-  storage local immutable retryLimit I64 3
+  storage local immutable retryLimit Int64 3
   storage local immutable greetingText String "hello"
   storage local immutable strictMode Bool true
-  storage local mutable runningTotal I64 0
+  storage local mutable runningTotal Int64 0
 Bool tokens: true false yes no 1 0.
 
-  domainLiteral signalKillNumber CSignedInt32 9
+  domainLiteral signalKillNumber Int32 9
   domainLiteralSource signalKillNumber posix.SIGKILL
   domainLiteralTrust signalKillNumber trustedStaticLiteral
-  literal templateText CNullTerminatedByteString
+  literal templateText String
   literalSource templateText "fixtures/template.txt"
   literalBytes templateText 128
   literalDigest templateText sha256 DIGEST
@@ -331,20 +331,20 @@ Bool tokens: true false yes no 1 0.
   literalTrust templateText trustedStaticLiteral
 
 == state/memory ==
-  storage module immutable zeroValue I64 0
-  storage module mutable lastRevision I64 zeroValue
-  storage local immutable stepValue I64 1
-  storage local mutable currentRevision I64 lastRevision
+  storage module immutable zeroValue Int64 0
+  storage module mutable lastRevision Int64 zeroValue
+  storage local immutable stepValue Int64 1
+  storage local mutable currentRevision Int64 lastRevision
   set local currentRevision nextRevision
   set module lastRevision nextRevision ownedBy moduleStateOwner
 
 Module mutable => LLVM global. Local mutable => alloca. Owner/protected tails
 metadata today.
 
-  sharedState process mutable failureCount I64 zeroValue
+  sharedState process mutable failureCount Int64 zeroValue
   sharedStateOwner failureCount metricsRuntime
   sharedStateGuard failureCount failureCountGuardToken
-  read sharedState currentFailureCount I64 failureCount protectedBy failureCountGuardToken
+  read sharedState currentFailureCount Int64 failureCount protectedBy failureCountGuardToken
   set sharedState failureCount nextFailureCount protectedBy failureCountGuardToken
   guardTokenSource failureCountGuardToken acquireLockCall
   guardTokenOwner failureCountGuardToken metricsRuntime
@@ -355,20 +355,20 @@ Pointer:
   pointer.loadByte     buffer offset -> byte
   pointer.storeByte    buffer offset value -> void
   pointer.offset       base offset -> ptr
-  pointer.difference   left right -> I64
+  pointer.difference   left right -> Int64
   pointer.isNull       ptr -> bool/int
 
 == calls ==
 Infallible:
-  call totalCall math.addI64
-  argument totalCall left I64 subtotalAmount
-  argument totalCall right I64 taxAmount
+  call totalCall math.addInt64
+  argument totalCall left Int64 subtotalAmount
+  argument totalCall right Int64 taxAmount
   run totalCall
-  bind value totalAmount I64 totalCall
+  bind value totalAmount Int64 totalCall
 
 Fallible:
   call writeCall console.writeLine
-  argument writeCall text CNullTerminatedByteString outputText
+  argument writeCall text String outputText
   run writeCall
   ignore ok source writeCall type Void
   bind error writeError ConsoleWriteError writeCall
@@ -395,25 +395,25 @@ Attach/discard:
 
 User op:
   operation addTwoValues
-  input operation addTwoValues leftValue I64
-  input operation addTwoValues rightValue I64
-  output operation addTwoValues I64
-  call sumCall math.addI64
-  argument sumCall left I64 leftValue
-  argument sumCall right I64 rightValue
+  input operation addTwoValues leftValue Int64
+  input operation addTwoValues rightValue Int64
+  output operation addTwoValues Int64
+  call sumCall math.addInt64
+  argument sumCall left Int64 leftValue
+  argument sumCall right Int64 rightValue
   run sumCall
-  bind value sumValue I64 sumCall
+  bind value sumValue Int64 sumCall
   return value sumValue
 
   operation main
   output operation main ExitCode
-  storage local immutable leftInput I64 40
-  storage local immutable rightInput I64 2
+  storage local immutable leftInput Int64 40
+  storage local immutable rightInput Int64 2
   call answerCall addTwoValues
-  argument answerCall leftValue I64 leftInput
-  argument answerCall rightValue I64 rightInput
+  argument answerCall leftValue Int64 leftInput
+  argument answerCall rightValue Int64 rightInput
   run answerCall
-  bind value answerValue I64 answerCall
+  bind value answerValue Int64 answerCall
   return value answerValue
 
 Argument names should match callee inputs. Dispatch by callee input order after
@@ -431,28 +431,28 @@ dropping opaque inputs.
   return void
 
 Loop:
-  storage local mutable currentIndex I64 0
-  storage local immutable finalIndex I64 10
-  storage local immutable indexStep I64 1
+  storage local mutable currentIndex Int64 0
+  storage local immutable finalIndex Int64 10
+  storage local immutable indexStep Int64 1
   label loopStart
-  call doneCall math.greaterThanOrEqualI64
-  argument doneCall left I64 currentIndex
-  argument doneCall right I64 finalIndex
+  call doneCall math.greaterThanOrEqualInt64
+  argument doneCall left Int64 currentIndex
+  argument doneCall right Int64 finalIndex
   run doneCall
   bind value loopDone Bool doneCall
   branch if condition loopDone target loopEnd
-  call nextIndexCall math.addI64
-  argument nextIndexCall left I64 currentIndex
-  argument nextIndexCall right I64 indexStep
+  call nextIndexCall math.addInt64
+  argument nextIndexCall left Int64 currentIndex
+  argument nextIndexCall right Int64 indexStep
   run nextIndexCall
-  bind value nextIndex I64 nextIndexCall
+  bind value nextIndex Int64 nextIndexCall
   set local currentIndex nextIndex
   jump target loopStart
   label loopEnd
 
 == error/effect/auth/deps ==
   error ConsoleWriteError
-  errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+  errorCase ConsoleWriteError ConsoleWriteFailed Int32
   makeError validationFailure RequestError.InvalidJson rawDecodeError
   declareFailure timeoutFailure RequestError.TimedOut timeoutCall
 
@@ -475,22 +475,22 @@ Console:
   console.writeIntegerLine argument value
   console.writeFloatLine argument value
 
-I64:
-  math.addI64 subtractI64 multiplyI64 divideI64 moduloI64
-  math.equalI64 notEqualI64 lessThanI64 lessThanOrEqualI64
-  math.greaterThanI64 greaterThanOrEqualI64 checkedMultiplyI64
+Int64:
+  math.addInt64 subtractInt64 multiplyInt64 divideInt64 moduloInt64
+  math.equalInt64 notEqualInt64 lessThanInt64 lessThanOrEqualInt64
+  math.greaterThanInt64 greaterThanOrEqualInt64 checkedMultiplyInt64
 
-F64:
-  math.addF64 subtractF64 multiplyF64 divideF64
-  math.equalF64 notEqualF64 lessThanF64 lessThanOrEqualF64
-  math.greaterThanF64 greaterThanOrEqualF64
-  math.intToFloat math.floatToInt
+Float64:
+  math.addFloat64 subtractFloat64 multiplyFloat64 divideFloat64
+  math.equalFloat64 notEqualFloat64 lessThanFloat64 lessThanOrEqualFloat64
+  math.greaterThanFloat64 greaterThanOrEqualFloat64
+  math.convertInt64ToFloat64 math.convertFloat64ToInt64
 
 c.*:
   call allocateCall c.malloc
-  argument allocateCall size CByteCount requestedByteCount
+  argument allocateCall size ByteCount requestedByteCount
   run allocateCall
-  bind value allocatedBuffer COpaqueMemoryAddress allocateCall
+  bind value allocatedBuffer OpaquePointer allocateCall
 
 c.* signatures: compiler/libc_registry.py. Prefer SemanticScript camelCase aliases for C
 names with underscores.
@@ -512,7 +512,7 @@ For generic heap buffers or duplicateCStringIntoOwnedMemory output, current
 stdlib examples still use c.free / defer NAME c.free POINTER.
 
 Domain method:
-  type CountdownValue I64
+  type CountdownValue Int64
   call nextCall CountdownValue.subtractPositiveStep
   argument nextCall left CountdownValue currentCountdownValue
   argument nextCall right CountdownValue decrementStep
@@ -623,7 +623,7 @@ locks/select/interval no-op/fallthrough.
 
   operation addSignedInt64
   operationBody addSignedInt64 intrinsic
-  intrinsicName addSignedInt64 arithmetic.addI64
+  intrinsicName addSignedInt64 arithmetic.addInt64
 
 Pure ABI names lower directly. Policy-bearing runtime bindings such as retry
 delay, metrics increment, metrics lock token sentinels, scheduler sleep,

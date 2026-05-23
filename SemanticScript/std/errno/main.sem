@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.errno "App-specific wrappers, compatibility aliases, o
 invariant module standard.errno "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.errno errnoModuleVersionText
-storage module immutable errnoModuleVersionText CNullTerminatedByteString "standard.errno 0.1"
+storage module immutable errnoModuleVersionText String "standard.errno 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -41,63 +41,63 @@ storage module immutable errnoModuleVersionText CNullTerminatedByteString "stand
 # section errno.numbers
 # rationale: POSIX errno constants.
 
-domainLiteral permissionDeniedErrorNumber CSignedInt32 1
+domainLiteral permissionDeniedErrorNumber Int32 1
 domainLiteralSource permissionDeniedErrorNumber posix.EPERM
 domainLiteralTrust permissionDeniedErrorNumber trustedStaticLiteral
 
-domainLiteral fileNotFoundErrorNumber CSignedInt32 2
+domainLiteral fileNotFoundErrorNumber Int32 2
 domainLiteralSource fileNotFoundErrorNumber posix.ENOENT
 domainLiteralTrust fileNotFoundErrorNumber trustedStaticLiteral
 
-domainLiteral processNotFoundErrorNumber CSignedInt32 3
+domainLiteral processNotFoundErrorNumber Int32 3
 domainLiteralSource processNotFoundErrorNumber posix.ESRCH
 domainLiteralTrust processNotFoundErrorNumber trustedStaticLiteral
 
-domainLiteral interruptedSystemCallErrorNumber CSignedInt32 4
+domainLiteral interruptedSystemCallErrorNumber Int32 4
 domainLiteralSource interruptedSystemCallErrorNumber posix.EINTR
 domainLiteralTrust interruptedSystemCallErrorNumber trustedStaticLiteral
 
-domainLiteral inputOutputErrorNumber CSignedInt32 5
+domainLiteral inputOutputErrorNumber Int32 5
 domainLiteralSource inputOutputErrorNumber posix.EIO
 domainLiteralTrust inputOutputErrorNumber trustedStaticLiteral
 
-domainLiteral outOfMemoryErrorNumber CSignedInt32 12
+domainLiteral outOfMemoryErrorNumber Int32 12
 domainLiteralSource outOfMemoryErrorNumber posix.ENOMEM
 domainLiteralTrust outOfMemoryErrorNumber trustedStaticLiteral
 
-domainLiteral accessDeniedErrorNumber CSignedInt32 13
+domainLiteral accessDeniedErrorNumber Int32 13
 domainLiteralSource accessDeniedErrorNumber posix.EACCES
 domainLiteralTrust accessDeniedErrorNumber trustedStaticLiteral
 
-domainLiteral badAddressErrorNumber CSignedInt32 14
+domainLiteral badAddressErrorNumber Int32 14
 domainLiteralSource badAddressErrorNumber posix.EFAULT
 domainLiteralTrust badAddressErrorNumber trustedStaticLiteral
 
-domainLiteral fileAlreadyExistsErrorNumber CSignedInt32 17
+domainLiteral fileAlreadyExistsErrorNumber Int32 17
 domainLiteralSource fileAlreadyExistsErrorNumber posix.EEXIST
 domainLiteralTrust fileAlreadyExistsErrorNumber trustedStaticLiteral
 
-domainLiteral invalidArgumentErrorNumber CSignedInt32 22
+domainLiteral invalidArgumentErrorNumber Int32 22
 domainLiteralSource invalidArgumentErrorNumber posix.EINVAL
 domainLiteralTrust invalidArgumentErrorNumber trustedStaticLiteral
 
-domainLiteral noSpaceLeftOnDeviceErrorNumber CSignedInt32 28
+domainLiteral noSpaceLeftOnDeviceErrorNumber Int32 28
 domainLiteralSource noSpaceLeftOnDeviceErrorNumber posix.ENOSPC
 domainLiteralTrust noSpaceLeftOnDeviceErrorNumber trustedStaticLiteral
 
-domainLiteral brokenPipeErrorNumber CSignedInt32 32
+domainLiteral brokenPipeErrorNumber Int32 32
 domainLiteralSource brokenPipeErrorNumber posix.EPIPE
 domainLiteralTrust brokenPipeErrorNumber trustedStaticLiteral
 
-domainLiteral resultOutOfRangeErrorNumber CSignedInt32 34
+domainLiteral resultOutOfRangeErrorNumber Int32 34
 domainLiteralSource resultOutOfRangeErrorNumber posix.ERANGE
 domainLiteralTrust resultOutOfRangeErrorNumber trustedStaticLiteral
 
 # section errno.messageLookup
 
 operation lookupErrnoMessageCString
-input operation lookupErrnoMessageCString errorNumber CSignedInt32
-output operation lookupErrnoMessageCString CNullTerminatedByteString
+input operation lookupErrnoMessageCString errorNumber Int32
+output operation lookupErrnoMessageCString String
 memory lookupErrnoMessageCString heap no
 async lookupErrnoMessageCString no
 purpose operation lookupErrnoMessageCString "Map a POSIX errno number to a short English text description; returns 'unknown error' for codes outside the known set."
@@ -107,96 +107,96 @@ guarantee lookupErrnoMessageCString "Total â€” every input produces some me
 #   (strerror is not thread-safe in all libcs and would pull in extra
 #   FFI metadata for one short helper).
 label startLookupErrnoMessageCString
-storage module immutable messageForPermissionDenied CNullTerminatedByteString "operation not permitted"
-storage module immutable messageForFileNotFound CNullTerminatedByteString "no such file or directory"
-storage module immutable messageForProcessNotFound CNullTerminatedByteString "no such process"
-storage module immutable messageForInterruptedSystemCall CNullTerminatedByteString "interrupted system call"
-storage module immutable messageForInputOutputError CNullTerminatedByteString "input/output error"
-storage module immutable messageForOutOfMemory CNullTerminatedByteString "out of memory"
-storage module immutable messageForAccessDenied CNullTerminatedByteString "permission denied"
-storage module immutable messageForBadAddress CNullTerminatedByteString "bad address"
-storage module immutable messageForFileAlreadyExists CNullTerminatedByteString "file exists"
-storage module immutable messageForInvalidArgument CNullTerminatedByteString "invalid argument"
-storage module immutable messageForNoSpaceLeftOnDevice CNullTerminatedByteString "no space left on device"
-storage module immutable messageForBrokenPipe CNullTerminatedByteString "broken pipe"
-storage module immutable messageForResultOutOfRange CNullTerminatedByteString "result out of range"
-storage module immutable messageForUnknownErrorCode CNullTerminatedByteString "unknown error"
+storage module immutable messageForPermissionDenied String "operation not permitted"
+storage module immutable messageForFileNotFound String "no such file or directory"
+storage module immutable messageForProcessNotFound String "no such process"
+storage module immutable messageForInterruptedSystemCall String "interrupted system call"
+storage module immutable messageForInputOutputError String "input/output error"
+storage module immutable messageForOutOfMemory String "out of memory"
+storage module immutable messageForAccessDenied String "permission denied"
+storage module immutable messageForBadAddress String "bad address"
+storage module immutable messageForFileAlreadyExists String "file exists"
+storage module immutable messageForInvalidArgument String "invalid argument"
+storage module immutable messageForNoSpaceLeftOnDevice String "no space left on device"
+storage module immutable messageForBrokenPipe String "broken pipe"
+storage module immutable messageForResultOutOfRange String "result out of range"
+storage module immutable messageForUnknownErrorCode String "unknown error"
 
-call detectIsPermissionDeniedCall math.equalI64
-argument detectIsPermissionDeniedCall left I64 errorNumber
-argument detectIsPermissionDeniedCall right I64 permissionDeniedErrorNumber
+call detectIsPermissionDeniedCall math.equalInt64
+argument detectIsPermissionDeniedCall left Int64 errorNumber
+argument detectIsPermissionDeniedCall right Int64 permissionDeniedErrorNumber
 run detectIsPermissionDeniedCall
 bind value isPermissionDenied Bool detectIsPermissionDeniedCall
 branch if condition isPermissionDenied target returnPermissionDeniedMessage
-call detectIsFileNotFoundCall math.equalI64
-argument detectIsFileNotFoundCall left I64 errorNumber
-argument detectIsFileNotFoundCall right I64 fileNotFoundErrorNumber
+call detectIsFileNotFoundCall math.equalInt64
+argument detectIsFileNotFoundCall left Int64 errorNumber
+argument detectIsFileNotFoundCall right Int64 fileNotFoundErrorNumber
 run detectIsFileNotFoundCall
 bind value isFileNotFound Bool detectIsFileNotFoundCall
 branch if condition isFileNotFound target returnFileNotFoundMessage
-call detectIsProcessNotFoundCall math.equalI64
-argument detectIsProcessNotFoundCall left I64 errorNumber
-argument detectIsProcessNotFoundCall right I64 processNotFoundErrorNumber
+call detectIsProcessNotFoundCall math.equalInt64
+argument detectIsProcessNotFoundCall left Int64 errorNumber
+argument detectIsProcessNotFoundCall right Int64 processNotFoundErrorNumber
 run detectIsProcessNotFoundCall
 bind value isProcessNotFound Bool detectIsProcessNotFoundCall
 branch if condition isProcessNotFound target returnProcessNotFoundMessage
-call detectIsInterruptedSystemCallCall math.equalI64
-argument detectIsInterruptedSystemCallCall left I64 errorNumber
-argument detectIsInterruptedSystemCallCall right I64 interruptedSystemCallErrorNumber
+call detectIsInterruptedSystemCallCall math.equalInt64
+argument detectIsInterruptedSystemCallCall left Int64 errorNumber
+argument detectIsInterruptedSystemCallCall right Int64 interruptedSystemCallErrorNumber
 run detectIsInterruptedSystemCallCall
 bind value isInterruptedSystemCall Bool detectIsInterruptedSystemCallCall
 branch if condition isInterruptedSystemCall target returnInterruptedSystemCallMessage
-call detectIsInputOutputErrorCall math.equalI64
-argument detectIsInputOutputErrorCall left I64 errorNumber
-argument detectIsInputOutputErrorCall right I64 inputOutputErrorNumber
+call detectIsInputOutputErrorCall math.equalInt64
+argument detectIsInputOutputErrorCall left Int64 errorNumber
+argument detectIsInputOutputErrorCall right Int64 inputOutputErrorNumber
 run detectIsInputOutputErrorCall
 bind value isInputOutputError Bool detectIsInputOutputErrorCall
 branch if condition isInputOutputError target returnInputOutputErrorMessage
-call detectIsOutOfMemoryCall math.equalI64
-argument detectIsOutOfMemoryCall left I64 errorNumber
-argument detectIsOutOfMemoryCall right I64 outOfMemoryErrorNumber
+call detectIsOutOfMemoryCall math.equalInt64
+argument detectIsOutOfMemoryCall left Int64 errorNumber
+argument detectIsOutOfMemoryCall right Int64 outOfMemoryErrorNumber
 run detectIsOutOfMemoryCall
 bind value isOutOfMemory Bool detectIsOutOfMemoryCall
 branch if condition isOutOfMemory target returnOutOfMemoryMessage
-call detectIsAccessDeniedCall math.equalI64
-argument detectIsAccessDeniedCall left I64 errorNumber
-argument detectIsAccessDeniedCall right I64 accessDeniedErrorNumber
+call detectIsAccessDeniedCall math.equalInt64
+argument detectIsAccessDeniedCall left Int64 errorNumber
+argument detectIsAccessDeniedCall right Int64 accessDeniedErrorNumber
 run detectIsAccessDeniedCall
 bind value isAccessDenied Bool detectIsAccessDeniedCall
 branch if condition isAccessDenied target returnAccessDeniedMessage
-call detectIsBadAddressCall math.equalI64
-argument detectIsBadAddressCall left I64 errorNumber
-argument detectIsBadAddressCall right I64 badAddressErrorNumber
+call detectIsBadAddressCall math.equalInt64
+argument detectIsBadAddressCall left Int64 errorNumber
+argument detectIsBadAddressCall right Int64 badAddressErrorNumber
 run detectIsBadAddressCall
 bind value isBadAddress Bool detectIsBadAddressCall
 branch if condition isBadAddress target returnBadAddressMessage
-call detectIsFileAlreadyExistsCall math.equalI64
-argument detectIsFileAlreadyExistsCall left I64 errorNumber
-argument detectIsFileAlreadyExistsCall right I64 fileAlreadyExistsErrorNumber
+call detectIsFileAlreadyExistsCall math.equalInt64
+argument detectIsFileAlreadyExistsCall left Int64 errorNumber
+argument detectIsFileAlreadyExistsCall right Int64 fileAlreadyExistsErrorNumber
 run detectIsFileAlreadyExistsCall
 bind value isFileAlreadyExists Bool detectIsFileAlreadyExistsCall
 branch if condition isFileAlreadyExists target returnFileAlreadyExistsMessage
-call detectIsInvalidArgumentCall math.equalI64
-argument detectIsInvalidArgumentCall left I64 errorNumber
-argument detectIsInvalidArgumentCall right I64 invalidArgumentErrorNumber
+call detectIsInvalidArgumentCall math.equalInt64
+argument detectIsInvalidArgumentCall left Int64 errorNumber
+argument detectIsInvalidArgumentCall right Int64 invalidArgumentErrorNumber
 run detectIsInvalidArgumentCall
 bind value isInvalidArgument Bool detectIsInvalidArgumentCall
 branch if condition isInvalidArgument target returnInvalidArgumentMessage
-call detectIsNoSpaceLeftOnDeviceCall math.equalI64
-argument detectIsNoSpaceLeftOnDeviceCall left I64 errorNumber
-argument detectIsNoSpaceLeftOnDeviceCall right I64 noSpaceLeftOnDeviceErrorNumber
+call detectIsNoSpaceLeftOnDeviceCall math.equalInt64
+argument detectIsNoSpaceLeftOnDeviceCall left Int64 errorNumber
+argument detectIsNoSpaceLeftOnDeviceCall right Int64 noSpaceLeftOnDeviceErrorNumber
 run detectIsNoSpaceLeftOnDeviceCall
 bind value isNoSpaceLeftOnDevice Bool detectIsNoSpaceLeftOnDeviceCall
 branch if condition isNoSpaceLeftOnDevice target returnNoSpaceLeftOnDeviceMessage
-call detectIsBrokenPipeCall math.equalI64
-argument detectIsBrokenPipeCall left I64 errorNumber
-argument detectIsBrokenPipeCall right I64 brokenPipeErrorNumber
+call detectIsBrokenPipeCall math.equalInt64
+argument detectIsBrokenPipeCall left Int64 errorNumber
+argument detectIsBrokenPipeCall right Int64 brokenPipeErrorNumber
 run detectIsBrokenPipeCall
 bind value isBrokenPipe Bool detectIsBrokenPipeCall
 branch if condition isBrokenPipe target returnBrokenPipeMessage
-call detectIsResultOutOfRangeCall math.equalI64
-argument detectIsResultOutOfRangeCall left I64 errorNumber
-argument detectIsResultOutOfRangeCall right I64 resultOutOfRangeErrorNumber
+call detectIsResultOutOfRangeCall math.equalInt64
+argument detectIsResultOutOfRangeCall left Int64 errorNumber
+argument detectIsResultOutOfRangeCall right Int64 resultOutOfRangeErrorNumber
 run detectIsResultOutOfRangeCall
 bind value isResultOutOfRange Bool detectIsResultOutOfRangeCall
 branch if condition isResultOutOfRange target returnResultOutOfRangeMessage

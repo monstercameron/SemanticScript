@@ -1,0 +1,154 @@
+# SemanticScript standard-library canonical module: standard.map.
+
+module standard.map
+purpose module standard.map "Canonical standard-library module for map size/capacity bookkeeping helpers."
+moduleOwns standard.map "The official import path `standard.map` and the executable `map.*` helper surface."
+moduleDoesNotOwn standard.map "Concrete key hashing, probing, or entry storage."
+invariant module standard.map "This module owns structural map helpers over entry counts, capacity, and known-key facts."
+
+exportConstant standard.map mapModuleVersionText
+storage module immutable mapModuleVersionText String "standard.map 0.1"
+
+domainLiteral mapZeroValue Int64 0
+domainLiteralTrust mapZeroValue trustedStaticLiteral
+domainLiteral mapOneValue Int64 1
+domainLiteralTrust mapOneValue trustedStaticLiteral
+domainLiteral mapFailureSentinel Int64 -1
+domainLiteralTrust mapFailureSentinel trustedStaticLiteral
+
+storage module immutable mapTrue Bool true
+storage module immutable mapFalse Bool false
+
+operation map.size
+input operation map.size entryCount Int64
+output operation map.size Int64
+memory map.size heap no
+async map.size no
+purpose operation map.size "Return the current number of entries in the map."
+return value entryCount
+
+operation map.isEmpty
+input operation map.isEmpty entryCount Int64
+output operation map.isEmpty Bool
+memory map.isEmpty heap no
+async map.isEmpty no
+purpose operation map.isEmpty "Return true when entryCount is zero."
+call mapIsEmptyCall math.equalInt64
+argument mapIsEmptyCall left Int64 entryCount
+argument mapIsEmptyCall right Int64 mapZeroValue
+run mapIsEmptyCall
+bind value mapIsEmptyResult Bool mapIsEmptyCall
+return value mapIsEmptyResult
+
+operation map.remainingCapacity
+input operation map.remainingCapacity entryCount Int64
+input operation map.remainingCapacity entryCapacity Int64
+output operation map.remainingCapacity Int64
+memory map.remainingCapacity heap no
+async map.remainingCapacity no
+purpose operation map.remainingCapacity "Return max(entryCapacity - entryCount, 0)."
+call mapFullCall math.greaterThanOrEqualInt64
+argument mapFullCall left Int64 entryCount
+argument mapFullCall right Int64 entryCapacity
+run mapFullCall
+bind value mapFull Bool mapFullCall
+branch if condition mapFull target mapRemainingCapacityZero
+call mapRemainingCapacityValueCall math.subtractInt64
+argument mapRemainingCapacityValueCall left Int64 entryCapacity
+argument mapRemainingCapacityValueCall right Int64 entryCount
+run mapRemainingCapacityValueCall
+bind value mapRemainingCapacityValue Int64 mapRemainingCapacityValueCall
+return value mapRemainingCapacityValue
+label mapRemainingCapacityZero
+return value mapZeroValue
+
+operation map.hasCapacityForNewEntry
+input operation map.hasCapacityForNewEntry entryCount Int64
+input operation map.hasCapacityForNewEntry entryCapacity Int64
+output operation map.hasCapacityForNewEntry Bool
+memory map.hasCapacityForNewEntry heap no
+async map.hasCapacityForNewEntry no
+purpose operation map.hasCapacityForNewEntry "Return true when entryCount is strictly less than entryCapacity."
+call mapHasCapacityCall math.lessThanInt64
+argument mapHasCapacityCall left Int64 entryCount
+argument mapHasCapacityCall right Int64 entryCapacity
+run mapHasCapacityCall
+bind value mapHasCapacityResult Bool mapHasCapacityCall
+return value mapHasCapacityResult
+
+operation map.canInsertNewEntry
+input operation map.canInsertNewEntry entryCount Int64
+input operation map.canInsertNewEntry entryCapacity Int64
+input operation map.canInsertNewEntry keyPresent Bool
+output operation map.canInsertNewEntry Bool
+memory map.canInsertNewEntry heap no
+async map.canInsertNewEntry no
+purpose operation map.canInsertNewEntry "Return true when the key is absent and the map has capacity for a new entry."
+branch if condition keyPresent target mapCanInsertFalse
+call mapHasCapacityForInsertCall map.hasCapacityForNewEntry
+argument mapHasCapacityForInsertCall entryCount Int64 entryCount
+argument mapHasCapacityForInsertCall entryCapacity Int64 entryCapacity
+run mapHasCapacityForInsertCall
+bind value mapHasCapacityForInsertResult Bool mapHasCapacityForInsertCall
+return value mapHasCapacityForInsertResult
+label mapCanInsertFalse
+return value mapFalse
+
+operation map.canUpdateExistingEntry
+input operation map.canUpdateExistingEntry keyPresent Bool
+output operation map.canUpdateExistingEntry Bool
+memory map.canUpdateExistingEntry heap no
+async map.canUpdateExistingEntry no
+purpose operation map.canUpdateExistingEntry "Return true when the key is already present."
+return value keyPresent
+
+operation map.canRemoveExistingEntry
+input operation map.canRemoveExistingEntry keyPresent Bool
+output operation map.canRemoveExistingEntry Bool
+memory map.canRemoveExistingEntry heap no
+async map.canRemoveExistingEntry no
+purpose operation map.canRemoveExistingEntry "Return true when the key is already present."
+return value keyPresent
+
+operation map.sizeAfterInsert
+input operation map.sizeAfterInsert entryCount Int64
+input operation map.sizeAfterInsert entryCapacity Int64
+input operation map.sizeAfterInsert keyPresent Bool
+output operation map.sizeAfterInsert Int64
+memory map.sizeAfterInsert heap no
+async map.sizeAfterInsert no
+purpose operation map.sizeAfterInsert "Return the resulting size after an insert-or-upsert, or -1 when inserting a new key would exceed capacity."
+branch if condition keyPresent target mapSizeAfterInsertUnchanged
+call mapInsertHasCapacityCall map.hasCapacityForNewEntry
+argument mapInsertHasCapacityCall entryCount Int64 entryCount
+argument mapInsertHasCapacityCall entryCapacity Int64 entryCapacity
+run mapInsertHasCapacityCall
+bind value mapInsertHasCapacity Bool mapInsertHasCapacityCall
+branch if condition mapInsertHasCapacity target mapSizeAfterInsertGrow
+return value mapFailureSentinel
+label mapSizeAfterInsertUnchanged
+return value entryCount
+label mapSizeAfterInsertGrow
+call mapSizeAfterInsertValueCall math.addInt64
+argument mapSizeAfterInsertValueCall left Int64 entryCount
+argument mapSizeAfterInsertValueCall right Int64 mapOneValue
+run mapSizeAfterInsertValueCall
+bind value mapSizeAfterInsertValue Int64 mapSizeAfterInsertValueCall
+return value mapSizeAfterInsertValue
+
+operation map.sizeAfterRemove
+input operation map.sizeAfterRemove entryCount Int64
+input operation map.sizeAfterRemove keyPresent Bool
+output operation map.sizeAfterRemove Int64
+memory map.sizeAfterRemove heap no
+async map.sizeAfterRemove no
+purpose operation map.sizeAfterRemove "Return the resulting size after remove, or -1 when the key is absent."
+branch if condition keyPresent target mapSizeAfterRemoveDo
+return value mapFailureSentinel
+label mapSizeAfterRemoveDo
+call mapSizeAfterRemoveValueCall math.subtractInt64
+argument mapSizeAfterRemoveValueCall left Int64 entryCount
+argument mapSizeAfterRemoveValueCall right Int64 mapOneValue
+run mapSizeAfterRemoveValueCall
+bind value mapSizeAfterRemoveValue Int64 mapSizeAfterRemoveValueCall
+return value mapSizeAfterRemoveValue

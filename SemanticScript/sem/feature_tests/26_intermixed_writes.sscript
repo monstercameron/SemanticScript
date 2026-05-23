@@ -15,23 +15,23 @@ async main no
 purpose operation main "Interleaved writeLine and writeIntegerLine."
 invariant operation main "Mixed string and integer output."
 label startMain
-storage module immutable labelText CNullTerminatedByteString "label"
-storage module immutable fortyTwoInitial I64 42
-storage module immutable endText CNullTerminatedByteString "end"
-memory main mutable counter I64 fortyTwoInitial
+storage module immutable labelText String "label"
+storage module immutable fortyTwoInitial Int64 42
+storage module immutable endText String "end"
+memory main mutable counter Int64 fortyTwoInitial
 call writeLabelCall console.writeLine
 argument writeLabelCall console Console console
-argument writeLabelCall text CNullTerminatedByteString labelText
+argument writeLabelCall text String labelText
 run writeLabelCall
 ignore void source writeLabelCall
 call writeNumCall console.writeIntegerLine
 argument writeNumCall console Console console
-argument writeNumCall value I64 counter
+argument writeNumCall value Int64 counter
 run writeNumCall
 ignore void source writeNumCall
 call writeEndCall console.writeLine
 argument writeEndCall console Console console
-argument writeEndCall text CNullTerminatedByteString endText
+argument writeEndCall text String endText
 run writeEndCall
 ignore void source writeEndCall
 storage module immutable successfulExitCode ExitCode 0

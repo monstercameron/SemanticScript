@@ -21,18 +21,18 @@ async main no
 purpose operation main "Call addSeven (defined in an imported module) with 35 and 7, then print the i64 result. Demonstrates that importModule resolves a relative module path, inlines the operation, and the operation is callable from the importing file."
 invariant operation main "Output is '42\\n'."
 label startMain
-storage module immutable baseValue I64 35
-storage module immutable sevenValue I64 7
+storage module immutable baseValue Int64 35
+storage module immutable sevenValue Int64 7
 call addSevenCall addSeven
-argument addSevenCall base I64 baseValue
-argument addSevenCall addend I64 sevenValue
+argument addSevenCall base Int64 baseValue
+argument addSevenCall addend Int64 sevenValue
 run addSevenCall
-bind value resultValue I64 addSevenCall
-memory main mutable resultVar I64 baseValue
+bind value resultValue Int64 addSevenCall
+memory main mutable resultVar Int64 baseValue
 set memory resultVar resultValue
 call writeResultCall console.writeIntegerLine
 argument writeResultCall console Console console
-argument writeResultCall value I64 resultVar
+argument writeResultCall value Int64 resultVar
 run writeResultCall
 ignore void source writeResultCall
 storage module immutable successfulExitCode ExitCode 0

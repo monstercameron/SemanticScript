@@ -38,13 +38,13 @@ purpose operation main "Smoke-test the ISO 646 keyword operations end-to-end."
 invariant operation main "All assertions hold or the failure path runs."
 
 label startMain
-storage module immutable integerOneValue CSignedInt64 1
-storage module immutable integerTwoValue CSignedInt64 2
+storage module immutable integerOneValue Int64 1
+storage module immutable integerTwoValue Int64 2
 
 # and(1, 1) == true
 call assertAndCall evaluateIso646AndKeyword
-argument assertAndCall leftValue CSignedInt64 integerOneValue
-argument assertAndCall rightValue CSignedInt64 integerOneValue
+argument assertAndCall leftValue Int64 integerOneValue
+argument assertAndCall rightValue Int64 integerOneValue
 run assertAndCall
 bind value andResult Bool assertAndCall
 branch if condition andResult target andHolds
@@ -53,16 +53,16 @@ label andHolds
 
 # equal(1, 2) == false
 call assertEqualCall evaluateIso646EqualKeyword
-argument assertEqualCall leftValue CSignedInt64 integerOneValue
-argument assertEqualCall rightValue CSignedInt64 integerTwoValue
+argument assertEqualCall leftValue Int64 integerOneValue
+argument assertEqualCall rightValue Int64 integerTwoValue
 run assertEqualCall
 bind value equalResult Bool assertEqualCall
 branch if condition equalResult target smokeAssertionFailed
 
 # notEqual(1, 2) == true
 call assertNotEqualCall evaluateIso646NotEqualKeyword
-argument assertNotEqualCall leftValue CSignedInt64 integerOneValue
-argument assertNotEqualCall rightValue CSignedInt64 integerTwoValue
+argument assertNotEqualCall leftValue Int64 integerOneValue
+argument assertNotEqualCall rightValue Int64 integerTwoValue
 run assertNotEqualCall
 bind value notEqualResult Bool assertNotEqualCall
 branch if condition notEqualResult target notEqualHolds
@@ -71,8 +71,8 @@ label notEqualHolds
 
 # xor(1, 0) == true
 call assertXorCall evaluateIso646XorKeyword
-argument assertXorCall leftValue CSignedInt64 integerOneValue
-argument assertXorCall rightValue CSignedInt64 integerZeroBoundaryValue
+argument assertXorCall leftValue Int64 integerOneValue
+argument assertXorCall rightValue Int64 integerZeroBoundaryValue
 run assertXorCall
 bind value xorResult Bool assertXorCall
 branch if condition xorResult target xorHolds
@@ -81,7 +81,7 @@ label xorHolds
 
 # not(0) == true
 call assertNotCall evaluateIso646NotKeyword
-argument assertNotCall inputValue CSignedInt64 integerZeroBoundaryValue
+argument assertNotCall inputValue Int64 integerZeroBoundaryValue
 run assertNotCall
 bind value notResult Bool assertNotCall
 branch if condition notResult target notHolds
@@ -94,8 +94,8 @@ label notHolds
 
 # or(1, 0) == true (was untested)
 call orOneZeroCall evaluateIso646OrKeyword
-argument orOneZeroCall leftValue CSignedInt64 integerOneValue
-argument orOneZeroCall rightValue CSignedInt64 integerZeroBoundaryValue
+argument orOneZeroCall leftValue Int64 integerOneValue
+argument orOneZeroCall rightValue Int64 integerZeroBoundaryValue
 run orOneZeroCall
 bind value orOneZeroResult Bool orOneZeroCall
 branch if condition orOneZeroResult target orOneZeroHolds
@@ -104,8 +104,8 @@ label orOneZeroHolds
 
 # or(0, 0) == false (both falsy)
 call orZeroZeroCall evaluateIso646OrKeyword
-argument orZeroZeroCall leftValue CSignedInt64 integerZeroBoundaryValue
-argument orZeroZeroCall rightValue CSignedInt64 integerZeroBoundaryValue
+argument orZeroZeroCall leftValue Int64 integerZeroBoundaryValue
+argument orZeroZeroCall rightValue Int64 integerZeroBoundaryValue
 run orZeroZeroCall
 bind value orZeroZeroResult Bool orZeroZeroCall
 branch if condition orZeroZeroResult target smokeAssertionFailed
@@ -114,8 +114,8 @@ label orZeroZeroHolds
 
 # and(0, 1) == false (one falsy)
 call andZeroOneCall evaluateIso646AndKeyword
-argument andZeroOneCall leftValue CSignedInt64 integerZeroBoundaryValue
-argument andZeroOneCall rightValue CSignedInt64 integerOneValue
+argument andZeroOneCall leftValue Int64 integerZeroBoundaryValue
+argument andZeroOneCall rightValue Int64 integerOneValue
 run andZeroOneCall
 bind value andZeroOneResult Bool andZeroOneCall
 branch if condition andZeroOneResult target smokeAssertionFailed
@@ -124,7 +124,7 @@ label andZeroOneHolds
 
 # not(1) == false (truthy negated)
 call notOneCall evaluateIso646NotKeyword
-argument notOneCall inputValue CSignedInt64 integerOneValue
+argument notOneCall inputValue Int64 integerOneValue
 run notOneCall
 bind value notOneResult Bool notOneCall
 branch if condition notOneResult target smokeAssertionFailed
@@ -133,8 +133,8 @@ label notOneHolds
 
 # xor(1, 1) == false (same-truthy)
 call xorSameCall evaluateIso646XorKeyword
-argument xorSameCall leftValue CSignedInt64 integerOneValue
-argument xorSameCall rightValue CSignedInt64 integerOneValue
+argument xorSameCall leftValue Int64 integerOneValue
+argument xorSameCall rightValue Int64 integerOneValue
 run xorSameCall
 bind value xorSameResult Bool xorSameCall
 branch if condition xorSameResult target smokeAssertionFailed
@@ -143,8 +143,8 @@ label xorSameHolds
 
 # equal(1, 1) == true (reflexive)
 call equalSameCall evaluateIso646EqualKeyword
-argument equalSameCall leftValue CSignedInt64 integerOneValue
-argument equalSameCall rightValue CSignedInt64 integerOneValue
+argument equalSameCall leftValue Int64 integerOneValue
+argument equalSameCall rightValue Int64 integerOneValue
 run equalSameCall
 bind value equalSameResult Bool equalSameCall
 branch if condition equalSameResult target equalSameHolds
@@ -153,26 +153,26 @@ label equalSameHolds
 
 # notEqual(2, 2) == false (irreflexive)
 call notEqualSameCall evaluateIso646NotEqualKeyword
-argument notEqualSameCall leftValue CSignedInt64 integerTwoValue
-argument notEqualSameCall rightValue CSignedInt64 integerTwoValue
+argument notEqualSameCall leftValue Int64 integerTwoValue
+argument notEqualSameCall rightValue Int64 integerTwoValue
 run notEqualSameCall
 bind value notEqualSameResult Bool notEqualSameCall
 branch if condition notEqualSameResult target smokeAssertionFailed
 branch else target notEqualSameHolds
 label notEqualSameHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

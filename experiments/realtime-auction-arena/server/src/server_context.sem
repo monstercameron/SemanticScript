@@ -51,8 +51,8 @@ capability bcryptHashCompute bcrypt.hash compute
 purpose operation bcryptHashCompute "Authority to generate request context randomness through the native bcrypt runtime."
 
 storage module mutable arenaDatabaseHandle SqliteDatabase 0
-storage module mutable arenaDatabaseReady CSignedInt32 0
-storage module immutable metricsFormat CNullTerminatedByteString "# HELP auction_server_bootstrap_info Realtime Auction Arena server scaffold info\n# TYPE auction_server_bootstrap_info gauge\nauction_server_bootstrap_info{api_version=\"v1\",runtime=\"native_http_exact_routes\"} 1\n# HELP http_requests_total Total routed HTTP requests observed by request middleware\n# TYPE http_requests_total counter\nhttp_requests_total %lld\n# HELP auth_attempts_total Login attempts by outcome\n# TYPE auth_attempts_total counter\nauth_attempts_total{route=\"POST /api/v1/auth/login\",outcome=\"accepted\"} %lld\nauth_attempts_total{route=\"POST /api/v1/auth/login\",outcome=\"rejected\"} %lld\n# HELP auction_commands_total Auction command outcomes\n# TYPE auction_commands_total counter\nauction_commands_total{outcome=\"accepted\"} %lld\nauction_commands_total{outcome=\"rejected\"} %lld\n# HELP auction_bids_total Bid outcomes\n# TYPE auction_bids_total counter\nauction_bids_total{outcome=\"accepted\"} %lld\n# HELP rate_limit_hits_total Rate limit rejections\n# TYPE rate_limit_hits_total counter\nrate_limit_hits_total %lld\n# HELP active_sse_clients Active SSE replay streams\n# TYPE active_sse_clients gauge\nactive_sse_clients %lld\n# HELP auction_server_sse_slow_client_drops_total Slow SSE client drops\n# TYPE auction_server_sse_slow_client_drops_total counter\nauction_server_sse_slow_client_drops_total %lld\n# HELP auction_server_sse_subscriber_queue_capacity Target per-client SSE queue capacity\n# TYPE auction_server_sse_subscriber_queue_capacity gauge\nauction_server_sse_subscriber_queue_capacity 256\n# HELP auction_server_sse_heartbeat_millis Target SSE heartbeat interval\n# TYPE auction_server_sse_heartbeat_millis gauge\nauction_server_sse_heartbeat_millis 15000\n# HELP auction_server_runtime_gap Runtime-backed feature gap marker\n# TYPE auction_server_runtime_gap gauge\nauction_server_runtime_gap{feature=\"long_lived_sse\"} 1\nauction_server_runtime_gap{feature=\"durable_auth_sessions\"} 1\n"
+storage module mutable arenaDatabaseReady Int32 0
+storage module immutable metricsFormat String "# HELP auction_server_bootstrap_info Realtime Auction Arena server scaffold info\n# TYPE auction_server_bootstrap_info gauge\nauction_server_bootstrap_info{api_version=\"v1\",runtime=\"native_http_exact_routes\"} 1\n# HELP http_requests_total Total routed HTTP requests observed by request middleware\n# TYPE http_requests_total counter\nhttp_requests_total %lld\n# HELP auth_attempts_total Login attempts by outcome\n# TYPE auth_attempts_total counter\nauth_attempts_total{route=\"POST /api/v1/auth/login\",outcome=\"accepted\"} %lld\nauth_attempts_total{route=\"POST /api/v1/auth/login\",outcome=\"rejected\"} %lld\n# HELP auction_commands_total Auction command outcomes\n# TYPE auction_commands_total counter\nauction_commands_total{outcome=\"accepted\"} %lld\nauction_commands_total{outcome=\"rejected\"} %lld\n# HELP auction_bids_total Bid outcomes\n# TYPE auction_bids_total counter\nauction_bids_total{outcome=\"accepted\"} %lld\n# HELP rate_limit_hits_total Rate limit rejections\n# TYPE rate_limit_hits_total counter\nrate_limit_hits_total %lld\n# HELP active_sse_clients Active SSE replay streams\n# TYPE active_sse_clients gauge\nactive_sse_clients %lld\n# HELP auction_server_sse_slow_client_drops_total Slow SSE client drops\n# TYPE auction_server_sse_slow_client_drops_total counter\nauction_server_sse_slow_client_drops_total %lld\n# HELP auction_server_sse_subscriber_queue_capacity Target per-client SSE queue capacity\n# TYPE auction_server_sse_subscriber_queue_capacity gauge\nauction_server_sse_subscriber_queue_capacity 256\n# HELP auction_server_sse_heartbeat_millis Target SSE heartbeat interval\n# TYPE auction_server_sse_heartbeat_millis gauge\nauction_server_sse_heartbeat_millis 15000\n# HELP auction_server_runtime_gap Runtime-backed feature gap marker\n# TYPE auction_server_runtime_gap gauge\nauction_server_runtime_gap{feature=\"long_lived_sse\"} 1\nauction_server_runtime_gap{feature=\"durable_auth_sessions\"} 1\n"
 
 literal arenaSchemaSqlSource SqlText
 literalSource arenaSchemaSqlSource "sql/schema.sql"
@@ -69,15 +69,15 @@ useCapability openOrReuseArenaDatabase sqliteDatabaseReadWriter
 purpose operation openOrReuseArenaDatabase "Open the app-owned SQLite database and apply the compile-time schema asset once per process."
 invariant operation openOrReuseArenaDatabase "The business schema is declared in SemanticScript-owned SQL and applied through standard.sqlite; no auction behavior lives in native runtime code."
 label startOpenOrReuseArenaDatabase
-call databaseReadyCall math.equalCSignedInt32
-argument databaseReadyCall left CSignedInt32 arenaDatabaseReady
-argument databaseReadyCall right CSignedInt32 runtime.arenaDatabaseReadyFlag
+call databaseReadyCall math.equalInt32
+argument databaseReadyCall left Int32 arenaDatabaseReady
+argument databaseReadyCall right Int32 runtime.arenaDatabaseReadyFlag
 run databaseReadyCall
 bind value databaseReady Bool databaseReadyCall
 branch if condition databaseReady target returnCachedArenaDatabase
 
 call openArenaDatabaseCall sqlite.openDatabase
-argument openArenaDatabaseCall path CNullTerminatedByteString runtime.arenaDatabasePath
+argument openArenaDatabaseCall path String runtime.arenaDatabasePath
 argument openArenaDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode
 run openArenaDatabaseCall
 bind ok freshArenaDatabase SqliteDatabase openArenaDatabaseCall
@@ -88,10 +88,10 @@ call applyArenaSchemaCall sqlite.execStatus
 argument applyArenaSchemaCall database SqliteDatabase freshArenaDatabase
 argument applyArenaSchemaCall sql SqlText arenaSchemaSqlSource
 run applyArenaSchemaCall
-bind value applyArenaSchemaStatus CSignedInt32 applyArenaSchemaCall
-call applyArenaSchemaOkCall math.equalCSignedInt32
-argument applyArenaSchemaOkCall left CSignedInt32 applyArenaSchemaStatus
-argument applyArenaSchemaOkCall right CSignedInt32 runtime.authSuccessCode
+bind value applyArenaSchemaStatus Int32 applyArenaSchemaCall
+call applyArenaSchemaOkCall math.equalInt32
+argument applyArenaSchemaOkCall left Int32 applyArenaSchemaStatus
+argument applyArenaSchemaOkCall right Int32 runtime.authSuccessCode
 run applyArenaSchemaOkCall
 bind value applyArenaSchemaOk Bool applyArenaSchemaOkCall
 branch if condition applyArenaSchemaOk target arenaSchemaApplied
@@ -121,7 +121,7 @@ return value runtime.emptyArenaDatabase
 operation healthHandler
 input operation healthHandler request HttpRequest
 input operation healthHandler response HttpResponse
-output operation healthHandler CSignedInt32
+output operation healthHandler Int32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
@@ -132,13 +132,13 @@ label startHealthHandler
 call writeCall helpers.writeHealthEnvelope
 argument writeCall response HttpResponse response
 run writeCall
-bind value writeStatus CSignedInt32 writeCall
+bind value writeStatus Int32 writeCall
 return value writeStatus
 
 operation readyHandler
 input operation readyHandler request HttpRequest
 input operation readyHandler response HttpResponse
-output operation readyHandler CSignedInt32
+output operation readyHandler Int32
 effect readyHandler write http.response
 effect readyHandler read http.server
 effect readyHandler readWrite database
@@ -158,32 +158,32 @@ call readyOpenDatabaseCall openOrReuseArenaDatabase
 run readyOpenDatabaseCall
 bind value readyDatabase SqliteDatabase readyOpenDatabaseCall
 call readyDatabaseMissingCall pointer.isNull
-argument readyDatabaseMissingCall ptr COpaqueMemoryAddress readyDatabase
+argument readyDatabaseMissingCall ptr OpaquePointer readyDatabase
 run readyDatabaseMissingCall
 bind value readyDatabaseMissing Bool readyDatabaseMissingCall
 branch if condition readyDatabaseMissing target readyDatabaseUnavailable
 call writeCall helpers.writeReadyEnvelope
 argument writeCall response HttpResponse response
 run writeCall
-bind value writeStatus CSignedInt32 writeCall
+bind value writeStatus Int32 writeCall
 return value writeStatus
 label readyDatabaseUnavailable
 call readyDatabaseUnavailableWriteCall helpers.writeDatabaseUnavailableEnvelope
 argument readyDatabaseUnavailableWriteCall response HttpResponse response
 run readyDatabaseUnavailableWriteCall
-bind value readyDatabaseUnavailableWriteStatus CSignedInt32 readyDatabaseUnavailableWriteCall
+bind value readyDatabaseUnavailableWriteStatus Int32 readyDatabaseUnavailableWriteCall
 return value readyDatabaseUnavailableWriteStatus
 label readyServerDraining
 call readyServerDrainingWriteCall helpers.writeServerShuttingDownEnvelope
 argument readyServerDrainingWriteCall response HttpResponse response
 run readyServerDrainingWriteCall
-bind value readyServerDrainingWriteStatus CSignedInt32 readyServerDrainingWriteCall
+bind value readyServerDrainingWriteStatus Int32 readyServerDrainingWriteCall
 return value readyServerDrainingWriteStatus
 
 operation metricsHandler
 input operation metricsHandler request HttpRequest
 input operation metricsHandler response HttpResponse
-output operation metricsHandler CSignedInt32
+output operation metricsHandler Int32
 effect metricsHandler write http.response
 effect metricsHandler allocate heap
 effect metricsHandler free heap
@@ -201,74 +201,74 @@ call commonHeadersCall helpers.addCommonHeaders
 argument commonHeadersCall response HttpResponse response
 run commonHeadersCall
 call allocateMetricsBodyCall c.malloc
-argument allocateMetricsBodyCall size CByteCount runtime.metricsBufferCapacity
+argument allocateMetricsBodyCall size ByteCount runtime.metricsBufferCapacity
 run allocateMetricsBodyCall
-bind value metricsBodyBuffer COpaqueMemoryAddress allocateMetricsBodyCall
-bind error allocateMetricsBodyError COpaqueMemoryAddress allocateMetricsBodyCall
+bind value metricsBodyBuffer OpaquePointer allocateMetricsBodyCall
+bind error allocateMetricsBodyError OpaquePointer allocateMetricsBodyCall
 branch error source allocateMetricsBodyCall target metricsAllocationFailed
 defer releaseMetricsBodyDefer c.free metricsBodyBuffer
 call metricsHttpRequestsTotalCall metricsHttpRequestsTotalValue
 run metricsHttpRequestsTotalCall
-bind value metricsHttpRequestsTotal CSignedInt64 metricsHttpRequestsTotalCall
+bind value metricsHttpRequestsTotal Int64 metricsHttpRequestsTotalCall
 call metricsAuthLoginAcceptedTotalCall metricsAuthLoginAcceptedTotalValue
 run metricsAuthLoginAcceptedTotalCall
-bind value metricsAuthLoginAcceptedTotal CSignedInt64 metricsAuthLoginAcceptedTotalCall
+bind value metricsAuthLoginAcceptedTotal Int64 metricsAuthLoginAcceptedTotalCall
 call metricsAuthLoginRejectedTotalCall metricsAuthLoginRejectedTotalValue
 run metricsAuthLoginRejectedTotalCall
-bind value metricsAuthLoginRejectedTotal CSignedInt64 metricsAuthLoginRejectedTotalCall
+bind value metricsAuthLoginRejectedTotal Int64 metricsAuthLoginRejectedTotalCall
 call metricsAuctionCommandsAcceptedTotalCall metricsAuctionCommandsAcceptedTotalValue
 run metricsAuctionCommandsAcceptedTotalCall
-bind value metricsAuctionCommandsAcceptedTotal CSignedInt64 metricsAuctionCommandsAcceptedTotalCall
+bind value metricsAuctionCommandsAcceptedTotal Int64 metricsAuctionCommandsAcceptedTotalCall
 call metricsAuctionCommandsRejectedTotalCall metricsAuctionCommandsRejectedTotalValue
 run metricsAuctionCommandsRejectedTotalCall
-bind value metricsAuctionCommandsRejectedTotal CSignedInt64 metricsAuctionCommandsRejectedTotalCall
+bind value metricsAuctionCommandsRejectedTotal Int64 metricsAuctionCommandsRejectedTotalCall
 call metricsBidAcceptedTotalCall metricsBidAcceptedTotalValue
 run metricsBidAcceptedTotalCall
-bind value metricsBidAcceptedTotal CSignedInt64 metricsBidAcceptedTotalCall
+bind value metricsBidAcceptedTotal Int64 metricsBidAcceptedTotalCall
 call metricsRateLimitHitsTotalCall metricsRateLimitHitsTotalValue
 run metricsRateLimitHitsTotalCall
-bind value metricsRateLimitHitsTotal CSignedInt64 metricsRateLimitHitsTotalCall
+bind value metricsRateLimitHitsTotal Int64 metricsRateLimitHitsTotalCall
 call metricsActiveSseClientsCall metricsActiveSseClientsValue
 run metricsActiveSseClientsCall
-bind value metricsActiveSseClients CSignedInt64 metricsActiveSseClientsCall
+bind value metricsActiveSseClients Int64 metricsActiveSseClientsCall
 call metricsSseSlowClientDropsTotalCall metricsSseSlowClientDropsTotalValue
 run metricsSseSlowClientDropsTotalCall
-bind value metricsSseSlowClientDropsTotal CSignedInt64 metricsSseSlowClientDropsTotalCall
+bind value metricsSseSlowClientDropsTotal Int64 metricsSseSlowClientDropsTotalCall
 call formatMetricsCall c.snprintf
-argument formatMetricsCall buffer COpaqueMemoryAddress metricsBodyBuffer
-argument formatMetricsCall size CSignedInt64 runtime.metricsBufferCapacityArg
-argument formatMetricsCall format CNullTerminatedByteString metricsFormat
-argument formatMetricsCall first CSignedInt64 metricsHttpRequestsTotal
-argument formatMetricsCall second CSignedInt64 metricsAuthLoginAcceptedTotal
-argument formatMetricsCall third CSignedInt64 metricsAuthLoginRejectedTotal
-argument formatMetricsCall fourth CSignedInt64 metricsAuctionCommandsAcceptedTotal
-argument formatMetricsCall fifth CSignedInt64 metricsAuctionCommandsRejectedTotal
-argument formatMetricsCall sixth CSignedInt64 metricsBidAcceptedTotal
-argument formatMetricsCall seventh CSignedInt64 metricsRateLimitHitsTotal
-argument formatMetricsCall eighth CSignedInt64 metricsActiveSseClients
-argument formatMetricsCall ninth CSignedInt64 metricsSseSlowClientDropsTotal
+argument formatMetricsCall buffer OpaquePointer metricsBodyBuffer
+argument formatMetricsCall size Int64 runtime.metricsBufferCapacityArg
+argument formatMetricsCall format String metricsFormat
+argument formatMetricsCall first Int64 metricsHttpRequestsTotal
+argument formatMetricsCall second Int64 metricsAuthLoginAcceptedTotal
+argument formatMetricsCall third Int64 metricsAuthLoginRejectedTotal
+argument formatMetricsCall fourth Int64 metricsAuctionCommandsAcceptedTotal
+argument formatMetricsCall fifth Int64 metricsAuctionCommandsRejectedTotal
+argument formatMetricsCall sixth Int64 metricsBidAcceptedTotal
+argument formatMetricsCall seventh Int64 metricsRateLimitHitsTotal
+argument formatMetricsCall eighth Int64 metricsActiveSseClients
+argument formatMetricsCall ninth Int64 metricsSseSlowClientDropsTotal
 run formatMetricsCall
-ignore ok source formatMetricsCall type CSignedInt32
-bind value body CNullTerminatedByteString allocateMetricsBodyCall
+ignore ok source formatMetricsCall type Int32
+bind value body String allocateMetricsBodyCall
 call responseCall http.responseText
 argument responseCall response HttpResponse response
-argument responseCall status CSignedInt32 runtime.okStatus
-argument responseCall body CNullTerminatedByteString body
+argument responseCall status Int32 runtime.okStatus
+argument responseCall body String body
 argument responseCall contentType HttpContentType runtime.textContentType
 run responseCall
-bind value responseStatus CSignedInt32 responseCall
+bind value responseStatus Int32 responseCall
 return value responseStatus
 label metricsAllocationFailed
 call metricsUnavailableCall helpers.writeDatabaseUnavailableEnvelope
 argument metricsUnavailableCall response HttpResponse response
 run metricsUnavailableCall
-bind value metricsUnavailableStatus CSignedInt32 metricsUnavailableCall
+bind value metricsUnavailableStatus Int32 metricsUnavailableCall
 return value metricsUnavailableStatus
 
 operation apiIndexHandler
 input operation apiIndexHandler request HttpRequest
 input operation apiIndexHandler response HttpResponse
-output operation apiIndexHandler CSignedInt32
+output operation apiIndexHandler Int32
 effect apiIndexHandler write http.response
 memory apiIndexHandler arena request
 async apiIndexHandler no
@@ -279,13 +279,13 @@ label startApiIndexHandler
 call writeCall helpers.writeApiIndexEnvelope
 argument writeCall response HttpResponse response
 run writeCall
-bind value writeStatus CSignedInt32 writeCall
+bind value writeStatus Int32 writeCall
 return value writeStatus
 
 operation apiNotFoundHandler
 input operation apiNotFoundHandler request HttpRequest
 input operation apiNotFoundHandler response HttpResponse
-output operation apiNotFoundHandler CSignedInt32
+output operation apiNotFoundHandler Int32
 effect apiNotFoundHandler write http.response
 effect apiNotFoundHandler read http.request.path
 effect apiNotFoundHandler read http.request.header
@@ -309,13 +309,13 @@ ignore value source fallbackContextCall type MiddlewareControl
 call writeCall helpers.writeApiNotFoundEnvelope
 argument writeCall response HttpResponse response
 run writeCall
-bind value writeStatus CSignedInt32 writeCall
+bind value writeStatus Int32 writeCall
 return value writeStatus
 
 operation methodNotAllowedHandler
 input operation methodNotAllowedHandler request HttpRequest
 input operation methodNotAllowedHandler response HttpResponse
-output operation methodNotAllowedHandler CSignedInt32
+output operation methodNotAllowedHandler Int32
 effect methodNotAllowedHandler write http.response
 effect methodNotAllowedHandler read http.request.path
 effect methodNotAllowedHandler read http.request.header
@@ -339,7 +339,7 @@ ignore value source methodFallbackContextCall type MiddlewareControl
 call methodNotAllowedWriteCall helpers.writeMethodNotAllowedEnvelope
 argument methodNotAllowedWriteCall response HttpResponse response
 run methodNotAllowedWriteCall
-bind value methodNotAllowedWriteStatus CSignedInt32 methodNotAllowedWriteCall
+bind value methodNotAllowedWriteStatus Int32 methodNotAllowedWriteCall
 return value methodNotAllowedWriteStatus
 
 operation requestContextMiddleware
@@ -366,7 +366,7 @@ invariant operation requestContextMiddleware "Request-id generation and dynamic-
 label startRequestContextMiddleware
 call incrementRequestCounterCall incrementHttpRequestsTotal
 run incrementRequestCounterCall
-ignore value source incrementRequestCounterCall type CSignedInt64
+ignore value source incrementRequestCounterCall type Int64
 call stampRequestIdCall helpers.stampRequestIdHeader
 argument stampRequestIdCall request HttpRequest request
 argument stampRequestIdCall response HttpResponse response
@@ -375,38 +375,38 @@ ignore void source stampRequestIdCall
 call pathReadCall http.requestPath
 argument pathReadCall request HttpRequest request
 run pathReadCall
-bind value requestPath CNullTerminatedByteString pathReadCall
-storage local immutable pathHeaderName CNullTerminatedByteString "X-Route-Path"
+bind value requestPath String pathReadCall
+storage local immutable pathHeaderName String "X-Route-Path"
 call pathHeaderCall http.responseHeader
 argument pathHeaderCall response HttpResponse response
-argument pathHeaderCall name CNullTerminatedByteString pathHeaderName
-argument pathHeaderCall value CNullTerminatedByteString requestPath
+argument pathHeaderCall name String pathHeaderName
+argument pathHeaderCall value String requestPath
 run pathHeaderCall
-ignore value source pathHeaderCall type CSignedInt32
+ignore value source pathHeaderCall type Int32
 call methodReadCall http.requestMethod
 argument methodReadCall request HttpRequest request
 run methodReadCall
-bind value requestMethod CNullTerminatedByteString methodReadCall
+bind value requestMethod String methodReadCall
 call postMethodCompareCall c.strcmp
-argument postMethodCompareCall left CNullTerminatedByteString requestMethod
-argument postMethodCompareCall right CNullTerminatedByteString runtime.methodPost
+argument postMethodCompareCall left String requestMethod
+argument postMethodCompareCall right String runtime.methodPost
 run postMethodCompareCall
-bind value postMethodCompareResult CSignedInt32 postMethodCompareCall
-call postMethodMatchesCall math.equalCSignedInt32
-argument postMethodMatchesCall left CSignedInt32 postMethodCompareResult
-argument postMethodMatchesCall right CSignedInt32 runtime.authSuccessCode
+bind value postMethodCompareResult Int32 postMethodCompareCall
+call postMethodMatchesCall math.equalInt32
+argument postMethodMatchesCall left Int32 postMethodCompareResult
+argument postMethodMatchesCall right Int32 runtime.authSuccessCode
 run postMethodMatchesCall
 bind value postMethodMatches Bool postMethodMatchesCall
 branch if condition postMethodMatches target requestContextCommandMethod
-storage local immutable deleteMethodText CNullTerminatedByteString "DELETE"
+storage local immutable deleteMethodText String "DELETE"
 call deleteMethodCompareCall c.strcmp
-argument deleteMethodCompareCall left CNullTerminatedByteString requestMethod
-argument deleteMethodCompareCall right CNullTerminatedByteString deleteMethodText
+argument deleteMethodCompareCall left String requestMethod
+argument deleteMethodCompareCall right String deleteMethodText
 run deleteMethodCompareCall
-bind value deleteMethodCompareResult CSignedInt32 deleteMethodCompareCall
-call deleteMethodMatchesCall math.equalCSignedInt32
-argument deleteMethodMatchesCall left CSignedInt32 deleteMethodCompareResult
-argument deleteMethodMatchesCall right CSignedInt32 runtime.authSuccessCode
+bind value deleteMethodCompareResult Int32 deleteMethodCompareCall
+call deleteMethodMatchesCall math.equalInt32
+argument deleteMethodMatchesCall left Int32 deleteMethodCompareResult
+argument deleteMethodMatchesCall right Int32 runtime.authSuccessCode
 run deleteMethodMatchesCall
 bind value deleteMethodMatches Bool deleteMethodMatchesCall
 branch if condition deleteMethodMatches target requestContextCommandMethod
@@ -423,7 +423,7 @@ label requestContextRejectCommandDuringShutdown
 call requestContextShutdownWriteCall helpers.writeServerShuttingDownEnvelope
 argument requestContextShutdownWriteCall response HttpResponse response
 run requestContextShutdownWriteCall
-ignore value source requestContextShutdownWriteCall type CSignedInt32
+ignore value source requestContextShutdownWriteCall type Int32
 return value shortCircuitMiddlewareControl
 
 label requestContextContinue

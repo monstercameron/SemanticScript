@@ -109,7 +109,7 @@ surface:
 - typed `return ok`, `return error`, and `return value` coercion;
 - user-operation error predicates that match the return shape (`0`, null, or
   `0.0` as the success sentinel);
-- `math.intToFloat` and `math.floatToInt` lowering for pure-SemanticScript float helpers.
+- `math.convertInt64ToFloat64` and `math.convertFloat64ToInt64` lowering for pure-SemanticScript float helpers.
 
 ## Still missing
 

@@ -1,5 +1,5 @@
 -- Development seed data — installed ONLY when build.sem declares
--- `buildConstant todoWebPro applyDevSeed CNullTerminatedByteString "yes"`.
+-- `buildConstant todoWebPro applyDevSeed String "yes"`.
 -- Production builds set applyDevSeed to "no" so the publicly-known demo
 -- account is NOT installed; an attacker who reads this repo cannot then
 -- log into a production deployment as `demo/demo1234`.

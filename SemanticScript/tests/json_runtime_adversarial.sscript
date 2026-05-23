@@ -15,7 +15,7 @@ entry console main
 
 error MainError
 errorCase MainError JsonAccessFailed JsonAccessError
-errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError RoundTripMismatch Int32
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability adversarialStdoutWrite console.stdout write
@@ -27,12 +27,12 @@ purpose operation adversarialHeapFree "Authority to free JSON scratch storage"
 
 storage module immutable documentCapacity JsonCapacityBytes 4096
 storage module immutable scratchCapacity JsonCapacityBytes 512
-storage module immutable objectRootKind CSignedInt32 0
+storage module immutable objectRootKind Int32 0
 storage module immutable successExit ExitCode 0
-storage module immutable expectedNegative CSignedInt64 -98765
-storage module immutable expectedLarge CSignedInt64 9223372036854775000
-storage module immutable missingDefault CSignedInt64 0
-storage module immutable mismatchCode CSignedInt32 1
+storage module immutable expectedNegative Int64 -98765
+storage module immutable expectedLarge Int64 9223372036854775000
+storage module immutable missingDefault Int64 0
+storage module immutable mismatchCode Int32 1
 
 operation main
 input operation main console Console
@@ -54,7 +54,7 @@ label startMain
 
 call createDocumentCall json.createEmptyDocument
 argument createDocumentCall capacityBytes JsonCapacityBytes documentCapacity
-argument createDocumentCall rootKind CSignedInt32 objectRootKind
+argument createDocumentCall rootKind Int32 objectRootKind
 run createDocumentCall
 bind ok adversarialDocument JsonDocument createDocumentCall
 bind error createDocumentError JsonAccessError createDocumentCall
@@ -65,44 +65,44 @@ argument rootCursorCall document JsonDocument adversarialDocument
 run rootCursorCall
 bind value rootCursor JsonCursor rootCursorCall
 
-storage local immutable negFieldName CNullTerminatedByteString "negative"
+storage local immutable negFieldName String "negative"
 call writeNegCall json.setObjectFieldInt64
 argument writeNegCall document JsonDocument adversarialDocument
 argument writeNegCall cursor JsonCursor rootCursor
-argument writeNegCall fieldName CNullTerminatedByteString negFieldName
-argument writeNegCall value CSignedInt64 expectedNegative
+argument writeNegCall fieldName String negFieldName
+argument writeNegCall value Int64 expectedNegative
 run writeNegCall
-ignore ok source writeNegCall type CSignedInt32
+ignore ok source writeNegCall type Int32
 bind error negWriteError JsonAccessError writeNegCall
 branch error source writeNegCall target jsonAccessFailed
 
-storage local immutable bigFieldName CNullTerminatedByteString "big"
+storage local immutable bigFieldName String "big"
 call writeBigCall json.setObjectFieldInt64
 argument writeBigCall document JsonDocument adversarialDocument
 argument writeBigCall cursor JsonCursor rootCursor
-argument writeBigCall fieldName CNullTerminatedByteString bigFieldName
-argument writeBigCall value CSignedInt64 expectedLarge
+argument writeBigCall fieldName String bigFieldName
+argument writeBigCall value Int64 expectedLarge
 run writeBigCall
-ignore ok source writeBigCall type CSignedInt32
+ignore ok source writeBigCall type Int32
 bind error bigWriteError JsonAccessError writeBigCall
 branch error source writeBigCall target jsonAccessFailed
 
-storage local immutable emptyFieldName CNullTerminatedByteString "empty"
-storage local immutable emptyValue CNullTerminatedByteString ""
+storage local immutable emptyFieldName String "empty"
+storage local immutable emptyValue String ""
 call writeEmptyCall json.setObjectFieldString
 argument writeEmptyCall document JsonDocument adversarialDocument
 argument writeEmptyCall cursor JsonCursor rootCursor
-argument writeEmptyCall fieldName CNullTerminatedByteString emptyFieldName
-argument writeEmptyCall value CNullTerminatedByteString emptyValue
+argument writeEmptyCall fieldName String emptyFieldName
+argument writeEmptyCall value String emptyValue
 run writeEmptyCall
-ignore ok source writeEmptyCall type CSignedInt32
+ignore ok source writeEmptyCall type Int32
 bind error emptyWriteError JsonAccessError writeEmptyCall
 branch error source writeEmptyCall target jsonAccessFailed
 
 call negCursorCall json.objectFieldAt
 argument negCursorCall document JsonDocument adversarialDocument
 argument negCursorCall cursor JsonCursor rootCursor
-argument negCursorCall fieldName CNullTerminatedByteString negFieldName
+argument negCursorCall fieldName String negFieldName
 run negCursorCall
 bind ok negCursor JsonCursor negCursorCall
 bind error negCursorError JsonAccessError negCursorCall
@@ -111,13 +111,13 @@ branch error source negCursorCall target jsonAccessFailed
 call readNegCall json.cursorInt64
 argument readNegCall document JsonDocument adversarialDocument
 argument readNegCall cursor JsonCursor negCursor
-argument readNegCall missingDefault CSignedInt64 missingDefault
+argument readNegCall missingDefault Int64 missingDefault
 run readNegCall
-bind value recoveredNegative CSignedInt64 readNegCall
+bind value recoveredNegative Int64 readNegCall
 
-call negMatchCall math.equalI64
-argument negMatchCall left CSignedInt64 recoveredNegative
-argument negMatchCall right I64 expectedNegative
+call negMatchCall math.equalInt64
+argument negMatchCall left Int64 recoveredNegative
+argument negMatchCall right Int64 expectedNegative
 run negMatchCall
 bind value negMatched Bool negMatchCall
 branch if condition negMatched target negMatchOk
@@ -127,7 +127,7 @@ label negMatchOk
 call bigCursorCall json.objectFieldAt
 argument bigCursorCall document JsonDocument adversarialDocument
 argument bigCursorCall cursor JsonCursor rootCursor
-argument bigCursorCall fieldName CNullTerminatedByteString bigFieldName
+argument bigCursorCall fieldName String bigFieldName
 run bigCursorCall
 bind ok bigCursor JsonCursor bigCursorCall
 bind error bigCursorError JsonAccessError bigCursorCall
@@ -136,13 +136,13 @@ branch error source bigCursorCall target jsonAccessFailed
 call readBigCall json.cursorInt64
 argument readBigCall document JsonDocument adversarialDocument
 argument readBigCall cursor JsonCursor bigCursor
-argument readBigCall missingDefault CSignedInt64 missingDefault
+argument readBigCall missingDefault Int64 missingDefault
 run readBigCall
-bind value recoveredBig CSignedInt64 readBigCall
+bind value recoveredBig Int64 readBigCall
 
-call bigMatchCall math.equalI64
-argument bigMatchCall left CSignedInt64 recoveredBig
-argument bigMatchCall right I64 expectedLarge
+call bigMatchCall math.equalInt64
+argument bigMatchCall left Int64 recoveredBig
+argument bigMatchCall right Int64 expectedLarge
 run bigMatchCall
 bind value bigMatched Bool bigMatchCall
 branch if condition bigMatched target bigMatchOk
@@ -152,12 +152,12 @@ label bigMatchOk
 call allocateScratchCall c.malloc
 argument allocateScratchCall size JsonCapacityBytes scratchCapacity
 run allocateScratchCall
-bind value scratchBuffer COpaqueMemoryAddress allocateScratchCall
+bind value scratchBuffer OpaquePointer allocateScratchCall
 
 call emptyCursorCall json.objectFieldAt
 argument emptyCursorCall document JsonDocument adversarialDocument
 argument emptyCursorCall cursor JsonCursor rootCursor
-argument emptyCursorCall fieldName CNullTerminatedByteString emptyFieldName
+argument emptyCursorCall fieldName String emptyFieldName
 run emptyCursorCall
 bind ok emptyCursor JsonCursor emptyCursorCall
 bind error emptyCursorError JsonAccessError emptyCursorCall
@@ -166,45 +166,45 @@ branch error source emptyCursorCall target jsonAccessFailed
 call readEmptyCall json.cursorString
 argument readEmptyCall document JsonDocument adversarialDocument
 argument readEmptyCall cursor JsonCursor emptyCursor
-argument readEmptyCall scratch COpaqueMemoryAddress scratchBuffer
+argument readEmptyCall scratch OpaquePointer scratchBuffer
 argument readEmptyCall scratchCapacity JsonCapacityBytes scratchCapacity
 run readEmptyCall
-bind ok recoveredEmpty CNullTerminatedByteString readEmptyCall
+bind ok recoveredEmpty String readEmptyCall
 bind error readEmptyError JsonAccessError readEmptyCall
 branch error source readEmptyCall target jsonAccessFailed
 
 call emptyNullCheckCall pointer.isNull
-argument emptyNullCheckCall pointer CNullTerminatedByteString recoveredEmpty
+argument emptyNullCheckCall pointer String recoveredEmpty
 run emptyNullCheckCall
 bind value emptyIsNull Bool emptyNullCheckCall
 branch if condition emptyIsNull target roundTripMismatch
 
 call serializeDocumentCall json.serializeDocument
 argument serializeDocumentCall document JsonDocument adversarialDocument
-argument serializeDocumentCall scratch COpaqueMemoryAddress scratchBuffer
+argument serializeDocumentCall scratch OpaquePointer scratchBuffer
 argument serializeDocumentCall scratchCapacity JsonCapacityBytes scratchCapacity
 run serializeDocumentCall
 bind ok serializedDocument JsonText serializeDocumentCall
 bind error serializeDocumentError JsonAccessError serializeDocumentCall
 branch error source serializeDocumentCall target jsonAccessFailed
 
-storage local immutable successMarker CNullTerminatedByteString "jsonAdversarialOk"
+storage local immutable successMarker String "jsonAdversarialOk"
 call writeMarkerCall console.writeLine
 argument writeMarkerCall console Console console
-argument writeMarkerCall text CNullTerminatedByteString successMarker
+argument writeMarkerCall text String successMarker
 run writeMarkerCall
 ignore void source writeMarkerCall
 bind error consoleWriteError ConsoleWriteError writeMarkerCall
 branch error source writeMarkerCall target consoleWriteFailed
 
 call releaseScratchCall c.free
-argument releaseScratchCall ptr COpaqueMemoryAddress scratchBuffer
+argument releaseScratchCall ptr OpaquePointer scratchBuffer
 run releaseScratchCall
 
 call destroyDocumentCall json.destroyDocument
 argument destroyDocumentCall document JsonDocument adversarialDocument
 run destroyDocumentCall
-ignore ok source destroyDocumentCall type CSignedInt32
+ignore ok source destroyDocumentCall type Int32
 
 return ok successExit
 

@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.stddef "App-specific wrappers, compatibility aliases, 
 invariant module standard.stddef "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.stddef stddefModuleVersionText
-storage module immutable stddefModuleVersionText CNullTerminatedByteString "standard.stddef 0.1"
+storage module immutable stddefModuleVersionText String "standard.stddef 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -16,18 +16,18 @@ storage module immutable stddefModuleVersionText CNullTerminatedByteString "stan
 #
 # rationale: C's <stddef.h> is mostly typedefs (size_t, ptrdiff_t)
 #   plus the NULL macro. SemanticScript has those types natively
-#   (CByteCount, COpaqueMemoryAddress, etc.) so this module only
+#   (ByteCount, OpaquePointer, etc.) so this module only
 #   exposes the few callable surfaces â€” sizeof-style accessors for
 #   the common ABI types â€” as module-scope domainLiteral constants
 #   per the refined-syntax pattern (docs/ast.md section 2.12.5). The previous
-#   shape (zero-arg operations returning `Result CSignedInt64 Void`)
+#   shape (zero-arg operations returning `Result Int64 Void`)
 #   is removed because constants belong in domainLiteral, not in
 #   operation bodies.
 #
 # invariant: every byte-size constant matches the SemanticScript
 #   target ABI (x86-64 Windows MSVC under the current bootstrap
-#   triple). Width-specific aliases (CSignedInt32 / CSignedInt64 /
-#   CFloat64) carry their byte count directly in the name; the
+#   triple). Width-specific aliases (Int32 / Int64 /
+#   Float64) carry their byte count directly in the name; the
 #   module-scope literals are convenience accessors for
 #   serialization / FFI code that needs to compute buffer sizes
 #   from type categories.
@@ -37,7 +37,7 @@ storage module immutable stddefModuleVersionText CNullTerminatedByteString "stan
 # timing: zero â€” the LLVM optimizer inlines every reference.
 #
 # observability: nothing to observe; consumers see only the
-#   raw CSignedInt64 value.
+#   raw Int64 value.
 
 # This is a pure-module (library) file: it exports operations and
 # domainLiterals consumed by other programs (notably
@@ -49,32 +49,32 @@ storage module immutable stddefModuleVersionText CNullTerminatedByteString "stan
 # section stddef.byteSizes
 # rationale: byte-size constants per the target ABI (x86-64 Windows).
 
-domainLiteral byteSizeOfOpaquePointer CSignedInt64 8
+domainLiteral byteSizeOfOpaquePointer Int64 8
 domainLiteralSource byteSizeOfOpaquePointer abi.x86_64.windows.pointerSize
 domainLiteralTrust byteSizeOfOpaquePointer trustedStaticLiteral
 domainLiteralValidation byteSizeOfOpaquePointer trustedAbiConstant
 
-domainLiteral byteSizeOfSignedInt32 CSignedInt64 4
+domainLiteral byteSizeOfSignedInt32 Int64 4
 domainLiteralSource byteSizeOfSignedInt32 abi.fixedWidth.int32
 domainLiteralTrust byteSizeOfSignedInt32 trustedStaticLiteral
 domainLiteralValidation byteSizeOfSignedInt32 trustedAbiConstant
 
-domainLiteral byteSizeOfSignedInt64 CSignedInt64 8
+domainLiteral byteSizeOfSignedInt64 Int64 8
 domainLiteralSource byteSizeOfSignedInt64 abi.fixedWidth.int64
 domainLiteralTrust byteSizeOfSignedInt64 trustedStaticLiteral
 domainLiteralValidation byteSizeOfSignedInt64 trustedAbiConstant
 
-domainLiteral byteSizeOfFloat64 CSignedInt64 8
+domainLiteral byteSizeOfFloat64 Int64 8
 domainLiteralSource byteSizeOfFloat64 abi.ieee754.binary64
 domainLiteralTrust byteSizeOfFloat64 trustedStaticLiteral
 domainLiteralValidation byteSizeOfFloat64 trustedAbiConstant
 
-domainLiteral byteSizeOfFloat32 CSignedInt64 4
+domainLiteral byteSizeOfFloat32 Int64 4
 domainLiteralSource byteSizeOfFloat32 abi.ieee754.binary32
 domainLiteralTrust byteSizeOfFloat32 trustedStaticLiteral
 domainLiteralValidation byteSizeOfFloat32 trustedAbiConstant
 
-domainLiteral byteSizeOfSignedByte CSignedInt64 1
+domainLiteral byteSizeOfSignedByte Int64 1
 domainLiteralSource byteSizeOfSignedByte abi.fixedWidth.int8
 domainLiteralTrust byteSizeOfSignedByte trustedStaticLiteral
 domainLiteralValidation byteSizeOfSignedByte trustedAbiConstant
@@ -83,7 +83,7 @@ domainLiteralValidation byteSizeOfSignedByte trustedAbiConstant
 # rationale: NULL pointer accessor; resolved at runtime via libc.
 
 operation acquireNullOpaquePointer
-output operation acquireNullOpaquePointer COpaqueMemoryAddress
+output operation acquireNullOpaquePointer OpaquePointer
 memory acquireNullOpaquePointer heap no
 async acquireNullOpaquePointer no
 purpose operation acquireNullOpaquePointer "Returns the canonical NULL pointer (i8* 0)."
@@ -95,9 +95,9 @@ invariant operation acquireNullOpaquePointer "Result compares equal to any other
 #   observe a non-null pointer and the smoke test will fail visibly.
 guarantee acquireNullOpaquePointer "Total under normal host environments."
 label startAcquireNullOpaquePointer
-storage module immutable deliberatelyAbsentEnvName CNullTerminatedByteString "SEMANTICSCRIPT_DEFINITELY_NOT_SET_4D7F00"
+storage module immutable deliberatelyAbsentEnvName String "SEMANTICSCRIPT_DEFINITELY_NOT_SET_4D7F00"
 call probeEnvironmentForNullCall c.getenv
-argument probeEnvironmentForNullCall name CNullTerminatedByteString deliberatelyAbsentEnvName
+argument probeEnvironmentForNullCall name String deliberatelyAbsentEnvName
 run probeEnvironmentForNullCall
-bind value nullPointerValue COpaqueMemoryAddress probeEnvironmentForNullCall
+bind value nullPointerValue OpaquePointer probeEnvironmentForNullCall
 return value nullPointerValue

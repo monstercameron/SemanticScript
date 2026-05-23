@@ -52,7 +52,7 @@ async chatPolicySmoke no
 purpose operation chatPolicySmoke "Exercise executable chat policy helpers for role, length, rate-limit, revision, and event-sequence contracts."
 label startChatPolicySmoke
 call bidderCanPostCall chat.chatActorCanPost
-argument bidderCanPostCall actorRole CSignedInt64 10
+argument bidderCanPostCall actorRole Int64 10
 run bidderCanPostCall
 bind value bidderCanPost Bool bidderCanPostCall
 branch if condition bidderCanPost target bidderPostAccepted
@@ -60,13 +60,13 @@ return value false
 label bidderPostAccepted
 
 call auctioneerCanPostCall chat.chatActorCanPost
-argument auctioneerCanPostCall actorRole CSignedInt64 20
+argument auctioneerCanPostCall actorRole Int64 20
 run auctioneerCanPostCall
 bind value auctioneerCanPost Bool auctioneerCanPostCall
 branch if condition auctioneerCanPost target chatPolicyFailed
 
 call bidderCanReportCall chat.chatActorCanReport
-argument bidderCanReportCall actorRole CSignedInt64 10
+argument bidderCanReportCall actorRole Int64 10
 run bidderCanReportCall
 bind value bidderCanReport Bool bidderCanReportCall
 branch if condition bidderCanReport target bidderReportAccepted
@@ -74,7 +74,7 @@ return value false
 label bidderReportAccepted
 
 call auctioneerCanModerateCall chat.chatActorCanModerate
-argument auctioneerCanModerateCall actorRole CSignedInt64 20
+argument auctioneerCanModerateCall actorRole Int64 20
 run auctioneerCanModerateCall
 bind value auctioneerCanModerate Bool auctioneerCanModerateCall
 branch if condition auctioneerCanModerate target auctioneerModerationAccepted
@@ -82,7 +82,7 @@ return value false
 label auctioneerModerationAccepted
 
 call adminCanModerateCall chat.chatActorCanModerate
-argument adminCanModerateCall actorRole CSignedInt64 30
+argument adminCanModerateCall actorRole Int64 30
 run adminCanModerateCall
 bind value adminCanModerate Bool adminCanModerateCall
 branch if condition adminCanModerate target adminModerationAccepted
@@ -90,13 +90,13 @@ return value false
 label adminModerationAccepted
 
 call bidderCanModerateCall chat.chatActorCanModerate
-argument bidderCanModerateCall actorRole CSignedInt64 10
+argument bidderCanModerateCall actorRole Int64 10
 run bidderCanModerateCall
 bind value bidderCanModerate Bool bidderCanModerateCall
 branch if condition bidderCanModerate target chatPolicyFailed
 
 call maxLengthAcceptedCall chat.chatMessageByteLengthAccepted
-argument maxLengthAcceptedCall byteLength CSignedInt64 1000
+argument maxLengthAcceptedCall byteLength Int64 1000
 run maxLengthAcceptedCall
 bind value maxLengthAccepted Bool maxLengthAcceptedCall
 branch if condition maxLengthAccepted target maxLengthAcceptedLabel
@@ -104,13 +104,13 @@ return value false
 label maxLengthAcceptedLabel
 
 call tooLongRejectedCall chat.chatMessageByteLengthAccepted
-argument tooLongRejectedCall byteLength CSignedInt64 1001
+argument tooLongRejectedCall byteLength Int64 1001
 run tooLongRejectedCall
 bind value tooLongAccepted Bool tooLongRejectedCall
 branch if condition tooLongAccepted target chatPolicyFailed
 
 call rateLimitAvailableCall chat.chatRateLimitAllowsNextMessage
-argument rateLimitAvailableCall currentWindowCount CSignedInt64 4
+argument rateLimitAvailableCall currentWindowCount Int64 4
 run rateLimitAvailableCall
 bind value rateLimitAvailable Bool rateLimitAvailableCall
 branch if condition rateLimitAvailable target rateLimitAvailableLabel
@@ -118,14 +118,14 @@ return value false
 label rateLimitAvailableLabel
 
 call rateLimitFullCall chat.chatRateLimitAllowsNextMessage
-argument rateLimitFullCall currentWindowCount CSignedInt64 5
+argument rateLimitFullCall currentWindowCount Int64 5
 run rateLimitFullCall
 bind value rateLimitFullAccepted Bool rateLimitFullCall
 branch if condition rateLimitFullAccepted target chatPolicyFailed
 
 call revisionUnchangedCall chat.chatRevisionUnchanged
-argument revisionUnchangedCall beforeRevision CSignedInt64 7
-argument revisionUnchangedCall afterRevision CSignedInt64 7
+argument revisionUnchangedCall beforeRevision Int64 7
+argument revisionUnchangedCall afterRevision Int64 7
 run revisionUnchangedCall
 bind value revisionUnchanged Bool revisionUnchangedCall
 branch if condition revisionUnchanged target revisionUnchangedLabel
@@ -133,12 +133,12 @@ return value false
 label revisionUnchangedLabel
 
 call nextSequenceCall chat.chatNextEventSequence
-argument nextSequenceCall currentSequence CSignedInt64 9
+argument nextSequenceCall currentSequence Int64 9
 run nextSequenceCall
-bind value nextSequence CSignedInt64 nextSequenceCall
-call nextSequenceMatchesCall math.equalI64
-argument nextSequenceMatchesCall left I64 nextSequence
-argument nextSequenceMatchesCall right I64 10
+bind value nextSequence Int64 nextSequenceCall
+call nextSequenceMatchesCall math.equalInt64
+argument nextSequenceMatchesCall left Int64 nextSequence
+argument nextSequenceMatchesCall right Int64 10
 run nextSequenceMatchesCall
 bind value nextSequenceMatches Bool nextSequenceMatchesCall
 branch if condition nextSequenceMatches target chatPolicyPassed

@@ -1,0 +1,132 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: list
+# ============================================================
+
+project StdListTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import list standard.list
+
+error MainError
+errorCase MainError ListSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Smoke-test the structural list.* helper surface."
+
+label startMain
+
+storage module immutable lengthTwo Int64 2
+storage module immutable capacityThree Int64 3
+storage module immutable indexOne Int64 1
+storage module immutable expectedOne Int64 1
+storage module immutable fullLength Int64 3
+storage module immutable expectedFailure Int64 -1
+
+call listCanAppendCall list.canAppend
+argument listCanAppendCall currentLength Int64 lengthTwo
+argument listCanAppendCall currentCapacity Int64 capacityThree
+run listCanAppendCall
+bind value listCanAppendResult Bool listCanAppendCall
+branch if condition listCanAppendResult target listCanAppendHolds
+branch else target smokeAssertionFailed
+label listCanAppendHolds
+
+call listRemainingCapacityCall list.remainingCapacity
+argument listRemainingCapacityCall currentLength Int64 lengthTwo
+argument listRemainingCapacityCall currentCapacity Int64 capacityThree
+run listRemainingCapacityCall
+bind value listRemainingCapacityResult Int64 listRemainingCapacityCall
+call listRemainingCapacityOkCall math.equalInt64
+argument listRemainingCapacityOkCall left Int64 listRemainingCapacityResult
+argument listRemainingCapacityOkCall right Int64 expectedOne
+run listRemainingCapacityOkCall
+bind value listRemainingCapacityOk Bool listRemainingCapacityOkCall
+branch if condition listRemainingCapacityOk target listRemainingCapacityHolds
+branch else target smokeAssertionFailed
+label listRemainingCapacityHolds
+
+call listContainsCall list.containsIndex
+argument listContainsCall currentLength Int64 lengthTwo
+argument listContainsCall index Int64 indexOne
+run listContainsCall
+bind value listContainsResult Bool listContainsCall
+branch if condition listContainsResult target listContainsHolds
+branch else target smokeAssertionFailed
+label listContainsHolds
+
+call listCanInsertCall list.canInsert
+argument listCanInsertCall currentLength Int64 lengthTwo
+argument listCanInsertCall currentCapacity Int64 capacityThree
+argument listCanInsertCall index Int64 lengthTwo
+run listCanInsertCall
+bind value listCanInsertResult Bool listCanInsertCall
+branch if condition listCanInsertResult target listCanInsertHolds
+branch else target smokeAssertionFailed
+label listCanInsertHolds
+
+call listCanRemoveCall list.canRemove
+argument listCanRemoveCall currentLength Int64 lengthTwo
+argument listCanRemoveCall index Int64 indexOne
+run listCanRemoveCall
+bind value listCanRemoveResult Bool listCanRemoveCall
+branch if condition listCanRemoveResult target listCanRemoveHolds
+branch else target smokeAssertionFailed
+label listCanRemoveHolds
+
+call listLengthAfterAppendCall list.lengthAfterAppend
+argument listLengthAfterAppendCall currentLength Int64 fullLength
+argument listLengthAfterAppendCall currentCapacity Int64 capacityThree
+run listLengthAfterAppendCall
+bind value listLengthAfterAppendResult Int64 listLengthAfterAppendCall
+call listLengthAfterAppendOkCall math.equalInt64
+argument listLengthAfterAppendOkCall left Int64 listLengthAfterAppendResult
+argument listLengthAfterAppendOkCall right Int64 expectedFailure
+run listLengthAfterAppendOkCall
+bind value listLengthAfterAppendOk Bool listLengthAfterAppendOkCall
+branch if condition listLengthAfterAppendOk target listLengthAfterAppendHolds
+branch else target smokeAssertionFailed
+label listLengthAfterAppendHolds
+
+call listLengthAfterRemoveCall list.lengthAfterRemove
+argument listLengthAfterRemoveCall currentLength Int64 lengthTwo
+argument listLengthAfterRemoveCall index Int64 indexOne
+run listLengthAfterRemoveCall
+bind value listLengthAfterRemoveResult Int64 listLengthAfterRemoveCall
+call listLengthAfterRemoveOkCall math.equalInt64
+argument listLengthAfterRemoveOkCall left Int64 listLengthAfterRemoveResult
+argument listLengthAfterRemoveOkCall right Int64 expectedOne
+run listLengthAfterRemoveOkCall
+bind value listLengthAfterRemoveOk Bool listLengthAfterRemoveOkCall
+branch if condition listLengthAfterRemoveOk target listLengthAfterRemoveHolds
+branch else target smokeAssertionFailed
+label listLengthAfterRemoveHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
+label smokeAssertionFailed
+makeError listSmokeFailure MainError.ListSmokeAssertionFailed
+return error listSmokeFailure

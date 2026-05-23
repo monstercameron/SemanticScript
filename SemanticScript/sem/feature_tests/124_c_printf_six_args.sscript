@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation main
 input operation main console Console
@@ -16,68 +16,68 @@ async main no
 purpose operation main "Exercise c.printf with 6 args (format + 5 trailing i64 binds). Probes whether backend dispatches 6-arg c.printf through the PlusFive emitter rather than falling to UNHANDLED."
 invariant operation main "Output is 'a=1 b=2 c=3 d=4 e=5\\n'."
 label startMain
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
-storage module immutable sixFormat CNullTerminatedByteString "a=%lld b=%lld c=%lld d=%lld e=%lld\n"
-storage module immutable oneVal CSignedInt64 1
-storage module immutable twoVal CSignedInt64 2
-storage module immutable threeVal CSignedInt64 3
-storage module immutable fourVal CSignedInt64 4
-storage module immutable fiveVal CSignedInt64 5
+storage module immutable sixFormat String "a=%lld b=%lld c=%lld d=%lld e=%lld\n"
+storage module immutable oneVal Int64 1
+storage module immutable twoVal Int64 2
+storage module immutable threeVal Int64 3
+storage module immutable fourVal Int64 4
+storage module immutable fiveVal Int64 5
 
 # Promote each constant to a bind via a no-op user op, so each arg is a bind
 # (matches the PlusFive emitter's bind-only operand expectation).
-call promoteOneCall identityI64
-argument promoteOneCall n CSignedInt64 oneVal
+call promoteOneCall identityInt64
+argument promoteOneCall n Int64 oneVal
 run promoteOneCall
-bind ok oneBind CSignedInt64 promoteOneCall
+bind ok oneBind Int64 promoteOneCall
 
-call promoteTwoCall identityI64
-argument promoteTwoCall n CSignedInt64 twoVal
+call promoteTwoCall identityInt64
+argument promoteTwoCall n Int64 twoVal
 run promoteTwoCall
-bind ok twoBind CSignedInt64 promoteTwoCall
+bind ok twoBind Int64 promoteTwoCall
 
-call promoteThreeCall identityI64
-argument promoteThreeCall n CSignedInt64 threeVal
+call promoteThreeCall identityInt64
+argument promoteThreeCall n Int64 threeVal
 run promoteThreeCall
-bind ok threeBind CSignedInt64 promoteThreeCall
+bind ok threeBind Int64 promoteThreeCall
 
-call promoteFourCall identityI64
-argument promoteFourCall n CSignedInt64 fourVal
+call promoteFourCall identityInt64
+argument promoteFourCall n Int64 fourVal
 run promoteFourCall
-bind ok fourBind CSignedInt64 promoteFourCall
+bind ok fourBind Int64 promoteFourCall
 
-call promoteFiveCall identityI64
-argument promoteFiveCall n CSignedInt64 fiveVal
+call promoteFiveCall identityInt64
+argument promoteFiveCall n Int64 fiveVal
 run promoteFiveCall
-bind ok fiveBind CSignedInt64 promoteFiveCall
+bind ok fiveBind Int64 promoteFiveCall
 
 call sixPrintfCall c.printf
-argument sixPrintfCall format CNullTerminatedByteString sixFormat
-argument sixPrintfCall a CSignedInt64 oneBind
-argument sixPrintfCall b CSignedInt64 twoBind
-argument sixPrintfCall c CSignedInt64 threeBind
-argument sixPrintfCall d CSignedInt64 fourBind
-argument sixPrintfCall e CSignedInt64 fiveBind
+argument sixPrintfCall format String sixFormat
+argument sixPrintfCall a Int64 oneBind
+argument sixPrintfCall b Int64 twoBind
+argument sixPrintfCall c Int64 threeBind
+argument sixPrintfCall d Int64 fourBind
+argument sixPrintfCall e Int64 fiveBind
 run sixPrintfCall
-ignore ok source sixPrintfCall type CSignedInt32
+ignore ok source sixPrintfCall type Int32
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode
 
-operation identityI64
-input operation identityI64 n CSignedInt64
-output operation identityI64 Result CSignedInt64 Void
-memory identityI64 heap no
-async identityI64 no
-purpose operation identityI64 "Return the input unchanged. Used to promote a const to a bind so subsequent operand dispatches treat it as a bind."
-invariant operation identityI64 "Returns n."
-label startIdentityI64
+operation identityInt64
+input operation identityInt64 n Int64
+output operation identityInt64 Result Int64 Void
+memory identityInt64 heap no
+async identityInt64 no
+purpose operation identityInt64 "Return the input unchanged. Used to promote a const to a bind so subsequent operand dispatches treat it as a bind."
+invariant operation identityInt64 "Returns n."
+label startIdentityInt64
 return ok n

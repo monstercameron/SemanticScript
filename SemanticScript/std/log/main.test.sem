@@ -48,64 +48,64 @@ invariant operation main "escape({ '\"', '\\' }) == { '\\', '\"', '\\', '\\' }."
 
 label startMain
 
-storage module immutable scratchByteSize CByteCount 64
+storage module immutable scratchByteSize ByteCount 64
 call allocateSourceCall c.malloc
-argument allocateSourceCall size CByteCount scratchByteSize
+argument allocateSourceCall size ByteCount scratchByteSize
 run allocateSourceCall
-bind value sourceScratch COpaqueMemoryAddress allocateSourceCall
-bind error sourceAllocError CSignedInt32 allocateSourceCall
+bind value sourceScratch OpaquePointer allocateSourceCall
+bind error sourceAllocError Int32 allocateSourceCall
 branch error source allocateSourceCall target heapAllocationFailedHandler
 defer releaseSourceDefer c.free sourceScratch
 
 call allocateDestinationCall c.malloc
-argument allocateDestinationCall size CByteCount scratchByteSize
+argument allocateDestinationCall size ByteCount scratchByteSize
 run allocateDestinationCall
-bind value destinationScratch COpaqueMemoryAddress allocateDestinationCall
-bind error destinationAllocError CSignedInt32 allocateDestinationCall
+bind value destinationScratch OpaquePointer allocateDestinationCall
+bind error destinationAllocError Int32 allocateDestinationCall
 branch error source allocateDestinationCall target heapAllocationFailedHandler
 defer releaseDestinationDefer c.free destinationScratch
 
-storage module immutable offsetZero CByteCount 0
-storage module immutable offsetOne CByteCount 1
-storage module immutable offsetTwo CByteCount 2
-storage module immutable offsetThree CByteCount 3
-storage module immutable quoteByteValue CSignedInt64 34
-storage module immutable backslashByteValue CSignedInt64 92
-storage module immutable nulByteValue CSignedInt64 0
+storage module immutable offsetZero ByteCount 0
+storage module immutable offsetOne ByteCount 1
+storage module immutable offsetTwo ByteCount 2
+storage module immutable offsetThree ByteCount 3
+storage module immutable quoteByteValue Int64 34
+storage module immutable backslashByteValue Int64 92
+storage module immutable nulByteValue Int64 0
 
 # Source bytes: { '"', '\', NUL }.
 call storeSourceQuoteCall pointer.storeByte
-argument storeSourceQuoteCall buffer COpaqueMemoryAddress sourceScratch
-argument storeSourceQuoteCall offset CByteCount offsetZero
-argument storeSourceQuoteCall value CSignedInt64 quoteByteValue
+argument storeSourceQuoteCall buffer OpaquePointer sourceScratch
+argument storeSourceQuoteCall offset ByteCount offsetZero
+argument storeSourceQuoteCall value Int64 quoteByteValue
 run storeSourceQuoteCall
 call storeSourceBackslashCall pointer.storeByte
-argument storeSourceBackslashCall buffer COpaqueMemoryAddress sourceScratch
-argument storeSourceBackslashCall offset CByteCount offsetOne
-argument storeSourceBackslashCall value CSignedInt64 backslashByteValue
+argument storeSourceBackslashCall buffer OpaquePointer sourceScratch
+argument storeSourceBackslashCall offset ByteCount offsetOne
+argument storeSourceBackslashCall value Int64 backslashByteValue
 run storeSourceBackslashCall
 call storeSourceNulCall pointer.storeByte
-argument storeSourceNulCall buffer COpaqueMemoryAddress sourceScratch
-argument storeSourceNulCall offset CByteCount offsetTwo
-argument storeSourceNulCall value CSignedInt64 nulByteValue
+argument storeSourceNulCall buffer OpaquePointer sourceScratch
+argument storeSourceNulCall offset ByteCount offsetTwo
+argument storeSourceNulCall value Int64 nulByteValue
 run storeSourceNulCall
 
 call escapeCall escapeJsonString
-argument escapeCall sourceText CNullTerminatedByteString sourceScratch
-argument escapeCall destinationBuffer COpaqueMemoryAddress destinationScratch
-argument escapeCall destinationCapacity CSignedInt64 scratchByteSize
+argument escapeCall sourceText String sourceScratch
+argument escapeCall destinationBuffer OpaquePointer destinationScratch
+argument escapeCall destinationCapacity Int64 scratchByteSize
 run escapeCall
-ignore value source escapeCall type CSignedInt32
+ignore value source escapeCall type Int32
 
 # Expect destination bytes { '\', '"', '\', '\' }.
 call loadEscapedZeroCall pointer.loadByte
-argument loadEscapedZeroCall buffer COpaqueMemoryAddress destinationScratch
-argument loadEscapedZeroCall offset CByteCount offsetZero
+argument loadEscapedZeroCall buffer OpaquePointer destinationScratch
+argument loadEscapedZeroCall offset ByteCount offsetZero
 run loadEscapedZeroCall
-bind value escapedByteZero I8 loadEscapedZeroCall
-call checkEscapedZeroCall math.equalI64
-argument checkEscapedZeroCall left I64 escapedByteZero
-argument checkEscapedZeroCall right I64 backslashByteValue
+bind value escapedByteZero Int8 loadEscapedZeroCall
+call checkEscapedZeroCall math.equalInt64
+argument checkEscapedZeroCall left Int64 escapedByteZero
+argument checkEscapedZeroCall right Int64 backslashByteValue
 run checkEscapedZeroCall
 bind value escapedZeroOk Bool checkEscapedZeroCall
 branch if condition escapedZeroOk target escapedZeroHolds
@@ -113,13 +113,13 @@ branch else target smokeAssertionFailed
 label escapedZeroHolds
 
 call loadEscapedOneCall pointer.loadByte
-argument loadEscapedOneCall buffer COpaqueMemoryAddress destinationScratch
-argument loadEscapedOneCall offset CByteCount offsetOne
+argument loadEscapedOneCall buffer OpaquePointer destinationScratch
+argument loadEscapedOneCall offset ByteCount offsetOne
 run loadEscapedOneCall
-bind value escapedByteOne I8 loadEscapedOneCall
-call checkEscapedOneCall math.equalI64
-argument checkEscapedOneCall left I64 escapedByteOne
-argument checkEscapedOneCall right I64 quoteByteValue
+bind value escapedByteOne Int8 loadEscapedOneCall
+call checkEscapedOneCall math.equalInt64
+argument checkEscapedOneCall left Int64 escapedByteOne
+argument checkEscapedOneCall right Int64 quoteByteValue
 run checkEscapedOneCall
 bind value escapedOneOk Bool checkEscapedOneCall
 branch if condition escapedOneOk target escapedOneHolds
@@ -127,13 +127,13 @@ branch else target smokeAssertionFailed
 label escapedOneHolds
 
 call loadEscapedTwoCall pointer.loadByte
-argument loadEscapedTwoCall buffer COpaqueMemoryAddress destinationScratch
-argument loadEscapedTwoCall offset CByteCount offsetTwo
+argument loadEscapedTwoCall buffer OpaquePointer destinationScratch
+argument loadEscapedTwoCall offset ByteCount offsetTwo
 run loadEscapedTwoCall
-bind value escapedByteTwo I8 loadEscapedTwoCall
-call checkEscapedTwoCall math.equalI64
-argument checkEscapedTwoCall left I64 escapedByteTwo
-argument checkEscapedTwoCall right I64 backslashByteValue
+bind value escapedByteTwo Int8 loadEscapedTwoCall
+call checkEscapedTwoCall math.equalInt64
+argument checkEscapedTwoCall left Int64 escapedByteTwo
+argument checkEscapedTwoCall right Int64 backslashByteValue
 run checkEscapedTwoCall
 bind value escapedTwoOk Bool checkEscapedTwoCall
 branch if condition escapedTwoOk target escapedTwoHolds
@@ -141,26 +141,26 @@ branch else target smokeAssertionFailed
 label escapedTwoHolds
 
 call loadEscapedThreeCall pointer.loadByte
-argument loadEscapedThreeCall buffer COpaqueMemoryAddress destinationScratch
-argument loadEscapedThreeCall offset CByteCount offsetThree
+argument loadEscapedThreeCall buffer OpaquePointer destinationScratch
+argument loadEscapedThreeCall offset ByteCount offsetThree
 run loadEscapedThreeCall
-bind value escapedByteThree I8 loadEscapedThreeCall
-call checkEscapedThreeCall math.equalI64
-argument checkEscapedThreeCall left I64 escapedByteThree
-argument checkEscapedThreeCall right I64 backslashByteValue
+bind value escapedByteThree Int8 loadEscapedThreeCall
+call checkEscapedThreeCall math.equalInt64
+argument checkEscapedThreeCall left Int64 escapedByteThree
+argument checkEscapedThreeCall right Int64 backslashByteValue
 run checkEscapedThreeCall
 bind value escapedThreeOk Bool checkEscapedThreeCall
 branch if condition escapedThreeOk target escapedThreeHolds
 branch else target smokeAssertionFailed
 label escapedThreeHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode

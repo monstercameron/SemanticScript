@@ -67,28 +67,28 @@ invariant operation main "Each assertion that should hold returns Ok; final OK l
 
 label startMain
 
-storage module immutable hello CNullTerminatedByteString "Hello"
-storage module immutable helloCopy CNullTerminatedByteString "Hello"
-storage module immutable helloComma CNullTerminatedByteString "Hello, World"
-storage module immutable lo CNullTerminatedByteString "lo,"
-storage module immutable xyz CNullTerminatedByteString "xyz"
-storage module immutable digits CNullTerminatedByteString "0123456789"
-storage module immutable justDigits CNullTerminatedByteString "12345abc"
+storage module immutable hello String "Hello"
+storage module immutable helloCopy String "Hello"
+storage module immutable helloComma String "Hello, World"
+storage module immutable lo String "lo,"
+storage module immutable xyz String "xyz"
+storage module immutable digits String "0123456789"
+storage module immutable justDigits String "12345abc"
 
-storage module immutable fiveLen I64 5
-storage module immutable zeroI32 CSignedInt32 0
-storage module immutable twoI64 I64 2
-storage module immutable threeI64 I64 3
-storage module immutable negOneI64test I64 -1
+storage module immutable fiveLen Int64 5
+storage module immutable zeroInt32 Int32 0
+storage module immutable twoInt64 Int64 2
+storage module immutable threeInt64 Int64 3
+storage module immutable negOneInt64test Int64 -1
 
 # stringByteLength("Hello") == 5
 call l1Call stringByteLength
-argument l1Call s CNullTerminatedByteString hello
+argument l1Call s String hello
 run l1Call
-bind ok l1Res CByteCount l1Call
-call l1CheckCall math.equalI64
-argument l1CheckCall left I64 l1Res
-argument l1CheckCall right I64 fiveLen
+bind ok l1Res ByteCount l1Call
+call l1CheckCall math.equalInt64
+argument l1CheckCall left Int64 l1Res
+argument l1CheckCall right Int64 fiveLen
 run l1CheckCall
 bind value l1Ok Bool l1CheckCall
 branch if condition l1Ok target l1OkLabel
@@ -97,13 +97,13 @@ label l1OkLabel
 
 # compareCString("Hello", "Hello") == 0
 call c1Call compareCString
-argument c1Call a CNullTerminatedByteString hello
-argument c1Call b CNullTerminatedByteString helloCopy
+argument c1Call a String hello
+argument c1Call b String helloCopy
 run c1Call
-bind ok c1Res CSignedInt32 c1Call
-call c1CheckCall math.equalI64
-argument c1CheckCall left I64 c1Res
-argument c1CheckCall right I64 zeroI32
+bind ok c1Res Int32 c1Call
+call c1CheckCall math.equalInt64
+argument c1CheckCall left Int64 c1Res
+argument c1CheckCall right Int64 zeroInt32
 run c1CheckCall
 bind value c1Ok Bool c1CheckCall
 branch if condition c1Ok target c1OkLabel
@@ -112,14 +112,14 @@ label c1OkLabel
 
 # compareCStringPrefixBytes("Hello, World", "Hello", 5) == 0
 call nc1Call compareCStringPrefixBytes
-argument nc1Call a CNullTerminatedByteString helloComma
-argument nc1Call b CNullTerminatedByteString hello
-argument nc1Call n I64 fiveLen
+argument nc1Call a String helloComma
+argument nc1Call b String hello
+argument nc1Call n Int64 fiveLen
 run nc1Call
-bind ok nc1Res CSignedInt32 nc1Call
-call nc1CheckCall math.equalI64
-argument nc1CheckCall left I64 nc1Res
-argument nc1CheckCall right I64 zeroI32
+bind ok nc1Res Int32 nc1Call
+call nc1CheckCall math.equalInt64
+argument nc1CheckCall left Int64 nc1Res
+argument nc1CheckCall right Int64 zeroInt32
 run nc1CheckCall
 bind value nc1Ok Bool nc1CheckCall
 branch if condition nc1Ok target nc1OkLabel
@@ -127,15 +127,15 @@ branch else target testFailed
 label nc1OkLabel
 
 # findFirstCharacterInCString("Hello", 'l') == 2
-storage module immutable lowerL CSignedInt32 108
+storage module immutable lowerL Int32 108
 call ch1Call findFirstCharacterInCString
-argument ch1Call s CNullTerminatedByteString hello
-argument ch1Call c CSignedInt32 lowerL
+argument ch1Call s String hello
+argument ch1Call c Int32 lowerL
 run ch1Call
-bind ok ch1Res CSignedInt64 ch1Call
-call ch1CheckCall math.equalI64
-argument ch1CheckCall left I64 ch1Res
-argument ch1CheckCall right I64 twoI64
+bind ok ch1Res Int64 ch1Call
+call ch1CheckCall math.equalInt64
+argument ch1CheckCall left Int64 ch1Res
+argument ch1CheckCall right Int64 twoInt64
 run ch1CheckCall
 bind value ch1Ok Bool ch1CheckCall
 branch if condition ch1Ok target ch1OkLabel
@@ -144,13 +144,13 @@ label ch1OkLabel
 
 # findLastCharacterInCString("Hello", 'l') == 3
 call rch1Call findLastCharacterInCString
-argument rch1Call s CNullTerminatedByteString hello
-argument rch1Call c CSignedInt32 lowerL
+argument rch1Call s String hello
+argument rch1Call c Int32 lowerL
 run rch1Call
-bind ok rch1Res CSignedInt64 rch1Call
-call rch1CheckCall math.equalI64
-argument rch1CheckCall left I64 rch1Res
-argument rch1CheckCall right I64 threeI64
+bind ok rch1Res Int64 rch1Call
+call rch1CheckCall math.equalInt64
+argument rch1CheckCall left Int64 rch1Res
+argument rch1CheckCall right Int64 threeInt64
 run rch1CheckCall
 bind value rch1Ok Bool rch1CheckCall
 branch if condition rch1Ok target rch1OkLabel
@@ -159,13 +159,13 @@ label rch1OkLabel
 
 # findSubstringInCString("Hello, World", "lo,") == 3
 call ss1Call findSubstringInCString
-argument ss1Call haystack CNullTerminatedByteString helloComma
-argument ss1Call needle CNullTerminatedByteString lo
+argument ss1Call haystack String helloComma
+argument ss1Call needle String lo
 run ss1Call
-bind ok ss1Res CSignedInt64 ss1Call
-call ss1CheckCall math.equalI64
-argument ss1CheckCall left I64 ss1Res
-argument ss1CheckCall right I64 threeI64
+bind ok ss1Res Int64 ss1Call
+call ss1CheckCall math.equalInt64
+argument ss1CheckCall left Int64 ss1Res
+argument ss1CheckCall right Int64 threeInt64
 run ss1CheckCall
 bind value ss1Ok Bool ss1CheckCall
 branch if condition ss1Ok target ss1OkLabel
@@ -174,13 +174,13 @@ label ss1OkLabel
 
 # findSubstringInCString("Hello, World", "xyz") == -1
 call ss2Call findSubstringInCString
-argument ss2Call haystack CNullTerminatedByteString helloComma
-argument ss2Call needle CNullTerminatedByteString xyz
+argument ss2Call haystack String helloComma
+argument ss2Call needle String xyz
 run ss2Call
-bind ok ss2Res CSignedInt64 ss2Call
-call ss2CheckCall math.equalI64
-argument ss2CheckCall left I64 ss2Res
-argument ss2CheckCall right I64 negOneI64test
+bind ok ss2Res Int64 ss2Call
+call ss2CheckCall math.equalInt64
+argument ss2CheckCall left Int64 ss2Res
+argument ss2CheckCall right Int64 negOneInt64test
 run ss2CheckCall
 bind value ss2Ok Bool ss2CheckCall
 branch if condition ss2Ok target ss2OkLabel
@@ -189,13 +189,13 @@ label ss2OkLabel
 
 # countInitialCStringBytesInAcceptSet("12345abc", "0123456789") == 5
 call sp1Call countInitialCStringBytesInAcceptSet
-argument sp1Call s CNullTerminatedByteString justDigits
-argument sp1Call accept CNullTerminatedByteString digits
+argument sp1Call s String justDigits
+argument sp1Call accept String digits
 run sp1Call
-bind ok sp1Res CByteCount sp1Call
-call sp1CheckCall math.equalI64
-argument sp1CheckCall left I64 sp1Res
-argument sp1CheckCall right I64 fiveLen
+bind ok sp1Res ByteCount sp1Call
+call sp1CheckCall math.equalInt64
+argument sp1CheckCall left Int64 sp1Res
+argument sp1CheckCall right Int64 fiveLen
 run sp1CheckCall
 bind value sp1Ok Bool sp1CheckCall
 branch if condition sp1Ok target sp1OkLabel
@@ -203,29 +203,29 @@ branch else target testFailed
 label sp1OkLabel
 
 # copyCStringToDestinationBuffer hello -> heap buffer, then compareCString it
-storage module immutable bufSize CByteCount 16
+storage module immutable bufSize ByteCount 16
 call alloc1Call c.malloc
-argument alloc1Call size CByteCount bufSize
+argument alloc1Call size ByteCount bufSize
 run alloc1Call
-bind value dest1 COpaqueMemoryAddress alloc1Call
-bind error alloc1Error CSignedInt32 alloc1Call
+bind value dest1 OpaquePointer alloc1Call
+bind error alloc1Error Int32 alloc1Call
 branch error source alloc1Call target alloc1FailedHandler
 defer releaseAlloc1Call c.free dest1
 
 call cc1Call copyCStringToDestinationBuffer
-argument cc1Call dest COpaqueMemoryAddress dest1
-argument cc1Call src CNullTerminatedByteString hello
+argument cc1Call dest OpaquePointer dest1
+argument cc1Call src String hello
 run cc1Call
-ignore ok source cc1Call type CByteCount
+ignore ok source cc1Call type ByteCount
 
 call cc1CmpCall compareCString
-argument cc1CmpCall a COpaqueMemoryAddress dest1
-argument cc1CmpCall b CNullTerminatedByteString hello
+argument cc1CmpCall a OpaquePointer dest1
+argument cc1CmpCall b String hello
 run cc1CmpCall
-bind ok cc1CmpRes CSignedInt32 cc1CmpCall
-call cc1CheckCall math.equalI64
-argument cc1CheckCall left I64 cc1CmpRes
-argument cc1CheckCall right I64 zeroI32
+bind ok cc1CmpRes Int32 cc1CmpCall
+call cc1CheckCall math.equalInt64
+argument cc1CheckCall left Int64 cc1CmpRes
+argument cc1CheckCall right Int64 zeroInt32
 run cc1CheckCall
 bind value cc1Ok Bool cc1CheckCall
 branch if condition cc1Ok target cc1OkLabel
@@ -233,34 +233,34 @@ branch else target testFailed
 label cc1OkLabel
 
 # appendCStringToDestinationBuffer into a buffer that already has "Hello"; append "!" -> "Hello!"
-storage module immutable bufSize2 CByteCount 32
-storage module immutable helloExc CNullTerminatedByteString "Hello!"
-storage module immutable exclSuffix CNullTerminatedByteString "!"
+storage module immutable bufSize2 ByteCount 32
+storage module immutable helloExc String "Hello!"
+storage module immutable exclSuffix String "!"
 call alloc2Call c.malloc
-argument alloc2Call size CByteCount bufSize2
+argument alloc2Call size ByteCount bufSize2
 run alloc2Call
-bind value dest2 COpaqueMemoryAddress alloc2Call
-bind error alloc2Error CSignedInt32 alloc2Call
+bind value dest2 OpaquePointer alloc2Call
+bind error alloc2Error Int32 alloc2Call
 branch error source alloc2Call target alloc2FailedHandler
 defer releaseAlloc2Call c.free dest2
 call seed2Call copyCStringToDestinationBuffer
-argument seed2Call dest COpaqueMemoryAddress dest2
-argument seed2Call src CNullTerminatedByteString hello
+argument seed2Call dest OpaquePointer dest2
+argument seed2Call src String hello
 run seed2Call
-ignore ok source seed2Call type CByteCount
+ignore ok source seed2Call type ByteCount
 call cat2Call appendCStringToDestinationBuffer
-argument cat2Call dest COpaqueMemoryAddress dest2
-argument cat2Call src CNullTerminatedByteString exclSuffix
+argument cat2Call dest OpaquePointer dest2
+argument cat2Call src String exclSuffix
 run cat2Call
-ignore ok source cat2Call type CByteCount
+ignore ok source cat2Call type ByteCount
 call catCmpCall compareCString
-argument catCmpCall a COpaqueMemoryAddress dest2
-argument catCmpCall b CNullTerminatedByteString helloExc
+argument catCmpCall a OpaquePointer dest2
+argument catCmpCall b String helloExc
 run catCmpCall
-bind ok catCmpRes CSignedInt32 catCmpCall
-call catCheckCall math.equalI64
-argument catCheckCall left I64 catCmpRes
-argument catCheckCall right I64 zeroI32
+bind ok catCmpRes Int32 catCmpCall
+call catCheckCall math.equalInt64
+argument catCheckCall left Int64 catCmpRes
+argument catCheckCall right Int64 zeroInt32
 run catCheckCall
 bind value catOk Bool catCheckCall
 branch if condition catOk target catOkLabel
@@ -268,30 +268,30 @@ branch else target testFailed
 label catOkLabel
 
 # copyCStringPrefixToDestinationBuffer hello -> 16-byte buffer, pad rest with zeros.
-storage module immutable sixteenLen CByteCount 16
+storage module immutable sixteenLen ByteCount 16
 call alloc3Call c.malloc
-argument alloc3Call size CByteCount sixteenLen
+argument alloc3Call size ByteCount sixteenLen
 run alloc3Call
-bind value dest3 COpaqueMemoryAddress alloc3Call
-bind error alloc3Error CSignedInt32 alloc3Call
+bind value dest3 OpaquePointer alloc3Call
+bind error alloc3Error Int32 alloc3Call
 branch error source alloc3Call target alloc3FailedHandler
 defer releaseAlloc3Call c.free dest3
 call ncp1Call copyCStringPrefixToDestinationBuffer
-argument ncp1Call dest COpaqueMemoryAddress dest3
-argument ncp1Call src CNullTerminatedByteString hello
-argument ncp1Call n CByteCount sixteenLen
+argument ncp1Call dest OpaquePointer dest3
+argument ncp1Call src String hello
+argument ncp1Call n ByteCount sixteenLen
 run ncp1Call
-ignore ok source ncp1Call type CByteCount
+ignore ok source ncp1Call type ByteCount
 # Verify first 5 bytes are "Hello", rest are NUL.
 call ncpCmpCall compareCStringPrefixBytes
-argument ncpCmpCall a COpaqueMemoryAddress dest3
-argument ncpCmpCall b CNullTerminatedByteString hello
-argument ncpCmpCall n I64 fiveLen
+argument ncpCmpCall a OpaquePointer dest3
+argument ncpCmpCall b String hello
+argument ncpCmpCall n Int64 fiveLen
 run ncpCmpCall
-bind ok ncpCmpRes CSignedInt32 ncpCmpCall
-call ncpCheckCall math.equalI64
-argument ncpCheckCall left I64 ncpCmpRes
-argument ncpCheckCall right I64 zeroI32
+bind ok ncpCmpRes Int32 ncpCmpCall
+call ncpCheckCall math.equalInt64
+argument ncpCheckCall left Int64 ncpCmpRes
+argument ncpCheckCall right Int64 zeroInt32
 run ncpCheckCall
 bind value ncpOk Bool ncpCheckCall
 branch if condition ncpOk target ncpOkLabel
@@ -299,16 +299,16 @@ branch else target testFailed
 label ncpOkLabel
 
 # countInitialCStringBytesNotInRejectSet("hello,world", ",") == 5 (the comma is at index 5)
-storage module immutable helloWorld CNullTerminatedByteString "hello,world"
-storage module immutable commaStr CNullTerminatedByteString ","
+storage module immutable helloWorld String "hello,world"
+storage module immutable commaStr String ","
 call csn1Call countInitialCStringBytesNotInRejectSet
-argument csn1Call s CNullTerminatedByteString helloWorld
-argument csn1Call reject CNullTerminatedByteString commaStr
+argument csn1Call s String helloWorld
+argument csn1Call reject String commaStr
 run csn1Call
-bind ok csn1Res CByteCount csn1Call
-call csn1CheckCall math.equalI64
-argument csn1CheckCall left I64 csn1Res
-argument csn1CheckCall right I64 fiveLen
+bind ok csn1Res ByteCount csn1Call
+call csn1CheckCall math.equalInt64
+argument csn1CheckCall left Int64 csn1Res
+argument csn1CheckCall right Int64 fiveLen
 run csn1CheckCall
 bind value csn1Ok Bool csn1CheckCall
 branch if condition csn1Ok target csn1OkLabel
@@ -316,15 +316,15 @@ branch else target testFailed
 label csn1OkLabel
 
 # findFirstCStringByteInAcceptSet("hello,world", ",.;") == 5
-storage module immutable punctSet CNullTerminatedByteString ",.;"
+storage module immutable punctSet String ",.;"
 call pbk1Call findFirstCStringByteInAcceptSet
-argument pbk1Call s CNullTerminatedByteString helloWorld
-argument pbk1Call accept CNullTerminatedByteString punctSet
+argument pbk1Call s String helloWorld
+argument pbk1Call accept String punctSet
 run pbk1Call
-bind ok pbk1Res CSignedInt64 pbk1Call
-call pbk1CheckCall math.equalI64
-argument pbk1CheckCall left I64 pbk1Res
-argument pbk1CheckCall right I64 fiveLen
+bind ok pbk1Res Int64 pbk1Call
+call pbk1CheckCall math.equalInt64
+argument pbk1CheckCall left Int64 pbk1Res
+argument pbk1CheckCall right Int64 fiveLen
 run pbk1CheckCall
 bind value pbk1Ok Bool pbk1CheckCall
 branch if condition pbk1Ok target pbk1OkLabel
@@ -333,41 +333,41 @@ label pbk1OkLabel
 
 # duplicateCStringIntoOwnedMemory("Hello") returns a heap copy that compareCString's equal to original
 call sd1Call duplicateCStringIntoOwnedMemory
-argument sd1Call s CNullTerminatedByteString hello
+argument sd1Call s String hello
 run sd1Call
-bind ok sd1Res COpaqueMemoryAddress sd1Call
+bind ok sd1Res OpaquePointer sd1Call
 call sd1NullCheckCall pointer.isNull
-argument sd1NullCheckCall pointer COpaqueMemoryAddress sd1Res
+argument sd1NullCheckCall pointer OpaquePointer sd1Res
 run sd1NullCheckCall
 bind value sd1IsNull Bool sd1NullCheckCall
 branch if condition sd1IsNull target testFailed
 call sd1CmpCall compareCString
-argument sd1CmpCall a COpaqueMemoryAddress sd1Res
-argument sd1CmpCall b CNullTerminatedByteString hello
+argument sd1CmpCall a OpaquePointer sd1Res
+argument sd1CmpCall b String hello
 run sd1CmpCall
-bind ok sd1CmpRes CSignedInt32 sd1CmpCall
-call sd1CheckCall math.equalI64
-argument sd1CheckCall left I64 sd1CmpRes
-argument sd1CheckCall right I64 zeroI32
+bind ok sd1CmpRes Int32 sd1CmpCall
+call sd1CheckCall math.equalInt64
+argument sd1CheckCall left Int64 sd1CmpRes
+argument sd1CheckCall right Int64 zeroInt32
 run sd1CheckCall
 bind value sd1Ok Bool sd1CheckCall
 branch if condition sd1Ok target sd1OkLabel
 branch else target testFailed
 label sd1OkLabel
 call sd1FreeCall c.free
-argument sd1FreeCall ptr COpaqueMemoryAddress sd1Res
+argument sd1FreeCall ptr OpaquePointer sd1Res
 run sd1FreeCall
 
 # cstringBeginsWithPrefix("Hello, World", "Hello") == 1
-storage module immutable oneI32trueChk CSignedInt32 1
+storage module immutable oneInt32trueChk Int32 1
 call bw1Call cstringBeginsWithPrefix
-argument bw1Call s CNullTerminatedByteString helloComma
-argument bw1Call prefix CNullTerminatedByteString hello
+argument bw1Call s String helloComma
+argument bw1Call prefix String hello
 run bw1Call
-bind ok bw1Res CSignedInt32 bw1Call
-call bw1CheckCall math.equalI64
-argument bw1CheckCall left I64 bw1Res
-argument bw1CheckCall right I64 oneI32trueChk
+bind ok bw1Res Int32 bw1Call
+call bw1CheckCall math.equalInt64
+argument bw1CheckCall left Int64 bw1Res
+argument bw1CheckCall right Int64 oneInt32trueChk
 run bw1CheckCall
 bind value bw1Ok Bool bw1CheckCall
 branch if condition bw1Ok target bw1OkLabel
@@ -375,15 +375,15 @@ branch else target testFailed
 label bw1OkLabel
 
 # cstringEndsWithSuffix("Hello, World", "World") - need an actual "World" string
-storage module immutable worldOnly CNullTerminatedByteString "World"
+storage module immutable worldOnly String "World"
 call ew1Call cstringEndsWithSuffix
-argument ew1Call s CNullTerminatedByteString helloComma
-argument ew1Call suffix CNullTerminatedByteString worldOnly
+argument ew1Call s String helloComma
+argument ew1Call suffix String worldOnly
 run ew1Call
-bind ok ew1Res CSignedInt32 ew1Call
-call ew1CheckCall math.equalI64
-argument ew1CheckCall left I64 ew1Res
-argument ew1CheckCall right I64 oneI32trueChk
+bind ok ew1Res Int32 ew1Call
+call ew1CheckCall math.equalInt64
+argument ew1CheckCall left Int64 ew1Res
+argument ew1CheckCall right Int64 oneInt32trueChk
 run ew1CheckCall
 bind value ew1Ok Bool ew1CheckCall
 branch if condition ew1Ok target ew1OkLabel
@@ -391,37 +391,37 @@ branch else target testFailed
 label ew1OkLabel
 
 # appendCStringPrefixToDestinationBuffer: seed with "Hi", append "there!" max 4 -> "Hithere"
-storage module immutable bufSizeNc CByteCount 32
-storage module immutable hi CNullTerminatedByteString "Hi"
-storage module immutable thereMore CNullTerminatedByteString "there!"
-storage module immutable expectedHiThere CNullTerminatedByteString "Hither"
-storage module immutable fourNc CByteCount 4
+storage module immutable bufSizeNc ByteCount 32
+storage module immutable hi String "Hi"
+storage module immutable thereMore String "there!"
+storage module immutable expectedHiThere String "Hither"
+storage module immutable fourNc ByteCount 4
 call allocNcCall c.malloc
-argument allocNcCall size CByteCount bufSizeNc
+argument allocNcCall size ByteCount bufSizeNc
 run allocNcCall
-bind value destNc COpaqueMemoryAddress allocNcCall
-bind error allocNcError CSignedInt32 allocNcCall
+bind value destNc OpaquePointer allocNcCall
+bind error allocNcError Int32 allocNcCall
 branch error source allocNcCall target allocNcFailedHandler
 defer releaseAllocNcCall c.free destNc
 call seedNcCall copyCStringToDestinationBuffer
-argument seedNcCall dest COpaqueMemoryAddress destNc
-argument seedNcCall src CNullTerminatedByteString hi
+argument seedNcCall dest OpaquePointer destNc
+argument seedNcCall src String hi
 run seedNcCall
-ignore ok source seedNcCall type CByteCount
+ignore ok source seedNcCall type ByteCount
 call ncatCall appendCStringPrefixToDestinationBuffer
-argument ncatCall dest COpaqueMemoryAddress destNc
-argument ncatCall src CNullTerminatedByteString thereMore
-argument ncatCall n CByteCount fourNc
+argument ncatCall dest OpaquePointer destNc
+argument ncatCall src String thereMore
+argument ncatCall n ByteCount fourNc
 run ncatCall
-ignore ok source ncatCall type CByteCount
+ignore ok source ncatCall type ByteCount
 call ncCmpCall compareCString
-argument ncCmpCall a COpaqueMemoryAddress destNc
-argument ncCmpCall b CNullTerminatedByteString expectedHiThere
+argument ncCmpCall a OpaquePointer destNc
+argument ncCmpCall b String expectedHiThere
 run ncCmpCall
-bind ok ncCmpRes CSignedInt32 ncCmpCall
-call ncCheckCall math.equalI64
-argument ncCheckCall left I64 ncCmpRes
-argument ncCheckCall right I64 zeroI32
+bind ok ncCmpRes Int32 ncCmpCall
+call ncCheckCall math.equalInt64
+argument ncCheckCall left Int64 ncCmpRes
+argument ncCheckCall right Int64 zeroInt32
 run ncCheckCall
 bind value ncOk Bool ncCheckCall
 branch if condition ncOk target ncOkLabel
@@ -435,25 +435,25 @@ label ncOkLabel
 # happy-path assertion above; these target the alternate branch.
 # ============================================================
 
-storage module immutable emptyStr CNullTerminatedByteString ""
-storage module immutable helloPlus CNullTerminatedByteString "Hello!"
-storage module immutable helloFull CNullTerminatedByteString "Hello, World"
-storage module immutable helloA CNullTerminatedByteString "abc"
-storage module immutable helloAd CNullTerminatedByteString "abd"
-storage module immutable helloAb CNullTerminatedByteString "ab"
-storage module immutable upperZ CSignedInt32 90
-storage module immutable zeroByteCount CByteCount 0
-storage module immutable sixI64case I64 6
-storage module immutable zeroI32trueChk CSignedInt32 0
+storage module immutable emptyStr String ""
+storage module immutable helloPlus String "Hello!"
+storage module immutable helloFull String "Hello, World"
+storage module immutable helloA String "abc"
+storage module immutable helloAd String "abd"
+storage module immutable helloAb String "ab"
+storage module immutable upperZ Int32 90
+storage module immutable zeroByteCount ByteCount 0
+storage module immutable sixInt64case Int64 6
+storage module immutable zeroInt32trueChk Int32 0
 
 # stringByteLength("") == 0 (empty boundary)
 call lenEmptyCall stringByteLength
-argument lenEmptyCall s CNullTerminatedByteString emptyStr
+argument lenEmptyCall s String emptyStr
 run lenEmptyCall
-bind ok lenEmptyRes CByteCount lenEmptyCall
-call lenEmptyCheckCall math.equalI64
-argument lenEmptyCheckCall left I64 lenEmptyRes
-argument lenEmptyCheckCall right I64 zeroByteCount
+bind ok lenEmptyRes ByteCount lenEmptyCall
+call lenEmptyCheckCall math.equalInt64
+argument lenEmptyCheckCall left Int64 lenEmptyRes
+argument lenEmptyCheckCall right Int64 zeroByteCount
 run lenEmptyCheckCall
 bind value lenEmptyOk Bool lenEmptyCheckCall
 branch if condition lenEmptyOk target lenEmptyOkLabel
@@ -462,12 +462,12 @@ label lenEmptyOkLabel
 
 # stringByteLength("Hello!") == 6
 call lenSixCall stringByteLength
-argument lenSixCall s CNullTerminatedByteString helloPlus
+argument lenSixCall s String helloPlus
 run lenSixCall
-bind ok lenSixRes CByteCount lenSixCall
-call lenSixCheckCall math.equalI64
-argument lenSixCheckCall left I64 lenSixRes
-argument lenSixCheckCall right I64 sixI64case
+bind ok lenSixRes ByteCount lenSixCall
+call lenSixCheckCall math.equalInt64
+argument lenSixCheckCall left Int64 lenSixRes
+argument lenSixCheckCall right Int64 sixInt64case
 run lenSixCheckCall
 bind value lenSixOk Bool lenSixCheckCall
 branch if condition lenSixOk target lenSixOkLabel
@@ -476,13 +476,13 @@ label lenSixOkLabel
 
 # compareCString("abc", "abd") < 0 (lexicographic order)
 call cmpLessCall compareCString
-argument cmpLessCall a CNullTerminatedByteString helloA
-argument cmpLessCall b CNullTerminatedByteString helloAd
+argument cmpLessCall a String helloA
+argument cmpLessCall b String helloAd
 run cmpLessCall
-bind ok cmpLessRes CSignedInt32 cmpLessCall
-call cmpLessCheckCall math.lessThanI64
-argument cmpLessCheckCall left I64 cmpLessRes
-argument cmpLessCheckCall right I64 zeroI32trueChk
+bind ok cmpLessRes Int32 cmpLessCall
+call cmpLessCheckCall math.lessThanInt64
+argument cmpLessCheckCall left Int64 cmpLessRes
+argument cmpLessCheckCall right Int64 zeroInt32trueChk
 run cmpLessCheckCall
 bind value cmpLessOk Bool cmpLessCheckCall
 branch if condition cmpLessOk target cmpLessOkLabel
@@ -491,13 +491,13 @@ label cmpLessOkLabel
 
 # compareCString("abd", "abc") > 0 (reverse direction)
 call cmpGreaterCall compareCString
-argument cmpGreaterCall a CNullTerminatedByteString helloAd
-argument cmpGreaterCall b CNullTerminatedByteString helloA
+argument cmpGreaterCall a String helloAd
+argument cmpGreaterCall b String helloA
 run cmpGreaterCall
-bind ok cmpGreaterRes CSignedInt32 cmpGreaterCall
-call cmpGreaterCheckCall math.greaterThanI64
-argument cmpGreaterCheckCall left I64 cmpGreaterRes
-argument cmpGreaterCheckCall right I64 zeroI32trueChk
+bind ok cmpGreaterRes Int32 cmpGreaterCall
+call cmpGreaterCheckCall math.greaterThanInt64
+argument cmpGreaterCheckCall left Int64 cmpGreaterRes
+argument cmpGreaterCheckCall right Int64 zeroInt32trueChk
 run cmpGreaterCheckCall
 bind value cmpGreaterOk Bool cmpGreaterCheckCall
 branch if condition cmpGreaterOk target cmpGreaterOkLabel
@@ -506,13 +506,13 @@ label cmpGreaterOkLabel
 
 # compareCString("abc", "ab") > 0 (longer string greater when prefix-matches)
 call cmpLongerCall compareCString
-argument cmpLongerCall a CNullTerminatedByteString helloA
-argument cmpLongerCall b CNullTerminatedByteString helloAb
+argument cmpLongerCall a String helloA
+argument cmpLongerCall b String helloAb
 run cmpLongerCall
-bind ok cmpLongerRes CSignedInt32 cmpLongerCall
-call cmpLongerCheckCall math.greaterThanI64
-argument cmpLongerCheckCall left I64 cmpLongerRes
-argument cmpLongerCheckCall right I64 zeroI32trueChk
+bind ok cmpLongerRes Int32 cmpLongerCall
+call cmpLongerCheckCall math.greaterThanInt64
+argument cmpLongerCheckCall left Int64 cmpLongerRes
+argument cmpLongerCheckCall right Int64 zeroInt32trueChk
 run cmpLongerCheckCall
 bind value cmpLongerOk Bool cmpLongerCheckCall
 branch if condition cmpLongerOk target cmpLongerOkLabel
@@ -521,14 +521,14 @@ label cmpLongerOkLabel
 
 # compareCStringPrefixBytes(a, b, 0) == 0 (zero-length is always equal)
 call cmpZeroNCall compareCStringPrefixBytes
-argument cmpZeroNCall a CNullTerminatedByteString hello
-argument cmpZeroNCall b CNullTerminatedByteString xyz
-argument cmpZeroNCall n CByteCount zeroByteCount
+argument cmpZeroNCall a String hello
+argument cmpZeroNCall b String xyz
+argument cmpZeroNCall n ByteCount zeroByteCount
 run cmpZeroNCall
-bind ok cmpZeroNRes CSignedInt32 cmpZeroNCall
-call cmpZeroNCheckCall math.equalI64
-argument cmpZeroNCheckCall left I64 cmpZeroNRes
-argument cmpZeroNCheckCall right I64 zeroI32trueChk
+bind ok cmpZeroNRes Int32 cmpZeroNCall
+call cmpZeroNCheckCall math.equalInt64
+argument cmpZeroNCheckCall left Int64 cmpZeroNRes
+argument cmpZeroNCheckCall right Int64 zeroInt32trueChk
 run cmpZeroNCheckCall
 bind value cmpZeroNOk Bool cmpZeroNCheckCall
 branch if condition cmpZeroNOk target cmpZeroNOkLabel
@@ -537,13 +537,13 @@ label cmpZeroNOkLabel
 
 # findFirstCharacterInCString("Hello", 'Z') == -1 (not found)
 call findCharNotFoundCall findFirstCharacterInCString
-argument findCharNotFoundCall s CNullTerminatedByteString hello
-argument findCharNotFoundCall c CSignedInt32 upperZ
+argument findCharNotFoundCall s String hello
+argument findCharNotFoundCall c Int32 upperZ
 run findCharNotFoundCall
-bind ok findCharNotFoundRes CSignedInt64 findCharNotFoundCall
-call findCharNotFoundCheckCall math.equalI64
-argument findCharNotFoundCheckCall left I64 findCharNotFoundRes
-argument findCharNotFoundCheckCall right I64 negOneI64test
+bind ok findCharNotFoundRes Int64 findCharNotFoundCall
+call findCharNotFoundCheckCall math.equalInt64
+argument findCharNotFoundCheckCall left Int64 findCharNotFoundRes
+argument findCharNotFoundCheckCall right Int64 negOneInt64test
 run findCharNotFoundCheckCall
 bind value findCharNotFoundOk Bool findCharNotFoundCheckCall
 branch if condition findCharNotFoundOk target findCharNotFoundOkLabel
@@ -552,13 +552,13 @@ label findCharNotFoundOkLabel
 
 # findLastCharacterInCString("Hello", 'Z') == -1 (not found)
 call findLastNotFoundCall findLastCharacterInCString
-argument findLastNotFoundCall s CNullTerminatedByteString hello
-argument findLastNotFoundCall c CSignedInt32 upperZ
+argument findLastNotFoundCall s String hello
+argument findLastNotFoundCall c Int32 upperZ
 run findLastNotFoundCall
-bind ok findLastNotFoundRes CSignedInt64 findLastNotFoundCall
-call findLastNotFoundCheckCall math.equalI64
-argument findLastNotFoundCheckCall left I64 findLastNotFoundRes
-argument findLastNotFoundCheckCall right I64 negOneI64test
+bind ok findLastNotFoundRes Int64 findLastNotFoundCall
+call findLastNotFoundCheckCall math.equalInt64
+argument findLastNotFoundCheckCall left Int64 findLastNotFoundRes
+argument findLastNotFoundCheckCall right Int64 negOneInt64test
 run findLastNotFoundCheckCall
 bind value findLastNotFoundOk Bool findLastNotFoundCheckCall
 branch if condition findLastNotFoundOk target findLastNotFoundOkLabel
@@ -567,13 +567,13 @@ label findLastNotFoundOkLabel
 
 # findSubstringInCString("Hello", "Hello") == 0 (needle at start, full match)
 call findSubAtStartCall findSubstringInCString
-argument findSubAtStartCall haystack CNullTerminatedByteString hello
-argument findSubAtStartCall needle CNullTerminatedByteString helloCopy
+argument findSubAtStartCall haystack String hello
+argument findSubAtStartCall needle String helloCopy
 run findSubAtStartCall
-bind ok findSubAtStartRes CSignedInt64 findSubAtStartCall
-call findSubAtStartCheckCall math.equalI64
-argument findSubAtStartCheckCall left I64 findSubAtStartRes
-argument findSubAtStartCheckCall right I64 zeroI32trueChk
+bind ok findSubAtStartRes Int64 findSubAtStartCall
+call findSubAtStartCheckCall math.equalInt64
+argument findSubAtStartCheckCall left Int64 findSubAtStartRes
+argument findSubAtStartCheckCall right Int64 zeroInt32trueChk
 run findSubAtStartCheckCall
 bind value findSubAtStartOk Bool findSubAtStartCheckCall
 branch if condition findSubAtStartOk target findSubAtStartOkLabel
@@ -582,13 +582,13 @@ label findSubAtStartOkLabel
 
 # cstringBeginsWithPrefix("Hello", "Hello, World") == 0 (prefix longer than string)
 call beginsLongerCall cstringBeginsWithPrefix
-argument beginsLongerCall s CNullTerminatedByteString hello
-argument beginsLongerCall prefix CNullTerminatedByteString helloFull
+argument beginsLongerCall s String hello
+argument beginsLongerCall prefix String helloFull
 run beginsLongerCall
-bind ok beginsLongerRes CSignedInt32 beginsLongerCall
-call beginsLongerCheckCall math.equalI64
-argument beginsLongerCheckCall left I64 beginsLongerRes
-argument beginsLongerCheckCall right I64 zeroI32trueChk
+bind ok beginsLongerRes Int32 beginsLongerCall
+call beginsLongerCheckCall math.equalInt64
+argument beginsLongerCheckCall left Int64 beginsLongerRes
+argument beginsLongerCheckCall right Int64 zeroInt32trueChk
 run beginsLongerCheckCall
 bind value beginsLongerOk Bool beginsLongerCheckCall
 branch if condition beginsLongerOk target beginsLongerOkLabel
@@ -597,13 +597,13 @@ label beginsLongerOkLabel
 
 # cstringEndsWithSuffix("Hello, World", "Hello") == 0 (matches prefix, not suffix)
 call endsMismatchCall cstringEndsWithSuffix
-argument endsMismatchCall s CNullTerminatedByteString helloComma
-argument endsMismatchCall suffix CNullTerminatedByteString hello
+argument endsMismatchCall s String helloComma
+argument endsMismatchCall suffix String hello
 run endsMismatchCall
-bind ok endsMismatchRes CSignedInt32 endsMismatchCall
-call endsMismatchCheckCall math.equalI64
-argument endsMismatchCheckCall left I64 endsMismatchRes
-argument endsMismatchCheckCall right I64 zeroI32trueChk
+bind ok endsMismatchRes Int32 endsMismatchCall
+call endsMismatchCheckCall math.equalInt64
+argument endsMismatchCheckCall left Int64 endsMismatchRes
+argument endsMismatchCheckCall right Int64 zeroInt32trueChk
 run endsMismatchCheckCall
 bind value endsMismatchOk Bool endsMismatchCheckCall
 branch if condition endsMismatchOk target endsMismatchOkLabel
@@ -613,24 +613,24 @@ label endsMismatchOkLabel
 # All assertions hold. Emit "OK" via console.writeLine â€” uniform
 # with the other stdlib smokes, references the runtime console
 # handle, and surfaces a typed ConsoleWriteFailed if stdout fails.
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 
 storage module immutable exitOk ExitCode 0
 return ok exitOk
 
 label testFailed
-storage module immutable exitFail CSignedInt32 1
+storage module immutable exitFail Int32 1
 makeError testFailure MainError.StringSmokeAssertionFailed exitFail
 return error testFailure
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

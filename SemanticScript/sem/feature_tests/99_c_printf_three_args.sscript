@@ -5,16 +5,16 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation makeTen
-output operation makeTen Result CSignedInt64 Void
+output operation makeTen Result Int64 Void
 memory makeTen heap no
 async makeTen no
 purpose operation makeTen "Return 10 as a bind. Used to make the printf arg a bind rather than const."
 invariant operation makeTen "Returns 10."
 label startMakeTen
-storage module immutable tenValue CSignedInt64 10
+storage module immutable tenValue Int64 10
 return ok tenValue
 
 operation main
@@ -27,28 +27,28 @@ async main no
 purpose operation main "Exercise c.printf with 3 args: format + 2 i64 args. One arg is a bind, the other is a const."
 invariant operation main "Output is 'x=10, y=20\\n'."
 label startMain
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
-storage module immutable xyFormat CNullTerminatedByteString "x=%lld, y=%lld\n"
-storage module immutable twentyValue CSignedInt64 20
+storage module immutable xyFormat String "x=%lld, y=%lld\n"
+storage module immutable twentyValue Int64 20
 
 call makeTenCall makeTen
 run makeTenCall
-bind ok xValue CSignedInt64 makeTenCall
+bind ok xValue Int64 makeTenCall
 
 call printfCall c.printf
-argument printfCall format CNullTerminatedByteString xyFormat
-argument printfCall first CSignedInt64 xValue
-argument printfCall second CSignedInt64 twentyValue
+argument printfCall format String xyFormat
+argument printfCall first Int64 xValue
+argument printfCall second Int64 twentyValue
 run printfCall
-ignore ok source printfCall type CSignedInt32
+ignore ok source printfCall type Int32
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

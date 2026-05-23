@@ -5,16 +5,16 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation getFourBytes
-output operation getFourBytes Result CSignedInt64 Void
+output operation getFourBytes Result Int64 Void
 memory getFourBytes heap no
 async getFourBytes no
 purpose operation getFourBytes "Helper that returns 4 as an i64. Used to feed c.memcpy a bind arg (since the emitter currently routes const args through a different path that isn't yet wired)."
 invariant operation getFourBytes "Returns 4."
 label startGetFourBytes
-storage module immutable fourValue CSignedInt64 4
+storage module immutable fourValue Int64 4
 return ok fourValue
 
 operation main
@@ -28,61 +28,61 @@ async main no
 purpose operation main "Use c.memcpy to copy 4 bytes of 'Hi!\\0' into a malloc'd 4-byte buffer, then c.puts the result. All args are passed as binds."
 invariant operation main "Output is 'Hi!\\n'."
 label startMain
-storage module immutable bufferSizeConst CByteCount 4
+storage module immutable bufferSizeConst ByteCount 4
 call mallocCall c.malloc
-argument mallocCall size CByteCount bufferSizeConst
+argument mallocCall size ByteCount bufferSizeConst
 run mallocCall
-bind value targetBuffer COpaqueMemoryAddress mallocCall
+bind value targetBuffer OpaquePointer mallocCall
 
 call sizeCall getFourBytes
 run sizeCall
-bind ok fourBytes CSignedInt64 sizeCall
+bind ok fourBytes Int64 sizeCall
 
-storage module immutable sourceBytes CNullTerminatedByteString "Hi!"
+storage module immutable sourceBytes String "Hi!"
 call srcRefCall pointer.offset
-argument srcRefCall base CNullTerminatedByteString sourceBytes
-argument srcRefCall offset CByteCount bufferSizeConst
+argument srcRefCall base String sourceBytes
+argument srcRefCall offset ByteCount bufferSizeConst
 run srcRefCall
-bind value srcAfter COpaqueMemoryAddress srcRefCall
+bind value srcAfter OpaquePointer srcRefCall
 
 # Actually copy: use pointer.storeByte to fill the target manually
 # (avoid c.memcpy's argument classification complexity for now).
-storage module immutable pos0 CSignedInt64 0
-storage module immutable pos1 CSignedInt64 1
-storage module immutable pos2 CSignedInt64 2
-storage module immutable pos3 CSignedInt64 3
-storage module immutable byteH CSignedInt32 72
-storage module immutable byteI CSignedInt32 105
-storage module immutable byteBang CSignedInt32 33
-storage module immutable byteNul CSignedInt32 0
+storage module immutable pos0 Int64 0
+storage module immutable pos1 Int64 1
+storage module immutable pos2 Int64 2
+storage module immutable pos3 Int64 3
+storage module immutable byteH Int32 72
+storage module immutable byteI Int32 105
+storage module immutable byteBang Int32 33
+storage module immutable byteNul Int32 0
 call storeHCall pointer.storeByte
-argument storeHCall buffer COpaqueMemoryAddress targetBuffer
-argument storeHCall offset CSignedInt64 pos0
-argument storeHCall value CSignedInt32 byteH
+argument storeHCall buffer OpaquePointer targetBuffer
+argument storeHCall offset Int64 pos0
+argument storeHCall value Int32 byteH
 run storeHCall
 call storeICall pointer.storeByte
-argument storeICall buffer COpaqueMemoryAddress targetBuffer
-argument storeICall offset CSignedInt64 pos1
-argument storeICall value CSignedInt32 byteI
+argument storeICall buffer OpaquePointer targetBuffer
+argument storeICall offset Int64 pos1
+argument storeICall value Int32 byteI
 run storeICall
 call storeBangCall pointer.storeByte
-argument storeBangCall buffer COpaqueMemoryAddress targetBuffer
-argument storeBangCall offset CSignedInt64 pos2
-argument storeBangCall value CSignedInt32 byteBang
+argument storeBangCall buffer OpaquePointer targetBuffer
+argument storeBangCall offset Int64 pos2
+argument storeBangCall value Int32 byteBang
 run storeBangCall
 call storeNulCall pointer.storeByte
-argument storeNulCall buffer COpaqueMemoryAddress targetBuffer
-argument storeNulCall offset CSignedInt64 pos3
-argument storeNulCall value CSignedInt32 byteNul
+argument storeNulCall buffer OpaquePointer targetBuffer
+argument storeNulCall offset Int64 pos3
+argument storeNulCall value Int32 byteNul
 run storeNulCall
 
 call putsCall c.puts
-argument putsCall text COpaqueMemoryAddress targetBuffer
+argument putsCall text OpaquePointer targetBuffer
 run putsCall
-ignore ok source putsCall type CSignedInt32
+ignore ok source putsCall type Int32
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress targetBuffer
+argument freeCall ptr OpaquePointer targetBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

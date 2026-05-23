@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -16,33 +16,33 @@ async main no
 purpose operation main "c.sqrt(16.0) == 4.0 and c.fabs(-2.5) == 2.5. Exercises math libc passthroughs from user code (with c.malloc as a walker trigger)."
 invariant operation main "Output is '4.000000\\n2.500000\\n'."
 label startMain
-storage module immutable sixteenFloat CFloat64 16.0
-storage module immutable negTwoAndHalf CFloat64 -2.5
-storage module immutable triggerSize CByteCount 1
+storage module immutable sixteenFloat Float64 16.0
+storage module immutable negTwoAndHalf Float64 -2.5
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 call sqrtCall c.sqrt
-argument sqrtCall value CFloat64 sixteenFloat
+argument sqrtCall value Float64 sixteenFloat
 run sqrtCall
-bind value sqrtResult CFloat64 sqrtCall
+bind value sqrtResult Float64 sqrtCall
 call write1Call console.writeFloatLine
 argument write1Call console Console console
-argument write1Call value CFloat64 sqrtResult
+argument write1Call value Float64 sqrtResult
 run write1Call
 ignore void source write1Call
 call fabsCall c.fabs
-argument fabsCall value CFloat64 negTwoAndHalf
+argument fabsCall value Float64 negTwoAndHalf
 run fabsCall
-bind value fabsResult CFloat64 fabsCall
+bind value fabsResult Float64 fabsCall
 call write2Call console.writeFloatLine
 argument write2Call console Console console
-argument write2Call value CFloat64 fabsResult
+argument write2Call value Float64 fabsResult
 run write2Call
 ignore void source write2Call
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

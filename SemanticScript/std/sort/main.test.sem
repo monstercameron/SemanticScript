@@ -56,62 +56,62 @@ invariant operation main "Smoke fails closed: malloc failure surfaces MemoryAllo
 
 label startMain
 
-storage module immutable allocationByteSize CByteCount 8
+storage module immutable allocationByteSize ByteCount 8
 call allocateBufferCall c.malloc
-argument allocateBufferCall size CByteCount allocationByteSize
+argument allocateBufferCall size ByteCount allocationByteSize
 run allocateBufferCall
-bind value workBuffer COpaqueMemoryAddress allocateBufferCall
-bind error allocationFailureError CSignedInt32 allocateBufferCall
+bind value workBuffer OpaquePointer allocateBufferCall
+bind error allocationFailureError Int32 allocateBufferCall
 branch error source allocateBufferCall target heapAllocationFailedHandler
 defer releaseAllocateBufferCall c.free workBuffer
 
-storage module immutable byteFiveValue CSignedInt32 5
-storage module immutable byteTwoValue CSignedInt32 2
-storage module immutable byteEightValue CSignedInt32 8
-storage module immutable byteOneValue CSignedInt32 1
-storage module immutable byteNineValue CSignedInt32 9
-storage module immutable offsetZero CByteCount 0
-storage module immutable offsetOne CByteCount 1
-storage module immutable offsetTwo CByteCount 2
-storage module immutable offsetThree CByteCount 3
-storage module immutable offsetFour CByteCount 4
-storage module immutable totalByteLength CByteCount 5
+storage module immutable byteFiveValue Int32 5
+storage module immutable byteTwoValue Int32 2
+storage module immutable byteEightValue Int32 8
+storage module immutable byteOneValue Int32 1
+storage module immutable byteNineValue Int32 9
+storage module immutable offsetZero ByteCount 0
+storage module immutable offsetOne ByteCount 1
+storage module immutable offsetTwo ByteCount 2
+storage module immutable offsetThree ByteCount 3
+storage module immutable offsetFour ByteCount 4
+storage module immutable totalByteLength ByteCount 5
 
 call storeByteAtOffsetZeroCall pointer.storeByte
-argument storeByteAtOffsetZeroCall buffer COpaqueMemoryAddress workBuffer
-argument storeByteAtOffsetZeroCall offset CByteCount offsetZero
-argument storeByteAtOffsetZeroCall value CSignedInt64 byteFiveValue
+argument storeByteAtOffsetZeroCall buffer OpaquePointer workBuffer
+argument storeByteAtOffsetZeroCall offset ByteCount offsetZero
+argument storeByteAtOffsetZeroCall value Int64 byteFiveValue
 run storeByteAtOffsetZeroCall
 call storeByteAtOffsetOneCall pointer.storeByte
-argument storeByteAtOffsetOneCall buffer COpaqueMemoryAddress workBuffer
-argument storeByteAtOffsetOneCall offset CByteCount offsetOne
-argument storeByteAtOffsetOneCall value CSignedInt64 byteTwoValue
+argument storeByteAtOffsetOneCall buffer OpaquePointer workBuffer
+argument storeByteAtOffsetOneCall offset ByteCount offsetOne
+argument storeByteAtOffsetOneCall value Int64 byteTwoValue
 run storeByteAtOffsetOneCall
 call storeByteAtOffsetTwoCall pointer.storeByte
-argument storeByteAtOffsetTwoCall buffer COpaqueMemoryAddress workBuffer
-argument storeByteAtOffsetTwoCall offset CByteCount offsetTwo
-argument storeByteAtOffsetTwoCall value CSignedInt64 byteEightValue
+argument storeByteAtOffsetTwoCall buffer OpaquePointer workBuffer
+argument storeByteAtOffsetTwoCall offset ByteCount offsetTwo
+argument storeByteAtOffsetTwoCall value Int64 byteEightValue
 run storeByteAtOffsetTwoCall
 call storeByteAtOffsetThreeCall pointer.storeByte
-argument storeByteAtOffsetThreeCall buffer COpaqueMemoryAddress workBuffer
-argument storeByteAtOffsetThreeCall offset CByteCount offsetThree
-argument storeByteAtOffsetThreeCall value CSignedInt64 byteOneValue
+argument storeByteAtOffsetThreeCall buffer OpaquePointer workBuffer
+argument storeByteAtOffsetThreeCall offset ByteCount offsetThree
+argument storeByteAtOffsetThreeCall value Int64 byteOneValue
 run storeByteAtOffsetThreeCall
 call storeByteAtOffsetFourCall pointer.storeByte
-argument storeByteAtOffsetFourCall buffer COpaqueMemoryAddress workBuffer
-argument storeByteAtOffsetFourCall offset CByteCount offsetFour
-argument storeByteAtOffsetFourCall value CSignedInt64 byteNineValue
+argument storeByteAtOffsetFourCall buffer OpaquePointer workBuffer
+argument storeByteAtOffsetFourCall offset ByteCount offsetFour
+argument storeByteAtOffsetFourCall value Int64 byteNineValue
 run storeByteAtOffsetFourCall
 
 call runBubbleSortCall sortBytesWithBubbleSortInPlace
-argument runBubbleSortCall byteBuffer COpaqueMemoryAddress workBuffer
-argument runBubbleSortCall byteCount CByteCount totalByteLength
+argument runBubbleSortCall byteBuffer OpaquePointer workBuffer
+argument runBubbleSortCall byteCount ByteCount totalByteLength
 run runBubbleSortCall
-ignore value source runBubbleSortCall type CByteCount
+ignore value source runBubbleSortCall type ByteCount
 
 call checkSortedCall areBytesSortedAscending
-argument checkSortedCall byteBuffer CNullTerminatedByteString workBuffer
-argument checkSortedCall byteCount CByteCount totalByteLength
+argument checkSortedCall byteBuffer String workBuffer
+argument checkSortedCall byteCount ByteCount totalByteLength
 run checkSortedCall
 bind value sortedAscendingResult Bool checkSortedCall
 branch if condition sortedAscendingResult target sortedHolds
@@ -125,17 +125,17 @@ label sortedHolds
 # fresh writes for the insertion-sort + reverse-sort scenarios.
 # ============================================================
 
-storage module immutable byteSevenValue CSignedInt32 7
-storage module immutable byteThreeValue CSignedInt32 3
-storage module immutable byteFourValue CSignedInt32 4
-storage module immutable byteSixValue CSignedInt32 6
-storage module immutable emptyCount CByteCount 0
-storage module immutable oneCount CByteCount 1
+storage module immutable byteSevenValue Int32 7
+storage module immutable byteThreeValue Int32 3
+storage module immutable byteFourValue Int32 4
+storage module immutable byteSixValue Int32 6
+storage module immutable emptyCount ByteCount 0
+storage module immutable oneCount ByteCount 1
 
 # Predicate: empty buffer is trivially sorted (byteCount=0 returns true).
 call sortedEmptyCall areBytesSortedAscending
-argument sortedEmptyCall byteBuffer CNullTerminatedByteString workBuffer
-argument sortedEmptyCall byteCount CByteCount emptyCount
+argument sortedEmptyCall byteBuffer String workBuffer
+argument sortedEmptyCall byteCount ByteCount emptyCount
 run sortedEmptyCall
 bind value sortedEmptyResult Bool sortedEmptyCall
 branch if condition sortedEmptyResult target sortedEmptyHolds
@@ -144,8 +144,8 @@ label sortedEmptyHolds
 
 # Predicate: single-byte buffer is trivially sorted.
 call sortedSingleCall areBytesSortedAscending
-argument sortedSingleCall byteBuffer CNullTerminatedByteString workBuffer
-argument sortedSingleCall byteCount CByteCount oneCount
+argument sortedSingleCall byteBuffer String workBuffer
+argument sortedSingleCall byteCount ByteCount oneCount
 run sortedSingleCall
 bind value sortedSingleResult Bool sortedSingleCall
 branch if condition sortedSingleResult target sortedSingleHolds
@@ -155,35 +155,35 @@ label sortedSingleHolds
 # Refill workBuffer with reverse-sorted {9,7,6,4,3} and verify the
 # predicate correctly returns FALSE.
 call refillReverseAtZeroCall pointer.storeByte
-argument refillReverseAtZeroCall buffer COpaqueMemoryAddress workBuffer
-argument refillReverseAtZeroCall offset CByteCount offsetZero
-argument refillReverseAtZeroCall value CSignedInt64 byteNineValue
+argument refillReverseAtZeroCall buffer OpaquePointer workBuffer
+argument refillReverseAtZeroCall offset ByteCount offsetZero
+argument refillReverseAtZeroCall value Int64 byteNineValue
 run refillReverseAtZeroCall
 call refillReverseAtOneCall pointer.storeByte
-argument refillReverseAtOneCall buffer COpaqueMemoryAddress workBuffer
-argument refillReverseAtOneCall offset CByteCount offsetOne
-argument refillReverseAtOneCall value CSignedInt64 byteSevenValue
+argument refillReverseAtOneCall buffer OpaquePointer workBuffer
+argument refillReverseAtOneCall offset ByteCount offsetOne
+argument refillReverseAtOneCall value Int64 byteSevenValue
 run refillReverseAtOneCall
 call refillReverseAtTwoCall pointer.storeByte
-argument refillReverseAtTwoCall buffer COpaqueMemoryAddress workBuffer
-argument refillReverseAtTwoCall offset CByteCount offsetTwo
-argument refillReverseAtTwoCall value CSignedInt64 byteSixValue
+argument refillReverseAtTwoCall buffer OpaquePointer workBuffer
+argument refillReverseAtTwoCall offset ByteCount offsetTwo
+argument refillReverseAtTwoCall value Int64 byteSixValue
 run refillReverseAtTwoCall
 call refillReverseAtThreeCall pointer.storeByte
-argument refillReverseAtThreeCall buffer COpaqueMemoryAddress workBuffer
-argument refillReverseAtThreeCall offset CByteCount offsetThree
-argument refillReverseAtThreeCall value CSignedInt64 byteFourValue
+argument refillReverseAtThreeCall buffer OpaquePointer workBuffer
+argument refillReverseAtThreeCall offset ByteCount offsetThree
+argument refillReverseAtThreeCall value Int64 byteFourValue
 run refillReverseAtThreeCall
 call refillReverseAtFourCall pointer.storeByte
-argument refillReverseAtFourCall buffer COpaqueMemoryAddress workBuffer
-argument refillReverseAtFourCall offset CByteCount offsetFour
-argument refillReverseAtFourCall value CSignedInt64 byteThreeValue
+argument refillReverseAtFourCall buffer OpaquePointer workBuffer
+argument refillReverseAtFourCall offset ByteCount offsetFour
+argument refillReverseAtFourCall value Int64 byteThreeValue
 run refillReverseAtFourCall
 
 # Predicate on reverse-sorted should return false.
 call sortedReverseCall areBytesSortedAscending
-argument sortedReverseCall byteBuffer CNullTerminatedByteString workBuffer
-argument sortedReverseCall byteCount CByteCount totalByteLength
+argument sortedReverseCall byteBuffer String workBuffer
+argument sortedReverseCall byteCount ByteCount totalByteLength
 run sortedReverseCall
 bind value sortedReverseResult Bool sortedReverseCall
 branch if condition sortedReverseResult target smokeAssertionFailed
@@ -193,32 +193,32 @@ label reverseDetected
 
 # Now insertion-sort the reverse-sorted buffer and verify it becomes ascending.
 call runInsertionSortCall sortBytesWithInsertionSortInPlace
-argument runInsertionSortCall byteBuffer COpaqueMemoryAddress workBuffer
-argument runInsertionSortCall byteCount CByteCount totalByteLength
+argument runInsertionSortCall byteBuffer OpaquePointer workBuffer
+argument runInsertionSortCall byteCount ByteCount totalByteLength
 run runInsertionSortCall
-ignore value source runInsertionSortCall type CByteCount
+ignore value source runInsertionSortCall type ByteCount
 
 call checkInsertionSortedCall areBytesSortedAscending
-argument checkInsertionSortedCall byteBuffer CNullTerminatedByteString workBuffer
-argument checkInsertionSortedCall byteCount CByteCount totalByteLength
+argument checkInsertionSortedCall byteBuffer String workBuffer
+argument checkInsertionSortedCall byteCount ByteCount totalByteLength
 run checkInsertionSortedCall
 bind value insertionSortedResult Bool checkInsertionSortedCall
 branch if condition insertionSortedResult target insertionSortedHolds
 branch else target smokeAssertionFailed
 label insertionSortedHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

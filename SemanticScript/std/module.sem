@@ -7,9 +7,11 @@ moduleDoesNotOwn standard "Child module implementation bodies, executable entry 
 invariant module standard "Each child module resolves through `std/<module>/main.sem`; this relay has no runtime entry operation."
 
 exportConstant standard standardModuleVersionText
-storage module immutable standardModuleVersionText CNullTerminatedByteString "standard 0.1"
+storage module immutable standardModuleVersionText String "standard 0.1"
 
 import array standard.array
+import buffer standard.buffer
+import bytes standard.bytes
 import assert standard.assert
 import bit standard.bit
 import bool standard.bool
@@ -32,11 +34,15 @@ import limits standard.limits
 import math standard.math
 import math_float standard.math_float
 import memory standard.memory
+import list standard.list
+import map standard.map
 import numeric standard.numeric
 import process standard.process
 import random standard.random
 import signal standard.signal
 import signal_more standard.signal_more
+import slice standard.slice
+import smallList standard.small_list
 import sqlite standard.sqlite
 import sort standard.sort
 import stddef standard.stddef

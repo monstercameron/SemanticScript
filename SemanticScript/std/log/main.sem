@@ -26,9 +26,9 @@
 # Surface — three layers:
 #
 #   1. Low level (pure file I/O):
-#        openLogFile(filePath)              -> CSignedInt32  status
-#        writeLogLine(linePayload)          -> CSignedInt32  status
-#        closeLogFile()                     -> CSignedInt32  status
+#        openLogFile(filePath)              -> Int32  status
+#        writeLogLine(linePayload)          -> Int32  status
+#        closeLogFile()                     -> Int32  status
 #      `linePayload` is written verbatim followed by a single '\n'.
 #      Callers are responsible for producing valid JSON if they want
 #      structured-log semantics; layer 2 wraps that for the common case.
@@ -36,14 +36,14 @@
 #   2. Envelope helpers (caller picks level + event tag):
 #        logEventStructured(levelText,
 #                            eventText,
-#                            messageText)   -> CSignedInt32  status
+#                            messageText)   -> Int32  status
 #      Emits {"level":"<level>","event":"<event>","message":"<message>"}
 #      with each field passed through escapeJsonString.
 #
 #   3. Convenience shorthands (level baked in):
-#        logInfo(messageText)               -> CSignedInt32
-#        logWarn(messageText)               -> CSignedInt32
-#        logError(messageText)              -> CSignedInt32
+#        logInfo(messageText)               -> Int32
+#        logWarn(messageText)               -> Int32
+#        logError(messageText)              -> Int32
 #      All three call logEventStructured with eventText="app".
 #
 # Path defaults: openLogFile is the canonical entry. The package does
@@ -54,7 +54,7 @@
 # pull mkdir into this module — apps create the dir via
 # http.ensureDirectory or its console equivalent before opening).
 #
-# Failure model: every operation returns CSignedInt32 status using the
+# Failure model: every operation returns Int32 status using the
 # logStatusOk / logStatusErrConfig / logStatusErrEngine sentinels. An
 # unopened file handle isn't an error for writeLogLine — the call is a
 # silent no-op (logStatusOk) so apps that haven't opened a file yet
@@ -68,7 +68,7 @@ moduleDoesNotOwn standard.log "Log rotation, multi-process log shipping, network
 invariant module standard.log "Single in-process FILE handle stored in `sharedLogFileHandle`; every writeLogLine fflushes so a crash loses at most one line; envelope helpers always emit a balanced JSON object terminated by '\\n'."
 moduleSecurity standard.log "JSON string escapes are applied to all caller-provided text via escapeJsonString so a log message can never break out of the message field and inject extra fields into the audit trail (log injection defence)."
 
-type LogFile CFileHandle
+type LogFile FileHandle
 typeInvariant LogFile "Opaque file-handle alias for the append-mode FILE* held by openLogFile. NULL means 'not opened yet' — writeLogLine silently no-ops in that state."
 exportType standard.log LogFile
 
@@ -88,15 +88,15 @@ exportConstant standard.log logStatusErrEngine
 exportConstant standard.log logLineMaximumByteCount
 exportConstant standard.log logMessageMaximumByteCount
 
-storage module immutable logModuleVersionText CNullTerminatedByteString "standard.log 0.1"
+storage module immutable logModuleVersionText String "standard.log 0.1"
 
 # Status code sentinels. Mirror the http runtime's SS_HTTP_OK /
 # SS_HTTP_ERR_CONFIG / SS_HTTP_ERR_ENGINE so an app that already
 # branches on those values from http calls can reuse the same control
 # flow for log calls without translating sentinels.
-storage module immutable logStatusOk CSignedInt32 0
-storage module immutable logStatusErrConfig CSignedInt32 1
-storage module immutable logStatusErrEngine CSignedInt32 3
+storage module immutable logStatusOk Int32 0
+storage module immutable logStatusErrConfig Int32 1
+storage module immutable logStatusErrEngine Int32 3
 
 # Buffer caps. logLineMaximumByteCount is the snprintf buffer used by
 # the envelope formatters (logEventStructured and friends). 4 KiB is the
@@ -105,25 +105,25 @@ storage module immutable logStatusErrEngine CSignedInt32 3
 # is the per-field cap used by escapeJsonString so the envelope's
 # message:"..." field cannot grow past the line buffer minus the
 # envelope chrome.
-storage module immutable logLineMaximumByteCount CSignedInt64 4096
-storage module immutable logMessageMaximumByteCount CSignedInt64 3072
+storage module immutable logLineMaximumByteCount Int64 4096
+storage module immutable logMessageMaximumByteCount Int64 3072
 
 # Shared FILE* set by openLogFile and read by every writer. NULL until
 # openLogFile lands a successful c.fopen.
 storage module mutable sharedLogFileHandle LogFile 0
 
 # Internal scratch / formatting helpers.
-storage module immutable logAppendModeText CNullTerminatedByteString "ab"
-storage module immutable logNewlineText CNullTerminatedByteString "\n"
+storage module immutable logAppendModeText String "ab"
+storage module immutable logNewlineText String "\n"
 # Envelope: {"level":"<l>","event":"<e>","message":"<m>"}
-storage module immutable logEnvelopeFormat CNullTerminatedByteString "{\"level\":\"%s\",\"event\":\"%s\",\"message\":\"%s\"}"
-storage module immutable logInfoLevelText CNullTerminatedByteString "info"
-storage module immutable logWarnLevelText CNullTerminatedByteString "warn"
-storage module immutable logErrorLevelText CNullTerminatedByteString "error"
-storage module immutable logDefaultEventText CNullTerminatedByteString "app"
+storage module immutable logEnvelopeFormat String "{\"level\":\"%s\",\"event\":\"%s\",\"message\":\"%s\"}"
+storage module immutable logInfoLevelText String "info"
+storage module immutable logWarnLevelText String "warn"
+storage module immutable logErrorLevelText String "error"
+storage module immutable logDefaultEventText String "app"
 
 # Sentinel pointer for "no file opened yet" comparisons.
-storage module immutable logZeroI64 CSignedInt64 0
+storage module immutable logZeroInt64 Int64 0
 
 # ============================================================
 # Capabilities — scoped grants for the libc + filesystem effects the
@@ -169,8 +169,8 @@ purpose operation logHeapFree "Authority to c.free the per-line envelope buffer 
 # ============================================================
 
 operation openLogFile
-input operation openLogFile filePath CNullTerminatedByteString
-output operation openLogFile CSignedInt32
+input operation openLogFile filePath String
+output operation openLogFile Int32
 # Effect order is `effect OP ACCESS SCOPE`. c.fopen in append mode triggers
 # multiple low-level effects; we declare each one so the lint's
 # missingEffectDeclaration walk against the libc_registry shape is silent.
@@ -193,9 +193,9 @@ invariant operation openLogFile "On success returns logStatusOk and sharedLogFil
 
 label startOpenLogFile
 
-storage local immutable openLogPathNullCheckSentinel CNullTerminatedByteString ""
+storage local immutable openLogPathNullCheckSentinel String ""
 call openLogPathIsNullCall pointer.isNull
-argument openLogPathIsNullCall pointer COpaqueMemoryAddress filePath
+argument openLogPathIsNullCall pointer OpaquePointer filePath
 run openLogPathIsNullCall
 bind value openLogPathIsNull Bool openLogPathIsNullCall
 branch if condition openLogPathIsNull target openLogPathMissing
@@ -203,7 +203,7 @@ branch if condition openLogPathIsNull target openLogPathMissing
 # If a handle is already live, close it before replacing — keeps the
 # stdio file table from leaking across re-opens.
 call openLogPriorHandleCall pointer.isNull
-argument openLogPriorHandleCall pointer COpaqueMemoryAddress sharedLogFileHandle
+argument openLogPriorHandleCall pointer OpaquePointer sharedLogFileHandle
 run openLogPriorHandleCall
 bind value openLogPriorHandleIsNull Bool openLogPriorHandleCall
 branch if condition openLogPriorHandleIsNull target openLogNoPriorHandle
@@ -211,18 +211,18 @@ branch if condition openLogPriorHandleIsNull target openLogNoPriorHandle
 call openLogCloseExistingCall c.fclose
 argument openLogCloseExistingCall stream LogFile sharedLogFileHandle
 run openLogCloseExistingCall
-ignore ok source openLogCloseExistingCall type CSignedInt32
+ignore ok source openLogCloseExistingCall type Int32
 
 label openLogNoPriorHandle
 
 call openLogFopenCall c.fopen
-argument openLogFopenCall filename CNullTerminatedByteString filePath
-argument openLogFopenCall mode CNullTerminatedByteString logAppendModeText
+argument openLogFopenCall filename String filePath
+argument openLogFopenCall mode String logAppendModeText
 run openLogFopenCall
 bind value openLogFreshHandle LogFile openLogFopenCall
 
 call openLogFreshHandleIsNullCall pointer.isNull
-argument openLogFreshHandleIsNullCall pointer COpaqueMemoryAddress openLogFreshHandle
+argument openLogFreshHandleIsNullCall pointer OpaquePointer openLogFreshHandle
 run openLogFreshHandleIsNullCall
 bind value openLogFopenFailed Bool openLogFreshHandleIsNullCall
 branch if condition openLogFopenFailed target openLogFopenFailure
@@ -241,7 +241,7 @@ return value logStatusErrEngine
 # ============================================================
 
 operation closeLogFile
-output operation closeLogFile CSignedInt32
+output operation closeLogFile Int32
 effect closeLogFile close filesystem
 effect closeLogFile close file
 effect closeLogFile readWrite memory.buffer
@@ -256,7 +256,7 @@ invariant operation closeLogFile "After a successful close the shared handle is 
 label startCloseLogFile
 
 call closeLogHandleIsNullCall pointer.isNull
-argument closeLogHandleIsNullCall pointer COpaqueMemoryAddress sharedLogFileHandle
+argument closeLogHandleIsNullCall pointer OpaquePointer sharedLogFileHandle
 run closeLogHandleIsNullCall
 bind value closeLogHandleIsNull Bool closeLogHandleIsNullCall
 branch if condition closeLogHandleIsNull target closeLogAlreadyClosed
@@ -264,7 +264,7 @@ branch if condition closeLogHandleIsNull target closeLogAlreadyClosed
 call closeLogFcloseCall c.fclose
 argument closeLogFcloseCall stream LogFile sharedLogFileHandle
 run closeLogFcloseCall
-ignore ok source closeLogFcloseCall type CSignedInt32
+ignore ok source closeLogFcloseCall type Int32
 
 storage local immutable closeLogNullHandle LogFile 0
 set storage sharedLogFileHandle closeLogNullHandle
@@ -278,8 +278,8 @@ return value logStatusOk
 # ============================================================
 
 operation writeLogLine
-input operation writeLogLine linePayload CNullTerminatedByteString
-output operation writeLogLine CSignedInt32
+input operation writeLogLine linePayload String
+output operation writeLogLine Int32
 effect writeLogLine readWrite filesystem
 effect writeLogLine readWrite memory.buffer
 effect writeLogLine write console.stdout
@@ -294,33 +294,33 @@ invariant operation writeLogLine "fflush is always called after the put so a cra
 label startWriteLogLine
 
 call writeLogHandleIsNullCall pointer.isNull
-argument writeLogHandleIsNullCall pointer COpaqueMemoryAddress sharedLogFileHandle
+argument writeLogHandleIsNullCall pointer OpaquePointer sharedLogFileHandle
 run writeLogHandleIsNullCall
 bind value writeLogHandleIsNull Bool writeLogHandleIsNullCall
 branch if condition writeLogHandleIsNull target writeLogNoHandleNoOp
 
 call writeLogPayloadNullCheckCall pointer.isNull
-argument writeLogPayloadNullCheckCall pointer COpaqueMemoryAddress linePayload
+argument writeLogPayloadNullCheckCall pointer OpaquePointer linePayload
 run writeLogPayloadNullCheckCall
 bind value writeLogPayloadIsNull Bool writeLogPayloadNullCheckCall
 branch if condition writeLogPayloadIsNull target writeLogEmptyPayloadNoOp
 
 call writeLogFputsLineCall c.fputs
-argument writeLogFputsLineCall string CNullTerminatedByteString linePayload
+argument writeLogFputsLineCall string String linePayload
 argument writeLogFputsLineCall stream LogFile sharedLogFileHandle
 run writeLogFputsLineCall
-ignore ok source writeLogFputsLineCall type CSignedInt32
+ignore ok source writeLogFputsLineCall type Int32
 
 call writeLogFputsNewlineCall c.fputs
-argument writeLogFputsNewlineCall string CNullTerminatedByteString logNewlineText
+argument writeLogFputsNewlineCall string String logNewlineText
 argument writeLogFputsNewlineCall stream LogFile sharedLogFileHandle
 run writeLogFputsNewlineCall
-ignore ok source writeLogFputsNewlineCall type CSignedInt32
+ignore ok source writeLogFputsNewlineCall type Int32
 
 call writeLogFflushCall c.fflush
 argument writeLogFflushCall stream LogFile sharedLogFileHandle
 run writeLogFflushCall
-ignore ok source writeLogFflushCall type CSignedInt32
+ignore ok source writeLogFflushCall type Int32
 
 return value logStatusOk
 
@@ -342,10 +342,10 @@ return value logStatusOk
 # breaks JSON parsing) and bounded (one byte in, one byte out).
 
 operation escapeJsonString
-input operation escapeJsonString sourceText CNullTerminatedByteString
-input operation escapeJsonString destinationBuffer COpaqueMemoryAddress
-input operation escapeJsonString destinationCapacity CSignedInt64
-output operation escapeJsonString CSignedInt32
+input operation escapeJsonString sourceText String
+input operation escapeJsonString destinationBuffer OpaquePointer
+input operation escapeJsonString destinationCapacity Int64
+output operation escapeJsonString Int32
 effect escapeJsonString readWrite memory.buffer
 useCapability escapeJsonString logMemoryBufferReadWrite
 memory escapeJsonString heap auto
@@ -362,69 +362,69 @@ label startEscapeJsonString
 # always a clean NUL — never a half-written escape. A no-op `%s` snprintf
 # (the previous implementation) let any `"` in the text close the JSON
 # string and inject sibling fields into the audit trail.
-storage local immutable escapeZeroValue CSignedInt64 0
-storage local immutable escapeOneStep CSignedInt64 1
-storage local immutable escapeTwoStep CSignedInt64 2
-storage local immutable escapeQuoteByteCode CSignedInt64 34
-storage local immutable escapeBackslashByteCode CSignedInt64 92
-storage local immutable escapeSpaceByteCode CSignedInt64 32
-storage local immutable escapeByteRoleAdjustment CSignedInt64 256
+storage local immutable escapeZeroValue Int64 0
+storage local immutable escapeOneStep Int64 1
+storage local immutable escapeTwoStep Int64 2
+storage local immutable escapeQuoteByteCode Int64 34
+storage local immutable escapeBackslashByteCode Int64 92
+storage local immutable escapeSpaceByteCode Int64 32
+storage local immutable escapeByteRoleAdjustment Int64 256
 
 # Null source behaves as the empty string: jump straight to the NUL write.
 call escapeSourceIsNullCall pointer.isNull
-argument escapeSourceIsNullCall pointer COpaqueMemoryAddress sourceText
+argument escapeSourceIsNullCall pointer OpaquePointer sourceText
 run escapeSourceIsNullCall
 bind value escapeSourceIsNull Bool escapeSourceIsNullCall
 
-memory escapeJsonString mutable escapeSourceCursor I64 0
-memory escapeJsonString mutable escapeDestCursor I64 0
+memory escapeJsonString mutable escapeSourceCursor Int64 0
+memory escapeJsonString mutable escapeDestCursor Int64 0
 # Reserve one byte for the terminating NUL: writes must keep
 # escapeDestCursor <= destinationCapacity - 1.
-call escapeCapacityLimitCall math.subtractI64
-argument escapeCapacityLimitCall left I64 destinationCapacity
-argument escapeCapacityLimitCall right I64 escapeOneStep
+call escapeCapacityLimitCall math.subtractInt64
+argument escapeCapacityLimitCall left Int64 destinationCapacity
+argument escapeCapacityLimitCall right Int64 escapeOneStep
 run escapeCapacityLimitCall
-bind value escapeCapacityLimit I64 escapeCapacityLimitCall
+bind value escapeCapacityLimit Int64 escapeCapacityLimitCall
 branch if condition escapeSourceIsNull target escapeTerminate
 
 label escapeLoopHead
 call escapeLoadSrcCall pointer.loadByte
-argument escapeLoadSrcCall buffer COpaqueMemoryAddress sourceText
-argument escapeLoadSrcCall offset CByteCount escapeSourceCursor
+argument escapeLoadSrcCall buffer OpaquePointer sourceText
+argument escapeLoadSrcCall offset ByteCount escapeSourceCursor
 run escapeLoadSrcCall
-bind value escapeRawSrcByte I8 escapeLoadSrcCall
-call escapeSrcIsNulCall math.equalI64
-argument escapeSrcIsNulCall left I64 escapeRawSrcByte
-argument escapeSrcIsNulCall right I64 escapeZeroValue
+bind value escapeRawSrcByte Int8 escapeLoadSrcCall
+call escapeSrcIsNulCall math.equalInt64
+argument escapeSrcIsNulCall left Int64 escapeRawSrcByte
+argument escapeSrcIsNulCall right Int64 escapeZeroValue
 run escapeSrcIsNulCall
 bind value escapeSrcIsNul Bool escapeSrcIsNulCall
 branch if condition escapeSrcIsNul target escapeTerminate
 # Normalize to unsigned 0..255 so high bytes don't sign-extend.
-call escapeShiftByteCall math.addI64
-argument escapeShiftByteCall left I64 escapeRawSrcByte
-argument escapeShiftByteCall right I64 escapeByteRoleAdjustment
+call escapeShiftByteCall math.addInt64
+argument escapeShiftByteCall left Int64 escapeRawSrcByte
+argument escapeShiftByteCall right Int64 escapeByteRoleAdjustment
 run escapeShiftByteCall
-bind value escapeShiftedByte I64 escapeShiftByteCall
-call escapeNormByteCall math.moduloI64
-argument escapeNormByteCall left I64 escapeShiftedByte
-argument escapeNormByteCall right I64 escapeByteRoleAdjustment
+bind value escapeShiftedByte Int64 escapeShiftByteCall
+call escapeNormByteCall math.moduloInt64
+argument escapeNormByteCall left Int64 escapeShiftedByte
+argument escapeNormByteCall right Int64 escapeByteRoleAdjustment
 run escapeNormByteCall
-bind value escapeNormByte I64 escapeNormByteCall
-call escapeIsQuoteCall math.equalI64
-argument escapeIsQuoteCall left I64 escapeNormByte
-argument escapeIsQuoteCall right I64 escapeQuoteByteCode
+bind value escapeNormByte Int64 escapeNormByteCall
+call escapeIsQuoteCall math.equalInt64
+argument escapeIsQuoteCall left Int64 escapeNormByte
+argument escapeIsQuoteCall right Int64 escapeQuoteByteCode
 run escapeIsQuoteCall
 bind value escapeIsQuote Bool escapeIsQuoteCall
 branch if condition escapeIsQuote target escapeEmitQuote
-call escapeIsBackslashCall math.equalI64
-argument escapeIsBackslashCall left I64 escapeNormByte
-argument escapeIsBackslashCall right I64 escapeBackslashByteCode
+call escapeIsBackslashCall math.equalInt64
+argument escapeIsBackslashCall left Int64 escapeNormByte
+argument escapeIsBackslashCall right Int64 escapeBackslashByteCode
 run escapeIsBackslashCall
 bind value escapeIsBackslash Bool escapeIsBackslashCall
 branch if condition escapeIsBackslash target escapeEmitBackslash
-call escapeIsControlCall math.lessThanI64
-argument escapeIsControlCall left I64 escapeNormByte
-argument escapeIsControlCall right I64 escapeSpaceByteCode
+call escapeIsControlCall math.lessThanInt64
+argument escapeIsControlCall left Int64 escapeNormByte
+argument escapeIsControlCall right Int64 escapeSpaceByteCode
 run escapeIsControlCall
 bind value escapeIsControl Bool escapeIsControlCall
 branch if condition escapeIsControl target escapeEmitSpace
@@ -432,152 +432,152 @@ branch else target escapeEmitPlain
 
 # Plain byte (one output byte): need destCursor < capacityLimit.
 label escapeEmitPlain
-call escapePlainRoomCall math.lessThanI64
-argument escapePlainRoomCall left I64 escapeDestCursor
-argument escapePlainRoomCall right I64 escapeCapacityLimit
+call escapePlainRoomCall math.lessThanInt64
+argument escapePlainRoomCall left Int64 escapeDestCursor
+argument escapePlainRoomCall right Int64 escapeCapacityLimit
 run escapePlainRoomCall
 bind value escapePlainHasRoom Bool escapePlainRoomCall
 branch if condition escapePlainHasRoom target escapeWritePlain
 branch else target escapeTerminate
 label escapeWritePlain
 call escapeStorePlainCall pointer.storeByte
-argument escapeStorePlainCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStorePlainCall offset CByteCount escapeDestCursor
-argument escapeStorePlainCall value CSignedInt64 escapeNormByte
+argument escapeStorePlainCall buffer OpaquePointer destinationBuffer
+argument escapeStorePlainCall offset ByteCount escapeDestCursor
+argument escapeStorePlainCall value Int64 escapeNormByte
 run escapeStorePlainCall
-call escapePlainAdvanceCall math.addI64
-argument escapePlainAdvanceCall left I64 escapeDestCursor
-argument escapePlainAdvanceCall right I64 escapeOneStep
+call escapePlainAdvanceCall math.addInt64
+argument escapePlainAdvanceCall left Int64 escapeDestCursor
+argument escapePlainAdvanceCall right Int64 escapeOneStep
 run escapePlainAdvanceCall
-bind value escapeDestAfterPlain I64 escapePlainAdvanceCall
+bind value escapeDestAfterPlain Int64 escapePlainAdvanceCall
 set memory escapeDestCursor escapeDestAfterPlain
 jump target escapeAdvanceSource
 
 # Control byte folded to a single space (one output byte).
 label escapeEmitSpace
-call escapeSpaceRoomCall math.lessThanI64
-argument escapeSpaceRoomCall left I64 escapeDestCursor
-argument escapeSpaceRoomCall right I64 escapeCapacityLimit
+call escapeSpaceRoomCall math.lessThanInt64
+argument escapeSpaceRoomCall left Int64 escapeDestCursor
+argument escapeSpaceRoomCall right Int64 escapeCapacityLimit
 run escapeSpaceRoomCall
 bind value escapeSpaceHasRoom Bool escapeSpaceRoomCall
 branch if condition escapeSpaceHasRoom target escapeWriteSpace
 branch else target escapeTerminate
 label escapeWriteSpace
 call escapeStoreSpaceCall pointer.storeByte
-argument escapeStoreSpaceCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStoreSpaceCall offset CByteCount escapeDestCursor
-argument escapeStoreSpaceCall value CSignedInt64 escapeSpaceByteCode
+argument escapeStoreSpaceCall buffer OpaquePointer destinationBuffer
+argument escapeStoreSpaceCall offset ByteCount escapeDestCursor
+argument escapeStoreSpaceCall value Int64 escapeSpaceByteCode
 run escapeStoreSpaceCall
-call escapeSpaceAdvanceCall math.addI64
-argument escapeSpaceAdvanceCall left I64 escapeDestCursor
-argument escapeSpaceAdvanceCall right I64 escapeOneStep
+call escapeSpaceAdvanceCall math.addInt64
+argument escapeSpaceAdvanceCall left Int64 escapeDestCursor
+argument escapeSpaceAdvanceCall right Int64 escapeOneStep
 run escapeSpaceAdvanceCall
-bind value escapeDestAfterSpace I64 escapeSpaceAdvanceCall
+bind value escapeDestAfterSpace Int64 escapeSpaceAdvanceCall
 set memory escapeDestCursor escapeDestAfterSpace
 jump target escapeAdvanceSource
 
 # Quote -> \" (two output bytes): need destCursor + 2 <= capacityLimit.
 label escapeEmitQuote
-call escapeQuoteRoomEndCall math.addI64
-argument escapeQuoteRoomEndCall left I64 escapeDestCursor
-argument escapeQuoteRoomEndCall right I64 escapeTwoStep
+call escapeQuoteRoomEndCall math.addInt64
+argument escapeQuoteRoomEndCall left Int64 escapeDestCursor
+argument escapeQuoteRoomEndCall right Int64 escapeTwoStep
 run escapeQuoteRoomEndCall
-bind value escapeQuoteRoomEnd I64 escapeQuoteRoomEndCall
-call escapeQuoteRoomCall math.lessThanOrEqualI64
-argument escapeQuoteRoomCall left I64 escapeQuoteRoomEnd
-argument escapeQuoteRoomCall right I64 escapeCapacityLimit
+bind value escapeQuoteRoomEnd Int64 escapeQuoteRoomEndCall
+call escapeQuoteRoomCall math.lessThanOrEqualInt64
+argument escapeQuoteRoomCall left Int64 escapeQuoteRoomEnd
+argument escapeQuoteRoomCall right Int64 escapeCapacityLimit
 run escapeQuoteRoomCall
 bind value escapeQuoteHasRoom Bool escapeQuoteRoomCall
 branch if condition escapeQuoteHasRoom target escapeWriteQuote
 branch else target escapeTerminate
 label escapeWriteQuote
 call escapeStoreQuoteBackslashCall pointer.storeByte
-argument escapeStoreQuoteBackslashCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStoreQuoteBackslashCall offset CByteCount escapeDestCursor
-argument escapeStoreQuoteBackslashCall value CSignedInt64 escapeBackslashByteCode
+argument escapeStoreQuoteBackslashCall buffer OpaquePointer destinationBuffer
+argument escapeStoreQuoteBackslashCall offset ByteCount escapeDestCursor
+argument escapeStoreQuoteBackslashCall value Int64 escapeBackslashByteCode
 run escapeStoreQuoteBackslashCall
-call escapeQuoteAdvanceFirstCall math.addI64
-argument escapeQuoteAdvanceFirstCall left I64 escapeDestCursor
-argument escapeQuoteAdvanceFirstCall right I64 escapeOneStep
+call escapeQuoteAdvanceFirstCall math.addInt64
+argument escapeQuoteAdvanceFirstCall left Int64 escapeDestCursor
+argument escapeQuoteAdvanceFirstCall right Int64 escapeOneStep
 run escapeQuoteAdvanceFirstCall
-bind value escapeDestAfterQuoteBackslash I64 escapeQuoteAdvanceFirstCall
+bind value escapeDestAfterQuoteBackslash Int64 escapeQuoteAdvanceFirstCall
 set memory escapeDestCursor escapeDestAfterQuoteBackslash
 call escapeStoreQuoteCharCall pointer.storeByte
-argument escapeStoreQuoteCharCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStoreQuoteCharCall offset CByteCount escapeDestCursor
-argument escapeStoreQuoteCharCall value CSignedInt64 escapeQuoteByteCode
+argument escapeStoreQuoteCharCall buffer OpaquePointer destinationBuffer
+argument escapeStoreQuoteCharCall offset ByteCount escapeDestCursor
+argument escapeStoreQuoteCharCall value Int64 escapeQuoteByteCode
 run escapeStoreQuoteCharCall
-call escapeQuoteAdvanceSecondCall math.addI64
-argument escapeQuoteAdvanceSecondCall left I64 escapeDestCursor
-argument escapeQuoteAdvanceSecondCall right I64 escapeOneStep
+call escapeQuoteAdvanceSecondCall math.addInt64
+argument escapeQuoteAdvanceSecondCall left Int64 escapeDestCursor
+argument escapeQuoteAdvanceSecondCall right Int64 escapeOneStep
 run escapeQuoteAdvanceSecondCall
-bind value escapeDestAfterQuoteChar I64 escapeQuoteAdvanceSecondCall
+bind value escapeDestAfterQuoteChar Int64 escapeQuoteAdvanceSecondCall
 set memory escapeDestCursor escapeDestAfterQuoteChar
 jump target escapeAdvanceSource
 
 # Backslash -> \\ (two output bytes): need destCursor + 2 <= capacityLimit.
 label escapeEmitBackslash
-call escapeBackslashRoomEndCall math.addI64
-argument escapeBackslashRoomEndCall left I64 escapeDestCursor
-argument escapeBackslashRoomEndCall right I64 escapeTwoStep
+call escapeBackslashRoomEndCall math.addInt64
+argument escapeBackslashRoomEndCall left Int64 escapeDestCursor
+argument escapeBackslashRoomEndCall right Int64 escapeTwoStep
 run escapeBackslashRoomEndCall
-bind value escapeBackslashRoomEnd I64 escapeBackslashRoomEndCall
-call escapeBackslashRoomCall math.lessThanOrEqualI64
-argument escapeBackslashRoomCall left I64 escapeBackslashRoomEnd
-argument escapeBackslashRoomCall right I64 escapeCapacityLimit
+bind value escapeBackslashRoomEnd Int64 escapeBackslashRoomEndCall
+call escapeBackslashRoomCall math.lessThanOrEqualInt64
+argument escapeBackslashRoomCall left Int64 escapeBackslashRoomEnd
+argument escapeBackslashRoomCall right Int64 escapeCapacityLimit
 run escapeBackslashRoomCall
 bind value escapeBackslashHasRoom Bool escapeBackslashRoomCall
 branch if condition escapeBackslashHasRoom target escapeWriteBackslash
 branch else target escapeTerminate
 label escapeWriteBackslash
 call escapeStoreBackslashFirstCall pointer.storeByte
-argument escapeStoreBackslashFirstCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStoreBackslashFirstCall offset CByteCount escapeDestCursor
-argument escapeStoreBackslashFirstCall value CSignedInt64 escapeBackslashByteCode
+argument escapeStoreBackslashFirstCall buffer OpaquePointer destinationBuffer
+argument escapeStoreBackslashFirstCall offset ByteCount escapeDestCursor
+argument escapeStoreBackslashFirstCall value Int64 escapeBackslashByteCode
 run escapeStoreBackslashFirstCall
-call escapeBackslashAdvanceFirstCall math.addI64
-argument escapeBackslashAdvanceFirstCall left I64 escapeDestCursor
-argument escapeBackslashAdvanceFirstCall right I64 escapeOneStep
+call escapeBackslashAdvanceFirstCall math.addInt64
+argument escapeBackslashAdvanceFirstCall left Int64 escapeDestCursor
+argument escapeBackslashAdvanceFirstCall right Int64 escapeOneStep
 run escapeBackslashAdvanceFirstCall
-bind value escapeDestAfterBackslashFirst I64 escapeBackslashAdvanceFirstCall
+bind value escapeDestAfterBackslashFirst Int64 escapeBackslashAdvanceFirstCall
 set memory escapeDestCursor escapeDestAfterBackslashFirst
 call escapeStoreBackslashSecondCall pointer.storeByte
-argument escapeStoreBackslashSecondCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStoreBackslashSecondCall offset CByteCount escapeDestCursor
-argument escapeStoreBackslashSecondCall value CSignedInt64 escapeBackslashByteCode
+argument escapeStoreBackslashSecondCall buffer OpaquePointer destinationBuffer
+argument escapeStoreBackslashSecondCall offset ByteCount escapeDestCursor
+argument escapeStoreBackslashSecondCall value Int64 escapeBackslashByteCode
 run escapeStoreBackslashSecondCall
-call escapeBackslashAdvanceSecondCall math.addI64
-argument escapeBackslashAdvanceSecondCall left I64 escapeDestCursor
-argument escapeBackslashAdvanceSecondCall right I64 escapeOneStep
+call escapeBackslashAdvanceSecondCall math.addInt64
+argument escapeBackslashAdvanceSecondCall left Int64 escapeDestCursor
+argument escapeBackslashAdvanceSecondCall right Int64 escapeOneStep
 run escapeBackslashAdvanceSecondCall
-bind value escapeDestAfterBackslashSecond I64 escapeBackslashAdvanceSecondCall
+bind value escapeDestAfterBackslashSecond Int64 escapeBackslashAdvanceSecondCall
 set memory escapeDestCursor escapeDestAfterBackslashSecond
 jump target escapeAdvanceSource
 
 label escapeAdvanceSource
-call escapeAdvanceSourceCursorCall math.addI64
-argument escapeAdvanceSourceCursorCall left I64 escapeSourceCursor
-argument escapeAdvanceSourceCursorCall right I64 escapeOneStep
+call escapeAdvanceSourceCursorCall math.addInt64
+argument escapeAdvanceSourceCursorCall left Int64 escapeSourceCursor
+argument escapeAdvanceSourceCursorCall right Int64 escapeOneStep
 run escapeAdvanceSourceCursorCall
-bind value escapeNextSourceCursor I64 escapeAdvanceSourceCursorCall
+bind value escapeNextSourceCursor Int64 escapeAdvanceSourceCursorCall
 set memory escapeSourceCursor escapeNextSourceCursor
 jump target escapeLoopHead
 
 label escapeTerminate
 # Only write the NUL when the buffer has at least one byte; a zero
 # capacity must not be touched.
-call escapeCanTerminateCall math.greaterThanI64
-argument escapeCanTerminateCall left I64 destinationCapacity
-argument escapeCanTerminateCall right I64 escapeZeroValue
+call escapeCanTerminateCall math.greaterThanInt64
+argument escapeCanTerminateCall left Int64 destinationCapacity
+argument escapeCanTerminateCall right Int64 escapeZeroValue
 run escapeCanTerminateCall
 bind value escapeCanTerminate Bool escapeCanTerminateCall
 branch if condition escapeCanTerminate target escapeWriteTerminator
 return value logStatusOk
 label escapeWriteTerminator
 call escapeStoreNulCall pointer.storeByte
-argument escapeStoreNulCall buffer COpaqueMemoryAddress destinationBuffer
-argument escapeStoreNulCall offset CByteCount escapeDestCursor
-argument escapeStoreNulCall value CSignedInt64 escapeZeroValue
+argument escapeStoreNulCall buffer OpaquePointer destinationBuffer
+argument escapeStoreNulCall offset ByteCount escapeDestCursor
+argument escapeStoreNulCall value Int64 escapeZeroValue
 run escapeStoreNulCall
 return value logStatusOk
 
@@ -586,10 +586,10 @@ return value logStatusOk
 # ============================================================
 
 operation logEventStructured
-input operation logEventStructured levelText CNullTerminatedByteString
-input operation logEventStructured eventText CNullTerminatedByteString
-input operation logEventStructured messageText CNullTerminatedByteString
-output operation logEventStructured CSignedInt32
+input operation logEventStructured levelText String
+input operation logEventStructured eventText String
+input operation logEventStructured messageText String
+output operation logEventStructured Int32
 effect logEventStructured allocate heap
 effect logEventStructured free heap
 effect logEventStructured readWrite memory.buffer
@@ -607,40 +607,40 @@ label startLogEventStructured
 
 # Scratch for the escaped message + scratch for the assembled line.
 call logEventAllocateMessageScratchCall c.malloc
-argument logEventAllocateMessageScratchCall size CByteCount logMessageMaximumByteCount
+argument logEventAllocateMessageScratchCall size ByteCount logMessageMaximumByteCount
 run logEventAllocateMessageScratchCall
-bind value logEventMessageScratch COpaqueMemoryAddress logEventAllocateMessageScratchCall
+bind value logEventMessageScratch OpaquePointer logEventAllocateMessageScratchCall
 defer logEventFreeMessageScratchDefer c.free logEventMessageScratch
 
 call logEventAllocateLineBufferCall c.malloc
-argument logEventAllocateLineBufferCall size CByteCount logLineMaximumByteCount
+argument logEventAllocateLineBufferCall size ByteCount logLineMaximumByteCount
 run logEventAllocateLineBufferCall
-bind value logEventLineBuffer COpaqueMemoryAddress logEventAllocateLineBufferCall
+bind value logEventLineBuffer OpaquePointer logEventAllocateLineBufferCall
 defer logEventFreeLineBufferDefer c.free logEventLineBuffer
 
 call logEventEscapeMessageCall escapeJsonString
-argument logEventEscapeMessageCall sourceText CNullTerminatedByteString messageText
-argument logEventEscapeMessageCall destinationBuffer COpaqueMemoryAddress logEventMessageScratch
-argument logEventEscapeMessageCall destinationCapacity CSignedInt64 logMessageMaximumByteCount
+argument logEventEscapeMessageCall sourceText String messageText
+argument logEventEscapeMessageCall destinationBuffer OpaquePointer logEventMessageScratch
+argument logEventEscapeMessageCall destinationCapacity Int64 logMessageMaximumByteCount
 run logEventEscapeMessageCall
-ignore ok source logEventEscapeMessageCall type CSignedInt32
+ignore ok source logEventEscapeMessageCall type Int32
 
 call logEventFormatLineCall c.snprintf
-argument logEventFormatLineCall buffer COpaqueMemoryAddress logEventLineBuffer
-argument logEventFormatLineCall size CSignedInt64 logLineMaximumByteCount
-argument logEventFormatLineCall format CNullTerminatedByteString logEnvelopeFormat
-argument logEventFormatLineCall first CNullTerminatedByteString levelText
-argument logEventFormatLineCall second CNullTerminatedByteString eventText
-argument logEventFormatLineCall third COpaqueMemoryAddress logEventMessageScratch
+argument logEventFormatLineCall buffer OpaquePointer logEventLineBuffer
+argument logEventFormatLineCall size Int64 logLineMaximumByteCount
+argument logEventFormatLineCall format String logEnvelopeFormat
+argument logEventFormatLineCall first String levelText
+argument logEventFormatLineCall second String eventText
+argument logEventFormatLineCall third OpaquePointer logEventMessageScratch
 run logEventFormatLineCall
-ignore ok source logEventFormatLineCall type CSignedInt32
+ignore ok source logEventFormatLineCall type Int32
 
-bind value logEventLineText CNullTerminatedByteString logEventAllocateLineBufferCall
+bind value logEventLineText String logEventAllocateLineBufferCall
 
 call logEventWriteCall writeLogLine
-argument logEventWriteCall linePayload CNullTerminatedByteString logEventLineText
+argument logEventWriteCall linePayload String logEventLineText
 run logEventWriteCall
-bind value logEventWriteStatus CSignedInt32 logEventWriteCall
+bind value logEventWriteStatus Int32 logEventWriteCall
 return value logEventWriteStatus
 
 # ============================================================
@@ -648,8 +648,8 @@ return value logEventWriteStatus
 # ============================================================
 
 operation logInfo
-input operation logInfo messageText CNullTerminatedByteString
-output operation logInfo CSignedInt32
+input operation logInfo messageText String
+output operation logInfo Int32
 effect logInfo allocate heap
 effect logInfo free heap
 effect logInfo readWrite memory.buffer
@@ -664,16 +664,16 @@ purpose operation logInfo "Shorthand for logEventStructured(\"info\", \"app\", m
 invariant operation logInfo "Returns the status from logEventStructured untouched so callers can fan out to multiple loggers and still see I/O errors."
 label startLogInfo
 call logInfoForwardCall logEventStructured
-argument logInfoForwardCall levelText CNullTerminatedByteString logInfoLevelText
-argument logInfoForwardCall eventText CNullTerminatedByteString logDefaultEventText
-argument logInfoForwardCall messageText CNullTerminatedByteString messageText
+argument logInfoForwardCall levelText String logInfoLevelText
+argument logInfoForwardCall eventText String logDefaultEventText
+argument logInfoForwardCall messageText String messageText
 run logInfoForwardCall
-bind value logInfoForwardStatus CSignedInt32 logInfoForwardCall
+bind value logInfoForwardStatus Int32 logInfoForwardCall
 return value logInfoForwardStatus
 
 operation logWarn
-input operation logWarn messageText CNullTerminatedByteString
-output operation logWarn CSignedInt32
+input operation logWarn messageText String
+output operation logWarn Int32
 effect logWarn allocate heap
 effect logWarn free heap
 effect logWarn readWrite memory.buffer
@@ -688,16 +688,16 @@ purpose operation logWarn "Shorthand for logEventStructured(\"warn\", \"app\", m
 invariant operation logWarn "Returns the status from logEventStructured untouched."
 label startLogWarn
 call logWarnForwardCall logEventStructured
-argument logWarnForwardCall levelText CNullTerminatedByteString logWarnLevelText
-argument logWarnForwardCall eventText CNullTerminatedByteString logDefaultEventText
-argument logWarnForwardCall messageText CNullTerminatedByteString messageText
+argument logWarnForwardCall levelText String logWarnLevelText
+argument logWarnForwardCall eventText String logDefaultEventText
+argument logWarnForwardCall messageText String messageText
 run logWarnForwardCall
-bind value logWarnForwardStatus CSignedInt32 logWarnForwardCall
+bind value logWarnForwardStatus Int32 logWarnForwardCall
 return value logWarnForwardStatus
 
 operation logError
-input operation logError messageText CNullTerminatedByteString
-output operation logError CSignedInt32
+input operation logError messageText String
+output operation logError Int32
 effect logError allocate heap
 effect logError free heap
 effect logError readWrite memory.buffer
@@ -712,9 +712,9 @@ purpose operation logError "Shorthand for logEventStructured(\"error\", \"app\",
 invariant operation logError "Returns the status from logEventStructured untouched."
 label startLogError
 call logErrorForwardCall logEventStructured
-argument logErrorForwardCall levelText CNullTerminatedByteString logErrorLevelText
-argument logErrorForwardCall eventText CNullTerminatedByteString logDefaultEventText
-argument logErrorForwardCall messageText CNullTerminatedByteString messageText
+argument logErrorForwardCall levelText String logErrorLevelText
+argument logErrorForwardCall eventText String logDefaultEventText
+argument logErrorForwardCall messageText String messageText
 run logErrorForwardCall
-bind value logErrorForwardStatus CSignedInt32 logErrorForwardCall
+bind value logErrorForwardStatus Int32 logErrorForwardCall
 return value logErrorForwardStatus

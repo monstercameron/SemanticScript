@@ -5,7 +5,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
 input operation main console Console
@@ -20,15 +20,15 @@ invariant operation main "A single c.printf call writes the greeting plus a newl
 
 label startMain
 
-storage module immutable helloFormatText CNullTerminatedByteString "Hello from c.printf! arg=%d\n"
-storage module immutable greetingArgument CSignedInt32 42
+storage module immutable helloFormatText String "Hello from c.printf! arg=%d\n"
+storage module immutable greetingArgument Int32 42
 
 call helloPrintfCall c.printf
-argument helloPrintfCall format CNullTerminatedByteString helloFormatText
-argument helloPrintfCall value CSignedInt32 greetingArgument
+argument helloPrintfCall format String helloFormatText
+argument helloPrintfCall value Int32 greetingArgument
 run helloPrintfCall
-bind ok bytesWrittenByPrintf CSignedInt32 helloPrintfCall
-bind error helloPrintfError CSignedInt32 helloPrintfCall
+bind ok bytesWrittenByPrintf Int32 helloPrintfCall
+bind error helloPrintfError Int32 helloPrintfCall
 branch error source helloPrintfCall target helloPrintfFailed
 
 storage module immutable successfulExitCode ExitCode 0

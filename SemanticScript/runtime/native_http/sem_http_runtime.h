@@ -47,7 +47,7 @@ enum {
 };
 
 /* Middleware return values, surfaced in SemanticScript source as the
- * built-in enum `MiddlewareControl` (repr CSignedInt32):
+ * built-in enum `MiddlewareControl` (repr Int32):
  *   continueMiddlewareControl       == 0  (call the route handler)
  *   shortCircuitMiddlewareControl   == 1  (skip handler; send the
  *                                          middleware-written response)

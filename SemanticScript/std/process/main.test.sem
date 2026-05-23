@@ -53,18 +53,18 @@ purpose operation main "Verify process.sscript compiles and metadata parses; emi
 invariant operation main "Exit 0 on success; ConsoleWriteFailed only if the OK write itself returns an error."
 
 label startMain
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: console.writeLine returned a negative CSignedInt32.
+# Failure leg: console.writeLine returned a negative Int32.
 # We surface that raw return as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant we return to the caller â€”
 # the typed variant is what callers branch on, the raw int is

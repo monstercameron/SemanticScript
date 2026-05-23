@@ -25,13 +25,13 @@ type RequestId String
 type IdempotencyKey String
 type AuditEventId String
 
-type MoneyAmountMinor CSignedInt64
-type UtcMillis CSignedInt64
-type MonotonicMillis CSignedInt64
-type DurationMillis CSignedInt64
-type AuctionRevision CSignedInt64
-type AuctionEventSequence CSignedInt64
-type EventSchemaVersion CSignedInt32
+type MoneyAmountMinor Int64
+type UtcMillis Int64
+type MonotonicMillis Int64
+type DurationMillis Int64
+type AuctionRevision Int64
+type AuctionEventSequence Int64
+type EventSchemaVersion Int32
 type ApiVersion String
 type ErrorCode String
 type JsonObjectText String
@@ -54,28 +54,28 @@ typeInvariant DurationMillis "Zero means no duration or not captured; negative d
 typeInvariant AuctionRevision "Starts at zero for draft creation and increases by one for each accepted state-changing auction command."
 typeInvariant AuctionEventSequence "Starts at one for the first event in an auction stream and increases by one for every replayable auction event."
 
-enum UserRole repr CSignedInt32
+enum UserRole repr Int32
 enumCase UserRole anonymousUserRole 0
 enumCase UserRole bidderUserRole 10
 enumCase UserRole auctioneerUserRole 20
 enumCase UserRole adminUserRole 30
 
-enum UserStatus repr CSignedInt32
+enum UserStatus repr Int32
 enumCase UserStatus activeUserStatus 1
 enumCase UserStatus disabledUserStatus 2
 enumCase UserStatus lockedUserStatus 3
 
-enum AuctionStatus repr CSignedInt32
+enum AuctionStatus repr Int32
 enumCase AuctionStatus draftAuctionStatus 1
 enumCase AuctionStatus runningAuctionStatus 2
 enumCase AuctionStatus closedAuctionStatus 3
 enumCase AuctionStatus cancelledAuctionStatus 4
 
-enum BidStatus repr CSignedInt32
+enum BidStatus repr Int32
 enumCase BidStatus acceptedBidStatus 1
 enumCase BidStatus rejectedBidStatus 2
 
-enum BidRejectReason repr CSignedInt32
+enum BidRejectReason repr Int32
 enumCase BidRejectReason bidRejectNone 0
 enumCase BidRejectReason bidRejectAuctionMissing 1
 enumCase BidRejectReason bidRejectAuctionNotRunning 2
@@ -85,7 +85,7 @@ enumCase BidRejectReason bidRejectAmountTooHigh 5
 enumCase BidRejectReason bidRejectSameBidderInARow 6
 enumCase BidRejectReason bidRejectStaleRevision 7
 
-enum AuctionPolicyRejectReason repr CSignedInt32
+enum AuctionPolicyRejectReason repr Int32
 enumCase AuctionPolicyRejectReason auctionPolicyRejectNone 0
 enumCase AuctionPolicyRejectReason auctionPolicyRejectMinimumIncrementNotPositive 1
 enumCase AuctionPolicyRejectReason auctionPolicyRejectMaxBidNotAboveStartingBid 2
@@ -94,14 +94,14 @@ enumCase AuctionPolicyRejectReason auctionPolicyRejectAntiSnipingExtensionOutOfB
 enumCase AuctionPolicyRejectReason auctionPolicyRejectTitleTooLong 5
 enumCase AuctionPolicyRejectReason auctionPolicyRejectDescriptionTooLong 6
 
-enum LifecycleTransitionRejectReason repr CSignedInt32
+enum LifecycleTransitionRejectReason repr Int32
 enumCase LifecycleTransitionRejectReason lifecycleRejectNone 0
 enumCase LifecycleTransitionRejectReason lifecycleRejectDraftOnlyStarts 1
 enumCase LifecycleTransitionRejectReason lifecycleRejectRunningOnlyClosesOrCancels 2
 enumCase LifecycleTransitionRejectReason lifecycleRejectTerminalState 3
 enumCase LifecycleTransitionRejectReason lifecycleRejectUnsupportedTransition 4
 
-enum CommandKind repr CSignedInt32
+enum CommandKind repr Int32
 enumCase CommandKind createAuctionCommandKind 1
 enumCase CommandKind startAuctionCommandKind 2
 enumCase CommandKind extendAuctionCommandKind 3
@@ -112,7 +112,7 @@ enumCase CommandKind postChatMessageCommandKind 7
 enumCase CommandKind deleteChatMessageCommandKind 8
 enumCase CommandKind reportChatMessageCommandKind 9
 
-enum AuctionEventKind repr CSignedInt32
+enum AuctionEventKind repr Int32
 enumCase AuctionEventKind auctionCreatedEventKind 1
 enumCase AuctionEventKind auctionStartedEventKind 2
 enumCase AuctionEventKind auctionExtendedEventKind 3
@@ -124,13 +124,13 @@ enumCase AuctionEventKind chatMessageCreatedEventKind 8
 enumCase AuctionEventKind chatMessageDeletedEventKind 9
 enumCase AuctionEventKind chatMessageReportedEventKind 10
 
-enum AuditOutcome repr CSignedInt32
+enum AuditOutcome repr Int32
 enumCase AuditOutcome acceptedAuditOutcome 1
 enumCase AuditOutcome rejectedAuditOutcome 2
 enumCase AuditOutcome deniedAuditOutcome 3
 enumCase AuditOutcome failedAuditOutcome 4
 
-enum ChatMessageStatus repr CSignedInt32
+enum ChatMessageStatus repr Int32
 enumCase ChatMessageStatus visibleChatMessageStatus 1
 enumCase ChatMessageStatus deletedChatMessageStatus 2
 enumCase ChatMessageStatus reportedChatMessageStatus 3
@@ -143,9 +143,9 @@ field AuctionPolicy antiSnipingWindowMillis DurationMillis
 field AuctionPolicy antiSnipingExtensionMillis DurationMillis
 field AuctionPolicy minAuctionDurationMillis DurationMillis
 field AuctionPolicy maxAuctionDurationMillis DurationMillis
-field AuctionPolicy maxTitleBytes CSignedInt64
-field AuctionPolicy maxDescriptionBytes CSignedInt64
-field AuctionPolicy maxChatMessageBytes CSignedInt64
+field AuctionPolicy maxTitleBytes Int64
+field AuctionPolicy maxDescriptionBytes Int64
+field AuctionPolicy maxChatMessageBytes Int64
 field AuctionPolicy allowStaleExpectedRevision Bool
 
 record Auction
@@ -163,8 +163,8 @@ field Auction currentBid MoneyAmountMinor
 field Auction currentWinnerUserId UserId
 field Auction lastBidId BidId
 field Auction lastBidderUserId UserId
-field Auction acceptedBidCount CSignedInt64
-field Auction rejectedBidCount CSignedInt64
+field Auction acceptedBidCount Int64
+field Auction rejectedBidCount Int64
 field Auction revision AuctionRevision
 field Auction eventSequence AuctionEventSequence
 field Auction policy AuctionPolicy
@@ -287,7 +287,7 @@ field RequestLog requestId RequestId
 field RequestLog method String
 field RequestLog routePattern String
 field RequestLog path String
-field RequestLog statusCode CSignedInt32
+field RequestLog statusCode Int32
 field RequestLog actorUserId UserId
 field RequestLog actorRole UserRole
 field RequestLog startedAtUtcMillis UtcMillis
@@ -295,8 +295,8 @@ field RequestLog durationMillis DurationMillis
 field RequestLog ipAddressHash IpAddressHash
 field RequestLog userAgentHash UserAgentHash
 field RequestLog errorCode ErrorCode
-field RequestLog requestBytes CByteCount
-field RequestLog responseBytes CByteCount
+field RequestLog requestBytes ByteCount
+field RequestLog responseBytes ByteCount
 
 record ApiError
 field ApiError code ErrorCode

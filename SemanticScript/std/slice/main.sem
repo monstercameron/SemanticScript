@@ -1,0 +1,122 @@
+# SemanticScript standard-library canonical module: standard.slice.
+
+module standard.slice
+purpose module standard.slice "Canonical standard-library module for slice-length and bounds helpers."
+moduleOwns standard.slice "The official import path `standard.slice` and the executable `slice.*` helper surface."
+moduleDoesNotOwn standard.slice "Owned list growth semantics or mutable byte-buffer algorithms."
+invariant module standard.slice "This module owns structural borrowed-slice helpers; slice storage is still caller-owned."
+
+exportConstant standard.slice sliceModuleVersionText
+storage module immutable sliceModuleVersionText String "standard.slice 0.1"
+
+domainLiteral sliceZeroValue Int64 0
+domainLiteralTrust sliceZeroValue trustedStaticLiteral
+domainLiteral sliceOneValue Int64 1
+domainLiteralTrust sliceOneValue trustedStaticLiteral
+domainLiteral sliceMissingIndexSentinel Int64 -1
+domainLiteralTrust sliceMissingIndexSentinel trustedStaticLiteral
+
+storage module immutable sliceTrue Bool true
+storage module immutable sliceFalse Bool false
+
+operation slice.length
+input operation slice.length sliceLength Int64
+output operation slice.length Int64
+memory slice.length heap no
+async slice.length no
+purpose operation slice.length "Return the current logical length of a slice."
+return value sliceLength
+
+operation slice.isEmpty
+input operation slice.isEmpty sliceLength Int64
+output operation slice.isEmpty Bool
+memory slice.isEmpty heap no
+async slice.isEmpty no
+purpose operation slice.isEmpty "Return true when sliceLength is zero."
+call sliceIsEmptyCall math.equalInt64
+argument sliceIsEmptyCall left Int64 sliceLength
+argument sliceIsEmptyCall right Int64 sliceZeroValue
+run sliceIsEmptyCall
+bind value sliceIsEmptyResult Bool sliceIsEmptyCall
+return value sliceIsEmptyResult
+
+operation slice.containsIndex
+input operation slice.containsIndex sliceLength Int64
+input operation slice.containsIndex index Int64
+output operation slice.containsIndex Bool
+memory slice.containsIndex heap no
+async slice.containsIndex no
+purpose operation slice.containsIndex "Return true when index is within [0, sliceLength)."
+call sliceIndexNegativeCall math.lessThanInt64
+argument sliceIndexNegativeCall left Int64 index
+argument sliceIndexNegativeCall right Int64 sliceZeroValue
+run sliceIndexNegativeCall
+bind value sliceIndexNegative Bool sliceIndexNegativeCall
+branch if condition sliceIndexNegative target sliceContainsIndexFalse
+call sliceIndexPastEndCall math.greaterThanOrEqualInt64
+argument sliceIndexPastEndCall left Int64 index
+argument sliceIndexPastEndCall right Int64 sliceLength
+run sliceIndexPastEndCall
+bind value sliceIndexPastEnd Bool sliceIndexPastEndCall
+branch if condition sliceIndexPastEnd target sliceContainsIndexFalse
+return value sliceTrue
+label sliceContainsIndexFalse
+return value sliceFalse
+
+operation slice.lastIndex
+input operation slice.lastIndex sliceLength Int64
+output operation slice.lastIndex Int64
+memory slice.lastIndex heap no
+async slice.lastIndex no
+purpose operation slice.lastIndex "Return sliceLength - 1 for a non-empty slice, otherwise -1."
+call sliceLastIndexEmptyCall math.equalInt64
+argument sliceLastIndexEmptyCall left Int64 sliceLength
+argument sliceLastIndexEmptyCall right Int64 sliceZeroValue
+run sliceLastIndexEmptyCall
+bind value sliceLastIndexEmpty Bool sliceLastIndexEmptyCall
+branch if condition sliceLastIndexEmpty target sliceLastIndexMissing
+call sliceLastIndexValueCall math.subtractInt64
+argument sliceLastIndexValueCall left Int64 sliceLength
+argument sliceLastIndexValueCall right Int64 sliceOneValue
+run sliceLastIndexValueCall
+bind value sliceLastIndexValue Int64 sliceLastIndexValueCall
+return value sliceLastIndexValue
+label sliceLastIndexMissing
+return value sliceMissingIndexSentinel
+
+operation slice.windowLength
+input operation slice.windowLength sliceLength Int64
+input operation slice.windowLength startIndex Int64
+input operation slice.windowLength requestedCount Int64
+output operation slice.windowLength Int64
+memory slice.windowLength heap no
+async slice.windowLength no
+purpose operation slice.windowLength "Return the bounded window length starting at startIndex, or 0 when startIndex is outside the slice."
+call sliceWindowNegativeStartCall math.lessThanInt64
+argument sliceWindowNegativeStartCall left Int64 startIndex
+argument sliceWindowNegativeStartCall right Int64 sliceZeroValue
+run sliceWindowNegativeStartCall
+bind value sliceWindowNegativeStart Bool sliceWindowNegativeStartCall
+branch if condition sliceWindowNegativeStart target sliceWindowLengthZero
+call sliceWindowStartPastEndCall math.greaterThanOrEqualInt64
+argument sliceWindowStartPastEndCall left Int64 startIndex
+argument sliceWindowStartPastEndCall right Int64 sliceLength
+run sliceWindowStartPastEndCall
+bind value sliceWindowStartPastEnd Bool sliceWindowStartPastEndCall
+branch if condition sliceWindowStartPastEnd target sliceWindowLengthZero
+call sliceWindowRemainingCall math.subtractInt64
+argument sliceWindowRemainingCall left Int64 sliceLength
+argument sliceWindowRemainingCall right Int64 startIndex
+run sliceWindowRemainingCall
+bind value sliceWindowRemaining Int64 sliceWindowRemainingCall
+call sliceWindowRequestedTooLargeCall math.greaterThanInt64
+argument sliceWindowRequestedTooLargeCall left Int64 requestedCount
+argument sliceWindowRequestedTooLargeCall right Int64 sliceWindowRemaining
+run sliceWindowRequestedTooLargeCall
+bind value sliceWindowRequestedTooLarge Bool sliceWindowRequestedTooLargeCall
+branch if condition sliceWindowRequestedTooLarge target sliceWindowReturnRemaining
+return value requestedCount
+label sliceWindowReturnRemaining
+return value sliceWindowRemaining
+label sliceWindowLengthZero
+return value sliceZeroValue

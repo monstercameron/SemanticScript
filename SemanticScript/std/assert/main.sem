@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.assert "App-specific wrappers, compatibility aliases, 
 invariant module standard.assert "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.assert assertModuleVersionText
-storage module immutable assertModuleVersionText CNullTerminatedByteString "standard.assert 0.1"
+storage module immutable assertModuleVersionText String "standard.assert 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -57,8 +57,8 @@ capability stdoutWriteCapability console.stdout write
 # section assert.diagnosticBytes
 
 operation writeAssertionByteToStandardOutput
-input operation writeAssertionByteToStandardOutput characterCode CSignedInt32
-output operation writeAssertionByteToStandardOutput CSignedInt32
+input operation writeAssertionByteToStandardOutput characterCode Int32
+output operation writeAssertionByteToStandardOutput Int32
 useCapability writeAssertionByteToStandardOutput stdoutWriteCapability
 effect writeAssertionByteToStandardOutput write console.stdout
 memory writeAssertionByteToStandardOutput heap no
@@ -69,12 +69,12 @@ invariant operation writeAssertionByteToStandardOutput "Writes exactly one byte;
 guarantee writeAssertionByteToStandardOutput "Always returns; negative return signals a stdout-write failure."
 label startWriteAssertionByteToStandardOutput
 call libcPutcharCall c.putchar
-argument libcPutcharCall c CSignedInt32 characterCode
+argument libcPutcharCall c Int32 characterCode
 run libcPutcharCall
-ignore ok source libcPutcharCall type CSignedInt32
-bind error libcPutcharError CSignedInt32 libcPutcharCall
+ignore ok source libcPutcharCall type Int32
+bind error libcPutcharError Int32 libcPutcharCall
 branch error source libcPutcharCall target returnPutcharError
-bind value libcPutcharResult CSignedInt32 libcPutcharCall
+bind value libcPutcharResult Int32 libcPutcharCall
 # The assertion-banner emitter doesn't surface stdout-write errors
 # as typed failures (assertion failure is the primary signal), so
 # we just propagate the libc putchar return as-is.
@@ -87,7 +87,7 @@ return value libcPutcharError
 # section assert.diagnosticHelpers
 
 operation emitAssertionFailureBanner
-output operation emitAssertionFailureBanner CSignedInt32
+output operation emitAssertionFailureBanner Int32
 useCapability emitAssertionFailureBanner stdoutWriteCapability
 effect emitAssertionFailureBanner write console.stdout
 memory emitAssertionFailureBanner heap no
@@ -97,53 +97,53 @@ purpose operation emitAssertionFailureBanner "Emit the literal 'assert!\\n' on s
 invariant operation emitAssertionFailureBanner "Exactly eight bytes written: 'a', 's', 's', 'e', 'r', 't', '!', '\\n'."
 guarantee emitAssertionFailureBanner "Always returns."
 label startEmitAssertionFailureBanner
-storage module immutable asciiLowerA CSignedInt32 97
-storage module immutable asciiLowerS CSignedInt32 115
-storage module immutable asciiLowerE CSignedInt32 101
-storage module immutable asciiLowerR CSignedInt32 114
-storage module immutable asciiLowerT CSignedInt32 116
-storage module immutable asciiExclamation CSignedInt32 33
-storage module immutable asciiNewline CSignedInt32 10
+storage module immutable asciiLowerA Int32 97
+storage module immutable asciiLowerS Int32 115
+storage module immutable asciiLowerE Int32 101
+storage module immutable asciiLowerR Int32 114
+storage module immutable asciiLowerT Int32 116
+storage module immutable asciiExclamation Int32 33
+storage module immutable asciiNewline Int32 10
 call writeBannerLetterACall writeAssertionByteToStandardOutput
-argument writeBannerLetterACall characterCode CSignedInt32 asciiLowerA
+argument writeBannerLetterACall characterCode Int32 asciiLowerA
 run writeBannerLetterACall
-ignore value source writeBannerLetterACall type CSignedInt32
+ignore value source writeBannerLetterACall type Int32
 call writeBannerFirstLetterSCall writeAssertionByteToStandardOutput
-argument writeBannerFirstLetterSCall characterCode CSignedInt32 asciiLowerS
+argument writeBannerFirstLetterSCall characterCode Int32 asciiLowerS
 run writeBannerFirstLetterSCall
-ignore value source writeBannerFirstLetterSCall type CSignedInt32
+ignore value source writeBannerFirstLetterSCall type Int32
 call writeBannerSecondLetterSCall writeAssertionByteToStandardOutput
-argument writeBannerSecondLetterSCall characterCode CSignedInt32 asciiLowerS
+argument writeBannerSecondLetterSCall characterCode Int32 asciiLowerS
 run writeBannerSecondLetterSCall
-ignore value source writeBannerSecondLetterSCall type CSignedInt32
+ignore value source writeBannerSecondLetterSCall type Int32
 call writeBannerLetterECall writeAssertionByteToStandardOutput
-argument writeBannerLetterECall characterCode CSignedInt32 asciiLowerE
+argument writeBannerLetterECall characterCode Int32 asciiLowerE
 run writeBannerLetterECall
-ignore value source writeBannerLetterECall type CSignedInt32
+ignore value source writeBannerLetterECall type Int32
 call writeBannerLetterRCall writeAssertionByteToStandardOutput
-argument writeBannerLetterRCall characterCode CSignedInt32 asciiLowerR
+argument writeBannerLetterRCall characterCode Int32 asciiLowerR
 run writeBannerLetterRCall
-ignore value source writeBannerLetterRCall type CSignedInt32
+ignore value source writeBannerLetterRCall type Int32
 call writeBannerLetterTCall writeAssertionByteToStandardOutput
-argument writeBannerLetterTCall characterCode CSignedInt32 asciiLowerT
+argument writeBannerLetterTCall characterCode Int32 asciiLowerT
 run writeBannerLetterTCall
-ignore value source writeBannerLetterTCall type CSignedInt32
+ignore value source writeBannerLetterTCall type Int32
 call writeBannerExclamationCall writeAssertionByteToStandardOutput
-argument writeBannerExclamationCall characterCode CSignedInt32 asciiExclamation
+argument writeBannerExclamationCall characterCode Int32 asciiExclamation
 run writeBannerExclamationCall
-ignore value source writeBannerExclamationCall type CSignedInt32
+ignore value source writeBannerExclamationCall type Int32
 call writeBannerNewlineCall writeAssertionByteToStandardOutput
-argument writeBannerNewlineCall characterCode CSignedInt32 asciiNewline
+argument writeBannerNewlineCall characterCode Int32 asciiNewline
 run writeBannerNewlineCall
-ignore value source writeBannerNewlineCall type CSignedInt32
-storage module immutable bannerReturnCode CSignedInt32 0
+ignore value source writeBannerNewlineCall type Int32
+storage module immutable bannerReturnCode Int32 0
 return value bannerReturnCode
 
 # section assert.predicates
 
 operation requireConditionTrue
 input operation requireConditionTrue conditionValue Bool
-output operation requireConditionTrue Result CSignedInt32 AssertionError
+output operation requireConditionTrue Result Int32 AssertionError
 useCapability requireConditionTrue stdoutWriteCapability
 effect requireConditionTrue write console.stdout
 memory requireConditionTrue heap no
@@ -157,73 +157,73 @@ label startRequireConditionTrue
 branch if condition conditionValue target returnAssertionOk
 call emitBannerCall emitAssertionFailureBanner
 run emitBannerCall
-ignore value source emitBannerCall type CSignedInt32
+ignore value source emitBannerCall type Int32
 makeError conditionFailure AssertionError.ConditionWasFalse
 return error conditionFailure
 label returnAssertionOk
-storage module immutable assertionOkCode CSignedInt32 0
+storage module immutable assertionOkCode Int32 0
 return ok assertionOkCode
 
 operation requireSignedInt64ValuesEqual
-input operation requireSignedInt64ValuesEqual leftValue CSignedInt64
-input operation requireSignedInt64ValuesEqual rightValue CSignedInt64
-output operation requireSignedInt64ValuesEqual Result CSignedInt32 AssertionError
+input operation requireSignedInt64ValuesEqual leftValue Int64
+input operation requireSignedInt64ValuesEqual rightValue Int64
+output operation requireSignedInt64ValuesEqual Result Int32 AssertionError
 useCapability requireSignedInt64ValuesEqual stdoutWriteCapability
 effect requireSignedInt64ValuesEqual write console.stdout
 memory requireSignedInt64ValuesEqual heap no
 memory requireSignedInt64ValuesEqual stack max 1024
 async requireSignedInt64ValuesEqual no
 purpose operation requireSignedInt64ValuesEqual "Asserts leftValue == rightValue."
-failure requireSignedInt64ValuesEqual ValuesWereNotEqual "Returned when the two CSignedInt64 inputs do not match."
+failure requireSignedInt64ValuesEqual ValuesWereNotEqual "Returned when the two Int64 inputs do not match."
 guarantee requireSignedInt64ValuesEqual "Total."
 label startRequireSignedInt64ValuesEqual
-call detectEqualityCall math.equalI64
-argument detectEqualityCall left I64 leftValue
-argument detectEqualityCall right I64 rightValue
+call detectEqualityCall math.equalInt64
+argument detectEqualityCall left Int64 leftValue
+argument detectEqualityCall right Int64 rightValue
 run detectEqualityCall
 bind value valuesEqual Bool detectEqualityCall
 branch if condition valuesEqual target returnEqualityOk
 call emitEqualityBannerCall emitAssertionFailureBanner
 run emitEqualityBannerCall
-ignore value source emitEqualityBannerCall type CSignedInt32
+ignore value source emitEqualityBannerCall type Int32
 makeError equalityFailure AssertionError.ValuesWereNotEqual
 return error equalityFailure
 label returnEqualityOk
-storage module immutable equalityOkCode CSignedInt32 0
+storage module immutable equalityOkCode Int32 0
 return ok equalityOkCode
 
 operation requireSignedInt64ValuesNotEqual
-input operation requireSignedInt64ValuesNotEqual leftValue CSignedInt64
-input operation requireSignedInt64ValuesNotEqual rightValue CSignedInt64
-output operation requireSignedInt64ValuesNotEqual Result CSignedInt32 AssertionError
+input operation requireSignedInt64ValuesNotEqual leftValue Int64
+input operation requireSignedInt64ValuesNotEqual rightValue Int64
+output operation requireSignedInt64ValuesNotEqual Result Int32 AssertionError
 useCapability requireSignedInt64ValuesNotEqual stdoutWriteCapability
 effect requireSignedInt64ValuesNotEqual write console.stdout
 memory requireSignedInt64ValuesNotEqual heap no
 memory requireSignedInt64ValuesNotEqual stack max 1024
 async requireSignedInt64ValuesNotEqual no
 purpose operation requireSignedInt64ValuesNotEqual "Asserts leftValue != rightValue."
-failure requireSignedInt64ValuesNotEqual ValuesShouldNotMatch "Returned when the two CSignedInt64 inputs are equal."
+failure requireSignedInt64ValuesNotEqual ValuesShouldNotMatch "Returned when the two Int64 inputs are equal."
 guarantee requireSignedInt64ValuesNotEqual "Total."
 label startRequireSignedInt64ValuesNotEqual
-call detectInequalityCall math.notEqualI64
-argument detectInequalityCall left I64 leftValue
-argument detectInequalityCall right I64 rightValue
+call detectInequalityCall math.notEqualInt64
+argument detectInequalityCall left Int64 leftValue
+argument detectInequalityCall right Int64 rightValue
 run detectInequalityCall
 bind value valuesDiffer Bool detectInequalityCall
 branch if condition valuesDiffer target returnInequalityOk
 call emitInequalityBannerCall emitAssertionFailureBanner
 run emitInequalityBannerCall
-ignore value source emitInequalityBannerCall type CSignedInt32
+ignore value source emitInequalityBannerCall type Int32
 makeError inequalityFailure AssertionError.ValuesShouldNotMatch
 return error inequalityFailure
 label returnInequalityOk
-storage module immutable inequalityOkCode CSignedInt32 0
+storage module immutable inequalityOkCode Int32 0
 return ok inequalityOkCode
 
 operation requireSignedInt64LeftGreaterThanRight
-input operation requireSignedInt64LeftGreaterThanRight leftValue CSignedInt64
-input operation requireSignedInt64LeftGreaterThanRight rightValue CSignedInt64
-output operation requireSignedInt64LeftGreaterThanRight Result CSignedInt32 AssertionError
+input operation requireSignedInt64LeftGreaterThanRight leftValue Int64
+input operation requireSignedInt64LeftGreaterThanRight rightValue Int64
+output operation requireSignedInt64LeftGreaterThanRight Result Int32 AssertionError
 useCapability requireSignedInt64LeftGreaterThanRight stdoutWriteCapability
 effect requireSignedInt64LeftGreaterThanRight write console.stdout
 memory requireSignedInt64LeftGreaterThanRight heap no
@@ -232,25 +232,25 @@ purpose operation requireSignedInt64LeftGreaterThanRight "Asserts leftValue > ri
 failure requireSignedInt64LeftGreaterThanRight OrderingViolated "Returned when leftValue is not strictly greater than rightValue."
 guarantee requireSignedInt64LeftGreaterThanRight "Total."
 label startRequireSignedInt64LeftGreaterThanRight
-call detectGreaterThanForAssertCall math.greaterThanI64
-argument detectGreaterThanForAssertCall left I64 leftValue
-argument detectGreaterThanForAssertCall right I64 rightValue
+call detectGreaterThanForAssertCall math.greaterThanInt64
+argument detectGreaterThanForAssertCall left Int64 leftValue
+argument detectGreaterThanForAssertCall right Int64 rightValue
 run detectGreaterThanForAssertCall
 bind value orderingHoldsGreater Bool detectGreaterThanForAssertCall
 branch if condition orderingHoldsGreater target returnGreaterThanOk
 call emitGreaterThanBannerCall emitAssertionFailureBanner
 run emitGreaterThanBannerCall
-ignore value source emitGreaterThanBannerCall type CSignedInt32
+ignore value source emitGreaterThanBannerCall type Int32
 makeError greaterThanFailure AssertionError.OrderingViolated
 return error greaterThanFailure
 label returnGreaterThanOk
-storage module immutable greaterThanOkCode CSignedInt32 0
+storage module immutable greaterThanOkCode Int32 0
 return ok greaterThanOkCode
 
 operation requireSignedInt64LeftLessThanRight
-input operation requireSignedInt64LeftLessThanRight leftValue CSignedInt64
-input operation requireSignedInt64LeftLessThanRight rightValue CSignedInt64
-output operation requireSignedInt64LeftLessThanRight Result CSignedInt32 AssertionError
+input operation requireSignedInt64LeftLessThanRight leftValue Int64
+input operation requireSignedInt64LeftLessThanRight rightValue Int64
+output operation requireSignedInt64LeftLessThanRight Result Int32 AssertionError
 useCapability requireSignedInt64LeftLessThanRight stdoutWriteCapability
 effect requireSignedInt64LeftLessThanRight write console.stdout
 memory requireSignedInt64LeftLessThanRight heap no
@@ -259,26 +259,26 @@ purpose operation requireSignedInt64LeftLessThanRight "Asserts leftValue < right
 failure requireSignedInt64LeftLessThanRight OrderingViolated "Returned when leftValue is not strictly less than rightValue."
 guarantee requireSignedInt64LeftLessThanRight "Total."
 label startRequireSignedInt64LeftLessThanRight
-call detectLessThanForAssertCall math.lessThanI64
-argument detectLessThanForAssertCall left I64 leftValue
-argument detectLessThanForAssertCall right I64 rightValue
+call detectLessThanForAssertCall math.lessThanInt64
+argument detectLessThanForAssertCall left Int64 leftValue
+argument detectLessThanForAssertCall right Int64 rightValue
 run detectLessThanForAssertCall
 bind value orderingHoldsLess Bool detectLessThanForAssertCall
 branch if condition orderingHoldsLess target returnLessThanOk
 call emitLessThanBannerCall emitAssertionFailureBanner
 run emitLessThanBannerCall
-ignore value source emitLessThanBannerCall type CSignedInt32
+ignore value source emitLessThanBannerCall type Int32
 makeError lessThanFailure AssertionError.OrderingViolated
 return error lessThanFailure
 label returnLessThanOk
-storage module immutable lessThanOkCode CSignedInt32 0
+storage module immutable lessThanOkCode Int32 0
 return ok lessThanOkCode
 
 operation requireSignedInt64ValueWithinInclusiveRange
-input operation requireSignedInt64ValueWithinInclusiveRange inputValue CSignedInt64
-input operation requireSignedInt64ValueWithinInclusiveRange lowerBound CSignedInt64
-input operation requireSignedInt64ValueWithinInclusiveRange upperBound CSignedInt64
-output operation requireSignedInt64ValueWithinInclusiveRange Result CSignedInt32 AssertionError
+input operation requireSignedInt64ValueWithinInclusiveRange inputValue Int64
+input operation requireSignedInt64ValueWithinInclusiveRange lowerBound Int64
+input operation requireSignedInt64ValueWithinInclusiveRange upperBound Int64
+output operation requireSignedInt64ValueWithinInclusiveRange Result Int32 AssertionError
 useCapability requireSignedInt64ValueWithinInclusiveRange stdoutWriteCapability
 effect requireSignedInt64ValueWithinInclusiveRange write console.stdout
 memory requireSignedInt64ValueWithinInclusiveRange heap no
@@ -287,30 +287,30 @@ purpose operation requireSignedInt64ValueWithinInclusiveRange "Asserts lowerBoun
 failure requireSignedInt64ValueWithinInclusiveRange OutOfRange "Returned when inputValue lies outside the inclusive range."
 guarantee requireSignedInt64ValueWithinInclusiveRange "Total."
 label startRequireSignedInt64ValueWithinInclusiveRange
-call detectBelowLowerBoundCall math.lessThanI64
-argument detectBelowLowerBoundCall left I64 inputValue
-argument detectBelowLowerBoundCall right I64 lowerBound
+call detectBelowLowerBoundCall math.lessThanInt64
+argument detectBelowLowerBoundCall left Int64 inputValue
+argument detectBelowLowerBoundCall right Int64 lowerBound
 run detectBelowLowerBoundCall
 bind value inputBelowLowerBound Bool detectBelowLowerBoundCall
 branch if condition inputBelowLowerBound target raiseRangeFailure
-call detectAboveUpperBoundCall math.greaterThanI64
-argument detectAboveUpperBoundCall left I64 inputValue
-argument detectAboveUpperBoundCall right I64 upperBound
+call detectAboveUpperBoundCall math.greaterThanInt64
+argument detectAboveUpperBoundCall left Int64 inputValue
+argument detectAboveUpperBoundCall right Int64 upperBound
 run detectAboveUpperBoundCall
 bind value inputAboveUpperBound Bool detectAboveUpperBoundCall
 branch if condition inputAboveUpperBound target raiseRangeFailure
-storage module immutable rangeOkCode CSignedInt32 0
+storage module immutable rangeOkCode Int32 0
 return ok rangeOkCode
 label raiseRangeFailure
 call emitRangeBannerCall emitAssertionFailureBanner
 run emitRangeBannerCall
-ignore value source emitRangeBannerCall type CSignedInt32
+ignore value source emitRangeBannerCall type Int32
 makeError rangeFailure AssertionError.OutOfRange
 return error rangeFailure
 
 operation requireOpaquePointerNotNull
-input operation requireOpaquePointerNotNull pointerValue COpaqueMemoryAddress
-output operation requireOpaquePointerNotNull Result CSignedInt32 AssertionError
+input operation requireOpaquePointerNotNull pointerValue OpaquePointer
+output operation requireOpaquePointerNotNull Result Int32 AssertionError
 useCapability requireOpaquePointerNotNull stdoutWriteCapability
 effect requireOpaquePointerNotNull write console.stdout
 memory requireOpaquePointerNotNull heap no
@@ -320,16 +320,16 @@ failure requireOpaquePointerNotNull PointerWasNull "Returned when pointerValue i
 guarantee requireOpaquePointerNotNull "Total."
 label startRequireOpaquePointerNotNull
 call detectPointerIsNullCall pointer.isNull
-argument detectPointerIsNullCall pointer COpaqueMemoryAddress pointerValue
+argument detectPointerIsNullCall pointer OpaquePointer pointerValue
 run detectPointerIsNullCall
 bind value pointerIsNull Bool detectPointerIsNullCall
 branch if condition pointerIsNull target raisePointerNullFailure
-storage module immutable pointerOkCode CSignedInt32 0
+storage module immutable pointerOkCode Int32 0
 return ok pointerOkCode
 label raisePointerNullFailure
 call emitPointerBannerCall emitAssertionFailureBanner
 run emitPointerBannerCall
-ignore value source emitPointerBannerCall type CSignedInt32
+ignore value source emitPointerBannerCall type Int32
 makeError pointerNullFailure AssertionError.PointerWasNull
 return error pointerNullFailure
 

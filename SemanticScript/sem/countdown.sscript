@@ -4,8 +4,8 @@ runtime AgentRuntime 0.1
 
 entry console main
 
-type CountdownValue I64
-type PositiveCountdownStep I64
+type CountdownValue Int64
+type PositiveCountdownStep Int64
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError

@@ -27,55 +27,55 @@ exportOperation app.realtime_auction_arena.server.auction_domain selectWinnerAft
 exportOperation app.realtime_auction_arena.server.auction_domain nextRevisionAfterAcceptedCommand
 exportOperation app.realtime_auction_arena.server.auction_domain nextEventSequence
 
-storage module immutable zeroSignedInt64 CSignedInt64 0
-storage module immutable oneSignedInt64 CSignedInt64 1
-storage module immutable maxAntiSnipingWindowMillis CSignedInt64 300000
-storage module immutable maxAntiSnipingExtensionMillis CSignedInt64 600000
+storage module immutable zeroSignedInt64 Int64 0
+storage module immutable oneSignedInt64 Int64 1
+storage module immutable maxAntiSnipingWindowMillis Int64 300000
+storage module immutable maxAntiSnipingExtensionMillis Int64 600000
 
-storage module immutable anonymousUserRoleCode CSignedInt32 0
-storage module immutable bidderUserRoleCode CSignedInt32 10
-storage module immutable auctioneerUserRoleCode CSignedInt32 20
-storage module immutable adminUserRoleCode CSignedInt32 30
-storage module immutable draftAuctionStatusCode CSignedInt32 1
-storage module immutable runningAuctionStatusCode CSignedInt32 2
-storage module immutable closedAuctionStatusCode CSignedInt32 3
-storage module immutable cancelledAuctionStatusCode CSignedInt32 4
+storage module immutable anonymousUserRoleCode Int32 0
+storage module immutable bidderUserRoleCode Int32 10
+storage module immutable auctioneerUserRoleCode Int32 20
+storage module immutable adminUserRoleCode Int32 30
+storage module immutable draftAuctionStatusCode Int32 1
+storage module immutable runningAuctionStatusCode Int32 2
+storage module immutable closedAuctionStatusCode Int32 3
+storage module immutable cancelledAuctionStatusCode Int32 4
 
-storage module immutable createAuctionCommandKindCode CSignedInt32 1
-storage module immutable startAuctionCommandKindCode CSignedInt32 2
-storage module immutable extendAuctionCommandKindCode CSignedInt32 3
-storage module immutable closeAuctionCommandKindCode CSignedInt32 4
-storage module immutable placeBidCommandKindCode CSignedInt32 6
+storage module immutable createAuctionCommandKindCode Int32 1
+storage module immutable startAuctionCommandKindCode Int32 2
+storage module immutable extendAuctionCommandKindCode Int32 3
+storage module immutable closeAuctionCommandKindCode Int32 4
+storage module immutable placeBidCommandKindCode Int32 6
 
-storage module immutable bidRejectNoneCode CSignedInt64 0
-storage module immutable bidRejectAuctionMissingCode CSignedInt64 1
-storage module immutable bidRejectAuctionNotRunningCode CSignedInt64 2
-storage module immutable bidRejectActorNotBidderCode CSignedInt64 3
-storage module immutable bidRejectAmountTooLowCode CSignedInt64 4
-storage module immutable bidRejectAmountTooHighCode CSignedInt64 5
-storage module immutable bidRejectSameBidderInARowCode CSignedInt64 6
-storage module immutable bidRejectStaleRevisionCode CSignedInt64 7
+storage module immutable bidRejectNoneCode Int64 0
+storage module immutable bidRejectAuctionMissingCode Int64 1
+storage module immutable bidRejectAuctionNotRunningCode Int64 2
+storage module immutable bidRejectActorNotBidderCode Int64 3
+storage module immutable bidRejectAmountTooLowCode Int64 4
+storage module immutable bidRejectAmountTooHighCode Int64 5
+storage module immutable bidRejectSameBidderInARowCode Int64 6
+storage module immutable bidRejectStaleRevisionCode Int64 7
 
-storage module immutable auctionPolicyRejectNoneCode CSignedInt64 0
-storage module immutable auctionPolicyRejectMinimumIncrementNotPositiveCode CSignedInt64 1
-storage module immutable auctionPolicyRejectMaxBidNotAboveStartingBidCode CSignedInt64 2
-storage module immutable auctionPolicyRejectAntiSnipingWindowOutOfBoundsCode CSignedInt64 3
-storage module immutable auctionPolicyRejectAntiSnipingExtensionOutOfBoundsCode CSignedInt64 4
-storage module immutable auctionPolicyRejectTitleTooLongCode CSignedInt64 5
-storage module immutable auctionPolicyRejectDescriptionTooLongCode CSignedInt64 6
+storage module immutable auctionPolicyRejectNoneCode Int64 0
+storage module immutable auctionPolicyRejectMinimumIncrementNotPositiveCode Int64 1
+storage module immutable auctionPolicyRejectMaxBidNotAboveStartingBidCode Int64 2
+storage module immutable auctionPolicyRejectAntiSnipingWindowOutOfBoundsCode Int64 3
+storage module immutable auctionPolicyRejectAntiSnipingExtensionOutOfBoundsCode Int64 4
+storage module immutable auctionPolicyRejectTitleTooLongCode Int64 5
+storage module immutable auctionPolicyRejectDescriptionTooLongCode Int64 6
 
-storage module immutable lifecycleRejectNoneCode CSignedInt64 0
-storage module immutable lifecycleRejectDraftOnlyStartsCode CSignedInt64 1
-storage module immutable lifecycleRejectRunningOnlyClosesOrCancelsCode CSignedInt64 2
-storage module immutable lifecycleRejectTerminalStateCode CSignedInt64 3
-storage module immutable lifecycleRejectUnsupportedTransitionCode CSignedInt64 4
+storage module immutable lifecycleRejectNoneCode Int64 0
+storage module immutable lifecycleRejectDraftOnlyStartsCode Int64 1
+storage module immutable lifecycleRejectRunningOnlyClosesOrCancelsCode Int64 2
+storage module immutable lifecycleRejectTerminalStateCode Int64 3
+storage module immutable lifecycleRejectUnsupportedTransitionCode Int64 4
 
-storage module immutable commandRejectNoneCode CSignedInt64 0
-storage module immutable commandRejectMissingAuctionIdCode CSignedInt64 10
-storage module immutable commandRejectMissingIdempotencyKeyCode CSignedInt64 11
-storage module immutable commandRejectMissingExpectedRevisionCode CSignedInt64 12
-storage module immutable commandRejectForbiddenCode CSignedInt64 13
-storage module immutable commandRejectUnsupportedCommandCode CSignedInt64 14
+storage module immutable commandRejectNoneCode Int64 0
+storage module immutable commandRejectMissingAuctionIdCode Int64 10
+storage module immutable commandRejectMissingIdempotencyKeyCode Int64 11
+storage module immutable commandRejectMissingExpectedRevisionCode Int64 12
+storage module immutable commandRejectForbiddenCode Int64 13
+storage module immutable commandRejectUnsupportedCommandCode Int64 14
 
 record AuctionApiCommandContract
 field AuctionApiCommandContract method String
@@ -216,7 +216,7 @@ input operation validateAuctionCommandRequestRequirements requiresIdempotencyKey
 input operation validateAuctionCommandRequestRequirements hasIdempotencyKey Bool
 input operation validateAuctionCommandRequestRequirements requiresExpectedRevision Bool
 input operation validateAuctionCommandRequestRequirements hasExpectedRevision Bool
-output operation validateAuctionCommandRequestRequirements CSignedInt64
+output operation validateAuctionCommandRequestRequirements Int64
 memory validateAuctionCommandRequestRequirements heap no
 async validateAuctionCommandRequestRequirements no
 purpose operation validateAuctionCommandRequestRequirements "Validate route-param, idempotency, and expected-revision requirements before command-specific rule checks."
@@ -250,69 +250,69 @@ label acceptCommandRequestRequirements
 return value commandRejectNoneCode
 
 operation validateAuctionCommandActor
-input operation validateAuctionCommandActor actorRole CSignedInt32
-input operation validateAuctionCommandActor commandKind CSignedInt32
-output operation validateAuctionCommandActor CSignedInt64
+input operation validateAuctionCommandActor actorRole Int32
+input operation validateAuctionCommandActor commandKind Int32
+output operation validateAuctionCommandActor Int64
 memory validateAuctionCommandActor heap no
 async validateAuctionCommandActor no
 purpose operation validateAuctionCommandActor "Validate role policy for auction create/start/extend/close/bid commands using stable command rejection codes."
 
 label startValidateAuctionCommandActor
-call commandIsBidCall math.equalCSignedInt32
-argument commandIsBidCall left CSignedInt32 commandKind
-argument commandIsBidCall right CSignedInt32 placeBidCommandKindCode
+call commandIsBidCall math.equalInt32
+argument commandIsBidCall left Int32 commandKind
+argument commandIsBidCall right Int32 placeBidCommandKindCode
 run commandIsBidCall
 bind value commandIsBid Bool commandIsBidCall
 branch if condition commandIsBid target validateBidCommandActor
 
-call commandIsCreateCall math.equalCSignedInt32
-argument commandIsCreateCall left CSignedInt32 commandKind
-argument commandIsCreateCall right CSignedInt32 createAuctionCommandKindCode
+call commandIsCreateCall math.equalInt32
+argument commandIsCreateCall left Int32 commandKind
+argument commandIsCreateCall right Int32 createAuctionCommandKindCode
 run commandIsCreateCall
 bind value commandIsCreate Bool commandIsCreateCall
 branch if condition commandIsCreate target validateAuctioneerCommandActor
 
-call commandIsStartCall math.equalCSignedInt32
-argument commandIsStartCall left CSignedInt32 commandKind
-argument commandIsStartCall right CSignedInt32 startAuctionCommandKindCode
+call commandIsStartCall math.equalInt32
+argument commandIsStartCall left Int32 commandKind
+argument commandIsStartCall right Int32 startAuctionCommandKindCode
 run commandIsStartCall
 bind value commandIsStart Bool commandIsStartCall
 branch if condition commandIsStart target validateAuctioneerCommandActor
 
-call commandIsExtendCall math.equalCSignedInt32
-argument commandIsExtendCall left CSignedInt32 commandKind
-argument commandIsExtendCall right CSignedInt32 extendAuctionCommandKindCode
+call commandIsExtendCall math.equalInt32
+argument commandIsExtendCall left Int32 commandKind
+argument commandIsExtendCall right Int32 extendAuctionCommandKindCode
 run commandIsExtendCall
 bind value commandIsExtend Bool commandIsExtendCall
 branch if condition commandIsExtend target validateAuctioneerCommandActor
 
-call commandIsCloseCall math.equalCSignedInt32
-argument commandIsCloseCall left CSignedInt32 commandKind
-argument commandIsCloseCall right CSignedInt32 closeAuctionCommandKindCode
+call commandIsCloseCall math.equalInt32
+argument commandIsCloseCall left Int32 commandKind
+argument commandIsCloseCall right Int32 closeAuctionCommandKindCode
 run commandIsCloseCall
 bind value commandIsClose Bool commandIsCloseCall
 branch if condition commandIsClose target validateAuctioneerCommandActor
 return value commandRejectUnsupportedCommandCode
 
 label validateBidCommandActor
-call actorIsBidderForCommandCall math.equalCSignedInt32
-argument actorIsBidderForCommandCall left CSignedInt32 actorRole
-argument actorIsBidderForCommandCall right CSignedInt32 bidderUserRoleCode
+call actorIsBidderForCommandCall math.equalInt32
+argument actorIsBidderForCommandCall left Int32 actorRole
+argument actorIsBidderForCommandCall right Int32 bidderUserRoleCode
 run actorIsBidderForCommandCall
 bind value actorIsBidderForCommand Bool actorIsBidderForCommandCall
 branch if condition actorIsBidderForCommand target acceptAuctionCommandActor
 return value commandRejectForbiddenCode
 
 label validateAuctioneerCommandActor
-call actorIsAuctioneerCall math.equalCSignedInt32
-argument actorIsAuctioneerCall left CSignedInt32 actorRole
-argument actorIsAuctioneerCall right CSignedInt32 auctioneerUserRoleCode
+call actorIsAuctioneerCall math.equalInt32
+argument actorIsAuctioneerCall left Int32 actorRole
+argument actorIsAuctioneerCall right Int32 auctioneerUserRoleCode
 run actorIsAuctioneerCall
 bind value actorIsAuctioneer Bool actorIsAuctioneerCall
 branch if condition actorIsAuctioneer target acceptAuctionCommandActor
-call actorIsAdminCall math.equalCSignedInt32
-argument actorIsAdminCall left CSignedInt32 actorRole
-argument actorIsAdminCall right CSignedInt32 adminUserRoleCode
+call actorIsAdminCall math.equalInt32
+argument actorIsAdminCall left Int32 actorRole
+argument actorIsAdminCall right Int32 adminUserRoleCode
 run actorIsAdminCall
 bind value actorIsAdmin Bool actorIsAdminCall
 branch if condition actorIsAdmin target acceptAuctionCommandActor
@@ -322,16 +322,16 @@ label acceptAuctionCommandActor
 return value commandRejectNoneCode
 
 operation validateAuctionPolicy
-input operation validateAuctionPolicy minimumIncrement CSignedInt64
-input operation validateAuctionPolicy startingBid CSignedInt64
-input operation validateAuctionPolicy maxBidAmount CSignedInt64
-input operation validateAuctionPolicy antiSnipingWindowMillis CSignedInt64
-input operation validateAuctionPolicy antiSnipingExtensionMillis CSignedInt64
-input operation validateAuctionPolicy titleBytes CSignedInt64
-input operation validateAuctionPolicy maxTitleBytes CSignedInt64
-input operation validateAuctionPolicy descriptionBytes CSignedInt64
-input operation validateAuctionPolicy maxDescriptionBytes CSignedInt64
-output operation validateAuctionPolicy CSignedInt64
+input operation validateAuctionPolicy minimumIncrement Int64
+input operation validateAuctionPolicy startingBid Int64
+input operation validateAuctionPolicy maxBidAmount Int64
+input operation validateAuctionPolicy antiSnipingWindowMillis Int64
+input operation validateAuctionPolicy antiSnipingExtensionMillis Int64
+input operation validateAuctionPolicy titleBytes Int64
+input operation validateAuctionPolicy maxTitleBytes Int64
+input operation validateAuctionPolicy descriptionBytes Int64
+input operation validateAuctionPolicy maxDescriptionBytes Int64
+output operation validateAuctionPolicy Int64
 memory validateAuctionPolicy heap no
 async validateAuctionPolicy no
 purpose operation validateAuctionPolicy "Return the first stable policy rejection code, or zero when the policy is acceptable."
@@ -341,33 +341,33 @@ invariant operation validateAuctionPolicy "Anti-sniping window and extension dur
 invariant operation validateAuctionPolicy "Title and description byte lengths must not exceed their configured maxima."
 
 label startValidateAuctionPolicy
-call minimumIncrementPositiveCall math.greaterThanI64
-argument minimumIncrementPositiveCall left I64 minimumIncrement
-argument minimumIncrementPositiveCall right I64 zeroSignedInt64
+call minimumIncrementPositiveCall math.greaterThanInt64
+argument minimumIncrementPositiveCall left Int64 minimumIncrement
+argument minimumIncrementPositiveCall right Int64 zeroSignedInt64
 run minimumIncrementPositiveCall
 bind value minimumIncrementPositive Bool minimumIncrementPositiveCall
 branch if condition minimumIncrementPositive target checkMaxBid
 return value auctionPolicyRejectMinimumIncrementNotPositiveCode
 
 label checkMaxBid
-call maxBidAboveStartingCall math.greaterThanI64
-argument maxBidAboveStartingCall left I64 maxBidAmount
-argument maxBidAboveStartingCall right I64 startingBid
+call maxBidAboveStartingCall math.greaterThanInt64
+argument maxBidAboveStartingCall left Int64 maxBidAmount
+argument maxBidAboveStartingCall right Int64 startingBid
 run maxBidAboveStartingCall
 bind value maxBidAboveStarting Bool maxBidAboveStartingCall
 branch if condition maxBidAboveStarting target checkAntiSnipingWindowNonNegative
 return value auctionPolicyRejectMaxBidNotAboveStartingBidCode
 
 label checkAntiSnipingWindowNonNegative
-call windowNegativeCall math.lessThanI64
-argument windowNegativeCall left I64 antiSnipingWindowMillis
-argument windowNegativeCall right I64 zeroSignedInt64
+call windowNegativeCall math.lessThanInt64
+argument windowNegativeCall left Int64 antiSnipingWindowMillis
+argument windowNegativeCall right Int64 zeroSignedInt64
 run windowNegativeCall
 bind value windowNegative Bool windowNegativeCall
 branch if condition windowNegative target rejectAntiSnipingWindow
-call windowTooLargeCall math.greaterThanI64
-argument windowTooLargeCall left I64 antiSnipingWindowMillis
-argument windowTooLargeCall right I64 maxAntiSnipingWindowMillis
+call windowTooLargeCall math.greaterThanInt64
+argument windowTooLargeCall left Int64 antiSnipingWindowMillis
+argument windowTooLargeCall right Int64 maxAntiSnipingWindowMillis
 run windowTooLargeCall
 bind value windowTooLarge Bool windowTooLargeCall
 branch if condition windowTooLarge target rejectAntiSnipingWindow
@@ -377,15 +377,15 @@ label rejectAntiSnipingWindow
 return value auctionPolicyRejectAntiSnipingWindowOutOfBoundsCode
 
 label checkAntiSnipingExtensionNonNegative
-call extensionNegativeCall math.lessThanI64
-argument extensionNegativeCall left I64 antiSnipingExtensionMillis
-argument extensionNegativeCall right I64 zeroSignedInt64
+call extensionNegativeCall math.lessThanInt64
+argument extensionNegativeCall left Int64 antiSnipingExtensionMillis
+argument extensionNegativeCall right Int64 zeroSignedInt64
 run extensionNegativeCall
 bind value extensionNegative Bool extensionNegativeCall
 branch if condition extensionNegative target rejectAntiSnipingExtension
-call extensionTooLargeCall math.greaterThanI64
-argument extensionTooLargeCall left I64 antiSnipingExtensionMillis
-argument extensionTooLargeCall right I64 maxAntiSnipingExtensionMillis
+call extensionTooLargeCall math.greaterThanInt64
+argument extensionTooLargeCall left Int64 antiSnipingExtensionMillis
+argument extensionTooLargeCall right Int64 maxAntiSnipingExtensionMillis
 run extensionTooLargeCall
 bind value extensionTooLarge Bool extensionTooLargeCall
 branch if condition extensionTooLarge target rejectAntiSnipingExtension
@@ -395,9 +395,9 @@ label rejectAntiSnipingExtension
 return value auctionPolicyRejectAntiSnipingExtensionOutOfBoundsCode
 
 label checkTitleBytes
-call titleTooLongCall math.greaterThanI64
-argument titleTooLongCall left I64 titleBytes
-argument titleTooLongCall right I64 maxTitleBytes
+call titleTooLongCall math.greaterThanInt64
+argument titleTooLongCall left Int64 titleBytes
+argument titleTooLongCall right Int64 maxTitleBytes
 run titleTooLongCall
 bind value titleTooLong Bool titleTooLongCall
 branch if condition titleTooLong target rejectTitleTooLong
@@ -407,9 +407,9 @@ label rejectTitleTooLong
 return value auctionPolicyRejectTitleTooLongCode
 
 label checkDescriptionBytes
-call descriptionTooLongCall math.greaterThanI64
-argument descriptionTooLongCall left I64 descriptionBytes
-argument descriptionTooLongCall right I64 maxDescriptionBytes
+call descriptionTooLongCall math.greaterThanInt64
+argument descriptionTooLongCall left Int64 descriptionBytes
+argument descriptionTooLongCall right Int64 maxDescriptionBytes
 run descriptionTooLongCall
 bind value descriptionTooLong Bool descriptionTooLongCall
 branch if condition descriptionTooLong target rejectDescriptionTooLong
@@ -419,9 +419,9 @@ label rejectDescriptionTooLong
 return value auctionPolicyRejectDescriptionTooLongCode
 
 operation validateLifecycleTransition
-input operation validateLifecycleTransition currentStatus CSignedInt32
-input operation validateLifecycleTransition nextStatus CSignedInt32
-output operation validateLifecycleTransition CSignedInt64
+input operation validateLifecycleTransition currentStatus Int32
+input operation validateLifecycleTransition nextStatus Int32
+output operation validateLifecycleTransition Int64
 memory validateLifecycleTransition heap no
 async validateLifecycleTransition no
 purpose operation validateLifecycleTransition "Validate one auction lifecycle transition using stable status repr codes."
@@ -430,54 +430,54 @@ invariant operation validateLifecycleTransition "Running can become closed or ca
 invariant operation validateLifecycleTransition "Closed and cancelled are terminal."
 
 label startValidateLifecycleTransition
-call currentDraftCall math.equalCSignedInt32
-argument currentDraftCall left CSignedInt32 currentStatus
-argument currentDraftCall right CSignedInt32 draftAuctionStatusCode
+call currentDraftCall math.equalInt32
+argument currentDraftCall left Int32 currentStatus
+argument currentDraftCall right Int32 draftAuctionStatusCode
 run currentDraftCall
 bind value currentIsDraft Bool currentDraftCall
 branch if condition currentIsDraft target validateDraftTransition
 
-call currentRunningCall math.equalCSignedInt32
-argument currentRunningCall left CSignedInt32 currentStatus
-argument currentRunningCall right CSignedInt32 runningAuctionStatusCode
+call currentRunningCall math.equalInt32
+argument currentRunningCall left Int32 currentStatus
+argument currentRunningCall right Int32 runningAuctionStatusCode
 run currentRunningCall
 bind value currentIsRunning Bool currentRunningCall
 branch if condition currentIsRunning target validateRunningTransition
 
-call currentClosedCall math.equalCSignedInt32
-argument currentClosedCall left CSignedInt32 currentStatus
-argument currentClosedCall right CSignedInt32 closedAuctionStatusCode
+call currentClosedCall math.equalInt32
+argument currentClosedCall left Int32 currentStatus
+argument currentClosedCall right Int32 closedAuctionStatusCode
 run currentClosedCall
 bind value currentIsClosed Bool currentClosedCall
 branch if condition currentIsClosed target rejectTerminalLifecycle
 
-call currentCancelledCall math.equalCSignedInt32
-argument currentCancelledCall left CSignedInt32 currentStatus
-argument currentCancelledCall right CSignedInt32 cancelledAuctionStatusCode
+call currentCancelledCall math.equalInt32
+argument currentCancelledCall left Int32 currentStatus
+argument currentCancelledCall right Int32 cancelledAuctionStatusCode
 run currentCancelledCall
 bind value currentIsCancelled Bool currentCancelledCall
 branch if condition currentIsCancelled target rejectTerminalLifecycle
 return value lifecycleRejectUnsupportedTransitionCode
 
 label validateDraftTransition
-call nextRunningFromDraftCall math.equalCSignedInt32
-argument nextRunningFromDraftCall left CSignedInt32 nextStatus
-argument nextRunningFromDraftCall right CSignedInt32 runningAuctionStatusCode
+call nextRunningFromDraftCall math.equalInt32
+argument nextRunningFromDraftCall left Int32 nextStatus
+argument nextRunningFromDraftCall right Int32 runningAuctionStatusCode
 run nextRunningFromDraftCall
 bind value nextIsRunningFromDraft Bool nextRunningFromDraftCall
 branch if condition nextIsRunningFromDraft target acceptLifecycleTransition
 return value lifecycleRejectDraftOnlyStartsCode
 
 label validateRunningTransition
-call nextClosedFromRunningCall math.equalCSignedInt32
-argument nextClosedFromRunningCall left CSignedInt32 nextStatus
-argument nextClosedFromRunningCall right CSignedInt32 closedAuctionStatusCode
+call nextClosedFromRunningCall math.equalInt32
+argument nextClosedFromRunningCall left Int32 nextStatus
+argument nextClosedFromRunningCall right Int32 closedAuctionStatusCode
 run nextClosedFromRunningCall
 bind value nextIsClosedFromRunning Bool nextClosedFromRunningCall
 branch if condition nextIsClosedFromRunning target acceptLifecycleTransition
-call nextCancelledFromRunningCall math.equalCSignedInt32
-argument nextCancelledFromRunningCall left CSignedInt32 nextStatus
-argument nextCancelledFromRunningCall right CSignedInt32 cancelledAuctionStatusCode
+call nextCancelledFromRunningCall math.equalInt32
+argument nextCancelledFromRunningCall left Int32 nextStatus
+argument nextCancelledFromRunningCall right Int32 cancelledAuctionStatusCode
 run nextCancelledFromRunningCall
 bind value nextIsCancelledFromRunning Bool nextCancelledFromRunningCall
 branch if condition nextIsCancelledFromRunning target acceptLifecycleTransition
@@ -491,19 +491,19 @@ return value lifecycleRejectNoneCode
 
 operation validateBid
 input operation validateBid auctionExists Bool
-input operation validateBid auctionStatus CSignedInt32
-input operation validateBid actorRole CSignedInt32
-input operation validateBid amount CSignedInt64
-input operation validateBid currentBid CSignedInt64
-input operation validateBid minimumIncrement CSignedInt64
-input operation validateBid maxBidAmount CSignedInt64
+input operation validateBid auctionStatus Int32
+input operation validateBid actorRole Int32
+input operation validateBid amount Int64
+input operation validateBid currentBid Int64
+input operation validateBid minimumIncrement Int64
+input operation validateBid maxBidAmount Int64
 input operation validateBid bidderUserId String
 input operation validateBid lastBidderUserId String
-input operation validateBid expectedRevision CSignedInt64
-input operation validateBid currentRevision CSignedInt64
+input operation validateBid expectedRevision Int64
+input operation validateBid currentRevision Int64
 input operation validateBid hasExpectedRevision Bool
 input operation validateBid allowStaleExpectedRevision Bool
-output operation validateBid CSignedInt64
+output operation validateBid Int64
 memory validateBid heap no
 async validateBid no
 purpose operation validateBid "Return the first stable bid rejection code, or zero when the bid can be accepted."
@@ -515,41 +515,41 @@ branch if condition auctionExists target checkAuctionRunning
 return value bidRejectAuctionMissingCode
 
 label checkAuctionRunning
-call auctionRunningCall math.equalCSignedInt32
-argument auctionRunningCall left CSignedInt32 auctionStatus
-argument auctionRunningCall right CSignedInt32 runningAuctionStatusCode
+call auctionRunningCall math.equalInt32
+argument auctionRunningCall left Int32 auctionStatus
+argument auctionRunningCall right Int32 runningAuctionStatusCode
 run auctionRunningCall
 bind value auctionRunning Bool auctionRunningCall
 branch if condition auctionRunning target checkActorBidder
 return value bidRejectAuctionNotRunningCode
 
 label checkActorBidder
-call actorBidderCall math.equalCSignedInt32
-argument actorBidderCall left CSignedInt32 actorRole
-argument actorBidderCall right CSignedInt32 bidderUserRoleCode
+call actorBidderCall math.equalInt32
+argument actorBidderCall left Int32 actorRole
+argument actorBidderCall right Int32 bidderUserRoleCode
 run actorBidderCall
 bind value actorBidder Bool actorBidderCall
 branch if condition actorBidder target checkAmountLow
 return value bidRejectActorNotBidderCode
 
 label checkAmountLow
-call minimumAcceptedAmountCall math.addI64
-argument minimumAcceptedAmountCall left I64 currentBid
-argument minimumAcceptedAmountCall right I64 minimumIncrement
+call minimumAcceptedAmountCall math.addInt64
+argument minimumAcceptedAmountCall left Int64 currentBid
+argument minimumAcceptedAmountCall right Int64 minimumIncrement
 run minimumAcceptedAmountCall
-bind value minimumAcceptedAmount CSignedInt64 minimumAcceptedAmountCall
-call amountMeetsMinimumCall math.greaterThanOrEqualI64
-argument amountMeetsMinimumCall left I64 amount
-argument amountMeetsMinimumCall right I64 minimumAcceptedAmount
+bind value minimumAcceptedAmount Int64 minimumAcceptedAmountCall
+call amountMeetsMinimumCall math.greaterThanOrEqualInt64
+argument amountMeetsMinimumCall left Int64 amount
+argument amountMeetsMinimumCall right Int64 minimumAcceptedAmount
 run amountMeetsMinimumCall
 bind value amountMeetsMinimum Bool amountMeetsMinimumCall
 branch if condition amountMeetsMinimum target checkAmountHigh
 return value bidRejectAmountTooLowCode
 
 label checkAmountHigh
-call amountTooHighCall math.greaterThanI64
-argument amountTooHighCall left I64 amount
-argument amountTooHighCall right I64 maxBidAmount
+call amountTooHighCall math.greaterThanInt64
+argument amountTooHighCall left Int64 amount
+argument amountTooHighCall right Int64 maxBidAmount
 run amountTooHighCall
 bind value amountTooHigh Bool amountTooHighCall
 branch if condition amountTooHigh target rejectAmountTooHigh
@@ -576,9 +576,9 @@ return value bidRejectNoneCode
 
 label checkExpectedRevisionPolicy
 branch if condition allowStaleExpectedRevision target acceptBidWithPolicy
-call revisionMatchesCall math.equalI64
-argument revisionMatchesCall left I64 expectedRevision
-argument revisionMatchesCall right I64 currentRevision
+call revisionMatchesCall math.equalInt64
+argument revisionMatchesCall left Int64 expectedRevision
+argument revisionMatchesCall right Int64 currentRevision
 run revisionMatchesCall
 bind value revisionMatches Bool revisionMatchesCall
 branch if condition revisionMatches target acceptBidWithPolicy
@@ -588,9 +588,9 @@ label acceptBidWithPolicy
 return value bidRejectNoneCode
 
 operation shouldExtendForAntiSniping
-input operation shouldExtendForAntiSniping nowUtcMillis CSignedInt64
-input operation shouldExtendForAntiSniping closesAtUtcMillis CSignedInt64
-input operation shouldExtendForAntiSniping antiSnipingWindowMillis CSignedInt64
+input operation shouldExtendForAntiSniping nowUtcMillis Int64
+input operation shouldExtendForAntiSniping closesAtUtcMillis Int64
+input operation shouldExtendForAntiSniping antiSnipingWindowMillis Int64
 output operation shouldExtendForAntiSniping Bool
 memory shouldExtendForAntiSniping heap no
 async shouldExtendForAntiSniping no
@@ -598,54 +598,54 @@ purpose operation shouldExtendForAntiSniping "Return true when a bid arrives ins
 invariant operation shouldExtendForAntiSniping "A zero anti-sniping window never extends the auction."
 
 label startShouldExtendForAntiSniping
-call windowPositiveCall math.greaterThanI64
-argument windowPositiveCall left I64 antiSnipingWindowMillis
-argument windowPositiveCall right I64 zeroSignedInt64
+call windowPositiveCall math.greaterThanInt64
+argument windowPositiveCall left Int64 antiSnipingWindowMillis
+argument windowPositiveCall right Int64 zeroSignedInt64
 run windowPositiveCall
 bind value windowPositive Bool windowPositiveCall
 branch if condition windowPositive target computeRemainingMillis
 return value false
 
 label computeRemainingMillis
-call remainingCall math.subtractI64
-argument remainingCall left I64 closesAtUtcMillis
-argument remainingCall right I64 nowUtcMillis
+call remainingCall math.subtractInt64
+argument remainingCall left Int64 closesAtUtcMillis
+argument remainingCall right Int64 nowUtcMillis
 run remainingCall
-bind value remainingMillis CSignedInt64 remainingCall
-call remainingNonNegativeCall math.greaterThanOrEqualI64
-argument remainingNonNegativeCall left I64 remainingMillis
-argument remainingNonNegativeCall right I64 zeroSignedInt64
+bind value remainingMillis Int64 remainingCall
+call remainingNonNegativeCall math.greaterThanOrEqualInt64
+argument remainingNonNegativeCall left Int64 remainingMillis
+argument remainingNonNegativeCall right Int64 zeroSignedInt64
 run remainingNonNegativeCall
 bind value remainingNonNegative Bool remainingNonNegativeCall
 branch if condition remainingNonNegative target checkWithinWindow
 return value false
 
 label checkWithinWindow
-call withinWindowCall math.lessThanOrEqualI64
-argument withinWindowCall left I64 remainingMillis
-argument withinWindowCall right I64 antiSnipingWindowMillis
+call withinWindowCall math.lessThanOrEqualInt64
+argument withinWindowCall left Int64 remainingMillis
+argument withinWindowCall right Int64 antiSnipingWindowMillis
 run withinWindowCall
 bind value withinWindow Bool withinWindowCall
 return value withinWindow
 
 operation computeAntiSnipingCloseTime
-input operation computeAntiSnipingCloseTime nowUtcMillis CSignedInt64
-input operation computeAntiSnipingCloseTime currentClosesAtUtcMillis CSignedInt64
-input operation computeAntiSnipingCloseTime antiSnipingExtensionMillis CSignedInt64
-output operation computeAntiSnipingCloseTime CSignedInt64
+input operation computeAntiSnipingCloseTime nowUtcMillis Int64
+input operation computeAntiSnipingCloseTime currentClosesAtUtcMillis Int64
+input operation computeAntiSnipingCloseTime antiSnipingExtensionMillis Int64
+output operation computeAntiSnipingCloseTime Int64
 memory computeAntiSnipingCloseTime heap no
 async computeAntiSnipingCloseTime no
 purpose operation computeAntiSnipingCloseTime "Return max(current close, now + extension) without reading wall-clock time."
 
 label startComputeAntiSnipingCloseTime
-call proposedCloseCall math.addI64
-argument proposedCloseCall left I64 nowUtcMillis
-argument proposedCloseCall right I64 antiSnipingExtensionMillis
+call proposedCloseCall math.addInt64
+argument proposedCloseCall left Int64 nowUtcMillis
+argument proposedCloseCall right Int64 antiSnipingExtensionMillis
 run proposedCloseCall
-bind value proposedClose CSignedInt64 proposedCloseCall
-call proposedAfterCurrentCall math.greaterThanI64
-argument proposedAfterCurrentCall left I64 proposedClose
-argument proposedAfterCurrentCall right I64 currentClosesAtUtcMillis
+bind value proposedClose Int64 proposedCloseCall
+call proposedAfterCurrentCall math.greaterThanInt64
+argument proposedAfterCurrentCall left Int64 proposedClose
+argument proposedAfterCurrentCall right Int64 currentClosesAtUtcMillis
 run proposedAfterCurrentCall
 bind value proposedAfterCurrent Bool proposedAfterCurrentCall
 branch if condition proposedAfterCurrent target returnProposedClose
@@ -671,9 +671,9 @@ label returnBidderAsWinner
 return value bidderUserId
 
 operation nextRevisionAfterAcceptedCommand
-input operation nextRevisionAfterAcceptedCommand currentRevision CSignedInt64
+input operation nextRevisionAfterAcceptedCommand currentRevision Int64
 input operation nextRevisionAfterAcceptedCommand accepted Bool
-output operation nextRevisionAfterAcceptedCommand CSignedInt64
+output operation nextRevisionAfterAcceptedCommand Int64
 memory nextRevisionAfterAcceptedCommand heap no
 async nextRevisionAfterAcceptedCommand no
 purpose operation nextRevisionAfterAcceptedCommand "Accepted state-changing commands increment revision by one; rejected commands preserve revision."
@@ -683,24 +683,24 @@ branch if condition accepted target incrementRevision
 return value currentRevision
 
 label incrementRevision
-call addRevisionCall math.addI64
-argument addRevisionCall left I64 currentRevision
-argument addRevisionCall right I64 oneSignedInt64
+call addRevisionCall math.addInt64
+argument addRevisionCall left Int64 currentRevision
+argument addRevisionCall right Int64 oneSignedInt64
 run addRevisionCall
-bind value nextRevision CSignedInt64 addRevisionCall
+bind value nextRevision Int64 addRevisionCall
 return value nextRevision
 
 operation nextEventSequence
-input operation nextEventSequence currentSequence CSignedInt64
-output operation nextEventSequence CSignedInt64
+input operation nextEventSequence currentSequence Int64
+output operation nextEventSequence Int64
 memory nextEventSequence heap no
 async nextEventSequence no
 purpose operation nextEventSequence "Return the next per-auction replay sequence."
 
 label startNextEventSequence
-call addSequenceCall math.addI64
-argument addSequenceCall left I64 currentSequence
-argument addSequenceCall right I64 oneSignedInt64
+call addSequenceCall math.addInt64
+argument addSequenceCall left Int64 currentSequence
+argument addSequenceCall right Int64 oneSignedInt64
 run addSequenceCall
-bind value incrementedSequence CSignedInt64 addSequenceCall
+bind value incrementedSequence Int64 addSequenceCall
 return value incrementedSequence

@@ -12,10 +12,10 @@ entry console main
 
 section program.fizzBuzzRefined.types
 
-type FizzBuzzCounter I64
-type FizzBuzzDivisor I64
-type PositiveFizzBuzzStep I64
-type FizzBuzzRemainder I64
+type FizzBuzzCounter Int64
+type FizzBuzzDivisor Int64
+type PositiveFizzBuzzStep Int64
+type FizzBuzzRemainder Int64
 
 section program.fizzBuzzRefined.errors
 

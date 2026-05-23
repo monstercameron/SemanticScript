@@ -16,9 +16,9 @@ entry console main
 
 section program.factorialRefined.types
 
-type FactorialCounter I64
-type FactorialAccumulator I64
-type PositiveFactorialStep I64
+type FactorialCounter Int64
+type FactorialAccumulator Int64
+type PositiveFactorialStep Int64
 
 section program.factorialRefined.errors
 
@@ -57,7 +57,7 @@ label startMain
 memory main mutable currentFactorialCounter FactorialCounter factorialLowerLimit
 memory main mutable currentFactorialAccumulator FactorialAccumulator factorialAccumulatorInitial
 
-# rationale: Confirm factorialUpperLimit stays inside the range where I64 factorial accumulation is provably safe.
+# rationale: Confirm factorialUpperLimit stays inside the range where Int64 factorial accumulation is provably safe.
 call factorialUpperLimitSafetyCheckCall FactorialCounter.lessThanOrEqual
 argument factorialUpperLimitSafetyCheckCall left FactorialCounter factorialUpperLimit
 argument factorialUpperLimitSafetyCheckCall right FactorialCounter factorialOverflowSafeUpperLimit
@@ -116,7 +116,7 @@ branch error source writeFinalFactorialAccumulatorCall target consoleWriteFailed
 return ok successfulExitCode
 
 label factorialUpperLimitRejected
-# failure: The configured factorialUpperLimit exceeds the I64 overflow-safe limit.
+# failure: The configured factorialUpperLimit exceeds the Int64 overflow-safe limit.
 makeError factorialUpperLimitRejectedFailure MainError.FactorialUpperLimitTooLarge
 return error factorialUpperLimitRejectedFailure
 

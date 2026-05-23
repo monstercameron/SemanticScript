@@ -5,11 +5,11 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation strlenOf
-input operation strlenOf s CNullTerminatedByteString
-output operation strlenOf Result CByteCount Void
+input operation strlenOf s String
+output operation strlenOf Result ByteCount Void
 effect strlenOf read memory.buffer
 memory strlenOf heap no
 async strlenOf no
@@ -17,9 +17,9 @@ purpose operation strlenOf "Return strlen(s) via libc."
 invariant operation strlenOf "Passes pointer s through to c.strlen."
 label startStrlenOf
 call lenCall c.strlen
-argument lenCall s CNullTerminatedByteString s
+argument lenCall s String s
 run lenCall
-bind value lenValue CByteCount lenCall
+bind value lenValue ByteCount lenCall
 return ok lenValue
 
 operation main
@@ -31,16 +31,16 @@ async main no
 purpose operation main "Call strlenOf('hello') = 5."
 invariant operation main "Pointer-typed user-op call."
 label startMain
-storage module immutable greetingText CNullTerminatedByteString "hello"
+storage module immutable greetingText String "hello"
 call myStrlenCall strlenOf
-argument myStrlenCall s CNullTerminatedByteString greetingText
+argument myStrlenCall s String greetingText
 run myStrlenCall
-bind ok lenOutcome CByteCount myStrlenCall
-memory main mutable resultVar I64 0
+bind ok lenOutcome ByteCount myStrlenCall
+memory main mutable resultVar Int64 0
 set memory resultVar lenOutcome
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

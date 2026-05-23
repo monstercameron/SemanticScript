@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -15,27 +15,27 @@ async main no
 purpose operation main "Exercise c.printf with an integer arg (const + bind paths) and a string arg. Uses %lld for i64 and %s for i8*. Triggers walker mode via a no-op c.malloc since c.printf alone isn't a walker trigger (existing SemanticScript programs use c.printf alongside unsupported math libcs)."
 invariant operation main "Output is 'value = 42\\nname = hello\\n'."
 label startMain
-storage module immutable intFormat CNullTerminatedByteString "value = %lld\n"
-storage module immutable stringFormat CNullTerminatedByteString "name = %s\n"
-storage module immutable fortyTwo CSignedInt64 42
-storage module immutable helloLabel CNullTerminatedByteString "hello"
-storage module immutable oneByteForTrigger CByteCount 1
+storage module immutable intFormat String "value = %lld\n"
+storage module immutable stringFormat String "name = %s\n"
+storage module immutable fortyTwo Int64 42
+storage module immutable helloLabel String "hello"
+storage module immutable oneByteForTrigger ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount oneByteForTrigger
+argument walkerTriggerCall size ByteCount oneByteForTrigger
 run walkerTriggerCall
-bind value walkerTriggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value walkerTriggerBuffer OpaquePointer walkerTriggerCall
 call walkerTriggerFreeCall c.free
-argument walkerTriggerFreeCall ptr COpaqueMemoryAddress walkerTriggerBuffer
+argument walkerTriggerFreeCall ptr OpaquePointer walkerTriggerBuffer
 run walkerTriggerFreeCall
 call printIntCall c.printf
-argument printIntCall format CNullTerminatedByteString intFormat
-argument printIntCall value CSignedInt64 fortyTwo
+argument printIntCall format String intFormat
+argument printIntCall value Int64 fortyTwo
 run printIntCall
-ignore ok source printIntCall type CSignedInt32
+ignore ok source printIntCall type Int32
 call printStringCall c.printf
-argument printStringCall format CNullTerminatedByteString stringFormat
-argument printStringCall value CNullTerminatedByteString helloLabel
+argument printStringCall format String stringFormat
+argument printStringCall value String helloLabel
 run printStringCall
-ignore ok source printStringCall type CSignedInt32
+ignore ok source printStringCall type Int32
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

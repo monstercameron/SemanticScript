@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-storage module immutable oneStep I64 1
-storage module immutable zeroInitial I64 0
-storage module immutable failureMarker I64 -7
-sharedState process mutable singleAttemptCounter I64 zeroInitial
+errorCase MainError Placeholder Int32
+storage module immutable oneStep Int64 1
+storage module immutable zeroInitial Int64 0
+storage module immutable failureMarker Int64 -7
+sharedState process mutable singleAttemptCounter Int64 zeroInitial
 retryPolicy singleAttemptOnlyPolicy
 retryMaxAttempts singleAttemptOnlyPolicy 1
 operation singleAttemptFailingOperation
-input operation singleAttemptFailingOperation trigger I64
-output operation singleAttemptFailingOperation I64
-call recordCall math.addI64
-argument recordCall left I64 singleAttemptCounter
-argument recordCall right I64 oneStep
+input operation singleAttemptFailingOperation trigger Int64
+output operation singleAttemptFailingOperation Int64
+call recordCall math.addInt64
+argument recordCall left Int64 singleAttemptCounter
+argument recordCall right Int64 oneStep
 run recordCall
-bind value nextCount I64 recordCall
+bind value nextCount Int64 recordCall
 set sharedState singleAttemptCounter nextCount
 return value failureMarker
 operation main
@@ -33,12 +33,12 @@ invariant operation main "Counter must equal 1 after the run, not 0 (didn't run)
 label startMain
 useRetry singleAttemptCall singleAttemptOnlyPolicy
 call singleAttemptCall singleAttemptFailingOperation
-argument singleAttemptCall trigger I64 zeroInitial
+argument singleAttemptCall trigger Int64 zeroInitial
 run singleAttemptCall
-bind value boundedResult I64 singleAttemptCall
+bind value boundedResult Int64 singleAttemptCall
 call writeBoundaryCall console.writeIntegerLine
 argument writeBoundaryCall console Console console
-argument writeBoundaryCall value I64 singleAttemptCounter
+argument writeBoundaryCall value Int64 singleAttemptCounter
 run writeBoundaryCall
 ignore void source writeBoundaryCall
 storage module immutable successfulExitCode ExitCode 0

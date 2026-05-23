@@ -70,15 +70,15 @@ invariant operation stdlibImportSmokeRuntimeMain "convert + assert + stdio all r
 label startStdlibImportSmokeRuntimeMain
 
 # ---- convert: widenSignedInt32ToSignedInt64(-1) preserves the value ----
-storage module immutable negativeOneAsSignedInt32Import CSignedInt32 -1
-storage module immutable negativeOneAsSignedInt64Import CSignedInt64 -1
+storage module immutable negativeOneAsSignedInt32Import Int32 -1
+storage module immutable negativeOneAsSignedInt64Import Int64 -1
 call assertWidenNegativeOneCall widenSignedInt32ToSignedInt64
-argument assertWidenNegativeOneCall inputValue CSignedInt32 negativeOneAsSignedInt32Import
+argument assertWidenNegativeOneCall inputValue Int32 negativeOneAsSignedInt32Import
 run assertWidenNegativeOneCall
-bind value widenNegativeOneResult CSignedInt64 assertWidenNegativeOneCall
-call checkWidenNegativeOneCall math.equalI64
-argument checkWidenNegativeOneCall left CSignedInt64 widenNegativeOneResult
-argument checkWidenNegativeOneCall right I64 negativeOneAsSignedInt64Import
+bind value widenNegativeOneResult Int64 assertWidenNegativeOneCall
+call checkWidenNegativeOneCall math.equalInt64
+argument checkWidenNegativeOneCall left Int64 widenNegativeOneResult
+argument checkWidenNegativeOneCall right Int64 negativeOneAsSignedInt64Import
 run checkWidenNegativeOneCall
 bind value widenNegativeOneOk Bool checkWidenNegativeOneCall
 branch if condition widenNegativeOneOk target widenNegativeOneHolds
@@ -86,14 +86,14 @@ branch else target stdlibImportRuntimeAssertionFailed
 label widenNegativeOneHolds
 
 # ---- convert: convertByteValueToUnsignedInt32(-1) == 255 ----
-storage module immutable expectedTwoFiftyFiveForByteCoerceImport CSignedInt32 255
+storage module immutable expectedTwoFiftyFiveForByteCoerceImport Int32 255
 call assertByteCoerceCall convertByteValueToUnsignedInt32
-argument assertByteCoerceCall signExtendedByteValue CSignedInt32 negativeOneAsSignedInt32Import
+argument assertByteCoerceCall signExtendedByteValue Int32 negativeOneAsSignedInt32Import
 run assertByteCoerceCall
-bind value byteCoerceResult CSignedInt32 assertByteCoerceCall
-call checkByteCoerceCall math.equalI64
-argument checkByteCoerceCall left CSignedInt32 byteCoerceResult
-argument checkByteCoerceCall right I64 expectedTwoFiftyFiveForByteCoerceImport
+bind value byteCoerceResult Int32 assertByteCoerceCall
+call checkByteCoerceCall math.equalInt64
+argument checkByteCoerceCall left Int32 byteCoerceResult
+argument checkByteCoerceCall right Int64 expectedTwoFiftyFiveForByteCoerceImport
 run checkByteCoerceCall
 bind value byteCoerceOk Bool checkByteCoerceCall
 branch if condition byteCoerceOk target byteCoerceHolds
@@ -101,15 +101,15 @@ branch else target stdlibImportRuntimeAssertionFailed
 label byteCoerceHolds
 
 # ---- convert: convertFloat64ToSignedInt64(3.7) == 3 (truncate toward zero) ----
-storage module immutable threePointSevenForFloatToIntImport CFloat64 3.7
-storage module immutable threeExpectedForFloatToIntImport CSignedInt64 3
+storage module immutable threePointSevenForFloatToIntImport Float64 3.7
+storage module immutable threeExpectedForFloatToIntImport Int64 3
 call assertFloatToIntCall convertFloat64ToSignedInt64
-argument assertFloatToIntCall inputValue CFloat64 threePointSevenForFloatToIntImport
+argument assertFloatToIntCall inputValue Float64 threePointSevenForFloatToIntImport
 run assertFloatToIntCall
-bind value floatToIntResult CSignedInt64 assertFloatToIntCall
-call checkFloatToIntCall math.equalI64
-argument checkFloatToIntCall left CSignedInt64 floatToIntResult
-argument checkFloatToIntCall right I64 threeExpectedForFloatToIntImport
+bind value floatToIntResult Int64 assertFloatToIntCall
+call checkFloatToIntCall math.equalInt64
+argument checkFloatToIntCall left Int64 floatToIntResult
+argument checkFloatToIntCall right Int64 threeExpectedForFloatToIntImport
 run checkFloatToIntCall
 bind value floatToIntOk Bool checkFloatToIntCall
 branch if condition floatToIntOk target floatToIntHolds
@@ -124,24 +124,24 @@ run assertImportedConditionTrueCall
 branch error source assertImportedConditionTrueCall target stdlibImportRuntimeAssertionFailed
 
 # ---- assert: requireSignedInt64ValuesEqual(42, 42) succeeds ----
-storage module immutable fortyTwoForRequireEqualImport CSignedInt64 42
+storage module immutable fortyTwoForRequireEqualImport Int64 42
 call assertImportedRequireEqualCall requireSignedInt64ValuesEqual
-argument assertImportedRequireEqualCall leftValue CSignedInt64 fortyTwoForRequireEqualImport
-argument assertImportedRequireEqualCall rightValue CSignedInt64 fortyTwoForRequireEqualImport
+argument assertImportedRequireEqualCall leftValue Int64 fortyTwoForRequireEqualImport
+argument assertImportedRequireEqualCall rightValue Int64 fortyTwoForRequireEqualImport
 run assertImportedRequireEqualCall
 branch error source assertImportedRequireEqualCall target stdlibImportRuntimeAssertionFailed
 
 # ---- stdio: writeSignedInt64DecimalToStandardOutput(12345) writes the digits + newline.
 # The byte count we get back should be 5 (digit count, not including newline).
-storage module immutable twelveThousandThreeHundredFortyFiveForStdioImport CSignedInt64 12345
-storage module immutable fiveExpectedDigitCountForStdioImport CByteCount 5
+storage module immutable twelveThousandThreeHundredFortyFiveForStdioImport Int64 12345
+storage module immutable fiveExpectedDigitCountForStdioImport ByteCount 5
 call assertStdioWriteIntegerCall writeSignedInt64DecimalToStandardOutput
-argument assertStdioWriteIntegerCall inputValue CSignedInt64 twelveThousandThreeHundredFortyFiveForStdioImport
+argument assertStdioWriteIntegerCall inputValue Int64 twelveThousandThreeHundredFortyFiveForStdioImport
 run assertStdioWriteIntegerCall
-bind value stdioWriteIntegerResult CByteCount assertStdioWriteIntegerCall
-call checkStdioWriteIntegerCall math.equalI64
-argument checkStdioWriteIntegerCall left CByteCount stdioWriteIntegerResult
-argument checkStdioWriteIntegerCall right I64 fiveExpectedDigitCountForStdioImport
+bind value stdioWriteIntegerResult ByteCount assertStdioWriteIntegerCall
+call checkStdioWriteIntegerCall math.equalInt64
+argument checkStdioWriteIntegerCall left ByteCount stdioWriteIntegerResult
+argument checkStdioWriteIntegerCall right Int64 fiveExpectedDigitCountForStdioImport
 run checkStdioWriteIntegerCall
 bind value stdioWriteIntegerOk Bool checkStdioWriteIntegerCall
 branch if condition stdioWriteIntegerOk target stdioWriteIntegerHolds
@@ -153,26 +153,26 @@ label stdioWriteIntegerHolds
 #      terminate the process and would kill the test runner.
 #      The unreachable branch below references both names so the
 #      compiler links them, proving the import surface is wired up.
-storage module immutable zeroForProcessImport CSignedInt32 0
+storage module immutable zeroForProcessImport Int32 0
 storage module immutable importedFalseGuard Bool false
 branch if condition importedFalseGuard target unreachableProcessSinkBranch
 branch else target stdioWriteIntegerPostProcess
 label unreachableProcessSinkBranch
 call neverExitCall exitProcessWithStatusCode
-argument neverExitCall exitStatusCode CSignedInt32 zeroForProcessImport
+argument neverExitCall exitStatusCode Int32 zeroForProcessImport
 run neverExitCall
 call neverAbortCall abortCurrentProcess
 run neverAbortCall
 jump target stdioWriteIntegerPostProcess
 label stdioWriteIntegerPostProcess
 
-storage module immutable runtimeImportSuccessMessage CNullTerminatedByteString "OK"
+storage module immutable runtimeImportSuccessMessage String "OK"
 call writeRuntimeImportSuccessCall console.writeLine
 argument writeRuntimeImportSuccessCall console Console console
-argument writeRuntimeImportSuccessCall text CNullTerminatedByteString runtimeImportSuccessMessage
+argument writeRuntimeImportSuccessCall text String runtimeImportSuccessMessage
 run writeRuntimeImportSuccessCall
-ignore ok source writeRuntimeImportSuccessCall type CSignedInt32
-bind error runtimeImportConsoleWriteError CSignedInt32 writeRuntimeImportSuccessCall
+ignore ok source writeRuntimeImportSuccessCall type Int32
+bind error runtimeImportConsoleWriteError Int32 writeRuntimeImportSuccessCall
 branch error source writeRuntimeImportSuccessCall target runtimeImportConsoleWriteFailed
 storage module immutable runtimeImportExitOk ExitCode 0
 return ok runtimeImportExitOk

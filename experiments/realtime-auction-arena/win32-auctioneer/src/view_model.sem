@@ -4,40 +4,40 @@ moduleOwns experiment.realtime_auction_arena.win32_auctioneer.view_model "Client
 moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.view_model "Server event ordering, JSON parsing implementation, or native GUI list virtualization."
 invariant module experiment.realtime_auction_arena.win32_auctioneer.view_model "The view model keeps server-derived display text separate from control creation so polling/SSE can update the same lists later."
 
-type AuctionId CNullTerminatedByteString
-type AuctionStatus CNullTerminatedByteString
-type ItemName CNullTerminatedByteString
-type UserId CNullTerminatedByteString
-type DisplayText CNullTerminatedByteString
-type EventKind CNullTerminatedByteString
-type RejectedBidReason CNullTerminatedByteString
-type ChatMessageId CNullTerminatedByteString
-type AccessJwt CNullTerminatedByteString
-type ApiBaseUrl CNullTerminatedByteString
+type AuctionId String
+type AuctionStatus String
+type ItemName String
+type UserId String
+type DisplayText String
+type EventKind String
+type RejectedBidReason String
+type ChatMessageId String
+type AccessJwt String
+type ApiBaseUrl String
 
 record AuctionSnapshotView
 field AuctionSnapshotView auctionId AuctionId
 field AuctionSnapshotView status AuctionStatus
 field AuctionSnapshotView itemName ItemName
-field AuctionSnapshotView currentBidMinor I64
-field AuctionSnapshotView minimumIncrementMinor I64
-field AuctionSnapshotView connectedClients I64
+field AuctionSnapshotView currentBidMinor Int64
+field AuctionSnapshotView minimumIncrementMinor Int64
+field AuctionSnapshotView connectedClients Int64
 field AuctionSnapshotView currentWinnerUserId UserId
-field AuctionSnapshotView endsAtMillis I64
-field AuctionSnapshotView revision I64
+field AuctionSnapshotView endsAtMillis Int64
+field AuctionSnapshotView revision Int64
 field AuctionSnapshotView summary DisplayText
 
 record AuditEventRow
-field AuditEventRow eventId CNullTerminatedByteString
-field AuditEventRow sequence I64
+field AuditEventRow eventId String
+field AuditEventRow sequence Int64
 field AuditEventRow kind EventKind
 field AuditEventRow actorUserId UserId
 field AuditEventRow summary DisplayText
 
 record RejectedBidRow
-field RejectedBidRow bidId CNullTerminatedByteString
+field RejectedBidRow bidId String
 field RejectedBidRow bidderUserId UserId
-field RejectedBidRow amountMinor I64
+field RejectedBidRow amountMinor Int64
 field RejectedBidRow reason RejectedBidReason
 field RejectedBidRow summary DisplayText
 
@@ -45,7 +45,7 @@ record ChatModerationRow
 field ChatModerationRow messageId ChatMessageId
 field ChatModerationRow senderUserId UserId
 field ChatModerationRow messageText DisplayText
-field ChatModerationRow reportCount I64
+field ChatModerationRow reportCount Int64
 field ChatModerationRow summary DisplayText
 
 record AuctioneerViewModel

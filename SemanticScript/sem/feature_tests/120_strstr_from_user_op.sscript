@@ -5,18 +5,18 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation findIn
-input operation findIn haystack CNullTerminatedByteString
-input operation findIn needle CNullTerminatedByteString
-output operation findIn Result CNullTerminatedByteString Void
+input operation findIn haystack String
+input operation findIn needle String
+output operation findIn Result String Void
 label startFind
 call ssCall c.strstr
-argument ssCall haystack CNullTerminatedByteString haystack
-argument ssCall needle CNullTerminatedByteString needle
+argument ssCall haystack String haystack
+argument ssCall needle String needle
 run ssCall
-bind value found CNullTerminatedByteString ssCall
+bind value found String ssCall
 return ok found
 
 operation main
@@ -26,16 +26,16 @@ effect main write console.stdout
 memory main heap no
 async main no
 label startMain
-storage module immutable text CNullTerminatedByteString "this is found here"
-storage module immutable what CNullTerminatedByteString "found"
+storage module immutable text String "this is found here"
+storage module immutable what String "found"
 call fc findIn
-argument fc haystack CNullTerminatedByteString text
-argument fc needle CNullTerminatedByteString what
+argument fc haystack String text
+argument fc needle String what
 run fc
-bind ok res CNullTerminatedByteString fc
+bind ok res String fc
 call w console.writeLine
 argument w console Console console
-argument w text CNullTerminatedByteString res
+argument w text String res
 run w
 ignore void source w
 storage module immutable okExit ExitCode 0

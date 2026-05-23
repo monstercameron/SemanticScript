@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError SimulatedFailure CSignedInt32
+errorCase MainError SimulatedFailure Int32
 
 operation main
 input operation main console Console
@@ -16,12 +16,12 @@ async main no
 purpose operation main "Use makeError + returnError to exit with payload value 42, demonstrating that the errorCase payload propagates to the process exit code."
 invariant operation main "Exit code comes from the makeError integer payload."
 label startMain
-storage module immutable exitPayload CSignedInt32 42
-storage module immutable branchTriggerOne CSignedInt64 1
-storage module immutable onePivot CSignedInt64 1
-call alwaysTrueCall math.equalI64
-argument alwaysTrueCall left CSignedInt64 branchTriggerOne
-argument alwaysTrueCall right I64 onePivot
+storage module immutable exitPayload Int32 42
+storage module immutable branchTriggerOne Int64 1
+storage module immutable onePivot Int64 1
+call alwaysTrueCall math.equalInt64
+argument alwaysTrueCall left Int64 branchTriggerOne
+argument alwaysTrueCall right Int64 onePivot
 run alwaysTrueCall
 bind value alwaysTrue Bool alwaysTrueCall
 branch if condition alwaysTrue target raiseFailure

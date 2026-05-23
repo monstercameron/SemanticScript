@@ -6,19 +6,19 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError CallFailed CallError
-storage module immutable oneStep I64 1
-storage module immutable negativeThreeStart I64 -3
-storage module mutable retryProgressCounter I64 negativeThreeStart
+storage module immutable oneStep Int64 1
+storage module immutable negativeThreeStart Int64 -3
+storage module mutable retryProgressCounter Int64 negativeThreeStart
 retryPolicy fiveAttemptRetryPolicy
 retryMaxAttempts fiveAttemptRetryPolicy 5
 operation incrementAndReportProgress
-input operation incrementAndReportProgress unusedTrigger I64
-output operation incrementAndReportProgress I64
-call incrementProgressCall math.addI64
-argument incrementProgressCall left I64 retryProgressCounter
-argument incrementProgressCall right I64 oneStep
+input operation incrementAndReportProgress unusedTrigger Int64
+output operation incrementAndReportProgress Int64
+call incrementProgressCall math.addInt64
+argument incrementProgressCall left Int64 retryProgressCounter
+argument incrementProgressCall right Int64 oneStep
 run incrementProgressCall
-bind value nextProgressValue I64 incrementProgressCall
+bind value nextProgressValue Int64 incrementProgressCall
 set storage retryProgressCounter nextProgressValue
 return value nextProgressValue
 operation main
@@ -30,15 +30,15 @@ async main no
 purpose operation main "useRetry retries while the call returns a negative value; counter walks -2 -> -1 -> 0; result of the successful attempt prints."
 invariant operation main "Without retry, output would be -2 after a single attempt. With retry, the loop runs 3 times until the call returns 0 (not negative)."
 label startMain
-storage module immutable zeroValue I64 0
+storage module immutable zeroValue Int64 0
 useRetry retryHelperCall fiveAttemptRetryPolicy
 call retryHelperCall incrementAndReportProgress
-argument retryHelperCall unusedTrigger I64 zeroValue
+argument retryHelperCall unusedTrigger Int64 zeroValue
 run retryHelperCall
-bind value finalProgressResult I64 retryHelperCall
+bind value finalProgressResult Int64 retryHelperCall
 call printResultCall console.writeIntegerLine
 argument printResultCall console Console console
-argument printResultCall value I64 finalProgressResult
+argument printResultCall value Int64 finalProgressResult
 run printResultCall
 ignore void source printResultCall
 storage module immutable successfulExitCode ExitCode 0

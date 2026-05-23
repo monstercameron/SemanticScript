@@ -15,29 +15,29 @@ async main no
 purpose operation main "branchIf with FALSE condition falls through to the unconditional branch."
 invariant operation main "Prints 'not-taken' when condition fails."
 label startMain
-storage module immutable fiveInitial I64 5
-storage module immutable sevenCompare I64 7
-memory main mutable leftOp I64 fiveInitial
-call eqCall math.equalI64
-argument eqCall left I64 leftOp
-argument eqCall right I64 sevenCompare
+storage module immutable fiveInitial Int64 5
+storage module immutable sevenCompare Int64 7
+memory main mutable leftOp Int64 fiveInitial
+call eqCall math.equalInt64
+argument eqCall left Int64 leftOp
+argument eqCall right Int64 sevenCompare
 run eqCall
 bind value isEqual Bool eqCall
 branch if condition isEqual target takenLabel
 branch else target notTakenLabel
 label takenLabel
-storage module immutable takenText CNullTerminatedByteString "taken"
+storage module immutable takenText String "taken"
 call writeTakenCall console.writeLine
 argument writeTakenCall console Console console
-argument writeTakenCall text CNullTerminatedByteString takenText
+argument writeTakenCall text String takenText
 run writeTakenCall
 ignore void source writeTakenCall
 jump target endLabel
 label notTakenLabel
-storage module immutable notTakenText CNullTerminatedByteString "not-taken"
+storage module immutable notTakenText String "not-taken"
 call writeNotTakenCall console.writeLine
 argument writeNotTakenCall console Console console
-argument writeNotTakenCall text CNullTerminatedByteString notTakenText
+argument writeNotTakenCall text String notTakenText
 run writeNotTakenCall
 ignore void source writeNotTakenCall
 jump target endLabel

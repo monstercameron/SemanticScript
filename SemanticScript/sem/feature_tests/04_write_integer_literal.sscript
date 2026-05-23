@@ -15,11 +15,11 @@ async main no
 purpose operation main "console.writeIntegerLine of a var initialized to a const 7."
 invariant operation main "Emits the integer 7 followed by newline."
 label startMain
-storage module immutable sevenInitialValue I64 7
-memory main mutable sevenValue I64 sevenInitialValue
+storage module immutable sevenInitialValue Int64 7
+memory main mutable sevenValue Int64 sevenInitialValue
 call writeSevenCall console.writeIntegerLine
 argument writeSevenCall console Console console
-argument writeSevenCall value I64 sevenValue
+argument writeSevenCall value Int64 sevenValue
 run writeSevenCall
 ignore void source writeSevenCall
 storage module immutable successfulExitCode ExitCode 0

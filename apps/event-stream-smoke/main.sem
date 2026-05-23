@@ -47,11 +47,11 @@ storage module immutable smokeQueueCapacity EventQueueCapacity 16
 storage module immutable zeroEventId EventId 0
 storage module immutable nullEventOutputBuffer EventOutputBuffer 0
 storage module immutable nullEventOutputCapacity EventBufferCapacity 0
-storage module immutable requestCancellationToken COpaqueMemoryAddress 0
+storage module immutable requestCancellationToken OpaquePointer 0
 storage module immutable successExitCode ExitCode 0
 storage module immutable failedExitCode ExitCode 1
-storage module immutable firstListenerText CNullTerminatedByteString "listener-one handled smoke.event.created"
-storage module immutable secondListenerText CNullTerminatedByteString "listener-two handled smoke.event.created"
+storage module immutable firstListenerText String "listener-one handled smoke.event.created"
+storage module immutable secondListenerText String "listener-two handled smoke.event.created"
 
 operation eventIdGreaterThan
 input operation eventIdGreaterThan left EventId
@@ -60,14 +60,14 @@ output operation eventIdGreaterThan Bool
 memory eventIdGreaterThan heap no
 async eventIdGreaterThan yes
 operationBody eventIdGreaterThan intrinsic
-intrinsicName eventIdGreaterThan arithmetic.greaterThanI64
+intrinsicName eventIdGreaterThan arithmetic.greaterThanInt64
 purpose operation eventIdGreaterThan "Compare event ids without widening them through private standard.math primitives."
 invariant operation eventIdGreaterThan "Used only to turn EventId receive results into explicit Bool branch conditions."
 
 operation listenerOneHandleSmokeEvent
 input operation listenerOneHandleSmokeEvent console Console
 input operation listenerOneHandleSmokeEvent receivedEventId EventId
-output operation listenerOneHandleSmokeEvent CSignedInt32
+output operation listenerOneHandleSmokeEvent Int32
 effect listenerOneHandleSmokeEvent write console.stdout
 memory listenerOneHandleSmokeEvent heap no
 async listenerOneHandleSmokeEvent yes
@@ -84,18 +84,18 @@ start listenerOneHasEventCall
 await listenerOneHasEventCall
 bind value listenerOneHasEvent Bool listenerOneHasEventCall
 branch if condition listenerOneHasEvent target listenerOneReceivedEvent
-storage local immutable listenerOneNoEventStatus CSignedInt32 1
+storage local immutable listenerOneNoEventStatus Int32 1
 return value listenerOneNoEventStatus
 label listenerOneReceivedEvent
 
 call listenerOneWriteCall console.writeLine
 argument listenerOneWriteCall console Console console
-argument listenerOneWriteCall text CNullTerminatedByteString firstListenerText
+argument listenerOneWriteCall text String firstListenerText
 run listenerOneWriteCall
 ignore void source listenerOneWriteCall
-bind error listenerOneWriteError CSignedInt32 listenerOneWriteCall
+bind error listenerOneWriteError Int32 listenerOneWriteCall
 branch error source listenerOneWriteCall target listenerOneWriteFailed
-storage local immutable listenerOneSuccessStatus CSignedInt32 0
+storage local immutable listenerOneSuccessStatus Int32 0
 return value listenerOneSuccessStatus
 label listenerOneWriteFailed
 return value listenerOneWriteError
@@ -103,7 +103,7 @@ return value listenerOneWriteError
 operation listenerTwoHandleSmokeEvent
 input operation listenerTwoHandleSmokeEvent console Console
 input operation listenerTwoHandleSmokeEvent receivedEventId EventId
-output operation listenerTwoHandleSmokeEvent CSignedInt32
+output operation listenerTwoHandleSmokeEvent Int32
 effect listenerTwoHandleSmokeEvent write console.stdout
 memory listenerTwoHandleSmokeEvent heap no
 async listenerTwoHandleSmokeEvent yes
@@ -120,18 +120,18 @@ start listenerTwoHasEventCall
 await listenerTwoHasEventCall
 bind value listenerTwoHasEvent Bool listenerTwoHasEventCall
 branch if condition listenerTwoHasEvent target listenerTwoReceivedEvent
-storage local immutable listenerTwoNoEventStatus CSignedInt32 1
+storage local immutable listenerTwoNoEventStatus Int32 1
 return value listenerTwoNoEventStatus
 label listenerTwoReceivedEvent
 
 call listenerTwoWriteCall console.writeLine
 argument listenerTwoWriteCall console Console console
-argument listenerTwoWriteCall text CNullTerminatedByteString secondListenerText
+argument listenerTwoWriteCall text String secondListenerText
 run listenerTwoWriteCall
 ignore void source listenerTwoWriteCall
-bind error listenerTwoWriteError CSignedInt32 listenerTwoWriteCall
+bind error listenerTwoWriteError Int32 listenerTwoWriteCall
 branch error source listenerTwoWriteCall target listenerTwoWriteFailed
-storage local immutable listenerTwoSuccessStatus CSignedInt32 0
+storage local immutable listenerTwoSuccessStatus Int32 0
 return value listenerTwoSuccessStatus
 label listenerTwoWriteFailed
 return value listenerTwoWriteError
@@ -282,9 +282,9 @@ cancelOn secondListenerCall requestCancellationToken
 start secondListenerCall
 
 await firstListenerCall
-ignore value source firstListenerCall type CSignedInt32
+ignore value source firstListenerCall type Int32
 await secondListenerCall
-ignore value source secondListenerCall type CSignedInt32
+ignore value source secondListenerCall type Int32
 
 call acknowledgeFirstCall event.acknowledgeEvent
 argument acknowledgeFirstCall subscription EventSubscriptionHandle firstSubscription

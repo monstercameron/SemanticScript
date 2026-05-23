@@ -15,38 +15,38 @@ async main no
 purpose operation main "Two-tier branching: x>0 AND x<10."
 invariant operation main "5 falls into the between range."
 label startMain
-storage module immutable fiveInitial I64 5
-storage module immutable zeroCompare I64 0
-storage module immutable tenCompare I64 10
-memory main mutable value I64 fiveInitial
-call posCheckCall math.greaterThanI64
-argument posCheckCall left I64 value
-argument posCheckCall right I64 zeroCompare
+storage module immutable fiveInitial Int64 5
+storage module immutable zeroCompare Int64 0
+storage module immutable tenCompare Int64 10
+memory main mutable value Int64 fiveInitial
+call posCheckCall math.greaterThanInt64
+argument posCheckCall left Int64 value
+argument posCheckCall right Int64 zeroCompare
 run posCheckCall
 bind value isPositive Bool posCheckCall
 branch if condition isPositive target checkUpperBound
 branch else target outOfRangeLabel
 label checkUpperBound
-call upperCheckCall math.lessThanI64
-argument upperCheckCall left I64 value
-argument upperCheckCall right I64 tenCompare
+call upperCheckCall math.lessThanInt64
+argument upperCheckCall left Int64 value
+argument upperCheckCall right Int64 tenCompare
 run upperCheckCall
 bind value isUnderTen Bool upperCheckCall
 branch if condition isUnderTen target betweenLabel
 branch else target outOfRangeLabel
 label betweenLabel
-storage module immutable betweenText CNullTerminatedByteString "between"
+storage module immutable betweenText String "between"
 call writeBetweenCall console.writeLine
 argument writeBetweenCall console Console console
-argument writeBetweenCall text CNullTerminatedByteString betweenText
+argument writeBetweenCall text String betweenText
 run writeBetweenCall
 ignore void source writeBetweenCall
 jump target endLabel
 label outOfRangeLabel
-storage module immutable oorText CNullTerminatedByteString "out-of-range"
+storage module immutable oorText String "out-of-range"
 call writeOorCall console.writeLine
 argument writeOorCall console Console console
-argument writeOorCall text CNullTerminatedByteString oorText
+argument writeOorCall text String oorText
 run writeOorCall
 ignore void source writeOorCall
 jump target endLabel

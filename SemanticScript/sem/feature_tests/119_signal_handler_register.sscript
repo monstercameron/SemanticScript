@@ -5,16 +5,16 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 # A signal handler operation. The C ABI wants `void (int)` — we model it
-# as an operation whose result is ignored (CSignedInt32 placeholder).
+# as an operation whose result is ignored (Int32 placeholder).
 operation myHandler
-input operation myHandler signum CSignedInt32
-output operation myHandler Result CSignedInt32 Void
+input operation myHandler signum Int32
+output operation myHandler Result Int32 Void
 purpose operation myHandler "Stub handler that does nothing. Just needs to exist as a function pointer."
 label startHandler
-storage module immutable zero CSignedInt32 0
+storage module immutable zero Int32 0
 return ok zero
 
 operation main
@@ -26,17 +26,17 @@ async main no
 purpose operation main "Register myHandler for SIGINT via c.signal, then print 'ok' (we never actually raise the signal)."
 invariant operation main "Output: 'ok\\n'."
 label startMain
-storage module immutable sigint CSignedInt32 2
+storage module immutable sigint Int32 2
 call regCall c.signal
-argument regCall sig CSignedInt32 sigint
+argument regCall sig Int32 sigint
 argument regCall handler CSignalHandler myHandler
 run regCall
-ignore ok source regCall type COpaqueMemoryAddress
+ignore ok source regCall type OpaquePointer
 
-storage module immutable okStr CNullTerminatedByteString "ok"
+storage module immutable okStr String "ok"
 call w console.writeLine
 argument w console Console console
-argument w text CNullTerminatedByteString okStr
+argument w text String okStr
 run w
 ignore void source w
 

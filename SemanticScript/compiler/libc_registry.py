@@ -11,30 +11,31 @@ semsc.py's `llvm_type_for`. Every name carries width + signedness, or an
 explicit ABI role, or the encoding contract for pointer-shaped types
 (spec §6, §10):
 
-    CSignedByte, CUnsignedByte             i8
-    CSignedInt16, CUnsignedInt16           i16
-    CSignedInt32, CUnsignedInt32           i32
-    CSignedInt64, CUnsignedInt64           i64
-    CByteCount, CSignedByteCount,
-        CAddressOffset,
-        CUnixSecondsSinceEpoch,
-        CCpuClockTicks,
-        CFileByteOffset,
-        CMaxSignedInt, CMaxUnsignedInt     i64 (role aliases)
-    CFloat32                               f32
-    CFloat64                               f64
-    CNullTerminatedByteString              i8*
-    COpaqueMemoryAddress                   i8*
-    CFileHandle                            i8*  (FILE *)
-    CDecomposedTimeAddress                 i8*  (struct tm *)
-    CSetjmpRegisterBuffer                  i8*  (jmp_buf)
+    Int8, UInt8             i8
+    Int16, UInt16           i16
+    Int32, UInt32           i32
+    Int64, UInt64           i64
+    ByteCount, SignedByteCount,
+        AddressOffset,
+        UnixSecondsSinceEpoch,
+        CpuClockTicks,
+        FileByteOffset,
+        DurationMilliseconds,
+        MonotonicMilliseconds,
+        UtcMilliseconds                     i64 (role aliases)
+    Float32                               f32
+    Float64                               f64
+    String              i8*
+    OpaquePointer                   i8*
+    FileHandle                            i8*  (FILE *)
+    DecomposedTimeAddress                 i8*  (struct tm *)
+    SetjmpRegisterBuffer                  i8*  (jmp_buf)
     Bool                                   i1
     Void                                   void
 
-The short legacy aliases (`CInt`, `CDouble`, `CSize`, `CString`,
-`CVoidPtr`, `CFilePtr`, `CTm`, `CJmpBuf`, `CChar`, `CLong`, etc.) are
-still accepted by `llvm_type_for` for backward compatibility with the
-first revision of the registry.
+The registry uses the current canonical primitive and role spellings
+throughout. Callers should reference the current surface directly rather
+than relying on older alias names.
 
 This file aims for C90 + C99 + C11 coverage of the freestanding and hosted
 standard library function set as defined by ISO/IEC 9899. Functions that
@@ -72,165 +73,165 @@ will accept.
 
 # ---- <stdio.h> ----
 STDIO = {
-    "printf":     ("CSignedInt32", ["CNullTerminatedByteString"], True),
-    "fprintf":    ("CSignedInt32", ["CFileHandle", "CNullTerminatedByteString"], True),
-    "sprintf":    ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString"], True),
-    "snprintf":   ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString"], True),
-    "vprintf":    ("CSignedInt32", ["CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "vfprintf":   ("CSignedInt32", ["CFileHandle", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "vsprintf":   ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "vsnprintf":  ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "scanf":      ("CSignedInt32", ["CNullTerminatedByteString"], True),
-    "fscanf":     ("CSignedInt32", ["CFileHandle", "CNullTerminatedByteString"], True),
-    "sscanf":     ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString"], True),
-    "vscanf":     ("CSignedInt32", ["CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "vfscanf":    ("CSignedInt32", ["CFileHandle", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "vsscanf":    ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "fopen":      ("CFileHandle", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "freopen":    ("CFileHandle", ["CNullTerminatedByteString", "CNullTerminatedByteString", "CFileHandle"], False),
-    "fclose":     ("CSignedInt32", ["CFileHandle"], False),
-    "fflush":     ("CSignedInt32", ["CFileHandle"], False),
-    "fread":      ("CByteCount", ["COpaqueMemoryAddress", "CByteCount", "CByteCount", "CFileHandle"], False),
-    "fwrite":     ("CByteCount", ["COpaqueMemoryAddress", "CByteCount", "CByteCount", "CFileHandle"], False),
-    "fseek":      ("CSignedInt32", ["CFileHandle", "CSignedInt64", "CSignedInt32"], False),
-    "ftell":      ("CSignedInt64", ["CFileHandle"], False),
-    "fsetpos":    ("CSignedInt32", ["CFileHandle", "COpaqueMemoryAddress"], False),
-    "fgetpos":    ("CSignedInt32", ["CFileHandle", "COpaqueMemoryAddress"], False),
-    "rewind":     ("Void", ["CFileHandle"], False),
-    "fgetc":      ("CSignedInt32", ["CFileHandle"], False),
-    "fputc":      ("CSignedInt32", ["CSignedInt32", "CFileHandle"], False),
-    "getc":       ("CSignedInt32", ["CFileHandle"], False),
-    "putc":       ("CSignedInt32", ["CSignedInt32", "CFileHandle"], False),
-    "getchar":    ("CSignedInt32", [], False),
-    "putchar":    ("CSignedInt32", ["CSignedInt32"], False),
-    "fgets":      ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CSignedInt32", "CFileHandle"], False),
-    "fputs":      ("CSignedInt32", ["CNullTerminatedByteString", "CFileHandle"], False),
-    "gets_s":     ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CByteCount"], False),
-    "puts":       ("CSignedInt32", ["CNullTerminatedByteString"], False),
-    "ungetc":     ("CSignedInt32", ["CSignedInt32", "CFileHandle"], False),
-    "feof":       ("CSignedInt32", ["CFileHandle"], False),
-    "ferror":     ("CSignedInt32", ["CFileHandle"], False),
-    "clearerr":   ("Void", ["CFileHandle"], False),
-    "perror":     ("Void", ["CNullTerminatedByteString"], False),
-    "remove":     ("CSignedInt32", ["CNullTerminatedByteString"], False),
-    "rename":     ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "tmpfile":    ("CFileHandle", [], False),
-    "tmpnam":     ("CNullTerminatedByteString", ["CNullTerminatedByteString"], False),
-    "setbuf":     ("Void", ["CFileHandle", "CNullTerminatedByteString"], False),
-    "setvbuf":    ("CSignedInt32", ["CFileHandle", "CNullTerminatedByteString", "CSignedInt32", "CByteCount"], False),
+    "printf":     ("Int32", ["String"], True),
+    "fprintf":    ("Int32", ["FileHandle", "String"], True),
+    "sprintf":    ("Int32", ["String", "String"], True),
+    "snprintf":   ("Int32", ["String", "ByteCount", "String"], True),
+    "vprintf":    ("Int32", ["String", "OpaquePointer"], False),
+    "vfprintf":   ("Int32", ["FileHandle", "String", "OpaquePointer"], False),
+    "vsprintf":   ("Int32", ["String", "String", "OpaquePointer"], False),
+    "vsnprintf":  ("Int32", ["String", "ByteCount", "String", "OpaquePointer"], False),
+    "scanf":      ("Int32", ["String"], True),
+    "fscanf":     ("Int32", ["FileHandle", "String"], True),
+    "sscanf":     ("Int32", ["String", "String"], True),
+    "vscanf":     ("Int32", ["String", "OpaquePointer"], False),
+    "vfscanf":    ("Int32", ["FileHandle", "String", "OpaquePointer"], False),
+    "vsscanf":    ("Int32", ["String", "String", "OpaquePointer"], False),
+    "fopen":      ("FileHandle", ["String", "String"], False),
+    "freopen":    ("FileHandle", ["String", "String", "FileHandle"], False),
+    "fclose":     ("Int32", ["FileHandle"], False),
+    "fflush":     ("Int32", ["FileHandle"], False),
+    "fread":      ("ByteCount", ["OpaquePointer", "ByteCount", "ByteCount", "FileHandle"], False),
+    "fwrite":     ("ByteCount", ["OpaquePointer", "ByteCount", "ByteCount", "FileHandle"], False),
+    "fseek":      ("Int32", ["FileHandle", "Int64", "Int32"], False),
+    "ftell":      ("Int64", ["FileHandle"], False),
+    "fsetpos":    ("Int32", ["FileHandle", "OpaquePointer"], False),
+    "fgetpos":    ("Int32", ["FileHandle", "OpaquePointer"], False),
+    "rewind":     ("Void", ["FileHandle"], False),
+    "fgetc":      ("Int32", ["FileHandle"], False),
+    "fputc":      ("Int32", ["Int32", "FileHandle"], False),
+    "getc":       ("Int32", ["FileHandle"], False),
+    "putc":       ("Int32", ["Int32", "FileHandle"], False),
+    "getchar":    ("Int32", [], False),
+    "putchar":    ("Int32", ["Int32"], False),
+    "fgets":      ("String", ["String", "Int32", "FileHandle"], False),
+    "fputs":      ("Int32", ["String", "FileHandle"], False),
+    "gets_s":     ("String", ["String", "ByteCount"], False),
+    "puts":       ("Int32", ["String"], False),
+    "ungetc":     ("Int32", ["Int32", "FileHandle"], False),
+    "feof":       ("Int32", ["FileHandle"], False),
+    "ferror":     ("Int32", ["FileHandle"], False),
+    "clearerr":   ("Void", ["FileHandle"], False),
+    "perror":     ("Void", ["String"], False),
+    "remove":     ("Int32", ["String"], False),
+    "rename":     ("Int32", ["String", "String"], False),
+    "tmpfile":    ("FileHandle", [], False),
+    "tmpnam":     ("String", ["String"], False),
+    "setbuf":     ("Void", ["FileHandle", "String"], False),
+    "setvbuf":    ("Int32", ["FileHandle", "String", "Int32", "ByteCount"], False),
 }
 
 # ---- <conio.h> Windows console helpers ----
 CONIO = {
-    "_getch":     ("CSignedInt32", [], False),
+    "_getch":     ("Int32", [], False),
 }
 
 # ---- SemanticScript native terminal adapter ----
 SEM_TERMINAL = {
-    "ss_terminal_enable_raw":      ("CSignedInt32", [], False),
-    "ss_terminal_disable_raw":     ("CSignedInt32", [], False),
-    "ss_terminal_read_key":        ("CSignedInt32", [], False),
-    "ss_terminal_get_window_rows": ("CSignedInt64", [], False),
-    "ss_terminal_get_window_cols": ("CSignedInt64", [], False),
-    "ss_terminal_first_argument":  ("CNullTerminatedByteString", [], False),
+    "ss_terminal_enable_raw":      ("Int32", [], False),
+    "ss_terminal_disable_raw":     ("Int32", [], False),
+    "ss_terminal_read_key":        ("Int32", [], False),
+    "ss_terminal_get_window_rows": ("Int64", [], False),
+    "ss_terminal_get_window_cols": ("Int64", [], False),
+    "ss_terminal_first_argument":  ("String", [], False),
 }
 
 # ---- <stdlib.h> ----
 STDLIB = {
-    "malloc":     ("COpaqueMemoryAddress", ["CByteCount"], False),
-    "calloc":     ("COpaqueMemoryAddress", ["CByteCount", "CByteCount"], False),
-    "realloc":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CByteCount"], False),
-    "free":       ("Void", ["COpaqueMemoryAddress"], False),
-    "aligned_alloc": ("COpaqueMemoryAddress", ["CByteCount", "CByteCount"], False),
-    "exit":       ("Void", ["CSignedInt32"], False),
-    "_Exit":      ("Void", ["CSignedInt32"], False),
-    "quick_exit": ("Void", ["CSignedInt32"], False),
-    "atexit":     ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "at_quick_exit": ("CSignedInt32", ["COpaqueMemoryAddress"], False),
+    "malloc":     ("OpaquePointer", ["ByteCount"], False),
+    "calloc":     ("OpaquePointer", ["ByteCount", "ByteCount"], False),
+    "realloc":    ("OpaquePointer", ["OpaquePointer", "ByteCount"], False),
+    "free":       ("Void", ["OpaquePointer"], False),
+    "aligned_alloc": ("OpaquePointer", ["ByteCount", "ByteCount"], False),
+    "exit":       ("Void", ["Int32"], False),
+    "_Exit":      ("Void", ["Int32"], False),
+    "quick_exit": ("Void", ["Int32"], False),
+    "atexit":     ("Int32", ["OpaquePointer"], False),
+    "at_quick_exit": ("Int32", ["OpaquePointer"], False),
     "abort":      ("Void", [], False),
-    "atoi":       ("CSignedInt32", ["CNullTerminatedByteString"], False),
-    "atol":       ("CSignedInt64", ["CNullTerminatedByteString"], False),
-    "atoll":      ("CSignedInt64", ["CNullTerminatedByteString"], False),
-    "atof":       ("CFloat64", ["CNullTerminatedByteString"], False),
-    "strtol":     ("CSignedInt64", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "strtoll":    ("CSignedInt64", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "strtoul":    ("CSignedInt64", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "strtoull":   ("CSignedInt64", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "strtof":     ("CFloat32", ["CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "strtod":     ("CFloat64", ["CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "strtold":    ("CFloat64", ["CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "strtoimax":  ("CSignedInt64", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "strtoumax":  ("CSignedInt64", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "rand":       ("CSignedInt32", [], False),
-    "srand":      ("Void", ["CUnsignedInt32"], False),
-    "rand_s":     ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "qsort":      ("Void", ["COpaqueMemoryAddress", "CByteCount", "CByteCount", "COpaqueMemoryAddress"], False),
-    "qsort_s":    ("CSignedInt32", ["COpaqueMemoryAddress", "CByteCount", "CByteCount", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "bsearch":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount", "CByteCount", "COpaqueMemoryAddress"], False),
-    "abs":        ("CSignedInt32", ["CSignedInt32"], False),
-    "labs":       ("CSignedInt64", ["CSignedInt64"], False),
-    "llabs":      ("CSignedInt64", ["CSignedInt64"], False),
-    "div":        ("CSignedInt64", ["CSignedInt32", "CSignedInt32"], False),
-    "ldiv":       ("CSignedInt64", ["CSignedInt64", "CSignedInt64"], False),
-    "lldiv":      ("CSignedInt64", ["CSignedInt64", "CSignedInt64"], False),
-    "imaxabs":    ("CSignedInt64", ["CSignedInt64"], False),
-    "imaxdiv":    ("CSignedInt64", ["CSignedInt64", "CSignedInt64"], False),
-    "getenv":     ("CNullTerminatedByteString", ["CNullTerminatedByteString"], False),
-    "getenv_s":   ("CSignedInt32", ["COpaqueMemoryAddress", "CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString"], False),
-    "system":     ("CSignedInt32", ["CNullTerminatedByteString"], False),
-    "mblen":      ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount"], False),
-    "mbtowc":     ("CSignedInt32", ["COpaqueMemoryAddress", "CNullTerminatedByteString", "CByteCount"], False),
-    "wctomb":     ("CSignedInt32", ["CNullTerminatedByteString", "CSignedInt32"], False),
-    "mbstowcs":   ("CByteCount", ["COpaqueMemoryAddress", "CNullTerminatedByteString", "CByteCount"], False),
-    "wcstombs":   ("CByteCount", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CByteCount"], False),
+    "atoi":       ("Int32", ["String"], False),
+    "atol":       ("Int64", ["String"], False),
+    "atoll":      ("Int64", ["String"], False),
+    "atof":       ("Float64", ["String"], False),
+    "strtol":     ("Int64", ["String", "OpaquePointer", "Int32"], False),
+    "strtoll":    ("Int64", ["String", "OpaquePointer", "Int32"], False),
+    "strtoul":    ("Int64", ["String", "OpaquePointer", "Int32"], False),
+    "strtoull":   ("Int64", ["String", "OpaquePointer", "Int32"], False),
+    "strtof":     ("Float32", ["String", "OpaquePointer"], False),
+    "strtod":     ("Float64", ["String", "OpaquePointer"], False),
+    "strtold":    ("Float64", ["String", "OpaquePointer"], False),
+    "strtoimax":  ("Int64", ["String", "OpaquePointer", "Int32"], False),
+    "strtoumax":  ("Int64", ["String", "OpaquePointer", "Int32"], False),
+    "rand":       ("Int32", [], False),
+    "srand":      ("Void", ["UInt32"], False),
+    "rand_s":     ("Int32", ["OpaquePointer"], False),
+    "qsort":      ("Void", ["OpaquePointer", "ByteCount", "ByteCount", "OpaquePointer"], False),
+    "qsort_s":    ("Int32", ["OpaquePointer", "ByteCount", "ByteCount", "OpaquePointer", "OpaquePointer"], False),
+    "bsearch":    ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount", "ByteCount", "OpaquePointer"], False),
+    "abs":        ("Int32", ["Int32"], False),
+    "labs":       ("Int64", ["Int64"], False),
+    "llabs":      ("Int64", ["Int64"], False),
+    "div":        ("Int64", ["Int32", "Int32"], False),
+    "ldiv":       ("Int64", ["Int64", "Int64"], False),
+    "lldiv":      ("Int64", ["Int64", "Int64"], False),
+    "imaxabs":    ("Int64", ["Int64"], False),
+    "imaxdiv":    ("Int64", ["Int64", "Int64"], False),
+    "getenv":     ("String", ["String"], False),
+    "getenv_s":   ("Int32", ["OpaquePointer", "String", "ByteCount", "String"], False),
+    "system":     ("Int32", ["String"], False),
+    "mblen":      ("Int32", ["String", "ByteCount"], False),
+    "mbtowc":     ("Int32", ["OpaquePointer", "String", "ByteCount"], False),
+    "wctomb":     ("Int32", ["String", "Int32"], False),
+    "mbstowcs":   ("ByteCount", ["OpaquePointer", "String", "ByteCount"], False),
+    "wcstombs":   ("ByteCount", ["String", "OpaquePointer", "ByteCount"], False),
 }
 
 # ---- <string.h> ----
 STRING = {
-    "strlen":     ("CByteCount", ["CNullTerminatedByteString"], False),
-    "strnlen_s":  ("CByteCount", ["CNullTerminatedByteString", "CByteCount"], False),
-    "strcpy":     ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strncpy":    ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString", "CByteCount"], False),
-    "strcpy_s":   ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString"], False),
-    "strncpy_s":  ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString", "CByteCount"], False),
-    "strcat":     ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strncat":    ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString", "CByteCount"], False),
-    "strcat_s":   ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString"], False),
-    "strncat_s":  ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString", "CByteCount"], False),
-    "strcmp":     ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strncmp":    ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString", "CByteCount"], False),
-    "strcoll":    ("CSignedInt32", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strxfrm":    ("CByteCount", ["CNullTerminatedByteString", "CNullTerminatedByteString", "CByteCount"], False),
-    "strchr":     ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CSignedInt32"], False),
-    "strrchr":    ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CSignedInt32"], False),
-    "strspn":     ("CByteCount", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strcspn":    ("CByteCount", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strpbrk":    ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strstr":     ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strtok":     ("CNullTerminatedByteString", ["CNullTerminatedByteString", "CNullTerminatedByteString"], False),
-    "strtok_s":   ("CNullTerminatedByteString", ["CNullTerminatedByteString", "COpaqueMemoryAddress", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "memcpy":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "memcpy_s":   ("CSignedInt32", ["COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress", "CByteCount"], False),
-    "memmove":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "memmove_s":  ("CSignedInt32", ["COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress", "CByteCount"], False),
-    "memcmp":     ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "memchr":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32", "CByteCount"], False),
-    "memset":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32", "CByteCount"], False),
-    "memset_s":   ("CSignedInt32", ["COpaqueMemoryAddress", "CByteCount", "CSignedInt32", "CByteCount"], False),
-    "strerror":   ("CNullTerminatedByteString", ["CSignedInt32"], False),
-    "strerror_s": ("CSignedInt32", ["CNullTerminatedByteString", "CByteCount", "CSignedInt32"], False),
-    "strerrorlen_s": ("CByteCount", ["CSignedInt32"], False),
+    "strlen":     ("ByteCount", ["String"], False),
+    "strnlen_s":  ("ByteCount", ["String", "ByteCount"], False),
+    "strcpy":     ("String", ["String", "String"], False),
+    "strncpy":    ("String", ["String", "String", "ByteCount"], False),
+    "strcpy_s":   ("Int32", ["String", "ByteCount", "String"], False),
+    "strncpy_s":  ("Int32", ["String", "ByteCount", "String", "ByteCount"], False),
+    "strcat":     ("String", ["String", "String"], False),
+    "strncat":    ("String", ["String", "String", "ByteCount"], False),
+    "strcat_s":   ("Int32", ["String", "ByteCount", "String"], False),
+    "strncat_s":  ("Int32", ["String", "ByteCount", "String", "ByteCount"], False),
+    "strcmp":     ("Int32", ["String", "String"], False),
+    "strncmp":    ("Int32", ["String", "String", "ByteCount"], False),
+    "strcoll":    ("Int32", ["String", "String"], False),
+    "strxfrm":    ("ByteCount", ["String", "String", "ByteCount"], False),
+    "strchr":     ("String", ["String", "Int32"], False),
+    "strrchr":    ("String", ["String", "Int32"], False),
+    "strspn":     ("ByteCount", ["String", "String"], False),
+    "strcspn":    ("ByteCount", ["String", "String"], False),
+    "strpbrk":    ("String", ["String", "String"], False),
+    "strstr":     ("String", ["String", "String"], False),
+    "strtok":     ("String", ["String", "String"], False),
+    "strtok_s":   ("String", ["String", "OpaquePointer", "String", "OpaquePointer"], False),
+    "memcpy":     ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "memcpy_s":   ("Int32", ["OpaquePointer", "ByteCount", "OpaquePointer", "ByteCount"], False),
+    "memmove":    ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "memmove_s":  ("Int32", ["OpaquePointer", "ByteCount", "OpaquePointer", "ByteCount"], False),
+    "memcmp":     ("Int32", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "memchr":     ("OpaquePointer", ["OpaquePointer", "Int32", "ByteCount"], False),
+    "memset":     ("OpaquePointer", ["OpaquePointer", "Int32", "ByteCount"], False),
+    "memset_s":   ("Int32", ["OpaquePointer", "ByteCount", "Int32", "ByteCount"], False),
+    "strerror":   ("String", ["Int32"], False),
+    "strerror_s": ("Int32", ["String", "ByteCount", "Int32"], False),
+    "strerrorlen_s": ("ByteCount", ["Int32"], False),
 }
 
-# ---- <math.h> ----  (signatures use CDouble universally; the float-suffix
-# `f` variants take/return CFloat and the long-double `l` variants take/return
-# CDouble — long double is treated as double for ABI parity.)
+# ---- <math.h> ----  (signatures use Float64 universally; the float-suffix
+# `f` variants take/return Float32 and the long-double `l` variants take/return
+# Float64 — long double is treated as double for ABI parity.)
 def _math_double(name):
-    return (name, ("CFloat64", ["CFloat64"], False))
+    return (name, ("Float64", ["Float64"], False))
 
 
 def _math_double_2(name):
-    return (name, ("CFloat64", ["CFloat64", "CFloat64"], False))
+    return (name, ("Float64", ["Float64", "Float64"], False))
 
 
 MATH = dict([
@@ -248,18 +249,18 @@ MATH = dict([
     _math_double("ceil"), _math_double("floor"),
     _math_double_2("fmod"),
     _math_double("trunc"), _math_double("round"),
-    ("lround", ("CSignedInt64", ["CFloat64"], False)),
-    ("llround", ("CSignedInt64", ["CFloat64"], False)),
+    ("lround", ("Int64", ["Float64"], False)),
+    ("llround", ("Int64", ["Float64"], False)),
     _math_double("rint"),
-    ("lrint", ("CSignedInt64", ["CFloat64"], False)),
-    ("llrint", ("CSignedInt64", ["CFloat64"], False)),
+    ("lrint", ("Int64", ["Float64"], False)),
+    ("llrint", ("Int64", ["Float64"], False)),
     _math_double("nearbyint"),
-    ("frexp", ("CFloat64", ["CFloat64", "COpaqueMemoryAddress"], False)),
-    ("ldexp", ("CFloat64", ["CFloat64", "CSignedInt32"], False)),
-    ("modf", ("CFloat64", ["CFloat64", "COpaqueMemoryAddress"], False)),
-    ("scalbn", ("CFloat64", ["CFloat64", "CSignedInt32"], False)),
-    ("scalbln", ("CFloat64", ["CFloat64", "CSignedInt64"], False)),
-    ("ilogb", ("CSignedInt32", ["CFloat64"], False)),
+    ("frexp", ("Float64", ["Float64", "OpaquePointer"], False)),
+    ("ldexp", ("Float64", ["Float64", "Int32"], False)),
+    ("modf", ("Float64", ["Float64", "OpaquePointer"], False)),
+    ("scalbn", ("Float64", ["Float64", "Int32"], False)),
+    ("scalbln", ("Float64", ["Float64", "Int64"], False)),
+    ("ilogb", ("Int32", ["Float64"], False)),
     _math_double("logb"),
     _math_double_2("copysign"),
     _math_double_2("nextafter"),
@@ -267,7 +268,7 @@ MATH = dict([
     _math_double_2("fdim"),
     _math_double_2("fmax"),
     _math_double_2("fmin"),
-    ("fma", ("CFloat64", ["CFloat64", "CFloat64", "CFloat64"], False)),
+    ("fma", ("Float64", ["Float64", "Float64", "Float64"], False)),
     _math_double("fabs"),
     _math_double("erf"), _math_double("erfc"),
     _math_double("lgamma"), _math_double("tgamma"),
@@ -278,10 +279,10 @@ MATH = dict([
     # libc implementations.
     # extra C99 double-precision functions
     _math_double_2("remainder"),
-    ("remquo", ("CFloat64", ["CFloat64", "CFloat64", "COpaqueMemoryAddress"], False)),
-    ("nan", ("CFloat64", ["CNullTerminatedByteString"], False)),
-    ("nanf", ("CFloat32", ["CNullTerminatedByteString"], False)),
-    ("nanl", ("CFloat64", ["CNullTerminatedByteString"], False)),
+    ("remquo", ("Float64", ["Float64", "Float64", "OpaquePointer"], False)),
+    ("nan", ("Float64", ["String"], False)),
+    ("nanf", ("Float32", ["String"], False)),
+    ("nanl", ("Float64", ["String"], False)),
 ])
 
 # All C99 math functions also exist in `<name>f` (float) and `<name>l`
@@ -309,10 +310,10 @@ for _stem in _FL_VARIANTS:
     if base is None:
         continue
     _ret, _params, _vararg = base
-    # Float variant: every CDouble becomes CFloat. We special-case `ldexp`
+    # Float variant: every Float64 becomes Float32. We special-case `ldexp`
     # and `scalbn` which keep an int second arg.
     def _to_float(t):
-        return "CFloat32" if t == "CFloat64" else t
+        return "Float32" if t == "Float64" else t
     _f_ret = _to_float(_ret)
     _f_params = [_to_float(p) for p in _params]
     MATH[_stem + "f"] = (_f_ret, _f_params, _vararg)
@@ -320,162 +321,162 @@ for _stem in _FL_VARIANTS:
     MATH[_stem + "l"] = (_ret, _params, _vararg)
 
 # `ldexp` and `frexp` are listed in MATH already with mixed types — handle
-# their f/l variants explicitly to preserve the CInt/CVoidPtr second arg.
-MATH["ldexpf"] = ("CFloat32", ["CFloat32", "CSignedInt32"], False)
-MATH["ldexpl"] = ("CFloat64", ["CFloat64", "CSignedInt32"], False)
-MATH["frexpf"] = ("CFloat32", ["CFloat32", "COpaqueMemoryAddress"], False)
-MATH["frexpl"] = ("CFloat64", ["CFloat64", "COpaqueMemoryAddress"], False)
-MATH["modff"]  = ("CFloat32", ["CFloat32", "COpaqueMemoryAddress"], False)
-MATH["modfl"]  = ("CFloat64", ["CFloat64", "COpaqueMemoryAddress"], False)
-MATH["ilogbf"] = ("CSignedInt32", ["CFloat32"], False)
-MATH["ilogbl"] = ("CSignedInt32", ["CFloat64"], False)
-MATH["lroundf"] = ("CSignedInt64", ["CFloat32"], False)
-MATH["lroundl"] = ("CSignedInt64", ["CFloat64"], False)
-MATH["llroundf"] = ("CSignedInt64", ["CFloat32"], False)
-MATH["llroundl"] = ("CSignedInt64", ["CFloat64"], False)
-MATH["lrintf"] = ("CSignedInt64", ["CFloat32"], False)
-MATH["lrintl"] = ("CSignedInt64", ["CFloat64"], False)
-MATH["llrintf"] = ("CSignedInt64", ["CFloat32"], False)
-MATH["llrintl"] = ("CSignedInt64", ["CFloat64"], False)
+# their f/l variants explicitly to preserve the Int32/OpaquePointer second arg.
+MATH["ldexpf"] = ("Float32", ["Float32", "Int32"], False)
+MATH["ldexpl"] = ("Float64", ["Float64", "Int32"], False)
+MATH["frexpf"] = ("Float32", ["Float32", "OpaquePointer"], False)
+MATH["frexpl"] = ("Float64", ["Float64", "OpaquePointer"], False)
+MATH["modff"]  = ("Float32", ["Float32", "OpaquePointer"], False)
+MATH["modfl"]  = ("Float64", ["Float64", "OpaquePointer"], False)
+MATH["ilogbf"] = ("Int32", ["Float32"], False)
+MATH["ilogbl"] = ("Int32", ["Float64"], False)
+MATH["lroundf"] = ("Int64", ["Float32"], False)
+MATH["lroundl"] = ("Int64", ["Float64"], False)
+MATH["llroundf"] = ("Int64", ["Float32"], False)
+MATH["llroundl"] = ("Int64", ["Float64"], False)
+MATH["lrintf"] = ("Int64", ["Float32"], False)
+MATH["lrintl"] = ("Int64", ["Float64"], False)
+MATH["llrintf"] = ("Int64", ["Float32"], False)
+MATH["llrintl"] = ("Int64", ["Float64"], False)
 
 # ---- <ctype.h> ----
 CTYPE = {
-    "isalpha":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isdigit":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isalnum":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isspace":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isupper":    ("CSignedInt32", ["CSignedInt32"], False),
-    "islower":    ("CSignedInt32", ["CSignedInt32"], False),
-    "iscntrl":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isprint":    ("CSignedInt32", ["CSignedInt32"], False),
-    "ispunct":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isxdigit":   ("CSignedInt32", ["CSignedInt32"], False),
-    "isblank":    ("CSignedInt32", ["CSignedInt32"], False),
-    "isgraph":    ("CSignedInt32", ["CSignedInt32"], False),
-    "toupper":    ("CSignedInt32", ["CSignedInt32"], False),
-    "tolower":    ("CSignedInt32", ["CSignedInt32"], False),
+    "isalpha":    ("Int32", ["Int32"], False),
+    "isdigit":    ("Int32", ["Int32"], False),
+    "isalnum":    ("Int32", ["Int32"], False),
+    "isspace":    ("Int32", ["Int32"], False),
+    "isupper":    ("Int32", ["Int32"], False),
+    "islower":    ("Int32", ["Int32"], False),
+    "iscntrl":    ("Int32", ["Int32"], False),
+    "isprint":    ("Int32", ["Int32"], False),
+    "ispunct":    ("Int32", ["Int32"], False),
+    "isxdigit":   ("Int32", ["Int32"], False),
+    "isblank":    ("Int32", ["Int32"], False),
+    "isgraph":    ("Int32", ["Int32"], False),
+    "toupper":    ("Int32", ["Int32"], False),
+    "tolower":    ("Int32", ["Int32"], False),
 }
 
 # ---- <time.h> ----
 TIME = {
-    "time":       ("CUnixSecondsSinceEpoch", ["COpaqueMemoryAddress"], False),
-    "clock":      ("CCpuClockTicks", [], False),
-    "difftime":   ("CFloat64", ["CUnixSecondsSinceEpoch", "CUnixSecondsSinceEpoch"], False),
-    "mktime":     ("CUnixSecondsSinceEpoch", ["COpaqueMemoryAddress"], False),
-    "gmtime":     ("CDecomposedTimeAddress", ["COpaqueMemoryAddress"], False),
-    "localtime":  ("CDecomposedTimeAddress", ["COpaqueMemoryAddress"], False),
-    "asctime":    ("CNullTerminatedByteString", ["COpaqueMemoryAddress"], False),
-    "ctime":      ("CNullTerminatedByteString", ["COpaqueMemoryAddress"], False),
-    "strftime":   ("CByteCount", ["CNullTerminatedByteString", "CByteCount", "CNullTerminatedByteString", "COpaqueMemoryAddress"], False),
-    "timespec_get": ("CSignedInt32", ["COpaqueMemoryAddress", "CSignedInt32"], False),
+    "time":       ("UnixSecondsSinceEpoch", ["OpaquePointer"], False),
+    "clock":      ("CpuClockTicks", [], False),
+    "difftime":   ("Float64", ["UnixSecondsSinceEpoch", "UnixSecondsSinceEpoch"], False),
+    "mktime":     ("UnixSecondsSinceEpoch", ["OpaquePointer"], False),
+    "gmtime":     ("DecomposedTimeAddress", ["OpaquePointer"], False),
+    "localtime":  ("DecomposedTimeAddress", ["OpaquePointer"], False),
+    "asctime":    ("String", ["OpaquePointer"], False),
+    "ctime":      ("String", ["OpaquePointer"], False),
+    "strftime":   ("ByteCount", ["String", "ByteCount", "String", "OpaquePointer"], False),
+    "timespec_get": ("Int32", ["OpaquePointer", "Int32"], False),
 }
 
 # ---- <setjmp.h> ----
 SETJMP = {
-    "setjmp":     ("CSignedInt32", ["CSetjmpRegisterBuffer"], False),
-    "longjmp":    ("Void", ["CSetjmpRegisterBuffer", "CSignedInt32"], False),
+    "setjmp":     ("Int32", ["SetjmpRegisterBuffer"], False),
+    "longjmp":    ("Void", ["SetjmpRegisterBuffer", "Int32"], False),
 }
 
 # ---- <signal.h> ----
 SIGNAL = {
-    "signal":     ("COpaqueMemoryAddress", ["CSignedInt32", "COpaqueMemoryAddress"], False),
-    "raise":      ("CSignedInt32", ["CSignedInt32"], False),
+    "signal":     ("OpaquePointer", ["Int32", "OpaquePointer"], False),
+    "raise":      ("Int32", ["Int32"], False),
 }
 
 # ---- <locale.h> ----
 LOCALE = {
-    "setlocale":  ("CNullTerminatedByteString", ["CSignedInt32", "CNullTerminatedByteString"], False),
-    "localeconv": ("COpaqueMemoryAddress", [], False),
+    "setlocale":  ("String", ["Int32", "String"], False),
+    "localeconv": ("OpaquePointer", [], False),
 }
 
 # ---- <wchar.h> — full C99 surface ----
 WCHAR = {
     # string-length & search
-    "wcslen":     ("CByteCount", ["COpaqueMemoryAddress"], False),
-    "wcsnlen_s":  ("CByteCount", ["COpaqueMemoryAddress", "CByteCount"], False),
-    "wcschr":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcsrchr":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcsstr":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcspbrk":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcsspn":     ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcscspn":    ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcstok":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
+    "wcslen":     ("ByteCount", ["OpaquePointer"], False),
+    "wcsnlen_s":  ("ByteCount", ["OpaquePointer", "ByteCount"], False),
+    "wcschr":     ("OpaquePointer", ["OpaquePointer", "Int32"], False),
+    "wcsrchr":    ("OpaquePointer", ["OpaquePointer", "Int32"], False),
+    "wcsstr":     ("OpaquePointer", ["OpaquePointer", "OpaquePointer"], False),
+    "wcspbrk":    ("OpaquePointer", ["OpaquePointer", "OpaquePointer"], False),
+    "wcsspn":     ("ByteCount", ["OpaquePointer", "OpaquePointer"], False),
+    "wcscspn":    ("ByteCount", ["OpaquePointer", "OpaquePointer"], False),
+    "wcstok":     ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "OpaquePointer"], False),
     # comparison
-    "wcscmp":     ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcsncmp":    ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "wcscoll":    ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcsxfrm":    ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
+    "wcscmp":     ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "wcsncmp":    ("Int32", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "wcscoll":    ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "wcsxfrm":    ("ByteCount", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
     # copy / concat
-    "wcscpy":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcsncpy":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "wcscat":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcsncat":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
+    "wcscpy":     ("OpaquePointer", ["OpaquePointer", "OpaquePointer"], False),
+    "wcsncpy":    ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "wcscat":     ("OpaquePointer", ["OpaquePointer", "OpaquePointer"], False),
+    "wcsncat":    ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
     # wmemory
-    "wmemcpy":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "wmemmove":   ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "wmemcmp":    ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount"], False),
-    "wmemchr":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32", "CByteCount"], False),
-    "wmemset":    ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32", "CByteCount"], False),
+    "wmemcpy":    ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "wmemmove":   ("OpaquePointer", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "wmemcmp":    ("Int32", ["OpaquePointer", "OpaquePointer", "ByteCount"], False),
+    "wmemchr":    ("OpaquePointer", ["OpaquePointer", "Int32", "ByteCount"], False),
+    "wmemset":    ("OpaquePointer", ["OpaquePointer", "Int32", "ByteCount"], False),
     # numeric conversion
-    "wcstol":     ("CSignedInt64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcstoll":    ("CSignedInt64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcstoul":    ("CSignedInt64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcstoull":   ("CSignedInt64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcstof":     ("CFloat32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcstod":     ("CFloat64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcstold":    ("CFloat64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wcstoimax":  ("CSignedInt64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CSignedInt32"], False),
-    "wcstoumax":  ("CSignedInt64", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CSignedInt32"], False),
+    "wcstol":     ("Int64", ["OpaquePointer", "OpaquePointer", "Int32"], False),
+    "wcstoll":    ("Int64", ["OpaquePointer", "OpaquePointer", "Int32"], False),
+    "wcstoul":    ("Int64", ["OpaquePointer", "OpaquePointer", "Int32"], False),
+    "wcstoull":   ("Int64", ["OpaquePointer", "OpaquePointer", "Int32"], False),
+    "wcstof":     ("Float32", ["OpaquePointer", "OpaquePointer"], False),
+    "wcstod":     ("Float64", ["OpaquePointer", "OpaquePointer"], False),
+    "wcstold":    ("Float64", ["OpaquePointer", "OpaquePointer"], False),
+    "wcstoimax":  ("Int64", ["OpaquePointer", "OpaquePointer", "Int32"], False),
+    "wcstoumax":  ("Int64", ["OpaquePointer", "OpaquePointer", "Int32"], False),
     # time formatting
-    "wcsftime":   ("CByteCount", ["COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
+    "wcsftime":   ("ByteCount", ["OpaquePointer", "ByteCount", "OpaquePointer", "OpaquePointer"], False),
     # wide formatted I/O
-    "wprintf":    ("CSignedInt32", ["COpaqueMemoryAddress"], True),
-    "fwprintf":   ("CSignedInt32", ["CFileHandle", "COpaqueMemoryAddress"], True),
-    "swprintf":   ("CSignedInt32", ["COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], True),
-    "vwprintf":   ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "vfwprintf":  ("CSignedInt32", ["CFileHandle", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "vswprintf":  ("CSignedInt32", ["COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "wscanf":     ("CSignedInt32", ["COpaqueMemoryAddress"], True),
-    "fwscanf":    ("CSignedInt32", ["CFileHandle", "COpaqueMemoryAddress"], True),
-    "swscanf":    ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], True),
-    "vwscanf":    ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "vfwscanf":   ("CSignedInt32", ["CFileHandle", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "vswscanf":   ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
+    "wprintf":    ("Int32", ["OpaquePointer"], True),
+    "fwprintf":   ("Int32", ["FileHandle", "OpaquePointer"], True),
+    "swprintf":   ("Int32", ["OpaquePointer", "ByteCount", "OpaquePointer"], True),
+    "vwprintf":   ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "vfwprintf":  ("Int32", ["FileHandle", "OpaquePointer", "OpaquePointer"], False),
+    "vswprintf":  ("Int32", ["OpaquePointer", "ByteCount", "OpaquePointer", "OpaquePointer"], False),
+    "wscanf":     ("Int32", ["OpaquePointer"], True),
+    "fwscanf":    ("Int32", ["FileHandle", "OpaquePointer"], True),
+    "swscanf":    ("Int32", ["OpaquePointer", "OpaquePointer"], True),
+    "vwscanf":    ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "vfwscanf":   ("Int32", ["FileHandle", "OpaquePointer", "OpaquePointer"], False),
+    "vswscanf":   ("Int32", ["OpaquePointer", "OpaquePointer", "OpaquePointer"], False),
     # wide character I/O
-    "fgetwc":     ("CSignedInt32", ["CFileHandle"], False),
-    "fputwc":     ("CSignedInt32", ["CSignedInt32", "CFileHandle"], False),
-    "getwc":      ("CSignedInt32", ["CFileHandle"], False),
-    "putwc":      ("CSignedInt32", ["CSignedInt32", "CFileHandle"], False),
-    "getwchar":   ("CSignedInt32", [], False),
-    "putwchar":   ("CSignedInt32", ["CSignedInt32"], False),
-    "fgetws":     ("COpaqueMemoryAddress", ["COpaqueMemoryAddress", "CSignedInt32", "CFileHandle"], False),
-    "fputws":     ("CSignedInt32", ["COpaqueMemoryAddress", "CFileHandle"], False),
-    "ungetwc":    ("CSignedInt32", ["CSignedInt32", "CFileHandle"], False),
-    "fwide":      ("CSignedInt32", ["CFileHandle", "CSignedInt32"], False),
+    "fgetwc":     ("Int32", ["FileHandle"], False),
+    "fputwc":     ("Int32", ["Int32", "FileHandle"], False),
+    "getwc":      ("Int32", ["FileHandle"], False),
+    "putwc":      ("Int32", ["Int32", "FileHandle"], False),
+    "getwchar":   ("Int32", [], False),
+    "putwchar":   ("Int32", ["Int32"], False),
+    "fgetws":     ("OpaquePointer", ["OpaquePointer", "Int32", "FileHandle"], False),
+    "fputws":     ("Int32", ["OpaquePointer", "FileHandle"], False),
+    "ungetwc":    ("Int32", ["Int32", "FileHandle"], False),
+    "fwide":      ("Int32", ["FileHandle", "Int32"], False),
     # multibyte conversion
-    "mbsinit":    ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "mbrlen":     ("CByteCount", ["COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], False),
-    "mbrtowc":    ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], False),
-    "wcrtomb":    ("CByteCount", ["COpaqueMemoryAddress", "CSignedInt32", "COpaqueMemoryAddress"], False),
-    "mbsrtowcs":  ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], False),
-    "wcsrtombs":  ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], False),
-    "btowc":      ("CSignedInt32", ["CSignedInt32"], False),
-    "wctob":      ("CSignedInt32", ["CSignedInt32"], False),
+    "mbsinit":    ("Int32", ["OpaquePointer"], False),
+    "mbrlen":     ("ByteCount", ["OpaquePointer", "ByteCount", "OpaquePointer"], False),
+    "mbrtowc":    ("ByteCount", ["OpaquePointer", "OpaquePointer", "ByteCount", "OpaquePointer"], False),
+    "wcrtomb":    ("ByteCount", ["OpaquePointer", "Int32", "OpaquePointer"], False),
+    "mbsrtowcs":  ("ByteCount", ["OpaquePointer", "OpaquePointer", "ByteCount", "OpaquePointer"], False),
+    "wcsrtombs":  ("ByteCount", ["OpaquePointer", "OpaquePointer", "ByteCount", "OpaquePointer"], False),
+    "btowc":      ("Int32", ["Int32"], False),
+    "wctob":      ("Int32", ["Int32"], False),
 }
 
 # ---- <fenv.h> — C99 floating-point environment ----
 FENV = {
-    "feclearexcept":  ("CSignedInt32", ["CSignedInt32"], False),
-    "fegetexceptflag": ("CSignedInt32", ["COpaqueMemoryAddress", "CSignedInt32"], False),
-    "feraiseexcept":  ("CSignedInt32", ["CSignedInt32"], False),
-    "fesetexceptflag": ("CSignedInt32", ["COpaqueMemoryAddress", "CSignedInt32"], False),
-    "fetestexcept":   ("CSignedInt32", ["CSignedInt32"], False),
-    "fegetround":     ("CSignedInt32", [], False),
-    "fesetround":     ("CSignedInt32", ["CSignedInt32"], False),
-    "fegetenv":       ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "fesetenv":       ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "feholdexcept":   ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "feupdateenv":    ("CSignedInt32", ["COpaqueMemoryAddress"], False),
+    "feclearexcept":  ("Int32", ["Int32"], False),
+    "fegetexceptflag": ("Int32", ["OpaquePointer", "Int32"], False),
+    "feraiseexcept":  ("Int32", ["Int32"], False),
+    "fesetexceptflag": ("Int32", ["OpaquePointer", "Int32"], False),
+    "fetestexcept":   ("Int32", ["Int32"], False),
+    "fegetround":     ("Int32", [], False),
+    "fesetround":     ("Int32", ["Int32"], False),
+    "fegetenv":       ("Int32", ["OpaquePointer"], False),
+    "fesetenv":       ("Int32", ["OpaquePointer"], False),
+    "feholdexcept":   ("Int32", ["OpaquePointer"], False),
+    "feupdateenv":    ("Int32", ["OpaquePointer"], False),
 }
 
 # ---- <complex.h> — C99 complex math (declarations only) ----
@@ -485,86 +486,86 @@ FENV = {
 # the SemanticScript-side type aliases CComplexDouble / CComplexFloat are not currently
 # materialized but the declarations exist for completeness.
 COMPLEX = {
-    "cabs":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "carg":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "creal":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "cimag":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "conj":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "cproj":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "cexp":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "clog":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "cpow":    ("CFloat64", ["CFloat64", "CFloat64", "CFloat64", "CFloat64"], False),
-    "csqrt":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "csin":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "ccos":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "ctan":    ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "casin":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "cacos":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "catan":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "csinh":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "ccosh":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "ctanh":   ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "casinh":  ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "cacosh":  ("CFloat64", ["CFloat64", "CFloat64"], False),
-    "catanh":  ("CFloat64", ["CFloat64", "CFloat64"], False),
+    "cabs":    ("Float64", ["Float64", "Float64"], False),
+    "carg":    ("Float64", ["Float64", "Float64"], False),
+    "creal":   ("Float64", ["Float64", "Float64"], False),
+    "cimag":   ("Float64", ["Float64", "Float64"], False),
+    "conj":    ("Float64", ["Float64", "Float64"], False),
+    "cproj":   ("Float64", ["Float64", "Float64"], False),
+    "cexp":    ("Float64", ["Float64", "Float64"], False),
+    "clog":    ("Float64", ["Float64", "Float64"], False),
+    "cpow":    ("Float64", ["Float64", "Float64", "Float64", "Float64"], False),
+    "csqrt":   ("Float64", ["Float64", "Float64"], False),
+    "csin":    ("Float64", ["Float64", "Float64"], False),
+    "ccos":    ("Float64", ["Float64", "Float64"], False),
+    "ctan":    ("Float64", ["Float64", "Float64"], False),
+    "casin":   ("Float64", ["Float64", "Float64"], False),
+    "cacos":   ("Float64", ["Float64", "Float64"], False),
+    "catan":   ("Float64", ["Float64", "Float64"], False),
+    "csinh":   ("Float64", ["Float64", "Float64"], False),
+    "ccosh":   ("Float64", ["Float64", "Float64"], False),
+    "ctanh":   ("Float64", ["Float64", "Float64"], False),
+    "casinh":  ("Float64", ["Float64", "Float64"], False),
+    "cacosh":  ("Float64", ["Float64", "Float64"], False),
+    "catanh":  ("Float64", ["Float64", "Float64"], False),
     # float variants
-    "cabsf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "csqrtf":  ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "csinf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "ccosf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "ctanf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "cexpf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "clogf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "cpowf":   ("CFloat32", ["CFloat32", "CFloat32", "CFloat32", "CFloat32"], False),
-    "crealf":  ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "cimagf":  ("CFloat32", ["CFloat32", "CFloat32"], False),
-    "conjf":   ("CFloat32", ["CFloat32", "CFloat32"], False),
+    "cabsf":   ("Float32", ["Float32", "Float32"], False),
+    "csqrtf":  ("Float32", ["Float32", "Float32"], False),
+    "csinf":   ("Float32", ["Float32", "Float32"], False),
+    "ccosf":   ("Float32", ["Float32", "Float32"], False),
+    "ctanf":   ("Float32", ["Float32", "Float32"], False),
+    "cexpf":   ("Float32", ["Float32", "Float32"], False),
+    "clogf":   ("Float32", ["Float32", "Float32"], False),
+    "cpowf":   ("Float32", ["Float32", "Float32", "Float32", "Float32"], False),
+    "crealf":  ("Float32", ["Float32", "Float32"], False),
+    "cimagf":  ("Float32", ["Float32", "Float32"], False),
+    "conjf":   ("Float32", ["Float32", "Float32"], False),
 }
 
 # ---- <uchar.h> — C11 char16/char32 conversions ----
 UCHAR = {
-    "mbrtoc16":  ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], False),
-    "c16rtomb":  ("CByteCount", ["COpaqueMemoryAddress", "CSignedInt16", "COpaqueMemoryAddress"], False),
-    "mbrtoc32":  ("CByteCount", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "CByteCount", "COpaqueMemoryAddress"], False),
-    "c32rtomb":  ("CByteCount", ["COpaqueMemoryAddress", "CSignedInt32", "COpaqueMemoryAddress"], False),
+    "mbrtoc16":  ("ByteCount", ["OpaquePointer", "OpaquePointer", "ByteCount", "OpaquePointer"], False),
+    "c16rtomb":  ("ByteCount", ["OpaquePointer", "Int16", "OpaquePointer"], False),
+    "mbrtoc32":  ("ByteCount", ["OpaquePointer", "OpaquePointer", "ByteCount", "OpaquePointer"], False),
+    "c32rtomb":  ("ByteCount", ["OpaquePointer", "Int32", "OpaquePointer"], False),
 }
 
 # ---- <threads.h> — C11 optional threading (Annex K conditional) ----
 THREADS = {
-    "thrd_create":    ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "thrd_equal":     ("CSignedInt32", ["CSignedInt64", "CSignedInt64"], False),
-    "thrd_current":   ("CSignedInt64", [], False),
-    "thrd_sleep":     ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
+    "thrd_create":    ("Int32", ["OpaquePointer", "OpaquePointer", "OpaquePointer"], False),
+    "thrd_equal":     ("Int32", ["Int64", "Int64"], False),
+    "thrd_current":   ("Int64", [], False),
+    "thrd_sleep":     ("Int32", ["OpaquePointer", "OpaquePointer"], False),
     "thrd_yield":     ("Void", [], False),
-    "thrd_exit":      ("Void", ["CSignedInt32"], False),
-    "thrd_detach":    ("CSignedInt32", ["CSignedInt64"], False),
-    "thrd_join":      ("CSignedInt32", ["CSignedInt64", "COpaqueMemoryAddress"], False),
-    "mtx_init":       ("CSignedInt32", ["COpaqueMemoryAddress", "CSignedInt32"], False),
-    "mtx_lock":       ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "mtx_trylock":    ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "mtx_timedlock":  ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "mtx_unlock":     ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "mtx_destroy":    ("Void", ["COpaqueMemoryAddress"], False),
-    "cnd_init":       ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "cnd_signal":     ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "cnd_broadcast":  ("CSignedInt32", ["COpaqueMemoryAddress"], False),
-    "cnd_wait":       ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "cnd_timedwait":  ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "cnd_destroy":    ("Void", ["COpaqueMemoryAddress"], False),
-    "tss_create":     ("CSignedInt32", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
-    "tss_get":        ("COpaqueMemoryAddress", ["CSignedInt64"], False),
-    "tss_set":        ("CSignedInt32", ["CSignedInt64", "COpaqueMemoryAddress"], False),
-    "tss_delete":     ("Void", ["CSignedInt64"], False),
-    "call_once":      ("Void", ["COpaqueMemoryAddress", "COpaqueMemoryAddress"], False),
+    "thrd_exit":      ("Void", ["Int32"], False),
+    "thrd_detach":    ("Int32", ["Int64"], False),
+    "thrd_join":      ("Int32", ["Int64", "OpaquePointer"], False),
+    "mtx_init":       ("Int32", ["OpaquePointer", "Int32"], False),
+    "mtx_lock":       ("Int32", ["OpaquePointer"], False),
+    "mtx_trylock":    ("Int32", ["OpaquePointer"], False),
+    "mtx_timedlock":  ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "mtx_unlock":     ("Int32", ["OpaquePointer"], False),
+    "mtx_destroy":    ("Void", ["OpaquePointer"], False),
+    "cnd_init":       ("Int32", ["OpaquePointer"], False),
+    "cnd_signal":     ("Int32", ["OpaquePointer"], False),
+    "cnd_broadcast":  ("Int32", ["OpaquePointer"], False),
+    "cnd_wait":       ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "cnd_timedwait":  ("Int32", ["OpaquePointer", "OpaquePointer", "OpaquePointer"], False),
+    "cnd_destroy":    ("Void", ["OpaquePointer"], False),
+    "tss_create":     ("Int32", ["OpaquePointer", "OpaquePointer"], False),
+    "tss_get":        ("OpaquePointer", ["Int64"], False),
+    "tss_set":        ("Int32", ["Int64", "OpaquePointer"], False),
+    "tss_delete":     ("Void", ["Int64"], False),
+    "call_once":      ("Void", ["OpaquePointer", "OpaquePointer"], False),
 }
 
 # ---- <wctype.h> minimal ----
 WCTYPE = {
-    "iswalpha":   ("CSignedInt32", ["CSignedInt32"], False),
-    "iswdigit":   ("CSignedInt32", ["CSignedInt32"], False),
-    "iswspace":   ("CSignedInt32", ["CSignedInt32"], False),
-    "towupper":   ("CSignedInt32", ["CSignedInt32"], False),
-    "towlower":   ("CSignedInt32", ["CSignedInt32"], False),
+    "iswalpha":   ("Int32", ["Int32"], False),
+    "iswdigit":   ("Int32", ["Int32"], False),
+    "iswspace":   ("Int32", ["Int32"], False),
+    "towupper":   ("Int32", ["Int32"], False),
+    "towlower":   ("Int32", ["Int32"], False),
 }
 
 # ---- merge everything into a single dispatch dict ----
@@ -687,7 +688,7 @@ STDIO_STREAMS = ("stdin", "stdout", "stderr")
 # errno is a thread-local int. Most C runtimes expose it through a function
 # (`_errno` on MSVC, `__errno_location` on glibc) rather than a flat global.
 # We expose `c.errnoGet` as the canonical SemanticScript accessor.
-ERRNO_ACCESSOR = ("errnoGet", "CSignedInt32", [])
+ERRNO_ACCESSOR = ("errnoGet", "Int32", [])
 
 
 def coverage_summary() -> dict:

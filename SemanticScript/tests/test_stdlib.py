@@ -27,7 +27,8 @@ OK_MODULES = [
     "string", "ctype", "stdlib", "memory", "math", "math_float",
     "assert", "limits", "errno", "time", "signal", "process", "bool",
     "random", "stddef", "iso646", "inttypes", "bit", "constants",
-    "compare", "convert", "array", "sort", "char", "numeric",
+    "compare", "convert", "array", "buffer", "bytes", "slice", "list",
+    "small_list", "map", "sort", "char", "numeric",
     "signal_more", "errno_more", "event",
 ]
 
@@ -46,7 +47,7 @@ QUARANTINED_MODULES = {
 
 EXPECTED_STDIO_OUTPUT = (
     "Hello, SemanticScript stdlib!\n"
-    "no-newline-then-writeCStringLineToStandardOutput\n"
+    "no-newline-then-writeStringLineToStandardOutput\n"
     "42\n"
     "-1234\n"
     "0\n"

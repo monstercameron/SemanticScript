@@ -14,13 +14,13 @@ entry console main
 section program.smokeCClassifiersRefined.errors
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 section program.smokeCClassifiersRefined.literals
 
-domainLiteral formatLineText CNullTerminatedByteString "isnan(%g)=%d isinf(%g)=%d isfinite(%g)=%d isnormal(%g)=%d signbit(%g)=%d fpclassify(%g)=%d\n"
-domainLiteral probeValue CFloat64 3.14
-domainLiteral zeroValue CFloat64 0.0
+domainLiteral formatLineText String "isnan(%g)=%d isinf(%g)=%d isfinite(%g)=%d isnormal(%g)=%d signbit(%g)=%d fpclassify(%g)=%d\n"
+domainLiteral probeValue Float64 3.14
+domainLiteral zeroValue Float64 0.0
 storage module immutable successfulExitCode ExitCode 0
 
 section program.smokeCClassifiersRefined.operations
@@ -40,52 +40,52 @@ invariant operation main "Each classifier reports the spec-defined int for a rep
 label startMain
 
 call isnanCall c.isnan
-argument isnanCall x CFloat64 probeValue
+argument isnanCall x Float64 probeValue
 run isnanCall
-bind value isnanResult CSignedInt32 isnanCall
+bind value isnanResult Int32 isnanCall
 
 call isinfCall c.isinf
-argument isinfCall x CFloat64 probeValue
+argument isinfCall x Float64 probeValue
 run isinfCall
-bind value isinfResult CSignedInt32 isinfCall
+bind value isinfResult Int32 isinfCall
 
 call isfiniteCall c.isfinite
-argument isfiniteCall x CFloat64 probeValue
+argument isfiniteCall x Float64 probeValue
 run isfiniteCall
-bind value isfiniteResult CSignedInt32 isfiniteCall
+bind value isfiniteResult Int32 isfiniteCall
 
 call isnormalCall c.isnormal
-argument isnormalCall x CFloat64 probeValue
+argument isnormalCall x Float64 probeValue
 run isnormalCall
-bind value isnormalResult CSignedInt32 isnormalCall
+bind value isnormalResult Int32 isnormalCall
 
 call signbitCall c.signbit
-argument signbitCall x CFloat64 probeValue
+argument signbitCall x Float64 probeValue
 run signbitCall
-bind value signbitResult CSignedInt32 signbitCall
+bind value signbitResult Int32 signbitCall
 
 call fpclassifyCall c.fpclassify
-argument fpclassifyCall x CFloat64 zeroValue
+argument fpclassifyCall x Float64 zeroValue
 run fpclassifyCall
-bind value fpclassifyResult CSignedInt32 fpclassifyCall
+bind value fpclassifyResult Int32 fpclassifyCall
 
 call reportCall c.printf
-argument reportCall format CNullTerminatedByteString formatLineText
-argument reportCall isnanX CFloat64 probeValue
-argument reportCall isnanV CSignedInt32 isnanResult
-argument reportCall isinfX CFloat64 probeValue
-argument reportCall isinfV CSignedInt32 isinfResult
-argument reportCall isfiniteX CFloat64 probeValue
-argument reportCall isfiniteV CSignedInt32 isfiniteResult
-argument reportCall isnormalX CFloat64 probeValue
-argument reportCall isnormalV CSignedInt32 isnormalResult
-argument reportCall signbitX CFloat64 probeValue
-argument reportCall signbitV CSignedInt32 signbitResult
-argument reportCall fpclassifyX CFloat64 zeroValue
-argument reportCall fpclassifyV CSignedInt32 fpclassifyResult
+argument reportCall format String formatLineText
+argument reportCall isnanX Float64 probeValue
+argument reportCall isnanV Int32 isnanResult
+argument reportCall isinfX Float64 probeValue
+argument reportCall isinfV Int32 isinfResult
+argument reportCall isfiniteX Float64 probeValue
+argument reportCall isfiniteV Int32 isfiniteResult
+argument reportCall isnormalX Float64 probeValue
+argument reportCall isnormalV Int32 isnormalResult
+argument reportCall signbitX Float64 probeValue
+argument reportCall signbitV Int32 signbitResult
+argument reportCall fpclassifyX Float64 zeroValue
+argument reportCall fpclassifyV Int32 fpclassifyResult
 run reportCall
 ignore void source reportCall
-bind error reportError CSignedInt32 reportCall
+bind error reportError Int32 reportCall
 branch error source reportCall target reportWriteFailed
 
 return ok successfulExitCode

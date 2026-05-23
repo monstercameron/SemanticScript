@@ -5,27 +5,27 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "5.0 + 3.0 via CFloat64 var + math.addF64; print via writeFloatLine."
+purpose operation main "5.0 + 3.0 via Float64 var + math.addFloat64; print via writeFloatLine."
 invariant operation main "Tests float vars, float math, float binds, writeFloatLine of bind."
 label startMain
-storage module immutable fiveFloat CFloat64 5.0
-storage module immutable threeFloat CFloat64 3.0
-memory main mutable leftFloat CFloat64 fiveFloat
-call addCall math.addF64
-argument addCall left CFloat64 leftFloat
-argument addCall right CFloat64 threeFloat
+storage module immutable fiveFloat Float64 5.0
+storage module immutable threeFloat Float64 3.0
+memory main mutable leftFloat Float64 fiveFloat
+call addCall math.addFloat64
+argument addCall left Float64 leftFloat
+argument addCall right Float64 threeFloat
 run addCall
-bind value sumResult CFloat64 addCall
+bind value sumResult Float64 addCall
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 sumResult
+argument writeCall value Float64 sumResult
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

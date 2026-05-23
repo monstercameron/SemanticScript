@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 # Mutual recursion across three operations. Walks a counter through
 # three different "color" stages on each cycle. The cycle is:
@@ -15,103 +15,103 @@ errorCase MainError Placeholder CSignedInt32
 # Exercises three-way mutual recursion.
 
 operation red
-input operation red n CSignedInt64
-output operation red Result CSignedInt64 Void
+input operation red n Int64
+output operation red Result Int64 Void
 memory red heap no
 async red no
 purpose operation red "Recurse through green when n > 0."
 invariant operation red "Total recursion depth across red/green/blue equals n."
 label startRed
-storage module immutable zeroDepth CSignedInt64 0
-storage module immutable oneAccum CSignedInt64 1
-call doneCheckRed math.equalI64
-argument doneCheckRed left CSignedInt64 n
-argument doneCheckRed right I64 zeroDepth
+storage module immutable zeroDepth Int64 0
+storage module immutable oneAccum Int64 1
+call doneCheckRed math.equalInt64
+argument doneCheckRed left Int64 n
+argument doneCheckRed right Int64 zeroDepth
 run doneCheckRed
 bind value isDoneRed Bool doneCheckRed
 branch if condition isDoneRed target redBaseCase
-call decRed math.subtractI64
-argument decRed left CSignedInt64 n
-argument decRed right CSignedInt64 oneAccum
+call decRed math.subtractInt64
+argument decRed left Int64 n
+argument decRed right Int64 oneAccum
 run decRed
-bind value decRedValue CSignedInt64 decRed
+bind value decRedValue Int64 decRed
 call recurseRed green
-argument recurseRed n CSignedInt64 decRedValue
+argument recurseRed n Int64 decRedValue
 run recurseRed
-bind ok recurseRedResult CSignedInt64 recurseRed
-call addRed math.addI64
-argument addRed left I64 recurseRedResult
-argument addRed right I64 oneAccum
+bind ok recurseRedResult Int64 recurseRed
+call addRed math.addInt64
+argument addRed left Int64 recurseRedResult
+argument addRed right Int64 oneAccum
 run addRed
-bind value redTotal CSignedInt64 addRed
+bind value redTotal Int64 addRed
 return ok redTotal
 label redBaseCase
 return ok zeroDepth
 
 operation green
-input operation green n CSignedInt64
-output operation green Result CSignedInt64 Void
+input operation green n Int64
+output operation green Result Int64 Void
 memory green heap no
 async green no
 purpose operation green "Recurse through blue when n > 0."
 invariant operation green "Mutual recursion middle leg."
 label startGreen
-storage module immutable zeroDepth CSignedInt64 0
-storage module immutable oneAccum CSignedInt64 1
-call doneCheckGreen math.equalI64
-argument doneCheckGreen left CSignedInt64 n
-argument doneCheckGreen right I64 zeroDepth
+storage module immutable zeroDepth Int64 0
+storage module immutable oneAccum Int64 1
+call doneCheckGreen math.equalInt64
+argument doneCheckGreen left Int64 n
+argument doneCheckGreen right Int64 zeroDepth
 run doneCheckGreen
 bind value isDoneGreen Bool doneCheckGreen
 branch if condition isDoneGreen target greenBaseCase
-call decGreen math.subtractI64
-argument decGreen left CSignedInt64 n
-argument decGreen right CSignedInt64 oneAccum
+call decGreen math.subtractInt64
+argument decGreen left Int64 n
+argument decGreen right Int64 oneAccum
 run decGreen
-bind value decGreenValue CSignedInt64 decGreen
+bind value decGreenValue Int64 decGreen
 call recurseGreen blue
-argument recurseGreen n CSignedInt64 decGreenValue
+argument recurseGreen n Int64 decGreenValue
 run recurseGreen
-bind ok recurseGreenResult CSignedInt64 recurseGreen
-call addGreen math.addI64
-argument addGreen left I64 recurseGreenResult
-argument addGreen right I64 oneAccum
+bind ok recurseGreenResult Int64 recurseGreen
+call addGreen math.addInt64
+argument addGreen left Int64 recurseGreenResult
+argument addGreen right Int64 oneAccum
 run addGreen
-bind value greenTotal CSignedInt64 addGreen
+bind value greenTotal Int64 addGreen
 return ok greenTotal
 label greenBaseCase
 return ok zeroDepth
 
 operation blue
-input operation blue n CSignedInt64
-output operation blue Result CSignedInt64 Void
+input operation blue n Int64
+output operation blue Result Int64 Void
 memory blue heap no
 async blue no
 purpose operation blue "Recurse back into red when n > 0."
 invariant operation blue "Mutual recursion third leg."
 label startBlue
-storage module immutable zeroDepth CSignedInt64 0
-storage module immutable oneAccum CSignedInt64 1
-call doneCheckBlue math.equalI64
-argument doneCheckBlue left CSignedInt64 n
-argument doneCheckBlue right I64 zeroDepth
+storage module immutable zeroDepth Int64 0
+storage module immutable oneAccum Int64 1
+call doneCheckBlue math.equalInt64
+argument doneCheckBlue left Int64 n
+argument doneCheckBlue right Int64 zeroDepth
 run doneCheckBlue
 bind value isDoneBlue Bool doneCheckBlue
 branch if condition isDoneBlue target blueBaseCase
-call decBlue math.subtractI64
-argument decBlue left CSignedInt64 n
-argument decBlue right CSignedInt64 oneAccum
+call decBlue math.subtractInt64
+argument decBlue left Int64 n
+argument decBlue right Int64 oneAccum
 run decBlue
-bind value decBlueValue CSignedInt64 decBlue
+bind value decBlueValue Int64 decBlue
 call recurseBlue red
-argument recurseBlue n CSignedInt64 decBlueValue
+argument recurseBlue n Int64 decBlueValue
 run recurseBlue
-bind ok recurseBlueResult CSignedInt64 recurseBlue
-call addBlue math.addI64
-argument addBlue left I64 recurseBlueResult
-argument addBlue right I64 oneAccum
+bind ok recurseBlueResult Int64 recurseBlue
+call addBlue math.addInt64
+argument addBlue left Int64 recurseBlueResult
+argument addBlue right Int64 oneAccum
 run addBlue
-bind value blueTotal CSignedInt64 addBlue
+bind value blueTotal Int64 addBlue
 return ok blueTotal
 label blueBaseCase
 return ok zeroDepth
@@ -125,16 +125,16 @@ async main no
 purpose operation main "Verify red(9) == 9 (each step adds 1, three colors cycle three times)."
 invariant operation main "Three-way mutual recursion preserves the count."
 label startMain
-storage module immutable startDepth CSignedInt64 9
+storage module immutable startDepth Int64 9
 call runCall red
-argument runCall n CSignedInt64 startDepth
+argument runCall n Int64 startDepth
 run runCall
-bind ok totalDepth CSignedInt64 runCall
-memory main mutable totalStorage I64 0
+bind ok totalDepth Int64 runCall
+memory main mutable totalStorage Int64 0
 set memory totalStorage totalDepth
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 totalStorage
+argument writeCall value Int64 totalStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

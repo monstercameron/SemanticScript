@@ -12,9 +12,9 @@ entry console main
 
 section program.sumOfSquaresRefined.types
 
-type SumOfSquaresCounter I64
-type SumOfSquaresAccumulator I64
-type PositiveSumOfSquaresStep I64
+type SumOfSquaresCounter Int64
+type SumOfSquaresAccumulator Int64
+type PositiveSumOfSquaresStep Int64
 
 section program.sumOfSquaresRefined.errors
 

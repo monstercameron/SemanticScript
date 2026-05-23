@@ -9,7 +9,7 @@ moduleWarning app.realtime_auction_arena.server.persistence "Runtime integration
 import sqlite standard.sqlite
 
 record PersistencePlan
-field PersistencePlan schemaVersion I64
+field PersistencePlan schemaVersion Int64
 field PersistencePlan databasePathEnv String
 field PersistencePlan migrationTables String
 field PersistencePlan identityTables String

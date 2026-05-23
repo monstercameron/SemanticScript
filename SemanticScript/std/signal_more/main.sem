@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.signal_more "App-specific wrappers, compatibility alia
 invariant module standard.signal_more "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.signal_more signalMoreModuleVersionText
-storage module immutable signalMoreModuleVersionText CNullTerminatedByteString "standard.signal_more 0.1"
+storage module immutable signalMoreModuleVersionText String "standard.signal_more 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -25,62 +25,62 @@ storage module immutable signalMoreModuleVersionText CNullTerminatedByteString "
 # observability: nothing to observe at runtime.
 
 # section signalMore.numbers
-domainLiteral hangupSignalNumber CSignedInt32 1
+domainLiteral hangupSignalNumber Int32 1
 domainLiteralSource hangupSignalNumber posix.SIGHUP
 domainLiteralTrust hangupSignalNumber trustedStaticLiteral
 
-domainLiteral quitSignalNumber CSignedInt32 3
+domainLiteral quitSignalNumber Int32 3
 domainLiteralSource quitSignalNumber posix.SIGQUIT
 domainLiteralTrust quitSignalNumber trustedStaticLiteral
 
-domainLiteral traceTrapSignalNumber CSignedInt32 5
+domainLiteral traceTrapSignalNumber Int32 5
 domainLiteralSource traceTrapSignalNumber posix.SIGTRAP
 domainLiteralTrust traceTrapSignalNumber trustedStaticLiteral
 
-domainLiteral busErrorSignalNumber CSignedInt32 7
+domainLiteral busErrorSignalNumber Int32 7
 domainLiteralSource busErrorSignalNumber posix.SIGBUS
 domainLiteralTrust busErrorSignalNumber trustedStaticLiteral
 
-domainLiteral killSignalNumber CSignedInt32 9
+domainLiteral killSignalNumber Int32 9
 domainLiteralSource killSignalNumber posix.SIGKILL
 domainLiteralTrust killSignalNumber trustedStaticLiteral
 
-domainLiteral userSignalOneNumber CSignedInt32 10
+domainLiteral userSignalOneNumber Int32 10
 domainLiteralSource userSignalOneNumber posix.SIGUSR1
 domainLiteralTrust userSignalOneNumber trustedStaticLiteral
 
-domainLiteral userSignalTwoNumber CSignedInt32 12
+domainLiteral userSignalTwoNumber Int32 12
 domainLiteralSource userSignalTwoNumber posix.SIGUSR2
 domainLiteralTrust userSignalTwoNumber trustedStaticLiteral
 
-domainLiteral brokenPipeSignalNumber CSignedInt32 13
+domainLiteral brokenPipeSignalNumber Int32 13
 domainLiteralSource brokenPipeSignalNumber posix.SIGPIPE
 domainLiteralTrust brokenPipeSignalNumber trustedStaticLiteral
 
-domainLiteral alarmSignalNumber CSignedInt32 14
+domainLiteral alarmSignalNumber Int32 14
 domainLiteralSource alarmSignalNumber posix.SIGALRM
 domainLiteralTrust alarmSignalNumber trustedStaticLiteral
 
-domainLiteral childStatusChangedSignalNumber CSignedInt32 17
+domainLiteral childStatusChangedSignalNumber Int32 17
 domainLiteralSource childStatusChangedSignalNumber posix.SIGCHLD
 domainLiteralTrust childStatusChangedSignalNumber trustedStaticLiteral
 
-domainLiteral continueSignalNumber CSignedInt32 18
+domainLiteral continueSignalNumber Int32 18
 domainLiteralSource continueSignalNumber posix.SIGCONT
 domainLiteralTrust continueSignalNumber trustedStaticLiteral
 
-domainLiteral stopSignalNumber CSignedInt32 19
+domainLiteral stopSignalNumber Int32 19
 domainLiteralSource stopSignalNumber posix.SIGSTOP
 domainLiteralTrust stopSignalNumber trustedStaticLiteral
 
-domainLiteral terminalStopSignalNumber CSignedInt32 20
+domainLiteral terminalStopSignalNumber Int32 20
 domainLiteralSource terminalStopSignalNumber posix.SIGTSTP
 domainLiteralTrust terminalStopSignalNumber trustedStaticLiteral
 
-domainLiteral terminalInputSignalNumber CSignedInt32 21
+domainLiteral terminalInputSignalNumber Int32 21
 domainLiteralSource terminalInputSignalNumber posix.SIGTTIN
 domainLiteralTrust terminalInputSignalNumber trustedStaticLiteral
 
-domainLiteral terminalOutputSignalNumber CSignedInt32 22
+domainLiteral terminalOutputSignalNumber Int32 22
 domainLiteralSource terminalOutputSignalNumber posix.SIGTTOU
 domainLiteralTrust terminalOutputSignalNumber trustedStaticLiteral

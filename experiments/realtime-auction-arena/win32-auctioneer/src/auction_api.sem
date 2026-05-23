@@ -5,20 +5,20 @@ moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.auction_api 
 invariant module experiment.realtime_auction_arena.win32_auctioneer.auction_api "Every write command carries a bearer token and idempotency key in the typed shape even though standard.net cannot send those headers yet."
 moduleWarning experiment.realtime_auction_arena.win32_auctioneer.auction_api "Current standard.net supports GET only and no custom headers; authenticated POST commands are scaffold contracts until native HTTP client support exists."
 
-type AuctionId CNullTerminatedByteString
-type ItemName CNullTerminatedByteString
-type MoneyAmountMinor I64
-type DurationSeconds I64
-type IdempotencyKey CNullTerminatedByteString
-type AccessJwt CNullTerminatedByteString
-type ApiBaseUrl CNullTerminatedByteString
-type ApiRoute CNullTerminatedByteString
-type ApiStatusText CNullTerminatedByteString
-type ApiErrorCode CNullTerminatedByteString
-type UserId CNullTerminatedByteString
-type ChatMessageId CNullTerminatedByteString
-type AuditEventId CNullTerminatedByteString
-type AuctionStatus CNullTerminatedByteString
+type AuctionId String
+type ItemName String
+type MoneyAmountMinor Int64
+type DurationSeconds Int64
+type IdempotencyKey String
+type AccessJwt String
+type ApiBaseUrl String
+type ApiRoute String
+type ApiStatusText String
+type ApiErrorCode String
+type UserId String
+type ChatMessageId String
+type AuditEventId String
+type AuctionStatus String
 
 record AuctionCommandContext
 field AuctionCommandContext baseUrl ApiBaseUrl
@@ -40,7 +40,7 @@ field ExtendAuctionRequest extendBySeconds DurationSeconds
 record ModerateChatRequest
 field ModerateChatRequest auctionId AuctionId
 field ModerateChatRequest messageId ChatMessageId
-field ModerateChatRequest action CNullTerminatedByteString
+field ModerateChatRequest action String
 
 record AuctionSnapshot
 field AuctionSnapshot auctionId AuctionId
@@ -48,14 +48,14 @@ field AuctionSnapshot status AuctionStatus
 field AuctionSnapshot itemName ItemName
 field AuctionSnapshot currentBidMinor MoneyAmountMinor
 field AuctionSnapshot minimumIncrementMinor MoneyAmountMinor
-field AuctionSnapshot connectedClients I64
+field AuctionSnapshot connectedClients Int64
 field AuctionSnapshot currentWinnerUserId UserId
-field AuctionSnapshot endsAtMillis I64
-field AuctionSnapshot revision I64
+field AuctionSnapshot endsAtMillis Int64
+field AuctionSnapshot revision Int64
 
 record AuctionApiResult
 field AuctionApiResult ok Bool
-field AuctionApiResult httpStatus I64
+field AuctionApiResult httpStatus Int64
 field AuctionApiResult status ApiStatusText
 field AuctionApiResult errorCode ApiErrorCode
 
@@ -67,8 +67,8 @@ storage module immutable startRouteSuffix ApiRoute "/start"
 storage module immutable extendRouteSuffix ApiRoute "/extend"
 storage module immutable closeRouteSuffix ApiRoute "/close"
 storage module immutable chatMessagesRouteSegment ApiRoute "/chat/messages/"
-storage module immutable chatHideAction CNullTerminatedByteString "hide"
-storage module immutable chatReviewedAction CNullTerminatedByteString "reviewed"
+storage module immutable chatHideAction String "hide"
+storage module immutable chatReviewedAction String "reviewed"
 storage module immutable notSentStatus ApiStatusText "Not sent; native HTTP client lacks authenticated POST JSON."
 storage module immutable notPolledStatus ApiStatusText "Not polled; UI-safe async GET scheduling is not available from standard.gui handlers yet."
 storage module immutable runtimeGapErrorCode ApiErrorCode "runtime_gap"
@@ -126,7 +126,7 @@ return value request
 operation makeModerateChatRequest
 input operation makeModerateChatRequest auctionId AuctionId
 input operation makeModerateChatRequest messageId ChatMessageId
-input operation makeModerateChatRequest action CNullTerminatedByteString
+input operation makeModerateChatRequest action String
 output operation makeModerateChatRequest ModerateChatRequest
 memory makeModerateChatRequest heap no
 async makeModerateChatRequest no

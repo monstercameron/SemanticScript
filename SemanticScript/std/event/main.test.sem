@@ -19,7 +19,7 @@ invariant module standard.event.test "The test prints OK; standard.event native 
 capability consoleStdoutWriter console.stdout write
 purpose operation consoleStdoutWriter "Authority to write the standard event smoke result to stdout."
 
-storage module immutable okText CNullTerminatedByteString "OK"
+storage module immutable okText String "OK"
 storage module immutable successExitCode ExitCode 0
 
 operation main
@@ -34,10 +34,10 @@ useCapability main consoleStdoutWriter
 
 call printOkCall console.writeLine
 argument printOkCall console Console console
-argument printOkCall text CNullTerminatedByteString okText
+argument printOkCall text String okText
 run printOkCall
 ignore void source printOkCall
-bind error printOkError CSignedInt32 printOkCall
+bind error printOkError Int32 printOkCall
 branch error source printOkCall target printOkFailed
 return value successExitCode
 label printOkFailed

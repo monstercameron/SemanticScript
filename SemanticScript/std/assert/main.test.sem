@@ -43,24 +43,24 @@ invariant operation main "Every assertion that should hold returns Ok; final exi
 label startMain
 
 # requireSignedInt64ValuesEqual(2 + 2, 4)
-storage module immutable twoInt CSignedInt64 2
-storage module immutable fourInt CSignedInt64 4
-call addTwoPlusTwoCall math.addI64
-argument addTwoPlusTwoCall left I64 twoInt
-argument addTwoPlusTwoCall right I64 twoInt
+storage module immutable twoInt Int64 2
+storage module immutable fourInt Int64 4
+call addTwoPlusTwoCall math.addInt64
+argument addTwoPlusTwoCall left Int64 twoInt
+argument addTwoPlusTwoCall right Int64 twoInt
 run addTwoPlusTwoCall
-bind value twoPlusTwo I64 addTwoPlusTwoCall
+bind value twoPlusTwo Int64 addTwoPlusTwoCall
 call assertEqualCall requireSignedInt64ValuesEqual
-argument assertEqualCall leftValue CSignedInt64 twoPlusTwo
-argument assertEqualCall rightValue CSignedInt64 fourInt
+argument assertEqualCall leftValue Int64 twoPlusTwo
+argument assertEqualCall rightValue Int64 fourInt
 run assertEqualCall
 branch error source assertEqualCall target smokeAssertionFailed
 
 # requireSignedInt64ValuesNotEqual(1, 2)
-storage module immutable oneInt CSignedInt64 1
+storage module immutable oneInt Int64 1
 call assertNotEqualCall requireSignedInt64ValuesNotEqual
-argument assertNotEqualCall leftValue CSignedInt64 oneInt
-argument assertNotEqualCall rightValue CSignedInt64 twoInt
+argument assertNotEqualCall leftValue Int64 oneInt
+argument assertNotEqualCall rightValue Int64 twoInt
 run assertNotEqualCall
 branch error source assertNotEqualCall target smokeAssertionFailed
 
@@ -78,10 +78,10 @@ branch error source assertNotEqualCall target smokeAssertionFailed
 # ============================================================
 
 storage module immutable trueBoolForAssert Bool true
-storage module immutable tenIntForAssert CSignedInt64 10
-storage module immutable fiveIntForAssert CSignedInt64 5
-storage module immutable zeroIntForAssert CSignedInt64 0
-storage module immutable helloPtrLiteral CNullTerminatedByteString "hello"
+storage module immutable tenIntForAssert Int64 10
+storage module immutable fiveIntForAssert Int64 5
+storage module immutable zeroIntForAssert Int64 0
+storage module immutable helloPtrLiteral String "hello"
 
 # requireConditionTrue(true) â€” should succeed
 call assertConditionTrueCall requireConditionTrue
@@ -91,60 +91,60 @@ branch error source assertConditionTrueCall target smokeAssertionFailed
 
 # requireSignedInt64LeftGreaterThanRight(10, 5) â€” should succeed
 call assertLeftGreaterCall requireSignedInt64LeftGreaterThanRight
-argument assertLeftGreaterCall leftValue CSignedInt64 tenIntForAssert
-argument assertLeftGreaterCall rightValue CSignedInt64 fiveIntForAssert
+argument assertLeftGreaterCall leftValue Int64 tenIntForAssert
+argument assertLeftGreaterCall rightValue Int64 fiveIntForAssert
 run assertLeftGreaterCall
 branch error source assertLeftGreaterCall target smokeAssertionFailed
 
 # requireSignedInt64LeftLessThanRight(5, 10) â€” should succeed
 call assertLeftLessCall requireSignedInt64LeftLessThanRight
-argument assertLeftLessCall leftValue CSignedInt64 fiveIntForAssert
-argument assertLeftLessCall rightValue CSignedInt64 tenIntForAssert
+argument assertLeftLessCall leftValue Int64 fiveIntForAssert
+argument assertLeftLessCall rightValue Int64 tenIntForAssert
 run assertLeftLessCall
 branch error source assertLeftLessCall target smokeAssertionFailed
 
 # requireSignedInt64ValueWithinInclusiveRange(5, 0, 10) â€” should succeed
 call assertWithinRangeCall requireSignedInt64ValueWithinInclusiveRange
-argument assertWithinRangeCall inputValue CSignedInt64 fiveIntForAssert
-argument assertWithinRangeCall lowerBound CSignedInt64 zeroIntForAssert
-argument assertWithinRangeCall upperBound CSignedInt64 tenIntForAssert
+argument assertWithinRangeCall inputValue Int64 fiveIntForAssert
+argument assertWithinRangeCall lowerBound Int64 zeroIntForAssert
+argument assertWithinRangeCall upperBound Int64 tenIntForAssert
 run assertWithinRangeCall
 branch error source assertWithinRangeCall target smokeAssertionFailed
 
 # requireSignedInt64ValueWithinInclusiveRange boundary: lowerBound itself ok
 call assertBoundaryLowerCall requireSignedInt64ValueWithinInclusiveRange
-argument assertBoundaryLowerCall inputValue CSignedInt64 zeroIntForAssert
-argument assertBoundaryLowerCall lowerBound CSignedInt64 zeroIntForAssert
-argument assertBoundaryLowerCall upperBound CSignedInt64 tenIntForAssert
+argument assertBoundaryLowerCall inputValue Int64 zeroIntForAssert
+argument assertBoundaryLowerCall lowerBound Int64 zeroIntForAssert
+argument assertBoundaryLowerCall upperBound Int64 tenIntForAssert
 run assertBoundaryLowerCall
 branch error source assertBoundaryLowerCall target smokeAssertionFailed
 
 # requireSignedInt64ValueWithinInclusiveRange boundary: upperBound itself ok
 call assertBoundaryUpperCall requireSignedInt64ValueWithinInclusiveRange
-argument assertBoundaryUpperCall inputValue CSignedInt64 tenIntForAssert
-argument assertBoundaryUpperCall lowerBound CSignedInt64 zeroIntForAssert
-argument assertBoundaryUpperCall upperBound CSignedInt64 tenIntForAssert
+argument assertBoundaryUpperCall inputValue Int64 tenIntForAssert
+argument assertBoundaryUpperCall lowerBound Int64 zeroIntForAssert
+argument assertBoundaryUpperCall upperBound Int64 tenIntForAssert
 run assertBoundaryUpperCall
 branch error source assertBoundaryUpperCall target smokeAssertionFailed
 
 # requireOpaquePointerNotNull on a literal string pointer â€” should succeed
 call assertNotNullCall requireOpaquePointerNotNull
-argument assertNotNullCall pointerValue COpaqueMemoryAddress helloPtrLiteral
+argument assertNotNullCall pointerValue OpaquePointer helloPtrLiteral
 run assertNotNullCall
 branch error source assertNotNullCall target smokeAssertionFailed
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

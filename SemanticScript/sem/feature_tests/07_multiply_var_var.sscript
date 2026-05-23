@@ -12,23 +12,23 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "var * var: 6*7=42 via math.multiplyI64."
+purpose operation main "var * var: 6*7=42 via math.multiplyInt64."
 invariant operation main "Both operands are vars; result printed."
 label startMain
-storage module immutable sixInitial I64 6
-storage module immutable sevenInitial I64 7
-memory main mutable leftOp I64 sixInitial
-memory main mutable rightOp I64 sevenInitial
-call mulCall math.multiplyI64
-argument mulCall left I64 leftOp
-argument mulCall right I64 rightOp
+storage module immutable sixInitial Int64 6
+storage module immutable sevenInitial Int64 7
+memory main mutable leftOp Int64 sixInitial
+memory main mutable rightOp Int64 sevenInitial
+call mulCall math.multiplyInt64
+argument mulCall left Int64 leftOp
+argument mulCall right Int64 rightOp
 run mulCall
-bind value productResult I64 mulCall
-memory main mutable productVar I64 sixInitial
+bind value productResult Int64 mulCall
+memory main mutable productVar Int64 sixInitial
 set memory productVar productResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 productVar
+argument writeCall value Int64 productVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

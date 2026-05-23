@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -16,30 +16,30 @@ async main no
 purpose operation main "Open a real existing file (this very test file) via c.fopen, then close it via c.fclose. Print 'opened' on success."
 invariant operation main "Exercises c.fopen, pointer.isNull on its result, and c.fclose."
 label startMain
-storage module immutable filePath CNullTerminatedByteString "sem/feature_tests/92_c_fopen_fclose.sscript"
-storage module immutable readMode CNullTerminatedByteString "r"
-storage module immutable okMessage CNullTerminatedByteString "opened"
+storage module immutable filePath String "sem/feature_tests/92_c_fopen_fclose.sscript"
+storage module immutable readMode String "r"
+storage module immutable okMessage String "opened"
 call openCall c.fopen
-argument openCall path CNullTerminatedByteString filePath
-argument openCall mode CNullTerminatedByteString readMode
+argument openCall path String filePath
+argument openCall mode String readMode
 run openCall
-bind value fileHandle COpaqueMemoryAddress openCall
+bind value fileHandle OpaquePointer openCall
 call nullCheckCall pointer.isNull
-argument nullCheckCall p COpaqueMemoryAddress fileHandle
+argument nullCheckCall p OpaquePointer fileHandle
 run nullCheckCall
 bind value handleIsNull Bool nullCheckCall
 branch if condition handleIsNull target openFailed
 call putsCall c.puts
-argument putsCall text CNullTerminatedByteString okMessage
+argument putsCall text String okMessage
 run putsCall
-ignore ok source putsCall type CSignedInt32
+ignore ok source putsCall type Int32
 call closeCall c.fclose
-argument closeCall stream COpaqueMemoryAddress fileHandle
+argument closeCall stream OpaquePointer fileHandle
 run closeCall
-ignore ok source closeCall type CSignedInt32
+ignore ok source closeCall type Int32
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode
 label openFailed
-storage module immutable failedExit CSignedInt32 1
+storage module immutable failedExit Int32 1
 makeError openFailure MainError.Placeholder failedExit
 return error openFailure

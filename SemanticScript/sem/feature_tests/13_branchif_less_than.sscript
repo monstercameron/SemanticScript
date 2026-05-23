@@ -12,32 +12,32 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "math.lessThanI64 + branchIf picks the less branch."
+purpose operation main "math.lessThanInt64 + branchIf picks the less branch."
 invariant operation main "3 < 7 evaluates true."
 label startMain
-storage module immutable threeInitial I64 3
-storage module immutable sevenCompare I64 7
-memory main mutable leftOp I64 threeInitial
-call ltCall math.lessThanI64
-argument ltCall left I64 leftOp
-argument ltCall right I64 sevenCompare
+storage module immutable threeInitial Int64 3
+storage module immutable sevenCompare Int64 7
+memory main mutable leftOp Int64 threeInitial
+call ltCall math.lessThanInt64
+argument ltCall left Int64 leftOp
+argument ltCall right Int64 sevenCompare
 run ltCall
 bind value isLessThan Bool ltCall
 branch if condition isLessThan target lessLabel
 branch else target greaterEqualLabel
 label lessLabel
-storage module immutable lessText CNullTerminatedByteString "less"
+storage module immutable lessText String "less"
 call writeLessCall console.writeLine
 argument writeLessCall console Console console
-argument writeLessCall text CNullTerminatedByteString lessText
+argument writeLessCall text String lessText
 run writeLessCall
 ignore void source writeLessCall
 jump target endLabel
 label greaterEqualLabel
-storage module immutable geText CNullTerminatedByteString "ge"
+storage module immutable geText String "ge"
 call writeGeCall console.writeLine
 argument writeGeCall console Console console
-argument writeGeCall text CNullTerminatedByteString geText
+argument writeGeCall text String geText
 run writeGeCall
 ignore void source writeGeCall
 jump target endLabel

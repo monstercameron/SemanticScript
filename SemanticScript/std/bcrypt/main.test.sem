@@ -47,32 +47,32 @@ invariant operation main "hash status == 0; verify(correct) == 1; verify(wrong) 
 
 label startMain
 
-storage module immutable hashBufferCapacity CByteCount 61
+storage module immutable hashBufferCapacity ByteCount 61
 call allocateHashBufferCall c.malloc
-argument allocateHashBufferCall size CByteCount hashBufferCapacity
+argument allocateHashBufferCall size ByteCount hashBufferCapacity
 run allocateHashBufferCall
-bind value hashBuffer COpaqueMemoryAddress allocateHashBufferCall
-bind error hashBufferAllocError CSignedInt32 allocateHashBufferCall
+bind value hashBuffer OpaquePointer allocateHashBufferCall
+bind error hashBufferAllocError Int32 allocateHashBufferCall
 branch error source allocateHashBufferCall target heapAllocationFailedHandler
 defer releaseHashBufferDefer c.free hashBuffer
 
-storage module immutable smokePassword CNullTerminatedByteString "correct-horse-battery-staple"
-storage module immutable wrongPassword CNullTerminatedByteString "Tr0ub4dor&3"
-storage module immutable smokeBcryptCost CSignedInt32 4
-storage module immutable hashBufferCapacityInt CSignedInt32 61
-storage module immutable bcryptStatusOk CSignedInt32 0
-storage module immutable bcryptMatchSentinel CSignedInt32 1
+storage module immutable smokePassword String "correct-horse-battery-staple"
+storage module immutable wrongPassword String "Tr0ub4dor&3"
+storage module immutable smokeBcryptCost Int32 4
+storage module immutable hashBufferCapacityInt Int32 61
+storage module immutable bcryptStatusOk Int32 0
+storage module immutable bcryptMatchSentinel Int32 1
 
 call hashPasswordCall bcrypt.hashPassword
-argument hashPasswordCall plaintext CNullTerminatedByteString smokePassword
-argument hashPasswordCall cost CSignedInt32 smokeBcryptCost
-argument hashPasswordCall outBuffer COpaqueMemoryAddress hashBuffer
-argument hashPasswordCall outCapacity CSignedInt32 hashBufferCapacityInt
+argument hashPasswordCall plaintext String smokePassword
+argument hashPasswordCall cost Int32 smokeBcryptCost
+argument hashPasswordCall outBuffer OpaquePointer hashBuffer
+argument hashPasswordCall outCapacity Int32 hashBufferCapacityInt
 run hashPasswordCall
-bind value hashStatus CSignedInt32 hashPasswordCall
-call checkHashStatusCall math.equalCSignedInt32
-argument checkHashStatusCall left CSignedInt32 hashStatus
-argument checkHashStatusCall right CSignedInt32 bcryptStatusOk
+bind value hashStatus Int32 hashPasswordCall
+call checkHashStatusCall math.equalInt32
+argument checkHashStatusCall left Int32 hashStatus
+argument checkHashStatusCall right Int32 bcryptStatusOk
 run checkHashStatusCall
 bind value hashStatusOk Bool checkHashStatusCall
 branch if condition hashStatusOk target hashStatusHolds
@@ -81,13 +81,13 @@ label hashStatusHolds
 
 # Correct password must verify (status == 1).
 call verifyCorrectCall bcrypt.verifyPassword
-argument verifyCorrectCall plaintext CNullTerminatedByteString smokePassword
-argument verifyCorrectCall expectedHash CNullTerminatedByteString hashBuffer
+argument verifyCorrectCall plaintext String smokePassword
+argument verifyCorrectCall expectedHash String hashBuffer
 run verifyCorrectCall
-bind value verifyCorrectResult CSignedInt32 verifyCorrectCall
-call checkVerifyCorrectCall math.equalCSignedInt32
-argument checkVerifyCorrectCall left CSignedInt32 verifyCorrectResult
-argument checkVerifyCorrectCall right CSignedInt32 bcryptMatchSentinel
+bind value verifyCorrectResult Int32 verifyCorrectCall
+call checkVerifyCorrectCall math.equalInt32
+argument checkVerifyCorrectCall left Int32 verifyCorrectResult
+argument checkVerifyCorrectCall right Int32 bcryptMatchSentinel
 run checkVerifyCorrectCall
 bind value verifyCorrectMatched Bool checkVerifyCorrectCall
 branch if condition verifyCorrectMatched target verifyCorrectHolds
@@ -96,26 +96,26 @@ label verifyCorrectHolds
 
 # Wrong password must NOT verify (status != 1).
 call verifyWrongCall bcrypt.verifyPassword
-argument verifyWrongCall plaintext CNullTerminatedByteString wrongPassword
-argument verifyWrongCall expectedHash CNullTerminatedByteString hashBuffer
+argument verifyWrongCall plaintext String wrongPassword
+argument verifyWrongCall expectedHash String hashBuffer
 run verifyWrongCall
-bind value verifyWrongResult CSignedInt32 verifyWrongCall
-call checkVerifyWrongCall math.notEqualCSignedInt32
-argument checkVerifyWrongCall left CSignedInt32 verifyWrongResult
-argument checkVerifyWrongCall right CSignedInt32 bcryptMatchSentinel
+bind value verifyWrongResult Int32 verifyWrongCall
+call checkVerifyWrongCall math.notEqualInt32
+argument checkVerifyWrongCall left Int32 verifyWrongResult
+argument checkVerifyWrongCall right Int32 bcryptMatchSentinel
 run checkVerifyWrongCall
 bind value verifyWrongRejected Bool checkVerifyWrongCall
 branch if condition verifyWrongRejected target verifyWrongHolds
 branch else target smokeAssertionFailed
 label verifyWrongHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode

@@ -6,7 +6,7 @@ runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
-literal externalGreetingLiteral CNullTerminatedByteString
+literal externalGreetingLiteral String
 literalSource externalGreetingLiteral "_modules/external_greeting_literal.txt"
 literalBytes externalGreetingLiteral 27
 literalTrust externalGreetingLiteral trustedStaticAsset
@@ -21,7 +21,7 @@ invariant operation main "Output is the file's literal content, not the empty st
 label startMain
 call writeExternalCall console.writeLine
 argument writeExternalCall console Console console
-argument writeExternalCall text CNullTerminatedByteString externalGreetingLiteral
+argument writeExternalCall text String externalGreetingLiteral
 run writeExternalCall
 ignore void source writeExternalCall
 storage module immutable successfulExitCode ExitCode 0

@@ -5,40 +5,40 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation advanceBy
-input operation advanceBy buffer CNullTerminatedByteString
-input operation advanceBy steps CSignedInt64
-output operation advanceBy Result CNullTerminatedByteString Void
+input operation advanceBy buffer String
+input operation advanceBy steps Int64
+output operation advanceBy Result String Void
 memory advanceBy heap no
 async advanceBy no
-purpose operation advanceBy "Recursively return a pointer offset `steps` bytes past `buffer`. Exercises a recursive user op that returns a pointer (CNullTerminatedByteString)."
+purpose operation advanceBy "Recursively return a pointer offset `steps` bytes past `buffer`. Exercises a recursive user op that returns a pointer (String)."
 invariant operation advanceBy "Each level peels off one step; base case (steps == 0) returns the buffer unchanged."
 label startAdvanceBy
-storage module immutable zeroSteps CSignedInt64 0
-storage module immutable oneStep CSignedInt64 1
-call doneCheckCall math.equalI64
-argument doneCheckCall left CSignedInt64 steps
-argument doneCheckCall right I64 zeroSteps
+storage module immutable zeroSteps Int64 0
+storage module immutable oneStep Int64 1
+call doneCheckCall math.equalInt64
+argument doneCheckCall left Int64 steps
+argument doneCheckCall right Int64 zeroSteps
 run doneCheckCall
 bind value isDone Bool doneCheckCall
 branch if condition isDone target abReturnAsIs
 call shiftCall pointer.offset
-argument shiftCall base CNullTerminatedByteString buffer
-argument shiftCall offset CSignedInt64 oneStep
+argument shiftCall base String buffer
+argument shiftCall offset Int64 oneStep
 run shiftCall
-bind value shiftedBuffer COpaqueMemoryAddress shiftCall
-call decStepsCall math.subtractI64
-argument decStepsCall left CSignedInt64 steps
-argument decStepsCall right CSignedInt64 oneStep
+bind value shiftedBuffer OpaquePointer shiftCall
+call decStepsCall math.subtractInt64
+argument decStepsCall left Int64 steps
+argument decStepsCall right Int64 oneStep
 run decStepsCall
-bind value nextSteps CSignedInt64 decStepsCall
+bind value nextSteps Int64 decStepsCall
 call recurseCall advanceBy
-argument recurseCall buffer CNullTerminatedByteString shiftedBuffer
-argument recurseCall steps CSignedInt64 nextSteps
+argument recurseCall buffer String shiftedBuffer
+argument recurseCall steps Int64 nextSteps
 run recurseCall
-bind ok recursiveResult CNullTerminatedByteString recurseCall
+bind ok recursiveResult String recurseCall
 return ok recursiveResult
 label abReturnAsIs
 return ok buffer
@@ -53,16 +53,16 @@ async main no
 purpose operation main "advanceBy('semanticscript', 11) should return a pointer to 'ipt' (offset 11 is 'i'). Then writeLine prints 'ipt'."
 invariant operation main "Verifies pointer-returning recursive user op + bind of its result + console.writeLine over a bind pointer."
 label startMain
-storage module immutable phrase CNullTerminatedByteString "semanticscript"
-storage module immutable skipCount CSignedInt64 11
+storage module immutable phrase String "semanticscript"
+storage module immutable skipCount Int64 11
 call advanceCall advanceBy
-argument advanceCall buffer CNullTerminatedByteString phrase
-argument advanceCall steps CSignedInt64 skipCount
+argument advanceCall buffer String phrase
+argument advanceCall steps Int64 skipCount
 run advanceCall
-bind ok shiftedPointer CNullTerminatedByteString advanceCall
+bind ok shiftedPointer String advanceCall
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString shiftedPointer
+argument writeCall text String shiftedPointer
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

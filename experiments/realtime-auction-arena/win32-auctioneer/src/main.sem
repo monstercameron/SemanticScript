@@ -51,16 +51,16 @@ storage module immutable moderationGapStatusText GuiText "Moderation requested; 
 storage module immutable emptyGuiText GuiText ""
 storage module immutable windowWidth GuiPixels 1024
 storage module immutable windowHeight GuiPixels 760
-storage module immutable yesGuiFlag CSignedInt32 1
-storage module immutable noGuiFlag CSignedInt32 0
-storage module immutable maxServerUrlLength CSignedInt32 256
-storage module immutable maxUsernameLength CSignedInt32 128
-storage module immutable maxPasswordLength CSignedInt32 256
-storage module immutable maxAuctionIdLength CSignedInt32 96
-storage module immutable maxItemNameLength CSignedInt32 160
-storage module immutable maxMoneyLength CSignedInt32 24
-storage module immutable maxDurationLength CSignedInt32 16
-storage module immutable maxChatMessageIdLength CSignedInt32 96
+storage module immutable yesGuiFlag Int32 1
+storage module immutable noGuiFlag Int32 0
+storage module immutable maxServerUrlLength Int32 256
+storage module immutable maxUsernameLength Int32 128
+storage module immutable maxPasswordLength Int32 256
+storage module immutable maxAuctionIdLength Int32 96
+storage module immutable maxItemNameLength Int32 160
+storage module immutable maxMoneyLength Int32 24
+storage module immutable maxDurationLength Int32 16
+storage module immutable maxChatMessageIdLength Int32 96
 
 storage module mutable serverUrlInputHandle GuiTextBox 0
 storage module mutable usernameInputHandle GuiTextBox 0
@@ -108,7 +108,7 @@ argument createWindowCall title GuiText appTitle
 argument createWindowCall width GuiPixels windowWidth
 argument createWindowCall height GuiPixels windowHeight
 argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
-argument createWindowCall resizable CSignedInt32 yesGuiFlag
+argument createWindowCall resizable Int32 yesGuiFlag
 run createWindowCall
 bind value mainWindow GuiWindow createWindowCall
 
@@ -120,7 +120,7 @@ call addHeadingLabelCall gui.windowAddControl
 argument addHeadingLabelCall window GuiWindow mainWindow
 argument addHeadingLabelCall control GuiControl headingLabel
 run addHeadingLabelCall
-ignore value source addHeadingLabelCall type CSignedInt32
+ignore value source addHeadingLabelCall type Int32
 
 call createLoginSectionCall gui.textLabelCreate
 argument createLoginSectionCall text GuiText loginSectionText
@@ -130,11 +130,11 @@ call addLoginSectionCall gui.windowAddControl
 argument addLoginSectionCall window GuiWindow mainWindow
 argument addLoginSectionCall control GuiControl loginSection
 run addLoginSectionCall
-ignore value source addLoginSectionCall type CSignedInt32
+ignore value source addLoginSectionCall type Int32
 
 call createServerUrlInputCall gui.textBoxCreate
 argument createServerUrlInputCall placeholder GuiText serverUrlPlaceholder
-argument createServerUrlInputCall maxLength CSignedInt32 maxServerUrlLength
+argument createServerUrlInputCall maxLength Int32 maxServerUrlLength
 run createServerUrlInputCall
 bind value serverUrlInput GuiTextBox createServerUrlInputCall
 set storage serverUrlInputHandle serverUrlInput
@@ -142,11 +142,11 @@ call addServerUrlInputCall gui.windowAddControl
 argument addServerUrlInputCall window GuiWindow mainWindow
 argument addServerUrlInputCall control GuiControl serverUrlInput
 run addServerUrlInputCall
-ignore value source addServerUrlInputCall type CSignedInt32
+ignore value source addServerUrlInputCall type Int32
 
 call createUsernameInputCall gui.textBoxCreate
 argument createUsernameInputCall placeholder GuiText usernamePlaceholder
-argument createUsernameInputCall maxLength CSignedInt32 maxUsernameLength
+argument createUsernameInputCall maxLength Int32 maxUsernameLength
 run createUsernameInputCall
 bind value usernameInput GuiTextBox createUsernameInputCall
 set storage usernameInputHandle usernameInput
@@ -154,11 +154,11 @@ call addUsernameInputCall gui.windowAddControl
 argument addUsernameInputCall window GuiWindow mainWindow
 argument addUsernameInputCall control GuiControl usernameInput
 run addUsernameInputCall
-ignore value source addUsernameInputCall type CSignedInt32
+ignore value source addUsernameInputCall type Int32
 
 call createPasswordInputCall gui.textBoxCreate
 argument createPasswordInputCall placeholder GuiText passwordPlaceholder
-argument createPasswordInputCall maxLength CSignedInt32 maxPasswordLength
+argument createPasswordInputCall maxLength Int32 maxPasswordLength
 run createPasswordInputCall
 bind value passwordInput GuiTextBox createPasswordInputCall
 set storage passwordInputHandle passwordInput
@@ -166,29 +166,29 @@ call addPasswordInputCall gui.windowAddControl
 argument addPasswordInputCall window GuiWindow mainWindow
 argument addPasswordInputCall control GuiControl passwordInput
 run addPasswordInputCall
-ignore value source addPasswordInputCall type CSignedInt32
+ignore value source addPasswordInputCall type Int32
 
 call createLoginButtonCall gui.buttonCreate
 argument createLoginButtonCall text GuiText loginButtonText
-argument createLoginButtonCall isDefault CSignedInt32 yesGuiFlag
+argument createLoginButtonCall isDefault Int32 yesGuiFlag
 run createLoginButtonCall
 bind value loginButton GuiButton createLoginButtonCall
 call addLoginButtonCall gui.windowAddControl
 argument addLoginButtonCall window GuiWindow mainWindow
 argument addLoginButtonCall control GuiControl loginButton
 run addLoginButtonCall
-ignore value source addLoginButtonCall type CSignedInt32
+ignore value source addLoginButtonCall type Int32
 
 call createForgetTokenButtonCall gui.buttonCreate
 argument createForgetTokenButtonCall text GuiText forgetTokenButtonText
-argument createForgetTokenButtonCall isDefault CSignedInt32 noGuiFlag
+argument createForgetTokenButtonCall isDefault Int32 noGuiFlag
 run createForgetTokenButtonCall
 bind value forgetTokenButton GuiButton createForgetTokenButtonCall
 call addForgetTokenButtonCall gui.windowAddControl
 argument addForgetTokenButtonCall window GuiWindow mainWindow
 argument addForgetTokenButtonCall control GuiControl forgetTokenButton
 run addForgetTokenButtonCall
-ignore value source addForgetTokenButtonCall type CSignedInt32
+ignore value source addForgetTokenButtonCall type Int32
 
 call createItemSectionCall gui.textLabelCreate
 argument createItemSectionCall text GuiText itemSectionText
@@ -198,11 +198,11 @@ call addItemSectionCall gui.windowAddControl
 argument addItemSectionCall window GuiWindow mainWindow
 argument addItemSectionCall control GuiControl itemSection
 run addItemSectionCall
-ignore value source addItemSectionCall type CSignedInt32
+ignore value source addItemSectionCall type Int32
 
 call createAuctionIdInputCall gui.textBoxCreate
 argument createAuctionIdInputCall placeholder GuiText auctionIdPlaceholder
-argument createAuctionIdInputCall maxLength CSignedInt32 maxAuctionIdLength
+argument createAuctionIdInputCall maxLength Int32 maxAuctionIdLength
 run createAuctionIdInputCall
 bind value auctionIdInput GuiTextBox createAuctionIdInputCall
 set storage auctionIdInputHandle auctionIdInput
@@ -210,11 +210,11 @@ call addAuctionIdInputCall gui.windowAddControl
 argument addAuctionIdInputCall window GuiWindow mainWindow
 argument addAuctionIdInputCall control GuiControl auctionIdInput
 run addAuctionIdInputCall
-ignore value source addAuctionIdInputCall type CSignedInt32
+ignore value source addAuctionIdInputCall type Int32
 
 call createItemNameInputCall gui.textBoxCreate
 argument createItemNameInputCall placeholder GuiText itemNamePlaceholder
-argument createItemNameInputCall maxLength CSignedInt32 maxItemNameLength
+argument createItemNameInputCall maxLength Int32 maxItemNameLength
 run createItemNameInputCall
 bind value itemNameInput GuiTextBox createItemNameInputCall
 set storage itemNameInputHandle itemNameInput
@@ -222,11 +222,11 @@ call addItemNameInputCall gui.windowAddControl
 argument addItemNameInputCall window GuiWindow mainWindow
 argument addItemNameInputCall control GuiControl itemNameInput
 run addItemNameInputCall
-ignore value source addItemNameInputCall type CSignedInt32
+ignore value source addItemNameInputCall type Int32
 
 call createStartingBidInputCall gui.textBoxCreate
 argument createStartingBidInputCall placeholder GuiText startingBidPlaceholder
-argument createStartingBidInputCall maxLength CSignedInt32 maxMoneyLength
+argument createStartingBidInputCall maxLength Int32 maxMoneyLength
 run createStartingBidInputCall
 bind value startingBidInput GuiTextBox createStartingBidInputCall
 set storage startingBidInputHandle startingBidInput
@@ -234,11 +234,11 @@ call addStartingBidInputCall gui.windowAddControl
 argument addStartingBidInputCall window GuiWindow mainWindow
 argument addStartingBidInputCall control GuiControl startingBidInput
 run addStartingBidInputCall
-ignore value source addStartingBidInputCall type CSignedInt32
+ignore value source addStartingBidInputCall type Int32
 
 call createMinimumIncrementInputCall gui.textBoxCreate
 argument createMinimumIncrementInputCall placeholder GuiText minimumIncrementPlaceholder
-argument createMinimumIncrementInputCall maxLength CSignedInt32 maxMoneyLength
+argument createMinimumIncrementInputCall maxLength Int32 maxMoneyLength
 run createMinimumIncrementInputCall
 bind value minimumIncrementInput GuiTextBox createMinimumIncrementInputCall
 set storage minimumIncrementInputHandle minimumIncrementInput
@@ -246,11 +246,11 @@ call addMinimumIncrementInputCall gui.windowAddControl
 argument addMinimumIncrementInputCall window GuiWindow mainWindow
 argument addMinimumIncrementInputCall control GuiControl minimumIncrementInput
 run addMinimumIncrementInputCall
-ignore value source addMinimumIncrementInputCall type CSignedInt32
+ignore value source addMinimumIncrementInputCall type Int32
 
 call createDurationInputCall gui.textBoxCreate
 argument createDurationInputCall placeholder GuiText durationPlaceholder
-argument createDurationInputCall maxLength CSignedInt32 maxDurationLength
+argument createDurationInputCall maxLength Int32 maxDurationLength
 run createDurationInputCall
 bind value durationInput GuiTextBox createDurationInputCall
 set storage durationInputHandle durationInput
@@ -258,7 +258,7 @@ call addDurationInputCall gui.windowAddControl
 argument addDurationInputCall window GuiWindow mainWindow
 argument addDurationInputCall control GuiControl durationInput
 run addDurationInputCall
-ignore value source addDurationInputCall type CSignedInt32
+ignore value source addDurationInputCall type Int32
 
 call createCommandSectionCall gui.textLabelCreate
 argument createCommandSectionCall text GuiText commandSectionText
@@ -268,22 +268,22 @@ call addCommandSectionCall gui.windowAddControl
 argument addCommandSectionCall window GuiWindow mainWindow
 argument addCommandSectionCall control GuiControl commandSection
 run addCommandSectionCall
-ignore value source addCommandSectionCall type CSignedInt32
+ignore value source addCommandSectionCall type Int32
 
 call createStartButtonCall gui.buttonCreate
 argument createStartButtonCall text GuiText startAuctionButtonText
-argument createStartButtonCall isDefault CSignedInt32 noGuiFlag
+argument createStartButtonCall isDefault Int32 noGuiFlag
 run createStartButtonCall
 bind value startButton GuiButton createStartButtonCall
 call addStartButtonCall gui.windowAddControl
 argument addStartButtonCall window GuiWindow mainWindow
 argument addStartButtonCall control GuiControl startButton
 run addStartButtonCall
-ignore value source addStartButtonCall type CSignedInt32
+ignore value source addStartButtonCall type Int32
 
 call createExtendSecondsInputCall gui.textBoxCreate
 argument createExtendSecondsInputCall placeholder GuiText extendSecondsPlaceholder
-argument createExtendSecondsInputCall maxLength CSignedInt32 maxDurationLength
+argument createExtendSecondsInputCall maxLength Int32 maxDurationLength
 run createExtendSecondsInputCall
 bind value extendSecondsInput GuiTextBox createExtendSecondsInputCall
 set storage extendSecondsInputHandle extendSecondsInput
@@ -291,40 +291,40 @@ call addExtendSecondsInputCall gui.windowAddControl
 argument addExtendSecondsInputCall window GuiWindow mainWindow
 argument addExtendSecondsInputCall control GuiControl extendSecondsInput
 run addExtendSecondsInputCall
-ignore value source addExtendSecondsInputCall type CSignedInt32
+ignore value source addExtendSecondsInputCall type Int32
 
 call createExtendButtonCall gui.buttonCreate
 argument createExtendButtonCall text GuiText extendAuctionButtonText
-argument createExtendButtonCall isDefault CSignedInt32 noGuiFlag
+argument createExtendButtonCall isDefault Int32 noGuiFlag
 run createExtendButtonCall
 bind value extendButton GuiButton createExtendButtonCall
 call addExtendButtonCall gui.windowAddControl
 argument addExtendButtonCall window GuiWindow mainWindow
 argument addExtendButtonCall control GuiControl extendButton
 run addExtendButtonCall
-ignore value source addExtendButtonCall type CSignedInt32
+ignore value source addExtendButtonCall type Int32
 
 call createCloseButtonCall gui.buttonCreate
 argument createCloseButtonCall text GuiText closeAuctionButtonText
-argument createCloseButtonCall isDefault CSignedInt32 noGuiFlag
+argument createCloseButtonCall isDefault Int32 noGuiFlag
 run createCloseButtonCall
 bind value closeButton GuiButton createCloseButtonCall
 call addCloseButtonCall gui.windowAddControl
 argument addCloseButtonCall window GuiWindow mainWindow
 argument addCloseButtonCall control GuiControl closeButton
 run addCloseButtonCall
-ignore value source addCloseButtonCall type CSignedInt32
+ignore value source addCloseButtonCall type Int32
 
 call createPollButtonCall gui.buttonCreate
 argument createPollButtonCall text GuiText pollNowButtonText
-argument createPollButtonCall isDefault CSignedInt32 noGuiFlag
+argument createPollButtonCall isDefault Int32 noGuiFlag
 run createPollButtonCall
 bind value pollButton GuiButton createPollButtonCall
 call addPollButtonCall gui.windowAddControl
 argument addPollButtonCall window GuiWindow mainWindow
 argument addPollButtonCall control GuiControl pollButton
 run addPollButtonCall
-ignore value source addPollButtonCall type CSignedInt32
+ignore value source addPollButtonCall type Int32
 
 call createStatusSectionCall gui.textLabelCreate
 argument createStatusSectionCall text GuiText statusSectionText
@@ -334,7 +334,7 @@ call addStatusSectionCall gui.windowAddControl
 argument addStatusSectionCall window GuiWindow mainWindow
 argument addStatusSectionCall control GuiControl statusSection
 run addStatusSectionCall
-ignore value source addStatusSectionCall type CSignedInt32
+ignore value source addStatusSectionCall type Int32
 
 call createStatusLabelCall gui.textLabelCreate
 argument createStatusLabelCall text GuiText initialStatusText
@@ -345,7 +345,7 @@ call addStatusLabelCall gui.windowAddControl
 argument addStatusLabelCall window GuiWindow mainWindow
 argument addStatusLabelCall control GuiControl statusLabel
 run addStatusLabelCall
-ignore value source addStatusLabelCall type CSignedInt32
+ignore value source addStatusLabelCall type Int32
 
 call createEventsSectionCall gui.textLabelCreate
 argument createEventsSectionCall text GuiText eventsSectionText
@@ -355,7 +355,7 @@ call addEventsSectionCall gui.windowAddControl
 argument addEventsSectionCall window GuiWindow mainWindow
 argument addEventsSectionCall control GuiControl eventsSection
 run addEventsSectionCall
-ignore value source addEventsSectionCall type CSignedInt32
+ignore value source addEventsSectionCall type Int32
 
 call createEventListCall gui.listBoxCreate
 argument createEventListCall selectionMode GuiListBoxSelectionMode singleGuiListBoxSelectionMode
@@ -366,7 +366,7 @@ call addEventListCall gui.windowAddControl
 argument addEventListCall window GuiWindow mainWindow
 argument addEventListCall control GuiControl eventList
 run addEventListCall
-ignore value source addEventListCall type CSignedInt32
+ignore value source addEventListCall type Int32
 
 call createRejectedBidsSectionCall gui.textLabelCreate
 argument createRejectedBidsSectionCall text GuiText rejectedBidsSectionText
@@ -376,7 +376,7 @@ call addRejectedBidsSectionCall gui.windowAddControl
 argument addRejectedBidsSectionCall window GuiWindow mainWindow
 argument addRejectedBidsSectionCall control GuiControl rejectedBidsSection
 run addRejectedBidsSectionCall
-ignore value source addRejectedBidsSectionCall type CSignedInt32
+ignore value source addRejectedBidsSectionCall type Int32
 
 call createRejectedBidListCall gui.listBoxCreate
 argument createRejectedBidListCall selectionMode GuiListBoxSelectionMode singleGuiListBoxSelectionMode
@@ -387,7 +387,7 @@ call addRejectedBidListCall gui.windowAddControl
 argument addRejectedBidListCall window GuiWindow mainWindow
 argument addRejectedBidListCall control GuiControl rejectedBidList
 run addRejectedBidListCall
-ignore value source addRejectedBidListCall type CSignedInt32
+ignore value source addRejectedBidListCall type Int32
 
 call createChatSectionCall gui.textLabelCreate
 argument createChatSectionCall text GuiText chatSectionText
@@ -397,7 +397,7 @@ call addChatSectionCall gui.windowAddControl
 argument addChatSectionCall window GuiWindow mainWindow
 argument addChatSectionCall control GuiControl chatSection
 run addChatSectionCall
-ignore value source addChatSectionCall type CSignedInt32
+ignore value source addChatSectionCall type Int32
 
 call createChatModerationListCall gui.listBoxCreate
 argument createChatModerationListCall selectionMode GuiListBoxSelectionMode singleGuiListBoxSelectionMode
@@ -408,11 +408,11 @@ call addChatModerationListCall gui.windowAddControl
 argument addChatModerationListCall window GuiWindow mainWindow
 argument addChatModerationListCall control GuiControl chatModerationList
 run addChatModerationListCall
-ignore value source addChatModerationListCall type CSignedInt32
+ignore value source addChatModerationListCall type Int32
 
 call createChatMessageIdInputCall gui.textBoxCreate
 argument createChatMessageIdInputCall placeholder GuiText chatMessageIdPlaceholder
-argument createChatMessageIdInputCall maxLength CSignedInt32 maxChatMessageIdLength
+argument createChatMessageIdInputCall maxLength Int32 maxChatMessageIdLength
 run createChatMessageIdInputCall
 bind value chatMessageIdInput GuiTextBox createChatMessageIdInputCall
 set storage chatMessageIdInputHandle chatMessageIdInput
@@ -420,112 +420,112 @@ call addChatMessageIdInputCall gui.windowAddControl
 argument addChatMessageIdInputCall window GuiWindow mainWindow
 argument addChatMessageIdInputCall control GuiControl chatMessageIdInput
 run addChatMessageIdInputCall
-ignore value source addChatMessageIdInputCall type CSignedInt32
+ignore value source addChatMessageIdInputCall type Int32
 
 call createHideChatButtonCall gui.buttonCreate
 argument createHideChatButtonCall text GuiText hideChatButtonText
-argument createHideChatButtonCall isDefault CSignedInt32 noGuiFlag
+argument createHideChatButtonCall isDefault Int32 noGuiFlag
 run createHideChatButtonCall
 bind value hideChatButton GuiButton createHideChatButtonCall
 call addHideChatButtonCall gui.windowAddControl
 argument addHideChatButtonCall window GuiWindow mainWindow
 argument addHideChatButtonCall control GuiControl hideChatButton
 run addHideChatButtonCall
-ignore value source addHideChatButtonCall type CSignedInt32
+ignore value source addHideChatButtonCall type Int32
 
 call createMarkReviewedButtonCall gui.buttonCreate
 argument createMarkReviewedButtonCall text GuiText markReviewedButtonText
-argument createMarkReviewedButtonCall isDefault CSignedInt32 noGuiFlag
+argument createMarkReviewedButtonCall isDefault Int32 noGuiFlag
 run createMarkReviewedButtonCall
 bind value markReviewedButton GuiButton createMarkReviewedButtonCall
 call addMarkReviewedButtonCall gui.windowAddControl
 argument addMarkReviewedButtonCall window GuiWindow mainWindow
 argument addMarkReviewedButtonCall control GuiControl markReviewedButton
 run addMarkReviewedButtonCall
-ignore value source addMarkReviewedButtonCall type CSignedInt32
+ignore value source addMarkReviewedButtonCall type Int32
 
 call registerLoginButtonCall gui.controlOnEvent
 argument registerLoginButtonCall control GuiControl loginButton
 argument registerLoginButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerLoginButtonCall handler GuiEventHandler handleLogin
 run registerLoginButtonCall
-ignore value source registerLoginButtonCall type CSignedInt32
+ignore value source registerLoginButtonCall type Int32
 
 call registerForgetTokenButtonCall gui.controlOnEvent
 argument registerForgetTokenButtonCall control GuiControl forgetTokenButton
 argument registerForgetTokenButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerForgetTokenButtonCall handler GuiEventHandler handleForgetToken
 run registerForgetTokenButtonCall
-ignore value source registerForgetTokenButtonCall type CSignedInt32
+ignore value source registerForgetTokenButtonCall type Int32
 
 call registerStartButtonCall gui.controlOnEvent
 argument registerStartButtonCall control GuiControl startButton
 argument registerStartButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerStartButtonCall handler GuiEventHandler handleStartAuction
 run registerStartButtonCall
-ignore value source registerStartButtonCall type CSignedInt32
+ignore value source registerStartButtonCall type Int32
 
 call registerExtendButtonCall gui.controlOnEvent
 argument registerExtendButtonCall control GuiControl extendButton
 argument registerExtendButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerExtendButtonCall handler GuiEventHandler handleExtendAuction
 run registerExtendButtonCall
-ignore value source registerExtendButtonCall type CSignedInt32
+ignore value source registerExtendButtonCall type Int32
 
 call registerCloseButtonCall gui.controlOnEvent
 argument registerCloseButtonCall control GuiControl closeButton
 argument registerCloseButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerCloseButtonCall handler GuiEventHandler handleCloseAuction
 run registerCloseButtonCall
-ignore value source registerCloseButtonCall type CSignedInt32
+ignore value source registerCloseButtonCall type Int32
 
 call registerPollButtonCall gui.controlOnEvent
 argument registerPollButtonCall control GuiControl pollButton
 argument registerPollButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerPollButtonCall handler GuiEventHandler handlePollNow
 run registerPollButtonCall
-ignore value source registerPollButtonCall type CSignedInt32
+ignore value source registerPollButtonCall type Int32
 
 call registerHideChatButtonCall gui.controlOnEvent
 argument registerHideChatButtonCall control GuiControl hideChatButton
 argument registerHideChatButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerHideChatButtonCall handler GuiEventHandler handleModerateChat
 run registerHideChatButtonCall
-ignore value source registerHideChatButtonCall type CSignedInt32
+ignore value source registerHideChatButtonCall type Int32
 
 call registerMarkReviewedButtonCall gui.controlOnEvent
 argument registerMarkReviewedButtonCall control GuiControl markReviewedButton
 argument registerMarkReviewedButtonCall eventKind GuiEventKind clickGuiEventKind
 argument registerMarkReviewedButtonCall handler GuiEventHandler handleModerateChat
 run registerMarkReviewedButtonCall
-ignore value source registerMarkReviewedButtonCall type CSignedInt32
+ignore value source registerMarkReviewedButtonCall type Int32
 
 call seedEventListCall gui.listBoxAppendItem
 argument seedEventListCall session GuiSession 0
 argument seedEventListCall listBox GuiListBox eventListHandle
-argument seedEventListCall text CNullTerminatedByteString initialEventText
+argument seedEventListCall text String initialEventText
 run seedEventListCall
-ignore value source seedEventListCall type CSignedInt32
+ignore value source seedEventListCall type Int32
 
 call seedRejectedBidListCall gui.listBoxAppendItem
 argument seedRejectedBidListCall session GuiSession 0
 argument seedRejectedBidListCall listBox GuiListBox rejectedBidListHandle
-argument seedRejectedBidListCall text CNullTerminatedByteString initialRejectedBidText
+argument seedRejectedBidListCall text String initialRejectedBidText
 run seedRejectedBidListCall
-ignore value source seedRejectedBidListCall type CSignedInt32
+ignore value source seedRejectedBidListCall type Int32
 
 call seedChatModerationListCall gui.listBoxAppendItem
 argument seedChatModerationListCall session GuiSession 0
 argument seedChatModerationListCall listBox GuiListBox chatModerationListHandle
-argument seedChatModerationListCall text CNullTerminatedByteString initialChatText
+argument seedChatModerationListCall text String initialChatText
 run seedChatModerationListCall
-ignore value source seedChatModerationListCall type CSignedInt32
+ignore value source seedChatModerationListCall type Int32
 
 call setMainWindowCall gui.applicationSetMainWindow
 argument setMainWindowCall application GuiApplication application
 argument setMainWindowCall window GuiWindow mainWindow
 run setMainWindowCall
-ignore value source setMainWindowCall type CSignedInt32
+ignore value source setMainWindowCall type Int32
 
 call runApplicationCall gui.applicationRun
 argument runApplicationCall application GuiApplication application
@@ -536,7 +536,7 @@ return value guiExitCode
 operation handleLogin
 input operation handleLogin session GuiSession
 input operation handleLogin event GuiEvent
-output operation handleLogin CSignedInt32
+output operation handleLogin Int32
 effect handleLogin read gui.control.textBox.text
 effect handleLogin write gui.control.textLabel.text
 effect handleLogin write gui.control.listBox.items
@@ -561,25 +561,25 @@ argument setLoginStatusCall session GuiSession session
 argument setLoginStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setLoginStatusCall text GuiText loginGapStatusText
 run setLoginStatusCall
-bind value loginStatus CSignedInt32 setLoginStatusCall
+bind value loginStatus Int32 setLoginStatusCall
 call appendLoginEventCall gui.listBoxAppendItem
 argument appendLoginEventCall session GuiSession session
 argument appendLoginEventCall listBox GuiListBox eventListHandle
-argument appendLoginEventCall text CNullTerminatedByteString loginGapStatusText
+argument appendLoginEventCall text String loginGapStatusText
 run appendLoginEventCall
-ignore value source appendLoginEventCall type CSignedInt32
+ignore value source appendLoginEventCall type Int32
 call observeUsernameCall gui.listBoxAppendItem
 argument observeUsernameCall session GuiSession session
 argument observeUsernameCall listBox GuiListBox eventListHandle
-argument observeUsernameCall text CNullTerminatedByteString usernameText
+argument observeUsernameCall text String usernameText
 run observeUsernameCall
-ignore value source observeUsernameCall type CSignedInt32
+ignore value source observeUsernameCall type Int32
 return value loginStatus
 
 operation handleForgetToken
 input operation handleForgetToken session GuiSession
 input operation handleForgetToken event GuiEvent
-output operation handleForgetToken CSignedInt32
+output operation handleForgetToken Int32
 effect handleForgetToken write gui.control.textLabel.text
 effect handleForgetToken write auth.memory
 authority handleForgetToken write gui.control.textLabel.text
@@ -595,13 +595,13 @@ argument setStatusCall session GuiSession session
 argument setStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setStatusCall text GuiText tokenForgottenStatusText
 run setStatusCall
-bind value status CSignedInt32 setStatusCall
+bind value status Int32 setStatusCall
 return value status
 
 operation handleStartAuction
 input operation handleStartAuction session GuiSession
 input operation handleStartAuction event GuiEvent
-output operation handleStartAuction CSignedInt32
+output operation handleStartAuction Int32
 effect handleStartAuction read gui.control.textBox.text
 effect handleStartAuction write gui.control.textLabel.text
 effect handleStartAuction write gui.control.listBox.items
@@ -621,27 +621,27 @@ bind value auctionIdText GuiText readAuctionIdCall
 call appendStartEventCall gui.listBoxAppendItem
 argument appendStartEventCall session GuiSession session
 argument appendStartEventCall listBox GuiListBox eventListHandle
-argument appendStartEventCall text CNullTerminatedByteString startGapStatusText
+argument appendStartEventCall text String startGapStatusText
 run appendStartEventCall
-ignore value source appendStartEventCall type CSignedInt32
+ignore value source appendStartEventCall type Int32
 call appendAuctionIdCall gui.listBoxAppendItem
 argument appendAuctionIdCall session GuiSession session
 argument appendAuctionIdCall listBox GuiListBox eventListHandle
-argument appendAuctionIdCall text CNullTerminatedByteString auctionIdText
+argument appendAuctionIdCall text String auctionIdText
 run appendAuctionIdCall
-ignore value source appendAuctionIdCall type CSignedInt32
+ignore value source appendAuctionIdCall type Int32
 call setStatusCall gui.textLabelSetText
 argument setStatusCall session GuiSession session
 argument setStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setStatusCall text GuiText startGapStatusText
 run setStatusCall
-bind value status CSignedInt32 setStatusCall
+bind value status Int32 setStatusCall
 return value status
 
 operation handleExtendAuction
 input operation handleExtendAuction session GuiSession
 input operation handleExtendAuction event GuiEvent
-output operation handleExtendAuction CSignedInt32
+output operation handleExtendAuction Int32
 effect handleExtendAuction write gui.control.textLabel.text
 effect handleExtendAuction write gui.control.listBox.items
 authority handleExtendAuction write gui.control.textLabel.text
@@ -654,21 +654,21 @@ invariant operation handleExtendAuction "The handler only appends an audit row a
 call appendEventCall gui.listBoxAppendItem
 argument appendEventCall session GuiSession session
 argument appendEventCall listBox GuiListBox eventListHandle
-argument appendEventCall text CNullTerminatedByteString extendGapStatusText
+argument appendEventCall text String extendGapStatusText
 run appendEventCall
-ignore value source appendEventCall type CSignedInt32
+ignore value source appendEventCall type Int32
 call setStatusCall gui.textLabelSetText
 argument setStatusCall session GuiSession session
 argument setStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setStatusCall text GuiText extendGapStatusText
 run setStatusCall
-bind value status CSignedInt32 setStatusCall
+bind value status Int32 setStatusCall
 return value status
 
 operation handleCloseAuction
 input operation handleCloseAuction session GuiSession
 input operation handleCloseAuction event GuiEvent
-output operation handleCloseAuction CSignedInt32
+output operation handleCloseAuction Int32
 effect handleCloseAuction write gui.control.textLabel.text
 effect handleCloseAuction write gui.control.listBox.items
 authority handleCloseAuction write gui.control.textLabel.text
@@ -681,21 +681,21 @@ invariant operation handleCloseAuction "The handler only appends an audit row an
 call appendEventCall gui.listBoxAppendItem
 argument appendEventCall session GuiSession session
 argument appendEventCall listBox GuiListBox eventListHandle
-argument appendEventCall text CNullTerminatedByteString closeGapStatusText
+argument appendEventCall text String closeGapStatusText
 run appendEventCall
-ignore value source appendEventCall type CSignedInt32
+ignore value source appendEventCall type Int32
 call setStatusCall gui.textLabelSetText
 argument setStatusCall session GuiSession session
 argument setStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setStatusCall text GuiText closeGapStatusText
 run setStatusCall
-bind value status CSignedInt32 setStatusCall
+bind value status Int32 setStatusCall
 return value status
 
 operation handlePollNow
 input operation handlePollNow session GuiSession
 input operation handlePollNow event GuiEvent
-output operation handlePollNow CSignedInt32
+output operation handlePollNow Int32
 effect handlePollNow write gui.control.textLabel.text
 effect handlePollNow write gui.control.listBox.items
 authority handlePollNow write gui.control.textLabel.text
@@ -708,21 +708,21 @@ invariant operation handlePollNow "The handler reports that polling was requeste
 call appendEventCall gui.listBoxAppendItem
 argument appendEventCall session GuiSession session
 argument appendEventCall listBox GuiListBox eventListHandle
-argument appendEventCall text CNullTerminatedByteString pollGapStatusText
+argument appendEventCall text String pollGapStatusText
 run appendEventCall
-ignore value source appendEventCall type CSignedInt32
+ignore value source appendEventCall type Int32
 call setStatusCall gui.textLabelSetText
 argument setStatusCall session GuiSession session
 argument setStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setStatusCall text GuiText pollGapStatusText
 run setStatusCall
-bind value status CSignedInt32 setStatusCall
+bind value status Int32 setStatusCall
 return value status
 
 operation handleModerateChat
 input operation handleModerateChat session GuiSession
 input operation handleModerateChat event GuiEvent
-output operation handleModerateChat CSignedInt32
+output operation handleModerateChat Int32
 effect handleModerateChat read gui.control.textBox.text
 effect handleModerateChat write gui.control.textLabel.text
 effect handleModerateChat write gui.control.listBox.items
@@ -742,19 +742,19 @@ bind value messageIdText GuiText readMessageIdCall
 call appendModerationCall gui.listBoxAppendItem
 argument appendModerationCall session GuiSession session
 argument appendModerationCall listBox GuiListBox chatModerationListHandle
-argument appendModerationCall text CNullTerminatedByteString moderationGapStatusText
+argument appendModerationCall text String moderationGapStatusText
 run appendModerationCall
-ignore value source appendModerationCall type CSignedInt32
+ignore value source appendModerationCall type Int32
 call appendMessageIdCall gui.listBoxAppendItem
 argument appendMessageIdCall session GuiSession session
 argument appendMessageIdCall listBox GuiListBox chatModerationListHandle
-argument appendMessageIdCall text CNullTerminatedByteString messageIdText
+argument appendMessageIdCall text String messageIdText
 run appendMessageIdCall
-ignore value source appendMessageIdCall type CSignedInt32
+ignore value source appendMessageIdCall type Int32
 call setStatusCall gui.textLabelSetText
 argument setStatusCall session GuiSession session
 argument setStatusCall textLabel GuiTextLabel statusLabelHandle
 argument setStatusCall text GuiText moderationGapStatusText
 run setStatusCall
-bind value status CSignedInt32 setStatusCall
+bind value status Int32 setStatusCall
 return value status

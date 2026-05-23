@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.signal "App-specific wrappers, compatibility aliases, 
 invariant module standard.signal "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.signal signalModuleVersionText
-storage module immutable signalModuleVersionText CNullTerminatedByteString "standard.signal 0.1"
+storage module immutable signalModuleVersionText String "standard.signal 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -56,28 +56,28 @@ capability processSignalCapability process.signal write
 # section signal.numbers
 # rationale: POSIX signal-number constants.
 
-domainLiteral abortSignalNumber CSignedInt32 6
+domainLiteral abortSignalNumber Int32 6
 domainLiteralSource abortSignalNumber posix.SIGABRT
 domainLiteralTrust abortSignalNumber trustedStaticLiteral
 domainLiteralValidation abortSignalNumber trustedAbiConstant
 
-domainLiteral floatingPointExceptionSignalNumber CSignedInt32 8
+domainLiteral floatingPointExceptionSignalNumber Int32 8
 domainLiteralSource floatingPointExceptionSignalNumber posix.SIGFPE
 domainLiteralTrust floatingPointExceptionSignalNumber trustedStaticLiteral
 
-domainLiteral illegalInstructionSignalNumber CSignedInt32 4
+domainLiteral illegalInstructionSignalNumber Int32 4
 domainLiteralSource illegalInstructionSignalNumber posix.SIGILL
 domainLiteralTrust illegalInstructionSignalNumber trustedStaticLiteral
 
-domainLiteral interruptSignalNumber CSignedInt32 2
+domainLiteral interruptSignalNumber Int32 2
 domainLiteralSource interruptSignalNumber posix.SIGINT
 domainLiteralTrust interruptSignalNumber trustedStaticLiteral
 
-domainLiteral segmentationViolationSignalNumber CSignedInt32 11
+domainLiteral segmentationViolationSignalNumber Int32 11
 domainLiteralSource segmentationViolationSignalNumber posix.SIGSEGV
 domainLiteralTrust segmentationViolationSignalNumber trustedStaticLiteral
 
-domainLiteral terminationSignalNumber CSignedInt32 15
+domainLiteral terminationSignalNumber Int32 15
 domainLiteralSource terminationSignalNumber posix.SIGTERM
 domainLiteralTrust terminationSignalNumber trustedStaticLiteral
 
@@ -85,8 +85,8 @@ domainLiteralTrust terminationSignalNumber trustedStaticLiteral
 # rationale: deliver a signal to the current process.
 
 operation raiseProcessSignalNumber
-input operation raiseProcessSignalNumber signalNumber CSignedInt32
-output operation raiseProcessSignalNumber Result CSignedInt32 SignalDeliveryError
+input operation raiseProcessSignalNumber signalNumber Int32
+output operation raiseProcessSignalNumber Result Int32 SignalDeliveryError
 useCapability raiseProcessSignalNumber processSignalCapability
 effect raiseProcessSignalNumber write process.signal
 memory raiseProcessSignalNumber heap no
@@ -99,13 +99,13 @@ guarantee raiseProcessSignalNumber "Always returns OR terminates; never hangs."
 
 label startRaiseProcessSignalNumber
 call deliverSignalCall c.raise
-argument deliverSignalCall sig CSignedInt32 signalNumber
+argument deliverSignalCall sig Int32 signalNumber
 run deliverSignalCall
-bind value raiseLibcResultCode CSignedInt32 deliverSignalCall
-storage module immutable zeroSuccessCode CSignedInt32 0
-call detectRaiseSuccessCall math.equalI64
-argument detectRaiseSuccessCall left I64 raiseLibcResultCode
-argument detectRaiseSuccessCall right I64 zeroSuccessCode
+bind value raiseLibcResultCode Int32 deliverSignalCall
+storage module immutable zeroSuccessCode Int32 0
+call detectRaiseSuccessCall math.equalInt64
+argument detectRaiseSuccessCall left Int64 raiseLibcResultCode
+argument detectRaiseSuccessCall right Int64 zeroSuccessCode
 run detectRaiseSuccessCall
 bind value raiseSucceeded Bool detectRaiseSuccessCall
 branch if condition raiseSucceeded target returnRaiseSuccess

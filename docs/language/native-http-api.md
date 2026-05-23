@@ -85,7 +85,7 @@ The first compiled handler ABI should be explicit pointer-in, status-out:
 operation healthHandler
 input healthHandler request HttpRequest
 input healthHandler response HttpResponse
-output healthHandler CSignedInt32
+output healthHandler Int32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
@@ -116,7 +116,7 @@ Middleware operations use the same request/response input ABI but declare:
 output tracingMiddleware MiddlewareControl
 ```
 
-The compiler pre-registers `MiddlewareControl` as a `CSignedInt32`-backed enum
+The compiler pre-registers `MiddlewareControl` as a `Int32`-backed enum
 with `continueMiddlewareControl` and `shortCircuitMiddlewareControl`. Returning
 `continueMiddlewareControl` runs the route handler. Returning
 `shortCircuitMiddlewareControl` skips the handler and sends the response already
@@ -144,14 +144,14 @@ capabilities when a handler should only inspect one request edge.
 The first runtime calls should be direct and small:
 
 ```semanticscript
-storage local immutable healthBody CNullTerminatedByteString "ok\n"
+storage local immutable healthBody String "ok\n"
 
 call writeHealthResponse http.responseText
 argument writeHealthResponse response HttpResponse response
 argument writeHealthResponse status HttpStatus HttpStatus.Ok
-argument writeHealthResponse body CNullTerminatedByteString healthBody
+argument writeHealthResponse body String healthBody
 run writeHealthResponse
-bind value writeStatus CSignedInt32 writeHealthResponse
+bind value writeStatus Int32 writeHealthResponse
 return value writeStatus
 ```
 
@@ -159,31 +159,31 @@ Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
-| `http.responseHtml` | `response HttpResponse`, `status HttpStatus`, `body CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_text` with `text/html; charset=utf-8` |
-| `http.responseText` | `response HttpResponse`, `status HttpStatus`, `body CNullTerminatedByteString`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_text` |
-| `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body COpaqueMemoryAddress`, `bodyLength CByteCount`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_bytes` |
-| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event CNullTerminatedByteString`, `data CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_sse_event` |
-| `http.responseHeader` | `response HttpResponse`, `name CNullTerminatedByteString`, `value CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_header` |
-| `http.responseFile` | `response HttpResponse`, `status HttpStatus`, `path CNullTerminatedByteString`, optional `contentType CNullTerminatedByteString` | `CSignedInt32` | `ss_http_response_file` |
-| `http.requestMethod` | `request HttpRequest` | `CNullTerminatedByteString` | `ss_http_request_method` |
-| `http.requestPath` | `request HttpRequest` | `CNullTerminatedByteString` | `ss_http_request_path` |
-| `http.requestPathParam` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_path_param` |
-| `http.requestHeader` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_header` |
-| `http.requestCookie` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_cookie` |
-| `http.requestQueryParam` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_request_query_param` |
-| `http.requestBodyText` | `request HttpRequest` | `CNullTerminatedByteString` | `ss_http_request_body_text` |
-| `http.requestBodyBytes` | `request HttpRequest` | `COpaqueMemoryAddress` | `ss_http_request_body_bytes` |
-| `http.requestBodyLength` | `request HttpRequest` | `CByteCount` | `ss_http_request_body_length` |
-| `http.multipartPartText` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_multipart_part_text` |
-| `http.multipartPartBytes` | `request HttpRequest`, `name CNullTerminatedByteString` | `COpaqueMemoryAddress` | `ss_http_multipart_part_bytes` |
-| `http.multipartPartLength` | `request HttpRequest`, `name CNullTerminatedByteString` | `CByteCount` | `ss_http_multipart_part_length` |
-| `http.multipartPartFilename` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_multipart_part_filename` |
-| `http.multipartPartContentType` | `request HttpRequest`, `name CNullTerminatedByteString` | `CNullTerminatedByteString` | `ss_http_multipart_part_content_type` |
-| `http.openSseStream` | `response HttpResponse`, `status HttpStatusCode` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_open` |
-| `http.writeSseEvent` | `response HttpResponse`, `event SseEventName`, `data SseEventData` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event` |
-| `http.writeSseEventWithId` | `response HttpResponse`, `id SseEventId`, `event SseEventName`, `data SseEventData` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event_with_id` |
-| `http.writeSseHeartbeat` | `response HttpResponse`, `comment SseHeartbeatComment` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_heartbeat` |
-| `http.closeSseStream` | `response HttpResponse` | `CSignedInt32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_close` |
+| `http.responseHtml` | `response HttpResponse`, `status HttpStatus`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
+| `http.responseText` | `response HttpResponse`, `status HttpStatus`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
+| `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
+| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
+| `http.responseHeader` | `response HttpResponse`, `name String`, `value String` | `Int32` | `ss_http_response_header` |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatus`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
+| `http.requestMethod` | `request HttpRequest` | `String` | `ss_http_request_method` |
+| `http.requestPath` | `request HttpRequest` | `String` | `ss_http_request_path` |
+| `http.requestPathParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_path_param` |
+| `http.requestHeader` | `request HttpRequest`, `name String` | `String` | `ss_http_request_header` |
+| `http.requestCookie` | `request HttpRequest`, `name String` | `String` | `ss_http_request_cookie` |
+| `http.requestQueryParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_query_param` |
+| `http.requestBodyText` | `request HttpRequest` | `String` | `ss_http_request_body_text` |
+| `http.requestBodyBytes` | `request HttpRequest` | `OpaquePointer` | `ss_http_request_body_bytes` |
+| `http.requestBodyLength` | `request HttpRequest` | `ByteCount` | `ss_http_request_body_length` |
+| `http.multipartPartText` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_text` |
+| `http.multipartPartBytes` | `request HttpRequest`, `name String` | `OpaquePointer` | `ss_http_multipart_part_bytes` |
+| `http.multipartPartLength` | `request HttpRequest`, `name String` | `ByteCount` | `ss_http_multipart_part_length` |
+| `http.multipartPartFilename` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_filename` |
+| `http.multipartPartContentType` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_content_type` |
+| `http.openSseStream` | `response HttpResponse`, `status HttpStatusCode` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_open` |
+| `http.writeSseEvent` | `response HttpResponse`, `event SseEventName`, `data SseEventData` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event` |
+| `http.writeSseEventWithId` | `response HttpResponse`, `id SseEventId`, `event SseEventName`, `data SseEventData` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event_with_id` |
+| `http.writeSseHeartbeat` | `response HttpResponse`, `comment SseHeartbeatComment` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_heartbeat` |
+| `http.closeSseStream` | `response HttpResponse` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_close` |
 | `http.clientDisconnected` | `response HttpResponse` | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_client_disconnected` |
 | `http.serverIsShuttingDown` | none | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_server_is_shutting_down` |
 
@@ -259,7 +259,7 @@ capability httpResponseWriter http.response write
 operation healthHandler
 input healthHandler request HttpRequest
 input healthHandler response HttpResponse
-output healthHandler CSignedInt32
+output healthHandler Int32
 effect healthHandler read http.request.method
 effect healthHandler read http.request.path
 effect healthHandler write http.response
@@ -272,20 +272,20 @@ purpose healthHandler "Return a plain health-check response"
 call methodReadCall http.requestMethod
 argument methodReadCall request HttpRequest request
 run methodReadCall
-bind value requestMethod CNullTerminatedByteString methodReadCall
+bind value requestMethod String methodReadCall
 
 call pathReadCall http.requestPath
 argument pathReadCall request HttpRequest request
 run pathReadCall
-bind value requestPath CNullTerminatedByteString pathReadCall
+bind value requestPath String pathReadCall
 
-storage local immutable healthBody CNullTerminatedByteString "ok\n"
+storage local immutable healthBody String "ok\n"
 call responseWriteCall http.responseText
 argument responseWriteCall response HttpResponse response
 argument responseWriteCall status HttpStatus HttpStatus.Ok
-argument responseWriteCall body CNullTerminatedByteString healthBody
+argument responseWriteCall body String healthBody
 run responseWriteCall
-bind value responseWriteStatus CSignedInt32 responseWriteCall
+bind value responseWriteStatus Int32 responseWriteCall
 return value responseWriteStatus
 ```
 
@@ -322,7 +322,7 @@ static SSHttpServerConfig ss_server = {
 
 Compiler codegen validates the route handler ABI before emitting the native
 route table: route handlers must compile to exactly `[HttpRequest,
-HttpResponse] -> CSignedInt32`. `semlint.py` carries the name-level and
+HttpResponse] -> Int32`. `semlint.py` carries the name-level and
 middleware-level contracts on top: canonical input names are `request` and
 `response`, middleware bound through `routeMiddleware` must declare
 `MiddlewareControl`, and response-body wrappers must declare

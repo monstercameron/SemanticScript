@@ -1,0 +1,120 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: slice
+# ============================================================
+
+project StdSliceTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import slice standard.slice
+
+error MainError
+errorCase MainError SliceSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Smoke-test the structural slice.* helper surface."
+
+label startMain
+
+storage module immutable sliceLengthFour Int64 4
+storage module immutable sliceLengthZero Int64 0
+storage module immutable sliceIndexThree Int64 3
+storage module immutable sliceIndexFour Int64 4
+storage module immutable sliceRequestedTen Int64 10
+storage module immutable sliceStartOne Int64 1
+storage module immutable sliceExpectedWindow Int64 3
+storage module immutable sliceMissingIndex Int64 -1
+
+call sliceLengthCall slice.length
+argument sliceLengthCall sliceLength Int64 sliceLengthFour
+run sliceLengthCall
+bind value sliceLengthResult Int64 sliceLengthCall
+call sliceLengthOkCall math.equalInt64
+argument sliceLengthOkCall left Int64 sliceLengthResult
+argument sliceLengthOkCall right Int64 sliceLengthFour
+run sliceLengthOkCall
+bind value sliceLengthOk Bool sliceLengthOkCall
+branch if condition sliceLengthOk target sliceLengthHolds
+branch else target smokeAssertionFailed
+label sliceLengthHolds
+
+call sliceIsEmptyCall slice.isEmpty
+argument sliceIsEmptyCall sliceLength Int64 sliceLengthZero
+run sliceIsEmptyCall
+bind value sliceIsEmptyResult Bool sliceIsEmptyCall
+branch if condition sliceIsEmptyResult target sliceIsEmptyHolds
+branch else target smokeAssertionFailed
+label sliceIsEmptyHolds
+
+call sliceContainsCall slice.containsIndex
+argument sliceContainsCall sliceLength Int64 sliceLengthFour
+argument sliceContainsCall index Int64 sliceIndexThree
+run sliceContainsCall
+bind value sliceContainsResult Bool sliceContainsCall
+branch if condition sliceContainsResult target sliceContainsHolds
+branch else target smokeAssertionFailed
+label sliceContainsHolds
+
+call sliceContainsMissingCall slice.containsIndex
+argument sliceContainsMissingCall sliceLength Int64 sliceLengthFour
+argument sliceContainsMissingCall index Int64 sliceIndexFour
+run sliceContainsMissingCall
+bind value sliceContainsMissingResult Bool sliceContainsMissingCall
+branch if condition sliceContainsMissingResult target smokeAssertionFailed
+
+call sliceLastIndexCall slice.lastIndex
+argument sliceLastIndexCall sliceLength Int64 sliceLengthZero
+run sliceLastIndexCall
+bind value sliceLastIndexResult Int64 sliceLastIndexCall
+call sliceLastIndexOkCall math.equalInt64
+argument sliceLastIndexOkCall left Int64 sliceLastIndexResult
+argument sliceLastIndexOkCall right Int64 sliceMissingIndex
+run sliceLastIndexOkCall
+bind value sliceLastIndexOk Bool sliceLastIndexOkCall
+branch if condition sliceLastIndexOk target sliceLastIndexHolds
+branch else target smokeAssertionFailed
+label sliceLastIndexHolds
+
+call sliceWindowLengthCall slice.windowLength
+argument sliceWindowLengthCall sliceLength Int64 sliceLengthFour
+argument sliceWindowLengthCall startIndex Int64 sliceStartOne
+argument sliceWindowLengthCall requestedCount Int64 sliceRequestedTen
+run sliceWindowLengthCall
+bind value sliceWindowLengthResult Int64 sliceWindowLengthCall
+call sliceWindowLengthOkCall math.equalInt64
+argument sliceWindowLengthOkCall left Int64 sliceWindowLengthResult
+argument sliceWindowLengthOkCall right Int64 sliceExpectedWindow
+run sliceWindowLengthOkCall
+bind value sliceWindowLengthOk Bool sliceWindowLengthOkCall
+branch if condition sliceWindowLengthOk target sliceWindowLengthHolds
+branch else target smokeAssertionFailed
+label sliceWindowLengthHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
+label smokeAssertionFailed
+makeError sliceSmokeFailure MainError.SliceSmokeAssertionFailed
+return error sliceSmokeFailure

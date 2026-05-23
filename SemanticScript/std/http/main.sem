@@ -19,19 +19,19 @@ moduleOwns standard.http "The official import path `standard.http`, semantic HTT
 moduleDoesNotOwn standard.http "Application routes, handler implementations, middleware order, native HTTP runtime implementation, or generated route dispatch."
 invariant module standard.http "The standard module entry is this file; new modules may import it as alias `http`; SSE operation bodies delegate through runtimeBinding rows rather than compiler target branches."
 
-type HttpStatusCode CSignedInt32
-type HttpHeaderName CNullTerminatedByteString
-type HttpHeaderValue CNullTerminatedByteString
-type HttpContentType CNullTerminatedByteString
-type HttpTextBody CNullTerminatedByteString
-type HttpByteBody COpaqueMemoryAddress
-type HttpBodyLength CByteCount
-type HttpRequestValue CNullTerminatedByteString
-type SseEventName CNullTerminatedByteString
-type SseEventId CSignedInt64
-type SseEventData CNullTerminatedByteString
-type SseHeartbeatComment CNullTerminatedByteString
-type HttpClientResponseBody CNullTerminatedByteString
+type HttpStatusCode Int32
+type HttpHeaderName String
+type HttpHeaderValue String
+type HttpContentType String
+type HttpTextBody String
+type HttpByteBody OpaquePointer
+type HttpBodyLength ByteCount
+type HttpRequestValue String
+type SseEventName String
+type SseEventId Int64
+type SseEventData String
+type SseHeartbeatComment String
+type HttpClientResponseBody String
 
 exportType standard.http HttpStatusCode
 exportType standard.http HttpHeaderName
@@ -113,13 +113,13 @@ storage module immutable sseCacheControlHeaderValue HttpHeaderValue "no-cache, n
 storage module immutable sseAccelBufferingHeaderName HttpHeaderName "X-Accel-Buffering"
 storage module immutable sseAccelBufferingHeaderValue HttpHeaderValue "no"
 storage module immutable sseDefaultHeartbeatComment SseHeartbeatComment "heartbeat"
-storage module immutable disconnectedCode CSignedInt32 1
-storage module immutable shuttingDownCode CSignedInt32 1
+storage module immutable disconnectedCode Int32 1
+storage module immutable shuttingDownCode Int32 1
 
 operation openSseStream
 input operation openSseStream response HttpResponse
 input operation openSseStream status HttpStatusCode
-output operation openSseStream CSignedInt32
+output operation openSseStream Int32
 effect openSseStream write http.response
 memory openSseStream arena request
 async openSseStream no
@@ -132,24 +132,24 @@ argument cacheHeaderCall response HttpResponse response
 argument cacheHeaderCall name HttpHeaderName sseCacheControlHeaderName
 argument cacheHeaderCall value HttpHeaderValue sseCacheControlHeaderValue
 run cacheHeaderCall
-ignore value source cacheHeaderCall type CSignedInt32
+ignore value source cacheHeaderCall type Int32
 call accelHeaderCall http.responseHeader
 argument accelHeaderCall response HttpResponse response
 argument accelHeaderCall name HttpHeaderName sseAccelBufferingHeaderName
 argument accelHeaderCall value HttpHeaderValue sseAccelBufferingHeaderValue
 run accelHeaderCall
-ignore value source accelHeaderCall type CSignedInt32
+ignore value source accelHeaderCall type Int32
 call openCall openSseStreamNative
 argument openCall response HttpResponse response
 argument openCall status HttpStatusCode status
 run openCall
-bind value openStatus CSignedInt32 openCall
+bind value openStatus Int32 openCall
 return value openStatus
 
 operation openSseStreamNative
 input operation openSseStreamNative response HttpResponse
 input operation openSseStreamNative status HttpStatusCode
-output operation openSseStreamNative CSignedInt32
+output operation openSseStreamNative Int32
 effect openSseStreamNative write http.response
 memory openSseStreamNative arena request
 async openSseStreamNative no
@@ -163,7 +163,7 @@ operation writeSseEvent
 input operation writeSseEvent response HttpResponse
 input operation writeSseEvent event SseEventName
 input operation writeSseEvent data SseEventData
-output operation writeSseEvent CSignedInt32
+output operation writeSseEvent Int32
 effect writeSseEvent write http.response
 memory writeSseEvent arena request
 async writeSseEvent no
@@ -177,14 +177,14 @@ argument writeCall response HttpResponse response
 argument writeCall event SseEventName event
 argument writeCall data SseEventData data
 run writeCall
-bind value writeStatus CSignedInt32 writeCall
+bind value writeStatus Int32 writeCall
 return value writeStatus
 
 operation writeSseEventNative
 input operation writeSseEventNative response HttpResponse
 input operation writeSseEventNative event SseEventName
 input operation writeSseEventNative data SseEventData
-output operation writeSseEventNative CSignedInt32
+output operation writeSseEventNative Int32
 effect writeSseEventNative write http.response
 memory writeSseEventNative arena request
 async writeSseEventNative no
@@ -200,7 +200,7 @@ input operation writeSseEventWithId response HttpResponse
 input operation writeSseEventWithId id SseEventId
 input operation writeSseEventWithId event SseEventName
 input operation writeSseEventWithId data SseEventData
-output operation writeSseEventWithId CSignedInt32
+output operation writeSseEventWithId Int32
 effect writeSseEventWithId write http.response
 memory writeSseEventWithId arena request
 async writeSseEventWithId no
@@ -215,7 +215,7 @@ argument writeCall id SseEventId id
 argument writeCall event SseEventName event
 argument writeCall data SseEventData data
 run writeCall
-bind value writeStatus CSignedInt32 writeCall
+bind value writeStatus Int32 writeCall
 return value writeStatus
 
 operation writeSseEventWithIdNative
@@ -223,7 +223,7 @@ input operation writeSseEventWithIdNative response HttpResponse
 input operation writeSseEventWithIdNative id SseEventId
 input operation writeSseEventWithIdNative event SseEventName
 input operation writeSseEventWithIdNative data SseEventData
-output operation writeSseEventWithIdNative CSignedInt32
+output operation writeSseEventWithIdNative Int32
 effect writeSseEventWithIdNative write http.response
 memory writeSseEventWithIdNative arena request
 async writeSseEventWithIdNative no
@@ -237,7 +237,7 @@ runtimeBinding writeSseEventWithIdNative native.ss_http_sse_write_event_with_id
 operation writeSseHeartbeat
 input operation writeSseHeartbeat response HttpResponse
 input operation writeSseHeartbeat comment SseHeartbeatComment
-output operation writeSseHeartbeat CSignedInt32
+output operation writeSseHeartbeat Int32
 effect writeSseHeartbeat write http.response
 memory writeSseHeartbeat arena request
 async writeSseHeartbeat no
@@ -249,13 +249,13 @@ call heartbeatCall writeSseHeartbeatNative
 argument heartbeatCall response HttpResponse response
 argument heartbeatCall comment SseHeartbeatComment comment
 run heartbeatCall
-bind value heartbeatStatus CSignedInt32 heartbeatCall
+bind value heartbeatStatus Int32 heartbeatCall
 return value heartbeatStatus
 
 operation writeSseHeartbeatNative
 input operation writeSseHeartbeatNative response HttpResponse
 input operation writeSseHeartbeatNative comment SseHeartbeatComment
-output operation writeSseHeartbeatNative CSignedInt32
+output operation writeSseHeartbeatNative Int32
 effect writeSseHeartbeatNative write http.response
 memory writeSseHeartbeatNative arena request
 async writeSseHeartbeatNative no
@@ -268,7 +268,7 @@ runtimeBinding writeSseHeartbeatNative native.ss_http_sse_heartbeat
 
 operation closeSseStream
 input operation closeSseStream response HttpResponse
-output operation closeSseStream CSignedInt32
+output operation closeSseStream Int32
 effect closeSseStream write http.response
 memory closeSseStream arena request
 async closeSseStream no
@@ -278,12 +278,12 @@ label startCloseSseStream
 call closeCall closeSseStreamNative
 argument closeCall response HttpResponse response
 run closeCall
-bind value closeStatus CSignedInt32 closeCall
+bind value closeStatus Int32 closeCall
 return value closeStatus
 
 operation closeSseStreamNative
 input operation closeSseStreamNative response HttpResponse
-output operation closeSseStreamNative CSignedInt32
+output operation closeSseStreamNative Int32
 effect closeSseStreamNative write http.response
 memory closeSseStreamNative arena request
 async closeSseStreamNative no
@@ -305,17 +305,17 @@ label startClientDisconnected
 call disconnectedCall clientDisconnectedNative
 argument disconnectedCall response HttpResponse response
 run disconnectedCall
-bind value disconnectedStatus CSignedInt32 disconnectedCall
-call disconnectedMatchesCall math.equalCSignedInt32
-argument disconnectedMatchesCall left CSignedInt32 disconnectedStatus
-argument disconnectedMatchesCall right CSignedInt32 disconnectedCode
+bind value disconnectedStatus Int32 disconnectedCall
+call disconnectedMatchesCall math.equalInt32
+argument disconnectedMatchesCall left Int32 disconnectedStatus
+argument disconnectedMatchesCall right Int32 disconnectedCode
 run disconnectedMatchesCall
 bind value disconnected Bool disconnectedMatchesCall
 return value disconnected
 
 operation clientDisconnectedNative
 input operation clientDisconnectedNative response HttpResponse
-output operation clientDisconnectedNative CSignedInt32
+output operation clientDisconnectedNative Int32
 effect clientDisconnectedNative read http.response
 memory clientDisconnectedNative arena request
 async clientDisconnectedNative no
@@ -336,16 +336,16 @@ invariant operation serverIsShuttingDown "This exposes only reusable transport d
 label startServerIsShuttingDown
 call shutdownCall serverIsShuttingDownNative
 run shutdownCall
-bind value shutdownStatus CSignedInt32 shutdownCall
-call shutdownMatchesCall math.equalCSignedInt32
-argument shutdownMatchesCall left CSignedInt32 shutdownStatus
-argument shutdownMatchesCall right CSignedInt32 shuttingDownCode
+bind value shutdownStatus Int32 shutdownCall
+call shutdownMatchesCall math.equalInt32
+argument shutdownMatchesCall left Int32 shutdownStatus
+argument shutdownMatchesCall right Int32 shuttingDownCode
 run shutdownMatchesCall
 bind value shuttingDown Bool shutdownMatchesCall
 return value shuttingDown
 
 operation serverIsShuttingDownNative
-output operation serverIsShuttingDownNative CSignedInt32
+output operation serverIsShuttingDownNative Int32
 effect serverIsShuttingDownNative read http.server
 memory serverIsShuttingDownNative arena request
 async serverIsShuttingDownNative no
@@ -363,15 +363,15 @@ runtimeBinding serverIsShuttingDownNative native.ss_http_server_is_shutting_down
 # provide the typed, ergonomic GET/POST surface. Returned bodies are heap-owned
 # by the caller (free via c.free) and are null on transport error or non-2xx.
 
-storage module immutable httpClientMethodGet CNullTerminatedByteString "GET"
-storage module immutable httpClientMethodPost CNullTerminatedByteString "POST"
-storage module immutable httpClientEmptyBody CNullTerminatedByteString ""
+storage module immutable httpClientMethodGet String "GET"
+storage module immutable httpClientMethodPost String "POST"
+storage module immutable httpClientEmptyBody String ""
 
 operation clientGet
-input operation clientGet host CNullTerminatedByteString
-input operation clientGet port CSignedInt32
-input operation clientGet path CNullTerminatedByteString
-input operation clientGet headerLine CNullTerminatedByteString
+input operation clientGet host String
+input operation clientGet port Int32
+input operation clientGet path String
+input operation clientGet headerLine String
 output operation clientGet HttpClientResponseBody
 effect clientGet read http.client
 memory clientGet heap yes
@@ -380,22 +380,22 @@ useCapability clientGet httpClientCaller
 purpose operation clientGet "Issue a blocking HTTP GET to host:port path with an optional header line; return the response body on 2xx, else null."
 label startClientGet
 call clientGetCall clientFetchNative
-argument clientGetCall method CNullTerminatedByteString httpClientMethodGet
-argument clientGetCall host CNullTerminatedByteString host
-argument clientGetCall port CSignedInt32 port
-argument clientGetCall path CNullTerminatedByteString path
-argument clientGetCall headerLine CNullTerminatedByteString headerLine
-argument clientGetCall body CNullTerminatedByteString httpClientEmptyBody
+argument clientGetCall method String httpClientMethodGet
+argument clientGetCall host String host
+argument clientGetCall port Int32 port
+argument clientGetCall path String path
+argument clientGetCall headerLine String headerLine
+argument clientGetCall body String httpClientEmptyBody
 run clientGetCall
 bind value clientGetBody HttpClientResponseBody clientGetCall
 return value clientGetBody
 
 operation clientPost
-input operation clientPost host CNullTerminatedByteString
-input operation clientPost port CSignedInt32
-input operation clientPost path CNullTerminatedByteString
-input operation clientPost headerLine CNullTerminatedByteString
-input operation clientPost body CNullTerminatedByteString
+input operation clientPost host String
+input operation clientPost port Int32
+input operation clientPost path String
+input operation clientPost headerLine String
+input operation clientPost body String
 output operation clientPost HttpClientResponseBody
 effect clientPost read http.client
 memory clientPost heap yes
@@ -404,23 +404,23 @@ useCapability clientPost httpClientCaller
 purpose operation clientPost "Issue a blocking HTTP POST (JSON body) to host:port path with an optional header line; return the response body on 2xx, else null."
 label startClientPost
 call clientPostCall clientFetchNative
-argument clientPostCall method CNullTerminatedByteString httpClientMethodPost
-argument clientPostCall host CNullTerminatedByteString host
-argument clientPostCall port CSignedInt32 port
-argument clientPostCall path CNullTerminatedByteString path
-argument clientPostCall headerLine CNullTerminatedByteString headerLine
-argument clientPostCall body CNullTerminatedByteString body
+argument clientPostCall method String httpClientMethodPost
+argument clientPostCall host String host
+argument clientPostCall port Int32 port
+argument clientPostCall path String path
+argument clientPostCall headerLine String headerLine
+argument clientPostCall body String body
 run clientPostCall
 bind value clientPostBody HttpClientResponseBody clientPostCall
 return value clientPostBody
 
 operation clientFetchNative
-input operation clientFetchNative method CNullTerminatedByteString
-input operation clientFetchNative host CNullTerminatedByteString
-input operation clientFetchNative port CSignedInt32
-input operation clientFetchNative path CNullTerminatedByteString
-input operation clientFetchNative headerLine CNullTerminatedByteString
-input operation clientFetchNative body CNullTerminatedByteString
+input operation clientFetchNative method String
+input operation clientFetchNative host String
+input operation clientFetchNative port Int32
+input operation clientFetchNative path String
+input operation clientFetchNative headerLine String
+input operation clientFetchNative body String
 output operation clientFetchNative HttpClientResponseBody
 effect clientFetchNative read http.client
 memory clientFetchNative heap yes
@@ -432,10 +432,10 @@ runtimeBindingPrecondition clientFetchNative "method/host/path are non-null; ret
 runtimeBinding clientFetchNative native.ss_http_client_fetch
 
 operation escapeHtml
-input operation escapeHtml input CNullTerminatedByteString
-input operation escapeHtml scratch COpaqueMemoryAddress
-input operation escapeHtml capacity CSignedInt32
-output operation escapeHtml CNullTerminatedByteString
+input operation escapeHtml input String
+input operation escapeHtml scratch OpaquePointer
+input operation escapeHtml capacity Int32
+output operation escapeHtml String
 effect escapeHtml readWrite memory.buffer
 memory escapeHtml arena request
 async escapeHtml no

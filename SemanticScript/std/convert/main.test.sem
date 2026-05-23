@@ -41,15 +41,15 @@ invariant operation main "widen(-1) == -1; convertByteValueToUnsignedInt32(-1) =
 label startMain
 
 # widenSignedInt32ToSignedInt64(-1) == -1
-storage module immutable negativeOneAsSignedInt32 CSignedInt32 -1
-storage module immutable negativeOneAsSignedInt64 CSignedInt64 -1
+storage module immutable negativeOneAsSignedInt32 Int32 -1
+storage module immutable negativeOneAsSignedInt64 Int64 -1
 call assertWidenCall widenSignedInt32ToSignedInt64
-argument assertWidenCall inputValue CSignedInt32 negativeOneAsSignedInt32
+argument assertWidenCall inputValue Int32 negativeOneAsSignedInt32
 run assertWidenCall
-bind value widenResult CSignedInt64 assertWidenCall
-call checkWidenCall math.equalI64
-argument checkWidenCall left I64 widenResult
-argument checkWidenCall right I64 negativeOneAsSignedInt64
+bind value widenResult Int64 assertWidenCall
+call checkWidenCall math.equalInt64
+argument checkWidenCall left Int64 widenResult
+argument checkWidenCall right Int64 negativeOneAsSignedInt64
 run checkWidenCall
 bind value widenOk Bool checkWidenCall
 branch if condition widenOk target widenHolds
@@ -57,14 +57,14 @@ branch else target smokeAssertionFailed
 label widenHolds
 
 # convertByteValueToUnsignedInt32(-1) == 255
-storage module immutable expectedTwoHundredFiftyFive CSignedInt32 255
+storage module immutable expectedTwoHundredFiftyFive Int32 255
 call assertByteConversionCall convertByteValueToUnsignedInt32
-argument assertByteConversionCall signExtendedByteValue CSignedInt32 negativeOneAsSignedInt32
+argument assertByteConversionCall signExtendedByteValue Int32 negativeOneAsSignedInt32
 run assertByteConversionCall
-bind value byteConversionResult CSignedInt32 assertByteConversionCall
-call checkByteConversionCall math.equalCSignedInt32
-argument checkByteConversionCall left CSignedInt32 byteConversionResult
-argument checkByteConversionCall right CSignedInt32 expectedTwoHundredFiftyFive
+bind value byteConversionResult Int32 assertByteConversionCall
+call checkByteConversionCall math.equalInt32
+argument checkByteConversionCall left Int32 byteConversionResult
+argument checkByteConversionCall right Int32 expectedTwoHundredFiftyFive
 run checkByteConversionCall
 bind value byteConversionOk Bool checkByteConversionCall
 branch if condition byteConversionOk target byteConversionHolds
@@ -72,15 +72,15 @@ branch else target smokeAssertionFailed
 label byteConversionHolds
 
 # convertFloat64ToSignedInt64(3.7) == 3 (truncate toward zero)
-storage module immutable threePointSevenFloat CFloat64 3.7
-storage module immutable expectedThree CSignedInt64 3
+storage module immutable threePointSevenFloat Float64 3.7
+storage module immutable expectedThree Int64 3
 call assertFloatToIntCall convertFloat64ToSignedInt64
-argument assertFloatToIntCall inputValue CFloat64 threePointSevenFloat
+argument assertFloatToIntCall inputValue Float64 threePointSevenFloat
 run assertFloatToIntCall
-bind value floatToIntResult CSignedInt64 assertFloatToIntCall
-call checkFloatToIntCall math.equalI64
-argument checkFloatToIntCall left I64 floatToIntResult
-argument checkFloatToIntCall right I64 expectedThree
+bind value floatToIntResult Int64 assertFloatToIntCall
+call checkFloatToIntCall math.equalInt64
+argument checkFloatToIntCall left Int64 floatToIntResult
+argument checkFloatToIntCall right Int64 expectedThree
 run checkFloatToIntCall
 bind value floatToIntOk Bool checkFloatToIntCall
 branch if condition floatToIntOk target floatToIntHolds
@@ -95,26 +95,26 @@ label floatToIntHolds
 # plus negative / zero / boundary cases for the existing ops.
 # ============================================================
 
-storage module immutable fiveSigned CSignedInt64 5
-storage module immutable fiveAsI32 CSignedInt32 5
-storage module immutable zeroSigned CSignedInt64 0
-storage module immutable zeroAsI32 CSignedInt32 0
-storage module immutable negThreePointSeven CFloat64 -3.7
-storage module immutable negThree CSignedInt64 -3
-storage module immutable zeroFloatCvt CFloat64 0.0
-storage module immutable sevenSigned CSignedInt64 7
-storage module immutable floatCvtTol CFloat64 0.0001
-storage module immutable negFloatCvtTol CFloat64 -0.0001
-storage module immutable maxInt32Signed CSignedInt64 2147483647
+storage module immutable fiveSigned Int64 5
+storage module immutable fiveAsInt32 Int32 5
+storage module immutable zeroSigned Int64 0
+storage module immutable zeroAsInt32 Int32 0
+storage module immutable negThreePointSeven Float64 -3.7
+storage module immutable negThree Int64 -3
+storage module immutable zeroFloatCvt Float64 0.0
+storage module immutable sevenSigned Int64 7
+storage module immutable floatCvtTol Float64 0.0001
+storage module immutable negFloatCvtTol Float64 -0.0001
+storage module immutable maxInt32Signed Int64 2147483647
 
 # narrowSignedInt64ToSignedInt32(5) == 5 (in-range, no truncation)
 call narrowFiveCall narrowSignedInt64ToSignedInt32
-argument narrowFiveCall inputValue CSignedInt64 fiveSigned
+argument narrowFiveCall inputValue Int64 fiveSigned
 run narrowFiveCall
-bind value narrowFiveResult CSignedInt32 narrowFiveCall
-call narrowFiveCheckCall math.equalCSignedInt32
-argument narrowFiveCheckCall left CSignedInt32 narrowFiveResult
-argument narrowFiveCheckCall right CSignedInt32 fiveAsI32
+bind value narrowFiveResult Int32 narrowFiveCall
+call narrowFiveCheckCall math.equalInt32
+argument narrowFiveCheckCall left Int32 narrowFiveResult
+argument narrowFiveCheckCall right Int32 fiveAsInt32
 run narrowFiveCheckCall
 bind value narrowFiveOk Bool narrowFiveCheckCall
 branch if condition narrowFiveOk target narrowFiveHolds
@@ -122,14 +122,14 @@ branch else target smokeAssertionFailed
 label narrowFiveHolds
 
 # narrow(2147483647) == 2147483647 (max i32 boundary, exact)
-storage module immutable maxInt32AsI32 CSignedInt32 2147483647
+storage module immutable maxInt32AsInt32 Int32 2147483647
 call narrowMaxCall narrowSignedInt64ToSignedInt32
-argument narrowMaxCall inputValue CSignedInt64 maxInt32Signed
+argument narrowMaxCall inputValue Int64 maxInt32Signed
 run narrowMaxCall
-bind value narrowMaxResult CSignedInt32 narrowMaxCall
-call narrowMaxCheckCall math.equalCSignedInt32
-argument narrowMaxCheckCall left CSignedInt32 narrowMaxResult
-argument narrowMaxCheckCall right CSignedInt32 maxInt32AsI32
+bind value narrowMaxResult Int32 narrowMaxCall
+call narrowMaxCheckCall math.equalInt32
+argument narrowMaxCheckCall left Int32 narrowMaxResult
+argument narrowMaxCheckCall right Int32 maxInt32AsInt32
 run narrowMaxCheckCall
 bind value narrowMaxOk Bool narrowMaxCheckCall
 branch if condition narrowMaxOk target narrowMaxHolds
@@ -137,25 +137,25 @@ branch else target smokeAssertionFailed
 label narrowMaxHolds
 
 # convertSignedInt64ToFloat64(5) â‰ˆ 5.0 (within tolerance)
-storage module immutable fiveAsFloat CFloat64 5.0
+storage module immutable fiveAsFloat Float64 5.0
 call intToFloatCall convertSignedInt64ToFloat64
-argument intToFloatCall inputValue CSignedInt64 fiveSigned
+argument intToFloatCall inputValue Int64 fiveSigned
 run intToFloatCall
-bind value intToFloatResult CFloat64 intToFloatCall
-call intToFloatDiffCall math.subtractF64
-argument intToFloatDiffCall left F64 intToFloatResult
-argument intToFloatDiffCall right F64 fiveAsFloat
+bind value intToFloatResult Float64 intToFloatCall
+call intToFloatDiffCall math.subtractFloat64
+argument intToFloatDiffCall left Float64 intToFloatResult
+argument intToFloatDiffCall right Float64 fiveAsFloat
 run intToFloatDiffCall
-bind value intToFloatDiff CFloat64 intToFloatDiffCall
+bind value intToFloatDiff Float64 intToFloatDiffCall
 # tolerance check: -tol < diff < tol
-call intToFloatLowerCall math.greaterThanF64
-argument intToFloatLowerCall left CFloat64 intToFloatDiff
-argument intToFloatLowerCall right CFloat64 negFloatCvtTol
+call intToFloatLowerCall math.greaterThanFloat64
+argument intToFloatLowerCall left Float64 intToFloatDiff
+argument intToFloatLowerCall right Float64 negFloatCvtTol
 run intToFloatLowerCall
 bind value intToFloatAboveLower Bool intToFloatLowerCall
-call intToFloatUpperCall math.lessThanF64
-argument intToFloatUpperCall left F64 intToFloatDiff
-argument intToFloatUpperCall right F64 floatCvtTol
+call intToFloatUpperCall math.lessThanFloat64
+argument intToFloatUpperCall left Float64 intToFloatDiff
+argument intToFloatUpperCall right Float64 floatCvtTol
 run intToFloatUpperCall
 bind value intToFloatBelowUpper Bool intToFloatUpperCall
 branch if condition intToFloatAboveLower target intToFloatCheckUpper
@@ -167,12 +167,12 @@ label intToFloatHolds
 
 # convertFloat64ToSignedInt64(-3.7) == -3 (truncates toward zero, not floor)
 call floatToIntNegCall convertFloat64ToSignedInt64
-argument floatToIntNegCall inputValue CFloat64 negThreePointSeven
+argument floatToIntNegCall inputValue Float64 negThreePointSeven
 run floatToIntNegCall
-bind value floatToIntNegResult CSignedInt64 floatToIntNegCall
-call floatToIntNegCheckCall math.equalI64
-argument floatToIntNegCheckCall left I64 floatToIntNegResult
-argument floatToIntNegCheckCall right I64 negThree
+bind value floatToIntNegResult Int64 floatToIntNegCall
+call floatToIntNegCheckCall math.equalInt64
+argument floatToIntNegCheckCall left Int64 floatToIntNegResult
+argument floatToIntNegCheckCall right Int64 negThree
 run floatToIntNegCheckCall
 bind value floatToIntNegOk Bool floatToIntNegCheckCall
 branch if condition floatToIntNegOk target floatToIntNegHolds
@@ -181,12 +181,12 @@ label floatToIntNegHolds
 
 # convertFloat64ToSignedInt64(0.0) == 0
 call floatToIntZeroCall convertFloat64ToSignedInt64
-argument floatToIntZeroCall inputValue CFloat64 zeroFloatCvt
+argument floatToIntZeroCall inputValue Float64 zeroFloatCvt
 run floatToIntZeroCall
-bind value floatToIntZeroResult CSignedInt64 floatToIntZeroCall
-call floatToIntZeroCheckCall math.equalI64
-argument floatToIntZeroCheckCall left I64 floatToIntZeroResult
-argument floatToIntZeroCheckCall right I64 zeroSigned
+bind value floatToIntZeroResult Int64 floatToIntZeroCall
+call floatToIntZeroCheckCall math.equalInt64
+argument floatToIntZeroCheckCall left Int64 floatToIntZeroResult
+argument floatToIntZeroCheckCall right Int64 zeroSigned
 run floatToIntZeroCheckCall
 bind value floatToIntZeroOk Bool floatToIntZeroCheckCall
 branch if condition floatToIntZeroOk target floatToIntZeroHolds
@@ -195,16 +195,16 @@ label floatToIntZeroHolds
 
 # Property: convertFloat64ToSignedInt64(convertSignedInt64ToFloat64(7)) == 7
 call roundTripFloatCall convertSignedInt64ToFloat64
-argument roundTripFloatCall inputValue CSignedInt64 sevenSigned
+argument roundTripFloatCall inputValue Int64 sevenSigned
 run roundTripFloatCall
-bind value roundTripFloatResult CFloat64 roundTripFloatCall
+bind value roundTripFloatResult Float64 roundTripFloatCall
 call roundTripIntCall convertFloat64ToSignedInt64
-argument roundTripIntCall inputValue CFloat64 roundTripFloatResult
+argument roundTripIntCall inputValue Float64 roundTripFloatResult
 run roundTripIntCall
-bind value roundTripIntResult CSignedInt64 roundTripIntCall
-call roundTripCheckCall math.equalI64
-argument roundTripCheckCall left I64 roundTripIntResult
-argument roundTripCheckCall right I64 sevenSigned
+bind value roundTripIntResult Int64 roundTripIntCall
+call roundTripCheckCall math.equalInt64
+argument roundTripCheckCall left Int64 roundTripIntResult
+argument roundTripCheckCall right Int64 sevenSigned
 run roundTripCheckCall
 bind value roundTripOk Bool roundTripCheckCall
 branch if condition roundTripOk target roundTripHolds
@@ -212,15 +212,15 @@ branch else target smokeAssertionFailed
 label roundTripHolds
 
 # calculateCStringPointerOffset(s, s) == 0 (same pointer â†’ zero offset)
-storage module immutable sampleStr CNullTerminatedByteString "abc"
+storage module immutable sampleStr String "abc"
 call sameOffsetCall calculateCStringPointerOffset
-argument sameOffsetCall baseValue CNullTerminatedByteString sampleStr
-argument sameOffsetCall pointerValue CNullTerminatedByteString sampleStr
+argument sameOffsetCall baseValue String sampleStr
+argument sameOffsetCall pointerValue String sampleStr
 run sameOffsetCall
-bind value sameOffsetResult CSignedInt64 sameOffsetCall
-call sameOffsetCheckCall math.equalI64
-argument sameOffsetCheckCall left I64 sameOffsetResult
-argument sameOffsetCheckCall right I64 zeroSigned
+bind value sameOffsetResult Int64 sameOffsetCall
+call sameOffsetCheckCall math.equalInt64
+argument sameOffsetCheckCall left Int64 sameOffsetResult
+argument sameOffsetCheckCall right Int64 zeroSigned
 run sameOffsetCheckCall
 bind value sameOffsetOk Bool sameOffsetCheckCall
 branch if condition sameOffsetOk target sameOffsetHolds
@@ -229,12 +229,12 @@ label sameOffsetHolds
 
 # convertByteValueToUnsignedInt32(0) == 0 (boundary)
 call byteZeroCall convertByteValueToUnsignedInt32
-argument byteZeroCall signExtendedByteValue CSignedInt32 zeroAsI32
+argument byteZeroCall signExtendedByteValue Int32 zeroAsInt32
 run byteZeroCall
-bind value byteZeroResult CSignedInt32 byteZeroCall
-call byteZeroCheckCall math.equalCSignedInt32
-argument byteZeroCheckCall left CSignedInt32 byteZeroResult
-argument byteZeroCheckCall right CSignedInt32 zeroAsI32
+bind value byteZeroResult Int32 byteZeroCall
+call byteZeroCheckCall math.equalInt32
+argument byteZeroCheckCall left Int32 byteZeroResult
+argument byteZeroCheckCall right Int32 zeroAsInt32
 run byteZeroCheckCall
 bind value byteZeroOk Bool byteZeroCheckCall
 branch if condition byteZeroOk target byteZeroHolds
@@ -242,32 +242,32 @@ branch else target smokeAssertionFailed
 label byteZeroHolds
 
 # convertByteValueToUnsignedInt32(127) == 127 (positive in-range)
-storage module immutable onehTwentySevenI32 CSignedInt32 127
+storage module immutable onehTwentySevenInt32 Int32 127
 call byteMidCall convertByteValueToUnsignedInt32
-argument byteMidCall signExtendedByteValue CSignedInt32 onehTwentySevenI32
+argument byteMidCall signExtendedByteValue Int32 onehTwentySevenInt32
 run byteMidCall
-bind value byteMidResult CSignedInt32 byteMidCall
-call byteMidCheckCall math.equalCSignedInt32
-argument byteMidCheckCall left CSignedInt32 byteMidResult
-argument byteMidCheckCall right CSignedInt32 onehTwentySevenI32
+bind value byteMidResult Int32 byteMidCall
+call byteMidCheckCall math.equalInt32
+argument byteMidCheckCall left Int32 byteMidResult
+argument byteMidCheckCall right Int32 onehTwentySevenInt32
 run byteMidCheckCall
 bind value byteMidOk Bool byteMidCheckCall
 branch if condition byteMidOk target byteMidHolds
 branch else target smokeAssertionFailed
 label byteMidHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

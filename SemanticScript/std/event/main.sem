@@ -20,17 +20,17 @@ moduleWarning standard.event "openProcessStream is process-local and replay-orie
 nativeRuntimeSource standard.event "SemanticScript/std/event/native/sem_event_runtime.c"
 nativeRuntimeLinkArg standard.event posix "-pthread"
 
-type EventStreamHandle COpaqueMemoryAddress
-type EventSubscriptionHandle COpaqueMemoryAddress
-type EventStreamName CNullTerminatedByteString
-type EventTypeName CNullTerminatedByteString
-type EventKey CNullTerminatedByteString
-type EventPayloadJson CNullTerminatedByteString
-type EventOutputBuffer COpaqueMemoryAddress
-type EventBufferCapacity CSignedInt32
-type EventQueueCapacity CSignedInt32
-type EventId CSignedInt64
-type EventStatusCode CSignedInt32
+type EventStreamHandle OpaquePointer
+type EventSubscriptionHandle OpaquePointer
+type EventStreamName String
+type EventTypeName String
+type EventKey String
+type EventPayloadJson String
+type EventOutputBuffer OpaquePointer
+type EventBufferCapacity Int32
+type EventQueueCapacity Int32
+type EventId Int64
+type EventStatusCode Int32
 
 exportType standard.event EventStreamHandle
 exportType standard.event EventSubscriptionHandle
@@ -100,7 +100,7 @@ exportCapability standard.event eventOutputBufferWriter
 exportCapability standard.event eventDurableStoreReader
 exportCapability standard.event eventDurableStoreWriter
 
-storage module immutable eventModuleVersionText CNullTerminatedByteString "standard.event 0.1"
+storage module immutable eventModuleVersionText String "standard.event 0.1"
 storage module immutable eventStatusOk EventStatusCode 0
 storage module immutable eventStatusNoEvent EventStatusCode 0
 storage module immutable eventStatusConfigError EventStatusCode -1

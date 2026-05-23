@@ -8,7 +8,7 @@ importConstant importedPlainTextContentType http plainTextContentType
 importCapability importedHttpResponseWriter http httpResponseWriter
 importCapability importedHttpServerStateReader http httpServerStateReader
 
-storage module immutable okText CNullTerminatedByteString "OK"
+storage module immutable okText String "OK"
 storage module immutable successCode ExitCode 0
 
 operation main
@@ -20,10 +20,10 @@ async main no
 purpose operation main "Smoke-test the canonical standard.http import path, response capability, and shutdown drain-state capability from its module folder."
 
 call writeCall console.writeLine
-argument writeCall text CNullTerminatedByteString okText
+argument writeCall text String okText
 run writeCall
-ignore ok source writeCall type CSignedInt32
-bind error writeCallError CSignedInt32 writeCall
+ignore ok source writeCall type Int32
+bind error writeCallError Int32 writeCall
 branch error source writeCall target writeFailed
 
 return value successCode

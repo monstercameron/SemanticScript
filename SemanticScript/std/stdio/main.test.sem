@@ -30,7 +30,7 @@ errorCase MainError ByteWriteFailedDuringSmoke
 # ============================================================
 # Smoke test â€” output expected by tests/test_stdlib.py:
 #   "Hello, SemanticScript stdlib!\n"
-#   "no-newline-then-writeCStringLineToStandardOutput\n"
+#   "no-newline-then-writeStringLineToStandardOutput\n"
 #   "42\n"
 #   "-1234\n"
 #   "0\n"
@@ -63,69 +63,69 @@ label startMain
 # failure path through MainError.ByteWriteFailedDuringSmoke if
 # stdout itself fails (e.g. closed pipe). The remaining lines go
 # through the byte-level writers under test.
-storage module immutable helloSemanticScriptStdlibBanner CNullTerminatedByteString "Hello, SemanticScript stdlib!"
+storage module immutable helloSemanticScriptStdlibBanner String "Hello, SemanticScript stdlib!"
 call emitHelloBannerCall console.writeLine
 argument emitHelloBannerCall console Console console
-argument emitHelloBannerCall text CNullTerminatedByteString helloSemanticScriptStdlibBanner
+argument emitHelloBannerCall text String helloSemanticScriptStdlibBanner
 run emitHelloBannerCall
-ignore ok source emitHelloBannerCall type CSignedInt32
-bind error emitHelloBannerError CSignedInt32 emitHelloBannerCall
+ignore ok source emitHelloBannerCall type Int32
+bind error emitHelloBannerError Int32 emitHelloBannerCall
 branch error source emitHelloBannerCall target byteWriteFailedDuringSmokeHandler
 
-storage module immutable noNewlineProbeText CNullTerminatedByteString "no-newline-then-writeCStringLineToStandardOutput"
-call emitNoNewlineProbeCall writeCStringToStandardOutput
-argument emitNoNewlineProbeCall inputText CNullTerminatedByteString noNewlineProbeText
+storage module immutable noNewlineProbeText String "no-newline-then-writeStringLineToStandardOutput"
+call emitNoNewlineProbeCall writeStringToStandardOutput
+argument emitNoNewlineProbeCall inputText String noNewlineProbeText
 run emitNoNewlineProbeCall
-ignore value source emitNoNewlineProbeCall type CByteCount
+ignore value source emitNoNewlineProbeCall type ByteCount
 
-storage module immutable emptyTerminatorMarker CNullTerminatedByteString ""
-call emitEmptyTerminatorCall writeCStringLineToStandardOutput
-argument emitEmptyTerminatorCall inputText CNullTerminatedByteString emptyTerminatorMarker
+storage module immutable emptyTerminatorMarker String ""
+call emitEmptyTerminatorCall writeStringLineToStandardOutput
+argument emitEmptyTerminatorCall inputText String emptyTerminatorMarker
 run emitEmptyTerminatorCall
-ignore value source emitEmptyTerminatorCall type CByteCount
+ignore value source emitEmptyTerminatorCall type ByteCount
 
-storage module immutable fortyTwoSampleValue CSignedInt64 42
+storage module immutable fortyTwoSampleValue Int64 42
 call emitFortyTwoCall writeSignedInt64DecimalToStandardOutput
-argument emitFortyTwoCall inputValue CSignedInt64 fortyTwoSampleValue
+argument emitFortyTwoCall inputValue Int64 fortyTwoSampleValue
 run emitFortyTwoCall
-ignore value source emitFortyTwoCall type CByteCount
+ignore value source emitFortyTwoCall type ByteCount
 
-storage module immutable negativeTwelveThirtyFour CSignedInt64 -1234
+storage module immutable negativeTwelveThirtyFour Int64 -1234
 call emitNegativeSampleCall writeSignedInt64DecimalToStandardOutput
-argument emitNegativeSampleCall inputValue CSignedInt64 negativeTwelveThirtyFour
+argument emitNegativeSampleCall inputValue Int64 negativeTwelveThirtyFour
 run emitNegativeSampleCall
-ignore value source emitNegativeSampleCall type CByteCount
+ignore value source emitNegativeSampleCall type ByteCount
 
-storage module immutable zeroSampleForDecimal CSignedInt64 0
+storage module immutable zeroSampleForDecimal Int64 0
 call emitDecimalZeroSampleCall writeSignedInt64DecimalToStandardOutput
-argument emitDecimalZeroSampleCall inputValue CSignedInt64 zeroSampleForDecimal
+argument emitDecimalZeroSampleCall inputValue Int64 zeroSampleForDecimal
 run emitDecimalZeroSampleCall
-ignore value source emitDecimalZeroSampleCall type CByteCount
+ignore value source emitDecimalZeroSampleCall type ByteCount
 
-storage module immutable twoFiftyFiveSampleValue CSignedInt64 255
+storage module immutable twoFiftyFiveSampleValue Int64 255
 call emitUnsignedTwoFiftyFiveCall writeUnsignedInt64DecimalToStandardOutput
-argument emitUnsignedTwoFiftyFiveCall inputValue CSignedInt64 twoFiftyFiveSampleValue
+argument emitUnsignedTwoFiftyFiveCall inputValue Int64 twoFiftyFiveSampleValue
 run emitUnsignedTwoFiftyFiveCall
-ignore value source emitUnsignedTwoFiftyFiveCall type CByteCount
+ignore value source emitUnsignedTwoFiftyFiveCall type ByteCount
 
 call emitHexTwoFiftyFiveCall writeSignedInt64HexToStandardOutput
-argument emitHexTwoFiftyFiveCall inputValue CSignedInt64 twoFiftyFiveSampleValue
+argument emitHexTwoFiftyFiveCall inputValue Int64 twoFiftyFiveSampleValue
 run emitHexTwoFiftyFiveCall
-ignore value source emitHexTwoFiftyFiveCall type CByteCount
+ignore value source emitHexTwoFiftyFiveCall type ByteCount
 
 # Exercise writeByteToStandardOutput by emitting 'A' (65) then '\n' (10).
 # This was the one stdio op missing from the original smoke; the
 # expected stdout in test_stdlib.py is extended by exactly "A\n".
-storage module immutable capitalAByteCode CSignedInt32 65
+storage module immutable capitalAByteCode Int32 65
 call emitCapitalAByteCall writeByteToStandardOutput
-argument emitCapitalAByteCall characterCode CSignedInt32 capitalAByteCode
+argument emitCapitalAByteCall characterCode Int32 capitalAByteCode
 run emitCapitalAByteCall
-ignore value source emitCapitalAByteCall type CSignedInt32
-storage module immutable lineFeedByteCode CSignedInt32 10
+ignore value source emitCapitalAByteCall type Int32
+storage module immutable lineFeedByteCode Int32 10
 call emitLineFeedByteCall writeByteToStandardOutput
-argument emitLineFeedByteCall characterCode CSignedInt32 lineFeedByteCode
+argument emitLineFeedByteCall characterCode Int32 lineFeedByteCode
 run emitLineFeedByteCall
-ignore value source emitLineFeedByteCall type CSignedInt32
+ignore value source emitLineFeedByteCall type Int32
 
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode

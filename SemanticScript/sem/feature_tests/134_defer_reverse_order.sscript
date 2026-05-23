@@ -8,25 +8,25 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation printSecondCleanup
 input operation printSecondCleanup console Console
-output operation printSecondCleanup I32
-storage module immutable secondCleanupMessage CNullTerminatedByteString "secondCleanup"
+output operation printSecondCleanup Int32
+storage module immutable secondCleanupMessage String "secondCleanup"
 call writeSecondCall console.writeLine
 argument writeSecondCall console Console console
-argument writeSecondCall text CNullTerminatedByteString secondCleanupMessage
+argument writeSecondCall text String secondCleanupMessage
 run writeSecondCall
 ignore void source writeSecondCall
-storage module immutable successfulInnerExit I32 0
+storage module immutable successfulInnerExit Int32 0
 return value successfulInnerExit
 operation printFirstCleanup
 input operation printFirstCleanup console Console
-output operation printFirstCleanup I32
-storage module immutable firstCleanupMessage CNullTerminatedByteString "firstCleanup"
+output operation printFirstCleanup Int32
+storage module immutable firstCleanupMessage String "firstCleanup"
 call writeFirstCall console.writeLine
 argument writeFirstCall console Console console
-argument writeFirstCall text CNullTerminatedByteString firstCleanupMessage
+argument writeFirstCall text String firstCleanupMessage
 run writeFirstCall
 ignore void source writeFirstCall
-storage module immutable innerExitSuccess I32 0
+storage module immutable innerExitSuccess Int32 0
 return value innerExitSuccess
 operation main
 input operation main console Console
@@ -39,10 +39,10 @@ invariant operation main "After 'hello', firstCleanup prints (because secondClea
 label startMain
 defer secondCleanupDefer printSecondCleanup console
 defer firstCleanupDefer printFirstCleanup console
-storage module immutable helloMessage CNullTerminatedByteString "hello"
+storage module immutable helloMessage String "hello"
 call writeHelloCall console.writeLine
 argument writeHelloCall console Console console
-argument writeHelloCall text CNullTerminatedByteString helloMessage
+argument writeHelloCall text String helloMessage
 run writeHelloCall
 ignore void source writeHelloCall
 storage module immutable successfulExitCode ExitCode 0

@@ -33,8 +33,8 @@ Supported escapes inside strings:
 The tokenizer does not parse expressions. Every unquoted token is an atom:
 
 ```semanticscript
-argument addCall left I64 leftValue
-argument addCall right I64 rightValue
+argument addCall left Int64 leftValue
+argument addCall right Int64 rightValue
 ```
 
 There is no `add(leftValue, rightValue)` form.
@@ -145,9 +145,9 @@ dynamic array literals
 Use explicit line records instead:
 
 ```semanticscript
-call sumCall math.addI64
+call sumCall math.addInt64
 argument sumCall left TYPE invoiceSubtotal
 argument sumCall right TYPE taxAmount
 run sumCall
-bind value invoiceTotal I64 sumCall
+bind value invoiceTotal Int64 sumCall
 ```

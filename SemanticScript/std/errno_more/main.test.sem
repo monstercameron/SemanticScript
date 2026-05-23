@@ -44,38 +44,38 @@ invariant operation main "EAGAIN == 11, EROFS == 30, ETIMEDOUT == 110."
 
 label startMain
 
-storage module immutable eagainExpected CSignedInt32 11
-call checkEagainCall math.equalI64
-argument checkEagainCall left I64 tryAgainErrorNumber
-argument checkEagainCall right I64 eagainExpected
+storage module immutable eagainExpected Int32 11
+call checkEagainCall math.equalInt64
+argument checkEagainCall left Int64 tryAgainErrorNumber
+argument checkEagainCall right Int64 eagainExpected
 run checkEagainCall
 bind value eagainOk Bool checkEagainCall
 branch if condition eagainOk target eagainHolds
 branch else target smokeAssertionFailed
 label eagainHolds
 
-storage module immutable erofsExpected CSignedInt32 30
-call checkErofsCall math.equalI64
-argument checkErofsCall left I64 readOnlyFileSystemErrorNumber
-argument checkErofsCall right I64 erofsExpected
+storage module immutable erofsExpected Int32 30
+call checkErofsCall math.equalInt64
+argument checkErofsCall left Int64 readOnlyFileSystemErrorNumber
+argument checkErofsCall right Int64 erofsExpected
 run checkErofsCall
 bind value erofsOk Bool checkErofsCall
 branch if condition erofsOk target erofsHolds
 branch else target smokeAssertionFailed
 label erofsHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

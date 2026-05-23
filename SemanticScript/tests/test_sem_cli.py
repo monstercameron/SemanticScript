@@ -25,19 +25,19 @@ from SemanticScript.tools import sem
 NEW_SYNTAX_SOURCE = """\
 module demo.agent
 operation main
-input operation main count I64
+input operation main count Int64
 output operation main ExitCode
 effect main write console.stdout
 authority main write console.stdout
 call writeCall console.writeIntegerLine
-argument writeCall value I64 count
+argument writeCall value Int64 count
 run writeCall
-ignore value source writeCall type I32
-call checkedCall math.checkedMultiplyI64
-argument checkedCall left I64 count
-argument checkedCall right I64 count
+ignore value source writeCall type Int32
+call checkedCall math.checkedMultiplyInt64
+argument checkedCall left Int64 count
+argument checkedCall right Int64 count
 run checkedCall
-bind ok product I64 checkedCall
+bind ok product Int64 checkedCall
 bind error overflow MainError checkedCall
 branch error source checkedCall target failed
 branch else target done
@@ -73,7 +73,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertNotIn("args", write_call)
         self.assertEqual(write_call["arguments"][0], {
             "parameter": "value",
-            "type": "I64",
+            "type": "Int64",
             "value": "count",
             "location": write_call["arguments"][0]["location"],
         })
@@ -515,9 +515,9 @@ return value request
     def test_fix_plan_marks_metadata_repairs_as_human_review(self) -> None:
         source_text = """\
 module demo.agent
-storage module mutable accountLookupRevision I64 zeroCount
-storage module immutable zeroCount I64 0
-storage module immutable nextAccountLookupRevision I64 1
+storage module mutable accountLookupRevision Int64 zeroCount
+storage module immutable zeroCount Int64 0
+storage module immutable nextAccountLookupRevision Int64 1
 operation main
 output operation main ExitCode
 memory main heap no
@@ -1254,18 +1254,18 @@ return value 0
 
 class TestCallContracts(unittest.TestCase):
     def test_call_classes_use_cutover_channel_vocabulary(self) -> None:
-        self.assertEqual(call_class("math.addI64", "I64"), CALL_CLASS_ORDINARY_VALUE)
-        self.assertEqual(call_class("console.writeLine", "I32"), CALL_CLASS_RESULT)
-        self.assertEqual(call_class("c.fopen", "COpaqueMemoryAddress"), CALL_CLASS_FALLIBLE_ORDINARY)
+        self.assertEqual(call_class("math.addInt64", "Int64"), CALL_CLASS_ORDINARY_VALUE)
+        self.assertEqual(call_class("console.writeLine", "Int32"), CALL_CLASS_RESULT)
+        self.assertEqual(call_class("c.fopen", "OpaquePointer"), CALL_CLASS_FALLIBLE_ORDINARY)
         self.assertEqual(call_class("user.flush", "Void"), CALL_CLASS_VOID)
 
     def test_disposition_channels_match_call_class(self) -> None:
-        self.assertEqual(disposition_channels_for_call("math.addI64", "I64"), frozenset({CALL_CHANNEL_VALUE}))
-        self.assertEqual(disposition_channels_for_call("console.writeLine", "I32"), frozenset({
+        self.assertEqual(disposition_channels_for_call("math.addInt64", "Int64"), frozenset({CALL_CHANNEL_VALUE}))
+        self.assertEqual(disposition_channels_for_call("console.writeLine", "Int32"), frozenset({
             CALL_CHANNEL_OK,
             CALL_CHANNEL_ERROR,
         }))
-        self.assertEqual(disposition_channels_for_call("c.fopen", "COpaqueMemoryAddress"), frozenset({
+        self.assertEqual(disposition_channels_for_call("c.fopen", "OpaquePointer"), frozenset({
             CALL_CHANNEL_VALUE,
             CALL_CHANNEL_ERROR,
         }))

@@ -1,0 +1,226 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: bytes
+# ============================================================
+
+project StdBytesTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import bytes standard.bytes
+
+error MainError
+errorCase MainError BytesSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+memory main heap yes
+memoryAllocationSource main highByteAllocCall
+async main no
+purpose operation main "Smoke-test the bytes.* scan and predicate helpers."
+
+label startMain
+
+storage module immutable helloLiteral String "hello"
+storage module immutable fiveByteCount ByteCount 5
+storage module immutable zeroByteCount ByteCount 0
+storage module immutable lowercaseLCode Int32 108
+storage module immutable lowercaseZCode Int32 122
+storage module immutable expectedSumValue Int64 532
+storage module immutable expectedMinValue Int64 101
+storage module immutable expectedMaxValue Int64 111
+storage module immutable expectedTwoMatches Int64 2
+storage module immutable expectedMissingIndex Int64 -1
+storage module immutable zeroInt64 Int64 0
+
+call bytesSumCall bytes.sum
+argument bytesSumCall byteBuffer OpaquePointer helloLiteral
+argument bytesSumCall byteCount ByteCount fiveByteCount
+run bytesSumCall
+bind value bytesSumResult Int64 bytesSumCall
+call bytesSumOkCall math.equalInt64
+argument bytesSumOkCall left Int64 bytesSumResult
+argument bytesSumOkCall right Int64 expectedSumValue
+run bytesSumOkCall
+bind value bytesSumOk Bool bytesSumOkCall
+branch if condition bytesSumOk target bytesSumHolds
+branch else target smokeAssertionFailed
+label bytesSumHolds
+
+call bytesMinCall bytes.min
+argument bytesMinCall byteBuffer OpaquePointer helloLiteral
+argument bytesMinCall byteCount ByteCount fiveByteCount
+run bytesMinCall
+bind value bytesMinResult Int64 bytesMinCall
+call bytesMinOkCall math.equalInt64
+argument bytesMinOkCall left Int64 bytesMinResult
+argument bytesMinOkCall right Int64 expectedMinValue
+run bytesMinOkCall
+bind value bytesMinOk Bool bytesMinOkCall
+branch if condition bytesMinOk target bytesMinHolds
+branch else target smokeAssertionFailed
+label bytesMinHolds
+
+call bytesMaxCall bytes.max
+argument bytesMaxCall byteBuffer OpaquePointer helloLiteral
+argument bytesMaxCall byteCount ByteCount fiveByteCount
+run bytesMaxCall
+bind value bytesMaxResult Int64 bytesMaxCall
+call bytesMaxOkCall math.equalInt64
+argument bytesMaxOkCall left Int64 bytesMaxResult
+argument bytesMaxOkCall right Int64 expectedMaxValue
+run bytesMaxOkCall
+bind value bytesMaxOk Bool bytesMaxOkCall
+branch if condition bytesMaxOk target bytesMaxHolds
+branch else target smokeAssertionFailed
+label bytesMaxHolds
+
+call bytesContainsCall bytes.contains
+argument bytesContainsCall byteBuffer OpaquePointer helloLiteral
+argument bytesContainsCall byteCount ByteCount fiveByteCount
+argument bytesContainsCall targetValue Int32 lowercaseLCode
+run bytesContainsCall
+bind value bytesContainsResult Bool bytesContainsCall
+branch if condition bytesContainsResult target bytesContainsHolds
+branch else target smokeAssertionFailed
+label bytesContainsHolds
+
+call bytesCountCall bytes.count
+argument bytesCountCall byteBuffer OpaquePointer helloLiteral
+argument bytesCountCall byteCount ByteCount fiveByteCount
+argument bytesCountCall targetValue Int32 lowercaseLCode
+run bytesCountCall
+bind value bytesCountResult Int64 bytesCountCall
+call bytesCountOkCall math.equalInt64
+argument bytesCountOkCall left Int64 bytesCountResult
+argument bytesCountOkCall right Int64 expectedTwoMatches
+run bytesCountOkCall
+bind value bytesCountOk Bool bytesCountOkCall
+branch if condition bytesCountOk target bytesCountHolds
+branch else target smokeAssertionFailed
+label bytesCountHolds
+
+call bytesIndexOfCall bytes.indexOf
+argument bytesIndexOfCall byteBuffer OpaquePointer helloLiteral
+argument bytesIndexOfCall byteCount ByteCount fiveByteCount
+argument bytesIndexOfCall targetValue Int32 lowercaseLCode
+run bytesIndexOfCall
+bind value bytesIndexOfResult Int64 bytesIndexOfCall
+call bytesIndexOfOkCall math.equalInt64
+argument bytesIndexOfOkCall left Int64 bytesIndexOfResult
+argument bytesIndexOfOkCall right Int64 expectedTwoMatches
+run bytesIndexOfOkCall
+bind value bytesIndexOfOk Bool bytesIndexOfOkCall
+branch if condition bytesIndexOfOk target bytesIndexOfHolds
+branch else target smokeAssertionFailed
+label bytesIndexOfHolds
+
+call bytesEqualCall bytes.equal
+argument bytesEqualCall leftBuffer OpaquePointer helloLiteral
+argument bytesEqualCall rightBuffer OpaquePointer helloLiteral
+argument bytesEqualCall byteCount ByteCount fiveByteCount
+run bytesEqualCall
+bind value bytesEqualResult Bool bytesEqualCall
+branch if condition bytesEqualResult target bytesEqualHolds
+branch else target smokeAssertionFailed
+label bytesEqualHolds
+
+call bytesMissingIndexCall bytes.indexOf
+argument bytesMissingIndexCall byteBuffer OpaquePointer helloLiteral
+argument bytesMissingIndexCall byteCount ByteCount fiveByteCount
+argument bytesMissingIndexCall targetValue Int32 lowercaseZCode
+run bytesMissingIndexCall
+bind value bytesMissingIndexResult Int64 bytesMissingIndexCall
+call bytesMissingIndexOkCall math.equalInt64
+argument bytesMissingIndexOkCall left Int64 bytesMissingIndexResult
+argument bytesMissingIndexOkCall right Int64 expectedMissingIndex
+run bytesMissingIndexOkCall
+bind value bytesMissingIndexOk Bool bytesMissingIndexOkCall
+branch if condition bytesMissingIndexOk target bytesMissingIndexHolds
+branch else target smokeAssertionFailed
+label bytesMissingIndexHolds
+
+call bytesEmptyContainsCall bytes.contains
+argument bytesEmptyContainsCall byteBuffer OpaquePointer helloLiteral
+argument bytesEmptyContainsCall byteCount ByteCount zeroByteCount
+argument bytesEmptyContainsCall targetValue Int32 lowercaseLCode
+run bytesEmptyContainsCall
+bind value bytesEmptyContainsResult Bool bytesEmptyContainsCall
+branch if condition bytesEmptyContainsResult target smokeAssertionFailed
+
+call highByteAllocCall c.malloc
+argument highByteAllocCall size ByteCount expectedTwoMatches
+run highByteAllocCall
+bind value highByteBuffer OpaquePointer highByteAllocCall
+bind error highByteAllocError Int32 highByteAllocCall
+branch error source highByteAllocCall target heapAllocationFailedHandler
+defer releaseHighByteAllocCall c.free highByteBuffer
+storage module immutable offsetZero ByteCount 0
+storage module immutable highByteValue Int64 200
+storage module immutable highByteTarget Int32 200
+storage module immutable oneByteCount ByteCount 1
+call storeHighByteCall pointer.storeByte
+argument storeHighByteCall buffer OpaquePointer highByteBuffer
+argument storeHighByteCall offset ByteCount offsetZero
+argument storeHighByteCall value Int64 highByteValue
+run storeHighByteCall
+call highByteContainsCall bytes.contains
+argument highByteContainsCall byteBuffer OpaquePointer highByteBuffer
+argument highByteContainsCall byteCount ByteCount oneByteCount
+argument highByteContainsCall targetValue Int32 highByteTarget
+run highByteContainsCall
+bind value highByteContainsResult Bool highByteContainsCall
+branch if condition highByteContainsResult target highByteContainsHolds
+branch else target smokeAssertionFailed
+label highByteContainsHolds
+
+call highByteCountCall bytes.count
+argument highByteCountCall byteBuffer OpaquePointer highByteBuffer
+argument highByteCountCall byteCount ByteCount oneByteCount
+argument highByteCountCall targetValue Int32 highByteTarget
+run highByteCountCall
+bind value highByteCountResult Int64 highByteCountCall
+call highByteCountOkCall math.equalInt64
+argument highByteCountOkCall left Int64 highByteCountResult
+argument highByteCountOkCall right Int64 oneByteCount
+run highByteCountOkCall
+bind value highByteCountOk Bool highByteCountOkCall
+branch if condition highByteCountOk target highByteCountHolds
+branch else target smokeAssertionFailed
+label highByteCountHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
+label heapAllocationFailedHandler
+makeError heapAllocationFailure MainError.MemoryAllocationFailed highByteAllocError
+return error heapAllocationFailure
+
+label smokeAssertionFailed
+makeError bytesSmokeFailure MainError.BytesSmokeAssertionFailed
+return error bytesSmokeFailure

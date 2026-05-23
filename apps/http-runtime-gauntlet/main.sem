@@ -161,16 +161,16 @@ purpose operation httpResponseWriter "Authority to write status, body, content t
 # (the canonical replacement for `const NAME TYPE VALUE`). Each value is
 # named after the HTTP status code's contract so reviewers see intent at
 # the call site, not just a magic number.
-storage module immutable okStatus CSignedInt32 200
-storage module immutable createdStatus CSignedInt32 201
-storage module immutable noContentStatus CSignedInt32 204
-storage module immutable redirectStatus CSignedInt32 302
-storage module immutable badRequestStatus CSignedInt32 400
+storage module immutable okStatus Int32 200
+storage module immutable createdStatus Int32 201
+storage module immutable noContentStatus Int32 204
+storage module immutable redirectStatus Int32 302
+storage module immutable badRequestStatus Int32 400
 # The body-size threshold is picked so the small test fixture "small"
 # (5 bytes) reports as `small body` and the large fixture
-# "0123456789abcdef" (16 bytes) reports as `large body`. CByteCount lowers
-# as i64 for the math.greaterThanOrEqualI64 comparison below.
-storage module immutable largeBodyThreshold CByteCount 12
+# "0123456789abcdef" (16 bytes) reports as `large body`. ByteCount lowers
+# as i64 for the math.greaterThanOrEqualInt64 comparison below.
+storage module immutable largeBodyThreshold ByteCount 12
 purpose operation largeBodyThreshold "Split body-size tests between the small fixture `small` and the large fixture `0123456789abcdef`"
 
 operation addGauntletHeaders
@@ -186,23 +186,23 @@ warning addGauntletHeaders "Per-header write statuses (from http.responseHeader)
 
 label startAddGauntletHeaders
 
-storage local immutable appHeaderName CNullTerminatedByteString "X-Gauntlet-App"
-storage local immutable appHeaderValue CNullTerminatedByteString "http-runtime-gauntlet"
+storage local immutable appHeaderName String "X-Gauntlet-App"
+storage local immutable appHeaderValue String "http-runtime-gauntlet"
 call appHeaderCall http.responseHeader
 argument appHeaderCall response HttpResponse response
-argument appHeaderCall name CNullTerminatedByteString appHeaderName
-argument appHeaderCall value CNullTerminatedByteString appHeaderValue
+argument appHeaderCall name String appHeaderName
+argument appHeaderCall value String appHeaderValue
 run appHeaderCall
-ignore value source appHeaderCall type CSignedInt32
+ignore value source appHeaderCall type Int32
 
-storage local immutable versionHeaderName CNullTerminatedByteString "X-Gauntlet-Version"
-storage local immutable versionHeaderValue CNullTerminatedByteString "1"
+storage local immutable versionHeaderName String "X-Gauntlet-Version"
+storage local immutable versionHeaderValue String "1"
 call versionHeaderCall http.responseHeader
 argument versionHeaderCall response HttpResponse response
-argument versionHeaderCall name CNullTerminatedByteString versionHeaderName
-argument versionHeaderCall value CNullTerminatedByteString versionHeaderValue
+argument versionHeaderCall name String versionHeaderName
+argument versionHeaderCall value String versionHeaderValue
 run versionHeaderCall
-ignore value source versionHeaderCall type CSignedInt32
+ignore value source versionHeaderCall type Int32
 
 # `returnVoid` is the explicit "no caller-actionable status" return form
 # matching this op's `output addGauntletHeaders Void` declaration. Codegen
@@ -213,9 +213,9 @@ return void
 
 operation writeTextResponse
 input operation writeTextResponse response HttpResponse
-input operation writeTextResponse status CSignedInt32
-input operation writeTextResponse body CNullTerminatedByteString
-output operation writeTextResponse CSignedInt32
+input operation writeTextResponse status Int32
+input operation writeTextResponse body String
+output operation writeTextResponse Int32
 effect writeTextResponse write http.response
 memory writeTextResponse arena request
 async writeTextResponse no
@@ -235,16 +235,16 @@ run commonHeaderCall
 
 call writeTextResponseCall http.responseText
 argument writeTextResponseCall response HttpResponse response
-argument writeTextResponseCall status CSignedInt32 status
-argument writeTextResponseCall body CNullTerminatedByteString body
+argument writeTextResponseCall status Int32 status
+argument writeTextResponseCall body String body
 run writeTextResponseCall
-bind value writeTextResponseStatus CSignedInt32 writeTextResponseCall
+bind value writeTextResponseStatus Int32 writeTextResponseCall
 return value writeTextResponseStatus
 
 operation indexHandler
 input operation indexHandler request HttpRequest
 input operation indexHandler response HttpResponse
-output operation indexHandler CSignedInt32
+output operation indexHandler Int32
 effect indexHandler write http.response
 memory indexHandler arena request
 async indexHandler no
@@ -254,19 +254,19 @@ invariant operation indexHandler "The route map lists every current API family c
 
 label startIndexHandler
 
-storage local immutable indexBody CNullTerminatedByteString "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware (the route's handler is intentionally skipped by the MiddlewareControl short-circuit contract)\n"
+storage local immutable indexBody String "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware (the route's handler is intentionally skipped by the MiddlewareControl short-circuit contract)\n"
 call indexResponseCall writeTextResponse
 argument indexResponseCall response HttpResponse response
-argument indexResponseCall status CSignedInt32 okStatus
-argument indexResponseCall body CNullTerminatedByteString indexBody
+argument indexResponseCall status Int32 okStatus
+argument indexResponseCall body String indexBody
 run indexResponseCall
-bind value indexResponseStatus CSignedInt32 indexResponseCall
+bind value indexResponseStatus Int32 indexResponseCall
 return value indexResponseStatus
 
 operation healthHandler
 input operation healthHandler request HttpRequest
 input operation healthHandler response HttpResponse
-output operation healthHandler CSignedInt32
+output operation healthHandler Int32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
@@ -276,19 +276,19 @@ invariant operation healthHandler "Readiness stays static and side-effect free; 
 
 label startHealthHandler
 
-storage local immutable healthBody CNullTerminatedByteString "ok\n"
+storage local immutable healthBody String "ok\n"
 call healthResponseCall writeTextResponse
 argument healthResponseCall response HttpResponse response
-argument healthResponseCall status CSignedInt32 okStatus
-argument healthResponseCall body CNullTerminatedByteString healthBody
+argument healthResponseCall status Int32 okStatus
+argument healthResponseCall body String healthBody
 run healthResponseCall
-bind value healthResponseStatus CSignedInt32 healthResponseCall
+bind value healthResponseStatus Int32 healthResponseCall
 return value healthResponseStatus
 
 operation methodReflectHandler
 input operation methodReflectHandler request HttpRequest
 input operation methodReflectHandler response HttpResponse
-output operation methodReflectHandler CSignedInt32
+output operation methodReflectHandler Int32
 effect methodReflectHandler read http.request.method
 effect methodReflectHandler write http.response
 memory methodReflectHandler arena request
@@ -303,19 +303,19 @@ label startMethodReflectHandler
 call methodReadCall http.requestMethod
 argument methodReadCall request HttpRequest request
 run methodReadCall
-bind value requestMethod CNullTerminatedByteString methodReadCall
+bind value requestMethod String methodReadCall
 call methodResponseCall writeTextResponse
 argument methodResponseCall response HttpResponse response
-argument methodResponseCall status CSignedInt32 okStatus
-argument methodResponseCall body CNullTerminatedByteString requestMethod
+argument methodResponseCall status Int32 okStatus
+argument methodResponseCall body String requestMethod
 run methodResponseCall
-bind value methodResponseStatus CSignedInt32 methodResponseCall
+bind value methodResponseStatus Int32 methodResponseCall
 return value methodResponseStatus
 
 operation pathReflectHandler
 input operation pathReflectHandler request HttpRequest
 input operation pathReflectHandler response HttpResponse
-output operation pathReflectHandler CSignedInt32
+output operation pathReflectHandler Int32
 effect pathReflectHandler read http.request.path
 effect pathReflectHandler write http.response
 memory pathReflectHandler arena request
@@ -330,19 +330,19 @@ label startPathReflectHandler
 call pathReadCall http.requestPath
 argument pathReadCall request HttpRequest request
 run pathReadCall
-bind value requestPath CNullTerminatedByteString pathReadCall
+bind value requestPath String pathReadCall
 call pathResponseCall writeTextResponse
 argument pathResponseCall response HttpResponse response
-argument pathResponseCall status CSignedInt32 okStatus
-argument pathResponseCall body CNullTerminatedByteString requestPath
+argument pathResponseCall status Int32 okStatus
+argument pathResponseCall body String requestPath
 run pathResponseCall
-bind value pathResponseStatus CSignedInt32 pathResponseCall
+bind value pathResponseStatus Int32 pathResponseCall
 return value pathResponseStatus
 
 operation headerReflectHandler
 input operation headerReflectHandler request HttpRequest
 input operation headerReflectHandler response HttpResponse
-output operation headerReflectHandler CSignedInt32
+output operation headerReflectHandler Int32
 effect headerReflectHandler read http.request.header
 effect headerReflectHandler write http.response
 memory headerReflectHandler arena request
@@ -355,42 +355,42 @@ warning headerReflectHandler "The 400-on-missing-token contract is part of the r
 
 label startHeaderReflectHandler
 
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-gauntlet-token"
-storage local immutable tokenMissingBody CNullTerminatedByteString "missing header: X-Gauntlet-Token\n"
+storage local immutable tokenHeaderName String "x-gauntlet-token"
+storage local immutable tokenMissingBody String "missing header: X-Gauntlet-Token\n"
 call headerReadCall http.requestHeader
 argument headerReadCall request HttpRequest request
-argument headerReadCall name CNullTerminatedByteString tokenHeaderName
+argument headerReadCall name String tokenHeaderName
 run headerReadCall
-bind value tokenHeaderValue CNullTerminatedByteString headerReadCall
+bind value tokenHeaderValue String headerReadCall
 
 rationale tokenMissingCheckCall "pointer.isNull is the only typed null detector — the default branchIfError convention (result < 0) cannot inspect a returned NULL pointer. semsc's pointer.isNull lowering emits a real `icmp_unsigned eq ptr, null` so the branchIf below has a real Bool to read. The rationale is attached to the call via SS3608 instead of a proximity `# rationale:` comment so a refactor that renames or removes the call also surfaces this context as orphaned."
 call tokenMissingCheckCall pointer.isNull
-argument tokenMissingCheckCall pointer COpaqueMemoryAddress tokenHeaderValue
+argument tokenMissingCheckCall pointer OpaquePointer tokenHeaderValue
 run tokenMissingCheckCall
 bind value tokenMissing Bool tokenMissingCheckCall
 branch if condition tokenMissing target headerMissingPath
 
 call headerResponseCall writeTextResponse
 argument headerResponseCall response HttpResponse response
-argument headerResponseCall status CSignedInt32 okStatus
-argument headerResponseCall body CNullTerminatedByteString tokenHeaderValue
+argument headerResponseCall status Int32 okStatus
+argument headerResponseCall body String tokenHeaderValue
 run headerResponseCall
-bind value headerResponseStatus CSignedInt32 headerResponseCall
+bind value headerResponseStatus Int32 headerResponseCall
 return value headerResponseStatus
 
 label headerMissingPath
 call headerMissingResponseCall writeTextResponse
 argument headerMissingResponseCall response HttpResponse response
-argument headerMissingResponseCall status CSignedInt32 badRequestStatus
-argument headerMissingResponseCall body CNullTerminatedByteString tokenMissingBody
+argument headerMissingResponseCall status Int32 badRequestStatus
+argument headerMissingResponseCall body String tokenMissingBody
 run headerMissingResponseCall
-bind value headerMissingResponseStatus CSignedInt32 headerMissingResponseCall
+bind value headerMissingResponseStatus Int32 headerMissingResponseCall
 return value headerMissingResponseStatus
 
 operation requiredHeaderHandler
 input operation requiredHeaderHandler request HttpRequest
 input operation requiredHeaderHandler response HttpResponse
-output operation requiredHeaderHandler CSignedInt32
+output operation requiredHeaderHandler Int32
 effect requiredHeaderHandler read http.request.header
 effect requiredHeaderHandler write http.response
 memory requiredHeaderHandler arena request
@@ -404,24 +404,24 @@ warning requiredHeaderHandler "Do not add a pointer.isNull guard to this handler
 
 label startRequiredHeaderHandler
 
-storage local immutable requiredHeaderName CNullTerminatedByteString "x-gauntlet-required"
+storage local immutable requiredHeaderName String "x-gauntlet-required"
 call requiredHeaderReadCall http.requestHeader
 argument requiredHeaderReadCall request HttpRequest request
-argument requiredHeaderReadCall name CNullTerminatedByteString requiredHeaderName
+argument requiredHeaderReadCall name String requiredHeaderName
 run requiredHeaderReadCall
-bind value requiredHeaderValue CNullTerminatedByteString requiredHeaderReadCall
+bind value requiredHeaderValue String requiredHeaderReadCall
 call requiredHeaderResponseCall writeTextResponse
 argument requiredHeaderResponseCall response HttpResponse response
-argument requiredHeaderResponseCall status CSignedInt32 okStatus
-argument requiredHeaderResponseCall body CNullTerminatedByteString requiredHeaderValue
+argument requiredHeaderResponseCall status Int32 okStatus
+argument requiredHeaderResponseCall body String requiredHeaderValue
 run requiredHeaderResponseCall
-bind value requiredHeaderResponseStatus CSignedInt32 requiredHeaderResponseCall
+bind value requiredHeaderResponseStatus Int32 requiredHeaderResponseCall
 return value requiredHeaderResponseStatus
 
 operation queryReflectHandler
 input operation queryReflectHandler request HttpRequest
 input operation queryReflectHandler response HttpResponse
-output operation queryReflectHandler CSignedInt32
+output operation queryReflectHandler Int32
 effect queryReflectHandler read http.request.query
 effect queryReflectHandler write http.response
 memory queryReflectHandler arena request
@@ -434,44 +434,44 @@ warning queryReflectHandler "The 400-on-missing-name contract is tested external
 
 label startQueryReflectHandler
 
-storage local immutable nameQueryName CNullTerminatedByteString "name"
-storage local immutable nameQueryMissingBody CNullTerminatedByteString "missing query parameter: name\n"
+storage local immutable nameQueryName String "name"
+storage local immutable nameQueryMissingBody String "missing query parameter: name\n"
 call queryReadCall http.requestQueryParam
 argument queryReadCall request HttpRequest request
-argument queryReadCall name CNullTerminatedByteString nameQueryName
+argument queryReadCall name String nameQueryName
 run queryReadCall
-bind value queryValue CNullTerminatedByteString queryReadCall
+bind value queryValue String queryReadCall
 
 # rationale: same null-guard pattern as headerReflectHandler — keeps the
 # 400 contract for absent keys distinct from the empty-value contract
 # exercised by queryEmptyHandler.
 call queryMissingCheckCall pointer.isNull
-argument queryMissingCheckCall pointer COpaqueMemoryAddress queryValue
+argument queryMissingCheckCall pointer OpaquePointer queryValue
 run queryMissingCheckCall
 bind value queryMissing Bool queryMissingCheckCall
 branch if condition queryMissing target queryReflectMissingPath
 
 call queryResponseCall writeTextResponse
 argument queryResponseCall response HttpResponse response
-argument queryResponseCall status CSignedInt32 okStatus
-argument queryResponseCall body CNullTerminatedByteString queryValue
+argument queryResponseCall status Int32 okStatus
+argument queryResponseCall body String queryValue
 run queryResponseCall
-bind value queryResponseStatus CSignedInt32 queryResponseCall
+bind value queryResponseStatus Int32 queryResponseCall
 return value queryResponseStatus
 
 label queryReflectMissingPath
 call queryReflectMissingResponseCall writeTextResponse
 argument queryReflectMissingResponseCall response HttpResponse response
-argument queryReflectMissingResponseCall status CSignedInt32 badRequestStatus
-argument queryReflectMissingResponseCall body CNullTerminatedByteString nameQueryMissingBody
+argument queryReflectMissingResponseCall status Int32 badRequestStatus
+argument queryReflectMissingResponseCall body String nameQueryMissingBody
 run queryReflectMissingResponseCall
-bind value queryReflectMissingResponseStatus CSignedInt32 queryReflectMissingResponseCall
+bind value queryReflectMissingResponseStatus Int32 queryReflectMissingResponseCall
 return value queryReflectMissingResponseStatus
 
 operation queryEmptyHandler
 input operation queryEmptyHandler request HttpRequest
 input operation queryEmptyHandler response HttpResponse
-output operation queryEmptyHandler CSignedInt32
+output operation queryEmptyHandler Int32
 effect queryEmptyHandler read http.request.query
 effect queryEmptyHandler write http.response
 memory queryEmptyHandler arena request
@@ -484,41 +484,41 @@ warning queryEmptyHandler "Do not collapse the absent-key and present-with-empty
 
 label startQueryEmptyHandler
 
-storage local immutable emptyQueryName CNullTerminatedByteString "empty"
-storage local immutable emptyQueryMissingBody CNullTerminatedByteString "missing query parameter: empty\n"
+storage local immutable emptyQueryName String "empty"
+storage local immutable emptyQueryMissingBody String "missing query parameter: empty\n"
 call emptyQueryReadCall http.requestQueryParam
 argument emptyQueryReadCall request HttpRequest request
-argument emptyQueryReadCall name CNullTerminatedByteString emptyQueryName
+argument emptyQueryReadCall name String emptyQueryName
 run emptyQueryReadCall
-bind value emptyQueryValue CNullTerminatedByteString emptyQueryReadCall
+bind value emptyQueryValue String emptyQueryReadCall
 
 call emptyQueryMissingCheckCall pointer.isNull
-argument emptyQueryMissingCheckCall pointer COpaqueMemoryAddress emptyQueryValue
+argument emptyQueryMissingCheckCall pointer OpaquePointer emptyQueryValue
 run emptyQueryMissingCheckCall
 bind value emptyQueryMissing Bool emptyQueryMissingCheckCall
 branch if condition emptyQueryMissing target queryEmptyMissingPath
 
 call emptyQueryResponseCall writeTextResponse
 argument emptyQueryResponseCall response HttpResponse response
-argument emptyQueryResponseCall status CSignedInt32 okStatus
-argument emptyQueryResponseCall body CNullTerminatedByteString emptyQueryValue
+argument emptyQueryResponseCall status Int32 okStatus
+argument emptyQueryResponseCall body String emptyQueryValue
 run emptyQueryResponseCall
-bind value emptyQueryResponseStatus CSignedInt32 emptyQueryResponseCall
+bind value emptyQueryResponseStatus Int32 emptyQueryResponseCall
 return value emptyQueryResponseStatus
 
 label queryEmptyMissingPath
 call queryEmptyMissingResponseCall writeTextResponse
 argument queryEmptyMissingResponseCall response HttpResponse response
-argument queryEmptyMissingResponseCall status CSignedInt32 badRequestStatus
-argument queryEmptyMissingResponseCall body CNullTerminatedByteString emptyQueryMissingBody
+argument queryEmptyMissingResponseCall status Int32 badRequestStatus
+argument queryEmptyMissingResponseCall body String emptyQueryMissingBody
 run queryEmptyMissingResponseCall
-bind value queryEmptyMissingResponseStatus CSignedInt32 queryEmptyMissingResponseCall
+bind value queryEmptyMissingResponseStatus Int32 queryEmptyMissingResponseCall
 return value queryEmptyMissingResponseStatus
 
 operation queryRepeatHandler
 input operation queryRepeatHandler request HttpRequest
 input operation queryRepeatHandler response HttpResponse
-output operation queryRepeatHandler CSignedInt32
+output operation queryRepeatHandler Int32
 effect queryRepeatHandler read http.request.query
 effect queryRepeatHandler write http.response
 memory queryRepeatHandler arena request
@@ -531,41 +531,41 @@ warning queryRepeatHandler "If the native adapter's first-vs-last lookup policy 
 
 label startQueryRepeatHandler
 
-storage local immutable repeatQueryName CNullTerminatedByteString "name"
-storage local immutable repeatQueryMissingBody CNullTerminatedByteString "missing query parameter: name\n"
+storage local immutable repeatQueryName String "name"
+storage local immutable repeatQueryMissingBody String "missing query parameter: name\n"
 call repeatQueryReadCall http.requestQueryParam
 argument repeatQueryReadCall request HttpRequest request
-argument repeatQueryReadCall name CNullTerminatedByteString repeatQueryName
+argument repeatQueryReadCall name String repeatQueryName
 run repeatQueryReadCall
-bind value repeatQueryValue CNullTerminatedByteString repeatQueryReadCall
+bind value repeatQueryValue String repeatQueryReadCall
 
 call repeatQueryMissingCheckCall pointer.isNull
-argument repeatQueryMissingCheckCall pointer COpaqueMemoryAddress repeatQueryValue
+argument repeatQueryMissingCheckCall pointer OpaquePointer repeatQueryValue
 run repeatQueryMissingCheckCall
 bind value repeatQueryMissing Bool repeatQueryMissingCheckCall
 branch if condition repeatQueryMissing target queryRepeatMissingPath
 
 call repeatQueryResponseCall writeTextResponse
 argument repeatQueryResponseCall response HttpResponse response
-argument repeatQueryResponseCall status CSignedInt32 okStatus
-argument repeatQueryResponseCall body CNullTerminatedByteString repeatQueryValue
+argument repeatQueryResponseCall status Int32 okStatus
+argument repeatQueryResponseCall body String repeatQueryValue
 run repeatQueryResponseCall
-bind value repeatQueryResponseStatus CSignedInt32 repeatQueryResponseCall
+bind value repeatQueryResponseStatus Int32 repeatQueryResponseCall
 return value repeatQueryResponseStatus
 
 label queryRepeatMissingPath
 call queryRepeatMissingResponseCall writeTextResponse
 argument queryRepeatMissingResponseCall response HttpResponse response
-argument queryRepeatMissingResponseCall status CSignedInt32 badRequestStatus
-argument queryRepeatMissingResponseCall body CNullTerminatedByteString repeatQueryMissingBody
+argument queryRepeatMissingResponseCall status Int32 badRequestStatus
+argument queryRepeatMissingResponseCall body String repeatQueryMissingBody
 run queryRepeatMissingResponseCall
-bind value queryRepeatMissingResponseStatus CSignedInt32 queryRepeatMissingResponseCall
+bind value queryRepeatMissingResponseStatus Int32 queryRepeatMissingResponseCall
 return value queryRepeatMissingResponseStatus
 
 operation bodyReflectHandler
 input operation bodyReflectHandler request HttpRequest
 input operation bodyReflectHandler response HttpResponse
-output operation bodyReflectHandler CSignedInt32
+output operation bodyReflectHandler Int32
 effect bodyReflectHandler read http.request.body
 effect bodyReflectHandler write http.response
 memory bodyReflectHandler arena request
@@ -578,39 +578,39 @@ warning bodyReflectHandler "Status 201 (createdStatus) is intentional: this rout
 
 label startBodyReflectHandler
 
-storage local immutable bodyMissingBody CNullTerminatedByteString "missing request body\n"
+storage local immutable bodyMissingBody String "missing request body\n"
 call bodyReadCall http.requestBodyText
 argument bodyReadCall request HttpRequest request
 run bodyReadCall
-bind value bodyText CNullTerminatedByteString bodyReadCall
+bind value bodyText String bodyReadCall
 
 call bodyMissingCheckCall pointer.isNull
-argument bodyMissingCheckCall pointer COpaqueMemoryAddress bodyText
+argument bodyMissingCheckCall pointer OpaquePointer bodyText
 run bodyMissingCheckCall
 bind value bodyMissing Bool bodyMissingCheckCall
 branch if condition bodyMissing target bodyReflectMissingPath
 
 call bodyResponseCall writeTextResponse
 argument bodyResponseCall response HttpResponse response
-argument bodyResponseCall status CSignedInt32 createdStatus
-argument bodyResponseCall body CNullTerminatedByteString bodyText
+argument bodyResponseCall status Int32 createdStatus
+argument bodyResponseCall body String bodyText
 run bodyResponseCall
-bind value bodyResponseStatus CSignedInt32 bodyResponseCall
+bind value bodyResponseStatus Int32 bodyResponseCall
 return value bodyResponseStatus
 
 label bodyReflectMissingPath
 call bodyReflectMissingResponseCall writeTextResponse
 argument bodyReflectMissingResponseCall response HttpResponse response
-argument bodyReflectMissingResponseCall status CSignedInt32 badRequestStatus
-argument bodyReflectMissingResponseCall body CNullTerminatedByteString bodyMissingBody
+argument bodyReflectMissingResponseCall status Int32 badRequestStatus
+argument bodyReflectMissingResponseCall body String bodyMissingBody
 run bodyReflectMissingResponseCall
-bind value bodyReflectMissingResponseStatus CSignedInt32 bodyReflectMissingResponseCall
+bind value bodyReflectMissingResponseStatus Int32 bodyReflectMissingResponseCall
 return value bodyReflectMissingResponseStatus
 
 operation bodyBytesReflectHandler
 input operation bodyBytesReflectHandler request HttpRequest
 input operation bodyBytesReflectHandler response HttpResponse
-output operation bodyBytesReflectHandler CSignedInt32
+output operation bodyBytesReflectHandler Int32
 effect bodyBytesReflectHandler read http.request.body
 effect bodyBytesReflectHandler write http.response
 memory bodyBytesReflectHandler arena request
@@ -630,14 +630,14 @@ call bodyBytesCommonHeadersCall addGauntletHeaders
 argument bodyBytesCommonHeadersCall response HttpResponse response
 run bodyBytesCommonHeadersCall
 
-storage local immutable bodyBytesMissingBody CNullTerminatedByteString "missing request body\n"
+storage local immutable bodyBytesMissingBody String "missing request body\n"
 call bodyBytesReadCall http.requestBodyBytes
 argument bodyBytesReadCall request HttpRequest request
 run bodyBytesReadCall
-bind value bodyBytePointer COpaqueMemoryAddress bodyBytesReadCall
+bind value bodyBytePointer OpaquePointer bodyBytesReadCall
 
 call bodyBytesMissingCheckCall pointer.isNull
-argument bodyBytesMissingCheckCall pointer COpaqueMemoryAddress bodyBytePointer
+argument bodyBytesMissingCheckCall pointer OpaquePointer bodyBytePointer
 run bodyBytesMissingCheckCall
 bind value bodyBytesMissing Bool bodyBytesMissingCheckCall
 branch if condition bodyBytesMissing target bodyBytesMissingPath
@@ -645,32 +645,32 @@ branch if condition bodyBytesMissing target bodyBytesMissingPath
 call bodyBytesLengthCall http.requestBodyLength
 argument bodyBytesLengthCall request HttpRequest request
 run bodyBytesLengthCall
-bind value bodyByteCount CByteCount bodyBytesLengthCall
+bind value bodyByteCount ByteCount bodyBytesLengthCall
 
-storage local immutable binaryContentType CNullTerminatedByteString "application/octet-stream"
+storage local immutable binaryContentType String "application/octet-stream"
 call bodyBytesResponseCall http.responseBytes
 argument bodyBytesResponseCall response HttpResponse response
-argument bodyBytesResponseCall status CSignedInt32 okStatus
-argument bodyBytesResponseCall body COpaqueMemoryAddress bodyBytePointer
-argument bodyBytesResponseCall bodyLength CByteCount bodyByteCount
-argument bodyBytesResponseCall contentType CNullTerminatedByteString binaryContentType
+argument bodyBytesResponseCall status Int32 okStatus
+argument bodyBytesResponseCall body OpaquePointer bodyBytePointer
+argument bodyBytesResponseCall bodyLength ByteCount bodyByteCount
+argument bodyBytesResponseCall contentType String binaryContentType
 run bodyBytesResponseCall
-bind value bodyBytesResponseStatus CSignedInt32 bodyBytesResponseCall
+bind value bodyBytesResponseStatus Int32 bodyBytesResponseCall
 return value bodyBytesResponseStatus
 
 label bodyBytesMissingPath
 call bodyBytesMissingResponseCall http.responseText
 argument bodyBytesMissingResponseCall response HttpResponse response
-argument bodyBytesMissingResponseCall status CSignedInt32 badRequestStatus
-argument bodyBytesMissingResponseCall body CNullTerminatedByteString bodyBytesMissingBody
+argument bodyBytesMissingResponseCall status Int32 badRequestStatus
+argument bodyBytesMissingResponseCall body String bodyBytesMissingBody
 run bodyBytesMissingResponseCall
-bind value bodyBytesMissingResponseStatus CSignedInt32 bodyBytesMissingResponseCall
+bind value bodyBytesMissingResponseStatus Int32 bodyBytesMissingResponseCall
 return value bodyBytesMissingResponseStatus
 
 operation bodySizeHandler
 input operation bodySizeHandler request HttpRequest
 input operation bodySizeHandler response HttpResponse
-output operation bodySizeHandler CSignedInt32
+output operation bodySizeHandler Int32
 effect bodySizeHandler read http.request.body
 effect bodySizeHandler write http.response
 memory bodySizeHandler arena request
@@ -678,7 +678,7 @@ async bodySizeHandler no
 useCapability bodySizeHandler httpRequestReader
 useCapability bodySizeHandler httpResponseWriter
 purpose operation bodySizeHandler "Classify request bodies by adapter-reported byte length so tests can confirm http.requestBodyLength's measurement is consistent across POST and PUT and across small/large bodies"
-invariant operation bodySizeHandler "Body length is measured by the adapter before handler dispatch; CByteCount lowers as i64 for the math.greaterThanOrEqualI64 comparison (operands MUST already be i64-shaped, no implicit widening). A zero-byte body is a valid input and reports as `small body` — there is intentionally no guard here because http.requestBodyLength is non-nullable (returns 0, not null)."
+invariant operation bodySizeHandler "Body length is measured by the adapter before handler dispatch; ByteCount lowers as i64 for the math.greaterThanOrEqualInt64 comparison (operands MUST already be i64-shaped, no implicit widening). A zero-byte body is a valid input and reports as `small body` — there is intentionally no guard here because http.requestBodyLength is non-nullable (returns 0, not null)."
 warning bodySizeHandler "Same handler is registered against BOTH POST and PUT /reflect/body-size routes — the route table at the top of this file duplicates the verb but uses a single handler to keep size-classification logic in one place; the routeMiddleware list deliberately has one entry for the shared path."
 
 label startBodySizeHandler
@@ -686,37 +686,37 @@ label startBodySizeHandler
 call bodyLengthCall http.requestBodyLength
 argument bodyLengthCall request HttpRequest request
 run bodyLengthCall
-bind value bodyLength CByteCount bodyLengthCall
-call largeBodyCheckCall math.greaterThanOrEqualI64
-argument largeBodyCheckCall left I64 bodyLength
-argument largeBodyCheckCall right I64 largeBodyThreshold
+bind value bodyLength ByteCount bodyLengthCall
+call largeBodyCheckCall math.greaterThanOrEqualInt64
+argument largeBodyCheckCall left Int64 bodyLength
+argument largeBodyCheckCall right Int64 largeBodyThreshold
 run largeBodyCheckCall
 bind value isLargeBody Bool largeBodyCheckCall
 branch if condition isLargeBody target writeLargeBody
 
-storage local immutable smallBodyMessage CNullTerminatedByteString "small body\n"
+storage local immutable smallBodyMessage String "small body\n"
 call smallBodyResponseCall writeTextResponse
 argument smallBodyResponseCall response HttpResponse response
-argument smallBodyResponseCall status CSignedInt32 okStatus
-argument smallBodyResponseCall body CNullTerminatedByteString smallBodyMessage
+argument smallBodyResponseCall status Int32 okStatus
+argument smallBodyResponseCall body String smallBodyMessage
 run smallBodyResponseCall
-bind value smallBodyResponseStatus CSignedInt32 smallBodyResponseCall
+bind value smallBodyResponseStatus Int32 smallBodyResponseCall
 return value smallBodyResponseStatus
 
 label writeLargeBody
-storage local immutable largeBodyMessage CNullTerminatedByteString "large body\n"
+storage local immutable largeBodyMessage String "large body\n"
 call largeBodyResponseCall writeTextResponse
 argument largeBodyResponseCall response HttpResponse response
-argument largeBodyResponseCall status CSignedInt32 okStatus
-argument largeBodyResponseCall body CNullTerminatedByteString largeBodyMessage
+argument largeBodyResponseCall status Int32 okStatus
+argument largeBodyResponseCall body String largeBodyMessage
 run largeBodyResponseCall
-bind value largeBodyResponseStatus CSignedInt32 largeBodyResponseCall
+bind value largeBodyResponseStatus Int32 largeBodyResponseCall
 return value largeBodyResponseStatus
 
 operation multipartTextHandler
 input operation multipartTextHandler request HttpRequest
 input operation multipartTextHandler response HttpResponse
-output operation multipartTextHandler CSignedInt32
+output operation multipartTextHandler Int32
 effect multipartTextHandler read http.request.multipart
 effect multipartTextHandler write http.response
 memory multipartTextHandler arena request
@@ -728,41 +728,41 @@ invariant operation multipartTextHandler "Multipart parsing is boundary-based an
 
 label startMultipartTextHandler
 
-storage local immutable descriptionPartName CNullTerminatedByteString "description"
-storage local immutable descriptionMissingBody CNullTerminatedByteString "missing multipart field: description\n"
+storage local immutable descriptionPartName String "description"
+storage local immutable descriptionMissingBody String "missing multipart field: description\n"
 call descriptionPartReadCall http.multipartPartText
 argument descriptionPartReadCall request HttpRequest request
-argument descriptionPartReadCall name CNullTerminatedByteString descriptionPartName
+argument descriptionPartReadCall name String descriptionPartName
 run descriptionPartReadCall
-bind value descriptionPartText CNullTerminatedByteString descriptionPartReadCall
+bind value descriptionPartText String descriptionPartReadCall
 
 call descriptionMissingCheckCall pointer.isNull
-argument descriptionMissingCheckCall pointer COpaqueMemoryAddress descriptionPartText
+argument descriptionMissingCheckCall pointer OpaquePointer descriptionPartText
 run descriptionMissingCheckCall
 bind value descriptionMissing Bool descriptionMissingCheckCall
 branch if condition descriptionMissing target multipartTextMissingPath
 
 call descriptionPartResponseCall writeTextResponse
 argument descriptionPartResponseCall response HttpResponse response
-argument descriptionPartResponseCall status CSignedInt32 okStatus
-argument descriptionPartResponseCall body CNullTerminatedByteString descriptionPartText
+argument descriptionPartResponseCall status Int32 okStatus
+argument descriptionPartResponseCall body String descriptionPartText
 run descriptionPartResponseCall
-bind value descriptionPartResponseStatus CSignedInt32 descriptionPartResponseCall
+bind value descriptionPartResponseStatus Int32 descriptionPartResponseCall
 return value descriptionPartResponseStatus
 
 label multipartTextMissingPath
 call multipartTextMissingResponseCall writeTextResponse
 argument multipartTextMissingResponseCall response HttpResponse response
-argument multipartTextMissingResponseCall status CSignedInt32 badRequestStatus
-argument multipartTextMissingResponseCall body CNullTerminatedByteString descriptionMissingBody
+argument multipartTextMissingResponseCall status Int32 badRequestStatus
+argument multipartTextMissingResponseCall body String descriptionMissingBody
 run multipartTextMissingResponseCall
-bind value multipartTextMissingResponseStatus CSignedInt32 multipartTextMissingResponseCall
+bind value multipartTextMissingResponseStatus Int32 multipartTextMissingResponseCall
 return value multipartTextMissingResponseStatus
 
 operation multipartFileNameHandler
 input operation multipartFileNameHandler request HttpRequest
 input operation multipartFileNameHandler response HttpResponse
-output operation multipartFileNameHandler CSignedInt32
+output operation multipartFileNameHandler Int32
 effect multipartFileNameHandler read http.request.multipart
 effect multipartFileNameHandler write http.response
 memory multipartFileNameHandler arena request
@@ -774,41 +774,41 @@ invariant operation multipartFileNameHandler "The parser exposes filename metada
 
 label startMultipartFileNameHandler
 
-storage local immutable uploadPartName CNullTerminatedByteString "upload"
-storage local immutable uploadFileNameMissingBody CNullTerminatedByteString "missing multipart field: upload (filename)\n"
+storage local immutable uploadPartName String "upload"
+storage local immutable uploadFileNameMissingBody String "missing multipart field: upload (filename)\n"
 call uploadFileNameReadCall http.multipartPartFilename
 argument uploadFileNameReadCall request HttpRequest request
-argument uploadFileNameReadCall name CNullTerminatedByteString uploadPartName
+argument uploadFileNameReadCall name String uploadPartName
 run uploadFileNameReadCall
-bind value uploadFileName CNullTerminatedByteString uploadFileNameReadCall
+bind value uploadFileName String uploadFileNameReadCall
 
 call uploadFileNameMissingCheckCall pointer.isNull
-argument uploadFileNameMissingCheckCall pointer COpaqueMemoryAddress uploadFileName
+argument uploadFileNameMissingCheckCall pointer OpaquePointer uploadFileName
 run uploadFileNameMissingCheckCall
 bind value uploadFileNameMissing Bool uploadFileNameMissingCheckCall
 branch if condition uploadFileNameMissing target multipartFileNameMissingPath
 
 call uploadFileNameResponseCall writeTextResponse
 argument uploadFileNameResponseCall response HttpResponse response
-argument uploadFileNameResponseCall status CSignedInt32 okStatus
-argument uploadFileNameResponseCall body CNullTerminatedByteString uploadFileName
+argument uploadFileNameResponseCall status Int32 okStatus
+argument uploadFileNameResponseCall body String uploadFileName
 run uploadFileNameResponseCall
-bind value uploadFileNameResponseStatus CSignedInt32 uploadFileNameResponseCall
+bind value uploadFileNameResponseStatus Int32 uploadFileNameResponseCall
 return value uploadFileNameResponseStatus
 
 label multipartFileNameMissingPath
 call multipartFileNameMissingResponseCall writeTextResponse
 argument multipartFileNameMissingResponseCall response HttpResponse response
-argument multipartFileNameMissingResponseCall status CSignedInt32 badRequestStatus
-argument multipartFileNameMissingResponseCall body CNullTerminatedByteString uploadFileNameMissingBody
+argument multipartFileNameMissingResponseCall status Int32 badRequestStatus
+argument multipartFileNameMissingResponseCall body String uploadFileNameMissingBody
 run multipartFileNameMissingResponseCall
-bind value multipartFileNameMissingResponseStatus CSignedInt32 multipartFileNameMissingResponseCall
+bind value multipartFileNameMissingResponseStatus Int32 multipartFileNameMissingResponseCall
 return value multipartFileNameMissingResponseStatus
 
 operation multipartFileTypeHandler
 input operation multipartFileTypeHandler request HttpRequest
 input operation multipartFileTypeHandler response HttpResponse
-output operation multipartFileTypeHandler CSignedInt32
+output operation multipartFileTypeHandler Int32
 effect multipartFileTypeHandler read http.request.multipart
 effect multipartFileTypeHandler write http.response
 memory multipartFileTypeHandler arena request
@@ -820,41 +820,41 @@ invariant operation multipartFileTypeHandler "An absent part returns null from h
 
 label startMultipartFileTypeHandler
 
-storage local immutable uploadTypePartName CNullTerminatedByteString "upload"
-storage local immutable uploadFileTypeMissingBody CNullTerminatedByteString "missing multipart field: upload (content-type)\n"
+storage local immutable uploadTypePartName String "upload"
+storage local immutable uploadFileTypeMissingBody String "missing multipart field: upload (content-type)\n"
 call uploadFileTypeReadCall http.multipartPartContentType
 argument uploadFileTypeReadCall request HttpRequest request
-argument uploadFileTypeReadCall name CNullTerminatedByteString uploadTypePartName
+argument uploadFileTypeReadCall name String uploadTypePartName
 run uploadFileTypeReadCall
-bind value uploadFileType CNullTerminatedByteString uploadFileTypeReadCall
+bind value uploadFileType String uploadFileTypeReadCall
 
 call uploadFileTypeMissingCheckCall pointer.isNull
-argument uploadFileTypeMissingCheckCall pointer COpaqueMemoryAddress uploadFileType
+argument uploadFileTypeMissingCheckCall pointer OpaquePointer uploadFileType
 run uploadFileTypeMissingCheckCall
 bind value uploadFileTypeMissing Bool uploadFileTypeMissingCheckCall
 branch if condition uploadFileTypeMissing target multipartFileTypeMissingPath
 
 call uploadFileTypeResponseCall writeTextResponse
 argument uploadFileTypeResponseCall response HttpResponse response
-argument uploadFileTypeResponseCall status CSignedInt32 okStatus
-argument uploadFileTypeResponseCall body CNullTerminatedByteString uploadFileType
+argument uploadFileTypeResponseCall status Int32 okStatus
+argument uploadFileTypeResponseCall body String uploadFileType
 run uploadFileTypeResponseCall
-bind value uploadFileTypeResponseStatus CSignedInt32 uploadFileTypeResponseCall
+bind value uploadFileTypeResponseStatus Int32 uploadFileTypeResponseCall
 return value uploadFileTypeResponseStatus
 
 label multipartFileTypeMissingPath
 call multipartFileTypeMissingResponseCall writeTextResponse
 argument multipartFileTypeMissingResponseCall response HttpResponse response
-argument multipartFileTypeMissingResponseCall status CSignedInt32 badRequestStatus
-argument multipartFileTypeMissingResponseCall body CNullTerminatedByteString uploadFileTypeMissingBody
+argument multipartFileTypeMissingResponseCall status Int32 badRequestStatus
+argument multipartFileTypeMissingResponseCall body String uploadFileTypeMissingBody
 run multipartFileTypeMissingResponseCall
-bind value multipartFileTypeMissingResponseStatus CSignedInt32 multipartFileTypeMissingResponseCall
+bind value multipartFileTypeMissingResponseStatus Int32 multipartFileTypeMissingResponseCall
 return value multipartFileTypeMissingResponseStatus
 
 operation multipartFileBytesHandler
 input operation multipartFileBytesHandler request HttpRequest
 input operation multipartFileBytesHandler response HttpResponse
-output operation multipartFileBytesHandler CSignedInt32
+output operation multipartFileBytesHandler Int32
 effect multipartFileBytesHandler read http.request.multipart
 effect multipartFileBytesHandler write http.response
 memory multipartFileBytesHandler arena request
@@ -871,55 +871,55 @@ call uploadFileCommonHeadersCall addGauntletHeaders
 argument uploadFileCommonHeadersCall response HttpResponse response
 run uploadFileCommonHeadersCall
 
-storage local immutable uploadBytesPartName CNullTerminatedByteString "upload"
-storage local immutable uploadBytesMissingBody CNullTerminatedByteString "missing multipart field: upload (bytes)\n"
+storage local immutable uploadBytesPartName String "upload"
+storage local immutable uploadBytesMissingBody String "missing multipart field: upload (bytes)\n"
 call uploadFileBytesReadCall http.multipartPartBytes
 argument uploadFileBytesReadCall request HttpRequest request
-argument uploadFileBytesReadCall name CNullTerminatedByteString uploadBytesPartName
+argument uploadFileBytesReadCall name String uploadBytesPartName
 run uploadFileBytesReadCall
-bind value uploadFileBytes COpaqueMemoryAddress uploadFileBytesReadCall
+bind value uploadFileBytes OpaquePointer uploadFileBytesReadCall
 
 call uploadFileBytesMissingCheckCall pointer.isNull
-argument uploadFileBytesMissingCheckCall pointer COpaqueMemoryAddress uploadFileBytes
+argument uploadFileBytesMissingCheckCall pointer OpaquePointer uploadFileBytes
 run uploadFileBytesMissingCheckCall
 bind value uploadFileBytesMissing Bool uploadFileBytesMissingCheckCall
 branch if condition uploadFileBytesMissing target multipartFileBytesMissingPath
 
 call uploadFileLengthReadCall http.multipartPartLength
 argument uploadFileLengthReadCall request HttpRequest request
-argument uploadFileLengthReadCall name CNullTerminatedByteString uploadBytesPartName
+argument uploadFileLengthReadCall name String uploadBytesPartName
 run uploadFileLengthReadCall
-bind value uploadFileLength CByteCount uploadFileLengthReadCall
+bind value uploadFileLength ByteCount uploadFileLengthReadCall
 
 call uploadFileContentTypeReadCall http.multipartPartContentType
 argument uploadFileContentTypeReadCall request HttpRequest request
-argument uploadFileContentTypeReadCall name CNullTerminatedByteString uploadBytesPartName
+argument uploadFileContentTypeReadCall name String uploadBytesPartName
 run uploadFileContentTypeReadCall
-bind value uploadFileContentType CNullTerminatedByteString uploadFileContentTypeReadCall
+bind value uploadFileContentType String uploadFileContentTypeReadCall
 
 call uploadFileBytesResponseCall http.responseBytes
 argument uploadFileBytesResponseCall response HttpResponse response
-argument uploadFileBytesResponseCall status CSignedInt32 okStatus
-argument uploadFileBytesResponseCall body COpaqueMemoryAddress uploadFileBytes
-argument uploadFileBytesResponseCall bodyLength CByteCount uploadFileLength
-argument uploadFileBytesResponseCall contentType CNullTerminatedByteString uploadFileContentType
+argument uploadFileBytesResponseCall status Int32 okStatus
+argument uploadFileBytesResponseCall body OpaquePointer uploadFileBytes
+argument uploadFileBytesResponseCall bodyLength ByteCount uploadFileLength
+argument uploadFileBytesResponseCall contentType String uploadFileContentType
 run uploadFileBytesResponseCall
-bind value uploadFileBytesResponseStatus CSignedInt32 uploadFileBytesResponseCall
+bind value uploadFileBytesResponseStatus Int32 uploadFileBytesResponseCall
 return value uploadFileBytesResponseStatus
 
 label multipartFileBytesMissingPath
 call multipartFileBytesMissingResponseCall http.responseText
 argument multipartFileBytesMissingResponseCall response HttpResponse response
-argument multipartFileBytesMissingResponseCall status CSignedInt32 badRequestStatus
-argument multipartFileBytesMissingResponseCall body CNullTerminatedByteString uploadBytesMissingBody
+argument multipartFileBytesMissingResponseCall status Int32 badRequestStatus
+argument multipartFileBytesMissingResponseCall body String uploadBytesMissingBody
 run multipartFileBytesMissingResponseCall
-bind value multipartFileBytesMissingResponseStatus CSignedInt32 multipartFileBytesMissingResponseCall
+bind value multipartFileBytesMissingResponseStatus Int32 multipartFileBytesMissingResponseCall
 return value multipartFileBytesMissingResponseStatus
 
 operation sseOneEventHandler
 input operation sseOneEventHandler request HttpRequest
 input operation sseOneEventHandler response HttpResponse
-output operation sseOneEventHandler CSignedInt32
+output operation sseOneEventHandler Int32
 effect sseOneEventHandler write http.response
 memory sseOneEventHandler arena request
 async sseOneEventHandler no
@@ -934,30 +934,30 @@ call sseCommonHeadersCall addGauntletHeaders
 argument sseCommonHeadersCall response HttpResponse response
 run sseCommonHeadersCall
 
-storage local immutable sseCacheHeaderName CNullTerminatedByteString "Cache-Control"
-storage local immutable sseCacheHeaderValue CNullTerminatedByteString "no-cache"
+storage local immutable sseCacheHeaderName String "Cache-Control"
+storage local immutable sseCacheHeaderValue String "no-cache"
 call sseCacheHeaderCall http.responseHeader
 argument sseCacheHeaderCall response HttpResponse response
-argument sseCacheHeaderCall name CNullTerminatedByteString sseCacheHeaderName
-argument sseCacheHeaderCall value CNullTerminatedByteString sseCacheHeaderValue
+argument sseCacheHeaderCall name String sseCacheHeaderName
+argument sseCacheHeaderCall value String sseCacheHeaderValue
 run sseCacheHeaderCall
-ignore value source sseCacheHeaderCall type CSignedInt32
+ignore value source sseCacheHeaderCall type Int32
 
-storage local immutable sseEventName CNullTerminatedByteString "gauntlet"
-storage local immutable sseEventData CNullTerminatedByteString "connected"
+storage local immutable sseEventName String "gauntlet"
+storage local immutable sseEventData String "connected"
 call sseEventResponseCall http.responseSseEvent
 argument sseEventResponseCall response HttpResponse response
-argument sseEventResponseCall status CSignedInt32 okStatus
-argument sseEventResponseCall event CNullTerminatedByteString sseEventName
-argument sseEventResponseCall data CNullTerminatedByteString sseEventData
+argument sseEventResponseCall status Int32 okStatus
+argument sseEventResponseCall event String sseEventName
+argument sseEventResponseCall data String sseEventData
 run sseEventResponseCall
-bind value sseEventResponseStatus CSignedInt32 sseEventResponseCall
+bind value sseEventResponseStatus Int32 sseEventResponseCall
 return value sseEventResponseStatus
 
 operation capabilitiesOptionsHandler
 input operation capabilitiesOptionsHandler request HttpRequest
 input operation capabilitiesOptionsHandler response HttpResponse
-output operation capabilitiesOptionsHandler CSignedInt32
+output operation capabilitiesOptionsHandler Int32
 effect capabilitiesOptionsHandler write http.response
 memory capabilitiesOptionsHandler arena request
 async capabilitiesOptionsHandler no
@@ -972,37 +972,37 @@ call capabilityHeadersCall addGauntletHeaders
 argument capabilityHeadersCall response HttpResponse response
 run capabilityHeadersCall
 
-storage local immutable allowHeaderName CNullTerminatedByteString "Allow"
-storage local immutable allowHeaderValue CNullTerminatedByteString "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+storage local immutable allowHeaderName String "Allow"
+storage local immutable allowHeaderValue String "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 call allowHeaderCall http.responseHeader
 argument allowHeaderCall response HttpResponse response
-argument allowHeaderCall name CNullTerminatedByteString allowHeaderName
-argument allowHeaderCall value CNullTerminatedByteString allowHeaderValue
+argument allowHeaderCall name String allowHeaderName
+argument allowHeaderCall value String allowHeaderValue
 run allowHeaderCall
-ignore value source allowHeaderCall type CSignedInt32
+ignore value source allowHeaderCall type Int32
 
-storage local immutable methodsHeaderName CNullTerminatedByteString "X-Gauntlet-Methods"
-storage local immutable methodsHeaderValue CNullTerminatedByteString "GET POST PUT PATCH DELETE OPTIONS"
+storage local immutable methodsHeaderName String "X-Gauntlet-Methods"
+storage local immutable methodsHeaderValue String "GET POST PUT PATCH DELETE OPTIONS"
 call methodsHeaderCall http.responseHeader
 argument methodsHeaderCall response HttpResponse response
-argument methodsHeaderCall name CNullTerminatedByteString methodsHeaderName
-argument methodsHeaderCall value CNullTerminatedByteString methodsHeaderValue
+argument methodsHeaderCall name String methodsHeaderName
+argument methodsHeaderCall value String methodsHeaderValue
 run methodsHeaderCall
-ignore value source methodsHeaderCall type CSignedInt32
+ignore value source methodsHeaderCall type Int32
 
-storage local immutable capabilitiesBody CNullTerminatedByteString "capabilities: method path header query body bodyBytes bodyLength multipart responseHeader responseBytes sse middleware\n"
+storage local immutable capabilitiesBody String "capabilities: method path header query body bodyBytes bodyLength multipart responseHeader responseBytes sse middleware\n"
 call capabilitiesResponseCall http.responseText
 argument capabilitiesResponseCall response HttpResponse response
-argument capabilitiesResponseCall status CSignedInt32 okStatus
-argument capabilitiesResponseCall body CNullTerminatedByteString capabilitiesBody
+argument capabilitiesResponseCall status Int32 okStatus
+argument capabilitiesResponseCall body String capabilitiesBody
 run capabilitiesResponseCall
-bind value capabilitiesResponseStatus CSignedInt32 capabilitiesResponseCall
+bind value capabilitiesResponseStatus Int32 capabilitiesResponseCall
 return value capabilitiesResponseStatus
 
 operation customContentHandler
 input operation customContentHandler request HttpRequest
 input operation customContentHandler response HttpResponse
-output operation customContentHandler CSignedInt32
+output operation customContentHandler Int32
 effect customContentHandler write http.response
 memory customContentHandler arena request
 async customContentHandler no
@@ -1016,21 +1016,21 @@ call customHeaderCall addGauntletHeaders
 argument customHeaderCall response HttpResponse response
 run customHeaderCall
 
-storage local immutable customContentType CNullTerminatedByteString "application/x-gauntlet; charset=utf-8"
-storage local immutable customContentBody CNullTerminatedByteString "custom content\n"
+storage local immutable customContentType String "application/x-gauntlet; charset=utf-8"
+storage local immutable customContentBody String "custom content\n"
 call customContentResponseCall http.responseText
 argument customContentResponseCall response HttpResponse response
-argument customContentResponseCall status CSignedInt32 okStatus
-argument customContentResponseCall body CNullTerminatedByteString customContentBody
+argument customContentResponseCall status Int32 okStatus
+argument customContentResponseCall body String customContentBody
 argument customContentResponseCall contentType HttpContentType customContentType
 run customContentResponseCall
-bind value customContentResponseStatus CSignedInt32 customContentResponseCall
+bind value customContentResponseStatus Int32 customContentResponseCall
 return value customContentResponseStatus
 
 operation redirectHandler
 input operation redirectHandler request HttpRequest
 input operation redirectHandler response HttpResponse
-output operation redirectHandler CSignedInt32
+output operation redirectHandler Int32
 effect redirectHandler write http.response
 memory redirectHandler arena request
 async redirectHandler no
@@ -1044,28 +1044,28 @@ call redirectCommonHeadersCall addGauntletHeaders
 argument redirectCommonHeadersCall response HttpResponse response
 run redirectCommonHeadersCall
 
-storage local immutable locationHeaderName CNullTerminatedByteString "Location"
-storage local immutable locationHeaderValue CNullTerminatedByteString "/health"
+storage local immutable locationHeaderName String "Location"
+storage local immutable locationHeaderValue String "/health"
 call locationHeaderCall http.responseHeader
 argument locationHeaderCall response HttpResponse response
-argument locationHeaderCall name CNullTerminatedByteString locationHeaderName
-argument locationHeaderCall value CNullTerminatedByteString locationHeaderValue
+argument locationHeaderCall name String locationHeaderName
+argument locationHeaderCall value String locationHeaderValue
 run locationHeaderCall
-ignore value source locationHeaderCall type CSignedInt32
+ignore value source locationHeaderCall type Int32
 
-storage local immutable redirectBody CNullTerminatedByteString "redirecting\n"
+storage local immutable redirectBody String "redirecting\n"
 call redirectResponseCall http.responseText
 argument redirectResponseCall response HttpResponse response
-argument redirectResponseCall status CSignedInt32 redirectStatus
-argument redirectResponseCall body CNullTerminatedByteString redirectBody
+argument redirectResponseCall status Int32 redirectStatus
+argument redirectResponseCall body String redirectBody
 run redirectResponseCall
-bind value redirectResponseStatus CSignedInt32 redirectResponseCall
+bind value redirectResponseStatus Int32 redirectResponseCall
 return value redirectResponseStatus
 
 operation emptyDeleteHandler
 input operation emptyDeleteHandler request HttpRequest
 input operation emptyDeleteHandler response HttpResponse
-output operation emptyDeleteHandler CSignedInt32
+output operation emptyDeleteHandler Int32
 effect emptyDeleteHandler write http.response
 memory emptyDeleteHandler arena request
 async emptyDeleteHandler no
@@ -1079,19 +1079,19 @@ call emptyHeaderCall addGauntletHeaders
 argument emptyHeaderCall response HttpResponse response
 run emptyHeaderCall
 
-storage local immutable emptyBody CNullTerminatedByteString ""
+storage local immutable emptyBody String ""
 call emptyResponseCall http.responseText
 argument emptyResponseCall response HttpResponse response
-argument emptyResponseCall status CSignedInt32 noContentStatus
-argument emptyResponseCall body CNullTerminatedByteString emptyBody
+argument emptyResponseCall status Int32 noContentStatus
+argument emptyResponseCall body String emptyBody
 run emptyResponseCall
-bind value emptyResponseStatus CSignedInt32 emptyResponseCall
+bind value emptyResponseStatus Int32 emptyResponseCall
 return value emptyResponseStatus
 
 operation patchHandler
 input operation patchHandler request HttpRequest
 input operation patchHandler response HttpResponse
-output operation patchHandler CSignedInt32
+output operation patchHandler Int32
 effect patchHandler write http.response
 memory patchHandler arena request
 async patchHandler no
@@ -1101,19 +1101,19 @@ invariant operation patchHandler "PATCH is ordinary exact-method metadata in the
 
 label startPatchHandler
 
-storage local immutable patchBody CNullTerminatedByteString "patched\n"
+storage local immutable patchBody String "patched\n"
 call patchResponseCall writeTextResponse
 argument patchResponseCall response HttpResponse response
-argument patchResponseCall status CSignedInt32 okStatus
-argument patchResponseCall body CNullTerminatedByteString patchBody
+argument patchResponseCall status Int32 okStatus
+argument patchResponseCall body String patchBody
 run patchResponseCall
-bind value patchResponseStatus CSignedInt32 patchResponseCall
+bind value patchResponseStatus Int32 patchResponseCall
 return value patchResponseStatus
 
 operation shortCircuitProbeHandler
 input operation shortCircuitProbeHandler request HttpRequest
 input operation shortCircuitProbeHandler response HttpResponse
-output operation shortCircuitProbeHandler CSignedInt32
+output operation shortCircuitProbeHandler Int32
 effect shortCircuitProbeHandler write http.response
 memory shortCircuitProbeHandler arena request
 async shortCircuitProbeHandler no
@@ -1124,14 +1124,14 @@ warning shortCircuitProbeHandler "Do not call this handler from other ops. It ex
 
 label startShortCircuitProbeHandler
 
-storage local immutable handlerRanStatus CSignedInt32 200
-storage local immutable handlerRanBody CNullTerminatedByteString "handler ran (this body should NEVER appear at the client when middleware short-circuits)\n"
+storage local immutable handlerRanStatus Int32 200
+storage local immutable handlerRanBody String "handler ran (this body should NEVER appear at the client when middleware short-circuits)\n"
 call shortCircuitProbeHandlerWriteCall writeTextResponse
 argument shortCircuitProbeHandlerWriteCall response HttpResponse response
-argument shortCircuitProbeHandlerWriteCall status CSignedInt32 handlerRanStatus
-argument shortCircuitProbeHandlerWriteCall body CNullTerminatedByteString handlerRanBody
+argument shortCircuitProbeHandlerWriteCall status Int32 handlerRanStatus
+argument shortCircuitProbeHandlerWriteCall body String handlerRanBody
 run shortCircuitProbeHandlerWriteCall
-bind value shortCircuitProbeHandlerWriteStatus CSignedInt32 shortCircuitProbeHandlerWriteCall
+bind value shortCircuitProbeHandlerWriteStatus Int32 shortCircuitProbeHandlerWriteCall
 return value shortCircuitProbeHandlerWriteStatus
 
 operation shortCircuitProbeMiddleware
@@ -1148,16 +1148,16 @@ warning shortCircuitProbeMiddleware "Do not bind this middleware to any other ro
 
 label startShortCircuitProbeMiddleware
 
-storage local immutable teapotStatus CSignedInt32 418
-storage local immutable shortCircuitBody CNullTerminatedByteString "middleware short-circuited; handler skipped by dispatcher\n"
-storage local immutable shortCircuitContentType CNullTerminatedByteString "text/plain; charset=utf-8"
+storage local immutable teapotStatus Int32 418
+storage local immutable shortCircuitBody String "middleware short-circuited; handler skipped by dispatcher\n"
+storage local immutable shortCircuitContentType String "text/plain; charset=utf-8"
 call shortCircuitWriteCall http.responseText
 argument shortCircuitWriteCall response HttpResponse response
-argument shortCircuitWriteCall status CSignedInt32 teapotStatus
-argument shortCircuitWriteCall body CNullTerminatedByteString shortCircuitBody
+argument shortCircuitWriteCall status Int32 teapotStatus
+argument shortCircuitWriteCall body String shortCircuitBody
 argument shortCircuitWriteCall contentType HttpContentType shortCircuitContentType
 run shortCircuitWriteCall
-ignore value source shortCircuitWriteCall type CSignedInt32
+ignore value source shortCircuitWriteCall type Int32
 
 return value shortCircuitMiddlewareControl
 
@@ -1178,27 +1178,27 @@ warning gauntletMiddleware "The middlewareMissingResponseEffect (SS3602) and mid
 
 label startGauntletMiddleware
 
-storage local immutable middlewareHeaderName CNullTerminatedByteString "X-Gauntlet-Middleware"
-storage local immutable middlewareHeaderValue CNullTerminatedByteString "active"
+storage local immutable middlewareHeaderName String "X-Gauntlet-Middleware"
+storage local immutable middlewareHeaderValue String "active"
 call middlewareHeaderCall http.responseHeader
 argument middlewareHeaderCall response HttpResponse response
-argument middlewareHeaderCall name CNullTerminatedByteString middlewareHeaderName
-argument middlewareHeaderCall value CNullTerminatedByteString middlewareHeaderValue
+argument middlewareHeaderCall name String middlewareHeaderName
+argument middlewareHeaderCall value String middlewareHeaderValue
 run middlewareHeaderCall
-ignore value source middlewareHeaderCall type CSignedInt32
+ignore value source middlewareHeaderCall type Int32
 
 call middlewarePathReadCall http.requestPath
 argument middlewarePathReadCall request HttpRequest request
 run middlewarePathReadCall
-bind value middlewareRequestPath CNullTerminatedByteString middlewarePathReadCall
+bind value middlewareRequestPath String middlewarePathReadCall
 
-storage local immutable middlewarePathHeaderName CNullTerminatedByteString "X-Gauntlet-Path"
+storage local immutable middlewarePathHeaderName String "X-Gauntlet-Path"
 call middlewarePathHeaderCall http.responseHeader
 argument middlewarePathHeaderCall response HttpResponse response
-argument middlewarePathHeaderCall name CNullTerminatedByteString middlewarePathHeaderName
-argument middlewarePathHeaderCall value CNullTerminatedByteString middlewareRequestPath
+argument middlewarePathHeaderCall name String middlewarePathHeaderName
+argument middlewarePathHeaderCall value String middlewareRequestPath
 run middlewarePathHeaderCall
-ignore value source middlewarePathHeaderCall type CSignedInt32
+ignore value source middlewarePathHeaderCall type Int32
 
 # rationale tokenMissingCheckCall established the pattern: explicit named
 # cases are the contract, not bare integer sentinels. continueMiddlewareControl

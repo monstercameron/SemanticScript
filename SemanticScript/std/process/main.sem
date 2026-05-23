@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.process "App-specific wrappers, compatibility aliases,
 invariant module standard.process "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.process processModuleVersionText
-storage module immutable processModuleVersionText CNullTerminatedByteString "standard.process 0.1"
+storage module immutable processModuleVersionText String "standard.process 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -80,7 +80,7 @@ capability processLifecycleCapability process.lifecycle write
 # the linter and downstream tooling.
 
 operation exitProcessWithStatusCode
-input operation exitProcessWithStatusCode exitStatusCode CSignedInt32
+input operation exitProcessWithStatusCode exitStatusCode Int32
 output operation exitProcessWithStatusCode Void
 useCapability exitProcessWithStatusCode processLifecycleCapability
 effect exitProcessWithStatusCode write process.lifecycle
@@ -92,7 +92,7 @@ warning exitProcessWithStatusCode "Pending I/O on streams other than stdio (e.g.
 guarantee exitProcessWithStatusCode "Always terminates the process."
 label startExitProcessWithStatusCode
 call libcExitCall c.exit
-argument libcExitCall code CSignedInt32 exitStatusCode
+argument libcExitCall code Int32 exitStatusCode
 run libcExitCall
 
 operation abortCurrentProcess

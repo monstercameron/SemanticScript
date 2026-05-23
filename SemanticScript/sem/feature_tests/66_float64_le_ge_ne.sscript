@@ -1,0 +1,77 @@
+# expect.stdout: 111\n
+# expect.exit: 0
+project Float64LeGeNe
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError Placeholder Int32
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Exercise math.lessThanOrEqualFloat64, math.greaterThanOrEqualFloat64, and math.notEqualFloat64. Compose three booleans into a 3-digit binary-as-int: 1.0 <= 2.0 (true), 3.0 >= 2.0 (true), 1.0 != 2.0 (true)."
+invariant operation main "Each comparison contributes one decimal digit (100, 10, 1) when true."
+label startMain
+storage module immutable oneFloat Float64 1.0
+storage module immutable twoFloat Float64 2.0
+storage module immutable threeFloat Float64 3.0
+storage module immutable differentFloat Float64 2.0
+call leCheckCall math.lessThanOrEqualFloat64
+argument leCheckCall left Float64 oneFloat
+argument leCheckCall right Float64 twoFloat
+run leCheckCall
+bind value leResult Bool leCheckCall
+call geCheckCall math.greaterThanOrEqualFloat64
+argument geCheckCall left Float64 threeFloat
+argument geCheckCall right Float64 twoFloat
+run geCheckCall
+bind value geResult Bool geCheckCall
+call neCheckCall math.notEqualFloat64
+argument neCheckCall left Float64 oneFloat
+argument neCheckCall right Float64 differentFloat
+run neCheckCall
+bind value neResult Bool neCheckCall
+memory main mutable hundredsDigit Int64 0
+branch if condition leResult target addHundreds
+branch else target maybeTens
+label addHundreds
+storage module immutable oneHundred Int64 100
+set memory hundredsDigit oneHundred
+jump target maybeTens
+label maybeTens
+memory main mutable tensDigit Int64 0
+branch if condition geResult target addTens
+branch else target maybeOnes
+label addTens
+storage module immutable ten Int64 10
+set memory tensDigit ten
+jump target maybeOnes
+label maybeOnes
+memory main mutable onesDigit Int64 0
+branch if condition neResult target addOnes
+branch else target composeTotal
+label addOnes
+storage module immutable oneUnit Int64 1
+set memory onesDigit oneUnit
+jump target composeTotal
+label composeTotal
+call sumHTCall math.addInt64
+argument sumHTCall left Int64 hundredsDigit
+argument sumHTCall right Int64 tensDigit
+run sumHTCall
+bind value partialHT Int64 sumHTCall
+call sumAllCall math.addInt64
+argument sumAllCall left Int64 partialHT
+argument sumAllCall right Int64 onesDigit
+run sumAllCall
+bind value composedTotal Int64 sumAllCall
+call writeCall console.writeIntegerLine
+argument writeCall console Console console
+argument writeCall value Int64 composedTotal
+run writeCall
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

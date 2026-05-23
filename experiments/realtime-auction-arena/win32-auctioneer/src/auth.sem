@@ -5,12 +5,12 @@ moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.auth "Server
 invariant module experiment.realtime_auction_arena.win32_auctioneer.auth "Access JWTs are represented as process memory only; the scaffold does not write tokens to disk, registry, logs, or resource files."
 moduleWarning experiment.realtime_auction_arena.win32_auctioneer.auth "standard.net currently lacks JSON POST bodies and custom Authorization headers, so login and refresh are contract-shaped placeholders until the HTTP client surface expands."
 
-type AccessJwt CNullTerminatedByteString
-type RefreshToken CNullTerminatedByteString
-type UserName CNullTerminatedByteString
-type PasswordText CNullTerminatedByteString
-type OperatorRole CNullTerminatedByteString
-type AuthStatusText CNullTerminatedByteString
+type AccessJwt String
+type RefreshToken String
+type UserName String
+type PasswordText String
+type OperatorRole String
+type AuthStatusText String
 
 record LoginRequest
 field LoginRequest username UserName
@@ -20,7 +20,7 @@ record LoginResponse
 field LoginResponse accessToken AccessJwt
 field LoginResponse refreshToken RefreshToken
 field LoginResponse role OperatorRole
-field LoginResponse expiresAtMillis I64
+field LoginResponse expiresAtMillis Int64
 
 record AuthSession
 field AuthSession isAuthenticated Bool
@@ -28,7 +28,7 @@ field AuthSession accessToken AccessJwt
 field AuthSession refreshToken RefreshToken
 field AuthSession username UserName
 field AuthSession role OperatorRole
-field AuthSession expiresAtMillis I64
+field AuthSession expiresAtMillis Int64
 field AuthSession status AuthStatusText
 
 storage module immutable emptyAccessJwt AccessJwt ""
@@ -44,7 +44,7 @@ storage module mutable currentAccessToken AccessJwt ""
 storage module mutable currentRefreshToken RefreshToken ""
 storage module mutable currentUsername UserName ""
 storage module mutable currentRole OperatorRole ""
-storage module mutable currentTokenExpiresAtMillis I64 0
+storage module mutable currentTokenExpiresAtMillis Int64 0
 
 operation rememberLoginResponse
 input operation rememberLoginResponse response LoginResponse
@@ -59,7 +59,7 @@ invariant operation rememberLoginResponse "The access token stays in mutable mod
 fieldGet responseAccessToken AccessJwt response accessToken
 fieldGet responseRefreshToken RefreshToken response refreshToken
 fieldGet responseRole OperatorRole response role
-fieldGet responseExpiresAtMillis I64 response expiresAtMillis
+fieldGet responseExpiresAtMillis Int64 response expiresAtMillis
 set storage currentAccessToken responseAccessToken
 set storage currentRefreshToken responseRefreshToken
 set storage currentRole responseRole

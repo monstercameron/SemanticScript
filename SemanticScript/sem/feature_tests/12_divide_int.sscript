@@ -12,22 +12,22 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "math.divideI64: 20 / 5 = 4."
+purpose operation main "math.divideInt64: 20 / 5 = 4."
 invariant operation main "Integer division emits sdiv."
 label startMain
-storage module immutable twentyInitial I64 20
-storage module immutable fiveDivisor I64 5
-memory main mutable dividend I64 twentyInitial
-call divCall math.divideI64
-argument divCall left I64 dividend
-argument divCall right I64 fiveDivisor
+storage module immutable twentyInitial Int64 20
+storage module immutable fiveDivisor Int64 5
+memory main mutable dividend Int64 twentyInitial
+call divCall math.divideInt64
+argument divCall left Int64 dividend
+argument divCall right Int64 fiveDivisor
 run divCall
-bind value quotientResult I64 divCall
-memory main mutable quotientVar I64 twentyInitial
+bind value quotientResult Int64 divCall
+memory main mutable quotientVar Int64 twentyInitial
 set memory quotientVar quotientResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 quotientVar
+argument writeCall value Int64 quotientVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

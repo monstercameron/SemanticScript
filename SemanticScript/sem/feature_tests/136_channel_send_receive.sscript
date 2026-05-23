@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -15,12 +15,12 @@ async main no
 purpose operation main "Single-thread channel: send writes into the channel slot; receive reads it back."
 invariant operation main "Output is the value that was sent (42), not the zero default."
 label startMain
-storage module immutable valueToSend I64 42
+storage module immutable valueToSend Int64 42
 send messageBus valueToSend
-receive deliveredValue I64 messageBus
+receive deliveredValue Int64 messageBus
 call printDeliveredCall console.writeIntegerLine
 argument printDeliveredCall console Console console
-argument printDeliveredCall value I64 deliveredValue
+argument printDeliveredCall value Int64 deliveredValue
 run printDeliveredCall
 ignore void source printDeliveredCall
 storage module immutable successfulExitCode ExitCode 0

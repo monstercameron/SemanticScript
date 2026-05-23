@@ -25,7 +25,7 @@ sql body sqlRollbackCommandTransaction
 
 storage module immutable transactionSucceeded Bool true
 storage module immutable transactionFailed Bool false
-storage module immutable transactionExecStatusOk CSignedInt32 0
+storage module immutable transactionExecStatusOk Int32 0
 
 operation beginSqliteCommandTransaction
 input operation beginSqliteCommandTransaction database SqliteDatabase
@@ -40,10 +40,10 @@ call beginTransactionCall sqlite.execStatus
 argument beginTransactionCall database SqliteDatabase database
 argument beginTransactionCall sql SqlText sqlBeginImmediateCommandTransaction
 run beginTransactionCall
-bind value beginTransactionStatus CSignedInt32 beginTransactionCall
-call beginTransactionOkCall math.equalCSignedInt32
-argument beginTransactionOkCall left CSignedInt32 beginTransactionStatus
-argument beginTransactionOkCall right CSignedInt32 transactionExecStatusOk
+bind value beginTransactionStatus Int32 beginTransactionCall
+call beginTransactionOkCall math.equalInt32
+argument beginTransactionOkCall left Int32 beginTransactionStatus
+argument beginTransactionOkCall right Int32 transactionExecStatusOk
 run beginTransactionOkCall
 bind value beginTransactionOk Bool beginTransactionOkCall
 branch if condition beginTransactionOk target beginSqliteCommandTransactionSucceeded
@@ -66,10 +66,10 @@ call commitTransactionCall sqlite.execStatus
 argument commitTransactionCall database SqliteDatabase database
 argument commitTransactionCall sql SqlText sqlCommitCommandTransaction
 run commitTransactionCall
-bind value commitTransactionStatus CSignedInt32 commitTransactionCall
-call commitTransactionOkCall math.equalCSignedInt32
-argument commitTransactionOkCall left CSignedInt32 commitTransactionStatus
-argument commitTransactionOkCall right CSignedInt32 transactionExecStatusOk
+bind value commitTransactionStatus Int32 commitTransactionCall
+call commitTransactionOkCall math.equalInt32
+argument commitTransactionOkCall left Int32 commitTransactionStatus
+argument commitTransactionOkCall right Int32 transactionExecStatusOk
 run commitTransactionOkCall
 bind value commitTransactionOk Bool commitTransactionOkCall
 branch if condition commitTransactionOk target commitSqliteCommandTransactionSucceeded
@@ -92,10 +92,10 @@ call rollbackTransactionCall sqlite.execStatus
 argument rollbackTransactionCall database SqliteDatabase database
 argument rollbackTransactionCall sql SqlText sqlRollbackCommandTransaction
 run rollbackTransactionCall
-bind value rollbackTransactionStatus CSignedInt32 rollbackTransactionCall
-call rollbackTransactionOkCall math.equalCSignedInt32
-argument rollbackTransactionOkCall left CSignedInt32 rollbackTransactionStatus
-argument rollbackTransactionOkCall right CSignedInt32 transactionExecStatusOk
+bind value rollbackTransactionStatus Int32 rollbackTransactionCall
+call rollbackTransactionOkCall math.equalInt32
+argument rollbackTransactionOkCall left Int32 rollbackTransactionStatus
+argument rollbackTransactionOkCall right Int32 transactionExecStatusOk
 run rollbackTransactionOkCall
 bind value rollbackTransactionOk Bool rollbackTransactionOkCall
 branch if condition rollbackTransactionOk target rollbackSqliteCommandTransactionSucceeded

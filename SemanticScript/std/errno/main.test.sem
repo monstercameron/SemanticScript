@@ -44,10 +44,10 @@ invariant operation main "ENOENT == 2; lookupErrnoMessageCString(2) is a non-emp
 
 label startMain
 
-storage module immutable twoExpected CSignedInt32 2
-call checkEnoentCall math.equalI64
-argument checkEnoentCall left I64 fileNotFoundErrorNumber
-argument checkEnoentCall right I64 twoExpected
+storage module immutable twoExpected Int32 2
+call checkEnoentCall math.equalInt64
+argument checkEnoentCall left Int64 fileNotFoundErrorNumber
+argument checkEnoentCall right Int64 twoExpected
 run checkEnoentCall
 bind value enoentOk Bool checkEnoentCall
 branch if condition enoentOk target enoentHolds
@@ -56,37 +56,37 @@ label enoentHolds
 
 # Lookup returns a non-empty string for ENOENT.
 call lookupEnoentCall lookupErrnoMessageCString
-argument lookupEnoentCall errorNumber CSignedInt32 fileNotFoundErrorNumber
+argument lookupEnoentCall errorNumber Int32 fileNotFoundErrorNumber
 run lookupEnoentCall
-bind value enoentMessage CNullTerminatedByteString lookupEnoentCall
-storage module immutable zeroOffset CByteCount 0
+bind value enoentMessage String lookupEnoentCall
+storage module immutable zeroOffset ByteCount 0
 call peekFirstByteCall pointer.loadByte
-argument peekFirstByteCall buffer COpaqueMemoryAddress enoentMessage
-argument peekFirstByteCall offset CByteCount zeroOffset
+argument peekFirstByteCall buffer OpaquePointer enoentMessage
+argument peekFirstByteCall offset ByteCount zeroOffset
 run peekFirstByteCall
-bind value firstMessageByte I8 peekFirstByteCall
-storage module immutable nullByteForComparison I64 0
-call detectMessageNonEmptyCall math.notEqualI64
-argument detectMessageNonEmptyCall left I64 firstMessageByte
-argument detectMessageNonEmptyCall right I64 nullByteForComparison
+bind value firstMessageByte Int8 peekFirstByteCall
+storage module immutable nullByteForComparison Int64 0
+call detectMessageNonEmptyCall math.notEqualInt64
+argument detectMessageNonEmptyCall left Int64 firstMessageByte
+argument detectMessageNonEmptyCall right Int64 nullByteForComparison
 run detectMessageNonEmptyCall
 bind value messageNonEmpty Bool detectMessageNonEmptyCall
 branch if condition messageNonEmpty target messageNonEmptyHolds
 branch else target smokeAssertionFailed
 label messageNonEmptyHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

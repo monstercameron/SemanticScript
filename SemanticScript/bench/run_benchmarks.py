@@ -145,7 +145,7 @@ def run_benchmarks(selected_names: set[str] | None = None,
                 "semanticClockTicks": sem_median,
             },
             "delta": {
-                "semanticMinusCClockTicks": sem_median - c_median,
+                "semanticMinusCpuClockTicksTicks": sem_median - c_median,
                 "semanticToCRatio": ratio,
                 "semanticPercentOfC": pct_of_c,
             },

@@ -13,7 +13,7 @@ entry console main
 
 section program.counterintuitiveClosureCaptureRefined.types
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 section program.counterintuitiveClosureCaptureRefined.errors
 

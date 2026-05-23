@@ -15,11 +15,11 @@ async main no
 purpose operation main "Print zero (edge case: writeIntegerLine of 0)."
 invariant operation main "Outputs '0'."
 label startMain
-storage module immutable zeroInitial I64 0
-memory main mutable counter I64 zeroInitial
+storage module immutable zeroInitial Int64 0
+memory main mutable counter Int64 zeroInitial
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 counter
+argument writeCall value Int64 counter
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

@@ -1,0 +1,123 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: small_list
+# ============================================================
+
+project StdSmallListTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import smallList standard.small_list
+
+error MainError
+errorCase MainError SmallListSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Smoke-test the structural smallList.* helper surface."
+
+label startMain
+
+storage module immutable currentLengthTwo Int64 2
+storage module immutable currentLengthFive Int64 5
+storage module immutable inlineCapacityFour Int64 4
+storage module immutable spillCapacityEight Int64 8
+storage module immutable expectedTwo Int64 2
+storage module immutable expectedThree Int64 3
+storage module immutable expectedFailure Int64 -1
+
+call smallListUsesInlineCall smallList.usesInlineStorage
+argument smallListUsesInlineCall currentLength Int64 currentLengthTwo
+argument smallListUsesInlineCall inlineCapacity Int64 inlineCapacityFour
+run smallListUsesInlineCall
+bind value smallListUsesInlineResult Bool smallListUsesInlineCall
+branch if condition smallListUsesInlineResult target smallListUsesInlineHolds
+branch else target smokeAssertionFailed
+label smallListUsesInlineHolds
+
+call smallListUsesSpillCall smallList.usesSpillStorage
+argument smallListUsesSpillCall currentLength Int64 currentLengthFive
+argument smallListUsesSpillCall inlineCapacity Int64 inlineCapacityFour
+run smallListUsesSpillCall
+bind value smallListUsesSpillResult Bool smallListUsesSpillCall
+branch if condition smallListUsesSpillResult target smallListUsesSpillHolds
+branch else target smokeAssertionFailed
+label smallListUsesSpillHolds
+
+call smallListCanAppendCall smallList.canAppend
+argument smallListCanAppendCall currentLength Int64 currentLengthFive
+argument smallListCanAppendCall spillCapacity Int64 spillCapacityEight
+run smallListCanAppendCall
+bind value smallListCanAppendResult Bool smallListCanAppendCall
+branch if condition smallListCanAppendResult target smallListCanAppendHolds
+branch else target smokeAssertionFailed
+label smallListCanAppendHolds
+
+call smallListRemainingInlineCall smallList.remainingInlineCapacity
+argument smallListRemainingInlineCall currentLength Int64 currentLengthTwo
+argument smallListRemainingInlineCall inlineCapacity Int64 inlineCapacityFour
+run smallListRemainingInlineCall
+bind value smallListRemainingInlineResult Int64 smallListRemainingInlineCall
+call smallListRemainingInlineOkCall math.equalInt64
+argument smallListRemainingInlineOkCall left Int64 smallListRemainingInlineResult
+argument smallListRemainingInlineOkCall right Int64 expectedTwo
+run smallListRemainingInlineOkCall
+bind value smallListRemainingInlineOk Bool smallListRemainingInlineOkCall
+branch if condition smallListRemainingInlineOk target smallListRemainingInlineHolds
+branch else target smokeAssertionFailed
+label smallListRemainingInlineHolds
+
+call smallListRemainingTotalCall smallList.remainingTotalCapacity
+argument smallListRemainingTotalCall currentLength Int64 currentLengthFive
+argument smallListRemainingTotalCall spillCapacity Int64 spillCapacityEight
+run smallListRemainingTotalCall
+bind value smallListRemainingTotalResult Int64 smallListRemainingTotalCall
+call smallListRemainingTotalOkCall math.equalInt64
+argument smallListRemainingTotalOkCall left Int64 smallListRemainingTotalResult
+argument smallListRemainingTotalOkCall right Int64 expectedThree
+run smallListRemainingTotalOkCall
+bind value smallListRemainingTotalOk Bool smallListRemainingTotalOkCall
+branch if condition smallListRemainingTotalOk target smallListRemainingTotalHolds
+branch else target smokeAssertionFailed
+label smallListRemainingTotalHolds
+
+call smallListLengthAfterAppendCall smallList.lengthAfterAppend
+argument smallListLengthAfterAppendCall currentLength Int64 spillCapacityEight
+argument smallListLengthAfterAppendCall spillCapacity Int64 spillCapacityEight
+run smallListLengthAfterAppendCall
+bind value smallListLengthAfterAppendResult Int64 smallListLengthAfterAppendCall
+call smallListLengthAfterAppendOkCall math.equalInt64
+argument smallListLengthAfterAppendOkCall left Int64 smallListLengthAfterAppendResult
+argument smallListLengthAfterAppendOkCall right Int64 expectedFailure
+run smallListLengthAfterAppendOkCall
+bind value smallListLengthAfterAppendOk Bool smallListLengthAfterAppendOkCall
+branch if condition smallListLengthAfterAppendOk target smallListLengthAfterAppendHolds
+branch else target smokeAssertionFailed
+label smallListLengthAfterAppendHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
+label smokeAssertionFailed
+makeError smallListSmokeFailure MainError.SmallListSmokeAssertionFailed
+return error smallListSmokeFailure

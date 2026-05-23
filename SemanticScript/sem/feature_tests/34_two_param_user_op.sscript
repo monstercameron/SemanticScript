@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation addTwo
-input operation addTwo a CSignedInt64
-input operation addTwo b CSignedInt64
-output operation addTwo Result CSignedInt64 Void
+input operation addTwo a Int64
+input operation addTwo b Int64
+output operation addTwo Result Int64 Void
 memory addTwo heap no
 async addTwo no
 purpose operation addTwo "Return a + b."
 invariant operation addTwo "Two-parameter user op."
 label startAddTwo
-call addCall math.addI64
-argument addCall left I64 a
-argument addCall right I64 b
+call addCall math.addInt64
+argument addCall left Int64 a
+argument addCall right Int64 b
 run addCall
-bind value sumResult I64 addCall
+bind value sumResult Int64 addCall
 return ok sumResult
 
 operation main
@@ -32,20 +32,20 @@ async main no
 purpose operation main "Call addTwo(7, 8) = 15."
 invariant operation main "Two-arg call into user op."
 label startMain
-storage module immutable sevenInitial I64 7
-storage module immutable eightInitial I64 8
-memory main mutable leftValue I64 sevenInitial
-memory main mutable rightValue I64 eightInitial
+storage module immutable sevenInitial Int64 7
+storage module immutable eightInitial Int64 8
+memory main mutable leftValue Int64 sevenInitial
+memory main mutable rightValue Int64 eightInitial
 call sumCall addTwo
-argument sumCall a CSignedInt64 leftValue
-argument sumCall b CSignedInt64 rightValue
+argument sumCall a Int64 leftValue
+argument sumCall b Int64 rightValue
 run sumCall
-bind ok sumOutcome I64 sumCall
-memory main mutable resultVar I64 sevenInitial
+bind ok sumOutcome Int64 sumCall
+memory main mutable resultVar Int64 sevenInitial
 set memory resultVar sumOutcome
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

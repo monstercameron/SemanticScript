@@ -5,28 +5,28 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "storage local mutable of CFloat64: alloca double, real store/load, math.addF64 result flows through."
+purpose operation main "storage local mutable of Float64: alloca double, real store/load, math.addFloat64 result flows through."
 invariant operation main "Output is 7.5 (3.5 + 4.0) using double arithmetic, not int."
 label startMain
-storage module immutable initialFloatValue CFloat64 3.5
-storage module immutable incrementFloatValue CFloat64 4.0
-storage local mutable mutableFloatSlot CFloat64 initialFloatValue
-call addFloatCall math.addF64
-argument addFloatCall left CFloat64 mutableFloatSlot
-argument addFloatCall right CFloat64 incrementFloatValue
+storage module immutable initialFloatValue Float64 3.5
+storage module immutable incrementFloatValue Float64 4.0
+storage local mutable mutableFloatSlot Float64 initialFloatValue
+call addFloatCall math.addFloat64
+argument addFloatCall left Float64 mutableFloatSlot
+argument addFloatCall right Float64 incrementFloatValue
 run addFloatCall
-bind value floatSumResult CFloat64 addFloatCall
+bind value floatSumResult Float64 addFloatCall
 set memory mutableFloatSlot floatSumResult
 call writeFloatCall console.writeFloatLine
 argument writeFloatCall console Console console
-argument writeFloatCall value CFloat64 mutableFloatSlot
+argument writeFloatCall value Float64 mutableFloatSlot
 run writeFloatCall
 ignore void source writeFloatCall
 storage module immutable successfulExitCode ExitCode 0

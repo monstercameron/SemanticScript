@@ -45,10 +45,10 @@ invariant operation main "Newline is 10, NUL is 0, DEL is 127, SP is 32 — ever
 label startMain
 
 # Newline literal must resolve to 10.
-storage module immutable tenValue CSignedInt32 10
-call checkNewlineCall math.equalI64
-argument checkNewlineCall left I64 asciiNewlineCharacterCode
-argument checkNewlineCall right I64 tenValue
+storage module immutable tenValue Int32 10
+call checkNewlineCall math.equalInt64
+argument checkNewlineCall left Int64 asciiNewlineCharacterCode
+argument checkNewlineCall right Int64 tenValue
 run checkNewlineCall
 bind value newlineOk Bool checkNewlineCall
 branch if condition newlineOk target newlineHolds
@@ -56,10 +56,10 @@ branch else target smokeAssertionFailed
 label newlineHolds
 
 # NUL literal must resolve to 0.
-storage module immutable zeroValue CSignedInt32 0
-call checkNullCall math.equalI64
-argument checkNullCall left I64 asciiNullCharacterCode
-argument checkNullCall right I64 zeroValue
+storage module immutable zeroValue Int32 0
+call checkNullCall math.equalInt64
+argument checkNullCall left Int64 asciiNullCharacterCode
+argument checkNullCall right Int64 zeroValue
 run checkNullCall
 bind value nullOk Bool checkNullCall
 branch if condition nullOk target nullHolds
@@ -67,10 +67,10 @@ branch else target smokeAssertionFailed
 label nullHolds
 
 # DEL literal must resolve to 127.
-storage module immutable oneHundredTwentySevenValue CSignedInt32 127
-call checkDeleteCall math.equalI64
-argument checkDeleteCall left I64 asciiDeleteCharacterCode
-argument checkDeleteCall right I64 oneHundredTwentySevenValue
+storage module immutable oneHundredTwentySevenValue Int32 127
+call checkDeleteCall math.equalInt64
+argument checkDeleteCall left Int64 asciiDeleteCharacterCode
+argument checkDeleteCall right Int64 oneHundredTwentySevenValue
 run checkDeleteCall
 bind value deleteOk Bool checkDeleteCall
 branch if condition deleteOk target deleteHolds
@@ -78,10 +78,10 @@ branch else target smokeAssertionFailed
 label deleteHolds
 
 # Space literal must resolve to 32.
-storage module immutable thirtyTwoValue CSignedInt32 32
-call checkSpaceCall math.equalI64
-argument checkSpaceCall left I64 asciiSpaceCharacterCode
-argument checkSpaceCall right I64 thirtyTwoValue
+storage module immutable thirtyTwoValue Int32 32
+call checkSpaceCall math.equalInt64
+argument checkSpaceCall left Int64 asciiSpaceCharacterCode
+argument checkSpaceCall right Int64 thirtyTwoValue
 run checkSpaceCall
 bind value spaceOk Bool checkSpaceCall
 branch if condition spaceOk target spaceHolds
@@ -92,18 +92,18 @@ label spaceHolds
 # higher-level writer (rather than three raw c.putchar calls) keeps
 # the success path uniform with the other stdlib smokes and gives us
 # a single point at which to surface ConsoleWriteFailed.
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

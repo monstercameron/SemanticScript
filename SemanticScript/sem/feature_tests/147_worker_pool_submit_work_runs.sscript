@@ -5,13 +5,13 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-storage module immutable zeroInitial I64 0
-storage module immutable seventySevenValue I64 77
-sharedState process mutable workerOutputCounter I64 zeroInitial
+errorCase MainError Placeholder Int32
+storage module immutable zeroInitial Int64 0
+storage module immutable seventySevenValue Int64 77
+sharedState process mutable workerOutputCounter Int64 zeroInitial
 operation workerWritesSeventySeven
-input operation workerWritesSeventySeven incomingArg I64
-output operation workerWritesSeventySeven I64
+input operation workerWritesSeventySeven incomingArg Int64
+output operation workerWritesSeventySeven Int64
 set sharedState workerOutputCounter seventySevenValue
 return value seventySevenValue
 operation main
@@ -30,7 +30,7 @@ submitWork workItemForJob sharedWorkerPool
 awaitWork workItemForJob
 call writeWorkerResultCall console.writeIntegerLine
 argument writeWorkerResultCall console Console console
-argument writeWorkerResultCall value I64 workerOutputCounter
+argument writeWorkerResultCall value Int64 workerOutputCounter
 run writeWorkerResultCall
 ignore void source writeWorkerResultCall
 storage module immutable successfulExitCode ExitCode 0

@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -16,27 +16,27 @@ async main no
 purpose operation main "Compute the byte distance between two pointer.offset'd positions of the same string-const buffer using pointer.difference."
 invariant operation main "Exercises pointer.difference."
 label startMain
-storage module immutable sentence CNullTerminatedByteString "abcdefghij"
-storage module immutable positionTwo I64 2
-storage module immutable positionNine I64 9
+storage module immutable sentence String "abcdefghij"
+storage module immutable positionTwo Int64 2
+storage module immutable positionNine Int64 9
 call leftPtrCall pointer.offset
-argument leftPtrCall base CNullTerminatedByteString sentence
-argument leftPtrCall offset I64 positionTwo
+argument leftPtrCall base String sentence
+argument leftPtrCall offset Int64 positionTwo
 run leftPtrCall
-bind value leftPointer COpaqueMemoryAddress leftPtrCall
+bind value leftPointer OpaquePointer leftPtrCall
 call rightPtrCall pointer.offset
-argument rightPtrCall base CNullTerminatedByteString sentence
-argument rightPtrCall offset I64 positionNine
+argument rightPtrCall base String sentence
+argument rightPtrCall offset Int64 positionNine
 run rightPtrCall
-bind value rightPointer COpaqueMemoryAddress rightPtrCall
+bind value rightPointer OpaquePointer rightPtrCall
 call diffCall pointer.difference
-argument diffCall left COpaqueMemoryAddress rightPointer
-argument diffCall right COpaqueMemoryAddress leftPointer
+argument diffCall left OpaquePointer rightPointer
+argument diffCall right OpaquePointer leftPointer
 run diffCall
-bind value diffValue CSignedInt64 diffCall
+bind value diffValue Int64 diffCall
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value CSignedInt64 diffValue
+argument writeCall value Int64 diffValue
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

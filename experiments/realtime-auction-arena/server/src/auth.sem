@@ -13,12 +13,12 @@ type JwtAudience String
 type RoleName String
 type ScopeName String
 type ScopeList String
-type UtcSeconds I64
+type UtcSeconds Int64
 type BcryptPasswordHash String
 type RefreshTokenHash String
 type RateLimitBucketKey String
 
-enum AuthRuntimeStatus repr CSignedInt32
+enum AuthRuntimeStatus repr Int32
 enumCase AuthRuntimeStatus authRuntimeBlocked 0
 enumCase AuthRuntimeStatus authRuntimeAdapterReady 1
 
@@ -27,7 +27,7 @@ field JwtTimeValidationContract nowSource String
 field JwtTimeValidationContract issuedAtRule String
 field JwtTimeValidationContract notBeforeRule String
 field JwtTimeValidationContract expirationRule String
-field JwtTimeValidationContract clockSkewSeconds I64
+field JwtTimeValidationContract clockSkewSeconds Int64
 field JwtTimeValidationContract runtimeStatus String
 
 record JwtClaimModel
@@ -40,7 +40,7 @@ field JwtClaimModel expiresAtClaim String
 field JwtClaimModel issuedAtClaim String
 field JwtClaimModel notBeforeClaim String
 field JwtClaimModel jwtIdClaim String
-field JwtClaimModel clockSkewSeconds I64
+field JwtClaimModel clockSkewSeconds Int64
 field JwtClaimModel validationRule String
 
 record JwtAccessClaims
@@ -58,22 +58,22 @@ record JwtContract
 field JwtContract algorithm String
 field JwtContract issuer String
 field JwtContract audience String
-field JwtContract accessTokenTtlSeconds I64
+field JwtContract accessTokenTtlSeconds Int64
 field JwtContract signingSecretSource String
 field JwtContract futureAsymmetricAlgorithm String
 field JwtContract claimModel JwtClaimModel
 field JwtContract timeValidation JwtTimeValidationContract
 
 record BcryptLimitContract
-field BcryptLimitContract maxPlaintextBytes I64
+field BcryptLimitContract maxPlaintextBytes Int64
 field BcryptLimitContract enforcementPoint String
 field BcryptLimitContract tooLongPublicError String
 field BcryptLimitContract reason String
 
 record PasswordContract
 field PasswordContract hashAlgorithm String
-field PasswordContract recommendedCost I64
-field PasswordContract maxPlaintextBytes I64
+field PasswordContract recommendedCost Int64
+field PasswordContract maxPlaintextBytes Int64
 field PasswordContract storedFields String
 field PasswordContract byteLimit BcryptLimitContract
 
@@ -99,8 +99,8 @@ record LoginRateLimitContract
 field LoginRateLimitContract durableTable String
 field LoginRateLimitContract bucketKey RateLimitBucketKey
 field LoginRateLimitContract subjectRule String
-field LoginRateLimitContract windowMillis I64
-field LoginRateLimitContract limitCount I64
+field LoginRateLimitContract windowMillis Int64
+field LoginRateLimitContract limitCount Int64
 field LoginRateLimitContract publicError String
 field LoginRateLimitContract auditRule String
 field LoginRateLimitContract runtimeStatus String

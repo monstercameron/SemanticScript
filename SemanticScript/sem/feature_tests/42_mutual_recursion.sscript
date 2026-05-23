@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation isEven
-input operation isEven n CSignedInt64
-output operation isEven Result CSignedInt64 Void
+input operation isEven n Int64
+output operation isEven Result Int64 Void
 memory isEven heap no
 async isEven no
 purpose operation isEven "Mutually-recursive even test: 0 is even; n even iff isOdd(n-1)."
 invariant operation isEven "Calls isOdd on decrement."
 label startIsEven
-storage module immutable zeroLit I64 0
-storage module immutable oneLit I64 1
-call atZeroCall math.equalI64
-argument atZeroCall left CSignedInt64 n
-argument atZeroCall right I64 zeroLit
+storage module immutable zeroLit Int64 0
+storage module immutable oneLit Int64 1
+call atZeroCall math.equalInt64
+argument atZeroCall left Int64 n
+argument atZeroCall right Int64 zeroLit
 run atZeroCall
 bind value atZero Bool atZeroCall
 branch if condition atZero target evenBase
@@ -27,30 +27,30 @@ branch else target evenRecurse
 label evenBase
 return ok oneLit
 label evenRecurse
-call decCall math.subtractI64
-argument decCall left CSignedInt64 n
-argument decCall right I64 oneLit
+call decCall math.subtractInt64
+argument decCall left Int64 n
+argument decCall right Int64 oneLit
 run decCall
-bind value decremented I64 decCall
+bind value decremented Int64 decCall
 call recCall isOdd
-argument recCall n CSignedInt64 decremented
+argument recCall n Int64 decremented
 run recCall
-bind ok recResult I64 recCall
+bind ok recResult Int64 recCall
 return ok recResult
 
 operation isOdd
-input operation isOdd n CSignedInt64
-output operation isOdd Result CSignedInt64 Void
+input operation isOdd n Int64
+output operation isOdd Result Int64 Void
 memory isOdd heap no
 async isOdd no
 purpose operation isOdd "Mutually-recursive odd test."
 invariant operation isOdd "Calls isEven on decrement."
 label startIsOdd
-storage module immutable zeroLit I64 0
-storage module immutable oneLit I64 1
-call atZeroOddCall math.equalI64
-argument atZeroOddCall left CSignedInt64 n
-argument atZeroOddCall right I64 zeroLit
+storage module immutable zeroLit Int64 0
+storage module immutable oneLit Int64 1
+call atZeroOddCall math.equalInt64
+argument atZeroOddCall left Int64 n
+argument atZeroOddCall right Int64 zeroLit
 run atZeroOddCall
 bind value atZeroOdd Bool atZeroOddCall
 branch if condition atZeroOdd target oddBase
@@ -58,15 +58,15 @@ branch else target oddRecurse
 label oddBase
 return ok zeroLit
 label oddRecurse
-call decCall math.subtractI64
-argument decCall left CSignedInt64 n
-argument decCall right I64 oneLit
+call decCall math.subtractInt64
+argument decCall left Int64 n
+argument decCall right Int64 oneLit
 run decCall
-bind value decremented I64 decCall
+bind value decremented Int64 decCall
 call recCall isEven
-argument recCall n CSignedInt64 decremented
+argument recCall n Int64 decremented
 run recCall
-bind ok recResult I64 recCall
+bind ok recResult Int64 recCall
 return ok recResult
 
 operation main
@@ -78,17 +78,17 @@ async main no
 purpose operation main "isEven(8) should be 1."
 invariant operation main "8 is even."
 label startMain
-storage module immutable eightInitial I64 8
-memory main mutable input I64 eightInitial
+storage module immutable eightInitial Int64 8
+memory main mutable input Int64 eightInitial
 call evenCall isEven
-argument evenCall n CSignedInt64 input
+argument evenCall n Int64 input
 run evenCall
-bind ok evenResult I64 evenCall
-memory main mutable outputVar I64 eightInitial
+bind ok evenResult Int64 evenCall
+memory main mutable outputVar Int64 eightInitial
 set memory outputVar evenResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 outputVar
+argument writeCall value Int64 outputVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

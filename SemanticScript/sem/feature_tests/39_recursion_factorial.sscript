@@ -5,20 +5,20 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation factorialOf
-input operation factorialOf n CSignedInt64
-output operation factorialOf Result CSignedInt64 Void
+input operation factorialOf n Int64
+output operation factorialOf Result Int64 Void
 memory factorialOf heap no
 async factorialOf no
 purpose operation factorialOf "Recursive factorial: 1 if n <= 1, else n * factorialOf(n-1)."
 invariant operation factorialOf "Standard recursion base case at 1."
 label startFactorialOf
-storage module immutable oneLit I64 1
-call atBaseCall math.lessThanOrEqualI64
-argument atBaseCall left CSignedInt64 n
-argument atBaseCall right I64 oneLit
+storage module immutable oneLit Int64 1
+call atBaseCall math.lessThanOrEqualInt64
+argument atBaseCall left Int64 n
+argument atBaseCall right Int64 oneLit
 run atBaseCall
 bind value atBase Bool atBaseCall
 branch if condition atBase target baseCase
@@ -26,20 +26,20 @@ branch else target recursiveCase
 label baseCase
 return ok oneLit
 label recursiveCase
-call decCall math.subtractI64
-argument decCall left CSignedInt64 n
-argument decCall right I64 oneLit
+call decCall math.subtractInt64
+argument decCall left Int64 n
+argument decCall right Int64 oneLit
 run decCall
-bind value decremented I64 decCall
+bind value decremented Int64 decCall
 call recCall factorialOf
-argument recCall n CSignedInt64 decremented
+argument recCall n Int64 decremented
 run recCall
-bind ok recResult I64 recCall
-call mulCall math.multiplyI64
-argument mulCall left CSignedInt64 n
-argument mulCall right I64 recResult
+bind ok recResult Int64 recCall
+call mulCall math.multiplyInt64
+argument mulCall left Int64 n
+argument mulCall right Int64 recResult
 run mulCall
-bind value multiplied I64 mulCall
+bind value multiplied Int64 mulCall
 return ok multiplied
 
 operation main
@@ -51,17 +51,17 @@ async main no
 purpose operation main "Compute factorialOf(5) = 120 via recursion."
 invariant operation main "Outputs 120."
 label startMain
-storage module immutable fiveInitial I64 5
-memory main mutable input I64 fiveInitial
+storage module immutable fiveInitial Int64 5
+memory main mutable input Int64 fiveInitial
 call factCall factorialOf
-argument factCall n CSignedInt64 input
+argument factCall n Int64 input
 run factCall
-bind ok factResult I64 factCall
-memory main mutable outputVar I64 fiveInitial
+bind ok factResult Int64 factCall
+memory main mutable outputVar Int64 fiveInitial
 set memory outputVar factResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 outputVar
+argument writeCall value Int64 outputVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

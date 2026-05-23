@@ -136,7 +136,7 @@ Read directly from the API server's schema. Amounts are integer **minor units**.
 
 - **Security hardened (review cycle 2).** A second review found + we fixed:
   (B1) the lobby card `snprintf` now bounds by remaining buffer capacity
-  (`gridBufferCapacityI64 - lobbyOffset`) instead of a fixed size - no heap
+  (`gridBufferCapacityInt64 - lobbyOffset`) instead of a fixed size - no heap
   overflow; (B2) stored-XSS - the lobby escapes card titles via the new
   `http.escapeHtml` (raw `HtmlFragment` path), and the Floor relies on the
   hydrator's automatic String-hole escaping (manual escape there was removed

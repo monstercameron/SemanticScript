@@ -5,7 +5,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
 input operation main console Console
@@ -21,24 +21,24 @@ invariant operation main "Each iteration performs exactly one addition and two r
 
 label startMain
 
-storage module immutable iterationLimit I64 200000000
-storage module immutable iterationStep I64 1
-storage module immutable fibonacciInitialPreviousValue I64 1
-storage module immutable fibonacciInitialCurrentValue I64 1
+storage module immutable iterationLimit Int64 200000000
+storage module immutable iterationStep Int64 1
+storage module immutable fibonacciInitialPreviousValue Int64 1
+storage module immutable fibonacciInitialCurrentValue Int64 1
 
-memory main mutable currentIteration I64 0
-memory main mutable fibonacciPreviousValue I64 fibonacciInitialPreviousValue
-memory main mutable fibonacciCurrentValue I64 fibonacciInitialCurrentValue
+memory main mutable currentIteration Int64 0
+memory main mutable fibonacciPreviousValue Int64 fibonacciInitialPreviousValue
+memory main mutable fibonacciCurrentValue Int64 fibonacciInitialCurrentValue
 
 call startClockCall c.clock
 run startClockCall
-bind value startClockTicks CCpuClockTicks startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
 
 label arithLoopHead
 
-call shouldContinueCmpCall math.lessThanI64
-argument shouldContinueCmpCall left I64 currentIteration
-argument shouldContinueCmpCall right I64 iterationLimit
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
 run shouldContinueCmpCall
 bind value arithShouldContinue Bool shouldContinueCmpCall
 branch if condition arithShouldContinue target arithLoopBody
@@ -47,11 +47,11 @@ branch else target arithFinished
 label arithLoopBody
 
 # next = a + b
-call fibonacciAdvanceCall math.addI64
-argument fibonacciAdvanceCall left I64 fibonacciPreviousValue
-argument fibonacciAdvanceCall right I64 fibonacciCurrentValue
+call fibonacciAdvanceCall math.addInt64
+argument fibonacciAdvanceCall left Int64 fibonacciPreviousValue
+argument fibonacciAdvanceCall right Int64 fibonacciCurrentValue
 run fibonacciAdvanceCall
-bind value fibonacciNextValue I64 fibonacciAdvanceCall
+bind value fibonacciNextValue Int64 fibonacciAdvanceCall
 
 # a = b
 set memory fibonacciPreviousValue fibonacciCurrentValue
@@ -59,11 +59,11 @@ set memory fibonacciPreviousValue fibonacciCurrentValue
 set memory fibonacciCurrentValue fibonacciNextValue
 
 # i = i + 1
-call incrementCall math.addI64
-argument incrementCall left I64 currentIteration
-argument incrementCall right I64 iterationStep
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
 run incrementCall
-bind value nextIteration I64 incrementCall
+bind value nextIteration Int64 incrementCall
 set memory currentIteration nextIteration
 jump target arithLoopHead
 
@@ -71,23 +71,23 @@ label arithFinished
 
 call endClockCall c.clock
 run endClockCall
-bind value endClockTicks CCpuClockTicks endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
 
-call elapsedTicksCall math.subtractI64
-argument elapsedTicksCall left CCpuClockTicks endClockTicks
-argument elapsedTicksCall right CCpuClockTicks startClockTicks
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
 run elapsedTicksCall
-bind value elapsedClockTicks I64 elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
 
-storage module immutable reportFormatText CNullTerminatedByteString "iterations=%lld accumulator=%lld clockTicks=%lld\n"
+storage module immutable reportFormatText String "iterations=%lld accumulator=%lld clockTicks=%lld\n"
 call reportCall c.printf
-argument reportCall format CNullTerminatedByteString reportFormatText
-argument reportCall iterations I64 iterationLimit
-argument reportCall accumulator I64 fibonacciCurrentValue
-argument reportCall ticks I64 elapsedClockTicks
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Int64 fibonacciCurrentValue
+argument reportCall ticks Int64 elapsedClockTicks
 run reportCall
 ignore void source reportCall
-bind error reportError CSignedInt32 reportCall
+bind error reportError Int32 reportCall
 branch error source reportCall target reportWriteFailed
 
 storage module immutable successfulExitCode ExitCode 0

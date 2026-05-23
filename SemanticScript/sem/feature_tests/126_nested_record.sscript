@@ -8,8 +8,8 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 record Point layout row align 8
-field Point x I64
-field Point y I64
+field Point x Int64
+field Point y Int64
 
 record Segment layout row align 8
 field Segment start Point
@@ -25,38 +25,38 @@ purpose operation main "Construct Segment containing two nested Points, sum all 
 invariant operation main "Output is '15\\n'."
 label startMain
 new mySegment Segment
-storage module immutable oneVal I64 1
-storage module immutable twoVal I64 2
-storage module immutable fiveVal I64 5
-storage module immutable sevenVal I64 7
+storage module immutable oneVal Int64 1
+storage module immutable twoVal Int64 2
+storage module immutable fiveVal Int64 5
+storage module immutable sevenVal Int64 7
 fieldSet mySegment start.x oneVal
 fieldSet mySegment start.y twoVal
 fieldSet mySegment finish.x fiveVal
 fieldSet mySegment finish.y sevenVal
-fieldGet sx I64 mySegment start.x
-fieldGet sy I64 mySegment start.y
-fieldGet fx I64 mySegment finish.x
-fieldGet fy I64 mySegment finish.y
-call sum1Call math.addI64
-argument sum1Call left I64 sx
-argument sum1Call right I64 sy
+fieldGet sx Int64 mySegment start.x
+fieldGet sy Int64 mySegment start.y
+fieldGet fx Int64 mySegment finish.x
+fieldGet fy Int64 mySegment finish.y
+call sum1Call math.addInt64
+argument sum1Call left Int64 sx
+argument sum1Call right Int64 sy
 run sum1Call
-bind value partial1 I64 sum1Call
-call sum2Call math.addI64
-argument sum2Call left I64 fx
-argument sum2Call right I64 fy
+bind value partial1 Int64 sum1Call
+call sum2Call math.addInt64
+argument sum2Call left Int64 fx
+argument sum2Call right Int64 fy
 run sum2Call
-bind value partial2 I64 sum2Call
-call totalCall math.addI64
-argument totalCall left I64 partial1
-argument totalCall right I64 partial2
+bind value partial2 Int64 sum2Call
+call totalCall math.addInt64
+argument totalCall left Int64 partial1
+argument totalCall right Int64 partial2
 run totalCall
-bind value totalResult I64 totalCall
-memory main mutable totalVar I64 oneVal
+bind value totalResult Int64 totalCall
+memory main mutable totalVar Int64 oneVal
 set memory totalVar totalResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 totalVar
+argument writeCall value Int64 totalVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

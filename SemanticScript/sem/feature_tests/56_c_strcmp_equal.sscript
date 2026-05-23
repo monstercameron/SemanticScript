@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -16,18 +16,18 @@ async main no
 purpose operation main "c.strcmp of two identical strings returns 0."
 invariant operation main "Tests c.strcmp passthrough."
 label startMain
-storage module immutable leftText CNullTerminatedByteString "hello"
-storage module immutable rightText CNullTerminatedByteString "hello"
+storage module immutable leftText String "hello"
+storage module immutable rightText String "hello"
 call cmpCall c.strcmp
-argument cmpCall left CNullTerminatedByteString leftText
-argument cmpCall right CNullTerminatedByteString rightText
+argument cmpCall left String leftText
+argument cmpCall right String rightText
 run cmpCall
-bind value cmpResult CSignedInt32 cmpCall
-memory main mutable cmpVar I64 0
+bind value cmpResult Int32 cmpCall
+memory main mutable cmpVar Int64 0
 set memory cmpVar cmpResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 cmpVar
+argument writeCall value Int64 cmpVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

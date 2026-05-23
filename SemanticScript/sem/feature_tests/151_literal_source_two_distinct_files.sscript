@@ -5,10 +5,10 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-literal externalAlphaLiteral CNullTerminatedByteString
+errorCase MainError Placeholder Int32
+literal externalAlphaLiteral String
 literalSource externalAlphaLiteral "_modules/external_greeting_alpha.txt"
-literal externalBetaLiteral CNullTerminatedByteString
+literal externalBetaLiteral String
 literalSource externalBetaLiteral "_modules/external_greeting_beta.txt"
 operation main
 input operation main console Console
@@ -21,12 +21,12 @@ invariant operation main "Output is alpha line then beta line (no bleed)."
 label startMain
 call writeAlphaCall console.writeLine
 argument writeAlphaCall console Console console
-argument writeAlphaCall text CNullTerminatedByteString externalAlphaLiteral
+argument writeAlphaCall text String externalAlphaLiteral
 run writeAlphaCall
 ignore void source writeAlphaCall
 call writeBetaCall console.writeLine
 argument writeBetaCall console Console console
-argument writeBetaCall text CNullTerminatedByteString externalBetaLiteral
+argument writeBetaCall text String externalBetaLiteral
 run writeBetaCall
 ignore void source writeBetaCall
 storage module immutable successfulExitCode ExitCode 0

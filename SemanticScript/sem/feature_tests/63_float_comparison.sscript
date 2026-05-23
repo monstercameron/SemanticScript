@@ -5,29 +5,29 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation classifyFloat
-input operation classifyFloat left CFloat64
-input operation classifyFloat right CFloat64
-output operation classifyFloat Result CSignedInt32 Void
+input operation classifyFloat left Float64
+input operation classifyFloat right Float64
+output operation classifyFloat Result Int32 Void
 memory classifyFloat heap no
 async classifyFloat no
-purpose operation classifyFloat "Returns -1 when left < right, 0 when equal, +1 when greater. Uses math.lessThanF64 / math.greaterThanF64."
+purpose operation classifyFloat "Returns -1 when left < right, 0 when equal, +1 when greater. Uses math.lessThanFloat64 / math.greaterThanFloat64."
 invariant operation classifyFloat "Bool result is 0 or 1; map back to a sign by branching."
 label startClassifyFloat
-storage module immutable ltResult CSignedInt32 -1
-storage module immutable gtResult CSignedInt32 1
-storage module immutable eqResult CSignedInt32 0
-call lessCheckCall math.lessThanF64
-argument lessCheckCall left CFloat64 left
-argument lessCheckCall right CFloat64 right
+storage module immutable ltResult Int32 -1
+storage module immutable gtResult Int32 1
+storage module immutable eqResult Int32 0
+call lessCheckCall math.lessThanFloat64
+argument lessCheckCall left Float64 left
+argument lessCheckCall right Float64 right
 run lessCheckCall
 bind value isLess Bool lessCheckCall
 branch if condition isLess target emitLtResult
-call greaterCheckCall math.greaterThanF64
-argument greaterCheckCall left CFloat64 left
-argument greaterCheckCall right CFloat64 right
+call greaterCheckCall math.greaterThanFloat64
+argument greaterCheckCall left Float64 left
+argument greaterCheckCall right Float64 right
 run greaterCheckCall
 bind value isGreater Bool greaterCheckCall
 branch if condition isGreater target emitGtResult
@@ -44,37 +44,37 @@ effect main write console.stdout
 memory main heap no
 async main no
 purpose operation main "Compare 1.5 < 2.5 and print 'less' for negative classification, 'equal' for zero, 'more' for positive."
-invariant operation main "Exercises math.lessThanF64 via classifyFloat user op."
+invariant operation main "Exercises math.lessThanFloat64 via classifyFloat user op."
 label startMain
-storage module immutable oneAndHalf CFloat64 1.5
-storage module immutable twoAndHalf CFloat64 2.5
+storage module immutable oneAndHalf Float64 1.5
+storage module immutable twoAndHalf Float64 2.5
 call classifyCall classifyFloat
-argument classifyCall left CFloat64 oneAndHalf
-argument classifyCall right CFloat64 twoAndHalf
+argument classifyCall left Float64 oneAndHalf
+argument classifyCall right Float64 twoAndHalf
 run classifyCall
-bind ok classification CSignedInt32 classifyCall
-memory main mutable classificationStorage I64 0
+bind ok classification Int32 classifyCall
+memory main mutable classificationStorage Int64 0
 set memory classificationStorage classification
-storage module immutable zeroValue I64 0
-call isNegativeCall math.lessThanI64
-argument isNegativeCall left I64 classificationStorage
-argument isNegativeCall right I64 zeroValue
+storage module immutable zeroValue Int64 0
+call isNegativeCall math.lessThanInt64
+argument isNegativeCall left Int64 classificationStorage
+argument isNegativeCall right Int64 zeroValue
 run isNegativeCall
 bind value isNegative Bool isNegativeCall
 branch if condition isNegative target printLess
-storage module immutable greetingMore CNullTerminatedByteString "more\n"
+storage module immutable greetingMore String "more\n"
 call writeMoreCall console.writeLine
 argument writeMoreCall console Console console
-argument writeMoreCall text CNullTerminatedByteString greetingMore
+argument writeMoreCall text String greetingMore
 run writeMoreCall
 ignore void source writeMoreCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode
 label printLess
-storage module immutable greetingLess CNullTerminatedByteString "less"
+storage module immutable greetingLess String "less"
 call writeLessCall console.writeLine
 argument writeLessCall console Console console
-argument writeLessCall text CNullTerminatedByteString greetingLess
+argument writeLessCall text String greetingLess
 run writeLessCall
 ignore void source writeLessCall
 storage module immutable lessExitCode ExitCode 0

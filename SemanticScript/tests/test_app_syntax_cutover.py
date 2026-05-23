@@ -33,7 +33,7 @@ REVERSED_AUTHORITY_RE = re.compile(
     r"execute|connect|send|receive|delete|configure|create|update|network)\b"
 )
 BARE_SET_RE = re.compile(r"^set\s+(?!memory\b|storage\b)")
-IGNORE_OK_VOID_RE = re.compile(r"^ignore\s+ok\s+source\s+\S+\s+type\s+(?:Void|CVoid)\b")
+IGNORE_OK_VOID_RE = re.compile(r"^ignore\s+ok\s+source\s+\S+\s+type\s+(?:Void|Void)\b")
 
 
 def semantic_sources(root: Path) -> list[Path]:

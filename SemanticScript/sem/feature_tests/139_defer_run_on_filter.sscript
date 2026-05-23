@@ -5,28 +5,28 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError DeliberateFailureForTest CSignedInt32
+errorCase MainError DeliberateFailureForTest Int32
 operation printCleanupOnOk
 input operation printCleanupOnOk console Console
-output operation printCleanupOnOk I32
-storage module immutable okCleanupMessage CNullTerminatedByteString "cleanupOnOk"
+output operation printCleanupOnOk Int32
+storage module immutable okCleanupMessage String "cleanupOnOk"
 call writeOkCleanupCall console.writeLine
 argument writeOkCleanupCall console Console console
-argument writeOkCleanupCall text CNullTerminatedByteString okCleanupMessage
+argument writeOkCleanupCall text String okCleanupMessage
 run writeOkCleanupCall
 ignore void source writeOkCleanupCall
-storage module immutable okCleanupExit I32 0
+storage module immutable okCleanupExit Int32 0
 return value okCleanupExit
 operation printCleanupOnError
 input operation printCleanupOnError console Console
-output operation printCleanupOnError I32
-storage module immutable errorCleanupMessage CNullTerminatedByteString "cleanupOnError"
+output operation printCleanupOnError Int32
+storage module immutable errorCleanupMessage String "cleanupOnError"
 call writeErrorCleanupCall console.writeLine
 argument writeErrorCleanupCall console Console console
-argument writeErrorCleanupCall text CNullTerminatedByteString errorCleanupMessage
+argument writeErrorCleanupCall text String errorCleanupMessage
 run writeErrorCleanupCall
 ignore void source writeErrorCleanupCall
-storage module immutable errorCleanupExit I32 0
+storage module immutable errorCleanupExit Int32 0
 return value errorCleanupExit
 operation main
 input operation main console Console

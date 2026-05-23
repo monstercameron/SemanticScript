@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -21,11 +21,11 @@ storage module immutable transitionBackToTrueValue Bool true
 storage local mutable mutableFlagSlot Bool initialFlagTrueValue
 set memory mutableFlagSlot transitionToFalseValue
 set memory mutableFlagSlot transitionBackToTrueValue
-memory main mutable finalFlagAsInt I64 initialFlagTrueValue
+memory main mutable finalFlagAsInt Int64 initialFlagTrueValue
 set memory finalFlagAsInt mutableFlagSlot
 call writeFlagCall console.writeIntegerLine
 argument writeFlagCall console Console console
-argument writeFlagCall value I64 finalFlagAsInt
+argument writeFlagCall value Int64 finalFlagAsInt
 run writeFlagCall
 ignore void source writeFlagCall
 storage module immutable successfulExitCode ExitCode 0

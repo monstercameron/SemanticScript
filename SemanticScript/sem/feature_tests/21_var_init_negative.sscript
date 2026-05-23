@@ -15,11 +15,11 @@ async main no
 purpose operation main "var initialized to a negative const integer."
 invariant operation main "Prints -42 via writeIntegerLine."
 label startMain
-storage module immutable negFortyTwoInitial I64 -42
-memory main mutable counter I64 negFortyTwoInitial
+storage module immutable negFortyTwoInitial Int64 -42
+memory main mutable counter Int64 negFortyTwoInitial
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 counter
+argument writeCall value Int64 counter
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

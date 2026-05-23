@@ -15,14 +15,14 @@ async main no
 purpose operation main "Simple decrement loop 3..1 via var/set/icmp sge/sub."
 invariant operation main "Loop terminates when counter falls below 1."
 label startMain
-storage module immutable startValue I64 3
-storage module immutable lowerBound I64 1
-storage module immutable oneStep I64 1
-memory main mutable counter I64 startValue
+storage module immutable startValue Int64 3
+storage module immutable lowerBound Int64 1
+storage module immutable oneStep Int64 1
+memory main mutable counter Int64 startValue
 label loopHead
-call checkCall math.greaterThanOrEqualI64
-argument checkCall left I64 counter
-argument checkCall right I64 lowerBound
+call checkCall math.greaterThanOrEqualInt64
+argument checkCall left Int64 counter
+argument checkCall right Int64 lowerBound
 run checkCall
 bind value shouldContinue Bool checkCall
 branch if condition shouldContinue target loopBody
@@ -30,14 +30,14 @@ branch else target loopExit
 label loopBody
 call printCall console.writeIntegerLine
 argument printCall console Console console
-argument printCall value I64 counter
+argument printCall value Int64 counter
 run printCall
 ignore void source printCall
-call decCall math.subtractI64
-argument decCall left I64 counter
-argument decCall right I64 oneStep
+call decCall math.subtractInt64
+argument decCall left Int64 counter
+argument decCall right Int64 oneStep
 run decCall
-bind value nextCounter I64 decCall
+bind value nextCounter Int64 decCall
 set memory counter nextCounter
 jump target loopHead
 label loopExit

@@ -40,7 +40,7 @@ structural edits invalidate affected descendant cursors:
 Object steps are `.fieldName`; array steps are `[index]`. Any other segment
 shape fails with `JsonAccessError.MalformedPath`.
 
-`JsonValueKind` is a `CSignedInt32` enum:
+`JsonValueKind` is a `Int32` enum:
 
 | Case | Value |
 | --- | ---: |
@@ -59,14 +59,14 @@ serialization, and mutators:
 
 ```semanticscript
 error JsonAccessError
-errorCase JsonAccessError PathNotFound CSignedInt32
-errorCase JsonAccessError WrongType CSignedInt32
-errorCase JsonAccessError IndexOutOfRange CSignedInt32
-errorCase JsonAccessError FieldNameTooLong CSignedInt32
-errorCase JsonAccessError DocumentNotMutable CSignedInt32
-errorCase JsonAccessError CapacityExceeded CSignedInt32
-errorCase JsonAccessError MalformedPath CSignedInt32
-errorCase JsonAccessError ScratchTooSmall CSignedInt32
+errorCase JsonAccessError PathNotFound Int32
+errorCase JsonAccessError WrongType Int32
+errorCase JsonAccessError IndexOutOfRange Int32
+errorCase JsonAccessError FieldNameTooLong Int32
+errorCase JsonAccessError DocumentNotMutable Int32
+errorCase JsonAccessError CapacityExceeded Int32
+errorCase JsonAccessError MalformedPath Int32
+errorCase JsonAccessError ScratchTooSmall Int32
 ```
 
 `JsonEncodeError` is reserved for `json.stringify.<TypeName>`:
@@ -179,7 +179,7 @@ surface instead of requiring handlers to assemble JSON with `c.snprintf`.
 
 Primitive stringify/parse aliases use compiler glue only to allocate scratch
 and call native JSON helpers. `json.stringify.String` and
-`json.stringify.CNullTerminatedByteString` escape through native_json and fail
+`json.stringify.String` escape through native_json and fail
 with `JsonEncodeError.OutputBufferTooSmall` when the bounded scratch cannot
 hold the quoted value. Primitive `json.parse` targets reject malformed input
 and trailing junk with `JsonDecodeError.UnexpectedToken`; they no longer mark

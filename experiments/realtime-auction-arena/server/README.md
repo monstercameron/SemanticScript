@@ -390,8 +390,8 @@ record AuctionPolicy
   antiSnipeWindow DurationMillis
   antiSnipeExtension DurationMillis
   maxBidAmount MoneyAmountMinor
-  maxBidderNameBytes CByteCount
-  maxChatMessageBytes CByteCount
+  maxBidderNameBytes ByteCount
+  maxChatMessageBytes ByteCount
 
 record AuctionTiming
   startsAt UtcMillis
@@ -424,7 +424,7 @@ record AuctionSnapshot
   auction AuctionState
   lastEventSequence AuctionEventSequence
   serverTime UtcMillis
-  activeClientCount CUnsignedInt64
+  activeClientCount UInt64
 ```
 
 Rules:
@@ -662,7 +662,7 @@ record RequestLogEntry
   actorId UserId
   startedAt UtcMillis
   durationMillis DurationMillis
-  responseBytes CByteCount
+  responseBytes ByteCount
   errorCode ApiErrorCode
 ```
 

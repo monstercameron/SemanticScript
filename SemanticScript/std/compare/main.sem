@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.compare "App-specific wrappers, compatibility aliases,
 invariant module standard.compare "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.compare compareModuleVersionText
-storage module immutable compareModuleVersionText CNullTerminatedByteString "standard.compare 0.1"
+storage module immutable compareModuleVersionText String "standard.compare 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -20,7 +20,7 @@ storage module immutable compareModuleVersionText CNullTerminatedByteString "sta
 #   can refer to canonical results by name (`comparisonResultLessThan`,
 #   `comparisonResultEqual`, `comparisonResultGreaterThan`) and a set
 #   of Bool predicates so binary tests no longer round-trip through
-#   CSignedInt32.
+#   Int32.
 #
 # invariant: every operation here is total. The compareXOrdering ops
 #   return exactly one of the three canonical Ordering values; the
@@ -51,10 +51,10 @@ storage module immutable compareModuleVersionText CNullTerminatedByteString "sta
 # Typed Ordering alias. Width-explicit so callers can pass results to
 # C-ABI consumers when they need to; the SemanticScript surface should
 # prefer Bool predicates for binary tests.
-type Ordering CSignedInt32
+type Ordering Int32
 typeInvariant Ordering "Only -1, 0, or +1 are reachable values."
 typeTrust Ordering trustedInternal
-typeRepresentation Ordering CSignedInt32
+typeRepresentation Ordering Int32
 
 domainLiteral comparisonResultLessThan Ordering -1
 domainLiteralTrust comparisonResultLessThan trustedStaticLiteral
@@ -64,29 +64,29 @@ domainLiteral comparisonResultGreaterThan Ordering 1
 domainLiteralTrust comparisonResultGreaterThan trustedStaticLiteral
 
 # section compare.signedInt64
-# rationale: 3-way + binary predicates over CSignedInt64.
+# rationale: 3-way + binary predicates over Int64.
 
 # ----- compareSignedInt64Ordering -----
 operation compareSignedInt64Ordering
-input operation compareSignedInt64Ordering leftValue CSignedInt64
-input operation compareSignedInt64Ordering rightValue CSignedInt64
+input operation compareSignedInt64Ordering leftValue Int64
+input operation compareSignedInt64Ordering rightValue Int64
 output operation compareSignedInt64Ordering Ordering
 memory compareSignedInt64Ordering heap no
 async compareSignedInt64Ordering no
 purpose operation compareSignedInt64Ordering "Three-way ordering: comparisonResultLessThan when left<right, comparisonResultGreaterThan when left>right, comparisonResultEqual when left==right."
 invariant operation compareSignedInt64Ordering "Trichotomy: exactly one of the three Ordering values is returned for every input pair."
 invariant operation compareSignedInt64Ordering "Anti-symmetric: compareSignedInt64Ordering(a,b) == comparisonResultLessThan iff compareSignedInt64Ordering(b,a) == comparisonResultGreaterThan."
-guarantee compareSignedInt64Ordering "Total over the CSignedInt64 domain."
+guarantee compareSignedInt64Ordering "Total over the Int64 domain."
 label startCompareSignedInt64Ordering
-call detectLeftLessThanCall math.lessThanI64
-argument detectLeftLessThanCall left I64 leftValue
-argument detectLeftLessThanCall right I64 rightValue
+call detectLeftLessThanCall math.lessThanInt64
+argument detectLeftLessThanCall left Int64 leftValue
+argument detectLeftLessThanCall right Int64 rightValue
 run detectLeftLessThanCall
 bind value leftIsLess Bool detectLeftLessThanCall
 branch if condition leftIsLess target returnLessThan
-call detectLeftGreaterThanCall math.greaterThanI64
-argument detectLeftGreaterThanCall left I64 leftValue
-argument detectLeftGreaterThanCall right I64 rightValue
+call detectLeftGreaterThanCall math.greaterThanInt64
+argument detectLeftGreaterThanCall left Int64 leftValue
+argument detectLeftGreaterThanCall right Int64 rightValue
 run detectLeftGreaterThanCall
 bind value leftIsGreater Bool detectLeftGreaterThanCall
 branch if condition leftIsGreater target returnGreaterThan
@@ -98,97 +98,97 @@ return value comparisonResultGreaterThan
 
 # ----- areSignedInt64ValuesEqual -----
 operation areSignedInt64ValuesEqual
-input operation areSignedInt64ValuesEqual leftValue CSignedInt64
-input operation areSignedInt64ValuesEqual rightValue CSignedInt64
+input operation areSignedInt64ValuesEqual leftValue Int64
+input operation areSignedInt64ValuesEqual rightValue Int64
 output operation areSignedInt64ValuesEqual Bool
 memory areSignedInt64ValuesEqual heap no
 async areSignedInt64ValuesEqual no
-purpose operation areSignedInt64ValuesEqual "Returns true when leftValue and rightValue have the same CSignedInt64 bit pattern."
+purpose operation areSignedInt64ValuesEqual "Returns true when leftValue and rightValue have the same Int64 bit pattern."
 invariant operation areSignedInt64ValuesEqual "Reflexive: areSignedInt64ValuesEqual(x, x) == true for every x."
 invariant operation areSignedInt64ValuesEqual "Symmetric: areSignedInt64ValuesEqual(a, b) == areSignedInt64ValuesEqual(b, a)."
-guarantee areSignedInt64ValuesEqual "Total: defined for every (CSignedInt64, CSignedInt64) input pair."
+guarantee areSignedInt64ValuesEqual "Total: defined for every (Int64, Int64) input pair."
 label startAreSignedInt64ValuesEqual
-call detectEqualCall math.equalI64
-argument detectEqualCall left I64 leftValue
-argument detectEqualCall right I64 rightValue
+call detectEqualCall math.equalInt64
+argument detectEqualCall left Int64 leftValue
+argument detectEqualCall right Int64 rightValue
 run detectEqualCall
 bind value valuesAreEqual Bool detectEqualCall
 return value valuesAreEqual
 
 # ----- isSignedInt64LeftLessThanRight -----
 operation isSignedInt64LeftLessThanRight
-input operation isSignedInt64LeftLessThanRight leftValue CSignedInt64
-input operation isSignedInt64LeftLessThanRight rightValue CSignedInt64
+input operation isSignedInt64LeftLessThanRight leftValue Int64
+input operation isSignedInt64LeftLessThanRight rightValue Int64
 output operation isSignedInt64LeftLessThanRight Bool
 memory isSignedInt64LeftLessThanRight heap no
 async isSignedInt64LeftLessThanRight no
 purpose operation isSignedInt64LeftLessThanRight "Returns true when leftValue is strictly less than rightValue (signed)."
 invariant operation isSignedInt64LeftLessThanRight "Irreflexive: isSignedInt64LeftLessThanRight(x, x) == false for every x."
-guarantee isSignedInt64LeftLessThanRight "Total over the CSignedInt64 domain."
+guarantee isSignedInt64LeftLessThanRight "Total over the Int64 domain."
 label startIsSignedInt64LeftLessThanRight
-call detectLessThanCall math.lessThanI64
-argument detectLessThanCall left I64 leftValue
-argument detectLessThanCall right I64 rightValue
+call detectLessThanCall math.lessThanInt64
+argument detectLessThanCall left Int64 leftValue
+argument detectLessThanCall right Int64 rightValue
 run detectLessThanCall
 bind value leftLessThanRight Bool detectLessThanCall
 return value leftLessThanRight
 
 # ----- isSignedInt64LeftLessThanOrEqualRight -----
 operation isSignedInt64LeftLessThanOrEqualRight
-input operation isSignedInt64LeftLessThanOrEqualRight leftValue CSignedInt64
-input operation isSignedInt64LeftLessThanOrEqualRight rightValue CSignedInt64
+input operation isSignedInt64LeftLessThanOrEqualRight leftValue Int64
+input operation isSignedInt64LeftLessThanOrEqualRight rightValue Int64
 output operation isSignedInt64LeftLessThanOrEqualRight Bool
 memory isSignedInt64LeftLessThanOrEqualRight heap no
 async isSignedInt64LeftLessThanOrEqualRight no
 purpose operation isSignedInt64LeftLessThanOrEqualRight "Returns true when leftValue is less than or equal to rightValue (signed)."
 invariant operation isSignedInt64LeftLessThanOrEqualRight "Reflexive: holds when leftValue == rightValue."
-guarantee isSignedInt64LeftLessThanOrEqualRight "Total over the CSignedInt64 domain."
+guarantee isSignedInt64LeftLessThanOrEqualRight "Total over the Int64 domain."
 label startIsSignedInt64LeftLessThanOrEqualRight
-call detectLessThanOrEqualCall math.lessThanOrEqualI64
-argument detectLessThanOrEqualCall left I64 leftValue
-argument detectLessThanOrEqualCall right I64 rightValue
+call detectLessThanOrEqualCall math.lessThanOrEqualInt64
+argument detectLessThanOrEqualCall left Int64 leftValue
+argument detectLessThanOrEqualCall right Int64 rightValue
 run detectLessThanOrEqualCall
 bind value leftLessThanOrEqualRight Bool detectLessThanOrEqualCall
 return value leftLessThanOrEqualRight
 
 # ----- isSignedInt64LeftGreaterThanRight -----
 operation isSignedInt64LeftGreaterThanRight
-input operation isSignedInt64LeftGreaterThanRight leftValue CSignedInt64
-input operation isSignedInt64LeftGreaterThanRight rightValue CSignedInt64
+input operation isSignedInt64LeftGreaterThanRight leftValue Int64
+input operation isSignedInt64LeftGreaterThanRight rightValue Int64
 output operation isSignedInt64LeftGreaterThanRight Bool
 memory isSignedInt64LeftGreaterThanRight heap no
 async isSignedInt64LeftGreaterThanRight no
 purpose operation isSignedInt64LeftGreaterThanRight "Returns true when leftValue is strictly greater than rightValue (signed)."
 invariant operation isSignedInt64LeftGreaterThanRight "Irreflexive: isSignedInt64LeftGreaterThanRight(x, x) == false for every x."
-guarantee isSignedInt64LeftGreaterThanRight "Total over the CSignedInt64 domain."
+guarantee isSignedInt64LeftGreaterThanRight "Total over the Int64 domain."
 label startIsSignedInt64LeftGreaterThanRight
-call detectGreaterThanCall math.greaterThanI64
-argument detectGreaterThanCall left I64 leftValue
-argument detectGreaterThanCall right I64 rightValue
+call detectGreaterThanCall math.greaterThanInt64
+argument detectGreaterThanCall left Int64 leftValue
+argument detectGreaterThanCall right Int64 rightValue
 run detectGreaterThanCall
 bind value leftGreaterThanRight Bool detectGreaterThanCall
 return value leftGreaterThanRight
 
 # ----- isSignedInt64LeftGreaterThanOrEqualRight -----
 operation isSignedInt64LeftGreaterThanOrEqualRight
-input operation isSignedInt64LeftGreaterThanOrEqualRight leftValue CSignedInt64
-input operation isSignedInt64LeftGreaterThanOrEqualRight rightValue CSignedInt64
+input operation isSignedInt64LeftGreaterThanOrEqualRight leftValue Int64
+input operation isSignedInt64LeftGreaterThanOrEqualRight rightValue Int64
 output operation isSignedInt64LeftGreaterThanOrEqualRight Bool
 memory isSignedInt64LeftGreaterThanOrEqualRight heap no
 async isSignedInt64LeftGreaterThanOrEqualRight no
 purpose operation isSignedInt64LeftGreaterThanOrEqualRight "Returns true when leftValue is greater than or equal to rightValue (signed)."
 invariant operation isSignedInt64LeftGreaterThanOrEqualRight "Reflexive: holds when leftValue == rightValue."
-guarantee isSignedInt64LeftGreaterThanOrEqualRight "Total over the CSignedInt64 domain."
+guarantee isSignedInt64LeftGreaterThanOrEqualRight "Total over the Int64 domain."
 label startIsSignedInt64LeftGreaterThanOrEqualRight
-call detectGreaterThanOrEqualCall math.greaterThanOrEqualI64
-argument detectGreaterThanOrEqualCall left I64 leftValue
-argument detectGreaterThanOrEqualCall right I64 rightValue
+call detectGreaterThanOrEqualCall math.greaterThanOrEqualInt64
+argument detectGreaterThanOrEqualCall left Int64 leftValue
+argument detectGreaterThanOrEqualCall right Int64 rightValue
 run detectGreaterThanOrEqualCall
 bind value leftGreaterThanOrEqualRight Bool detectGreaterThanOrEqualCall
 return value leftGreaterThanOrEqualRight
 
 # section compare.float64
-# rationale: ordering + tolerance-aware equality for CFloat64.
+# rationale: ordering + tolerance-aware equality for Float64.
 # warning: float comparisons do not currently model IEEE-754 NaN; a
 #   NaN input compares "not less, not greater, not equal" and yields
 #   comparisonResultEqual via the trichotomy fallthrough. Callers that
@@ -196,25 +196,25 @@ return value leftGreaterThanOrEqualRight
 
 # ----- compareFloat64Ordering -----
 operation compareFloat64Ordering
-input operation compareFloat64Ordering leftValue CFloat64
-input operation compareFloat64Ordering rightValue CFloat64
+input operation compareFloat64Ordering leftValue Float64
+input operation compareFloat64Ordering rightValue Float64
 output operation compareFloat64Ordering Ordering
 memory compareFloat64Ordering heap no
 async compareFloat64Ordering no
 purpose operation compareFloat64Ordering "Three-way ordering for double-precision floats; returns Ordering."
 invariant operation compareFloat64Ordering "Anti-symmetric for non-NaN pairs."
 warning compareFloat64Ordering "NaN inputs collapse to comparisonResultEqual under the current lowering â€” use c.isnan upstream when NaN-safe ordering is required."
-guarantee compareFloat64Ordering "Total over the non-NaN CFloat64 domain."
+guarantee compareFloat64Ordering "Total over the non-NaN Float64 domain."
 label startCompareFloat64Ordering
-call detectFloatLessThanCall math.lessThanF64
-argument detectFloatLessThanCall left F64 leftValue
-argument detectFloatLessThanCall right F64 rightValue
+call detectFloatLessThanCall math.lessThanFloat64
+argument detectFloatLessThanCall left Float64 leftValue
+argument detectFloatLessThanCall right Float64 rightValue
 run detectFloatLessThanCall
 bind value floatLeftLessThan Bool detectFloatLessThanCall
 branch if condition floatLeftLessThan target returnFloatLessThan
-call detectFloatGreaterThanCall math.greaterThanF64
-argument detectFloatGreaterThanCall left F64 leftValue
-argument detectFloatGreaterThanCall right F64 rightValue
+call detectFloatGreaterThanCall math.greaterThanFloat64
+argument detectFloatGreaterThanCall left Float64 leftValue
+argument detectFloatGreaterThanCall right Float64 rightValue
 run detectFloatGreaterThanCall
 bind value floatLeftGreaterThan Bool detectFloatGreaterThanCall
 branch if condition floatLeftGreaterThan target returnFloatGreaterThan
@@ -226,45 +226,45 @@ return value comparisonResultGreaterThan
 
 # ----- areFloat64ValuesWithinTolerance -----
 operation areFloat64ValuesWithinTolerance
-input operation areFloat64ValuesWithinTolerance leftValue CFloat64
-input operation areFloat64ValuesWithinTolerance rightValue CFloat64
-input operation areFloat64ValuesWithinTolerance tolerance CFloat64
+input operation areFloat64ValuesWithinTolerance leftValue Float64
+input operation areFloat64ValuesWithinTolerance rightValue Float64
+input operation areFloat64ValuesWithinTolerance tolerance Float64
 output operation areFloat64ValuesWithinTolerance Bool
 memory areFloat64ValuesWithinTolerance heap no
 async areFloat64ValuesWithinTolerance no
 purpose operation areFloat64ValuesWithinTolerance "Returns true when the absolute difference between leftValue and rightValue is less than or equal to tolerance."
 invariant operation areFloat64ValuesWithinTolerance "Symmetric: result is independent of left/right ordering."
 warning areFloat64ValuesWithinTolerance "Caller is responsible for choosing a sensible tolerance; a negative tolerance always returns false."
-guarantee areFloat64ValuesWithinTolerance "Total over the non-NaN CFloat64 domain."
+guarantee areFloat64ValuesWithinTolerance "Total over the non-NaN Float64 domain."
 label startAreFloat64ValuesWithinTolerance
-storage module immutable zeroFloat CFloat64 0.0
-storage module immutable negativeOneFloat CFloat64 -1.0
-call computeDifferenceCall math.subtractF64
-argument computeDifferenceCall left F64 leftValue
-argument computeDifferenceCall right F64 rightValue
+storage module immutable zeroFloat Float64 0.0
+storage module immutable negativeOneFloat Float64 -1.0
+call computeDifferenceCall math.subtractFloat64
+argument computeDifferenceCall left Float64 leftValue
+argument computeDifferenceCall right Float64 rightValue
 run computeDifferenceCall
-bind value rawDifference CFloat64 computeDifferenceCall
-memory areFloat64ValuesWithinTolerance mutable absoluteDifferenceAccumulator CFloat64 zeroFloat
+bind value rawDifference Float64 computeDifferenceCall
+memory areFloat64ValuesWithinTolerance mutable absoluteDifferenceAccumulator Float64 zeroFloat
 set memory absoluteDifferenceAccumulator rawDifference
-call detectDifferenceIsNegativeCall math.lessThanF64
-argument detectDifferenceIsNegativeCall left F64 absoluteDifferenceAccumulator
-argument detectDifferenceIsNegativeCall right F64 zeroFloat
+call detectDifferenceIsNegativeCall math.lessThanFloat64
+argument detectDifferenceIsNegativeCall left Float64 absoluteDifferenceAccumulator
+argument detectDifferenceIsNegativeCall right Float64 zeroFloat
 run detectDifferenceIsNegativeCall
 bind value differenceIsNegative Bool detectDifferenceIsNegativeCall
 branch if condition differenceIsNegative target negateAccumulator
 branch else target compareAgainstTolerance
 label negateAccumulator
-call negateDifferenceCall math.multiplyF64
-argument negateDifferenceCall left F64 absoluteDifferenceAccumulator
-argument negateDifferenceCall right F64 negativeOneFloat
+call negateDifferenceCall math.multiplyFloat64
+argument negateDifferenceCall left Float64 absoluteDifferenceAccumulator
+argument negateDifferenceCall right Float64 negativeOneFloat
 run negateDifferenceCall
-bind value negatedDifference CFloat64 negateDifferenceCall
+bind value negatedDifference Float64 negateDifferenceCall
 set memory absoluteDifferenceAccumulator negatedDifference
 jump target compareAgainstTolerance
 label compareAgainstTolerance
-call detectWithinToleranceCall math.lessThanOrEqualF64
-argument detectWithinToleranceCall left CFloat64 absoluteDifferenceAccumulator
-argument detectWithinToleranceCall right CFloat64 tolerance
+call detectWithinToleranceCall math.lessThanOrEqualFloat64
+argument detectWithinToleranceCall left Float64 absoluteDifferenceAccumulator
+argument detectWithinToleranceCall right Float64 tolerance
 run detectWithinToleranceCall
 bind value isWithinTolerance Bool detectWithinToleranceCall
 return value isWithinTolerance

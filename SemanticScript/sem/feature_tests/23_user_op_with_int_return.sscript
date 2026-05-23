@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation doubleIt
-input operation doubleIt n CSignedInt64
-output operation doubleIt Result CSignedInt64 Void
+input operation doubleIt n Int64
+output operation doubleIt Result Int64 Void
 memory doubleIt heap no
 async doubleIt no
 purpose operation doubleIt "Return n * 2."
 invariant operation doubleIt "Result is twice the input."
 label startDoubleIt
-storage module immutable twoLit I64 2
-call mulCall math.multiplyI64
-argument mulCall left CSignedInt64 n
-argument mulCall right I64 twoLit
+storage module immutable twoLit Int64 2
+call mulCall math.multiplyInt64
+argument mulCall left Int64 n
+argument mulCall right Int64 twoLit
 run mulCall
-bind value productResult I64 mulCall
+bind value productResult Int64 mulCall
 return ok productResult
 
 operation main
@@ -32,17 +32,17 @@ async main no
 purpose operation main "Call user op doubleIt(4) and print result."
 invariant operation main "Outputs 8."
 label startMain
-storage module immutable fourInitial I64 4
-memory main mutable nValue I64 fourInitial
+storage module immutable fourInitial Int64 4
+memory main mutable nValue Int64 fourInitial
 call dblCall doubleIt
-argument dblCall n CSignedInt64 nValue
+argument dblCall n Int64 nValue
 run dblCall
-bind ok dblResult I64 dblCall
-memory main mutable resultVar I64 fourInitial
+bind ok dblResult Int64 dblCall
+memory main mutable resultVar Int64 fourInitial
 set memory resultVar dblResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

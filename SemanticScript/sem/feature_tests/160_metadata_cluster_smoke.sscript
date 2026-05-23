@@ -21,26 +21,26 @@ type TaskLookupResult result ok TaskId error TaskLookupError
 
 # ---- error cluster ----
 error MainError
-errorCase MainError MetadataLookupFailed CSignedInt32
+errorCase MainError MetadataLookupFailed Int32
 error TaskLookupError
-errorCase TaskLookupError TaskNotFound CSignedInt32
-errorCase TaskLookupError DatabaseUnavailable CSignedInt32
+errorCase TaskLookupError TaskNotFound Int32
+errorCase TaskLookupError DatabaseUnavailable Int32
 
 # ---- enum + record cluster ----
-enum TaskPriorityLevel repr CSignedInt32
+enum TaskPriorityLevel repr Int32
 enumCase TaskPriorityLevel LowPriority 0
 enumCase TaskPriorityLevel MediumPriority 1
 enumCase TaskPriorityLevel HighPriority 2
 record TaskRecord
-field TaskRecord identifier I64
-field TaskRecord priority I64
+field TaskRecord identifier Int64
+field TaskRecord priority Int64
 recordLayout TaskRecord packed
 recordAlign TaskRecord 8
 
 # ---- trust boundary cluster ----
 trustBoundary AccountId
 trustBoundaryKind AccountId raw-to-trusted
-trustBoundaryInput AccountId CNullTerminatedByteString
+trustBoundaryInput AccountId String
 trustBoundaryOutput AccountId AccountId
 trustBoundaryValidator AccountId accountIdValidator
 trustBoundarySource AccountId trustedSessionContext
@@ -76,7 +76,7 @@ authority main trustedInternal database.read
 
 # ---- resource cluster ----
 resource taskQueryHandle kind opaque
-resourceKey taskQueryHandle CSignedInt64
+resourceKey taskQueryHandle Int64
 resourceValue taskQueryHandle TaskRecord
 resourceKind taskQueryHandle internalHandle
 
@@ -87,7 +87,7 @@ unknownFields taskRecordCodec reject
 jsonCodec taskRecordJsonCodec
 jsonCodecStrict taskRecordJsonCodec yes
 jsonCodecUnknownFields taskRecordJsonCodec reject
-jsonCodecInput taskRecordJsonCodec CNullTerminatedByteString
+jsonCodecInput taskRecordJsonCodec String
 jsonCodecOutput taskRecordJsonCodec TaskRecord
 jsonCodecDecodeTarget taskRecordJsonCodec decodeTaskRecord
 jsonCodecEncodeTarget taskRecordJsonCodec encodeTaskRecord
@@ -132,13 +132,13 @@ listLiteralIndexBase defaultPriorityList 0
 listLiteralIndexPolicy defaultPriorityList denseZeroIndexed
 
 # ---- domain literal cluster ----
-domainLiteral defaultAccountIdValue CNullTerminatedByteString "00000000-0000-0000-0000-000000000000"
+domainLiteral defaultAccountIdValue String "00000000-0000-0000-0000-000000000000"
 domainLiteralSource defaultAccountIdValue rfc4122.NilUuid
 domainLiteralTrust defaultAccountIdValue trustedStaticLiteral
 domainLiteralValidation defaultAccountIdValue trustedUtf8Literal
 
 # ---- external literal cluster ----
-literal externalTaskMessage CNullTerminatedByteString
+literal externalTaskMessage String
 literalBytes externalTaskMessage 32
 literalDigest externalTaskMessage sha256 deadbeefcafe1234
 literalPreview externalTaskMessage "task message preview"
@@ -146,9 +146,9 @@ literalSource externalTaskMessage "_modules/external_greeting_alpha.txt"
 literalTrust externalTaskMessage trustedStaticAsset
 
 # ---- storage cluster ----
-storage module immutable maxAttemptCountConst I64 3
-storage module mutable currentAttemptIndexState I64 0
-sharedState process mutable globalTaskCounter I64 0
+storage module immutable maxAttemptCountConst Int64 3
+storage module mutable currentAttemptIndexState Int64 0
+sharedState process mutable globalTaskCounter Int64 0
 sharedStateOwner globalTaskCounter taskTrackerModule
 sharedStateGuard globalTaskCounter taskCounterGuardToken
 
@@ -176,10 +176,10 @@ timing main "Runs synchronously to completion."
 observability main "Prints a single success line."
 
 label startMain
-storage module immutable successMessage CNullTerminatedByteString "metadataClusterOk"
+storage module immutable successMessage String "metadataClusterOk"
 call writeSuccessCall console.writeLine
 argument writeSuccessCall console Console console
-argument writeSuccessCall text CNullTerminatedByteString successMessage
+argument writeSuccessCall text String successMessage
 run writeSuccessCall
 ignore void source writeSuccessCall
 storage module immutable successfulExitCode ExitCode 0

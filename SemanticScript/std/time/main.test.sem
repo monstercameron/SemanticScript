@@ -59,15 +59,15 @@ invariant operation main "convertSecondsToWholeHours(3661) == 1; convertHoursToS
 label startMain
 
 # convertSecondsToWholeHours(3661) == 1
-storage module immutable threeThousandSixHundredSixtyOne CSignedInt64 3661
-storage module immutable oneHourCount CSignedInt64 1
+storage module immutable threeThousandSixHundredSixtyOne Int64 3661
+storage module immutable oneHourCount Int64 1
 call assertHoursCall convertSecondsToWholeHours
-argument assertHoursCall secondCount CSignedInt64 threeThousandSixHundredSixtyOne
+argument assertHoursCall secondCount Int64 threeThousandSixHundredSixtyOne
 run assertHoursCall
-bind value hoursResult CSignedInt64 assertHoursCall
-call checkHoursCall math.equalI64
-argument checkHoursCall left I64 hoursResult
-argument checkHoursCall right I64 oneHourCount
+bind value hoursResult Int64 assertHoursCall
+call checkHoursCall math.equalInt64
+argument checkHoursCall left Int64 hoursResult
+argument checkHoursCall right Int64 oneHourCount
 run checkHoursCall
 bind value hoursOk Bool checkHoursCall
 branch if condition hoursOk target hoursHolds
@@ -75,15 +75,15 @@ branch else target smokeAssertionFailed
 label hoursHolds
 
 # convertHoursToSeconds(2) == 7200
-storage module immutable twoHourCount CSignedInt64 2
-storage module immutable sevenThousandTwoHundredValue CSignedInt64 7200
+storage module immutable twoHourCount Int64 2
+storage module immutable sevenThousandTwoHundredValue Int64 7200
 call assertHoursToSecondsCall convertHoursToSeconds
-argument assertHoursToSecondsCall hourCount CSignedInt64 twoHourCount
+argument assertHoursToSecondsCall hourCount Int64 twoHourCount
 run assertHoursToSecondsCall
-bind value hoursToSecondsResult CSignedInt64 assertHoursToSecondsCall
-call checkHoursToSecondsCall math.equalI64
-argument checkHoursToSecondsCall left I64 hoursToSecondsResult
-argument checkHoursToSecondsCall right I64 sevenThousandTwoHundredValue
+bind value hoursToSecondsResult Int64 assertHoursToSecondsCall
+call checkHoursToSecondsCall math.equalInt64
+argument checkHoursToSecondsCall left Int64 hoursToSecondsResult
+argument checkHoursToSecondsCall right Int64 sevenThousandTwoHundredValue
 run checkHoursToSecondsCall
 bind value hoursToSecondsOk Bool checkHoursToSecondsCall
 branch if condition hoursToSecondsOk target hoursToSecondsHolds
@@ -91,9 +91,9 @@ branch else target smokeAssertionFailed
 label hoursToSecondsHolds
 
 # isGregorianLeapYear(2000) == true
-storage module immutable yearTwoThousand CSignedInt64 2000
+storage module immutable yearTwoThousand Int64 2000
 call assertLeapYear2000Call isGregorianLeapYear
-argument assertLeapYear2000Call candidateYear CSignedInt64 yearTwoThousand
+argument assertLeapYear2000Call candidateYear Int64 yearTwoThousand
 run assertLeapYear2000Call
 bind value leap2000Result Bool assertLeapYear2000Call
 branch if condition leap2000Result target leap2000Holds
@@ -101,17 +101,17 @@ branch else target smokeAssertionFailed
 label leap2000Holds
 
 # isGregorianLeapYear(1900) == false
-storage module immutable yearNineteenHundred CSignedInt64 1900
+storage module immutable yearNineteenHundred Int64 1900
 call assertLeapYear1900Call isGregorianLeapYear
-argument assertLeapYear1900Call candidateYear CSignedInt64 yearNineteenHundred
+argument assertLeapYear1900Call candidateYear Int64 yearNineteenHundred
 run assertLeapYear1900Call
 bind value leap1900Result Bool assertLeapYear1900Call
 branch if condition leap1900Result target smokeAssertionFailed
 
 # isGregorianLeapYear(2024) == true
-storage module immutable yearTwoThousandTwentyFour CSignedInt64 2024
+storage module immutable yearTwoThousandTwentyFour Int64 2024
 call assertLeapYear2024Call isGregorianLeapYear
-argument assertLeapYear2024Call candidateYear CSignedInt64 yearTwoThousandTwentyFour
+argument assertLeapYear2024Call candidateYear Int64 yearTwoThousandTwentyFour
 run assertLeapYear2024Call
 bind value leap2024Result Bool assertLeapYear2024Call
 branch if condition leap2024Result target leap2024Holds
@@ -124,25 +124,25 @@ label leap2024Holds
 # convertUnixEpochSecondsToDays) plus boundary leap-year cases.
 # ============================================================
 
-storage module immutable zeroSecondsValue CSignedInt64 0
-storage module immutable oneTwentySeconds CSignedInt64 120
-storage module immutable twoMinutes CSignedInt64 2
-storage module immutable fiftyNineSeconds CSignedInt64 59
-storage module immutable threeMinutes CSignedInt64 3
-storage module immutable oneEightyValue CSignedInt64 180
-storage module immutable oneFullDaySeconds CSignedInt64 86400
-storage module immutable oneDayCount CSignedInt64 1
-storage module immutable yearTwentyTwentyThree CSignedInt64 2023
-storage module immutable yearTwoFourHundred CSignedInt64 2400
+storage module immutable zeroSecondsValue Int64 0
+storage module immutable oneTwentySeconds Int64 120
+storage module immutable twoMinutes Int64 2
+storage module immutable fiftyNineSeconds Int64 59
+storage module immutable threeMinutes Int64 3
+storage module immutable oneEightyValue Int64 180
+storage module immutable oneFullDaySeconds Int64 86400
+storage module immutable oneDayCount Int64 1
+storage module immutable yearTwentyTwentyThree Int64 2023
+storage module immutable yearTwoFourHundred Int64 2400
 
 # convertSecondsToWholeMinutes(120) == 2
 call minFromSecCall convertSecondsToWholeMinutes
-argument minFromSecCall secondCount CSignedInt64 oneTwentySeconds
+argument minFromSecCall secondCount Int64 oneTwentySeconds
 run minFromSecCall
-bind value minFromSecResult CSignedInt64 minFromSecCall
-call checkMinFromSecCall math.equalI64
-argument checkMinFromSecCall left I64 minFromSecResult
-argument checkMinFromSecCall right I64 twoMinutes
+bind value minFromSecResult Int64 minFromSecCall
+call checkMinFromSecCall math.equalInt64
+argument checkMinFromSecCall left Int64 minFromSecResult
+argument checkMinFromSecCall right Int64 twoMinutes
 run checkMinFromSecCall
 bind value minFromSecOk Bool checkMinFromSecCall
 branch if condition minFromSecOk target minFromSecHolds
@@ -151,12 +151,12 @@ label minFromSecHolds
 
 # convertSecondsToWholeMinutes(59) == 0 (truncation boundary)
 call minFromSecZeroCall convertSecondsToWholeMinutes
-argument minFromSecZeroCall secondCount CSignedInt64 fiftyNineSeconds
+argument minFromSecZeroCall secondCount Int64 fiftyNineSeconds
 run minFromSecZeroCall
-bind value minFromSecZeroResult CSignedInt64 minFromSecZeroCall
-call checkMinFromSecZeroCall math.equalI64
-argument checkMinFromSecZeroCall left I64 minFromSecZeroResult
-argument checkMinFromSecZeroCall right I64 zeroSecondsValue
+bind value minFromSecZeroResult Int64 minFromSecZeroCall
+call checkMinFromSecZeroCall math.equalInt64
+argument checkMinFromSecZeroCall left Int64 minFromSecZeroResult
+argument checkMinFromSecZeroCall right Int64 zeroSecondsValue
 run checkMinFromSecZeroCall
 bind value minFromSecZeroOk Bool checkMinFromSecZeroCall
 branch if condition minFromSecZeroOk target minFromSecZeroHolds
@@ -165,12 +165,12 @@ label minFromSecZeroHolds
 
 # convertMinutesToSeconds(3) == 180
 call secFromMinCall convertMinutesToSeconds
-argument secFromMinCall minuteCount CSignedInt64 threeMinutes
+argument secFromMinCall minuteCount Int64 threeMinutes
 run secFromMinCall
-bind value secFromMinResult CSignedInt64 secFromMinCall
-call checkSecFromMinCall math.equalI64
-argument checkSecFromMinCall left I64 secFromMinResult
-argument checkSecFromMinCall right I64 oneEightyValue
+bind value secFromMinResult Int64 secFromMinCall
+call checkSecFromMinCall math.equalInt64
+argument checkSecFromMinCall left Int64 secFromMinResult
+argument checkSecFromMinCall right Int64 oneEightyValue
 run checkSecFromMinCall
 bind value secFromMinOk Bool checkSecFromMinCall
 branch if condition secFromMinOk target secFromMinHolds
@@ -179,12 +179,12 @@ label secFromMinHolds
 
 # convertMinutesToSeconds(0) == 0
 call secFromZeroMinCall convertMinutesToSeconds
-argument secFromZeroMinCall minuteCount CSignedInt64 zeroSecondsValue
+argument secFromZeroMinCall minuteCount Int64 zeroSecondsValue
 run secFromZeroMinCall
-bind value secFromZeroMinResult CSignedInt64 secFromZeroMinCall
-call checkSecFromZeroMinCall math.equalI64
-argument checkSecFromZeroMinCall left I64 secFromZeroMinResult
-argument checkSecFromZeroMinCall right I64 zeroSecondsValue
+bind value secFromZeroMinResult Int64 secFromZeroMinCall
+call checkSecFromZeroMinCall math.equalInt64
+argument checkSecFromZeroMinCall left Int64 secFromZeroMinResult
+argument checkSecFromZeroMinCall right Int64 zeroSecondsValue
 run checkSecFromZeroMinCall
 bind value secFromZeroMinOk Bool checkSecFromZeroMinCall
 branch if condition secFromZeroMinOk target secFromZeroMinHolds
@@ -193,12 +193,12 @@ label secFromZeroMinHolds
 
 # convertUnixEpochSecondsToDays(86400) == 1
 call daysCall convertUnixEpochSecondsToDays
-argument daysCall unixEpochSeconds CSignedInt64 oneFullDaySeconds
+argument daysCall unixEpochSeconds Int64 oneFullDaySeconds
 run daysCall
-bind value daysResult CSignedInt64 daysCall
-call checkDaysCall math.equalI64
-argument checkDaysCall left I64 daysResult
-argument checkDaysCall right I64 oneDayCount
+bind value daysResult Int64 daysCall
+call checkDaysCall math.equalInt64
+argument checkDaysCall left Int64 daysResult
+argument checkDaysCall right Int64 oneDayCount
 run checkDaysCall
 bind value daysOk Bool checkDaysCall
 branch if condition daysOk target daysHolds
@@ -207,12 +207,12 @@ label daysHolds
 
 # convertSecondsToWholeHours(0) == 0
 call hoursZeroCall convertSecondsToWholeHours
-argument hoursZeroCall secondCount CSignedInt64 zeroSecondsValue
+argument hoursZeroCall secondCount Int64 zeroSecondsValue
 run hoursZeroCall
-bind value hoursZeroResult CSignedInt64 hoursZeroCall
-call checkHoursZeroCall math.equalI64
-argument checkHoursZeroCall left I64 hoursZeroResult
-argument checkHoursZeroCall right I64 zeroSecondsValue
+bind value hoursZeroResult Int64 hoursZeroCall
+call checkHoursZeroCall math.equalInt64
+argument checkHoursZeroCall left Int64 hoursZeroResult
+argument checkHoursZeroCall right Int64 zeroSecondsValue
 run checkHoursZeroCall
 bind value hoursZeroOk Bool checkHoursZeroCall
 branch if condition hoursZeroOk target hoursZeroHolds
@@ -221,7 +221,7 @@ label hoursZeroHolds
 
 # isGregorianLeapYear(2023) == false (typical non-leap)
 call leap2023Call isGregorianLeapYear
-argument leap2023Call candidateYear CSignedInt64 yearTwentyTwentyThree
+argument leap2023Call candidateYear Int64 yearTwentyTwentyThree
 run leap2023Call
 bind value leap2023Result Bool leap2023Call
 branch if condition leap2023Result target smokeAssertionFailed
@@ -230,7 +230,7 @@ label leap2023Holds
 
 # isGregorianLeapYear(2400) == true (divisible by 400, the century leap rule)
 call leap2400Call isGregorianLeapYear
-argument leap2400Call candidateYear CSignedInt64 yearTwoFourHundred
+argument leap2400Call candidateYear Int64 yearTwoFourHundred
 run leap2400Call
 bind value leap2400Result Bool leap2400Call
 branch if condition leap2400Result target leap2400Holds
@@ -243,30 +243,30 @@ label leap2400Holds
 # flag the bind as dead. Either branch lands at the same label.
 call exerciseCpuClockCall readProcessCpuClockTicks
 run exerciseCpuClockCall
-bind value cpuClockTicksObserved CSignedInt64 exerciseCpuClockCall
+bind value cpuClockTicksObserved Int64 exerciseCpuClockCall
 branch if condition cpuClockTicksObserved target cpuClockExercised
 branch else target cpuClockExercised
 label cpuClockExercised
 
 call exerciseUnixTimeCall readCurrentUnixEpochSeconds
 run exerciseUnixTimeCall
-bind value unixEpochSecondsObserved CSignedInt64 exerciseUnixTimeCall
+bind value unixEpochSecondsObserved Int64 exerciseUnixTimeCall
 branch if condition unixEpochSecondsObserved target unixTimeExercised
 branch else target unixTimeExercised
 label unixTimeExercised
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

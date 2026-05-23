@@ -5,16 +5,16 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation getOkLabel
-output operation getOkLabel Result CNullTerminatedByteString Void
+output operation getOkLabel Result String Void
 memory getOkLabel heap no
 async getOkLabel no
 purpose operation getOkLabel "Return a fixed string-const. Exercises pointer-returning user-op signature plus returnOk-of-string-const path that emits `ret i8* getelementptr inbounds`."
 invariant operation getOkLabel "Used by main to print the returned message."
 label startGetOkLabel
-storage module immutable okMessage CNullTerminatedByteString "ok"
+storage module immutable okMessage String "ok"
 return ok okMessage
 
 operation main
@@ -28,28 +28,28 @@ invariant operation main "Uses c.putchar so the walker fires (the legacy string-
 label startMain
 call getMessageCall getOkLabel
 run getMessageCall
-bind ok theMessage CNullTerminatedByteString getMessageCall
-storage module immutable zeroByteIndex I64 0
+bind ok theMessage String getMessageCall
+storage module immutable zeroByteIndex Int64 0
 call firstByteCall pointer.loadByte
-argument firstByteCall buffer CNullTerminatedByteString theMessage
-argument firstByteCall offset I64 zeroByteIndex
+argument firstByteCall buffer String theMessage
+argument firstByteCall offset Int64 zeroByteIndex
 run firstByteCall
-bind value firstByteValue I8 firstByteCall
+bind value firstByteValue Int8 firstByteCall
 call writeFirstCall c.putchar
-argument writeFirstCall c I8 firstByteValue
+argument writeFirstCall c Int8 firstByteValue
 run writeFirstCall
-storage module immutable oneByteIndex I64 1
+storage module immutable oneByteIndex Int64 1
 call secondByteCall pointer.loadByte
-argument secondByteCall buffer CNullTerminatedByteString theMessage
-argument secondByteCall offset I64 oneByteIndex
+argument secondByteCall buffer String theMessage
+argument secondByteCall offset Int64 oneByteIndex
 run secondByteCall
-bind value secondByteValue I8 secondByteCall
+bind value secondByteValue Int8 secondByteCall
 call writeSecondCall c.putchar
-argument writeSecondCall c I8 secondByteValue
+argument writeSecondCall c Int8 secondByteValue
 run writeSecondCall
-storage module immutable newlineByte CSignedInt32 10
+storage module immutable newlineByte Int32 10
 call writeNewlineCall c.putchar
-argument writeNewlineCall c CSignedInt32 newlineByte
+argument writeNewlineCall c Int32 newlineByte
 run writeNewlineCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

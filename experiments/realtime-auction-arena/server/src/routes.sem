@@ -57,9 +57,9 @@ field EventStreamRouteDetail replayInputs String
 field EventStreamRouteDetail replayOrdering String
 field EventStreamRouteDetail liveStreamRule String
 field EventStreamRouteDetail heartbeatRule String
-field EventStreamRouteDetail heartbeatMillis I64
+field EventStreamRouteDetail heartbeatMillis Int64
 field EventStreamRouteDetail backpressureRule String
-field EventStreamRouteDetail subscriberQueueLimit I64
+field EventStreamRouteDetail subscriberQueueLimit Int64
 field EventStreamRouteDetail metricsRule String
 field EventStreamRouteDetail runtimeStatus String
 

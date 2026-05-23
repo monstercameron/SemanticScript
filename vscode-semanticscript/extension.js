@@ -38,6 +38,7 @@ const declarationVerbs = new Set([
   'recordFieldJsonName', 'recordFieldJsonOmitWhen',
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
+  'routeNotFound', 'routeMethodNotAllowed',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
   'storage', 'sharedState', 'domainLiteral', 'json', 'jsonBody', 'sql', 'sqlBody',
   'literal', 'listLiteral', 'html', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
@@ -57,6 +58,7 @@ const contextVerbs = new Set([
   'pinsNullBodyFailurePath', 'responseBodyForwarder', 'htmlArg', 'htmlBody', 'rationale',
   'dependencyPath', 'dependencyFailure', 'intrinsicName',
   'runtimeBinding', 'runtimeBindingPrecondition', 'runtimeBindingFailure',
+  'runtimeBindingAsyncStart', 'runtimeBindingAsyncAwait',
   'recordConstructor', 'recordConstructorFailure', 'recordBuildFailure',
   'jsonCodecStrict', 'jsonCodecUnknownFields', 'jsonCodecDecodeTarget',
   'jsonCodecEncodeTarget', 'jsonCodecRequiredField', 'jsonCodecInput',
@@ -106,47 +108,47 @@ const controlVerbs = new Set([
 const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Guard|State|Storage|Select|Record|Builder|Field|Enum|Variant|Template|Html|Document|Fragment|Class|Value|Counter|Count|Index|Length|Capacity|Allocator|Source|Target|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
 
 const primitiveTargets = new Map([
-  ['console.writeLine', 'puts(text) -> i32. Writes one text line.'],
-  ['console.writeIntegerLine', 'printf("%lld\\n", value) -> i32. Writes one integer line.'],
+  ['console.writeLine', 'puts(text) -> Int32. Writes one text line.'],
+  ['console.writeIntegerLine', 'printf("%lld\\n", value) -> Int32. Writes one integer line.'],
   ['console.writeInteger', 'Alias for console.writeIntegerLine.'],
-  ['console.writeFloatLine', 'printf("%f\\n", value) -> i32. Writes one floating-point line.'],
-  ['math.addI64', 'i64 addition. Infallible math target; use bind.'],
-  ['math.subtractI64', 'i64 subtraction. Infallible math target; use bind.'],
-  ['math.multiplyI64', 'i64 multiplication. Infallible math target; use bind.'],
-  ['math.divideI64', 'i64 signed division. Infallible in the current AST model; use bind.'],
-  ['math.moduloI64', 'i64 signed remainder. Infallible in the current AST model; use bind.'],
-  ['math.equalI64', 'i64 equality comparison returning Bool.'],
-  ['math.notEqualI64', 'i64 inequality comparison returning Bool.'],
-  ['math.lessThanI64', 'i64 less-than comparison returning Bool.'],
-  ['math.lessThanOrEqualI64', 'i64 less-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanI64', 'i64 greater-than comparison returning Bool.'],
-  ['math.greaterThanOrEqualI64', 'i64 greater-than-or-equal comparison returning Bool.'],
-  ['math.addF64', 'F64 addition. Infallible math target; use bind.'],
-  ['math.subtractF64', 'F64 subtraction. Infallible math target; use bind.'],
-  ['math.multiplyF64', 'F64 multiplication. Infallible math target; use bind.'],
-  ['math.divideF64', 'F64 division. Infallible math target; use bind.'],
-  ['math.equalF64', 'F64 equality comparison returning Bool.'],
-  ['math.notEqualF64', 'F64 inequality comparison returning Bool.'],
-  ['math.lessThanF64', 'F64 less-than comparison returning Bool.'],
-  ['math.lessThanOrEqualF64', 'F64 less-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanF64', 'F64 greater-than comparison returning Bool.'],
-  ['math.greaterThanOrEqualF64', 'F64 greater-than-or-equal comparison returning Bool.'],
-  ['math.intToFloat', 'Signed integer to F64 conversion.'],
-  ['math.floatToInt', 'F64 to signed integer conversion, rounding toward zero.'],
+  ['console.writeFloatLine', 'printf("%f\\n", value) -> Int32. Writes one floating-point line.'],
+  ['math.addInt64', 'Int64 addition. Infallible math target; use bind.'],
+  ['math.subtractInt64', 'Int64 subtraction. Infallible math target; use bind.'],
+  ['math.multiplyInt64', 'Int64 multiplication. Infallible math target; use bind.'],
+  ['math.divideInt64', 'Int64 signed division. Infallible in the current AST model; use bind.'],
+  ['math.moduloInt64', 'Int64 signed remainder. Infallible in the current AST model; use bind.'],
+  ['math.equalInt64', 'Int64 equality comparison returning Bool.'],
+  ['math.notEqualInt64', 'Int64 inequality comparison returning Bool.'],
+  ['math.lessThanInt64', 'Int64 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualInt64', 'Int64 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanInt64', 'Int64 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualInt64', 'Int64 greater-than-or-equal comparison returning Bool.'],
+  ['math.addFloat64', 'Float64 addition. Infallible math target; use bind.'],
+  ['math.subtractFloat64', 'Float64 subtraction. Infallible math target; use bind.'],
+  ['math.multiplyFloat64', 'Float64 multiplication. Infallible math target; use bind.'],
+  ['math.divideFloat64', 'Float64 division. Infallible math target; use bind.'],
+  ['math.equalFloat64', 'Float64 equality comparison returning Bool.'],
+  ['math.notEqualFloat64', 'Float64 inequality comparison returning Bool.'],
+  ['math.lessThanFloat64', 'Float64 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualFloat64', 'Float64 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanFloat64', 'Float64 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualFloat64', 'Float64 greater-than-or-equal comparison returning Bool.'],
+  ['math.intToFloat', 'Signed integer to Float64 conversion.'],
+  ['math.floatToInt', 'Float64 to signed integer conversion, rounding toward zero.'],
   ['math.convertSignedInt64ToFloat64', 'Alias for math.intToFloat.'],
   ['math.convertFloat64ToSignedInt64', 'Alias for math.floatToInt.'],
-  ['math.convertSignedInt32ToSignedInt64', 'Alias for math.signExtendCSignedInt32ToCSignedInt64.'],
-  ['math.convertSignedInt64ToSignedInt32', 'Alias for math.truncateCSignedInt64ToCSignedInt32.'],
-  ['math.signExtendCSignedInt32ToCSignedInt64', 'Explicit signed i32 to i64 conversion.'],
-  ['math.truncateCSignedInt64ToCSignedInt32', 'Explicit signed i64 to i32 truncation. Caller owns range safety.'],
-  ['math.equalCSignedInt32', 'C signed 32-bit equality comparison returning Bool.'],
-  ['math.notEqualCSignedInt32', 'C signed 32-bit inequality comparison returning Bool.'],
-  ['math.lessThanCSignedInt32', 'C signed 32-bit less-than comparison returning Bool.'],
-  ['math.lessThanOrEqualCSignedInt32', 'C signed 32-bit less-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanCSignedInt32', 'C signed 32-bit greater-than comparison returning Bool.'],
-  ['math.greaterThanOrEqualCSignedInt32', 'C signed 32-bit greater-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanOrEqualCByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
-  ['math.checkedMultiplyI64', 'i64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
+  ['math.convertSignedInt32ToSignedInt64', 'Alias for math.signExtendInt32ToInt64.'],
+  ['math.convertSignedInt64ToSignedInt32', 'Alias for math.truncateInt64ToInt32.'],
+  ['math.signExtendInt32ToInt64', 'Explicit signed Int32 to Int64 conversion.'],
+  ['math.truncateInt64ToInt32', 'Explicit signed Int64 to Int32 truncation. Caller owns range safety.'],
+  ['math.equalInt32', 'Signed Int32 equality comparison returning Bool.'],
+  ['math.notEqualInt32', 'Signed Int32 inequality comparison returning Bool.'],
+  ['math.lessThanInt32', 'Signed Int32 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualInt32', 'Signed Int32 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanInt32', 'Signed Int32 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualInt32', 'Signed Int32 greater-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanOrEqualByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
+  ['math.checkedMultiplyInt64', 'Int64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
   ['pointer.loadByte', 'Reads one byte from buffer + offset. Requires declared memory read effects for checked lint paths.'],
   ['pointer.storeByte', 'Writes one byte to buffer + offset. Requires declared memory write effects for checked lint paths.'],
   ['pointer.offset', 'Returns buffer + offset without dereferencing.'],
@@ -154,30 +156,40 @@ const primitiveTargets = new Map([
   ['pointer.isNull', 'Returns Bool indicating whether a pointer is null.'],
   ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bind error, and branch error.'],
   ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
-  ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
+  ['metrics.computeIncrementInt64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
   ['net.fetchText', 'Native HTTP client text fetch. Accepts either request HttpGetRequest or url/timeoutMillis/maxBodyBytes args and returns borrowed response text that must be freed with net.freeTextBody.'],
   ['net.fetchBytes', 'Native HTTP client byte fetch MVP. Shares the text-fetch buffer and should be paired with net.freeTextBody.'],
   ['net.freeTextBody', 'Native HTTP client cleanup target for bodies returned by net.fetchText/net.fetchBytes.'],
-  ['http.responseHtml', 'Native HTTP HTML writer: response, status, body -> CSignedInt32. Uses fixed text/html; charset=utf-8 and rejects null body pointers.'],
-  ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> CSignedInt32. Body must be non-null.'],
-  ['http.responseBytes', 'Native HTTP binary writer: response, status, body, bodyLength, optional contentType -> CSignedInt32. Preserves embedded NUL bytes.'],
-  ['http.responseSseEvent', 'Native one-shot SSE writer: response, status, event, data -> CSignedInt32. Emits text/event-stream and closes the response.'],
-  ['http.responseHeader', 'Native HTTP header writer: response, name, value -> CSignedInt32. Must run before the response body is sent.'],
+  ['http.responseHtml', 'Native HTTP HTML writer: response, status, body -> Int32. Uses fixed text/html; charset=utf-8 and rejects null body pointers.'],
+  ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> Int32. Body must be non-null.'],
+  ['http.responseBytes', 'Native HTTP binary writer: response, status, body, bodyLength, optional contentType -> Int32. Preserves embedded NUL bytes.'],
+  ['http.responseSseEvent', 'Native one-shot SSE writer: response, status, event, data -> Int32. Emits text/event-stream and closes the response.'],
+  ['http.responseHeader', 'Native HTTP header writer: response, name, value -> Int32. Must run before the response body is sent.'],
   ['http.requestMethod', 'Native HTTP request reader: request -> non-null method string.'],
   ['http.requestPath', 'Native HTTP request reader: request -> non-null path string without query.'],
   ['http.requestHeader', 'Native nullable HTTP request header reader: request, name -> string or NULL. Guard before response body use.'],
   ['http.requestQueryParam', 'Native nullable query reader: request, name -> raw first matching value or NULL. Percent decoding is future work.'],
   ['http.requestBodyText', 'Native nullable body-text reader for bounded request bodies. Guard missing/empty bodies explicitly.'],
   ['http.requestBodyBytes', 'Native nullable body-bytes reader for bounded request bodies. Pair with http.requestBodyLength.'],
-  ['http.requestBodyLength', 'Native body length reader: request -> CByteCount. Zero means no bytes.'],
+  ['http.requestBodyLength', 'Native body length reader: request -> ByteCount. Zero means no bytes.'],
   ['http.requestCookie', 'Native nullable cookie reader: request, name -> string or NULL.'],
   ['http.requestPathParam', 'Native route path-parameter reader: request, name -> string or NULL.'],
   ['http.responseFile', 'Native static-file response writer.'],
   ['http.ensureDirectory', 'Native helper for ensuring a filesystem directory exists.'],
   ['http.nowMillis', 'Native helper returning current wall-clock milliseconds.'],
+  ['http.openSseStream', 'standard.http SSE opener: response, status -> Int32. Opens a text/event-stream response with standard headers.'],
+  ['http.writeSseEvent', 'standard.http SSE writer: response, event, data -> Int32. Writes one event frame to an open stream.'],
+  ['http.writeSseEventWithId', 'standard.http SSE writer: response, id, event, data -> Int32. Writes one id-bearing event frame to an open stream.'],
+  ['http.writeSseHeartbeat', 'standard.http SSE heartbeat writer: response, comment -> Int32. Writes one comment heartbeat frame.'],
+  ['http.closeSseStream', 'standard.http SSE closer: response -> Int32. Marks the stream complete for the native adapter.'],
+  ['http.clientDisconnected', 'standard.http stream-state reader: response -> Bool. True after the native writer observed a disconnect or write failure.'],
+  ['http.serverIsShuttingDown', 'standard.http server-state reader: Bool. True once the native HTTP server entered graceful-shutdown drain mode.'],
+  ['http.clientGet', 'standard.http blocking HTTP GET: host, port, path, optional headerLine -> HttpClientResponseBody. Returns the 2xx body or null.'],
+  ['http.clientPost', 'standard.http blocking HTTP POST: host, port, path, optional headerLine, body -> HttpClientResponseBody. Returns the 2xx body or null.'],
+  ['http.escapeHtml', 'standard.http HTML escaper: input, scratch, capacity -> escaped text in caller-owned buffer.'],
   ['http.multipartPartText', 'Native nullable multipart text-part reader: request, name -> string or NULL.'],
   ['http.multipartPartBytes', 'Native nullable multipart binary-part reader: request, name -> pointer or NULL. Pair with http.multipartPartLength.'],
-  ['http.multipartPartLength', 'Native multipart part length reader: request, name -> CByteCount.'],
+  ['http.multipartPartLength', 'Native multipart part length reader: request, name -> ByteCount.'],
   ['http.multipartPartFilename', 'Native nullable multipart filename reader: request, name -> string or NULL.'],
   ['http.multipartPartContentType', 'Native nullable multipart content-type reader: request, name -> string or NULL.'],
   ['gui.applicationCreate', 'Native GUI builder: title -> GuiApplication. Requires allocate gui.application.'],
@@ -201,16 +213,16 @@ const primitiveTargets = new Map([
   ['gui.eventSelectedIndex', 'Native GUI event reader: event -> selected index. Requires read gui.event.'],
   ['gui.eventWindowWidth', 'Native GUI event reader: event -> window width. Requires read gui.event.'],
   ['gui.eventWindowHeight', 'Native GUI event reader: event -> window height. Requires read gui.event.'],
-  ['math.subI64', 'Alias for math.subtractI64.'],
-  ['math.mulI64', 'Alias for math.multiplyI64.'],
-  ['math.divI64', 'Alias for math.divideI64.'],
-  ['math.modI64', 'Alias for math.moduloI64.'],
-  ['math.eqI64', 'Alias for math.equalI64.'],
-  ['math.neI64', 'Alias for math.notEqualI64.'],
-  ['math.ltI64', 'Alias for math.lessThanI64.'],
-  ['math.leI64', 'Alias for math.lessThanOrEqualI64.'],
-  ['math.gtI64', 'Alias for math.greaterThanI64.'],
-  ['math.geI64', 'Alias for math.greaterThanOrEqualI64.'],
+  ['math.subInt64', 'Alias for math.subtractInt64.'],
+  ['math.mulInt64', 'Alias for math.multiplyInt64.'],
+  ['math.divInt64', 'Alias for math.divideInt64.'],
+  ['math.modInt64', 'Alias for math.moduloInt64.'],
+  ['math.eqInt64', 'Alias for math.equalInt64.'],
+  ['math.neInt64', 'Alias for math.notEqualInt64.'],
+  ['math.ltInt64', 'Alias for math.lessThanInt64.'],
+  ['math.leInt64', 'Alias for math.lessThanOrEqualInt64.'],
+  ['math.gtInt64', 'Alias for math.greaterThanInt64.'],
+  ['math.geInt64', 'Alias for math.greaterThanOrEqualInt64.'],
   ['bcrypt.hashPassword', 'Native bcrypt password hashing target from standard.bcrypt.'],
   ['bcrypt.verifyPassword', 'Native bcrypt password verification target from standard.bcrypt.'],
   ['bcrypt.randomBytes', 'Native cryptographic random byte generation target from standard.bcrypt.'],
@@ -239,6 +251,13 @@ const primitiveTargets = new Map([
   ['sqlite.columnBlob', 'Native sqlite blob column reader target. Returns SQLite-owned bytes.'],
   ['sqlite.columnByteCount', 'Native sqlite column byte-count reader target.'],
   ['sqlite.libraryVersion', 'Native sqlite library version reader target.'],
+  ['sqlite.execStatus', 'standard.sqlite direct script execution target: database, sql -> Int32. Returns the native SQLite adapter status code.'],
+  ['jwt.hs256SignJsonPayloadWithRandomJti', 'standard.jwt signer: secret, payloadTemplate, outBuffer, outCapacity -> Int32. Writes an HS256 JWT with a generated jti.'],
+  ['jwt.hs256VerifyToken', 'standard.jwt verifier: token, secret -> Int32. Returns jwtStatusMatch only when the compact JWT signature matches.'],
+  ['jwt.readStringClaim', 'standard.jwt claim reader: token, claimName, outBuffer, outCapacity -> string claim text after caller-verified signature trust.'],
+  ['jwt.readInt64Claim', 'standard.jwt claim reader: token, claimName, missingDefault -> Int64. Returns the caller-supplied default on missing or malformed claims.'],
+  ['jwt.formatBearerLoginEnvelope', 'standard.jwt formatter for access-token login envelopes using caller-supplied user fields, scopes JSON, and output buffer.'],
+  ['jwt.formatBearerRefreshEnvelope', 'standard.jwt formatter for rotated bearer refresh envelopes using caller-supplied tokens and output buffer.'],
   ['json.createBuilder', 'Native JSON builder creation target. Deprecated in favor of the document CRUD API for new code.'],
   ['json.destroyBuilder', 'Native JSON builder cleanup target.'],
   ['json.objectOpen', 'Native JSON builder object-open target.'],
@@ -323,14 +342,14 @@ const primitiveTargets = new Map([
 const generatedTargetPattern = /^(?:json\.(?:encode|decode|parse|stringify)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
 const cRuntimeTargetPattern = /^c\.[A-Za-z_][A-Za-z0-9_]*$/;
 const jsonDecodePrimitiveTargetTypes = new Set([
-  'I64', 'CSignedInt64', 'CSignedInt32', 'CUnsignedInt32',
-  'CSignedInt16', 'CUnsignedInt16', 'CSignedByte', 'CUnsignedByte',
+  'Int64', 'Int64', 'Int32', 'UInt32',
+  'Int16', 'UInt16', 'Int8', 'UInt8',
   'DurationMilliseconds', 'MonotonicMilliseconds', 'UtcMilliseconds',
-  'Bool', 'F64', 'CFloat64', 'CFloat32',
+  'Bool', 'Float64', 'Float64', 'Float32',
 ]);
 const jsonEncodePrimitiveTargetTypes = new Set([
   ...jsonDecodePrimitiveTargetTypes,
-  'String', 'CNullTerminatedByteString',
+  'String', 'String',
 ]);
 const jsonParsePrimitiveTargetTypes = new Set([
   ...jsonDecodePrimitiveTargetTypes,
@@ -499,7 +518,7 @@ const schemaValues = new Map([
   ['trustedInternal', 'Trust marker for internally trusted data.'],
   ['trustedSessionContext', 'Trust marker for values supplied by trusted session context.'],
   ['trustedStaticAsset', 'Trust marker for committed/static assets.'],
-  ['rawPointerToValidatedCString', 'Trust-boundary kind: raw pointer becomes validated C string.'],
+  ['rawPointerToValidatedCString', 'Trust-boundary kind: raw pointer becomes a validated null-terminated string.'],
   ['rawUtf8ToValidatedText', 'Trust-boundary kind: raw UTF-8 becomes validated text.'],
   ['row', 'Record layout kind: row layout.'],
   ['column', 'Record layout kind: column layout.'],
@@ -606,14 +625,14 @@ const domainMethods = new Set([
 ]);
 
 const primitiveTypes = new Map([
-  ['I64', '64-bit integer.'],
-  ['I32', '32-bit integer.'],
-  ['I16', '16-bit integer.'],
-  ['I8', '8-bit integer.'],
+  ['Int64', '64-bit integer.'],
+  ['Int32', '32-bit integer.'],
+  ['Int16', '16-bit integer.'],
+  ['Int8', '8-bit integer.'],
   ['ExitCode', '32-bit process exit code.'],
   ['Bool', 'Boolean value.'],
-  ['F64', '64-bit floating-point value.'],
-  ['F32', '32-bit floating-point value.'],
+  ['Float64', '64-bit floating-point value.'],
+  ['Float32', '32-bit floating-point value.'],
   ['String', 'Null-terminated UTF-8 string.'],
   ['Bytes', 'Byte sequence.'],
   ['Utf8Text', 'UTF-8 text value.'],
@@ -675,37 +694,36 @@ const primitiveTypes = new Map([
   ['GuiListBoxSelectionMode', 'standard.gui list-box selection enum.'],
   ['GuiEventKind', 'standard.gui event-kind enum.'],
   ['GuiRuntimeStatus', 'standard.gui runtime-status enum.'],
-  ['CNullTerminatedByteString', 'Validated null-terminated C byte string.'],
-  ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
-  ['COpaqueMemoryAddress', 'Opaque memory address value.'],
-  ['CString', 'C ABI null-terminated string pointer.'],
-  ['VoidPtr', 'Opaque C void pointer alias.'],
-  ['CVoidPtr', 'Opaque C void pointer alias.'],
-  ['CByteCount', 'C ABI byte-count value.'],
-  ['CSignedByteCount', 'C ABI signed byte-count value.'],
-  ['CAddressOffset', 'C ABI pointer offset value.'],
-  ['CUnixSecondsSinceEpoch', 'C ABI Unix timestamp seconds value.'],
-  ['CCpuClockTicks', 'C ABI CPU clock tick value.'],
-  ['CFileByteOffset', 'C ABI file byte offset value.'],
-  ['CSignedByte', 'C ABI signed 8-bit byte.'],
-  ['CUnsignedByte', 'C ABI unsigned 8-bit byte.'],
-  ['CSignedInt16', 'C ABI signed 16-bit integer.'],
-  ['CUnsignedInt16', 'C ABI unsigned 16-bit integer.'],
-  ['CSignedInt32', 'C ABI signed 32-bit integer.'],
-  ['CUnsignedInt32', 'C ABI unsigned 32-bit integer.'],
-  ['CSignedInt64', 'C ABI signed 64-bit integer.'],
-  ['CUnsignedInt64', 'C ABI unsigned 64-bit integer.'],
-  ['CFloat32', 'C ABI 32-bit floating-point value.'],
-  ['CFloat64', 'C ABI 64-bit floating-point value.'],
-  ['CVoid', 'C ABI void result marker.'],
+  ['String', 'Canonical string primitive.'],
+  ['RawStringPointer', 'Raw null-terminated string pointer before trust-boundary validation.'],
+  ['OpaquePointer', 'Opaque memory address value.'],
+  ['OpaquePointer', 'Opaque C void pointer alias.'],
+  ['OpaquePointer', 'Opaque C void pointer alias.'],
+  ['ByteCount', 'C ABI byte-count value.'],
+  ['SignedByteCount', 'C ABI signed byte-count value.'],
+  ['AddressOffset', 'C ABI pointer offset value.'],
+  ['UnixSecondsSinceEpoch', 'C ABI Unix timestamp seconds value.'],
+  ['CpuClockTicks', 'C ABI CPU clock tick value.'],
+  ['FileByteOffset', 'C ABI file byte offset value.'],
+  ['Int8', 'C ABI signed 8-bit byte.'],
+  ['UInt8', 'C ABI unsigned 8-bit byte.'],
+  ['Int16', 'C ABI signed 16-bit integer.'],
+  ['UInt16', 'C ABI unsigned 16-bit integer.'],
+  ['Int32', 'C ABI signed 32-bit integer.'],
+  ['UInt32', 'C ABI unsigned 32-bit integer.'],
+  ['Int64', 'C ABI signed 64-bit integer.'],
+  ['UInt64', 'C ABI unsigned 64-bit integer.'],
+  ['Float32', 'C ABI 32-bit floating-point value.'],
+  ['Float64', 'C ABI 64-bit floating-point value.'],
+  ['Void', 'C ABI void result marker.'],
   ['CFile', 'C ABI FILE object marker.'],
-  ['CFilePtr', 'Opaque C FILE* pointer.'],
-  ['CFileHandle', 'Opaque C file handle pointer.'],
-  ['CTm', 'C ABI decomposed-time object marker.'],
-  ['CTmPtr', 'Opaque C tm* pointer.'],
-  ['CJmpBuf', 'Opaque C jmp_buf pointer.'],
-  ['CDecomposedTimeAddress', 'Opaque C decomposed-time pointer.'],
-  ['CSetjmpRegisterBuffer', 'Opaque C setjmp buffer pointer.'],
+  ['FileHandle', 'Opaque C FILE* pointer.'],
+  ['FileHandle', 'Opaque C file handle pointer.'],
+  ['DecomposedTimeAddress', 'C ABI decomposed-time object marker.'],
+  ['DecomposedTimeAddress', 'Opaque C tm* pointer.'],
+  ['SetjmpRegisterBuffer', 'Opaque C jmp_buf pointer.'],
+  ['DecomposedTimeAddress', 'Opaque C decomposed-time pointer.'],
+  ['SetjmpRegisterBuffer', 'Opaque C setjmp buffer pointer.'],
   ['SqliteDatabase', 'Opaque standard.sqlite database handle.'],
   ['SqliteStatement', 'Opaque standard.sqlite prepared statement handle.'],
   ['SqliteRowId', 'standard.sqlite rowid alias.'],
@@ -729,6 +747,26 @@ const primitiveTypes = new Map([
   ['HttpFetchPolicy', 'standard.net fetch policy record.'],
   ['HttpGetRequest', 'standard.net GET request record.'],
   ['HttpTextResponse', 'standard.net text response record.'],
+  ['HttpStatusCode', 'standard.http status-code alias used by HTTP response and SSE helpers.'],
+  ['HttpHeaderName', 'standard.http header-name alias.'],
+  ['HttpHeaderValue', 'standard.http header-value alias.'],
+  ['HttpContentType', 'standard.http content-type alias.'],
+  ['HttpTextBody', 'standard.http text-body alias.'],
+  ['HttpByteBody', 'standard.http byte-body alias.'],
+  ['HttpBodyLength', 'standard.http body-length alias.'],
+  ['HttpRequestValue', 'standard.http request-derived string alias.'],
+  ['SseEventName', 'standard.http server-sent event-name alias.'],
+  ['SseEventId', 'standard.http server-sent event id alias.'],
+  ['SseEventData', 'standard.http server-sent event payload alias.'],
+  ['SseHeartbeatComment', 'standard.http SSE heartbeat-comment alias.'],
+  ['HttpClientResponseBody', 'standard.http owned outbound-HTTP response body. Free with c.free after use.'],
+  ['JwtAccessToken', 'standard.jwt trusted compact JWT access-token text.'],
+  ['JwtSecret', 'standard.jwt server-side HMAC secret alias.'],
+  ['JwtPayloadTemplate', 'standard.jwt JSON payload template containing exactly one literal %s placeholder for jti.'],
+  ['JwtClaimName', 'standard.jwt top-level claim-name alias.'],
+  ['JwtOutputBuffer', 'standard.jwt caller-owned output buffer for compact JWT text.'],
+  ['JwtClaimBuffer', 'standard.jwt caller-owned scratch buffer for decoded string claims.'],
+  ['AuthEnvelopeBuffer', 'standard.jwt caller-owned output buffer for JSON auth envelopes.'],
   ['BcryptPlaintextPassword', 'standard.bcrypt plaintext password alias; explicitly untrusted.'],
   ['BcryptPasswordHash', 'standard.bcrypt trusted bcrypt hash alias.'],
   ['BcryptHashBuffer', 'standard.bcrypt caller-owned hash output buffer.'],
@@ -871,6 +909,8 @@ const verbHoverText = new Map([
   ['serverHost', 'Web server metadata: serverHost SERVER_NAME "host".'],
   ['serverPort', 'Web server metadata: serverPort SERVER_NAME PORT.'],
   ['route', 'Web server route: route SERVER METHOD PATH HANDLER_OPERATION.'],
+  ['routeNotFound', 'Web server fallback handler: routeNotFound SERVER HANDLER_OPERATION. Runs when no declared route matches the request path.'],
+  ['routeMethodNotAllowed', 'Web server method fallback: routeMethodNotAllowed SERVER HANDLER_OPERATION. Runs when a path matches but the HTTP method does not.'],
   ['routeTimeout', 'Web server route timeout metadata keyed by exact route path. Parsed today; preemptive enforcement is future runtime work.'],
   ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
   ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
@@ -925,6 +965,8 @@ const verbHoverText = new Map([
   ['pinsNullBodyFailurePath', 'Operation metadata: explicit opt-in to the native HTTP null-body failure path. Requires a rationale string.'],
   ['responseBodyForwarder', 'Operation metadata: declares that an operation forwards a named body input into an http.response* writer.'],
   ['rationale', 'Call-site rationale: rationale CALL "text". Attaches context to one call so diagnostics survive refactors.'],
+  ['runtimeBindingAsyncStart', 'Operation metadata: native async-start symbol paired with runtimeBindingAsyncAwait for generic start CALL lowering.'],
+  ['runtimeBindingAsyncAwait', 'Operation metadata: native async-await symbol paired with runtimeBindingAsyncStart for generic await CALL lowering.'],
   ['const', 'Body declaration statement: const NAME TYPE VALUE.'],
   ['var', 'Body declaration statement: var NAME TYPE INITIAL_VALUE.'],
   ['let', 'Legacy body declaration statement: let NAME TYPE INITIAL_VALUE. Prefer explicit storage rows in new executable code.'],
@@ -986,7 +1028,7 @@ const verbHoverText = new Map([
   ['returnOk', 'Return success value from Result operation.'],
   ['returnError', 'Return typed error value from Result operation.'],
   ['returnValue', 'Return plain value.'],
-  ['returnVoid', 'Return from a Void/CVoid operation without exposing the ABI zero sentinel.'],
+  ['returnVoid', 'Return from a Void/Void operation without exposing the ABI zero sentinel.'],
   ['return', 'Phrase-shaped return: return value VALUE, return ok VALUE, return error ERROR, or return void.'],
 ]);
 
@@ -1151,6 +1193,7 @@ let compilerRuntimeChecks = 'default';
 let compilerPersistLlvmIr = 'auto';
 let compilerOptLevel = 'default';
 let compilerEmitLlvmIr = false;
+let compilerEmitOptimizedLlvmIr = false;
 let compilerBuildDir = '';
 let compilerBuildRoot = '';
 let compilerBuildFolderName = '';
@@ -1164,6 +1207,7 @@ let lintStatusBarItem = null;
 let compilerOutputChannel = null;
 const lintUpdateTimeouts = new Map();
 const runningLintProcesses = new Map();
+const lintRecordCache = new Map();
 
 const futureSyntaxLinterSkipVerbs = new Set([
   'section',
@@ -2724,7 +2768,7 @@ const domainTargetHoverText = (text) => {
   const methodName = text.split('.')[1];
 
   if (methodName && methodName.startsWith('checkedMultiply')) {
-    return 'docs/ast.md: checked domain multiply lowers to `math.checkedMultiplyI64`; it is fallible and should use `bindOk`, `bindError`, and `branchIfError`.';
+    return 'docs/ast.md: checked domain multiply lowers to `math.checkedMultiplyInt64`; it is fallible and should use `bindOk`, `bindError`, and `branchIfError`.';
   }
 
   if (methodName === 'square') {
@@ -3246,6 +3290,8 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'memoryStackLimit':
     case 'async':
     case 'operationBody':
+    case 'runtimeBindingAsyncStart':
+    case 'runtimeBindingAsyncAwait':
       return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
         `Attaches ${inlineCode(verb)} metadata to ${inlineCode(tokenText(tokens, 1))}.`,
         `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
@@ -3415,7 +3461,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
 
     case 'returnVoid':
       return detailHover('Return void', [
-        'Returns from an operation declared `output OP Void` or `output OP CVoid`.',
+        'Returns from an operation declared `output OP Void` or `output OP Void`.',
         'Codegen lowers this to the internal zero sentinel, but the source stays semantically explicit.',
       ]);
 
@@ -3423,7 +3469,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       const info = returnParts(tokens);
       return detailHover(`Return ${info.mode}`, [
         info.valueIndex === null
-          ? 'Returns from a Void/CVoid operation.'
+          ? 'Returns from a Void/Void operation.'
           : `Returns ${inlineCode(tokenText(tokens, info.valueIndex))} through the ${inlineCode(info.mode)} path.`,
       ]);
     }
@@ -3949,7 +3995,7 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
 
     case 'returnVoid':
       if (tokenIndex === 0) {
-        return `Explicit Void/CVoid return form.`;
+        return `Explicit Void/Void return form.`;
       }
       break;
 
@@ -4238,6 +4284,14 @@ const provideDefinition = (document, position) => {
   }
 
   const tokenInfo = getTokenAtPosition(document, position);
+
+  if (tokenInfo) {
+    const buildTapeDefinition = buildTapeDefinitionForToken(document, tokenInfo.tokens, tokenInfo.tokenIndex);
+
+    if (buildTapeDefinition) {
+      return buildTapeDefinition;
+    }
+  }
 
   if (!tokenInfo || tokenInfo.tokenIndex === 0) {
     return null;
@@ -4649,6 +4703,7 @@ const syncConfiguration = () => {
   compilerPersistLlvmIr = compilerConfig.get('persistLlvmIr', 'auto');
   compilerOptLevel = compilerConfig.get('optLevel', 'default');
   compilerEmitLlvmIr = compilerConfig.get('emitLlvmIr', false);
+  compilerEmitOptimizedLlvmIr = compilerConfig.get('emitOptimizedLlvmIr', false);
   compilerBuildDir = compilerConfig.get('buildDir', '');
   compilerBuildRoot = compilerConfig.get('buildRoot', '');
   compilerBuildFolderName = compilerConfig.get('buildFolderName', '');
@@ -4666,6 +4721,18 @@ const isSemanticScriptDocument = (document) => (
 const isBuildTapePath = (filePath) => {
   const baseName = path.basename(filePath || '').toLowerCase();
   return baseName === 'build.sem' || baseName === 'build.sscript';
+};
+
+const unquoteToken = (text) => {
+  if (!text || text.length < 2 || text[0] !== '"' || text[text.length - 1] !== '"') {
+    return text;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return text.slice(1, -1);
+  }
 };
 
 const findNearestBuildTapePath = (startPath) => {
@@ -4701,6 +4768,86 @@ const projectRootForDocument = (document) => {
     return path.dirname(buildTapePath);
   }
   return document && document.fileName ? path.dirname(document.fileName) : undefined;
+};
+
+const buildTapeModuleRegistry = (buildTapePath) => {
+  const registry = new Map();
+
+  if (!buildTapePath || !fs.existsSync(buildTapePath)) {
+    return registry;
+  }
+
+  const buildTapeDirectory = path.dirname(buildTapePath);
+  const lines = fs.readFileSync(buildTapePath, 'utf8').split(/\r?\n/);
+
+  lines.forEach((lineText) => {
+    const tokens = tokenizeLine(lineText);
+    const verb = tokenAt(tokens, 0);
+
+    if ((verb === 'registerModule' || verb === 'moduleFolder') && tokens[2] && tokens[3]) {
+      registry.set(
+        tokenText(tokens, 2),
+        path.resolve(buildTapeDirectory, unquoteToken(tokenText(tokens, 3)))
+      );
+    }
+  });
+
+  return registry;
+};
+
+const semanticScriptFileLocation = (filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+
+  let targetLine = 0;
+
+  try {
+    const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+    const declarationLine = lines.findIndex((lineText) => {
+      const trimmed = lineText.trim();
+      return trimmed.startsWith('module ') || trimmed.startsWith('project ') || trimmed.startsWith('buildProject ');
+    });
+
+    if (declarationLine >= 0) {
+      targetLine = declarationLine;
+    }
+  } catch (_error) {
+    targetLine = 0;
+  }
+
+  return new vscode.Location(vscode.Uri.file(filePath), new vscode.Position(targetLine, 0));
+};
+
+const buildTapeDefinitionForToken = (document, tokens, tokenIndex) => {
+  const buildTapePath = findNearestBuildTapePath(document.fileName);
+
+  if (!buildTapePath) {
+    return null;
+  }
+
+  const verb = tokenAt(tokens, 0);
+  const buildTapeDirectory = path.dirname(buildTapePath);
+  const moduleRegistry = buildTapeModuleRegistry(buildTapePath);
+
+  if ((verb === 'registerModule' || verb === 'moduleFolder') && tokens[2] && tokens[3]) {
+    const sourcePath = path.resolve(buildTapeDirectory, unquoteToken(tokenText(tokens, 3)));
+
+    if (tokenIndex === 2 || tokenIndex === 3) {
+      return semanticScriptFileLocation(sourcePath);
+    }
+  }
+
+  if (verb === 'mainFile' && tokenIndex === 2) {
+    const sourcePath = path.resolve(buildTapeDirectory, unquoteToken(tokenText(tokens, 2)));
+    return semanticScriptFileLocation(sourcePath);
+  }
+
+  if ((verb === 'import' || verb === 'importModule') && tokenIndex === importModulePathIndex(tokens)) {
+    return semanticScriptFileLocation(moduleRegistry.get(tokenText(tokens, importModulePathIndex(tokens))));
+  }
+
+  return null;
 };
 
 const documentUsesFutureSyntax = (document) => {
@@ -4842,7 +4989,67 @@ const semlintMessage = (record) => {
   return parts.join(' - ') || 'SemanticScript lint diagnostic';
 };
 
-const diagnosticFromSemlintRecord = (document, record) => {
+const linterRecordKey = (record) => {
+  const primary = record && record.primary ? record.primary : {};
+  return [
+    record.code || '',
+    record.kind || '',
+    primary.path || '',
+    primary.line || 0,
+    primary.column || 0,
+  ].join(':');
+};
+
+const resolveLinterRecordPath = (document, lintCwd, recordPath) => {
+  if (!recordPath) {
+    return null;
+  }
+
+  if (path.isAbsolute(recordPath)) {
+    return recordPath;
+  }
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  const candidates = [
+    lintCwd ? path.resolve(lintCwd, recordPath) : null,
+    workspaceFolder ? path.resolve(workspaceFolder.uri.fsPath, recordPath) : null,
+    path.resolve(path.dirname(document.fileName), recordPath),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0] || null;
+};
+
+const relatedInformationFromSemlintRecord = (document, record, lintCwd) => {
+  const relatedSpans = Array.isArray(record.related) ? record.related : [];
+
+  return relatedSpans.map((span) => {
+    const absolutePath = resolveLinterRecordPath(document, lintCwd, span.path);
+
+    if (!absolutePath || !fs.existsSync(absolutePath)) {
+      return null;
+    }
+
+    const lineIndex = Math.max(0, (span.line || 1) - 1);
+    const characterIndex = Math.max(0, (span.column || 1) - 1);
+    const location = new vscode.Location(
+      vscode.Uri.file(absolutePath),
+      new vscode.Position(lineIndex, characterIndex)
+    );
+
+    return new vscode.DiagnosticRelatedInformation(
+      location,
+      span.role || 'related SemanticScript source'
+    );
+  }).filter(Boolean);
+};
+
+const diagnosticFromSemlintRecord = (document, record, lintCwd) => {
   const primary = record.primary || {};
   const diagnostic = new vscode.Diagnostic(
     diagnosticRange(document, primary.line, primary.column),
@@ -4851,6 +5058,8 @@ const diagnosticFromSemlintRecord = (document, record) => {
   );
   diagnostic.source = 'semlint';
   diagnostic.code = record.code || undefined;
+  diagnostic.relatedInformation = relatedInformationFromSemlintRecord(document, record, lintCwd);
+  diagnostic._semanticScriptRecordKey = linterRecordKey(record);
   return diagnostic;
 };
 
@@ -4865,32 +5074,39 @@ const diagnosticFromSimpleSemlintRecord = (document, record) => {
   return diagnostic;
 };
 
-const parseLinterDiagnostics = (document, stdout) => {
+const parseLinterDiagnostics = (document, stdout, lintCwd) => {
   let records;
 
   try {
     records = JSON.parse(stdout || '[]');
   } catch (_error) {
-    return [
-      new vscode.Diagnostic(
-        new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
-        `${linterEngine} returned invalid JSON diagnostics.`,
-        vscode.DiagnosticSeverity.Error
-      ),
-    ];
+    return {
+      diagnostics: [
+        new vscode.Diagnostic(
+          new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
+          `${linterEngine} returned invalid JSON diagnostics.`,
+          vscode.DiagnosticSeverity.Error
+        ),
+      ],
+      recordsByKey: new Map(),
+    };
   }
 
   if (!Array.isArray(records)) {
-    return [];
+    return { diagnostics: [], recordsByKey: new Map() };
   }
 
-  return records.map((record) => {
+  const recordsByKey = new Map();
+  const diagnostics = records.map((record) => {
     if (record && record.primary) {
-      return diagnosticFromSemlintRecord(document, record);
+      recordsByKey.set(linterRecordKey(record), record);
+      return diagnosticFromSemlintRecord(document, record, lintCwd);
     }
 
     return diagnosticFromSimpleSemlintRecord(document, record || {});
   });
+
+  return { diagnostics, recordsByKey };
 };
 
 const setLinterStatus = (text, tooltip) => {
@@ -4920,12 +5136,13 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     return;
   }
 
+  const documentKey = document.uri.toString();
+
   if (!linterEnabled) {
     diagnosticCollection.delete(document.uri);
+    lintRecordCache.delete(documentKey);
     return;
   }
-
-  const documentKey = document.uri.toString();
   const existingProcess = runningLintProcesses.get(documentKey);
 
   if (existingProcess) {
@@ -4935,6 +5152,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   if (linterSkipFutureSyntax && linterEngine === 'semlint' && documentUsesFutureSyntax(document)) {
     diagnosticCollection.delete(document.uri);
+    lintRecordCache.delete(documentKey);
     setLinterStatus('$(info) SemanticScript future syntax', 'stable semlint is skipped for refined future syntax.');
     clearLinterStatusLater();
     return;
@@ -4944,6 +5162,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   if (!linterPath) {
     diagnosticCollection.delete(document.uri);
+    lintRecordCache.delete(documentKey);
 
     if (showMissingLinterMessage) {
       vscode.window.showWarningMessage(
@@ -4956,14 +5175,15 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   setLinterStatus('$(sync~spin) SemanticScript lint', document.fileName);
   const linterArgs = [linterPath, document.fileName, '--format', 'json'];
+  const linterCwd = projectRootForDocument(document)
+    || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+    || path.dirname(document.fileName);
 
   const lintProcess = childProcess.spawn(
     linterPythonPath,
     linterArgs,
     {
-      cwd: projectRootForDocument(document)
-        || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-        || path.dirname(document.fileName),
+      cwd: linterCwd,
       windowsHide: true,
     }
   );
@@ -4983,6 +5203,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   lintProcess.on('error', (error) => {
     runningLintProcesses.delete(documentKey);
+    lintRecordCache.delete(documentKey);
     diagnosticCollection.set(document.uri, [
       new vscode.Diagnostic(
         new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
@@ -5002,6 +5223,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     runningLintProcesses.delete(documentKey);
 
     if (stderr.trim() && !stdout.trim()) {
+      lintRecordCache.delete(documentKey);
       diagnosticCollection.set(document.uri, [
         new vscode.Diagnostic(
           new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
@@ -5014,7 +5236,8 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
       return;
     }
 
-    const diagnostics = parseLinterDiagnostics(document, stdout);
+    const { diagnostics, recordsByKey } = parseLinterDiagnostics(document, stdout, linterCwd);
+    lintRecordCache.set(documentKey, { cwd: linterCwd, recordsByKey });
     diagnosticCollection.set(document.uri, diagnostics);
 
     if (diagnostics.length > 0) {
@@ -5045,6 +5268,56 @@ const scheduleLinterRun = (document, delayMilliseconds = 350) => {
   }, delayMilliseconds));
 };
 
+const codeActionsFromSemlintDiagnostic = (document, diagnostic) => {
+  const cacheEntry = lintRecordCache.get(document.uri.toString());
+
+  if (!cacheEntry || !diagnostic || diagnostic.source !== 'semlint' || !diagnostic._semanticScriptRecordKey) {
+    return [];
+  }
+
+  const record = cacheEntry.recordsByKey.get(diagnostic._semanticScriptRecordKey);
+
+  if (!record || !record.primary || !Array.isArray(record.fixCandidates)) {
+    return [];
+  }
+
+  const primaryPath = resolveLinterRecordPath(document, cacheEntry.cwd, record.primary.path);
+
+  if (
+    !primaryPath
+    || path.normalize(primaryPath).toLowerCase() !== path.normalize(document.fileName).toLowerCase()
+  ) {
+    return [];
+  }
+
+  const lineIndex = Math.max(0, Math.min(document.lineCount - 1, (record.primary.line || 1) - 1));
+  const line = document.lineAt(lineIndex);
+  const indentation = line.text.match(/^\s*/)?.[0] || '';
+  let preferredAssigned = false;
+
+  return record.fixCandidates.flatMap((fixCandidate) => {
+    if (!fixCandidate.autoApplicable || typeof fixCandidate.shape !== 'string' || fixCandidate.shape.includes('\n')) {
+      return [];
+    }
+
+    const action = new vscode.CodeAction(
+      `SemanticScript: ${fixCandidate.name}`,
+      vscode.CodeActionKind.QuickFix
+    );
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(document.uri, line.range, `${indentation}${fixCandidate.shape.trim()}`);
+    action.edit = edit;
+    action.diagnostics = [diagnostic];
+
+    if (!preferredAssigned) {
+      action.isPreferred = true;
+      preferredAssigned = true;
+    }
+
+    return [action];
+  });
+};
+
 const registerLinter = (context) => {
   diagnosticCollection = vscode.languages.createDiagnosticCollection('semlint');
   lintStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -5063,6 +5336,22 @@ const registerLinter = (context) => {
 
       runLinterForDocument(editor.document, true);
     })
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { language: 'semanticscript' },
+      {
+        provideCodeActions(document, _range, contextForActions) {
+          return contextForActions.diagnostics.flatMap((diagnostic) => (
+            codeActionsFromSemlintDiagnostic(document, diagnostic)
+          ));
+        },
+      },
+      {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+      }
+    )
   );
 
   context.subscriptions.push(
@@ -5085,6 +5374,7 @@ const registerLinter = (context) => {
     vscode.workspace.onDidCloseTextDocument((document) => {
       diagnosticCollection.delete(document.uri);
       const key = document.uri.toString();
+      lintRecordCache.delete(key);
       const existingTimeout = lintUpdateTimeouts.get(key);
 
       if (existingTimeout) {
@@ -5235,6 +5525,10 @@ const runCompilerForDocument = async (document) => {
 
   if (compilerEmitLlvmIr) {
     args.push('--emit-ir');
+  }
+
+  if (compilerEmitOptimizedLlvmIr) {
+    args.push('--emit-optimized-ir');
   }
 
   if (compilerCpuBaseline !== 'default') {
@@ -5396,6 +5690,7 @@ const activate = (context) => {
 
         if (!linterEnabled && diagnosticCollection) {
           diagnosticCollection.clear();
+          lintRecordCache.clear();
         } else if (linterRunMode !== 'manual') {
           vscode.workspace.textDocuments.forEach((document) => scheduleLinterRun(document, 100));
         }
@@ -5413,6 +5708,7 @@ const deactivate = () => {
   runningLintProcesses.clear();
   lintUpdateTimeouts.forEach((timeoutHandle) => clearTimeout(timeoutHandle));
   lintUpdateTimeouts.clear();
+  lintRecordCache.clear();
   disposeDecorations();
 };
 

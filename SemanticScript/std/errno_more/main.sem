@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.errno_more "App-specific wrappers, compatibility alias
 invariant module standard.errno_more "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.errno_more errnoMoreModuleVersionText
-storage module immutable errnoMoreModuleVersionText CNullTerminatedByteString "standard.errno_more 0.1"
+storage module immutable errnoMoreModuleVersionText String "standard.errno_more 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -21,90 +21,90 @@ storage module immutable errnoMoreModuleVersionText CNullTerminatedByteString "s
 # security: pure constants. # timing: zero. # observability: none.
 
 # section errnoMore.numbers
-domainLiteral tryAgainErrorNumber CSignedInt32 11
+domainLiteral tryAgainErrorNumber Int32 11
 domainLiteralSource tryAgainErrorNumber posix.EAGAIN
 domainLiteralTrust tryAgainErrorNumber trustedStaticLiteral
 
-domainLiteral badFileDescriptorErrorNumber CSignedInt32 9
+domainLiteral badFileDescriptorErrorNumber Int32 9
 domainLiteralSource badFileDescriptorErrorNumber posix.EBADF
 domainLiteralTrust badFileDescriptorErrorNumber trustedStaticLiteral
 
-domainLiteral resourceBusyErrorNumber CSignedInt32 16
+domainLiteral resourceBusyErrorNumber Int32 16
 domainLiteralSource resourceBusyErrorNumber posix.EBUSY
 domainLiteralTrust resourceBusyErrorNumber trustedStaticLiteral
 
-domainLiteral noChildProcessErrorNumber CSignedInt32 10
+domainLiteral noChildProcessErrorNumber Int32 10
 domainLiteralSource noChildProcessErrorNumber posix.ECHILD
 domainLiteralTrust noChildProcessErrorNumber trustedStaticLiteral
 
-domainLiteral deadlockWouldOccurErrorNumber CSignedInt32 35
+domainLiteral deadlockWouldOccurErrorNumber Int32 35
 domainLiteralSource deadlockWouldOccurErrorNumber posix.EDEADLK
 domainLiteralTrust deadlockWouldOccurErrorNumber trustedStaticLiteral
 
-domainLiteral mathDomainErrorNumber CSignedInt32 33
+domainLiteral mathDomainErrorNumber Int32 33
 domainLiteralSource mathDomainErrorNumber posix.EDOM
 domainLiteralTrust mathDomainErrorNumber trustedStaticLiteral
 
-domainLiteral illegalByteSequenceErrorNumber CSignedInt32 84
+domainLiteral illegalByteSequenceErrorNumber Int32 84
 domainLiteralSource illegalByteSequenceErrorNumber posix.EILSEQ
 domainLiteralTrust illegalByteSequenceErrorNumber trustedStaticLiteral
 
-domainLiteral tooManySymbolicLinksErrorNumber CSignedInt32 40
+domainLiteral tooManySymbolicLinksErrorNumber Int32 40
 domainLiteralSource tooManySymbolicLinksErrorNumber posix.ELOOP
 domainLiteralTrust tooManySymbolicLinksErrorNumber trustedStaticLiteral
 
-domainLiteral tooManyLinksErrorNumber CSignedInt32 31
+domainLiteral tooManyLinksErrorNumber Int32 31
 domainLiteralSource tooManyLinksErrorNumber posix.EMLINK
 domainLiteralTrust tooManyLinksErrorNumber trustedStaticLiteral
 
-domainLiteral nameTooLongErrorNumber CSignedInt32 36
+domainLiteral nameTooLongErrorNumber Int32 36
 domainLiteralSource nameTooLongErrorNumber posix.ENAMETOOLONG
 domainLiteralTrust nameTooLongErrorNumber trustedStaticLiteral
 
-domainLiteral noSuchDeviceErrorNumber CSignedInt32 19
+domainLiteral noSuchDeviceErrorNumber Int32 19
 domainLiteralSource noSuchDeviceErrorNumber posix.ENODEV
 domainLiteralTrust noSuchDeviceErrorNumber trustedStaticLiteral
 
-domainLiteral execFormatErrorNumber CSignedInt32 8
+domainLiteral execFormatErrorNumber Int32 8
 domainLiteralSource execFormatErrorNumber posix.ENOEXEC
 domainLiteralTrust execFormatErrorNumber trustedStaticLiteral
 
-domainLiteral noLockAvailableErrorNumber CSignedInt32 37
+domainLiteral noLockAvailableErrorNumber Int32 37
 domainLiteralSource noLockAvailableErrorNumber posix.ENOLCK
 domainLiteralTrust noLockAvailableErrorNumber trustedStaticLiteral
 
-domainLiteral functionNotImplementedErrorNumber CSignedInt32 38
+domainLiteral functionNotImplementedErrorNumber Int32 38
 domainLiteralSource functionNotImplementedErrorNumber posix.ENOSYS
 domainLiteralTrust functionNotImplementedErrorNumber trustedStaticLiteral
 
-domainLiteral directoryNotEmptyErrorNumber CSignedInt32 39
+domainLiteral directoryNotEmptyErrorNumber Int32 39
 domainLiteralSource directoryNotEmptyErrorNumber posix.ENOTEMPTY
 domainLiteralTrust directoryNotEmptyErrorNumber trustedStaticLiteral
 
-domainLiteral notDirectoryErrorNumber CSignedInt32 20
+domainLiteral notDirectoryErrorNumber Int32 20
 domainLiteralSource notDirectoryErrorNumber posix.ENOTDIR
 domainLiteralTrust notDirectoryErrorNumber trustedStaticLiteral
 
-domainLiteral isDirectoryErrorNumber CSignedInt32 21
+domainLiteral isDirectoryErrorNumber Int32 21
 domainLiteralSource isDirectoryErrorNumber posix.EISDIR
 domainLiteralTrust isDirectoryErrorNumber trustedStaticLiteral
 
-domainLiteral tooManyOpenFilesErrorNumber CSignedInt32 24
+domainLiteral tooManyOpenFilesErrorNumber Int32 24
 domainLiteralSource tooManyOpenFilesErrorNumber posix.EMFILE
 domainLiteralTrust tooManyOpenFilesErrorNumber trustedStaticLiteral
 
-domainLiteral inappropriateIoctlErrorNumber CSignedInt32 25
+domainLiteral inappropriateIoctlErrorNumber Int32 25
 domainLiteralSource inappropriateIoctlErrorNumber posix.ENOTTY
 domainLiteralTrust inappropriateIoctlErrorNumber trustedStaticLiteral
 
-domainLiteral readOnlyFileSystemErrorNumber CSignedInt32 30
+domainLiteral readOnlyFileSystemErrorNumber Int32 30
 domainLiteralSource readOnlyFileSystemErrorNumber posix.EROFS
 domainLiteralTrust readOnlyFileSystemErrorNumber trustedStaticLiteral
 
-domainLiteral crossDeviceLinkErrorNumber CSignedInt32 18
+domainLiteral crossDeviceLinkErrorNumber Int32 18
 domainLiteralSource crossDeviceLinkErrorNumber posix.EXDEV
 domainLiteralTrust crossDeviceLinkErrorNumber trustedStaticLiteral
 
-domainLiteral operationTimedOutErrorNumber CSignedInt32 110
+domainLiteral operationTimedOutErrorNumber Int32 110
 domainLiteralSource operationTimedOutErrorNumber posix.ETIMEDOUT
 domainLiteralTrust operationTimedOutErrorNumber trustedStaticLiteral

@@ -4,8 +4,8 @@
 #
 # Companion smoke + extended unit tests for std/bool/main.sem.
 # Imports the bool module and asserts every exported combinator
-# (negate / and / or / xor / equivalent / convertToCInt /
-# convertFromCInt) plus involution / commutativity / de Morgan /
+# (negate / and / or / xor / equivalent / convertToInt32 /
+# convertFromInt32) plus involution / commutativity / de Morgan /
 # round-trip property tests.
 #
 # Pattern: std/main.sem ships pure-module operations only;
@@ -111,25 +111,25 @@ branch if condition equivTrueTrueResult target equivTrueTrueHolds
 branch else target smokeAssertionFailed
 label equivTrueTrueHolds
 
-# Verify convertBooleanToCSignedInt32(true) == 1.
-call convertTrueToIntCall convertBooleanToCSignedInt32
+# Verify convertBooleanToInt32(true) == 1.
+call convertTrueToIntCall convertBooleanToInt32
 argument convertTrueToIntCall sourceBoolean Bool canonicalBooleanTrue
 run convertTrueToIntCall
-bind value trueAsCInt CSignedInt32 convertTrueToIntCall
-storage module immutable oneI32Expected CSignedInt32 1
-call checkConvertTrueCall math.equalI64
-argument checkConvertTrueCall left I64 trueAsCInt
-argument checkConvertTrueCall right I64 oneI32Expected
+bind value trueAsInt32 Int32 convertTrueToIntCall
+storage module immutable oneInt32Expected Int32 1
+call checkConvertTrueCall math.equalInt64
+argument checkConvertTrueCall left Int64 trueAsInt32
+argument checkConvertTrueCall right Int64 oneInt32Expected
 run checkConvertTrueCall
 bind value convertTrueOk Bool checkConvertTrueCall
 branch if condition convertTrueOk target convertTrueHolds
 branch else target smokeAssertionFailed
 label convertTrueHolds
 
-# Verify convertCSignedInt32ToBoolean(0) == false.
-storage module immutable zeroI32Input CSignedInt32 0
-call convertZeroToBoolCall convertCSignedInt32ToBoolean
-argument convertZeroToBoolCall sourceCSignedInt32Value CSignedInt32 zeroI32Input
+# Verify convertInt32ToBoolean(0) == false.
+storage module immutable zeroInt32Input Int32 0
+call convertZeroToBoolCall convertInt32ToBoolean
+argument convertZeroToBoolCall sourceInt32Value Int32 zeroInt32Input
 run convertZeroToBoolCall
 bind value zeroAsBool Bool convertZeroToBoolCall
 branch if condition zeroAsBool target smokeAssertionFailed
@@ -246,36 +246,36 @@ branch if condition deMorganEquivResult target deMorganHolds
 branch else target smokeAssertionFailed
 label deMorganHolds
 
-# convertBooleanToCSignedInt32(false) == 0
-call convertFalseToIntCall convertBooleanToCSignedInt32
+# convertBooleanToInt32(false) == 0
+call convertFalseToIntCall convertBooleanToInt32
 argument convertFalseToIntCall sourceBoolean Bool canonicalBooleanFalse
 run convertFalseToIntCall
-bind value falseAsCInt CSignedInt32 convertFalseToIntCall
-call checkConvertFalseCall math.equalI64
-argument checkConvertFalseCall left I64 falseAsCInt
-argument checkConvertFalseCall right I64 zeroI32Input
+bind value falseAsInt32 Int32 convertFalseToIntCall
+call checkConvertFalseCall math.equalInt64
+argument checkConvertFalseCall left Int64 falseAsInt32
+argument checkConvertFalseCall right Int64 zeroInt32Input
 run checkConvertFalseCall
 bind value convertFalseOk Bool checkConvertFalseCall
 branch if condition convertFalseOk target convertFalseHolds
 branch else target smokeAssertionFailed
 label convertFalseHolds
 
-# convertCSignedInt32ToBoolean(1) == true
-call convertOneToBoolCall convertCSignedInt32ToBoolean
-argument convertOneToBoolCall sourceCSignedInt32Value CSignedInt32 oneI32Expected
+# convertInt32ToBoolean(1) == true
+call convertOneToBoolCall convertInt32ToBoolean
+argument convertOneToBoolCall sourceInt32Value Int32 oneInt32Expected
 run convertOneToBoolCall
 bind value oneAsBool Bool convertOneToBoolCall
 branch if condition oneAsBool target oneAsBoolHolds
 branch else target smokeAssertionFailed
 label oneAsBoolHolds
 
-# Round trip: convertCSignedInt32ToBoolean(convertBooleanToCSignedInt32(true)) == true
-call roundTripBoolToIntCall convertBooleanToCSignedInt32
+# Round trip: convertInt32ToBoolean(convertBooleanToInt32(true)) == true
+call roundTripBoolToIntCall convertBooleanToInt32
 argument roundTripBoolToIntCall sourceBoolean Bool canonicalBooleanTrue
 run roundTripBoolToIntCall
-bind value roundTripIntValue CSignedInt32 roundTripBoolToIntCall
-call roundTripIntToBoolCall convertCSignedInt32ToBoolean
-argument roundTripIntToBoolCall sourceCSignedInt32Value CSignedInt32 roundTripIntValue
+bind value roundTripIntValue Int32 roundTripBoolToIntCall
+call roundTripIntToBoolCall convertInt32ToBoolean
+argument roundTripIntToBoolCall sourceInt32Value Int32 roundTripIntValue
 run roundTripIntToBoolCall
 bind value roundTripBoolResult Bool roundTripIntToBoolCall
 branch if condition roundTripBoolResult target roundTripBoolHolds
@@ -283,18 +283,18 @@ branch else target smokeAssertionFailed
 label roundTripBoolHolds
 
 # All assertions hold. Emit OK\n and exit 0.
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

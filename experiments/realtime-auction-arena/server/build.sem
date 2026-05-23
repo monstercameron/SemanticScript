@@ -95,9 +95,9 @@ field BuildModules http_helpers BuildModule
 record BuildTarget
 field BuildTarget runtime String
 field BuildTarget nativeRuntime String
-field BuildTarget nativeRuntimeVersion I64
+field BuildTarget nativeRuntimeVersion Int64
 field BuildTarget profile String
-field BuildTarget optLevel I64
+field BuildTarget optLevel Int64
 field BuildTarget runtimeChecks String
 field BuildTarget persistLlvmIr String
 field BuildTarget emitLlvmIr String
@@ -108,8 +108,8 @@ field BuildTarget cpuTune String
 field BuildTarget cpuFeatureCheck String
 field BuildTarget asyncRuntime String
 field BuildTarget nativeHttpHost String
-field BuildTarget nativeHttpPort I64
-field BuildTarget formatterLineWidth I64
+field BuildTarget nativeHttpPort Int64
+field BuildTarget formatterLineWidth Int64
 field BuildTarget linterMaxTier String
 field BuildTarget docsOutput String
 field BuildTarget nativeOutput String
@@ -135,26 +135,26 @@ record BuildStringConstant
 field BuildStringConstant type String
 field BuildStringConstant value String
 
-record BuildI64Constant
-field BuildI64Constant type String
-field BuildI64Constant value I64
+record BuildInt64Constant
+field BuildInt64Constant type String
+field BuildInt64Constant value Int64
 
 record BuildConstants
 field BuildConstants projectApiVersion BuildStringConstant
 field BuildConstants fallbackRequestId BuildStringConstant
-field BuildConstants maxJsonBodyBytes BuildI64Constant
-field BuildConstants bcryptPasswordMaxBytes BuildI64Constant
+field BuildConstants maxJsonBodyBytes BuildInt64Constant
+field BuildConstants bcryptPasswordMaxBytes BuildInt64Constant
 field BuildConstants nativeHttpHost BuildStringConstant
-field BuildConstants nativeHttpPort BuildI64Constant
+field BuildConstants nativeHttpPort BuildInt64Constant
 field BuildConstants databasePath BuildStringConstant
 field BuildConstants executableRoutes BuildStringConstant
 field BuildConstants demoAuctioneerUsername BuildStringConstant
 field BuildConstants demoAuctioneerUserId BuildStringConstant
 field BuildConstants demoBidderUsername BuildStringConstant
 field BuildConstants demoBidderUserId BuildStringConstant
-field BuildConstants auctioneerRoleCode BuildI64Constant
-field BuildConstants bidderRoleCode BuildI64Constant
-field BuildConstants idempotencyTtlMillis BuildI64Constant
+field BuildConstants auctioneerRoleCode BuildInt64Constant
+field BuildConstants bidderRoleCode BuildInt64Constant
+field BuildConstants idempotencyTtlMillis BuildInt64Constant
 field BuildConstants runtimeConstantsModule BuildStringConstant
 field BuildConstants sqlQueriesModule BuildStringConstant
 field BuildConstants wireEnvelopesModule BuildStringConstant
@@ -175,7 +175,7 @@ field BuildServerConfig requestLogModeEnv String
 field BuildServerConfig productionValidationRule String
 
 record BuildGracefulShutdown
-field BuildGracefulShutdown graceMillis I64
+field BuildGracefulShutdown graceMillis Int64
 field BuildGracefulShutdown readinessDuringDrain String
 field BuildGracefulShutdown requestRule String
 field BuildGracefulShutdown commandRule String
@@ -320,19 +320,19 @@ jsonBody realtimeAuctionArenaServerBuildPlan
       "constants": {
           "projectApiVersion": { "type": "String", "value": "v1" },
           "fallbackRequestId": { "type": "String", "value": "req_runtime_header_unavailable" },
-          "maxJsonBodyBytes": { "type": "I64", "value": 65536 },
-          "bcryptPasswordMaxBytes": { "type": "I64", "value": 72 },
+          "maxJsonBodyBytes": { "type": "Int64", "value": 65536 },
+          "bcryptPasswordMaxBytes": { "type": "Int64", "value": 72 },
           "nativeHttpHost": { "type": "String", "value": "127.0.0.1" },
-          "nativeHttpPort": { "type": "I64", "value": 18083 },
+          "nativeHttpPort": { "type": "Int64", "value": 18083 },
           "databasePath": { "type": "String", "value": "auction_arena.sqlite3" },
           "executableRoutes": { "type": "String", "value": "healthz,readyz,metrics,apiIndex,authLogin,authRefresh,authLogout,session,auctionsList,auctionsCreate,auctionSnapshot,auctionStart,auctionExtend,auctionClose,auctionBid,auctionEvents,auctionAudit,chatCreate,chatDelete,chatReport,apiNotFound" },
           "demoAuctioneerUsername": { "type": "String", "value": "auctioneer" },
           "demoAuctioneerUserId": { "type": "String", "value": "user_auctioneer_001" },
           "demoBidderUsername": { "type": "String", "value": "bidder" },
           "demoBidderUserId": { "type": "String", "value": "user_bidder_demo" },
-          "auctioneerRoleCode": { "type": "I64", "value": 20 },
-          "bidderRoleCode": { "type": "I64", "value": 10 },
-          "idempotencyTtlMillis": { "type": "I64", "value": 86400000 },
+          "auctioneerRoleCode": { "type": "Int64", "value": 20 },
+          "bidderRoleCode": { "type": "Int64", "value": 10 },
+          "idempotencyTtlMillis": { "type": "Int64", "value": 86400000 },
           "runtimeConstantsModule": { "type": "String", "value": "app.realtime_auction_arena.server.runtime_constants" },
           "sqlQueriesModule": { "type": "String", "value": "app.realtime_auction_arena.server.sql_queries" },
           "wireEnvelopesModule": { "type": "String", "value": "app.realtime_auction_arena.server.wire_envelopes" },

@@ -205,19 +205,19 @@ returnError mainFailure
 class TestUnusedMutableStorage(unittest.TestCase):
     def test_never_set_mutable_module_storage_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable accountLookupRevision I64 zeroCount
+storage module mutable accountLookupRevision Int64 zeroCount
 """)
         self.assertIn("SS0105", _codes(diagnostics))
 
     def test_immutable_storage_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable attemptLimit I64 fiveAttemptCount
+storage module immutable attemptLimit Int64 fiveAttemptCount
 """)
         self.assertNotIn("SS0105", _codes(diagnostics))
 
     def test_set_mutable_storage_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable accountLookupRevision I64 zeroCount
+storage module mutable accountLookupRevision Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -309,7 +309,7 @@ run writeLineCall
 
     def test_state_touching_op_without_invariant_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable accountLookupRevision I64 zeroCount
+storage module mutable accountLookupRevision Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -375,7 +375,7 @@ authority main console.stdout write
 class TestSharedStateProtection(unittest.TestCase):
     def test_unprotected_write_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -386,7 +386,7 @@ set sharedState lookupFailureCount nextLookupFailureCount
 
     def test_protected_write_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -399,7 +399,7 @@ set sharedState lookupFailureCount nextLookupFailureCount protectedBy lookupFail
 class TestSupportedSharedStateScope(unittest.TestCase):
     def test_cross_process_scope_is_flagged_as_unsupported_runtime_claim(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState cluster mutable lookupFailureCount I64 zeroCount
+sharedState cluster mutable lookupFailureCount Int64 zeroCount
 """)
         self.assertIn("SS3108", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3108")[0]
@@ -408,7 +408,7 @@ sharedState cluster mutable lookupFailureCount I64 zeroCount
 
     def test_process_scope_is_currently_supported(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 """)
         self.assertNotIn("SS3108", _codes(diagnostics))
 
@@ -553,8 +553,8 @@ import gui standard.gui
 storage module immutable title GuiText "Todo"
 storage module immutable width GuiPixels 640
 storage module immutable height GuiPixels 480
-storage module immutable yesFlag CSignedInt32 1
-storage module immutable maxTitleLength CSignedInt32 120
+storage module immutable yesFlag Int32 1
+storage module immutable maxTitleLength Int32 120
 operation main
 output operation main ExitCode
 effect main allocate gui.application
@@ -575,24 +575,24 @@ argument createWindowCall title GuiText title
 argument createWindowCall width GuiPixels width
 argument createWindowCall height GuiPixels height
 argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
-argument createWindowCall resizable CSignedInt32 yesFlag
+argument createWindowCall resizable Int32 yesFlag
 run createWindowCall
 bind value window GuiWindow createWindowCall
 call createTextBoxCall gui.textBoxCreate
 argument createTextBoxCall placeholder GuiText title
-argument createTextBoxCall maxLength CSignedInt32 maxTitleLength
+argument createTextBoxCall maxLength Int32 maxTitleLength
 run createTextBoxCall
 bind value textBox GuiTextBox createTextBoxCall
 call addControlCall gui.windowAddControl
 argument addControlCall window GuiWindow window
 argument addControlCall control GuiControl textBox
 run addControlCall
-ignore value source addControlCall type CSignedInt32
+ignore value source addControlCall type Int32
 call setMainWindowCall gui.applicationSetMainWindow
 argument setMainWindowCall application GuiApplication application
 argument setMainWindowCall window GuiWindow window
 run setMainWindowCall
-ignore value source setMainWindowCall type CSignedInt32
+ignore value source setMainWindowCall type Int32
 call runApplicationCall gui.applicationRun
 argument runApplicationCall application GuiApplication application
 run runApplicationCall
@@ -742,7 +742,7 @@ purpose operation unsafeHandler "request body must not become raw HTML"
 call bodyReadCall http.requestBodyText
 argument bodyReadCall request HttpRequest request
 run bodyReadCall
-bind value bodyValue CNullTerminatedByteString bodyReadCall
+bind value bodyValue String bodyReadCall
 call hydrateCardCall html.hydrate.CardTemplate
 argument hydrateCardCall bodyHtml HtmlFragment bodyValue
 run hydrateCardCall
@@ -766,7 +766,7 @@ purpose operation safeHandler "request body enters an escaped String hole"
 call bodyReadCall http.requestBodyText
 argument bodyReadCall request HttpRequest request
 run bodyReadCall
-bind value bodyValue CNullTerminatedByteString bodyReadCall
+bind value bodyValue String bodyReadCall
 call hydrateCardCall html.hydrate.CardTemplate
 argument hydrateCardCall bodyText String bodyValue
 run hydrateCardCall
@@ -784,7 +784,7 @@ operation handleTitleChanged
 input handleTitleChanged session GuiSession
 input handleTitleChanged event GuiEvent
 input handleTitleChanged todoTitleTextBox GuiTextBox
-output handleTitleChanged CSignedInt32
+output handleTitleChanged Int32
 effect handleTitleChanged read gui.control.textBox.text
 authority handleTitleChanged gui.control.textBox.text read
 purpose handleTitleChanged "read the live text box text after a GUI event"
@@ -792,7 +792,7 @@ call titleReadCall gui.textBoxText
 arg titleReadCall session session
 arg titleReadCall textBox todoTitleTextBox
 run titleReadCall
-ignoreValue titleReadCall CNullTerminatedByteString
+ignoreValue titleReadCall String
 returnValue 0
 """)
         codes = _codes(diagnostics)
@@ -807,7 +807,7 @@ operation handleTitleChanged
 input handleTitleChanged session GuiSession
 input handleTitleChanged event GuiEvent
 input handleTitleChanged addTodoButton GuiButton
-output handleTitleChanged CSignedInt32
+output handleTitleChanged Int32
 effect handleTitleChanged read gui.control.textBox.text
 authority handleTitleChanged gui.control.textBox.text read
 purpose handleTitleChanged "read the live text box text after a GUI event"
@@ -815,7 +815,7 @@ call titleReadCall gui.textBoxText
 arg titleReadCall session session
 arg titleReadCall textBox addTodoButton
 run titleReadCall
-ignoreValue titleReadCall CNullTerminatedByteString
+ignoreValue titleReadCall String
 returnValue 0
 """)
         self.assertIn("SS4301", _codes(diagnostics))
@@ -827,13 +827,13 @@ operation handleClose
 input handleClose session GuiSession
 input handleClose event GuiEvent
 input handleClose todoMainWindow GuiWindow
-output handleClose CSignedInt32
+output handleClose Int32
 purpose handleClose "close the main GUI window"
 call closeCall gui.windowClose
 arg closeCall session session
 arg closeCall window todoMainWindow
 run closeCall
-ignoreValue closeCall CSignedInt32
+ignoreValue closeCall Int32
 returnValue 0
 """)
         matching = _diagnostics_with_code(diagnostics, "SS3111")[0]
@@ -854,12 +854,12 @@ arg registerClickCall control addTodoButton
 arg registerClickCall eventKind clickGuiEventKind
 arg registerClickCall handler addTaskFromInput
 run registerClickCall
-ignoreValue registerClickCall CSignedInt32
+ignoreValue registerClickCall Int32
 returnValue 0
 operation addTaskFromInput
 input addTaskFromInput session GuiSession
 input addTaskFromInput event GuiEvent
-output addTaskFromInput CSignedInt32
+output addTaskFromInput Int32
 purpose addTaskFromInput "handle a GUI click"
 returnValue 0
 """)
@@ -965,7 +965,7 @@ record BuildTarget
 field BuildTarget runtime String
 field BuildTarget guiBackend String
 field BuildTarget profile String
-field BuildTarget optLevel I64
+field BuildTarget optLevel Int64
 field BuildTarget runtimeChecks String
 field BuildTarget persistLlvmIr Bool
 field BuildTarget buildFolderName String
@@ -1255,7 +1255,7 @@ mainFile taskForgeTui "main.sem"
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
 exportConstant app.todo publicLimit
-storage module immutable publicLimit I64 5
+storage module immutable publicLimit Int64 5
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
         self.assertNotIn("SS2506", _codes(diagnostics))
@@ -1333,7 +1333,7 @@ moduleOwns standard.customlint "The customLintVersionText export."
 moduleDoesNotOwn standard.customlint "Application code."
 moduleInvariant standard.customlint "The module is visible only through SEMANTICSCRIPT_STD_PATH."
 exportConstant standard.customlint customLintVersionText
-storage module immutable customLintVersionText CNullTerminatedByteString "custom"
+storage module immutable customLintVersionText String "custom"
 """, encoding="utf-8")
             appRoot = root / "app"
             appRoot.mkdir()
@@ -1400,9 +1400,9 @@ mainFile runtimeImports "main.sem"
 importModule http standard.http
 importModule json standard.json
 importCapability importedHttpResponseWriter http httpResponseWriter
-storage module immutable okBody CNullTerminatedByteString "ok"
-storage module immutable plainType CNullTerminatedByteString "text/plain; charset=utf-8"
-storage module immutable builderCapacity CByteCount 128
+storage module immutable okBody String "ok"
+storage module immutable plainType String "text/plain; charset=utf-8"
+storage module immutable builderCapacity ByteCount 128
 operation main
 output main Void
 effect main write http.response
@@ -1414,7 +1414,7 @@ arg writeCall status 200
 arg writeCall body okBody
 arg writeCall contentType plainType
 run writeCall
-ignoreValue writeCall CSignedInt32
+ignoreValue writeCall Int32
 call createBuilderCall json.createBuilder
 arg createBuilderCall capacity builderCapacity
 run createBuilderCall
@@ -1465,7 +1465,7 @@ mainFile taskForgeTui "main.sem"
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
 exportConstant app.todo mutableRevision
-storage module mutable mutableRevision I64 0
+storage module mutable mutableRevision Int64 0
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
         self.assertIn("SS2508", _codes(diagnostics))
@@ -1483,7 +1483,7 @@ exportConstant app.todo scratchLimit
 operation main
 output main Void
 purpose main "smoke"
-storage local immutable scratchLimit I64 5
+storage local immutable scratchLimit Int64 5
 returnVoid
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
@@ -1554,14 +1554,14 @@ exportType app.todo TodoItem
 exportError app.todo TodoError
 exportCapability app.todo todoWriter
 exportConstant app.todo maxTodoCount
-enum TodoStatus repr CSignedInt32
+enum TodoStatus repr Int32
 enumCase TodoStatus openTodoStatus 0
 record TodoItem
-field TodoItem title CNullTerminatedByteString
+field TodoItem title String
 error TodoError
 errorCase TodoError SaveFailed SaveTodosFailure
 capability todoWriter todo write
-storage module immutable maxTodoCount I64 128
+storage module immutable maxTodoCount Int64 128
 """, encoding="utf-8")
             facts = semlint.gather_extended(semlint.parse_file(modulePath))
             tape = semlint.build_export_contract_tape(facts)
@@ -1612,19 +1612,19 @@ exportConstant app.provider providerLimit
 exportConstant app.provider mutableCounter
 exportOperation app.provider providerPing
 exportOperation app.provider providerCount
-type ProviderCount I64
+type ProviderCount Int64
 error ProviderError
 errorCase ProviderError Failed ProviderFailure
 capability providerReader provider read
-storage module immutable providerLimit I64 7
-storage module mutable mutableCounter I64 0
+storage module immutable providerLimit Int64 7
+storage module mutable mutableCounter Int64 0
 operation providerPing
 output providerPing Void
 purpose providerPing "public provider ping"
 returnVoid
 operation providerCount
-input providerCount count I64
-output providerCount Result I64 ProviderError
+input providerCount count Int64
+output providerCount Result Int64 ProviderError
 effect providerCount read provider
 useCapability providerCount providerReader
 purpose providerCount "public provider count"
@@ -1728,7 +1728,7 @@ returnError providerError
             consumerPath.write_text("""module app.consumer
 importModule svc app.provider
 importOperation countProvider svc providerCount
-const wrongCount CNullTerminatedByteString "wrong"
+const wrongCount String "wrong"
 operation main
 output main Void
 purpose main "consumer"
@@ -1746,7 +1746,7 @@ returnVoid
             consumerPath = self._write_project(root)
             consumerPath.write_text("""module app.consumer
 importModule svc app.provider
-const countValue I64 1
+const countValue Int64 1
 operation main
 output main Void
 purpose main "consumer"
@@ -1766,7 +1766,7 @@ returnVoid
             consumerPath = self._write_project(root)
             consumerPath.write_text("""module app.consumer
 importModule svc app.provider
-const countValue I64 1
+const countValue Int64 1
 operation main
 output main Void
 effect main read provider
@@ -1913,11 +1913,11 @@ class TestUnusedBindSlots(unittest.TestCase):
 operation main
 output main Void
 purpose main "smoke"
-call computeCall math.addI64
+call computeCall math.addInt64
 arg computeCall left someLeftValue
 arg computeCall right someRightValue
 run computeCall
-bind unreadResult I64 computeCall
+bind unreadResult Int64 computeCall
 """)
         self.assertIn("SS0106", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0106")[0]
@@ -1926,13 +1926,13 @@ bind unreadResult I64 computeCall
     def test_read_bind_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main I64
+output main Int64
 purpose main "smoke"
-call computeCall math.addI64
+call computeCall math.addInt64
 arg computeCall left someLeftValue
 arg computeCall right someRightValue
 run computeCall
-bind computedSum I64 computeCall
+bind computedSum Int64 computeCall
 returnValue computedSum
 """)
         self.assertNotIn("SS0106", _codes(diagnostics))
@@ -1994,7 +1994,7 @@ effect main write console.stdout
 call writeLineCall console.writeLine
 arg writeLineCall console console
 arg writeLineCall text someMessageText
-runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
 returnOk noResult
 label writeFailed
 returnError writeLineError
@@ -2013,7 +2013,7 @@ call writeLineCall console.writeLine
 arg writeLineCall console console
 arg writeLineCall text someMessageText
 run writeLineCall
-runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
 returnOk noResult
 label writeFailed
 returnError writeLineError
@@ -2040,7 +2040,7 @@ call writeLineCall console.writeLine
 arg writeLineCall console console
 arg writeLineCall text someMessageText
 start writeLineCall
-runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
 returnOk noResult
 label writeFailed
 returnError writeLineError
@@ -2068,7 +2068,7 @@ call writeLineCall console.writeLine
 arg writeLineCall console console
 arg writeLineCall text someMessageText
 startInGroup writeLineCall writeGroup
-runChecked writeLineCall ok writeLineStatus CSignedInt32 error writeLineError MainError else writeFailed
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
 awaitGroup writeGroup
 returnOk noResult
 label writeFailed
@@ -2143,7 +2143,7 @@ effect main write console.stdout
 call writeLineCall console.writeLine
 arg writeLineCall console console
 arg writeLineCall text someMessageText
-ignore ok source writeLineCall type CSignedInt32
+ignore ok source writeLineCall type Int32
 bind error writeLineCallError MainError writeLineCall
 branch error source writeLineCall target writeFailed
 run writeLineCall
@@ -2202,7 +2202,7 @@ arg writeLineCall console console
 arg writeLineCall text someMessageText
 run writeLineCall
 ignoreOk writeLineCall Void
-call asyncCall math.addI64
+call asyncCall math.addInt64
 start asyncCall
 label waitNextResult
 await nextResult
@@ -2233,7 +2233,7 @@ effect main write console.stdout
 call writeCharacterCall c.putchar
 arg writeCharacterCall character escapeByte
 run writeCharacterCall
-ignoreValue writeCharacterCall CSignedInt32
+ignoreValue writeCharacterCall Int32
 """)
         self.assertNotIn("SS3106", _codes(diagnostics))
 
@@ -2336,7 +2336,7 @@ errorCase MainError SomeFailure
 operation main
 output main Result Void MainError
 purpose main "smoke"
-call computeCall math.addI64
+call computeCall math.addInt64
 run computeCall
 bindError oopsie MainError computeCall
 """)
@@ -2359,7 +2359,7 @@ returnError shortname
 operation main
 output main Void
 purpose main "smoke"
-const tmp I64 zeroCount
+const tmp Int64 zeroCount
 """)
         self.assertIn("SS4004", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS4004")[0]
@@ -2427,7 +2427,7 @@ class TestUnusedConst(unittest.TestCase):
 operation main
 output main Void
 purpose main "smoke"
-const dangling I64 zeroCount
+const dangling Int64 zeroCount
 """)
         self.assertIn("SS0107", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0107")[0]
@@ -2436,9 +2436,9 @@ const dangling I64 zeroCount
     def test_referenced_const_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main I64
+output main Int64
 purpose main "smoke"
-const exitOkCode I64 zeroCount
+const exitOkCode Int64 zeroCount
 returnValue exitOkCode
 """)
         self.assertNotIn("SS0107", _codes(diagnostics))
@@ -2452,7 +2452,7 @@ class TestUnusedInput(unittest.TestCase):
     def test_unreferenced_input_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-input main unusedParameter I64
+input main unusedParameter Int64
 output main Void
 purpose main "smoke"
 """)
@@ -2463,8 +2463,8 @@ purpose main "smoke"
     def test_referenced_input_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-input main usedParameter I64
-output main I64
+input main usedParameter Int64
+output main Int64
 purpose main "smoke"
 returnValue usedParameter
 """)
@@ -2569,7 +2569,7 @@ returnError mainFailure
 class TestDeadStore(unittest.TestCase):
     def test_two_sets_without_read_between_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage local mutable counter I64 zeroValue
+storage local mutable counter Int64 zeroValue
 operation main
 output main Void
 purpose main "smoke"
@@ -2581,9 +2581,9 @@ set local counter secondValue
 
     def test_read_between_sets_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage local mutable counter I64 zeroValue
+storage local mutable counter Int64 zeroValue
 operation main
-output main I64
+output main Int64
 purpose main "smoke"
 invariant main "counter mutates"
 set local counter firstValue
@@ -2703,61 +2703,61 @@ branchIf someCondition loopHeader
         self.assertNotIn("SS3203", _codes(diagnostics))
 
 
-class TestSnprintfI32OffsetWithoutWidening(unittest.TestCase):
-    def test_snprintf_result_added_to_i64_cursor_is_flagged(self) -> None:
+class TestSnprintfInt32OffsetWithoutWidening(unittest.TestCase):
+    def test_snprintf_result_added_to_int64_cursor_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable format CNullTerminatedByteString "%s"
-storage local immutable text CNullTerminatedByteString "row"
-storage local mutable writeOffset CSignedInt64 0
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable format String "%s"
+storage local immutable text String "row"
+storage local mutable writeOffset Int64 0
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
 arg formatRowCall format format
 arg formatRowCall first text
 run formatRowCall
-bind rowBytesWritten CSignedInt32 formatRowCall
-call afterRowOffsetCall math.addI64
+bind rowBytesWritten Int32 formatRowCall
+call afterRowOffsetCall math.addInt64
 arg afterRowOffsetCall left writeOffset
 arg afterRowOffsetCall right rowBytesWritten
 run afterRowOffsetCall
-bind afterRowOffset CSignedInt64 afterRowOffsetCall
+bind afterRowOffset Int64 afterRowOffsetCall
 """)
         self.assertIn("SS3205", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3205")[0]
         self.assertEqual(matching.subjectName, "afterRowOffsetCall")
-        self.assertEqual(matching.gapEdge, "signExtendCSignedInt32ToCSignedInt64")
+        self.assertEqual(matching.gapEdge, "signExtendInt32ToInt64")
 
-    def test_explicit_widen_before_i64_cursor_not_flagged(self) -> None:
+    def test_explicit_widen_before_int64_cursor_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable format CNullTerminatedByteString "%s"
-storage local immutable text CNullTerminatedByteString "row"
-storage local mutable writeOffset CSignedInt64 0
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable format String "%s"
+storage local immutable text String "row"
+storage local mutable writeOffset Int64 0
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
 arg formatRowCall format format
 arg formatRowCall first text
 run formatRowCall
-bind rowBytesWritten CSignedInt32 formatRowCall
-call widenRowBytesWrittenCall math.signExtendCSignedInt32ToCSignedInt64
+bind rowBytesWritten Int32 formatRowCall
+call widenRowBytesWrittenCall math.signExtendInt32ToInt64
 arg widenRowBytesWrittenCall inputValue rowBytesWritten
 run widenRowBytesWrittenCall
-bind rowBytesWrittenI64 CSignedInt64 widenRowBytesWrittenCall
-call afterRowOffsetCall math.addI64
+bind rowBytesWrittenInt64 Int64 widenRowBytesWrittenCall
+call afterRowOffsetCall math.addInt64
 arg afterRowOffsetCall left writeOffset
-arg afterRowOffsetCall right rowBytesWrittenI64
+arg afterRowOffsetCall right rowBytesWrittenInt64
 run afterRowOffsetCall
-bind afterRowOffset CSignedInt64 afterRowOffsetCall
+bind afterRowOffset Int64 afterRowOffsetCall
 """)
         self.assertNotIn("SS3205", _codes(diagnostics))
 
@@ -2768,20 +2768,20 @@ class TestGuiSelectionHandlerAppendsListItem(unittest.TestCase):
 operation markSelectedTask
 input markSelectedTask session GuiSession
 input markSelectedTask event GuiEvent
-output markSelectedTask CSignedInt32
+output markSelectedTask Int32
 purpose markSelectedTask "complete selected task"
 invariant markSelectedTask "selection handler"
 call selectedIndexCall gui.listBoxSelectedIndex
 arg selectedIndexCall session session
 arg selectedIndexCall listBox taskListHandle
 run selectedIndexCall
-bind selectedTaskIndex CSignedInt32 selectedIndexCall
+bind selectedTaskIndex Int32 selectedIndexCall
 call appendCompletedCall gui.listBoxAppendItem
 arg appendCompletedCall session session
 arg appendCompletedCall listBox taskListHandle
 arg appendCompletedCall text completedText
 run appendCompletedCall
-bind appendStatus CSignedInt32 appendCompletedCall
+bind appendStatus Int32 appendCompletedCall
 """)
         self.assertIn("SS3206", _codes(diagnostics))
 
@@ -2790,20 +2790,20 @@ bind appendStatus CSignedInt32 appendCompletedCall
 operation markSelectedTask
 input markSelectedTask session GuiSession
 input markSelectedTask event GuiEvent
-output markSelectedTask CSignedInt32
+output markSelectedTask Int32
 purpose markSelectedTask "complete selected task"
 invariant markSelectedTask "selection handler"
 call selectedIndexCall gui.listBoxSelectedIndex
 arg selectedIndexCall session session
 arg selectedIndexCall listBox taskListHandle
 run selectedIndexCall
-bind selectedTaskIndex CSignedInt32 selectedIndexCall
+bind selectedTaskIndex Int32 selectedIndexCall
 call statusCall gui.textLabelSetText
 arg statusCall session session
 arg statusCall textLabel statusLabelHandle
 arg statusCall text completedText
 run statusCall
-bind status CSignedInt32 statusCall
+bind status Int32 statusCall
 """)
         self.assertNotIn("SS3206", _codes(diagnostics))
 
@@ -2814,8 +2814,8 @@ class TestRowCountMutationUnchecked(unittest.TestCase):
 operation handleEnter
 output handleEnter Void
 purpose handleEnter "insert row"
-storage local mutable activeRowCount CSignedInt64 4
-storage local immutable maxRows CSignedInt64 4
+storage local mutable activeRowCount Int64 4
+storage local immutable maxRows Int64 4
 call addEmptyAtEndCall insertEmptyRowAt
 arg addEmptyAtEndCall rowsBuffer rowsBuffer
 arg addEmptyAtEndCall rowLengths rowLengths
@@ -2824,7 +2824,7 @@ arg addEmptyAtEndCall rowIndex activeRowCount
 arg addEmptyAtEndCall maxRows maxRows
 arg addEmptyAtEndCall rowCapacity rowCapacity
 run addEmptyAtEndCall
-bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
+bind rowsAfterAddEmpty Int64 addEmptyAtEndCall
 set local activeRowCount rowsAfterAddEmpty
 """)
         self.assertIn("SS3207", _codes(diagnostics))
@@ -2834,8 +2834,8 @@ set local activeRowCount rowsAfterAddEmpty
 operation handleEnter
 output handleEnter Void
 purpose handleEnter "insert row"
-storage local mutable activeRowCount CSignedInt64 4
-storage local immutable maxRows CSignedInt64 4
+storage local mutable activeRowCount Int64 4
+storage local immutable maxRows Int64 4
 call addEmptyAtEndCall insertEmptyRowAt
 arg addEmptyAtEndCall rowsBuffer rowsBuffer
 arg addEmptyAtEndCall rowLengths rowLengths
@@ -2844,8 +2844,8 @@ arg addEmptyAtEndCall rowIndex activeRowCount
 arg addEmptyAtEndCall maxRows maxRows
 arg addEmptyAtEndCall rowCapacity rowCapacity
 run addEmptyAtEndCall
-bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
-call addEmptyAtEndFailedCheckCall math.equalI64
+bind rowsAfterAddEmpty Int64 addEmptyAtEndCall
+call addEmptyAtEndFailedCheckCall math.equalInt64
 arg addEmptyAtEndFailedCheckCall left rowsAfterAddEmpty
 arg addEmptyAtEndFailedCheckCall right activeRowCount
 run addEmptyAtEndFailedCheckCall
@@ -2864,10 +2864,10 @@ class TestBindThenIgnore(unittest.TestCase):
 operation main
 output main Void
 purpose main "smoke"
-call sideEffectCall math.addI64
+call sideEffectCall math.addInt64
 run sideEffectCall
-bind redundantResult I64 sideEffectCall
-ignoreValue redundantResult I64
+bind redundantResult Int64 sideEffectCall
+ignoreValue redundantResult Int64
 """)
         self.assertIn("SS3204", _codes(diagnostics))
 
@@ -2940,7 +2940,7 @@ effect main allocate heap
 authority main heap allocate
 memoryHeap main yes
 memoryAllocationSource main allocationCall
-storage local immutable allocationSize CByteCount 8
+storage local immutable allocationSize ByteCount 8
 call allocationCall {targetName}
 arg allocationCall size allocationSize
 run allocationCall
@@ -2985,10 +2985,10 @@ effect main allocate heap
 authority main heap allocate
 memoryHeap main yes
 memoryAllocationSource main allocationCall
-storage local immutable allocationSize CByteCount 8
+storage local immutable allocationSize ByteCount 8
 call allocationCall c.malloc
 arg allocationCall size allocationSize
-runChecked allocationCall ok allocatedBuffer COpaqueMemoryAddress error allocationError MainError else allocationFailed
+runChecked allocationCall ok allocatedBuffer OpaquePointer error allocationError MainError else allocationFailed
 defer releaseAllocationCall c.free allocatedBuffer
 returnOk noResult
 label allocationFailed
@@ -3064,7 +3064,7 @@ memoryAllocationSource main allocationCall
 call allocationCall c.malloc
 arg allocationCall size eightBytes
 run allocationCall
-bindOk allocatedBuffer COpaqueMemoryAddress allocationCall
+bindOk allocatedBuffer OpaquePointer allocationCall
 call freeAllocationCall c.free
 arg freeAllocationCall ptr allocatedBuffer
 run freeAllocationCall
@@ -3077,14 +3077,14 @@ ignoreValue freeAllocationCall Void
         # transfers to the caller and the lack of free is correct.
         diagnostics = _lint_source("""project Test
 operation allocateBuffer
-output allocateBuffer COpaqueMemoryAddress
+output allocateBuffer OpaquePointer
 purpose allocateBuffer "allocator"
 effect allocateBuffer allocate heap
 memoryHeap allocateBuffer yes
 memoryAllocationSource allocateBuffer allocationCall
 call allocationCall c.malloc
 run allocationCall
-bind allocatedBuffer COpaqueMemoryAddress allocationCall
+bind allocatedBuffer OpaquePointer allocationCall
 returnValue allocatedBuffer
 """)
         self.assertNotIn("SS3303", _codes(diagnostics))
@@ -3092,15 +3092,15 @@ returnValue allocatedBuffer
 
 class TestStackLimitOverrun(unittest.TestCase):
     def test_tiny_stack_limit_with_many_binds_flagged(self) -> None:
-        # Declare a 4-byte limit but bind several I64 values (8 bytes each)
+        # Declare a 4-byte limit but bind several Int64 values (8 bytes each)
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
 memoryStackLimit main 4
-const firstValue I64 zeroValue
-const secondValue I64 zeroValue
-const thirdValue I64 zeroValue
+const firstValue Int64 zeroValue
+const secondValue Int64 zeroValue
+const thirdValue Int64 zeroValue
 """)
         self.assertIn("SS3304", _codes(diagnostics))
 
@@ -3110,7 +3110,7 @@ operation main
 output main Void
 purpose main "smoke"
 memoryStackLimit main 8192
-const firstValue I64 zeroValue
+const firstValue Int64 zeroValue
 """)
         self.assertNotIn("SS3304", _codes(diagnostics))
 
@@ -3134,14 +3134,14 @@ recordAlign SomeRecord 8
 class TestArrayLengthZero(unittest.TestCase):
     def test_zero_length_array_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-arrayType EmptyArray I64
+arrayType EmptyArray Int64
 arrayLength EmptyArray 0
 """)
         self.assertIn("SS3404", _codes(diagnostics))
 
     def test_nonzero_length_array_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-arrayType FixedArray I64
+arrayType FixedArray Int64
 arrayLength FixedArray 8
 """)
         self.assertNotIn("SS3404", _codes(diagnostics))
@@ -3150,14 +3150,14 @@ arrayLength FixedArray 8
 class TestInlineCapacityWithoutSpillAllocator(unittest.TestCase):
     def test_capacity_without_spill_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-smallListType TaskQueue I64
+smallListType TaskQueue Int64
 smallListInlineCapacity TaskQueue 8
 """)
         self.assertIn("SS3405", _codes(diagnostics))
 
     def test_capacity_with_spill_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-smallListType TaskQueue I64
+smallListType TaskQueue Int64
 smallListInlineCapacity TaskQueue 8
 smallListSpillAllocator TaskQueue heapAllocator
 """)
@@ -3186,7 +3186,7 @@ literalSource embeddedConfig "config.bin"
         # Primitive types are encoded by representation; no
         # typeLiteralEncoding expected.
         diagnostics = _lint_source("""project Test
-literal eightByteCount CByteCount
+literal eightByteCount ByteCount
 literalSource eightByteCount "size.bin"
 """)
         self.assertNotIn("SS3406", _codes(diagnostics))
@@ -3334,7 +3334,7 @@ awaitWork renderTaskWork
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
 operation renderTask
-input renderTask renderInput I64
+input renderTask renderInput Int64
 output renderTask Void
 purpose renderTask "render"
 operation main
@@ -3354,7 +3354,7 @@ awaitWork renderTaskWork
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
 operation renderTask
-input renderTask renderInput I64
+input renderTask renderInput Int64
 output renderTask Void
 purpose renderTask "render"
 operation main
@@ -3375,7 +3375,7 @@ awaitWork renderTaskWork
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
 operation renderTask
-input renderTask renderInput I64
+input renderTask renderInput Int64
 output renderTask Void
 purpose renderTask "render"
 operation main
@@ -3396,7 +3396,7 @@ awaitWork renderTaskWork
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
 operation renderTask
-input renderTask renderInput I64
+input renderTask renderInput Int64
 output renderTask Void
 purpose renderTask "render"
 operation main
@@ -3420,7 +3420,7 @@ awaitWork renderTaskWork
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
 operation renderTask
-input renderTask renderInput I64
+input renderTask renderInput Int64
 output renderTask Void
 purpose renderTask "render"
 operation main
@@ -3444,7 +3444,7 @@ awaitWork renderTaskWork
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
 operation renderTask
-input renderTask renderInput I64
+input renderTask renderInput Int64
 output renderTask Void
 purpose renderTask "render"
 operation main
@@ -3563,26 +3563,26 @@ call openFileHandleCall c.fopen
 arg openFileHandleCall path filePath
 arg openFileHandleCall mode readMode
 run openFileHandleCall
-bind openedFileHandle CFileHandle openFileHandleCall
+bind openedFileHandle FileHandle openFileHandleCall
 call closeFileHandleCall c.fclose
 arg closeFileHandleCall stream openedFileHandle
 run closeFileHandleCall
-ignoreValue closeFileHandleCall CSignedInt32
+ignoreValue closeFileHandleCall Int32
 """)
         self.assertNotIn("SS3901", _codes(diagnostics))
 
     def test_handle_returning_op_not_flagged(self) -> None:
-        # Op output is CFileHandle — ownership transfers to caller.
+        # Op output is FileHandle — ownership transfers to caller.
         diagnostics = _lint_source("""project Test
 operation openConfigurationFile
-output openConfigurationFile CFileHandle
+output openConfigurationFile FileHandle
 purpose openConfigurationFile "opener"
 effect openConfigurationFile open file
 call openFileHandleCall c.fopen
 arg openFileHandleCall path filePath
 arg openFileHandleCall mode readMode
 run openFileHandleCall
-bind openedFileHandle CFileHandle openFileHandleCall
+bind openedFileHandle FileHandle openFileHandleCall
 returnValue openedFileHandle
 """)
         self.assertNotIn("SS3901", _codes(diagnostics))
@@ -3597,8 +3597,8 @@ errorCase DbError SchemaFailed SqliteDatabaseExecFailure
 operation openConfiguredDb
 output openConfiguredDb Result SqliteDatabase DbError
 purpose openConfiguredDb "open and bootstrap sqlite"
-storage local immutable databasePath CNullTerminatedByteString ":memory:"
-storage local immutable schemaSql CNullTerminatedByteString "CREATE TABLE t(id INTEGER);"
+storage local immutable databasePath String ":memory:"
+storage local immutable schemaSql String "CREATE TABLE t(id INTEGER);"
 call openCall sqlite.openDatabase
 arg openCall path databasePath
 arg openCall mode inMemorySqliteOpenMode
@@ -3629,8 +3629,8 @@ errorCase DbError SchemaFailed SqliteDatabaseExecFailure
 operation openConfiguredDb
 output openConfiguredDb Result SqliteDatabase DbError
 purpose openConfiguredDb "open and bootstrap sqlite"
-storage local immutable databasePath CNullTerminatedByteString ":memory:"
-storage local immutable schemaSql CNullTerminatedByteString "CREATE TABLE t(id INTEGER);"
+storage local immutable databasePath String ":memory:"
+storage local immutable schemaSql String "CREATE TABLE t(id INTEGER);"
 call openCall sqlite.openDatabase
 arg openCall path databasePath
 arg openCall mode inMemorySqliteOpenMode
@@ -3717,7 +3717,7 @@ guardTokenRelease accountUpdateGuard releaseAccountUpdate
 class TestGuardTokenProtectsSharedStateAccess(unittest.TestCase):
     def test_protected_by_without_matching_protects_edge_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -3731,7 +3731,7 @@ set sharedState lookupFailureCount nextLookupFailureCount protectedBy lookupFail
 
     def test_protected_by_matching_protects_edge_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 guardTokenProtects lookupFailureGuard lookupFailureCount
 operation main
 output main Void
@@ -3753,7 +3753,7 @@ type SecondAlias FirstAlias
     def test_terminating_alias_chain_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 type AccountId UuidV7
-type UuidV7 CSignedInt64
+type UuidV7 Int64
 """)
         self.assertNotIn("SS3701", _codes(diagnostics))
 
@@ -3789,7 +3789,7 @@ class TestRuntimeBackingMissing(unittest.TestCase):
     def test_record_json_generated_target_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 jsonCodec taskJsonCodec
-jsonCodecInput taskJsonCodec CNullTerminatedByteString
+jsonCodecInput taskJsonCodec String
 jsonCodecOutput taskJsonCodec Task
 jsonCodecDecodeTarget taskJsonCodec json.decode.Task
 jsonCodecEncodeTarget taskJsonCodec json.encode.Task
@@ -3799,7 +3799,7 @@ purpose main "smoke"
 call decodeTaskCall json.decode.Task
 arg decodeTaskCall value rawTaskJson
 run decodeTaskCall
-bind decodedTask I64 decodeTaskCall
+bind decodedTask Int64 decodeTaskCall
 """)
         self.assertIn("SS3802", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3802")[0]
@@ -3811,11 +3811,11 @@ bind decodedTask I64 decodeTaskCall
 operation main
 output main Void
 purpose main "smoke"
-const rawNumber CNullTerminatedByteString "42"
-call decodeIntegerCall json.decode.I64
+const rawNumber String "42"
+call decodeIntegerCall json.decode.Int64
 arg decodeIntegerCall value rawNumber
 run decodeIntegerCall
-bind decodedInteger I64 decodeIntegerCall
+bind decodedInteger Int64 decodeIntegerCall
 """)
         self.assertNotIn("SS3802", _codes(diagnostics))
 
@@ -3828,7 +3828,7 @@ purpose main "smoke"
 call encodeTaskCall taskBinaryCodec.encode
 arg encodeTaskCall value taskRecord
 run encodeTaskCall
-bind encodedTaskBytes I64 encodeTaskCall
+bind encodedTaskBytes Int64 encodeTaskCall
 """)
         self.assertIn("SS3803", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3803")[0]
@@ -3845,7 +3845,7 @@ call appendTaskCall TaskList.append
 arg appendTaskCall list taskList
 arg appendTaskCall item taskRecord
 run appendTaskCall
-bindOk updatedTaskList I64 appendTaskCall
+bindOk updatedTaskList Int64 appendTaskCall
 """)
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
@@ -3863,7 +3863,7 @@ call getTaskCall TaskMap.get
 arg getTaskCall map taskMap
 arg getTaskCall key taskId
 run getTaskCall
-bindOk taskValue I64 getTaskCall
+bindOk taskValue Int64 getTaskCall
 """)
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
@@ -3878,7 +3878,7 @@ call appendTaskCall TaskList.append
 arg appendTaskCall list taskList
 arg appendTaskCall item taskRecord
 run appendTaskCall
-bindOk updatedTaskList I64 appendTaskCall
+bindOk updatedTaskList Int64 appendTaskCall
 """)
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
@@ -4038,10 +4038,10 @@ storage module immutable nestedPath JsonPath ".items[0].title"
 operation renderRow
 output renderRow Void
 purpose renderRow "generic JSON formatting fixture"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable rowFormat CNullTerminatedByteString "{\\"title\\":\\"%s\\"}"
-storage local immutable title CNullTerminatedByteString "hello"
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable rowFormat String "{\\"title\\":\\"%s\\"}"
+storage local immutable title String "hello"
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
@@ -4060,10 +4060,10 @@ returnVoid
 operation renderText
 output renderText Void
 purpose renderText "plain text formatting fixture"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable rowFormat CNullTerminatedByteString "title=%s"
-storage local immutable title CNullTerminatedByteString "hello"
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable rowFormat String "title=%s"
+storage local immutable title String "hello"
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
@@ -4079,7 +4079,7 @@ returnVoid
 operation legacyBuilder
 output legacyBuilder Void
 purpose legacyBuilder "legacy JSON builder fixture"
-storage local immutable capacity CByteCount 128
+storage local immutable capacity ByteCount 128
 call createBuilderCall json.createBuilder
 arg createBuilderCall capacity capacity
 run createBuilderCall
@@ -4154,7 +4154,7 @@ jsonBody payload
         diagnostics = _lint_source("""project Test
 record Payload
 field Payload title JsonText
-field Payload count I64
+field Payload count Int64
 storage module immutable payload Payload
 jsonBody payload
   {"title":"ok"}
@@ -4167,7 +4167,7 @@ jsonBody payload
         diagnostics = _lint_source("""project Test
 record Payload
 field Payload title JsonText
-field Payload count I64
+field Payload count Int64
 recordFieldJsonName Payload title "display_title"
 recordFieldJsonOmitWhen Payload count zero
 storage module immutable payload Payload
@@ -4210,7 +4210,7 @@ sql body selectSql
 
     def test_inline_sql_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable selectSql CNullTerminatedByteString "SELECT 1"
+storage module immutable selectSql String "SELECT 1"
 """)
         self.assertIn("SS3628", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3628")[0]
@@ -4272,7 +4272,7 @@ sql body selectSql
   SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1
 operation main
 input operation main databaseHandle SqliteDatabase
-input operation main auctionId CNullTerminatedByteString
+input operation main auctionId String
 output operation main Void
 purpose operation main "smoke"
 call prepareCall sqlite.prepareStatement
@@ -4282,14 +4282,14 @@ run prepareCall
 bind ok statement SqliteStatement prepareCall
 call bindAuctionCall sqlite.bindText
 argument bindAuctionCall statement SqliteStatement statement
-argument bindAuctionCall parameterIndex CSignedInt32 1
-argument bindAuctionCall value CNullTerminatedByteString auctionId
+argument bindAuctionCall parameterIndex Int32 1
+argument bindAuctionCall value String auctionId
 run bindAuctionCall
 ignore void source bindAuctionCall
 call stepCall sqlite.stepStatement
 argument stepCall statement SqliteStatement statement
 run stepCall
-bind ok stepStatus CSignedInt32 stepCall
+bind ok stepStatus Int32 stepCall
 """)
         self.assertIn("SS3631", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3631")[0]
@@ -4304,7 +4304,7 @@ sql body selectSql
   SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1
 operation main
 input operation main databaseHandle SqliteDatabase
-input operation main auctionId CNullTerminatedByteString
+input operation main auctionId String
 output operation main Void
 purpose operation main "smoke"
 call prepareCall sqlite.prepareStatement
@@ -4314,19 +4314,19 @@ run prepareCall
 bind ok statement SqliteStatement prepareCall
 call bindAuctionCall sqlite.bindText
 argument bindAuctionCall statement SqliteStatement statement
-argument bindAuctionCall parameterIndex CSignedInt32 1
-argument bindAuctionCall value CNullTerminatedByteString auctionId
+argument bindAuctionCall parameterIndex Int32 1
+argument bindAuctionCall value String auctionId
 run bindAuctionCall
 ignore void source bindAuctionCall
 call stepCall sqlite.stepStatement
 argument stepCall statement SqliteStatement statement
 run stepCall
-bind ok stepStatus CSignedInt32 stepCall
+bind ok stepStatus Int32 stepCall
 call statusCall sqlite.columnInt64
 argument statusCall statement SqliteStatement statement
-argument statusCall columnIndex CSignedInt32 0
+argument statusCall columnIndex Int32 0
 run statusCall
-bind value status CSignedInt64 statusCall
+bind value status Int64 statusCall
 """)
         self.assertNotIn("SS3631", _codes(diagnostics))
 
@@ -4341,7 +4341,7 @@ sql body selectSql
   SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1
 operation main
 input operation main databaseHandle SqliteDatabase
-input operation main bucketKey CNullTerminatedByteString
+input operation main bucketKey String
 output operation main Void
 purpose operation main "smoke"
 call prepareUpsertCall sqlite.prepareStatement
@@ -4352,7 +4352,7 @@ bind ok upsertStatement SqliteStatement prepareUpsertCall
 call stepUpsertCall sqlite.stepStatement
 argument stepUpsertCall statement SqliteStatement upsertStatement
 run stepUpsertCall
-ignore ok source stepUpsertCall type CSignedInt32
+ignore ok source stepUpsertCall type Int32
 call prepareSelectCall sqlite.prepareStatement
 argument prepareSelectCall database SqliteDatabase databaseHandle
 argument prepareSelectCall sql SqlText selectSql
@@ -4378,7 +4378,7 @@ sql body selectSql
   SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1
 operation main
 input operation main databaseHandle SqliteDatabase
-input operation main bucketKey CNullTerminatedByteString
+input operation main bucketKey String
 output operation main Void
 purpose operation main "smoke"
 call prepareUpsertCall sqlite.prepareStatement
@@ -4389,12 +4389,12 @@ bind ok upsertStatement SqliteStatement prepareUpsertCall
 call stepUpsertCall sqlite.stepStatement
 argument stepUpsertCall statement SqliteStatement upsertStatement
 run stepUpsertCall
-bind ok upsertStatus CSignedInt32 stepUpsertCall
+bind ok upsertStatus Int32 stepUpsertCall
 call readReturnedCountCall sqlite.columnInt64
 argument readReturnedCountCall statement SqliteStatement upsertStatement
-argument readReturnedCountCall columnIndex CSignedInt32 0
+argument readReturnedCountCall columnIndex Int32 0
 run readReturnedCountCall
-bind value count CSignedInt64 readReturnedCountCall
+bind value count Int64 readReturnedCountCall
 call prepareSelectCall sqlite.prepareStatement
 argument prepareSelectCall database SqliteDatabase databaseHandle
 argument prepareSelectCall sql SqlText selectSql
@@ -4424,7 +4424,7 @@ bind ok auditStatement SqliteStatement prepareAuditCall
 call stepAuditCall sqlite.stepStatement
 argument stepAuditCall statement SqliteStatement auditStatement
 run stepAuditCall
-ignore ok source stepAuditCall type CSignedInt32
+ignore ok source stepAuditCall type Int32
 call prepareRequestLogCall sqlite.prepareStatement
 argument prepareRequestLogCall database SqliteDatabase databaseHandle
 argument prepareRequestLogCall sql SqlText insertRequestLogSql
@@ -4433,7 +4433,7 @@ bind ok requestLogStatement SqliteStatement prepareRequestLogCall
 call stepRequestLogCall sqlite.stepStatement
 argument stepRequestLogCall statement SqliteStatement requestLogStatement
 run stepRequestLogCall
-ignore ok source stepRequestLogCall type CSignedInt32
+ignore ok source stepRequestLogCall type Int32
 """)
         self.assertIn("SS3635", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3635")[0]
@@ -4475,7 +4475,7 @@ bind ok auditStatement SqliteStatement prepareAuditCall
 call stepAuditCall sqlite.stepStatement
 argument stepAuditCall statement SqliteStatement auditStatement
 run stepAuditCall
-ignore ok source stepAuditCall type CSignedInt32
+ignore ok source stepAuditCall type Int32
 call prepareRequestLogCall sqlite.prepareStatement
 argument prepareRequestLogCall database SqliteDatabase databaseHandle
 argument prepareRequestLogCall sql SqlText insertRequestLogSql
@@ -4484,7 +4484,7 @@ bind ok requestLogStatement SqliteStatement prepareRequestLogCall
 call stepRequestLogCall sqlite.stepStatement
 argument stepRequestLogCall statement SqliteStatement requestLogStatement
 run stepRequestLogCall
-ignore ok source stepRequestLogCall type CSignedInt32
+ignore ok source stepRequestLogCall type Int32
 call commitTxCall sqlite.exec
 argument commitTxCall database SqliteDatabase databaseHandle
 argument commitTxCall sql SqlText commitSql
@@ -4514,12 +4514,12 @@ bind ok upsertStatement SqliteStatement prepareUpsertCall
 call stepUpsertCall sqlite.stepStatement
 argument stepUpsertCall statement SqliteStatement upsertStatement
 run stepUpsertCall
-bind ok upsertStatus CSignedInt32 stepUpsertCall
+bind ok upsertStatus Int32 stepUpsertCall
 call readReturnedCountCall sqlite.columnInt64
 argument readReturnedCountCall statement SqliteStatement upsertStatement
-argument readReturnedCountCall columnIndex CSignedInt32 0
+argument readReturnedCountCall columnIndex Int32 0
 run readReturnedCountCall
-bind value count CSignedInt64 readReturnedCountCall
+bind value count Int64 readReturnedCountCall
 call commitTxCall sqlite.exec
 argument commitTxCall database SqliteDatabase databaseHandle
 argument commitTxCall sql SqlText commitSql
@@ -4555,16 +4555,16 @@ bind ok upsertStatement SqliteStatement prepareUpsertCall
 call stepUpsertCall sqlite.stepStatement
 argument stepUpsertCall statement SqliteStatement upsertStatement
 run stepUpsertCall
-bind ok upsertStatus CSignedInt32 stepUpsertCall
+bind ok upsertStatus Int32 stepUpsertCall
 call readReturnedCountCall sqlite.columnInt64
 argument readReturnedCountCall statement SqliteStatement upsertStatement
-argument readReturnedCountCall columnIndex CSignedInt32 0
+argument readReturnedCountCall columnIndex Int32 0
 run readReturnedCountCall
-bind value count CSignedInt64 readReturnedCountCall
+bind value count Int64 readReturnedCountCall
 call drainUpsertCall sqlite.stepStatement
 argument drainUpsertCall statement SqliteStatement upsertStatement
 run drainUpsertCall
-ignore ok source drainUpsertCall type CSignedInt32
+ignore ok source drainUpsertCall type Int32
 call commitTxCall sqlite.exec
 argument commitTxCall database SqliteDatabase databaseHandle
 argument commitTxCall sql SqlText commitSql
@@ -4576,14 +4576,14 @@ ignore void source commitTxCall
     def test_process_environment_read_without_cache_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation resolveSecret
-output operation resolveSecret CNullTerminatedByteString
+output operation resolveSecret String
 effect resolveSecret read process.environment
 purpose operation resolveSecret "smoke"
-storage module immutable secretEnvName CNullTerminatedByteString "APP_SECRET"
+storage module immutable secretEnvName String "APP_SECRET"
 call getenvSecretCall c.getenv
-argument getenvSecretCall name CNullTerminatedByteString secretEnvName
+argument getenvSecretCall name String secretEnvName
 run getenvSecretCall
-bind value secret CNullTerminatedByteString getenvSecretCall
+bind value secret String getenvSecretCall
 return value secret
 """)
         self.assertIn("SS3633", _codes(diagnostics))
@@ -4593,23 +4593,23 @@ return value secret
 
     def test_process_environment_read_with_cache_guard_is_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable cachedSecret CNullTerminatedByteString ""
-storage module mutable cachedSecretReady CSignedInt32 0
+storage module mutable cachedSecret String ""
+storage module mutable cachedSecretReady Int32 0
 operation resolveSecret
-output operation resolveSecret CNullTerminatedByteString
+output operation resolveSecret String
 effect resolveSecret read process.environment
 purpose operation resolveSecret "smoke"
-storage module immutable secretEnvName CNullTerminatedByteString "APP_SECRET"
-call readyCall math.equalCSignedInt32
-argument readyCall left CSignedInt32 cachedSecretReady
-argument readyCall right CSignedInt32 1
+storage module immutable secretEnvName String "APP_SECRET"
+call readyCall math.equalInt32
+argument readyCall left Int32 cachedSecretReady
+argument readyCall right Int32 1
 run readyCall
 bind value ready Bool readyCall
 branch if condition ready target returnCached
 call getenvSecretCall c.getenv
-argument getenvSecretCall name CNullTerminatedByteString secretEnvName
+argument getenvSecretCall name String secretEnvName
 run getenvSecretCall
-bind value secret CNullTerminatedByteString getenvSecretCall
+bind value secret String getenvSecretCall
 set storage cachedSecret secret
 set storage cachedSecretReady 1
 return value cachedSecret
@@ -4627,10 +4627,10 @@ output operation main Void
 purpose operation main "smoke"
 call requestNowCall http.nowMillis
 run requestNowCall
-bind value requestNow CSignedInt64 requestNowCall
+bind value requestNow Int64 requestNowCall
 call laterNowCall http.nowMillis
 run laterNowCall
-bind value laterNow CSignedInt64 laterNowCall
+bind value laterNow Int64 laterNowCall
 """)
         self.assertIn("SS3637", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3637")[0]
@@ -4646,7 +4646,7 @@ output operation main Void
 purpose operation main "smoke"
 call requestNowCall http.nowMillis
 run requestNowCall
-bind value requestNow CSignedInt64 requestNowCall
+bind value requestNow Int64 requestNowCall
 return void
 """)
         self.assertNotIn("SS3637", _codes(diagnostics))
@@ -4657,7 +4657,7 @@ import sqlite standard.sqlite
 storage module immutable selectIdem SqlText
 sql body selectIdem
   SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = ? LIMIT 1
-storage module immutable conflictBody CNullTerminatedByteString "{}"
+storage module immutable conflictBody String "{}"
 operation main
 input operation main databaseHandle SqliteDatabase
 output operation main Void
@@ -4669,14 +4669,14 @@ run prepareIdemCall
 bind ok idemStatement SqliteStatement prepareIdemCall
 call readReplayBodyCall sqlite.columnText
 argument readReplayBodyCall statement SqliteStatement idemStatement
-argument readReplayBodyCall columnIndex CSignedInt32 1
+argument readReplayBodyCall columnIndex Int32 1
 run readReplayBodyCall
-bind value replayBody CNullTerminatedByteString readReplayBodyCall
+bind value replayBody String readReplayBodyCall
 call compareReplayBodyCall c.strcmp
-argument compareReplayBodyCall left CNullTerminatedByteString replayBody
-argument compareReplayBodyCall right CNullTerminatedByteString conflictBody
+argument compareReplayBodyCall left String replayBody
+argument compareReplayBodyCall right String conflictBody
 run compareReplayBodyCall
-bind value compareResult CSignedInt32 compareReplayBodyCall
+bind value compareResult Int32 compareReplayBodyCall
 """)
         self.assertIn("SS3638", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3638")[0]
@@ -4703,12 +4703,12 @@ run prepareIdemCall
 bind ok idemStatement SqliteStatement prepareIdemCall
 call readReplayStatusCall sqlite.columnInt64
 argument readReplayStatusCall statement SqliteStatement idemStatement
-argument readReplayStatusCall columnIndex CSignedInt32 2
+argument readReplayStatusCall columnIndex Int32 2
 run readReplayStatusCall
-bind value replayStatus CSignedInt64 readReplayStatusCall
-call replayConflictCall math.equalI64
-argument replayConflictCall left I64 replayStatus
-argument replayConflictCall right I64 409
+bind value replayStatus Int64 readReplayStatusCall
+call replayConflictCall math.equalInt64
+argument replayConflictCall left Int64 replayStatus
+argument replayConflictCall right Int64 409
 run replayConflictCall
 bind value replayConflict Bool replayConflictCall
 """)
@@ -4716,7 +4716,7 @@ bind value replayConflict Bool replayConflictCall
 
     def test_non_sql_method_literal_is_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable methods CNullTerminatedByteString "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+storage module immutable methods String "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 """)
         self.assertNotIn("SS3628", _codes(diagnostics))
 
@@ -4770,10 +4770,10 @@ purpose operation main "smoke"
 effect main write console.stdout
 authority main write console.stdout
 memory main heap no
-memory main mutable counter I64 0
+memory main mutable counter Int64 0
 call writeCall console.writeLine
 argument writeCall console Console console
-argument writeCall text CNullTerminatedByteString someMessageText
+argument writeCall text String someMessageText
 run writeCall
 bind error writeCallError MainError writeCall
 branch error source writeCall target failed
@@ -4799,8 +4799,8 @@ htmlArg CardTemplate titleText String
 htmlBody CardTemplate
   <h1>{titleText}</h1>
 arg callName param value
-bind result I64 callName
-bindOk ok I64 callName
+bind result Int64 callName
+bindOk ok Int64 callName
 bindError bad MainError callName
 branchIf condition done
 branchIfError callName failed
@@ -4809,8 +4809,8 @@ returnValue result
 returnOk ok
 returnError bad
 returnVoid
-ignoreValue callName I64
-ignoreOk callName I64
+ignoreValue callName Int64
+ignoreOk callName Int64
 ignoreError callName
 """)
         cutoverSubjects = {
@@ -4832,7 +4832,7 @@ ignoreError callName
 operation main
 output operation main Void
 purpose operation main "smoke"
-memory main immutable count I64 1
+memory main immutable count Int64 1
 branch if condition count target done
 label done
 return void
@@ -4844,7 +4844,7 @@ return void
 operation main
 output operation main Void
 purpose operation main "smoke"
-call addCall math.addI64
+call addCall math.addInt64
 branch error source addCall target failed
 label failed
 return void
@@ -4881,8 +4881,8 @@ jump target missingLabel
 operation main
 output operation main Void
 purpose operation main "smoke"
-memory main immutable leftValue I64 1
-call addCall math.addI64
+memory main immutable leftValue Int64 1
+call addCall math.addInt64
 argument addCall left Bool leftValue
 """)
         self.assertIn("SS4301", _codes(diagnostics))
@@ -4903,8 +4903,8 @@ arg neverDeclaredCall consoleArgName consoleHandle
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 1
-call addCall math.addI64
+const leftValue Int64 1
+call addCall math.addInt64
 arg addCall left leftValue
 arg addCall right typoValue
 run addCall
@@ -4974,7 +4974,7 @@ purpose consoleWriteCapability "describe the capability's authority"
 
     def test_purpose_on_module_storage_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable retryAttemptLimit I64 5
+storage module immutable retryAttemptLimit Int64 5
 purpose retryAttemptLimit "max attempts before giving up on a transient failure"
 """)
         self.assertNotIn("SS4104", _codes(diagnostics))
@@ -4988,7 +4988,7 @@ purpose requestTimeoutBudget "per-request budget the future preemptive runtime w
 
     def test_purpose_on_enum_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 purpose SaveStatus "result domain for the save operation"
@@ -5012,7 +5012,7 @@ effect demoServer write http.response
     def test_operation_body_verb_on_capability_flagged_with_SS4105(self) -> None:
         diagnostics = _lint_source("""project Test
 capability consoleWriteCapability console.stdout write
-input consoleWriteCapability badInput I64
+input consoleWriteCapability badInput Int64
 """)
         self.assertIn("SS4105", _codes(diagnostics))
 
@@ -5092,7 +5092,7 @@ label startLabel
     def test_duplicate_type_alias_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 type AccountId UuidV7
-type AccountId CSignedInt64
+type AccountId Int64
 """)
         self.assertIn("SS4201", _codes(diagnostics))
 
@@ -5103,8 +5103,8 @@ type AccountId CSignedInt64
 
 class TestArgumentTypeMismatch(unittest.TestCase):
     def test_passing_bool_where_string_expected_flagged(self) -> None:
-        # Bool is in the integer family (sext to I64 on the wire);
-        # CNullTerminatedByteString is in the pointer family. Distinct
+        # Bool is in the integer family (sext to Int64 on the wire);
+        # String is in the pointer family. Distinct
         # families → must be flagged.
         diagnostics = _lint_source("""project Test
 operation main
@@ -5122,31 +5122,30 @@ run writeCall
         self.assertEqual(matchingDiagnostic.subjectName, "trueFlag")
         self.assertTrue(matchingDiagnostic.blocksCompile)
 
-    def test_passing_i64_where_i64_expected_not_flagged(self) -> None:
+    def test_passing_int64_where_int64_expected_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 zeroValue
-const rightValue I64 zeroValue
-call addCall math.addI64
+const leftValue Int64 zeroValue
+const rightValue Int64 zeroValue
+call addCall math.addInt64
 arg addCall left leftValue
 arg addCall right rightValue
 run addCall
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
-    def test_csignedint64_canonical_equivalent_to_i64(self) -> None:
-        # CSignedInt64 and I64 are width-equivalent; passing one where the
-        # other is expected should NOT be flagged after canonical
-        # resolution.
+    def test_canonical_int64_arg_not_flagged(self) -> None:
+        # A correctly annotated Int64 argument should not trip the
+        # builtin-signature checker.
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue CSignedInt64 zeroValue
-const rightValue I64 zeroValue
-call addCall math.addI64
+const leftValue Int64 zeroValue
+const rightValue Int64 zeroValue
+call addCall math.addInt64
 arg addCall left leftValue
 arg addCall right rightValue
 run addCall
@@ -5154,50 +5153,50 @@ run addCall
         self.assertNotIn("SS4301", _codes(diagnostics))
 
     def test_float_builtin_with_integer_arg_type_is_flagged(self) -> None:
-        # Regression: math.greaterThanF64 is a float-domain builtin; an
-        # `argument` row annotated with an integer C-ABI type (CSignedInt64)
+        # Regression: math.greaterThanFloat64 is a float-domain builtin; an
+        # `argument` row annotated with an integer C-ABI type (Int64)
         # is a real type-context bug (found in std/compare + std/convert).
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue CFloat64 zeroValue
-const rightValue CFloat64 zeroValue
-call gtCall math.greaterThanF64
-argument gtCall left CSignedInt64 leftValue
-argument gtCall right CSignedInt64 rightValue
+const leftValue Float64 zeroValue
+const rightValue Float64 zeroValue
+call gtCall math.greaterThanFloat64
+argument gtCall left Int64 leftValue
+argument gtCall right Int64 rightValue
 run gtCall
 """)
         self.assertIn("SS4301", _codes(diagnostics))
 
-    def test_float_builtin_with_cfloat64_arg_type_not_flagged(self) -> None:
-        # CFloat64 and F64 are the same machine double; an `argument` row
-        # spelled CFloat64 against an F64 builtin signature must NOT flag.
+    def test_float_builtin_with_float64_arg_type_not_flagged(self) -> None:
+        # A Float64 argument annotation against a Float64 builtin signature
+        # must not flag.
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue CFloat64 zeroValue
-const rightValue CFloat64 zeroValue
-call gtCall math.greaterThanF64
-argument gtCall left CFloat64 leftValue
-argument gtCall right CFloat64 rightValue
+const leftValue Float64 zeroValue
+const rightValue Float64 zeroValue
+call gtCall math.greaterThanFloat64
+argument gtCall left Float64 leftValue
+argument gtCall right Float64 rightValue
 run gtCall
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
     def test_type_alias_resolves_through_to_base(self) -> None:
-        # `type AccountId UuidV7; type UuidV7 CSignedInt64` — passing an
-        # AccountId where I64 is expected should resolve via aliases.
+        # `type AccountId UuidV7; type UuidV7 Int64` — passing an
+        # AccountId where Int64 is expected should resolve via aliases.
         diagnostics = _lint_source("""project Test
 type AccountId UuidV7
-type UuidV7 CSignedInt64
+type UuidV7 Int64
 operation main
 output main Void
 purpose main "smoke"
 const lookupAccountId AccountId zeroValue
-const rightValue I64 zeroValue
-call addCall math.addI64
+const rightValue Int64 zeroValue
+call addCall math.addInt64
 arg addCall left lookupAccountId
 arg addCall right rightValue
 run addCall
@@ -5206,13 +5205,13 @@ run addCall
 
     def test_enum_case_uses_repr_width_for_builtin_signature(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation main
 output main Void
 purpose main "smoke"
-call statusCheckCall math.equalCSignedInt32
+call statusCheckCall math.equalInt32
 arg statusCheckCall left SaveSucceeded
 arg statusCheckCall right SaveFailed
 run statusCheckCall
@@ -5221,13 +5220,13 @@ run statusCheckCall
 
     def test_enum_case_to_wrong_width_builtin_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
-const zeroValue I64 0
+const zeroValue Int64 0
 operation main
 output main Void
 purpose main "smoke"
-call statusCheckCall math.equalI64
+call statusCheckCall math.equalInt64
 arg statusCheckCall left SaveSucceeded
 arg statusCheckCall right zeroValue
 run statusCheckCall
@@ -5239,13 +5238,13 @@ run statusCheckCall
         # input — distinct families, must flag.
         diagnostics = _lint_source("""project Test
 operation processCount
-input processCount inputCount I64
+input processCount inputCount Int64
 output processCount Void
 purpose processCount "smoke"
 operation main
 output main Void
 purpose main "smoke"
-const someText CNullTerminatedByteString textValue
+const someText String textValue
 call processCountCall processCount
 arg processCountCall inputCount someText
 run processCountCall
@@ -5272,14 +5271,14 @@ run externalCall
 # ==========================================================================
 
 class TestMathOperandWidthDrift(unittest.TestCase):
-    def test_i64_compare_with_i32_values_is_flagged(self) -> None:
+    def test_int64_compare_with_int32_values_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftStatus CSignedInt32 1
-const rightStatus CSignedInt32 1
-call statusCheckCall math.equalI64
+const leftStatus Int32 1
+const rightStatus Int32 1
+call statusCheckCall math.equalInt64
 arg statusCheckCall left leftStatus
 arg statusCheckCall right rightStatus
 run statusCheckCall
@@ -5289,44 +5288,44 @@ run statusCheckCall
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
         self.assertEqual(diagnostic.severity, semlint.Severity.ERROR)
         self.assertTrue(diagnostic.blocksCompile)
-        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalCSignedInt32")
+        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalInt32")
 
-    def test_width_specific_i32_compare_not_flagged(self) -> None:
+    def test_width_specific_int32_compare_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftStatus CSignedInt32 1
-const rightStatus CSignedInt32 1
-call statusCheckCall math.equalCSignedInt32
+const leftStatus Int32 1
+const rightStatus Int32 1
+call statusCheckCall math.equalInt32
 arg statusCheckCall left leftStatus
 arg statusCheckCall right rightStatus
 run statusCheckCall
 """)
         self.assertNotIn("SS4303", _codes(diagnostics))
 
-    def test_i64_compare_with_i64_values_not_flagged(self) -> None:
+    def test_int64_compare_with_int64_values_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 1
-const rightValue I64 1
-call statusCheckCall math.equalI64
+const leftValue Int64 1
+const rightValue Int64 1
+call statusCheckCall math.equalInt64
 arg statusCheckCall left leftValue
 arg statusCheckCall right rightValue
 run statusCheckCall
 """)
         self.assertNotIn("SS4303", _codes(diagnostics))
 
-    def test_i64_arithmetic_with_i32_values_is_flagged(self) -> None:
+    def test_int64_arithmetic_with_int32_values_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftStatus CSignedInt32 1
-const rightStatus CSignedInt32 1
-call addCall math.addI64
+const leftStatus Int32 1
+const rightStatus Int32 1
+call addCall math.addInt64
 arg addCall left leftStatus
 arg addCall right rightStatus
 run addCall
@@ -5336,14 +5335,14 @@ run addCall
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
         self.assertEqual(diagnostic.fixCandidates[0].name, "makeConversionExplicit")
 
-    def test_i32_compare_with_i64_values_is_flagged(self) -> None:
+    def test_int32_compare_with_int64_values_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 1
-const rightValue I64 1
-call statusCheckCall math.equalCSignedInt32
+const leftValue Int64 1
+const rightValue Int64 1
+call statusCheckCall math.equalInt32
 arg statusCheckCall left leftValue
 arg statusCheckCall right rightValue
 run statusCheckCall
@@ -5351,15 +5350,15 @@ run statusCheckCall
         self.assertIn("SS4303", _codes(diagnostics))
         diagnostic = _diagnostics_with_code(diagnostics, "SS4303")[0]
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
-        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalI64")
+        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalInt64")
 
     def test_explicit_conversion_target_with_wrong_input_width_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const sourceValue I64 1
-call widenCall math.signExtendCSignedInt32ToCSignedInt64
+const sourceValue Int64 1
+call widenCall math.signExtendInt32ToInt64
 arg widenCall inputValue sourceValue
 run widenCall
 """)
@@ -5375,7 +5374,7 @@ run widenCall
 class TestEnumReturnUsesCase(unittest.TestCase):
     def test_enum_output_returning_raw_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 2
 operation saveTodos
@@ -5390,7 +5389,7 @@ returnValue 2
 
     def test_enum_output_returning_case_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 2
 operation saveTodos
@@ -5402,7 +5401,7 @@ returnValue SaveFailed
 
     def test_result_enum_ok_returning_raw_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 2
 error SaveError
@@ -5425,15 +5424,15 @@ class TestDuplicateLocalImmutableAcrossOps(unittest.TestCase):
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 operation gamma
 output gamma Void
 purpose gamma "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 """)
         ss4401 = _diagnostics_with_code(diagnostics, "SS4401")
         self.assertEqual(len(ss4401), 3, "expected one info per duplicate site")
@@ -5444,7 +5443,7 @@ storage local immutable nulByte CSignedInt32 0
         self.assertEqual(diagnostic.tier, semlint.Tier.T4_STYLE)
         self.assertEqual(diagnostic.severity, semlint.Severity.INFO)
         self.assertTrue(any(
-            fixCandidate.shape.startswith("storage module immutable nulByte CSignedInt32 0")
+            fixCandidate.shape.startswith("storage module immutable nulByte Int32 0")
             for fixCandidate in diagnostic.fixCandidates
         ))
 
@@ -5453,11 +5452,11 @@ storage local immutable nulByte CSignedInt32 0
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 """)
         self.assertNotIn("SS4401", _codes(diagnostics))
 
@@ -5466,15 +5465,15 @@ storage local immutable nulByte CSignedInt32 0
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable offset CSignedInt64 10
+storage local immutable offset Int64 10
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable offset CSignedInt64 19
+storage local immutable offset Int64 19
 operation gamma
 output gamma Void
 purpose gamma "smoke"
-storage local immutable offset CSignedInt64 30
+storage local immutable offset Int64 30
 """)
         self.assertNotIn("SS4401", _codes(diagnostics))
 
@@ -5490,7 +5489,7 @@ class TestLargeLocalStaticLiteral(unittest.TestCase):
 operation metrics
 output metrics Void
 purpose metrics "smoke"
-storage local immutable metricsFormat CNullTerminatedByteString "{largeBody}"
+storage local immutable metricsFormat String "{largeBody}"
 """)
         ss3634 = _diagnostics_with_code(diagnostics, "SS3634")
         self.assertEqual(len(ss3634), 1)
@@ -5503,7 +5502,7 @@ storage local immutable metricsFormat CNullTerminatedByteString "{largeBody}"
     def test_large_module_static_literal_is_not_flagged(self) -> None:
         largeBody = "x" * 520
         diagnostics = _lint_source(f"""project Test
-storage module immutable metricsFormat CNullTerminatedByteString "{largeBody}"
+storage module immutable metricsFormat String "{largeBody}"
 operation metrics
 output metrics Void
 purpose metrics "smoke"
@@ -5516,7 +5515,7 @@ returnVoid
 operation metrics
 output metrics Void
 purpose metrics "smoke"
-storage local immutable routeName CNullTerminatedByteString "/metrics"
+storage local immutable routeName String "/metrics"
 """)
         self.assertNotIn("SS3634", _codes(diagnostics))
 
@@ -5531,7 +5530,7 @@ class TestMagicAsciiByteLiteral(unittest.TestCase):
 operation parser
 output parser Void
 purpose parser "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 """)
         ss4402 = _diagnostics_with_code(diagnostics, "SS4402")
         self.assertEqual(len(ss4402), 1)
@@ -5547,7 +5546,7 @@ operation parser
 output parser Void
 purpose parser "smoke"
 # rationale: 34 = ASCII double quote; bounded JSON string delimiter.
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 """)
         self.assertNotIn("SS4402", _codes(diagnostics))
 
@@ -5556,17 +5555,17 @@ storage local immutable quoteByte CSignedInt32 34
 operation terminal
 output terminal Void
 purpose terminal "smoke"
-storage local immutable escapeByte CSignedInt32 27
+storage local immutable escapeByte Int32 27
 """)
         # 27 is below the printable-ASCII range (32..126).
         self.assertNotIn("SS4402", _codes(diagnostics))
 
-    def test_non_csignedint32_type_not_flagged(self) -> None:
+    def test_non_int32_type_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation counter
 output counter Void
 purpose counter "smoke"
-storage local immutable offsetValue CSignedInt64 65
+storage local immutable offsetValue Int64 65
 """)
         self.assertNotIn("SS4402", _codes(diagnostics))
 
@@ -5575,15 +5574,15 @@ storage local immutable offsetValue CSignedInt64 65
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 operation gamma
 output gamma Void
 purpose gamma "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 """)
         # SS4401 catches the cross-op duplication; SS4402 must not pile on
         # additional info diagnostics for the same name.
@@ -5601,9 +5600,9 @@ class TestDeadStorageInitializer(unittest.TestCase):
 operation loop
 output loop Void
 purpose loop "smoke"
-storage local immutable zeroIndex CSignedInt64 0
-storage local immutable startOffset CSignedInt64 7
-storage local mutable cursor CSignedInt64 zeroIndex
+storage local immutable zeroIndex Int64 0
+storage local immutable startOffset Int64 7
+storage local mutable cursor Int64 zeroIndex
 set local cursor startOffset
 """)
         ss4403 = _diagnostics_with_code(diagnostics, "SS4403")
@@ -5620,8 +5619,8 @@ set local cursor startOffset
 operation loop
 output loop Void
 purpose loop "smoke"
-storage local immutable zeroIndex CSignedInt64 0
-storage local mutable cursor CSignedInt64 zeroIndex
+storage local immutable zeroIndex Int64 0
+storage local mutable cursor Int64 zeroIndex
 call probe console.writeLine
 arg probe text zeroIndex
 run probe
@@ -5634,8 +5633,8 @@ set local cursor zeroIndex
 operation loop
 output loop Void
 purpose loop "smoke"
-storage local immutable zeroIndex CSignedInt64 0
-storage local mutable cursor CSignedInt64 zeroIndex
+storage local immutable zeroIndex Int64 0
+storage local mutable cursor Int64 zeroIndex
 call printCursor console.writeIntegerLine
 arg printCursor value cursor
 run printCursor
@@ -5654,8 +5653,8 @@ class TestFixedOffsetParserNeedsRationale(unittest.TestCase):
 operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
 """)
         ss4404 = _diagnostics_with_code(diagnostics, "SS4404")
         self.assertEqual(len(ss4404), 1)
@@ -5672,8 +5671,8 @@ output parseLine Void
 purpose parseLine "smoke"
 # rationale: Offsets count bytes into the line emitted by saveTodos's
 # itemPrefixFormatText; an edit to that format must update these in lockstep.
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -5683,8 +5682,8 @@ operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
 # rationale: positions in the fixed JSON format string written upstream.
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -5693,7 +5692,7 @@ storage local immutable doneValueOffset CSignedInt64 19
 operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
-storage local immutable activeValueOffset CSignedInt64 10
+storage local immutable activeValueOffset Int64 10
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -5702,8 +5701,8 @@ storage local immutable activeValueOffset CSignedInt64 10
 operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
-storage local immutable activeValue CSignedInt64 10
-storage local immutable doneValue CSignedInt64 19
+storage local immutable activeValue Int64 10
+storage local immutable doneValue Int64 19
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -5715,14 +5714,14 @@ storage local immutable doneValue CSignedInt64 19
 class TestEnumReprComparison(unittest.TestCase):
     def test_int32_repr_enum_compared_with_raw_math_target_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation checkSave
 input checkSave status SaveStatus
 output checkSave Bool
 purpose checkSave "smoke"
-call sameCall math.equalCSignedInt32
+call sameCall math.equalInt32
 arg sameCall left status
 arg sameCall right SaveSucceeded
 run sameCall
@@ -5740,16 +5739,16 @@ returnValue isSame
             "call sameCall SaveStatus.equal",
         )
 
-    def test_int64_repr_enum_compared_with_math_equal_i64_is_flagged(self) -> None:
+    def test_int64_repr_enum_compared_with_math_equal_int64_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum Mode repr CSignedInt64
+enum Mode repr Int64
 enumCase Mode ListMode 0
 enumCase Mode EditMode 1
 operation checkMode
 input checkMode mode Mode
 output checkMode Bool
 purpose checkMode "smoke"
-call modeCall math.equalI64
+call modeCall math.equalInt64
 arg modeCall left mode
 arg modeCall right EditMode
 run modeCall
@@ -5765,7 +5764,7 @@ returnValue isEdit
 
     def test_enum_domain_method_call_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation checkSave
@@ -5784,10 +5783,10 @@ returnValue isSame
     def test_non_enum_int_compare_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation check
-input check left CSignedInt32
+input check left Int32
 output check Bool
 purpose check "smoke"
-call cmpCall math.equalCSignedInt32
+call cmpCall math.equalInt32
 arg cmpCall left left
 arg cmpCall right left
 run cmpCall
@@ -5804,7 +5803,7 @@ returnValue isEqual
 class TestEnumResultDiscarded(unittest.TestCase):
     def test_ignore_value_on_enum_typed_call_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation saveAndForget
@@ -5834,13 +5833,13 @@ call write console.writeLine
 arg write console console
 arg write text someText
 run write
-ignoreValue write CSignedInt32
+ignoreValue write Int32
 """)
         self.assertNotIn("SS4406", _codes(diagnostics))
 
     def test_bound_enum_return_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation doIt
@@ -5869,8 +5868,8 @@ input main console Console
 output main Void
 purpose main "smoke"
 invariant main "lineBufferBytes and lineBufferCapacity MUST stay equal: the malloc size and the c.fgets count argument must agree."
-storage local immutable lineBufferBytes CByteCount 384
-storage local immutable lineBufferCapacity CSignedInt32 256
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 256
 """)
         ss4407 = _diagnostics_with_code(diagnostics, "SS4407")
         self.assertEqual(len(ss4407), 1)
@@ -5888,8 +5887,8 @@ input main console Console
 output main Void
 purpose main "smoke"
 invariant main "lineBufferBytes and lineBufferCapacity MUST stay equal."
-storage local immutable lineBufferBytes CByteCount 384
-storage local immutable lineBufferCapacity CSignedInt32 384
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 384
 """)
         self.assertNotIn("SS4407", _codes(diagnostics))
 
@@ -5900,8 +5899,8 @@ input main console Console
 output main Void
 purpose main "smoke"
 invariant main "lineBufferBytes is the malloc size; lineBufferCapacity is the c.fgets count."
-storage local immutable lineBufferBytes CByteCount 384
-storage local immutable lineBufferCapacity CSignedInt32 256
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 256
 """)
         # Without the `MUST stay equal` anchor the rule does not fire — the
         # values are allowed to differ when the invariant doesn't claim
@@ -5910,8 +5909,8 @@ storage local immutable lineBufferCapacity CSignedInt32 256
 
     def test_module_scope_paired_scalars_are_resolved(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable retryLimitBytes CByteCount 1024
-storage module immutable retryLimitCapacity CSignedInt32 512
+storage module immutable retryLimitBytes ByteCount 1024
+storage module immutable retryLimitCapacity Int32 512
 operation main
 input main console Console
 output main Void
@@ -5944,7 +5943,7 @@ capability httpResponseWriter http.response write
 operation edgeHandler
 input edgeHandler request HttpRequest
 input edgeHandler response HttpResponse
-output edgeHandler CSignedInt32
+output edgeHandler Int32
 effect edgeHandler write http.response
 memory edgeHandler arena request
 async edgeHandler no
@@ -5952,14 +5951,14 @@ useCapability edgeHandler httpResponseWriter
 purpose edgeHandler "smoke handler for whitelist test"
 invariant edgeHandler "static response so the test can poll"
 label startEdgeHandler
-storage local immutable bodyText CNullTerminatedByteString "edge\\n"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable bodyText String "edge\\n"
+storage local immutable okStatus Int32 200
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -6019,7 +6018,7 @@ capability httpResponseWriter http.response write
 operation probeMiddleware
 input probeMiddleware request HttpRequest
 input probeMiddleware response HttpResponse
-output probeMiddleware CSignedInt32
+output probeMiddleware Int32
 {middlewareEffectLine}
 memory probeMiddleware arena request
 async probeMiddleware no
@@ -6027,13 +6026,13 @@ useCapability probeMiddleware httpRequestReader
 purpose probeMiddleware "demo middleware for SS3602 fixture"
 invariant probeMiddleware "synchronous middleware that returns 0 to continue"
 label startProbeMiddleware
-storage local immutable continueStatus CSignedInt32 0
+storage local immutable continueStatus Int32 0
 returnValue continueStatus
 
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -6041,14 +6040,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -6127,7 +6126,7 @@ capability httpResponseWriter http.response write
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -6137,21 +6136,21 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token back"
 invariant echoHandler "static reply on missing token"
 {warningLine}label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
-storage local immutable badStatus CSignedInt32 400
-storage local immutable missingBody CNullTerminatedByteString "missing\\n"
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
+storage local immutable badStatus Int32 400
+storage local immutable missingBody String "missing\\n"
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenHeaderValue CNullTerminatedByteString headerReadCall
+bind tokenHeaderValue String headerReadCall
 {guardBlock}call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body tokenHeaderValue
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 label missingPath
@@ -6160,7 +6159,7 @@ arg missingWriteCall response response
 arg missingWriteCall status badStatus
 arg missingWriteCall body missingBody
 run missingWriteCall
-bind missingWriteStatus CSignedInt32 missingWriteCall
+bind missingWriteStatus Int32 missingWriteCall
 returnValue missingWriteStatus
 """
 
@@ -6209,9 +6208,9 @@ capability httpResponseWriter http.response write
 
 operation writeTextResponseWrapper
 input writeTextResponseWrapper response HttpResponse
-input writeTextResponseWrapper status CSignedInt32
-input writeTextResponseWrapper body CNullTerminatedByteString
-output writeTextResponseWrapper CSignedInt32
+input writeTextResponseWrapper status Int32
+input writeTextResponseWrapper body String
+output writeTextResponseWrapper Int32
 effect writeTextResponseWrapper write http.response
 memory writeTextResponseWrapper arena request
 async writeTextResponseWrapper no
@@ -6225,13 +6224,13 @@ arg writeCall response response
 arg writeCall status status
 arg writeCall body body
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -6241,19 +6240,19 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token via wrapper"
 invariant echoHandler "transitive-detection target"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenHeaderValue CNullTerminatedByteString headerReadCall
+bind tokenHeaderValue String headerReadCall
 call writeWrapperCall writeTextResponseWrapper
 arg writeWrapperCall response response
 arg writeWrapperCall status okStatus
 arg writeWrapperCall body tokenHeaderValue
 run writeWrapperCall
-bind writeWrapperStatus CSignedInt32 writeWrapperCall
+bind writeWrapperStatus Int32 writeWrapperCall
 returnValue writeWrapperStatus
 """)
         codes = _codes(diagnostics)
@@ -6279,7 +6278,7 @@ capability httpResponseWriter http.response write
 operation methodHandler
 input methodHandler request HttpRequest
 input methodHandler response HttpResponse
-output methodHandler CSignedInt32
+output methodHandler Int32
 effect methodHandler read http.request.method
 effect methodHandler write http.response
 memory methodHandler arena request
@@ -6289,17 +6288,17 @@ useCapability methodHandler httpResponseWriter
 purpose methodHandler "echo request method"
 invariant methodHandler "method is never null for dispatched requests"
 label startMethodHandler
-storage local immutable okStatus CSignedInt32 200
+storage local immutable okStatus Int32 200
 call methodReadCall http.requestMethod
 arg methodReadCall request request
 run methodReadCall
-bind requestMethod CNullTerminatedByteString methodReadCall
+bind requestMethod String methodReadCall
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body requestMethod
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         self.assertNotIn("SS3603", _codes(diagnostics))
@@ -6331,7 +6330,7 @@ capability httpResponseWriter http.response write
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler read http.request.header
 effect probeHandler write http.response
 memory probeHandler arena request
@@ -6341,19 +6340,19 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "echo X-Token unguarded as a SS3603 test fixture"
 invariant probeHandler "intentionally unguarded for opt-out testing"
 {optOutLine}label startProbeHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body tokenValue
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -6408,7 +6407,7 @@ capability httpResponseWriter http.response write
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -6419,15 +6418,15 @@ purpose echoHandler "echo X-Token with a defensive guard"
 invariant echoHandler "missing X-Token returns 400, never falls into the null-body failure path"
 warning echoHandler "do not switch this route back to the null-body failure path; the 400 contract is tested"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
-storage local immutable badStatus CSignedInt32 400
-storage local immutable missingBody CNullTerminatedByteString "missing\\n"
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
+storage local immutable badStatus Int32 400
+storage local immutable missingBody String "missing\\n"
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call guardCall pointer.isNull
 arg guardCall pointer tokenValue
 run guardCall
@@ -6438,7 +6437,7 @@ arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body tokenValue
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 label missingPath
@@ -6447,7 +6446,7 @@ arg missingWriteCall response response
 arg missingWriteCall status badStatus
 arg missingWriteCall body missingBody
 run missingWriteCall
-bind missingWriteStatus CSignedInt32 missingWriteCall
+bind missingWriteStatus Int32 missingWriteCall
 returnValue missingWriteStatus
 """)
         codes = _codes(diagnostics)
@@ -6483,9 +6482,9 @@ capability httpResponseWriter http.response write
 
 operation writeTextResponseWrapper
 input writeTextResponseWrapper response HttpResponse
-input writeTextResponseWrapper status CSignedInt32
-input writeTextResponseWrapper body CNullTerminatedByteString
-output writeTextResponseWrapper CSignedInt32
+input writeTextResponseWrapper status Int32
+input writeTextResponseWrapper body String
+output writeTextResponseWrapper Int32
 effect writeTextResponseWrapper write http.response
 memory writeTextResponseWrapper arena request
 async writeTextResponseWrapper no
@@ -6498,13 +6497,13 @@ arg writeCall response response
 arg writeCall status status
 arg writeCall body body
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -6514,19 +6513,19 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token via wrapper"
 invariant echoHandler "transitive-detection target"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call writeWrapperCall writeTextResponseWrapper
 arg writeWrapperCall response response
 arg writeWrapperCall status okStatus
 arg writeWrapperCall body tokenValue
 run writeWrapperCall
-bind writeWrapperStatus CSignedInt32 writeWrapperCall
+bind writeWrapperStatus Int32 writeWrapperCall
 returnValue writeWrapperStatus
 """
 
@@ -6565,8 +6564,8 @@ capability httpResponseWriter http.response write
 
 operation pretendsToForward
 input pretendsToForward response HttpResponse
-input pretendsToForward body CNullTerminatedByteString
-output pretendsToForward CSignedInt32
+input pretendsToForward body String
+output pretendsToForward Int32
 effect pretendsToForward write http.response
 memory pretendsToForward arena request
 async pretendsToForward no
@@ -6575,7 +6574,7 @@ purpose pretendsToForward "claims to forward body but actually drops it"
 invariant pretendsToForward "for SS3607 fixture"
 responseBodyForwarder pretendsToForward body
 label startPretendsToForward
-storage local immutable okStatus CSignedInt32 0
+storage local immutable okStatus Int32 0
 returnValue okStatus
 """)
         self.assertIn("SS3607", _codes(diagnostics))
@@ -6600,9 +6599,9 @@ capability httpResponseWriter http.response write
 
 operation innerWrapper
 input innerWrapper response HttpResponse
-input innerWrapper status CSignedInt32
-input innerWrapper body CNullTerminatedByteString
-output innerWrapper CSignedInt32
+input innerWrapper status Int32
+input innerWrapper body String
+output innerWrapper Int32
 effect innerWrapper write http.response
 memory innerWrapper arena request
 async innerWrapper no
@@ -6616,14 +6615,14 @@ arg writeCall response response
 arg writeCall status status
 arg writeCall body body
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 operation outerWrapper
 input outerWrapper response HttpResponse
-input outerWrapper status CSignedInt32
-input outerWrapper body CNullTerminatedByteString
-output outerWrapper CSignedInt32
+input outerWrapper status Int32
+input outerWrapper body String
+output outerWrapper Int32
 effect outerWrapper write http.response
 memory outerWrapper arena request
 async outerWrapper no
@@ -6637,13 +6636,13 @@ arg innerCall response response
 arg innerCall status status
 arg innerCall body body
 run innerCall
-bind innerStatus CSignedInt32 innerCall
+bind innerStatus Int32 innerCall
 returnValue innerStatus
 
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -6653,19 +6652,19 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token via two-layer wrapper"
 invariant echoHandler "fixed-point forwarder test"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call outerCall outerWrapper
 arg outerCall response response
 arg outerCall status okStatus
 arg outerCall body tokenValue
 run outerCall
-bind outerStatus CSignedInt32 outerCall
+bind outerStatus Int32 outerCall
 returnValue outerStatus
 """)
         self.assertIn("SS3603", _codes(diagnostics))
@@ -6696,7 +6695,7 @@ capability httpResponseWriter http.response write
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -6704,14 +6703,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -6779,7 +6778,7 @@ output main Void
 purpose main "smoke"
 invariant main "smoke"
 label startMain
-storage local immutable okStatus CSignedInt32 0
+storage local immutable okStatus Int32 0
 call ackCall console.writeLine
 arg ackCall console console
 arg ackCall text okStatus
@@ -6839,7 +6838,7 @@ capability httpResponseWriter http.response write
 operation methodEchoHandler
 input methodEchoHandler request HttpRequest
 input methodEchoHandler response HttpResponse
-output methodEchoHandler CSignedInt32
+output methodEchoHandler Int32
 effect methodEchoHandler read http.request.method
 effect methodEchoHandler write http.response
 memory methodEchoHandler arena request
@@ -6849,17 +6848,17 @@ useCapability methodEchoHandler httpResponseWriter
 purpose methodEchoHandler "smoke test that http.request authorizes http.request.method"
 invariant methodEchoHandler "if missingCapabilityUse fires here, the hierarchy walk is broken"
 label startMethodEchoHandler
-storage local immutable okStatus CSignedInt32 200
+storage local immutable okStatus Int32 200
 call methodReadCall http.requestMethod
 arg methodReadCall request request
 run methodReadCall
-bind requestMethod CNullTerminatedByteString methodReadCall
+bind requestMethod String methodReadCall
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body requestMethod
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         # The whole point: no missing-capability diagnostic for the narrow
@@ -6899,7 +6898,7 @@ capability httpResponseWriter http.response write
 operation probeHandler
 input probeHandler {requestInputName} HttpRequest
 input probeHandler {responseInputName} HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -6907,14 +6906,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler for SS3609 fixture"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response {responseInputName}
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -6980,7 +6979,7 @@ capability httpResponseWriter http.response write
 operation tracingMiddleware
 input tracingMiddleware req HttpRequest
 input tracingMiddleware resp HttpResponse
-output tracingMiddleware CSignedInt32
+output tracingMiddleware Int32
 effect tracingMiddleware write http.response
 memory tracingMiddleware arena request
 async tracingMiddleware no
@@ -6988,13 +6987,13 @@ useCapability tracingMiddleware httpResponseWriter
 purpose tracingMiddleware "non-canonical input names should fire SS3609"
 invariant tracingMiddleware "middleware ABI follows route ABI"
 label startTracingMiddleware
-storage local immutable continueStatus CSignedInt32 0
+storage local immutable continueStatus Int32 0
 returnValue continueStatus
 
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -7002,14 +7001,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "canonical-name handler so only the middleware trips SS3609"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         ss3609 = _diagnostics_with_code(diagnostics, "SS3609")
@@ -7034,19 +7033,19 @@ capability httpResponseWriter http.response write
 
 operation requestInspector
 input requestInspector req HttpRequest
-output requestInspector CSignedInt32
+output requestInspector Int32
 memory requestInspector arena request
 async requestInspector no
 purpose requestInspector "library helper, NOT a route handler"
 invariant requestInspector "called only from other ops, not from a route binding"
 label startRequestInspector
-storage local immutable inspectStatus CSignedInt32 0
+storage local immutable inspectStatus Int32 0
 returnValue inspectStatus
 
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -7054,14 +7053,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "canonical handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         self.assertNotIn("SS3609", _codes(diagnostics))
@@ -7198,7 +7197,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
 class TestMiddlewareReturnType(unittest.TestCase):
     """Middleware ops bound via routeMiddleware MUST declare `output OP
     MiddlewareControl`. The dispatcher's short-circuit semantics depend
-    on the typed enum; bare CSignedInt32 erases the named-case
+    on the typed enum; bare Int32 erases the named-case
     contract."""
 
     def _program_with_middleware_output(self, outputDeclaration: str) -> str:
@@ -7232,7 +7231,7 @@ returnValue continueMiddlewareControl
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -7240,20 +7239,20 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
-    def test_middleware_with_csignedint32_output_flagged(self) -> None:
+    def test_middleware_with_int32_output_flagged(self) -> None:
         diagnostics = _lint_source(self._program_with_middleware_output(
-            "output probeMiddleware CSignedInt32"
+            "output probeMiddleware Int32"
         ))
         self.assertIn("SS3610", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3610")[0]
@@ -7288,16 +7287,16 @@ returnValue writeStatus
         matching = _diagnostics_with_code(diagnostics, "SS3610")[0]
         self.assertIn("ExitCode", matching.intentSlogan)
 
-    def test_non_middleware_op_returning_csignedint32_not_flagged(self) -> None:
+    def test_non_middleware_op_returning_int32_not_flagged(self) -> None:
         # An operation that's NOT bound via routeMiddleware can return
         # any type — SS3610 only speaks to the dispatcher-bound subset.
         diagnostics = _lint_source("""project Test
 operation helperOp
-output helperOp CSignedInt32
+output helperOp Int32
 purpose helperOp "ordinary helper, not a middleware"
 invariant helperOp "no routeMiddleware binding => SS3610 does not apply"
 label startHelperOp
-storage local immutable okValue CSignedInt32 0
+storage local immutable okValue Int32 0
 returnValue okValue
 """)
         self.assertNotIn("SS3610", _codes(diagnostics))
@@ -7328,17 +7327,17 @@ class TestMiddlewareControlBuiltinEnum(unittest.TestCase):
         prog = self._parse_with_semsc("project Trivial\n")
         self.assertIn("MiddlewareControl", prog.enums)
         enumFact = prog.enums["MiddlewareControl"]
-        self.assertEqual(enumFact.repr, "CSignedInt32")
+        self.assertEqual(enumFact.repr, "Int32")
         caseNames = [name for name, _value in enumFact.cases]
         self.assertEqual(
             caseNames,
             ["continueMiddlewareControl", "shortCircuitMiddlewareControl"],
         )
 
-    def test_case_consts_are_typed_MiddlewareControl_not_csignedint32(self) -> None:
+    def test_case_consts_are_typed_MiddlewareControl_not_int32(self) -> None:
         # The case-name consts carry the enum type so the result-contract
         # checker can compare them apples-to-apples against `output OP
-        # MiddlewareControl`. If these come back as CSignedInt32 the
+        # MiddlewareControl`. If these come back as Int32 the
         # contract enforcement falls back to the loose equivalence
         # check and silently allows raw integers at returnValue sites.
         prog = self._parse_with_semsc("project Trivial\n")
@@ -7364,7 +7363,7 @@ class TestSqliteBuiltinSurface(unittest.TestCase):
             facts.consts["inMemorySqliteOpenMode"].type_name,
             "SqliteOpenMode",
         )
-        self.assertEqual(facts.type_aliases["SqliteRowId"], "CSignedInt64")
+        self.assertEqual(facts.type_aliases["SqliteRowId"], "Int64")
         self.assertIn("SqliteDatabase", facts.type_aliases)
 
     def test_sqlite_builtin_case_is_not_an_unresolved_arg_value(self) -> None:
@@ -7372,7 +7371,7 @@ class TestSqliteBuiltinSurface(unittest.TestCase):
 operation openDatabase
 output openDatabase Void
 purpose openDatabase "prove sqlite enum cases are visible to semlint"
-storage local immutable sqlitePath CNullTerminatedByteString ":memory:"
+storage local immutable sqlitePath String ":memory:"
 call openDatabaseCall sqlite.openDatabase
 arg openDatabaseCall path sqlitePath
 arg openDatabaseCall mode inMemorySqliteOpenMode
@@ -7398,7 +7397,7 @@ output legacyVoidOp Void
 purpose legacyVoidOp "returns Void per the output line but uses returnValue sentinel"
 invariant legacyVoidOp "legacy shape"
 label startLegacyVoidOp
-storage local immutable legacyZeroSentinel CSignedInt32 0
+storage local immutable legacyZeroSentinel Int32 0
 returnValue legacyZeroSentinel
 """)
         self.assertIn("SS3612", _codes(diagnostics))
@@ -7420,26 +7419,26 @@ returnVoid
 """)
         self.assertNotIn("SS3612", _codes(diagnostics))
 
-    def test_csignedint32_output_with_return_value_not_flagged(self) -> None:
+    def test_int32_output_with_return_value_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation typedOp
-output typedOp CSignedInt32
+output typedOp Int32
 purpose typedOp "returns a typed status"
 invariant typedOp "returnValue is correct for non-Void output"
 label startTypedOp
-storage local immutable okStatus CSignedInt32 0
+storage local immutable okStatus Int32 0
 returnValue okStatus
 """)
         self.assertNotIn("SS3612", _codes(diagnostics))
 
-    def test_cvoid_alias_also_caught(self) -> None:
+    def test_second_void_output_fixture_also_caught(self) -> None:
         diagnostics = _lint_source("""project Test
-operation cvoidOp
-output cvoidOp CVoid
-purpose cvoidOp "CVoid is the C ABI alias for Void"
-invariant cvoidOp "rule should treat both alike"
-label startCvoidOp
-storage local immutable zeroSentinel CSignedInt32 0
+operation voidSentinelOp
+output voidSentinelOp Void
+purpose voidSentinelOp "Void output still requires returnVoid"
+invariant voidSentinelOp "returnValue should be rejected for Void outputs"
+label startVoidSentinelOp
+storage local immutable zeroSentinel Int32 0
 returnValue zeroSentinel
 """)
         self.assertIn("SS3612", _codes(diagnostics))
@@ -7624,7 +7623,7 @@ class TestStdlibModuleNoSmokeMain(unittest.TestCase):
         "module standard.demo\n"
         "exportConstant standard.demo demoModuleVersionText\n"
         "storage module immutable demoModuleVersionText "
-        "CNullTerminatedByteString \"standard.demo 0.1\"\n"
+        "String \"standard.demo 0.1\"\n"
         "operation main\n"
         "output operation main ExitCode\n"
         "memory main heap no\n"
@@ -7657,7 +7656,7 @@ class TestStdlibModuleNoSmokeMain(unittest.TestCase):
             "module standard.demo\n"
             "exportConstant standard.demo demoModuleVersionText\n"
             "storage module immutable demoModuleVersionText "
-            "CNullTerminatedByteString \"standard.demo 0.1\"\n"
+            "String \"standard.demo 0.1\"\n"
         )
         diagnostics = _lint_source_at("main.sem", moduleOnly)
         self.assertNotIn("SS2515", _codes(diagnostics))

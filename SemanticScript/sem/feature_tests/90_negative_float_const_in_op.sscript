@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation flipSign
-input operation flipSign value CFloat64
-output operation flipSign Result CFloat64 Void
+input operation flipSign value Float64
+output operation flipSign Result Float64 Void
 memory flipSign heap no
 async flipSign no
-purpose operation flipSign "Multiply a CFloat64 by -1.0. Exercises a negative float const passed as an arg in a user-op body."
+purpose operation flipSign "Multiply a Float64 by -1.0. Exercises a negative float const passed as an arg in a user-op body."
 invariant operation flipSign "Returns -value."
 label startFlipSign
-storage module immutable negativeOne CFloat64 -1.0
-call multCall math.multiplyF64
-argument multCall left CFloat64 value
-argument multCall right CFloat64 negativeOne
+storage module immutable negativeOne Float64 -1.0
+call multCall math.multiplyFloat64
+argument multCall left Float64 value
+argument multCall right Float64 negativeOne
 run multCall
-bind value flipped CFloat64 multCall
+bind value flipped Float64 multCall
 return ok flipped
 
 operation main
@@ -32,14 +32,14 @@ async main no
 purpose operation main "flipSign(3.5) == -3.5. Exercises negative float const + float user op + writeFloatLine."
 invariant operation main "Output is -3.500000."
 label startMain
-storage module immutable startValue CFloat64 3.5
+storage module immutable startValue Float64 3.5
 call flipCall flipSign
-argument flipCall value CFloat64 startValue
+argument flipCall value Float64 startValue
 run flipCall
-bind ok flippedValue CFloat64 flipCall
+bind ok flippedValue Float64 flipCall
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 flippedValue
+argument writeCall value Float64 flippedValue
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

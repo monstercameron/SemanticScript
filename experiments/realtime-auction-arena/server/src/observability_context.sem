@@ -37,267 +37,267 @@ exportOperation app.realtime_auction_arena.server.observability_context incremen
 capability sqliteDatabaseReadWriter database readWrite
 purpose operation sqliteDatabaseReadWriter "Authority to execute SQLite audit and request-log statements through standard.sqlite."
 
-storage module mutable metricsHttpRequestsTotal CSignedInt64 0
-storage module mutable metricsAuthLoginAcceptedTotal CSignedInt64 0
-storage module mutable metricsAuthLoginRejectedTotal CSignedInt64 0
-storage module mutable metricsAuctionCommandsAcceptedTotal CSignedInt64 0
-storage module mutable metricsAuctionCommandsRejectedTotal CSignedInt64 0
-storage module mutable metricsBidAcceptedTotal CSignedInt64 0
-storage module mutable metricsRateLimitHitsTotal CSignedInt64 0
-storage module mutable metricsActiveSseClients CSignedInt64 0
-storage module mutable metricsSseSlowClientDropsTotal CSignedInt64 0
-storage module mutable loginRateLimitObservedCount CSignedInt64 0
-storage module mutable bidRateLimitObservedCount CSignedInt64 0
+storage module mutable metricsHttpRequestsTotal Int64 0
+storage module mutable metricsAuthLoginAcceptedTotal Int64 0
+storage module mutable metricsAuthLoginRejectedTotal Int64 0
+storage module mutable metricsAuctionCommandsAcceptedTotal Int64 0
+storage module mutable metricsAuctionCommandsRejectedTotal Int64 0
+storage module mutable metricsBidAcceptedTotal Int64 0
+storage module mutable metricsRateLimitHitsTotal Int64 0
+storage module mutable metricsActiveSseClients Int64 0
+storage module mutable metricsSseSlowClientDropsTotal Int64 0
+storage module mutable loginRateLimitObservedCount Int64 0
+storage module mutable bidRateLimitObservedCount Int64 0
 
 operation metricsHttpRequestsTotalValue
-output operation metricsHttpRequestsTotalValue CSignedInt64
+output operation metricsHttpRequestsTotalValue Int64
 memory metricsHttpRequestsTotalValue heap no
 async metricsHttpRequestsTotalValue no
 purpose operation metricsHttpRequestsTotalValue "Return the current HTTP request metric counter."
 return value metricsHttpRequestsTotal
 
 operation metricsAuthLoginAcceptedTotalValue
-output operation metricsAuthLoginAcceptedTotalValue CSignedInt64
+output operation metricsAuthLoginAcceptedTotalValue Int64
 memory metricsAuthLoginAcceptedTotalValue heap no
 async metricsAuthLoginAcceptedTotalValue no
 purpose operation metricsAuthLoginAcceptedTotalValue "Return the accepted login metric counter."
 return value metricsAuthLoginAcceptedTotal
 
 operation metricsAuthLoginRejectedTotalValue
-output operation metricsAuthLoginRejectedTotalValue CSignedInt64
+output operation metricsAuthLoginRejectedTotalValue Int64
 memory metricsAuthLoginRejectedTotalValue heap no
 async metricsAuthLoginRejectedTotalValue no
 purpose operation metricsAuthLoginRejectedTotalValue "Return the rejected login metric counter."
 return value metricsAuthLoginRejectedTotal
 
 operation metricsAuctionCommandsAcceptedTotalValue
-output operation metricsAuctionCommandsAcceptedTotalValue CSignedInt64
+output operation metricsAuctionCommandsAcceptedTotalValue Int64
 memory metricsAuctionCommandsAcceptedTotalValue heap no
 async metricsAuctionCommandsAcceptedTotalValue no
 purpose operation metricsAuctionCommandsAcceptedTotalValue "Return the accepted auction command metric counter."
 return value metricsAuctionCommandsAcceptedTotal
 
 operation metricsAuctionCommandsRejectedTotalValue
-output operation metricsAuctionCommandsRejectedTotalValue CSignedInt64
+output operation metricsAuctionCommandsRejectedTotalValue Int64
 memory metricsAuctionCommandsRejectedTotalValue heap no
 async metricsAuctionCommandsRejectedTotalValue no
 purpose operation metricsAuctionCommandsRejectedTotalValue "Return the rejected auction command metric counter."
 return value metricsAuctionCommandsRejectedTotal
 
 operation metricsBidAcceptedTotalValue
-output operation metricsBidAcceptedTotalValue CSignedInt64
+output operation metricsBidAcceptedTotalValue Int64
 memory metricsBidAcceptedTotalValue heap no
 async metricsBidAcceptedTotalValue no
 purpose operation metricsBidAcceptedTotalValue "Return the accepted bid metric counter."
 return value metricsBidAcceptedTotal
 
 operation metricsRateLimitHitsTotalValue
-output operation metricsRateLimitHitsTotalValue CSignedInt64
+output operation metricsRateLimitHitsTotalValue Int64
 memory metricsRateLimitHitsTotalValue heap no
 async metricsRateLimitHitsTotalValue no
 purpose operation metricsRateLimitHitsTotalValue "Return the rate-limit hit metric counter."
 return value metricsRateLimitHitsTotal
 
 operation metricsActiveSseClientsValue
-output operation metricsActiveSseClientsValue CSignedInt64
+output operation metricsActiveSseClientsValue Int64
 memory metricsActiveSseClientsValue heap no
 async metricsActiveSseClientsValue no
 purpose operation metricsActiveSseClientsValue "Return the active SSE client gauge."
 return value metricsActiveSseClients
 
 operation metricsSseSlowClientDropsTotalValue
-output operation metricsSseSlowClientDropsTotalValue CSignedInt64
+output operation metricsSseSlowClientDropsTotalValue Int64
 memory metricsSseSlowClientDropsTotalValue heap no
 async metricsSseSlowClientDropsTotalValue no
 purpose operation metricsSseSlowClientDropsTotalValue "Return the SSE slow-client drop counter."
 return value metricsSseSlowClientDropsTotal
 
 operation incrementHttpRequestsTotal
-output operation incrementHttpRequestsTotal CSignedInt64
+output operation incrementHttpRequestsTotal Int64
 memory incrementHttpRequestsTotal heap no
 async incrementHttpRequestsTotal no
 purpose operation incrementHttpRequestsTotal "Increment the HTTP request metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsHttpRequestsTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsHttpRequestsTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsHttpRequestsTotal nextValue
 return value nextValue
 
 operation incrementAuthLoginAcceptedTotal
-output operation incrementAuthLoginAcceptedTotal CSignedInt64
+output operation incrementAuthLoginAcceptedTotal Int64
 memory incrementAuthLoginAcceptedTotal heap no
 async incrementAuthLoginAcceptedTotal no
 purpose operation incrementAuthLoginAcceptedTotal "Increment the accepted login metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsAuthLoginAcceptedTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsAuthLoginAcceptedTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsAuthLoginAcceptedTotal nextValue
 return value nextValue
 
 operation incrementAuthLoginRejectedTotal
-output operation incrementAuthLoginRejectedTotal CSignedInt64
+output operation incrementAuthLoginRejectedTotal Int64
 memory incrementAuthLoginRejectedTotal heap no
 async incrementAuthLoginRejectedTotal no
 purpose operation incrementAuthLoginRejectedTotal "Increment the rejected login metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsAuthLoginRejectedTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsAuthLoginRejectedTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsAuthLoginRejectedTotal nextValue
 return value nextValue
 
 operation incrementAuctionCommandsAcceptedTotal
-output operation incrementAuctionCommandsAcceptedTotal CSignedInt64
+output operation incrementAuctionCommandsAcceptedTotal Int64
 memory incrementAuctionCommandsAcceptedTotal heap no
 async incrementAuctionCommandsAcceptedTotal no
 purpose operation incrementAuctionCommandsAcceptedTotal "Increment the accepted auction command metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsAuctionCommandsAcceptedTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsAuctionCommandsAcceptedTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsAuctionCommandsAcceptedTotal nextValue
 return value nextValue
 
 operation incrementAuctionCommandsRejectedTotal
-output operation incrementAuctionCommandsRejectedTotal CSignedInt64
+output operation incrementAuctionCommandsRejectedTotal Int64
 memory incrementAuctionCommandsRejectedTotal heap no
 async incrementAuctionCommandsRejectedTotal no
 purpose operation incrementAuctionCommandsRejectedTotal "Increment the rejected auction command metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsAuctionCommandsRejectedTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsAuctionCommandsRejectedTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsAuctionCommandsRejectedTotal nextValue
 return value nextValue
 
 operation incrementBidAcceptedTotal
-output operation incrementBidAcceptedTotal CSignedInt64
+output operation incrementBidAcceptedTotal Int64
 memory incrementBidAcceptedTotal heap no
 async incrementBidAcceptedTotal no
 purpose operation incrementBidAcceptedTotal "Increment the accepted bid metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsBidAcceptedTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsBidAcceptedTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsBidAcceptedTotal nextValue
 return value nextValue
 
 operation incrementRateLimitHitsTotal
-output operation incrementRateLimitHitsTotal CSignedInt64
+output operation incrementRateLimitHitsTotal Int64
 memory incrementRateLimitHitsTotal heap no
 async incrementRateLimitHitsTotal no
 purpose operation incrementRateLimitHitsTotal "Increment the rate-limit hit metric counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsRateLimitHitsTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsRateLimitHitsTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsRateLimitHitsTotal nextValue
 return value nextValue
 
 operation incrementBidRateLimitObservedCount
-output operation incrementBidRateLimitObservedCount CSignedInt64
+output operation incrementBidRateLimitObservedCount Int64
 memory incrementBidRateLimitObservedCount heap no
 async incrementBidRateLimitObservedCount no
 purpose operation incrementBidRateLimitObservedCount "Increment the process-local bid rate-limit probe counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 bidRateLimitObservedCount
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 bidRateLimitObservedCount
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage bidRateLimitObservedCount nextValue
 return value nextValue
 
 operation incrementActiveSseClients
-output operation incrementActiveSseClients CSignedInt64
+output operation incrementActiveSseClients Int64
 memory incrementActiveSseClients heap no
 async incrementActiveSseClients no
 purpose operation incrementActiveSseClients "Increment the active SSE client gauge and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsActiveSseClients
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsActiveSseClients
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsActiveSseClients nextValue
 return value nextValue
 
 operation decrementActiveSseClients
-output operation decrementActiveSseClients CSignedInt64
+output operation decrementActiveSseClients Int64
 memory decrementActiveSseClients heap no
 async decrementActiveSseClients no
 purpose operation decrementActiveSseClients "Decrement the active SSE client gauge and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call decrementCall math.subtractI64
-argument decrementCall left I64 metricsActiveSseClients
-argument decrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call decrementCall math.subtractInt64
+argument decrementCall left Int64 metricsActiveSseClients
+argument decrementCall right Int64 metricStep
 run decrementCall
-bind value nextValue CSignedInt64 decrementCall
+bind value nextValue Int64 decrementCall
 set storage metricsActiveSseClients nextValue
 return value nextValue
 
 operation incrementSseSlowClientDropsTotal
-output operation incrementSseSlowClientDropsTotal CSignedInt64
+output operation incrementSseSlowClientDropsTotal Int64
 memory incrementSseSlowClientDropsTotal heap no
 async incrementSseSlowClientDropsTotal no
 purpose operation incrementSseSlowClientDropsTotal "Increment the SSE slow-client drop counter and return the new value."
-storage local immutable metricStep CSignedInt64 1
-call incrementCall math.addI64
-argument incrementCall left I64 metricsSseSlowClientDropsTotal
-argument incrementCall right I64 metricStep
+storage local immutable metricStep Int64 1
+call incrementCall math.addInt64
+argument incrementCall left Int64 metricsSseSlowClientDropsTotal
+argument incrementCall right Int64 metricStep
 run incrementCall
-bind value nextValue CSignedInt64 incrementCall
+bind value nextValue Int64 incrementCall
 set storage metricsSseSlowClientDropsTotal nextValue
 return value nextValue
 
 operation normalizeRequestLogDurationMillis
-input operation normalizeRequestLogDurationMillis rawDurationMillis CSignedInt64
-input operation normalizeRequestLogDurationMillis startedAt CSignedInt64
-input operation normalizeRequestLogDurationMillis finishedAt CSignedInt64
-output operation normalizeRequestLogDurationMillis CSignedInt64
+input operation normalizeRequestLogDurationMillis rawDurationMillis Int64
+input operation normalizeRequestLogDurationMillis startedAt Int64
+input operation normalizeRequestLogDurationMillis finishedAt Int64
+output operation normalizeRequestLogDurationMillis Int64
 memory normalizeRequestLogDurationMillis heap no
 async normalizeRequestLogDurationMillis no
 purpose operation normalizeRequestLogDurationMillis "Return a positive persisted request duration using finished-started when available, otherwise a one-millisecond completed-request floor."
 invariant operation normalizeRequestLogDurationMillis "Durable completed request rows never persist duration_ms=0, which keeps latency checks from treating completed work as missing telemetry."
 label startNormalizeRequestLogDurationMillis
-call finishedAfterStartedCall math.greaterThanI64
-argument finishedAfterStartedCall left I64 finishedAt
-argument finishedAfterStartedCall right I64 startedAt
+call finishedAfterStartedCall math.greaterThanInt64
+argument finishedAfterStartedCall left Int64 finishedAt
+argument finishedAfterStartedCall right Int64 startedAt
 run finishedAfterStartedCall
 bind value finishedAfterStarted Bool finishedAfterStartedCall
 branch if condition finishedAfterStarted target computeDurationFromTimestamps
-call rawDurationPositiveCall math.greaterThanI64
-argument rawDurationPositiveCall left I64 rawDurationMillis
-argument rawDurationPositiveCall right I64 0
+call rawDurationPositiveCall math.greaterThanInt64
+argument rawDurationPositiveCall left Int64 rawDurationMillis
+argument rawDurationPositiveCall right Int64 0
 run rawDurationPositiveCall
 bind value rawDurationPositive Bool rawDurationPositiveCall
 branch if condition rawDurationPositive target returnRawDurationMillis
 branch else target returnMinimumDurationMillis
 label computeDurationFromTimestamps
-call computedDurationCall math.subtractI64
-argument computedDurationCall left I64 finishedAt
-argument computedDurationCall right I64 startedAt
+call computedDurationCall math.subtractInt64
+argument computedDurationCall left Int64 finishedAt
+argument computedDurationCall right Int64 startedAt
 run computedDurationCall
-bind value computedDurationMillis CSignedInt64 computedDurationCall
-call computedDurationPositiveCall math.greaterThanI64
-argument computedDurationPositiveCall left I64 computedDurationMillis
-argument computedDurationPositiveCall right I64 0
+bind value computedDurationMillis Int64 computedDurationCall
+call computedDurationPositiveCall math.greaterThanInt64
+argument computedDurationPositiveCall left Int64 computedDurationMillis
+argument computedDurationPositiveCall right Int64 0
 run computedDurationPositiveCall
 bind value computedDurationPositive Bool computedDurationPositiveCall
 branch if condition computedDurationPositive target returnComputedDurationMillis
@@ -311,16 +311,16 @@ return value 1
 
 operation insertAcceptedAuditEvent
 input operation insertAcceptedAuditEvent database SqliteDatabase
-input operation insertAcceptedAuditEvent actorUserId CNullTerminatedByteString
-input operation insertAcceptedAuditEvent actorRole CSignedInt64
-input operation insertAcceptedAuditEvent requestId CNullTerminatedByteString
-input operation insertAcceptedAuditEvent idempotencyKey CNullTerminatedByteString
-input operation insertAcceptedAuditEvent action CNullTerminatedByteString
-input operation insertAcceptedAuditEvent commandKind CSignedInt64
-input operation insertAcceptedAuditEvent auctionId CNullTerminatedByteString
-input operation insertAcceptedAuditEvent bidId CNullTerminatedByteString
-input operation insertAcceptedAuditEvent payloadJson CNullTerminatedByteString
-input operation insertAcceptedAuditEvent createdAt CSignedInt64
+input operation insertAcceptedAuditEvent actorUserId String
+input operation insertAcceptedAuditEvent actorRole Int64
+input operation insertAcceptedAuditEvent requestId String
+input operation insertAcceptedAuditEvent idempotencyKey String
+input operation insertAcceptedAuditEvent action String
+input operation insertAcceptedAuditEvent commandKind Int64
+input operation insertAcceptedAuditEvent auctionId String
+input operation insertAcceptedAuditEvent bidId String
+input operation insertAcceptedAuditEvent payloadJson String
+input operation insertAcceptedAuditEvent createdAt Int64
 output operation insertAcceptedAuditEvent Bool
 effect insertAcceptedAuditEvent readWrite database
 memory insertAcceptedAuditEvent heap no
@@ -339,74 +339,74 @@ branch error source prepareAuditEventCall target auditEventInsertFailed
 defer finalizeAuditEventDefer sqlite.finalizeStatement auditEventStatement
 call bindAuditActorCall sqlite.bindText
 argument bindAuditActorCall statement SqliteStatement auditEventStatement
-argument bindAuditActorCall parameterIndex CSignedInt32 runtime.bindIndex1
-argument bindAuditActorCall value CNullTerminatedByteString actorUserId
+argument bindAuditActorCall parameterIndex Int32 runtime.bindIndex1
+argument bindAuditActorCall value String actorUserId
 run bindAuditActorCall
 ignore void source bindAuditActorCall
 call bindAuditRoleCall sqlite.bindInt64
 argument bindAuditRoleCall statement SqliteStatement auditEventStatement
-argument bindAuditRoleCall parameterIndex CSignedInt32 runtime.bindIndex2
-argument bindAuditRoleCall value CSignedInt64 actorRole
+argument bindAuditRoleCall parameterIndex Int32 runtime.bindIndex2
+argument bindAuditRoleCall value Int64 actorRole
 run bindAuditRoleCall
 ignore void source bindAuditRoleCall
 call bindAuditRequestCall sqlite.bindText
 argument bindAuditRequestCall statement SqliteStatement auditEventStatement
-argument bindAuditRequestCall parameterIndex CSignedInt32 runtime.bindIndex3
-argument bindAuditRequestCall value CNullTerminatedByteString requestId
+argument bindAuditRequestCall parameterIndex Int32 runtime.bindIndex3
+argument bindAuditRequestCall value String requestId
 run bindAuditRequestCall
 ignore void source bindAuditRequestCall
 call bindAuditIdempotencyCall sqlite.bindText
 argument bindAuditIdempotencyCall statement SqliteStatement auditEventStatement
-argument bindAuditIdempotencyCall parameterIndex CSignedInt32 runtime.bindIndex4
-argument bindAuditIdempotencyCall value CNullTerminatedByteString idempotencyKey
+argument bindAuditIdempotencyCall parameterIndex Int32 runtime.bindIndex4
+argument bindAuditIdempotencyCall value String idempotencyKey
 run bindAuditIdempotencyCall
 ignore void source bindAuditIdempotencyCall
 call bindAuditActionCall sqlite.bindText
 argument bindAuditActionCall statement SqliteStatement auditEventStatement
-argument bindAuditActionCall parameterIndex CSignedInt32 runtime.bindIndex5
-argument bindAuditActionCall value CNullTerminatedByteString action
+argument bindAuditActionCall parameterIndex Int32 runtime.bindIndex5
+argument bindAuditActionCall value String action
 run bindAuditActionCall
 ignore void source bindAuditActionCall
 call bindAuditCommandCall sqlite.bindInt64
 argument bindAuditCommandCall statement SqliteStatement auditEventStatement
-argument bindAuditCommandCall parameterIndex CSignedInt32 runtime.bindIndex6
-argument bindAuditCommandCall value CSignedInt64 commandKind
+argument bindAuditCommandCall parameterIndex Int32 runtime.bindIndex6
+argument bindAuditCommandCall value Int64 commandKind
 run bindAuditCommandCall
 ignore void source bindAuditCommandCall
 call bindAuditAuctionCall sqlite.bindText
 argument bindAuditAuctionCall statement SqliteStatement auditEventStatement
-argument bindAuditAuctionCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindAuditAuctionCall value CNullTerminatedByteString auctionId
+argument bindAuditAuctionCall parameterIndex Int32 runtime.bindIndex7
+argument bindAuditAuctionCall value String auctionId
 run bindAuditAuctionCall
 ignore void source bindAuditAuctionCall
 call bindAuditBidCall sqlite.bindText
 argument bindAuditBidCall statement SqliteStatement auditEventStatement
-argument bindAuditBidCall parameterIndex CSignedInt32 runtime.bindIndex8
-argument bindAuditBidCall value CNullTerminatedByteString bidId
+argument bindAuditBidCall parameterIndex Int32 runtime.bindIndex8
+argument bindAuditBidCall value String bidId
 run bindAuditBidCall
 ignore void source bindAuditBidCall
 call bindAuditOutcomeCall sqlite.bindInt64
 argument bindAuditOutcomeCall statement SqliteStatement auditEventStatement
-argument bindAuditOutcomeCall parameterIndex CSignedInt32 runtime.bindIndex9
-argument bindAuditOutcomeCall value CSignedInt64 runtime.auditOutcomeAcceptedCode
+argument bindAuditOutcomeCall parameterIndex Int32 runtime.bindIndex9
+argument bindAuditOutcomeCall value Int64 runtime.auditOutcomeAcceptedCode
 run bindAuditOutcomeCall
 ignore void source bindAuditOutcomeCall
 call bindAuditPayloadCall sqlite.bindText
 argument bindAuditPayloadCall statement SqliteStatement auditEventStatement
-argument bindAuditPayloadCall parameterIndex CSignedInt32 runtime.bindIndex10
-argument bindAuditPayloadCall value CNullTerminatedByteString payloadJson
+argument bindAuditPayloadCall parameterIndex Int32 runtime.bindIndex10
+argument bindAuditPayloadCall value String payloadJson
 run bindAuditPayloadCall
 ignore void source bindAuditPayloadCall
 call bindAuditCreatedCall sqlite.bindInt64
 argument bindAuditCreatedCall statement SqliteStatement auditEventStatement
-argument bindAuditCreatedCall parameterIndex CSignedInt32 runtime.bindIndex11
-argument bindAuditCreatedCall value CSignedInt64 createdAt
+argument bindAuditCreatedCall parameterIndex Int32 runtime.bindIndex11
+argument bindAuditCreatedCall value Int64 createdAt
 run bindAuditCreatedCall
 ignore void source bindAuditCreatedCall
 call stepAuditEventCall sqlite.stepStatement
 argument stepAuditEventCall statement SqliteStatement auditEventStatement
 run stepAuditEventCall
-ignore ok source stepAuditEventCall type CSignedInt32
+ignore ok source stepAuditEventCall type Int32
 bind error stepAuditEventError SqliteStatementStepFailure stepAuditEventCall
 branch error source stepAuditEventCall target auditEventInsertFailed
 return value runtime.boolTrue
@@ -415,18 +415,18 @@ return value runtime.boolFalse
 
 operation insertObservedAuditEvent
 input operation insertObservedAuditEvent database SqliteDatabase
-input operation insertObservedAuditEvent actorUserId CNullTerminatedByteString
-input operation insertObservedAuditEvent actorRole CSignedInt64
-input operation insertObservedAuditEvent requestId CNullTerminatedByteString
-input operation insertObservedAuditEvent idempotencyKey CNullTerminatedByteString
-input operation insertObservedAuditEvent action CNullTerminatedByteString
-input operation insertObservedAuditEvent commandKind CSignedInt64
-input operation insertObservedAuditEvent auctionId CNullTerminatedByteString
-input operation insertObservedAuditEvent bidId CNullTerminatedByteString
-input operation insertObservedAuditEvent outcome CSignedInt64
-input operation insertObservedAuditEvent errorCode CNullTerminatedByteString
-input operation insertObservedAuditEvent payloadJson CNullTerminatedByteString
-input operation insertObservedAuditEvent createdAt CSignedInt64
+input operation insertObservedAuditEvent actorUserId String
+input operation insertObservedAuditEvent actorRole Int64
+input operation insertObservedAuditEvent requestId String
+input operation insertObservedAuditEvent idempotencyKey String
+input operation insertObservedAuditEvent action String
+input operation insertObservedAuditEvent commandKind Int64
+input operation insertObservedAuditEvent auctionId String
+input operation insertObservedAuditEvent bidId String
+input operation insertObservedAuditEvent outcome Int64
+input operation insertObservedAuditEvent errorCode String
+input operation insertObservedAuditEvent payloadJson String
+input operation insertObservedAuditEvent createdAt Int64
 output operation insertObservedAuditEvent Bool
 effect insertObservedAuditEvent readWrite database
 memory insertObservedAuditEvent heap no
@@ -445,80 +445,80 @@ branch error source prepareObservedAuditCall target observedAuditInsertFailed
 defer finalizeObservedAuditDefer sqlite.finalizeStatement observedAuditStatement
 call bindObservedActorCall sqlite.bindText
 argument bindObservedActorCall statement SqliteStatement observedAuditStatement
-argument bindObservedActorCall parameterIndex CSignedInt32 runtime.bindIndex1
-argument bindObservedActorCall value CNullTerminatedByteString actorUserId
+argument bindObservedActorCall parameterIndex Int32 runtime.bindIndex1
+argument bindObservedActorCall value String actorUserId
 run bindObservedActorCall
 ignore void source bindObservedActorCall
 call bindObservedRoleCall sqlite.bindInt64
 argument bindObservedRoleCall statement SqliteStatement observedAuditStatement
-argument bindObservedRoleCall parameterIndex CSignedInt32 runtime.bindIndex2
-argument bindObservedRoleCall value CSignedInt64 actorRole
+argument bindObservedRoleCall parameterIndex Int32 runtime.bindIndex2
+argument bindObservedRoleCall value Int64 actorRole
 run bindObservedRoleCall
 ignore void source bindObservedRoleCall
 call bindObservedRequestCall sqlite.bindText
 argument bindObservedRequestCall statement SqliteStatement observedAuditStatement
-argument bindObservedRequestCall parameterIndex CSignedInt32 runtime.bindIndex3
-argument bindObservedRequestCall value CNullTerminatedByteString requestId
+argument bindObservedRequestCall parameterIndex Int32 runtime.bindIndex3
+argument bindObservedRequestCall value String requestId
 run bindObservedRequestCall
 ignore void source bindObservedRequestCall
 call bindObservedIdemCall sqlite.bindText
 argument bindObservedIdemCall statement SqliteStatement observedAuditStatement
-argument bindObservedIdemCall parameterIndex CSignedInt32 runtime.bindIndex4
-argument bindObservedIdemCall value CNullTerminatedByteString idempotencyKey
+argument bindObservedIdemCall parameterIndex Int32 runtime.bindIndex4
+argument bindObservedIdemCall value String idempotencyKey
 run bindObservedIdemCall
 ignore void source bindObservedIdemCall
 call bindObservedActionCall sqlite.bindText
 argument bindObservedActionCall statement SqliteStatement observedAuditStatement
-argument bindObservedActionCall parameterIndex CSignedInt32 runtime.bindIndex5
-argument bindObservedActionCall value CNullTerminatedByteString action
+argument bindObservedActionCall parameterIndex Int32 runtime.bindIndex5
+argument bindObservedActionCall value String action
 run bindObservedActionCall
 ignore void source bindObservedActionCall
 call bindObservedCommandCall sqlite.bindInt64
 argument bindObservedCommandCall statement SqliteStatement observedAuditStatement
-argument bindObservedCommandCall parameterIndex CSignedInt32 runtime.bindIndex6
-argument bindObservedCommandCall value CSignedInt64 commandKind
+argument bindObservedCommandCall parameterIndex Int32 runtime.bindIndex6
+argument bindObservedCommandCall value Int64 commandKind
 run bindObservedCommandCall
 ignore void source bindObservedCommandCall
 call bindObservedAuctionCall sqlite.bindText
 argument bindObservedAuctionCall statement SqliteStatement observedAuditStatement
-argument bindObservedAuctionCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindObservedAuctionCall value CNullTerminatedByteString auctionId
+argument bindObservedAuctionCall parameterIndex Int32 runtime.bindIndex7
+argument bindObservedAuctionCall value String auctionId
 run bindObservedAuctionCall
 ignore void source bindObservedAuctionCall
 call bindObservedBidCall sqlite.bindText
 argument bindObservedBidCall statement SqliteStatement observedAuditStatement
-argument bindObservedBidCall parameterIndex CSignedInt32 runtime.bindIndex8
-argument bindObservedBidCall value CNullTerminatedByteString bidId
+argument bindObservedBidCall parameterIndex Int32 runtime.bindIndex8
+argument bindObservedBidCall value String bidId
 run bindObservedBidCall
 ignore void source bindObservedBidCall
 call bindObservedOutcomeCall sqlite.bindInt64
 argument bindObservedOutcomeCall statement SqliteStatement observedAuditStatement
-argument bindObservedOutcomeCall parameterIndex CSignedInt32 runtime.bindIndex9
-argument bindObservedOutcomeCall value CSignedInt64 outcome
+argument bindObservedOutcomeCall parameterIndex Int32 runtime.bindIndex9
+argument bindObservedOutcomeCall value Int64 outcome
 run bindObservedOutcomeCall
 ignore void source bindObservedOutcomeCall
 call bindObservedErrorCall sqlite.bindText
 argument bindObservedErrorCall statement SqliteStatement observedAuditStatement
-argument bindObservedErrorCall parameterIndex CSignedInt32 runtime.bindIndex10
-argument bindObservedErrorCall value CNullTerminatedByteString errorCode
+argument bindObservedErrorCall parameterIndex Int32 runtime.bindIndex10
+argument bindObservedErrorCall value String errorCode
 run bindObservedErrorCall
 ignore void source bindObservedErrorCall
 call bindObservedPayloadCall sqlite.bindText
 argument bindObservedPayloadCall statement SqliteStatement observedAuditStatement
-argument bindObservedPayloadCall parameterIndex CSignedInt32 runtime.bindIndex11
-argument bindObservedPayloadCall value CNullTerminatedByteString payloadJson
+argument bindObservedPayloadCall parameterIndex Int32 runtime.bindIndex11
+argument bindObservedPayloadCall value String payloadJson
 run bindObservedPayloadCall
 ignore void source bindObservedPayloadCall
 call bindObservedCreatedCall sqlite.bindInt64
 argument bindObservedCreatedCall statement SqliteStatement observedAuditStatement
-argument bindObservedCreatedCall parameterIndex CSignedInt32 runtime.bindIndex12
-argument bindObservedCreatedCall value CSignedInt64 createdAt
+argument bindObservedCreatedCall parameterIndex Int32 runtime.bindIndex12
+argument bindObservedCreatedCall value Int64 createdAt
 run bindObservedCreatedCall
 ignore void source bindObservedCreatedCall
 call stepObservedAuditCall sqlite.stepStatement
 argument stepObservedAuditCall statement SqliteStatement observedAuditStatement
 run stepObservedAuditCall
-ignore ok source stepObservedAuditCall type CSignedInt32
+ignore ok source stepObservedAuditCall type Int32
 bind error stepObservedAuditError SqliteStatementStepFailure stepObservedAuditCall
 branch error source stepObservedAuditCall target observedAuditInsertFailed
 return value runtime.boolTrue
@@ -527,19 +527,19 @@ return value runtime.boolFalse
 
 operation insertRequestLogEvent
 input operation insertRequestLogEvent database SqliteDatabase
-input operation insertRequestLogEvent method CNullTerminatedByteString
-input operation insertRequestLogEvent path CNullTerminatedByteString
-input operation insertRequestLogEvent routePattern CNullTerminatedByteString
-input operation insertRequestLogEvent status CSignedInt64
-input operation insertRequestLogEvent actorUserId CNullTerminatedByteString
-input operation insertRequestLogEvent actorRole CSignedInt64
-input operation insertRequestLogEvent durationMs CSignedInt64
-input operation insertRequestLogEvent auctionId CNullTerminatedByteString
-input operation insertRequestLogEvent idempotencyKey CNullTerminatedByteString
-input operation insertRequestLogEvent requestBytes CSignedInt64
-input operation insertRequestLogEvent responseBytes CSignedInt64
-input operation insertRequestLogEvent errorCode CNullTerminatedByteString
-input operation insertRequestLogEvent observedAt CSignedInt64
+input operation insertRequestLogEvent method String
+input operation insertRequestLogEvent path String
+input operation insertRequestLogEvent routePattern String
+input operation insertRequestLogEvent status Int64
+input operation insertRequestLogEvent actorUserId String
+input operation insertRequestLogEvent actorRole Int64
+input operation insertRequestLogEvent durationMs Int64
+input operation insertRequestLogEvent auctionId String
+input operation insertRequestLogEvent idempotencyKey String
+input operation insertRequestLogEvent requestBytes Int64
+input operation insertRequestLogEvent responseBytes Int64
+input operation insertRequestLogEvent errorCode String
+input operation insertRequestLogEvent observedAt Int64
 output operation insertRequestLogEvent Bool
 effect insertRequestLogEvent readWrite database
 memory insertRequestLogEvent heap no
@@ -557,111 +557,111 @@ bind error prepareRequestLogError SqliteStatementPrepareFailure prepareRequestLo
 branch error source prepareRequestLogCall target requestLogInsertFailed
 defer finalizeRequestLogDefer sqlite.finalizeStatement requestLogStatement
 call normalizeLogDurationCall normalizeRequestLogDurationMillis
-argument normalizeLogDurationCall rawDurationMillis CSignedInt64 durationMs
-argument normalizeLogDurationCall startedAt CSignedInt64 observedAt
-argument normalizeLogDurationCall finishedAt CSignedInt64 observedAt
+argument normalizeLogDurationCall rawDurationMillis Int64 durationMs
+argument normalizeLogDurationCall startedAt Int64 observedAt
+argument normalizeLogDurationCall finishedAt Int64 observedAt
 run normalizeLogDurationCall
-bind value normalizedLogDurationMillis CSignedInt64 normalizeLogDurationCall
+bind value normalizedLogDurationMillis Int64 normalizeLogDurationCall
 call bindLogMethodCall sqlite.bindText
 argument bindLogMethodCall statement SqliteStatement requestLogStatement
-argument bindLogMethodCall parameterIndex CSignedInt32 runtime.bindIndex1
-argument bindLogMethodCall value CNullTerminatedByteString method
+argument bindLogMethodCall parameterIndex Int32 runtime.bindIndex1
+argument bindLogMethodCall value String method
 run bindLogMethodCall
 ignore void source bindLogMethodCall
 call bindLogPathCall sqlite.bindText
 argument bindLogPathCall statement SqliteStatement requestLogStatement
-argument bindLogPathCall parameterIndex CSignedInt32 runtime.bindIndex2
-argument bindLogPathCall value CNullTerminatedByteString path
+argument bindLogPathCall parameterIndex Int32 runtime.bindIndex2
+argument bindLogPathCall value String path
 run bindLogPathCall
 ignore void source bindLogPathCall
 call bindLogRouteCall sqlite.bindText
 argument bindLogRouteCall statement SqliteStatement requestLogStatement
-argument bindLogRouteCall parameterIndex CSignedInt32 runtime.bindIndex3
-argument bindLogRouteCall value CNullTerminatedByteString routePattern
+argument bindLogRouteCall parameterIndex Int32 runtime.bindIndex3
+argument bindLogRouteCall value String routePattern
 run bindLogRouteCall
 ignore void source bindLogRouteCall
 call bindLogStatusCall sqlite.bindInt64
 argument bindLogStatusCall statement SqliteStatement requestLogStatement
-argument bindLogStatusCall parameterIndex CSignedInt32 runtime.bindIndex4
-argument bindLogStatusCall value CSignedInt64 status
+argument bindLogStatusCall parameterIndex Int32 runtime.bindIndex4
+argument bindLogStatusCall value Int64 status
 run bindLogStatusCall
 ignore void source bindLogStatusCall
 call bindLogActorCall sqlite.bindText
 argument bindLogActorCall statement SqliteStatement requestLogStatement
-argument bindLogActorCall parameterIndex CSignedInt32 runtime.bindIndex5
-argument bindLogActorCall value CNullTerminatedByteString actorUserId
+argument bindLogActorCall parameterIndex Int32 runtime.bindIndex5
+argument bindLogActorCall value String actorUserId
 run bindLogActorCall
 ignore void source bindLogActorCall
 call bindLogRoleCall sqlite.bindInt64
 argument bindLogRoleCall statement SqliteStatement requestLogStatement
-argument bindLogRoleCall parameterIndex CSignedInt32 runtime.bindIndex6
-argument bindLogRoleCall value CSignedInt64 actorRole
+argument bindLogRoleCall parameterIndex Int32 runtime.bindIndex6
+argument bindLogRoleCall value Int64 actorRole
 run bindLogRoleCall
 ignore void source bindLogRoleCall
 call bindLogDurationCall sqlite.bindInt64
 argument bindLogDurationCall statement SqliteStatement requestLogStatement
-argument bindLogDurationCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindLogDurationCall value CSignedInt64 normalizedLogDurationMillis
+argument bindLogDurationCall parameterIndex Int32 runtime.bindIndex7
+argument bindLogDurationCall value Int64 normalizedLogDurationMillis
 run bindLogDurationCall
 ignore void source bindLogDurationCall
 call bindLogAuctionCall sqlite.bindText
 argument bindLogAuctionCall statement SqliteStatement requestLogStatement
-argument bindLogAuctionCall parameterIndex CSignedInt32 runtime.bindIndex8
-argument bindLogAuctionCall value CNullTerminatedByteString auctionId
+argument bindLogAuctionCall parameterIndex Int32 runtime.bindIndex8
+argument bindLogAuctionCall value String auctionId
 run bindLogAuctionCall
 ignore void source bindLogAuctionCall
 call bindLogIdemCall sqlite.bindText
 argument bindLogIdemCall statement SqliteStatement requestLogStatement
-argument bindLogIdemCall parameterIndex CSignedInt32 runtime.bindIndex9
-argument bindLogIdemCall value CNullTerminatedByteString idempotencyKey
+argument bindLogIdemCall parameterIndex Int32 runtime.bindIndex9
+argument bindLogIdemCall value String idempotencyKey
 run bindLogIdemCall
 ignore void source bindLogIdemCall
 call bindLogIpCall sqlite.bindText
 argument bindLogIpCall statement SqliteStatement requestLogStatement
-argument bindLogIpCall parameterIndex CSignedInt32 runtime.bindIndex10
-argument bindLogIpCall value CNullTerminatedByteString runtime.redactedDurableClientText
+argument bindLogIpCall parameterIndex Int32 runtime.bindIndex10
+argument bindLogIpCall value String runtime.redactedDurableClientText
 run bindLogIpCall
 ignore void source bindLogIpCall
 call bindLogUaCall sqlite.bindText
 argument bindLogUaCall statement SqliteStatement requestLogStatement
-argument bindLogUaCall parameterIndex CSignedInt32 runtime.bindIndex11
-argument bindLogUaCall value CNullTerminatedByteString runtime.redactedDurableClientText
+argument bindLogUaCall parameterIndex Int32 runtime.bindIndex11
+argument bindLogUaCall value String runtime.redactedDurableClientText
 run bindLogUaCall
 ignore void source bindLogUaCall
 call bindLogRequestBytesCall sqlite.bindInt64
 argument bindLogRequestBytesCall statement SqliteStatement requestLogStatement
-argument bindLogRequestBytesCall parameterIndex CSignedInt32 runtime.bindIndex12
-argument bindLogRequestBytesCall value CSignedInt64 requestBytes
+argument bindLogRequestBytesCall parameterIndex Int32 runtime.bindIndex12
+argument bindLogRequestBytesCall value Int64 requestBytes
 run bindLogRequestBytesCall
 ignore void source bindLogRequestBytesCall
 call bindLogResponseBytesCall sqlite.bindInt64
 argument bindLogResponseBytesCall statement SqliteStatement requestLogStatement
-argument bindLogResponseBytesCall parameterIndex CSignedInt32 runtime.bindIndex13
-argument bindLogResponseBytesCall value CSignedInt64 responseBytes
+argument bindLogResponseBytesCall parameterIndex Int32 runtime.bindIndex13
+argument bindLogResponseBytesCall value Int64 responseBytes
 run bindLogResponseBytesCall
 ignore void source bindLogResponseBytesCall
 call bindLogErrorCall sqlite.bindText
 argument bindLogErrorCall statement SqliteStatement requestLogStatement
-argument bindLogErrorCall parameterIndex CSignedInt32 runtime.bindIndex14
-argument bindLogErrorCall value CNullTerminatedByteString errorCode
+argument bindLogErrorCall parameterIndex Int32 runtime.bindIndex14
+argument bindLogErrorCall value String errorCode
 run bindLogErrorCall
 ignore void source bindLogErrorCall
 call bindLogStartedCall sqlite.bindInt64
 argument bindLogStartedCall statement SqliteStatement requestLogStatement
-argument bindLogStartedCall parameterIndex CSignedInt32 runtime.bindIndex15
-argument bindLogStartedCall value CSignedInt64 observedAt
+argument bindLogStartedCall parameterIndex Int32 runtime.bindIndex15
+argument bindLogStartedCall value Int64 observedAt
 run bindLogStartedCall
 ignore void source bindLogStartedCall
 call bindLogFinishedCall sqlite.bindInt64
 argument bindLogFinishedCall statement SqliteStatement requestLogStatement
-argument bindLogFinishedCall parameterIndex CSignedInt32 runtime.bindIndex16
-argument bindLogFinishedCall value CSignedInt64 observedAt
+argument bindLogFinishedCall parameterIndex Int32 runtime.bindIndex16
+argument bindLogFinishedCall value Int64 observedAt
 run bindLogFinishedCall
 ignore void source bindLogFinishedCall
 call stepRequestLogCall sqlite.stepStatement
 argument stepRequestLogCall statement SqliteStatement requestLogStatement
 run stepRequestLogCall
-ignore ok source stepRequestLogCall type CSignedInt32
+ignore ok source stepRequestLogCall type Int32
 bind error stepRequestLogError SqliteStatementStepFailure stepRequestLogCall
 branch error source stepRequestLogCall target requestLogInsertFailed
 return value runtime.boolTrue
@@ -670,18 +670,18 @@ return value runtime.boolFalse
 
 operation insertRequestLogRow
 input operation insertRequestLogRow database SqliteDatabase
-input operation insertRequestLogRow method CNullTerminatedByteString
-input operation insertRequestLogRow path CNullTerminatedByteString
-input operation insertRequestLogRow routePattern CNullTerminatedByteString
-input operation insertRequestLogRow status CSignedInt64
-input operation insertRequestLogRow actorUserId CNullTerminatedByteString
-input operation insertRequestLogRow actorRole CSignedInt64
-input operation insertRequestLogRow durationMillis CSignedInt64
-input operation insertRequestLogRow auctionId CNullTerminatedByteString
-input operation insertRequestLogRow idempotencyKey CNullTerminatedByteString
-input operation insertRequestLogRow errorCode CNullTerminatedByteString
-input operation insertRequestLogRow startedAt CSignedInt64
-input operation insertRequestLogRow finishedAt CSignedInt64
+input operation insertRequestLogRow method String
+input operation insertRequestLogRow path String
+input operation insertRequestLogRow routePattern String
+input operation insertRequestLogRow status Int64
+input operation insertRequestLogRow actorUserId String
+input operation insertRequestLogRow actorRole Int64
+input operation insertRequestLogRow durationMillis Int64
+input operation insertRequestLogRow auctionId String
+input operation insertRequestLogRow idempotencyKey String
+input operation insertRequestLogRow errorCode String
+input operation insertRequestLogRow startedAt Int64
+input operation insertRequestLogRow finishedAt Int64
 output operation insertRequestLogRow Bool
 effect insertRequestLogRow readWrite database
 memory insertRequestLogRow heap no
@@ -699,111 +699,111 @@ bind error prepareRequestLogError SqliteStatementPrepareFailure prepareRequestLo
 branch error source prepareRequestLogCall target requestLogInsertFailed
 defer finalizeRequestLogDefer sqlite.finalizeStatement requestLogStatement
 call normalizeRequestLogDurationCall normalizeRequestLogDurationMillis
-argument normalizeRequestLogDurationCall rawDurationMillis CSignedInt64 durationMillis
-argument normalizeRequestLogDurationCall startedAt CSignedInt64 startedAt
-argument normalizeRequestLogDurationCall finishedAt CSignedInt64 finishedAt
+argument normalizeRequestLogDurationCall rawDurationMillis Int64 durationMillis
+argument normalizeRequestLogDurationCall startedAt Int64 startedAt
+argument normalizeRequestLogDurationCall finishedAt Int64 finishedAt
 run normalizeRequestLogDurationCall
-bind value normalizedRequestLogDurationMillis CSignedInt64 normalizeRequestLogDurationCall
+bind value normalizedRequestLogDurationMillis Int64 normalizeRequestLogDurationCall
 call bindRequestLogMethodCall sqlite.bindText
 argument bindRequestLogMethodCall statement SqliteStatement requestLogStatement
-argument bindRequestLogMethodCall parameterIndex CSignedInt32 runtime.bindIndex1
-argument bindRequestLogMethodCall value CNullTerminatedByteString method
+argument bindRequestLogMethodCall parameterIndex Int32 runtime.bindIndex1
+argument bindRequestLogMethodCall value String method
 run bindRequestLogMethodCall
 ignore void source bindRequestLogMethodCall
 call bindRequestLogPathCall sqlite.bindText
 argument bindRequestLogPathCall statement SqliteStatement requestLogStatement
-argument bindRequestLogPathCall parameterIndex CSignedInt32 runtime.bindIndex2
-argument bindRequestLogPathCall value CNullTerminatedByteString path
+argument bindRequestLogPathCall parameterIndex Int32 runtime.bindIndex2
+argument bindRequestLogPathCall value String path
 run bindRequestLogPathCall
 ignore void source bindRequestLogPathCall
 call bindRequestLogRouteCall sqlite.bindText
 argument bindRequestLogRouteCall statement SqliteStatement requestLogStatement
-argument bindRequestLogRouteCall parameterIndex CSignedInt32 runtime.bindIndex3
-argument bindRequestLogRouteCall value CNullTerminatedByteString routePattern
+argument bindRequestLogRouteCall parameterIndex Int32 runtime.bindIndex3
+argument bindRequestLogRouteCall value String routePattern
 run bindRequestLogRouteCall
 ignore void source bindRequestLogRouteCall
 call bindRequestLogStatusCall sqlite.bindInt64
 argument bindRequestLogStatusCall statement SqliteStatement requestLogStatement
-argument bindRequestLogStatusCall parameterIndex CSignedInt32 runtime.bindIndex4
-argument bindRequestLogStatusCall value CSignedInt64 status
+argument bindRequestLogStatusCall parameterIndex Int32 runtime.bindIndex4
+argument bindRequestLogStatusCall value Int64 status
 run bindRequestLogStatusCall
 ignore void source bindRequestLogStatusCall
 call bindRequestLogActorCall sqlite.bindText
 argument bindRequestLogActorCall statement SqliteStatement requestLogStatement
-argument bindRequestLogActorCall parameterIndex CSignedInt32 runtime.bindIndex5
-argument bindRequestLogActorCall value CNullTerminatedByteString actorUserId
+argument bindRequestLogActorCall parameterIndex Int32 runtime.bindIndex5
+argument bindRequestLogActorCall value String actorUserId
 run bindRequestLogActorCall
 ignore void source bindRequestLogActorCall
 call bindRequestLogRoleCall sqlite.bindInt64
 argument bindRequestLogRoleCall statement SqliteStatement requestLogStatement
-argument bindRequestLogRoleCall parameterIndex CSignedInt32 runtime.bindIndex6
-argument bindRequestLogRoleCall value CSignedInt64 actorRole
+argument bindRequestLogRoleCall parameterIndex Int32 runtime.bindIndex6
+argument bindRequestLogRoleCall value Int64 actorRole
 run bindRequestLogRoleCall
 ignore void source bindRequestLogRoleCall
 call bindRequestLogDurationCall sqlite.bindInt64
 argument bindRequestLogDurationCall statement SqliteStatement requestLogStatement
-argument bindRequestLogDurationCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindRequestLogDurationCall value CSignedInt64 normalizedRequestLogDurationMillis
+argument bindRequestLogDurationCall parameterIndex Int32 runtime.bindIndex7
+argument bindRequestLogDurationCall value Int64 normalizedRequestLogDurationMillis
 run bindRequestLogDurationCall
 ignore void source bindRequestLogDurationCall
 call bindRequestLogAuctionCall sqlite.bindText
 argument bindRequestLogAuctionCall statement SqliteStatement requestLogStatement
-argument bindRequestLogAuctionCall parameterIndex CSignedInt32 runtime.bindIndex8
-argument bindRequestLogAuctionCall value CNullTerminatedByteString auctionId
+argument bindRequestLogAuctionCall parameterIndex Int32 runtime.bindIndex8
+argument bindRequestLogAuctionCall value String auctionId
 run bindRequestLogAuctionCall
 ignore void source bindRequestLogAuctionCall
 call bindRequestLogIdemCall sqlite.bindText
 argument bindRequestLogIdemCall statement SqliteStatement requestLogStatement
-argument bindRequestLogIdemCall parameterIndex CSignedInt32 runtime.bindIndex9
-argument bindRequestLogIdemCall value CNullTerminatedByteString idempotencyKey
+argument bindRequestLogIdemCall parameterIndex Int32 runtime.bindIndex9
+argument bindRequestLogIdemCall value String idempotencyKey
 run bindRequestLogIdemCall
 ignore void source bindRequestLogIdemCall
 call bindRequestLogIpHashCall sqlite.bindText
 argument bindRequestLogIpHashCall statement SqliteStatement requestLogStatement
-argument bindRequestLogIpHashCall parameterIndex CSignedInt32 runtime.bindIndex10
-argument bindRequestLogIpHashCall value CNullTerminatedByteString runtime.redactedDurableClientText
+argument bindRequestLogIpHashCall parameterIndex Int32 runtime.bindIndex10
+argument bindRequestLogIpHashCall value String runtime.redactedDurableClientText
 run bindRequestLogIpHashCall
 ignore void source bindRequestLogIpHashCall
 call bindRequestLogUserAgentHashCall sqlite.bindText
 argument bindRequestLogUserAgentHashCall statement SqliteStatement requestLogStatement
-argument bindRequestLogUserAgentHashCall parameterIndex CSignedInt32 runtime.bindIndex11
-argument bindRequestLogUserAgentHashCall value CNullTerminatedByteString runtime.redactedDurableClientText
+argument bindRequestLogUserAgentHashCall parameterIndex Int32 runtime.bindIndex11
+argument bindRequestLogUserAgentHashCall value String runtime.redactedDurableClientText
 run bindRequestLogUserAgentHashCall
 ignore void source bindRequestLogUserAgentHashCall
 call bindRequestLogRequestBytesCall sqlite.bindInt64
 argument bindRequestLogRequestBytesCall statement SqliteStatement requestLogStatement
-argument bindRequestLogRequestBytesCall parameterIndex CSignedInt32 runtime.bindIndex12
-argument bindRequestLogRequestBytesCall value CSignedInt64 0
+argument bindRequestLogRequestBytesCall parameterIndex Int32 runtime.bindIndex12
+argument bindRequestLogRequestBytesCall value Int64 0
 run bindRequestLogRequestBytesCall
 ignore void source bindRequestLogRequestBytesCall
 call bindRequestLogResponseBytesCall sqlite.bindInt64
 argument bindRequestLogResponseBytesCall statement SqliteStatement requestLogStatement
-argument bindRequestLogResponseBytesCall parameterIndex CSignedInt32 runtime.bindIndex13
-argument bindRequestLogResponseBytesCall value CSignedInt64 0
+argument bindRequestLogResponseBytesCall parameterIndex Int32 runtime.bindIndex13
+argument bindRequestLogResponseBytesCall value Int64 0
 run bindRequestLogResponseBytesCall
 ignore void source bindRequestLogResponseBytesCall
 call bindRequestLogErrorCall sqlite.bindText
 argument bindRequestLogErrorCall statement SqliteStatement requestLogStatement
-argument bindRequestLogErrorCall parameterIndex CSignedInt32 runtime.bindIndex14
-argument bindRequestLogErrorCall value CNullTerminatedByteString errorCode
+argument bindRequestLogErrorCall parameterIndex Int32 runtime.bindIndex14
+argument bindRequestLogErrorCall value String errorCode
 run bindRequestLogErrorCall
 ignore void source bindRequestLogErrorCall
 call bindRequestLogStartedCall sqlite.bindInt64
 argument bindRequestLogStartedCall statement SqliteStatement requestLogStatement
-argument bindRequestLogStartedCall parameterIndex CSignedInt32 runtime.bindIndex15
-argument bindRequestLogStartedCall value CSignedInt64 startedAt
+argument bindRequestLogStartedCall parameterIndex Int32 runtime.bindIndex15
+argument bindRequestLogStartedCall value Int64 startedAt
 run bindRequestLogStartedCall
 ignore void source bindRequestLogStartedCall
 call bindRequestLogFinishedCall sqlite.bindInt64
 argument bindRequestLogFinishedCall statement SqliteStatement requestLogStatement
-argument bindRequestLogFinishedCall parameterIndex CSignedInt32 runtime.bindIndex16
-argument bindRequestLogFinishedCall value CSignedInt64 finishedAt
+argument bindRequestLogFinishedCall parameterIndex Int32 runtime.bindIndex16
+argument bindRequestLogFinishedCall value Int64 finishedAt
 run bindRequestLogFinishedCall
 ignore void source bindRequestLogFinishedCall
 call stepRequestLogCall sqlite.stepStatement
 argument stepRequestLogCall statement SqliteStatement requestLogStatement
 run stepRequestLogCall
-ignore ok source stepRequestLogCall type CSignedInt32
+ignore ok source stepRequestLogCall type Int32
 bind error stepRequestLogError SqliteStatementStepFailure stepRequestLogCall
 branch error source stepRequestLogCall target requestLogInsertFailed
 return value runtime.boolTrue
@@ -812,17 +812,17 @@ return value runtime.boolFalse
 
 operation insertRejectedAuditEvent
 input operation insertRejectedAuditEvent database SqliteDatabase
-input operation insertRejectedAuditEvent actorUserId CNullTerminatedByteString
-input operation insertRejectedAuditEvent actorRole CSignedInt64
-input operation insertRejectedAuditEvent requestId CNullTerminatedByteString
-input operation insertRejectedAuditEvent idempotencyKey CNullTerminatedByteString
-input operation insertRejectedAuditEvent action CNullTerminatedByteString
-input operation insertRejectedAuditEvent commandKind CSignedInt64
-input operation insertRejectedAuditEvent auctionId CNullTerminatedByteString
-input operation insertRejectedAuditEvent bidId CNullTerminatedByteString
-input operation insertRejectedAuditEvent errorCode CNullTerminatedByteString
-input operation insertRejectedAuditEvent payloadJson CNullTerminatedByteString
-input operation insertRejectedAuditEvent createdAt CSignedInt64
+input operation insertRejectedAuditEvent actorUserId String
+input operation insertRejectedAuditEvent actorRole Int64
+input operation insertRejectedAuditEvent requestId String
+input operation insertRejectedAuditEvent idempotencyKey String
+input operation insertRejectedAuditEvent action String
+input operation insertRejectedAuditEvent commandKind Int64
+input operation insertRejectedAuditEvent auctionId String
+input operation insertRejectedAuditEvent bidId String
+input operation insertRejectedAuditEvent errorCode String
+input operation insertRejectedAuditEvent payloadJson String
+input operation insertRejectedAuditEvent createdAt Int64
 output operation insertRejectedAuditEvent Bool
 effect insertRejectedAuditEvent readWrite database
 memory insertRejectedAuditEvent heap no
@@ -840,80 +840,80 @@ branch error source prepareRejectedAuditCall target rejectedAuditInsertFailed
 defer finalizeRejectedAuditDefer sqlite.finalizeStatement rejectedAuditStatement
 call bindRejectedAuditActorCall sqlite.bindText
 argument bindRejectedAuditActorCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditActorCall parameterIndex CSignedInt32 runtime.bindIndex1
-argument bindRejectedAuditActorCall value CNullTerminatedByteString actorUserId
+argument bindRejectedAuditActorCall parameterIndex Int32 runtime.bindIndex1
+argument bindRejectedAuditActorCall value String actorUserId
 run bindRejectedAuditActorCall
 ignore void source bindRejectedAuditActorCall
 call bindRejectedAuditRoleCall sqlite.bindInt64
 argument bindRejectedAuditRoleCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditRoleCall parameterIndex CSignedInt32 runtime.bindIndex2
-argument bindRejectedAuditRoleCall value CSignedInt64 actorRole
+argument bindRejectedAuditRoleCall parameterIndex Int32 runtime.bindIndex2
+argument bindRejectedAuditRoleCall value Int64 actorRole
 run bindRejectedAuditRoleCall
 ignore void source bindRejectedAuditRoleCall
 call bindRejectedAuditRequestCall sqlite.bindText
 argument bindRejectedAuditRequestCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditRequestCall parameterIndex CSignedInt32 runtime.bindIndex3
-argument bindRejectedAuditRequestCall value CNullTerminatedByteString requestId
+argument bindRejectedAuditRequestCall parameterIndex Int32 runtime.bindIndex3
+argument bindRejectedAuditRequestCall value String requestId
 run bindRejectedAuditRequestCall
 ignore void source bindRejectedAuditRequestCall
 call bindRejectedAuditIdemCall sqlite.bindText
 argument bindRejectedAuditIdemCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditIdemCall parameterIndex CSignedInt32 runtime.bindIndex4
-argument bindRejectedAuditIdemCall value CNullTerminatedByteString idempotencyKey
+argument bindRejectedAuditIdemCall parameterIndex Int32 runtime.bindIndex4
+argument bindRejectedAuditIdemCall value String idempotencyKey
 run bindRejectedAuditIdemCall
 ignore void source bindRejectedAuditIdemCall
 call bindRejectedAuditActionCall sqlite.bindText
 argument bindRejectedAuditActionCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditActionCall parameterIndex CSignedInt32 runtime.bindIndex5
-argument bindRejectedAuditActionCall value CNullTerminatedByteString action
+argument bindRejectedAuditActionCall parameterIndex Int32 runtime.bindIndex5
+argument bindRejectedAuditActionCall value String action
 run bindRejectedAuditActionCall
 ignore void source bindRejectedAuditActionCall
 call bindRejectedAuditCommandCall sqlite.bindInt64
 argument bindRejectedAuditCommandCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditCommandCall parameterIndex CSignedInt32 runtime.bindIndex6
-argument bindRejectedAuditCommandCall value CSignedInt64 commandKind
+argument bindRejectedAuditCommandCall parameterIndex Int32 runtime.bindIndex6
+argument bindRejectedAuditCommandCall value Int64 commandKind
 run bindRejectedAuditCommandCall
 ignore void source bindRejectedAuditCommandCall
 call bindRejectedAuditAuctionCall sqlite.bindText
 argument bindRejectedAuditAuctionCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditAuctionCall parameterIndex CSignedInt32 runtime.bindIndex7
-argument bindRejectedAuditAuctionCall value CNullTerminatedByteString auctionId
+argument bindRejectedAuditAuctionCall parameterIndex Int32 runtime.bindIndex7
+argument bindRejectedAuditAuctionCall value String auctionId
 run bindRejectedAuditAuctionCall
 ignore void source bindRejectedAuditAuctionCall
 call bindRejectedAuditBidCall sqlite.bindText
 argument bindRejectedAuditBidCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditBidCall parameterIndex CSignedInt32 runtime.bindIndex8
-argument bindRejectedAuditBidCall value CNullTerminatedByteString bidId
+argument bindRejectedAuditBidCall parameterIndex Int32 runtime.bindIndex8
+argument bindRejectedAuditBidCall value String bidId
 run bindRejectedAuditBidCall
 ignore void source bindRejectedAuditBidCall
 call bindRejectedAuditOutcomeCall sqlite.bindInt64
 argument bindRejectedAuditOutcomeCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditOutcomeCall parameterIndex CSignedInt32 runtime.bindIndex9
-argument bindRejectedAuditOutcomeCall value CSignedInt64 2
+argument bindRejectedAuditOutcomeCall parameterIndex Int32 runtime.bindIndex9
+argument bindRejectedAuditOutcomeCall value Int64 2
 run bindRejectedAuditOutcomeCall
 ignore void source bindRejectedAuditOutcomeCall
 call bindRejectedAuditErrorCall sqlite.bindText
 argument bindRejectedAuditErrorCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditErrorCall parameterIndex CSignedInt32 runtime.bindIndex10
-argument bindRejectedAuditErrorCall value CNullTerminatedByteString errorCode
+argument bindRejectedAuditErrorCall parameterIndex Int32 runtime.bindIndex10
+argument bindRejectedAuditErrorCall value String errorCode
 run bindRejectedAuditErrorCall
 ignore void source bindRejectedAuditErrorCall
 call bindRejectedAuditPayloadCall sqlite.bindText
 argument bindRejectedAuditPayloadCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditPayloadCall parameterIndex CSignedInt32 runtime.bindIndex11
-argument bindRejectedAuditPayloadCall value CNullTerminatedByteString payloadJson
+argument bindRejectedAuditPayloadCall parameterIndex Int32 runtime.bindIndex11
+argument bindRejectedAuditPayloadCall value String payloadJson
 run bindRejectedAuditPayloadCall
 ignore void source bindRejectedAuditPayloadCall
 call bindRejectedAuditCreatedCall sqlite.bindInt64
 argument bindRejectedAuditCreatedCall statement SqliteStatement rejectedAuditStatement
-argument bindRejectedAuditCreatedCall parameterIndex CSignedInt32 runtime.bindIndex12
-argument bindRejectedAuditCreatedCall value CSignedInt64 createdAt
+argument bindRejectedAuditCreatedCall parameterIndex Int32 runtime.bindIndex12
+argument bindRejectedAuditCreatedCall value Int64 createdAt
 run bindRejectedAuditCreatedCall
 ignore void source bindRejectedAuditCreatedCall
 call stepRejectedAuditCall sqlite.stepStatement
 argument stepRejectedAuditCall statement SqliteStatement rejectedAuditStatement
 run stepRejectedAuditCall
-ignore ok source stepRejectedAuditCall type CSignedInt32
+ignore ok source stepRejectedAuditCall type Int32
 bind error stepRejectedAuditError SqliteStatementStepFailure stepRejectedAuditCall
 branch error source stepRejectedAuditCall target rejectedAuditInsertFailed
 return value runtime.boolTrue

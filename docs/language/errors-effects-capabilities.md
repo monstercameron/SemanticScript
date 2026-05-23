@@ -8,7 +8,7 @@ touches the outside world should declare its effects.
 
 ```semanticscript
 error ConsoleWriteError
-errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+errorCase ConsoleWriteError ConsoleWriteFailed Int32
 ```
 
 `error NAME` creates a typed error domain. `errorCase ERROR VARIANT [CAUSE]`

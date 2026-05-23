@@ -45,38 +45,38 @@ invariant operation main "Pi resolves to 3.141592653589793; Euler's number to 2.
 
 label startMain
 
-storage module immutable piExpectedValue CFloat64 3.141592653589793
-call checkPiCall math.equalF64
-argument checkPiCall left F64 mathematicalPiFloat64
-argument checkPiCall right F64 piExpectedValue
+storage module immutable piExpectedValue Float64 3.141592653589793
+call checkPiCall math.equalFloat64
+argument checkPiCall left Float64 mathematicalPiFloat64
+argument checkPiCall right Float64 piExpectedValue
 run checkPiCall
 bind value piOk Bool checkPiCall
 branch if condition piOk target piHolds
 branch else target smokeAssertionFailed
 label piHolds
 
-storage module immutable eulerExpectedValue CFloat64 2.718281828459045
-call checkEulerCall math.equalF64
-argument checkEulerCall left F64 mathematicalEulerNumberFloat64
-argument checkEulerCall right F64 eulerExpectedValue
+storage module immutable eulerExpectedValue Float64 2.718281828459045
+call checkEulerCall math.equalFloat64
+argument checkEulerCall left Float64 mathematicalEulerNumberFloat64
+argument checkEulerCall right Float64 eulerExpectedValue
 run checkEulerCall
 bind value eulerOk Bool checkEulerCall
 branch if condition eulerOk target eulerHolds
 branch else target smokeAssertionFailed
 label eulerHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

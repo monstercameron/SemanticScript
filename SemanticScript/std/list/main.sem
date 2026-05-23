@@ -1,0 +1,195 @@
+# SemanticScript standard-library canonical module: standard.list.
+
+module standard.list
+purpose module standard.list "Canonical standard-library module for owned list length/capacity helpers."
+moduleOwns standard.list "The official import path `standard.list` and the executable `list.*` helper surface."
+moduleDoesNotOwn standard.list "List storage allocation itself or typed element mutation."
+invariant module standard.list "This module owns structural growable-list helpers over length/capacity facts."
+
+exportConstant standard.list listModuleVersionText
+storage module immutable listModuleVersionText String "standard.list 0.1"
+
+domainLiteral listZeroValue Int64 0
+domainLiteralTrust listZeroValue trustedStaticLiteral
+domainLiteral listOneValue Int64 1
+domainLiteralTrust listOneValue trustedStaticLiteral
+domainLiteral listFailureSentinel Int64 -1
+domainLiteralTrust listFailureSentinel trustedStaticLiteral
+
+storage module immutable listTrue Bool true
+storage module immutable listFalse Bool false
+
+operation list.length
+input operation list.length currentLength Int64
+output operation list.length Int64
+memory list.length heap no
+async list.length no
+purpose operation list.length "Return the current logical list length."
+return value currentLength
+
+operation list.capacity
+input operation list.capacity currentCapacity Int64
+output operation list.capacity Int64
+memory list.capacity heap no
+async list.capacity no
+purpose operation list.capacity "Return the current list capacity."
+return value currentCapacity
+
+operation list.isEmpty
+input operation list.isEmpty currentLength Int64
+output operation list.isEmpty Bool
+memory list.isEmpty heap no
+async list.isEmpty no
+purpose operation list.isEmpty "Return true when currentLength is zero."
+call listIsEmptyCheckCall math.equalInt64
+argument listIsEmptyCheckCall left Int64 currentLength
+argument listIsEmptyCheckCall right Int64 listZeroValue
+run listIsEmptyCheckCall
+bind value listIsEmptyResult Bool listIsEmptyCheckCall
+return value listIsEmptyResult
+
+operation list.remainingCapacity
+input operation list.remainingCapacity currentLength Int64
+input operation list.remainingCapacity currentCapacity Int64
+output operation list.remainingCapacity Int64
+memory list.remainingCapacity heap no
+async list.remainingCapacity no
+purpose operation list.remainingCapacity "Return max(currentCapacity - currentLength, 0)."
+call listRemainingNegativeCall math.greaterThanOrEqualInt64
+argument listRemainingNegativeCall left Int64 currentLength
+argument listRemainingNegativeCall right Int64 currentCapacity
+run listRemainingNegativeCall
+bind value listRemainingNegative Bool listRemainingNegativeCall
+branch if condition listRemainingNegative target listRemainingCapacityZero
+call listRemainingCapacityCall math.subtractInt64
+argument listRemainingCapacityCall left Int64 currentCapacity
+argument listRemainingCapacityCall right Int64 currentLength
+run listRemainingCapacityCall
+bind value listRemainingCapacityResult Int64 listRemainingCapacityCall
+return value listRemainingCapacityResult
+label listRemainingCapacityZero
+return value listZeroValue
+
+operation list.canAppend
+input operation list.canAppend currentLength Int64
+input operation list.canAppend currentCapacity Int64
+output operation list.canAppend Bool
+memory list.canAppend heap no
+async list.canAppend no
+purpose operation list.canAppend "Return true when currentLength is strictly less than currentCapacity."
+call listCanAppendCheckCall math.lessThanInt64
+argument listCanAppendCheckCall left Int64 currentLength
+argument listCanAppendCheckCall right Int64 currentCapacity
+run listCanAppendCheckCall
+bind value listCanAppendResult Bool listCanAppendCheckCall
+return value listCanAppendResult
+
+operation list.containsIndex
+input operation list.containsIndex currentLength Int64
+input operation list.containsIndex index Int64
+output operation list.containsIndex Bool
+memory list.containsIndex heap no
+async list.containsIndex no
+purpose operation list.containsIndex "Return true when index is within [0, currentLength)."
+call listContainsNegativeCall math.lessThanInt64
+argument listContainsNegativeCall left Int64 index
+argument listContainsNegativeCall right Int64 listZeroValue
+run listContainsNegativeCall
+bind value listContainsNegative Bool listContainsNegativeCall
+branch if condition listContainsNegative target listContainsIndexFalse
+call listContainsPastEndCall math.greaterThanOrEqualInt64
+argument listContainsPastEndCall left Int64 index
+argument listContainsPastEndCall right Int64 currentLength
+run listContainsPastEndCall
+bind value listContainsPastEnd Bool listContainsPastEndCall
+branch if condition listContainsPastEnd target listContainsIndexFalse
+return value listTrue
+label listContainsIndexFalse
+return value listFalse
+
+operation list.canInsert
+input operation list.canInsert currentLength Int64
+input operation list.canInsert currentCapacity Int64
+input operation list.canInsert index Int64
+output operation list.canInsert Bool
+memory list.canInsert heap no
+async list.canInsert no
+purpose operation list.canInsert "Return true when index is within [0, currentLength] and there is append capacity."
+call listInsertNegativeCall math.lessThanInt64
+argument listInsertNegativeCall left Int64 index
+argument listInsertNegativeCall right Int64 listZeroValue
+run listInsertNegativeCall
+bind value listInsertNegative Bool listInsertNegativeCall
+branch if condition listInsertNegative target listCanInsertFalse
+call listInsertPastEndCall math.greaterThanInt64
+argument listInsertPastEndCall left Int64 index
+argument listInsertPastEndCall right Int64 currentLength
+run listInsertPastEndCall
+bind value listInsertPastEnd Bool listInsertPastEndCall
+branch if condition listInsertPastEnd target listCanInsertFalse
+call listInsertCapacityCall list.canAppend
+argument listInsertCapacityCall currentLength Int64 currentLength
+argument listInsertCapacityCall currentCapacity Int64 currentCapacity
+run listInsertCapacityCall
+bind value listInsertCapacityOk Bool listInsertCapacityCall
+return value listInsertCapacityOk
+label listCanInsertFalse
+return value listFalse
+
+operation list.canRemove
+input operation list.canRemove currentLength Int64
+input operation list.canRemove index Int64
+output operation list.canRemove Bool
+memory list.canRemove heap no
+async list.canRemove no
+purpose operation list.canRemove "Return true when index is within [0, currentLength)."
+call delegateListCanRemoveCall list.containsIndex
+argument delegateListCanRemoveCall currentLength Int64 currentLength
+argument delegateListCanRemoveCall index Int64 index
+run delegateListCanRemoveCall
+bind value listCanRemoveResult Bool delegateListCanRemoveCall
+return value listCanRemoveResult
+
+operation list.lengthAfterAppend
+input operation list.lengthAfterAppend currentLength Int64
+input operation list.lengthAfterAppend currentCapacity Int64
+output operation list.lengthAfterAppend Int64
+memory list.lengthAfterAppend heap no
+async list.lengthAfterAppend no
+purpose operation list.lengthAfterAppend "Return currentLength + 1 when append is valid, otherwise -1."
+call listLengthAfterAppendCanCall list.canAppend
+argument listLengthAfterAppendCanCall currentLength Int64 currentLength
+argument listLengthAfterAppendCanCall currentCapacity Int64 currentCapacity
+run listLengthAfterAppendCanCall
+bind value listLengthAfterAppendCan Bool listLengthAfterAppendCanCall
+branch if condition listLengthAfterAppendCan target listLengthAfterAppendDo
+return value listFailureSentinel
+label listLengthAfterAppendDo
+call listLengthAfterAppendValueCall math.addInt64
+argument listLengthAfterAppendValueCall left Int64 currentLength
+argument listLengthAfterAppendValueCall right Int64 listOneValue
+run listLengthAfterAppendValueCall
+bind value listLengthAfterAppendValue Int64 listLengthAfterAppendValueCall
+return value listLengthAfterAppendValue
+
+operation list.lengthAfterRemove
+input operation list.lengthAfterRemove currentLength Int64
+input operation list.lengthAfterRemove index Int64
+output operation list.lengthAfterRemove Int64
+memory list.lengthAfterRemove heap no
+async list.lengthAfterRemove no
+purpose operation list.lengthAfterRemove "Return currentLength - 1 when remove is valid, otherwise -1."
+call listLengthAfterRemoveCanCall list.canRemove
+argument listLengthAfterRemoveCanCall currentLength Int64 currentLength
+argument listLengthAfterRemoveCanCall index Int64 index
+run listLengthAfterRemoveCanCall
+bind value listLengthAfterRemoveCan Bool listLengthAfterRemoveCanCall
+branch if condition listLengthAfterRemoveCan target listLengthAfterRemoveDo
+return value listFailureSentinel
+label listLengthAfterRemoveDo
+call listLengthAfterRemoveValueCall math.subtractInt64
+argument listLengthAfterRemoveValueCall left Int64 currentLength
+argument listLengthAfterRemoveValueCall right Int64 listOneValue
+run listLengthAfterRemoveValueCall
+bind value listLengthAfterRemoveValue Int64 listLengthAfterRemoveValueCall
+return value listLengthAfterRemoveValue

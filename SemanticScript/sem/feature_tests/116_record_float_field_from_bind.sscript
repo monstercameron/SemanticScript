@@ -5,10 +5,10 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Sample layout row align 8
-field Sample value CFloat64
+field Sample value Float64
 
 operation main
 input operation main console Console
@@ -16,22 +16,22 @@ output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose operation main "Compute via math.addF64 → bind → fieldSet (no intermediate var)."
+purpose operation main "Compute via math.addFloat64 → bind → fieldSet (no intermediate var)."
 invariant operation main "10.0 + 2.5 = 12.5 stored directly from bind."
 label startMain
-storage module immutable tenF CFloat64 10.0
-storage module immutable twoAndHalfF CFloat64 2.5
-call addCall math.addF64
-argument addCall left CFloat64 tenF
-argument addCall right CFloat64 twoAndHalfF
+storage module immutable tenF Float64 10.0
+storage module immutable twoAndHalfF Float64 2.5
+call addCall math.addFloat64
+argument addCall left Float64 tenF
+argument addCall right Float64 twoAndHalfF
 run addCall
-bind value sumF CFloat64 addCall
+bind value sumF Float64 addCall
 new mySample Sample
 fieldSet mySample value sumF
-fieldGet readF CFloat64 mySample value
+fieldGet readF Float64 mySample value
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 readF
+argument writeCall value Float64 readF
 run writeCall
 ignore void source writeCall
 storage module immutable okExit ExitCode 0

@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -16,25 +16,25 @@ async main no
 purpose operation main "Use pointer.offset to GEP past the first 4 bytes of a string const and load the 5th byte ('o' from 'hello')."
 invariant operation main "Exercises pointer.offset + pointer.loadByte chain."
 label startMain
-storage module immutable greeting CNullTerminatedByteString "hello"
-storage module immutable fourOffset I64 4
+storage module immutable greeting String "hello"
+storage module immutable fourOffset Int64 4
 call shiftCall pointer.offset
-argument shiftCall base CNullTerminatedByteString greeting
-argument shiftCall offset I64 fourOffset
+argument shiftCall base String greeting
+argument shiftCall offset Int64 fourOffset
 run shiftCall
-bind value shiftedPointer COpaqueMemoryAddress shiftCall
-storage module immutable zeroOffset I64 0
+bind value shiftedPointer OpaquePointer shiftCall
+storage module immutable zeroOffset Int64 0
 call loadCall pointer.loadByte
-argument loadCall buffer COpaqueMemoryAddress shiftedPointer
-argument loadCall offset I64 zeroOffset
+argument loadCall buffer OpaquePointer shiftedPointer
+argument loadCall offset Int64 zeroOffset
 run loadCall
-bind value byteValue I8 loadCall
+bind value byteValue Int8 loadCall
 call writeByteCall c.putchar
-argument writeByteCall c I8 byteValue
+argument writeByteCall c Int8 byteValue
 run writeByteCall
-storage module immutable newlineChar CSignedInt32 10
+storage module immutable newlineChar Int32 10
 call writeNewlineCall c.putchar
-argument writeNewlineCall c CSignedInt32 newlineChar
+argument writeNewlineCall c Int32 newlineChar
 run writeNewlineCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

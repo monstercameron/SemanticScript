@@ -194,7 +194,7 @@ should be named:
 operation createTodoHandler
 input operation createTodoHandler request HttpRequest
 input operation createTodoHandler response HttpResponse
-output operation createTodoHandler CSignedInt32
+output operation createTodoHandler Int32
 effect createTodoHandler read http.request.body
 effect createTodoHandler readWrite database
 effect createTodoHandler write http.response
@@ -282,9 +282,9 @@ registerModule taskForgeWeb app.taskforge_web "."
 registerModule taskForgeWeb app.taskforge_web.components "components"
 registerModule taskForgeWeb app.taskforge_web.pages "pages"
 
-buildConstant taskForgeWeb serverHostText CNullTerminatedByteString "127.0.0.1"
-buildConstant taskForgeWeb serverPortNumber CSignedInt32 18090
-buildConstant taskForgeWeb databasePath CNullTerminatedByteString "taskforge_web.db"
+buildConstant taskForgeWeb serverHostText String "127.0.0.1"
+buildConstant taskForgeWeb serverPortNumber Int32 18090
+buildConstant taskForgeWeb databasePath String "taskforge_web.db"
 
 mainFile taskForgeWeb "main.sem"
 mainOperation taskForgeWeb main
@@ -362,31 +362,31 @@ moduleInvariant app.kiloport "The edited file path comes from argv[1] when prese
 Current SemanticScript uses `storage`, with scope and mutability on the row.
 
 ```semanticscript
-storage module immutable maxRows CSignedInt64 2048
-storage module immutable rowCapacity CSignedInt64 4096
+storage module immutable maxRows Int64 2048
+storage module immutable rowCapacity Int64 4096
 storage module immutable successExitCode ExitCode 0
 
 operation moveCursorRight
-input operation moveCursorRight currentColumn CSignedInt64
-output operation moveCursorRight CSignedInt64
+input operation moveCursorRight currentColumn Int64
+output operation moveCursorRight Int64
 memory moveCursorRight noHeapAllocation
 async moveCursorRight no
 purpose moveCursorRight "Return the next cursor column."
 
-storage local immutable oneColumn CSignedInt64 1
-call nextColumnCall math.addI64
-argument nextColumnCall left CSignedInt64 currentColumn
-argument nextColumnCall right CSignedInt64 oneColumn
+storage local immutable oneColumn Int64 1
+call nextColumnCall math.addInt64
+argument nextColumnCall left Int64 currentColumn
+argument nextColumnCall right Int64 oneColumn
 run nextColumnCall
-bind value nextColumn CSignedInt64 nextColumnCall
+bind value nextColumn Int64 nextColumnCall
 return value nextColumn
 ```
 
 Mutable storage is equally explicit:
 
 ```semanticscript
-storage local mutable cursorColumn CSignedInt64 zeroI64
-storage local immutable cursorColumnAfterInsert CSignedInt64 nextCursorColumn
+storage local mutable cursorColumn Int64 zeroInt64
+storage local immutable cursorColumnAfterInsert Int64 nextCursorColumn
 set local cursorColumn cursorColumnAfterInsert
 ```
 
@@ -401,11 +401,11 @@ stable identity, names each argument edge, runs it, and binds the result.
 ```semanticscript
 call renderedCursorColumnCall renderedColumnForFileColumn
 argument renderedCursorColumnCall rowPointer EditorRowPointer cursorRowPointer
-argument renderedCursorColumnCall rowLength CSignedInt64 cursorRowLength
-argument renderedCursorColumnCall leftVisibleColumn CSignedInt64 leftVisibleColumn
-argument renderedCursorColumnCall fileColumn CSignedInt64 cursorFileColumn
+argument renderedCursorColumnCall rowLength Int64 cursorRowLength
+argument renderedCursorColumnCall leftVisibleColumn Int64 leftVisibleColumn
+argument renderedCursorColumnCall fileColumn Int64 cursorFileColumn
 run renderedCursorColumnCall
-bind value cursorRenderedColumn CSignedInt64 renderedCursorColumnCall
+bind value cursorRenderedColumn Int64 renderedCursorColumnCall
 ```
 
 That shape is verbose, but it gives tools a precise patch target. A formatter,
@@ -418,7 +418,7 @@ Fallible calls expose both the success and error edge.
 
 ```semanticscript
 call openDatabaseCall sqlite.openDatabase
-argument openDatabaseCall path CNullTerminatedByteString databasePath
+argument openDatabaseCall path String databasePath
 argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode
 run openDatabaseCall
 bind ok openedDatabase SqliteDatabase openDatabaseCall
@@ -502,7 +502,7 @@ links generic runtime surfaces.
 ```semanticscript
 call rawModeCall c.terminalEnableRaw
 run rawModeCall
-bind value rawModeStatus CSignedInt32 rawModeCall
+bind value rawModeStatus Int32 rawModeCall
 
 call keyCall c.terminalReadKey
 run keyCall

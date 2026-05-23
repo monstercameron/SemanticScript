@@ -13,12 +13,12 @@ entry console main
 section program.helloViaCPrintfRefined.errors
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 section program.helloViaCPrintfRefined.literals
 
-domainLiteral helloFormatText CNullTerminatedByteString "Hello from c.printf! arg=%d\n"
-domainLiteral greetingArgument CSignedInt32 42
+domainLiteral helloFormatText String "Hello from c.printf! arg=%d\n"
+domainLiteral greetingArgument Int32 42
 storage module immutable successfulExitCode ExitCode 0
 
 section program.helloViaCPrintfRefined.operations
@@ -38,11 +38,11 @@ invariant operation main "A single c.printf call writes the greeting plus a newl
 label startMain
 
 call helloPrintfCall c.printf
-argument helloPrintfCall format CNullTerminatedByteString helloFormatText
-argument helloPrintfCall value CSignedInt32 greetingArgument
+argument helloPrintfCall format String helloFormatText
+argument helloPrintfCall value Int32 greetingArgument
 run helloPrintfCall
-bind ok bytesWrittenByPrintf CSignedInt32 helloPrintfCall
-bind error helloPrintfError CSignedInt32 helloPrintfCall
+bind ok bytesWrittenByPrintf Int32 helloPrintfCall
+bind error helloPrintfError Int32 helloPrintfCall
 branch error source helloPrintfCall target helloPrintfFailed
 
 return ok successfulExitCode

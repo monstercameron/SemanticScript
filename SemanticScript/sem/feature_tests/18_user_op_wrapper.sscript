@@ -38,7 +38,7 @@ async main no
 purpose operation main "Call user-defined helper; expect string emitted exactly once."
 invariant operation main "Output is the helper's argument."
 label startMain
-storage module immutable helloText CNullTerminatedByteString "hello via helper"
+storage module immutable helloText String "hello via helper"
 call writeMainCall writeStandardOutputLine
 argument writeMainCall text String helloText
 run writeMainCall

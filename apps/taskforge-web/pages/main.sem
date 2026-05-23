@@ -22,7 +22,7 @@ exportOperation app.taskforge_web.pages homePageHandler
 exportOperation app.taskforge_web.pages dashboardPageHandler
 exportOperation app.taskforge_web.pages notFoundPageHandler
 
-storage module immutable httpStatusOkLocal CSignedInt32 200
+storage module immutable httpStatusOkLocal Int32 200
 
 # ===== HomePageTemplate + homePageHandler =====
 # Landing page = split layout. Left column: marketing hero (headline +
@@ -66,7 +66,7 @@ html body template HomePageTemplate
 operation homePageHandler
 input operation homePageHandler request HttpRequest
 input operation homePageHandler response HttpResponse
-output operation homePageHandler CSignedInt32
+output operation homePageHandler Int32
 effect homePageHandler write http.response
 useCapability homePageHandler httpResponseWriter
 memory homePageHandler arena request
@@ -154,11 +154,11 @@ bind value homePageHtml HtmlDocument hydrateHomePageCall
 
 call writeHomePageCall http.responseText
 argument writeHomePageCall response HttpResponse response
-argument writeHomePageCall status CSignedInt32 httpStatusOkLocal
+argument writeHomePageCall status Int32 httpStatusOkLocal
 argument writeHomePageCall body HtmlDocument homePageHtml
 argument writeHomePageCall contentType HttpContentType htmlContentType
 run writeHomePageCall
-bind value writeHomePageStatus CSignedInt32 writeHomePageCall
+bind value writeHomePageStatus Int32 writeHomePageCall
 return value writeHomePageStatus
 
 # ===== DashboardPageTemplate + dashboardPageHandler =====
@@ -269,7 +269,7 @@ html body template DashboardPageTemplate
 operation dashboardPageHandler
 input operation dashboardPageHandler request HttpRequest
 input operation dashboardPageHandler response HttpResponse
-output operation dashboardPageHandler CSignedInt32
+output operation dashboardPageHandler Int32
 effect dashboardPageHandler write http.response
 useCapability dashboardPageHandler httpResponseWriter
 memory dashboardPageHandler arena request
@@ -305,11 +305,11 @@ bind value dashboardPageHtml HtmlDocument hydrateDashboardCall
 
 call writeDashboardCall http.responseText
 argument writeDashboardCall response HttpResponse response
-argument writeDashboardCall status CSignedInt32 httpStatusOkLocal
+argument writeDashboardCall status Int32 httpStatusOkLocal
 argument writeDashboardCall body HtmlDocument dashboardPageHtml
 argument writeDashboardCall contentType HttpContentType htmlContentType
 run writeDashboardCall
-bind value writeDashboardStatus CSignedInt32 writeDashboardCall
+bind value writeDashboardStatus Int32 writeDashboardCall
 return value writeDashboardStatus
 
 # ===== NotFoundPageTemplate + notFoundPageHandler =====
@@ -348,7 +348,7 @@ html body template NotFoundPageTemplate
 operation notFoundPageHandler
 input operation notFoundPageHandler request HttpRequest
 input operation notFoundPageHandler response HttpResponse
-output operation notFoundPageHandler CSignedInt32
+output operation notFoundPageHandler Int32
 effect notFoundPageHandler write http.response
 useCapability notFoundPageHandler httpResponseWriter
 memory notFoundPageHandler arena request
@@ -359,7 +359,7 @@ invariant operation notFoundPageHandler "Always returns 404 + an HTML body; the 
 label startNotFoundPageHandler
 
 storage local immutable notFoundTitleText String "404 — TaskForge Web"
-storage local immutable notFoundStatusCode CSignedInt32 404
+storage local immutable notFoundStatusCode Int32 404
 
 call renderNotFoundHeadCall renderPageShellHead
 argument renderNotFoundHeadCall pageTitleText String notFoundTitleText
@@ -378,9 +378,9 @@ bind value notFoundPageHtml HtmlDocument hydrateNotFoundCall
 
 call writeNotFoundCall http.responseText
 argument writeNotFoundCall response HttpResponse response
-argument writeNotFoundCall status CSignedInt32 notFoundStatusCode
+argument writeNotFoundCall status Int32 notFoundStatusCode
 argument writeNotFoundCall body HtmlDocument notFoundPageHtml
 argument writeNotFoundCall contentType HttpContentType htmlContentType
 run writeNotFoundCall
-bind value writeNotFoundStatus CSignedInt32 writeNotFoundCall
+bind value writeNotFoundStatus Int32 writeNotFoundCall
 return value writeNotFoundStatus

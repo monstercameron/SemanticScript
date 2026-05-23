@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation gcdOf
-input operation gcdOf a CSignedInt64
-input operation gcdOf b CSignedInt64
-output operation gcdOf Result CSignedInt64 Void
+input operation gcdOf a Int64
+input operation gcdOf b Int64
+output operation gcdOf Result Int64 Void
 memory gcdOf heap no
 async gcdOf no
 purpose operation gcdOf "Euclidean GCD: if b == 0, a; else gcdOf(b, a mod b)."
 invariant operation gcdOf "Terminates when b reaches zero."
 label startGcdOf
-storage module immutable zeroLit I64 0
-call atBaseCall math.equalI64
-argument atBaseCall left CSignedInt64 b
-argument atBaseCall right I64 zeroLit
+storage module immutable zeroLit Int64 0
+call atBaseCall math.equalInt64
+argument atBaseCall left Int64 b
+argument atBaseCall right Int64 zeroLit
 run atBaseCall
 bind value atBase Bool atBaseCall
 branch if condition atBase target gcdBase
@@ -27,16 +27,16 @@ branch else target gcdRecurse
 label gcdBase
 return ok a
 label gcdRecurse
-call modCall math.moduloI64
-argument modCall left CSignedInt64 a
-argument modCall right CSignedInt64 b
+call modCall math.moduloInt64
+argument modCall left Int64 a
+argument modCall right Int64 b
 run modCall
-bind value remainder I64 modCall
+bind value remainder Int64 modCall
 call recCall gcdOf
-argument recCall a CSignedInt64 b
-argument recCall b CSignedInt64 remainder
+argument recCall a Int64 b
+argument recCall b Int64 remainder
 run recCall
-bind ok recResult I64 recCall
+bind ok recResult Int64 recCall
 return ok recResult
 
 operation main
@@ -48,20 +48,20 @@ async main no
 purpose operation main "gcdOf(48, 18) = 6."
 invariant operation main "Two-param recursion."
 label startMain
-storage module immutable fortyEightInitial I64 48
-storage module immutable eighteenInitial I64 18
-memory main mutable aValue I64 fortyEightInitial
-memory main mutable bValue I64 eighteenInitial
+storage module immutable fortyEightInitial Int64 48
+storage module immutable eighteenInitial Int64 18
+memory main mutable aValue Int64 fortyEightInitial
+memory main mutable bValue Int64 eighteenInitial
 call gcdCall gcdOf
-argument gcdCall a CSignedInt64 aValue
-argument gcdCall b CSignedInt64 bValue
+argument gcdCall a Int64 aValue
+argument gcdCall b Int64 bValue
 run gcdCall
-bind ok gcdResult I64 gcdCall
-memory main mutable outputVar I64 fortyEightInitial
+bind ok gcdResult Int64 gcdCall
+memory main mutable outputVar Int64 fortyEightInitial
 set memory outputVar gcdResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 outputVar
+argument writeCall value Int64 outputVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

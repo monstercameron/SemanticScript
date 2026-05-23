@@ -20,16 +20,16 @@ moduleOwns standard.net "The official import path `standard.net`, client-side ne
 moduleDoesNotOwn standard.net "Build-time dependency fetching, server-side `http.request*` / `http.response*` APIs, native event-loop implementation details, backend library structs, or the libuv/libcurl C ABI."
 invariant module standard.net "`net.fetch*` lowering belongs to the compiler/native_http_client/native_async boundary; runtime outbound HTTP must stay separate from build-time `dependencyFetch` source acquisition."
 
-type Url CNullTerminatedByteString
-type NetworkTimeoutMilliseconds CUnsignedInt64
-type ResponseBodyLimitBytes CByteCount
-type HttpRedirectLimit CUnsignedInt32
-type HttpClientStatusCode CSignedInt32
-type HttpClientResponse COpaqueMemoryAddress
-type HttpClientBodyText CNullTerminatedByteString
-type HttpClientBodyBytes COpaqueMemoryAddress
-type HttpClientBodyLength CByteCount
-type HttpClientErrorCode CSignedInt32
+type Url String
+type NetworkTimeoutMilliseconds UInt64
+type ResponseBodyLimitBytes ByteCount
+type HttpRedirectLimit UInt32
+type HttpClientStatusCode Int32
+type HttpClientResponse OpaquePointer
+type HttpClientBodyText String
+type HttpClientBodyBytes OpaquePointer
+type HttpClientBodyLength ByteCount
+type HttpClientErrorCode Int32
 
 record HttpFetchPolicy
 field HttpFetchPolicy timeoutMillis NetworkTimeoutMilliseconds
@@ -82,7 +82,7 @@ typeInvariant HttpTextResponse "Successful text fetch response. HTTP non-2xx sta
 capability networkHttpClient network.http.client write
 purpose operation networkHttpClient "Authority to perform outbound HTTP client work from compiled SemanticScript programs."
 
-storage module immutable netModuleVersionText CNullTerminatedByteString "standard.net 0.2"
+storage module immutable netModuleVersionText String "standard.net 0.2"
 storage module immutable defaultFetchTimeoutMilliseconds NetworkTimeoutMilliseconds 3000
 storage module immutable defaultFetchBodyLimitBytes ResponseBodyLimitBytes 1048576
 storage module immutable defaultFetchRedirectLimit HttpRedirectLimit 5

@@ -6,8 +6,8 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError EncodeFailed CSignedInt32
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError EncodeFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -17,9 +17,9 @@ async main no
 purpose operation main "json.stringify.String wraps an ASCII string in JSON double-quotes."
 invariant operation main "Output is exactly the source string surrounded by quotes."
 label startMain
-storage module immutable helloPayload CNullTerminatedByteString "hello"
+storage module immutable helloPayload String "hello"
 call stringifyStringCall json.stringify.String
-argument stringifyStringCall value CNullTerminatedByteString helloPayload
+argument stringifyStringCall value String helloPayload
 run stringifyStringCall
 bind ok encodedJsonString JsonText stringifyStringCall
 bind error encodeError JsonEncodeError stringifyStringCall

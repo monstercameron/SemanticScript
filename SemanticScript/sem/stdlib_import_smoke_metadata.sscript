@@ -55,10 +55,10 @@ invariant operation stdlibImportSmokeMetadataMain "Every imported value equals i
 label startStdlibImportSmokeMetadataMain
 
 # ---- char: asciiNewlineCharacterCode == 10 ----
-storage module immutable tenExpectedForNewlineImport CSignedInt32 10
-call checkAsciiNewlineCall math.equalI64
-argument checkAsciiNewlineCall left I64 asciiNewlineCharacterCode
-argument checkAsciiNewlineCall right I64 tenExpectedForNewlineImport
+storage module immutable tenExpectedForNewlineImport Int32 10
+call checkAsciiNewlineCall math.equalInt64
+argument checkAsciiNewlineCall left Int64 asciiNewlineCharacterCode
+argument checkAsciiNewlineCall right Int64 tenExpectedForNewlineImport
 run checkAsciiNewlineCall
 bind value asciiNewlineOk Bool checkAsciiNewlineCall
 branch if condition asciiNewlineOk target asciiNewlineHolds
@@ -66,10 +66,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label asciiNewlineHolds
 
 # ---- char: asciiDeleteCharacterCode == 127 ----
-storage module immutable oneHundredTwentySevenExpectedImport CSignedInt32 127
-call checkAsciiDeleteCall math.equalI64
-argument checkAsciiDeleteCall left I64 asciiDeleteCharacterCode
-argument checkAsciiDeleteCall right I64 oneHundredTwentySevenExpectedImport
+storage module immutable oneHundredTwentySevenExpectedImport Int32 127
+call checkAsciiDeleteCall math.equalInt64
+argument checkAsciiDeleteCall left Int64 asciiDeleteCharacterCode
+argument checkAsciiDeleteCall right Int64 oneHundredTwentySevenExpectedImport
 run checkAsciiDeleteCall
 bind value asciiDeleteOk Bool checkAsciiDeleteCall
 branch if condition asciiDeleteOk target asciiDeleteHolds
@@ -77,10 +77,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label asciiDeleteHolds
 
 # ---- constants: mathematicalPiFloat64 == 3.141592653589793 ----
-storage module immutable piLiteralExpectedImport CFloat64 3.141592653589793
-call checkPiConstantCall math.equalF64
-argument checkPiConstantCall left CFloat64 mathematicalPiFloat64
-argument checkPiConstantCall right CFloat64 piLiteralExpectedImport
+storage module immutable piLiteralExpectedImport Float64 3.141592653589793
+call checkPiConstantCall math.equalFloat64
+argument checkPiConstantCall left Float64 mathematicalPiFloat64
+argument checkPiConstantCall right Float64 piLiteralExpectedImport
 run checkPiConstantCall
 bind value piConstantOk Bool checkPiConstantCall
 branch if condition piConstantOk target piConstantHolds
@@ -88,10 +88,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label piConstantHolds
 
 # ---- constants: mathematicalEulerNumberFloat64 == 2.718281828459045 ----
-storage module immutable eulerNumberExpectedImport CFloat64 2.718281828459045
-call checkEulerConstantCall math.equalF64
-argument checkEulerConstantCall left CFloat64 mathematicalEulerNumberFloat64
-argument checkEulerConstantCall right CFloat64 eulerNumberExpectedImport
+storage module immutable eulerNumberExpectedImport Float64 2.718281828459045
+call checkEulerConstantCall math.equalFloat64
+argument checkEulerConstantCall left Float64 mathematicalEulerNumberFloat64
+argument checkEulerConstantCall right Float64 eulerNumberExpectedImport
 run checkEulerConstantCall
 bind value eulerConstantOk Bool checkEulerConstantCall
 branch if condition eulerConstantOk target eulerConstantHolds
@@ -99,10 +99,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label eulerConstantHolds
 
 # ---- stddef: byteSizeOfOpaquePointer == 8 (x86-64 ABI) ----
-storage module immutable eightExpectedForPointerByteSizeImport CSignedInt64 8
-call checkPointerByteSizeCall math.equalI64
-argument checkPointerByteSizeCall left I64 byteSizeOfOpaquePointer
-argument checkPointerByteSizeCall right I64 eightExpectedForPointerByteSizeImport
+storage module immutable eightExpectedForPointerByteSizeImport Int64 8
+call checkPointerByteSizeCall math.equalInt64
+argument checkPointerByteSizeCall left Int64 byteSizeOfOpaquePointer
+argument checkPointerByteSizeCall right Int64 eightExpectedForPointerByteSizeImport
 run checkPointerByteSizeCall
 bind value pointerByteSizeOk Bool checkPointerByteSizeCall
 branch if condition pointerByteSizeOk target pointerByteSizeHolds
@@ -110,9 +110,9 @@ branch else target stdlibImportMetadataAssertionFailed
 label pointerByteSizeHolds
 
 # ---- stddef: byteSizeOfFloat64 == 8 ----
-call checkFloat64ByteSizeCall math.equalI64
-argument checkFloat64ByteSizeCall left I64 byteSizeOfFloat64
-argument checkFloat64ByteSizeCall right I64 eightExpectedForPointerByteSizeImport
+call checkFloat64ByteSizeCall math.equalInt64
+argument checkFloat64ByteSizeCall left Int64 byteSizeOfFloat64
+argument checkFloat64ByteSizeCall right Int64 eightExpectedForPointerByteSizeImport
 run checkFloat64ByteSizeCall
 bind value float64ByteSizeOk Bool checkFloat64ByteSizeCall
 branch if condition float64ByteSizeOk target float64ByteSizeHolds
@@ -120,10 +120,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label float64ByteSizeHolds
 
 # ---- errno: fileNotFoundErrorNumber == 2 (POSIX ENOENT) ----
-storage module immutable twoExpectedForEnoentImport CSignedInt32 2
-call checkEnoentCall math.equalI64
-argument checkEnoentCall left I64 fileNotFoundErrorNumber
-argument checkEnoentCall right I64 twoExpectedForEnoentImport
+storage module immutable twoExpectedForEnoentImport Int32 2
+call checkEnoentCall math.equalInt64
+argument checkEnoentCall left Int64 fileNotFoundErrorNumber
+argument checkEnoentCall right Int64 twoExpectedForEnoentImport
 run checkEnoentCall
 bind value enoentOk Bool checkEnoentCall
 branch if condition enoentOk target enoentHolds
@@ -132,19 +132,19 @@ label enoentHolds
 
 # ---- errno: lookupErrnoMessageCString(2) returns a non-empty string ----
 call lookupEnoentMessageCall lookupErrnoMessageCString
-argument lookupEnoentMessageCall errorNumber CSignedInt32 fileNotFoundErrorNumber
+argument lookupEnoentMessageCall errorNumber Int32 fileNotFoundErrorNumber
 run lookupEnoentMessageCall
-bind value enoentMessageText CNullTerminatedByteString lookupEnoentMessageCall
-storage module immutable zeroByteOffsetForMessageImport CByteCount 0
+bind value enoentMessageText String lookupEnoentMessageCall
+storage module immutable zeroByteOffsetForMessageImport ByteCount 0
 call peekFirstMessageByteCall pointer.loadByte
-argument peekFirstMessageByteCall buffer CNullTerminatedByteString enoentMessageText
-argument peekFirstMessageByteCall offset CByteCount zeroByteOffsetForMessageImport
+argument peekFirstMessageByteCall buffer String enoentMessageText
+argument peekFirstMessageByteCall offset ByteCount zeroByteOffsetForMessageImport
 run peekFirstMessageByteCall
-bind value enoentFirstByteValue I8 peekFirstMessageByteCall
-storage module immutable nullByteForEnoentMessageImport CSignedInt64 0
-call detectEnoentMessageNonEmptyCall math.notEqualI64
-argument detectEnoentMessageNonEmptyCall left I8 enoentFirstByteValue
-argument detectEnoentMessageNonEmptyCall right CSignedInt64 nullByteForEnoentMessageImport
+bind value enoentFirstByteValue Int8 peekFirstMessageByteCall
+storage module immutable nullByteForEnoentMessageImport Int64 0
+call detectEnoentMessageNonEmptyCall math.notEqualInt64
+argument detectEnoentMessageNonEmptyCall left Int8 enoentFirstByteValue
+argument detectEnoentMessageNonEmptyCall right Int64 nullByteForEnoentMessageImport
 run detectEnoentMessageNonEmptyCall
 bind value enoentMessageNonEmpty Bool detectEnoentMessageNonEmptyCall
 branch if condition enoentMessageNonEmpty target enoentMessageHolds
@@ -152,10 +152,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label enoentMessageHolds
 
 # ---- errno_more: tryAgainErrorNumber == 11 (POSIX EAGAIN) ----
-storage module immutable elevenExpectedForEagainImport CSignedInt32 11
-call checkEagainCall math.equalI64
-argument checkEagainCall left I64 tryAgainErrorNumber
-argument checkEagainCall right I64 elevenExpectedForEagainImport
+storage module immutable elevenExpectedForEagainImport Int32 11
+call checkEagainCall math.equalInt64
+argument checkEagainCall left Int64 tryAgainErrorNumber
+argument checkEagainCall right Int64 elevenExpectedForEagainImport
 run checkEagainCall
 bind value eagainOk Bool checkEagainCall
 branch if condition eagainOk target eagainHolds
@@ -163,10 +163,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label eagainHolds
 
 # ---- errno_more: operationTimedOutErrorNumber == 110 (POSIX ETIMEDOUT) ----
-storage module immutable oneHundredTenExpectedForEtimedoutImport CSignedInt32 110
-call checkEtimedoutCall math.equalI64
-argument checkEtimedoutCall left I64 operationTimedOutErrorNumber
-argument checkEtimedoutCall right I64 oneHundredTenExpectedForEtimedoutImport
+storage module immutable oneHundredTenExpectedForEtimedoutImport Int32 110
+call checkEtimedoutCall math.equalInt64
+argument checkEtimedoutCall left Int64 operationTimedOutErrorNumber
+argument checkEtimedoutCall right Int64 oneHundredTenExpectedForEtimedoutImport
 run checkEtimedoutCall
 bind value etimedoutOk Bool checkEtimedoutCall
 branch if condition etimedoutOk target etimedoutHolds
@@ -174,10 +174,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label etimedoutHolds
 
 # ---- signal_more: killSignalNumber == 9 (POSIX SIGKILL) ----
-storage module immutable nineExpectedForSigkillImport CSignedInt32 9
-call checkSigkillCall math.equalI64
-argument checkSigkillCall left I64 killSignalNumber
-argument checkSigkillCall right I64 nineExpectedForSigkillImport
+storage module immutable nineExpectedForSigkillImport Int32 9
+call checkSigkillCall math.equalInt64
+argument checkSigkillCall left Int64 killSignalNumber
+argument checkSigkillCall right Int64 nineExpectedForSigkillImport
 run checkSigkillCall
 bind value sigkillOk Bool checkSigkillCall
 branch if condition sigkillOk target sigkillHolds
@@ -185,10 +185,10 @@ branch else target stdlibImportMetadataAssertionFailed
 label sigkillHolds
 
 # ---- signal_more: hangupSignalNumber == 1 (POSIX SIGHUP) ----
-storage module immutable oneExpectedForSighupImport CSignedInt32 1
-call checkSighupCall math.equalI64
-argument checkSighupCall left I64 hangupSignalNumber
-argument checkSighupCall right I64 oneExpectedForSighupImport
+storage module immutable oneExpectedForSighupImport Int32 1
+call checkSighupCall math.equalInt64
+argument checkSighupCall left Int64 hangupSignalNumber
+argument checkSighupCall right Int64 oneExpectedForSighupImport
 run checkSighupCall
 bind value sighupOk Bool checkSighupCall
 branch if condition sighupOk target sighupHolds
@@ -196,9 +196,9 @@ branch else target stdlibImportMetadataAssertionFailed
 label sighupHolds
 
 # ---- iso646: evaluateIso646NotKeyword(0) == true ----
-storage module immutable integerZeroForIso646Import CSignedInt64 0
+storage module immutable integerZeroForIso646Import Int64 0
 call assertIso646NotZeroCall evaluateIso646NotKeyword
-argument assertIso646NotZeroCall inputValue CSignedInt64 integerZeroForIso646Import
+argument assertIso646NotZeroCall inputValue Int64 integerZeroForIso646Import
 run assertIso646NotZeroCall
 bind value iso646NotZeroResult Bool assertIso646NotZeroCall
 branch if condition iso646NotZeroResult target iso646NotZeroHolds
@@ -206,11 +206,11 @@ branch else target stdlibImportMetadataAssertionFailed
 label iso646NotZeroHolds
 
 # ---- iso646: evaluateIso646NotEqualKeyword(1, 2) == true ----
-storage module immutable integerOneForIso646Import CSignedInt64 1
-storage module immutable integerTwoForIso646Import CSignedInt64 2
+storage module immutable integerOneForIso646Import Int64 1
+storage module immutable integerTwoForIso646Import Int64 2
 call assertIso646NotEqualCall evaluateIso646NotEqualKeyword
-argument assertIso646NotEqualCall leftValue CSignedInt64 integerOneForIso646Import
-argument assertIso646NotEqualCall rightValue CSignedInt64 integerTwoForIso646Import
+argument assertIso646NotEqualCall leftValue Int64 integerOneForIso646Import
+argument assertIso646NotEqualCall rightValue Int64 integerTwoForIso646Import
 run assertIso646NotEqualCall
 bind value iso646NotEqualResult Bool assertIso646NotEqualCall
 branch if condition iso646NotEqualResult target iso646NotEqualHolds
@@ -218,11 +218,11 @@ branch else target stdlibImportMetadataAssertionFailed
 label iso646NotEqualHolds
 
 # ---- bit: isSignedInt64BitSet(48, 4) == true (48 == 0b110000, bit 4 set) ----
-storage module immutable fortyEightForBitImport CSignedInt64 48
-storage module immutable fourthBitIndexForBitImport CSignedInt64 4
+storage module immutable fortyEightForBitImport Int64 48
+storage module immutable fourthBitIndexForBitImport Int64 4
 call assertBitSetImportCall isSignedInt64BitSet
-argument assertBitSetImportCall inputValue CSignedInt64 fortyEightForBitImport
-argument assertBitSetImportCall bitIndex CSignedInt64 fourthBitIndexForBitImport
+argument assertBitSetImportCall inputValue Int64 fortyEightForBitImport
+argument assertBitSetImportCall bitIndex Int64 fourthBitIndexForBitImport
 run assertBitSetImportCall
 bind value bitSetImportResult Bool assertBitSetImportCall
 branch if condition bitSetImportResult target bitSetImportHolds
@@ -230,16 +230,16 @@ branch else target stdlibImportMetadataAssertionFailed
 label bitSetImportHolds
 
 # ---- bit: shiftSignedInt64BitsLeft(3, 4) == 48 ----
-storage module immutable threeForShiftLeftImport CSignedInt64 3
-storage module immutable fortyEightExpectedForShiftLeftImport CSignedInt64 48
+storage module immutable threeForShiftLeftImport Int64 3
+storage module immutable fortyEightExpectedForShiftLeftImport Int64 48
 call assertShiftLeftImportCall shiftSignedInt64BitsLeft
-argument assertShiftLeftImportCall inputValue CSignedInt64 threeForShiftLeftImport
-argument assertShiftLeftImportCall bitIndex CSignedInt64 fourthBitIndexForBitImport
+argument assertShiftLeftImportCall inputValue Int64 threeForShiftLeftImport
+argument assertShiftLeftImportCall bitIndex Int64 fourthBitIndexForBitImport
 run assertShiftLeftImportCall
-bind value shiftLeftImportResult CSignedInt64 assertShiftLeftImportCall
-call checkShiftLeftImportCall math.equalI64
-argument checkShiftLeftImportCall left CSignedInt64 shiftLeftImportResult
-argument checkShiftLeftImportCall right I64 fortyEightExpectedForShiftLeftImport
+bind value shiftLeftImportResult Int64 assertShiftLeftImportCall
+call checkShiftLeftImportCall math.equalInt64
+argument checkShiftLeftImportCall left Int64 shiftLeftImportResult
+argument checkShiftLeftImportCall right Int64 fortyEightExpectedForShiftLeftImport
 run checkShiftLeftImportCall
 bind value shiftLeftImportOk Bool checkShiftLeftImportCall
 branch if condition shiftLeftImportOk target shiftLeftImportHolds
@@ -247,13 +247,13 @@ branch else target stdlibImportMetadataAssertionFailed
 label shiftLeftImportHolds
 
 # All metadata-cluster checks held.
-storage module immutable metadataImportSuccessMessage CNullTerminatedByteString "OK"
+storage module immutable metadataImportSuccessMessage String "OK"
 call writeMetadataImportSuccessCall console.writeLine
 argument writeMetadataImportSuccessCall console Console console
-argument writeMetadataImportSuccessCall text CNullTerminatedByteString metadataImportSuccessMessage
+argument writeMetadataImportSuccessCall text String metadataImportSuccessMessage
 run writeMetadataImportSuccessCall
-ignore ok source writeMetadataImportSuccessCall type CSignedInt32
-bind error metadataImportConsoleWriteError CSignedInt32 writeMetadataImportSuccessCall
+ignore ok source writeMetadataImportSuccessCall type Int32
+bind error metadataImportConsoleWriteError Int32 writeMetadataImportSuccessCall
 branch error source writeMetadataImportSuccessCall target metadataImportConsoleWriteFailed
 storage module immutable metadataImportExitOk ExitCode 0
 return ok metadataImportExitOk

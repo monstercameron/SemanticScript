@@ -14,7 +14,7 @@ entry console main
 
 section program.esotericChurchEncodingRefined.types
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 section program.esotericChurchEncodingRefined.errors
 

@@ -17,9 +17,14 @@ whole-line segment coloring
 context-aware verb hovers
 same-file operation metadata hovers
 same-file identifier hovers
+project-aware build-tape and import navigation
 primitive target hovers
+primitive type hovers
 linter integration
+linter related-span annotations
+linter quick fixes for auto-applicable single-line fixes
 manual linter command
+direct compiler command integration
 ```
 
 It should not claim a syntax form is executable just because it is highlighted.
@@ -35,7 +40,7 @@ Useful hover for an immutable storage declaration:
 
 ```text
 Storage: zeroValue
-Type: CSignedInt32
+Type: Int32
 Initial value: 0
 Scope: local
 Mutability: immutable
@@ -44,7 +49,7 @@ Mutability: immutable
 Useful hover for a call target:
 
 ```text
-Call: checkNullCall -> math.equalI64
+Call: checkNullCall -> math.equalInt64
 Arguments:
   left: asciiNullCharacterCode
   right: zeroValue
@@ -57,7 +62,7 @@ Useful hover for a symbol use:
 ```text
 Storage: currentOffset
 Declared: line 42
-Type: I64
+Type: Int64
 Scope: local
 Mutability: mutable
 Current use: argument value passed to scanByteCall.offset
@@ -77,7 +82,15 @@ the actual semantic object.
   "semanticScript.linter.run": "onSave",
   "semanticScript.linter.pythonPath": "python",
   "semanticScript.linter.path": "",
-  "semanticScript.linter.skipFutureSyntax": true
+  "semanticScript.linter.skipFutureSyntax": true,
+  "semanticScript.compiler.pythonPath": "python",
+  "semanticScript.compiler.path": "",
+  "semanticScript.compiler.buildProfile": "dev",
+  "semanticScript.compiler.runtimeChecks": "default",
+  "semanticScript.compiler.persistLlvmIr": "auto",
+  "semanticScript.compiler.optLevel": "default",
+  "semanticScript.compiler.emitLlvmIr": false,
+  "semanticScript.compiler.emitOptimizedLlvmIr": false
 }
 ```
 
@@ -87,6 +100,32 @@ Accepted values:
 semanticScript.segmentColors.colorMode: background | overview | both
 semanticScript.linter.engine: semlint
 semanticScript.linter.run: onSave | onType | manual
+semanticScript.compiler.buildProfile: dev | prod
+semanticScript.compiler.runtimeChecks: default | off | traps | panic
+semanticScript.compiler.persistLlvmIr: auto | yes | no
+semanticScript.compiler.optLevel: default | 0 | 1 | 2 | 3
+```
+
+`semanticScript.compiler.emitLlvmIr` passes `--emit-ir`.
+
+`semanticScript.compiler.emitOptimizedLlvmIr` passes `--emit-optimized-ir`.
+
+## Coverage Notes
+
+The extension should stay aligned with the executable toolchain and the active
+experiments, not just the stable demo files.
+
+Recent coverage includes:
+
+```text
+routeNotFound and routeMethodNotAllowed web-server declarations
+runtimeBindingAsyncStart and runtimeBindingAsyncAwait operation metadata
+standard.http SSE, outbound client, and HTML-escape targets
+standard.sqlite execStatus
+standard.jwt signer, verifier, claim-reader, and auth-envelope helpers
+standard.http and standard.jwt exported alias types used by the realtime auction arena
+project-aware import navigation through the nearest build.sem
+semlint related locations and auto-applicable quick fixes
 ```
 
 ## Local Development
@@ -111,6 +150,8 @@ Open representative files:
 ../SemanticScript/sem/refined_syntax_demo.sscript
 ../SemanticScript/sem/syntax_sample_web_server.sscript
 ../SemanticScript/sem/feature_tests/147_worker_pool_submit_work_runs.sscript
+../experiments/realtime-auction-arena/server/src/main.sem
+../experiments/realtime-auction-arena/browser-sse-client/main.sem
 ```
 
 ## Packaging

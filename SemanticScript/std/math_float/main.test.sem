@@ -3,7 +3,7 @@
 # ============================================================
 #
 # Companion smoke + extended unit tests for std/math_float/main.sem.
-# Imports the math_float module and exercises the CFloat64
+# Imports the math_float module and exercises the Float64
 # transcendentals + arithmetic helpers end-to-end. Most assertions
 # use a tolerance comparison since these functions are
 # floating-point approximations (Newton's method for sqrt, Taylor
@@ -43,15 +43,15 @@ invariant operation main "Every assertion that should hold returns Ok; final OK 
 label startMain
 
 # absoluteFloat64(-3.5) == 3.5
-storage module immutable negPointFive CFloat64 -3.5
-storage module immutable expFabs CFloat64 3.5
+storage module immutable negPointFive Float64 -3.5
+storage module immutable expFabs Float64 3.5
 call f1Call absoluteFloat64
-argument f1Call x CFloat64 negPointFive
+argument f1Call x Float64 negPointFive
 run f1Call
-bind ok f1Res CFloat64 f1Call
-call f1CheckCall math.equalF64
-argument f1CheckCall left F64 f1Res
-argument f1CheckCall right F64 expFabs
+bind ok f1Res Float64 f1Call
+call f1CheckCall math.equalFloat64
+argument f1CheckCall left Float64 f1Res
+argument f1CheckCall right Float64 expFabs
 run f1CheckCall
 bind value f1Ok Bool f1CheckCall
 branch if condition f1Ok target f1OkLabel
@@ -59,25 +59,25 @@ branch else target testFailed
 label f1OkLabel
 
 # squareRootFloat64(144.0) approximately 12.0
-storage module immutable c144 CFloat64 144.0
-storage module immutable c12 CFloat64 12.0
-storage module immutable tol CFloat64 0.0001
+storage module immutable c144 Float64 144.0
+storage module immutable c12 Float64 12.0
+storage module immutable tol Float64 0.0001
 call s1Call squareRootFloat64
-argument s1Call x CFloat64 c144
+argument s1Call x Float64 c144
 run s1Call
-bind ok s1Res CFloat64 s1Call
-call diffCall math.subtractF64
-argument diffCall left F64 s1Res
-argument diffCall right F64 c12
+bind ok s1Res Float64 s1Call
+call diffCall math.subtractFloat64
+argument diffCall left Float64 s1Res
+argument diffCall right Float64 c12
 run diffCall
-bind value diff CFloat64 diffCall
+bind value diff Float64 diffCall
 call abs1Call absoluteFloat64
-argument abs1Call x CFloat64 diff
+argument abs1Call x Float64 diff
 run abs1Call
-bind ok diffAbs CFloat64 abs1Call
-call s1CheckCall math.lessThanF64
-argument s1CheckCall left F64 diffAbs
-argument s1CheckCall right F64 tol
+bind ok diffAbs Float64 abs1Call
+call s1CheckCall math.lessThanFloat64
+argument s1CheckCall left Float64 diffAbs
+argument s1CheckCall right Float64 tol
 run s1CheckCall
 bind value s1Ok Bool s1CheckCall
 branch if condition s1Ok target s1OkLabel
@@ -85,25 +85,25 @@ branch else target testFailed
 label s1OkLabel
 
 # exponentialBaseEFloat64(1.0) approximately 2.718281828
-storage module immutable oneExp CFloat64 1.0
-storage module immutable eulerApprox CFloat64 2.718281828
-storage module immutable tolE CFloat64 0.001
+storage module immutable oneExp Float64 1.0
+storage module immutable eulerApprox Float64 2.718281828
+storage module immutable tolE Float64 0.001
 call e1Call exponentialBaseEFloat64
-argument e1Call x CFloat64 oneExp
+argument e1Call x Float64 oneExp
 run e1Call
-bind ok e1Res CFloat64 e1Call
-call diff2Call math.subtractF64
-argument diff2Call left F64 e1Res
-argument diff2Call right F64 eulerApprox
+bind ok e1Res Float64 e1Call
+call diff2Call math.subtractFloat64
+argument diff2Call left Float64 e1Res
+argument diff2Call right Float64 eulerApprox
 run diff2Call
-bind value diff2 CFloat64 diff2Call
+bind value diff2 Float64 diff2Call
 call abs2Call absoluteFloat64
-argument abs2Call x CFloat64 diff2
+argument abs2Call x Float64 diff2
 run abs2Call
-bind ok diff2Abs CFloat64 abs2Call
-call e1CheckCall math.lessThanF64
-argument e1CheckCall left F64 diff2Abs
-argument e1CheckCall right F64 tolE
+bind ok diff2Abs Float64 abs2Call
+call e1CheckCall math.lessThanFloat64
+argument e1CheckCall left Float64 diff2Abs
+argument e1CheckCall right Float64 tolE
 run e1CheckCall
 bind value e1Ok Bool e1CheckCall
 branch if condition e1Ok target e1OkLabel
@@ -111,15 +111,15 @@ branch else target testFailed
 label e1OkLabel
 
 # truncateFloat64TowardZero(3.7) == 3.0
-storage module immutable cThreeSeven CFloat64 3.7
-storage module immutable cThree CFloat64 3.0
+storage module immutable cThreeSeven Float64 3.7
+storage module immutable cThree Float64 3.0
 call tr1Call truncateFloat64TowardZero
-argument tr1Call x CFloat64 cThreeSeven
+argument tr1Call x Float64 cThreeSeven
 run tr1Call
-bind ok tr1Res CFloat64 tr1Call
-call tr1CheckCall math.equalF64
-argument tr1CheckCall left F64 tr1Res
-argument tr1CheckCall right F64 cThree
+bind ok tr1Res Float64 tr1Call
+call tr1CheckCall math.equalFloat64
+argument tr1CheckCall left Float64 tr1Res
+argument tr1CheckCall right Float64 cThree
 run tr1CheckCall
 bind value tr1Ok Bool tr1CheckCall
 branch if condition tr1Ok target tr1OkLabel
@@ -127,15 +127,15 @@ branch else target testFailed
 label tr1OkLabel
 
 # floorFloat64(-2.3) == -3.0
-storage module immutable cNegTwoThree CFloat64 -2.3
-storage module immutable cNegThree CFloat64 -3.0
+storage module immutable cNegTwoThree Float64 -2.3
+storage module immutable cNegThree Float64 -3.0
 call fl1Call floorFloat64
-argument fl1Call x CFloat64 cNegTwoThree
+argument fl1Call x Float64 cNegTwoThree
 run fl1Call
-bind ok fl1Res CFloat64 fl1Call
-call fl1CheckCall math.equalF64
-argument fl1CheckCall left F64 fl1Res
-argument fl1CheckCall right F64 cNegThree
+bind ok fl1Res Float64 fl1Call
+call fl1CheckCall math.equalFloat64
+argument fl1CheckCall left Float64 fl1Res
+argument fl1CheckCall right Float64 cNegThree
 run fl1CheckCall
 bind value fl1Ok Bool fl1CheckCall
 branch if condition fl1Ok target fl1OkLabel
@@ -143,14 +143,14 @@ branch else target testFailed
 label fl1OkLabel
 
 # ceilingFloat64(2.3) == 3.0
-storage module immutable cTwoThree CFloat64 2.3
+storage module immutable cTwoThree Float64 2.3
 call ce1Call ceilingFloat64
-argument ce1Call x CFloat64 cTwoThree
+argument ce1Call x Float64 cTwoThree
 run ce1Call
-bind ok ce1Res CFloat64 ce1Call
-call ce1CheckCall math.equalF64
-argument ce1CheckCall left F64 ce1Res
-argument ce1CheckCall right F64 cThree
+bind ok ce1Res Float64 ce1Call
+call ce1CheckCall math.equalFloat64
+argument ce1CheckCall left Float64 ce1Res
+argument ce1CheckCall right Float64 cThree
 run ce1CheckCall
 bind value ce1Ok Bool ce1CheckCall
 branch if condition ce1Ok target ce1OkLabel
@@ -158,17 +158,17 @@ branch else target testFailed
 label ce1OkLabel
 
 # floatingRemainderFloat64(7.5, 2.0) == 1.5
-storage module immutable cSevenHalf CFloat64 7.5
-storage module immutable cTwoFl CFloat64 2.0
-storage module immutable cOneHalf CFloat64 1.5
+storage module immutable cSevenHalf Float64 7.5
+storage module immutable cTwoFl Float64 2.0
+storage module immutable cOneHalf Float64 1.5
 call fm1Call floatingRemainderFloat64
-argument fm1Call x CFloat64 cSevenHalf
-argument fm1Call y CFloat64 cTwoFl
+argument fm1Call x Float64 cSevenHalf
+argument fm1Call y Float64 cTwoFl
 run fm1Call
-bind ok fm1Res CFloat64 fm1Call
-call fm1CheckCall math.equalF64
-argument fm1CheckCall left F64 fm1Res
-argument fm1CheckCall right F64 cOneHalf
+bind ok fm1Res Float64 fm1Call
+call fm1CheckCall math.equalFloat64
+argument fm1CheckCall left Float64 fm1Res
+argument fm1CheckCall right Float64 cOneHalf
 run fm1CheckCall
 bind value fm1Ok Bool fm1CheckCall
 branch if condition fm1Ok target fm1OkLabel
@@ -176,25 +176,25 @@ branch else target testFailed
 label fm1OkLabel
 
 # naturalLogFloat64(e) approximately 1.0
-storage module immutable eApprox CFloat64 2.718281828
-storage module immutable oneTarget CFloat64 1.0
-storage module immutable tolLn CFloat64 0.01
+storage module immutable eApprox Float64 2.718281828
+storage module immutable oneTarget Float64 1.0
+storage module immutable tolLn Float64 0.01
 call ln1Call naturalLogFloat64
-argument ln1Call x CFloat64 eApprox
+argument ln1Call x Float64 eApprox
 run ln1Call
-bind ok ln1Res CFloat64 ln1Call
-call ln1DiffCall math.subtractF64
-argument ln1DiffCall left F64 ln1Res
-argument ln1DiffCall right F64 oneTarget
+bind ok ln1Res Float64 ln1Call
+call ln1DiffCall math.subtractFloat64
+argument ln1DiffCall left Float64 ln1Res
+argument ln1DiffCall right Float64 oneTarget
 run ln1DiffCall
-bind value ln1DiffV CFloat64 ln1DiffCall
+bind value ln1DiffV Float64 ln1DiffCall
 call ln1AbsCall absoluteFloat64
-argument ln1AbsCall x CFloat64 ln1DiffV
+argument ln1AbsCall x Float64 ln1DiffV
 run ln1AbsCall
-bind ok ln1AbsV CFloat64 ln1AbsCall
-call ln1CheckCall math.lessThanF64
-argument ln1CheckCall left F64 ln1AbsV
-argument ln1CheckCall right F64 tolLn
+bind ok ln1AbsV Float64 ln1AbsCall
+call ln1CheckCall math.lessThanFloat64
+argument ln1CheckCall left Float64 ln1AbsV
+argument ln1CheckCall right Float64 tolLn
 run ln1CheckCall
 bind value ln1Ok Bool ln1CheckCall
 branch if condition ln1Ok target ln1OkLabel
@@ -202,26 +202,26 @@ branch else target testFailed
 label ln1OkLabel
 
 # powerFloat64(2.0, 10.0) approximately 1024.0
-storage module immutable cTen CFloat64 10.0
-storage module immutable cOneOhTwoFour CFloat64 1024.0
-storage module immutable tolPw CFloat64 5.0
+storage module immutable cTen Float64 10.0
+storage module immutable cOneOhTwoFour Float64 1024.0
+storage module immutable tolPw Float64 5.0
 call pw1Call powerFloat64
-argument pw1Call base CFloat64 cTwoFl
-argument pw1Call exponent CFloat64 cTen
+argument pw1Call base Float64 cTwoFl
+argument pw1Call exponent Float64 cTen
 run pw1Call
-bind ok pw1Res CFloat64 pw1Call
-call pw1DiffCall math.subtractF64
-argument pw1DiffCall left F64 pw1Res
-argument pw1DiffCall right F64 cOneOhTwoFour
+bind ok pw1Res Float64 pw1Call
+call pw1DiffCall math.subtractFloat64
+argument pw1DiffCall left Float64 pw1Res
+argument pw1DiffCall right Float64 cOneOhTwoFour
 run pw1DiffCall
-bind value pw1DiffV CFloat64 pw1DiffCall
+bind value pw1DiffV Float64 pw1DiffCall
 call pw1AbsCall absoluteFloat64
-argument pw1AbsCall x CFloat64 pw1DiffV
+argument pw1AbsCall x Float64 pw1DiffV
 run pw1AbsCall
-bind ok pw1AbsV CFloat64 pw1AbsCall
-call pw1CheckCall math.lessThanF64
-argument pw1CheckCall left F64 pw1AbsV
-argument pw1CheckCall right F64 tolPw
+bind ok pw1AbsV Float64 pw1AbsCall
+call pw1CheckCall math.lessThanFloat64
+argument pw1CheckCall left Float64 pw1AbsV
+argument pw1CheckCall right Float64 tolPw
 run pw1CheckCall
 bind value pw1Ok Bool pw1CheckCall
 branch if condition pw1Ok target pw1OkLabel
@@ -229,19 +229,19 @@ branch else target testFailed
 label pw1OkLabel
 
 # sineRadiansFloat64(0.0) approximately 0.0
-storage module immutable zeroFs CFloat64 0.0
-storage module immutable tolSin CFloat64 0.001
+storage module immutable zeroFs Float64 0.0
+storage module immutable tolSin Float64 0.001
 call sn1Call sineRadiansFloat64
-argument sn1Call x CFloat64 zeroFs
+argument sn1Call x Float64 zeroFs
 run sn1Call
-bind ok sn1Res CFloat64 sn1Call
+bind ok sn1Res Float64 sn1Call
 call sn1AbsCall absoluteFloat64
-argument sn1AbsCall x CFloat64 sn1Res
+argument sn1AbsCall x Float64 sn1Res
 run sn1AbsCall
-bind ok sn1AbsV CFloat64 sn1AbsCall
-call sn1CheckCall math.lessThanF64
-argument sn1CheckCall left F64 sn1AbsV
-argument sn1CheckCall right F64 tolSin
+bind ok sn1AbsV Float64 sn1AbsCall
+call sn1CheckCall math.lessThanFloat64
+argument sn1CheckCall left Float64 sn1AbsV
+argument sn1CheckCall right Float64 tolSin
 run sn1CheckCall
 bind value sn1Ok Bool sn1CheckCall
 branch if condition sn1Ok target sn1OkLabel
@@ -250,21 +250,21 @@ label sn1OkLabel
 
 # cosineRadiansFloat64(0.0) approximately 1.0
 call cs1Call cosineRadiansFloat64
-argument cs1Call x CFloat64 zeroFs
+argument cs1Call x Float64 zeroFs
 run cs1Call
-bind ok cs1Res CFloat64 cs1Call
-call cs1DiffCall math.subtractF64
-argument cs1DiffCall left F64 cs1Res
-argument cs1DiffCall right F64 oneTarget
+bind ok cs1Res Float64 cs1Call
+call cs1DiffCall math.subtractFloat64
+argument cs1DiffCall left Float64 cs1Res
+argument cs1DiffCall right Float64 oneTarget
 run cs1DiffCall
-bind value cs1DiffV CFloat64 cs1DiffCall
+bind value cs1DiffV Float64 cs1DiffCall
 call cs1AbsCall absoluteFloat64
-argument cs1AbsCall x CFloat64 cs1DiffV
+argument cs1AbsCall x Float64 cs1DiffV
 run cs1AbsCall
-bind ok cs1AbsV CFloat64 cs1AbsCall
-call cs1CheckCall math.lessThanF64
-argument cs1CheckCall left F64 cs1AbsV
-argument cs1CheckCall right F64 tolSin
+bind ok cs1AbsV Float64 cs1AbsCall
+call cs1CheckCall math.lessThanFloat64
+argument cs1CheckCall left Float64 cs1AbsV
+argument cs1CheckCall right Float64 tolSin
 run cs1CheckCall
 bind value cs1Ok Bool cs1CheckCall
 branch if condition cs1Ok target cs1OkLabel
@@ -272,25 +272,25 @@ branch else target testFailed
 label cs1OkLabel
 
 # logBaseTwoFloat64(8.0) approximately 3.0
-storage module immutable eightFs CFloat64 8.0
-storage module immutable threeFs CFloat64 3.0
-storage module immutable tolLg CFloat64 0.01
+storage module immutable eightFs Float64 8.0
+storage module immutable threeFs Float64 3.0
+storage module immutable tolLg Float64 0.01
 call lg2vCall logBaseTwoFloat64
-argument lg2vCall x CFloat64 eightFs
+argument lg2vCall x Float64 eightFs
 run lg2vCall
-bind ok lg2vRes CFloat64 lg2vCall
-call lg2vDiffCall math.subtractF64
-argument lg2vDiffCall left F64 lg2vRes
-argument lg2vDiffCall right F64 threeFs
+bind ok lg2vRes Float64 lg2vCall
+call lg2vDiffCall math.subtractFloat64
+argument lg2vDiffCall left Float64 lg2vRes
+argument lg2vDiffCall right Float64 threeFs
 run lg2vDiffCall
-bind value lg2vDiffV CFloat64 lg2vDiffCall
+bind value lg2vDiffV Float64 lg2vDiffCall
 call lg2vAbsCall absoluteFloat64
-argument lg2vAbsCall x CFloat64 lg2vDiffV
+argument lg2vAbsCall x Float64 lg2vDiffV
 run lg2vAbsCall
-bind ok lg2vAbsV CFloat64 lg2vAbsCall
-call lg2vCheckCall math.lessThanF64
-argument lg2vCheckCall left F64 lg2vAbsV
-argument lg2vCheckCall right F64 tolLg
+bind ok lg2vAbsV Float64 lg2vAbsCall
+call lg2vCheckCall math.lessThanFloat64
+argument lg2vCheckCall left Float64 lg2vAbsV
+argument lg2vCheckCall right Float64 tolLg
 run lg2vCheckCall
 bind value lg2vOk Bool lg2vCheckCall
 branch if condition lg2vOk target lg2vOkLabel
@@ -298,23 +298,23 @@ branch else target testFailed
 label lg2vOkLabel
 
 # logBaseTenFloat64(1000.0) approximately 3.0
-storage module immutable thousandFs CFloat64 1000.0
+storage module immutable thousandFs Float64 1000.0
 call lg10vCall logBaseTenFloat64
-argument lg10vCall x CFloat64 thousandFs
+argument lg10vCall x Float64 thousandFs
 run lg10vCall
-bind ok lg10vRes CFloat64 lg10vCall
-call lg10vDiffCall math.subtractF64
-argument lg10vDiffCall left F64 lg10vRes
-argument lg10vDiffCall right F64 threeFs
+bind ok lg10vRes Float64 lg10vCall
+call lg10vDiffCall math.subtractFloat64
+argument lg10vDiffCall left Float64 lg10vRes
+argument lg10vDiffCall right Float64 threeFs
 run lg10vDiffCall
-bind value lg10vDiffV CFloat64 lg10vDiffCall
+bind value lg10vDiffV Float64 lg10vDiffCall
 call lg10vAbsCall absoluteFloat64
-argument lg10vAbsCall x CFloat64 lg10vDiffV
+argument lg10vAbsCall x Float64 lg10vDiffV
 run lg10vAbsCall
-bind ok lg10vAbsV CFloat64 lg10vAbsCall
-call lg10vCheckCall math.lessThanF64
-argument lg10vCheckCall left F64 lg10vAbsV
-argument lg10vCheckCall right F64 tolLg
+bind ok lg10vAbsV Float64 lg10vAbsCall
+call lg10vCheckCall math.lessThanFloat64
+argument lg10vCheckCall left Float64 lg10vAbsV
+argument lg10vCheckCall right Float64 tolLg
 run lg10vCheckCall
 bind value lg10vOk Bool lg10vCheckCall
 branch if condition lg10vOk target lg10vOkLabel
@@ -322,26 +322,26 @@ branch else target testFailed
 label lg10vOkLabel
 
 # hypotenuseFloat64(3.0, 4.0) approximately 5.0
-storage module immutable fourFs CFloat64 4.0
-storage module immutable fiveFs CFloat64 5.0
-storage module immutable tolHyp CFloat64 0.0001
+storage module immutable fourFs Float64 4.0
+storage module immutable fiveFs Float64 5.0
+storage module immutable tolHyp Float64 0.0001
 call hyp1Call hypotenuseFloat64
-argument hyp1Call x CFloat64 threeFs
-argument hyp1Call y CFloat64 fourFs
+argument hyp1Call x Float64 threeFs
+argument hyp1Call y Float64 fourFs
 run hyp1Call
-bind ok hyp1Res CFloat64 hyp1Call
-call hyp1DiffCall math.subtractF64
-argument hyp1DiffCall left F64 hyp1Res
-argument hyp1DiffCall right F64 fiveFs
+bind ok hyp1Res Float64 hyp1Call
+call hyp1DiffCall math.subtractFloat64
+argument hyp1DiffCall left Float64 hyp1Res
+argument hyp1DiffCall right Float64 fiveFs
 run hyp1DiffCall
-bind value hyp1DiffV CFloat64 hyp1DiffCall
+bind value hyp1DiffV Float64 hyp1DiffCall
 call hyp1AbsCall absoluteFloat64
-argument hyp1AbsCall x CFloat64 hyp1DiffV
+argument hyp1AbsCall x Float64 hyp1DiffV
 run hyp1AbsCall
-bind ok hyp1AbsV CFloat64 hyp1AbsCall
-call hyp1CheckCall math.lessThanF64
-argument hyp1CheckCall left F64 hyp1AbsV
-argument hyp1CheckCall right F64 tolHyp
+bind ok hyp1AbsV Float64 hyp1AbsCall
+call hyp1CheckCall math.lessThanFloat64
+argument hyp1CheckCall left Float64 hyp1AbsV
+argument hyp1CheckCall right Float64 tolHyp
 run hyp1CheckCall
 bind value hyp1Ok Bool hyp1CheckCall
 branch if condition hyp1Ok target hyp1OkLabel
@@ -349,24 +349,24 @@ branch else target testFailed
 label hyp1OkLabel
 
 # arctangentRadiansFloat64(1.0) approximately pi/4 = 0.785398
-storage module immutable piOver4 CFloat64 0.7853981633974483
-storage module immutable tolAtan CFloat64 0.01
+storage module immutable piOver4 Float64 0.7853981633974483
+storage module immutable tolAtan Float64 0.01
 call atn1Call arctangentRadiansFloat64
-argument atn1Call x CFloat64 oneTarget
+argument atn1Call x Float64 oneTarget
 run atn1Call
-bind ok atn1Res CFloat64 atn1Call
-call atn1DiffCall math.subtractF64
-argument atn1DiffCall left F64 atn1Res
-argument atn1DiffCall right F64 piOver4
+bind ok atn1Res Float64 atn1Call
+call atn1DiffCall math.subtractFloat64
+argument atn1DiffCall left Float64 atn1Res
+argument atn1DiffCall right Float64 piOver4
 run atn1DiffCall
-bind value atn1DiffV CFloat64 atn1DiffCall
+bind value atn1DiffV Float64 atn1DiffCall
 call atn1AbsCall absoluteFloat64
-argument atn1AbsCall x CFloat64 atn1DiffV
+argument atn1AbsCall x Float64 atn1DiffV
 run atn1AbsCall
-bind ok atn1AbsV CFloat64 atn1AbsCall
-call atn1CheckCall math.lessThanF64
-argument atn1CheckCall left F64 atn1AbsV
-argument atn1CheckCall right F64 tolAtan
+bind ok atn1AbsV Float64 atn1AbsCall
+call atn1CheckCall math.lessThanFloat64
+argument atn1CheckCall left Float64 atn1AbsV
+argument atn1CheckCall right Float64 tolAtan
 run atn1CheckCall
 bind value atn1Ok Bool atn1CheckCall
 branch if condition atn1Ok target atn1OkLabel
@@ -381,27 +381,27 @@ label atn1OkLabel
 # already-covered operations.
 # ============================================================
 
-storage module immutable tolGeneral CFloat64 0.001
-storage module immutable zeroExtra CFloat64 0.0
-storage module immutable oneExtra CFloat64 1.0
-storage module immutable negOneExtra CFloat64 -1.0
-storage module immutable twoExtra CFloat64 2.0
-storage module immutable threeExtra CFloat64 3.0
-storage module immutable fourExtra CFloat64 4.0
-storage module immutable fiveExtra CFloat64 5.0
-storage module immutable tenExtra CFloat64 10.0
-storage module immutable negFiveExtra CFloat64 -5.0
-storage module immutable piHalf CFloat64 1.5707963267948966
-storage module immutable piValue CFloat64 3.141592653589793
+storage module immutable tolGeneral Float64 0.001
+storage module immutable zeroExtra Float64 0.0
+storage module immutable oneExtra Float64 1.0
+storage module immutable negOneExtra Float64 -1.0
+storage module immutable twoExtra Float64 2.0
+storage module immutable threeExtra Float64 3.0
+storage module immutable fourExtra Float64 4.0
+storage module immutable fiveExtra Float64 5.0
+storage module immutable tenExtra Float64 10.0
+storage module immutable negFiveExtra Float64 -5.0
+storage module immutable piHalf Float64 1.5707963267948966
+storage module immutable piValue Float64 3.141592653589793
 
 # absoluteFloat64(0.0) == 0.0
 call fabsZeroCall absoluteFloat64
-argument fabsZeroCall x CFloat64 zeroExtra
+argument fabsZeroCall x Float64 zeroExtra
 run fabsZeroCall
-bind ok fabsZeroRes CFloat64 fabsZeroCall
-call fabsZeroCheckCall math.equalF64
-argument fabsZeroCheckCall left F64 fabsZeroRes
-argument fabsZeroCheckCall right F64 zeroExtra
+bind ok fabsZeroRes Float64 fabsZeroCall
+call fabsZeroCheckCall math.equalFloat64
+argument fabsZeroCheckCall left Float64 fabsZeroRes
+argument fabsZeroCheckCall right Float64 zeroExtra
 run fabsZeroCheckCall
 bind value fabsZeroOk Bool fabsZeroCheckCall
 branch if condition fabsZeroOk target fabsZeroOkLabel
@@ -410,12 +410,12 @@ label fabsZeroOkLabel
 
 # absoluteFloat64(3.5) == 3.5 (positive identity)
 call fabsPosCall absoluteFloat64
-argument fabsPosCall x CFloat64 expFabs
+argument fabsPosCall x Float64 expFabs
 run fabsPosCall
-bind ok fabsPosRes CFloat64 fabsPosCall
-call fabsPosCheckCall math.equalF64
-argument fabsPosCheckCall left F64 fabsPosRes
-argument fabsPosCheckCall right F64 expFabs
+bind ok fabsPosRes Float64 fabsPosCall
+call fabsPosCheckCall math.equalFloat64
+argument fabsPosCheckCall left Float64 fabsPosRes
+argument fabsPosCheckCall right Float64 expFabs
 run fabsPosCheckCall
 bind value fabsPosOk Bool fabsPosCheckCall
 branch if condition fabsPosOk target fabsPosOkLabel
@@ -424,16 +424,16 @@ label fabsPosOkLabel
 
 # squareRootFloat64(0.0) Ã¢â€°Ë† 0.0
 call sqrtZeroCall squareRootFloat64
-argument sqrtZeroCall x CFloat64 zeroExtra
+argument sqrtZeroCall x Float64 zeroExtra
 run sqrtZeroCall
-bind ok sqrtZeroRes CFloat64 sqrtZeroCall
+bind ok sqrtZeroRes Float64 sqrtZeroCall
 call sqrtZeroAbsCall absoluteFloat64
-argument sqrtZeroAbsCall x CFloat64 sqrtZeroRes
+argument sqrtZeroAbsCall x Float64 sqrtZeroRes
 run sqrtZeroAbsCall
-bind ok sqrtZeroAbs CFloat64 sqrtZeroAbsCall
-call sqrtZeroCheckCall math.lessThanF64
-argument sqrtZeroCheckCall left F64 sqrtZeroAbs
-argument sqrtZeroCheckCall right F64 tolGeneral
+bind ok sqrtZeroAbs Float64 sqrtZeroAbsCall
+call sqrtZeroCheckCall math.lessThanFloat64
+argument sqrtZeroCheckCall left Float64 sqrtZeroAbs
+argument sqrtZeroCheckCall right Float64 tolGeneral
 run sqrtZeroCheckCall
 bind value sqrtZeroOk Bool sqrtZeroCheckCall
 branch if condition sqrtZeroOk target sqrtZeroOkLabel
@@ -442,21 +442,21 @@ label sqrtZeroOkLabel
 
 # exponentialBaseEFloat64(0.0) Ã¢â€°Ë† 1.0 (e^0 == 1 identity)
 call expZeroCall exponentialBaseEFloat64
-argument expZeroCall x CFloat64 zeroExtra
+argument expZeroCall x Float64 zeroExtra
 run expZeroCall
-bind ok expZeroRes CFloat64 expZeroCall
-call expZeroDiffCall math.subtractF64
-argument expZeroDiffCall left F64 expZeroRes
-argument expZeroDiffCall right F64 oneExtra
+bind ok expZeroRes Float64 expZeroCall
+call expZeroDiffCall math.subtractFloat64
+argument expZeroDiffCall left Float64 expZeroRes
+argument expZeroDiffCall right Float64 oneExtra
 run expZeroDiffCall
-bind value expZeroDiff CFloat64 expZeroDiffCall
+bind value expZeroDiff Float64 expZeroDiffCall
 call expZeroAbsCall absoluteFloat64
-argument expZeroAbsCall x CFloat64 expZeroDiff
+argument expZeroAbsCall x Float64 expZeroDiff
 run expZeroAbsCall
-bind ok expZeroAbs CFloat64 expZeroAbsCall
-call expZeroCheckCall math.lessThanF64
-argument expZeroCheckCall left F64 expZeroAbs
-argument expZeroCheckCall right F64 tolGeneral
+bind ok expZeroAbs Float64 expZeroAbsCall
+call expZeroCheckCall math.lessThanFloat64
+argument expZeroCheckCall left Float64 expZeroAbs
+argument expZeroCheckCall right Float64 tolGeneral
 run expZeroCheckCall
 bind value expZeroOk Bool expZeroCheckCall
 branch if condition expZeroOk target expZeroOkLabel
@@ -465,16 +465,16 @@ label expZeroOkLabel
 
 # naturalLogFloat64(1.0) Ã¢â€°Ë† 0.0 (ln(1) == 0)
 call lnOneCall naturalLogFloat64
-argument lnOneCall x CFloat64 oneExtra
+argument lnOneCall x Float64 oneExtra
 run lnOneCall
-bind ok lnOneRes CFloat64 lnOneCall
+bind ok lnOneRes Float64 lnOneCall
 call lnOneAbsCall absoluteFloat64
-argument lnOneAbsCall x CFloat64 lnOneRes
+argument lnOneAbsCall x Float64 lnOneRes
 run lnOneAbsCall
-bind ok lnOneAbs CFloat64 lnOneAbsCall
-call lnOneCheckCall math.lessThanF64
-argument lnOneCheckCall left F64 lnOneAbs
-argument lnOneCheckCall right F64 tolGeneral
+bind ok lnOneAbs Float64 lnOneAbsCall
+call lnOneCheckCall math.lessThanFloat64
+argument lnOneCheckCall left Float64 lnOneAbs
+argument lnOneCheckCall right Float64 tolGeneral
 run lnOneCheckCall
 bind value lnOneOk Bool lnOneCheckCall
 branch if condition lnOneOk target lnOneOkLabel
@@ -483,16 +483,16 @@ label lnOneOkLabel
 
 # tangentRadiansFloat64(0.0) Ã¢â€°Ë† 0.0
 call tanZeroCall tangentRadiansFloat64
-argument tanZeroCall x CFloat64 zeroExtra
+argument tanZeroCall x Float64 zeroExtra
 run tanZeroCall
-bind ok tanZeroRes CFloat64 tanZeroCall
+bind ok tanZeroRes Float64 tanZeroCall
 call tanZeroAbsCall absoluteFloat64
-argument tanZeroAbsCall x CFloat64 tanZeroRes
+argument tanZeroAbsCall x Float64 tanZeroRes
 run tanZeroAbsCall
-bind ok tanZeroAbs CFloat64 tanZeroAbsCall
-call tanZeroCheckCall math.lessThanF64
-argument tanZeroCheckCall left F64 tanZeroAbs
-argument tanZeroCheckCall right F64 tolGeneral
+bind ok tanZeroAbs Float64 tanZeroAbsCall
+call tanZeroCheckCall math.lessThanFloat64
+argument tanZeroCheckCall left Float64 tanZeroAbs
+argument tanZeroCheckCall right Float64 tolGeneral
 run tanZeroCheckCall
 bind value tanZeroOk Bool tanZeroCheckCall
 branch if condition tanZeroOk target tanZeroOkLabel
@@ -501,16 +501,16 @@ label tanZeroOkLabel
 
 # hyperbolicSineFloat64(0.0) Ã¢â€°Ë† 0.0
 call sinhZeroCall hyperbolicSineFloat64
-argument sinhZeroCall x CFloat64 zeroExtra
+argument sinhZeroCall x Float64 zeroExtra
 run sinhZeroCall
-bind ok sinhZeroRes CFloat64 sinhZeroCall
+bind ok sinhZeroRes Float64 sinhZeroCall
 call sinhZeroAbsCall absoluteFloat64
-argument sinhZeroAbsCall x CFloat64 sinhZeroRes
+argument sinhZeroAbsCall x Float64 sinhZeroRes
 run sinhZeroAbsCall
-bind ok sinhZeroAbs CFloat64 sinhZeroAbsCall
-call sinhZeroCheckCall math.lessThanF64
-argument sinhZeroCheckCall left F64 sinhZeroAbs
-argument sinhZeroCheckCall right F64 tolGeneral
+bind ok sinhZeroAbs Float64 sinhZeroAbsCall
+call sinhZeroCheckCall math.lessThanFloat64
+argument sinhZeroCheckCall left Float64 sinhZeroAbs
+argument sinhZeroCheckCall right Float64 tolGeneral
 run sinhZeroCheckCall
 bind value sinhZeroOk Bool sinhZeroCheckCall
 branch if condition sinhZeroOk target sinhZeroOkLabel
@@ -519,21 +519,21 @@ label sinhZeroOkLabel
 
 # hyperbolicCosineFloat64(0.0) Ã¢â€°Ë† 1.0
 call coshZeroCall hyperbolicCosineFloat64
-argument coshZeroCall x CFloat64 zeroExtra
+argument coshZeroCall x Float64 zeroExtra
 run coshZeroCall
-bind ok coshZeroRes CFloat64 coshZeroCall
-call coshZeroDiffCall math.subtractF64
-argument coshZeroDiffCall left F64 coshZeroRes
-argument coshZeroDiffCall right F64 oneExtra
+bind ok coshZeroRes Float64 coshZeroCall
+call coshZeroDiffCall math.subtractFloat64
+argument coshZeroDiffCall left Float64 coshZeroRes
+argument coshZeroDiffCall right Float64 oneExtra
 run coshZeroDiffCall
-bind value coshZeroDiff CFloat64 coshZeroDiffCall
+bind value coshZeroDiff Float64 coshZeroDiffCall
 call coshZeroAbsCall absoluteFloat64
-argument coshZeroAbsCall x CFloat64 coshZeroDiff
+argument coshZeroAbsCall x Float64 coshZeroDiff
 run coshZeroAbsCall
-bind ok coshZeroAbs CFloat64 coshZeroAbsCall
-call coshZeroCheckCall math.lessThanF64
-argument coshZeroCheckCall left F64 coshZeroAbs
-argument coshZeroCheckCall right F64 tolGeneral
+bind ok coshZeroAbs Float64 coshZeroAbsCall
+call coshZeroCheckCall math.lessThanFloat64
+argument coshZeroCheckCall left Float64 coshZeroAbs
+argument coshZeroCheckCall right Float64 tolGeneral
 run coshZeroCheckCall
 bind value coshZeroOk Bool coshZeroCheckCall
 branch if condition coshZeroOk target coshZeroOkLabel
@@ -542,16 +542,16 @@ label coshZeroOkLabel
 
 # hyperbolicTangentFloat64(0.0) Ã¢â€°Ë† 0.0
 call tanhZeroCall hyperbolicTangentFloat64
-argument tanhZeroCall x CFloat64 zeroExtra
+argument tanhZeroCall x Float64 zeroExtra
 run tanhZeroCall
-bind ok tanhZeroRes CFloat64 tanhZeroCall
+bind ok tanhZeroRes Float64 tanhZeroCall
 call tanhZeroAbsCall absoluteFloat64
-argument tanhZeroAbsCall x CFloat64 tanhZeroRes
+argument tanhZeroAbsCall x Float64 tanhZeroRes
 run tanhZeroAbsCall
-bind ok tanhZeroAbs CFloat64 tanhZeroAbsCall
-call tanhZeroCheckCall math.lessThanF64
-argument tanhZeroCheckCall left F64 tanhZeroAbs
-argument tanhZeroCheckCall right F64 tolGeneral
+bind ok tanhZeroAbs Float64 tanhZeroAbsCall
+call tanhZeroCheckCall math.lessThanFloat64
+argument tanhZeroCheckCall left Float64 tanhZeroAbs
+argument tanhZeroCheckCall right Float64 tolGeneral
 run tanhZeroCheckCall
 bind value tanhZeroOk Bool tanhZeroCheckCall
 branch if condition tanhZeroOk target tanhZeroOkLabel
@@ -560,16 +560,16 @@ label tanhZeroOkLabel
 
 # exponentialMinusOneFloat64(0.0) Ã¢â€°Ë† 0.0 (exp(0)-1 = 0)
 call expm1ZeroCall exponentialMinusOneFloat64
-argument expm1ZeroCall x CFloat64 zeroExtra
+argument expm1ZeroCall x Float64 zeroExtra
 run expm1ZeroCall
-bind ok expm1ZeroRes CFloat64 expm1ZeroCall
+bind ok expm1ZeroRes Float64 expm1ZeroCall
 call expm1ZeroAbsCall absoluteFloat64
-argument expm1ZeroAbsCall x CFloat64 expm1ZeroRes
+argument expm1ZeroAbsCall x Float64 expm1ZeroRes
 run expm1ZeroAbsCall
-bind ok expm1ZeroAbs CFloat64 expm1ZeroAbsCall
-call expm1ZeroCheckCall math.lessThanF64
-argument expm1ZeroCheckCall left F64 expm1ZeroAbs
-argument expm1ZeroCheckCall right F64 tolGeneral
+bind ok expm1ZeroAbs Float64 expm1ZeroAbsCall
+call expm1ZeroCheckCall math.lessThanFloat64
+argument expm1ZeroCheckCall left Float64 expm1ZeroAbs
+argument expm1ZeroCheckCall right Float64 tolGeneral
 run expm1ZeroCheckCall
 bind value expm1ZeroOk Bool expm1ZeroCheckCall
 branch if condition expm1ZeroOk target expm1ZeroOkLabel
@@ -578,16 +578,16 @@ label expm1ZeroOkLabel
 
 # naturalLogOnePlusFloat64(0.0) Ã¢â€°Ë† 0.0 (ln(1+0) = 0)
 call log1pZeroCall naturalLogOnePlusFloat64
-argument log1pZeroCall x CFloat64 zeroExtra
+argument log1pZeroCall x Float64 zeroExtra
 run log1pZeroCall
-bind ok log1pZeroRes CFloat64 log1pZeroCall
+bind ok log1pZeroRes Float64 log1pZeroCall
 call log1pZeroAbsCall absoluteFloat64
-argument log1pZeroAbsCall x CFloat64 log1pZeroRes
+argument log1pZeroAbsCall x Float64 log1pZeroRes
 run log1pZeroAbsCall
-bind ok log1pZeroAbs CFloat64 log1pZeroAbsCall
-call log1pZeroCheckCall math.lessThanF64
-argument log1pZeroCheckCall left F64 log1pZeroAbs
-argument log1pZeroCheckCall right F64 tolGeneral
+bind ok log1pZeroAbs Float64 log1pZeroAbsCall
+call log1pZeroCheckCall math.lessThanFloat64
+argument log1pZeroCheckCall left Float64 log1pZeroAbs
+argument log1pZeroCheckCall right Float64 tolGeneral
 run log1pZeroCheckCall
 bind value log1pZeroOk Bool log1pZeroCheckCall
 branch if condition log1pZeroOk target log1pZeroOkLabel
@@ -596,21 +596,21 @@ label log1pZeroOkLabel
 
 # arcsineRadiansFloat64(1.0) Ã¢â€°Ë† pi/2
 call asinOneCall arcsineRadiansFloat64
-argument asinOneCall x CFloat64 oneExtra
+argument asinOneCall x Float64 oneExtra
 run asinOneCall
-bind ok asinOneRes CFloat64 asinOneCall
-call asinOneDiffCall math.subtractF64
-argument asinOneDiffCall left F64 asinOneRes
-argument asinOneDiffCall right F64 piHalf
+bind ok asinOneRes Float64 asinOneCall
+call asinOneDiffCall math.subtractFloat64
+argument asinOneDiffCall left Float64 asinOneRes
+argument asinOneDiffCall right Float64 piHalf
 run asinOneDiffCall
-bind value asinOneDiff CFloat64 asinOneDiffCall
+bind value asinOneDiff Float64 asinOneDiffCall
 call asinOneAbsCall absoluteFloat64
-argument asinOneAbsCall x CFloat64 asinOneDiff
+argument asinOneAbsCall x Float64 asinOneDiff
 run asinOneAbsCall
-bind ok asinOneAbs CFloat64 asinOneAbsCall
-call asinOneCheckCall math.lessThanF64
-argument asinOneCheckCall left F64 asinOneAbs
-argument asinOneCheckCall right F64 tolGeneral
+bind ok asinOneAbs Float64 asinOneAbsCall
+call asinOneCheckCall math.lessThanFloat64
+argument asinOneCheckCall left Float64 asinOneAbs
+argument asinOneCheckCall right Float64 tolGeneral
 run asinOneCheckCall
 bind value asinOneOk Bool asinOneCheckCall
 branch if condition asinOneOk target asinOneOkLabel
@@ -619,16 +619,16 @@ label asinOneOkLabel
 
 # arccosineRadiansFloat64(1.0) Ã¢â€°Ë† 0.0
 call acosOneCall arccosineRadiansFloat64
-argument acosOneCall x CFloat64 oneExtra
+argument acosOneCall x Float64 oneExtra
 run acosOneCall
-bind ok acosOneRes CFloat64 acosOneCall
+bind ok acosOneRes Float64 acosOneCall
 call acosOneAbsCall absoluteFloat64
-argument acosOneAbsCall x CFloat64 acosOneRes
+argument acosOneAbsCall x Float64 acosOneRes
 run acosOneAbsCall
-bind ok acosOneAbs CFloat64 acosOneAbsCall
-call acosOneCheckCall math.lessThanF64
-argument acosOneCheckCall left F64 acosOneAbs
-argument acosOneCheckCall right F64 tolGeneral
+bind ok acosOneAbs Float64 acosOneAbsCall
+call acosOneCheckCall math.lessThanFloat64
+argument acosOneCheckCall left Float64 acosOneAbs
+argument acosOneCheckCall right Float64 tolGeneral
 run acosOneCheckCall
 bind value acosOneOk Bool acosOneCheckCall
 branch if condition acosOneOk target acosOneOkLabel
@@ -637,14 +637,14 @@ label acosOneOkLabel
 
 # fusedMultiplyAddFloat64(2.0, 3.0, 4.0) == 10.0
 call fmaCall fusedMultiplyAddFloat64
-argument fmaCall x CFloat64 twoExtra
-argument fmaCall y CFloat64 threeExtra
-argument fmaCall z CFloat64 fourExtra
+argument fmaCall x Float64 twoExtra
+argument fmaCall y Float64 threeExtra
+argument fmaCall z Float64 fourExtra
 run fmaCall
-bind ok fmaRes CFloat64 fmaCall
-call fmaCheckCall math.equalF64
-argument fmaCheckCall left F64 fmaRes
-argument fmaCheckCall right F64 tenExtra
+bind ok fmaRes Float64 fmaCall
+call fmaCheckCall math.equalFloat64
+argument fmaCheckCall left Float64 fmaRes
+argument fmaCheckCall right Float64 tenExtra
 run fmaCheckCall
 bind value fmaOk Bool fmaCheckCall
 branch if condition fmaOk target fmaOkLabel
@@ -653,13 +653,13 @@ label fmaOkLabel
 
 # maximumFloat64(3.0, 5.0) == 5.0
 call maxCall maximumFloat64
-argument maxCall x CFloat64 threeExtra
-argument maxCall y CFloat64 fiveExtra
+argument maxCall x Float64 threeExtra
+argument maxCall y Float64 fiveExtra
 run maxCall
-bind ok maxRes CFloat64 maxCall
-call maxCheckCall math.equalF64
-argument maxCheckCall left F64 maxRes
-argument maxCheckCall right F64 fiveExtra
+bind ok maxRes Float64 maxCall
+call maxCheckCall math.equalFloat64
+argument maxCheckCall left Float64 maxRes
+argument maxCheckCall right Float64 fiveExtra
 run maxCheckCall
 bind value maxOk Bool maxCheckCall
 branch if condition maxOk target maxOkLabel
@@ -668,13 +668,13 @@ label maxOkLabel
 
 # minimumFloat64(3.0, 5.0) == 3.0
 call minCall minimumFloat64
-argument minCall x CFloat64 threeExtra
-argument minCall y CFloat64 fiveExtra
+argument minCall x Float64 threeExtra
+argument minCall y Float64 fiveExtra
 run minCall
-bind ok minRes CFloat64 minCall
-call minCheckCall math.equalF64
-argument minCheckCall left F64 minRes
-argument minCheckCall right F64 threeExtra
+bind ok minRes Float64 minCall
+call minCheckCall math.equalFloat64
+argument minCheckCall left Float64 minRes
+argument minCheckCall right Float64 threeExtra
 run minCheckCall
 bind value minOk Bool minCheckCall
 branch if condition minOk target minOkLabel
@@ -682,15 +682,15 @@ branch else target testFailed
 label minOkLabel
 
 # positiveDifferenceFloat64(7.0, 3.0) == 4.0
-storage module immutable sevenExtra CFloat64 7.0
+storage module immutable sevenExtra Float64 7.0
 call pdiffCall positiveDifferenceFloat64
-argument pdiffCall x CFloat64 sevenExtra
-argument pdiffCall y CFloat64 threeExtra
+argument pdiffCall x Float64 sevenExtra
+argument pdiffCall y Float64 threeExtra
 run pdiffCall
-bind ok pdiffRes CFloat64 pdiffCall
-call pdiffCheckCall math.equalF64
-argument pdiffCheckCall left F64 pdiffRes
-argument pdiffCheckCall right F64 fourExtra
+bind ok pdiffRes Float64 pdiffCall
+call pdiffCheckCall math.equalFloat64
+argument pdiffCheckCall left Float64 pdiffRes
+argument pdiffCheckCall right Float64 fourExtra
 run pdiffCheckCall
 bind value pdiffOk Bool pdiffCheckCall
 branch if condition pdiffOk target pdiffOkLabel
@@ -699,13 +699,13 @@ label pdiffOkLabel
 
 # copySignFloat64(5.0, -1.0) == -5.0 (positive magnitude + negative sign)
 call copySignCall copySignFloat64
-argument copySignCall x CFloat64 fiveExtra
-argument copySignCall y CFloat64 negOneExtra
+argument copySignCall x Float64 fiveExtra
+argument copySignCall y Float64 negOneExtra
 run copySignCall
-bind ok copySignRes CFloat64 copySignCall
-call copySignCheckCall math.equalF64
-argument copySignCheckCall left F64 copySignRes
-argument copySignCheckCall right F64 negFiveExtra
+bind ok copySignRes Float64 copySignCall
+call copySignCheckCall math.equalFloat64
+argument copySignCheckCall left Float64 copySignRes
+argument copySignCheckCall right Float64 negFiveExtra
 run copySignCheckCall
 bind value copySignOk Bool copySignCheckCall
 branch if condition copySignOk target copySignOkLabel
@@ -713,14 +713,14 @@ branch else target testFailed
 label copySignOkLabel
 
 # signOfFloat64(-2.5) == -1.0
-storage module immutable negTwoHalf CFloat64 -2.5
+storage module immutable negTwoHalf Float64 -2.5
 call signNegCall signOfFloat64
-argument signNegCall x CFloat64 negTwoHalf
+argument signNegCall x Float64 negTwoHalf
 run signNegCall
-bind ok signNegRes CFloat64 signNegCall
-call signNegCheckCall math.equalF64
-argument signNegCheckCall left F64 signNegRes
-argument signNegCheckCall right F64 negOneExtra
+bind ok signNegRes Float64 signNegCall
+call signNegCheckCall math.equalFloat64
+argument signNegCheckCall left Float64 signNegRes
+argument signNegCheckCall right Float64 negOneExtra
 run signNegCheckCall
 bind value signNegOk Bool signNegCheckCall
 branch if condition signNegOk target signNegOkLabel
@@ -729,12 +729,12 @@ label signNegOkLabel
 
 # signOfFloat64(0.0) == 0.0
 call signZeroCall signOfFloat64
-argument signZeroCall x CFloat64 zeroExtra
+argument signZeroCall x Float64 zeroExtra
 run signZeroCall
-bind ok signZeroRes CFloat64 signZeroCall
-call signZeroCheckCall math.equalF64
-argument signZeroCheckCall left F64 signZeroRes
-argument signZeroCheckCall right F64 zeroExtra
+bind ok signZeroRes Float64 signZeroCall
+call signZeroCheckCall math.equalFloat64
+argument signZeroCheckCall left Float64 signZeroRes
+argument signZeroCheckCall right Float64 zeroExtra
 run signZeroCheckCall
 bind value signZeroOk Bool signZeroCheckCall
 branch if condition signZeroOk target signZeroOkLabel
@@ -742,14 +742,14 @@ branch else target testFailed
 label signZeroOkLabel
 
 # roundFloat64ToNearestInteger(2.7) == 3.0
-storage module immutable twoSeven CFloat64 2.7
+storage module immutable twoSeven Float64 2.7
 call roundCall roundFloat64ToNearestInteger
-argument roundCall x CFloat64 twoSeven
+argument roundCall x Float64 twoSeven
 run roundCall
-bind ok roundRes CFloat64 roundCall
-call roundCheckCall math.equalF64
-argument roundCheckCall left F64 roundRes
-argument roundCheckCall right F64 threeExtra
+bind ok roundRes Float64 roundCall
+call roundCheckCall math.equalFloat64
+argument roundCheckCall left Float64 roundRes
+argument roundCheckCall right Float64 threeExtra
 run roundCheckCall
 bind value roundOk Bool roundCheckCall
 branch if condition roundOk target roundOkLabel
@@ -757,23 +757,23 @@ branch else target testFailed
 label roundOkLabel
 
 # cubeRootFloat64(27.0) Ã¢â€°Ë† 3.0
-storage module immutable twentySeven CFloat64 27.0
+storage module immutable twentySeven Float64 27.0
 call cbrtCall cubeRootFloat64
-argument cbrtCall x CFloat64 twentySeven
+argument cbrtCall x Float64 twentySeven
 run cbrtCall
-bind ok cbrtRes CFloat64 cbrtCall
-call cbrtDiffCall math.subtractF64
-argument cbrtDiffCall left F64 cbrtRes
-argument cbrtDiffCall right F64 threeExtra
+bind ok cbrtRes Float64 cbrtCall
+call cbrtDiffCall math.subtractFloat64
+argument cbrtDiffCall left Float64 cbrtRes
+argument cbrtDiffCall right Float64 threeExtra
 run cbrtDiffCall
-bind value cbrtDiff CFloat64 cbrtDiffCall
+bind value cbrtDiff Float64 cbrtDiffCall
 call cbrtAbsCall absoluteFloat64
-argument cbrtAbsCall x CFloat64 cbrtDiff
+argument cbrtAbsCall x Float64 cbrtDiff
 run cbrtAbsCall
-bind ok cbrtAbs CFloat64 cbrtAbsCall
-call cbrtCheckCall math.lessThanF64
-argument cbrtCheckCall left F64 cbrtAbs
-argument cbrtCheckCall right F64 tolGeneral
+bind ok cbrtAbs Float64 cbrtAbsCall
+call cbrtCheckCall math.lessThanFloat64
+argument cbrtCheckCall left Float64 cbrtAbs
+argument cbrtCheckCall right Float64 tolGeneral
 run cbrtCheckCall
 bind value cbrtOk Bool cbrtCheckCall
 branch if condition cbrtOk target cbrtOkLabel
@@ -781,23 +781,23 @@ branch else target testFailed
 label cbrtOkLabel
 
 # exponentialBaseTwoFloat64(3.0) Ã¢â€°Ë† 8.0
-storage module immutable eightExtra CFloat64 8.0
+storage module immutable eightExtra Float64 8.0
 call exp2Call exponentialBaseTwoFloat64
-argument exp2Call x CFloat64 threeExtra
+argument exp2Call x Float64 threeExtra
 run exp2Call
-bind ok exp2Res CFloat64 exp2Call
-call exp2DiffCall math.subtractF64
-argument exp2DiffCall left F64 exp2Res
-argument exp2DiffCall right F64 eightExtra
+bind ok exp2Res Float64 exp2Call
+call exp2DiffCall math.subtractFloat64
+argument exp2DiffCall left Float64 exp2Res
+argument exp2DiffCall right Float64 eightExtra
 run exp2DiffCall
-bind value exp2Diff CFloat64 exp2DiffCall
+bind value exp2Diff Float64 exp2DiffCall
 call exp2AbsCall absoluteFloat64
-argument exp2AbsCall x CFloat64 exp2Diff
+argument exp2AbsCall x Float64 exp2Diff
 run exp2AbsCall
-bind ok exp2Abs CFloat64 exp2AbsCall
-call exp2CheckCall math.lessThanF64
-argument exp2CheckCall left F64 exp2Abs
-argument exp2CheckCall right F64 tolGeneral
+bind ok exp2Abs Float64 exp2AbsCall
+call exp2CheckCall math.lessThanFloat64
+argument exp2CheckCall left Float64 exp2Abs
+argument exp2CheckCall right Float64 tolGeneral
 run exp2CheckCall
 bind value exp2Ok Bool exp2CheckCall
 branch if condition exp2Ok target exp2OkLabel
@@ -806,21 +806,21 @@ label exp2OkLabel
 
 # Property: sin(pi/2) Ã¢â€°Ë† 1.0 (key trig boundary)
 call sinHalfPiCall sineRadiansFloat64
-argument sinHalfPiCall x CFloat64 piHalf
+argument sinHalfPiCall x Float64 piHalf
 run sinHalfPiCall
-bind ok sinHalfPiRes CFloat64 sinHalfPiCall
-call sinHalfPiDiffCall math.subtractF64
-argument sinHalfPiDiffCall left F64 sinHalfPiRes
-argument sinHalfPiDiffCall right F64 oneExtra
+bind ok sinHalfPiRes Float64 sinHalfPiCall
+call sinHalfPiDiffCall math.subtractFloat64
+argument sinHalfPiDiffCall left Float64 sinHalfPiRes
+argument sinHalfPiDiffCall right Float64 oneExtra
 run sinHalfPiDiffCall
-bind value sinHalfPiDiff CFloat64 sinHalfPiDiffCall
+bind value sinHalfPiDiff Float64 sinHalfPiDiffCall
 call sinHalfPiAbsCall absoluteFloat64
-argument sinHalfPiAbsCall x CFloat64 sinHalfPiDiff
+argument sinHalfPiAbsCall x Float64 sinHalfPiDiff
 run sinHalfPiAbsCall
-bind ok sinHalfPiAbs CFloat64 sinHalfPiAbsCall
-call sinHalfPiCheckCall math.lessThanF64
-argument sinHalfPiCheckCall left F64 sinHalfPiAbs
-argument sinHalfPiCheckCall right F64 tolGeneral
+bind ok sinHalfPiAbs Float64 sinHalfPiAbsCall
+call sinHalfPiCheckCall math.lessThanFloat64
+argument sinHalfPiCheckCall left Float64 sinHalfPiAbs
+argument sinHalfPiCheckCall right Float64 tolGeneral
 run sinHalfPiCheckCall
 bind value sinHalfPiOk Bool sinHalfPiCheckCall
 branch if condition sinHalfPiOk target sinHalfPiOkLabel
@@ -829,21 +829,21 @@ label sinHalfPiOkLabel
 
 # Property: cos(pi) Ã¢â€°Ë† -1.0 (key trig boundary)
 call cosPiCall cosineRadiansFloat64
-argument cosPiCall x CFloat64 piValue
+argument cosPiCall x Float64 piValue
 run cosPiCall
-bind ok cosPiRes CFloat64 cosPiCall
-call cosPiDiffCall math.subtractF64
-argument cosPiDiffCall left F64 cosPiRes
-argument cosPiDiffCall right F64 negOneExtra
+bind ok cosPiRes Float64 cosPiCall
+call cosPiDiffCall math.subtractFloat64
+argument cosPiDiffCall left Float64 cosPiRes
+argument cosPiDiffCall right Float64 negOneExtra
 run cosPiDiffCall
-bind value cosPiDiff CFloat64 cosPiDiffCall
+bind value cosPiDiff Float64 cosPiDiffCall
 call cosPiAbsCall absoluteFloat64
-argument cosPiAbsCall x CFloat64 cosPiDiff
+argument cosPiAbsCall x Float64 cosPiDiff
 run cosPiAbsCall
-bind ok cosPiAbs CFloat64 cosPiAbsCall
-call cosPiCheckCall math.lessThanF64
-argument cosPiCheckCall left F64 cosPiAbs
-argument cosPiCheckCall right F64 tolGeneral
+bind ok cosPiAbs Float64 cosPiAbsCall
+call cosPiCheckCall math.lessThanFloat64
+argument cosPiCheckCall left Float64 cosPiAbs
+argument cosPiCheckCall right Float64 tolGeneral
 run cosPiCheckCall
 bind value cosPiOk Bool cosPiCheckCall
 branch if condition cosPiOk target cosPiOkLabel
@@ -851,42 +851,42 @@ branch else target testFailed
 label cosPiOkLabel
 
 # Property: sinÃ‚Â² + cosÃ‚Â² Ã¢â€°Ë† 1 for x = 0.5 (Pythagorean identity)
-storage module immutable halfExtra CFloat64 0.5
+storage module immutable halfExtra Float64 0.5
 call pythSinCall sineRadiansFloat64
-argument pythSinCall x CFloat64 halfExtra
+argument pythSinCall x Float64 halfExtra
 run pythSinCall
-bind ok pythSinRes CFloat64 pythSinCall
+bind ok pythSinRes Float64 pythSinCall
 call pythCosCall cosineRadiansFloat64
-argument pythCosCall x CFloat64 halfExtra
+argument pythCosCall x Float64 halfExtra
 run pythCosCall
-bind ok pythCosRes CFloat64 pythCosCall
-call pythSinSqCall math.multiplyF64
-argument pythSinSqCall left F64 pythSinRes
-argument pythSinSqCall right F64 pythSinRes
+bind ok pythCosRes Float64 pythCosCall
+call pythSinSqCall math.multiplyFloat64
+argument pythSinSqCall left Float64 pythSinRes
+argument pythSinSqCall right Float64 pythSinRes
 run pythSinSqCall
-bind value pythSinSq CFloat64 pythSinSqCall
-call pythCosSqCall math.multiplyF64
-argument pythCosSqCall left F64 pythCosRes
-argument pythCosSqCall right F64 pythCosRes
+bind value pythSinSq Float64 pythSinSqCall
+call pythCosSqCall math.multiplyFloat64
+argument pythCosSqCall left Float64 pythCosRes
+argument pythCosSqCall right Float64 pythCosRes
 run pythCosSqCall
-bind value pythCosSq CFloat64 pythCosSqCall
-call pythSumCall math.addF64
-argument pythSumCall left F64 pythSinSq
-argument pythSumCall right F64 pythCosSq
+bind value pythCosSq Float64 pythCosSqCall
+call pythSumCall math.addFloat64
+argument pythSumCall left Float64 pythSinSq
+argument pythSumCall right Float64 pythCosSq
 run pythSumCall
-bind value pythSum CFloat64 pythSumCall
-call pythDiffCall math.subtractF64
-argument pythDiffCall left F64 pythSum
-argument pythDiffCall right F64 oneExtra
+bind value pythSum Float64 pythSumCall
+call pythDiffCall math.subtractFloat64
+argument pythDiffCall left Float64 pythSum
+argument pythDiffCall right Float64 oneExtra
 run pythDiffCall
-bind value pythDiff CFloat64 pythDiffCall
+bind value pythDiff Float64 pythDiffCall
 call pythAbsCall absoluteFloat64
-argument pythAbsCall x CFloat64 pythDiff
+argument pythAbsCall x Float64 pythDiff
 run pythAbsCall
-bind ok pythAbs CFloat64 pythAbsCall
-call pythCheckCall math.lessThanF64
-argument pythCheckCall left F64 pythAbs
-argument pythCheckCall right F64 tolGeneral
+bind ok pythAbs Float64 pythAbsCall
+call pythCheckCall math.lessThanFloat64
+argument pythCheckCall left Float64 pythAbs
+argument pythCheckCall right Float64 tolGeneral
 run pythCheckCall
 bind value pythOk Bool pythCheckCall
 branch if condition pythOk target pythOkLabel
@@ -897,19 +897,19 @@ label pythOkLabel
 # with the other stdlib smokes, references the runtime console
 # handle, and surfaces a typed ConsoleWriteFailed if stdout itself
 # fails (closed pipe, etc.).
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 
 storage module immutable exitOk ExitCode 0
 return ok exitOk
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

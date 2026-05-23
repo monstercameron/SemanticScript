@@ -15,13 +15,13 @@ importConstant importedJwtAuthEnvelopeBufferRequiredBytes jwt jwtAuthEnvelopeBuf
 importConstant importedJwtClaimBufferRequiredBytes jwt jwtClaimBufferRequiredBytes
 
 error MainError
-errorCase MainError SignFailed CSignedInt32
-errorCase MainError VerifyShouldMatchButDidNot CSignedInt32
-errorCase MainError VerifyShouldRejectButMatched CSignedInt32
-errorCase MainError InvalidTemplateWasAccepted CSignedInt32
-errorCase MainError LoginEnvelopeFailed CSignedInt32
-errorCase MainError RefreshEnvelopeFailed CSignedInt32
-errorCase MainError AllocationFailed COpaqueMemoryAddress
+errorCase MainError SignFailed Int32
+errorCase MainError VerifyShouldMatchButDidNot Int32
+errorCase MainError VerifyShouldRejectButMatched Int32
+errorCase MainError InvalidTemplateWasAccepted Int32
+errorCase MainError LoginEnvelopeFailed Int32
+errorCase MainError RefreshEnvelopeFailed Int32
+errorCase MainError AllocationFailed OpaquePointer
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability stdJwtSmokeStdoutWrite console.stdout write
@@ -32,30 +32,30 @@ capability stdJwtSmokeHeapFree heap free
 purpose operation stdJwtSmokeHeapFree "Authority to free JWT output scratch buffers at defer time."
 
 storage module immutable successCode ExitCode 0
-storage module immutable tokenBufferCapacity CByteCount 512
-storage module immutable envelopeBufferCapacity CByteCount 2048
-storage module immutable zeroOffset CByteCount 0
-storage module immutable jwtStatusOkValue CSignedInt32 0
-storage module immutable jwtStatusMatchValue CSignedInt32 1
-storage module immutable jwtStatusMismatchValue CSignedInt32 0
-storage module immutable jwtStatusConfigErrorValue CSignedInt32 -1
-storage module immutable jwtAccessTokenBufferRequiredBytesValue CSignedInt32 512
-storage module immutable jwtAuthEnvelopeBufferRequiredBytesValue CSignedInt32 2048
-storage module immutable jwtClaimBufferRequiredBytesValue CSignedInt32 128
+storage module immutable tokenBufferCapacity ByteCount 512
+storage module immutable envelopeBufferCapacity ByteCount 2048
+storage module immutable zeroOffset ByteCount 0
+storage module immutable jwtStatusOkValue Int32 0
+storage module immutable jwtStatusMatchValue Int32 1
+storage module immutable jwtStatusMismatchValue Int32 0
+storage module immutable jwtStatusConfigErrorValue Int32 -1
+storage module immutable jwtAccessTokenBufferRequiredBytesValue Int32 512
+storage module immutable jwtAuthEnvelopeBufferRequiredBytesValue Int32 2048
+storage module immutable jwtClaimBufferRequiredBytesValue Int32 128
 storage module immutable jwtSecret JwtSecret "generic-jwt-test-secret"
 storage module immutable wrongJwtSecret JwtSecret "generic-jwt-test-wrong-secret"
 storage module immutable payloadTemplate JwtPayloadTemplate "{\"iss\":\"issuer.example\",\"sub\":\"subject.example\",\"iat\":42,\"jti\":\"%s\"}"
 storage module immutable invalidPayloadTemplate JwtPayloadTemplate "{\"iss\":\"issuer.example\",\"sub\":\"subject.example\",\"jti\":\"%s\",\"bad\":\"%n\"}"
-storage module immutable refreshToken CNullTerminatedByteString "refresh-token-value"
-storage module immutable subjectId CNullTerminatedByteString "subject-001"
-storage module immutable principalName CNullTerminatedByteString "principal"
-storage module immutable principalDisplayName CNullTerminatedByteString "Principal"
-storage module immutable roleName CNullTerminatedByteString "reader"
-storage module immutable scopesJson CNullTerminatedByteString "[\"read\"]"
+storage module immutable refreshToken String "refresh-token-value"
+storage module immutable subjectId String "subject-001"
+storage module immutable principalName String "principal"
+storage module immutable principalDisplayName String "Principal"
+storage module immutable roleName String "reader"
+storage module immutable scopesJson String "[\"read\"]"
 storage module immutable subjectClaimName JwtClaimName "sub"
 storage module immutable issuedAtClaimName JwtClaimName "iat"
 storage module immutable missingClaimName JwtClaimName "missing"
-storage module immutable missingClaimDefault CSignedInt64 -7
+storage module immutable missingClaimDefault Int64 -7
 
 operation main
 input operation main console Console
@@ -72,16 +72,16 @@ purpose operation main "Runtime-smoke standard.jwt signing, signature verificati
 invariant operation main "Claim strings remain generic test data; standard.jwt receives caller-owned payload templates and never owns route or domain authorization policy."
 
 call allocateTokenBufferCall c.malloc
-argument allocateTokenBufferCall size CByteCount tokenBufferCapacity
+argument allocateTokenBufferCall size ByteCount tokenBufferCapacity
 run allocateTokenBufferCall
-bind ok tokenMemory COpaqueMemoryAddress allocateTokenBufferCall
-bind error tokenAllocationError COpaqueMemoryAddress allocateTokenBufferCall
+bind ok tokenMemory OpaquePointer allocateTokenBufferCall
+bind error tokenAllocationError OpaquePointer allocateTokenBufferCall
 branch error source allocateTokenBufferCall target tokenAllocationFailed
 defer releaseTokenMemoryDefer c.free tokenMemory
 
 call tokenOutputBufferCall pointer.offset
-argument tokenOutputBufferCall base COpaqueMemoryAddress tokenMemory
-argument tokenOutputBufferCall offset CByteCount zeroOffset
+argument tokenOutputBufferCall base OpaquePointer tokenMemory
+argument tokenOutputBufferCall offset ByteCount zeroOffset
 run tokenOutputBufferCall
 bind value tokenOutputBuffer JwtOutputBuffer tokenOutputBufferCall
 
@@ -89,13 +89,13 @@ call signTokenCall jwt.hs256SignJsonPayloadWithRandomJti
 argument signTokenCall secret JwtSecret jwtSecret
 argument signTokenCall payloadTemplate JwtPayloadTemplate payloadTemplate
 argument signTokenCall outBuffer JwtOutputBuffer tokenOutputBuffer
-argument signTokenCall outCapacity CSignedInt32 jwtAccessTokenBufferRequiredBytesValue
+argument signTokenCall outCapacity Int32 jwtAccessTokenBufferRequiredBytesValue
 run signTokenCall
-bind value signStatus CSignedInt32 signTokenCall
+bind value signStatus Int32 signTokenCall
 
-call signStatusOkCheckCall math.equalCSignedInt32
-argument signStatusOkCheckCall left CSignedInt32 signStatus
-argument signStatusOkCheckCall right CSignedInt32 jwtStatusOkValue
+call signStatusOkCheckCall math.equalInt32
+argument signStatusOkCheckCall left Int32 signStatus
+argument signStatusOkCheckCall right Int32 jwtStatusOkValue
 run signStatusOkCheckCall
 bind value signStatusOk Bool signStatusOkCheckCall
 branch if condition signStatusOk target tokenSigned
@@ -103,8 +103,8 @@ jump target tokenSignFailed
 label tokenSigned
 
 call tokenTextCall pointer.offset
-argument tokenTextCall base COpaqueMemoryAddress tokenMemory
-argument tokenTextCall offset CByteCount zeroOffset
+argument tokenTextCall base OpaquePointer tokenMemory
+argument tokenTextCall offset ByteCount zeroOffset
 run tokenTextCall
 bind value tokenText JwtAccessToken tokenTextCall
 
@@ -112,11 +112,11 @@ call verifyMatchingCall jwt.hs256VerifyToken
 argument verifyMatchingCall token JwtAccessToken tokenText
 argument verifyMatchingCall secret JwtSecret jwtSecret
 run verifyMatchingCall
-bind value verifyMatchingStatus CSignedInt32 verifyMatchingCall
+bind value verifyMatchingStatus Int32 verifyMatchingCall
 
-call verifyMatchingCheckCall math.equalCSignedInt32
-argument verifyMatchingCheckCall left CSignedInt32 verifyMatchingStatus
-argument verifyMatchingCheckCall right CSignedInt32 jwtStatusMatchValue
+call verifyMatchingCheckCall math.equalInt32
+argument verifyMatchingCheckCall left Int32 verifyMatchingStatus
+argument verifyMatchingCheckCall right Int32 jwtStatusMatchValue
 run verifyMatchingCheckCall
 bind value verifyMatchingOk Bool verifyMatchingCheckCall
 branch if condition verifyMatchingOk target matchingVerified
@@ -127,11 +127,11 @@ call verifyWrongSecretCall jwt.hs256VerifyToken
 argument verifyWrongSecretCall token JwtAccessToken tokenText
 argument verifyWrongSecretCall secret JwtSecret wrongJwtSecret
 run verifyWrongSecretCall
-bind value verifyWrongSecretStatus CSignedInt32 verifyWrongSecretCall
+bind value verifyWrongSecretStatus Int32 verifyWrongSecretCall
 
-call verifyWrongSecretCheckCall math.equalCSignedInt32
-argument verifyWrongSecretCheckCall left CSignedInt32 verifyWrongSecretStatus
-argument verifyWrongSecretCheckCall right CSignedInt32 jwtStatusMismatchValue
+call verifyWrongSecretCheckCall math.equalInt32
+argument verifyWrongSecretCheckCall left Int32 verifyWrongSecretStatus
+argument verifyWrongSecretCheckCall right Int32 jwtStatusMismatchValue
 run verifyWrongSecretCheckCall
 bind value verifyWrongSecretRejected Bool verifyWrongSecretCheckCall
 branch if condition verifyWrongSecretRejected target wrongSecretRejected
@@ -139,16 +139,16 @@ jump target verifyShouldHaveRejectedFailed
 label wrongSecretRejected
 
 call allocateClaimBufferCall c.malloc
-argument allocateClaimBufferCall size CByteCount jwtClaimBufferRequiredBytesValue
+argument allocateClaimBufferCall size ByteCount jwtClaimBufferRequiredBytesValue
 run allocateClaimBufferCall
-bind ok claimMemory COpaqueMemoryAddress allocateClaimBufferCall
-bind error claimAllocationError COpaqueMemoryAddress allocateClaimBufferCall
+bind ok claimMemory OpaquePointer allocateClaimBufferCall
+bind error claimAllocationError OpaquePointer allocateClaimBufferCall
 branch error source allocateClaimBufferCall target claimAllocationFailed
 defer releaseClaimMemoryDefer c.free claimMemory
 
 call claimOutputBufferCall pointer.offset
-argument claimOutputBufferCall base COpaqueMemoryAddress claimMemory
-argument claimOutputBufferCall offset CByteCount zeroOffset
+argument claimOutputBufferCall base OpaquePointer claimMemory
+argument claimOutputBufferCall offset ByteCount zeroOffset
 run claimOutputBufferCall
 bind value claimOutputBuffer JwtClaimBuffer claimOutputBufferCall
 
@@ -156,22 +156,22 @@ call readSubjectClaimCall jwt.readStringClaim
 argument readSubjectClaimCall token JwtAccessToken tokenText
 argument readSubjectClaimCall claimName JwtClaimName subjectClaimName
 argument readSubjectClaimCall outBuffer JwtClaimBuffer claimOutputBuffer
-argument readSubjectClaimCall outCapacity CSignedInt32 jwtClaimBufferRequiredBytesValue
+argument readSubjectClaimCall outCapacity Int32 jwtClaimBufferRequiredBytesValue
 run readSubjectClaimCall
-bind value subjectClaimValue CNullTerminatedByteString readSubjectClaimCall
+bind value subjectClaimValue String readSubjectClaimCall
 call subjectClaimNullCall pointer.isNull
-argument subjectClaimNullCall ptr COpaqueMemoryAddress subjectClaimValue
+argument subjectClaimNullCall ptr OpaquePointer subjectClaimValue
 run subjectClaimNullCall
 bind value subjectClaimMissing Bool subjectClaimNullCall
 branch if condition subjectClaimMissing target claimReadFailed
 call subjectClaimCompareCall c.strcmp
-argument subjectClaimCompareCall left CNullTerminatedByteString subjectClaimValue
-argument subjectClaimCompareCall right CNullTerminatedByteString subjectId
+argument subjectClaimCompareCall left String subjectClaimValue
+argument subjectClaimCompareCall right String subjectId
 run subjectClaimCompareCall
-bind value subjectClaimCompareResult CSignedInt32 subjectClaimCompareCall
-call subjectClaimMatchCall math.equalCSignedInt32
-argument subjectClaimMatchCall left CSignedInt32 subjectClaimCompareResult
-argument subjectClaimMatchCall right CSignedInt32 jwtStatusOkValue
+bind value subjectClaimCompareResult Int32 subjectClaimCompareCall
+call subjectClaimMatchCall math.equalInt32
+argument subjectClaimMatchCall left Int32 subjectClaimCompareResult
+argument subjectClaimMatchCall right Int32 jwtStatusOkValue
 run subjectClaimMatchCall
 bind value subjectClaimMatches Bool subjectClaimMatchCall
 branch if condition subjectClaimMatches target subjectClaimVerified
@@ -181,12 +181,12 @@ label subjectClaimVerified
 call readIssuedAtClaimCall jwt.readInt64Claim
 argument readIssuedAtClaimCall token JwtAccessToken tokenText
 argument readIssuedAtClaimCall claimName JwtClaimName issuedAtClaimName
-argument readIssuedAtClaimCall missingDefault CSignedInt64 missingClaimDefault
+argument readIssuedAtClaimCall missingDefault Int64 missingClaimDefault
 run readIssuedAtClaimCall
-bind value issuedAtClaimValue CSignedInt64 readIssuedAtClaimCall
-call issuedAtClaimCheckCall math.equalI64
-argument issuedAtClaimCheckCall left I64 issuedAtClaimValue
-argument issuedAtClaimCheckCall right I64 42
+bind value issuedAtClaimValue Int64 readIssuedAtClaimCall
+call issuedAtClaimCheckCall math.equalInt64
+argument issuedAtClaimCheckCall left Int64 issuedAtClaimValue
+argument issuedAtClaimCheckCall right Int64 42
 run issuedAtClaimCheckCall
 bind value issuedAtClaimMatches Bool issuedAtClaimCheckCall
 branch if condition issuedAtClaimMatches target issuedAtClaimVerified
@@ -196,12 +196,12 @@ label issuedAtClaimVerified
 call readMissingClaimCall jwt.readInt64Claim
 argument readMissingClaimCall token JwtAccessToken tokenText
 argument readMissingClaimCall claimName JwtClaimName missingClaimName
-argument readMissingClaimCall missingDefault CSignedInt64 missingClaimDefault
+argument readMissingClaimCall missingDefault Int64 missingClaimDefault
 run readMissingClaimCall
-bind value missingClaimValue CSignedInt64 readMissingClaimCall
-call missingClaimDefaultCheckCall math.equalI64
-argument missingClaimDefaultCheckCall left I64 missingClaimValue
-argument missingClaimDefaultCheckCall right I64 missingClaimDefault
+bind value missingClaimValue Int64 readMissingClaimCall
+call missingClaimDefaultCheckCall math.equalInt64
+argument missingClaimDefaultCheckCall left Int64 missingClaimValue
+argument missingClaimDefaultCheckCall right Int64 missingClaimDefault
 run missingClaimDefaultCheckCall
 bind value missingClaimDefaultReturned Bool missingClaimDefaultCheckCall
 branch if condition missingClaimDefaultReturned target claimReadersVerified
@@ -212,13 +212,13 @@ call invalidTemplateSignCall jwt.hs256SignJsonPayloadWithRandomJti
 argument invalidTemplateSignCall secret JwtSecret jwtSecret
 argument invalidTemplateSignCall payloadTemplate JwtPayloadTemplate invalidPayloadTemplate
 argument invalidTemplateSignCall outBuffer JwtOutputBuffer tokenOutputBuffer
-argument invalidTemplateSignCall outCapacity CSignedInt32 jwtAccessTokenBufferRequiredBytesValue
+argument invalidTemplateSignCall outCapacity Int32 jwtAccessTokenBufferRequiredBytesValue
 run invalidTemplateSignCall
-bind value invalidTemplateStatus CSignedInt32 invalidTemplateSignCall
+bind value invalidTemplateStatus Int32 invalidTemplateSignCall
 
-call invalidTemplateCheckCall math.equalCSignedInt32
-argument invalidTemplateCheckCall left CSignedInt32 invalidTemplateStatus
-argument invalidTemplateCheckCall right CSignedInt32 jwtStatusConfigErrorValue
+call invalidTemplateCheckCall math.equalInt32
+argument invalidTemplateCheckCall left Int32 invalidTemplateStatus
+argument invalidTemplateCheckCall right Int32 jwtStatusConfigErrorValue
 run invalidTemplateCheckCall
 bind value invalidTemplateRejected Bool invalidTemplateCheckCall
 branch if condition invalidTemplateRejected target invalidTemplateRejectedLabel
@@ -226,35 +226,35 @@ jump target invalidTemplateAcceptedFailed
 label invalidTemplateRejectedLabel
 
 call allocateEnvelopeBufferCall c.malloc
-argument allocateEnvelopeBufferCall size CByteCount envelopeBufferCapacity
+argument allocateEnvelopeBufferCall size ByteCount envelopeBufferCapacity
 run allocateEnvelopeBufferCall
-bind ok envelopeMemory COpaqueMemoryAddress allocateEnvelopeBufferCall
-bind error envelopeAllocationError COpaqueMemoryAddress allocateEnvelopeBufferCall
+bind ok envelopeMemory OpaquePointer allocateEnvelopeBufferCall
+bind error envelopeAllocationError OpaquePointer allocateEnvelopeBufferCall
 branch error source allocateEnvelopeBufferCall target envelopeAllocationFailed
 defer releaseEnvelopeMemoryDefer c.free envelopeMemory
 
 call envelopeOutputBufferCall pointer.offset
-argument envelopeOutputBufferCall base COpaqueMemoryAddress envelopeMemory
-argument envelopeOutputBufferCall offset CByteCount zeroOffset
+argument envelopeOutputBufferCall base OpaquePointer envelopeMemory
+argument envelopeOutputBufferCall offset ByteCount zeroOffset
 run envelopeOutputBufferCall
 bind value envelopeOutputBuffer AuthEnvelopeBuffer envelopeOutputBufferCall
 
 call formatLoginCall jwt.formatBearerLoginEnvelope
 argument formatLoginCall accessToken JwtAccessToken tokenText
-argument formatLoginCall refreshToken CNullTerminatedByteString refreshToken
-argument formatLoginCall userId CNullTerminatedByteString subjectId
-argument formatLoginCall username CNullTerminatedByteString principalName
-argument formatLoginCall displayName CNullTerminatedByteString principalDisplayName
-argument formatLoginCall roleName CNullTerminatedByteString roleName
-argument formatLoginCall scopesJson CNullTerminatedByteString scopesJson
+argument formatLoginCall refreshToken String refreshToken
+argument formatLoginCall userId String subjectId
+argument formatLoginCall username String principalName
+argument formatLoginCall displayName String principalDisplayName
+argument formatLoginCall roleName String roleName
+argument formatLoginCall scopesJson String scopesJson
 argument formatLoginCall outBuffer AuthEnvelopeBuffer envelopeOutputBuffer
-argument formatLoginCall outCapacity CSignedInt32 jwtAuthEnvelopeBufferRequiredBytesValue
+argument formatLoginCall outCapacity Int32 jwtAuthEnvelopeBufferRequiredBytesValue
 run formatLoginCall
-bind value loginEnvelopeStatus CSignedInt32 formatLoginCall
+bind value loginEnvelopeStatus Int32 formatLoginCall
 
-call loginEnvelopeStatusCheckCall math.equalCSignedInt32
-argument loginEnvelopeStatusCheckCall left CSignedInt32 loginEnvelopeStatus
-argument loginEnvelopeStatusCheckCall right CSignedInt32 jwtStatusOkValue
+call loginEnvelopeStatusCheckCall math.equalInt32
+argument loginEnvelopeStatusCheckCall left Int32 loginEnvelopeStatus
+argument loginEnvelopeStatusCheckCall right Int32 jwtStatusOkValue
 run loginEnvelopeStatusCheckCall
 bind value loginEnvelopeOk Bool loginEnvelopeStatusCheckCall
 branch if condition loginEnvelopeOk target loginEnvelopeFormatted
@@ -263,25 +263,25 @@ label loginEnvelopeFormatted
 
 call formatRefreshCall jwt.formatBearerRefreshEnvelope
 argument formatRefreshCall accessToken JwtAccessToken tokenText
-argument formatRefreshCall refreshToken CNullTerminatedByteString refreshToken
+argument formatRefreshCall refreshToken String refreshToken
 argument formatRefreshCall outBuffer AuthEnvelopeBuffer envelopeOutputBuffer
-argument formatRefreshCall outCapacity CSignedInt32 jwtAuthEnvelopeBufferRequiredBytesValue
+argument formatRefreshCall outCapacity Int32 jwtAuthEnvelopeBufferRequiredBytesValue
 run formatRefreshCall
-bind value refreshEnvelopeStatus CSignedInt32 formatRefreshCall
+bind value refreshEnvelopeStatus Int32 formatRefreshCall
 
-call refreshEnvelopeStatusCheckCall math.equalCSignedInt32
-argument refreshEnvelopeStatusCheckCall left CSignedInt32 refreshEnvelopeStatus
-argument refreshEnvelopeStatusCheckCall right CSignedInt32 jwtStatusOkValue
+call refreshEnvelopeStatusCheckCall math.equalInt32
+argument refreshEnvelopeStatusCheckCall left Int32 refreshEnvelopeStatus
+argument refreshEnvelopeStatusCheckCall right Int32 jwtStatusOkValue
 run refreshEnvelopeStatusCheckCall
 bind value refreshEnvelopeOk Bool refreshEnvelopeStatusCheckCall
 branch if condition refreshEnvelopeOk target refreshEnvelopeFormatted
 jump target refreshEnvelopeFailed
 label refreshEnvelopeFormatted
 
-storage local immutable successMarker CNullTerminatedByteString "stdJwtRuntimeSmokeOk"
+storage local immutable successMarker String "stdJwtRuntimeSmokeOk"
 call writeMarkerCall console.writeLine
 argument writeMarkerCall console Console console
-argument writeMarkerCall text CNullTerminatedByteString successMarker
+argument writeMarkerCall text String successMarker
 run writeMarkerCall
 ignore void source writeMarkerCall
 bind error consoleWriteError ConsoleWriteError writeMarkerCall

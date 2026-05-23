@@ -7,7 +7,7 @@ import sqlite standard.sqlite
 importConstant importedSqliteModuleVersionText sqlite sqliteModuleVersionText
 
 storage module immutable successCode ExitCode 0
-storage module immutable okText CNullTerminatedByteString "OK"
+storage module immutable okText String "OK"
 
 operation main
 output operation main ExitCode
@@ -18,8 +18,8 @@ async main no
 purpose operation main "Smoke-test that standard.sqlite imports and exposes its version constant."
 
 call writeOkCall console.writeLine
-argument writeOkCall text CNullTerminatedByteString okText
+argument writeOkCall text String okText
 run writeOkCall
-ignore value source writeOkCall type CSignedInt32
+ignore value source writeOkCall type Int32
 
 return value successCode

@@ -5,36 +5,36 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation makeNegOnePtFive
-output operation makeNegOnePtFive Result CFloat64 Void
+output operation makeNegOnePtFive Result Float64 Void
 memory makeNegOnePtFive heap no
 async makeNegOnePtFive no
 purpose operation makeNegOnePtFive "Return -1.5 as a bind, since FP classification emitters expect bind/var/param args (not raw consts)."
 invariant operation makeNegOnePtFive "Returns -1.5."
 label startMakeNegOnePtFive
-storage module immutable negOnePtFive CFloat64 -1.5
+storage module immutable negOnePtFive Float64 -1.5
 return ok negOnePtFive
 
 operation makePiApprox
-output operation makePiApprox Result CFloat64 Void
+output operation makePiApprox Result Float64 Void
 memory makePiApprox heap no
 async makePiApprox no
 purpose operation makePiApprox "Return 3.14 as a bind."
 invariant operation makePiApprox "Returns 3.14."
 label startMakePiApprox
-storage module immutable piApprox CFloat64 3.14
+storage module immutable piApprox Float64 3.14
 return ok piApprox
 
 operation makePosTwoPtFive
-output operation makePosTwoPtFive Result CFloat64 Void
+output operation makePosTwoPtFive Result Float64 Void
 memory makePosTwoPtFive heap no
 async makePosTwoPtFive no
 purpose operation makePosTwoPtFive "Return 2.5 as a bind."
 invariant operation makePosTwoPtFive "Returns 2.5."
 label startMakePosTwoPtFive
-storage module immutable posTwoPtFive CFloat64 2.5
+storage module immutable posTwoPtFive Float64 2.5
 return ok posTwoPtFive
 
 operation main
@@ -47,59 +47,59 @@ async main no
 purpose operation main "Exercise c.signbit (1 for negative, 0 for positive) and c.isfinite (1 for finite). Inputs come from user ops to ensure they're binds at the call site."
 invariant operation main "Output: signbit(-1.5)=1, isfinite(3.14)=1, signbit(2.5)=0."
 label startMain
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
 call makeNegCall makeNegOnePtFive
 run makeNegCall
-bind ok negValue CFloat64 makeNegCall
+bind ok negValue Float64 makeNegCall
 call signbitNeg c.signbit
-argument signbitNeg value CFloat64 negValue
+argument signbitNeg value Float64 negValue
 run signbitNeg
-bind value signbitNegRes CSignedInt64 signbitNeg
-memory main mutable sbNegStore I64 0
+bind value signbitNegRes Int64 signbitNeg
+memory main mutable sbNegStore Int64 0
 set memory sbNegStore signbitNegRes
 call write1Call console.writeIntegerLine
 argument write1Call console Console console
-argument write1Call value I64 sbNegStore
+argument write1Call value Int64 sbNegStore
 run write1Call
 ignore void source write1Call
 
 call makePiCall makePiApprox
 run makePiCall
-bind ok piValue CFloat64 makePiCall
+bind ok piValue Float64 makePiCall
 call isfiniteCall c.isfinite
-argument isfiniteCall value CFloat64 piValue
+argument isfiniteCall value Float64 piValue
 run isfiniteCall
-bind value isfiniteRes CSignedInt64 isfiniteCall
-memory main mutable ifStore I64 0
+bind value isfiniteRes Int64 isfiniteCall
+memory main mutable ifStore Int64 0
 set memory ifStore isfiniteRes
 call write2Call console.writeIntegerLine
 argument write2Call console Console console
-argument write2Call value I64 ifStore
+argument write2Call value Int64 ifStore
 run write2Call
 ignore void source write2Call
 
 call makePosCall makePosTwoPtFive
 run makePosCall
-bind ok posValue CFloat64 makePosCall
+bind ok posValue Float64 makePosCall
 call signbitPos c.signbit
-argument signbitPos value CFloat64 posValue
+argument signbitPos value Float64 posValue
 run signbitPos
-bind value signbitPosRes CSignedInt64 signbitPos
-memory main mutable sbPosStore I64 0
+bind value signbitPosRes Int64 signbitPos
+memory main mutable sbPosStore Int64 0
 set memory sbPosStore signbitPosRes
 call write3Call console.writeIntegerLine
 argument write3Call console Console console
-argument write3Call value I64 sbPosStore
+argument write3Call value Int64 sbPosStore
 run write3Call
 ignore void source write3Call
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

@@ -45,38 +45,38 @@ invariant operation main "SIGINT == 2, SIGTERM == 15."
 
 label startMain
 
-storage module immutable interruptExpectedValue CSignedInt32 2
-call checkInterruptCall math.equalI64
-argument checkInterruptCall left I64 interruptSignalNumber
-argument checkInterruptCall right I64 interruptExpectedValue
+storage module immutable interruptExpectedValue Int32 2
+call checkInterruptCall math.equalInt64
+argument checkInterruptCall left Int64 interruptSignalNumber
+argument checkInterruptCall right Int64 interruptExpectedValue
 run checkInterruptCall
 bind value interruptOk Bool checkInterruptCall
 branch if condition interruptOk target interruptHolds
 branch else target smokeAssertionFailed
 label interruptHolds
 
-storage module immutable terminationExpectedValue CSignedInt32 15
-call checkTerminationCall math.equalI64
-argument checkTerminationCall left I64 terminationSignalNumber
-argument checkTerminationCall right I64 terminationExpectedValue
+storage module immutable terminationExpectedValue Int32 15
+call checkTerminationCall math.equalInt64
+argument checkTerminationCall left Int64 terminationSignalNumber
+argument checkTerminationCall right Int64 terminationExpectedValue
 run checkTerminationCall
 bind value terminationOk Bool checkTerminationCall
 branch if condition terminationOk target terminationHolds
 branch else target smokeAssertionFailed
 label terminationHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

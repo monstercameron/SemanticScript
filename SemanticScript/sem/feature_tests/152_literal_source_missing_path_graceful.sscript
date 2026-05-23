@@ -5,8 +5,8 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-literal nonExistentAssetLiteral CNullTerminatedByteString
+errorCase MainError Placeholder Int32
+literal nonExistentAssetLiteral String
 literalSource nonExistentAssetLiteral "_modules/this_file_does_not_exist_anywhere.bin"
 operation main
 input operation main console Console

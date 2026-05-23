@@ -15,10 +15,10 @@ async main no
 purpose operation main "Single console.writeLine of a string const."
 invariant operation main "Emits 'hello world' followed by newline."
 label startMain
-storage module immutable greetingText CNullTerminatedByteString "hello world"
+storage module immutable greetingText String "hello world"
 call writeGreetingCall console.writeLine
 argument writeGreetingCall console Console console
-argument writeGreetingCall text CNullTerminatedByteString greetingText
+argument writeGreetingCall text String greetingText
 run writeGreetingCall
 ignore void source writeGreetingCall
 storage module immutable successfulExitCode ExitCode 0

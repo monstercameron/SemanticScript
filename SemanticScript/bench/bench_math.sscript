@@ -5,7 +5,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
 input operation main console Console
@@ -21,21 +21,21 @@ invariant operation main "Each loop iteration calls all three transcendental lib
 
 label startMain
 
-storage module immutable iterationLimit I64 5000000
-storage module immutable iterationStep I64 1
-storage module immutable accumulatorInitial CFloat64 0.0
-memory main mutable currentIteration I64 1
-memory main mutable accumulator CFloat64 accumulatorInitial
+storage module immutable iterationLimit Int64 5000000
+storage module immutable iterationStep Int64 1
+storage module immutable accumulatorInitial Float64 0.0
+memory main mutable currentIteration Int64 1
+memory main mutable accumulator Float64 accumulatorInitial
 
 call startClockCall c.clock
 run startClockCall
-bind value startClockTicks CCpuClockTicks startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
 
 label benchmarkLoopHead
 
-call shouldContinueCmpCall math.lessThanOrEqualI64
-argument shouldContinueCmpCall left I64 currentIteration
-argument shouldContinueCmpCall right I64 iterationLimit
+call shouldContinueCmpCall math.lessThanOrEqualInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
 run shouldContinueCmpCall
 bind value benchmarkShouldContinue Bool shouldContinueCmpCall
 
@@ -46,45 +46,45 @@ label benchmarkLoopBody
 
 # Compute sqrt(iteration) + log(iteration) + sin(iteration).
 call sqrtCall c.sqrt
-argument sqrtCall x I64 currentIteration
+argument sqrtCall x Int64 currentIteration
 run sqrtCall
-bind value sqrtResult CFloat64 sqrtCall
+bind value sqrtResult Float64 sqrtCall
 
 call logCall c.log
-argument logCall x I64 currentIteration
+argument logCall x Int64 currentIteration
 run logCall
-bind value logResult CFloat64 logCall
+bind value logResult Float64 logCall
 
 call sinCall c.sin
-argument sinCall x I64 currentIteration
+argument sinCall x Int64 currentIteration
 run sinCall
-bind value sinResult CFloat64 sinCall
+bind value sinResult Float64 sinCall
 
-call partialSumCall math.addF64
-argument partialSumCall left CFloat64 sqrtResult
-argument partialSumCall right CFloat64 logResult
+call partialSumCall math.addFloat64
+argument partialSumCall left Float64 sqrtResult
+argument partialSumCall right Float64 logResult
 run partialSumCall
-bind value sqrtLogSum CFloat64 partialSumCall
+bind value sqrtLogSum Float64 partialSumCall
 
-call iterationValueCall math.addF64
-argument iterationValueCall left CFloat64 sqrtLogSum
-argument iterationValueCall right CFloat64 sinResult
+call iterationValueCall math.addFloat64
+argument iterationValueCall left Float64 sqrtLogSum
+argument iterationValueCall right Float64 sinResult
 run iterationValueCall
-bind value iterationValue CFloat64 iterationValueCall
+bind value iterationValue Float64 iterationValueCall
 
-call accumulateCall math.addF64
-argument accumulateCall left CFloat64 accumulator
-argument accumulateCall right CFloat64 iterationValue
+call accumulateCall math.addFloat64
+argument accumulateCall left Float64 accumulator
+argument accumulateCall right Float64 iterationValue
 run accumulateCall
-bind value nextAccumulator CFloat64 accumulateCall
+bind value nextAccumulator Float64 accumulateCall
 set memory accumulator nextAccumulator
 
 # i = i + 1
-call incrementCall math.addI64
-argument incrementCall left I64 currentIteration
-argument incrementCall right I64 iterationStep
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
 run incrementCall
-bind value nextIteration I64 incrementCall
+bind value nextIteration Int64 incrementCall
 set memory currentIteration nextIteration
 jump target benchmarkLoopHead
 
@@ -92,23 +92,23 @@ label benchmarkFinished
 
 call endClockCall c.clock
 run endClockCall
-bind value endClockTicks CCpuClockTicks endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
 
-call elapsedTicksCall math.subtractI64
-argument elapsedTicksCall left CCpuClockTicks endClockTicks
-argument elapsedTicksCall right CCpuClockTicks startClockTicks
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
 run elapsedTicksCall
-bind value elapsedClockTicks I64 elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
 
-storage module immutable reportFormatText CNullTerminatedByteString "iterations=%lld accumulator=%.6f clockTicks=%lld\n"
+storage module immutable reportFormatText String "iterations=%lld accumulator=%.6f clockTicks=%lld\n"
 call reportCall c.printf
-argument reportCall format CNullTerminatedByteString reportFormatText
-argument reportCall iterations I64 iterationLimit
-argument reportCall accumulator CFloat64 accumulator
-argument reportCall ticks I64 elapsedClockTicks
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Float64 accumulator
+argument reportCall ticks Int64 elapsedClockTicks
 run reportCall
 ignore void source reportCall
-bind error reportError CSignedInt32 reportCall
+bind error reportError Int32 reportCall
 branch error source reportCall target consoleWriteFailed
 
 storage module immutable successfulExitCode ExitCode 0

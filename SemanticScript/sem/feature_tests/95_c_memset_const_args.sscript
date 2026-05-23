@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -17,31 +17,31 @@ async main no
 purpose operation main "Allocate 4 bytes, memset to 'X' (88), null-terminate, print. Uses CONST args for byteValue and n."
 invariant operation main "Exercises c.memset's const-arg path."
 label startMain
-storage module immutable bufferSize CByteCount 4
-storage module immutable xByteValue CSignedInt64 88
-storage module immutable threeBytes CSignedInt64 3
+storage module immutable bufferSize ByteCount 4
+storage module immutable xByteValue Int64 88
+storage module immutable threeBytes Int64 3
 call mallocCall c.malloc
-argument mallocCall size CByteCount bufferSize
+argument mallocCall size ByteCount bufferSize
 run mallocCall
-bind value targetBuffer COpaqueMemoryAddress mallocCall
+bind value targetBuffer OpaquePointer mallocCall
 call memsetCall c.memset
-argument memsetCall dst COpaqueMemoryAddress targetBuffer
-argument memsetCall byteValue CSignedInt64 xByteValue
-argument memsetCall n CSignedInt64 threeBytes
+argument memsetCall dst OpaquePointer targetBuffer
+argument memsetCall byteValue Int64 xByteValue
+argument memsetCall n Int64 threeBytes
 run memsetCall
-storage module immutable lastPos CSignedInt64 3
-storage module immutable nullByte CSignedInt32 0
+storage module immutable lastPos Int64 3
+storage module immutable nullByte Int32 0
 call nullStoreCall pointer.storeByte
-argument nullStoreCall buffer COpaqueMemoryAddress targetBuffer
-argument nullStoreCall offset CSignedInt64 lastPos
-argument nullStoreCall value CSignedInt32 nullByte
+argument nullStoreCall buffer OpaquePointer targetBuffer
+argument nullStoreCall offset Int64 lastPos
+argument nullStoreCall value Int32 nullByte
 run nullStoreCall
 call putsCall c.puts
-argument putsCall text COpaqueMemoryAddress targetBuffer
+argument putsCall text OpaquePointer targetBuffer
 run putsCall
-ignore ok source putsCall type CSignedInt32
+ignore ok source putsCall type Int32
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress targetBuffer
+argument freeCall ptr OpaquePointer targetBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

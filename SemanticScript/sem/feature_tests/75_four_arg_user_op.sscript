@@ -5,34 +5,34 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation fmaInt
-input operation fmaInt a CSignedInt64
-input operation fmaInt b CSignedInt64
-input operation fmaInt c CSignedInt64
-input operation fmaInt d CSignedInt64
-output operation fmaInt Result CSignedInt64 Void
+input operation fmaInt a Int64
+input operation fmaInt b Int64
+input operation fmaInt c Int64
+input operation fmaInt d Int64
+output operation fmaInt Result Int64 Void
 memory fmaInt heap no
 async fmaInt no
-purpose operation fmaInt "Compute a*b + c*d using four CSignedInt64 inputs. Exercises a 4-arg user-op call site emission path."
+purpose operation fmaInt "Compute a*b + c*d using four Int64 inputs. Exercises a 4-arg user-op call site emission path."
 invariant operation fmaInt "All four inputs are i64."
 label startFmaInt
-call mulAbCall math.multiplyI64
-argument mulAbCall left CSignedInt64 a
-argument mulAbCall right CSignedInt64 b
+call mulAbCall math.multiplyInt64
+argument mulAbCall left Int64 a
+argument mulAbCall right Int64 b
 run mulAbCall
-bind value ab CSignedInt64 mulAbCall
-call mulCdCall math.multiplyI64
-argument mulCdCall left CSignedInt64 c
-argument mulCdCall right CSignedInt64 d
+bind value ab Int64 mulAbCall
+call mulCdCall math.multiplyInt64
+argument mulCdCall left Int64 c
+argument mulCdCall right Int64 d
 run mulCdCall
-bind value cd CSignedInt64 mulCdCall
-call sumCall math.addI64
-argument sumCall left I64 ab
-argument sumCall right I64 cd
+bind value cd Int64 mulCdCall
+call sumCall math.addInt64
+argument sumCall left Int64 ab
+argument sumCall right Int64 cd
 run sumCall
-bind value total CSignedInt64 sumCall
+bind value total Int64 sumCall
 return ok total
 
 operation main
@@ -44,22 +44,22 @@ async main no
 purpose operation main "fmaInt(2,3,4,2) == 2*3 + 4*2 == 14."
 invariant operation main "Exercises a 4-arg user-op call from main."
 label startMain
-storage module immutable twoVal CSignedInt64 2
-storage module immutable threeVal CSignedInt64 3
-storage module immutable fourVal CSignedInt64 4
-storage module immutable anotherTwo CSignedInt64 2
+storage module immutable twoVal Int64 2
+storage module immutable threeVal Int64 3
+storage module immutable fourVal Int64 4
+storage module immutable anotherTwo Int64 2
 call computeCall fmaInt
-argument computeCall a CSignedInt64 twoVal
-argument computeCall b CSignedInt64 threeVal
-argument computeCall c CSignedInt64 fourVal
-argument computeCall d CSignedInt64 anotherTwo
+argument computeCall a Int64 twoVal
+argument computeCall b Int64 threeVal
+argument computeCall c Int64 fourVal
+argument computeCall d Int64 anotherTwo
 run computeCall
-bind ok computedTotal CSignedInt64 computeCall
-memory main mutable totalStorage I64 0
+bind ok computedTotal Int64 computeCall
+memory main mutable totalStorage Int64 0
 set memory totalStorage computedTotal
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 totalStorage
+argument writeCall value Int64 totalStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

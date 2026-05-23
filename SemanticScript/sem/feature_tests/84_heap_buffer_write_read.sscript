@@ -5,25 +5,25 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation writeAt
-input operation writeAt buffer COpaqueMemoryAddress
-input operation writeAt position CSignedInt64
-input operation writeAt byteValue CSignedInt32
-output operation writeAt Result CSignedInt32 Void
+input operation writeAt buffer OpaquePointer
+input operation writeAt position Int64
+input operation writeAt byteValue Int32
+output operation writeAt Result Int32 Void
 effect writeAt write memory.buffer
 memory writeAt heap no
 async writeAt no
 purpose operation writeAt "Store a single byte at buffer[position]. Encapsulates pointer.storeByte so the test exercises a user op that returns void-like int."
-invariant operation writeAt "Returns 0 to match CSignedInt32 contract."
+invariant operation writeAt "Returns 0 to match Int32 contract."
 label startWriteAt
 call doStoreCall pointer.storeByte
-argument doStoreCall buffer COpaqueMemoryAddress buffer
-argument doStoreCall offset CSignedInt64 position
-argument doStoreCall value CSignedInt32 byteValue
+argument doStoreCall buffer OpaquePointer buffer
+argument doStoreCall offset Int64 position
+argument doStoreCall value Int32 byteValue
 run doStoreCall
-storage module immutable writeOk CSignedInt32 0
+storage module immutable writeOk Int32 0
 return ok writeOk
 
 operation main
@@ -37,74 +37,74 @@ async main no
 purpose operation main "Allocate a 6-byte buffer, write 'HELLO\\0' via writeAt() calls, then print it via console.writeLine."
 invariant operation main "Validates pointer-typed user op param + repeated pointer.storeByte calls + console.writeLine over a heap-allocated buffer."
 label startMain
-storage module immutable bufferSize CByteCount 6
+storage module immutable bufferSize ByteCount 6
 call mallocCall c.malloc
-argument mallocCall size CByteCount bufferSize
+argument mallocCall size ByteCount bufferSize
 run mallocCall
-bind value bufferPointer COpaqueMemoryAddress mallocCall
+bind value bufferPointer OpaquePointer mallocCall
 
-storage module immutable pos0 CSignedInt64 0
-storage module immutable pos1 CSignedInt64 1
-storage module immutable pos2 CSignedInt64 2
-storage module immutable pos3 CSignedInt64 3
-storage module immutable pos4 CSignedInt64 4
-storage module immutable pos5 CSignedInt64 5
-storage module immutable byteH CSignedInt32 72
-storage module immutable byteE CSignedInt32 69
-storage module immutable byteL CSignedInt32 76
-storage module immutable byteOLetter CSignedInt32 79
-storage module immutable byteNul CSignedInt32 0
+storage module immutable pos0 Int64 0
+storage module immutable pos1 Int64 1
+storage module immutable pos2 Int64 2
+storage module immutable pos3 Int64 3
+storage module immutable pos4 Int64 4
+storage module immutable pos5 Int64 5
+storage module immutable byteH Int32 72
+storage module immutable byteE Int32 69
+storage module immutable byteL Int32 76
+storage module immutable byteOLetter Int32 79
+storage module immutable byteNul Int32 0
 
 call write0 writeAt
-argument write0 buffer COpaqueMemoryAddress bufferPointer
-argument write0 position CSignedInt64 pos0
-argument write0 byteValue CSignedInt32 byteH
+argument write0 buffer OpaquePointer bufferPointer
+argument write0 position Int64 pos0
+argument write0 byteValue Int32 byteH
 run write0
-ignore ok source write0 type CSignedInt32
+ignore ok source write0 type Int32
 
 call write1 writeAt
-argument write1 buffer COpaqueMemoryAddress bufferPointer
-argument write1 position CSignedInt64 pos1
-argument write1 byteValue CSignedInt32 byteE
+argument write1 buffer OpaquePointer bufferPointer
+argument write1 position Int64 pos1
+argument write1 byteValue Int32 byteE
 run write1
-ignore ok source write1 type CSignedInt32
+ignore ok source write1 type Int32
 
 call write2 writeAt
-argument write2 buffer COpaqueMemoryAddress bufferPointer
-argument write2 position CSignedInt64 pos2
-argument write2 byteValue CSignedInt32 byteL
+argument write2 buffer OpaquePointer bufferPointer
+argument write2 position Int64 pos2
+argument write2 byteValue Int32 byteL
 run write2
-ignore ok source write2 type CSignedInt32
+ignore ok source write2 type Int32
 
 call write3 writeAt
-argument write3 buffer COpaqueMemoryAddress bufferPointer
-argument write3 position CSignedInt64 pos3
-argument write3 byteValue CSignedInt32 byteL
+argument write3 buffer OpaquePointer bufferPointer
+argument write3 position Int64 pos3
+argument write3 byteValue Int32 byteL
 run write3
-ignore ok source write3 type CSignedInt32
+ignore ok source write3 type Int32
 
 call write4 writeAt
-argument write4 buffer COpaqueMemoryAddress bufferPointer
-argument write4 position CSignedInt64 pos4
-argument write4 byteValue CSignedInt32 byteOLetter
+argument write4 buffer OpaquePointer bufferPointer
+argument write4 position Int64 pos4
+argument write4 byteValue Int32 byteOLetter
 run write4
-ignore ok source write4 type CSignedInt32
+ignore ok source write4 type Int32
 
 call write5 writeAt
-argument write5 buffer COpaqueMemoryAddress bufferPointer
-argument write5 position CSignedInt64 pos5
-argument write5 byteValue CSignedInt32 byteNul
+argument write5 buffer OpaquePointer bufferPointer
+argument write5 position Int64 pos5
+argument write5 byteValue Int32 byteNul
 run write5
-ignore ok source write5 type CSignedInt32
+ignore ok source write5 type Int32
 
 call writeLineCall console.writeLine
 argument writeLineCall console Console console
-argument writeLineCall text COpaqueMemoryAddress bufferPointer
+argument writeLineCall text OpaquePointer bufferPointer
 run writeLineCall
 ignore void source writeLineCall
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress bufferPointer
+argument freeCall ptr OpaquePointer bufferPointer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

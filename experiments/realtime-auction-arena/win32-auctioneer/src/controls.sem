@@ -4,9 +4,9 @@ moduleOwns experiment.realtime_auction_arena.win32_auctioneer.controls "Stable G
 moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.controls "Native control creation, runtime handle storage, server route behavior, or auction state transitions."
 invariant module experiment.realtime_auction_arena.win32_auctioneer.controls "All visible labels are centralized so main.sem can compose the current standard.gui surface without scattering operator-console copy."
 
-type AuctioneerControlId CUnsignedInt32
+type AuctioneerControlId UInt32
 
-enum AuctioneerPanelKind repr CSignedInt32
+enum AuctioneerPanelKind repr Int32
 enumCase AuctioneerPanelKind loginAuctioneerPanelKind 1
 enumCase AuctioneerPanelKind itemConfigAuctioneerPanelKind 2
 enumCase AuctioneerPanelKind commandAuctioneerPanelKind 3
@@ -15,54 +15,54 @@ enumCase AuctioneerPanelKind eventFeedAuctioneerPanelKind 5
 enumCase AuctioneerPanelKind rejectedBidAuctioneerPanelKind 6
 enumCase AuctioneerPanelKind chatModerationAuctioneerPanelKind 7
 
-storage module immutable appTitle CNullTerminatedByteString "Realtime Auction Arena - Auctioneer Console"
-storage module immutable headingText CNullTerminatedByteString "Auctioneer Console"
-storage module immutable loginSectionText CNullTerminatedByteString "Login"
-storage module immutable serverUrlPlaceholder CNullTerminatedByteString "Server URL, for example http://127.0.0.1:18090"
-storage module immutable usernamePlaceholder CNullTerminatedByteString "Username"
-storage module immutable passwordPlaceholder CNullTerminatedByteString "Password"
-storage module immutable loginButtonText CNullTerminatedByteString "Log in"
-storage module immutable logoutButtonText CNullTerminatedByteString "Forget token"
-storage module immutable itemSectionText CNullTerminatedByteString "Item configuration"
-storage module immutable auctionIdPlaceholder CNullTerminatedByteString "Auction ID"
-storage module immutable itemNamePlaceholder CNullTerminatedByteString "Item name"
-storage module immutable startingBidPlaceholder CNullTerminatedByteString "Starting bid minor units"
-storage module immutable minimumIncrementPlaceholder CNullTerminatedByteString "Minimum increment minor units"
-storage module immutable durationPlaceholder CNullTerminatedByteString "Duration seconds"
-storage module immutable commandSectionText CNullTerminatedByteString "Commands"
-storage module immutable startAuctionButtonText CNullTerminatedByteString "Start auction"
-storage module immutable extendSecondsPlaceholder CNullTerminatedByteString "Extend seconds"
-storage module immutable extendAuctionButtonText CNullTerminatedByteString "Extend"
-storage module immutable closeAuctionButtonText CNullTerminatedByteString "Close"
-storage module immutable refreshButtonText CNullTerminatedByteString "Poll now"
-storage module immutable statusSectionText CNullTerminatedByteString "Status"
-storage module immutable initialStatusText CNullTerminatedByteString "Not connected"
-storage module immutable eventsSectionText CNullTerminatedByteString "Audit and events"
-storage module immutable rejectedBidsSectionText CNullTerminatedByteString "Rejected bids"
-storage module immutable chatSectionText CNullTerminatedByteString "Chat moderation"
-storage module immutable chatMessageIdPlaceholder CNullTerminatedByteString "Chat message ID"
-storage module immutable hideChatButtonText CNullTerminatedByteString "Hide chat message"
-storage module immutable reportChatButtonText CNullTerminatedByteString "Mark reviewed"
-storage module immutable httpGapStatusText CNullTerminatedByteString "HTTP POST, bearer headers, and async UI polling are runtime gaps in this scaffold."
-storage module immutable loginRequestedStatusText CNullTerminatedByteString "Login requested; waiting for HTTP POST support."
-storage module immutable tokenForgottenStatusText CNullTerminatedByteString "In-memory token cleared."
-storage module immutable startRequestedStatusText CNullTerminatedByteString "Start requested; waiting for authenticated POST support."
-storage module immutable extendRequestedStatusText CNullTerminatedByteString "Extend requested; waiting for authenticated POST support."
-storage module immutable closeRequestedStatusText CNullTerminatedByteString "Close requested; waiting for authenticated POST support."
-storage module immutable pollRequestedStatusText CNullTerminatedByteString "Poll requested; waiting for UI-safe async fetch support."
-storage module immutable moderationRequestedStatusText CNullTerminatedByteString "Moderation requested; waiting for authenticated moderation route support."
-storage module immutable appWindowWidth CSignedInt32 1024
-storage module immutable appWindowHeight CSignedInt32 760
-storage module immutable maxServerUrlLength CSignedInt32 256
-storage module immutable maxUsernameLength CSignedInt32 128
-storage module immutable maxPasswordLength CSignedInt32 256
-storage module immutable maxAuctionIdLength CSignedInt32 96
-storage module immutable maxItemNameLength CSignedInt32 160
-storage module immutable maxMoneyLength CSignedInt32 24
-storage module immutable maxDurationLength CSignedInt32 16
-storage module immutable maxChatMessageIdLength CSignedInt32 96
-storage module immutable yesGuiFlag CSignedInt32 1
-storage module immutable noGuiFlag CSignedInt32 0
+storage module immutable appTitle String "Realtime Auction Arena - Auctioneer Console"
+storage module immutable headingText String "Auctioneer Console"
+storage module immutable loginSectionText String "Login"
+storage module immutable serverUrlPlaceholder String "Server URL, for example http://127.0.0.1:18090"
+storage module immutable usernamePlaceholder String "Username"
+storage module immutable passwordPlaceholder String "Password"
+storage module immutable loginButtonText String "Log in"
+storage module immutable logoutButtonText String "Forget token"
+storage module immutable itemSectionText String "Item configuration"
+storage module immutable auctionIdPlaceholder String "Auction ID"
+storage module immutable itemNamePlaceholder String "Item name"
+storage module immutable startingBidPlaceholder String "Starting bid minor units"
+storage module immutable minimumIncrementPlaceholder String "Minimum increment minor units"
+storage module immutable durationPlaceholder String "Duration seconds"
+storage module immutable commandSectionText String "Commands"
+storage module immutable startAuctionButtonText String "Start auction"
+storage module immutable extendSecondsPlaceholder String "Extend seconds"
+storage module immutable extendAuctionButtonText String "Extend"
+storage module immutable closeAuctionButtonText String "Close"
+storage module immutable refreshButtonText String "Poll now"
+storage module immutable statusSectionText String "Status"
+storage module immutable initialStatusText String "Not connected"
+storage module immutable eventsSectionText String "Audit and events"
+storage module immutable rejectedBidsSectionText String "Rejected bids"
+storage module immutable chatSectionText String "Chat moderation"
+storage module immutable chatMessageIdPlaceholder String "Chat message ID"
+storage module immutable hideChatButtonText String "Hide chat message"
+storage module immutable reportChatButtonText String "Mark reviewed"
+storage module immutable httpGapStatusText String "HTTP POST, bearer headers, and async UI polling are runtime gaps in this scaffold."
+storage module immutable loginRequestedStatusText String "Login requested; waiting for HTTP POST support."
+storage module immutable tokenForgottenStatusText String "In-memory token cleared."
+storage module immutable startRequestedStatusText String "Start requested; waiting for authenticated POST support."
+storage module immutable extendRequestedStatusText String "Extend requested; waiting for authenticated POST support."
+storage module immutable closeRequestedStatusText String "Close requested; waiting for authenticated POST support."
+storage module immutable pollRequestedStatusText String "Poll requested; waiting for UI-safe async fetch support."
+storage module immutable moderationRequestedStatusText String "Moderation requested; waiting for authenticated moderation route support."
+storage module immutable appWindowWidth Int32 1024
+storage module immutable appWindowHeight Int32 760
+storage module immutable maxServerUrlLength Int32 256
+storage module immutable maxUsernameLength Int32 128
+storage module immutable maxPasswordLength Int32 256
+storage module immutable maxAuctionIdLength Int32 96
+storage module immutable maxItemNameLength Int32 160
+storage module immutable maxMoneyLength Int32 24
+storage module immutable maxDurationLength Int32 16
+storage module immutable maxChatMessageIdLength Int32 96
+storage module immutable yesGuiFlag Int32 1
+storage module immutable noGuiFlag Int32 0
 
 storage module immutable serverUrlControlId AuctioneerControlId 1001
 storage module immutable usernameControlId AuctioneerControlId 1002

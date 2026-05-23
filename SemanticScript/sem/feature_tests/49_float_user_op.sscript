@@ -5,22 +5,22 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation doubleFloat
-input operation doubleFloat x CFloat64
-output operation doubleFloat Result CFloat64 Void
+input operation doubleFloat x Float64
+output operation doubleFloat Result Float64 Void
 memory doubleFloat heap no
 async doubleFloat no
-purpose operation doubleFloat "Return 2x as CFloat64."
+purpose operation doubleFloat "Return 2x as Float64."
 invariant operation doubleFloat "Float-typed user op."
 label startDoubleFloat
-storage module immutable twoFloatLit CFloat64 2.0
-call mulCall math.multiplyF64
-argument mulCall left CFloat64 x
-argument mulCall right CFloat64 twoFloatLit
+storage module immutable twoFloatLit Float64 2.0
+call mulCall math.multiplyFloat64
+argument mulCall left Float64 x
+argument mulCall right Float64 twoFloatLit
 run mulCall
-bind value doubled CFloat64 mulCall
+bind value doubled Float64 mulCall
 return ok doubled
 
 operation main
@@ -32,15 +32,15 @@ async main no
 purpose operation main "doubleFloat(5.5) = 11.0."
 invariant operation main "Tests float user-op signature."
 label startMain
-storage module immutable fiveHalfFloat CFloat64 5.5
-memory main mutable x CFloat64 fiveHalfFloat
+storage module immutable fiveHalfFloat Float64 5.5
+memory main mutable x Float64 fiveHalfFloat
 call dblCall doubleFloat
-argument dblCall x CFloat64 x
+argument dblCall x Float64 x
 run dblCall
-bind ok dblResult CFloat64 dblCall
+bind ok dblResult Float64 dblCall
 call writeCall console.writeFloatLine
 argument writeCall console Console console
-argument writeCall value CFloat64 dblResult
+argument writeCall value Float64 dblResult
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

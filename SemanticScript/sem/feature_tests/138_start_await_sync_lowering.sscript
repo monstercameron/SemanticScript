@@ -5,13 +5,13 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-storage module immutable zeroInitial I64 0
-storage module immutable sevenValue I64 7
-sharedState process mutable backgroundJobResultValue I64 zeroInitial
+errorCase MainError Placeholder Int32
+storage module immutable zeroInitial Int64 0
+storage module immutable sevenValue Int64 7
+sharedState process mutable backgroundJobResultValue Int64 zeroInitial
 operation backgroundJobWritesShared
-input operation backgroundJobWritesShared trigger I64
-output operation backgroundJobWritesShared I64
+input operation backgroundJobWritesShared trigger Int64
+output operation backgroundJobWritesShared Int64
 set sharedState backgroundJobResultValue sevenValue
 return value sevenValue
 operation main
@@ -24,12 +24,12 @@ purpose operation main "start runs the helper; await is a no-op; the helper's sh
 invariant operation main "Output is 7 (set by the helper), not 0 (the initial). If start were a true no-op, this would print 0."
 label startMain
 call backgroundJobCall backgroundJobWritesShared
-argument backgroundJobCall trigger I64 zeroInitial
+argument backgroundJobCall trigger Int64 zeroInitial
 start backgroundJobCall
 await backgroundJobCall
 call writeFinalCall console.writeIntegerLine
 argument writeFinalCall console Console console
-argument writeFinalCall value I64 backgroundJobResultValue
+argument writeFinalCall value Int64 backgroundJobResultValue
 run writeFinalCall
 ignore void source writeFinalCall
 storage module immutable successfulExitCode ExitCode 0

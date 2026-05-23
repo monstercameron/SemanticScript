@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -13,44 +13,44 @@ effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose operation main "Pass CFloat64 consts to c.fpclassify. 3.14 → 4 (FP_NORMAL), 0.0 → 2 (FP_ZERO)."
+purpose operation main "Pass Float64 consts to c.fpclassify. 3.14 → 4 (FP_NORMAL), 0.0 → 2 (FP_ZERO)."
 invariant operation main "Exercises the c.fpclassify const-arg path."
 label startMain
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
-storage module immutable normalFloat CFloat64 3.14
-storage module immutable zeroFloat CFloat64 0.0
+storage module immutable normalFloat Float64 3.14
+storage module immutable zeroFloat Float64 0.0
 
 call normalCall c.fpclassify
-argument normalCall value CFloat64 normalFloat
+argument normalCall value Float64 normalFloat
 run normalCall
-bind value normalRes CSignedInt64 normalCall
-memory main mutable normalStore I64 0
+bind value normalRes Int64 normalCall
+memory main mutable normalStore Int64 0
 set memory normalStore normalRes
 call w1 console.writeIntegerLine
 argument w1 console Console console
-argument w1 value I64 normalStore
+argument w1 value Int64 normalStore
 run w1
 ignore void source w1
 
 call zeroCall c.fpclassify
-argument zeroCall value CFloat64 zeroFloat
+argument zeroCall value Float64 zeroFloat
 run zeroCall
-bind value zeroRes CSignedInt64 zeroCall
-memory main mutable zeroStore I64 0
+bind value zeroRes Int64 zeroCall
+memory main mutable zeroStore Int64 0
 set memory zeroStore zeroRes
 call w2 console.writeIntegerLine
 argument w2 console Console console
-argument w2 value I64 zeroStore
+argument w2 value Int64 zeroStore
 run w2
 ignore void source w2
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

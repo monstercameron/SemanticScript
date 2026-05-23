@@ -36,17 +36,17 @@ falls through on false unless followed by branch else target ... .
 External call targets:
   console.writeLine          -> puts(i8*)                 -> i32 (negative on failure)
   console.writeIntegerLine   -> printf("%lld\n", i64)     -> i32 (negative on failure)
-  math.addI64                -> i64 (a + b)
-  math.subtractI64           -> i64 (a - b)              (alias: math.subI64)
-  math.multiplyI64           -> i64 (a * b)              (alias: math.mulI64)
-  math.divideI64             -> i64 (a sdiv b)           (alias: math.divI64)
-  math.moduloI64             -> i64 (a srem b)           (alias: math.modI64)
-  math.equalI64              -> i1                        (alias: math.eqI64)
-  math.notEqualI64           -> i1                        (alias: math.neI64)
-  math.lessThanI64           -> i1                        (alias: math.ltI64)
-  math.lessThanOrEqualI64    -> i1                        (alias: math.leI64)
-  math.greaterThanI64        -> i1                        (alias: math.gtI64)
-  math.greaterThanOrEqualI64 -> i1                        (alias: math.geI64)
+  math.addInt64                -> i64 (a + b)
+  math.subtractInt64           -> i64 (a - b)              (alias: math.subInt64)
+  math.multiplyInt64           -> i64 (a * b)              (alias: math.mulInt64)
+  math.divideInt64             -> i64 (a sdiv b)           (alias: math.divInt64)
+  math.moduloInt64             -> i64 (a srem b)           (alias: math.modInt64)
+  math.equalInt64              -> i1                        (alias: math.eqInt64)
+  math.notEqualInt64           -> i1                        (alias: math.neInt64)
+  math.lessThanInt64           -> i1                        (alias: math.ltInt64)
+  math.lessThanOrEqualInt64    -> i1                        (alias: math.leInt64)
+  math.greaterThanInt64        -> i1                        (alias: math.gtInt64)
+  math.greaterThanOrEqualInt64 -> i1                        (alias: math.geInt64)
 """
 
 import argparse
@@ -904,7 +904,7 @@ def _canonicalize_syntax_row(verb, args, lineno):
                 raise SyntaxError(
                     f"line {lineno}: ignore {args[0]} requires: "
                     f"ignore {args[0]} source CALL type TYPE")
-            if args[4] in ("Void", "CVoid"):
+            if args[4] in ("Void", "Void"):
                 raise SyntaxError(
                     f"line {lineno}: ignore {args[0]} cannot discard a Void payload; use ignore void source CALL")
         elif args[0] == "error":
@@ -977,8 +977,6 @@ _HTML_TRUST_TYPES = {
 }
 _HTML_STRING_TYPES = {
     "String",
-    "CNullTerminatedByteString",
-    "CString",
 }
 _HTML_FRAGMENT_TYPES = {
     "HtmlFragment",
@@ -1213,7 +1211,7 @@ def _register_builtin_middleware_control_enum(prog: Program) -> None:
       - `shortCircuitMiddlewareControl` == 1 → skip handler; send the
         middleware-written response as the final reply
 
-    The enum is `repr CSignedInt32` because middleware operations
+    The enum is `repr Int32` because middleware operations
     return through the same i32 user-op ABI as handlers. Programs may
     redeclare `enum MiddlewareControl …` (the existing enum-registry
     code will overwrite); doing so is a footgun and tripped by
@@ -1225,7 +1223,7 @@ def _register_builtin_middleware_control_enum(prog: Program) -> None:
     with future control-flow verbs.
     """
     en = Enum(MIDDLEWARE_CONTROL_TYPE)
-    en.repr = "CSignedInt32"
+    en.repr = "Int32"
     en.cases.extend(MIDDLEWARE_CONTROL_CASES)
     prog.enums[MIDDLEWARE_CONTROL_TYPE] = en
     # Register the two case names as integer consts so `returnValue
@@ -1234,7 +1232,7 @@ def _register_builtin_middleware_control_enum(prog: Program) -> None:
     # operation body. Type is the enum NAME (not the repr) so the
     # `_check_result_contract` linter compares apples-to-apples when a
     # middleware op declares `output OP MiddlewareControl`. Codegen
-    # resolves `MiddlewareControl` → `CSignedInt32` → i32 via
+    # resolves `MiddlewareControl` → `Int32` → i32 via
     # `llvm_type_for`'s enum-repr unwrap, so the i32 user-op return
     # slot still accepts the value without a cast.
     for case_name, case_value in MIDDLEWARE_CONTROL_CASES:
@@ -1272,13 +1270,45 @@ def _exported_symbols_for(prog: Program, module_path: str, kind: str):
     return prog.exports.get(kind, {}).get(module_path, set())
 
 
+_SQLITE_INTRINSIC_EXPORT_NAMES = frozenset({
+    "openDatabase",
+    "closeDatabase",
+    "errorMessage",
+    "lastInsertRowId",
+    "changedRowCount",
+    "prepareStatement",
+    "finalizeStatement",
+    "resetStatement",
+    "stepStatement",
+    "bindInt64",
+    "bindDouble",
+    "bindText",
+    "bindBlob",
+    "bindNull",
+    "columnCount",
+    "columnType",
+    "columnName",
+    "columnInt64",
+    "columnDouble",
+    "columnText",
+    "columnBlob",
+    "columnByteCount",
+    "libraryVersion",
+    "execStatus",
+})
+
+
 def _finalize_import_aliases(prog: Program) -> None:
     for module_path, alias in prog.imports:
         if not alias:
             continue
         prog.import_aliases[alias] = module_path
         for operation_name in _exported_symbols_for(prog, module_path, "operation"):
-            prog.operation_aliases[f"{alias}.{operation_name}"] = operation_name
+            aliased_name = operation_name
+            if (module_path == "standard.sqlite"
+                    and operation_name in _SQLITE_INTRINSIC_EXPORT_NAMES):
+                aliased_name = f"sqlite.{operation_name}"
+            prog.operation_aliases[f"{alias}.{operation_name}"] = aliased_name
         for type_name in _exported_symbols_for(prog, module_path, "type"):
             if type_name in prog.type_aliases:
                 prog.type_aliases.setdefault(f"{alias}.{type_name}", prog.type_aliases[type_name])
@@ -1626,32 +1656,26 @@ def _json_kind_name(value) -> str:
 def _json_record_default_for_policy(prog: Program, field_type: str, policy: str):
     resolved = resolve_alias(prog, field_type)
     if policy == "empty":
-        if resolved in ("String", "CNullTerminatedByteString", "CString",
-                        "JsonText"):
+        if resolved in {"String", "JsonText"}:
             return ""
     if policy == "null":
-        if resolved in ("String", "CNullTerminatedByteString", "CString",
-                        "JsonText"):
+        if resolved in {"String", "JsonText"}:
             return None
     if policy == "false" and resolved == "Bool":
         return False
     if policy == "zero":
-        if resolved in (
-            "I64", "CSignedInt64", "CUnsignedInt64", "CByteCount",
-            "CSignedByteCount", "CAddressOffset", "CUnixSecondsSinceEpoch",
-            "CCpuClockTicks", "CFileByteOffset", "CMaxSignedInt",
-            "CMaxUnsignedInt", "DurationMilliseconds",
-            "MonotonicMilliseconds", "UtcMilliseconds", "CLong",
-            "CLongLong", "CSize", "CSsize", "CPtrdiff", "CTime", "CClock",
-            "COff", "CIntmax", "CUintmax", "I32", "ExitCode",
-            "CSignedInt32", "CUnsignedInt32", "CInt", "CUint", "I16",
-            "CSignedInt16", "CUnsignedInt16", "CShort", "CUshort", "I8",
-            "CSignedByte", "CUnsignedByte", "CChar", "CSchar", "CUchar",
-            "CByte",
-        ):
+        if resolved in {
+            "Int64", "UInt64",
+            "ByteCount", "SignedByteCount", "AddressOffset",
+            "UnixSecondsSinceEpoch", "CpuClockTicks", "FileByteOffset",
+            "DurationMilliseconds", "MonotonicMilliseconds",
+            "UtcMilliseconds",
+            "Int32", "UInt32", "ExitCode", "Char",
+            "Int16", "UInt16",
+            "Int8", "UInt8",
+        }:
             return 0
-        if resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32",
-                        "CFloat"):
+        if resolved in {"Float16", "Float32", "Float64"}:
             return 0.0
     return None
 
@@ -1700,8 +1724,7 @@ def _validate_json_record_value(
         if field_value is None and policy == "null":
             fields[field_name] = None
             continue
-        if resolved in ("String", "CNullTerminatedByteString", "CString",
-                        "JsonText"):
+        if resolved in {"String", "JsonText"}:
             if not isinstance(field_value, str):
                 raise SyntaxError(
                     f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
@@ -1715,8 +1738,8 @@ def _validate_json_record_value(
                     f"expected boolean, got {_json_kind_name(field_value)}")
             fields[field_name] = field_value
             continue
-        if resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32",
-                        "CFloat"):
+        if resolved in ("Float64", "Float64", "Float64", "Float32", "Float32",
+                        "Float32"):
             if isinstance(field_value, bool) or not isinstance(field_value, (int, float)):
                 raise SyntaxError(
                     f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
@@ -3428,10 +3451,10 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             # `storage module immutable` defers to a value already
             # registered by an earlier `buildConstant` (or a prior
             # storage row). Without setdefault, a build-tape
-            # `buildConstant project featureFlag CNullTerminatedByteString
+            # `buildConstant project featureFlag String
             # "yes"` row would be silently clobbered by a fallback
             # `storage module immutable featureFlag
-            # CNullTerminatedByteString "no"` in an imported module:
+            # String "no"` in an imported module:
             # the build-tape value MUST win.
             if mutability == "mutable":
                 # Mutable storage is always re-declared (rebind to
@@ -3535,13 +3558,16 @@ HEADER_VERBS_WITH_OWNERSHIP = {
 # ============================================================
 
 I1 = ir.IntType(1)
-I8 = ir.IntType(8)
-I16 = ir.IntType(16)
-I32 = ir.IntType(32)
-I64 = ir.IntType(64)
-F32 = ir.FloatType()
-F64 = ir.DoubleType()
-I8P = ir.IntType(8).as_pointer()
+I2 = ir.IntType(2)
+I4 = ir.IntType(4)
+Int8 = ir.IntType(8)
+Int16 = ir.IntType(16)
+Int32 = ir.IntType(32)
+Int64 = ir.IntType(64)
+F16 = ir.HalfType()
+Float32 = ir.FloatType()
+Float64 = ir.DoubleType()
+Int8P = ir.IntType(8).as_pointer()
 VOID = ir.VoidType()
 
 
@@ -3591,7 +3617,7 @@ LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS = (
 
 def resolve_alias(prog: Program, name: str) -> str:
     """Walk the type-alias chain and return the head token of the final
-    type expression. For a single-token alias like `type ExitCode I32`,
+    type expression. For a single-token alias like `type ExitCode Int32`,
     returns the underlying primitive name. For a parameterized alias like
     `type EmailAddress SmallString 254` or
     `type CreateCustomerResult Result Customer CreateCustomerError`,
@@ -3619,7 +3645,7 @@ def resolve_alias(prog: Program, name: str) -> str:
 def resolve_alias_full(prog: Program, name: str) -> list:
     """Return the full type-expression token list after chain resolution.
     For `type EmailAddress SmallString 254`, returns `["SmallString", "254"]`.
-    For `type ExitCode I32`, returns `["I32"]`. For an unaliased primitive,
+    For `type ExitCode Int32`, returns `["Int32"]`. For an unaliased primitive,
     returns `[name]`."""
     seen = set()
     while name in prog.type_aliases and name not in seen:
@@ -3634,11 +3660,114 @@ def resolve_alias_full(prog: Program, name: str) -> list:
     return [name]
 
 
+_INTEGER_LLVM_TYPES = {
+    "Int2": I2,
+    "UInt2": I2,
+    "Int4": I4,
+    "UInt4": I4,
+    "Int8": Int8,
+    "UInt8": Int8,
+    "Int16": Int16,
+    "UInt16": Int16,
+    "Int32": Int32,
+    "UInt32": Int32,
+    "Int64": Int64,
+    "UInt64": Int64,
+}
+
+_FLOAT_LLVM_TYPES = {
+    "Float16": F16,
+    "Float32": Float32,
+    "Float64": Float64,
+}
+
+_Int64_ROLE_TYPES = {
+    "ByteCount",
+    "SignedByteCount",
+    "AddressOffset",
+    "UnixSecondsSinceEpoch",
+    "CpuClockTicks",
+    "FileByteOffset",
+    "DurationMilliseconds",
+    "MonotonicMilliseconds",
+    "UtcMilliseconds",
+    "SqliteRowId",
+    "JsonCursor",
+}
+
+_Int32_ROLE_TYPES = {
+    "ExitCode",
+    "GuiPixels",
+    "GuiMinimumPixels",
+    "GuiTabIndex",
+    "GuiKeyCode",
+    "GuiSelectedIndex",
+    "GuiEventDimensionPixels",
+    "GuiHandlerStatus",
+    "GuiRuntimeStatusCode",
+}
+
+_U32_ROLE_TYPES = {
+    "GuiWindowId",
+    "GuiControlId",
+}
+
+_TEXT_TYPES = {
+    "String",
+    "JsonText",
+    "SqlText",
+    "JsonPath",
+    "GuiText",
+    "GuiApplicationTitle",
+    "GuiWindowTitle",
+    "GuiControlText",
+    "GuiPlaceholderText",
+    "GuiAccessibleName",
+    "GuiListBoxItemText",
+    "GuiIconGroupName",
+    "GuiKeywordToken",
+    "GuiRuntimeTarget",
+    "HtmlFragment",
+    "HtmlTrustedFragment",
+    "HtmlDocument",
+    "HtmlTemplate",
+}
+
+_POINTER_TYPES = {
+    "OpaquePointer",
+    "FileHandle",
+    "DecomposedTimePointer",
+    "SetjmpRegisterBufferPointer",
+    "SqliteDatabase",
+    "SqliteStatement",
+    "JsonBuilder",
+    "JsonDocument",
+    "JsonScratchBuffer",
+    "GuiApplication",
+    "GuiSession",
+    "GuiEvent",
+    "GuiWindow",
+    "GuiControl",
+    "GuiButton",
+    "GuiTextBox",
+    "GuiListBox",
+    "GuiCheckBox",
+    "GuiMenuItem",
+    "GuiStatusBar",
+    "GuiTextLabel",
+    "HttpRequest",
+    "HttpResponse",
+    "DecomposedTimeAddress",
+    "SetjmpRegisterBuffer",
+    "CFile",
+}
+
+
 def enum_repr_type(prog: Program, name: str) -> str | None:
     enum = prog.enums.get(name)
     if enum is None:
         return None
-    return enum.repr or "CSignedInt32"
+    return enum.repr or "Int32"
 
 
 def enum_case_values(prog: Program) -> dict:
@@ -3666,81 +3795,34 @@ def llvm_type_for(prog: Program, typename: str):
     enum_repr = enum_repr_type(prog, typename)
     if enum_repr is not None:
         return llvm_type_for(prog, enum_repr)
-    # C-stdlib alignment: every C scalar type has a spec-compliant
-    # SemanticScript alias whose name carries signedness, width, ABI role, or
-    # encoding contract (spec §6 names-must-carry-local-intent, §10
-    # types-encode-intent). The short forms (CInt / CDouble / CSize / …)
-    # are retained as backward-compatible aliases for older programs but
-    # new code should prefer the spec-compliant names listed first.
-    #
-    # i64 — every 64-bit-wide C type
-    if typename in (
-        # canonical SemanticScript names
-        "I64", "CSignedInt64", "CUnsignedInt64",
-        "CByteCount", "CSignedByteCount", "CAddressOffset",
-        "CUnixSecondsSinceEpoch", "CCpuClockTicks",
-        "CFileByteOffset", "CMaxSignedInt", "CMaxUnsignedInt",
-        "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds",
-        # legacy short forms
-        "CLong", "CLongLong", "CSize", "CSsize", "CPtrdiff",
-        "CTime", "CClock", "COff", "CIntmax", "CUintmax",
-    ):
-        return I64
-    # i32 — every 32-bit-wide C type
-    if typename in (
-        "I32", "ExitCode",
-        "CSignedInt32", "CUnsignedInt32",
-        "CInt", "CUint",
-    ):
-        return I32
-    # i16
-    if typename in (
-        "I16",
-        "CSignedInt16", "CUnsignedInt16",
-        "CShort", "CUshort",
-    ):
-        return I16
-    # i8
-    if typename in (
-        "I8",
-        "CSignedByte", "CUnsignedByte",
-        "CChar", "CSchar", "CUchar", "CByte",
-    ):
-        return I8
+    if typename in _INTEGER_LLVM_TYPES:
+        return _INTEGER_LLVM_TYPES[typename]
+    if typename in _FLOAT_LLVM_TYPES:
+        return _FLOAT_LLVM_TYPES[typename]
+    if typename == "Char":
+        return Int32
+    if typename in _Int64_ROLE_TYPES:
+        return Int64
+    if typename in _Int32_ROLE_TYPES or typename in _U32_ROLE_TYPES:
+        return Int32
+    if typename in _TEXT_TYPES or typename in _POINTER_TYPES:
+        return Int8P
     if typename == "Bool":
         return I1
-    # IEEE float
-    if typename in ("F32", "CFloat32", "CFloat"):
-        return F32
-    if typename in ("F64", "CFloat64", "CDouble"):
-        return F64
-    # i8* — every pointer-shaped C type carries an explicit role name
-    if typename in (
-        "String", "CNullTerminatedByteString", "CString",
-        "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
-        "HtmlTemplate", "SqlText",
-    ):
-        return I8P
-    if typename in (
-        "VoidPtr", "COpaqueMemoryAddress", "CFileHandle",
-        "CDecomposedTimeAddress", "CSetjmpRegisterBuffer",
-        "CVoidPtr", "CFile", "CFilePtr", "CTm", "CTmPtr", "CJmpBuf",
-    ):
-        return I8P
     if typename in ("HttpRequest", "HttpResponse", "GuiSession", "GuiEvent"):
-        return I8P
+        return Int8P
     if typename in (
         "GuiApplication", "GuiWindow", "GuiControl", "GuiButton",
         "GuiTextBox", "GuiListBox", "GuiCheckBox", "GuiMenuItem",
         "GuiStatusBar", "GuiTextLabel",
     ):
-        return I8P
+        return Int8P
     # Opaque handles for the native sqlite runtime — the C ABI in
     # `sem_sqlite_runtime.h` exposes both as `void *` typedefs and never
     # lets generated code dereference them, so lowering as `i8*` is the
     # correct shape (parallel to HttpRequest / HttpResponse above).
     if typename in ("SqliteDatabase", "SqliteStatement"):
-        return I8P
+        return Int8P
     # Opaque handle for the native JSON builder runtime
     # (sem_json_runtime.h). The AS source allocates one of these via
     # json.createBuilder, threads it through field writers, and frees
@@ -3748,13 +3830,13 @@ def llvm_type_for(prog: Program, typename: str):
     # dereferences the handle directly — same opaque-pointer contract
     # as HttpRequest / SqliteDatabase.
     if typename in ("JsonBuilder", "JsonDocument"):
-        return I8P
+        return Int8P
     return None
 
 
 def llvm_type_for_or_void(prog: Program, typename: str):
-    """Like llvm_type_for but also accepts 'Void' / 'CVoid' as the void type."""
-    if typename in ("Void", "CVoid"):
+    """Like llvm_type_for but also accepts 'Void' / 'Void' as the void type."""
+    if typename in ("Void", "Void"):
         return VOID
     return llvm_type_for(prog, typename)
 
@@ -3808,8 +3890,8 @@ def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
             ok_type = tokens[0]
 
         resolved_ok = resolve_alias(prog, ok_type)
-        if resolved_ok in ("Void", "CVoid"):
-            return OutputContract(lineno, tokens, ok_type=ok_type, llvm_type=I32)
+        if resolved_ok in ("Void", "Void"):
+            return OutputContract(lineno, tokens, ok_type=ok_type, llvm_type=Int32)
         llty = llvm_type_for(prog, ok_type)
         if llty is None:
             return OutputContract(
@@ -3835,61 +3917,59 @@ def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
 
 # normalize math/console targets to a canonical name
 _TARGET_ALIASES = {
-    "math.subI64":  "math.subtractI64",
-    "math.mulI64":  "math.multiplyI64",
-    "math.divI64":  "math.divideI64",
-    "math.modI64":  "math.moduloI64",
-    "math.eqI64":   "math.equalI64",
-    "math.neI64":   "math.notEqualI64",
-    "math.ltI64":   "math.lessThanI64",
-    "math.leI64":   "math.lessThanOrEqualI64",
-    "math.gtI64":   "math.greaterThanI64",
-    "math.geI64":   "math.greaterThanOrEqualI64",
+    "math.subInt64":  "math.subtractInt64",
+    "math.mulInt64":  "math.multiplyInt64",
+    "math.divInt64":  "math.divideInt64",
+    "math.modInt64":  "math.moduloInt64",
+    "math.eqInt64":   "math.equalInt64",
+    "math.neInt64":   "math.notEqualInt64",
+    "math.ltInt64":   "math.lessThanInt64",
+    "math.leInt64":   "math.lessThanOrEqualInt64",
+    "math.gtInt64":   "math.greaterThanInt64",
+    "math.geInt64":   "math.greaterThanOrEqualInt64",
     "console.writeInteger": "console.writeIntegerLine",
-    # Refined-syntax / STDLIB_RENAME long forms map back to the V0
-    # short forms so the existing call-target dispatch fires correctly.
+    "math.convertInt64ToFloat64": "math.intToFloat",
+    "math.convertFloat64ToInt64": "math.floatToInt",
     "math.convertSignedInt64ToFloat64": "math.intToFloat",
     "math.convertFloat64ToSignedInt64": "math.floatToInt",
-    "math.convertSignedInt32ToSignedInt64": "math.signExtendCSignedInt32ToCSignedInt64",
-    "math.convertSignedInt64ToSignedInt32": "math.truncateCSignedInt64ToCSignedInt32",
+    "math.convertSignedInt32ToSignedInt64": "math.signExtendInt32ToInt64",
+    "math.convertSignedInt64ToSignedInt32": "math.truncateInt64ToInt32",
 }
 
 _JSON_STRINGIFY_PRIMITIVE_TARGETS = {
-    "I64": "json.encode.I64",
-    "CSignedInt64": "json.encode.CSignedInt64",
-    "CSignedInt32": "json.encode.CSignedInt32",
-    "CUnsignedInt32": "json.encode.CUnsignedInt32",
-    "CSignedInt16": "json.encode.CSignedInt16",
-    "CUnsignedInt16": "json.encode.CUnsignedInt16",
-    "CSignedByte": "json.encode.CSignedByte",
-    "CUnsignedByte": "json.encode.CUnsignedByte",
+    "Int64": "json.encode.Int64",
+    "UInt64": "json.encode.UInt64",
+    "Int32": "json.encode.Int32",
+    "UInt32": "json.encode.UInt32",
+    "Int16": "json.encode.Int16",
+    "UInt16": "json.encode.UInt16",
+    "Int8": "json.encode.Int8",
+    "UInt8": "json.encode.UInt8",
     "DurationMilliseconds": "json.encode.DurationMilliseconds",
     "MonotonicMilliseconds": "json.encode.MonotonicMilliseconds",
     "UtcMilliseconds": "json.encode.UtcMilliseconds",
     "Bool": "json.encode.Bool",
-    "F64": "json.encode.F64",
-    "CFloat64": "json.encode.CFloat64",
-    "CFloat32": "json.encode.CFloat32",
+    "Float64": "json.encode.Float64",
+    "Float32": "json.encode.Float32",
     "String": "json.encode.String",
-    "CNullTerminatedByteString": "json.encode.CNullTerminatedByteString",
+    "JsonText": "json.encode.String",
 }
 
 _JSON_PARSE_PRIMITIVE_TARGETS = {
-    "I64": "json.decode.I64",
-    "CSignedInt64": "json.decode.CSignedInt64",
-    "CSignedInt32": "json.decode.CSignedInt32",
-    "CUnsignedInt32": "json.decode.CUnsignedInt32",
-    "CSignedInt16": "json.decode.CSignedInt16",
-    "CUnsignedInt16": "json.decode.CUnsignedInt16",
-    "CSignedByte": "json.decode.CSignedByte",
-    "CUnsignedByte": "json.decode.CUnsignedByte",
+    "Int64": "json.decode.Int64",
+    "UInt64": "json.decode.UInt64",
+    "Int32": "json.decode.Int32",
+    "UInt32": "json.decode.UInt32",
+    "Int16": "json.decode.Int16",
+    "UInt16": "json.decode.UInt16",
+    "Int8": "json.decode.Int8",
+    "UInt8": "json.decode.UInt8",
     "DurationMilliseconds": "json.decode.DurationMilliseconds",
     "MonotonicMilliseconds": "json.decode.MonotonicMilliseconds",
     "UtcMilliseconds": "json.decode.UtcMilliseconds",
     "Bool": "json.decode.Bool",
-    "F64": "json.decode.F64",
-    "CFloat64": "json.decode.CFloat64",
-    "CFloat32": "json.decode.CFloat32",
+    "Float64": "json.decode.Float64",
+    "Float32": "json.decode.Float32",
 }
 
 _STRICT_FALLIBLE_CALL_TARGETS = KNOWN_FALLIBLE_CALL_TARGETS
@@ -3959,12 +4039,13 @@ _STRICT_FORMAT_ARG_SLOTS = frozenset({"format"})
 _STRICT_SQL_STRING_TARGETS = frozenset({
     "sqlite.prepareStatement",
     "sqlite.exec",
+    "sqlite.execStatus",
 })
 
 _STRICT_SQL_ARG_SLOTS = frozenset({"sql"})
 
 _STRICT_SQL_PREPARE_TARGETS = frozenset({"sqlite.prepareStatement"})
-_STRICT_SQL_EXEC_TARGETS = frozenset({"sqlite.exec"})
+_STRICT_SQL_EXEC_TARGETS = frozenset({"sqlite.exec", "sqlite.execStatus"})
 
 _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
     "http.responseHtml",
@@ -3990,21 +4071,15 @@ HTTP_INTRINSIC_TARGETS = (
 )
 
 _STRICT_OVERFLOW_SENSITIVE_TARGETS = frozenset({
-    "math.addI64",
-    "math.subtractI64",
-    "math.multiplyI64",
-    "math.addCSignedInt64",
-    "math.subtractCSignedInt64",
-    "math.multiplyCSignedInt64",
+    "math.addInt64",
+    "math.subtractInt64",
+    "math.multiplyInt64",
 })
 
 _STRICT_CHECKED_ARITHMETIC_TARGETS = frozenset({
-    "math.checkedAddI64",
-    "math.checkedSubtractI64",
-    "math.checkedMultiplyI64",
-    "math.checkedAddCSignedInt64",
-    "math.checkedSubtractCSignedInt64",
-    "math.checkedMultiplyCSignedInt64",
+    "math.checkedAddInt64",
+    "math.checkedSubtractInt64",
+    "math.checkedMultiplyInt64",
 })
 
 _STRICT_OVERFLOW_SENSITIVE_NAME_RE = re.compile(
@@ -4023,42 +4098,42 @@ _STRICT_MUTEX_CAPABILITY_SUBSTRINGS = (
 )
 
 _BINOP_TO_LLVM = {
-    "math.addI64":      "add",
-    "math.subtractI64": "sub",
-    "math.multiplyI64": "mul",
-    "math.divideI64":   "sdiv",
-    "math.moduloI64":   "srem",
+    "math.addInt64":      "add",
+    "math.subtractInt64": "sub",
+    "math.multiplyInt64": "mul",
+    "math.divideInt64":   "sdiv",
+    "math.moduloInt64":   "srem",
     # Bitwise / shift primitives. Single-instruction LLVM lowerings so the
     # stdlib `bit` module no longer emits O(k) multiply/divide loops to
     # emulate shifts and masks. `left` is the value, `right` is the other
     # operand (shift count for the shift ops). Shift counts must be in
     # [0, 63]; a count >= 64 is LLVM poison (matches the bit module's
     # documented "bitIndex must be in [0, 63]" contract).
-    "math.bitwiseAndI64":        "and_",
-    "math.bitwiseOrI64":         "or_",
-    "math.bitwiseXorI64":        "xor",
-    "math.shiftLeftI64":         "shl",
-    "math.shiftRightLogicalI64": "lshr",
-    "math.shiftRightArithmeticI64": "ashr",
+    "math.bitwiseAndInt64":        "and_",
+    "math.bitwiseOrInt64":         "or_",
+    "math.bitwiseXorInt64":        "xor",
+    "math.shiftLeftInt64":         "shl",
+    "math.shiftRightLogicalInt64": "lshr",
+    "math.shiftRightArithmeticInt64": "ashr",
 }
 
-# Floating-point binary ops keep their operands at their declared width (F64 by
+# Floating-point binary ops keep their operands at their declared width (Float64 by
 # default). The dispatcher distinguishes these from the integer set so it does
 # not coerce double values down to i64.
 _FBINOP_TO_LLVM = {
-    "math.addF64":      "fadd",
-    "math.subtractF64": "fsub",
-    "math.multiplyF64": "fmul",
-    "math.divideF64":   "fdiv",
+    "math.addFloat64":      "fadd",
+    "math.subtractFloat64": "fsub",
+    "math.multiplyFloat64": "fmul",
+    "math.divideFloat64":   "fdiv",
 }
 
 _FCMP_TO_LLVM = {
-    "math.equalF64":              "==",
-    "math.notEqualF64":           "!=",
-    "math.lessThanF64":           "<",
-    "math.lessThanOrEqualF64":    "<=",
-    "math.greaterThanF64":        ">",
-    "math.greaterThanOrEqualF64": ">=",
+    "math.equalFloat64":              "==",
+    "math.notEqualFloat64":           "!=",
+    "math.lessThanFloat64":           "<",
+    "math.lessThanOrEqualFloat64":    "<=",
+    "math.greaterThanFloat64":        ">",
+    "math.greaterThanOrEqualFloat64": ">=",
 }
 
 # C macro-only math classifiers — `c.isnan(x)`, etc. — are defined as macros in
@@ -4071,21 +4146,21 @@ _MATH_CLASSIFIERS = {
 }
 
 _CMP_TO_LLVM = {
-    "math.equalI64":              "==",
-    "math.notEqualI64":           "!=",
-    "math.lessThanI64":           "<",
-    "math.lessThanOrEqualI64":    "<=",
-    "math.greaterThanI64":        ">",
-    "math.greaterThanOrEqualI64": ">=",
+    "math.equalInt64":              "==",
+    "math.notEqualInt64":           "!=",
+    "math.lessThanInt64":           "<",
+    "math.lessThanOrEqualInt64":    "<=",
+    "math.greaterThanInt64":        ">",
+    "math.greaterThanOrEqualInt64": ">=",
 }
 
-_CMP_I32_TO_LLVM = {
-    "math.equalCSignedInt32":              "==",
-    "math.notEqualCSignedInt32":           "!=",
-    "math.lessThanCSignedInt32":           "<",
-    "math.lessThanOrEqualCSignedInt32":    "<=",
-    "math.greaterThanCSignedInt32":        ">",
-    "math.greaterThanOrEqualCSignedInt32": ">=",
+_CMP_Int32_TO_LLVM = {
+    "math.equalInt32":              "==",
+    "math.notEqualInt32":           "!=",
+    "math.lessThanInt32":           "<",
+    "math.lessThanOrEqualInt32":    "<=",
+    "math.greaterThanInt32":        ">",
+    "math.greaterThanOrEqualInt32": ">=",
 }
 
 
@@ -4093,59 +4168,59 @@ _CMP_I32_TO_LLVM = {
 # (where TypeName is a user-declared type alias) lowers to the primitive
 # below based on the alias's underlying type. This preserves domain context
 # in source (`CountdownValue.subtractPositiveStep` rather than
-# `math.subtractI64`) while reusing the existing primitive dispatch.
-_DOMAIN_METHOD_TO_F64_PRIMITIVE = {
-    "add":              "math.addF64",
-    "subtract":         "math.subtractF64",
-    "multiply":         "math.multiplyF64",
-    "divide":           "math.divideF64",
-    "equal":            "math.equalF64",
-    "notEqual":         "math.notEqualF64",
-    "lessThan":         "math.lessThanF64",
-    "lessThanOrEqual":  "math.lessThanOrEqualF64",
-    "greaterThan":      "math.greaterThanF64",
-    "greaterThanOrEqual": "math.greaterThanOrEqualF64",
+# `math.subtractInt64`) while reusing the existing primitive dispatch.
+_DOMAIN_METHOD_TO_Float64_PRIMITIVE = {
+    "add":              "math.addFloat64",
+    "subtract":         "math.subtractFloat64",
+    "multiply":         "math.multiplyFloat64",
+    "divide":           "math.divideFloat64",
+    "equal":            "math.equalFloat64",
+    "notEqual":         "math.notEqualFloat64",
+    "lessThan":         "math.lessThanFloat64",
+    "lessThanOrEqual":  "math.lessThanOrEqualFloat64",
+    "greaterThan":      "math.greaterThanFloat64",
+    "greaterThanOrEqual": "math.greaterThanOrEqualFloat64",
 }
 
 
-_DOMAIN_METHOD_TO_I64_PRIMITIVE = {
+_DOMAIN_METHOD_TO_Int64_PRIMITIVE = {
     # infallible (use plain `bind`)
-    "add":                  "math.addI64",
-    "addPositiveStep":      "math.addI64",
-    "subtract":             "math.subtractI64",
-    "subtractStep":         "math.subtractI64",
-    "subtractPositiveStep": "math.subtractI64",
-    "multiply":             "math.multiplyI64",
-    "multiplyByStep":       "math.multiplyI64",
-    "multiplyByCounter":    "math.multiplyI64",
-    "divide":               "math.divideI64",
-    "modulo":               "math.moduloI64",
-    "moduloBy":             "math.moduloI64",
-    "equal":                "math.equalI64",
-    "notEqual":             "math.notEqualI64",
-    "lessThan":             "math.lessThanI64",
-    "lessThanOrEqual":      "math.lessThanOrEqualI64",
-    "greaterThan":          "math.greaterThanI64",
-    "greaterThanOrEqual":   "math.greaterThanOrEqualI64",
-    "square":               "math.multiplyI64",
+    "add":                  "math.addInt64",
+    "addPositiveStep":      "math.addInt64",
+    "subtract":             "math.subtractInt64",
+    "subtractStep":         "math.subtractInt64",
+    "subtractPositiveStep": "math.subtractInt64",
+    "multiply":             "math.multiplyInt64",
+    "multiplyByStep":       "math.multiplyInt64",
+    "multiplyByCounter":    "math.multiplyInt64",
+    "divide":               "math.divideInt64",
+    "modulo":               "math.moduloInt64",
+    "moduloBy":             "math.moduloInt64",
+    "equal":                "math.equalInt64",
+    "notEqual":             "math.notEqualInt64",
+    "lessThan":             "math.lessThanInt64",
+    "lessThanOrEqual":      "math.lessThanOrEqualInt64",
+    "greaterThan":          "math.greaterThanInt64",
+    "greaterThanOrEqual":   "math.greaterThanOrEqualInt64",
+    "square":               "math.multiplyInt64",
     # fallible (use bindOk + bindError + branchIfError)
-    "checkedMultiply":           "math.checkedMultiplyI64",
-    "checkedMultiplyByCounter":  "math.checkedMultiplyI64",
-    "checkedMultiplyByStep":     "math.checkedMultiplyI64",
+    "checkedMultiply":           "math.checkedMultiplyInt64",
+    "checkedMultiplyByCounter":  "math.checkedMultiplyInt64",
+    "checkedMultiplyByStep":     "math.checkedMultiplyInt64",
 }
 
 
-# Domain methods for CSignedInt32-repr types and enums. Mirrors the I64
-# table; used when `TypeName.methodName` resolves to a CSignedInt32-shaped
-# alias or to an enum with `repr CSignedInt32`. Supports equality and
+# Domain methods for Int32-repr types and enums. Mirrors the Int64
+# table; used when `TypeName.methodName` resolves to a Int32-shaped
+# alias or to an enum with `repr Int32`. Supports equality and
 # ordered comparison on int32-shaped enum cases like SaveTodosStatus.
-_DOMAIN_METHOD_TO_I32_PRIMITIVE = {
-    "equal":                "math.equalCSignedInt32",
-    "notEqual":             "math.notEqualCSignedInt32",
-    "lessThan":             "math.lessThanCSignedInt32",
-    "lessThanOrEqual":      "math.lessThanOrEqualCSignedInt32",
-    "greaterThan":          "math.greaterThanCSignedInt32",
-    "greaterThanOrEqual":   "math.greaterThanOrEqualCSignedInt32",
+_DOMAIN_METHOD_TO_Int32_PRIMITIVE = {
+    "equal":                "math.equalInt32",
+    "notEqual":             "math.notEqualInt32",
+    "lessThan":             "math.lessThanInt32",
+    "lessThanOrEqual":      "math.lessThanOrEqualInt32",
+    "greaterThan":          "math.greaterThanInt32",
+    "greaterThanOrEqual":   "math.greaterThanOrEqualInt32",
 }
 
 
@@ -4189,8 +4264,8 @@ class Codegen:
         # struct { i64 product, i1 overflowOccurred }. Used to lower checked
         # multiplication call targets so callers can branchIfError on the
         # overflow bit instead of silently wrapping.
-        overflow_struct_ty = ir.LiteralStructType([I64, I1])
-        smul_overflow_ty = ir.FunctionType(overflow_struct_ty, [I64, I64])
+        overflow_struct_ty = ir.LiteralStructType([Int64, I1])
+        smul_overflow_ty = ir.FunctionType(overflow_struct_ty, [Int64, Int64])
         self.smul_overflow_i64 = ir.Function(
             self.module, smul_overflow_ty, name="llvm.smul.with.overflow.i64")
         # On-demand cache for c.* libc declarations. Populated lazily so a
@@ -4211,7 +4286,7 @@ class Codegen:
         console.writeLine etc. will pick up the SemanticScript-native one through the
         user-op dispatch path, not through self.puts)."""
         if self._puts is None:
-            self._puts = ir.Function(self.module, ir.FunctionType(I32, [I8P]),
+            self._puts = ir.Function(self.module, ir.FunctionType(Int32, [Int8P]),
                                      name="puts")
         return self._puts
 
@@ -4219,7 +4294,7 @@ class Codegen:
     def printf(self):
         if self._printf is None:
             self._printf = ir.Function(self.module,
-                                       ir.FunctionType(I32, [I8P], var_arg=True),
+                                       ir.FunctionType(Int32, [Int8P], var_arg=True),
                                        name="printf")
         return self._printf
 
@@ -4240,7 +4315,7 @@ class Codegen:
     def win_get_std_handle(self):
         if self._win_get_std_handle is None:
             self._win_get_std_handle = ir.Function(
-                self.module, ir.FunctionType(I8P, [I32]),
+                self.module, ir.FunctionType(Int8P, [Int32]),
                 name="GetStdHandle")
         return self._win_get_std_handle
 
@@ -4249,7 +4324,7 @@ class Codegen:
         if self._win_write_file is None:
             self._win_write_file = ir.Function(
                 self.module,
-                ir.FunctionType(I32, [I8P, I8P, I32, I32.as_pointer(), I8P]),
+                ir.FunctionType(Int32, [Int8P, Int8P, Int32, Int32.as_pointer(), Int8P]),
                 name="WriteFile")
         return self._win_write_file
 
@@ -4257,7 +4332,7 @@ class Codegen:
     def posix_write(self):
         if self._posix_write is None:
             self._posix_write = ir.Function(
-                self.module, ir.FunctionType(I64, [I32, I8P, I64]),
+                self.module, ir.FunctionType(Int64, [Int32, Int8P, Int64]),
                 name="write")
         return self._posix_write
 
@@ -4270,10 +4345,11 @@ class Codegen:
         line = call.get("line", 0)
         raw = self.prog.source_lines.get(line, "").strip()
         call_bits = ""
-        if call.get("name") and call.get("target"):
-            call_bits = f"{call['name']} -> {call['target']}"
-        elif call.get("name") or call.get("target"):
-            call_bits = call.get("name") or call.get("target")
+        display_target = call.get("source_target", call.get("target"))
+        if call.get("name") and display_target:
+            call_bits = f"{call['name']} -> {display_target}"
+        elif call.get("name") or display_target:
+            call_bits = call.get("name") or display_target
         lines = [
             "error SSRUN001: SemanticScript runtime panic",
             "--------------------------------------------",
@@ -4310,51 +4386,51 @@ class Codegen:
             # STD_ERROR_HANDLE is (DWORD)-12. Use kernel32 directly instead
             # of C stdio so panic diagnostics stay close to the emitted IR.
             handle = builder.call(
-                self.win_get_std_handle, [ir.Constant(I32, -12)],
+                self.win_get_std_handle, [ir.Constant(Int32, -12)],
                 name="panicStderr")
-            bytes_written = builder.alloca(I32, name="panicBytesWritten")
+            bytes_written = builder.alloca(Int32, name="panicBytesWritten")
             builder.call(self.win_write_file, [
                 handle,
                 ptr,
-                ir.Constant(I32, byte_count),
+                ir.Constant(Int32, byte_count),
                 bytes_written,
-                ir.Constant(I8P, None),
+                ir.Constant(Int8P, None),
             ])
             return
         builder.call(self.posix_write, [
-            ir.Constant(I32, 2),
+            ir.Constant(Int32, 2),
             ptr,
-            ir.Constant(I64, byte_count),
+            ir.Constant(Int64, byte_count),
         ])
 
     def _emit_runtime_buffer_write(self, builder, ptr, byte_count_i32):
         triple = (self.module.triple or "").lower()
         if "windows" in triple or "win32" in triple or "msvc" in triple:
             handle = builder.call(
-                self.win_get_std_handle, [ir.Constant(I32, -12)],
+                self.win_get_std_handle, [ir.Constant(Int32, -12)],
                 name="traceStderr")
-            bytes_written = builder.alloca(I32, name="traceBytesWritten")
+            bytes_written = builder.alloca(Int32, name="traceBytesWritten")
             builder.call(self.win_write_file, [
                 handle,
                 ptr,
                 byte_count_i32,
                 bytes_written,
-                ir.Constant(I8P, None),
+                ir.Constant(Int8P, None),
             ])
             return
-        byte_count_i64 = builder.zext(byte_count_i32, I64, name="traceWriteLen64")
+        byte_count_i64 = builder.zext(byte_count_i32, Int64, name="traceWriteLen64")
         builder.call(self.posix_write, [
-            ir.Constant(I32, 2),
+            ir.Constant(Int32, 2),
             ptr,
             byte_count_i64,
         ])
 
     def _trace_sequence_global(self):
         if self._trace_seq_global is None:
-            gv = ir.GlobalVariable(self.module, I64, name="as.trace.seq")
+            gv = ir.GlobalVariable(self.module, Int64, name="as.trace.seq")
             gv.linkage = "internal"
             gv.global_constant = False
-            gv.initializer = ir.Constant(I64, 0)
+            gv.initializer = ir.Constant(Int64, 0)
             self._trace_seq_global = gv
         return self._trace_seq_global
 
@@ -4363,18 +4439,18 @@ class Codegen:
             return
         ptr = self._i8p(builder, text)
         byte_count = len(text.encode("utf-8"))
-        self._emit_runtime_buffer_write(builder, ptr, ir.Constant(I32, byte_count))
+        self._emit_runtime_buffer_write(builder, ptr, ir.Constant(Int32, byte_count))
 
     def _emit_runtime_u64_decimal_write(self, builder, value):
         writer_id = self._trace_decimal_writer_id
         self._trace_decimal_writer_id += 1
         fn = builder.function
-        buffer_ty = ir.ArrayType(I8, 32)
+        buffer_ty = ir.ArrayType(Int8, 32)
         buffer = builder.alloca(buffer_ty, name=f"traceSeqDigits{writer_id}")
-        number_slot = builder.alloca(I64, name=f"traceSeqNumber{writer_id}")
-        index_slot = builder.alloca(I32, name=f"traceSeqIndex{writer_id}")
+        number_slot = builder.alloca(Int64, name=f"traceSeqNumber{writer_id}")
+        index_slot = builder.alloca(Int32, name=f"traceSeqIndex{writer_id}")
         builder.store(value, number_slot)
-        builder.store(ir.Constant(I32, 32), index_slot)
+        builder.store(ir.Constant(Int32, 32), index_slot)
 
         loop_block = fn.append_basic_block(f"traceSeqDigitsLoop{writer_id}")
         after_block = fn.append_basic_block(f"traceSeqDigitsDone{writer_id}")
@@ -4382,32 +4458,32 @@ class Codegen:
         builder.position_at_end(loop_block)
 
         number = builder.load(number_slot, name=f"traceSeqNumberLoad{writer_id}")
-        digit = builder.urem(number, ir.Constant(I64, 10),
+        digit = builder.urem(number, ir.Constant(Int64, 10),
                              name=f"traceSeqDigit{writer_id}")
-        quotient = builder.udiv(number, ir.Constant(I64, 10),
+        quotient = builder.udiv(number, ir.Constant(Int64, 10),
                                 name=f"traceSeqQuotient{writer_id}")
         index = builder.load(index_slot, name=f"traceSeqIndexLoad{writer_id}")
-        next_index = builder.sub(index, ir.Constant(I32, 1),
+        next_index = builder.sub(index, ir.Constant(Int32, 1),
                                  name=f"traceSeqNextIndex{writer_id}")
-        digit_i8 = builder.trunc(digit, I8, name=f"traceSeqDigitI8{writer_id}")
-        digit_char = builder.add(digit_i8, ir.Constant(I8, ord("0")),
+        digit_i8 = builder.trunc(digit, Int8, name=f"traceSeqDigitInt8{writer_id}")
+        digit_char = builder.add(digit_i8, ir.Constant(Int8, ord("0")),
                                  name=f"traceSeqDigitChar{writer_id}")
         digit_ptr = builder.gep(
-            buffer, [ir.Constant(I32, 0), next_index],
+            buffer, [ir.Constant(Int32, 0), next_index],
             inbounds=True, name=f"traceSeqDigitPtr{writer_id}")
         builder.store(digit_char, digit_ptr)
         builder.store(next_index, index_slot)
         builder.store(quotient, number_slot)
-        has_more = builder.icmp_unsigned("!=", quotient, ir.Constant(I64, 0),
+        has_more = builder.icmp_unsigned("!=", quotient, ir.Constant(Int64, 0),
                                          name=f"traceSeqHasMore{writer_id}")
         builder.cbranch(has_more, loop_block, after_block)
 
         builder.position_at_end(after_block)
         start_index = builder.load(index_slot, name=f"traceSeqStart{writer_id}")
-        byte_count = builder.sub(ir.Constant(I32, 32), start_index,
+        byte_count = builder.sub(ir.Constant(Int32, 32), start_index,
                                  name=f"traceSeqDigitCount{writer_id}")
         start_ptr = builder.gep(
-            buffer, [ir.Constant(I32, 0), start_index],
+            buffer, [ir.Constant(Int32, 0), start_index],
             inbounds=True, name=f"traceSeqStartPtr{writer_id}")
         self._emit_runtime_buffer_write(builder, start_ptr, byte_count)
 
@@ -4449,7 +4525,7 @@ class Codegen:
             return
         seq_global = self._trace_sequence_global()
         current_seq = builder.load(seq_global, name="traceSeqCurrent")
-        next_seq = builder.add(current_seq, ir.Constant(I64, 1), name="traceSeqNext")
+        next_seq = builder.add(current_seq, ir.Constant(Int64, 1), name="traceSeqNext")
         builder.store(next_seq, seq_global)
         prefix, middle, suffix = self._trace_json_parts(
             event, site_kind, operation, name, target, lineno,
@@ -4581,11 +4657,11 @@ class Codegen:
 
         ret_ty = op_info["return_type"]
         param_tys = [param[1] for param in op_info["params"]]
-        context_ty = ir.LiteralStructType([I8P, I32, ret_ty] + param_tys)
+        context_ty = ir.LiteralStructType([Int8P, Int32, ret_ty] + param_tys)
         context_ptr_ty = context_ty.as_pointer()
         safe_name = re.sub(r"[^A-Za-z0-9_]", "_", op_name)
-        work_fn_ty = ir.FunctionType(VOID, [I8P])
-        after_fn_ty = ir.FunctionType(VOID, [I8P, I32])
+        work_fn_ty = ir.FunctionType(VOID, [Int8P])
+        after_fn_ty = ir.FunctionType(VOID, [Int8P, Int32])
 
         work_fn = ir.Function(
             self.module,
@@ -4595,11 +4671,11 @@ class Codegen:
         work_context = work_builder.bitcast(
             work_fn.args[0], context_ptr_ty, name="ctx")
         arg_values = []
-        zero = ir.Constant(I32, 0)
+        zero = ir.Constant(Int32, 0)
         for index, _param_ty in enumerate(param_tys, start=3):
             arg_ptr = work_builder.gep(
                 work_context,
-                [zero, ir.Constant(I32, index)],
+                [zero, ir.Constant(Int32, index)],
                 inbounds=True,
                 name=f"arg{index - 3}_ptr")
             arg_values.append(
@@ -4608,7 +4684,7 @@ class Codegen:
             op_info["fn"], arg_values, name=f"{safe_name}_result")
         result_ptr = work_builder.gep(
             work_context,
-            [zero, ir.Constant(I32, 2)],
+            [zero, ir.Constant(Int32, 2)],
             inbounds=True,
             name="result_ptr")
         work_builder.store(result, result_ptr)
@@ -4628,7 +4704,7 @@ class Codegen:
             name="future_ptr")
         future = after_builder.load(future_ptr, name="future")
         complete_fn = self._runtime_func(
-            "ss_async_future_complete", I32, [I8P, I32, I8P])
+            "ss_async_future_complete", Int32, [Int8P, Int32, Int8P])
         after_builder.call(
             complete_fn,
             [future, after_fn.args[1], after_fn.args[0]])
@@ -4696,59 +4772,59 @@ class Codegen:
             # Unordered compare with self: NaN is the only value that
             # compares unordered against itself.
             result_bool = builder.fcmp_unordered("uno", x, x, name=name + "_uno")
-            return builder.zext(result_bool, I32)
+            return builder.zext(result_bool, Int32)
         if classifier == "isinf":
             # |x| == inf
-            inf = ir.Constant(F64, float("inf"))
+            inf = ir.Constant(Float64, float("inf"))
             abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
             eq = builder.fcmp_ordered("==", abs_x, inf, name=name + "_eq")
-            return builder.zext(eq, I32)
+            return builder.zext(eq, Int32)
         if classifier == "isfinite":
             # |x| < inf  (also rules out NaN because NaN < anything is false)
-            inf = ir.Constant(F64, float("inf"))
+            inf = ir.Constant(Float64, float("inf"))
             abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
             lt = builder.fcmp_ordered("<", abs_x, inf, name=name + "_lt")
-            return builder.zext(lt, I32)
+            return builder.zext(lt, Int32)
         if classifier == "isnormal":
             # |x| is finite AND |x| >= DBL_MIN (normal positive). This is the
             # spec definition: normal floats are non-zero, finite, and not
             # subnormal. DBL_MIN = 2^-1022.
-            dbl_min = ir.Constant(F64, 2.2250738585072014e-308)
-            inf = ir.Constant(F64, float("inf"))
+            dbl_min = ir.Constant(Float64, 2.2250738585072014e-308)
+            inf = ir.Constant(Float64, float("inf"))
             abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
             lt_inf = builder.fcmp_ordered("<", abs_x, inf, name=name + "_lt_inf")
             ge_min = builder.fcmp_ordered(">=", abs_x, dbl_min, name=name + "_ge_min")
             both = builder.and_(lt_inf, ge_min, name=name + "_both")
-            return builder.zext(both, I32)
+            return builder.zext(both, Int32)
         if classifier == "signbit":
             # Read the sign bit by reinterpreting the double as i64.
-            i64_bits = builder.bitcast(x, I64, name=name + "_bits")
-            shifted = builder.lshr(i64_bits, ir.Constant(I64, 63),
+            i64_bits = builder.bitcast(x, Int64, name=name + "_bits")
+            shifted = builder.lshr(i64_bits, ir.Constant(Int64, 63),
                                     name=name + "_shift")
-            return builder.trunc(shifted, I32)
+            return builder.trunc(shifted, Int32)
         if classifier == "fpclassify":
             # Returns FP_INFINITE, FP_NAN, FP_NORMAL, FP_SUBNORMAL, FP_ZERO.
             # Implementation-defined integer values; we use the MSVC values
             # (1, 2, -1, -2, 0). The result is computed by chained selects.
             FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL = 2, 1, 0, -2, -1
-            inf = ir.Constant(F64, float("inf"))
-            zero = ir.Constant(F64, 0.0)
-            dbl_min = ir.Constant(F64, 2.2250738585072014e-308)
+            inf = ir.Constant(Float64, float("inf"))
+            zero = ir.Constant(Float64, 0.0)
+            dbl_min = ir.Constant(Float64, 2.2250738585072014e-308)
             abs_x = builder.call(self._llvm_fabs_f64(), [x], name=name + "_abs")
             is_nan = builder.fcmp_unordered("uno", x, x, name=name + "_uno")
             is_inf = builder.fcmp_ordered("==", abs_x, inf, name=name + "_inf")
             is_zero = builder.fcmp_ordered("==", x, zero, name=name + "_zero")
             is_subnormal = builder.fcmp_ordered("<", abs_x, dbl_min,
                                                  name=name + "_sub")
-            result_normal = ir.Constant(I32, FP_NORMAL)
+            result_normal = ir.Constant(Int32, FP_NORMAL)
             result_subnorm = builder.select(is_subnormal,
-                ir.Constant(I32, FP_SUBNORMAL), result_normal,
+                ir.Constant(Int32, FP_SUBNORMAL), result_normal,
                 name=name + "_sel_sub")
-            result_zero = builder.select(is_zero, ir.Constant(I32, FP_ZERO),
+            result_zero = builder.select(is_zero, ir.Constant(Int32, FP_ZERO),
                 result_subnorm, name=name + "_sel_zero")
-            result_inf = builder.select(is_inf, ir.Constant(I32, FP_INFINITE),
+            result_inf = builder.select(is_inf, ir.Constant(Int32, FP_INFINITE),
                 result_zero, name=name + "_sel_inf")
-            return builder.select(is_nan, ir.Constant(I32, FP_NAN),
+            return builder.select(is_nan, ir.Constant(Int32, FP_NAN),
                 result_inf, name=name + "_sel_nan")
         raise ValueError(f"unknown math classifier: {classifier}")
 
@@ -4757,7 +4833,7 @@ class Codegen:
         for fn in self.module.functions:
             if fn.name == "llvm.fabs.f64":
                 return fn
-        fnty = ir.FunctionType(F64, [F64])
+        fnty = ir.FunctionType(Float64, [Float64])
         return ir.Function(self.module, fnty, name="llvm.fabs.f64")
 
     def _promote_for_vararg(self, builder, value):
@@ -4765,9 +4841,9 @@ class Codegen:
         promoted to double. Apply the same promotion here so call-site types
         match what printf/scanf expect."""
         if isinstance(value.type, ir.IntType) and value.type.width < 32:
-            return builder.sext(value, I32)
+            return builder.sext(value, Int32)
         if isinstance(value.type, ir.FloatType):
-            return builder.fpext(value, F64)
+            return builder.fpext(value, Float64)
         return value
 
     def _libc_stream(self, name: str):
@@ -4778,7 +4854,7 @@ class Codegen:
         # the simplest portable mapping is to declare the symbol as a
         # `FILE*` global and let the linker resolve it. llvmlite emits
         # external globals when no initializer is set.
-        gv = ir.GlobalVariable(self.module, I8P, name=f"as_{name}")
+        gv = ir.GlobalVariable(self.module, Int8P, name=f"as_{name}")
         gv.linkage = "external"
         self._libc_streams[name] = gv
         return gv
@@ -4799,7 +4875,7 @@ class Codegen:
 
     def _i8p(self, builder: ir.IRBuilder, text: str):
         gv = self._make_str_global(text)
-        zero = ir.Constant(I32, 0)
+        zero = ir.Constant(Int32, 0)
         return builder.gep(gv, [zero, zero], inbounds=True)
 
     def _html_mask_raw_text_elements(self, body: str) -> str:
@@ -5092,9 +5168,9 @@ class Codegen:
                 f"html hole `{arg_name}` has type `{type_name}`; "
                 "html.hydrate requires String or an explicit HTML fragment/document type")
         if isinstance(value.type, ir.IntType):
-            return builder.inttoptr(value, I8P)
-        if isinstance(value.type, ir.PointerType) and value.type != I8P:
-            return builder.bitcast(value, I8P)
+            return builder.inttoptr(value, Int8P)
+        if isinstance(value.type, ir.PointerType) and value.type != Int8P:
+            return builder.bitcast(value, Int8P)
         return value
 
     def _emit_html_append_static(self, builder, write_ptr, limit_ptr,
@@ -5111,19 +5187,19 @@ class Codegen:
         loop_block = fn.append_basic_block(f"{name_hint}_copy")
         byte_block = fn.append_basic_block(f"{name_hint}_byte")
         done_block = fn.append_basic_block(f"{name_hint}_done")
-        one = ir.Constant(I64, 1)
-        zero_byte = ir.Constant(I8, 0)
+        one = ir.Constant(Int64, 1)
+        zero_byte = ir.Constant(Int8, 0)
 
         builder.branch(loop_block)
         builder.position_at_end(loop_block)
-        src_phi = builder.phi(I8P, name=f"{name_hint}_src")
-        dst_phi = builder.phi(I8P, name=f"{name_hint}_dst")
+        src_phi = builder.phi(Int8P, name=f"{name_hint}_src")
+        dst_phi = builder.phi(Int8P, name=f"{name_hint}_dst")
         src_phi.add_incoming(source_ptr, entry_block)
         dst_phi.add_incoming(write_ptr, entry_block)
         ch = builder.load(src_phi, name=f"{name_hint}_ch")
         done = builder.icmp_unsigned("==", ch, zero_byte, name=f"{name_hint}_is_end")
-        dst_offset = builder.ptrtoint(dst_phi, I64, name=f"{name_hint}_dst_addr")
-        limit_offset = builder.ptrtoint(limit_ptr, I64, name=f"{name_hint}_limit_addr")
+        dst_offset = builder.ptrtoint(dst_phi, Int64, name=f"{name_hint}_dst_addr")
+        limit_offset = builder.ptrtoint(limit_ptr, Int64, name=f"{name_hint}_limit_addr")
         at_limit = builder.icmp_unsigned(
             ">=", dst_offset, limit_offset, name=f"{name_hint}_at_limit")
         should_stop = builder.or_(done, at_limit, name=f"{name_hint}_stop")
@@ -5163,21 +5239,21 @@ class Codegen:
             fn.append_basic_block(f"{name_hint}_escape_{suffix}")
             for _byte, suffix, _entity in checks
         ]
-        one = ir.Constant(I64, 1)
-        zero_byte = ir.Constant(I8, 0)
+        one = ir.Constant(Int64, 1)
+        zero_byte = ir.Constant(Int8, 0)
 
         builder.branch(loop_block)
         builder.position_at_end(loop_block)
-        src_phi = builder.phi(I8P, name=f"{name_hint}_escape_src")
-        dst_phi = builder.phi(I8P, name=f"{name_hint}_escape_dst")
+        src_phi = builder.phi(Int8P, name=f"{name_hint}_escape_src")
+        dst_phi = builder.phi(Int8P, name=f"{name_hint}_escape_dst")
         src_phi.add_incoming(source_ptr, entry_block)
         dst_phi.add_incoming(write_ptr, entry_block)
         ch = builder.load(src_phi, name=f"{name_hint}_escape_ch")
         done = builder.icmp_unsigned("==", ch, zero_byte,
                                      name=f"{name_hint}_escape_is_end")
-        dst_offset = builder.ptrtoint(dst_phi, I64,
+        dst_offset = builder.ptrtoint(dst_phi, Int64,
                                       name=f"{name_hint}_escape_dst_addr")
-        limit_offset = builder.ptrtoint(limit_ptr, I64,
+        limit_offset = builder.ptrtoint(limit_ptr, Int64,
                                         name=f"{name_hint}_escape_limit_addr")
         at_limit = builder.icmp_unsigned(
             ">=", dst_offset, limit_offset, name=f"{name_hint}_escape_at_limit")
@@ -5187,7 +5263,7 @@ class Codegen:
         for index, (byte_value, suffix, entity_text) in enumerate(checks):
             builder.position_at_end(check_blocks[index])
             is_match = builder.icmp_unsigned(
-                "==", ch, ir.Constant(I8, byte_value),
+                "==", ch, ir.Constant(Int8, byte_value),
                 name=f"{name_hint}_escape_is_{suffix}")
             next_block = entity_blocks[index]
             fallback_block = (
@@ -5255,17 +5331,17 @@ class Codegen:
                 raise ValueError(
                     f"{call_name}: arg `{provided_arg}` is not declared by "
                     f"htmlTemplate `{template.name}`")
-        array_ty = ir.ArrayType(I8, buffer_size)
+        array_ty = ir.ArrayType(Int8, buffer_size)
         buffer_name = f"as.htmlbuf.{self._next_html_buffer_id}.{call_name}"
         self._next_html_buffer_id += 1
         html_buffer = ir.GlobalVariable(self.module, array_ty, name=buffer_name)
         html_buffer.linkage = "internal"
         html_buffer.global_constant = False
         html_buffer.initializer = ir.Constant(array_ty, bytearray(buffer_size))
-        zero = ir.Constant(I32, 0)
+        zero = ir.Constant(Int32, 0)
         buffer_ptr = builder.gep(html_buffer, [zero, zero], inbounds=True)
         limit_ptr = builder.gep(
-            buffer_ptr, [ir.Constant(I64, buffer_size - 1)],
+            buffer_ptr, [ir.Constant(Int64, buffer_size - 1)],
             name=f"{call_name}_html_limit")
         write_ptr = buffer_ptr
         arg_index = 0
@@ -5302,7 +5378,7 @@ class Codegen:
                     f"{call_name}_{arg_index}_{arg_name}",
                     escape_quotes=(escape_mode == "attribute"))
             arg_index += 1
-        builder.store(ir.Constant(I8, 0), write_ptr)
+        builder.store(ir.Constant(Int8, 0), write_ptr)
         call["result"] = buffer_ptr
 
     # ---------- module-scope mutable globals ----------
@@ -5321,7 +5397,7 @@ class Codegen:
             if llty is None:
                 continue
             # Resolve a const-name initializer through prog.consts one level
-            # deep so `storage module mutable A I64 zeroCount` works when
+            # deep so `storage module mutable A Int64 zeroCount` works when
             # zeroCount is itself a declared const.
             init_value = raw_value
             if isinstance(init_value, str) and init_value in prog.consts:
@@ -5516,11 +5592,11 @@ class Codegen:
         "runtime.memory.copyBytes":        ("memcpy",  "i8p_from_dst_src_n"),
     }
     _UNSUPPORTED_DOMAIN_RUNTIME_BINDINGS = {
-        "metrics.computeIncrementI64",
+        "metrics.computeIncrementInt64",
         "metricsLock.acquire",
         "metricsLock.release",
         "retryPolicy.delayForAttempt",
-        "runtime.calendar.isLeapYearAsCInt",
+        "runtime.calendar.isLeapYearAsInt32",
         "runtime.calendar.isLeapYearBool",
         "runtime.text.validateUtf8",
         "scheduler.sleep",
@@ -5530,19 +5606,19 @@ class Codegen:
     # to real arithmetic IR. The `intrinsicName NAME arithmetic.X` line
     # picks which IR pattern to emit.
     _INTRINSIC_MAP = {
-        "arithmetic.addI64":           ("add",  "i64"),
-        "arithmetic.subtractI64":      ("sub",  "i64"),
-        "arithmetic.multiplyI64":      ("mul",  "i64"),
-        "arithmetic.divideI64":        ("sdiv", "i64"),
-        "arithmetic.moduloI64":        ("srem", "i64"),
-        "arithmetic.equalI64":         ("==",   "i1"),
-        "arithmetic.notEqualI64":      ("!=",   "i1"),
-        "arithmetic.lessThanI64":      ("<",    "i1"),
-        "arithmetic.lessThanOrEqualI64": ("<=", "i1"),
-        "arithmetic.greaterThanI64":   (">",    "i1"),
-        "arithmetic.greaterThanOrEqualI64": (">=", "i1"),
-        "arithmetic.greaterThanOrEqualCByteCount": (">=", "i1"),
-        "arithmetic.equalCSignedInt32": ("==",  "i1"),
+        "arithmetic.addInt64":           ("add",  "i64"),
+        "arithmetic.subtractInt64":      ("sub",  "i64"),
+        "arithmetic.multiplyInt64":      ("mul",  "i64"),
+        "arithmetic.divideInt64":        ("sdiv", "i64"),
+        "arithmetic.moduloInt64":        ("srem", "i64"),
+        "arithmetic.equalInt64":         ("==",   "i1"),
+        "arithmetic.notEqualInt64":      ("!=",   "i1"),
+        "arithmetic.lessThanInt64":      ("<",    "i1"),
+        "arithmetic.lessThanOrEqualInt64": ("<=", "i1"),
+        "arithmetic.greaterThanInt64":   (">",    "i1"),
+        "arithmetic.greaterThanOrEqualInt64": (">=", "i1"),
+        "arithmetic.greaterThanOrEqualByteCount": (">=", "i1"),
+        "arithmetic.equalInt32": ("==",  "i1"),
     }
 
     def _compile_user_op(self, op: Operation):
@@ -5644,11 +5720,11 @@ class Codegen:
         rty = fn.function_type.return_type
         params = list(fn.args)
         if shape == "i32_from_two_i8p" and len(params) >= 2:
-            fty = ir.FunctionType(I32, [I8P, I8P])
+            fty = ir.FunctionType(Int32, [Int8P, Int8P])
             extern = self.module.globals.get(libc_name) or ir.Function(
                 self.module, fty, name=libc_name)
             res = builder.call(extern, [params[0], params[1]])
-            if rty == I32:
+            if rty == Int32:
                 builder.ret(res)
             elif isinstance(rty, ir.IntType):
                 if rty.width > 32:
@@ -5659,11 +5735,11 @@ class Codegen:
                 builder.ret(ir.Constant(rty, 0))
             return True
         if shape == "i64_from_i8p" and len(params) >= 1:
-            fty = ir.FunctionType(I64, [I8P])
+            fty = ir.FunctionType(Int64, [Int8P])
             extern = self.module.globals.get(libc_name) or ir.Function(
                 self.module, fty, name=libc_name)
             res = builder.call(extern, [params[0]])
-            if rty == I64:
+            if rty == Int64:
                 builder.ret(res)
             elif isinstance(rty, ir.IntType):
                 if rty.width < 64:
@@ -5674,13 +5750,13 @@ class Codegen:
                 builder.ret(ir.Constant(rty, 0))
             return True
         if shape == "i8p_from_dst_src_n" and len(params) >= 3:
-            fty = ir.FunctionType(I8P, [I8P, I8P, I64])
+            fty = ir.FunctionType(Int8P, [Int8P, Int8P, Int64])
             extern = self.module.globals.get(libc_name) or ir.Function(
                 self.module, fty, name=libc_name)
             # Coerce the third arg (byteCount) to i64 if needed.
             count = params[2]
             if isinstance(count.type, ir.IntType) and count.type.width != 64:
-                count = builder.sext(count, I64) if count.type.width < 64 else builder.trunc(count, I64)
+                count = builder.sext(count, Int64) if count.type.width < 64 else builder.trunc(count, Int64)
             res = builder.call(extern, [params[0], params[1], count])
             if isinstance(rty, ir.PointerType):
                 builder.ret(res)
@@ -5694,7 +5770,7 @@ class Codegen:
 
     # ---------- main operation ----------
     def _compile_main(self, op: Operation):
-        fnty = ir.FunctionType(I32, [])
+        fnty = ir.FunctionType(Int32, [])
         fn = ir.Function(self.module, fnty, name="main")
         entry_bb = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry_bb)
@@ -5729,11 +5805,11 @@ class Codegen:
             self._emit_webserver_main(active_servers[0])
             return
 
-        fnty = ir.FunctionType(I32, [])
+        fnty = ir.FunctionType(Int32, [])
         fn = ir.Function(self.module, fnty, name="main")
         entry_bb = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry_bb)
-        builder.ret(ir.Constant(I32, 0))
+        builder.ret(ir.Constant(Int32, 0))
 
     def _validate_web_route_handler(self, server_name: str, method: str, path: str, handler_name: str):
         if handler_name not in self.prog.operations:
@@ -5750,9 +5826,9 @@ class Codegen:
                 f"route {server_name} {method} {path}: handler `{handler_name}` must declare "
                 "`input HANDLER request HttpRequest`, `input HANDLER response HttpResponse`, "
                 "and no extra native ABI parameters")
-        if op_info["return_type"] != I32:
+        if op_info["return_type"] != Int32:
             raise ValueError(
-                f"route {server_name} {method} {path}: handler `{handler_name}` must return CSignedInt32")
+                f"route {server_name} {method} {path}: handler `{handler_name}` must return Int32")
 
     def _emit_webserver_main(self, server: WebServer):
         if server.host is None:
@@ -5773,15 +5849,15 @@ class Codegen:
             self._validate_web_route_handler(server.name, "MIDDLEWARE", route_path, middleware_name)
             middleware_by_path[route_path] = middleware_name
 
-        handler_fnty = ir.FunctionType(I32, [I8P, I8P])
+        handler_fnty = ir.FunctionType(Int32, [Int8P, Int8P])
         handler_ptr_ty = handler_fnty.as_pointer()
-        route_ty = ir.LiteralStructType([I8P, I8P, handler_ptr_ty, handler_ptr_ty])
+        route_ty = ir.LiteralStructType([Int8P, Int8P, handler_ptr_ty, handler_ptr_ty])
         # Trailing fields are optional fallback function pointers.
         config_ty = ir.LiteralStructType(
-            [I8P, I16, route_ty.as_pointer(), I64, handler_ptr_ty, handler_ptr_ty])
-        server_run = self._runtime_func("ss_http_server_run", I32, [config_ty.as_pointer()])
+            [Int8P, Int16, route_ty.as_pointer(), Int64, handler_ptr_ty, handler_ptr_ty])
+        server_run = self._runtime_func("ss_http_server_run", Int32, [config_ty.as_pointer()])
 
-        fnty = ir.FunctionType(I32, [])
+        fnty = ir.FunctionType(Int32, [])
         fn = ir.Function(self.module, fnty, name="main")
         entry_bb = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry_bb)
@@ -5789,12 +5865,12 @@ class Codegen:
         route_count = len(server.routes)
         routes_ty = ir.ArrayType(route_ty, route_count)
         routes_slot = builder.alloca(routes_ty, name="ss_routes")
-        zero_i32 = ir.Constant(I32, 0)
+        zero_i32 = ir.Constant(Int32, 0)
 
         for index, (method, path, handler_name) in enumerate(server.routes):
             route_ptr = builder.gep(
                 routes_slot,
-                [zero_i32, ir.Constant(I32, index)],
+                [zero_i32, ir.Constant(Int32, index)],
                 inbounds=True,
                 name=f"ss_route_{index}"
             )
@@ -5814,22 +5890,22 @@ class Codegen:
             builder.store(method_ptr, builder.gep(
                 route_ptr, [zero_i32, zero_i32], inbounds=True))
             builder.store(path_ptr, builder.gep(
-                route_ptr, [zero_i32, ir.Constant(I32, 1)], inbounds=True))
+                route_ptr, [zero_i32, ir.Constant(Int32, 1)], inbounds=True))
             builder.store(handler_ptr, builder.gep(
-                route_ptr, [zero_i32, ir.Constant(I32, 2)], inbounds=True))
+                route_ptr, [zero_i32, ir.Constant(Int32, 2)], inbounds=True))
             builder.store(middleware_ptr, builder.gep(
-                route_ptr, [zero_i32, ir.Constant(I32, 3)], inbounds=True))
+                route_ptr, [zero_i32, ir.Constant(Int32, 3)], inbounds=True))
 
         config_slot = builder.alloca(config_ty, name="ss_server_config")
         first_route_ptr = builder.gep(routes_slot, [zero_i32, zero_i32], inbounds=True)
         builder.store(self._i8p(builder, server.host), builder.gep(
             config_slot, [zero_i32, zero_i32], inbounds=True))
-        builder.store(ir.Constant(I16, int(server.port)), builder.gep(
-            config_slot, [zero_i32, ir.Constant(I32, 1)], inbounds=True))
+        builder.store(ir.Constant(Int16, int(server.port)), builder.gep(
+            config_slot, [zero_i32, ir.Constant(Int32, 1)], inbounds=True))
         builder.store(first_route_ptr, builder.gep(
-            config_slot, [zero_i32, ir.Constant(I32, 2)], inbounds=True))
-        builder.store(ir.Constant(I64, route_count), builder.gep(
-            config_slot, [zero_i32, ir.Constant(I32, 3)], inbounds=True))
+            config_slot, [zero_i32, ir.Constant(Int32, 2)], inbounds=True))
+        builder.store(ir.Constant(Int64, route_count), builder.gep(
+            config_slot, [zero_i32, ir.Constant(Int32, 3)], inbounds=True))
 
         # not_found_handler slot. Prefer explicit routeNotFound, but keep
         # the wildcard route convention for compatibility.
@@ -5848,7 +5924,7 @@ class Codegen:
                         nf_ptr = builder.bitcast(nf_ptr, handler_ptr_ty)
                     break
         builder.store(nf_ptr, builder.gep(
-            config_slot, [zero_i32, ir.Constant(I32, 4)], inbounds=True))
+            config_slot, [zero_i32, ir.Constant(Int32, 4)], inbounds=True))
 
         mna_ptr = ir.Constant(handler_ptr_ty, None)
         if server.method_not_allowed_handler is not None:
@@ -5857,7 +5933,7 @@ class Codegen:
             if mna_ptr.type != handler_ptr_ty:
                 mna_ptr = builder.bitcast(mna_ptr, handler_ptr_ty)
         builder.store(mna_ptr, builder.gep(
-            config_slot, [zero_i32, ir.Constant(I32, 5)], inbounds=True))
+            config_slot, [zero_i32, ir.Constant(Int32, 5)], inbounds=True))
 
         rc = builder.call(server_run, [config_slot], name="ss_http_server_status")
         builder.ret(rc)
@@ -5901,6 +5977,7 @@ class Codegen:
                 "operation": op.name,
                 "line": lineno,
                 "target": target,
+                "source_target": target,
                 "args": {},
                 "arg_types": {},
                 "arg_lines": {},
@@ -5940,7 +6017,7 @@ class Codegen:
                 enum_case = enum_cases.get(raw)
                 if enum_case is not None and enum_case[0] == resolved:
                     raw = enum_case[1]
-            # Refined-syntax `storage module immutable A I64 B` lets `B` be
+            # Refined-syntax `storage module immutable A Int64 B` lets `B` be
             # the name of another const rather than a literal. Recursively
             # resolve up to a small depth to avoid pathological cycles.
             if isinstance(raw, str) and raw in prog.consts:
@@ -5950,15 +6027,14 @@ class Codegen:
                 else:
                     raw = inner_val
             # Any type that lowers to the i8* pointer shape (the canonical
-            # spec-compliant `CNullTerminatedByteString`, the legacy
-            # `CString`/`String`, or any user alias that resolves to one of
+            # `String` surface, or any user alias that resolves to one of
             # these) and whose const value is a literal string gets the
             # interned-i8-array treatment. The check is on the LLVM type so
             # future pointer-shaped aliases don't need a special case.
-            if llty == I8P and isinstance(raw, str):
+            if llty == Int8P and isinstance(raw, str):
                 return self._i8p(builder, raw)
-            if llty == I8P and raw is None:
-                return ir.Constant(I8P, None)
+            if llty == Int8P and raw is None:
+                return ir.Constant(Int8P, None)
             if llty is None:
                 raise ValueError(f"unsupported const type: {typ}")
             if isinstance(llty, ir.IntType):
@@ -5990,11 +6066,11 @@ class Codegen:
             if isinstance(tok, str):
                 stripped = tok.lstrip("-")
                 if stripped.isdigit():
-                    return ir.Constant(I64, int(tok))
+                    return ir.Constant(Int64, int(tok))
                 # Float literal: contains a '.' and the rest is digits/sign/e.
                 if "." in tok or "e" in tok or "E" in tok:
                     try:
-                        return ir.Constant(F64, float(tok))
+                        return ir.Constant(Float64, float(tok))
                     except ValueError:
                         pass
             if tok in is_var:
@@ -6125,10 +6201,10 @@ class Codegen:
             if async_loop_slot is None:
                 with builder.goto_entry_block():
                     async_loop_slot = builder.alloca(
-                        I8P, name="ss_async_loop_slot")
-                builder.store(ir.Constant(I8P, None), async_loop_slot)
+                        Int8P, name="ss_async_loop_slot")
+                builder.store(ir.Constant(Int8P, None), async_loop_slot)
                 init_fn = self._runtime_func(
-                    "ss_async_loop_init", I32, [I8P.as_pointer()])
+                    "ss_async_loop_init", Int32, [Int8P.as_pointer()])
                 loop_status = builder.call(
                     init_fn, [async_loop_slot], name="ss_async_loop_init_status")
                 # The first async start will fail with runtime-unavailable or
@@ -6248,10 +6324,10 @@ class Codegen:
         def timeout_ms_value_for_call(call_name, call_obj):
             raw_timeout = call_obj.get("timeout")
             if raw_timeout is None:
-                return ir.Constant(I64, 0)
+                return ir.Constant(Int64, 0)
             parsed_timeout = parse_timeout_ms_literal(raw_timeout)
             if parsed_timeout is not None:
-                return ir.Constant(I64, parsed_timeout)
+                return ir.Constant(Int64, parsed_timeout)
             try:
                 timeout_value = resolve(raw_timeout)
             except ValueError:
@@ -6261,12 +6337,12 @@ class Codegen:
             if timeout_value is SENTINEL:
                 raise ValueError(
                     f"timeout: `{call_name}` uses opaque timeout symbol `{raw_timeout}`")
-            return coerce_to_type(timeout_value, I64)
+            return coerce_to_type(timeout_value, Int64)
 
         def cancel_token_value_for_call(call_name, call_obj):
             raw_cancel = call_obj.get("cancel_on")
             if raw_cancel is None:
-                return ir.Constant(I8P, None)
+                return ir.Constant(Int8P, None)
             try:
                 cancel_value = resolve(raw_cancel)
             except ValueError:
@@ -6274,8 +6350,8 @@ class Codegen:
                     f"cancelOn: `{call_name}` uses unresolved cancellation token "
                     f"`{raw_cancel}`")
             if cancel_value is SENTINEL:
-                return ir.Constant(I8P, None)
-            return coerce_to_type(cancel_value, I8P)
+                return ir.Constant(Int8P, None)
+            return coerce_to_type(cancel_value, Int8P)
 
         def native_symbol_from_async_metadata(raw_symbol, row_name, target):
             if not raw_symbol:
@@ -6349,18 +6425,18 @@ class Codegen:
             loop = ensure_async_loop()
             timeout_value = timeout_ms_value_for_call(call_name, call_obj)
             cancel_value = cancel_token_value_for_call(call_name, call_obj)
-            param_tys = [I8P] + [param[1] for param in op_info["params"]] + [
-                I64,
-                I8P,
-                I8P.as_pointer(),
+            param_tys = [Int8P] + [param[1] for param in op_info["params"]] + [
+                Int64,
+                Int8P,
+                Int8P.as_pointer(),
             ]
-            start_fn = self._runtime_func(start_symbol, I32, param_tys)
+            start_fn = self._runtime_func(start_symbol, Int32, param_tys)
             self.provenance.record_external(start_symbol, call_obj)
 
             with builder.goto_entry_block():
-                future_slot = builder.alloca(I8P, name=f"{call_name}_native_future_out")
-                status_slot = builder.alloca(I32, name=f"{call_name}_native_start_status_out")
-            builder.store(ir.Constant(I8P, None), future_slot)
+                future_slot = builder.alloca(Int8P, name=f"{call_name}_native_future_out")
+                status_slot = builder.alloca(Int32, name=f"{call_name}_native_start_status_out")
+            builder.store(ir.Constant(Int8P, None), future_slot)
             start_status = builder.call(
                 start_fn,
                 [loop] + arg_values + [timeout_value, cancel_value, future_slot],
@@ -6373,7 +6449,7 @@ class Codegen:
                 future_slot, name=f"{call_name}_native_future")
             call_obj["error_value"] = start_status
             call_obj["error_cond"] = builder.icmp_unsigned(
-                "!=", start_status, ir.Constant(I32, 0),
+                "!=", start_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_native_start_is_error")
             return True
 
@@ -6398,11 +6474,11 @@ class Codegen:
             await_fn = self._runtime_func(
                 await_symbol,
                 op_info["return_type"],
-                [I8P, I8P])
+                [Int8P, Int8P])
             self.provenance.record_external(await_symbol, call_obj)
             result = builder.call(
                 await_fn, [loop, future], name=f"{call_name}_native_async_result")
-            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.store(ir.Constant(Int8P, None), future_slot)
 
             start_status = call_obj.get("start_status")
             if start_status is None and call_obj.get("start_status_slot") is not None:
@@ -6410,9 +6486,9 @@ class Codegen:
                     call_obj["start_status_slot"],
                     name=f"{call_name}_native_start_status_reload")
             if start_status is None:
-                start_status = ir.Constant(I32, 0)
+                start_status = ir.Constant(Int32, 0)
             start_failed = builder.icmp_unsigned(
-                "!=", start_status, ir.Constant(I32, 0),
+                "!=", start_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_native_start_failed_at_await")
             result_failed = result_error_condition(result, call_name)
             call_obj["result"] = result
@@ -6443,21 +6519,21 @@ class Codegen:
             if request_symbol is None:
                 raise ValueError(f"start: `{call_name}` missing request argument")
             loop = ensure_async_loop()
-            url = record_field_value(request_symbol, "url", I8P)
+            url = record_field_value(request_symbol, "url", Int8P)
             timeout_ms = record_field_value(
-                request_symbol, "policy.timeoutMillis", I64)
+                request_symbol, "policy.timeoutMillis", Int64)
             max_body_bytes = record_field_value(
-                request_symbol, "policy.maxBodyBytes", I64)
+                request_symbol, "policy.maxBodyBytes", Int64)
             redirect_limit = record_field_value(
-                request_symbol, "policy.redirectLimit", I32)
+                request_symbol, "policy.redirectLimit", Int32)
             with builder.goto_entry_block():
                 future_out = builder.alloca(
-                    I8P, name=f"{call_name}_future_out")
-            builder.store(ir.Constant(I8P, None), future_out)
+                    Int8P, name=f"{call_name}_future_out")
+            builder.store(ir.Constant(Int8P, None), future_out)
             start_fn = self._runtime_func(
                 "ss_http_client_fetch_text_request_start",
-                I32,
-                [I8P, I8P, I64, I64, I32, I8P.as_pointer()])
+                Int32,
+                [Int8P, Int8P, Int64, Int64, Int32, Int8P.as_pointer()])
             self.provenance.record_external(
                 "ss_http_client_fetch_text_request_start", call_obj)
             start_status = builder.call(
@@ -6470,7 +6546,7 @@ class Codegen:
                 future_out, name=f"{call_name}_future")
             call_obj["error_value"] = start_status
             call_obj["error_cond"] = builder.icmp_unsigned(
-                "!=", start_status, ir.Constant(I32, 0),
+                "!=", start_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_start_is_error")
             return True
 
@@ -6490,20 +6566,20 @@ class Codegen:
             loop = ensure_async_loop()
             future = builder.load(future_slot, name=f"{call_name}_await_future")
             await_fn = self._runtime_func(
-                "ss_http_client_fetch_text_await", I32, [I8P, I8P])
+                "ss_http_client_fetch_text_await", Int32, [Int8P, Int8P])
             self.provenance.record_external(
                 "ss_http_client_fetch_text_await", call_obj)
             await_status = builder.call(
                 await_fn, [loop, future], name=f"{call_name}_await_status")
 
             status_fn = self._runtime_func(
-                "ss_http_client_fetch_status", I64, [I8P])
+                "ss_http_client_fetch_status", Int64, [Int8P])
             body_copy_fn = self._runtime_func(
                 "ss_http_client_fetch_body_text_copy",
-                I32,
-                [I8P, I8P.as_pointer()])
+                Int32,
+                [Int8P, Int8P.as_pointer()])
             free_future_fn = self._runtime_func(
-                "ss_http_client_fetch_free", VOID, [I8P])
+                "ss_http_client_fetch_free", VOID, [Int8P])
             self.provenance.record_external(
                 "ss_http_client_fetch_status", call_obj)
             self.provenance.record_external(
@@ -6511,12 +6587,12 @@ class Codegen:
             self.provenance.record_external(
                 "ss_http_client_fetch_free", call_obj)
             with builder.goto_entry_block():
-                body_out = builder.alloca(I8P, name=f"{call_name}_async_body_out")
+                body_out = builder.alloca(Int8P, name=f"{call_name}_async_body_out")
                 response_status = builder.alloca(
-                    I32, name=f"{call_name}_async_response_status")
+                    Int32, name=f"{call_name}_async_response_status")
                 response_body = builder.alloca(
-                    I8P, name=f"{call_name}_async_response_body")
-            builder.store(ir.Constant(I8P, None), body_out)
+                    Int8P, name=f"{call_name}_async_response_body")
+            builder.store(ir.Constant(Int8P, None), body_out)
             http_status = builder.call(
                 status_fn, [future], name=f"{call_name}_async_http_status")
             body_copy_status = builder.call(
@@ -6524,16 +6600,16 @@ class Codegen:
                 name=f"{call_name}_body_copy_status")
             body = builder.load(body_out, name=f"{call_name}_async_body")
             builder.call(free_future_fn, [future])
-            builder.store(ir.Constant(I8P, None), future_slot)
-            builder.store(coerce_to_type(http_status, I32), response_status)
+            builder.store(ir.Constant(Int8P, None), future_slot)
+            builder.store(coerce_to_type(http_status, Int32), response_status)
             builder.store(body, response_body)
-            start_status = call_obj.get("start_status", ir.Constant(I32, 0))
+            start_status = call_obj.get("start_status", ir.Constant(Int32, 0))
             start_error = builder.icmp_unsigned(
-                "!=", start_status, ir.Constant(I32, 0),
+                "!=", start_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_start_error_at_await")
             await_or_copy_status = builder.select(
                 builder.icmp_unsigned(
-                    "!=", await_status, ir.Constant(I32, 0),
+                    "!=", await_status, ir.Constant(Int32, 0),
                     name=f"{call_name}_await_is_error"),
                 await_status,
                 body_copy_status,
@@ -6557,7 +6633,7 @@ class Codegen:
             call_obj["result"] = body
             call_obj["error_value"] = final_status
             call_obj["error_cond"] = builder.icmp_unsigned(
-                "!=", final_status, ir.Constant(I32, 0),
+                "!=", final_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_async_is_error")
             call_obj["async_awaited"] = True
             return True
@@ -6579,32 +6655,32 @@ class Codegen:
             malloc_fn = self._libc_func("malloc")
             free_fn = self._libc_func("free")
             future_create_fn = self._runtime_func(
-                "ss_async_future_create", I8P, [I8P])
+                "ss_async_future_create", Int8P, [Int8P])
             future_destroy_fn = self._runtime_func(
-                "ss_async_future_destroy", VOID, [I8P])
+                "ss_async_future_destroy", VOID, [Int8P])
             queue_work_fn = self._runtime_func(
                 "ss_async_queue_work",
-                I32,
+                Int32,
                 [
-                    I8P,
+                    Int8P,
                     wrapper["work_fn_ptr_ty"],
                     wrapper["after_fn_ptr_ty"],
-                    I8P,
+                    Int8P,
                 ])
             self.provenance.record_external("ss_async_future_create", call_obj)
             self.provenance.record_external("ss_async_queue_work", call_obj)
 
             with builder.goto_entry_block():
-                future_slot = builder.alloca(I8P, name=f"{call_name}_future_out")
-                context_slot = builder.alloca(I8P, name=f"{call_name}_context_out")
-                status_slot = builder.alloca(I32, name=f"{call_name}_start_status_out")
-            builder.store(ir.Constant(I8P, None), future_slot)
-            builder.store(ir.Constant(I8P, None), context_slot)
-            builder.store(ir.Constant(I32, -1), status_slot)
+                future_slot = builder.alloca(Int8P, name=f"{call_name}_future_out")
+                context_slot = builder.alloca(Int8P, name=f"{call_name}_context_out")
+                status_slot = builder.alloca(Int32, name=f"{call_name}_start_status_out")
+            builder.store(ir.Constant(Int8P, None), future_slot)
+            builder.store(ir.Constant(Int8P, None), context_slot)
+            builder.store(ir.Constant(Int32, -1), status_slot)
 
             ctx_i8p = builder.call(
                 malloc_fn,
-                [ir.Constant(I64, wrapper["context_size"])],
+                [ir.Constant(Int64, wrapper["context_size"])],
                 name=f"{call_name}_context")
             builder.store(ctx_i8p, context_slot)
 
@@ -6618,13 +6694,13 @@ class Codegen:
 
             builder.cbranch(
                 builder.icmp_unsigned(
-                    "==", ctx_i8p, ir.Constant(I8P, None),
+                    "==", ctx_i8p, ir.Constant(Int8P, None),
                     name=f"{call_name}_context_is_null"),
                 allocation_failed_block,
                 create_future_block)
 
             builder.position_at_end(allocation_failed_block)
-            builder.store(ir.Constant(I32, 3), status_slot)
+            builder.store(ir.Constant(Int32, 3), status_slot)
             builder.branch(start_done_block)
 
             builder.position_at_end(create_future_block)
@@ -6633,21 +6709,21 @@ class Codegen:
             builder.store(future, future_slot)
             builder.cbranch(
                 builder.icmp_unsigned(
-                    "==", future, ir.Constant(I8P, None),
+                    "==", future, ir.Constant(Int8P, None),
                     name=f"{call_name}_future_is_null"),
                 future_failed_block,
                 queue_block)
 
             builder.position_at_end(future_failed_block)
             builder.call(free_fn, [ctx_i8p])
-            builder.store(ir.Constant(I8P, None), context_slot)
-            builder.store(ir.Constant(I32, 3), status_slot)
+            builder.store(ir.Constant(Int8P, None), context_slot)
+            builder.store(ir.Constant(Int32, 3), status_slot)
             builder.branch(start_done_block)
 
             builder.position_at_end(queue_block)
             context = builder.bitcast(
                 ctx_i8p, wrapper["context_ptr_ty"], name=f"{call_name}_ctx")
-            zero = ir.Constant(I32, 0)
+            zero = ir.Constant(Int32, 0)
             future_ptr = builder.gep(
                 context, [zero, zero], inbounds=True,
                 name=f"{call_name}_ctx_future_ptr")
@@ -6655,7 +6731,7 @@ class Codegen:
             for index, value in enumerate(arg_values, start=3):
                 arg_ptr = builder.gep(
                     context,
-                    [zero, ir.Constant(I32, index)],
+                    [zero, ir.Constant(Int32, index)],
                     inbounds=True,
                     name=f"{call_name}_ctx_arg{index - 3}_ptr")
                 builder.store(value, arg_ptr)
@@ -6665,7 +6741,7 @@ class Codegen:
                 name=f"{call_name}_queue_status")
             builder.cbranch(
                 builder.icmp_unsigned(
-                    "!=", queue_status, ir.Constant(I32, 0),
+                    "!=", queue_status, ir.Constant(Int32, 0),
                     name=f"{call_name}_queue_failed_cond"),
                 queue_failed_block,
                 start_done_block)
@@ -6673,8 +6749,8 @@ class Codegen:
             builder.position_at_end(queue_failed_block)
             builder.call(future_destroy_fn, [future])
             builder.call(free_fn, [ctx_i8p])
-            builder.store(ir.Constant(I8P, None), future_slot)
-            builder.store(ir.Constant(I8P, None), context_slot)
+            builder.store(ir.Constant(Int8P, None), future_slot)
+            builder.store(ir.Constant(Int8P, None), context_slot)
             builder.store(queue_status, status_slot)
             builder.branch(start_done_block)
 
@@ -6683,16 +6759,16 @@ class Codegen:
                 current_status = builder.load(
                     status_slot, name=f"{call_name}_queued_status_current")
                 is_unset = builder.icmp_signed(
-                    "==", current_status, ir.Constant(I32, -1),
+                    "==", current_status, ir.Constant(Int32, -1),
                     name=f"{call_name}_status_unset")
                 final_start_status = builder.select(
                     is_unset,
-                    ir.Constant(I32, 0),
+                    ir.Constant(Int32, 0),
                     current_status,
                     name=f"{call_name}_start_status")
                 builder.store(final_start_status, status_slot)
             else:
-                final_start_status = ir.Constant(I32, 3)
+                final_start_status = ir.Constant(Int32, 3)
 
             call_obj["future_slot"] = future_slot
             call_obj["context_slot"] = context_slot
@@ -6703,7 +6779,7 @@ class Codegen:
                 future_slot, name=f"{call_name}_future_value")
             call_obj["error_value"] = call_obj["start_status"]
             call_obj["error_cond"] = builder.icmp_unsigned(
-                "!=", call_obj["start_status"], ir.Constant(I32, 0),
+                "!=", call_obj["start_status"], ir.Constant(Int32, 0),
                 name=f"{call_name}_start_is_error")
             return True
 
@@ -6726,11 +6802,11 @@ class Codegen:
             wrapper = self._async_user_op_wrapper(target, op_info)
             loop = ensure_async_loop()
             await_fn = self._runtime_func(
-                "ss_async_future_await", I32, [I8P, I8P])
+                "ss_async_future_await", Int32, [Int8P, Int8P])
             result_fn = self._runtime_func(
-                "ss_async_future_result", I8P, [I8P])
+                "ss_async_future_result", Int8P, [Int8P])
             future_destroy_fn = self._runtime_func(
-                "ss_async_future_destroy", VOID, [I8P])
+                "ss_async_future_destroy", VOID, [Int8P])
             free_fn = self._libc_func("free")
             self.provenance.record_external("ss_async_future_await", call_obj)
             self.provenance.record_external("ss_async_future_result", call_obj)
@@ -6741,9 +6817,9 @@ class Codegen:
                 result_slot = builder.alloca(
                     ret_ty, name=f"{call_name}_async_result_out")
                 status_slot = builder.alloca(
-                    I32, name=f"{call_name}_await_status_out")
+                    Int32, name=f"{call_name}_await_status_out")
             builder.store(default_value_for_type(ret_ty), result_slot)
-            builder.store(ir.Constant(I32, 3), status_slot)
+            builder.store(ir.Constant(Int32, 3), status_slot)
 
             future = builder.load(future_slot, name=f"{call_name}_await_future")
             await_status = builder.call(
@@ -6754,9 +6830,9 @@ class Codegen:
                     call_obj["start_status_slot"],
                     name=f"{call_name}_start_status_reload")
             if start_status_value is None:
-                start_status_value = ir.Constant(I32, 0)
+                start_status_value = ir.Constant(Int32, 0)
             start_failed = builder.icmp_unsigned(
-                "!=", start_status_value, ir.Constant(I32, 0),
+                "!=", start_status_value, ir.Constant(Int32, 0),
                 name=f"{call_name}_start_failed_at_await")
             final_status = builder.select(
                 start_failed,
@@ -6771,7 +6847,7 @@ class Codegen:
             after_await_block = fn.append_basic_block(f"{call_name}_after_async_await")
             builder.cbranch(
                 builder.icmp_unsigned(
-                    "!=", final_status, ir.Constant(I32, 0),
+                    "!=", final_status, ir.Constant(Int32, 0),
                     name=f"{call_name}_runtime_failed"),
                 cleanup_error_block,
                 load_result_block)
@@ -6783,29 +6859,29 @@ class Codegen:
                 ctx_i8p, wrapper["context_ptr_ty"], name=f"{call_name}_result_ctx")
             result_ptr = builder.gep(
                 context,
-                [ir.Constant(I32, 0), ir.Constant(I32, 2)],
+                [ir.Constant(Int32, 0), ir.Constant(Int32, 2)],
                 inbounds=True,
                 name=f"{call_name}_result_ptr")
             result = builder.load(result_ptr, name=f"{call_name}_async_result")
             builder.store(result, result_slot)
             builder.call(free_fn, [ctx_i8p])
             if call_obj.get("context_slot") is not None:
-                builder.store(ir.Constant(I8P, None), call_obj["context_slot"])
+                builder.store(ir.Constant(Int8P, None), call_obj["context_slot"])
             builder.call(future_destroy_fn, [future])
-            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.store(ir.Constant(Int8P, None), future_slot)
             builder.branch(after_await_block)
 
             builder.position_at_end(cleanup_error_block)
             ctx_from_slot = (
                 builder.load(call_obj["context_slot"], name=f"{call_name}_error_ctx")
                 if call_obj.get("context_slot") is not None
-                else ir.Constant(I8P, None)
+                else ir.Constant(Int8P, None)
             )
             builder.call(free_fn, [ctx_from_slot])
             if call_obj.get("context_slot") is not None:
-                builder.store(ir.Constant(I8P, None), call_obj["context_slot"])
+                builder.store(ir.Constant(Int8P, None), call_obj["context_slot"])
             builder.call(future_destroy_fn, [future])
-            builder.store(ir.Constant(I8P, None), future_slot)
+            builder.store(ir.Constant(Int8P, None), future_slot)
             builder.branch(after_await_block)
 
             builder.position_at_end(after_await_block)
@@ -6814,7 +6890,7 @@ class Codegen:
             runtime_status = builder.load(
                 status_slot, name=f"{call_name}_async_final_status")
             runtime_error = builder.icmp_unsigned(
-                "!=", runtime_status, ir.Constant(I32, 0),
+                "!=", runtime_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_async_runtime_is_error")
             result_error = error_cond_for_result(final_result, call_name)
             call_obj["result"] = final_result
@@ -6927,8 +7003,8 @@ class Codegen:
                 channel_slots.setdefault(args[2], None)
         for channel_name in list(channel_slots.keys()):
             with builder.goto_entry_block():
-                slot = builder.alloca(I64, name=f"channel_{channel_name}")
-            builder.store(ir.Constant(I64, 0), slot)
+                slot = builder.alloca(Int64, name=f"channel_{channel_name}")
+            builder.store(ir.Constant(Int64, 0), slot)
             channel_slots[channel_name] = slot
 
         def _max_attempts_for(policy_name):
@@ -6963,24 +7039,24 @@ class Codegen:
         # would silently drop — see emit_defers below.
         _NATIVE_DEFER_DISPATCH = {
             "sqlite.closeDatabase": (
-                "ss_sqlite_database_close", I32, [I8P]),
+                "ss_sqlite_database_close", Int32, [Int8P]),
             "sqlite.finalizeStatement": (
-                "ss_sqlite_statement_finalize", I32, [I8P]),
+                "ss_sqlite_statement_finalize", Int32, [Int8P]),
             "sqlite.resetStatement": (
-                "ss_sqlite_statement_reset", I32, [I8P]),
+                "ss_sqlite_statement_reset", Int32, [Int8P]),
             # json.destroyBuilder returns void in the C ABI but our
             # defer machinery wants a uniform i32 status shape; map
             # the return type as VOID and the defer-site call will
             # ignore the result regardless. The free() inside the
             # native impl runs unconditionally on a non-NULL handle.
             "json.destroyBuilder": (
-                "ss_json_builder_destroy", VOID, [I8P]),
+                "ss_json_builder_destroy", VOID, [Int8P]),
             "json.destroyDocument": (
-                "ss_json_document_destroy", VOID, [I8P]),
+                "ss_json_document_destroy", VOID, [Int8P]),
             "net.freeTextBody": (
-                "ss_http_client_free_string", VOID, [I8P]),
+                "ss_http_client_free_string", VOID, [Int8P]),
             "freeTextBody": (
-                "ss_http_client_free_string", VOID, [I8P]),
+                "ss_http_client_free_string", VOID, [Int8P]),
         }
 
         def emit_defers(exit_path, active=None):
@@ -7065,7 +7141,7 @@ class Codegen:
                 return
             self._emit_trace_event(
                 builder, event, "call", op.name, call_name,
-                call.get("target", ""), call.get("line", 0))
+                call.get("source_target", call.get("target", "")), call.get("line", 0))
 
         self._emit_trace_event(
             builder, "op.enter", "operation", op.name, op.name,
@@ -7522,11 +7598,11 @@ class Codegen:
             elif call_obj.get("start_status") is not None:
                 start_status = call_obj["start_status"]
             if start_status is None:
-                start_status = ir.Constant(I32, 0)
-            if start_status.type != I32:
-                start_status = coerce_to_type(start_status, I32)
+                start_status = ir.Constant(Int32, 0)
+            if start_status.type != Int32:
+                start_status = coerce_to_type(start_status, Int32)
             return builder.icmp_unsigned(
-                "!=", start_status, ir.Constant(I32, 0),
+                "!=", start_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_select_start_failed")
 
         def async_case_ready_cond(
@@ -7549,12 +7625,12 @@ class Codegen:
                 name=f"{block_prefix}_{call_name}_case_future")
             if is_async_fetch_target(call_obj):
                 ready_fn = self._runtime_func(
-                    "ss_http_client_fetch_is_ready", I32, [I8P])
+                    "ss_http_client_fetch_is_ready", Int32, [Int8P])
                 self.provenance.record_external(
                     "ss_http_client_fetch_is_ready", call_obj)
             elif is_async_user_op_target(call_obj) and operation_async_enabled:
                 ready_fn = self._runtime_func(
-                    "ss_async_future_is_ready", I32, [I8P])
+                    "ss_async_future_is_ready", Int32, [Int8P])
                 self.provenance.record_external(
                     "ss_async_future_is_ready", call_obj)
             else:
@@ -7566,7 +7642,7 @@ class Codegen:
                 [future],
                 name=f"{block_prefix}_{case_index}_{call_name}_ready")
             ready_cond = builder.icmp_unsigned(
-                "!=", ready_value, ir.Constant(I32, 0),
+                "!=", ready_value, ir.Constant(Int32, 0),
                 name=f"{block_prefix}_{case_index}_{call_name}_is_ready")
             start_failed = async_start_failed_cond(call_name, call_obj)
             ready_or_start_failed = builder.or_(
@@ -7579,7 +7655,7 @@ class Codegen:
             wait_error = builder.icmp_unsigned(
                 "!=",
                 wait_error_status,
-                ir.Constant(I32, 0),
+                ir.Constant(Int32, 0),
                 name=f"{block_prefix}_{case_index}_{call_name}_poll_failed")
             return builder.or_(
                 ready_or_start_failed,
@@ -7987,8 +8063,8 @@ class Codegen:
             consumed_slots = {}
             with builder.goto_entry_block():
                 wait_error_slot = builder.alloca(
-                    I32, name=f"{block_prefix}_await_poll_error_status")
-                builder.store(ir.Constant(I32, 0), wait_error_slot)
+                    Int32, name=f"{block_prefix}_await_poll_error_status")
+                builder.store(ir.Constant(Int32, 0), wait_error_slot)
             for call_name, _target_label, _case_lineno in cases:
                 with builder.goto_entry_block():
                     consumed_slot = builder.alloca(
@@ -8062,7 +8138,7 @@ class Codegen:
             builder.position_at_end(poll_block)
             loop = ensure_async_loop()
             run_once_fn = self._runtime_func(
-                "ss_async_loop_run_once", I32, [I8P])
+                "ss_async_loop_run_once", Int32, [Int8P])
             self.provenance.record_external("ss_async_loop_run_once", None)
             poll_status = builder.call(
                 run_once_fn,
@@ -8071,7 +8147,7 @@ class Codegen:
             poll_failed = builder.icmp_unsigned(
                 "!=",
                 poll_status,
-                ir.Constant(I32, 0),
+                ir.Constant(Int32, 0),
                 name=f"{block_prefix}_await_poll_failed")
             poll_error_block = fn.append_basic_block(
                 f"{block_prefix}_await_poll_error")
@@ -8190,11 +8266,11 @@ class Codegen:
                 if const_source is not None:
                     const_typ, const_val = const_source
                     const_ll = llvm_type_for(prog, const_typ)
-                    if const_ll == I8P and isinstance(const_val, str):
+                    if const_ll == Int8P and isinstance(const_val, str):
                         init = self._i8p(builder, const_val)
                     elif resolve_alias(prog, const_typ) == "Bool":
                         # Use the var's declared LLVM width — when the var
-                        # is I64 / Bool / etc., we want the init to match
+                        # is Int64 / Bool / etc., we want the init to match
                         # the alloca so the store typechecks.
                         bool_int = _bool_token_to_int(const_val)
                         if isinstance(llty, ir.IntType):
@@ -8207,7 +8283,7 @@ class Codegen:
                         init = ir.Constant(llty, float(const_val))
                     else:
                         init = ir.Constant(llty, int(const_val))
-                elif llty == I8P and isinstance(raw, str):
+                elif llty == Int8P and isinstance(raw, str):
                     init = self._i8p(builder, raw)
                 elif resolved_typ == "Bool":
                     init = ir.Constant(llty if isinstance(llty, ir.IntType)
@@ -8274,12 +8350,13 @@ class Codegen:
                 continue
 
             if verb == "call":
-                call_name, target = args[0], args[1]
-                target = _TARGET_ALIASES.get(target, target)
+                call_name, source_target = args[0], args[1]
+                target = _TARGET_ALIASES.get(source_target, source_target)
                 # `result`      : value bound by bindOk / bind
                 # `error_value` : value bound by bindError (defaults to result)
                 # `error_cond`  : i1 used by branchIfError (default: result < 0)
                 calls[call_name] = make_call(call_name, target, _ln)
+                calls[call_name]["source_target"] = source_target
                 continue
 
             # Refined-syntax `recordBuild NAME BUILDER` registers a call
@@ -8337,13 +8414,13 @@ class Codegen:
                 retry_exit = fn_blk.append_basic_block(f"retry_exit_{call_name}")
                 with builder.goto_entry_block():
                     attempt_slot = builder.alloca(
-                        I64, name=f"{call_name}_attempt")
-                builder.store(ir.Constant(I64, 0), attempt_slot)
+                        Int64, name=f"{call_name}_attempt")
+                builder.store(ir.Constant(Int64, 0), attempt_slot)
                 builder.branch(retry_top)
                 builder.position_at_end(retry_top)
                 cur_attempt = builder.load(attempt_slot)
                 cond = builder.icmp_signed(
-                    "<", cur_attempt, ir.Constant(I64, max_attempts))
+                    "<", cur_attempt, ir.Constant(Int64, max_attempts))
                 builder.cbranch(cond, retry_body, retry_exit)
                 builder.position_at_end(retry_body)
                 trace_call_event("call.start", call_name)
@@ -8377,7 +8454,7 @@ class Codegen:
                     builder.cbranch(err_cond, retry_inc, retry_exit)
                 builder.position_at_end(retry_inc)
                 next_attempt = builder.add(
-                    builder.load(attempt_slot), ir.Constant(I64, 1))
+                    builder.load(attempt_slot), ir.Constant(Int64, 1))
                 builder.store(next_attempt, attempt_slot)
                 builder.branch(retry_top)
                 builder.position_at_end(retry_exit)
@@ -8487,7 +8564,7 @@ class Codegen:
                 _variant, value_name, _type_name, call_name = args[0], args[1], args[2], args[3]
                 if _type_name in prog.records and "record_result" in calls[call_name]:
                     record_values[value_name] = calls[call_name]["record_result"]
-                    binds[value_name] = ir.Constant(I64, 0)
+                    binds[value_name] = ir.Constant(Int64, 0)
                     continue
                 binds[value_name] = calls[call_name]["result"]
                 # Native dispatch handlers that produce a handle via an
@@ -8611,7 +8688,7 @@ class Codegen:
                         if result is not None:
                             binds[work_name] = result
                             continue
-                binds[work_name] = ir.Constant(I64, 0)
+                binds[work_name] = ir.Constant(Int64, 0)
                 continue
             if verb in ("defer", "deferLog", "deferAwaitLog",
                         "deferWhenExitLog"):
@@ -8643,18 +8720,18 @@ class Codegen:
                     try:
                         v = resolve(value_name)
                     except ValueError:
-                        v = ir.Constant(I64, 0)
+                        v = ir.Constant(Int64, 0)
                     if v is SENTINEL:
-                        v = ir.Constant(I64, 0)
-                    if v.type != I64:
+                        v = ir.Constant(Int64, 0)
+                    if v.type != Int64:
                         if isinstance(v.type, ir.IntType):
                             if v.type.width < 64:
                                 v = (builder.zext if v.type.width == 1
-                                     else builder.sext)(v, I64)
+                                     else builder.sext)(v, Int64)
                             else:
-                                v = builder.trunc(v, I64)
+                                v = builder.trunc(v, Int64)
                         elif isinstance(v.type, ir.PointerType):
-                            v = builder.ptrtoint(v, I64)
+                            v = builder.ptrtoint(v, Int64)
                     builder.store(v, slot)
                 continue
             if verb == "send":
@@ -8668,16 +8745,16 @@ class Codegen:
                 if slot is not None:
                     binds[out_name] = builder.load(slot, name=f"{out_name}_recv")
                 else:
-                    binds[out_name] = ir.Constant(I64, 0)
+                    binds[out_name] = ir.Constant(Int64, 0)
                 continue
             if verb == "receive" and len(args) >= 2:
                 # Short-form `receive OUT CHANNEL` (rare): register OUT as
                 # a zero bind so later references resolve.
-                binds[args[0]] = ir.Constant(I64, 0)
+                binds[args[0]] = ir.Constant(Int64, 0)
                 continue
             if verb == "awaitWork" and len(args) >= 1:
                 # `awaitWork WORK` — register WORK as zero bind.
-                binds[args[0]] = ir.Constant(I64, 0)
+                binds[args[0]] = ir.Constant(Int64, 0)
                 continue
             if verb == "awaitIntervalTick" and len(args) >= 1:
                 # `awaitIntervalTick NAME` — no-op (synchronous fallthrough).
@@ -8688,20 +8765,20 @@ class Codegen:
                 # the success continuation. Same shape as branchIfGroupError.
                 continue
             if verb == "bindGroupError" and len(args) >= 2:
-                binds[args[0]] = ir.Constant(I64, 0)
+                binds[args[0]] = ir.Constant(Int64, 0)
                 continue
             if verb == "new" and len(args) >= 1:
                 value_name = args[0]
                 record_type = args[1] if len(args) >= 2 else ""
                 if record_type in prog.records:
                     allocate_record_slots(value_name, record_type)
-                    binds[value_name] = ir.Constant(I64, 0)
+                    binds[value_name] = ir.Constant(Int64, 0)
                 else:
-                    binds[value_name] = ir.Constant(I64, 0)
+                    binds[value_name] = ir.Constant(Int64, 0)
                 continue
             if verb == "fieldGet" and len(args) >= 1:
                 out_name = args[0]
-                out_type = args[1] if len(args) >= 2 else "I64"
+                out_type = args[1] if len(args) >= 2 else "Int64"
                 record_name = args[2] if len(args) >= 3 else ""
                 field_path = args[3] if len(args) >= 4 else ""
                 record_value = record_values.get(record_name)
@@ -8723,7 +8800,7 @@ class Codegen:
                         const_value = coerce_to_type(const_value, target_llty)
                     binds[out_name] = const_value
                     continue
-                binds[out_name] = ir.Constant(I64, 0)
+                binds[out_name] = ir.Constant(Int64, 0)
                 continue
             if verb == "fieldSet":
                 if len(args) >= 3:
@@ -8782,7 +8859,7 @@ class Codegen:
                     raise ValueError(f"unknown error variant: {qualified}")
                 # The error value is represented at runtime as an i32 exit code
                 # derived deterministically from the declared variant index.
-                binds[name] = ir.Constant(I32, idx)
+                binds[name] = ir.Constant(Int32, idx)
                 continue
 
             if verb == "branch" and args[0] == "error":
@@ -8853,8 +8930,8 @@ class Codegen:
             if verb == "return" and args[0] == "void":
                 # `returnVoid` is the explicit "no caller-actionable value"
                 # return form for operations declared `output OP Void` /
-                # `output OP CVoid`. The user-op ABI still uses an i32 return
-                # slot (see `_operation_output_contract` for the Void → I32
+                # `output OP Void`. The user-op ABI still uses an i32 return
+                # slot (see `_operation_output_contract` for the Void → Int32
                 # mapping), so codegen emits a zero sentinel — but the source
                 # says exactly what it means, instead of forcing a fake
                 # `returnValue zeroSentinel` line that asks readers to
@@ -8864,7 +8941,7 @@ class Codegen:
                 output_contract = _operation_output_contract(self.prog, op)
                 resolved_ok = resolve_alias(self.prog, output_contract.ok_type) \
                     if output_contract.ok_type else ""
-                if resolved_ok not in ("Void", "CVoid"):
+                if resolved_ok not in ("Void", "Void"):
                     declared = output_contract.ok_type or "<missing output>"
                     raise ValueError(
                         f"return void: line {_ln}: operation `{op.name}` "
@@ -8929,7 +9006,7 @@ class Codegen:
                             val = builder.fptrunc(val, target_type)
                     # Int-to-float / float-to-int (e.g. external-module
                     # call returned an i64 stub that needs to flow into a
-                    # CFloat64 return slot, or vice versa).
+                    # Float64 return slot, or vice versa).
                     elif (isinstance(val.type, ir.IntType)
                             and isinstance(target_type, (ir.FloatType, ir.DoubleType))):
                         val = builder.sitofp(val, target_type)
@@ -8955,7 +9032,7 @@ class Codegen:
             # named failure value. Register the name as a zero bind so
             # later `returnError NAME` resolves.
             if verb == "declareFailure" and args:
-                binds[args[0]] = ir.Constant(I64, 0)
+                binds[args[0]] = ir.Constant(Int64, 0)
                 continue
             # `recordBuilder NAME RecordType` / `recordSet BUILDER FIELD VALUE`
             # / `recordBuildFailure CALL ErrorVariant` — declarative steps
@@ -9038,7 +9115,7 @@ class Codegen:
                     try:
                         binds[args[1]] = resolve(args[3])
                     except ValueError:
-                        binds[args[1]] = ir.Constant(I64, 0)
+                        binds[args[1]] = ir.Constant(Int64, 0)
                 continue
             if verb in ("read", "write"):
                 # Stray effect-style verbs (e.g. `read inputText` from the
@@ -9144,7 +9221,8 @@ class Codegen:
                     self.prog.import_aliases[qualified_parts[0]],
                     "operation")
                 and source_target not in self.prog.operation_aliases
-                and target not in HTTP_INTRINSIC_TARGETS):
+                and target not in HTTP_INTRINSIC_TARGETS
+                and not source_target.startswith("sqlite.")):
             raise ValueError(
                 f"{call_name}: qualified import target `{source_target}` is "
                 "not an exported operation")
@@ -9154,11 +9232,11 @@ class Codegen:
         # source-level call advertising domain context while reusing the
         # primitive dispatch below. Enum names also dispatch through here:
         # `SaveTodosStatus.equal` resolves the enum's repr type and picks the
-        # matching width's primitive (CSignedInt32 → math.equalCSignedInt32,
-        # CSignedInt64 → math.equalI64), so callers compare enum values
+        # matching width's primitive (Int32 → math.equalInt32,
+        # Int64 → math.equalInt64), so callers compare enum values
         # without leaking the underlying integer width into source.
         if (target not in _BINOP_TO_LLVM and target not in _CMP_TO_LLVM
-                and target not in _CMP_I32_TO_LLVM
+                and target not in _CMP_Int32_TO_LLVM
                 and target not in _FBINOP_TO_LLVM and target not in _FCMP_TO_LLVM
                 and target not in ("console.writeLine", "console.writeIntegerLine",
                                    "console.writeFloatLine")
@@ -9168,27 +9246,27 @@ class Codegen:
             enum_repr = enum_repr_type(self.prog, type_part)
             if enum_repr is not None:
                 # Enum dispatch — pick the primitive for the declared repr.
-                if enum_repr in ("CSignedInt64", "I64"):
-                    primitive = _DOMAIN_METHOD_TO_I64_PRIMITIVE.get(method_part)
+                if enum_repr == "Int64":
+                    primitive = _DOMAIN_METHOD_TO_Int64_PRIMITIVE.get(method_part)
                 else:
-                    primitive = _DOMAIN_METHOD_TO_I32_PRIMITIVE.get(method_part)
+                    primitive = _DOMAIN_METHOD_TO_Int32_PRIMITIVE.get(method_part)
                 if primitive is not None:
                     target = primitive
                     call["target"] = primitive
                     call["domain_method"] = method_part
             else:
                 underlying = resolve_alias(self.prog, type_part)
-                primitive = _DOMAIN_METHOD_TO_I64_PRIMITIVE.get(method_part)
-                if primitive is not None and underlying == "I64":
+                primitive = _DOMAIN_METHOD_TO_Int64_PRIMITIVE.get(method_part)
+                if primitive is not None and underlying == "Int64":
                     target = primitive
                     call["target"] = primitive
                     call["domain_method"] = method_part
-                elif method_part in _DOMAIN_METHOD_TO_I32_PRIMITIVE and underlying in ("I32", "CSignedInt32"):
-                    target = _DOMAIN_METHOD_TO_I32_PRIMITIVE[method_part]
+                elif method_part in _DOMAIN_METHOD_TO_Int32_PRIMITIVE and underlying == "Int32":
+                    target = _DOMAIN_METHOD_TO_Int32_PRIMITIVE[method_part]
                     call["target"] = target
                     call["domain_method"] = method_part
-                elif method_part in _DOMAIN_METHOD_TO_F64_PRIMITIVE and underlying in ("F64", "CDouble"):
-                    target = _DOMAIN_METHOD_TO_F64_PRIMITIVE[method_part]
+                elif method_part in _DOMAIN_METHOD_TO_Float64_PRIMITIVE and underlying == "Float64":
+                    target = _DOMAIN_METHOD_TO_Float64_PRIMITIVE[method_part]
                     call["target"] = target
                     call["domain_method"] = method_part
 
@@ -9252,10 +9330,10 @@ class Codegen:
             return coerce_declared_argument(usable[0][0], value)
 
         def coerce_i64_for_non_math_abi(v):
-            if v.type == I64:
+            if v.type == Int64:
                 return v
             if isinstance(v.type, ir.IntType):
-                return builder.sext(v, I64) if v.type.width < 64 else builder.trunc(v, I64)
+                return builder.sext(v, Int64) if v.type.width < 64 else builder.trunc(v, Int64)
             raise ValueError(f"{call_name}: cannot coerce {v.type} to i64")
 
         def require_exact_type(v, expected_type, expected_name: str, context: str):
@@ -9266,24 +9344,24 @@ class Codegen:
             return v
 
         def require_i64(v, context: str):
-            return require_exact_type(v, I64, "I64", context)
+            return require_exact_type(v, Int64, "Int64", context)
 
         def require_i32(v, context: str):
-            return require_exact_type(v, I32, "CSignedInt32/I32", context)
+            return require_exact_type(v, Int32, "Int32", context)
 
         def require_f64(v, context: str):
-            return require_exact_type(v, F64, "F64", context)
+            return require_exact_type(v, Float64, "Float64", context)
 
         high_level_json_alias = False
 
         def mark_high_level_json_success():
-            call["error_value"] = ir.Constant(I32, 0)
+            call["error_value"] = ir.Constant(Int32, 0)
             call["error_cond"] = ir.Constant(I1, 0)
 
         def mark_high_level_json_status(status, error_code=1):
-            call["error_value"] = ir.Constant(I32, error_code)
+            call["error_value"] = ir.Constant(Int32, error_code)
             call["error_cond"] = builder.icmp_signed(
-                "!=", status, ir.Constant(I32, 0),
+                "!=", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_isJsonError")
 
         def target_type_is_json_text(name: str) -> bool:
@@ -9301,41 +9379,41 @@ class Codegen:
         record_values = getattr(self, "_current_record_values", {})
 
         def high_json_as_i8p(value):
-            if value.type == I8P:
+            if value.type == Int8P:
                 return value
             if isinstance(value.type, ir.PointerType):
-                return builder.bitcast(value, I8P)
+                return builder.bitcast(value, Int8P)
             if isinstance(value.type, ir.IntType):
-                return builder.inttoptr(value, I8P)
+                return builder.inttoptr(value, Int8P)
             raise ValueError(f"{call_name}: {target} expected pointer-shaped JSON text")
 
         def high_json_i64(value):
             if isinstance(value.type, ir.IntType):
                 if value.type.width < 64:
-                    return builder.sext(value, I64)
+                    return builder.sext(value, Int64)
                 if value.type.width > 64:
-                    return builder.trunc(value, I64)
+                    return builder.trunc(value, Int64)
                 return value
             if isinstance(value.type, ir.PointerType):
-                return builder.ptrtoint(value, I64)
+                return builder.ptrtoint(value, Int64)
             raise ValueError(f"{call_name}: {target} expected integer-shaped value")
 
         def high_json_i32(value):
             if isinstance(value.type, ir.IntType):
                 if value.type.width < 32:
-                    return (builder.zext if value.type.width == 1 else builder.sext)(value, I32)
+                    return (builder.zext if value.type.width == 1 else builder.sext)(value, Int32)
                 if value.type.width > 32:
-                    return builder.trunc(value, I32)
+                    return builder.trunc(value, Int32)
                 return value
             raise ValueError(f"{call_name}: {target} expected i32-shaped value")
 
         def high_json_f64(value):
-            if value.type == F64:
+            if value.type == Float64:
                 return value
             if isinstance(value.type, ir.FloatType):
-                return builder.fpext(value, F64)
+                return builder.fpext(value, Float64)
             if isinstance(value.type, ir.IntType):
-                return builder.sitofp(value, F64)
+                return builder.sitofp(value, Float64)
             raise ValueError(f"{call_name}: {target} expected numeric value")
 
         def high_json_coerce_to(value, target_type):
@@ -9366,9 +9444,9 @@ class Codegen:
         def high_json_const_value(field_type, raw):
             llty = llvm_type_for(self.prog, field_type)
             resolved = resolve_alias(self.prog, field_type)
-            if llty == I8P:
+            if llty == Int8P:
                 if raw is None:
-                    return ir.Constant(I8P, None)
+                    return ir.Constant(Int8P, None)
                 return self._i8p(builder, "" if raw is None else str(raw))
             if llty == I1:
                 return ir.Constant(I1, 1 if raw is True or raw == 1 else 0)
@@ -9383,7 +9461,7 @@ class Codegen:
                 except (TypeError, ValueError):
                     return ir.Constant(llty, 0.0)
             if resolved in self.prog.records:
-                return ir.Constant(I64, 0)
+                return ir.Constant(Int64, 0)
             raise ValueError(f"{call_name}: unsupported record field type `{field_type}`")
 
         def high_json_nested_field(fields, field_path):
@@ -9451,7 +9529,7 @@ class Codegen:
                 current_type = nested
 
         def high_json_global_buffer(byte_count, stem):
-            array_ty = ir.ArrayType(I8, byte_count)
+            array_ty = ir.ArrayType(Int8, byte_count)
             safe_stem = re.sub(r"[^A-Za-z0-9_]", "_", stem)
             name = f"as.json.{self._next_json_buffer_id}.{safe_stem}"
             self._next_json_buffer_id += 1
@@ -9460,7 +9538,7 @@ class Codegen:
             gv.global_constant = False
             gv.initializer = ir.Constant(array_ty, bytearray(byte_count))
             return builder.gep(
-                gv, [ir.Constant(I32, 0), ir.Constant(I32, 0)],
+                gv, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)],
                 inbounds=True)
 
         def high_json_record_slots(record_type, value_name):
@@ -9484,8 +9562,8 @@ class Codegen:
 
         def high_json_status_slot(name_suffix="status"):
             with builder.goto_entry_block():
-                slot = builder.alloca(I32, name=f"{call_name}_{name_suffix}")
-                builder.store(ir.Constant(I32, 0), slot)
+                slot = builder.alloca(Int32, name=f"{call_name}_{name_suffix}")
+                builder.store(ir.Constant(Int32, 0), slot)
             return slot
 
         def high_json_out_slot(slot_type, name_suffix):
@@ -9500,11 +9578,11 @@ class Codegen:
             return slot
 
         def high_json_merge_status(status_slot, new_status):
-            if new_status.type != I32:
+            if new_status.type != Int32:
                 new_status = high_json_i32(new_status)
             current = builder.load(status_slot, name=f"{call_name}_statusCurrent")
             current_is_error = builder.icmp_signed(
-                "!=", current, ir.Constant(I32, 0),
+                "!=", current, ir.Constant(Int32, 0),
                 name=f"{call_name}_statusAlreadyError")
             merged = builder.select(current_is_error, current, new_status,
                                     name=f"{call_name}_statusMerged")
@@ -9513,55 +9591,55 @@ class Codegen:
         def high_json_encode_error_status(native_status):
             status = high_json_i32(native_status)
             is_ok = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 0),
+                "==", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_encodeStatusOk")
             is_wrong_type = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 2),
+                "==", status, ir.Constant(Int32, 2),
                 name=f"{call_name}_encodeStatusWrongType")
             is_output_too_small = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 8),
+                "==", status, ir.Constant(Int32, 8),
                 name=f"{call_name}_encodeStatusOutputSmall")
             mapped_nonzero = builder.select(
-                is_wrong_type, ir.Constant(I32, 2), ir.Constant(I32, 1),
+                is_wrong_type, ir.Constant(Int32, 2), ir.Constant(Int32, 1),
                 name=f"{call_name}_encodeStatusWrongMapped")
             mapped_nonzero = builder.select(
-                is_output_too_small, ir.Constant(I32, 3), mapped_nonzero,
+                is_output_too_small, ir.Constant(Int32, 3), mapped_nonzero,
                 name=f"{call_name}_encodeStatusSmallMapped")
             return builder.select(
-                is_ok, ir.Constant(I32, 0), mapped_nonzero,
+                is_ok, ir.Constant(Int32, 0), mapped_nonzero,
                 name=f"{call_name}_encodeStatusMapped")
 
         def high_json_decode_error_status(native_status):
             status = high_json_i32(native_status)
             is_ok = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 0),
+                "==", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_decodeStatusOk")
             is_missing = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 1),
+                "==", status, ir.Constant(Int32, 1),
                 name=f"{call_name}_decodeStatusMissing")
             is_wrong_type = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 2),
+                "==", status, ir.Constant(Int32, 2),
                 name=f"{call_name}_decodeStatusWrongType")
             is_oversize = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 6),
+                "==", status, ir.Constant(Int32, 6),
                 name=f"{call_name}_decodeStatusOversize")
             is_truncated = builder.icmp_signed(
-                "==", status, ir.Constant(I32, 8),
+                "==", status, ir.Constant(Int32, 8),
                 name=f"{call_name}_decodeStatusTruncated")
             mapped_nonzero = builder.select(
-                is_missing, ir.Constant(I32, 2), ir.Constant(I32, 1),
+                is_missing, ir.Constant(Int32, 2), ir.Constant(Int32, 1),
                 name=f"{call_name}_decodeStatusMissingMapped")
             mapped_nonzero = builder.select(
-                is_wrong_type, ir.Constant(I32, 3), mapped_nonzero,
+                is_wrong_type, ir.Constant(Int32, 3), mapped_nonzero,
                 name=f"{call_name}_decodeStatusWrongMapped")
             mapped_nonzero = builder.select(
-                is_oversize, ir.Constant(I32, 4), mapped_nonzero,
+                is_oversize, ir.Constant(Int32, 4), mapped_nonzero,
                 name=f"{call_name}_decodeStatusOversizeMapped")
             mapped_nonzero = builder.select(
-                is_truncated, ir.Constant(I32, 5), mapped_nonzero,
+                is_truncated, ir.Constant(Int32, 5), mapped_nonzero,
                 name=f"{call_name}_decodeStatusTruncatedMapped")
             return builder.select(
-                is_ok, ir.Constant(I32, 0), mapped_nonzero,
+                is_ok, ir.Constant(Int32, 0), mapped_nonzero,
                 name=f"{call_name}_decodeStatusMapped")
 
         def high_json_emit_json_text_passthrough(is_stringify):
@@ -9574,7 +9652,7 @@ class Codegen:
             json_text = high_json_as_i8p(arg_val_named(source_arg))
             if is_stringify:
                 status_slot = high_json_status_slot()
-                out_slot = high_json_out_slot(I8P, "jsonTextSlot")
+                out_slot = high_json_out_slot(Int8P, "jsonTextSlot")
                 scratch_capacity = 65536
                 scratch = high_json_global_buffer(
                     scratch_capacity, f"{call_name}_jsonText")
@@ -9583,10 +9661,10 @@ class Codegen:
                 text_len = builder.call(
                     strlen_fn, [json_text], name=f"{call_name}_jsonTextLength")
                 too_large = builder.icmp_unsigned(
-                    ">=", text_len, ir.Constant(I64, scratch_capacity),
+                    ">=", text_len, ir.Constant(Int64, scratch_capacity),
                     name=f"{call_name}_jsonTextTooLarge")
                 status = builder.select(
-                    too_large, ir.Constant(I32, 3), ir.Constant(I32, 0),
+                    too_large, ir.Constant(Int32, 3), ir.Constant(Int32, 0),
                     name=f"{call_name}_jsonTextStatus")
                 builder.store(status, status_slot)
                 copy_block = builder.function.append_basic_block(
@@ -9596,7 +9674,7 @@ class Codegen:
                 builder.cbranch(too_large, after_block, copy_block)
                 builder.position_at_end(copy_block)
                 byte_count = builder.add(
-                    text_len, ir.Constant(I64, 1),
+                    text_len, ir.Constant(Int64, 1),
                     name=f"{call_name}_jsonTextBytesWithNul")
                 builder.call(memcpy_fn, [scratch, json_text, byte_count])
                 builder.store(scratch, out_slot)
@@ -9607,30 +9685,30 @@ class Codegen:
                 call["error_value"] = builder.load(
                     status_slot, name=f"{call_name}_finalStatus")
                 call["error_cond"] = builder.icmp_signed(
-                    "!=", call["error_value"], ir.Constant(I32, 0),
+                    "!=", call["error_value"], ir.Constant(Int32, 0),
                     name=f"{call_name}_isError")
                 return
 
-            doc_slot = high_json_out_slot(I8P, "documentSlot")
+            doc_slot = high_json_out_slot(Int8P, "documentSlot")
             create_fn = self._runtime_func(
                 "ss_json_document_create_from_text",
-                I32, [I8P, I64, I8P.as_pointer()])
+                Int32, [Int8P, Int64, Int8P.as_pointer()])
             self.provenance.record_external(
                 "ss_json_document_create_from_text", call)
             create_status = builder.call(
                 create_fn,
-                [json_text, ir.Constant(I64, 65536), doc_slot],
+                [json_text, ir.Constant(Int64, 65536), doc_slot],
                 name=f"{call_name}_createStatus")
             document = builder.load(doc_slot, name=f"{call_name}_document")
-            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
+            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [Int8P])
             self.provenance.record_external("ss_json_document_destroy", call)
             builder.call(destroy_fn, [document])
             failed = builder.icmp_signed(
-                "!=", create_status, ir.Constant(I32, 0),
+                "!=", create_status, ir.Constant(Int32, 0),
                 name=f"{call_name}_parseFailed")
             call["result"] = json_text
             call["error_value"] = builder.select(
-                failed, ir.Constant(I32, 1), ir.Constant(I32, 0),
+                failed, ir.Constant(Int32, 1), ir.Constant(Int32, 0),
                 name=f"{call_name}_decodeStatus")
             call["error_cond"] = failed
 
@@ -9644,51 +9722,55 @@ class Codegen:
                     f"{call_name}: `{record_symbol}` is not a materialized "
                     f"record value of type `{record_type}`")
             status_slot = high_json_status_slot()
-            doc_slot = high_json_out_slot(I8P, "documentSlot")
+            doc_slot = high_json_out_slot(Int8P, "documentSlot")
             with builder.goto_entry_block():
-                out_slot = builder.alloca(I8P, name=f"{call_name}_jsonTextSlot")
-                builder.store(ir.Constant(I8P, None), out_slot)
+                out_slot = builder.alloca(Int8P, name=f"{call_name}_jsonTextSlot")
+                builder.store(ir.Constant(Int8P, None), out_slot)
             create_fn = self._runtime_func(
                 "ss_json_document_create_empty",
-                I32, [I64, I32, I8P.as_pointer()])
+                Int32, [Int64, Int32, Int8P.as_pointer()])
             self.provenance.record_external("ss_json_document_create_empty", call)
             create_status = builder.call(
                 create_fn,
-                [ir.Constant(I64, 65536), ir.Constant(I32, 0), doc_slot],
+                [ir.Constant(Int64, 65536), ir.Constant(Int32, 0), doc_slot],
                 name=f"{call_name}_createStatus")
             high_json_merge_status(
                 status_slot, high_json_encode_error_status(create_status))
             document = builder.load(doc_slot, name=f"{call_name}_document")
-            root_fn = self._runtime_func("ss_json_document_root", I64, [I8P])
+            root_fn = self._runtime_func("ss_json_document_root", Int64, [Int8P])
             self.provenance.record_external("ss_json_document_root", call)
             root_cursor = builder.call(root_fn, [document], name=f"{call_name}_root")
 
             def emit_set_scalar(cursor_value, json_key, field_type, value):
                 resolved = resolve_alias(self.prog, field_type)
-                if resolved in ("String", "CNullTerminatedByteString", "CString"):
+                if resolved == "String":
                     symbol = "ss_json_set_object_field_string"
-                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I8P])
+                    fn = self._runtime_func(symbol, Int32, [Int8P, Int64, Int8P, Int8P])
                     args_for_call = [document, cursor_value, self._i8p(builder, json_key),
                                      high_json_as_i8p(value)]
                 elif resolved == "JsonText":
                     symbol = "ss_json_set_object_field_json_text"
-                    cursor_slot = high_json_out_slot(I64, "jsonTextCursor")
-                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I8P, I64.as_pointer()])
+                    cursor_slot = high_json_out_slot(Int64, "jsonTextCursor")
+                    fn = self._runtime_func(symbol, Int32, [Int8P, Int64, Int8P, Int8P, Int64.as_pointer()])
                     args_for_call = [document, cursor_value, self._i8p(builder, json_key),
                                      high_json_as_i8p(value), cursor_slot]
                 elif resolved == "Bool":
                     symbol = "ss_json_set_object_field_bool"
-                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I32])
+                    fn = self._runtime_func(symbol, Int32, [Int8P, Int64, Int8P, Int32])
                     args_for_call = [document, cursor_value, self._i8p(builder, json_key),
                                      high_json_i32(value)]
-                elif resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
+                elif resolved in (
+                    "Float16", "Float32", "Float64",
+                    "Float64", "Float64", "Float64",
+                    "Float32", "Float32", "Float32",
+                ):
                     symbol = "ss_json_set_object_field_double"
-                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, F64])
+                    fn = self._runtime_func(symbol, Int32, [Int8P, Int64, Int8P, Float64])
                     args_for_call = [document, cursor_value, self._i8p(builder, json_key),
                                      high_json_f64(value)]
                 else:
                     symbol = "ss_json_set_object_field_int64"
-                    fn = self._runtime_func(symbol, I32, [I8P, I64, I8P, I64])
+                    fn = self._runtime_func(symbol, Int32, [Int8P, Int64, Int8P, Int64])
                     args_for_call = [document, cursor_value, self._i8p(builder, json_key),
                                      high_json_i64(value)]
                 self.provenance.record_external(symbol, call)
@@ -9703,10 +9785,10 @@ class Codegen:
                     path = f"{prefix}.{field_name}" if prefix else field_name
                     nested_type = _record_type_for_json_body(self.prog, field_type)
                     if nested_type is not None:
-                        cursor_slot = high_json_out_slot(I64, f"{field_name}Cursor")
+                        cursor_slot = high_json_out_slot(Int64, f"{field_name}Cursor")
                         symbol = "ss_json_set_object_field_object"
                         fn = self._runtime_func(
-                            symbol, I32, [I8P, I64, I8P, I64.as_pointer()])
+                            symbol, Int32, [Int8P, Int64, Int8P, Int64.as_pointer()])
                         self.provenance.record_external(symbol, call)
                         status = builder.call(
                             fn,
@@ -9725,7 +9807,7 @@ class Codegen:
                     if policy == "empty" and isinstance(value.type, ir.PointerType):
                         first = builder.load(value, name=f"{call_name}_{json_key}_first")
                         omit_cond = builder.icmp_signed(
-                            "==", first, ir.Constant(I8, 0),
+                            "==", first, ir.Constant(Int8, 0),
                             name=f"{call_name}_{json_key}_empty")
                     elif policy == "null" and isinstance(value.type, ir.PointerType):
                         omit_cond = builder.icmp_unsigned(
@@ -9734,17 +9816,17 @@ class Codegen:
                     elif policy == "false":
                         bool_value = high_json_i32(value)
                         omit_cond = builder.icmp_signed(
-                            "==", bool_value, ir.Constant(I32, 0),
+                            "==", bool_value, ir.Constant(Int32, 0),
                             name=f"{call_name}_{json_key}_false")
                     elif policy == "zero":
                         if isinstance(value.type, (ir.FloatType, ir.DoubleType)):
                             omit_cond = builder.fcmp_ordered(
-                                "==", high_json_f64(value), ir.Constant(F64, 0.0),
+                                "==", high_json_f64(value), ir.Constant(Float64, 0.0),
                                 name=f"{call_name}_{json_key}_zero")
                         else:
                             int_value = high_json_i64(value)
                             omit_cond = builder.icmp_signed(
-                                "==", int_value, ir.Constant(I64, 0),
+                                "==", int_value, ir.Constant(Int64, 0),
                                 name=f"{call_name}_{json_key}_zero")
                     if omit_cond is None:
                         emit_set_scalar(cursor_value, json_key, field_type, value)
@@ -9763,21 +9845,21 @@ class Codegen:
             scratch = high_json_global_buffer(65536, f"{call_name}_stringify")
             serialize_fn = self._runtime_func(
                 "ss_json_document_serialize",
-                I32, [I8P, I8P, I64, I8P.as_pointer()])
+                Int32, [Int8P, Int8P, Int64, Int8P.as_pointer()])
             self.provenance.record_external("ss_json_document_serialize", call)
             serialize_status = builder.call(
                 serialize_fn,
-                [document, scratch, ir.Constant(I64, 65536), out_slot],
+                [document, scratch, ir.Constant(Int64, 65536), out_slot],
                 name=f"{call_name}_serializeStatus")
             high_json_merge_status(
                 status_slot, high_json_encode_error_status(serialize_status))
-            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
+            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [Int8P])
             self.provenance.record_external("ss_json_document_destroy", call)
             builder.call(destroy_fn, [document])
             call["result"] = builder.load(out_slot, name=f"{call_name}_jsonText")
             call["error_value"] = builder.load(status_slot, name=f"{call_name}_finalStatus")
             call["error_cond"] = builder.icmp_signed(
-                "!=", call["error_value"], ir.Constant(I32, 0),
+                "!=", call["error_value"], ir.Constant(Int32, 0),
                 name=f"{call_name}_isError")
 
         def high_json_emit_record_parse(record_type):
@@ -9789,27 +9871,27 @@ class Codegen:
                         break
             json_text = high_json_as_i8p(arg_val_named(source_arg))
             status_slot = high_json_status_slot()
-            doc_slot = high_json_out_slot(I8P, "documentSlot")
+            doc_slot = high_json_out_slot(Int8P, "documentSlot")
             create_fn = self._runtime_func(
                 "ss_json_document_create_from_text",
-                I32, [I8P, I64, I8P.as_pointer()])
+                Int32, [Int8P, Int64, Int8P.as_pointer()])
             self.provenance.record_external("ss_json_document_create_from_text", call)
             create_status = builder.call(
                 create_fn,
-                [json_text, ir.Constant(I64, 65536), doc_slot],
+                [json_text, ir.Constant(Int64, 65536), doc_slot],
                 name=f"{call_name}_createStatus")
             high_json_merge_status(
                 status_slot, high_json_decode_error_status(create_status))
             document = builder.load(doc_slot, name=f"{call_name}_document")
-            root_fn = self._runtime_func("ss_json_document_root", I64, [I8P])
+            root_fn = self._runtime_func("ss_json_document_root", Int64, [Int8P])
             self.provenance.record_external("ss_json_document_root", call)
             root_cursor = builder.call(root_fn, [document], name=f"{call_name}_root")
             record_result = high_json_record_slots(record_type, "parsed")
-            wrong_type_status = ir.Constant(I32, 3)
+            wrong_type_status = ir.Constant(Int32, 3)
 
             def store_if_status_ok(status, slot, value, block_suffix):
                 ok = builder.icmp_signed(
-                    "==", status, ir.Constant(I32, 0),
+                    "==", status, ir.Constant(Int32, 0),
                     name=f"{call_name}_{block_suffix}_statusOk")
                 store_block = builder.function.append_basic_block(
                     f"{call_name}_{block_suffix}_store")
@@ -9824,33 +9906,37 @@ class Codegen:
             def expected_kind_cond(kind, field_type, nested_type):
                 if nested_type is not None:
                     return builder.icmp_signed(
-                        "==", kind, ir.Constant(I32, 0),
+                        "==", kind, ir.Constant(Int32, 0),
                         name=f"{call_name}_kindIsObject")
                 resolved = resolve_alias(self.prog, field_type)
-                if resolved in ("String", "CNullTerminatedByteString", "CString", "JsonText"):
+                if resolved in {"String", "JsonText"}:
                     return builder.icmp_signed(
-                        "==", kind, ir.Constant(I32, 2),
+                        "==", kind, ir.Constant(Int32, 2),
                         name=f"{call_name}_kindIsString")
                 if resolved == "Bool":
                     return builder.icmp_signed(
-                        "==", kind, ir.Constant(I32, 5),
+                        "==", kind, ir.Constant(Int32, 5),
                         name=f"{call_name}_kindIsBool")
-                if resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
+                if resolved in (
+                    "Float16", "Float32", "Float64",
+                    "Float64", "Float64", "Float64",
+                    "Float32", "Float32", "Float32",
+                ):
                     is_double = builder.icmp_signed(
-                        "==", kind, ir.Constant(I32, 4),
+                        "==", kind, ir.Constant(Int32, 4),
                         name=f"{call_name}_kindIsDouble")
                     is_integer = builder.icmp_signed(
-                        "==", kind, ir.Constant(I32, 3),
+                        "==", kind, ir.Constant(Int32, 3),
                         name=f"{call_name}_kindIsNumericInteger")
                     return builder.or_(is_double, is_integer, name=f"{call_name}_kindIsNumber")
                 return builder.icmp_signed(
-                    "==", kind, ir.Constant(I32, 3),
+                    "==", kind, ir.Constant(Int32, 3),
                     name=f"{call_name}_kindIsInteger")
 
             def emit_present_field_read(nav_status, policy, field_type, nested_type,
                                         read_body, block_suffix):
                 present = builder.icmp_signed(
-                    "==", nav_status, ir.Constant(I32, 0),
+                    "==", nav_status, ir.Constant(Int32, 0),
                     name=f"{call_name}_{block_suffix}_present")
                 present_block = builder.function.append_basic_block(
                     f"{call_name}_{block_suffix}_present")
@@ -9859,14 +9945,14 @@ class Codegen:
                 builder.cbranch(present, present_block, after_block)
                 builder.position_at_end(present_block)
                 kind_fn = self._runtime_func(
-                    "ss_json_cursor_kind", I32, [I8P, I64])
+                    "ss_json_cursor_kind", Int32, [Int8P, Int64])
                 self.provenance.record_external("ss_json_cursor_kind", call)
                 kind = builder.call(
                     kind_fn, [document, builder.load(current_field_cursor_slot[0])],
                     name=f"{call_name}_{block_suffix}_kind")
                 if policy == "null":
                     is_null = builder.icmp_signed(
-                        "==", kind, ir.Constant(I32, 6),
+                        "==", kind, ir.Constant(Int32, 6),
                         name=f"{call_name}_{block_suffix}_isNull")
                     non_null_block = builder.function.append_basic_block(
                         f"{call_name}_{block_suffix}_nonnull")
@@ -9891,10 +9977,10 @@ class Codegen:
                 for field_name, field_type in record.fields:
                     json_key = _json_record_key(record, field_name)
                     path = f"{prefix}.{field_name}" if prefix else field_name
-                    field_cursor_slot = high_json_out_slot(I64, f"{json_key}Cursor")
+                    field_cursor_slot = high_json_out_slot(Int64, f"{json_key}Cursor")
                     nav_fn = self._runtime_func(
                         "ss_json_navigate_object_field",
-                        I32, [I8P, I64, I8P, I64.as_pointer()])
+                        Int32, [Int8P, Int64, Int8P, Int64.as_pointer()])
                     self.provenance.record_external("ss_json_navigate_object_field", call)
                     nav_status = builder.call(
                         nav_fn,
@@ -9904,10 +9990,10 @@ class Codegen:
                     policy = record.field_json_omit_when.get(field_name)
                     if policy:
                         is_missing = builder.icmp_signed(
-                            "==", nav_status, ir.Constant(I32, 1),
+                            "==", nav_status, ir.Constant(Int32, 1),
                             name=f"{call_name}_{json_key}_missing")
                         effective_status = builder.select(
-                            is_missing, ir.Constant(I32, 0),
+                            is_missing, ir.Constant(Int32, 0),
                             high_json_decode_error_status(nav_status),
                             name=f"{call_name}_{json_key}_effectiveStatus")
                     else:
@@ -9928,19 +10014,19 @@ class Codegen:
                     if slot is None:
                         continue
                     resolved = resolve_alias(self.prog, field_type)
-                    if resolved in ("String", "CNullTerminatedByteString", "CString", "JsonText"):
+                    if resolved in {"String", "JsonText"}:
                         def read_string(slot=slot, field_cursor=field_cursor,
                                         json_key=json_key, path=path):
                             scratch = high_json_global_buffer(
                                 4096, f"{call_name}_{json_key}_scratch")
-                            out_slot = high_json_out_slot(I8P, f"{json_key}String")
+                            out_slot = high_json_out_slot(Int8P, f"{json_key}String")
                             read_fn = self._runtime_func(
                                 "ss_json_cursor_string",
-                                I32, [I8P, I64, I8P, I64, I8P.as_pointer()])
+                                Int32, [Int8P, Int64, Int8P, Int64, Int8P.as_pointer()])
                             self.provenance.record_external("ss_json_cursor_string", call)
                             read_status = builder.call(
                                 read_fn,
-                                [document, field_cursor, scratch, ir.Constant(I64, 4096),
+                                [document, field_cursor, scratch, ir.Constant(Int64, 4096),
                                  out_slot],
                                 name=f"{call_name}_{json_key}_readStatus")
                             mapped_read_status = high_json_decode_error_status(read_status)
@@ -9956,24 +10042,28 @@ class Codegen:
                         def read_bool(slot=slot, field_cursor=field_cursor,
                                       json_key=json_key):
                             read_fn = self._runtime_func(
-                                "ss_json_cursor_bool", I32, [I8P, I64, I32])
+                                "ss_json_cursor_bool", Int32, [Int8P, Int64, Int32])
                             self.provenance.record_external("ss_json_cursor_bool", call)
                             value = builder.call(
-                                read_fn, [document, field_cursor, ir.Constant(I32, 0)],
+                                read_fn, [document, field_cursor, ir.Constant(Int32, 0)],
                                 name=f"{call_name}_{json_key}_bool")
                             builder.store(high_json_coerce_to(value, slot.type.pointee), slot)
                         current_field_cursor_slot[0] = field_cursor_slot
                         emit_present_field_read(
                             nav_status, policy, field_type, nested_type,
                             read_bool, re.sub(r"[^A-Za-z0-9_]", "_", path))
-                    elif resolved in ("F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"):
+                    elif resolved in (
+                        "Float16", "Float32", "Float64",
+                        "Float64", "Float64", "Float64",
+                        "Float32", "Float32", "Float32",
+                    ):
                         def read_double(slot=slot, field_cursor=field_cursor,
                                         json_key=json_key):
                             read_fn = self._runtime_func(
-                                "ss_json_cursor_double", F64, [I8P, I64, F64])
+                                "ss_json_cursor_double", Float64, [Int8P, Int64, Float64])
                             self.provenance.record_external("ss_json_cursor_double", call)
                             value = builder.call(
-                                read_fn, [document, field_cursor, ir.Constant(F64, 0.0)],
+                                read_fn, [document, field_cursor, ir.Constant(Float64, 0.0)],
                                 name=f"{call_name}_{json_key}_double")
                             builder.store(
                                 high_json_coerce_to(high_json_f64(value), slot.type.pointee),
@@ -9986,10 +10076,10 @@ class Codegen:
                         def read_int(slot=slot, field_cursor=field_cursor,
                                      json_key=json_key):
                             read_fn = self._runtime_func(
-                                "ss_json_cursor_int64", I64, [I8P, I64, I64])
+                                "ss_json_cursor_int64", Int64, [Int8P, Int64, Int64])
                             self.provenance.record_external("ss_json_cursor_int64", call)
                             value = builder.call(
-                                read_fn, [document, field_cursor, ir.Constant(I64, 0)],
+                                read_fn, [document, field_cursor, ir.Constant(Int64, 0)],
                                 name=f"{call_name}_{json_key}_int64")
                             builder.store(
                                 high_json_coerce_to(high_json_i64(value), slot.type.pointee),
@@ -10001,14 +10091,14 @@ class Codegen:
 
             current_field_cursor_slot = [None]
             emit_read_field(root_cursor, record_type)
-            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [I8P])
+            destroy_fn = self._runtime_func("ss_json_document_destroy", VOID, [Int8P])
             self.provenance.record_external("ss_json_document_destroy", call)
             builder.call(destroy_fn, [document])
             call["record_result"] = record_result
-            call["result"] = ir.Constant(I64, 0)
+            call["result"] = ir.Constant(Int64, 0)
             call["error_value"] = builder.load(status_slot, name=f"{call_name}_finalStatus")
             call["error_cond"] = builder.icmp_signed(
-                "!=", call["error_value"], ir.Constant(I32, 0),
+                "!=", call["error_value"], ir.Constant(Int32, 0),
                 name=f"{call_name}_isError")
 
         if target.startswith("json.stringify.") or target.startswith("json.parse."):
@@ -10136,46 +10226,46 @@ class Codegen:
             call["result"] = builder.call(self.printf, [fmt_ptr, n], name=f"{call_name}_res")
             return
         if target == "console.writeFloatLine":
-            # Print a CFloat64 / F64 with C's `%f\n` format (six fractional
+            # Print a Float64 / Float64 with C's `%f\n` format (six fractional
             # digits — the printf default — to match native-output behavior).
             # The value arg is widened to double if the LLVM
             # type is a float; passed straight through if already a double.
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
-                v = builder.sitofp(v, F64)
+                v = builder.sitofp(v, Float64)
             elif isinstance(v.type, ir.FloatType):
-                v = builder.fpext(v, F64)
+                v = builder.fpext(v, Float64)
             fmt_ptr = self._i8p(builder, "%f\n")
             self.provenance.record_external("printf", call)
             call["result"] = builder.call(
                 self.printf, [fmt_ptr, v], name=f"{call_name}_res")
             return
 
-        if target == "math.signExtendCSignedInt32ToCSignedInt64":
+        if target == "math.signExtendInt32ToInt64":
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
-            v = require_i32(v, "math.signExtendCSignedInt32ToCSignedInt64 input")
-            call["result"] = builder.sext(v, I64, name=f"{call_name}_res")
+            v = require_i32(v, "math.signExtendInt32ToInt64 input")
+            call["result"] = builder.sext(v, Int64, name=f"{call_name}_res")
             return
 
-        if target == "math.truncateCSignedInt64ToCSignedInt32":
+        if target == "math.truncateInt64ToInt32":
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
-            v = require_i64(v, "math.truncateCSignedInt64ToCSignedInt32 input")
-            call["result"] = builder.trunc(v, I32, name=f"{call_name}_res")
+            v = require_i64(v, "math.truncateInt64ToInt32 input")
+            call["result"] = builder.trunc(v, Int32, name=f"{call_name}_res")
             return
 
-        if target == "math.bitwiseNotI64":
+        if target == "math.bitwiseNotInt64":
             # One's-complement of an i64: every bit flipped. Lowered as
             # `xor value, -1` (all-ones), a single LLVM instruction.
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
-            v = require_i64(v, "math.bitwiseNotI64 input")
+            v = require_i64(v, "math.bitwiseNotInt64 input")
             call["result"] = builder.xor(
-                v, ir.Constant(I64, -1), name=f"{call_name}_res")
+                v, ir.Constant(Int64, -1), name=f"{call_name}_res")
             return
 
         if target == "math.intToFloat":
@@ -10186,7 +10276,7 @@ class Codegen:
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
             v = require_i64(v, "math.intToFloat input")
-            call["result"] = builder.sitofp(v, F64, name=f"{call_name}_res")
+            call["result"] = builder.sitofp(v, Float64, name=f"{call_name}_res")
             return
         if target == "math.floatToInt":
             # Convert a double-precision value to a signed 64-bit integer
@@ -10196,16 +10286,16 @@ class Codegen:
                       if v not in opaque_inputs]
             v = resolve(usable[0][1])
             v = require_f64(v, "math.floatToInt input")
-            call["result"] = builder.fptosi(v, I64, name=f"{call_name}_res")
+            call["result"] = builder.fptosi(v, Int64, name=f"{call_name}_res")
             return
 
-        if target == "math.checkedMultiplyI64":
+        if target == "math.checkedMultiplyInt64":
             # Lower to the signed-multiply-with-overflow intrinsic so that
             # callers can branchIfError on the overflow bit instead of
             # silently wrapping.
             a, b = operand_pair()
-            a = require_i64(a, "math.checkedMultiplyI64 left operand")
-            b = require_i64(b, "math.checkedMultiplyI64 right operand")
+            a = require_i64(a, "math.checkedMultiplyInt64 left operand")
+            b = require_i64(b, "math.checkedMultiplyInt64 right operand")
             agg = builder.call(self.smul_overflow_i64, [a, b],
                                name=f"{call_name}_tuple")
             product = builder.extract_value(agg, 0, name=f"{call_name}_res")
@@ -10216,20 +10306,21 @@ class Codegen:
             return
 
         if target in _BINOP_TO_LLVM:
-            if call.get("domain_method") == "square" and target == "math.multiplyI64":
+            if call.get("domain_method") == "square" and target == "math.multiplyInt64":
                 a = operand_single()
                 b = a
             else:
                 a, b = operand_pair()
             a = require_i64(a, f"{target} left operand")
             b = require_i64(b, f"{target} right operand")
-            if target in ("math.divideI64", "math.moduloI64"):
+            if target in ("math.divideInt64", "math.moduloInt64"):
                 divisor_is_zero = builder.icmp_signed(
                     "==", b, ir.Constant(b.type, 0),
                     name=f"{call_name}_divisorIsZero")
+                source_target = call.get("source_target") or target
                 self._emit_runtime_check(
                     builder, divisor_is_zero, call,
-                    f"zero divisor before {target}")
+                    f"zero divisor before {source_target}")
             op = _BINOP_TO_LLVM[target]
             call["result"] = getattr(builder, op)(a, b, name=f"{call_name}_res")
             return
@@ -10257,11 +10348,11 @@ class Codegen:
             call["result"] = builder.icmp_signed(_CMP_TO_LLVM[target], a, b, name=f"{call_name}_res")
             return
 
-        if target in _CMP_I32_TO_LLVM:
+        if target in _CMP_Int32_TO_LLVM:
             a, b = operand_pair()
             a = require_i32(a, f"{target} left operand")
             b = require_i32(b, f"{target} right operand")
-            call["result"] = builder.icmp_signed(_CMP_I32_TO_LLVM[target], a, b, name=f"{call_name}_res")
+            call["result"] = builder.icmp_signed(_CMP_Int32_TO_LLVM[target], a, b, name=f"{call_name}_res")
             return
 
         # Pointer-arithmetic primitives. `pointer.loadByte` reads a single
@@ -10278,16 +10369,16 @@ class Codegen:
                 offset_arg = resolve(usable[1][1])
             else:
                 offset_arg = arg_val_named("offset")
-            if buffer_arg.type != I8P:
-                buffer_arg = builder.bitcast(buffer_arg, I8P)
-            offset_arg = self._coerce_for_libc(builder, offset_arg, "CSize")
+            if buffer_arg.type != Int8P:
+                buffer_arg = builder.bitcast(buffer_arg, Int8P)
+            offset_arg = self._coerce_for_libc(builder, offset_arg, "ByteCount")
             self._emit_null_pointer_check(
                 builder, buffer_arg, call,
                 "null buffer before pointer.loadByte")
             ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
                               name=f"{call_name}_addr")
             loaded_byte = builder.load(ptr, name=f"{call_name}_byte")
-            call["result"] = builder.sext(loaded_byte, I32, name=f"{call_name}_res")
+            call["result"] = builder.sext(loaded_byte, Int32, name=f"{call_name}_res")
             return
 
         if target == "pointer.storeByte":
@@ -10296,17 +10387,17 @@ class Codegen:
             buffer_arg = resolve(usable[0][1])
             offset_arg = resolve(usable[1][1])
             value_arg = resolve(usable[2][1])
-            if buffer_arg.type != I8P:
-                buffer_arg = builder.bitcast(buffer_arg, I8P)
-            offset_arg = self._coerce_for_libc(builder, offset_arg, "CSize")
-            value_arg = self._coerce_for_libc(builder, value_arg, "I8")
+            if buffer_arg.type != Int8P:
+                buffer_arg = builder.bitcast(buffer_arg, Int8P)
+            offset_arg = self._coerce_for_libc(builder, offset_arg, "ByteCount")
+            value_arg = self._coerce_for_libc(builder, value_arg, "Int8")
             self._emit_null_pointer_check(
                 builder, buffer_arg, call,
                 "null buffer before pointer.storeByte")
             ptr = builder.gep(buffer_arg, [offset_arg], inbounds=True,
                               name=f"{call_name}_addr")
             builder.store(value_arg, ptr)
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             return
 
         # `pointer.offset base offset` returns base + offset as a pointer
@@ -10316,15 +10407,15 @@ class Codegen:
                       if v not in opaque_inputs]
             base = resolve(usable[0][1])
             offset = resolve(usable[1][1])
-            if base.type != I8P:
-                base = builder.bitcast(base, I8P)
-            offset = self._coerce_for_libc(builder, offset, "CSize")
+            if base.type != Int8P:
+                base = builder.bitcast(base, Int8P)
+            offset = self._coerce_for_libc(builder, offset, "ByteCount")
             call["result"] = builder.gep(base, [offset], inbounds=True,
                                           name=f"{call_name}_addr")
             return
 
         # `pointer.difference left right` returns (left - right) as a
-        # CSignedInt64. Both operands must point into the same allocation
+        # Int64. Both operands must point into the same allocation
         # for the result to be meaningful — this is a §10 contract the
         # SemanticScript-level type system does not yet enforce.
         if target == "pointer.difference":
@@ -10332,12 +10423,12 @@ class Codegen:
                       if v not in opaque_inputs]
             left = resolve(usable[0][1])
             right = resolve(usable[1][1])
-            if left.type != I8P:
-                left = builder.bitcast(left, I8P)
-            if right.type != I8P:
-                right = builder.bitcast(right, I8P)
-            left_int = builder.ptrtoint(left, I64, name=f"{call_name}_lhs")
-            right_int = builder.ptrtoint(right, I64, name=f"{call_name}_rhs")
+            if left.type != Int8P:
+                left = builder.bitcast(left, Int8P)
+            if right.type != Int8P:
+                right = builder.bitcast(right, Int8P)
+            left_int = builder.ptrtoint(left, Int64, name=f"{call_name}_lhs")
+            right_int = builder.ptrtoint(right, Int64, name=f"{call_name}_rhs")
             call["result"] = builder.sub(left_int, right_int,
                                           name=f"{call_name}_diff")
             return
@@ -10350,9 +10441,9 @@ class Codegen:
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             ptr = resolve(usable[0][1])
-            if ptr.type != I8P:
-                ptr = builder.bitcast(ptr, I8P)
-            null_ptr = ir.Constant(I8P, None)
+            if ptr.type != Int8P:
+                ptr = builder.bitcast(ptr, Int8P)
+            null_ptr = ir.Constant(Int8P, None)
             call["result"] = builder.icmp_unsigned("==", ptr, null_ptr,
                                                     name=f"{call_name}_isNull")
             return
@@ -10368,7 +10459,7 @@ class Codegen:
                 raise ValueError(
                     f"{call_name}: {target} needs exactly one operand; got {len(usable)}")
             x = resolve(usable[0][1])
-            x = self._coerce_for_libc(builder, x, "CDouble")
+            x = self._coerce_for_libc(builder, x, "Float64")
             classifier = target.split(".", 1)[1]
             call["result"] = self._emit_math_classifier(builder, classifier, x,
                                                         name=f"{call_name}_res")
@@ -10406,9 +10497,9 @@ class Codegen:
                 if v is SENTINEL:
                     # opaque-dep placeholder — treat as null pointer for FILE*
                     # / void* parameter shapes.
-                    if ptyp in ("CFilePtr", "CVoidPtr", "CString", "CTmPtr",
-                                "CJmpBuf"):
-                        v = ir.Constant(I8P, None)
+                    if ptyp in ("FileHandle", "OpaquePointer", "DecomposedTimeAddress",
+                                "SetjmpRegisterBuffer"):
+                        v = ir.Constant(Int8P, None)
                     else:
                         raise ValueError(
                             f"{call_name}: opaque-input used for non-pointer arg of c.{cname}")
@@ -10420,7 +10511,7 @@ class Codegen:
                     _aname, asym = arg_items[j]
                     v = resolve(asym)
                     if v is SENTINEL:
-                        v = ir.Constant(I8P, None)
+                        v = ir.Constant(Int8P, None)
                     # C variadic ABI: floats are promoted to double, smaller
                     # ints to int. llvmlite emits the right calling-convention
                     # code as long as we promote the SSA type explicitly.
@@ -10431,7 +10522,7 @@ class Codegen:
                 # Void return — bind nothing. Set result to a constant zero so
                 # any downstream `bindOk` is well-typed without surprising
                 # callers (matches the puts/printf convention).
-                call["result"] = ir.Constant(I32, 0)
+                call["result"] = ir.Constant(Int32, 0)
             else:
                 call["result"] = res
             return
@@ -10440,20 +10531,20 @@ class Codegen:
             value = arg_val_named(arg_name)
             if isinstance(value.type, ir.IntType):
                 if value.type.width < 32:
-                    return builder.sext(value, I32)
+                    return builder.sext(value, Int32)
                 if value.type.width > 32:
-                    return builder.trunc(value, I32)
+                    return builder.trunc(value, Int32)
                 return value
             raise ValueError(f"{call_name}: {target} arg `{arg_name}` must be an integer")
 
         def gui_ptr_arg(arg_name):
             value = arg_val_named(arg_name)
-            if value.type == I8P:
+            if value.type == Int8P:
                 return value
             if isinstance(value.type, ir.PointerType):
-                return builder.bitcast(value, I8P)
+                return builder.bitcast(value, Int8P)
             if isinstance(value.type, ir.IntType):
-                return builder.inttoptr(value, I8P)
+                return builder.inttoptr(value, Int8P)
             raise ValueError(f"{call_name}: {target} arg `{arg_name}` must be pointer-shaped")
 
         def gui_handler_arg(arg_name):
@@ -10462,22 +10553,22 @@ class Codegen:
                 raise ValueError(
                     f"{call_name}: {target} arg `{arg_name}` must name a declared operation")
             op_info = self._user_ops[handler_name]
-            handler_fnty = ir.FunctionType(I32, [I8P, I8P])
+            handler_fnty = ir.FunctionType(Int32, [Int8P, Int8P])
             handler_ptr_ty = handler_fnty.as_pointer()
             handler_ptr = op_info["fn"]
             if len(op_info["params"]) != 2:
                 raise ValueError(
                     f"{call_name}: GUI handler `{handler_name}` must declare "
                     "input HANDLER session GuiSession and input HANDLER event GuiEvent")
-            if op_info["return_type"] != I32:
+            if op_info["return_type"] != Int32:
                 raise ValueError(
-                    f"{call_name}: GUI handler `{handler_name}` must return CSignedInt32")
+                    f"{call_name}: GUI handler `{handler_name}` must return Int32")
             if handler_ptr.type != handler_ptr_ty:
                 handler_ptr = builder.bitcast(handler_ptr, handler_ptr_ty)
             return handler_ptr
 
         if target == "gui.applicationCreate":
-            fn = self._runtime_func("ss_gui_application_create", I8P, [I8P])
+            fn = self._runtime_func("ss_gui_application_create", Int8P, [Int8P])
             self.provenance.record_external("ss_gui_application_create", call)
             call["result"] = builder.call(
                 fn, [gui_ptr_arg("title")], name=f"{call_name}_res")
@@ -10485,7 +10576,7 @@ class Codegen:
 
         if target == "gui.windowCreate":
             fn = self._runtime_func(
-                "ss_gui_window_create", I8P, [I8P, I32, I32, I32, I32])
+                "ss_gui_window_create", Int8P, [Int8P, Int32, Int32, Int32, Int32])
             self.provenance.record_external("ss_gui_window_create", call)
             call["result"] = builder.call(
                 fn,
@@ -10500,14 +10591,14 @@ class Codegen:
             return
 
         if target == "gui.textLabelCreate":
-            fn = self._runtime_func("ss_gui_text_label_create", I8P, [I8P])
+            fn = self._runtime_func("ss_gui_text_label_create", Int8P, [Int8P])
             self.provenance.record_external("ss_gui_text_label_create", call)
             call["result"] = builder.call(
                 fn, [gui_ptr_arg("text")], name=f"{call_name}_res")
             return
 
         if target == "gui.textBoxCreate":
-            fn = self._runtime_func("ss_gui_text_box_create", I8P, [I8P, I32])
+            fn = self._runtime_func("ss_gui_text_box_create", Int8P, [Int8P, Int32])
             self.provenance.record_external("ss_gui_text_box_create", call)
             call["result"] = builder.call(
                 fn,
@@ -10516,7 +10607,7 @@ class Codegen:
             return
 
         if target == "gui.buttonCreate":
-            fn = self._runtime_func("ss_gui_button_create", I8P, [I8P, I32])
+            fn = self._runtime_func("ss_gui_button_create", Int8P, [Int8P, Int32])
             self.provenance.record_external("ss_gui_button_create", call)
             call["result"] = builder.call(
                 fn,
@@ -10525,14 +10616,14 @@ class Codegen:
             return
 
         if target == "gui.listBoxCreate":
-            fn = self._runtime_func("ss_gui_list_box_create", I8P, [I32])
+            fn = self._runtime_func("ss_gui_list_box_create", Int8P, [Int32])
             self.provenance.record_external("ss_gui_list_box_create", call)
             call["result"] = builder.call(
                 fn, [gui_i32_arg("selectionMode")], name=f"{call_name}_res")
             return
 
         if target == "gui.windowAddControl":
-            fn = self._runtime_func("ss_gui_window_add_control", I32, [I8P, I8P])
+            fn = self._runtime_func("ss_gui_window_add_control", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_gui_window_add_control", call)
             call["result"] = builder.call(
                 fn,
@@ -10541,10 +10632,10 @@ class Codegen:
             return
 
         if target == "gui.controlOnEvent":
-            handler_fnty = ir.FunctionType(I32, [I8P, I8P])
+            handler_fnty = ir.FunctionType(Int32, [Int8P, Int8P])
             handler_ptr_ty = handler_fnty.as_pointer()
             fn = self._runtime_func(
-                "ss_gui_control_on_event", I32, [I8P, I32, handler_ptr_ty])
+                "ss_gui_control_on_event", Int32, [Int8P, Int32, handler_ptr_ty])
             self.provenance.record_external("ss_gui_control_on_event", call)
             call["result"] = builder.call(
                 fn,
@@ -10558,7 +10649,7 @@ class Codegen:
 
         if target == "gui.applicationSetMainWindow":
             fn = self._runtime_func(
-                "ss_gui_application_set_main_window", I32, [I8P, I8P])
+                "ss_gui_application_set_main_window", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_gui_application_set_main_window", call)
             call["result"] = builder.call(
                 fn,
@@ -10567,7 +10658,7 @@ class Codegen:
             return
 
         if target == "gui.applicationRun":
-            fn = self._runtime_func("ss_gui_application_run_builder", I32, [I8P])
+            fn = self._runtime_func("ss_gui_application_run_builder", Int32, [Int8P])
             self.provenance.record_external("ss_gui_application_run_builder", call)
             call["result"] = builder.call(
                 fn, [gui_ptr_arg("application")], name=f"{call_name}_res")
@@ -10575,7 +10666,7 @@ class Codegen:
 
         if target == "gui.textBoxText":
             fn = self._runtime_func(
-                "ss_gui_text_box_text_by_handle", I8P, [I8P, I8P])
+                "ss_gui_text_box_text_by_handle", Int8P, [Int8P, Int8P])
             self.provenance.record_external("ss_gui_text_box_text_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10585,7 +10676,7 @@ class Codegen:
 
         if target == "gui.textBoxSetText":
             fn = self._runtime_func(
-                "ss_gui_text_box_set_text_by_handle", I32, [I8P, I8P, I8P])
+                "ss_gui_text_box_set_text_by_handle", Int32, [Int8P, Int8P, Int8P])
             self.provenance.record_external("ss_gui_text_box_set_text_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10599,7 +10690,7 @@ class Codegen:
 
         if target == "gui.listBoxSelectedIndex":
             fn = self._runtime_func(
-                "ss_gui_list_box_selected_index_by_handle", I32, [I8P, I8P])
+                "ss_gui_list_box_selected_index_by_handle", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_gui_list_box_selected_index_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10609,7 +10700,7 @@ class Codegen:
 
         if target == "gui.listBoxAppendItem":
             fn = self._runtime_func(
-                "ss_gui_list_box_append_item_by_handle", I32, [I8P, I8P, I8P])
+                "ss_gui_list_box_append_item_by_handle", Int32, [Int8P, Int8P, Int8P])
             self.provenance.record_external("ss_gui_list_box_append_item_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10623,7 +10714,7 @@ class Codegen:
 
         if target == "gui.listBoxClear":
             fn = self._runtime_func(
-                "ss_gui_list_box_clear_by_handle", I32, [I8P, I8P])
+                "ss_gui_list_box_clear_by_handle", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_gui_list_box_clear_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10633,7 +10724,7 @@ class Codegen:
 
         if target == "gui.textLabelSetText":
             fn = self._runtime_func(
-                "ss_gui_text_label_set_text_by_handle", I32, [I8P, I8P, I8P])
+                "ss_gui_text_label_set_text_by_handle", Int32, [Int8P, Int8P, Int8P])
             self.provenance.record_external("ss_gui_text_label_set_text_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10647,7 +10738,7 @@ class Codegen:
 
         if target == "gui.windowClose":
             fn = self._runtime_func(
-                "ss_gui_window_close_by_handle", I32, [I8P, I8P])
+                "ss_gui_window_close_by_handle", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_gui_window_close_by_handle", call)
             call["result"] = builder.call(
                 fn,
@@ -10766,30 +10857,32 @@ class Codegen:
         # external-module fallback because that requires walking record
         # fields and emitting a structural encoder, which is the real
         # codec runtime work tracked under SYNTAX.md's Partial row.
-        if target in ("json.encode.I64", "json.encode.CSignedInt64",
-                      "json.encode.CSignedInt32", "json.encode.CUnsignedInt32",
-                      "json.encode.CSignedInt16", "json.encode.CUnsignedInt16",
-                      "json.encode.CSignedByte", "json.encode.CUnsignedByte",
-                      "json.encode.DurationMilliseconds",
-                      "json.encode.MonotonicMilliseconds",
-                      "json.encode.UtcMilliseconds"):
+        if target in (
+            "json.encode.Int64", "json.encode.UInt64",
+            "json.encode.Int32", "json.encode.UInt32",
+            "json.encode.Int16", "json.encode.UInt16",
+            "json.encode.Int8", "json.encode.UInt8",
+            "json.encode.DurationMilliseconds",
+            "json.encode.MonotonicMilliseconds",
+            "json.encode.UtcMilliseconds",
+        ):
             n = coerce_i64_for_non_math_abi(arg_val_named("value"))
             if high_level_json_alias:
                 buf_size = 64
                 with builder.goto_entry_block():
                     buf = builder.alloca(
-                        ir.ArrayType(I8, buf_size),
+                        ir.ArrayType(Int8, buf_size),
                         name=f"{call_name}_jsonbuf")
-                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                    out_slot = builder.alloca(Int8P, name=f"{call_name}_jsonOut")
                 buf_ptr = builder.gep(
-                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                    buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
                 stringify_fn = self._runtime_func(
-                    "ss_json_stringify_int64", I32,
-                    [I64, I8P, I64, I8P.as_pointer()])
+                    "ss_json_stringify_int64", Int32,
+                    [Int64, Int8P, Int64, Int8P.as_pointer()])
                 self.provenance.record_external("ss_json_stringify_int64", call)
                 status = builder.call(
                     stringify_fn,
-                    [n, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    [n, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
                 call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
                 mark_high_level_json_status(status, 3)
@@ -10797,14 +10890,14 @@ class Codegen:
             buf_size = 32
             with builder.goto_entry_block():
                 buf = builder.alloca(
-                    ir.ArrayType(I8, buf_size),
+                    ir.ArrayType(Int8, buf_size),
                     name=f"{call_name}_jsonbuf")
             buf_ptr = builder.gep(
-                buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
             snprintf = self._libc_func("snprintf")
             fmt = self._i8p(builder, "%lld")
             builder.call(snprintf,
-                         [buf_ptr, ir.Constant(I64, buf_size), fmt, n])
+                         [buf_ptr, ir.Constant(Int64, buf_size), fmt, n])
             call["result"] = buf_ptr
             if high_level_json_alias:
                 mark_high_level_json_success()
@@ -10814,22 +10907,22 @@ class Codegen:
             if isinstance(v.type, ir.IntType) and v.type.width > 1:
                 v = builder.icmp_signed("!=", v, ir.Constant(v.type, 0))
             if high_level_json_alias:
-                bool_i32 = builder.zext(v, I32, name=f"{call_name}_boolI32")
+                bool_i32 = builder.zext(v, Int32, name=f"{call_name}_boolInt32")
                 buf_size = 8
                 with builder.goto_entry_block():
                     buf = builder.alloca(
-                        ir.ArrayType(I8, buf_size),
+                        ir.ArrayType(Int8, buf_size),
                         name=f"{call_name}_jsonbuf")
-                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                    out_slot = builder.alloca(Int8P, name=f"{call_name}_jsonOut")
                 buf_ptr = builder.gep(
-                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                    buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
                 stringify_fn = self._runtime_func(
-                    "ss_json_stringify_bool", I32,
-                    [I32, I8P, I64, I8P.as_pointer()])
+                    "ss_json_stringify_bool", Int32,
+                    [Int32, Int8P, Int64, Int8P.as_pointer()])
                 self.provenance.record_external("ss_json_stringify_bool", call)
                 status = builder.call(
                     stringify_fn,
-                    [bool_i32, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    [bool_i32, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
                 call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
                 mark_high_level_json_status(status, 3)
@@ -10841,29 +10934,30 @@ class Codegen:
             if high_level_json_alias:
                 mark_high_level_json_success()
             return
-        if target in ("json.encode.F64", "json.encode.CFloat64",
-                      "json.encode.CFloat32"):
+        if target in (
+            "json.encode.Float64", "json.encode.Float32", "json.encode.Float16",
+        ):
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
-                v = builder.sitofp(v, F64)
+                v = builder.sitofp(v, Float64)
             elif isinstance(v.type, ir.FloatType):
-                v = builder.fpext(v, F64)
+                v = builder.fpext(v, Float64)
             if high_level_json_alias:
                 buf_size = 64
                 with builder.goto_entry_block():
                     buf = builder.alloca(
-                        ir.ArrayType(I8, buf_size),
+                        ir.ArrayType(Int8, buf_size),
                         name=f"{call_name}_jsonbuf")
-                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                    out_slot = builder.alloca(Int8P, name=f"{call_name}_jsonOut")
                 buf_ptr = builder.gep(
-                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                    buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
                 stringify_fn = self._runtime_func(
-                    "ss_json_stringify_double", I32,
-                    [F64, I8P, I64, I8P.as_pointer()])
+                    "ss_json_stringify_double", Int32,
+                    [Float64, Int8P, Int64, Int8P.as_pointer()])
                 self.provenance.record_external("ss_json_stringify_double", call)
                 status = builder.call(
                     stringify_fn,
-                    [v, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    [v, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
                 call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
                 mark_high_level_json_status(status, 3)
@@ -10871,33 +10965,35 @@ class Codegen:
             buf_size = 32
             with builder.goto_entry_block():
                 buf = builder.alloca(
-                    ir.ArrayType(I8, buf_size),
+                    ir.ArrayType(Int8, buf_size),
                     name=f"{call_name}_jsonbuf")
             buf_ptr = builder.gep(
-                buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
             snprintf = self._libc_func("snprintf")
             fmt = self._i8p(builder, "%g")
             builder.call(snprintf,
-                         [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
+                         [buf_ptr, ir.Constant(Int64, buf_size), fmt, v])
             call["result"] = buf_ptr
             if high_level_json_alias:
                 mark_high_level_json_success()
             return
-        if target in ("json.decode.I64", "json.decode.CSignedInt64",
-                      "json.decode.CSignedInt32", "json.decode.CUnsignedInt32",
-                      "json.decode.CSignedInt16", "json.decode.CUnsignedInt16",
-                      "json.decode.CSignedByte", "json.decode.CUnsignedByte",
-                      "json.decode.DurationMilliseconds",
-                      "json.decode.MonotonicMilliseconds",
-                      "json.decode.UtcMilliseconds"):
+        if target in (
+            "json.decode.Int64", "json.decode.UInt64",
+            "json.decode.Int32", "json.decode.UInt32",
+            "json.decode.Int16", "json.decode.UInt16",
+            "json.decode.Int8", "json.decode.UInt8",
+            "json.decode.DurationMilliseconds",
+            "json.decode.MonotonicMilliseconds",
+            "json.decode.UtcMilliseconds",
+        ):
             if high_level_json_alias:
                 v = arg_val_named("value")
                 if isinstance(v.type, ir.IntType):
-                    v = builder.inttoptr(v, I8P)
+                    v = builder.inttoptr(v, Int8P)
                 with builder.goto_entry_block():
-                    out_slot = builder.alloca(I64, name=f"{call_name}_decodedSlot")
+                    out_slot = builder.alloca(Int64, name=f"{call_name}_decodedSlot")
                 parse_fn = self._runtime_func(
-                    "ss_json_parse_int64", I32, [I8P, I64.as_pointer()])
+                    "ss_json_parse_int64", Int32, [Int8P, Int64.as_pointer()])
                 self.provenance.record_external("ss_json_parse_int64", call)
                 status = builder.call(
                     parse_fn, [v, out_slot], name=f"{call_name}_jsonStatus")
@@ -10911,7 +11007,7 @@ class Codegen:
             # primitive path — strict parsing belongs to the codec runtime).
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
-                v = builder.inttoptr(v, I8P)
+                v = builder.inttoptr(v, Int8P)
             atoll = self._libc_func("atoll")
             call["result"] = builder.call(
                 atoll, [v], name=f"{call_name}_decoded")
@@ -10922,17 +11018,17 @@ class Codegen:
             if high_level_json_alias:
                 v = arg_val_named("value")
                 if isinstance(v.type, ir.IntType):
-                    v = builder.inttoptr(v, I8P)
+                    v = builder.inttoptr(v, Int8P)
                 with builder.goto_entry_block():
-                    out_slot = builder.alloca(I32, name=f"{call_name}_decodedSlot")
+                    out_slot = builder.alloca(Int32, name=f"{call_name}_decodedSlot")
                 parse_fn = self._runtime_func(
-                    "ss_json_parse_bool", I32, [I8P, I32.as_pointer()])
+                    "ss_json_parse_bool", Int32, [Int8P, Int32.as_pointer()])
                 self.provenance.record_external("ss_json_parse_bool", call)
                 status = builder.call(
                     parse_fn, [v, out_slot], name=f"{call_name}_jsonStatus")
-                decoded_i32 = builder.load(out_slot, name=f"{call_name}_decodedI32")
+                decoded_i32 = builder.load(out_slot, name=f"{call_name}_decodedInt32")
                 call["result"] = builder.sext(
-                    decoded_i32, I64, name=f"{call_name}_decoded")
+                    decoded_i32, Int64, name=f"{call_name}_decoded")
                 mark_high_level_json_status(status, 1)
                 return
             # Compare the input string against the literal "true" via
@@ -10940,27 +11036,28 @@ class Codegen:
             # the JSON token was "true"), 0 otherwise.
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
-                v = builder.inttoptr(v, I8P)
+                v = builder.inttoptr(v, Int8P)
             strcmp = self._libc_func("strcmp")
             true_str = self._i8p(builder, "true")
             cmp = builder.call(strcmp, [v, true_str], name=f"{call_name}_strcmp")
             is_true = builder.icmp_signed(
-                "==", cmp, ir.Constant(I32, 0), name=f"{call_name}_isTrue")
+                "==", cmp, ir.Constant(Int32, 0), name=f"{call_name}_isTrue")
             call["result"] = builder.zext(
-                is_true, I64, name=f"{call_name}_decoded")
+                is_true, Int64, name=f"{call_name}_decoded")
             if high_level_json_alias:
                 mark_high_level_json_success()
             return
-        if target in ("json.decode.F64", "json.decode.CFloat64",
-                      "json.decode.CFloat32"):
+        if target in (
+            "json.decode.Float64", "json.decode.Float32", "json.decode.Float16",
+        ):
             if high_level_json_alias:
                 v = arg_val_named("value")
                 if isinstance(v.type, ir.IntType):
-                    v = builder.inttoptr(v, I8P)
+                    v = builder.inttoptr(v, Int8P)
                 with builder.goto_entry_block():
-                    out_slot = builder.alloca(F64, name=f"{call_name}_decodedSlot")
+                    out_slot = builder.alloca(Float64, name=f"{call_name}_decodedSlot")
                 parse_fn = self._runtime_func(
-                    "ss_json_parse_double", I32, [I8P, F64.as_pointer()])
+                    "ss_json_parse_double", Int32, [Int8P, Float64.as_pointer()])
                 self.provenance.record_external("ss_json_parse_double", call)
                 status = builder.call(
                     parse_fn, [v, out_slot], name=f"{call_name}_jsonStatus")
@@ -10971,34 +11068,33 @@ class Codegen:
             # on malformed input.
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
-                v = builder.inttoptr(v, I8P)
+                v = builder.inttoptr(v, Int8P)
             atof = self._libc_func("atof")
             call["result"] = builder.call(
                 atof, [v], name=f"{call_name}_decoded")
             if high_level_json_alias:
                 mark_high_level_json_success()
             return
-        if target in ("json.encode.String",
-                      "json.encode.CNullTerminatedByteString"):
+        if target == "json.encode.String":
             if high_level_json_alias:
                 v = arg_val_named("value")
                 if isinstance(v.type, ir.IntType):
-                    v = builder.inttoptr(v, I8P)
+                    v = builder.inttoptr(v, Int8P)
                 buf_size = 4096
                 with builder.goto_entry_block():
                     buf = builder.alloca(
-                        ir.ArrayType(I8, buf_size),
+                        ir.ArrayType(Int8, buf_size),
                         name=f"{call_name}_jsonbuf")
-                    out_slot = builder.alloca(I8P, name=f"{call_name}_jsonOut")
+                    out_slot = builder.alloca(Int8P, name=f"{call_name}_jsonOut")
                 buf_ptr = builder.gep(
-                    buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                    buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
                 stringify_fn = self._runtime_func(
-                    "ss_json_stringify_string", I32,
-                    [I8P, I8P, I64, I8P.as_pointer()])
+                    "ss_json_stringify_string", Int32,
+                    [Int8P, Int8P, Int64, Int8P.as_pointer()])
                 self.provenance.record_external("ss_json_stringify_string", call)
                 status = builder.call(
                     stringify_fn,
-                    [v, buf_ptr, ir.Constant(I64, buf_size), out_slot],
+                    [v, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
                 call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
                 mark_high_level_json_status(status, 3)
@@ -11011,18 +11107,18 @@ class Codegen:
             # tracked under SYNTAX.md's Partial row.
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
-                v = builder.inttoptr(v, I8P)
+                v = builder.inttoptr(v, Int8P)
             buf_size = 256
             with builder.goto_entry_block():
                 buf = builder.alloca(
-                    ir.ArrayType(I8, buf_size),
+                    ir.ArrayType(Int8, buf_size),
                     name=f"{call_name}_jsonbuf")
             buf_ptr = builder.gep(
-                buf, [ir.Constant(I32, 0), ir.Constant(I32, 0)], inbounds=True)
+                buf, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)], inbounds=True)
             snprintf = self._libc_func("snprintf")
             fmt = self._i8p(builder, "\"%s\"")
             builder.call(snprintf,
-                         [buf_ptr, ir.Constant(I64, buf_size), fmt, v])
+                         [buf_ptr, ir.Constant(Int64, buf_size), fmt, v])
             call["result"] = buf_ptr
             if high_level_json_alias:
                 mark_high_level_json_success()
@@ -11046,12 +11142,12 @@ class Codegen:
                 f"{call_name}: missing required arg `{expected}` for {target}")
 
         def json_as_i8p(value, arg_name: str):
-            if value.type == I8P:
+            if value.type == Int8P:
                 return value
             if isinstance(value.type, ir.PointerType):
-                return builder.bitcast(value, I8P)
+                return builder.bitcast(value, Int8P)
             if isinstance(value.type, ir.IntType):
-                return builder.inttoptr(value, I8P)
+                return builder.inttoptr(value, Int8P)
             raise ValueError(
                 f"{call_name}: {target} arg `{arg_name}` must be pointer-shaped")
 
@@ -11061,12 +11157,12 @@ class Codegen:
         def json_i64_value(value, arg_name: str):
             if isinstance(value.type, ir.IntType):
                 if value.type.width < 64:
-                    return builder.sext(value, I64)
+                    return builder.sext(value, Int64)
                 if value.type.width > 64:
-                    return builder.trunc(value, I64)
+                    return builder.trunc(value, Int64)
                 return value
             if isinstance(value.type, ir.PointerType):
-                return builder.ptrtoint(value, I64)
+                return builder.ptrtoint(value, Int64)
             raise ValueError(
                 f"{call_name}: {target} arg `{arg_name}` must be integer-shaped")
 
@@ -11077,9 +11173,9 @@ class Codegen:
             if isinstance(value.type, ir.IntType):
                 if value.type.width < 32:
                     extend = builder.zext if value.type.width == 1 else builder.sext
-                    return extend(value, I32)
+                    return extend(value, Int32)
                 if value.type.width > 32:
-                    return builder.trunc(value, I32)
+                    return builder.trunc(value, Int32)
                 return value
             raise ValueError(
                 f"{call_name}: {target} arg `{arg_name}` must be a 32-bit integer")
@@ -11088,12 +11184,12 @@ class Codegen:
             return json_i32_value(json_arg_any(*arg_names), arg_names[0])
 
         def json_f64_value(value, arg_name: str):
-            if value.type == F64:
+            if value.type == Float64:
                 return value
             if isinstance(value.type, ir.FloatType):
-                return builder.fpext(value, F64)
+                return builder.fpext(value, Float64)
             if isinstance(value.type, ir.IntType):
-                return builder.sitofp(value, F64)
+                return builder.sitofp(value, Float64)
             raise ValueError(
                 f"{call_name}: {target} arg `{arg_name}` must be numeric")
 
@@ -11110,7 +11206,7 @@ class Codegen:
 
         def json_status_is_error(status):
             return builder.icmp_signed(
-                "!=", status, ir.Constant(I32, 0),
+                "!=", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_isError")
 
         def json_result(success_value, status):
@@ -11119,15 +11215,15 @@ class Codegen:
             call["error_cond"] = json_status_is_error(status)
 
         def json_status_result(status):
-            json_result(ir.Constant(I32, 0), status)
+            json_result(ir.Constant(Int32, 0), status)
 
         if target == "json.createDocument":
             json_text = json_i8p_arg("jsonText", "text", "value")
             capacity = json_i64_arg("capacityBytes", "capacity")
-            doc_slot = json_out_slot(I8P, "documentSlot")
+            doc_slot = json_out_slot(Int8P, "documentSlot")
             create_fn = self._runtime_func(
                 "ss_json_document_create_from_text",
-                I32, [I8P, I64, I8P.as_pointer()])
+                Int32, [Int8P, Int64, Int8P.as_pointer()])
             self.provenance.record_external(
                 "ss_json_document_create_from_text", call)
             status = builder.call(
@@ -11141,10 +11237,10 @@ class Codegen:
         if target == "json.createEmptyDocument":
             capacity = json_i64_arg("capacityBytes", "capacity")
             root_kind = json_i32_arg("rootKind", "kind")
-            doc_slot = json_out_slot(I8P, "documentSlot")
+            doc_slot = json_out_slot(Int8P, "documentSlot")
             create_fn = self._runtime_func(
                 "ss_json_document_create_empty",
-                I32, [I64, I32, I8P.as_pointer()])
+                Int32, [Int64, Int32, Int8P.as_pointer()])
             self.provenance.record_external(
                 "ss_json_document_create_empty", call)
             status = builder.call(
@@ -11158,20 +11254,20 @@ class Codegen:
         if target == "json.destroyDocument":
             document = json_i8p_arg("document")
             destroy_fn = self._runtime_func(
-                "ss_json_document_destroy", VOID, [I8P])
+                "ss_json_document_destroy", VOID, [Int8P])
             self.provenance.record_external("ss_json_document_destroy", call)
             builder.call(destroy_fn, [document])
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             return
 
         if target == "json.serializeDocument":
             document = json_i8p_arg("document")
             scratch = json_i8p_arg("scratch", "scratchBuffer")
             scratch_capacity = json_i64_arg("scratchCapacity", "capacityBytes")
-            out_slot = json_out_slot(I8P, "jsonTextSlot")
+            out_slot = json_out_slot(Int8P, "jsonTextSlot")
             serialize_fn = self._runtime_func(
                 "ss_json_document_serialize",
-                I32, [I8P, I8P, I64, I8P.as_pointer()])
+                Int32, [Int8P, Int8P, Int64, Int8P.as_pointer()])
             self.provenance.record_external(
                 "ss_json_document_serialize", call)
             status = builder.call(
@@ -11184,7 +11280,7 @@ class Codegen:
         if target == "json.documentLength":
             document = json_i8p_arg("document")
             fn = self._runtime_func(
-                "ss_json_document_length", I64, [I8P])
+                "ss_json_document_length", Int64, [Int8P])
             self.provenance.record_external("ss_json_document_length", call)
             call["result"] = builder.call(
                 fn, [document], name=f"{call_name}_length")
@@ -11193,7 +11289,7 @@ class Codegen:
         if target == "json.documentRoot":
             document = json_i8p_arg("document")
             fn = self._runtime_func(
-                "ss_json_document_root", I64, [I8P])
+                "ss_json_document_root", Int64, [Int8P])
             self.provenance.record_external("ss_json_document_root", call)
             call["result"] = builder.call(
                 fn, [document], name=f"{call_name}_root")
@@ -11206,30 +11302,30 @@ class Codegen:
             "json.cursorAtPath",
         ):
             document = json_i8p_arg("document")
-            out_slot = json_out_slot(I64, "cursorSlot")
+            out_slot = json_out_slot(Int64, "cursorSlot")
             if target == "json.objectFieldAt":
                 cursor = json_i64_arg("cursor")
                 field_name = json_i8p_arg("fieldName", "name")
                 symbol = "ss_json_navigate_object_field"
-                param_tys = [I8P, I64, I8P, I64.as_pointer()]
+                param_tys = [Int8P, Int64, Int8P, Int64.as_pointer()]
                 args_for_call = [document, cursor, field_name, out_slot]
             elif target == "json.arrayElementAt":
                 cursor = json_i64_arg("cursor")
                 index = json_i64_arg("index")
                 symbol = "ss_json_navigate_array_element"
-                param_tys = [I8P, I64, I64, I64.as_pointer()]
+                param_tys = [Int8P, Int64, Int64, Int64.as_pointer()]
                 args_for_call = [document, cursor, index, out_slot]
             elif target == "json.cursorParent":
                 cursor = json_i64_arg("cursor")
                 symbol = "ss_json_cursor_parent"
-                param_tys = [I8P, I64, I64.as_pointer()]
+                param_tys = [Int8P, Int64, Int64.as_pointer()]
                 args_for_call = [document, cursor, out_slot]
             else:
                 path = json_i8p_arg("path", "jsonPath")
                 symbol = "ss_json_cursor_at_path"
-                param_tys = [I8P, I8P, I64.as_pointer()]
+                param_tys = [Int8P, Int8P, Int64.as_pointer()]
                 args_for_call = [document, path, out_slot]
-            fn = self._runtime_func(symbol, I32, param_tys)
+            fn = self._runtime_func(symbol, Int32, param_tys)
             self.provenance.record_external(symbol, call)
             status = builder.call(fn, args_for_call, name=f"{call_name}_status")
             cursor_value = builder.load(out_slot, name=f"{call_name}_cursor")
@@ -11240,7 +11336,7 @@ class Codegen:
             document = json_i8p_arg("document")
             cursor = json_i64_arg("cursor")
             fn = self._runtime_func(
-                "ss_json_cursor_kind", I32, [I8P, I64])
+                "ss_json_cursor_kind", Int32, [Int8P, Int64])
             self.provenance.record_external("ss_json_cursor_kind", call)
             call["result"] = builder.call(
                 fn, [document, cursor], name=f"{call_name}_kind")
@@ -11250,11 +11346,11 @@ class Codegen:
             document = json_i8p_arg("document")
             cursor = json_i64_arg("cursor")
             fn = self._runtime_func(
-                "ss_json_cursor_is_null", I32, [I8P, I64])
+                "ss_json_cursor_is_null", Int32, [Int8P, Int64])
             self.provenance.record_external("ss_json_cursor_is_null", call)
             raw = builder.call(fn, [document, cursor], name=f"{call_name}_raw")
             call["result"] = builder.icmp_signed(
-                "!=", raw, ir.Constant(I32, 0), name=f"{call_name}_isNull")
+                "!=", raw, ir.Constant(Int32, 0), name=f"{call_name}_isNull")
             return
 
         if target in ("json.cursorInt64", "json.cursorDouble", "json.cursorBool"):
@@ -11263,8 +11359,8 @@ class Codegen:
             if target == "json.cursorInt64":
                 missing_default = json_i64_arg("missingDefault", "default")
                 symbol = "ss_json_cursor_int64"
-                return_ty = I64
-                param_tys = [I8P, I64, I64]
+                return_ty = Int64
+                param_tys = [Int8P, Int64, Int64]
                 args_for_call = [document, cursor, missing_default]
                 result_name = "int64"
             elif target == "json.cursorDouble":
@@ -11272,8 +11368,8 @@ class Codegen:
                     json_arg_any("missingDefault", "default"),
                     "missingDefault")
                 symbol = "ss_json_cursor_double"
-                return_ty = F64
-                param_tys = [I8P, I64, F64]
+                return_ty = Float64
+                param_tys = [Int8P, Int64, Float64]
                 args_for_call = [document, cursor, missing_default]
                 result_name = "double"
             else:
@@ -11281,8 +11377,8 @@ class Codegen:
                     json_arg_any("missingDefault", "default"),
                     "missingDefault")
                 symbol = "ss_json_cursor_bool"
-                return_ty = I32
-                param_tys = [I8P, I64, I32]
+                return_ty = Int32
+                param_tys = [Int8P, Int64, Int32]
                 args_for_call = [document, cursor, missing_default]
                 result_name = "boolRaw"
             fn = self._runtime_func(symbol, return_ty, param_tys)
@@ -11290,7 +11386,7 @@ class Codegen:
             loaded = builder.call(fn, args_for_call, name=f"{call_name}_{result_name}")
             if target == "json.cursorBool":
                 loaded = builder.icmp_signed(
-                    "!=", loaded, ir.Constant(I32, 0),
+                    "!=", loaded, ir.Constant(Int32, 0),
                     name=f"{call_name}_bool")
             call["result"] = loaded
             return
@@ -11307,41 +11403,41 @@ class Codegen:
             if target == "json.cursorString":
                 scratch = json_i8p_arg("scratch", "scratchBuffer")
                 scratch_capacity = json_i64_arg("scratchCapacity", "capacityBytes")
-                out_slot = json_out_slot(I8P, "stringSlot")
+                out_slot = json_out_slot(Int8P, "stringSlot")
                 symbol = "ss_json_cursor_string"
-                param_tys = [I8P, I64, I8P, I64, I8P.as_pointer()]
+                param_tys = [Int8P, Int64, Int8P, Int64, Int8P.as_pointer()]
                 args_for_call = [document, cursor, scratch, scratch_capacity, out_slot]
                 result_name = "string"
             elif target == "json.cursorArrayLength":
-                out_slot = json_out_slot(I64, "arrayLengthSlot")
+                out_slot = json_out_slot(Int64, "arrayLengthSlot")
                 symbol = "ss_json_cursor_array_length"
-                param_tys = [I8P, I64, I64.as_pointer()]
+                param_tys = [Int8P, Int64, Int64.as_pointer()]
                 args_for_call = [document, cursor, out_slot]
                 result_name = "arrayLength"
             elif target == "json.cursorObjectFieldCount":
-                out_slot = json_out_slot(I64, "fieldCountSlot")
+                out_slot = json_out_slot(Int64, "fieldCountSlot")
                 symbol = "ss_json_cursor_object_field_count"
-                param_tys = [I8P, I64, I64.as_pointer()]
+                param_tys = [Int8P, Int64, Int64.as_pointer()]
                 args_for_call = [document, cursor, out_slot]
                 result_name = "fieldCount"
             elif target == "json.cursorObjectFieldNameAt":
                 index = json_i64_arg("index")
                 scratch = json_i8p_arg("scratch", "scratchBuffer")
                 scratch_capacity = json_i64_arg("scratchCapacity", "capacityBytes")
-                out_slot = json_out_slot(I8P, "fieldNameSlot")
+                out_slot = json_out_slot(Int8P, "fieldNameSlot")
                 symbol = "ss_json_cursor_object_field_name_at"
-                param_tys = [I8P, I64, I64, I8P, I64, I8P.as_pointer()]
+                param_tys = [Int8P, Int64, Int64, Int8P, Int64, Int8P.as_pointer()]
                 args_for_call = [
                     document, cursor, index, scratch, scratch_capacity, out_slot]
                 result_name = "fieldName"
             else:
                 index = json_i64_arg("index")
-                out_slot = json_out_slot(I64, "fieldValueSlot")
+                out_slot = json_out_slot(Int64, "fieldValueSlot")
                 symbol = "ss_json_cursor_object_field_value_at"
-                param_tys = [I8P, I64, I64, I64.as_pointer()]
+                param_tys = [Int8P, Int64, Int64, Int64.as_pointer()]
                 args_for_call = [document, cursor, index, out_slot]
                 result_name = "fieldValue"
-            fn = self._runtime_func(symbol, I32, param_tys)
+            fn = self._runtime_func(symbol, Int32, param_tys)
             self.provenance.record_external(symbol, call)
             status = builder.call(fn, args_for_call, name=f"{call_name}_status")
             value = builder.load(out_slot, name=f"{call_name}_{result_name}")
@@ -11363,32 +11459,32 @@ class Codegen:
             document = json_i8p_arg("document")
             cursor = json_i64_arg("cursor")
             field_name = json_i8p_arg("fieldName", "name")
-            param_tys = [I8P, I64, I8P]
+            param_tys = [Int8P, Int64, Int8P]
             args_for_call = [document, cursor, field_name]
             cursor_out_slot = None
             if value_kind == "string":
-                param_tys.append(I8P)
+                param_tys.append(Int8P)
                 args_for_call.append(json_i8p_arg("value", "stringValue"))
             elif value_kind == "int64":
-                param_tys.append(I64)
+                param_tys.append(Int64)
                 args_for_call.append(json_i64_arg("value"))
             elif value_kind == "double":
-                param_tys.append(F64)
+                param_tys.append(Float64)
                 args_for_call.append(json_f64_value(json_arg_any("value"), "value"))
             elif value_kind == "bool":
-                param_tys.append(I32)
+                param_tys.append(Int32)
                 args_for_call.append(json_i32_value(json_arg_any("value"), "value"))
             elif value_kind == "container":
-                cursor_out_slot = json_out_slot(I64, "cursorSlot")
-                param_tys.append(I64.as_pointer())
+                cursor_out_slot = json_out_slot(Int64, "cursorSlot")
+                param_tys.append(Int64.as_pointer())
                 args_for_call.append(cursor_out_slot)
             elif value_kind == "jsonText":
-                param_tys.append(I8P)
+                param_tys.append(Int8P)
                 args_for_call.append(json_i8p_arg("jsonText", "value"))
-                cursor_out_slot = json_out_slot(I64, "cursorSlot")
-                param_tys.append(I64.as_pointer())
+                cursor_out_slot = json_out_slot(Int64, "cursorSlot")
+                param_tys.append(Int64.as_pointer())
                 args_for_call.append(cursor_out_slot)
-            fn = self._runtime_func(symbol, I32, param_tys)
+            fn = self._runtime_func(symbol, Int32, param_tys)
             self.provenance.record_external(symbol, call)
             status = builder.call(fn, args_for_call, name=f"{call_name}_status")
             if cursor_out_slot is not None:
@@ -11428,35 +11524,35 @@ class Codegen:
             symbol, index_kind, value_kind = array_mutators[target]
             document = json_i8p_arg("document")
             cursor = json_i64_arg("cursor")
-            param_tys = [I8P, I64]
+            param_tys = [Int8P, Int64]
             args_for_call = [document, cursor]
             cursor_out_slot = None
             if index_kind == "indexed":
-                param_tys.append(I64)
+                param_tys.append(Int64)
                 args_for_call.append(json_i64_arg("index"))
             if value_kind == "string":
-                param_tys.append(I8P)
+                param_tys.append(Int8P)
                 args_for_call.append(json_i8p_arg("value", "stringValue"))
             elif value_kind == "int64":
-                param_tys.append(I64)
+                param_tys.append(Int64)
                 args_for_call.append(json_i64_arg("value"))
             elif value_kind == "double":
-                param_tys.append(F64)
+                param_tys.append(Float64)
                 args_for_call.append(json_f64_value(json_arg_any("value"), "value"))
             elif value_kind == "bool":
-                param_tys.append(I32)
+                param_tys.append(Int32)
                 args_for_call.append(json_i32_value(json_arg_any("value"), "value"))
             elif value_kind == "container":
-                cursor_out_slot = json_out_slot(I64, "cursorSlot")
-                param_tys.append(I64.as_pointer())
+                cursor_out_slot = json_out_slot(Int64, "cursorSlot")
+                param_tys.append(Int64.as_pointer())
                 args_for_call.append(cursor_out_slot)
             elif value_kind == "jsonText":
-                param_tys.append(I8P)
+                param_tys.append(Int8P)
                 args_for_call.append(json_i8p_arg("jsonText", "value"))
-                cursor_out_slot = json_out_slot(I64, "cursorSlot")
-                param_tys.append(I64.as_pointer())
+                cursor_out_slot = json_out_slot(Int64, "cursorSlot")
+                param_tys.append(Int64.as_pointer())
                 args_for_call.append(cursor_out_slot)
-            fn = self._runtime_func(symbol, I32, param_tys)
+            fn = self._runtime_func(symbol, Int32, param_tys)
             self.provenance.record_external(symbol, call)
             status = builder.call(fn, args_for_call, name=f"{call_name}_status")
             if cursor_out_slot is not None:
@@ -11471,7 +11567,7 @@ class Codegen:
             cursor = json_i64_arg("cursor")
             field_name = json_i8p_arg("fieldName", "name")
             fn = self._runtime_func(
-                "ss_json_remove_object_field", I32, [I8P, I64, I8P])
+                "ss_json_remove_object_field", Int32, [Int8P, Int64, Int8P])
             self.provenance.record_external("ss_json_remove_object_field", call)
             status = builder.call(
                 fn, [document, cursor, field_name], name=f"{call_name}_status")
@@ -11483,7 +11579,7 @@ class Codegen:
             cursor = json_i64_arg("cursor")
             index = json_i64_arg("index")
             fn = self._runtime_func(
-                "ss_json_remove_array_element_at", I32, [I8P, I64, I64])
+                "ss_json_remove_array_element_at", Int32, [Int8P, Int64, Int64])
             self.provenance.record_external(
                 "ss_json_remove_array_element_at", call)
             status = builder.call(
@@ -11499,7 +11595,7 @@ class Codegen:
                 if target == "json.clearObject"
                 else "ss_json_clear_array"
             )
-            fn = self._runtime_func(symbol, I32, [I8P, I64])
+            fn = self._runtime_func(symbol, Int32, [Int8P, Int64])
             self.provenance.record_external(symbol, call)
             status = builder.call(
                 fn, [document, cursor], name=f"{call_name}_status")
@@ -11509,10 +11605,10 @@ class Codegen:
         if target == "json.createBuilder":
             capacity = arg_val_named("capacity")
             if isinstance(capacity.type, ir.IntType) and capacity.type.width != 64:
-                capacity = (builder.sext(capacity, I64)
+                capacity = (builder.sext(capacity, Int64)
                             if capacity.type.width < 64
-                            else builder.trunc(capacity, I64))
-            create_fn = self._runtime_func("ss_json_builder_create", I8P, [I64])
+                            else builder.trunc(capacity, Int64))
+            create_fn = self._runtime_func("ss_json_builder_create", Int8P, [Int64])
             self.provenance.record_external("ss_json_builder_create", call)
             call["result"] = builder.call(
                 create_fn, [capacity], name=f"{call_name}_builder")
@@ -11521,14 +11617,14 @@ class Codegen:
         if target == "json.destroyBuilder":
             builder_arg = arg_val_named("builder")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
-            destroy_fn = self._runtime_func("ss_json_builder_destroy", VOID, [I8P])
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
+            destroy_fn = self._runtime_func("ss_json_builder_destroy", VOID, [Int8P])
             self.provenance.record_external("ss_json_builder_destroy", call)
             builder.call(destroy_fn, [builder_arg])
             # Void return — give the surrounding bind machinery a
             # deterministic zero so anything that accidentally binds
             # this call's result still has a valid SSA value.
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             return
 
         # Helper for any builder mutator that takes the builder handle
@@ -11536,8 +11632,8 @@ class Codegen:
         def _json_builder_handle_only(symbol):
             builder_arg = arg_val_named("builder")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
-            fn = self._runtime_func(symbol, I32, [I8P])
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
+            fn = self._runtime_func(symbol, Int32, [Int8P])
             self.provenance.record_external(symbol, call)
             call["result"] = builder.call(
                 fn, [builder_arg], name=f"{call_name}_status")
@@ -11566,34 +11662,34 @@ class Codegen:
             field_name = arg_val_named("fieldName")
             value = arg_val_named("value")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
+                field_name = builder.inttoptr(field_name, Int8P)
             if target == "json.fieldInt64":
                 if isinstance(value.type, ir.IntType) and value.type.width != 64:
-                    value = (builder.sext(value, I64)
+                    value = (builder.sext(value, Int64)
                              if value.type.width < 64
-                             else builder.trunc(value, I64))
+                             else builder.trunc(value, Int64))
                 symbol = "ss_json_builder_field_int64"
-                param_tys = [I8P, I8P, I64]
+                param_tys = [Int8P, Int8P, Int64]
             elif target == "json.fieldDouble":
                 if isinstance(value.type, ir.IntType):
-                    value = builder.sitofp(value, F64)
+                    value = builder.sitofp(value, Float64)
                 symbol = "ss_json_builder_field_double"
-                param_tys = [I8P, I8P, F64]
+                param_tys = [Int8P, Int8P, Float64]
             elif target == "json.fieldBool":
                 if isinstance(value.type, ir.IntType) and value.type.width != 32:
-                    value = (builder.sext(value, I32)
+                    value = (builder.sext(value, Int32)
                              if value.type.width < 32
-                             else builder.trunc(value, I32))
+                             else builder.trunc(value, Int32))
                 symbol = "ss_json_builder_field_bool"
-                param_tys = [I8P, I8P, I32]
+                param_tys = [Int8P, Int8P, Int32]
             else:  # json.fieldString
                 if isinstance(value.type, ir.IntType):
-                    value = builder.inttoptr(value, I8P)
+                    value = builder.inttoptr(value, Int8P)
                 symbol = "ss_json_builder_field_string"
-                param_tys = [I8P, I8P, I8P]
-            fn = self._runtime_func(symbol, I32, param_tys)
+                param_tys = [Int8P, Int8P, Int8P]
+            fn = self._runtime_func(symbol, Int32, param_tys)
             self.provenance.record_external(symbol, call)
             call["result"] = builder.call(
                 fn, [builder_arg, field_name, value],
@@ -11604,11 +11700,11 @@ class Codegen:
             builder_arg = arg_val_named("builder")
             field_name = arg_val_named("fieldName")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
+                field_name = builder.inttoptr(field_name, Int8P)
             fn = self._runtime_func(
-                "ss_json_builder_field_null", I32, [I8P, I8P])
+                "ss_json_builder_field_null", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_json_builder_field_null", call)
             call["result"] = builder.call(
                 fn, [builder_arg, field_name],
@@ -11625,32 +11721,32 @@ class Codegen:
             builder_arg = arg_val_named("builder")
             value = arg_val_named("value")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
             if target == "json.elementInt64":
                 if isinstance(value.type, ir.IntType) and value.type.width != 64:
-                    value = (builder.sext(value, I64)
+                    value = (builder.sext(value, Int64)
                              if value.type.width < 64
-                             else builder.trunc(value, I64))
+                             else builder.trunc(value, Int64))
                 symbol = "ss_json_builder_element_int64"
-                param_tys = [I8P, I64]
+                param_tys = [Int8P, Int64]
             elif target == "json.elementDouble":
                 if isinstance(value.type, ir.IntType):
-                    value = builder.sitofp(value, F64)
+                    value = builder.sitofp(value, Float64)
                 symbol = "ss_json_builder_element_double"
-                param_tys = [I8P, F64]
+                param_tys = [Int8P, Float64]
             elif target == "json.elementBool":
                 if isinstance(value.type, ir.IntType) and value.type.width != 32:
-                    value = (builder.sext(value, I32)
+                    value = (builder.sext(value, Int32)
                              if value.type.width < 32
-                             else builder.trunc(value, I32))
+                             else builder.trunc(value, Int32))
                 symbol = "ss_json_builder_element_bool"
-                param_tys = [I8P, I32]
+                param_tys = [Int8P, Int32]
             else:  # json.elementString
                 if isinstance(value.type, ir.IntType):
-                    value = builder.inttoptr(value, I8P)
+                    value = builder.inttoptr(value, Int8P)
                 symbol = "ss_json_builder_element_string"
-                param_tys = [I8P, I8P]
-            fn = self._runtime_func(symbol, I32, param_tys)
+                param_tys = [Int8P, Int8P]
+            fn = self._runtime_func(symbol, Int32, param_tys)
             self.provenance.record_external(symbol, call)
             call["result"] = builder.call(
                 fn, [builder_arg, value], name=f"{call_name}_status")
@@ -11663,8 +11759,8 @@ class Codegen:
         if target == "json.finishBuilder":
             builder_arg = arg_val_named("builder")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
-            fn = self._runtime_func("ss_json_builder_finish", I8P, [I8P])
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
+            fn = self._runtime_func("ss_json_builder_finish", Int8P, [Int8P])
             self.provenance.record_external("ss_json_builder_finish", call)
             call["result"] = builder.call(
                 fn, [builder_arg], name=f"{call_name}_body")
@@ -11673,8 +11769,8 @@ class Codegen:
         if target == "json.builderLength":
             builder_arg = arg_val_named("builder")
             if isinstance(builder_arg.type, ir.IntType):
-                builder_arg = builder.inttoptr(builder_arg, I8P)
-            fn = self._runtime_func("ss_json_builder_length", I64, [I8P])
+                builder_arg = builder.inttoptr(builder_arg, Int8P)
+            fn = self._runtime_func("ss_json_builder_length", Int64, [Int8P])
             self.provenance.record_external("ss_json_builder_length", call)
             call["result"] = builder.call(
                 fn, [builder_arg], name=f"{call_name}_length")
@@ -11689,10 +11785,10 @@ class Codegen:
             json_text = arg_val_named("jsonText")
             field_name = arg_val_named("fieldName")
             if isinstance(json_text.type, ir.IntType):
-                json_text = builder.inttoptr(json_text, I8P)
+                json_text = builder.inttoptr(json_text, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
-            fn = self._runtime_func("ss_json_has_field", I32, [I8P, I8P])
+                field_name = builder.inttoptr(field_name, Int8P)
+            fn = self._runtime_func("ss_json_has_field", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_json_has_field", call)
             call["result"] = builder.call(
                 fn, [json_text, field_name], name=f"{call_name}_present")
@@ -11704,18 +11800,18 @@ class Codegen:
             scratch = arg_val_named("scratch")
             scratch_capacity = arg_val_named("scratchCapacity")
             if isinstance(json_text.type, ir.IntType):
-                json_text = builder.inttoptr(json_text, I8P)
+                json_text = builder.inttoptr(json_text, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
+                field_name = builder.inttoptr(field_name, Int8P)
             if isinstance(scratch.type, ir.IntType):
-                scratch = builder.inttoptr(scratch, I8P)
+                scratch = builder.inttoptr(scratch, Int8P)
             if (isinstance(scratch_capacity.type, ir.IntType)
                     and scratch_capacity.type.width != 64):
-                scratch_capacity = (builder.sext(scratch_capacity, I64)
+                scratch_capacity = (builder.sext(scratch_capacity, Int64)
                                     if scratch_capacity.type.width < 64
-                                    else builder.trunc(scratch_capacity, I64))
+                                    else builder.trunc(scratch_capacity, Int64))
             fn = self._runtime_func(
-                "ss_json_find_string", I8P, [I8P, I8P, I8P, I64])
+                "ss_json_find_string", Int8P, [Int8P, Int8P, Int8P, Int64])
             self.provenance.record_external("ss_json_find_string", call)
             call["result"] = builder.call(
                 fn, [json_text, field_name, scratch, scratch_capacity],
@@ -11727,16 +11823,16 @@ class Codegen:
             field_name = arg_val_named("fieldName")
             missing_default = arg_val_named("missingDefault")
             if isinstance(json_text.type, ir.IntType):
-                json_text = builder.inttoptr(json_text, I8P)
+                json_text = builder.inttoptr(json_text, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
+                field_name = builder.inttoptr(field_name, Int8P)
             if (isinstance(missing_default.type, ir.IntType)
                     and missing_default.type.width != 64):
-                missing_default = (builder.sext(missing_default, I64)
+                missing_default = (builder.sext(missing_default, Int64)
                                    if missing_default.type.width < 64
-                                   else builder.trunc(missing_default, I64))
+                                   else builder.trunc(missing_default, Int64))
             fn = self._runtime_func(
-                "ss_json_find_int64", I64, [I8P, I8P, I64])
+                "ss_json_find_int64", Int64, [Int8P, Int8P, Int64])
             self.provenance.record_external("ss_json_find_int64", call)
             call["result"] = builder.call(
                 fn, [json_text, field_name, missing_default],
@@ -11748,13 +11844,13 @@ class Codegen:
             field_name = arg_val_named("fieldName")
             missing_default = arg_val_named("missingDefault")
             if isinstance(json_text.type, ir.IntType):
-                json_text = builder.inttoptr(json_text, I8P)
+                json_text = builder.inttoptr(json_text, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
+                field_name = builder.inttoptr(field_name, Int8P)
             if isinstance(missing_default.type, ir.IntType):
-                missing_default = builder.sitofp(missing_default, F64)
+                missing_default = builder.sitofp(missing_default, Float64)
             fn = self._runtime_func(
-                "ss_json_find_double", F64, [I8P, I8P, F64])
+                "ss_json_find_double", Float64, [Int8P, Int8P, Float64])
             self.provenance.record_external("ss_json_find_double", call)
             call["result"] = builder.call(
                 fn, [json_text, field_name, missing_default],
@@ -11766,16 +11862,16 @@ class Codegen:
             field_name = arg_val_named("fieldName")
             missing_default = arg_val_named("missingDefault")
             if isinstance(json_text.type, ir.IntType):
-                json_text = builder.inttoptr(json_text, I8P)
+                json_text = builder.inttoptr(json_text, Int8P)
             if isinstance(field_name.type, ir.IntType):
-                field_name = builder.inttoptr(field_name, I8P)
+                field_name = builder.inttoptr(field_name, Int8P)
             if (isinstance(missing_default.type, ir.IntType)
                     and missing_default.type.width != 32):
-                missing_default = (builder.sext(missing_default, I32)
+                missing_default = (builder.sext(missing_default, Int32)
                                    if missing_default.type.width < 32
-                                   else builder.trunc(missing_default, I32))
+                                   else builder.trunc(missing_default, Int32))
             fn = self._runtime_func(
-                "ss_json_find_bool", I32, [I8P, I8P, I32])
+                "ss_json_find_bool", Int32, [Int8P, Int8P, Int32])
             self.provenance.record_external("ss_json_find_bool", call)
             call["result"] = builder.call(
                 fn, [json_text, field_name, missing_default],
@@ -11798,18 +11894,18 @@ class Codegen:
             out_buffer = arg_val_named("outBuffer")
             out_capacity = arg_val_named("outCapacity")
             if isinstance(plaintext.type, ir.IntType):
-                plaintext = builder.inttoptr(plaintext, I8P)
+                plaintext = builder.inttoptr(plaintext, Int8P)
             if isinstance(out_buffer.type, ir.IntType):
-                out_buffer = builder.inttoptr(out_buffer, I8P)
+                out_buffer = builder.inttoptr(out_buffer, Int8P)
             if isinstance(cost.type, ir.IntType) and cost.type.width != 32:
-                cost = (builder.trunc(cost, I32) if cost.type.width > 32
-                        else builder.sext(cost, I32))
+                cost = (builder.trunc(cost, Int32) if cost.type.width > 32
+                        else builder.sext(cost, Int32))
             if isinstance(out_capacity.type, ir.IntType) and out_capacity.type.width != 32:
-                out_capacity = (builder.trunc(out_capacity, I32)
+                out_capacity = (builder.trunc(out_capacity, Int32)
                                 if out_capacity.type.width > 32
-                                else builder.sext(out_capacity, I32))
+                                else builder.sext(out_capacity, Int32))
             fn = self._runtime_func(
-                "ss_bcrypt_hash", I32, [I8P, I32, I8P, I32])
+                "ss_bcrypt_hash", Int32, [Int8P, Int32, Int8P, Int32])
             self.provenance.record_external("ss_bcrypt_hash", call)
             call["result"] = builder.call(
                 fn, [plaintext, cost, out_buffer, out_capacity],
@@ -11820,11 +11916,11 @@ class Codegen:
             plaintext = arg_val_named("plaintext")
             expected_hash = arg_val_named("expectedHash")
             if isinstance(plaintext.type, ir.IntType):
-                plaintext = builder.inttoptr(plaintext, I8P)
+                plaintext = builder.inttoptr(plaintext, Int8P)
             if isinstance(expected_hash.type, ir.IntType):
-                expected_hash = builder.inttoptr(expected_hash, I8P)
+                expected_hash = builder.inttoptr(expected_hash, Int8P)
             fn = self._runtime_func(
-                "ss_bcrypt_verify", I32, [I8P, I8P])
+                "ss_bcrypt_verify", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_bcrypt_verify", call)
             call["result"] = builder.call(
                 fn, [plaintext, expected_hash],
@@ -11835,13 +11931,13 @@ class Codegen:
             out_buffer = arg_val_named("outBuffer")
             byte_count = arg_val_named("byteCount")
             if isinstance(out_buffer.type, ir.IntType):
-                out_buffer = builder.inttoptr(out_buffer, I8P)
+                out_buffer = builder.inttoptr(out_buffer, Int8P)
             if isinstance(byte_count.type, ir.IntType) and byte_count.type.width != 32:
-                byte_count = (builder.trunc(byte_count, I32)
+                byte_count = (builder.trunc(byte_count, Int32)
                               if byte_count.type.width > 32
-                              else builder.sext(byte_count, I32))
+                              else builder.sext(byte_count, Int32))
             fn = self._runtime_func(
-                "ss_random_bytes", I32, [I8P, I32])
+                "ss_random_bytes", Int32, [Int8P, Int32])
             self.provenance.record_external("ss_random_bytes", call)
             call["result"] = builder.call(
                 fn, [out_buffer, byte_count],
@@ -11855,23 +11951,23 @@ class Codegen:
             output_capacity = arg_val_named("outputCapacity")
             output_length_out = arg_val_named("outputLengthOut")
             if isinstance(input_buffer.type, ir.IntType):
-                input_buffer = builder.inttoptr(input_buffer, I8P)
+                input_buffer = builder.inttoptr(input_buffer, Int8P)
             if isinstance(output_buffer.type, ir.IntType):
-                output_buffer = builder.inttoptr(output_buffer, I8P)
+                output_buffer = builder.inttoptr(output_buffer, Int8P)
             if isinstance(output_length_out.type, ir.IntType):
                 output_length_out = builder.inttoptr(
-                    output_length_out, I32.as_pointer())
+                    output_length_out, Int32.as_pointer())
             if isinstance(input_count.type, ir.IntType) and input_count.type.width != 32:
-                input_count = (builder.trunc(input_count, I32)
+                input_count = (builder.trunc(input_count, Int32)
                                if input_count.type.width > 32
-                               else builder.sext(input_count, I32))
+                               else builder.sext(input_count, Int32))
             if isinstance(output_capacity.type, ir.IntType) and output_capacity.type.width != 32:
-                output_capacity = (builder.trunc(output_capacity, I32)
+                output_capacity = (builder.trunc(output_capacity, Int32)
                                    if output_capacity.type.width > 32
-                                   else builder.sext(output_capacity, I32))
+                                   else builder.sext(output_capacity, Int32))
             fn = self._runtime_func(
-                "ss_base64url_encode", I32,
-                [I8P, I32, I8P, I32, I32.as_pointer()])
+                "ss_base64url_encode", Int32,
+                [Int8P, Int32, Int8P, Int32, Int32.as_pointer()])
             self.provenance.record_external("ss_base64url_encode", call)
             call["result"] = builder.call(
                 fn, [input_buffer, input_count, output_buffer,
@@ -11905,15 +12001,15 @@ class Codegen:
             body = arg_val_named("body")
             content_type = self._i8p(builder, "text/html; charset=utf-8")
             if isinstance(status.type, ir.IntType) and status.type.width != 32:
-                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+                status = builder.trunc(status, Int32) if status.type.width > 32 else builder.sext(status, Int32)
             if isinstance(response.type, ir.IntType):
-                response = builder.inttoptr(response, I8P)
+                response = builder.inttoptr(response, Int8P)
             if isinstance(body.type, ir.IntType):
-                body = builder.inttoptr(body, I8P)
+                body = builder.inttoptr(body, Int8P)
             response_text = self._runtime_func(
                 "ss_http_response_text",
-                I32,
-                [I8P, I32, I8P, I8P]
+                Int32,
+                [Int8P, Int32, Int8P, Int8P]
             )
             self.provenance.record_external("ss_http_response_text", call)
             call["result"] = builder.call(
@@ -11927,21 +12023,21 @@ class Codegen:
             response = arg_val_named("response")
             status = arg_val_named("status")
             body = arg_val_named("body")
-            content_type = ir.Constant(I8P, None)
+            content_type = ir.Constant(Int8P, None)
             if "contentType" in call["args"]:
                 content_type = arg_val_named("contentType")
             if isinstance(status.type, ir.IntType) and status.type.width != 32:
-                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+                status = builder.trunc(status, Int32) if status.type.width > 32 else builder.sext(status, Int32)
             if isinstance(response.type, ir.IntType):
-                response = builder.inttoptr(response, I8P)
+                response = builder.inttoptr(response, Int8P)
             if isinstance(body.type, ir.IntType):
-                body = builder.inttoptr(body, I8P)
+                body = builder.inttoptr(body, Int8P)
             if isinstance(content_type.type, ir.IntType):
-                content_type = builder.inttoptr(content_type, I8P)
+                content_type = builder.inttoptr(content_type, Int8P)
             response_text = self._runtime_func(
                 "ss_http_response_text",
-                I32,
-                [I8P, I32, I8P, I8P]
+                Int32,
+                [Int8P, Int32, Int8P, Int8P]
             )
             self.provenance.record_external("ss_http_response_text", call)
             call["result"] = builder.call(
@@ -11956,23 +12052,23 @@ class Codegen:
             status = arg_val_named("status")
             body = arg_val_named("body")
             body_length = arg_val_named("bodyLength")
-            content_type = ir.Constant(I8P, None)
+            content_type = ir.Constant(Int8P, None)
             if "contentType" in call["args"]:
                 content_type = arg_val_named("contentType")
             if isinstance(status.type, ir.IntType) and status.type.width != 32:
-                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+                status = builder.trunc(status, Int32) if status.type.width > 32 else builder.sext(status, Int32)
             if isinstance(response.type, ir.IntType):
-                response = builder.inttoptr(response, I8P)
+                response = builder.inttoptr(response, Int8P)
             if isinstance(body.type, ir.IntType):
-                body = builder.inttoptr(body, I8P)
+                body = builder.inttoptr(body, Int8P)
             if isinstance(body_length.type, ir.IntType) and body_length.type.width != 64:
-                body_length = builder.zext(body_length, I64) if body_length.type.width < 64 else builder.trunc(body_length, I64)
+                body_length = builder.zext(body_length, Int64) if body_length.type.width < 64 else builder.trunc(body_length, Int64)
             if isinstance(content_type.type, ir.IntType):
-                content_type = builder.inttoptr(content_type, I8P)
+                content_type = builder.inttoptr(content_type, Int8P)
             response_bytes = self._runtime_func(
                 "ss_http_response_bytes",
-                I32,
-                [I8P, I32, I8P, I64, I8P]
+                Int32,
+                [Int8P, Int32, Int8P, Int64, Int8P]
             )
             self.provenance.record_external("ss_http_response_bytes", call)
             call["result"] = builder.call(
@@ -11988,17 +12084,17 @@ class Codegen:
             event_name = arg_val_named("event")
             event_data = arg_val_named("data")
             if isinstance(status.type, ir.IntType) and status.type.width != 32:
-                status = builder.trunc(status, I32) if status.type.width > 32 else builder.sext(status, I32)
+                status = builder.trunc(status, Int32) if status.type.width > 32 else builder.sext(status, Int32)
             if isinstance(response.type, ir.IntType):
-                response = builder.inttoptr(response, I8P)
+                response = builder.inttoptr(response, Int8P)
             if isinstance(event_name.type, ir.IntType):
-                event_name = builder.inttoptr(event_name, I8P)
+                event_name = builder.inttoptr(event_name, Int8P)
             if isinstance(event_data.type, ir.IntType):
-                event_data = builder.inttoptr(event_data, I8P)
+                event_data = builder.inttoptr(event_data, Int8P)
             response_sse_event = self._runtime_func(
                 "ss_http_response_sse_event",
-                I32,
-                [I8P, I32, I8P, I8P]
+                Int32,
+                [Int8P, Int32, Int8P, Int8P]
             )
             self.provenance.record_external("ss_http_response_sse_event", call)
             call["result"] = builder.call(
@@ -12013,15 +12109,15 @@ class Codegen:
             name = arg_val_named("name")
             value = arg_val_named("value")
             if isinstance(response.type, ir.IntType):
-                response = builder.inttoptr(response, I8P)
+                response = builder.inttoptr(response, Int8P)
             if isinstance(name.type, ir.IntType):
-                name = builder.inttoptr(name, I8P)
+                name = builder.inttoptr(name, Int8P)
             if isinstance(value.type, ir.IntType):
-                value = builder.inttoptr(value, I8P)
+                value = builder.inttoptr(value, Int8P)
             response_header = self._runtime_func(
                 "ss_http_response_header",
-                I32,
-                [I8P, I8P, I8P]
+                Int32,
+                [Int8P, Int8P, Int8P]
             )
             self.provenance.record_external("ss_http_response_header", call)
             call["result"] = builder.call(
@@ -12034,8 +12130,8 @@ class Codegen:
         if target == "http.requestMethod":
             request = arg_val_named("request")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
-            request_method = self._runtime_func("ss_http_request_method", I8P, [I8P])
+                request = builder.inttoptr(request, Int8P)
+            request_method = self._runtime_func("ss_http_request_method", Int8P, [Int8P])
             self.provenance.record_external("ss_http_request_method", call)
             call["result"] = builder.call(request_method, [request], name=f"{call_name}_res")
             return
@@ -12043,8 +12139,8 @@ class Codegen:
         if target == "http.requestPath":
             request = arg_val_named("request")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
-            request_path = self._runtime_func("ss_http_request_path", I8P, [I8P])
+                request = builder.inttoptr(request, Int8P)
+            request_path = self._runtime_func("ss_http_request_path", Int8P, [Int8P])
             self.provenance.record_external("ss_http_request_path", call)
             call["result"] = builder.call(request_path, [request], name=f"{call_name}_res")
             return
@@ -12053,10 +12149,10 @@ class Codegen:
             request = arg_val_named("request")
             name = arg_val_named("name")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
+                request = builder.inttoptr(request, Int8P)
             if isinstance(name.type, ir.IntType):
-                name = builder.inttoptr(name, I8P)
-            request_header = self._runtime_func("ss_http_request_header", I8P, [I8P, I8P])
+                name = builder.inttoptr(name, Int8P)
+            request_header = self._runtime_func("ss_http_request_header", Int8P, [Int8P, Int8P])
             self.provenance.record_external("ss_http_request_header", call)
             call["result"] = builder.call(request_header, [request, name], name=f"{call_name}_res")
             return
@@ -12065,10 +12161,10 @@ class Codegen:
             request = arg_val_named("request")
             name = arg_val_named("name")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
+                request = builder.inttoptr(request, Int8P)
             if isinstance(name.type, ir.IntType):
-                name = builder.inttoptr(name, I8P)
-            request_query_param = self._runtime_func("ss_http_request_query_param", I8P, [I8P, I8P])
+                name = builder.inttoptr(name, Int8P)
+            request_query_param = self._runtime_func("ss_http_request_query_param", Int8P, [Int8P, Int8P])
             self.provenance.record_external("ss_http_request_query_param", call)
             call["result"] = builder.call(request_query_param, [request, name], name=f"{call_name}_res")
             return
@@ -12083,11 +12179,11 @@ class Codegen:
             request = arg_val_named("request")
             name = arg_val_named("name")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
+                request = builder.inttoptr(request, Int8P)
             if isinstance(name.type, ir.IntType):
-                name = builder.inttoptr(name, I8P)
+                name = builder.inttoptr(name, Int8P)
             request_path_param = self._runtime_func(
-                "ss_http_request_path_param", I8P, [I8P, I8P])
+                "ss_http_request_path_param", Int8P, [Int8P, Int8P])
             self.provenance.record_external("ss_http_request_path_param", call)
             call["result"] = builder.call(
                 request_path_param, [request, name], name=f"{call_name}_res")
@@ -12101,11 +12197,11 @@ class Codegen:
             request = arg_val_named("request")
             cookie_name = arg_val_named("cookieName")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
+                request = builder.inttoptr(request, Int8P)
             if isinstance(cookie_name.type, ir.IntType):
-                cookie_name = builder.inttoptr(cookie_name, I8P)
+                cookie_name = builder.inttoptr(cookie_name, Int8P)
             fn = self._runtime_func(
-                "ss_http_request_cookie", I8P, [I8P, I8P])
+                "ss_http_request_cookie", Int8P, [Int8P, Int8P])
             self.provenance.record_external("ss_http_request_cookie", call)
             call["result"] = builder.call(
                 fn, [request, cookie_name], name=f"{call_name}_res")
@@ -12121,16 +12217,16 @@ class Codegen:
             root_directory = arg_val_named("rootDirectory")
             requested_path = arg_val_named("requestedPath")
             if isinstance(response.type, ir.IntType):
-                response = builder.inttoptr(response, I8P)
+                response = builder.inttoptr(response, Int8P)
             if isinstance(status.type, ir.IntType) and status.type.width != 32:
-                status = (builder.trunc(status, I32) if status.type.width > 32
-                          else builder.sext(status, I32))
+                status = (builder.trunc(status, Int32) if status.type.width > 32
+                          else builder.sext(status, Int32))
             if isinstance(root_directory.type, ir.IntType):
-                root_directory = builder.inttoptr(root_directory, I8P)
+                root_directory = builder.inttoptr(root_directory, Int8P)
             if isinstance(requested_path.type, ir.IntType):
-                requested_path = builder.inttoptr(requested_path, I8P)
+                requested_path = builder.inttoptr(requested_path, Int8P)
             fn = self._runtime_func(
-                "ss_http_response_file", I32, [I8P, I32, I8P, I8P])
+                "ss_http_response_file", Int32, [Int8P, Int32, Int8P, Int8P])
             self.provenance.record_external("ss_http_response_file", call)
             call["result"] = builder.call(
                 fn, [response, status, root_directory, requested_path],
@@ -12138,7 +12234,7 @@ class Codegen:
             return
 
         if target == "http.nowMillis":
-            fn = self._runtime_func("ss_http_now_millis", I64, [])
+            fn = self._runtime_func("ss_http_now_millis", Int64, [])
             self.provenance.record_external("ss_http_now_millis", call)
             call["result"] = builder.call(fn, [], name=f"{call_name}_millis")
             return
@@ -12146,9 +12242,9 @@ class Codegen:
         if target == "http.ensureDirectory":
             directory_path = arg_val_named("directoryPath")
             if isinstance(directory_path.type, ir.IntType):
-                directory_path = builder.inttoptr(directory_path, I8P)
+                directory_path = builder.inttoptr(directory_path, Int8P)
             fn = self._runtime_func(
-                "ss_http_filesystem_ensure_directory", I32, [I8P])
+                "ss_http_filesystem_ensure_directory", Int32, [Int8P])
             self.provenance.record_external(
                 "ss_http_filesystem_ensure_directory", call)
             call["result"] = builder.call(
@@ -12158,8 +12254,8 @@ class Codegen:
         if target == "http.requestBodyText":
             request = arg_val_named("request")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
-            request_body = self._runtime_func("ss_http_request_body_text", I8P, [I8P])
+                request = builder.inttoptr(request, Int8P)
+            request_body = self._runtime_func("ss_http_request_body_text", Int8P, [Int8P])
             self.provenance.record_external("ss_http_request_body_text", call)
             call["result"] = builder.call(request_body, [request], name=f"{call_name}_res")
             return
@@ -12167,8 +12263,8 @@ class Codegen:
         if target == "http.requestBodyBytes":
             request = arg_val_named("request")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
-            request_body = self._runtime_func("ss_http_request_body_bytes", I8P, [I8P])
+                request = builder.inttoptr(request, Int8P)
+            request_body = self._runtime_func("ss_http_request_body_bytes", Int8P, [Int8P])
             self.provenance.record_external("ss_http_request_body_bytes", call)
             call["result"] = builder.call(request_body, [request], name=f"{call_name}_res")
             return
@@ -12176,8 +12272,8 @@ class Codegen:
         if target == "http.requestBodyLength":
             request = arg_val_named("request")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
-            request_body_length = self._runtime_func("ss_http_request_body_length", I64, [I8P])
+                request = builder.inttoptr(request, Int8P)
+            request_body_length = self._runtime_func("ss_http_request_body_length", Int64, [Int8P])
             self.provenance.record_external("ss_http_request_body_length", call)
             call["result"] = builder.call(request_body_length, [request], name=f"{call_name}_res")
             return
@@ -12197,10 +12293,10 @@ class Codegen:
                 "http.multipartPartContentType": "ss_http_multipart_part_content_type",
             }[target]
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
+                request = builder.inttoptr(request, Int8P)
             if isinstance(name.type, ir.IntType):
-                name = builder.inttoptr(name, I8P)
-            multipart_reader = self._runtime_func(runtime_name, I8P, [I8P, I8P])
+                name = builder.inttoptr(name, Int8P)
+            multipart_reader = self._runtime_func(runtime_name, Int8P, [Int8P, Int8P])
             self.provenance.record_external(runtime_name, call)
             call["result"] = builder.call(multipart_reader, [request, name], name=f"{call_name}_res")
             return
@@ -12209,10 +12305,10 @@ class Codegen:
             request = arg_val_named("request")
             name = arg_val_named("name")
             if isinstance(request.type, ir.IntType):
-                request = builder.inttoptr(request, I8P)
+                request = builder.inttoptr(request, Int8P)
             if isinstance(name.type, ir.IntType):
-                name = builder.inttoptr(name, I8P)
-            multipart_length = self._runtime_func("ss_http_multipart_part_length", I64, [I8P, I8P])
+                name = builder.inttoptr(name, Int8P)
+            multipart_length = self._runtime_func("ss_http_multipart_part_length", Int64, [Int8P, Int8P])
             self.provenance.record_external("ss_http_multipart_part_length", call)
             call["result"] = builder.call(multipart_length, [request, name], name=f"{call_name}_res")
             return
@@ -12241,17 +12337,17 @@ class Codegen:
             call that does NOT use the SS_SQLITE_STEP_* range. Anything
             other than SS_SQLITE_OK (0) is an error."""
             return builder.icmp_signed(
-                "!=", status_value, ir.Constant(I32, 0),
+                "!=", status_value, ir.Constant(Int32, 0),
                 name=f"{call_name}_isError")
 
         if target in ("sqlite.openDatabase", "openDatabase"):
             path = arg_val_named("path")
             mode = arg_val_named("mode")
             if isinstance(path.type, ir.IntType):
-                path = builder.inttoptr(path, I8P)
+                path = builder.inttoptr(path, Int8P)
             if isinstance(mode.type, ir.IntType) and mode.type.width != 32:
-                mode = (builder.trunc(mode, I32) if mode.type.width > 32
-                        else builder.sext(mode, I32))
+                mode = (builder.trunc(mode, Int32) if mode.type.width > 32
+                        else builder.sext(mode, Int32))
             # Entry-block alloca so a later `defer ... sqlite.closeDatabase`
             # can re-load the handle from a slot that dominates every
             # cleanup site (failure labels, returnOk fall-throughs, etc.).
@@ -12259,10 +12355,10 @@ class Codegen:
             # open succeeded then sees a sentinel rather than garbage.
             with builder.goto_entry_block():
                 db_slot = builder.alloca(
-                    I8P, name=f"{call_name}_databaseSlot")
-                builder.store(ir.Constant(I8P, None), db_slot)
+                    Int8P, name=f"{call_name}_databaseSlot")
+                builder.store(ir.Constant(Int8P, None), db_slot)
             open_fn = self._runtime_func(
-                "ss_sqlite_database_open", I32, [I8P, I32, I8P.as_pointer()])
+                "ss_sqlite_database_open", Int32, [Int8P, Int32, Int8P.as_pointer()])
             self.provenance.record_external("ss_sqlite_database_open", call)
             status = builder.call(
                 open_fn, [path, mode, db_slot], name=f"{call_name}_status")
@@ -12278,13 +12374,13 @@ class Codegen:
         if target in ("sqlite.closeDatabase", "closeDatabase"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
-                database = builder.inttoptr(database, I8P)
+                database = builder.inttoptr(database, Int8P)
             close_fn = self._runtime_func(
-                "ss_sqlite_database_close", I32, [I8P])
+                "ss_sqlite_database_close", Int32, [Int8P])
             self.provenance.record_external("ss_sqlite_database_close", call)
             status = builder.call(
                 close_fn, [database], name=f"{call_name}_status")
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
@@ -12292,9 +12388,9 @@ class Codegen:
         if target in ("sqlite.errorMessage", "errorMessage"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
-                database = builder.inttoptr(database, I8P)
+                database = builder.inttoptr(database, Int8P)
             errmsg_fn = self._runtime_func(
-                "ss_sqlite_database_errmsg", I8P, [I8P])
+                "ss_sqlite_database_errmsg", Int8P, [Int8P])
             self.provenance.record_external("ss_sqlite_database_errmsg", call)
             call["result"] = builder.call(
                 errmsg_fn, [database], name=f"{call_name}_message")
@@ -12303,9 +12399,9 @@ class Codegen:
         if target in ("sqlite.lastInsertRowId", "lastInsertRowId"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
-                database = builder.inttoptr(database, I8P)
+                database = builder.inttoptr(database, Int8P)
             last_rowid_fn = self._runtime_func(
-                "ss_sqlite_database_last_insert_rowid", I64, [I8P])
+                "ss_sqlite_database_last_insert_rowid", Int64, [Int8P])
             self.provenance.record_external(
                 "ss_sqlite_database_last_insert_rowid", call)
             call["result"] = builder.call(
@@ -12315,28 +12411,42 @@ class Codegen:
         if target in ("sqlite.changedRowCount", "changedRowCount"):
             database = arg_val_named("database")
             if isinstance(database.type, ir.IntType):
-                database = builder.inttoptr(database, I8P)
+                database = builder.inttoptr(database, Int8P)
             changes_fn = self._runtime_func(
-                "ss_sqlite_database_changes", I32, [I8P])
+                "ss_sqlite_database_changes", Int32, [Int8P])
             self.provenance.record_external(
                 "ss_sqlite_database_changes", call)
             call["result"] = builder.call(
                 changes_fn, [database], name=f"{call_name}_changes")
             return
 
+        if target in ("sqlite.execStatus", "execStatus"):
+            database = arg_val_named("database")
+            sql = arg_val_named("sql")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, Int8P)
+            if isinstance(sql.type, ir.IntType):
+                sql = builder.inttoptr(sql, Int8P)
+            exec_fn = self._runtime_func(
+                "ss_sqlite_exec", Int32, [Int8P, Int8P])
+            self.provenance.record_external("ss_sqlite_exec", call)
+            call["result"] = builder.call(
+                exec_fn, [database, sql], name=f"{call_name}_status")
+            return
+
         if target in ("sqlite.exec", "exec"):
             database = arg_val_named("database")
             sql = arg_val_named("sql")
             if isinstance(database.type, ir.IntType):
-                database = builder.inttoptr(database, I8P)
+                database = builder.inttoptr(database, Int8P)
             if isinstance(sql.type, ir.IntType):
-                sql = builder.inttoptr(sql, I8P)
+                sql = builder.inttoptr(sql, Int8P)
             exec_fn = self._runtime_func(
-                "ss_sqlite_exec", I32, [I8P, I8P])
+                "ss_sqlite_exec", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_sqlite_exec", call)
             status = builder.call(
                 exec_fn, [database, sql], name=f"{call_name}_status")
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
@@ -12345,9 +12455,9 @@ class Codegen:
             database = arg_val_named("database")
             sql = arg_val_named("sql")
             if isinstance(database.type, ir.IntType):
-                database = builder.inttoptr(database, I8P)
+                database = builder.inttoptr(database, Int8P)
             if isinstance(sql.type, ir.IntType):
-                sql = builder.inttoptr(sql, I8P)
+                sql = builder.inttoptr(sql, Int8P)
             # Entry-block alloca for the same reason openDatabase uses
             # one — a later `defer ... sqlite.finalizeStatement` must be
             # able to re-load the handle from a slot that dominates the
@@ -12356,11 +12466,11 @@ class Codegen:
             # the adapter (which treats NULL as a config error).
             with builder.goto_entry_block():
                 stmt_slot = builder.alloca(
-                    I8P, name=f"{call_name}_statementSlot")
-                builder.store(ir.Constant(I8P, None), stmt_slot)
+                    Int8P, name=f"{call_name}_statementSlot")
+                builder.store(ir.Constant(Int8P, None), stmt_slot)
             prepare_fn = self._runtime_func(
-                "ss_sqlite_statement_prepare", I32,
-                [I8P, I8P, I8P.as_pointer()])
+                "ss_sqlite_statement_prepare", Int32,
+                [Int8P, Int8P, Int8P.as_pointer()])
             self.provenance.record_external(
                 "ss_sqlite_statement_prepare", call)
             status = builder.call(
@@ -12376,14 +12486,14 @@ class Codegen:
         if target in ("sqlite.finalizeStatement", "finalizeStatement"):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
-                statement = builder.inttoptr(statement, I8P)
+                statement = builder.inttoptr(statement, Int8P)
             finalize_fn = self._runtime_func(
-                "ss_sqlite_statement_finalize", I32, [I8P])
+                "ss_sqlite_statement_finalize", Int32, [Int8P])
             self.provenance.record_external(
                 "ss_sqlite_statement_finalize", call)
             status = builder.call(
                 finalize_fn, [statement], name=f"{call_name}_status")
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
@@ -12391,14 +12501,14 @@ class Codegen:
         if target in ("sqlite.resetStatement", "resetStatement"):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
-                statement = builder.inttoptr(statement, I8P)
+                statement = builder.inttoptr(statement, Int8P)
             reset_fn = self._runtime_func(
-                "ss_sqlite_statement_reset", I32, [I8P])
+                "ss_sqlite_statement_reset", Int32, [Int8P])
             self.provenance.record_external(
                 "ss_sqlite_statement_reset", call)
             status = builder.call(
                 reset_fn, [statement], name=f"{call_name}_status")
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
@@ -12406,9 +12516,9 @@ class Codegen:
         if target in ("sqlite.stepStatement", "stepStatement"):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
-                statement = builder.inttoptr(statement, I8P)
+                statement = builder.inttoptr(statement, Int8P)
             step_fn = self._runtime_func(
-                "ss_sqlite_statement_step", I32, [I8P])
+                "ss_sqlite_statement_step", Int32, [Int8P])
             self.provenance.record_external(
                 "ss_sqlite_statement_step", call)
             status = builder.call(
@@ -12417,7 +12527,7 @@ class Codegen:
             # carries a value the user binds: SqliteStepResult ∈
             # {SS_SQLITE_STEP_ROW=100, SS_SQLITE_STEP_DONE=101}. Anything
             # below 100 is a SS_SQLITE_ERR_* status.
-            step_row_value = ir.Constant(I32, 100)
+            step_row_value = ir.Constant(Int32, 100)
             is_error = builder.icmp_signed(
                 "<", status, step_row_value, name=f"{call_name}_isError")
             call["result"] = status
@@ -12440,16 +12550,16 @@ class Codegen:
             statement = arg_val_named("statement")
             parameter_index = arg_val_named("parameterIndex")
             if isinstance(statement.type, ir.IntType):
-                statement = builder.inttoptr(statement, I8P)
+                statement = builder.inttoptr(statement, Int8P)
             if (isinstance(parameter_index.type, ir.IntType)
                     and parameter_index.type.width != 32):
                 parameter_index = (
-                    builder.trunc(parameter_index, I32)
+                    builder.trunc(parameter_index, Int32)
                     if parameter_index.type.width > 32
-                    else builder.sext(parameter_index, I32))
+                    else builder.sext(parameter_index, Int32))
             if target in ("sqlite.bindNull", "bindNull"):
                 bind_fn = self._runtime_func(
-                    "ss_sqlite_statement_bind_null", I32, [I8P, I32])
+                    "ss_sqlite_statement_bind_null", Int32, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_bind_null", call)
                 status = builder.call(
@@ -12459,11 +12569,11 @@ class Codegen:
                 value = arg_val_named("value")
                 if isinstance(value.type, ir.IntType) and value.type.width != 64:
                     value = (
-                        builder.sext(value, I64)
+                        builder.sext(value, Int64)
                         if value.type.width < 64
-                        else builder.trunc(value, I64))
+                        else builder.trunc(value, Int64))
                 bind_fn = self._runtime_func(
-                    "ss_sqlite_statement_bind_int64", I32, [I8P, I32, I64])
+                    "ss_sqlite_statement_bind_int64", Int32, [Int8P, Int32, Int64])
                 self.provenance.record_external(
                     "ss_sqlite_statement_bind_int64", call)
                 status = builder.call(
@@ -12472,7 +12582,7 @@ class Codegen:
             elif target in ("sqlite.bindDouble", "bindDouble"):
                 value = arg_val_named("value")
                 bind_fn = self._runtime_func(
-                    "ss_sqlite_statement_bind_double", I32, [I8P, I32, F64])
+                    "ss_sqlite_statement_bind_double", Int32, [Int8P, Int32, Float64])
                 self.provenance.record_external(
                     "ss_sqlite_statement_bind_double", call)
                 status = builder.call(
@@ -12481,9 +12591,9 @@ class Codegen:
             elif target in ("sqlite.bindText", "bindText"):
                 value = arg_val_named("value")
                 if isinstance(value.type, ir.IntType):
-                    value = builder.inttoptr(value, I8P)
+                    value = builder.inttoptr(value, Int8P)
                 bind_fn = self._runtime_func(
-                    "ss_sqlite_statement_bind_text", I32, [I8P, I32, I8P])
+                    "ss_sqlite_statement_bind_text", Int32, [Int8P, Int32, Int8P])
                 self.provenance.record_external(
                     "ss_sqlite_statement_bind_text", call)
                 status = builder.call(
@@ -12493,23 +12603,23 @@ class Codegen:
                 value = arg_val_named("value")
                 value_length = arg_val_named("valueLength")
                 if isinstance(value.type, ir.IntType):
-                    value = builder.inttoptr(value, I8P)
+                    value = builder.inttoptr(value, Int8P)
                 if (isinstance(value_length.type, ir.IntType)
                         and value_length.type.width != 64):
                     value_length = (
-                        builder.sext(value_length, I64)
+                        builder.sext(value_length, Int64)
                         if value_length.type.width < 64
-                        else builder.trunc(value_length, I64))
+                        else builder.trunc(value_length, Int64))
                 bind_fn = self._runtime_func(
-                    "ss_sqlite_statement_bind_blob", I32,
-                    [I8P, I32, I8P, I64])
+                    "ss_sqlite_statement_bind_blob", Int32,
+                    [Int8P, Int32, Int8P, Int64])
                 self.provenance.record_external(
                     "ss_sqlite_statement_bind_blob", call)
                 status = builder.call(
                     bind_fn,
                     [statement, parameter_index, value, value_length],
                     name=f"{call_name}_status")
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
@@ -12534,10 +12644,10 @@ class Codegen:
         ):
             statement = arg_val_named("statement")
             if isinstance(statement.type, ir.IntType):
-                statement = builder.inttoptr(statement, I8P)
+                statement = builder.inttoptr(statement, Int8P)
             if target in ("sqlite.columnCount", "columnCount"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_count", I32, [I8P])
+                    "ss_sqlite_statement_column_count", Int32, [Int8P])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_count", call)
                 call["result"] = builder.call(
@@ -12547,33 +12657,33 @@ class Codegen:
             if (isinstance(column_index.type, ir.IntType)
                     and column_index.type.width != 32):
                 column_index = (
-                    builder.trunc(column_index, I32)
+                    builder.trunc(column_index, Int32)
                     if column_index.type.width > 32
-                    else builder.sext(column_index, I32))
+                    else builder.sext(column_index, Int32))
             if target in ("sqlite.columnType", "columnType"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_type", I32, [I8P, I32])
+                    "ss_sqlite_statement_column_type", Int32, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_type", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_type")
             elif target in ("sqlite.columnName", "columnName"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_name", I8P, [I8P, I32])
+                    "ss_sqlite_statement_column_name", Int8P, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_name", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_name")
             elif target in ("sqlite.columnInt64", "columnInt64"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_int64", I64, [I8P, I32])
+                    "ss_sqlite_statement_column_int64", Int64, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_int64", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_int")
             elif target in ("sqlite.columnDouble", "columnDouble"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_double", F64, [I8P, I32])
+                    "ss_sqlite_statement_column_double", Float64, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_double", call)
                 call["result"] = builder.call(
@@ -12581,21 +12691,21 @@ class Codegen:
                     name=f"{call_name}_double")
             elif target in ("sqlite.columnText", "columnText"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_text", I8P, [I8P, I32])
+                    "ss_sqlite_statement_column_text", Int8P, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_text", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_text")
             elif target in ("sqlite.columnBlob", "columnBlob"):
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_blob", I8P, [I8P, I32])
+                    "ss_sqlite_statement_column_blob", Int8P, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_blob", call)
                 call["result"] = builder.call(
                     fn, [statement, column_index], name=f"{call_name}_blob")
             else:  # sqlite.columnByteCount
                 fn = self._runtime_func(
-                    "ss_sqlite_statement_column_bytes", I64, [I8P, I32])
+                    "ss_sqlite_statement_column_bytes", Int64, [Int8P, Int32])
                 self.provenance.record_external(
                     "ss_sqlite_statement_column_bytes", call)
                 call["result"] = builder.call(
@@ -12605,7 +12715,7 @@ class Codegen:
 
         if target in ("sqlite.libraryVersion", "libraryVersion"):
             version_fn = self._runtime_func(
-                "ss_sqlite_library_version", I8P, [])
+                "ss_sqlite_library_version", Int8P, [])
             self.provenance.record_external(
                 "ss_sqlite_library_version", call)
             call["result"] = builder.call(
@@ -12619,23 +12729,23 @@ class Codegen:
 
         def net_i8p(value):
             if isinstance(value.type, ir.IntType):
-                return builder.inttoptr(value, I8P)
-            if isinstance(value.type, ir.PointerType) and value.type != I8P:
-                return builder.bitcast(value, I8P)
+                return builder.inttoptr(value, Int8P)
+            if isinstance(value.type, ir.PointerType) and value.type != Int8P:
+                return builder.bitcast(value, Int8P)
             return value
 
         def net_i64(value):
             if isinstance(value.type, ir.IntType) and value.type.width != 64:
-                return (builder.zext(value, I64)
+                return (builder.zext(value, Int64)
                         if value.type.width < 64
-                        else builder.trunc(value, I64))
+                        else builder.trunc(value, Int64))
             return value
 
         def net_i32(value):
             if isinstance(value.type, ir.IntType) and value.type.width != 32:
-                return (builder.zext(value, I32)
+                return (builder.zext(value, Int32)
                         if value.type.width < 32
-                        else builder.trunc(value, I32))
+                        else builder.trunc(value, Int32))
             return value
 
         def net_record_field(record_symbol, field_path):
@@ -12656,24 +12766,24 @@ class Codegen:
             timeout_ms = net_i64(timeout_ms)
             max_body_bytes = net_i64(max_body_bytes)
             with builder.goto_entry_block():
-                body_out = builder.alloca(I8P, name=f"{call_name}_body_out")
-                status_out = builder.alloca(I64, name=f"{call_name}_status_out")
-            builder.store(ir.Constant(I8P, None), body_out)
-            builder.store(ir.Constant(I64, 0), status_out)
+                body_out = builder.alloca(Int8P, name=f"{call_name}_body_out")
+                status_out = builder.alloca(Int64, name=f"{call_name}_status_out")
+            builder.store(ir.Constant(Int8P, None), body_out)
+            builder.store(ir.Constant(Int64, 0), status_out)
             if redirect_limit is None:
                 symbol = "ss_http_client_fetch_text_copy"
                 fn = self._runtime_func(
                     symbol,
-                    I32,
-                    [I8P, I64, I64, I8P.as_pointer(), I64.as_pointer()])
+                    Int32,
+                    [Int8P, Int64, Int64, Int8P.as_pointer(), Int64.as_pointer()])
                 args = [url, timeout_ms, max_body_bytes, body_out, status_out]
             else:
                 redirect_limit = net_i32(redirect_limit)
                 symbol = "ss_http_client_fetch_text_request_copy"
                 fn = self._runtime_func(
                     symbol,
-                    I32,
-                    [I8P, I64, I64, I32, I8P.as_pointer(), I64.as_pointer()])
+                    Int32,
+                    [Int8P, Int64, Int64, Int32, Int8P.as_pointer(), Int64.as_pointer()])
                 args = [
                     url,
                     timeout_ms,
@@ -12698,9 +12808,9 @@ class Codegen:
                     url, timeout_ms, max_body_bytes, redirect_limit)
                 with builder.goto_entry_block():
                     response_status = builder.alloca(
-                        I32, name=f"{call_name}_response_status")
+                        Int32, name=f"{call_name}_response_status")
                     response_body = builder.alloca(
-                        I8P, name=f"{call_name}_response_body")
+                        Int8P, name=f"{call_name}_response_body")
                 builder.store(
                     net_i32(builder.load(status_out, name=f"{call_name}_http_status")),
                     response_status)
@@ -12719,7 +12829,7 @@ class Codegen:
                 call["result"] = body
                 call["error_value"] = status
                 call["error_cond"] = builder.icmp_unsigned(
-                    "!=", status, ir.Constant(I32, 0),
+                    "!=", status, ir.Constant(Int32, 0),
                     name=f"{call_name}_is_error")
                 return
 
@@ -12731,16 +12841,16 @@ class Codegen:
             call["result"] = body
             call["error_value"] = status
             call["error_cond"] = builder.icmp_unsigned(
-                "!=", status, ir.Constant(I32, 0),
+                "!=", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_is_error")
             return
 
         if target in {"net.freeTextBody", "freeTextBody"}:
             body = net_i8p(arg_val_named("body"))
-            fn = self._runtime_func("ss_http_client_free_string", VOID, [I8P])
+            fn = self._runtime_func("ss_http_client_free_string", VOID, [Int8P])
             self.provenance.record_external("ss_http_client_free_string", call)
             builder.call(fn, [body])
-            call["result"] = ir.Constant(I32, 0)
+            call["result"] = ir.Constant(Int32, 0)
             return
 
         if target == "net.fetchBytes":
@@ -12752,24 +12862,24 @@ class Codegen:
             timeout_ms = arg_val_named("timeoutMillis")
             max_body_bytes = arg_val_named("maxBodyBytes")
             if isinstance(url.type, ir.IntType):
-                url = builder.inttoptr(url, I8P)
+                url = builder.inttoptr(url, Int8P)
             if isinstance(timeout_ms.type, ir.IntType) and timeout_ms.type.width != 64:
-                timeout_ms = (builder.zext(timeout_ms, I64)
+                timeout_ms = (builder.zext(timeout_ms, Int64)
                               if timeout_ms.type.width < 64
-                              else builder.trunc(timeout_ms, I64))
+                              else builder.trunc(timeout_ms, Int64))
             if isinstance(max_body_bytes.type, ir.IntType) and max_body_bytes.type.width != 64:
-                max_body_bytes = (builder.zext(max_body_bytes, I64)
+                max_body_bytes = (builder.zext(max_body_bytes, Int64)
                                   if max_body_bytes.type.width < 64
-                                  else builder.trunc(max_body_bytes, I64))
+                                  else builder.trunc(max_body_bytes, Int64))
             with builder.goto_entry_block():
-                body_out = builder.alloca(I8P, name=f"{call_name}_body_out")
-                status_out = builder.alloca(I64, name=f"{call_name}_status_out")
-            builder.store(ir.Constant(I8P, None), body_out)
-            builder.store(ir.Constant(I64, 0), status_out)
+                body_out = builder.alloca(Int8P, name=f"{call_name}_body_out")
+                status_out = builder.alloca(Int64, name=f"{call_name}_status_out")
+            builder.store(ir.Constant(Int8P, None), body_out)
+            builder.store(ir.Constant(Int64, 0), status_out)
             fn = self._runtime_func(
                 "ss_http_client_fetch_text_copy",
-                I32,
-                [I8P, I64, I64, I8P.as_pointer(), I64.as_pointer()])
+                Int32,
+                [Int8P, Int64, Int64, Int8P.as_pointer(), Int64.as_pointer()])
             self.provenance.record_external(
                 "ss_http_client_fetch_text_copy", call)
             status = builder.call(
@@ -12780,7 +12890,7 @@ class Codegen:
             call["result"] = body
             call["error_value"] = status
             call["error_cond"] = builder.icmp_unsigned(
-                "!=", status, ir.Constant(I32, 0),
+                "!=", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_is_error")
             return
 
@@ -12793,7 +12903,7 @@ class Codegen:
         # runtime (when wired) would supply the implementation by linking
         # against the named module's exports.
         if "." in target or target in self.prog.validators or target in self.prog.policies:
-            zero = ir.Constant(I64, 0)
+            zero = ir.Constant(Int64, 0)
             call["result"] = zero
             call["error_value"] = zero
             call["error_cond"] = ir.Constant(I1, 0)
@@ -13636,21 +13746,21 @@ def _strict_collect_constant_string_names(prog: Program,
                                           op: Operation = None) -> set:
     names = set()
     for name, (typ, _value) in prog.consts.items():
-        if typ != "CNullTerminatedByteString":
+        if resolve_alias(prog, typ) != "String":
             continue
         if name in prog.mutable_globals:
             continue
         names.add(name)
     if op is not None:
         for name, (typ, _value) in op.consts.items():
-            if typ == "CNullTerminatedByteString":
+            if resolve_alias(prog, typ) == "String":
                 names.add(name)
         for verb, args, _lineno in op.lines:
             if verb != "storage" or len(args) < 4:
                 continue
             if args[0] != "local" or args[1] != "immutable":
                 continue
-            if args[3] != "CNullTerminatedByteString":
+            if resolve_alias(prog, args[3]) != "String":
                 continue
             names.add(args[2])
     return names
@@ -13879,7 +13989,7 @@ def _strict_raise_first_forbidden_target(prog: Program, diags) -> None:
 def _check_strict_format_string_is_constant(prog: Program, diags) -> None:
     """SS3310 — c.snprintf / c.printf / c.fprintf / c.sprintf-family
     `format` arg must reference a `storage * immutable
-    CNullTerminatedByteString` row so `%n` / `%s` conversions cannot be
+    String` row so `%n` / `%s` conversions cannot be
     injected from runtime data."""
     for op_name, op in prog.operations.items():
         constant_names = _strict_collect_constant_string_names(prog, op)
@@ -13904,7 +14014,7 @@ def _check_strict_format_string_is_constant(prog: Program, diags) -> None:
                 f"`{op_name}`, call `{call_name}` (target `{target}`) "
                 f"uses `{value_name}` as `format`; the format-string "
                 f"argument must reference a `storage * immutable "
-                f"CNullTerminatedByteString` row so `%n` / `%s` "
+                f"String` row so `%n` / `%s` "
                 f"conversions cannot be injected"))
 
 
@@ -13942,7 +14052,7 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
                     f"SS3911 sqlMustBeSqlText: in operation `{op_name}`, "
                     f"call `{call_name}` (target `{target}`) uses "
                     f"`{value_name}` as `sql`; SQL text must be typed "
-                    "`SqlText`, not `CNullTerminatedByteString`"))
+                    "`SqlText`, not `String`"))
                 continue
             if any(name in prog.mutable_globals for name in _strict_sql_names_for(value_name)):
                 diags.append((lineno,
@@ -14012,7 +14122,7 @@ def _strict_sql_source_is_body_or_external_literal(
 
 def _is_sql_constant_type(prog: Program, typ: str) -> bool:
     resolved = resolve_alias(prog, typ)
-    return typ == "SqlText" or resolved in ("SqlText", "CNullTerminatedByteString")
+    return typ == "SqlText" or resolved in ("SqlText", "String")
 
 
 def _sql_constant_usage(prog: Program):
@@ -14182,7 +14292,7 @@ def _check_sqlite_multiple_writes_have_transaction(prog: Program, diags) -> None
         has_begin = False
         has_commit = False
         for call_info in calls.values():
-            if call_info["target"] != "sqlite.exec":
+            if call_info["target"] not in _STRICT_SQL_EXEC_TARGETS:
                 continue
             sql_name = _strict_call_arg_value(call_info, "sql")
             if sql_name is None:
@@ -14241,7 +14351,7 @@ def _check_sqlite_returning_statement_drained_before_commit(
 
         commit_calls = []
         for call_info in calls.values():
-            if call_info["target"] != "sqlite.exec":
+            if call_info["target"] not in _STRICT_SQL_EXEC_TARGETS:
                 continue
             sql_name = _strict_call_arg_value(call_info, "sql")
             if sql_name is None:
@@ -14319,7 +14429,7 @@ _STRICT_REQUEST_TIME_READ_TARGETS = frozenset({
 
 _STRICT_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES = 512
 _STRICT_LARGE_LOCAL_STATIC_LITERAL_TYPES = frozenset({
-    "CNullTerminatedByteString",
+    "String",
     "String",
     "JsonText",
     "SqlText",
@@ -14607,8 +14717,9 @@ def _check_sqlite_sql_body_usage(prog: Program, diags) -> None:
                 f"SS3914 execSqlCannotUsePlaceholders: in operation "
                 f"`{op_name}`, call `{call_name}` uses SQL constant "
                 f"`{value_name}` containing {placeholder_count} bind "
-                "placeholder(s), but sqlite.exec has no sqlite.bind* path; "
-                "use sqlite.prepareStatement for parameterized SQL"))
+                "placeholder(s), but sqlite.exec / sqlite.execStatus have no "
+                "sqlite.bind* path; use sqlite.prepareStatement for "
+                "parameterized SQL"))
 
 
 def _strict_raise_first_sql_usage_violation(prog: Program, diags) -> None:
@@ -14872,9 +14983,9 @@ def _strict_raise_first_shared_state(prog: Program, diags) -> None:
 
 
 def _check_strict_checked_arithmetic(prog: Program, diags) -> None:
-    """SS3402 — math.addI64 / subtractI64 / multiplyI64 results that
+    """SS3402 — math.addInt64 / subtractInt64 / multiplyInt64 results that
     look like sizes, byte counts, offsets, or timestamps must use the
-    checked variant (`math.checkedAddI64` + bindError + branchIfError).
+    checked variant (`math.checkedAddInt64` + bindError + branchIfError).
     Heuristic on bound-name suffix; false negatives possible if the
     binding name is opaque."""
     for op_name, op in prog.operations.items():
@@ -14899,7 +15010,7 @@ def _check_strict_checked_arithmetic(prog: Program, diags) -> None:
                 f"`{op_name}`, call `{source_call}` (target `{target}`) "
                 f"produces `{bound_name}` whose name suggests a "
                 f"size/timestamp/byte-count; use the checked variant "
-                f"(e.g. `math.checkedAddI64` with `bindError` + "
+                f"(e.g. `math.checkedAddInt64` with `bindError` + "
                 f"`branchIfError`)"))
 
 
@@ -15465,6 +15576,8 @@ def _check_duplicated_domain_literals(prog: Program, diags):
         return
     seen = {}   # value -> first const name that held it
     for name, (typ, value) in prog.consts.items():
+        if "." in name:
+            continue
         if resolve_alias(prog, typ) != "String":
             continue
         if value in seen:
@@ -15487,10 +15600,16 @@ def _check_purpose_on_abstractions(prog: Program, diags):
     for name in prog.resources:
         targets.append(("resource", name))
     for name in prog.capabilities:
+        if "." in name:
+            continue
         targets.append(("capability", name))
     for name in prog.records:
+        if "." in name:
+            continue
         targets.append(("record", name))
     for name in prog.web_servers:
+        if "." in name:
+            continue
         targets.append(("webServer", name))
     for kind, name in targets:
         meta = prog.hard_metadata.get(name, {})
@@ -15502,17 +15621,23 @@ def _check_purpose_on_abstractions(prog: Program, diags):
 def _check_identifier_casing(prog: Program, diags):
     """Spec §6: PascalCase for types/records/enums/errors/enum variants;
     camelCase for values/calls/labels/operations/vars/consts."""
+    def local_name(name):
+        return name.rsplit(".", 1)[-1]
     def is_pascal(name):
         return bool(name) and name[0].isupper()
     def is_camel(name):
         return bool(name) and name[0].islower()
     # PascalCase declarations
     for name in prog.type_aliases:
-        if not is_pascal(name):
+        if "." in name:
+            continue
+        if not is_pascal(local_name(name)):
             diags.append((0,
                 f"casingViolation: type `{name}` should start with uppercase (PascalCase) per §6"))
     for name in prog.errors:
-        if not is_pascal(name):
+        if "." in name:
+            continue
+        if not is_pascal(local_name(name)):
             diags.append((0,
                 f"casingViolation: error type `{name}` should start with uppercase per §6"))
     for variants in prog.errors.values():
@@ -15521,11 +15646,15 @@ def _check_identifier_casing(prog: Program, diags):
                 diags.append((0,
                     f"casingViolation: error variant `{vname}` should start with uppercase per §6"))
     for name in prog.records:
-        if not is_pascal(name):
+        if "." in name:
+            continue
+        if not is_pascal(local_name(name)):
             diags.append((0,
                 f"casingViolation: record `{name}` should start with uppercase per §6"))
     for name in prog.enums:
-        if not is_pascal(name):
+        if "." in name:
+            continue
+        if not is_pascal(local_name(name)):
             diags.append((0,
                 f"casingViolation: enum `{name}` should start with uppercase per §6"))
     # camelCase declarations
@@ -15534,7 +15663,9 @@ def _check_identifier_casing(prog: Program, diags):
             diags.append((0,
                 f"casingViolation: operation `{op_name}` should start with lowercase (camelCase) per §6"))
     for name in prog.consts:
-        if not is_camel(name):
+        if "." in name:
+            continue
+        if not is_camel(local_name(name)):
             diags.append((0,
                 f"casingViolation: const `{name}` should start with lowercase per §6"))
     # Per-operation body identifiers
@@ -15986,7 +16117,7 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
                     continue
                 if _LINT_WRITE_VERB_RE.match(value):
                     write_step_count += 1
-            elif canonical == "sqlite.exec":
+            elif canonical in _STRICT_SQL_EXEC_TARGETS:
                 # If any sqlite.exec arg's sql is a BEGIN/COMMIT/etc.
                 pass
         for verb, args, _lineno in op.lines:
@@ -15997,7 +16128,7 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
             target_info = call_targets.get(call_name)
             if target_info is None:
                 continue
-            if _strict_target(prog, target_info[0]) != "sqlite.exec":
+            if _strict_target(prog, target_info[0]) not in _STRICT_SQL_EXEC_TARGETS:
                 continue
             if arg_name != "sql":
                 continue
@@ -16092,7 +16223,7 @@ def _check_dead_sql_constant(prog: Program, diags):
                     target_info = call_targets.get(call_name)
                     if target_info is not None:
                         target = _strict_target(prog, target_info[0])
-                        if target in ("sqlite.prepareStatement", "sqlite.exec"):
+                        if target == "sqlite.prepareStatement" or target in _STRICT_SQL_EXEC_TARGETS:
                             referenced.add(value_name)
                 continue
             # defer rows that wrap sqlite.exec pass positional args: the
@@ -16101,14 +16232,15 @@ def _check_dead_sql_constant(prog: Program, diags):
             # statements would look "dead" because the named-arg walk
             # above never sees them.
             if verb == "defer" and len(args) >= 4:
-                if _strict_target(prog, args[1]) == "sqlite.exec":
+                if _strict_target(prog, args[1]) in _STRICT_SQL_EXEC_TARGETS:
                     # args = [NAME, sqlite.exec, DATABASE, SQL, ...]
                     referenced.add(args[3])
     for name in sorted(set(sql_constants) - referenced):
         diags.append((0,
             f"SS3415 deadSqlConstant: SQL constant `{name}` is declared "
-            f"but never referenced by `sqlite.prepareStatement` or "
-            f"`sqlite.exec`. Either delete the declaration or wire it "
+            f"but never referenced by `sqlite.prepareStatement`, "
+            f"`sqlite.exec`, or `sqlite.execStatus`. Either delete the "
+            f"declaration or wire it "
             f"into the handler it was meant for"))
 
 
@@ -16445,7 +16577,7 @@ def _check_result_contract(prog: Program, diags):
                         f"returnOkContract: operation `{op_name}` does not "
                         f"declare a Result output; use `returnValue` instead "
                         f"of `returnOk` (§11)"))
-                elif ok_type in ("Void", "CVoid"):
+                elif ok_type in ("Void", "Void"):
                     # Void success leg: any sentinel value is accepted; the
                     # i32 ABI requires an integer to be returned even when
                     # the spec-level result has no observable value.
@@ -18756,7 +18888,7 @@ def _route_summaries_for_agents(prog: Program) -> list:
             "sourceSpan": _json_source_span(prog, lineno, role="route"),
             "nativeAbi": {
                 "kind": "httpHandler",
-                "semanticSignature": "CSignedInt32(HttpRequest, HttpResponse)",
+                "semanticSignature": "Int32(HttpRequest, HttpResponse)",
                 "llvmSignature": "i32 (i8*, i8*)",
             },
         })
@@ -18788,7 +18920,7 @@ def _function_summaries_for_agents(prog: Program, mod, routes: list) -> list:
         if op_name in routes_by_handler:
             abi = {
                 "kind": "httpHandler",
-                "semanticSignature": "CSignedInt32(HttpRequest, HttpResponse)",
+                "semanticSignature": "Int32(HttpRequest, HttpResponse)",
                 "llvmSignature": "i32 (i8*, i8*)",
                 "routes": routes_by_handler[op_name],
             }

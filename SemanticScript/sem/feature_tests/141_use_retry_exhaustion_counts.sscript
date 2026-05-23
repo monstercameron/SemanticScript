@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-storage module immutable oneStep I64 1
-storage module immutable zeroInitial I64 0
-storage module immutable negativeOneAlwaysFails I64 -1
-sharedState process mutable totalAttemptsObserved I64 zeroInitial
+errorCase MainError Placeholder Int32
+storage module immutable oneStep Int64 1
+storage module immutable zeroInitial Int64 0
+storage module immutable negativeOneAlwaysFails Int64 -1
+sharedState process mutable totalAttemptsObserved Int64 zeroInitial
 retryPolicy threeAttemptOnlyPolicy
 retryMaxAttempts threeAttemptOnlyPolicy 3
 operation alwaysFailWithAttemptCount
-input operation alwaysFailWithAttemptCount trigger I64
-output operation alwaysFailWithAttemptCount I64
-call incrementAttemptsCall math.addI64
-argument incrementAttemptsCall left I64 totalAttemptsObserved
-argument incrementAttemptsCall right I64 oneStep
+input operation alwaysFailWithAttemptCount trigger Int64
+output operation alwaysFailWithAttemptCount Int64
+call incrementAttemptsCall math.addInt64
+argument incrementAttemptsCall left Int64 totalAttemptsObserved
+argument incrementAttemptsCall right Int64 oneStep
 run incrementAttemptsCall
-bind value nextAttempts I64 incrementAttemptsCall
+bind value nextAttempts Int64 incrementAttemptsCall
 set sharedState totalAttemptsObserved nextAttempts
 return value negativeOneAlwaysFails
 operation main
@@ -33,12 +33,12 @@ invariant operation main "After retry exhaustion, totalAttemptsObserved must equ
 label startMain
 useRetry alwaysFailingCall threeAttemptOnlyPolicy
 call alwaysFailingCall alwaysFailWithAttemptCount
-argument alwaysFailingCall trigger I64 zeroInitial
+argument alwaysFailingCall trigger Int64 zeroInitial
 run alwaysFailingCall
-bind value finalAttemptResult I64 alwaysFailingCall
+bind value finalAttemptResult Int64 alwaysFailingCall
 call writeCountCall console.writeIntegerLine
 argument writeCountCall console Console console
-argument writeCountCall value I64 totalAttemptsObserved
+argument writeCountCall value Int64 totalAttemptsObserved
 run writeCountCall
 ignore void source writeCountCall
 storage module immutable successfulExitCode ExitCode 0

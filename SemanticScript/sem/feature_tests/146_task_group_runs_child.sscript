@@ -5,13 +5,13 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
-storage module immutable zeroInitial I64 0
-storage module immutable hundredValue I64 100
-sharedState process mutable groupSharedCounter I64 zeroInitial
+errorCase MainError Placeholder Int32
+storage module immutable zeroInitial Int64 0
+storage module immutable hundredValue Int64 100
+sharedState process mutable groupSharedCounter Int64 zeroInitial
 operation childOpWritesHundred
-input operation childOpWritesHundred trigger I64
-output operation childOpWritesHundred I64
+input operation childOpWritesHundred trigger Int64
+output operation childOpWritesHundred Int64
 set sharedState groupSharedCounter hundredValue
 return value hundredValue
 operation main
@@ -25,12 +25,12 @@ invariant operation main "groupSharedCounter is 100 after awaitGroup â€” pr
 label startMain
 taskGroup mainBackgroundGroup
 call childWorkCall childOpWritesHundred
-argument childWorkCall trigger I64 zeroInitial
+argument childWorkCall trigger Int64 zeroInitial
 startInGroup childWorkCall mainBackgroundGroup
 awaitGroup mainBackgroundGroup
 call writeFinalCall console.writeIntegerLine
 argument writeFinalCall console Console console
-argument writeFinalCall value I64 groupSharedCounter
+argument writeFinalCall value Int64 groupSharedCounter
 run writeFinalCall
 ignore void source writeFinalCall
 storage module immutable successfulExitCode ExitCode 0

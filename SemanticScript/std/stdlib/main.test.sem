@@ -40,15 +40,15 @@ purpose operation main "Smoke-test the stdlib numeric ops."
 label startMain
 
 # parseDecimalCStringToSignedInt64("12345") == 12345
-storage module immutable decimalSampleText CNullTerminatedByteString "12345"
-storage module immutable expectedDecimalSample CSignedInt64 12345
+storage module immutable decimalSampleText String "12345"
+storage module immutable expectedDecimalSample Int64 12345
 call assertParseDecimalCall parseDecimalCStringToSignedInt64
-argument assertParseDecimalCall inputText CNullTerminatedByteString decimalSampleText
+argument assertParseDecimalCall inputText String decimalSampleText
 run assertParseDecimalCall
-bind value decimalParseResult CSignedInt64 assertParseDecimalCall
-call checkParseDecimalCall math.equalI64
-argument checkParseDecimalCall left I64 decimalParseResult
-argument checkParseDecimalCall right I64 expectedDecimalSample
+bind value decimalParseResult Int64 assertParseDecimalCall
+call checkParseDecimalCall math.equalInt64
+argument checkParseDecimalCall left Int64 decimalParseResult
+argument checkParseDecimalCall right Int64 expectedDecimalSample
 run checkParseDecimalCall
 bind value parseDecimalOk Bool checkParseDecimalCall
 branch if condition parseDecimalOk target parseDecimalHolds
@@ -56,15 +56,15 @@ branch else target smokeAssertionFailed
 label parseDecimalHolds
 
 # parseDecimalCStringToSignedInt64("  -42") == -42
-storage module immutable decimalNegativeSampleText CNullTerminatedByteString "  -42"
-storage module immutable expectedDecimalNegativeSample CSignedInt64 -42
+storage module immutable decimalNegativeSampleText String "  -42"
+storage module immutable expectedDecimalNegativeSample Int64 -42
 call assertParseDecimalNegativeCall parseDecimalCStringToSignedInt64
-argument assertParseDecimalNegativeCall inputText CNullTerminatedByteString decimalNegativeSampleText
+argument assertParseDecimalNegativeCall inputText String decimalNegativeSampleText
 run assertParseDecimalNegativeCall
-bind value decimalNegativeParseResult CSignedInt64 assertParseDecimalNegativeCall
-call checkParseDecimalNegativeCall math.equalI64
-argument checkParseDecimalNegativeCall left I64 decimalNegativeParseResult
-argument checkParseDecimalNegativeCall right I64 expectedDecimalNegativeSample
+bind value decimalNegativeParseResult Int64 assertParseDecimalNegativeCall
+call checkParseDecimalNegativeCall math.equalInt64
+argument checkParseDecimalNegativeCall left Int64 decimalNegativeParseResult
+argument checkParseDecimalNegativeCall right Int64 expectedDecimalNegativeSample
 run checkParseDecimalNegativeCall
 bind value parseDecimalNegativeOk Bool checkParseDecimalNegativeCall
 branch if condition parseDecimalNegativeOk target parseDecimalNegativeHolds
@@ -72,15 +72,15 @@ branch else target smokeAssertionFailed
 label parseDecimalNegativeHolds
 
 # parseHexCStringToSignedInt64("0x1F") == 31
-storage module immutable hexSampleText CNullTerminatedByteString "0x1F"
-storage module immutable expectedHexSample CSignedInt64 31
+storage module immutable hexSampleText String "0x1F"
+storage module immutable expectedHexSample Int64 31
 call assertParseHexCall parseHexCStringToSignedInt64
-argument assertParseHexCall inputText CNullTerminatedByteString hexSampleText
+argument assertParseHexCall inputText String hexSampleText
 run assertParseHexCall
-bind value hexParseResult CSignedInt64 assertParseHexCall
-call checkParseHexCall math.equalI64
-argument checkParseHexCall left I64 hexParseResult
-argument checkParseHexCall right I64 expectedHexSample
+bind value hexParseResult Int64 assertParseHexCall
+call checkParseHexCall math.equalInt64
+argument checkParseHexCall left Int64 hexParseResult
+argument checkParseHexCall right Int64 expectedHexSample
 run checkParseHexCall
 bind value parseHexOk Bool checkParseHexCall
 branch if condition parseHexOk target parseHexHolds
@@ -88,15 +88,15 @@ branch else target smokeAssertionFailed
 label parseHexHolds
 
 # absoluteSignedInt64(-99) == 99
-storage module immutable negativeNinetyNine CSignedInt64 -99
-storage module immutable ninetyNine CSignedInt64 99
+storage module immutable negativeNinetyNine Int64 -99
+storage module immutable ninetyNine Int64 99
 call assertAbsoluteCall absoluteSignedInt64
-argument assertAbsoluteCall inputValue CSignedInt64 negativeNinetyNine
+argument assertAbsoluteCall inputValue Int64 negativeNinetyNine
 run assertAbsoluteCall
-bind value absoluteResult CSignedInt64 assertAbsoluteCall
-call checkAbsoluteCall math.equalI64
-argument checkAbsoluteCall left I64 absoluteResult
-argument checkAbsoluteCall right I64 ninetyNine
+bind value absoluteResult Int64 assertAbsoluteCall
+call checkAbsoluteCall math.equalInt64
+argument checkAbsoluteCall left Int64 absoluteResult
+argument checkAbsoluteCall right Int64 ninetyNine
 run checkAbsoluteCall
 bind value absoluteOk Bool checkAbsoluteCall
 branch if condition absoluteOk target absoluteHolds
@@ -104,16 +104,16 @@ branch else target smokeAssertionFailed
 label absoluteHolds
 
 # minimumSignedInt64(7, 3) == 3
-storage module immutable sevenInt CSignedInt64 7
-storage module immutable threeInt CSignedInt64 3
+storage module immutable sevenInt Int64 7
+storage module immutable threeInt Int64 3
 call assertMinimumCall minimumSignedInt64
-argument assertMinimumCall leftValue CSignedInt64 sevenInt
-argument assertMinimumCall rightValue CSignedInt64 threeInt
+argument assertMinimumCall leftValue Int64 sevenInt
+argument assertMinimumCall rightValue Int64 threeInt
 run assertMinimumCall
-bind value minimumResult CSignedInt64 assertMinimumCall
-call checkMinimumCall math.equalI64
-argument checkMinimumCall left I64 minimumResult
-argument checkMinimumCall right I64 threeInt
+bind value minimumResult Int64 assertMinimumCall
+call checkMinimumCall math.equalInt64
+argument checkMinimumCall left Int64 minimumResult
+argument checkMinimumCall right Int64 threeInt
 run checkMinimumCall
 bind value minimumOk Bool checkMinimumCall
 branch if condition minimumOk target minimumHolds
@@ -122,13 +122,13 @@ label minimumHolds
 
 # maximumSignedInt64(7, 3) == 7
 call assertMaximumCall maximumSignedInt64
-argument assertMaximumCall leftValue CSignedInt64 sevenInt
-argument assertMaximumCall rightValue CSignedInt64 threeInt
+argument assertMaximumCall leftValue Int64 sevenInt
+argument assertMaximumCall rightValue Int64 threeInt
 run assertMaximumCall
-bind value maximumResult CSignedInt64 assertMaximumCall
-call checkMaximumCall math.equalI64
-argument checkMaximumCall left I64 maximumResult
-argument checkMaximumCall right I64 sevenInt
+bind value maximumResult Int64 assertMaximumCall
+call checkMaximumCall math.equalInt64
+argument checkMaximumCall left Int64 maximumResult
+argument checkMaximumCall right Int64 sevenInt
 run checkMaximumCall
 bind value maximumOk Bool checkMaximumCall
 branch if condition maximumOk target maximumHolds
@@ -136,17 +136,17 @@ branch else target smokeAssertionFailed
 label maximumHolds
 
 # powerSignedInt64(2, 10) == 1024
-storage module immutable twoBaseValue CSignedInt64 2
-storage module immutable tenExponentValue CSignedInt64 10
-storage module immutable expectedTenTwentyFour CSignedInt64 1024
+storage module immutable twoBaseValue Int64 2
+storage module immutable tenExponentValue Int64 10
+storage module immutable expectedTenTwentyFour Int64 1024
 call assertPowerCall powerSignedInt64
-argument assertPowerCall baseValue CSignedInt64 twoBaseValue
-argument assertPowerCall exponentValue CSignedInt64 tenExponentValue
+argument assertPowerCall baseValue Int64 twoBaseValue
+argument assertPowerCall exponentValue Int64 tenExponentValue
 run assertPowerCall
-bind ok powerResult CSignedInt64 assertPowerCall
-call checkPowerCall math.equalI64
-argument checkPowerCall left I64 powerResult
-argument checkPowerCall right I64 expectedTenTwentyFour
+bind ok powerResult Int64 assertPowerCall
+call checkPowerCall math.equalInt64
+argument checkPowerCall left Int64 powerResult
+argument checkPowerCall right Int64 expectedTenTwentyFour
 run checkPowerCall
 bind value powerOk Bool checkPowerCall
 branch if condition powerOk target powerHolds
@@ -154,17 +154,17 @@ branch else target smokeAssertionFailed
 label powerHolds
 
 # greatestCommonDivisorSignedInt64(54, 24) == 6
-storage module immutable fiftyFourValue CSignedInt64 54
-storage module immutable twentyFourValue CSignedInt64 24
-storage module immutable expectedGcdSix CSignedInt64 6
+storage module immutable fiftyFourValue Int64 54
+storage module immutable twentyFourValue Int64 24
+storage module immutable expectedGcdSix Int64 6
 call assertGcdCall greatestCommonDivisorSignedInt64
-argument assertGcdCall leftValue CSignedInt64 fiftyFourValue
-argument assertGcdCall rightValue CSignedInt64 twentyFourValue
+argument assertGcdCall leftValue Int64 fiftyFourValue
+argument assertGcdCall rightValue Int64 twentyFourValue
 run assertGcdCall
-bind value gcdResult CSignedInt64 assertGcdCall
-call checkGcdCall math.equalI64
-argument checkGcdCall left I64 gcdResult
-argument checkGcdCall right I64 expectedGcdSix
+bind value gcdResult Int64 assertGcdCall
+call checkGcdCall math.equalInt64
+argument checkGcdCall left Int64 gcdResult
+argument checkGcdCall right Int64 expectedGcdSix
 run checkGcdCall
 bind value gcdOk Bool checkGcdCall
 branch if condition gcdOk target gcdHolds
@@ -172,18 +172,18 @@ branch else target smokeAssertionFailed
 label gcdHolds
 
 # clampSignedInt64ToInclusiveRange(50, 0, 10) == 10
-storage module immutable fiftyValueForClamp CSignedInt64 50
-storage module immutable zeroLowerBoundForClamp CSignedInt64 0
-storage module immutable tenUpperBoundForClamp CSignedInt64 10
+storage module immutable fiftyValueForClamp Int64 50
+storage module immutable zeroLowerBoundForClamp Int64 0
+storage module immutable tenUpperBoundForClamp Int64 10
 call assertClampCall clampSignedInt64ToInclusiveRange
-argument assertClampCall inputValue CSignedInt64 fiftyValueForClamp
-argument assertClampCall lowerBound CSignedInt64 zeroLowerBoundForClamp
-argument assertClampCall upperBound CSignedInt64 tenUpperBoundForClamp
+argument assertClampCall inputValue Int64 fiftyValueForClamp
+argument assertClampCall lowerBound Int64 zeroLowerBoundForClamp
+argument assertClampCall upperBound Int64 tenUpperBoundForClamp
 run assertClampCall
-bind value clampResult CSignedInt64 assertClampCall
-call checkClampCall math.equalI64
-argument checkClampCall left I64 clampResult
-argument checkClampCall right I64 tenUpperBoundForClamp
+bind value clampResult Int64 assertClampCall
+call checkClampCall math.equalInt64
+argument checkClampCall left Int64 clampResult
+argument checkClampCall right Int64 tenUpperBoundForClamp
 run checkClampCall
 bind value clampOk Bool checkClampCall
 branch if condition clampOk target clampHolds
@@ -194,22 +194,22 @@ label clampHolds
 # Extended unit tests: boundary cases for each existing op.
 # ============================================================
 
-storage module immutable zeroSignedSm CSignedInt64 0
-storage module immutable oneSignedSm CSignedInt64 1
-storage module immutable negFiveSignedSm CSignedInt64 -5
-storage module immutable fiveSignedSm CSignedInt64 5
-storage module immutable zeroStr CNullTerminatedByteString "0"
-storage module immutable hexZeroStr CNullTerminatedByteString "0x0"
-storage module immutable oneHundredSm CSignedInt64 100
+storage module immutable zeroSignedSm Int64 0
+storage module immutable oneSignedSm Int64 1
+storage module immutable negFiveSignedSm Int64 -5
+storage module immutable fiveSignedSm Int64 5
+storage module immutable zeroStr String "0"
+storage module immutable hexZeroStr String "0x0"
+storage module immutable oneHundredSm Int64 100
 
 # parseDecimal("0") == 0
 call parseZeroCall parseDecimalCStringToSignedInt64
-argument parseZeroCall inputText CNullTerminatedByteString zeroStr
+argument parseZeroCall inputText String zeroStr
 run parseZeroCall
-bind value parseZeroResult CSignedInt64 parseZeroCall
-call checkParseZeroCall math.equalI64
-argument checkParseZeroCall left I64 parseZeroResult
-argument checkParseZeroCall right I64 zeroSignedSm
+bind value parseZeroResult Int64 parseZeroCall
+call checkParseZeroCall math.equalInt64
+argument checkParseZeroCall left Int64 parseZeroResult
+argument checkParseZeroCall right Int64 zeroSignedSm
 run checkParseZeroCall
 bind value parseZeroOk Bool checkParseZeroCall
 branch if condition parseZeroOk target parseZeroHolds
@@ -218,12 +218,12 @@ label parseZeroHolds
 
 # parseHex("0x0") == 0
 call parseHexZeroCall parseHexCStringToSignedInt64
-argument parseHexZeroCall inputText CNullTerminatedByteString hexZeroStr
+argument parseHexZeroCall inputText String hexZeroStr
 run parseHexZeroCall
-bind value parseHexZeroResult CSignedInt64 parseHexZeroCall
-call checkParseHexZeroCall math.equalI64
-argument checkParseHexZeroCall left I64 parseHexZeroResult
-argument checkParseHexZeroCall right I64 zeroSignedSm
+bind value parseHexZeroResult Int64 parseHexZeroCall
+call checkParseHexZeroCall math.equalInt64
+argument checkParseHexZeroCall left Int64 parseHexZeroResult
+argument checkParseHexZeroCall right Int64 zeroSignedSm
 run checkParseHexZeroCall
 bind value parseHexZeroOk Bool checkParseHexZeroCall
 branch if condition parseHexZeroOk target parseHexZeroHolds
@@ -232,12 +232,12 @@ label parseHexZeroHolds
 
 # absoluteSignedInt64(0) == 0
 call absZeroCall absoluteSignedInt64
-argument absZeroCall inputValue CSignedInt64 zeroSignedSm
+argument absZeroCall inputValue Int64 zeroSignedSm
 run absZeroCall
-bind value absZeroResult CSignedInt64 absZeroCall
-call checkAbsZeroCall math.equalI64
-argument checkAbsZeroCall left I64 absZeroResult
-argument checkAbsZeroCall right I64 zeroSignedSm
+bind value absZeroResult Int64 absZeroCall
+call checkAbsZeroCall math.equalInt64
+argument checkAbsZeroCall left Int64 absZeroResult
+argument checkAbsZeroCall right Int64 zeroSignedSm
 run checkAbsZeroCall
 bind value absZeroOk Bool checkAbsZeroCall
 branch if condition absZeroOk target absZeroHolds
@@ -246,12 +246,12 @@ label absZeroHolds
 
 # absoluteSignedInt64(99) == 99 (positive identity)
 call absPositiveCall absoluteSignedInt64
-argument absPositiveCall inputValue CSignedInt64 ninetyNine
+argument absPositiveCall inputValue Int64 ninetyNine
 run absPositiveCall
-bind value absPositiveResult CSignedInt64 absPositiveCall
-call checkAbsPositiveCall math.equalI64
-argument checkAbsPositiveCall left I64 absPositiveResult
-argument checkAbsPositiveCall right I64 ninetyNine
+bind value absPositiveResult Int64 absPositiveCall
+call checkAbsPositiveCall math.equalInt64
+argument checkAbsPositiveCall left Int64 absPositiveResult
+argument checkAbsPositiveCall right Int64 ninetyNine
 run checkAbsPositiveCall
 bind value absPositiveOk Bool checkAbsPositiveCall
 branch if condition absPositiveOk target absPositiveHolds
@@ -260,13 +260,13 @@ label absPositiveHolds
 
 # minimum(5, 5) == 5 (reflexive)
 call minSameCall minimumSignedInt64
-argument minSameCall leftValue CSignedInt64 fiveSignedSm
-argument minSameCall rightValue CSignedInt64 fiveSignedSm
+argument minSameCall leftValue Int64 fiveSignedSm
+argument minSameCall rightValue Int64 fiveSignedSm
 run minSameCall
-bind value minSameResult CSignedInt64 minSameCall
-call checkMinSameCall math.equalI64
-argument checkMinSameCall left I64 minSameResult
-argument checkMinSameCall right I64 fiveSignedSm
+bind value minSameResult Int64 minSameCall
+call checkMinSameCall math.equalInt64
+argument checkMinSameCall left Int64 minSameResult
+argument checkMinSameCall right Int64 fiveSignedSm
 run checkMinSameCall
 bind value minSameOk Bool checkMinSameCall
 branch if condition minSameOk target minSameHolds
@@ -275,13 +275,13 @@ label minSameHolds
 
 # maximum(-5, 5) == 5 (negative vs positive)
 call maxSignCall maximumSignedInt64
-argument maxSignCall leftValue CSignedInt64 negFiveSignedSm
-argument maxSignCall rightValue CSignedInt64 fiveSignedSm
+argument maxSignCall leftValue Int64 negFiveSignedSm
+argument maxSignCall rightValue Int64 fiveSignedSm
 run maxSignCall
-bind value maxSignResult CSignedInt64 maxSignCall
-call checkMaxSignCall math.equalI64
-argument checkMaxSignCall left I64 maxSignResult
-argument checkMaxSignCall right I64 fiveSignedSm
+bind value maxSignResult Int64 maxSignCall
+call checkMaxSignCall math.equalInt64
+argument checkMaxSignCall left Int64 maxSignResult
+argument checkMaxSignCall right Int64 fiveSignedSm
 run checkMaxSignCall
 bind value maxSignOk Bool checkMaxSignCall
 branch if condition maxSignOk target maxSignHolds
@@ -290,13 +290,13 @@ label maxSignHolds
 
 # power(2, 0) == 1 (zero exponent)
 call powZeroExpCall powerSignedInt64
-argument powZeroExpCall baseValue CSignedInt64 twoBaseValue
-argument powZeroExpCall exponentValue CSignedInt64 zeroSignedSm
+argument powZeroExpCall baseValue Int64 twoBaseValue
+argument powZeroExpCall exponentValue Int64 zeroSignedSm
 run powZeroExpCall
-bind ok powZeroExpResult CSignedInt64 powZeroExpCall
-call checkPowZeroExpCall math.equalI64
-argument checkPowZeroExpCall left I64 powZeroExpResult
-argument checkPowZeroExpCall right I64 oneSignedSm
+bind ok powZeroExpResult Int64 powZeroExpCall
+call checkPowZeroExpCall math.equalInt64
+argument checkPowZeroExpCall left Int64 powZeroExpResult
+argument checkPowZeroExpCall right Int64 oneSignedSm
 run checkPowZeroExpCall
 bind value powZeroExpOk Bool checkPowZeroExpCall
 branch if condition powZeroExpOk target powZeroExpHolds
@@ -305,13 +305,13 @@ label powZeroExpHolds
 
 # power(1, 100) == 1 (one to any power)
 call powOneBaseCall powerSignedInt64
-argument powOneBaseCall baseValue CSignedInt64 oneSignedSm
-argument powOneBaseCall exponentValue CSignedInt64 oneHundredSm
+argument powOneBaseCall baseValue Int64 oneSignedSm
+argument powOneBaseCall exponentValue Int64 oneHundredSm
 run powOneBaseCall
-bind ok powOneBaseResult CSignedInt64 powOneBaseCall
-call checkPowOneBaseCall math.equalI64
-argument checkPowOneBaseCall left I64 powOneBaseResult
-argument checkPowOneBaseCall right I64 oneSignedSm
+bind ok powOneBaseResult Int64 powOneBaseCall
+call checkPowOneBaseCall math.equalInt64
+argument checkPowOneBaseCall left Int64 powOneBaseResult
+argument checkPowOneBaseCall right Int64 oneSignedSm
 run checkPowOneBaseCall
 bind value powOneBaseOk Bool checkPowOneBaseCall
 branch if condition powOneBaseOk target powOneBaseHolds
@@ -320,13 +320,13 @@ label powOneBaseHolds
 
 # gcd(7, 5) == 1 (coprime)
 call gcdCoprimeCall greatestCommonDivisorSignedInt64
-argument gcdCoprimeCall leftValue CSignedInt64 sevenInt
-argument gcdCoprimeCall rightValue CSignedInt64 fiveSignedSm
+argument gcdCoprimeCall leftValue Int64 sevenInt
+argument gcdCoprimeCall rightValue Int64 fiveSignedSm
 run gcdCoprimeCall
-bind value gcdCoprimeResult CSignedInt64 gcdCoprimeCall
-call checkGcdCoprimeCall math.equalI64
-argument checkGcdCoprimeCall left I64 gcdCoprimeResult
-argument checkGcdCoprimeCall right I64 oneSignedSm
+bind value gcdCoprimeResult Int64 gcdCoprimeCall
+call checkGcdCoprimeCall math.equalInt64
+argument checkGcdCoprimeCall left Int64 gcdCoprimeResult
+argument checkGcdCoprimeCall right Int64 oneSignedSm
 run checkGcdCoprimeCall
 bind value gcdCoprimeOk Bool checkGcdCoprimeCall
 branch if condition gcdCoprimeOk target gcdCoprimeHolds
@@ -335,14 +335,14 @@ label gcdCoprimeHolds
 
 # clamp(5, 0, 10) == 5 (already in range)
 call clampInRangeCall clampSignedInt64ToInclusiveRange
-argument clampInRangeCall inputValue CSignedInt64 fiveSignedSm
-argument clampInRangeCall lowerBound CSignedInt64 zeroLowerBoundForClamp
-argument clampInRangeCall upperBound CSignedInt64 tenUpperBoundForClamp
+argument clampInRangeCall inputValue Int64 fiveSignedSm
+argument clampInRangeCall lowerBound Int64 zeroLowerBoundForClamp
+argument clampInRangeCall upperBound Int64 tenUpperBoundForClamp
 run clampInRangeCall
-bind value clampInRangeResult CSignedInt64 clampInRangeCall
-call checkClampInRangeCall math.equalI64
-argument checkClampInRangeCall left I64 clampInRangeResult
-argument checkClampInRangeCall right I64 fiveSignedSm
+bind value clampInRangeResult Int64 clampInRangeCall
+call checkClampInRangeCall math.equalInt64
+argument checkClampInRangeCall left Int64 clampInRangeResult
+argument checkClampInRangeCall right Int64 fiveSignedSm
 run checkClampInRangeCall
 bind value clampInRangeOk Bool checkClampInRangeCall
 branch if condition clampInRangeOk target clampInRangeHolds
@@ -351,32 +351,32 @@ label clampInRangeHolds
 
 # clamp(-5, 0, 10) == 0 (clamped to lower bound)
 call clampBelowCall clampSignedInt64ToInclusiveRange
-argument clampBelowCall inputValue CSignedInt64 negFiveSignedSm
-argument clampBelowCall lowerBound CSignedInt64 zeroLowerBoundForClamp
-argument clampBelowCall upperBound CSignedInt64 tenUpperBoundForClamp
+argument clampBelowCall inputValue Int64 negFiveSignedSm
+argument clampBelowCall lowerBound Int64 zeroLowerBoundForClamp
+argument clampBelowCall upperBound Int64 tenUpperBoundForClamp
 run clampBelowCall
-bind value clampBelowResult CSignedInt64 clampBelowCall
-call checkClampBelowCall math.equalI64
-argument checkClampBelowCall left I64 clampBelowResult
-argument checkClampBelowCall right I64 zeroLowerBoundForClamp
+bind value clampBelowResult Int64 clampBelowCall
+call checkClampBelowCall math.equalInt64
+argument checkClampBelowCall left Int64 clampBelowResult
+argument checkClampBelowCall right Int64 zeroLowerBoundForClamp
 run checkClampBelowCall
 bind value clampBelowOk Bool checkClampBelowCall
 branch if condition clampBelowOk target clampBelowHolds
 branch else target smokeAssertionFailed
 label clampBelowHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

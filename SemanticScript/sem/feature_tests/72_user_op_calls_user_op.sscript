@@ -5,41 +5,41 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation double
-input operation double n CSignedInt64
-output operation double Result CSignedInt64 Void
+input operation double n Int64
+output operation double Result Int64 Void
 memory double heap no
 async double no
 purpose operation double "Return n * 2. Intentionally separate from the caller `tripleViaDouble` so the test exercises one user op invoking another."
 invariant operation double "n is i64."
 label startDouble
-storage module immutable two CSignedInt64 2
-call mulCall math.multiplyI64
-argument mulCall left CSignedInt64 n
-argument mulCall right CSignedInt64 two
+storage module immutable two Int64 2
+call mulCall math.multiplyInt64
+argument mulCall left Int64 n
+argument mulCall right Int64 two
 run mulCall
-bind value doubled CSignedInt64 mulCall
+bind value doubled Int64 mulCall
 return ok doubled
 
 operation tripleViaDouble
-input operation tripleViaDouble n CSignedInt64
-output operation tripleViaDouble Result CSignedInt64 Void
+input operation tripleViaDouble n Int64
+output operation tripleViaDouble Result Int64 Void
 memory tripleViaDouble heap no
 async tripleViaDouble no
 purpose operation tripleViaDouble "Compute n * 3 by doing double(n) + n."
 invariant operation tripleViaDouble "Exercises user-op call from inside another user op."
 label startTriple
 call doubleCall double
-argument doubleCall n CSignedInt64 n
+argument doubleCall n Int64 n
 run doubleCall
-bind ok doubledValue CSignedInt64 doubleCall
-call sumCall math.addI64
-argument sumCall left I64 doubledValue
-argument sumCall right I64 n
+bind ok doubledValue Int64 doubleCall
+call sumCall math.addInt64
+argument sumCall left Int64 doubledValue
+argument sumCall right Int64 n
 run sumCall
-bind value tripled CSignedInt64 sumCall
+bind value tripled Int64 sumCall
 return ok tripled
 
 operation main
@@ -51,16 +51,16 @@ async main no
 purpose operation main "Verify tripleViaDouble(2) == 6, exercising nested user-op calls."
 invariant operation main "Output should be 6."
 label startMain
-storage module immutable seed CSignedInt64 2
+storage module immutable seed Int64 2
 call tripleCall tripleViaDouble
-argument tripleCall n CSignedInt64 seed
+argument tripleCall n Int64 seed
 run tripleCall
-bind ok tripledOutcome CSignedInt64 tripleCall
-memory main mutable resultStorage I64 0
+bind ok tripledOutcome Int64 tripleCall
+memory main mutable resultStorage Int64 0
 set memory resultStorage tripledOutcome
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultStorage
+argument writeCall value Int64 resultStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

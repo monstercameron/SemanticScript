@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -23,26 +23,26 @@ branchSelected raceController firstChannelToken firstBranchLabel
 branchSelected raceController secondChannelToken secondBranchLabel
 jump target successContinuation
 label firstBranchLabel
-storage module immutable firstBranchErrorMessage CNullTerminatedByteString "firstBranchTaken"
+storage module immutable firstBranchErrorMessage String "firstBranchTaken"
 call writeFirstCall console.writeLine
 argument writeFirstCall console Console console
-argument writeFirstCall text CNullTerminatedByteString firstBranchErrorMessage
+argument writeFirstCall text String firstBranchErrorMessage
 run writeFirstCall
 ignore void source writeFirstCall
 jump target successContinuation
 label secondBranchLabel
-storage module immutable secondBranchErrorMessage CNullTerminatedByteString "secondBranchTaken"
+storage module immutable secondBranchErrorMessage String "secondBranchTaken"
 call writeSecondCall console.writeLine
 argument writeSecondCall console Console console
-argument writeSecondCall text CNullTerminatedByteString secondBranchErrorMessage
+argument writeSecondCall text String secondBranchErrorMessage
 run writeSecondCall
 ignore void source writeSecondCall
 jump target successContinuation
 label successContinuation
-storage module immutable selectCompletedMessage CNullTerminatedByteString "selectCompleted"
+storage module immutable selectCompletedMessage String "selectCompleted"
 call writeCompletedCall console.writeLine
 argument writeCompletedCall console Console console
-argument writeCompletedCall text CNullTerminatedByteString selectCompletedMessage
+argument writeCompletedCall text String selectCompletedMessage
 run writeCompletedCall
 ignore void source writeCompletedCall
 storage module immutable successfulExitCode ExitCode 0

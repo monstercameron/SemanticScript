@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -19,10 +19,10 @@ interval heartbeatTicker maxRate 60
 startInterval heartbeatTicker
 awaitIntervalTick heartbeatTicker
 awaitIntervalTick heartbeatTicker
-storage module immutable completionMessage CNullTerminatedByteString "completedAfterInterval"
+storage module immutable completionMessage String "completedAfterInterval"
 call writeCompletionCall console.writeLine
 argument writeCompletionCall console Console console
-argument writeCompletionCall text CNullTerminatedByteString completionMessage
+argument writeCompletionCall text String completionMessage
 run writeCompletionCall
 ignore void source writeCompletionCall
 storage module immutable successfulExitCode ExitCode 0

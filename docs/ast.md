@@ -241,7 +241,7 @@ The operation `output` row determines which variant is legal:
 - `output operation OP TYPE` uses `return value VALUE`;
 - `output operation OP Result OK ERROR` uses `return ok VALUE` and
   `return error VALUE`;
-- `output operation OP Void` or `CVoid` uses `return void`.
+- `output operation OP Void` or `Void` uses `return void`.
 
 For the current user-operation ABI, `Void` still lowers to an internal zero
 sentinel, but source code should use `return void` so the semantic contract is
@@ -402,16 +402,16 @@ Primitive lowered types include:
 
 ```text
 I1 / Bool                                      i1
-I8 / I16 / I32 / I64                          integers
-F32 / F64                                     floats
-ExitCode / CSignedInt32                       i32
-String / CNullTerminatedByteString            i8*
-COpaqueMemoryAddress                          i8*
-Void / CVoid                                  void source contract
+Int8 / Int16 / Int32 / Int64                          integers
+Float32 / Float64                                     floats
+ExitCode / Int32                       i32
+String / String            i8*
+OpaquePointer                          i8*
+Void / Void                                  void source contract
 ```
 
-C-aligned aliases such as `CByteCount`, `CAddressOffset`, `CFloat64`,
-`CFileHandle`, and related libc-facing names resolve through the compiler's type
+C-aligned aliases such as `ByteCount`, `AddressOffset`, `Float64`,
+`FileHandle`, and related libc-facing names resolve through the compiler's type
 resolver. User-declared aliases resolve transitively before codegen.
 
 Opaque PascalCase types used only as operation inputs, dependency handles, or
@@ -429,10 +429,10 @@ console.writeIntegerLine
 console.writeInteger
 console.writeFloatLine
 
-math.addI64 / subtractI64 / multiplyI64 / divideI64 / moduloI64
-math.equalI64 / notEqualI64 / lessThanI64 / lessThanOrEqualI64
-math.greaterThanI64 / greaterThanOrEqualI64
-math.checkedMultiplyI64
+math.addInt64 / subtractInt64 / multiplyInt64 / divideInt64 / moduloInt64
+math.equalInt64 / notEqualInt64 / lessThanInt64 / lessThanOrEqualInt64
+math.greaterThanInt64 / greaterThanOrEqualInt64
+math.checkedMultiplyInt64
 
 pointer.loadByte / pointer.storeByte / pointer.offset / pointer.difference
 pointer.isNull
@@ -471,7 +471,7 @@ The AST and linter enforce or report:
 5. Fallible calls have explicit success/value disposition, error binding, and
    error branch, or use `runChecked`.
 6. `return ok` and `return error` match the declared `Result` payload types.
-7. `return void` appears only on `Void`/`CVoid` outputs.
+7. `return void` appears only on `Void`/`Void` outputs.
 8. Strict executable mode rejects unknown lowercase verbs.
 9. JSON bodies are valid strict JSON and match their storage target.
 10. Module names are dotted namespaces and conflicting module declarations fail.

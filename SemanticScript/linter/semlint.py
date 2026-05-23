@@ -24,6 +24,7 @@ import io
 import json
 import os
 import re
+import struct
 import sys
 
 if sys.platform == "win32":
@@ -340,43 +341,47 @@ for _middleware_case_name, _middleware_case_value in SHARED_MIDDLEWARE_CONTROL_C
     BUILTIN_VALUE_LITERALS[_middleware_case_name] = str(_middleware_case_value)
 
 BUILTIN_TYPE_ALIASES: Dict[str, str] = {
-    "SqliteDatabase": "COpaqueMemoryAddress",
-    "SqliteStatement": "COpaqueMemoryAddress",
-    "SqliteRowId": "CSignedInt64",
-    "GuiApplication": "COpaqueMemoryAddress",
-    "GuiSession": "COpaqueMemoryAddress",
-    "GuiEvent": "COpaqueMemoryAddress",
-    "GuiWindow": "COpaqueMemoryAddress",
-    "GuiControl": "COpaqueMemoryAddress",
-    "GuiWindowId": "CUnsignedInt32",
-    "GuiControlId": "CUnsignedInt32",
-    "GuiText": "CNullTerminatedByteString",
+    "SqliteDatabase": "OpaquePointer",
+    "SqliteStatement": "OpaquePointer",
+    "SqliteRowId": "Int64",
+    "GuiApplication": "OpaquePointer",
+    "GuiSession": "OpaquePointer",
+    "GuiEvent": "OpaquePointer",
+    "GuiWindow": "OpaquePointer",
+    "GuiControl": "OpaquePointer",
+    "GuiWindowId": "UInt32",
+    "GuiControlId": "UInt32",
+    "GuiText": "String",
     "GuiApplicationTitle": "GuiText",
     "GuiWindowTitle": "GuiText",
     "GuiControlText": "GuiText",
     "GuiPlaceholderText": "GuiText",
     "GuiAccessibleName": "GuiText",
     "GuiListBoxItemText": "GuiText",
-    "GuiIconGroupName": "CNullTerminatedByteString",
-    "GuiPixels": "CSignedInt32",
+    "GuiIconGroupName": "String",
+    "GuiPixels": "Int32",
     "GuiMinimumPixels": "GuiPixels",
-    "GuiTabIndex": "CSignedInt32",
-    "GuiKeyCode": "CSignedInt32",
-    "GuiSelectedIndex": "CSignedInt32",
+    "GuiTabIndex": "Int32",
+    "GuiKeyCode": "Int32",
+    "GuiSelectedIndex": "Int32",
     "GuiEventDimensionPixels": "GuiPixels",
-    "GuiHandlerStatus": "CSignedInt32",
-    "GuiRuntimeStatusCode": "CSignedInt32",
-    "GuiKeywordToken": "CNullTerminatedByteString",
-    "GuiRuntimeTarget": "CNullTerminatedByteString",
-    "JsonText": "CNullTerminatedByteString",
-    "SqlText": "CNullTerminatedByteString",
-    "JsonBuilder": "COpaqueMemoryAddress",
-    "JsonDocument": "COpaqueMemoryAddress",
-    "JsonCursor": "CSignedInt64",
-    "JsonPath": "CNullTerminatedByteString",
-    "JsonScratchBuffer": "COpaqueMemoryAddress",
-    "JsonCapacityBytes": "CByteCount",
+    "GuiHandlerStatus": "Int32",
+    "GuiRuntimeStatusCode": "Int32",
+    "GuiKeywordToken": "String",
+    "GuiRuntimeTarget": "String",
+    "JsonText": "String",
+    "SqlText": "String",
+    "JsonBuilder": "OpaquePointer",
+    "JsonDocument": "OpaquePointer",
+    "JsonCursor": "Int64",
+    "JsonPath": "String",
+    "JsonScratchBuffer": "OpaquePointer",
+    "JsonCapacityBytes": "ByteCount",
 }
+
+REMOVED_PRIMITIVE_SPELLINGS: Dict[str, str] = {}
+
+REMOVED_CALL_TARGET_SPELLINGS: Dict[str, str] = {}
 
 BUILTIN_ABSTRACTIONS: Dict[str, str] = {
     "MiddlewareControl": "enum",
@@ -728,7 +733,7 @@ def ignore_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Optional[st
         if len(args) >= 3 and args[0] in {"error", "void"} and args[1] == "source":
             return args[0], args[2], None
     if sourceLine.verb == "ignoreValue" and len(args) >= 2:
-        variant = "void" if args[1] in {"Void", "CVoid"} else "value"
+        variant = "void" if args[1] == "Void" else "value"
         return variant, args[0], args[1]
     if sourceLine.verb == "ignoreOk" and len(args) >= 2:
         return "ok", args[0], args[1]
@@ -1128,16 +1133,17 @@ FIXED_ROW_COUNT_MUTATION_TARGETS: frozenset = frozenset({
 # under-counts.
 PRIMITIVE_TYPE_STACK_BYTES: Dict[str, int] = {
     "Bool": 1,
-    "CSignedByte": 1, "CUnsignedByte": 1, "I8": 1,
-    "CSignedInt16": 2, "CUnsignedInt16": 2, "I16": 2,
-    "I32": 4, "CSignedInt32": 4, "CUnsignedInt32": 4, "ExitCode": 4,
-    "CFloat32": 4,
-    "I64": 8, "CSignedInt64": 8, "CUnsignedInt64": 8,
-    "F64": 8, "CFloat64": 8,
+    "Int2": 1, "UInt2": 1,
+    "Int4": 1, "UInt4": 1,
+    "Int8": 1, "UInt8": 1,
+    "Int16": 2, "UInt16": 2,
+    "Int32": 4, "UInt32": 4, "ExitCode": 4, "Char": 4,
+    "Float16": 2, "Float32": 4, "Float64": 8,
+    "Int64": 8, "UInt64": 8,
+    "ByteCount": 8, "SignedByteCount": 8, "AddressOffset": 8,
+    "UnixSecondsSinceEpoch": 8, "CpuClockTicks": 8, "FileByteOffset": 8,
+    "String": 8, "OpaquePointer": 8, "FileHandle": 8,
     "DurationMilliseconds": 8, "MonotonicMilliseconds": 8, "UtcMilliseconds": 8,
-    "CByteCount": 8, "CSignedByteCount": 8, "CAddressOffset": 8,
-    "CUnixSecondsSinceEpoch": 8, "CCpuClockTicks": 8, "CFileByteOffset": 8,
-    "CNullTerminatedByteString": 8, "COpaqueMemoryAddress": 8, "CFileHandle": 8,
     "Void": 0,
 }
 
@@ -1208,36 +1214,29 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
 }
 
 
-# Primitive types that are interchangeable at the SemanticScript surface — `I64` and
-# `CSignedInt64` are the same shape, `String` and `CNullTerminatedByteString`
-# are the same wire form, etc. Used by broad arg-type-mismatch checks to avoid
+# Primitive types that are interchangeable at the SemanticScript surface. Used
+# by broad arg-type-mismatch checks to avoid
 # false-positive complaints about role-equivalent aliases. Math calls get a
 # stricter width pass below because their lowering is intentionally exact.
 _PRIMITIVE_TYPE_EQUIVALENCE_GROUPS: Tuple[frozenset, ...] = (
     # All signed integer widths AND Bool are treated as interchangeable for
-    # legacy/user-op compatibility; strict math width diagnostics are handled
+    # user-op compatibility; strict math width diagnostics are handled
     # separately by SS4303.
-    frozenset({"I64", "CSignedInt64",
-               "I32", "CSignedInt32", "ExitCode",
-               "I16", "CSignedInt16",
-               "I8", "CSignedByte",
-               # 8-byte signed role types — interchangeable with I64 in
-               # math.*I64, pointer.* (for byte counts/offsets), and time
-               # APIs throughout the stdlib.
-               "CByteCount", "CSignedByteCount", "CAddressOffset",
-               "CUnixSecondsSinceEpoch", "CCpuClockTicks", "CFileByteOffset",
+    frozenset({"Int64", "Int32", "ExitCode", "Char",
+               "Int16", "Int8",
+               "ByteCount", "SignedByteCount", "AddressOffset",
+               "UnixSecondsSinceEpoch", "CpuClockTicks", "FileByteOffset",
                "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds",
                "Bool"}),
-    frozenset({"CUnsignedByte", "CUnsignedInt16",
-               "CUnsignedInt32", "CUnsignedInt64"}),
-    frozenset({"F64", "CFloat64", "F32", "CFloat32"}),
+    frozenset({"UInt2", "UInt4", "UInt8", "UInt16", "UInt32", "UInt64"}),
+    frozenset({"Float16", "Float32", "Float64"}),
     # All pointer-shaped types are interchangeable — pointer.* primitives
     # accept any of them and the compiler emits the necessary bitcasts.
-    # String / CNullTerminatedByteString are pointer-shaped byte sequences
+    # String and related text aliases are pointer-shaped byte sequences
     # so they live in the pointer family for SemanticScript arg-type purposes.
-    frozenset({"String", "CNullTerminatedByteString",
-               "COpaqueMemoryAddress", "CFileHandle",
-               "CDecomposedTimeAddress", "CSetjmpRegisterBuffer"}),
+    frozenset({"String", "JsonText", "SqlText", "GuiText", "JsonPath",
+               "OpaquePointer", "FileHandle",
+               "DecomposedTimeAddress", "SetjmpRegisterBuffer"}),
     frozenset({"Void"}),
 )
 
@@ -1260,82 +1259,98 @@ PRIMITIVE_CANONICAL_BY_TYPE: Dict[str, str] = _build_primitive_canonical_map()
 # table are SKIPPED to avoid false positives on unknowns.
 # Width-preserving C-ABI spelling aliases: the LLVM-style name and the
 # C-ABI name for the same machine type. Used to compare an `argument` row's
-# declared type against a builtin signature without false-flagging `CFloat64`
-# vs `F64` (same double) or `CSignedInt64` vs `I64` (same 64-bit int). Width
-# is preserved on purpose — `CSignedInt32` is NOT folded into `I64`.
+# declared type against a builtin signature without false-flagging `Float64`
+# vs `Float64` (same double) or `Int64` vs `Int64` (same 64-bit int). Width
+# is preserved on purpose — `Int32` is NOT folded into `Int64`.
 _C_ABI_WIDTH_ALIAS: Dict[str, str] = {
-    "F64": "CFloat64",
-    "I64": "CSignedInt64",
+    "Float64": "Float64",
+    "Float32": "Float32",
+    "Int64": "Int64",
+    "UInt64": "UInt64",
+    "Int32": "Int32",
+    "UInt32": "UInt32",
+    "Int16": "Int16",
+    "UInt16": "UInt16",
+    "Int8": "Int8",
+    "UInt8": "UInt8",
+    "ByteCount": "ByteCount",
+    "SignedByteCount": "SignedByteCount",
+    "AddressOffset": "AddressOffset",
+    "OpaquePointer": "OpaquePointer",
+    "FileHandle": "FileHandle",
+    "String": "String",
 }
 
 
 BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     # Console writes
-    "console.writeLine":          [("console", "Console"), ("text", "CNullTerminatedByteString")],
-    "console.writeIntegerLine":   [("console", "Console"), ("value", "I64")],
-    "console.writeInteger":       [("console", "Console"), ("value", "I64")],
-    "console.writeFloatLine":     [("console", "Console"), ("value", "F64")],
+    "console.writeLine":          [("console", "Console"), ("text", "String")],
+    "console.writeIntegerLine":   [("console", "Console"), ("value", "Int64")],
+    "console.writeInteger":       [("console", "Console"), ("value", "Int64")],
+    "console.writeFloatLine":     [("console", "Console"), ("value", "Float64")],
     # Integer arithmetic
-    "math.addI64":                [("left", "I64"), ("right", "I64")],
-    "math.subtractI64":           [("left", "I64"), ("right", "I64")],
-    "math.multiplyI64":           [("left", "I64"), ("right", "I64")],
-    "math.divideI64":             [("left", "I64"), ("right", "I64")],
-    "math.moduloI64":             [("left", "I64"), ("right", "I64")],
-    "math.equalI64":              [("left", "I64"), ("right", "I64")],
-    "math.notEqualI64":           [("left", "I64"), ("right", "I64")],
-    "math.lessThanI64":           [("left", "I64"), ("right", "I64")],
-    "math.lessThanOrEqualI64":    [("left", "I64"), ("right", "I64")],
-    "math.greaterThanI64":        [("left", "I64"), ("right", "I64")],
-    "math.greaterThanOrEqualI64": [("left", "I64"), ("right", "I64")],
-    "math.equalCSignedInt32":              [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.notEqualCSignedInt32":           [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.lessThanCSignedInt32":           [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.lessThanOrEqualCSignedInt32":    [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.greaterThanCSignedInt32":        [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.greaterThanOrEqualCSignedInt32": [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.checkedMultiplyI64":    [("left", "I64"), ("right", "I64")],
+    "math.addInt64":                [("left", "Int64"), ("right", "Int64")],
+    "math.subtractInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.multiplyInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.divideInt64":             [("left", "Int64"), ("right", "Int64")],
+    "math.moduloInt64":             [("left", "Int64"), ("right", "Int64")],
+    "math.equalInt64":              [("left", "Int64"), ("right", "Int64")],
+    "math.notEqualInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.lessThanInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.lessThanOrEqualInt64":    [("left", "Int64"), ("right", "Int64")],
+    "math.greaterThanInt64":        [("left", "Int64"), ("right", "Int64")],
+    "math.greaterThanOrEqualInt64": [("left", "Int64"), ("right", "Int64")],
+    "math.equalInt32":              [("left", "Int32"), ("right", "Int32")],
+    "math.notEqualInt32":           [("left", "Int32"), ("right", "Int32")],
+    "math.lessThanInt32":           [("left", "Int32"), ("right", "Int32")],
+    "math.lessThanOrEqualInt32":    [("left", "Int32"), ("right", "Int32")],
+    "math.greaterThanInt32":        [("left", "Int32"), ("right", "Int32")],
+    "math.greaterThanOrEqualInt32": [("left", "Int32"), ("right", "Int32")],
+    "math.checkedMultiplyInt64":    [("left", "Int64"), ("right", "Int64")],
     # Bitwise / shift primitives (single-instruction LLVM lowerings).
-    "math.bitwiseAndI64":         [("left", "I64"), ("right", "I64")],
-    "math.bitwiseOrI64":          [("left", "I64"), ("right", "I64")],
-    "math.bitwiseXorI64":         [("left", "I64"), ("right", "I64")],
-    "math.shiftLeftI64":          [("left", "I64"), ("right", "I64")],
-    "math.shiftRightLogicalI64":  [("left", "I64"), ("right", "I64")],
-    "math.shiftRightArithmeticI64": [("left", "I64"), ("right", "I64")],
-    "math.bitwiseNotI64":         [("value", "I64")],
-    "math.signExtendCSignedInt32ToCSignedInt64": [("inputValue", "CSignedInt32")],
-    "math.truncateCSignedInt64ToCSignedInt32":   [("inputValue", "I64")],
+    "math.bitwiseAndInt64":         [("left", "Int64"), ("right", "Int64")],
+    "math.bitwiseOrInt64":          [("left", "Int64"), ("right", "Int64")],
+    "math.bitwiseXorInt64":         [("left", "Int64"), ("right", "Int64")],
+    "math.shiftLeftInt64":          [("left", "Int64"), ("right", "Int64")],
+    "math.shiftRightLogicalInt64":  [("left", "Int64"), ("right", "Int64")],
+    "math.shiftRightArithmeticInt64": [("left", "Int64"), ("right", "Int64")],
+    "math.bitwiseNotInt64":         [("value", "Int64")],
+    "math.signExtendInt32ToInt64": [("inputValue", "Int32")],
+    "math.truncateInt64ToInt32":   [("inputValue", "Int64")],
     # Float arithmetic
-    "math.addF64":                [("left", "F64"), ("right", "F64")],
-    "math.subtractF64":           [("left", "F64"), ("right", "F64")],
-    "math.multiplyF64":           [("left", "F64"), ("right", "F64")],
-    "math.divideF64":             [("left", "F64"), ("right", "F64")],
-    "math.equalF64":              [("left", "F64"), ("right", "F64")],
-    "math.notEqualF64":           [("left", "F64"), ("right", "F64")],
-    "math.lessThanF64":           [("left", "F64"), ("right", "F64")],
-    "math.lessThanOrEqualF64":    [("left", "F64"), ("right", "F64")],
-    "math.greaterThanF64":        [("left", "F64"), ("right", "F64")],
-    "math.greaterThanOrEqualF64": [("left", "F64"), ("right", "F64")],
+    "math.addFloat64":                [("left", "Float64"), ("right", "Float64")],
+    "math.subtractFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.multiplyFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.divideFloat64":             [("left", "Float64"), ("right", "Float64")],
+    "math.equalFloat64":              [("left", "Float64"), ("right", "Float64")],
+    "math.notEqualFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.lessThanFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.lessThanOrEqualFloat64":    [("left", "Float64"), ("right", "Float64")],
+    "math.greaterThanFloat64":        [("left", "Float64"), ("right", "Float64")],
+    "math.greaterThanOrEqualFloat64": [("left", "Float64"), ("right", "Float64")],
     # Numeric conversion
-    "math.intToFloat":            [("inputValue", "I64")],
-    "math.floatToInt":            [("inputValue", "F64")],
+    "math.intToFloat":            [("inputValue", "Int64")],
+    "math.floatToInt":            [("inputValue", "Float64")],
+    "math.convertInt64ToFloat64": [("inputValue", "Int64")],
+    "math.convertFloat64ToInt64": [("inputValue", "Float64")],
     # Pointer primitives
-    "pointer.loadByte":           [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount")],
-    "pointer.storeByte":          [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount"), ("value", "CSignedInt64")],
-    "pointer.offset":             [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount")],
-    "pointer.difference":         [("left", "COpaqueMemoryAddress"), ("right", "COpaqueMemoryAddress")],
-    "pointer.isNull":             [("pointer", "COpaqueMemoryAddress")],
+    "pointer.loadByte":           [("buffer", "OpaquePointer"), ("offset", "ByteCount")],
+    "pointer.storeByte":          [("buffer", "OpaquePointer"), ("offset", "ByteCount"), ("value", "Int64")],
+    "pointer.offset":             [("buffer", "OpaquePointer"), ("offset", "ByteCount")],
+    "pointer.difference":         [("left", "OpaquePointer"), ("right", "OpaquePointer")],
+    "pointer.isNull":             [("pointer", "OpaquePointer")],
     # Outbound network
     "net.fetchText":              [("request", "HttpGetRequest")],
     "net.fetchBytes":             [("url", "Url"), ("timeoutMillis", "NetworkTimeoutMilliseconds"), ("maxBodyBytes", "ResponseBodyLimitBytes")],
     "net.freeTextBody":           [("body", "HttpClientBodyText")],
     # C lib
-    "c.malloc":                   [("size", "CByteCount")],
-    "c.calloc":                   [("count", "CByteCount"), ("size", "CByteCount")],
-    "c.realloc":                  [("ptr", "COpaqueMemoryAddress"), ("size", "CByteCount")],
-    "c.free":                     [("ptr", "COpaqueMemoryAddress")],
-    "c.exit":                     [("code", "CSignedInt32")],
+    "c.malloc":                   [("size", "ByteCount")],
+    "c.calloc":                   [("count", "ByteCount"), ("size", "ByteCount")],
+    "c.realloc":                  [("ptr", "OpaquePointer"), ("size", "ByteCount")],
+    "c.free":                     [("ptr", "OpaquePointer")],
+    "c.exit":                     [("code", "Int32")],
     "c.abort":                    [],
-    "c.putchar":                  [("c", "CSignedInt32")],
+    "c.putchar":                  [("c", "Int32")],
 }
 
 GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
@@ -1347,18 +1362,18 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
         ("width", "GuiPixels"),
         ("height", "GuiPixels"),
         ("layout", "GuiWindowLayout"),
-        ("resizable", "CSignedInt32"),
+        ("resizable", "Int32"),
     ],
     "gui.textLabelCreate": [
         ("text", "GuiText"),
     ],
     "gui.textBoxCreate": [
         ("placeholder", "GuiText"),
-        ("maxLength", "CSignedInt32"),
+        ("maxLength", "Int32"),
     ],
     "gui.buttonCreate": [
         ("text", "GuiText"),
-        ("isDefault", "CSignedInt32"),
+        ("isDefault", "Int32"),
     ],
     "gui.listBoxCreate": [
         ("selectionMode", "GuiListBoxSelectionMode"),
@@ -1385,7 +1400,7 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "gui.textBoxSetText": [
         ("session", "GuiSession"),
         ("textBox", "GuiTextBox"),
-        ("text", "CNullTerminatedByteString"),
+        ("text", "String"),
     ],
     "gui.listBoxSelectedIndex": [
         ("session", "GuiSession"),
@@ -1394,7 +1409,7 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "gui.listBoxAppendItem": [
         ("session", "GuiSession"),
         ("listBox", "GuiListBox"),
-        ("text", "CNullTerminatedByteString"),
+        ("text", "String"),
     ],
     "gui.listBoxClear": [
         ("session", "GuiSession"),
@@ -1430,25 +1445,25 @@ BUILTIN_TARGET_SIGNATURES.update(GUI_RUNTIME_TARGET_SIGNATURES)
 # with too few args can't be interpreted by any downstream pass. Ported
 # from semlint.py and extended for refined-syntax surfaces.
 SUPPORTED_JSON_PRIMITIVE_TARGETS: frozenset = frozenset({
-    "json.encode.I64", "json.encode.CSignedInt64",
-    "json.encode.CSignedInt32", "json.encode.CUnsignedInt32",
-    "json.encode.CSignedInt16", "json.encode.CUnsignedInt16",
-    "json.encode.CSignedByte", "json.encode.CUnsignedByte",
+    "json.encode.Int64", "json.encode.UInt64",
+    "json.encode.Int32", "json.encode.UInt32",
+    "json.encode.Int16", "json.encode.UInt16",
+    "json.encode.Int8", "json.encode.UInt8",
     "json.encode.DurationMilliseconds",
     "json.encode.MonotonicMilliseconds",
     "json.encode.UtcMilliseconds",
     "json.encode.Bool",
-    "json.encode.F64", "json.encode.CFloat64", "json.encode.CFloat32",
-    "json.encode.String", "json.encode.CNullTerminatedByteString",
-    "json.decode.I64", "json.decode.CSignedInt64",
-    "json.decode.CSignedInt32", "json.decode.CUnsignedInt32",
-    "json.decode.CSignedInt16", "json.decode.CUnsignedInt16",
-    "json.decode.CSignedByte", "json.decode.CUnsignedByte",
+    "json.encode.Float64", "json.encode.Float32",
+    "json.encode.String",
+    "json.decode.Int64", "json.decode.UInt64",
+    "json.decode.Int32", "json.decode.UInt32",
+    "json.decode.Int16", "json.decode.UInt16",
+    "json.decode.Int8", "json.decode.UInt8",
     "json.decode.DurationMilliseconds",
     "json.decode.MonotonicMilliseconds",
     "json.decode.UtcMilliseconds",
     "json.decode.Bool",
-    "json.decode.F64", "json.decode.CFloat64", "json.decode.CFloat32",
+    "json.decode.Float64", "json.decode.Float32",
 })
 
 SUPPORTED_JSON_RUNTIME_TARGETS: frozenset = frozenset({
@@ -3117,7 +3132,7 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3201 deadStore, SS3202 allocationInLoop,
 #            SS3203 stringAccumulatorAppendInLoop,
 #            SS3204 bindThenIgnore,
-#            SS3205 snprintfI32OffsetWithoutWidening,
+#            SS3205 snprintfInt32OffsetWithoutWidening,
 #            SS3206 selectedListAppendInHandler,
 #            SS3207 rowCountMutationUnchecked
 #   AS33xx — memory / resource discipline     (T3 refinement)
@@ -3168,7 +3183,7 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #                   native HTTP ABI's name-based-lookup contract),
 #            SS3610 middlewareReturnNotMiddlewareControl (every
 #                   `routeMiddleware`-bound op MUST declare `output OP
-#                   MiddlewareControl` not bare CSignedInt32; ERROR +
+#                   MiddlewareControl` not bare Int32; ERROR +
 #                   blocksCompile because the dispatcher's short-circuit
 #                   semantics depend on the typed enum),
 #            SS3612 voidReturnValueShouldBeReturnVoid (an op declared
@@ -5402,7 +5417,7 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
 _DUPLICATE_LOCAL_IMMUTABLE_THRESHOLD = 3
 _LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES = 512
 _LARGE_LOCAL_STATIC_LITERAL_TYPES = frozenset({
-    "CNullTerminatedByteString",
+    "String",
     "String",
     "JsonText",
     "SqlText",
@@ -5620,7 +5635,7 @@ def check_large_local_static_literal(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
-    """``storage local immutable NAME CSignedInt32 V`` where ``V`` is a
+    """``storage local immutable NAME Int32 V`` where ``V`` is a
     printable-ASCII codepoint (32..126) but the preceding line is not a
     ``# rationale:`` comment naming the character. Either hoist to
     ``storage module immutable`` with a rationale, or add a rationale comment
@@ -5644,7 +5659,7 @@ def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
 
     for operation in facts.base.operations.values():
         for name, typeName, initValue, sourceLine in _scan_op_local_immutables(operation):
-            if typeName != "CSignedInt32":
+            if typeName not in {"Int32", "Int32"}:
                 continue
             try:
                 codepoint = int(initValue)
@@ -5682,7 +5697,7 @@ def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
                     ),
                     FixCandidate(
                         name="hoistToModuleImmutable",
-                        shape=f"storage module immutable ascii<Role> CSignedInt32 {codepoint}",
+                        shape=f"storage module immutable ascii<Role> Int32 {codepoint}",
                     ),
                 ],
                 confidence=Confidence.MEDIUM,
@@ -5888,18 +5903,18 @@ def _is_offset_storage_row(sourceLine: SourceLine) -> bool:
 
 
 _INT_COMPARISON_TARGET_TO_ENUM_METHOD: Dict[str, str] = {
-    "math.equalI64":                       "equal",
-    "math.notEqualI64":                    "notEqual",
-    "math.lessThanI64":                    "lessThan",
-    "math.lessThanOrEqualI64":             "lessThanOrEqual",
-    "math.greaterThanI64":                 "greaterThan",
-    "math.greaterThanOrEqualI64":          "greaterThanOrEqual",
-    "math.equalCSignedInt32":              "equal",
-    "math.notEqualCSignedInt32":           "notEqual",
-    "math.lessThanCSignedInt32":           "lessThan",
-    "math.lessThanOrEqualCSignedInt32":    "lessThanOrEqual",
-    "math.greaterThanCSignedInt32":        "greaterThan",
-    "math.greaterThanOrEqualCSignedInt32": "greaterThanOrEqual",
+    "math.equalInt64":                       "equal",
+    "math.notEqualInt64":                    "notEqual",
+    "math.lessThanInt64":                    "lessThan",
+    "math.lessThanOrEqualInt64":             "lessThanOrEqual",
+    "math.greaterThanInt64":                 "greaterThan",
+    "math.greaterThanOrEqualInt64":          "greaterThanOrEqual",
+    "math.equalInt32":              "equal",
+    "math.notEqualInt32":           "notEqual",
+    "math.lessThanInt32":           "lessThan",
+    "math.lessThanOrEqualInt32":    "lessThanOrEqual",
+    "math.greaterThanInt32":        "greaterThan",
+    "math.greaterThanOrEqualInt32": "greaterThanOrEqual",
 }
 
 
@@ -6103,8 +6118,8 @@ def check_paired_scalar_must_stay_equal(facts: ExtendedFacts) -> List[Diagnostic
     named scalars carry different literal init values. Catches drift like:
 
         invariant main "lineBufferBytes and lineBufferCapacity MUST stay equal"
-        storage local immutable lineBufferBytes CByteCount 384
-        storage local immutable lineBufferCapacity CSignedInt32 256   # drift
+        storage local immutable lineBufferBytes ByteCount 384
+        storage local immutable lineBufferCapacity Int32 256   # drift
 
     Suppression: rephrase the invariant so it no longer contains the
     `must stay equal` anchor, or resync the divergent init values."""
@@ -6518,7 +6533,7 @@ def check_string_accumulator_append_in_loop(facts: ExtendedFacts) -> List[Diagno
 
 
 def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Diagnostic]:
-    """A c.snprintf byte count is CSignedInt32; cursor offsets are i64."""
+    """A c.snprintf byte count is Int32; cursor offsets are Int64."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCalls = collect_operation_calls(operation)
@@ -6532,7 +6547,7 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
             continue
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         for callFact in operationCalls.values():
-            if callFact.target != "math.addI64":
+            if callFact.target not in {"math.addInt64", "math.addInt64"}:
                 continue
             for argLine in callFact.arg_lines:
                 if len(argLine.args) < 3:
@@ -6543,11 +6558,11 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
                 diagnostics.append(Diagnostic(
                     tier=Tier.T3_REFINEMENT,
                     code="SS3205",
-                    kind="performanceDiscipline.snprintfI32OffsetWithoutWidening",
+                    kind="performanceDiscipline.snprintfInt32OffsetWithoutWidening",
                     severity=Severity.WARNING,
                     subjectName=callFact.name,
                     subjectKind="call",
-                    gapEdge="signExtendCSignedInt32ToCSignedInt64",
+                    gapEdge="signExtendInt32ToInt64",
                     intentSlogan="snprintf count added to i64 cursor",
                     primary=span_of_line(argLine, "i64AddArgument"),
                     related=[
@@ -6555,9 +6570,9 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
                         span_of_line(operation.line, "enclosingOperation"),
                     ],
                     invariantRule=(
-                        "`c.snprintf` returns a CSignedInt32 byte count; "
-                        "cursor math using math.addI64 must first widen it "
-                        "with math.signExtendCSignedInt32ToCSignedInt64"
+                        "`c.snprintf` returns an Int32 byte count; "
+                        "cursor math using an Int64 add target must first widen it "
+                        "with math.signExtendInt32ToInt64"
                     ),
                     specAnchor="docs/optimization-guide.md#bounded-string-accumulators",
                     citations=operationCitations,
@@ -6565,11 +6580,11 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
                         FixCandidate(
                             name="widenSnprintfResultBeforeCursorMath",
                             shape=(
-                                f"call widen{argValue}Call math.signExtendCSignedInt32ToCSignedInt64\n"
+                                f"call widen{argValue}Call math.signExtendInt32ToInt64\n"
                                 f"arg widen{argValue}Call inputValue {argValue}\n"
                                 f"run widen{argValue}Call\n"
-                                f"bind {argValue}I64 CSignedInt64 widen{argValue}Call\n"
-                                f"# use `{argValue}I64` in `{callFact.name}`"
+                                f"bind {argValue}Int64 Int64 widen{argValue}Call\n"
+                                f"# use `{argValue}Int64` in `{callFact.name}`"
                             ),
                             evidence=[span_of_line(argLine)],
                         ),
@@ -6681,7 +6696,7 @@ def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]
             for compareCall in operationCalls.values():
                 if compareCall.line.number <= callFact.line.number:
                     continue
-                if compareCall.target not in {"math.equalI64", "math.equalCSignedInt64"}:
+                if compareCall.target != "math.equalInt64":
                     continue
                 leftValue = call_arg_value(compareCall, "left")
                 rightValue = call_arg_value(compareCall, "right")
@@ -6728,7 +6743,7 @@ def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]
                     FixCandidate(
                         name="branchOnUnchangedRowCount",
                         shape=(
-                            f"call {callFact.name}FailedCheckCall math.equalI64\n"
+                            f"call {callFact.name}FailedCheckCall math.equalInt64\n"
                             f"arg {callFact.name}FailedCheckCall left <rowsAfterMutation>\n"
                             f"arg {callFact.name}FailedCheckCall right {activeCountName}\n"
                             f"run {callFact.name}FailedCheckCall\n"
@@ -7001,7 +7016,7 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             # Skip ops whose declared purpose IS to allocate-and-return (the
             # alloc moves ownership to the caller). Heuristic: op output type
-            # is a pointer (COpaqueMemoryAddress, CNullTerminatedByteString, …).
+            # is a pointer/handle surface that transfers ownership.
             outputLine = None
             for line in operation.lines:
                 if line.verb == "output" and line.args and line.args[0] == operation.name:
@@ -7009,11 +7024,13 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                     break
             if outputLine and len(outputLine.args) >= 2:
                 outputTypeName = outputLine.args[1]
-                if outputTypeName in {"COpaqueMemoryAddress", "CNullTerminatedByteString", "CFileHandle"}:
+                if outputTypeName in {"OpaquePointer", "String", "FileHandle",
+                                      "OpaquePointer", "String", "FileHandle"}:
                     # Likely an allocator wrapper — caller owns the lifetime.
                     continue
                 if outputTypeName == "Result" and len(outputLine.args) >= 3:
-                    if outputLine.args[2] in {"COpaqueMemoryAddress", "CNullTerminatedByteString", "CFileHandle"}:
+                    if outputLine.args[2] in {"OpaquePointer", "String", "FileHandle",
+                                              "OpaquePointer", "String", "FileHandle"}:
                         continue
             diagnostics.append(Diagnostic(
                 tier=Tier.T3_REFINEMENT,
@@ -9346,16 +9363,20 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             if call_has_later_cleanup_call(callFact, operationCalls, fileCloseTargets):
                 continue
-            # Suppress when the op's output type IS CFileHandle — caller owns lifetime
+            # Suppress when the op's output type IS FileHandle — caller owns lifetime
             outputLine = None
             for opLine in operation.lines:
                 if opLine.verb == "output" and opLine.args and opLine.args[0] == operation.name:
                     outputLine = opLine
                     break
             if outputLine and len(outputLine.args) >= 2:
-                if outputLine.args[1] == "CFileHandle":
+                if outputLine.args[1] in {"FileHandle", "FileHandle"}:
                     continue
-                if outputLine.args[1] == "Result" and len(outputLine.args) >= 3 and outputLine.args[2] == "CFileHandle":
+                if (
+                    outputLine.args[1] == "Result"
+                    and len(outputLine.args) >= 3
+                    and outputLine.args[2] in {"FileHandle", "FileHandle"}
+                ):
                     continue
             closeTargetSuggestion = "c.fclose" if callTarget == "c.fopen" else "c.close"
             diagnostics.append(Diagnostic(
@@ -9391,7 +9412,7 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                 passProvenance="check_file_handle_not_closed",
                 agentHint=(
                     "if the op returns the handle to the caller, declare output "
-                    "type `CFileHandle` to suppress this check"
+                    "type `FileHandle` to suppress this check"
                 ),
             ))
     return diagnostics
@@ -9834,7 +9855,7 @@ def check_runtime_backing_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                         ),
                         FixCandidate(
                             name="replaceWithPrimitiveCodec",
-                            shape="# use json.encode.I64/json.decode.I64/json.encode.Bool/etc. when the value is scalar",
+                            shape="# use json.encode.Int64/json.decode.Int64/json.encode.Bool/etc. when the value is scalar",
                         ),
                     ],
                     confidence=Confidence.HIGH,
@@ -10633,23 +10654,32 @@ def _resolve_type_head(
 def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
     if typeName is None:
         return None
-    signed8 = {"I8", "CSignedByte", "CChar", "CSchar", "CByte"}
-    signed16 = {"I16", "CSignedInt16", "CShort"}
-    signed32 = {"I32", "CSignedInt32", "ExitCode"}
+    signed2 = {"Int2"}
+    signed4 = {"Int4"}
+    signed8 = {"Int8"}
+    signed16 = {"Int16"}
+    signed32 = {"Int32", "ExitCode", "Char"}
     signed64 = {
-        "I64", "CSignedInt64", "CByteCount", "CSignedByteCount",
-        "CAddressOffset", "CUnixSecondsSinceEpoch", "CCpuClockTicks",
-        "CFileByteOffset", "DurationMilliseconds", "MonotonicMilliseconds",
+        "Int64", "ByteCount", "SignedByteCount", "AddressOffset",
+        "UnixSecondsSinceEpoch", "CpuClockTicks", "FileByteOffset",
+        "DurationMilliseconds", "MonotonicMilliseconds",
         "UtcMilliseconds",
     }
-    unsigned8 = {"CUnsignedByte", "CUchar"}
-    unsigned16 = {"CUnsignedInt16", "CUshort"}
-    unsigned32 = {"CUnsignedInt32", "CUint"}
-    unsigned64 = {"CUnsignedInt64", "CMaxUnsignedInt", "CUintmax"}
-    float32 = {"F32", "CFloat32", "CFloat"}
-    float64 = {"F64", "CFloat64", "CDouble"}
+    unsigned2 = {"UInt2"}
+    unsigned4 = {"UInt4"}
+    unsigned8 = {"UInt8"}
+    unsigned16 = {"UInt16"}
+    unsigned32 = {"UInt32"}
+    unsigned64 = {"UInt64"}
+    float16 = {"Float16"}
+    float32 = {"Float32"}
+    float64 = {"Float64"}
     if typeName == "Bool":
         return "bool"
+    if typeName in signed2:
+        return "signed2"
+    if typeName in signed4:
+        return "signed4"
     if typeName in signed8:
         return "signed8"
     if typeName in signed16:
@@ -10658,6 +10688,10 @@ def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
         return "signed32"
     if typeName in signed64:
         return "signed64"
+    if typeName in unsigned2:
+        return "unsigned2"
+    if typeName in unsigned4:
+        return "unsigned4"
     if typeName in unsigned8:
         return "unsigned8"
     if typeName in unsigned16:
@@ -10666,6 +10700,8 @@ def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
         return "unsigned32"
     if typeName in unsigned64:
         return "unsigned64"
+    if typeName in float16:
+        return "float16"
     if typeName in float32:
         return "float32"
     if typeName in float64:
@@ -10688,17 +10724,17 @@ def _enum_arg_shape_mismatch(
     return _strict_numeric_shape(expectedHead) != _strict_numeric_shape(actualHead)
 
 
-I64_COMPARISON_TARGETS: Dict[str, str] = {
-    "math.equalI64": "math.equalCSignedInt32",
-    "math.notEqualI64": "math.notEqualCSignedInt32",
-    "math.lessThanI64": "math.lessThanCSignedInt32",
-    "math.lessThanOrEqualI64": "math.lessThanOrEqualCSignedInt32",
-    "math.greaterThanI64": "math.greaterThanCSignedInt32",
-    "math.greaterThanOrEqualI64": "math.greaterThanOrEqualCSignedInt32",
+Int64_COMPARISON_TARGETS: Dict[str, str] = {
+    "math.equalInt64": "math.equalInt32",
+    "math.notEqualInt64": "math.notEqualInt32",
+    "math.lessThanInt64": "math.lessThanInt32",
+    "math.lessThanOrEqualInt64": "math.lessThanOrEqualInt32",
+    "math.greaterThanInt64": "math.greaterThanInt32",
+    "math.greaterThanOrEqualInt64": "math.greaterThanOrEqualInt32",
 }
 
-I32_COMPARISON_TARGETS: Dict[str, str] = {
-    value: key for key, value in I64_COMPARISON_TARGETS.items()
+Int32_COMPARISON_TARGETS: Dict[str, str] = {
+    value: key for key, value in Int64_COMPARISON_TARGETS.items()
 }
 
 MATH_EXACT_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
@@ -10722,7 +10758,7 @@ def _enum_context(
             continue
         if sourceLine.verb == "enum" and sourceLine.args:
             enumName = sourceLine.args[0]
-            reprName = "CSignedInt32"
+            reprName = "Int32"
             if len(sourceLine.args) >= 3 and sourceLine.args[1] == "repr":
                 reprName = sourceLine.args[2]
             enumReprs[enumName] = reprName
@@ -10897,10 +10933,10 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 resolvedExpectedArgument = _resolve_type_alias_head(
                     expectedType, typeAliases)
                 # Fold the width-preserving C-ABI spellings so the LLVM-style
-                # name (`I64`, `F64`) and the C-ABI name (`CSignedInt64`,
-                # `CFloat64`) for the same type compare equal. This is
+                # name (`Int64`, `Float64`) and the C-ABI name (`Int64`,
+                # `Float64`) for the same type compare equal. This is
                 # intentionally narrow — it does NOT fold different widths
-                # (CSignedInt32 stays distinct from I64), so a float builtin
+                # (Int32 stays distinct from Int64), so a float builtin
                 # annotated with an integer type still mismatches.
                 resolvedDeclaredArgument = _C_ABI_WIDTH_ALIAS.get(
                     resolvedDeclaredArgument, resolvedDeclaredArgument)
@@ -11100,10 +11136,10 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                 argumentName,
             ) = mismatchedArgs[0]
             suggestedTarget: Optional[str] = None
-            if targetName in I64_COMPARISON_TARGETS and actualShape == "signed32":
-                suggestedTarget = I64_COMPARISON_TARGETS[targetName]
-            elif targetName in I32_COMPARISON_TARGETS and actualShape == "signed64":
-                suggestedTarget = I32_COMPARISON_TARGETS[targetName]
+            if targetName in Int64_COMPARISON_TARGETS and actualShape == "signed32":
+                suggestedTarget = Int64_COMPARISON_TARGETS[targetName]
+            elif targetName in Int32_COMPARISON_TARGETS and actualShape == "signed64":
+                suggestedTarget = Int32_COMPARISON_TARGETS[targetName]
             fixCandidates = [
                 FixCandidate(
                     name="makeConversionExplicit",
@@ -11155,6 +11191,115 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
 def _is_integer_literal(token: str) -> bool:
     stripped = token.lstrip("-")
     return bool(stripped) and stripped.isdigit()
+
+
+INTEGER_LITERAL_RANGES: Dict[str, Tuple[int, int]] = {
+    "Int2": (-2, 1),
+    "UInt2": (0, 3),
+    "Int4": (-8, 7),
+    "UInt4": (0, 15),
+    "Int8": (-128, 127),
+    "UInt8": (0, 255),
+    "Int16": (-32768, 32767),
+    "UInt16": (0, 65535),
+    "Int32": (-2147483648, 2147483647),
+    "UInt32": (0, 4294967295),
+    "Int64": (-9223372036854775808, 9223372036854775807),
+    "UInt64": (0, 18446744073709551615),
+    "ByteCount": (-9223372036854775808, 9223372036854775807),
+    "SignedByteCount": (-9223372036854775808, 9223372036854775807),
+    "AddressOffset": (-9223372036854775808, 9223372036854775807),
+    "UnixSecondsSinceEpoch": (-9223372036854775808, 9223372036854775807),
+    "CpuClockTicks": (-9223372036854775808, 9223372036854775807),
+    "FileByteOffset": (-9223372036854775808, 9223372036854775807),
+}
+
+FLOAT_LITERAL_PACK_FORMAT: Dict[str, str] = {
+    "Float16": "e",
+    "Float32": "f",
+    "Float64": "d",
+}
+
+
+def _parse_char_literal(token: str) -> Optional[int]:
+    if len(token) < 3 or not (token.startswith("'") and token.endswith("'")):
+        return None
+    body = token[1:-1]
+    if body == "":
+        return None
+    if body.startswith("\\u{") and body.endswith("}"):
+        hex_body = body[3:-1]
+        if not hex_body:
+            return None
+        try:
+            value = int(hex_body, 16)
+        except ValueError:
+            return None
+    elif body.startswith("\\"):
+        escapes = {
+            "\\0": 0,
+            "\\n": 10,
+            "\\r": 13,
+            "\\t": 9,
+            "\\\\": 92,
+            "\\'": 39,
+            "\\\"": 34,
+        }
+        value = escapes.get(body)
+        if value is None:
+            return None
+    elif len(body) == 1:
+        value = ord(body)
+    else:
+        return None
+    if value < 0 or value > 0x10FFFF:
+        return None
+    if 0xD800 <= value <= 0xDFFF:
+        return None
+    return value
+
+
+def _validate_scalar_literal(typeName: str, token: str) -> Optional[str]:
+    resolvedType = PRIMITIVE_CANONICAL_BY_TYPE.get(typeName, typeName)
+    if resolvedType == "Bool":
+        if token.lower() in {"true", "false", "yes", "no", "1", "0"}:
+            return None
+        return "Bool literals must be one of true/false/yes/no/1/0"
+    if resolvedType == "Char":
+        charValue = _parse_char_literal(token)
+        if charValue is not None:
+            return None
+        if _is_integer_literal(token):
+            rawValue = int(token, 10)
+            if rawValue < 0 or rawValue > 0x10FFFF or 0xD800 <= rawValue <= 0xDFFF:
+                return "Char literals must be Unicode scalar values"
+            return None
+        return "Char literals must be a Unicode scalar integer or a single-quoted character literal"
+    integerRange = INTEGER_LITERAL_RANGES.get(resolvedType)
+    if integerRange is not None:
+        if not _is_integer_literal(token):
+            return None
+        rawValue = int(token, 10)
+        minimum, maximum = integerRange
+        if rawValue < minimum or rawValue > maximum:
+            return f"{resolvedType} literal out of range [{minimum}, {maximum}]"
+        return None
+    packFormat = FLOAT_LITERAL_PACK_FORMAT.get(resolvedType)
+    if packFormat is not None:
+        if not any(marker in token for marker in (".", "e", "E")) and not _is_integer_literal(token):
+            return None
+        try:
+            parsed = float(token)
+        except ValueError:
+            return f"{resolvedType} literal is not a valid floating-point token"
+        try:
+            struct.pack(packFormat, parsed)
+        except OverflowError:
+            return f"{resolvedType} literal overflows the target width"
+        except struct.error:
+            return f"{resolvedType} literal overflows the target width"
+        return None
+    return None
 
 
 def _operation_success_output_type(
@@ -11250,6 +11395,139 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
                     "status domain the enum was created to expose"
                 ),
             ))
+
+    return diagnostics
+
+
+def check_removed_scalar_surface(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        for token in sourceLine.tokens:
+            if token.quoted:
+                continue
+            replacement = REMOVED_PRIMITIVE_SPELLINGS.get(token.text)
+            if replacement is None:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4303",
+                kind="typeSurface.removedPrimitiveSpelling",
+                severity=Severity.ERROR,
+                subjectName=token.text,
+                subjectKind="typeToken",
+                gapEdge="primitiveName",
+                intentSlogan="legacy primitive spelling removed",
+                primary=Span(
+                    path=sourceLine.path,
+                    line=sourceLine.number,
+                    column=token.start + 1,
+                    role="removedPrimitiveToken",
+                ),
+                invariantRule=(
+                    f"`{token.text}` is no longer part of the user-facing primitive surface; "
+                    f"use `{replacement}` instead"
+                ),
+                specAnchor="docs/language/types-values.md#primitive-lowering",
+                fixCandidates=[
+                    FixCandidate(
+                        name="replacePrimitiveSpelling",
+                        shape=f"# replace `{token.text}` with `{replacement}`",
+                        autoApplicable=True,
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_removed_scalar_surface",
+                agentHint=(
+                    "the primitive cutover removed legacy I*/F*/C* spellings from source; "
+                    "rewrite the declaration, argument row, or binding to the semantic scalar name"
+                ),
+            ))
+        if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+            targetName = sourceLine.args[1]
+            replacement = REMOVED_CALL_TARGET_SPELLINGS.get(targetName)
+            if replacement is None:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4304",
+                kind="callTarget.removedLegacySpelling",
+                severity=Severity.ERROR,
+                subjectName=targetName,
+                subjectKind="callTarget",
+                gapEdge="targetName",
+                intentSlogan="legacy call target removed",
+                primary=span_of_line(sourceLine, "callTarget"),
+                invariantRule=(
+                    f"`{targetName}` is no longer part of the source surface; "
+                    f"use `{replacement}` instead"
+                ),
+                specAnchor="docs/reference/call-targets.md#math-targets",
+                fixCandidates=[
+                    FixCandidate(
+                        name="replaceCallTarget",
+                        shape=f"call {sourceLine.args[0]} {replacement}",
+                        autoApplicable=True,
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_removed_scalar_surface",
+                agentHint=(
+                    "the primitive cutover also renamed width-specific math/json targets; "
+                    "update the call target instead of relying on an alias"
+                ),
+            ))
+    return diagnostics
+
+
+def check_scalar_literal_ranges(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    rowsToCheck: List[Tuple[str, str, SourceLine, str]] = []
+
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        args = sourceLine.args
+        verb = sourceLine.verb
+        if verb == "storage" and len(args) >= 5:
+            rowsToCheck.append((args[3], args[4], sourceLine, args[2]))
+        elif verb == "memory" and len(args) >= 5 and args[1] in {"mutable", "immutable"}:
+            rowsToCheck.append((args[3], args[4], sourceLine, args[2]))
+        elif verb in {"const", "let", "var", "domainLiteral"} and len(args) >= 3:
+            rowsToCheck.append((args[1], args[2], sourceLine, args[0]))
+        elif verb == "argument" and len(args) >= 4:
+            rowsToCheck.append((args[2], args[3], sourceLine, args[1]))
+
+    for typeName, valueToken, sourceLine, subjectName in rowsToCheck:
+        problem = _validate_scalar_literal(typeName, valueToken)
+        if problem is None:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS4305",
+            kind="typeIntegrity.scalarLiteralRange",
+            severity=Severity.ERROR,
+            subjectName=subjectName,
+            subjectKind="literalBinding",
+            gapEdge="literalRange",
+            intentSlogan="scalar literal out of range",
+            primary=span_of_line(sourceLine, "literalRangeSite"),
+            invariantRule=problem,
+            specAnchor="docs/language/types-values.md#primitive-lowering",
+            confidence=Confidence.HIGH,
+            blocksCompile=True,
+            effort=Effort.LOCAL,
+            passProvenance="check_scalar_literal_ranges",
+            agentHint=(
+                "literal values must fit the declared scalar width exactly; "
+                "widen the declaration or change the literal instead of relying on truncation"
+            ),
+        ))
 
     return diagnostics
 
@@ -11781,7 +12059,7 @@ def _is_json_text_type_for_json_body(facts: ExtendedFacts, type_name: str) -> bo
     aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
     aliases.update(facts.base.type_aliases)
     while True:
-        if name == "JsonText":
+        if name in {"JsonText", "String"}:
             return True
         if name in seen or name not in aliases:
             return False
@@ -11834,16 +12112,13 @@ def _json_body_lint_default(
         return False
     resolved = _resolve_type_alias_for_json_body(facts, field_type)
     if policy == "empty":
-        return resolved in {"String", "CNullTerminatedByteString", "CString", "JsonText"}
+        return resolved in {"String", "JsonText"}
     if policy == "null":
-        return resolved in {"String", "CNullTerminatedByteString", "CString", "JsonText"}
+        return resolved in {"String", "JsonText"}
     if policy == "false":
         return resolved == "Bool"
     if policy == "zero":
-        return resolved not in {
-            "String", "CNullTerminatedByteString", "CString", "JsonText",
-            "Bool",
-        }
+        return resolved not in {"String", "JsonText", "Bool"}
     return False
 
 
@@ -11893,7 +12168,7 @@ def _validate_json_body_record_lint(
         resolved = _resolve_type_alias_for_json_body(facts, field_type)
         if field_value is None and policy == "null":
             continue
-        if resolved in {"String", "CNullTerminatedByteString", "CString", "JsonText"}:
+        if resolved in {"String", "JsonText"}:
             if not isinstance(field_value, str):
                 return (
                     "jsonBodyWrongType",
@@ -11907,7 +12182,7 @@ def _validate_json_body_record_lint(
                     f"`{field_path}` expected boolean, got {_json_body_lint_kind(field_value)}",
                 )
             continue
-        if resolved in {"F64", "CFloat64", "CDouble", "F32", "CFloat32", "CFloat"}:
+        if resolved in {"Float64", "Float64", "Float64", "Float64", "Float32", "Float32", "Float32", "Float32", "Float16"}:
             if isinstance(field_value, bool) or not isinstance(field_value, (int, float)):
                 return (
                     "jsonBodyWrongType",
@@ -12623,7 +12898,7 @@ def check_inline_sql_literals(facts: ExtendedFacts) -> List[Diagnostic]:
         scope, mutability, name, type_name, value = source_line.args[:5]
         if mutability != "immutable":
             continue
-        if type_name not in {"CNullTerminatedByteString", "CString", "SqlText"}:
+        if type_name not in {"String", "SqlText"}:
             continue
         first_verb = _sql_first_verb_lint(value)
         if first_verb not in SQL_STATEMENT_START_VERBS:
@@ -13280,8 +13555,8 @@ def check_process_environment_read_cached(facts: ExtendedFacts) -> List[Diagnost
                 FixCandidate(
                     name="cacheEnvironmentValue",
                     shape=(
-                        "storage module mutable cachedConfig CNullTerminatedByteString \"\"\n"
-                        "storage module mutable cachedConfigReady CSignedInt32 0\n"
+                        "storage module mutable cachedConfig String \"\"\n"
+                        "storage module mutable cachedConfigReady Int32 0\n"
                         "# branch to cached return before c.getenv; set both storage rows after resolution"
                     ),
                 ),
@@ -13354,7 +13629,7 @@ def check_repeated_request_time_reads(facts: ExtendedFacts) -> List[Diagnostic]:
                     shape=(
                         "call requestNowCall http.nowMillis\n"
                         "run requestNowCall\n"
-                        "bind value requestNow CSignedInt64 requestNowCall\n"
+                        "bind value requestNow Int64 requestNowCall\n"
                         "# pass requestNow to later SQL/JSON/log calls"
                     ),
                 ),
@@ -13500,7 +13775,7 @@ def check_idempotency_replay_uses_response_status(
                         name="usePersistedResponseStatus",
                         shape=(
                             "call readReplayStatusCall sqlite.columnInt64\n"
-                            "argument readReplayStatusCall columnIndex CSignedInt32 runtime.columnIndex2\n"
+                            "argument readReplayStatusCall columnIndex Int32 runtime.columnIndex2\n"
                             "# branch on response_status instead of c.strcmp(response_json, ...)"
                         ),
                     ),
@@ -14302,7 +14577,7 @@ def check_untrusted_http_html_hydration(facts: ExtendedFacts) -> List[Diagnostic
 
 def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3610 — every operation bound via `routeMiddleware` MUST declare
-    `output OP MiddlewareControl` (NOT bare `CSignedInt32`).
+    `output OP MiddlewareControl` (NOT bare `Int32`).
 
     The native HTTP dispatcher at sem_http_runtime.c interprets the
     middleware return value as a `MiddlewareControl` enum:
@@ -14312,7 +14587,7 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
         the response middleware already wrote
       - Anything else                       → send `500 middleware failed`
 
-    A middleware op that declares bare `CSignedInt32` output silently
+    A middleware op that declares bare `Int32` output silently
     erases that contract: a future agent could return `1` thinking it
     means "failure" (the same value means "short-circuit" under the
     real contract), and the dispatcher would happily skip the handler
@@ -14395,7 +14670,7 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
                 f"dispatcher's short-circuit semantics (0 → continue, "
                 f"1 → skip handler; see sem_http_runtime.c's "
                 f"SS_HTTP_MIDDLEWARE_* enum) are type-checked at the "
-                f"return-value site. A bare `CSignedInt32` output erases "
+                f"return-value site. A bare `Int32` output erases "
                 f"the named-case contract: a returnValue of `1` would "
                 f"silently short-circuit the route handler even when the "
                 f"author intended it as a failure sentinel."
@@ -14449,7 +14724,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
     slots by name in `arg <call> request <slot>` / `arg <call> response
     <slot>` lookups, and the dispatcher at semsc.py:2290 requires the
     handler signature to be exactly `[HttpRequest, HttpResponse,
-    CSignedInt32]` positionally. A handler with `req`/`resp`/`r`/`rsp`
+    Int32]` positionally. A handler with `req`/`resp`/`r`/`rsp`
     compiles (the dispatcher binds by position) but every downstream
     name-based lookup breaks silently — SS3603's transitive-body walk,
     `narrative_citations_for_operation`, and any future agent reading
@@ -14546,7 +14821,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"declare its `{inputType}` input under the exact name "
                     f"`{canonicalName}`. The dispatcher at semsc.py:2290 "
                     f"matches handlers positionally (`[HttpRequest, "
-                    f"HttpResponse, CSignedInt32]`), but the linter and "
+                    f"HttpResponse, Int32]`), but the linter and "
                     f"every other agent reading the source uses the "
                     f"canonical input names to resolve which slot is the "
                     f"request vs the response. A mismatch compiles and "
@@ -15104,11 +15379,11 @@ def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Dia
 
 def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3612 — an operation declared `output OP Void` (or `output OP
-    CVoid`) should terminate with `returnVoid`, not `returnValue NAME`.
+    Void`) should terminate with `returnVoid`, not `returnValue NAME`.
 
     The user-op ABI returns i32 even for Void outputs (see
-    `_operation_output_contract` and the `Void → I32` mapping), so a
-    `returnValue someI32Sentinel` form compiles — but the source is then
+    `_operation_output_contract` and the `Void → Int32` mapping), so a
+    `returnValue someInt32Sentinel` form compiles — but the source is then
     lying about its semantic contract: it says "no caller-actionable
     value" at the output line and "here's an integer sentinel" at the
     return site. A future agent reading either half in isolation has
@@ -15137,7 +15412,7 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
                 outputLine = sourceLine
                 outputType = parsedOutput[1]
                 break
-        if outputType not in ("Void", "CVoid"):
+        if outputType not in ("Void", "Void"):
             continue
         returnValueLine: Optional[SourceLine] = None
         returnValueName = ""
@@ -18133,6 +18408,8 @@ CHECKERS = [
     check_unresolved_references,
     check_branch_semantics,
     check_argument_type_mismatch,
+    check_removed_scalar_surface,
+    check_scalar_literal_ranges,
     check_enum_return_uses_case,
     check_math_operand_width_drift,
     check_duplicate_declarations,

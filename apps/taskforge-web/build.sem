@@ -31,9 +31,9 @@ field BuildModules pages BuildModule
 record BuildTarget
 field BuildTarget runtime String
 field BuildTarget nativeRuntime String
-field BuildTarget nativeRuntimeVersion I64
+field BuildTarget nativeRuntimeVersion Int64
 field BuildTarget profile String
-field BuildTarget optLevel I64
+field BuildTarget optLevel Int64
 field BuildTarget runtimeChecks String
 field BuildTarget persistLlvmIr String
 field BuildTarget emitLlvmIr String
@@ -43,8 +43,8 @@ field BuildTarget cpuBaseline String
 field BuildTarget cpuTune String
 field BuildTarget cpuFeatureCheck String
 field BuildTarget nativeHttpHost String
-field BuildTarget nativeHttpPort I64
-field BuildTarget formatterLineWidth I64
+field BuildTarget nativeHttpPort Int64
+field BuildTarget formatterLineWidth Int64
 field BuildTarget linterMaxTier String
 field BuildTarget docsOutput String
 field BuildTarget nativeOutput String
@@ -161,43 +161,43 @@ jsonBody taskForgeWebBuildPlan
       },
       "constants": {
           "serverHostText": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "127.0.0.1"
           },
           "serverPortNumber": {
-              "type": "CSignedInt32",
+              "type": "Int32",
               "value": "18090"
           },
           "apiBaseUrlText": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "http://127.0.0.1:18090"
           },
           "databaseUsePersistentStorage": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "yes"
           },
           "databasePath": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "taskforge_web.db"
           },
           "databaseInMemoryPath": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": ":memory:"
           },
           "imagesDirectoryPath": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "images"
           },
           "assetsDirectoryPath": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "assets"
           },
           "sessionLifetimeMs": {
-              "type": "CSignedInt64",
+              "type": "Int64",
               "value": "2592000000"
           },
           "applyDevSeed": {
-              "type": "CNullTerminatedByteString",
+              "type": "String",
               "value": "yes"
           }
       }

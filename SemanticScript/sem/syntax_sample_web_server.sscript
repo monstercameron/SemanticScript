@@ -38,7 +38,7 @@ module account
 # ----- type universe -----
 
 type AccountId UuidV7
-type MoneyCents I64
+type MoneyCents Int64
 type AccountBalanceResult result ok AccountBalance error AccountLookupError
 
 typeInvariant AccountId "value is a v7 UUID encoded as a 128-bit big-endian integer"
@@ -46,7 +46,7 @@ typeRepresentation AccountId UuidV7
 typeMemory AccountId inline
 typeTrust AccountId trusted
 
-typeInvariant MoneyCents "value fits in I64 and is non-negative for stored balances"
+typeInvariant MoneyCents "value fits in Int64 and is non-negative for stored balances"
 typeMemory MoneyCents inline
 
 # ----- records -----
@@ -66,7 +66,7 @@ field AccountBalanceResponse pendingCents MoneyCents
 
 # ----- enums -----
 
-enum AccountStatus repr I32
+enum AccountStatus repr Int32
 enumCase AccountStatus Active 0
 enumCase AccountStatus Frozen 1
 enumCase AccountStatus Closed 2
@@ -122,16 +122,16 @@ purpose operation httpRequestReader "Authority to inspect HTTP request path and 
 capability httpResponseWriter http.response write
 purpose operation httpResponseWriter "Authority to build HTTP response status, header, and body values"
 
-storage module immutable httpStatusOk CSignedInt32 200
-storage module immutable httpStatusBadRequest CSignedInt32 400
-storage module immutable httpStatusServiceUnavailable CSignedInt32 503
-storage module immutable httpStatusInternalServerError CSignedInt32 500
-storage module immutable invalidAccountIdBody CNullTerminatedByteString "invalid account id"
-storage module immutable databaseUnavailableBody CNullTerminatedByteString "database unavailable"
-storage module immutable accountBalanceLookupFailedBody CNullTerminatedByteString "account balance lookup failed"
-storage module immutable responseEncodingFailedBody CNullTerminatedByteString "response encoding failed"
-storage module immutable accountPageEmptyJsonBody CNullTerminatedByteString "{}"
-storage module immutable accountPageLoadFailedBody CNullTerminatedByteString "page load failed"
+storage module immutable httpStatusOk Int32 200
+storage module immutable httpStatusBadRequest Int32 400
+storage module immutable httpStatusServiceUnavailable Int32 503
+storage module immutable httpStatusInternalServerError Int32 500
+storage module immutable invalidAccountIdBody String "invalid account id"
+storage module immutable databaseUnavailableBody String "database unavailable"
+storage module immutable accountBalanceLookupFailedBody String "account balance lookup failed"
+storage module immutable responseEncodingFailedBody String "response encoding failed"
+storage module immutable accountPageEmptyJsonBody String "{}"
+storage module immutable accountPageLoadFailedBody String "page load failed"
 
 # ----- web server -----
 
@@ -146,7 +146,7 @@ route accountHttpServer get "/accounts/:accountId/balance" getAccountBalanceHand
 operation getAccountBalanceHandler
 input operation getAccountBalanceHandler request HttpRequest
 input operation getAccountBalanceHandler response HttpResponse
-output operation getAccountBalanceHandler CSignedInt32
+output operation getAccountBalanceHandler Int32
 effect getAccountBalanceHandler read http.request.path
 effect getAccountBalanceHandler read http.request.cancellationToken
 effect getAccountBalanceHandler write http.response
@@ -174,7 +174,7 @@ label startGetAccountBalanceHandler
 call requestPathReadCall http.requestPath
 argument requestPathReadCall request HttpRequest request
 run requestPathReadCall
-ignore value source requestPathReadCall type CNullTerminatedByteString
+ignore value source requestPathReadCall type String
 
 # rationale: Read the cancellation token first so every later async call can be tied to client disconnects.
 call requestCancellationTokenReadCall http.requestCancellationToken
@@ -185,7 +185,7 @@ bind value requestCancellationToken CancellationToken requestCancellationTokenRe
 # rationale: Parse the accountId path parameter through the dedicated validator.
 call accountIdParseCall accountIdPathValidator.validate
 argument accountIdParseCall request HttpRequest request
-argument accountIdParseCall name CNullTerminatedByteString "accountId"
+argument accountIdParseCall name String "accountId"
 run accountIdParseCall
 bind ok accountId AccountId accountIdParseCall
 bind error accountIdParseError AccountIdParseError accountIdParseCall
@@ -237,46 +237,46 @@ branch error source jsonEncodingCall target jsonEncodingFailed
 # rationale: Build the success response envelope.
 call successResponseBuildCall http.responseJson
 argument successResponseBuildCall response HttpResponse response
-argument successResponseBuildCall status CSignedInt32 httpStatusOk
+argument successResponseBuildCall status Int32 httpStatusOk
 argument successResponseBuildCall body JsonBytes responseBody
 run successResponseBuildCall
-bind value successResponseStatus CSignedInt32 successResponseBuildCall
+bind value successResponseStatus Int32 successResponseBuildCall
 return value successResponseStatus
 
 label accountIdParseFailed
 call accountIdParseFailureResponseBuildCall http.responseText
 argument accountIdParseFailureResponseBuildCall response HttpResponse response
-argument accountIdParseFailureResponseBuildCall status CSignedInt32 httpStatusBadRequest
-argument accountIdParseFailureResponseBuildCall body CNullTerminatedByteString invalidAccountIdBody
+argument accountIdParseFailureResponseBuildCall status Int32 httpStatusBadRequest
+argument accountIdParseFailureResponseBuildCall body String invalidAccountIdBody
 run accountIdParseFailureResponseBuildCall
-bind value accountIdParseFailureResponseStatus CSignedInt32 accountIdParseFailureResponseBuildCall
+bind value accountIdParseFailureResponseStatus Int32 accountIdParseFailureResponseBuildCall
 return value accountIdParseFailureResponseStatus
 
 label databaseOpenFailed
 call databaseOpenFailureResponseBuildCall http.responseText
 argument databaseOpenFailureResponseBuildCall response HttpResponse response
-argument databaseOpenFailureResponseBuildCall status CSignedInt32 httpStatusServiceUnavailable
-argument databaseOpenFailureResponseBuildCall body CNullTerminatedByteString databaseUnavailableBody
+argument databaseOpenFailureResponseBuildCall status Int32 httpStatusServiceUnavailable
+argument databaseOpenFailureResponseBuildCall body String databaseUnavailableBody
 run databaseOpenFailureResponseBuildCall
-bind value databaseOpenFailureResponseStatus CSignedInt32 databaseOpenFailureResponseBuildCall
+bind value databaseOpenFailureResponseStatus Int32 databaseOpenFailureResponseBuildCall
 return value databaseOpenFailureResponseStatus
 
 label accountBalanceLookupFailed
 call accountBalanceLookupFailureResponseBuildCall http.responseText
 argument accountBalanceLookupFailureResponseBuildCall response HttpResponse response
-argument accountBalanceLookupFailureResponseBuildCall status CSignedInt32 httpStatusInternalServerError
-argument accountBalanceLookupFailureResponseBuildCall body CNullTerminatedByteString accountBalanceLookupFailedBody
+argument accountBalanceLookupFailureResponseBuildCall status Int32 httpStatusInternalServerError
+argument accountBalanceLookupFailureResponseBuildCall body String accountBalanceLookupFailedBody
 run accountBalanceLookupFailureResponseBuildCall
-bind value accountBalanceLookupFailureResponseStatus CSignedInt32 accountBalanceLookupFailureResponseBuildCall
+bind value accountBalanceLookupFailureResponseStatus Int32 accountBalanceLookupFailureResponseBuildCall
 return value accountBalanceLookupFailureResponseStatus
 
 label jsonEncodingFailed
 call jsonEncodingFailureResponseBuildCall http.responseText
 argument jsonEncodingFailureResponseBuildCall response HttpResponse response
-argument jsonEncodingFailureResponseBuildCall status CSignedInt32 httpStatusInternalServerError
-argument jsonEncodingFailureResponseBuildCall body CNullTerminatedByteString responseEncodingFailedBody
+argument jsonEncodingFailureResponseBuildCall status Int32 httpStatusInternalServerError
+argument jsonEncodingFailureResponseBuildCall body String responseEncodingFailedBody
 run jsonEncodingFailureResponseBuildCall
-bind value jsonEncodingFailureResponseStatus CSignedInt32 jsonEncodingFailureResponseBuildCall
+bind value jsonEncodingFailureResponseStatus Int32 jsonEncodingFailureResponseBuildCall
 return value jsonEncodingFailureResponseStatus
 
 # ===== a second handler demonstrating structured concurrency =====
@@ -284,7 +284,7 @@ return value jsonEncodingFailureResponseStatus
 operation getAccountPageHandler
 input operation getAccountPageHandler request HttpRequest
 input operation getAccountPageHandler response HttpResponse
-output operation getAccountPageHandler CSignedInt32
+output operation getAccountPageHandler Int32
 effect getAccountPageHandler read http.request.cancellationToken
 effect getAccountPageHandler write http.response
 effect getAccountPageHandler read database.accounts
@@ -320,19 +320,19 @@ branchIfGroupError accountPageLoadTasks accountPageLoadFailed
 # rationale: All three lookups succeeded; build the page response.
 call accountPageResponseBuildCall http.responseJson
 argument accountPageResponseBuildCall response HttpResponse response
-argument accountPageResponseBuildCall status CSignedInt32 httpStatusOk
-argument accountPageResponseBuildCall body CNullTerminatedByteString accountPageEmptyJsonBody
+argument accountPageResponseBuildCall status Int32 httpStatusOk
+argument accountPageResponseBuildCall body String accountPageEmptyJsonBody
 run accountPageResponseBuildCall
-bind value accountPageResponseStatus CSignedInt32 accountPageResponseBuildCall
+bind value accountPageResponseStatus Int32 accountPageResponseBuildCall
 return value accountPageResponseStatus
 
 label accountPageLoadFailed
 call accountPageLoadFailureResponseBuildCall http.responseText
 argument accountPageLoadFailureResponseBuildCall response HttpResponse response
-argument accountPageLoadFailureResponseBuildCall status CSignedInt32 httpStatusInternalServerError
-argument accountPageLoadFailureResponseBuildCall body CNullTerminatedByteString accountPageLoadFailedBody
+argument accountPageLoadFailureResponseBuildCall status Int32 httpStatusInternalServerError
+argument accountPageLoadFailureResponseBuildCall body String accountPageLoadFailedBody
 run accountPageLoadFailureResponseBuildCall
-bind value accountPageLoadFailureResponseStatus CSignedInt32 accountPageLoadFailureResponseBuildCall
+bind value accountPageLoadFailureResponseStatus Int32 accountPageLoadFailureResponseBuildCall
 return value accountPageLoadFailureResponseStatus
 
 # ----- tests cross-link the operation by name -----

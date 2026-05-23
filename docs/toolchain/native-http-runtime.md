@@ -58,7 +58,7 @@ Compiler lowering:
 operation healthHandler
 input healthHandler request HttpRequest
 input healthHandler response HttpResponse
-output healthHandler CSignedInt32
+output healthHandler Int32
 ```
 
 Unlike console/library mode, `HttpRequest` and `HttpResponse` are not dropped as

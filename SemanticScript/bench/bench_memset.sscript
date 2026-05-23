@@ -5,8 +5,8 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError AllocationFailed CSignedInt32
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError AllocationFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
 input operation main console Console
@@ -27,18 +27,18 @@ invariant operation main "The buffer is allocated via c.malloc before the loop a
 
 label startMain
 
-storage module immutable iterationLimit I64 200000
-storage module immutable iterationStep I64 1
-storage module immutable bufferSize CByteCount 65536
-storage module immutable observationModulus I64 65536
-memory main mutable currentIteration I64 0
-memory main mutable observationAccumulator I64 0
+storage module immutable iterationLimit Int64 200000
+storage module immutable iterationStep Int64 1
+storage module immutable bufferSize ByteCount 65536
+storage module immutable observationModulus Int64 65536
+memory main mutable currentIteration Int64 0
+memory main mutable observationAccumulator Int64 0
 
 # Allocate the 64 KiB benchmark buffer.
 call mallocCall c.malloc
-argument mallocCall size CByteCount bufferSize
+argument mallocCall size ByteCount bufferSize
 run mallocCall
-bind ok benchmarkBuffer COpaqueMemoryAddress mallocCall
+bind ok benchmarkBuffer OpaquePointer mallocCall
 # c.malloc returns NULL on failure; treat a zero result as the error path.
 # (The compiler's branchIfError uses the signed-less-than-zero convention,
 # but malloc semantically returns NULL == 0. We branch directly on the bind.)
@@ -46,13 +46,13 @@ bind ok benchmarkBuffer COpaqueMemoryAddress mallocCall
 # Start the CPU-clock counter.
 call startClockCall c.clock
 run startClockCall
-bind value startClockTicks CCpuClockTicks startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
 
 label benchmarkLoopHead
 
-call shouldContinueCmpCall math.lessThanI64
-argument shouldContinueCmpCall left I64 currentIteration
-argument shouldContinueCmpCall right I64 iterationLimit
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
 run shouldContinueCmpCall
 bind value benchmarkShouldContinue Bool shouldContinueCmpCall
 
@@ -62,39 +62,39 @@ branch else target benchmarkFinished
 label benchmarkLoopBody
 
 call memsetCall c.memset
-argument memsetCall buffer COpaqueMemoryAddress benchmarkBuffer
-argument memsetCall fillByte I64 currentIteration
-argument memsetCall byteCount CByteCount bufferSize
+argument memsetCall buffer OpaquePointer benchmarkBuffer
+argument memsetCall fillByte Int64 currentIteration
+argument memsetCall byteCount ByteCount bufferSize
 run memsetCall
-bind value memsetReturn COpaqueMemoryAddress memsetCall
+bind value memsetReturn OpaquePointer memsetCall
 
 # Read a varying byte after each memset so the optimizer cannot elide the
 # memset calls. The observation accumulator depends on every memset's
 # completion and is reported alongside the timing data.
-call moduloOffsetCall math.moduloI64
-argument moduloOffsetCall left I64 currentIteration
-argument moduloOffsetCall right I64 observationModulus
+call moduloOffsetCall math.moduloInt64
+argument moduloOffsetCall left Int64 currentIteration
+argument moduloOffsetCall right Int64 observationModulus
 run moduloOffsetCall
-bind value observationOffset I64 moduloOffsetCall
+bind value observationOffset Int64 moduloOffsetCall
 
 call observationLoadCall pointer.loadByte
-argument observationLoadCall buffer COpaqueMemoryAddress benchmarkBuffer
-argument observationLoadCall offset I64 observationOffset
+argument observationLoadCall buffer OpaquePointer benchmarkBuffer
+argument observationLoadCall offset Int64 observationOffset
 run observationLoadCall
-bind value observationByte I8 observationLoadCall
+bind value observationByte Int8 observationLoadCall
 
-call observationAccumulateCall math.addI64
-argument observationAccumulateCall left I64 observationAccumulator
-argument observationAccumulateCall right I64 observationByte
+call observationAccumulateCall math.addInt64
+argument observationAccumulateCall left Int64 observationAccumulator
+argument observationAccumulateCall right Int64 observationByte
 run observationAccumulateCall
-bind value nextObservation I64 observationAccumulateCall
+bind value nextObservation Int64 observationAccumulateCall
 set memory observationAccumulator nextObservation
 
-call incrementCall math.addI64
-argument incrementCall left I64 currentIteration
-argument incrementCall right I64 iterationStep
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
 run incrementCall
-bind value nextIteration I64 incrementCall
+bind value nextIteration Int64 incrementCall
 set memory currentIteration nextIteration
 jump target benchmarkLoopHead
 
@@ -102,28 +102,28 @@ label benchmarkFinished
 
 call endClockCall c.clock
 run endClockCall
-bind value endClockTicks CCpuClockTicks endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
 
-call elapsedTicksCall math.subtractI64
-argument elapsedTicksCall left CCpuClockTicks endClockTicks
-argument elapsedTicksCall right CCpuClockTicks startClockTicks
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
 run elapsedTicksCall
-bind value elapsedClockTicks I64 elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
 
-storage module immutable reportFormatText CNullTerminatedByteString "iterations=%lld bufferSize=%lld accumulator=%lld clockTicks=%lld\n"
+storage module immutable reportFormatText String "iterations=%lld bufferSize=%lld accumulator=%lld clockTicks=%lld\n"
 call reportCall c.printf
-argument reportCall format CNullTerminatedByteString reportFormatText
-argument reportCall iterations I64 iterationLimit
-argument reportCall buffer CByteCount bufferSize
-argument reportCall accumulator I64 observationAccumulator
-argument reportCall ticks I64 elapsedClockTicks
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall buffer ByteCount bufferSize
+argument reportCall accumulator Int64 observationAccumulator
+argument reportCall ticks Int64 elapsedClockTicks
 run reportCall
 ignore void source reportCall
-bind error reportError CSignedInt32 reportCall
+bind error reportError Int32 reportCall
 branch error source reportCall target consoleWriteFailed
 
 call freeCall c.free
-argument freeCall pointer COpaqueMemoryAddress benchmarkBuffer
+argument freeCall pointer OpaquePointer benchmarkBuffer
 run freeCall
 
 storage module immutable successfulExitCode ExitCode 0

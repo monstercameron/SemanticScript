@@ -42,15 +42,15 @@ invariant operation main "sumSignedInt64OneThroughN(100) == 5050; LCM(12, 18) ==
 label startMain
 
 # sumSignedInt64OneThroughN(100) == 5050
-storage module immutable oneHundredInput CSignedInt64 100
-storage module immutable expectedTriangularSumOf100 CSignedInt64 5050
+storage module immutable oneHundredInput Int64 100
+storage module immutable expectedTriangularSumOf100 Int64 5050
 call assertGaussSumCall sumSignedInt64OneThroughN
-argument assertGaussSumCall inputValue CSignedInt64 oneHundredInput
+argument assertGaussSumCall inputValue Int64 oneHundredInput
 run assertGaussSumCall
-bind value gaussSumActualResult CSignedInt64 assertGaussSumCall
-call checkGaussSumCall math.equalI64
-argument checkGaussSumCall left I64 gaussSumActualResult
-argument checkGaussSumCall right I64 expectedTriangularSumOf100
+bind value gaussSumActualResult Int64 assertGaussSumCall
+call checkGaussSumCall math.equalInt64
+argument checkGaussSumCall left Int64 gaussSumActualResult
+argument checkGaussSumCall right Int64 expectedTriangularSumOf100
 run checkGaussSumCall
 bind value gaussSumOk Bool checkGaussSumCall
 branch if condition gaussSumOk target gaussSumHolds
@@ -58,17 +58,17 @@ branch else target smokeAssertionFailed
 label gaussSumHolds
 
 # LCM(12, 18) == 36
-storage module immutable twelveValue CSignedInt64 12
-storage module immutable eighteenValue CSignedInt64 18
-storage module immutable thirtySixExpectedLcm CSignedInt64 36
+storage module immutable twelveValue Int64 12
+storage module immutable eighteenValue Int64 18
+storage module immutable thirtySixExpectedLcm Int64 36
 call assertLcmCall leastCommonMultipleSignedInt64
-argument assertLcmCall leftValue CSignedInt64 twelveValue
-argument assertLcmCall rightValue CSignedInt64 eighteenValue
+argument assertLcmCall leftValue Int64 twelveValue
+argument assertLcmCall rightValue Int64 eighteenValue
 run assertLcmCall
-bind ok lcmActualResult CSignedInt64 assertLcmCall
-call checkLcmCall math.equalI64
-argument checkLcmCall left I64 lcmActualResult
-argument checkLcmCall right I64 thirtySixExpectedLcm
+bind ok lcmActualResult Int64 assertLcmCall
+call checkLcmCall math.equalInt64
+argument checkLcmCall left Int64 lcmActualResult
+argument checkLcmCall right Int64 thirtySixExpectedLcm
 run checkLcmCall
 bind value lcmOk Bool checkLcmCall
 branch if condition lcmOk target lcmHolds
@@ -81,27 +81,27 @@ label lcmHolds
 # sumSquares / sumCubes / triangularNumber), plus boundary cases.
 # ============================================================
 
-storage module immutable zeroNum CSignedInt64 0
-storage module immutable oneNum CSignedInt64 1
-storage module immutable twoNum CSignedInt64 2
-storage module immutable threeNum CSignedInt64 3
-storage module immutable fiveNum CSignedInt64 5
-storage module immutable sixNum CSignedInt64 6
-storage module immutable tenNum CSignedInt64 10
-storage module immutable fourteenNum CSignedInt64 14
-storage module immutable fifteenNum CSignedInt64 15
-storage module immutable fiftyFiveNum CSignedInt64 55
-storage module immutable minusFiveNum CSignedInt64 -5
-storage module immutable minusOneNum CSignedInt64 -1
+storage module immutable zeroNum Int64 0
+storage module immutable oneNum Int64 1
+storage module immutable twoNum Int64 2
+storage module immutable threeNum Int64 3
+storage module immutable fiveNum Int64 5
+storage module immutable sixNum Int64 6
+storage module immutable tenNum Int64 10
+storage module immutable fourteenNum Int64 14
+storage module immutable fifteenNum Int64 15
+storage module immutable fiftyFiveNum Int64 55
+storage module immutable minusFiveNum Int64 -5
+storage module immutable minusOneNum Int64 -1
 
 # increment(5) == 6
 call incCall incrementSignedInt64
-argument incCall inputValue CSignedInt64 fiveNum
+argument incCall inputValue Int64 fiveNum
 run incCall
-bind value incResult CSignedInt64 incCall
-call incCheckCall math.equalI64
-argument incCheckCall left I64 incResult
-argument incCheckCall right I64 sixNum
+bind value incResult Int64 incCall
+call incCheckCall math.equalInt64
+argument incCheckCall left Int64 incResult
+argument incCheckCall right Int64 sixNum
 run incCheckCall
 bind value incOk Bool incCheckCall
 branch if condition incOk target incHolds
@@ -110,12 +110,12 @@ label incHolds
 
 # increment(-1) == 0 (negative input)
 call incNegCall incrementSignedInt64
-argument incNegCall inputValue CSignedInt64 minusOneNum
+argument incNegCall inputValue Int64 minusOneNum
 run incNegCall
-bind value incNegResult CSignedInt64 incNegCall
-call incNegCheckCall math.equalI64
-argument incNegCheckCall left I64 incNegResult
-argument incNegCheckCall right I64 zeroNum
+bind value incNegResult Int64 incNegCall
+call incNegCheckCall math.equalInt64
+argument incNegCheckCall left Int64 incNegResult
+argument incNegCheckCall right Int64 zeroNum
 run incNegCheckCall
 bind value incNegOk Bool incNegCheckCall
 branch if condition incNegOk target incNegHolds
@@ -124,12 +124,12 @@ label incNegHolds
 
 # decrement(6) == 5 (inverse of increment)
 call decCall decrementSignedInt64
-argument decCall inputValue CSignedInt64 sixNum
+argument decCall inputValue Int64 sixNum
 run decCall
-bind value decResult CSignedInt64 decCall
-call decCheckCall math.equalI64
-argument decCheckCall left I64 decResult
-argument decCheckCall right I64 fiveNum
+bind value decResult Int64 decCall
+call decCheckCall math.equalInt64
+argument decCheckCall left Int64 decResult
+argument decCheckCall right Int64 fiveNum
 run decCheckCall
 bind value decOk Bool decCheckCall
 branch if condition decOk target decHolds
@@ -138,12 +138,12 @@ label decHolds
 
 # decrement(0) == -1
 call decZeroCall decrementSignedInt64
-argument decZeroCall inputValue CSignedInt64 zeroNum
+argument decZeroCall inputValue Int64 zeroNum
 run decZeroCall
-bind value decZeroResult CSignedInt64 decZeroCall
-call decZeroCheckCall math.equalI64
-argument decZeroCheckCall left I64 decZeroResult
-argument decZeroCheckCall right I64 minusOneNum
+bind value decZeroResult Int64 decZeroCall
+call decZeroCheckCall math.equalInt64
+argument decZeroCheckCall left Int64 decZeroResult
+argument decZeroCheckCall right Int64 minusOneNum
 run decZeroCheckCall
 bind value decZeroOk Bool decZeroCheckCall
 branch if condition decZeroOk target decZeroHolds
@@ -152,12 +152,12 @@ label decZeroHolds
 
 # double(5) == 10
 call doubleCall doubleSignedInt64
-argument doubleCall inputValue CSignedInt64 fiveNum
+argument doubleCall inputValue Int64 fiveNum
 run doubleCall
-bind value doubleResult CSignedInt64 doubleCall
-call doubleCheckCall math.equalI64
-argument doubleCheckCall left I64 doubleResult
-argument doubleCheckCall right I64 tenNum
+bind value doubleResult Int64 doubleCall
+call doubleCheckCall math.equalInt64
+argument doubleCheckCall left Int64 doubleResult
+argument doubleCheckCall right Int64 tenNum
 run doubleCheckCall
 bind value doubleOk Bool doubleCheckCall
 branch if condition doubleOk target doubleHolds
@@ -166,12 +166,12 @@ label doubleHolds
 
 # double(0) == 0
 call doubleZeroCall doubleSignedInt64
-argument doubleZeroCall inputValue CSignedInt64 zeroNum
+argument doubleZeroCall inputValue Int64 zeroNum
 run doubleZeroCall
-bind value doubleZeroResult CSignedInt64 doubleZeroCall
-call doubleZeroCheckCall math.equalI64
-argument doubleZeroCheckCall left I64 doubleZeroResult
-argument doubleZeroCheckCall right I64 zeroNum
+bind value doubleZeroResult Int64 doubleZeroCall
+call doubleZeroCheckCall math.equalInt64
+argument doubleZeroCheckCall left Int64 doubleZeroResult
+argument doubleZeroCheckCall right Int64 zeroNum
 run doubleZeroCheckCall
 bind value doubleZeroOk Bool doubleZeroCheckCall
 branch if condition doubleZeroOk target doubleZeroHolds
@@ -180,12 +180,12 @@ label doubleZeroHolds
 
 # halve(10) == 5 (inverse of double)
 call halveCall halveSignedInt64
-argument halveCall inputValue CSignedInt64 tenNum
+argument halveCall inputValue Int64 tenNum
 run halveCall
-bind value halveResult CSignedInt64 halveCall
-call halveCheckCall math.equalI64
-argument halveCheckCall left I64 halveResult
-argument halveCheckCall right I64 fiveNum
+bind value halveResult Int64 halveCall
+call halveCheckCall math.equalInt64
+argument halveCheckCall left Int64 halveResult
+argument halveCheckCall right Int64 fiveNum
 run halveCheckCall
 bind value halveOk Bool halveCheckCall
 branch if condition halveOk target halveHolds
@@ -194,12 +194,12 @@ label halveHolds
 
 # halve(1) == 0 (integer truncation toward zero)
 call halveOneCall halveSignedInt64
-argument halveOneCall inputValue CSignedInt64 oneNum
+argument halveOneCall inputValue Int64 oneNum
 run halveOneCall
-bind value halveOneResult CSignedInt64 halveOneCall
-call halveOneCheckCall math.equalI64
-argument halveOneCheckCall left I64 halveOneResult
-argument halveOneCheckCall right I64 zeroNum
+bind value halveOneResult Int64 halveOneCall
+call halveOneCheckCall math.equalInt64
+argument halveOneCheckCall left Int64 halveOneResult
+argument halveOneCheckCall right Int64 zeroNum
 run halveOneCheckCall
 bind value halveOneOk Bool halveOneCheckCall
 branch if condition halveOneOk target halveOneHolds
@@ -208,12 +208,12 @@ label halveOneHolds
 
 # negate(5) == -5
 call negateCall negateSignedInt64
-argument negateCall inputValue CSignedInt64 fiveNum
+argument negateCall inputValue Int64 fiveNum
 run negateCall
-bind value negateResult CSignedInt64 negateCall
-call negateCheckCall math.equalI64
-argument negateCheckCall left I64 negateResult
-argument negateCheckCall right I64 minusFiveNum
+bind value negateResult Int64 negateCall
+call negateCheckCall math.equalInt64
+argument negateCheckCall left Int64 negateResult
+argument negateCheckCall right Int64 minusFiveNum
 run negateCheckCall
 bind value negateOk Bool negateCheckCall
 branch if condition negateOk target negateHolds
@@ -222,12 +222,12 @@ label negateHolds
 
 # negate(-5) == 5 (self-inverse on negatives)
 call negateNegCall negateSignedInt64
-argument negateNegCall inputValue CSignedInt64 minusFiveNum
+argument negateNegCall inputValue Int64 minusFiveNum
 run negateNegCall
-bind value negateNegResult CSignedInt64 negateNegCall
-call negateNegCheckCall math.equalI64
-argument negateNegCheckCall left I64 negateNegResult
-argument negateNegCheckCall right I64 fiveNum
+bind value negateNegResult Int64 negateNegCall
+call negateNegCheckCall math.equalInt64
+argument negateNegCheckCall left Int64 negateNegResult
+argument negateNegCheckCall right Int64 fiveNum
 run negateNegCheckCall
 bind value negateNegOk Bool negateNegCheckCall
 branch if condition negateNegOk target negateNegHolds
@@ -236,12 +236,12 @@ label negateNegHolds
 
 # negate(0) == 0
 call negateZeroCall negateSignedInt64
-argument negateZeroCall inputValue CSignedInt64 zeroNum
+argument negateZeroCall inputValue Int64 zeroNum
 run negateZeroCall
-bind value negateZeroResult CSignedInt64 negateZeroCall
-call negateZeroCheckCall math.equalI64
-argument negateZeroCheckCall left I64 negateZeroResult
-argument negateZeroCheckCall right I64 zeroNum
+bind value negateZeroResult Int64 negateZeroCall
+call negateZeroCheckCall math.equalInt64
+argument negateZeroCheckCall left Int64 negateZeroResult
+argument negateZeroCheckCall right Int64 zeroNum
 run negateZeroCheckCall
 bind value negateZeroOk Bool negateZeroCheckCall
 branch if condition negateZeroOk target negateZeroHolds
@@ -249,42 +249,42 @@ branch else target smokeAssertionFailed
 label negateZeroHolds
 
 # reciprocal(2.0) â‰ˆ 0.5 (within tolerance)
-storage module immutable twoFloat CFloat64 2.0
-storage module immutable halfFloat CFloat64 0.5
-storage module immutable recipTol CFloat64 0.0001
+storage module immutable twoFloat Float64 2.0
+storage module immutable halfFloat Float64 0.5
+storage module immutable recipTol Float64 0.0001
 call reciprocalCall reciprocalFloat64
-argument reciprocalCall inputValue CFloat64 twoFloat
+argument reciprocalCall inputValue Float64 twoFloat
 run reciprocalCall
-bind value reciprocalResult CFloat64 reciprocalCall
-call reciprocalDiffCall math.subtractF64
-argument reciprocalDiffCall left F64 reciprocalResult
-argument reciprocalDiffCall right F64 halfFloat
+bind value reciprocalResult Float64 reciprocalCall
+call reciprocalDiffCall math.subtractFloat64
+argument reciprocalDiffCall left Float64 reciprocalResult
+argument reciprocalDiffCall right Float64 halfFloat
 run reciprocalDiffCall
-bind value reciprocalDiff CFloat64 reciprocalDiffCall
+bind value reciprocalDiff Float64 reciprocalDiffCall
 # absolute value of difference: if negative, multiply by -1
-memory main mutable reciprocalAbsAccum CFloat64 0.0
+memory main mutable reciprocalAbsAccum Float64 0.0
 set memory reciprocalAbsAccum reciprocalDiff
-storage module immutable zeroFloatRecip CFloat64 0.0
-storage module immutable negOneFloatRecip CFloat64 -1.0
-call reciprocalNegCheckCall math.lessThanF64
-argument reciprocalNegCheckCall left F64 reciprocalAbsAccum
-argument reciprocalNegCheckCall right F64 zeroFloatRecip
+storage module immutable zeroFloatRecip Float64 0.0
+storage module immutable negOneFloatRecip Float64 -1.0
+call reciprocalNegCheckCall math.lessThanFloat64
+argument reciprocalNegCheckCall left Float64 reciprocalAbsAccum
+argument reciprocalNegCheckCall right Float64 zeroFloatRecip
 run reciprocalNegCheckCall
 bind value reciprocalIsNeg Bool reciprocalNegCheckCall
 branch if condition reciprocalIsNeg target flipReciprocal
 branch else target checkReciprocalTol
 label flipReciprocal
-call reciprocalFlipCall math.multiplyF64
-argument reciprocalFlipCall left F64 reciprocalAbsAccum
-argument reciprocalFlipCall right F64 negOneFloatRecip
+call reciprocalFlipCall math.multiplyFloat64
+argument reciprocalFlipCall left Float64 reciprocalAbsAccum
+argument reciprocalFlipCall right Float64 negOneFloatRecip
 run reciprocalFlipCall
-bind value reciprocalFlipped CFloat64 reciprocalFlipCall
+bind value reciprocalFlipped Float64 reciprocalFlipCall
 set memory reciprocalAbsAccum reciprocalFlipped
 jump target checkReciprocalTol
 label checkReciprocalTol
-call reciprocalCheckCall math.lessThanF64
-argument reciprocalCheckCall left F64 reciprocalAbsAccum
-argument reciprocalCheckCall right F64 recipTol
+call reciprocalCheckCall math.lessThanFloat64
+argument reciprocalCheckCall left Float64 reciprocalAbsAccum
+argument reciprocalCheckCall right Float64 recipTol
 run reciprocalCheckCall
 bind value reciprocalOk Bool reciprocalCheckCall
 branch if condition reciprocalOk target reciprocalHolds
@@ -293,12 +293,12 @@ label reciprocalHolds
 
 # triangularNumberSignedInt64(10) == 55 (1+2+...+10)
 call triangularCall triangularNumberSignedInt64
-argument triangularCall inputValue CSignedInt64 tenNum
+argument triangularCall inputValue Int64 tenNum
 run triangularCall
-bind value triangularResult CSignedInt64 triangularCall
-call triangularCheckCall math.equalI64
-argument triangularCheckCall left I64 triangularResult
-argument triangularCheckCall right I64 fiftyFiveNum
+bind value triangularResult Int64 triangularCall
+call triangularCheckCall math.equalInt64
+argument triangularCheckCall left Int64 triangularResult
+argument triangularCheckCall right Int64 fiftyFiveNum
 run triangularCheckCall
 bind value triangularOk Bool triangularCheckCall
 branch if condition triangularOk target triangularHolds
@@ -307,12 +307,12 @@ label triangularHolds
 
 # triangularNumberSignedInt64(0) == 0 (boundary)
 call triangularZeroCall triangularNumberSignedInt64
-argument triangularZeroCall inputValue CSignedInt64 zeroNum
+argument triangularZeroCall inputValue Int64 zeroNum
 run triangularZeroCall
-bind value triangularZeroResult CSignedInt64 triangularZeroCall
-call triangularZeroCheckCall math.equalI64
-argument triangularZeroCheckCall left I64 triangularZeroResult
-argument triangularZeroCheckCall right I64 zeroNum
+bind value triangularZeroResult Int64 triangularZeroCall
+call triangularZeroCheckCall math.equalInt64
+argument triangularZeroCheckCall left Int64 triangularZeroResult
+argument triangularZeroCheckCall right Int64 zeroNum
 run triangularZeroCheckCall
 bind value triangularZeroOk Bool triangularZeroCheckCall
 branch if condition triangularZeroOk target triangularZeroHolds
@@ -321,12 +321,12 @@ label triangularZeroHolds
 
 # sumSignedInt64SquaresOneThroughN(3) == 14 (1+4+9)
 call sumSqCall sumSignedInt64SquaresOneThroughN
-argument sumSqCall inputValue CSignedInt64 threeNum
+argument sumSqCall inputValue Int64 threeNum
 run sumSqCall
-bind value sumSqResult CSignedInt64 sumSqCall
-call sumSqCheckCall math.equalI64
-argument sumSqCheckCall left I64 sumSqResult
-argument sumSqCheckCall right I64 fourteenNum
+bind value sumSqResult Int64 sumSqCall
+call sumSqCheckCall math.equalInt64
+argument sumSqCheckCall left Int64 sumSqResult
+argument sumSqCheckCall right Int64 fourteenNum
 run sumSqCheckCall
 bind value sumSqOk Bool sumSqCheckCall
 branch if condition sumSqOk target sumSqHolds
@@ -334,14 +334,14 @@ branch else target smokeAssertionFailed
 label sumSqHolds
 
 # sumSignedInt64CubesOneThroughN(2) == 9 (1+8)
-storage module immutable nineNum CSignedInt64 9
+storage module immutable nineNum Int64 9
 call sumCubesCall sumSignedInt64CubesOneThroughN
-argument sumCubesCall inputValue CSignedInt64 twoNum
+argument sumCubesCall inputValue Int64 twoNum
 run sumCubesCall
-bind value sumCubesResult CSignedInt64 sumCubesCall
-call sumCubesCheckCall math.equalI64
-argument sumCubesCheckCall left I64 sumCubesResult
-argument sumCubesCheckCall right I64 nineNum
+bind value sumCubesResult Int64 sumCubesCall
+call sumCubesCheckCall math.equalInt64
+argument sumCubesCheckCall left Int64 sumCubesResult
+argument sumCubesCheckCall right Int64 nineNum
 run sumCubesCheckCall
 bind value sumCubesOk Bool sumCubesCheckCall
 branch if condition sumCubesOk target sumCubesHolds
@@ -350,12 +350,12 @@ label sumCubesHolds
 
 # sumSignedInt64CubesOneThroughN(3) == 36 (1+8+27); also equal to triangular(3)^2 = 6^2
 call sumCubes3Call sumSignedInt64CubesOneThroughN
-argument sumCubes3Call inputValue CSignedInt64 threeNum
+argument sumCubes3Call inputValue Int64 threeNum
 run sumCubes3Call
-bind value sumCubes3Result CSignedInt64 sumCubes3Call
-call sumCubes3CheckCall math.equalI64
-argument sumCubes3CheckCall left I64 sumCubes3Result
-argument sumCubes3CheckCall right I64 thirtySixExpectedLcm
+bind value sumCubes3Result Int64 sumCubes3Call
+call sumCubes3CheckCall math.equalInt64
+argument sumCubes3CheckCall left Int64 sumCubes3Result
+argument sumCubes3CheckCall right Int64 thirtySixExpectedLcm
 run sumCubes3CheckCall
 bind value sumCubes3Ok Bool sumCubes3CheckCall
 branch if condition sumCubes3Ok target sumCubes3Holds
@@ -364,16 +364,16 @@ label sumCubes3Holds
 
 # Property: increment then decrement is identity. increment(decrement(5)) == 5
 call propDecCall decrementSignedInt64
-argument propDecCall inputValue CSignedInt64 fiveNum
+argument propDecCall inputValue Int64 fiveNum
 run propDecCall
-bind value propDecResult CSignedInt64 propDecCall
+bind value propDecResult Int64 propDecCall
 call propIncCall incrementSignedInt64
-argument propIncCall inputValue CSignedInt64 propDecResult
+argument propIncCall inputValue Int64 propDecResult
 run propIncCall
-bind value propIncResult CSignedInt64 propIncCall
-call propRoundCheckCall math.equalI64
-argument propRoundCheckCall left I64 propIncResult
-argument propRoundCheckCall right I64 fiveNum
+bind value propIncResult Int64 propIncCall
+call propRoundCheckCall math.equalInt64
+argument propRoundCheckCall left Int64 propIncResult
+argument propRoundCheckCall right Int64 fiveNum
 run propRoundCheckCall
 bind value propRoundOk Bool propRoundCheckCall
 branch if condition propRoundOk target propRoundHolds
@@ -382,16 +382,16 @@ label propRoundHolds
 
 # Property: halve(double(x)) == x for even-friendly x. halve(double(15)) == 15
 call propDoubleCall doubleSignedInt64
-argument propDoubleCall inputValue CSignedInt64 fifteenNum
+argument propDoubleCall inputValue Int64 fifteenNum
 run propDoubleCall
-bind value propDoubleResult CSignedInt64 propDoubleCall
+bind value propDoubleResult Int64 propDoubleCall
 call propHalveCall halveSignedInt64
-argument propHalveCall inputValue CSignedInt64 propDoubleResult
+argument propHalveCall inputValue Int64 propDoubleResult
 run propHalveCall
-bind value propHalveResult CSignedInt64 propHalveCall
-call propHalveCheckCall math.equalI64
-argument propHalveCheckCall left I64 propHalveResult
-argument propHalveCheckCall right I64 fifteenNum
+bind value propHalveResult Int64 propHalveCall
+call propHalveCheckCall math.equalInt64
+argument propHalveCheckCall left Int64 propHalveResult
+argument propHalveCheckCall right Int64 fifteenNum
 run propHalveCheckCall
 bind value propHalveOk Bool propHalveCheckCall
 branch if condition propHalveOk target propHalveHolds
@@ -400,31 +400,31 @@ label propHalveHolds
 
 # Property: LCM is symmetric â€” LCM(18, 12) == LCM(12, 18) == 36
 call lcmSymCall leastCommonMultipleSignedInt64
-argument lcmSymCall leftValue CSignedInt64 eighteenValue
-argument lcmSymCall rightValue CSignedInt64 twelveValue
+argument lcmSymCall leftValue Int64 eighteenValue
+argument lcmSymCall rightValue Int64 twelveValue
 run lcmSymCall
-bind ok lcmSymResult CSignedInt64 lcmSymCall
-call lcmSymCheckCall math.equalI64
-argument lcmSymCheckCall left I64 lcmSymResult
-argument lcmSymCheckCall right I64 thirtySixExpectedLcm
+bind ok lcmSymResult Int64 lcmSymCall
+call lcmSymCheckCall math.equalInt64
+argument lcmSymCheckCall left Int64 lcmSymResult
+argument lcmSymCheckCall right Int64 thirtySixExpectedLcm
 run lcmSymCheckCall
 bind value lcmSymOk Bool lcmSymCheckCall
 branch if condition lcmSymOk target lcmSymHolds
 branch else target smokeAssertionFailed
 label lcmSymHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

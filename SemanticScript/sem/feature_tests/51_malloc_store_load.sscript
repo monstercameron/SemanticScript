@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -19,32 +19,32 @@ async main no
 purpose operation main "Allocate 4 bytes, write 'X' (88) at offset 0, read it back, print."
 invariant operation main "Tests c.malloc + pointer.storeByte + pointer.loadByte + c.free."
 label startMain
-storage module immutable bufferBytes CByteCount 4
-storage module immutable zeroOffset I64 0
-storage module immutable xByteValue CSignedInt32 88
+storage module immutable bufferBytes ByteCount 4
+storage module immutable zeroOffset Int64 0
+storage module immutable xByteValue Int32 88
 call mallocCall c.malloc
-argument mallocCall size CByteCount bufferBytes
+argument mallocCall size ByteCount bufferBytes
 run mallocCall
-bind value heapBuffer COpaqueMemoryAddress mallocCall
+bind value heapBuffer OpaquePointer mallocCall
 call storeCall pointer.storeByte
-argument storeCall buffer COpaqueMemoryAddress heapBuffer
-argument storeCall offset I64 zeroOffset
-argument storeCall value CSignedInt32 xByteValue
+argument storeCall buffer OpaquePointer heapBuffer
+argument storeCall offset Int64 zeroOffset
+argument storeCall value Int32 xByteValue
 run storeCall
 call loadCall pointer.loadByte
-argument loadCall buffer COpaqueMemoryAddress heapBuffer
-argument loadCall offset I64 zeroOffset
+argument loadCall buffer OpaquePointer heapBuffer
+argument loadCall offset Int64 zeroOffset
 run loadCall
-bind value loadedByte I8 loadCall
-memory main mutable loadedVar I64 zeroOffset
+bind value loadedByte Int8 loadCall
+memory main mutable loadedVar Int64 zeroOffset
 set memory loadedVar loadedByte
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 loadedVar
+argument writeCall value Int64 loadedVar
 run writeCall
 ignore void source writeCall
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress heapBuffer
+argument freeCall ptr OpaquePointer heapBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode

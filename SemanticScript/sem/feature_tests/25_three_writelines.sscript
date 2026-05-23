@@ -16,22 +16,22 @@ async main no
 purpose operation main "Three writeLine calls with three distinct string consts."
 invariant operation main "Order matches source."
 label startMain
-storage module immutable firstText CNullTerminatedByteString "first"
-storage module immutable secondText CNullTerminatedByteString "second"
-storage module immutable thirdText CNullTerminatedByteString "third"
+storage module immutable firstText String "first"
+storage module immutable secondText String "second"
+storage module immutable thirdText String "third"
 call writeFirstCall console.writeLine
 argument writeFirstCall console Console console
-argument writeFirstCall text CNullTerminatedByteString firstText
+argument writeFirstCall text String firstText
 run writeFirstCall
 ignore void source writeFirstCall
 call writeSecondCall console.writeLine
 argument writeSecondCall console Console console
-argument writeSecondCall text CNullTerminatedByteString secondText
+argument writeSecondCall text String secondText
 run writeSecondCall
 ignore void source writeSecondCall
 call writeThirdCall console.writeLine
 argument writeThirdCall console Console console
-argument writeThirdCall text CNullTerminatedByteString thirdText
+argument writeThirdCall text String thirdText
 run writeThirdCall
 ignore void source writeThirdCall
 storage module immutable successfulExitCode ExitCode 0

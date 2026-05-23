@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -17,57 +17,57 @@ async main no
 purpose operation main "Exercise 4-arg c.printf (format + 4 trailing args) where every trailing arg is an i64 SSA bind. Hits the new emitCprintfFmtPlusThree decomposition path."
 invariant operation main "Output is '10 20 30 40\\n'."
 label startMain
-storage module immutable triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-argument walkerTriggerCall size CByteCount triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind value walkerTriggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value walkerTriggerBuffer OpaquePointer walkerTriggerCall
 
-storage module immutable tenValue CSignedInt64 10
-storage module immutable twentyValue CSignedInt64 20
-storage module immutable thirtyValue CSignedInt64 30
-storage module immutable fortyValue CSignedInt64 40
+storage module immutable tenValue Int64 10
+storage module immutable twentyValue Int64 20
+storage module immutable thirtyValue Int64 30
+storage module immutable fortyValue Int64 40
 
-call idTenCall identityI64
-argument idTenCall input CSignedInt64 tenValue
+call idTenCall identityInt64
+argument idTenCall input Int64 tenValue
 run idTenCall
-bind value tenBind CSignedInt64 idTenCall
+bind value tenBind Int64 idTenCall
 
-call idTwentyCall identityI64
-argument idTwentyCall input CSignedInt64 twentyValue
+call idTwentyCall identityInt64
+argument idTwentyCall input Int64 twentyValue
 run idTwentyCall
-bind value twentyBind CSignedInt64 idTwentyCall
+bind value twentyBind Int64 idTwentyCall
 
-call idThirtyCall identityI64
-argument idThirtyCall input CSignedInt64 thirtyValue
+call idThirtyCall identityInt64
+argument idThirtyCall input Int64 thirtyValue
 run idThirtyCall
-bind value thirtyBind CSignedInt64 idThirtyCall
+bind value thirtyBind Int64 idThirtyCall
 
-call idFortyCall identityI64
-argument idFortyCall input CSignedInt64 fortyValue
+call idFortyCall identityInt64
+argument idFortyCall input Int64 fortyValue
 run idFortyCall
-bind value fortyBind CSignedInt64 idFortyCall
+bind value fortyBind Int64 idFortyCall
 
-storage module immutable fourArgFormat CNullTerminatedByteString "%lld %lld %lld %lld\n"
+storage module immutable fourArgFormat String "%lld %lld %lld %lld\n"
 
 call printCall c.printf
-argument printCall format CNullTerminatedByteString fourArgFormat
-argument printCall a CSignedInt64 tenBind
-argument printCall b CSignedInt64 twentyBind
-argument printCall c CSignedInt64 thirtyBind
-argument printCall d CSignedInt64 fortyBind
+argument printCall format String fourArgFormat
+argument printCall a Int64 tenBind
+argument printCall b Int64 twentyBind
+argument printCall c Int64 thirtyBind
+argument printCall d Int64 fortyBind
 run printCall
-ignore ok source printCall type CSignedInt32
+ignore ok source printCall type Int32
 
 call freeCall c.free
-argument freeCall ptr COpaqueMemoryAddress walkerTriggerBuffer
+argument freeCall ptr OpaquePointer walkerTriggerBuffer
 run freeCall
 storage module immutable successfulExitCode ExitCode 0
 return ok successfulExitCode
 
-operation identityI64
-input operation identityI64 input CSignedInt64
-output operation identityI64 Result CSignedInt64 Void
-purpose operation identityI64 "Wrap a const integer in a bind so the test exercises the bind-arg path."
-label startIdentityI64
+operation identityInt64
+input operation identityInt64 input Int64
+output operation identityInt64 Result Int64 Void
+purpose operation identityInt64 "Wrap a const integer in a bind so the test exercises the bind-arg path."
+label startIdentityInt64
 return ok input

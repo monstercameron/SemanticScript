@@ -12,8 +12,8 @@ dependency standard.json version 0.1 source standard
 entry console main
 
 error MainError
-errorCase MainError JsonAccessFailed CSignedInt32
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError JsonAccessFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
 
 capability jsonCrudStdout console.stdout write
 purpose operation jsonCrudStdout "Authority to print the JSON CRUD round-trip results."
@@ -25,8 +25,8 @@ capability jsonCrudHeapFree heap free
 purpose operation jsonCrudHeapFree "Authority to release JSON serialization scratch space."
 
 storage module immutable successExit ExitCode 0
-storage module immutable jsonAccessFailedCode CSignedInt32 1
-storage module immutable consoleFailedCode CSignedInt32 2
+storage module immutable jsonAccessFailedCode Int32 1
+storage module immutable consoleFailedCode Int32 2
 
 operation main
 input operation main console Console
@@ -48,17 +48,17 @@ label startMain
 
 storage module immutable documentCapacity JsonCapacityBytes 2048
 storage module immutable scratchCapacity JsonCapacityBytes 512
-storage module immutable objectRootKind CSignedInt32 0
+storage module immutable objectRootKind Int32 0
 
 call allocateScratchCall c.malloc
 argument allocateScratchCall size JsonCapacityBytes scratchCapacity
 run allocateScratchCall
-bind value serializationScratch COpaqueMemoryAddress allocateScratchCall
+bind value serializationScratch OpaquePointer allocateScratchCall
 defer releaseScratchDefer c.free serializationScratch
 
 call createDocumentCall json.createEmptyDocument
 argument createDocumentCall capacityBytes JsonCapacityBytes documentCapacity
-argument createDocumentCall rootKind CSignedInt32 objectRootKind
+argument createDocumentCall rootKind Int32 objectRootKind
 run createDocumentCall
 bind ok todoDocument JsonDocument createDocumentCall
 bind error createDocumentError JsonAccessError createDocumentCall
@@ -71,34 +71,34 @@ argument rootCursorCall document JsonDocument todoDocument
 run rootCursorCall
 bind value rootCursor JsonCursor rootCursorCall
 
-storage module immutable titleField CNullTerminatedByteString "title"
-storage module immutable titleValue CNullTerminatedByteString "ship json"
+storage module immutable titleField String "title"
+storage module immutable titleValue String "ship json"
 call setTitleCall json.setObjectFieldString
 argument setTitleCall document JsonDocument todoDocument
 argument setTitleCall cursor JsonCursor rootCursor
-argument setTitleCall fieldName CNullTerminatedByteString titleField
-argument setTitleCall value CNullTerminatedByteString titleValue
+argument setTitleCall fieldName String titleField
+argument setTitleCall value String titleValue
 run setTitleCall
-ignore ok source setTitleCall type CSignedInt32
-bind error setTitleError CSignedInt32 setTitleCall
+ignore ok source setTitleCall type Int32
+bind error setTitleError Int32 setTitleCall
 branch error source setTitleCall target jsonAccessFailed
 
-storage module immutable countField CNullTerminatedByteString "count"
-storage module immutable initialCount I64 1
+storage module immutable countField String "count"
+storage module immutable initialCount Int64 1
 call setInitialCountCall json.setObjectFieldInt64
 argument setInitialCountCall document JsonDocument todoDocument
 argument setInitialCountCall cursor JsonCursor rootCursor
-argument setInitialCountCall fieldName CNullTerminatedByteString countField
-argument setInitialCountCall value I64 initialCount
+argument setInitialCountCall fieldName String countField
+argument setInitialCountCall value Int64 initialCount
 run setInitialCountCall
-ignore ok source setInitialCountCall type CSignedInt32
-bind error setInitialCountError CSignedInt32 setInitialCountCall
+ignore ok source setInitialCountCall type Int32
+bind error setInitialCountError Int32 setInitialCountCall
 branch error source setInitialCountCall target jsonAccessFailed
 
-storage module immutable titlePath CNullTerminatedByteString ".title"
+storage module immutable titlePath String ".title"
 call findTitleCursorCall json.cursorAtPath
 argument findTitleCursorCall document JsonDocument todoDocument
-argument findTitleCursorCall path CNullTerminatedByteString titlePath
+argument findTitleCursorCall path String titlePath
 run findTitleCursorCall
 bind ok titleCursor JsonCursor findTitleCursorCall
 bind error findTitleCursorError JsonAccessError findTitleCursorCall
@@ -107,7 +107,7 @@ branch error source findTitleCursorCall target jsonAccessFailed
 call readTitleCall json.cursorString
 argument readTitleCall document JsonDocument todoDocument
 argument readTitleCall cursor JsonCursor titleCursor
-argument readTitleCall scratch COpaqueMemoryAddress serializationScratch
+argument readTitleCall scratch OpaquePointer serializationScratch
 argument readTitleCall scratchCapacity JsonCapacityBytes scratchCapacity
 run readTitleCall
 bind ok recoveredTitle JsonText readTitleCall
@@ -122,29 +122,29 @@ ignore void source writeTitleCall
 bind error writeTitleError ConsoleWriteError writeTitleCall
 branch error source writeTitleCall target consoleWriteFailed
 
-storage module immutable updatedCount I64 2
+storage module immutable updatedCount Int64 2
 call updateCountCall json.setObjectFieldInt64
 argument updateCountCall document JsonDocument todoDocument
 argument updateCountCall cursor JsonCursor rootCursor
-argument updateCountCall fieldName CNullTerminatedByteString countField
-argument updateCountCall value I64 updatedCount
+argument updateCountCall fieldName String countField
+argument updateCountCall value Int64 updatedCount
 run updateCountCall
-ignore ok source updateCountCall type CSignedInt32
-bind error updateCountError CSignedInt32 updateCountCall
+ignore ok source updateCountCall type Int32
+bind error updateCountError Int32 updateCountCall
 branch error source updateCountCall target jsonAccessFailed
 
 call removeTitleCall json.removeObjectField
 argument removeTitleCall document JsonDocument todoDocument
 argument removeTitleCall cursor JsonCursor rootCursor
-argument removeTitleCall fieldName CNullTerminatedByteString titleField
+argument removeTitleCall fieldName String titleField
 run removeTitleCall
-ignore ok source removeTitleCall type CSignedInt32
-bind error removeTitleError CSignedInt32 removeTitleCall
+ignore ok source removeTitleCall type Int32
+bind error removeTitleError Int32 removeTitleCall
 branch error source removeTitleCall target jsonAccessFailed
 
 call serializeDocumentCall json.serializeDocument
 argument serializeDocumentCall document JsonDocument todoDocument
-argument serializeDocumentCall scratch COpaqueMemoryAddress serializationScratch
+argument serializeDocumentCall scratch OpaquePointer serializationScratch
 argument serializeDocumentCall scratchCapacity JsonCapacityBytes scratchCapacity
 run serializeDocumentCall
 bind ok serializedDocument JsonText serializeDocumentCall

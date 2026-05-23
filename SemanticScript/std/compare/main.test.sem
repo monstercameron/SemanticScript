@@ -5,7 +5,7 @@
 # Companion smoke + extended unit tests for std/compare/main.sem.
 # Imports the compare module and asserts every ordering / equality
 # predicate plus reflexive / irreflexive / symmetry / tolerance
-# property tests over CSignedInt64 and CFloat64 inputs.
+# property tests over Int64 and Float64 inputs.
 #
 # Pattern: std/main.sem ships pure-module operations only;
 # std/main.test.sem carries every smoke / unit test for it.
@@ -39,20 +39,20 @@ purpose operation main "Smoke-test the comparison ops. Prints OK and exits 0."
 invariant operation main "All assertions pass."
 
 label startMain
-storage module immutable fiveInt CSignedInt64 5
-storage module immutable tenInt CSignedInt64 10
-storage module immutable tenIntCopy CSignedInt64 10
+storage module immutable fiveInt Int64 5
+storage module immutable tenInt Int64 10
+storage module immutable tenIntCopy Int64 10
 
 # compareSignedInt64Ordering(5, 10) == comparisonResultLessThan (-1)
 call assertCompareLessThanCall compareSignedInt64Ordering
-argument assertCompareLessThanCall leftValue CSignedInt64 fiveInt
-argument assertCompareLessThanCall rightValue CSignedInt64 tenInt
+argument assertCompareLessThanCall leftValue Int64 fiveInt
+argument assertCompareLessThanCall rightValue Int64 tenInt
 run assertCompareLessThanCall
-bind value compareLessResult CSignedInt32 assertCompareLessThanCall
-storage module immutable expectedNegativeOne CSignedInt32 -1
-call checkCompareLessCall math.equalI64
-argument checkCompareLessCall left I64 compareLessResult
-argument checkCompareLessCall right I64 expectedNegativeOne
+bind value compareLessResult Int32 assertCompareLessThanCall
+storage module immutable expectedNegativeOne Int32 -1
+call checkCompareLessCall math.equalInt64
+argument checkCompareLessCall left Int64 compareLessResult
+argument checkCompareLessCall right Int64 expectedNegativeOne
 run checkCompareLessCall
 bind value compareLessOk Bool checkCompareLessCall
 branch if condition compareLessOk target compareLessHolds
@@ -61,8 +61,8 @@ label compareLessHolds
 
 # isSignedInt64LeftLessThanRight(5, 10) == true
 call assertIsLessThanCall isSignedInt64LeftLessThanRight
-argument assertIsLessThanCall leftValue CSignedInt64 fiveInt
-argument assertIsLessThanCall rightValue CSignedInt64 tenInt
+argument assertIsLessThanCall leftValue Int64 fiveInt
+argument assertIsLessThanCall rightValue Int64 tenInt
 run assertIsLessThanCall
 bind value isLessResult Bool assertIsLessThanCall
 branch if condition isLessResult target isLessHolds
@@ -71,8 +71,8 @@ label isLessHolds
 
 # areSignedInt64ValuesEqual(10, 10) == true
 call assertEqualsCall areSignedInt64ValuesEqual
-argument assertEqualsCall leftValue CSignedInt64 tenInt
-argument assertEqualsCall rightValue CSignedInt64 tenIntCopy
+argument assertEqualsCall leftValue Int64 tenInt
+argument assertEqualsCall rightValue Int64 tenIntCopy
 run assertEqualsCall
 bind value equalsResult Bool assertEqualsCall
 branch if condition equalsResult target equalsHolds
@@ -81,8 +81,8 @@ label equalsHolds
 
 # isSignedInt64LeftGreaterThanOrEqualRight(10, 5) == true
 call assertGreaterOrEqualCall isSignedInt64LeftGreaterThanOrEqualRight
-argument assertGreaterOrEqualCall leftValue CSignedInt64 tenInt
-argument assertGreaterOrEqualCall rightValue CSignedInt64 fiveInt
+argument assertGreaterOrEqualCall leftValue Int64 tenInt
+argument assertGreaterOrEqualCall rightValue Int64 fiveInt
 run assertGreaterOrEqualCall
 bind value greaterOrEqualResult Bool assertGreaterOrEqualCall
 branch if condition greaterOrEqualResult target greaterOrEqualHolds
@@ -90,16 +90,16 @@ branch else target smokeAssertionFailed
 label greaterOrEqualHolds
 
 # compareFloat64Ordering(1.0, 2.0) == comparisonResultLessThan
-storage module immutable oneFloat CFloat64 1.0
-storage module immutable twoFloat CFloat64 2.0
+storage module immutable oneFloat Float64 1.0
+storage module immutable twoFloat Float64 2.0
 call assertCompareFloatCall compareFloat64Ordering
-argument assertCompareFloatCall leftValue CFloat64 oneFloat
-argument assertCompareFloatCall rightValue CFloat64 twoFloat
+argument assertCompareFloatCall leftValue Float64 oneFloat
+argument assertCompareFloatCall rightValue Float64 twoFloat
 run assertCompareFloatCall
-bind value compareFloatResult CSignedInt32 assertCompareFloatCall
-call checkCompareFloatCall math.equalI64
-argument checkCompareFloatCall left I64 compareFloatResult
-argument checkCompareFloatCall right I64 expectedNegativeOne
+bind value compareFloatResult Int32 assertCompareFloatCall
+call checkCompareFloatCall math.equalInt64
+argument checkCompareFloatCall left Int64 compareFloatResult
+argument checkCompareFloatCall right Int64 expectedNegativeOne
 run checkCompareFloatCall
 bind value compareFloatOk Bool checkCompareFloatCall
 branch if condition compareFloatOk target compareFloatHolds
@@ -107,12 +107,12 @@ branch else target smokeAssertionFailed
 label compareFloatHolds
 
 # areFloat64ValuesWithinTolerance(1.0, 1.05, 0.1) == true
-storage module immutable smallTolerance CFloat64 0.1
-storage module immutable slightlyLargerFloat CFloat64 1.05
+storage module immutable smallTolerance Float64 0.1
+storage module immutable slightlyLargerFloat Float64 1.05
 call assertToleranceCall areFloat64ValuesWithinTolerance
-argument assertToleranceCall leftValue CFloat64 oneFloat
-argument assertToleranceCall rightValue CFloat64 slightlyLargerFloat
-argument assertToleranceCall tolerance CFloat64 smallTolerance
+argument assertToleranceCall leftValue Float64 oneFloat
+argument assertToleranceCall rightValue Float64 slightlyLargerFloat
+argument assertToleranceCall tolerance Float64 smallTolerance
 run assertToleranceCall
 bind value toleranceResult Bool assertToleranceCall
 branch if condition toleranceResult target toleranceHolds
@@ -126,18 +126,18 @@ label toleranceHolds
 # single-direction smoke above can't catch.
 # ============================================================
 
-storage module immutable expectedZero CSignedInt32 0
-storage module immutable expectedPositiveOne CSignedInt32 1
+storage module immutable expectedZero Int32 0
+storage module immutable expectedPositiveOne Int32 1
 
 # compareSignedInt64Ordering(10, 5) == comparisonResultGreaterThan (+1)
 call cmpGreaterCall compareSignedInt64Ordering
-argument cmpGreaterCall leftValue CSignedInt64 tenInt
-argument cmpGreaterCall rightValue CSignedInt64 fiveInt
+argument cmpGreaterCall leftValue Int64 tenInt
+argument cmpGreaterCall rightValue Int64 fiveInt
 run cmpGreaterCall
-bind value cmpGreaterResult CSignedInt32 cmpGreaterCall
-call cmpGreaterCheckCall math.equalI64
-argument cmpGreaterCheckCall left I64 cmpGreaterResult
-argument cmpGreaterCheckCall right I64 expectedPositiveOne
+bind value cmpGreaterResult Int32 cmpGreaterCall
+call cmpGreaterCheckCall math.equalInt64
+argument cmpGreaterCheckCall left Int64 cmpGreaterResult
+argument cmpGreaterCheckCall right Int64 expectedPositiveOne
 run cmpGreaterCheckCall
 bind value cmpGreaterOk Bool cmpGreaterCheckCall
 branch if condition cmpGreaterOk target cmpGreaterHolds
@@ -146,13 +146,13 @@ label cmpGreaterHolds
 
 # compareSignedInt64Ordering(10, 10) == comparisonResultEqual (0)
 call cmpEqCall compareSignedInt64Ordering
-argument cmpEqCall leftValue CSignedInt64 tenInt
-argument cmpEqCall rightValue CSignedInt64 tenIntCopy
+argument cmpEqCall leftValue Int64 tenInt
+argument cmpEqCall rightValue Int64 tenIntCopy
 run cmpEqCall
-bind value cmpEqResult CSignedInt32 cmpEqCall
-call cmpEqCheckCall math.equalI64
-argument cmpEqCheckCall left I64 cmpEqResult
-argument cmpEqCheckCall right I64 expectedZero
+bind value cmpEqResult Int32 cmpEqCall
+call cmpEqCheckCall math.equalInt64
+argument cmpEqCheckCall left Int64 cmpEqResult
+argument cmpEqCheckCall right Int64 expectedZero
 run cmpEqCheckCall
 bind value cmpEqOk Bool cmpEqCheckCall
 branch if condition cmpEqOk target cmpEqHolds
@@ -161,8 +161,8 @@ label cmpEqHolds
 
 # areSignedInt64ValuesEqual(5, 10) == false (inequality leg)
 call notEqualCall areSignedInt64ValuesEqual
-argument notEqualCall leftValue CSignedInt64 fiveInt
-argument notEqualCall rightValue CSignedInt64 tenInt
+argument notEqualCall leftValue Int64 fiveInt
+argument notEqualCall rightValue Int64 tenInt
 run notEqualCall
 bind value notEqualResult Bool notEqualCall
 branch if condition notEqualResult target smokeAssertionFailed
@@ -171,8 +171,8 @@ label notEqualHolds
 
 # isSignedInt64LeftLessThanOrEqualRight(5, 5) == true (reflexive)
 call leReflexiveCall isSignedInt64LeftLessThanOrEqualRight
-argument leReflexiveCall leftValue CSignedInt64 fiveInt
-argument leReflexiveCall rightValue CSignedInt64 fiveInt
+argument leReflexiveCall leftValue Int64 fiveInt
+argument leReflexiveCall rightValue Int64 fiveInt
 run leReflexiveCall
 bind value leReflexiveResult Bool leReflexiveCall
 branch if condition leReflexiveResult target leReflexiveHolds
@@ -181,8 +181,8 @@ label leReflexiveHolds
 
 # isSignedInt64LeftLessThanOrEqualRight(10, 5) == false
 call leFalseCall isSignedInt64LeftLessThanOrEqualRight
-argument leFalseCall leftValue CSignedInt64 tenInt
-argument leFalseCall rightValue CSignedInt64 fiveInt
+argument leFalseCall leftValue Int64 tenInt
+argument leFalseCall rightValue Int64 fiveInt
 run leFalseCall
 bind value leFalseResult Bool leFalseCall
 branch if condition leFalseResult target smokeAssertionFailed
@@ -191,8 +191,8 @@ label leFalseHolds
 
 # isSignedInt64LeftGreaterThanRight(10, 5) == true
 call gtTrueCall isSignedInt64LeftGreaterThanRight
-argument gtTrueCall leftValue CSignedInt64 tenInt
-argument gtTrueCall rightValue CSignedInt64 fiveInt
+argument gtTrueCall leftValue Int64 tenInt
+argument gtTrueCall rightValue Int64 fiveInt
 run gtTrueCall
 bind value gtTrueResult Bool gtTrueCall
 branch if condition gtTrueResult target gtTrueHolds
@@ -201,8 +201,8 @@ label gtTrueHolds
 
 # isSignedInt64LeftGreaterThanRight(5, 5) == false (irreflexive)
 call gtIrreflexiveCall isSignedInt64LeftGreaterThanRight
-argument gtIrreflexiveCall leftValue CSignedInt64 fiveInt
-argument gtIrreflexiveCall rightValue CSignedInt64 fiveInt
+argument gtIrreflexiveCall leftValue Int64 fiveInt
+argument gtIrreflexiveCall rightValue Int64 fiveInt
 run gtIrreflexiveCall
 bind value gtIrreflexiveResult Bool gtIrreflexiveCall
 branch if condition gtIrreflexiveResult target smokeAssertionFailed
@@ -211,8 +211,8 @@ label gtIrreflexiveHolds
 
 # isSignedInt64LeftLessThanRight(10, 5) == false (false leg)
 call ltFalseCall isSignedInt64LeftLessThanRight
-argument ltFalseCall leftValue CSignedInt64 tenInt
-argument ltFalseCall rightValue CSignedInt64 fiveInt
+argument ltFalseCall leftValue Int64 tenInt
+argument ltFalseCall rightValue Int64 fiveInt
 run ltFalseCall
 bind value ltFalseResult Bool ltFalseCall
 branch if condition ltFalseResult target smokeAssertionFailed
@@ -221,13 +221,13 @@ label ltFalseHolds
 
 # compareFloat64Ordering(2.0, 1.0) == greaterThan (inverse)
 call cmpFloatGreaterCall compareFloat64Ordering
-argument cmpFloatGreaterCall leftValue CFloat64 twoFloat
-argument cmpFloatGreaterCall rightValue CFloat64 oneFloat
+argument cmpFloatGreaterCall leftValue Float64 twoFloat
+argument cmpFloatGreaterCall rightValue Float64 oneFloat
 run cmpFloatGreaterCall
-bind value cmpFloatGreaterResult CSignedInt32 cmpFloatGreaterCall
-call cmpFloatGreaterCheckCall math.equalI64
-argument cmpFloatGreaterCheckCall left I64 cmpFloatGreaterResult
-argument cmpFloatGreaterCheckCall right I64 expectedPositiveOne
+bind value cmpFloatGreaterResult Int32 cmpFloatGreaterCall
+call cmpFloatGreaterCheckCall math.equalInt64
+argument cmpFloatGreaterCheckCall left Int64 cmpFloatGreaterResult
+argument cmpFloatGreaterCheckCall right Int64 expectedPositiveOne
 run cmpFloatGreaterCheckCall
 bind value cmpFloatGreaterOk Bool cmpFloatGreaterCheckCall
 branch if condition cmpFloatGreaterOk target cmpFloatGreaterHolds
@@ -236,13 +236,13 @@ label cmpFloatGreaterHolds
 
 # compareFloat64Ordering(1.0, 1.0) == equal
 call cmpFloatEqCall compareFloat64Ordering
-argument cmpFloatEqCall leftValue CFloat64 oneFloat
-argument cmpFloatEqCall rightValue CFloat64 oneFloat
+argument cmpFloatEqCall leftValue Float64 oneFloat
+argument cmpFloatEqCall rightValue Float64 oneFloat
 run cmpFloatEqCall
-bind value cmpFloatEqResult CSignedInt32 cmpFloatEqCall
-call cmpFloatEqCheckCall math.equalI64
-argument cmpFloatEqCheckCall left I64 cmpFloatEqResult
-argument cmpFloatEqCheckCall right I64 expectedZero
+bind value cmpFloatEqResult Int32 cmpFloatEqCall
+call cmpFloatEqCheckCall math.equalInt64
+argument cmpFloatEqCheckCall left Int64 cmpFloatEqResult
+argument cmpFloatEqCheckCall right Int64 expectedZero
 run cmpFloatEqCheckCall
 bind value cmpFloatEqOk Bool cmpFloatEqCheckCall
 branch if condition cmpFloatEqOk target cmpFloatEqHolds
@@ -251,9 +251,9 @@ label cmpFloatEqHolds
 
 # areFloat64ValuesWithinTolerance(1.0, 2.0, 0.1) == false (outside tolerance)
 call tolFalseCall areFloat64ValuesWithinTolerance
-argument tolFalseCall leftValue CFloat64 oneFloat
-argument tolFalseCall rightValue CFloat64 twoFloat
-argument tolFalseCall tolerance CFloat64 smallTolerance
+argument tolFalseCall leftValue Float64 oneFloat
+argument tolFalseCall rightValue Float64 twoFloat
+argument tolFalseCall tolerance Float64 smallTolerance
 run tolFalseCall
 bind value tolFalseResult Bool tolFalseCall
 branch if condition tolFalseResult target smokeAssertionFailed
@@ -262,9 +262,9 @@ label tolFalseHolds
 
 # Symmetry: withinTolerance(1.05, 1.0, 0.1) == true (reverse args)
 call tolSymCall areFloat64ValuesWithinTolerance
-argument tolSymCall leftValue CFloat64 slightlyLargerFloat
-argument tolSymCall rightValue CFloat64 oneFloat
-argument tolSymCall tolerance CFloat64 smallTolerance
+argument tolSymCall leftValue Float64 slightlyLargerFloat
+argument tolSymCall rightValue Float64 oneFloat
+argument tolSymCall tolerance Float64 smallTolerance
 run tolSymCall
 bind value tolSymResult Bool tolSymCall
 branch if condition tolSymResult target tolSymHolds
@@ -272,18 +272,18 @@ branch else target smokeAssertionFailed
 label tolSymHolds
 
 # Emit "OK\n" and exit 0.
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

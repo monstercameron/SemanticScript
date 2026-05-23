@@ -7,7 +7,7 @@ moduleDoesNotOwn standard.char "App-specific wrappers, compatibility aliases, or
 invariant module standard.char "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.char charModuleVersionText
-storage module immutable charModuleVersionText CNullTerminatedByteString "standard.char 0.1"
+storage module immutable charModuleVersionText String "standard.char 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -17,7 +17,7 @@ storage module immutable charModuleVersionText CNullTerminatedByteString "standa
 # rationale: This module is pure data â€” names for specific ASCII
 #   byte values that programs need to spell without embedding magic
 #   integers. The pre-refined version exposed each value as a
-#   zero-argument operation returning `Result CSignedInt32 Void`,
+#   zero-argument operation returning `Result Int32 Void`,
 #   which is the spec gap "Constants modeled as operations" called
 #   out in STDLIB_RENAME_PROPOSALS.md. The refined surface uses
 #   `domainLiteral NAME TYPE VALUE` at module scope â€” AST Â§2.12.5's
@@ -35,82 +35,82 @@ storage module immutable charModuleVersionText CNullTerminatedByteString "standa
 # timing: zero â€” the LLVM optimizer inlines every reference.
 #
 # observability: nothing to observe at runtime; consumers see only
-#   the raw CSignedInt32 value.
+#   the raw Int32 value.
 
 # section char.controlBytes
 # rationale: ASCII control-set codepoints commonly named in source code.
 
-domainLiteral asciiNullCharacterCode CSignedInt32 0
+domainLiteral asciiNullCharacterCode Int32 0
 domainLiteralSource asciiNullCharacterCode ascii.NUL
 domainLiteralTrust asciiNullCharacterCode trustedStaticLiteral
 
-domainLiteral asciiBellCharacterCode CSignedInt32 7
+domainLiteral asciiBellCharacterCode Int32 7
 domainLiteralSource asciiBellCharacterCode ascii.BEL
 domainLiteralTrust asciiBellCharacterCode trustedStaticLiteral
 
-domainLiteral asciiBackspaceCharacterCode CSignedInt32 8
+domainLiteral asciiBackspaceCharacterCode Int32 8
 domainLiteralSource asciiBackspaceCharacterCode ascii.BS
 domainLiteralTrust asciiBackspaceCharacterCode trustedStaticLiteral
 
-domainLiteral asciiHorizontalTabCharacterCode CSignedInt32 9
+domainLiteral asciiHorizontalTabCharacterCode Int32 9
 domainLiteralSource asciiHorizontalTabCharacterCode ascii.HT
 domainLiteralTrust asciiHorizontalTabCharacterCode trustedStaticLiteral
 
-domainLiteral asciiNewlineCharacterCode CSignedInt32 10
+domainLiteral asciiNewlineCharacterCode Int32 10
 domainLiteralSource asciiNewlineCharacterCode ascii.LF
 domainLiteralTrust asciiNewlineCharacterCode trustedStaticLiteral
 
-domainLiteral asciiCarriageReturnCharacterCode CSignedInt32 13
+domainLiteral asciiCarriageReturnCharacterCode Int32 13
 domainLiteralSource asciiCarriageReturnCharacterCode ascii.CR
 domainLiteralTrust asciiCarriageReturnCharacterCode trustedStaticLiteral
 
-domainLiteral asciiEscapeCharacterCode CSignedInt32 27
+domainLiteral asciiEscapeCharacterCode Int32 27
 domainLiteralSource asciiEscapeCharacterCode ascii.ESC
 domainLiteralTrust asciiEscapeCharacterCode trustedStaticLiteral
 
-domainLiteral asciiDeleteCharacterCode CSignedInt32 127
+domainLiteral asciiDeleteCharacterCode Int32 127
 domainLiteralSource asciiDeleteCharacterCode ascii.DEL
 domainLiteralTrust asciiDeleteCharacterCode trustedStaticLiteral
 
 # section char.printableBytes
 # rationale: commonly-spelled printable punctuation bytes.
 
-domainLiteral asciiSpaceCharacterCode CSignedInt32 32
+domainLiteral asciiSpaceCharacterCode Int32 32
 domainLiteralSource asciiSpaceCharacterCode ascii.SP
 domainLiteralTrust asciiSpaceCharacterCode trustedStaticLiteral
 
-domainLiteral asciiDoubleQuoteCharacterCode CSignedInt32 34
+domainLiteral asciiDoubleQuoteCharacterCode Int32 34
 domainLiteralSource asciiDoubleQuoteCharacterCode ascii.QuotationMark
 domainLiteralTrust asciiDoubleQuoteCharacterCode trustedStaticLiteral
 
-domainLiteral asciiSingleQuoteCharacterCode CSignedInt32 39
+domainLiteral asciiSingleQuoteCharacterCode Int32 39
 domainLiteralSource asciiSingleQuoteCharacterCode ascii.Apostrophe
 domainLiteralTrust asciiSingleQuoteCharacterCode trustedStaticLiteral
 
-domainLiteral asciiAsteriskCharacterCode CSignedInt32 42
+domainLiteral asciiAsteriskCharacterCode Int32 42
 domainLiteralSource asciiAsteriskCharacterCode ascii.Asterisk
 domainLiteralTrust asciiAsteriskCharacterCode trustedStaticLiteral
 
-domainLiteral asciiCommaCharacterCode CSignedInt32 44
+domainLiteral asciiCommaCharacterCode Int32 44
 domainLiteralSource asciiCommaCharacterCode ascii.Comma
 domainLiteralTrust asciiCommaCharacterCode trustedStaticLiteral
 
-domainLiteral asciiPeriodCharacterCode CSignedInt32 46
+domainLiteral asciiPeriodCharacterCode Int32 46
 domainLiteralSource asciiPeriodCharacterCode ascii.FullStop
 domainLiteralTrust asciiPeriodCharacterCode trustedStaticLiteral
 
-domainLiteral asciiSlashCharacterCode CSignedInt32 47
+domainLiteral asciiSlashCharacterCode Int32 47
 domainLiteralSource asciiSlashCharacterCode ascii.Solidus
 domainLiteralTrust asciiSlashCharacterCode trustedStaticLiteral
 
-domainLiteral asciiColonCharacterCode CSignedInt32 58
+domainLiteral asciiColonCharacterCode Int32 58
 domainLiteralSource asciiColonCharacterCode ascii.Colon
 domainLiteralTrust asciiColonCharacterCode trustedStaticLiteral
 
-domainLiteral asciiSemicolonCharacterCode CSignedInt32 59
+domainLiteral asciiSemicolonCharacterCode Int32 59
 domainLiteralSource asciiSemicolonCharacterCode ascii.Semicolon
 domainLiteralTrust asciiSemicolonCharacterCode trustedStaticLiteral
 
-domainLiteral asciiBackslashCharacterCode CSignedInt32 92
+domainLiteral asciiBackslashCharacterCode Int32 92
 domainLiteralSource asciiBackslashCharacterCode ascii.ReverseSolidus
 domainLiteralTrust asciiBackslashCharacterCode trustedStaticLiteral

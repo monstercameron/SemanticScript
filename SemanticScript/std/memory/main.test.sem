@@ -55,37 +55,37 @@ purpose operation main "Smoke-test copy / fill / compare / find on a heap-alloca
 invariant operation main "Smoke fails closed: malloc failure surfaces MemoryAllocationFailed; any assertion failure surfaces MemorySmokeAssertionFailed."
 
 label startMain
-storage module immutable allocSize CByteCount 16
+storage module immutable allocSize ByteCount 16
 call allocateBufferCall c.malloc
-argument allocateBufferCall size CByteCount allocSize
+argument allocateBufferCall size ByteCount allocSize
 run allocateBufferCall
-bind value workBuffer COpaqueMemoryAddress allocateBufferCall
-bind error heapAllocationError CSignedInt32 allocateBufferCall
+bind value workBuffer OpaquePointer allocateBufferCall
+bind error heapAllocationError Int32 allocateBufferCall
 branch error source allocateBufferCall target heapAllocationFailedHandler
 defer releaseAllocateBufferCall c.free workBuffer
 
-storage module immutable upperALetterCode CSignedInt32 65
-storage module immutable fiveByteCount CByteCount 5
-storage module immutable fiveAsAscii CNullTerminatedByteString "AAAAA"
-storage module immutable helloLiteralForMemory CNullTerminatedByteString "hello"
-storage module immutable integerZeroBoundaryForMemoryLocal CSignedInt64 0
+storage module immutable upperALetterCode Int32 65
+storage module immutable fiveByteCount ByteCount 5
+storage module immutable fiveAsAscii String "AAAAA"
+storage module immutable helloLiteralForMemory String "hello"
+storage module immutable integerZeroBoundaryForMemoryLocal Int64 0
 
 call runFillCall fillMemoryBytesWithValue
-argument runFillCall byteBuffer COpaqueMemoryAddress workBuffer
-argument runFillCall targetValue CSignedInt32 upperALetterCode
-argument runFillCall byteCount CByteCount fiveByteCount
+argument runFillCall byteBuffer OpaquePointer workBuffer
+argument runFillCall targetValue Int32 upperALetterCode
+argument runFillCall byteCount ByteCount fiveByteCount
 run runFillCall
-ignore value source runFillCall type CByteCount
+ignore value source runFillCall type ByteCount
 
 call assertFillCompareCall compareMemoryByteRanges
-argument assertFillCompareCall leftBuffer CNullTerminatedByteString workBuffer
-argument assertFillCompareCall rightBuffer CNullTerminatedByteString fiveAsAscii
-argument assertFillCompareCall byteCount CByteCount fiveByteCount
+argument assertFillCompareCall leftBuffer String workBuffer
+argument assertFillCompareCall rightBuffer String fiveAsAscii
+argument assertFillCompareCall byteCount ByteCount fiveByteCount
 run assertFillCompareCall
-bind value fillCompareResult CSignedInt64 assertFillCompareCall
-call checkFillCompareCall math.equalI64
-argument checkFillCompareCall left I64 fillCompareResult
-argument checkFillCompareCall right I64 integerZeroBoundaryForMemoryLocal
+bind value fillCompareResult Int64 assertFillCompareCall
+call checkFillCompareCall math.equalInt64
+argument checkFillCompareCall left Int64 fillCompareResult
+argument checkFillCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkFillCompareCall
 bind value fillCompareOk Bool checkFillCompareCall
 branch if condition fillCompareOk target fillCompareHolds
@@ -93,21 +93,21 @@ branch else target smokeAssertionFailed
 label fillCompareHolds
 
 call runCopyCall copyMemoryBytes
-argument runCopyCall destinationBuffer COpaqueMemoryAddress workBuffer
-argument runCopyCall sourceBuffer CNullTerminatedByteString helloLiteralForMemory
-argument runCopyCall byteCount CByteCount fiveByteCount
+argument runCopyCall destinationBuffer OpaquePointer workBuffer
+argument runCopyCall sourceBuffer String helloLiteralForMemory
+argument runCopyCall byteCount ByteCount fiveByteCount
 run runCopyCall
-ignore value source runCopyCall type CByteCount
+ignore value source runCopyCall type ByteCount
 
 call assertCopyCompareCall compareMemoryByteRanges
-argument assertCopyCompareCall leftBuffer CNullTerminatedByteString workBuffer
-argument assertCopyCompareCall rightBuffer CNullTerminatedByteString helloLiteralForMemory
-argument assertCopyCompareCall byteCount CByteCount fiveByteCount
+argument assertCopyCompareCall leftBuffer String workBuffer
+argument assertCopyCompareCall rightBuffer String helloLiteralForMemory
+argument assertCopyCompareCall byteCount ByteCount fiveByteCount
 run assertCopyCompareCall
-bind value copyCompareResult CSignedInt64 assertCopyCompareCall
-call checkCopyCompareCall math.equalI64
-argument checkCopyCompareCall left I64 copyCompareResult
-argument checkCopyCompareCall right I64 integerZeroBoundaryForMemoryLocal
+bind value copyCompareResult Int64 assertCopyCompareCall
+call checkCopyCompareCall math.equalInt64
+argument checkCopyCompareCall left Int64 copyCompareResult
+argument checkCopyCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkCopyCompareCall
 bind value copyCompareOk Bool checkCopyCompareCall
 branch if condition copyCompareOk target copyCompareHolds
@@ -115,17 +115,17 @@ branch else target smokeAssertionFailed
 label copyCompareHolds
 
 # findByteValueInMemoryRange: 'l' in "hello" at offset 2
-storage module immutable lowercaseLForMemory CSignedInt32 108
-storage module immutable expectedFindOffset CSignedInt64 2
+storage module immutable lowercaseLForMemory Int32 108
+storage module immutable expectedFindOffset Int64 2
 call assertFindCall findByteValueInMemoryRange
-argument assertFindCall byteBuffer CNullTerminatedByteString workBuffer
-argument assertFindCall targetValue CSignedInt32 lowercaseLForMemory
-argument assertFindCall byteCount CByteCount fiveByteCount
+argument assertFindCall byteBuffer String workBuffer
+argument assertFindCall targetValue Int32 lowercaseLForMemory
+argument assertFindCall byteCount ByteCount fiveByteCount
 run assertFindCall
-bind value findResult CSignedInt64 assertFindCall
-call checkFindCall math.equalI64
-argument checkFindCall left I64 findResult
-argument checkFindCall right I64 expectedFindOffset
+bind value findResult Int64 assertFindCall
+call checkFindCall math.equalInt64
+argument checkFindCall left Int64 findResult
+argument checkFindCall right Int64 expectedFindOffset
 run checkFindCall
 bind value findOk Bool checkFindCall
 branch if condition findOk target findHolds
@@ -138,29 +138,29 @@ label findHolds
 # hashMemoryBytesWithFnv1a) plus boundary / property cases.
 # ============================================================
 
-storage module immutable zeroByteCountMem CByteCount 0
-storage module immutable helloAgainLiteral CNullTerminatedByteString "hello"
-storage module immutable lowercaseZForMem CSignedInt32 122
+storage module immutable zeroByteCountMem ByteCount 0
+storage module immutable helloAgainLiteral String "hello"
+storage module immutable lowercaseZForMem Int32 122
 
 # zeroMemoryBytes: zero out the first 5 bytes of the buffer, then
 # verify byte at offset 0 is 0 via findByteValueInMemoryRange.
 call runZeroCall zeroMemoryBytes
-argument runZeroCall byteBuffer COpaqueMemoryAddress workBuffer
-argument runZeroCall byteCount CByteCount fiveByteCount
+argument runZeroCall byteBuffer OpaquePointer workBuffer
+argument runZeroCall byteCount ByteCount fiveByteCount
 run runZeroCall
-ignore value source runZeroCall type CByteCount
+ignore value source runZeroCall type ByteCount
 
-storage module immutable nullByteCodeMem CSignedInt32 0
-storage module immutable zeroOffset CSignedInt64 0
+storage module immutable nullByteCodeMem Int32 0
+storage module immutable zeroOffset Int64 0
 call findZeroCall findByteValueInMemoryRange
-argument findZeroCall byteBuffer CNullTerminatedByteString workBuffer
-argument findZeroCall targetValue CSignedInt32 nullByteCodeMem
-argument findZeroCall byteCount CByteCount fiveByteCount
+argument findZeroCall byteBuffer String workBuffer
+argument findZeroCall targetValue Int32 nullByteCodeMem
+argument findZeroCall byteCount ByteCount fiveByteCount
 run findZeroCall
-bind value findZeroResult CSignedInt64 findZeroCall
-call checkFindZeroCall math.equalI64
-argument checkFindZeroCall left I64 findZeroResult
-argument checkFindZeroCall right I64 zeroOffset
+bind value findZeroResult Int64 findZeroCall
+call checkFindZeroCall math.equalInt64
+argument checkFindZeroCall left Int64 findZeroResult
+argument checkFindZeroCall right Int64 zeroOffset
 run checkFindZeroCall
 bind value findZeroOk Bool checkFindZeroCall
 branch if condition findZeroOk target findZeroHolds
@@ -171,37 +171,37 @@ label findZeroHolds
 # After move from buffer[0..5] to buffer[2..7] (overlapping right), the
 # 5-byte content at offset 2 should be "hello".
 call refillCopyCall copyMemoryBytes
-argument refillCopyCall destinationBuffer COpaqueMemoryAddress workBuffer
-argument refillCopyCall sourceBuffer CNullTerminatedByteString helloAgainLiteral
-argument refillCopyCall byteCount CByteCount fiveByteCount
+argument refillCopyCall destinationBuffer OpaquePointer workBuffer
+argument refillCopyCall sourceBuffer String helloAgainLiteral
+argument refillCopyCall byteCount ByteCount fiveByteCount
 run refillCopyCall
-ignore value source refillCopyCall type CByteCount
+ignore value source refillCopyCall type ByteCount
 
 # Compute destination = workBuffer + 2 via pointer arithmetic.
-storage module immutable twoByteOffset CByteCount 2
+storage module immutable twoByteOffset ByteCount 2
 call advanceForMoveCall pointer.offset
-argument advanceForMoveCall base COpaqueMemoryAddress workBuffer
-argument advanceForMoveCall offset CByteCount twoByteOffset
+argument advanceForMoveCall base OpaquePointer workBuffer
+argument advanceForMoveCall offset ByteCount twoByteOffset
 run advanceForMoveCall
-bind value moveDestPtr COpaqueMemoryAddress advanceForMoveCall
+bind value moveDestPtr OpaquePointer advanceForMoveCall
 
 call runMoveCall moveMemoryBytesAllowOverlap
-argument runMoveCall destinationBuffer COpaqueMemoryAddress moveDestPtr
-argument runMoveCall sourceBuffer CNullTerminatedByteString workBuffer
-argument runMoveCall byteCount CByteCount fiveByteCount
+argument runMoveCall destinationBuffer OpaquePointer moveDestPtr
+argument runMoveCall sourceBuffer String workBuffer
+argument runMoveCall byteCount ByteCount fiveByteCount
 run runMoveCall
-ignore value source runMoveCall type CByteCount
+ignore value source runMoveCall type ByteCount
 
 # After overlapping move, bytes at offset 2..7 should be "hello".
 call moveCompareCall compareMemoryByteRanges
-argument moveCompareCall leftBuffer CNullTerminatedByteString moveDestPtr
-argument moveCompareCall rightBuffer CNullTerminatedByteString helloAgainLiteral
-argument moveCompareCall byteCount CByteCount fiveByteCount
+argument moveCompareCall leftBuffer String moveDestPtr
+argument moveCompareCall rightBuffer String helloAgainLiteral
+argument moveCompareCall byteCount ByteCount fiveByteCount
 run moveCompareCall
-bind value moveCompareResult CSignedInt64 moveCompareCall
-call checkMoveCompareCall math.equalI64
-argument checkMoveCompareCall left I64 moveCompareResult
-argument checkMoveCompareCall right I64 integerZeroBoundaryForMemoryLocal
+bind value moveCompareResult Int64 moveCompareCall
+call checkMoveCompareCall math.equalInt64
+argument checkMoveCompareCall left Int64 moveCompareResult
+argument checkMoveCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkMoveCompareCall
 bind value moveCompareOk Bool checkMoveCompareCall
 branch if condition moveCompareOk target moveCompareHolds
@@ -209,15 +209,15 @@ branch else target smokeAssertionFailed
 label moveCompareHolds
 
 # hashMemoryBytesWithFnv1a: hash of zero-length buffer == initial offset basis.
-storage module immutable expectedZeroHashBasis CSignedInt64 -3750763034362895579
+storage module immutable expectedZeroHashBasis Int64 -3750763034362895579
 call hashZeroCall hashMemoryBytesWithFnv1a
-argument hashZeroCall byteBuffer CNullTerminatedByteString helloAgainLiteral
-argument hashZeroCall byteCount CByteCount zeroByteCountMem
+argument hashZeroCall byteBuffer String helloAgainLiteral
+argument hashZeroCall byteCount ByteCount zeroByteCountMem
 run hashZeroCall
-bind value hashZeroResult CSignedInt64 hashZeroCall
-call hashZeroCheckCall math.equalI64
-argument hashZeroCheckCall left I64 hashZeroResult
-argument hashZeroCheckCall right I64 expectedZeroHashBasis
+bind value hashZeroResult Int64 hashZeroCall
+call hashZeroCheckCall math.equalInt64
+argument hashZeroCheckCall left Int64 hashZeroResult
+argument hashZeroCheckCall right Int64 expectedZeroHashBasis
 run hashZeroCheckCall
 bind value hashZeroOk Bool hashZeroCheckCall
 branch if condition hashZeroOk target hashZeroHolds
@@ -226,18 +226,18 @@ label hashZeroHolds
 
 # Property: hash is deterministic â€” same input always produces same output.
 call hashFirstCall hashMemoryBytesWithFnv1a
-argument hashFirstCall byteBuffer CNullTerminatedByteString helloAgainLiteral
-argument hashFirstCall byteCount CByteCount fiveByteCount
+argument hashFirstCall byteBuffer String helloAgainLiteral
+argument hashFirstCall byteCount ByteCount fiveByteCount
 run hashFirstCall
-bind value hashFirstResult CSignedInt64 hashFirstCall
+bind value hashFirstResult Int64 hashFirstCall
 call hashSecondCall hashMemoryBytesWithFnv1a
-argument hashSecondCall byteBuffer CNullTerminatedByteString helloAgainLiteral
-argument hashSecondCall byteCount CByteCount fiveByteCount
+argument hashSecondCall byteBuffer String helloAgainLiteral
+argument hashSecondCall byteCount ByteCount fiveByteCount
 run hashSecondCall
-bind value hashSecondResult CSignedInt64 hashSecondCall
-call hashDeterministicCheckCall math.equalI64
-argument hashDeterministicCheckCall left I64 hashFirstResult
-argument hashDeterministicCheckCall right I64 hashSecondResult
+bind value hashSecondResult Int64 hashSecondCall
+call hashDeterministicCheckCall math.equalInt64
+argument hashDeterministicCheckCall left Int64 hashFirstResult
+argument hashDeterministicCheckCall right Int64 hashSecondResult
 run hashDeterministicCheckCall
 bind value hashDeterministicOk Bool hashDeterministicCheckCall
 branch if condition hashDeterministicOk target hashDeterministicHolds
@@ -245,15 +245,15 @@ branch else target smokeAssertionFailed
 label hashDeterministicHolds
 
 # Property: distinct inputs produce distinct hashes â€” hash("hello") != hash("world").
-storage module immutable worldLiteralMem CNullTerminatedByteString "world"
+storage module immutable worldLiteralMem String "world"
 call hashWorldCall hashMemoryBytesWithFnv1a
-argument hashWorldCall byteBuffer CNullTerminatedByteString worldLiteralMem
-argument hashWorldCall byteCount CByteCount fiveByteCount
+argument hashWorldCall byteBuffer String worldLiteralMem
+argument hashWorldCall byteCount ByteCount fiveByteCount
 run hashWorldCall
-bind value hashWorldResult CSignedInt64 hashWorldCall
-call hashDistinctCheckCall math.notEqualI64
-argument hashDistinctCheckCall left I64 hashFirstResult
-argument hashDistinctCheckCall right I64 hashWorldResult
+bind value hashWorldResult Int64 hashWorldCall
+call hashDistinctCheckCall math.notEqualInt64
+argument hashDistinctCheckCall left Int64 hashFirstResult
+argument hashDistinctCheckCall right Int64 hashWorldResult
 run hashDistinctCheckCall
 bind value hashDistinctOk Bool hashDistinctCheckCall
 branch if condition hashDistinctOk target hashDistinctHolds
@@ -261,16 +261,16 @@ branch else target smokeAssertionFailed
 label hashDistinctHolds
 
 # findByteValueInMemoryRange: 'z' not in "hello" -> -1
-storage module immutable negativeOneFindResult CSignedInt64 -1
+storage module immutable negativeOneFindResult Int64 -1
 call findNotFoundCall findByteValueInMemoryRange
-argument findNotFoundCall byteBuffer CNullTerminatedByteString helloAgainLiteral
-argument findNotFoundCall targetValue CSignedInt32 lowercaseZForMem
-argument findNotFoundCall byteCount CByteCount fiveByteCount
+argument findNotFoundCall byteBuffer String helloAgainLiteral
+argument findNotFoundCall targetValue Int32 lowercaseZForMem
+argument findNotFoundCall byteCount ByteCount fiveByteCount
 run findNotFoundCall
-bind value findNotFoundResult CSignedInt64 findNotFoundCall
-call checkFindNotFoundCall math.equalI64
-argument checkFindNotFoundCall left I64 findNotFoundResult
-argument checkFindNotFoundCall right I64 negativeOneFindResult
+bind value findNotFoundResult Int64 findNotFoundCall
+call checkFindNotFoundCall math.equalInt64
+argument checkFindNotFoundCall left Int64 findNotFoundResult
+argument checkFindNotFoundCall right Int64 negativeOneFindResult
 run checkFindNotFoundCall
 bind value findNotFoundOk Bool checkFindNotFoundCall
 branch if condition findNotFoundOk target findNotFoundHolds
@@ -279,14 +279,14 @@ label findNotFoundHolds
 
 # Property: comparing buffer to itself returns 0
 call selfCompareCall compareMemoryByteRanges
-argument selfCompareCall leftBuffer CNullTerminatedByteString helloAgainLiteral
-argument selfCompareCall rightBuffer CNullTerminatedByteString helloAgainLiteral
-argument selfCompareCall byteCount CByteCount fiveByteCount
+argument selfCompareCall leftBuffer String helloAgainLiteral
+argument selfCompareCall rightBuffer String helloAgainLiteral
+argument selfCompareCall byteCount ByteCount fiveByteCount
 run selfCompareCall
-bind value selfCompareResult CSignedInt64 selfCompareCall
-call checkSelfCompareCall math.equalI64
-argument checkSelfCompareCall left I64 selfCompareResult
-argument checkSelfCompareCall right I64 integerZeroBoundaryForMemoryLocal
+bind value selfCompareResult Int64 selfCompareCall
+call checkSelfCompareCall math.equalInt64
+argument checkSelfCompareCall left Int64 selfCompareResult
+argument checkSelfCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkSelfCompareCall
 bind value selfCompareOk Bool checkSelfCompareCall
 branch if condition selfCompareOk target selfCompareHolds
@@ -297,41 +297,41 @@ label selfCompareHolds
 # and confirm findByteValueInMemoryRange locates it at offset 0. Before the
 # fix, the loaded byte sign-extended to -56 and never matched targetValue
 # 200, so find wrongly returned -1 even though fill had just written it.
-storage module immutable highByteFillValue CSignedInt32 200
-storage module immutable oneByteFillCount CByteCount 1
+storage module immutable highByteFillValue Int32 200
+storage module immutable oneByteFillCount ByteCount 1
 call fillHighByteCall fillMemoryBytesWithValue
-argument fillHighByteCall byteBuffer COpaqueMemoryAddress workBuffer
-argument fillHighByteCall targetValue CSignedInt32 highByteFillValue
-argument fillHighByteCall byteCount CByteCount oneByteFillCount
+argument fillHighByteCall byteBuffer OpaquePointer workBuffer
+argument fillHighByteCall targetValue Int32 highByteFillValue
+argument fillHighByteCall byteCount ByteCount oneByteFillCount
 run fillHighByteCall
-ignore value source fillHighByteCall type CByteCount
+ignore value source fillHighByteCall type ByteCount
 call findHighByteCall findByteValueInMemoryRange
-argument findHighByteCall byteBuffer CNullTerminatedByteString workBuffer
-argument findHighByteCall targetValue CSignedInt32 highByteFillValue
-argument findHighByteCall byteCount CByteCount oneByteFillCount
+argument findHighByteCall byteBuffer String workBuffer
+argument findHighByteCall targetValue Int32 highByteFillValue
+argument findHighByteCall byteCount ByteCount oneByteFillCount
 run findHighByteCall
-bind value findHighByteResult CSignedInt64 findHighByteCall
-call checkFindHighByteCall math.equalI64
-argument checkFindHighByteCall left I64 findHighByteResult
-argument checkFindHighByteCall right I64 integerZeroBoundaryForMemoryLocal
+bind value findHighByteResult Int64 findHighByteCall
+call checkFindHighByteCall math.equalInt64
+argument checkFindHighByteCall left Int64 findHighByteResult
+argument checkFindHighByteCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkFindHighByteCall
 bind value findHighByteOk Bool checkFindHighByteCall
 branch if condition findHighByteOk target findHighByteHolds
 branch else target smokeAssertionFailed
 label findHighByteHolds
 
-storage module immutable successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
 argument writeSuccessLineCall console Console console
-argument writeSuccessLineCall text CNullTerminatedByteString successMessageText
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type CSignedInt32
-bind error consoleWriteResultError CSignedInt32 writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
 return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler

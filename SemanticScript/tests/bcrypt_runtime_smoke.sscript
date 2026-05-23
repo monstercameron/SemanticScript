@@ -13,11 +13,11 @@ import bcrypt standard.bcrypt
 entry console main
 
 error MainError
-errorCase MainError HashFailed CSignedInt32
-errorCase MainError VerifyShouldMatchButDidNot CSignedInt32
-errorCase MainError VerifyShouldRejectButMatched CSignedInt32
-errorCase MainError RandomBytesFailed CSignedInt32
-errorCase MainError Base64EncodeFailed CSignedInt32
+errorCase MainError HashFailed Int32
+errorCase MainError VerifyShouldMatchButDidNot Int32
+errorCase MainError VerifyShouldRejectButMatched Int32
+errorCase MainError RandomBytesFailed Int32
+errorCase MainError Base64EncodeFailed Int32
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability bcryptSmokeStdoutWrite console.stdout write
@@ -28,8 +28,8 @@ capability bcryptSmokeHeapFree heap free
 purpose operation bcryptSmokeHeapFree "Authority to free the same buffers at defer time"
 
 storage module immutable successExit ExitCode 0
-storage module immutable matchedSentinel CSignedInt32 1
-storage module immutable mismatchedSentinel CSignedInt32 0
+storage module immutable matchedSentinel Int32 1
+storage module immutable mismatchedSentinel Int32 0
 
 operation main
 input operation main console Console
@@ -48,27 +48,27 @@ invariant operation main "All three c.malloc allocations are paired with defer c
 label startMain
 
 # Allocate the 61-byte hash output buffer.
-storage local immutable hashBufferCapacity CSignedInt64 61
+storage local immutable hashBufferCapacity Int64 61
 call allocateHashBufferCall c.malloc
-argument allocateHashBufferCall size CSignedInt64 hashBufferCapacity
+argument allocateHashBufferCall size Int64 hashBufferCapacity
 run allocateHashBufferCall
-bind value hashBuffer COpaqueMemoryAddress allocateHashBufferCall
+bind value hashBuffer OpaquePointer allocateHashBufferCall
 defer releaseHashBufferDefer c.free hashBuffer
 
 # Hash the password at cost 12.
-storage local immutable smokePlaintext CNullTerminatedByteString "correct-horse-battery-staple"
-storage local immutable hashCapacityArg CSignedInt32 61
+storage local immutable smokePlaintext String "correct-horse-battery-staple"
+storage local immutable hashCapacityArg Int32 61
 call hashPasswordCall bcrypt.hashPassword
-argument hashPasswordCall plaintext CNullTerminatedByteString smokePlaintext
-argument hashPasswordCall cost CSignedInt32 bcryptRecommendedCost
-argument hashPasswordCall outBuffer COpaqueMemoryAddress hashBuffer
-argument hashPasswordCall outCapacity CSignedInt32 hashCapacityArg
+argument hashPasswordCall plaintext String smokePlaintext
+argument hashPasswordCall cost Int32 bcryptRecommendedCost
+argument hashPasswordCall outBuffer OpaquePointer hashBuffer
+argument hashPasswordCall outCapacity Int32 hashCapacityArg
 run hashPasswordCall
-bind value hashStatus CSignedInt32 hashPasswordCall
+bind value hashStatus Int32 hashPasswordCall
 
-call hashStatusOkCheckCall math.equalCSignedInt32
-argument hashStatusOkCheckCall left CSignedInt32 hashStatus
-argument hashStatusOkCheckCall right CSignedInt32 successExit
+call hashStatusOkCheckCall math.equalInt32
+argument hashStatusOkCheckCall left Int32 hashStatus
+argument hashStatusOkCheckCall right Int32 successExit
 run hashStatusOkCheckCall
 bind value hashStatusOk Bool hashStatusOkCheckCall
 branch if condition hashStatusOk target hashStatusOkLabel
@@ -77,14 +77,14 @@ label hashStatusOkLabel
 
 # Verify correct plaintext — must return SS_BCRYPT_MATCH (1).
 call verifyCorrectCall bcrypt.verifyPassword
-argument verifyCorrectCall plaintext CNullTerminatedByteString smokePlaintext
-argument verifyCorrectCall expectedHash COpaqueMemoryAddress hashBuffer
+argument verifyCorrectCall plaintext String smokePlaintext
+argument verifyCorrectCall expectedHash OpaquePointer hashBuffer
 run verifyCorrectCall
-bind value verifyCorrectResult CSignedInt32 verifyCorrectCall
+bind value verifyCorrectResult Int32 verifyCorrectCall
 
-call verifyCorrectMatchCheckCall math.equalCSignedInt32
-argument verifyCorrectMatchCheckCall left CSignedInt32 verifyCorrectResult
-argument verifyCorrectMatchCheckCall right CSignedInt32 matchedSentinel
+call verifyCorrectMatchCheckCall math.equalInt32
+argument verifyCorrectMatchCheckCall left Int32 verifyCorrectResult
+argument verifyCorrectMatchCheckCall right Int32 matchedSentinel
 run verifyCorrectMatchCheckCall
 bind value verifyCorrectMatched Bool verifyCorrectMatchCheckCall
 branch if condition verifyCorrectMatched target verifyCorrectMatchedLabel
@@ -92,16 +92,16 @@ branch else target verifyShouldHaveMatchedFailed
 label verifyCorrectMatchedLabel
 
 # Verify WRONG plaintext — must return SS_BCRYPT_MISMATCH (0).
-storage local immutable wrongPlaintext CNullTerminatedByteString "definitely-not-the-password"
+storage local immutable wrongPlaintext String "definitely-not-the-password"
 call verifyWrongCall bcrypt.verifyPassword
-argument verifyWrongCall plaintext CNullTerminatedByteString wrongPlaintext
-argument verifyWrongCall expectedHash COpaqueMemoryAddress hashBuffer
+argument verifyWrongCall plaintext String wrongPlaintext
+argument verifyWrongCall expectedHash OpaquePointer hashBuffer
 run verifyWrongCall
-bind value verifyWrongResult CSignedInt32 verifyWrongCall
+bind value verifyWrongResult Int32 verifyWrongCall
 
-call verifyWrongRejectCheckCall math.equalCSignedInt32
-argument verifyWrongRejectCheckCall left CSignedInt32 verifyWrongResult
-argument verifyWrongRejectCheckCall right CSignedInt32 mismatchedSentinel
+call verifyWrongRejectCheckCall math.equalInt32
+argument verifyWrongRejectCheckCall left Int32 verifyWrongResult
+argument verifyWrongRejectCheckCall right Int32 mismatchedSentinel
 run verifyWrongRejectCheckCall
 bind value verifyWrongRejected Bool verifyWrongRejectCheckCall
 branch if condition verifyWrongRejected target verifyWrongRejectedLabel
@@ -109,23 +109,23 @@ branch else target verifyShouldHaveRejectedFailed
 label verifyWrongRejectedLabel
 
 # Generate a 32-byte random sample.
-storage local immutable randomBufferCapacity CSignedInt64 32
+storage local immutable randomBufferCapacity Int64 32
 call allocateRandomBufferCall c.malloc
-argument allocateRandomBufferCall size CSignedInt64 randomBufferCapacity
+argument allocateRandomBufferCall size Int64 randomBufferCapacity
 run allocateRandomBufferCall
-bind value randomBuffer COpaqueMemoryAddress allocateRandomBufferCall
+bind value randomBuffer OpaquePointer allocateRandomBufferCall
 defer releaseRandomBufferDefer c.free randomBuffer
 
-storage local immutable randomByteCount CSignedInt32 32
+storage local immutable randomByteCount Int32 32
 call randomBytesCall bcrypt.randomBytes
-argument randomBytesCall outBuffer COpaqueMemoryAddress randomBuffer
-argument randomBytesCall byteCount CSignedInt32 randomByteCount
+argument randomBytesCall outBuffer OpaquePointer randomBuffer
+argument randomBytesCall byteCount Int32 randomByteCount
 run randomBytesCall
-bind value randomStatus CSignedInt32 randomBytesCall
+bind value randomStatus Int32 randomBytesCall
 
-call randomStatusOkCheckCall math.equalCSignedInt32
-argument randomStatusOkCheckCall left CSignedInt32 randomStatus
-argument randomStatusOkCheckCall right CSignedInt32 successExit
+call randomStatusOkCheckCall math.equalInt32
+argument randomStatusOkCheckCall left Int32 randomStatus
+argument randomStatusOkCheckCall right Int32 successExit
 run randomStatusOkCheckCall
 bind value randomStatusOk Bool randomStatusOkCheckCall
 branch if condition randomStatusOk target randomStatusOkLabel
@@ -133,28 +133,28 @@ branch else target randomBytesShouldHaveSucceededFailed
 label randomStatusOkLabel
 
 # Base64url-encode into a 44-byte buffer; expect 43 written + NUL.
-storage local immutable tokenBufferCapacity CSignedInt64 44
+storage local immutable tokenBufferCapacity Int64 44
 call allocateTokenBufferCall c.malloc
-argument allocateTokenBufferCall size CSignedInt64 tokenBufferCapacity
+argument allocateTokenBufferCall size Int64 tokenBufferCapacity
 run allocateTokenBufferCall
-bind value tokenBuffer COpaqueMemoryAddress allocateTokenBufferCall
+bind value tokenBuffer OpaquePointer allocateTokenBufferCall
 defer releaseTokenBufferDefer c.free tokenBuffer
 
 # The length-out pointer needs to be a real i32 alloca.
-memory main mutable encodedLength CSignedInt32 0
-storage local immutable tokenCapacityArg CSignedInt32 44
+memory main mutable encodedLength Int32 0
+storage local immutable tokenCapacityArg Int32 44
 call encodeTokenCall bcrypt.base64UrlEncode
-argument encodeTokenCall inputBuffer COpaqueMemoryAddress randomBuffer
-argument encodeTokenCall inputCount CSignedInt32 randomByteCount
-argument encodeTokenCall outputBuffer COpaqueMemoryAddress tokenBuffer
-argument encodeTokenCall outputCapacity CSignedInt32 tokenCapacityArg
-argument encodeTokenCall outputLengthOut CSignedInt32 encodedLength
+argument encodeTokenCall inputBuffer OpaquePointer randomBuffer
+argument encodeTokenCall inputCount Int32 randomByteCount
+argument encodeTokenCall outputBuffer OpaquePointer tokenBuffer
+argument encodeTokenCall outputCapacity Int32 tokenCapacityArg
+argument encodeTokenCall outputLengthOut Int32 encodedLength
 run encodeTokenCall
-bind value encodeStatus CSignedInt32 encodeTokenCall
+bind value encodeStatus Int32 encodeTokenCall
 
-call encodeStatusOkCheckCall math.equalCSignedInt32
-argument encodeStatusOkCheckCall left CSignedInt32 encodeStatus
-argument encodeStatusOkCheckCall right CSignedInt32 successExit
+call encodeStatusOkCheckCall math.equalInt32
+argument encodeStatusOkCheckCall left Int32 encodeStatus
+argument encodeStatusOkCheckCall right Int32 successExit
 run encodeStatusOkCheckCall
 bind value encodeStatusOk Bool encodeStatusOkCheckCall
 branch if condition encodeStatusOk target encodeStatusOkLabel
@@ -162,10 +162,10 @@ branch else target base64EncodeShouldHaveSucceededFailed
 label encodeStatusOkLabel
 
 # Success — emit the marker.
-storage local immutable successMarker CNullTerminatedByteString "bcryptRuntimeSmokeOk"
+storage local immutable successMarker String "bcryptRuntimeSmokeOk"
 call writeMarkerCall console.writeLine
 argument writeMarkerCall console Console console
-argument writeMarkerCall text CNullTerminatedByteString successMarker
+argument writeMarkerCall text String successMarker
 run writeMarkerCall
 ignore void source writeMarkerCall
 bind error consoleWriteError ConsoleWriteError writeMarkerCall

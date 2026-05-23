@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError IntentionalFailure CSignedInt32
+errorCase MainError IntentionalFailure Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -14,18 +14,18 @@ async main no
 purpose operation main "branchIf to a returnError leg; verifies exit code 1."
 invariant operation main "Always takes the error path."
 label startMain
-storage module immutable oneCount I64 1
-storage module immutable oneCompare I64 1
-memory main mutable leftOp I64 oneCount
-call eqCall math.equalI64
-argument eqCall left I64 leftOp
-argument eqCall right I64 oneCompare
+storage module immutable oneCount Int64 1
+storage module immutable oneCompare Int64 1
+memory main mutable leftOp Int64 oneCount
+call eqCall math.equalInt64
+argument eqCall left Int64 leftOp
+argument eqCall right Int64 oneCompare
 run eqCall
 bind value alwaysTrue Bool eqCall
 branch if condition alwaysTrue target errorLeg
 branch else target successLeg
 label errorLeg
-storage module immutable intentionalFailureCode CSignedInt32 1
+storage module immutable intentionalFailureCode Int32 1
 makeError intentionalFailure MainError.IntentionalFailure intentionalFailureCode
 return error intentionalFailure
 label successLeg

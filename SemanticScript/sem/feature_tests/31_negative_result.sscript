@@ -15,19 +15,19 @@ async main no
 purpose operation main "3 - 10 = -7 prints correctly."
 invariant operation main "Negative arithmetic emits signed sub."
 label startMain
-storage module immutable threeInitial I64 3
-storage module immutable tenLit I64 10
-memory main mutable leftOp I64 threeInitial
-call subCall math.subtractI64
-argument subCall left I64 leftOp
-argument subCall right I64 tenLit
+storage module immutable threeInitial Int64 3
+storage module immutable tenLit Int64 10
+memory main mutable leftOp Int64 threeInitial
+call subCall math.subtractInt64
+argument subCall left Int64 leftOp
+argument subCall right Int64 tenLit
 run subCall
-bind value subResult I64 subCall
-memory main mutable resultVar I64 threeInitial
+bind value subResult Int64 subCall
+memory main mutable resultVar Int64 threeInitial
 set memory resultVar subResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 resultVar
+argument writeCall value Int64 resultVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

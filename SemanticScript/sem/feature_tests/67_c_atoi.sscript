@@ -5,7 +5,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -16,16 +16,16 @@ async main no
 purpose operation main "Parse a numeric string literal via c.atoi and echo it back through console.writeIntegerLine."
 invariant operation main "Exercises the c.atoi libc passthrough with a string-const buffer."
 label startMain
-storage module immutable numericText CNullTerminatedByteString "12345"
+storage module immutable numericText String "12345"
 call parseCall c.atoi
-argument parseCall s CNullTerminatedByteString numericText
+argument parseCall s String numericText
 run parseCall
-bind value parsedValue CSignedInt32 parseCall
-memory main mutable parsedStorage I64 0
+bind value parsedValue Int32 parseCall
+memory main mutable parsedStorage Int64 0
 set memory parsedStorage parsedValue
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 parsedStorage
+argument writeCall value Int64 parsedStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

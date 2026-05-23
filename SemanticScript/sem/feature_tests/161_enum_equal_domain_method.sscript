@@ -1,8 +1,8 @@
 # expect.stdout: equal\nnotEqual\n
 # expect.exit: 0
 # Tests: enum.equal domain-method dispatch.
-# `SaveTodosStatus.equal` (repr CSignedInt32) and `ScreenMode.equal`
-# (repr CSignedInt64) compile to the matching math.equal* primitive based
+# `SaveTodosStatus.equal` (repr Int32) and `ScreenMode.equal`
+# (repr Int64) compile to the matching math.equal* primitive based
 # on the enum's declared repr. The compare must produce a real Bool that
 # branches at runtime â€” a no-op lowering would fail the equality test
 # and print the wrong branch.
@@ -11,31 +11,31 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-enum SaveTodosStatus repr CSignedInt32
+enum SaveTodosStatus repr Int32
 enumCase SaveTodosStatus SaveSucceeded 0
 enumCase SaveTodosStatus SaveOpenFailed 1
 enumCase SaveTodosStatus SaveWriteFailed 2
 
-enum ScreenMode repr CSignedInt64
+enum ScreenMode repr Int64
 enumCase ScreenMode ListMode 0
 enumCase ScreenMode EditMode 1
 
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
 memory main heap no
 async main no
-purpose operation main "Verify enum.equal dispatch for both CSignedInt32 and CSignedInt64 reprs."
+purpose operation main "Verify enum.equal dispatch for both Int32 and Int64 reprs."
 
 label startMain
-storage local immutable equalText CNullTerminatedByteString "equal"
-storage local immutable notEqualText CNullTerminatedByteString "notEqual"
+storage local immutable equalText String "equal"
+storage local immutable notEqualText String "notEqual"
 storage local immutable successfulExitCode ExitCode 0
 
-# Both arguments are SaveSucceeded â€” must compare equal via repr-CSignedInt32 path.
+# Both arguments are SaveSucceeded â€” must compare equal via repr-Int32 path.
 call sameStatusCall SaveTodosStatus.equal
 argument sameStatusCall left SaveTodosStatus SaveSucceeded
 argument sameStatusCall right SaveTodosStatus SaveSucceeded
@@ -47,21 +47,21 @@ branch else target failSameStatus
 label sameStatusPath
 call writeEqualCall console.writeLine
 argument writeEqualCall console Console console
-argument writeEqualCall text CNullTerminatedByteString equalText
+argument writeEqualCall text String equalText
 run writeEqualCall
-ignore value source writeEqualCall type CSignedInt32
+ignore value source writeEqualCall type Int32
 jump target checkDifferentMode
 
 label failSameStatus
 call writeFailSameCall console.writeLine
 argument writeFailSameCall console Console console
-argument writeFailSameCall text CNullTerminatedByteString notEqualText
+argument writeFailSameCall text String notEqualText
 run writeFailSameCall
-ignore value source writeFailSameCall type CSignedInt32
+ignore value source writeFailSameCall type Int32
 return ok successfulExitCode
 
 label checkDifferentMode
-# ListMode != EditMode â€” must compare not-equal via repr-CSignedInt64 path.
+# ListMode != EditMode â€” must compare not-equal via repr-Int64 path.
 call differentModeCall ScreenMode.equal
 argument differentModeCall left ScreenMode ListMode
 argument differentModeCall right ScreenMode EditMode
@@ -70,15 +70,15 @@ bind value differentModeEqual Bool differentModeCall
 branch if condition differentModeEqual target failDifferentMode
 call writeNotEqualCall console.writeLine
 argument writeNotEqualCall console Console console
-argument writeNotEqualCall text CNullTerminatedByteString notEqualText
+argument writeNotEqualCall text String notEqualText
 run writeNotEqualCall
-ignore value source writeNotEqualCall type CSignedInt32
+ignore value source writeNotEqualCall type Int32
 return ok successfulExitCode
 
 label failDifferentMode
 call writeFailDiffCall console.writeLine
 argument writeFailDiffCall console Console console
-argument writeFailDiffCall text CNullTerminatedByteString equalText
+argument writeFailDiffCall text String equalText
 run writeFailDiffCall
-ignore value source writeFailDiffCall type CSignedInt32
+ignore value source writeFailDiffCall type Int32
 return ok successfulExitCode

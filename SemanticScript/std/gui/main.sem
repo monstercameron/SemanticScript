@@ -27,11 +27,11 @@ moduleDoesNotOwn standard.gui "Application GUI graphs, event handler implementat
 invariant module standard.gui "The standard module entry is this file; new GUI modules import it as alias `gui` before using compiler-owned targets in the `gui.*` namespace."
 invariant module standard.gui "Parser and runtime implementations may mirror the numeric IDs below, but the vocabulary and user-facing semantics belong to `standard.gui`."
 
-type GuiApplication COpaqueMemoryAddress
-type GuiSession COpaqueMemoryAddress
-type GuiEvent COpaqueMemoryAddress
-type GuiWindow COpaqueMemoryAddress
-type GuiControl COpaqueMemoryAddress
+type GuiApplication OpaquePointer
+type GuiSession OpaquePointer
+type GuiEvent OpaquePointer
+type GuiWindow OpaquePointer
+type GuiControl OpaquePointer
 type GuiButton GuiControl
 type GuiTextBox GuiControl
 type GuiListBox GuiControl
@@ -39,39 +39,39 @@ type GuiCheckBox GuiControl
 type GuiMenuItem GuiControl
 type GuiStatusBar GuiControl
 type GuiTextLabel GuiControl
-type GuiWindowId CUnsignedInt32
-type GuiControlId CUnsignedInt32
-type GuiText CNullTerminatedByteString
+type GuiWindowId UInt32
+type GuiControlId UInt32
+type GuiText String
 type GuiApplicationTitle GuiText
 type GuiWindowTitle GuiText
 type GuiControlText GuiText
 type GuiPlaceholderText GuiText
 type GuiAccessibleName GuiText
 type GuiListBoxItemText GuiText
-type GuiIconGroupName CNullTerminatedByteString
-type GuiPixels CSignedInt32
+type GuiIconGroupName String
+type GuiPixels Int32
 type GuiMinimumPixels GuiPixels
-type GuiTabIndex CSignedInt32
-type GuiKeyCode CSignedInt32
-type GuiSelectedIndex CSignedInt32
+type GuiTabIndex Int32
+type GuiKeyCode Int32
+type GuiSelectedIndex Int32
 type GuiEventDimensionPixels GuiPixels
-type GuiHandlerStatus CSignedInt32
-type GuiRuntimeStatusCode CSignedInt32
-type GuiKeywordToken CNullTerminatedByteString
-type GuiRuntimeTarget CNullTerminatedByteString
+type GuiHandlerStatus Int32
+type GuiRuntimeStatusCode Int32
+type GuiKeywordToken String
+type GuiRuntimeTarget String
 
-enum GuiTargetKind repr CSignedInt32
+enum GuiTargetKind repr Int32
 enumCase GuiTargetKind windowGuiTargetKind 1
 enumCase GuiTargetKind controlGuiTargetKind 2
 
-enum GuiWindowLayout repr CSignedInt32
+enum GuiWindowLayout repr Int32
 enumCase GuiWindowLayout defaultGuiWindowLayout 0
 enumCase GuiWindowLayout verticalStackGuiWindowLayout 1
 enumCase GuiWindowLayout horizontalStackGuiWindowLayout 2
 enumCase GuiWindowLayout gridGuiWindowLayout 3
 enumCase GuiWindowLayout absoluteGuiWindowLayout 4
 
-enum GuiControlKind repr CSignedInt32
+enum GuiControlKind repr Int32
 enumCase GuiControlKind buttonGuiControlKind 1
 enumCase GuiControlKind textBoxGuiControlKind 2
 enumCase GuiControlKind listBoxGuiControlKind 3
@@ -80,12 +80,12 @@ enumCase GuiControlKind menuItemGuiControlKind 5
 enumCase GuiControlKind statusBarGuiControlKind 6
 enumCase GuiControlKind textLabelGuiControlKind 7
 
-enum GuiListBoxSelectionMode repr CSignedInt32
+enum GuiListBoxSelectionMode repr Int32
 enumCase GuiListBoxSelectionMode defaultGuiListBoxSelectionMode 0
 enumCase GuiListBoxSelectionMode singleGuiListBoxSelectionMode 1
 enumCase GuiListBoxSelectionMode multipleGuiListBoxSelectionMode 2
 
-enum GuiEventKind repr CSignedInt32
+enum GuiEventKind repr Int32
 enumCase GuiEventKind clickGuiEventKind 1
 enumCase GuiEventKind valueChangedGuiEventKind 2
 enumCase GuiEventKind selectionChangedGuiEventKind 3
@@ -98,7 +98,7 @@ enumCase GuiEventKind resizedGuiEventKind 9
 enumCase GuiEventKind shownGuiEventKind 10
 enumCase GuiEventKind hiddenGuiEventKind 11
 
-enum GuiRuntimeStatus repr CSignedInt32
+enum GuiRuntimeStatus repr Int32
 enumCase GuiRuntimeStatus okGuiRuntimeStatus 0
 enumCase GuiRuntimeStatus configGuiRuntimeStatus 1
 enumCase GuiRuntimeStatus runtimeUnavailableGuiRuntimeStatus 2
@@ -259,7 +259,7 @@ capability guiEventReader gui.event read
 capability guiEventCloseWriter gui.event.close write
 capability guiControlEventWriter gui.control.event write
 
-storage module immutable guiModuleVersionText CNullTerminatedByteString "standard.gui 0.1"
+storage module immutable guiModuleVersionText String "standard.gui 0.1"
 storage module immutable guiTargetRuntimeToken GuiKeywordToken "windowsGui"
 
 # Closed token spellings used by GUI functions and event handlers.

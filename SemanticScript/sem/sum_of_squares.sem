@@ -4,9 +4,9 @@ runtime AgentRuntime 1.0
 
 entry console main
 
-type SumOfSquaresCounter I64
-type SumOfSquaresAccumulator I64
-type PositiveSumOfSquaresStep I64
+type SumOfSquaresCounter Int64
+type SumOfSquaresAccumulator Int64
+type PositiveSumOfSquaresStep Int64
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError

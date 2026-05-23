@@ -5,28 +5,28 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation addAndDouble
-input operation addAndDouble a CSignedInt64
-input operation addAndDouble b CSignedInt64
-output operation addAndDouble Result CSignedInt64 Void
+input operation addAndDouble a Int64
+input operation addAndDouble b Int64
+output operation addAndDouble Result Int64 Void
 memory addAndDouble heap no
 async addAndDouble no
 purpose operation addAndDouble "(a + b) * 2."
 invariant operation addAndDouble "Compose add and multiply inline."
 label startAddAndDouble
-storage module immutable twoLit I64 2
-call addCall math.addI64
-argument addCall left I64 a
-argument addCall right I64 b
+storage module immutable twoLit Int64 2
+call addCall math.addInt64
+argument addCall left Int64 a
+argument addCall right Int64 b
 run addCall
-bind value sumValue I64 addCall
-call mulCall math.multiplyI64
-argument mulCall left I64 sumValue
-argument mulCall right I64 twoLit
+bind value sumValue Int64 addCall
+call mulCall math.multiplyInt64
+argument mulCall left Int64 sumValue
+argument mulCall right Int64 twoLit
 run mulCall
-bind value doubledValue I64 mulCall
+bind value doubledValue Int64 mulCall
 return ok doubledValue
 
 operation main
@@ -38,20 +38,20 @@ async main no
 purpose operation main "Compute (5 + 10) * 2 = 30."
 invariant operation main "Outputs 30."
 label startMain
-storage module immutable fiveInitial I64 5
-storage module immutable tenInitial I64 10
-memory main mutable leftValue I64 fiveInitial
-memory main mutable rightValue I64 tenInitial
+storage module immutable fiveInitial Int64 5
+storage module immutable tenInitial Int64 10
+memory main mutable leftValue Int64 fiveInitial
+memory main mutable rightValue Int64 tenInitial
 call computeCall addAndDouble
-argument computeCall a CSignedInt64 leftValue
-argument computeCall b CSignedInt64 rightValue
+argument computeCall a Int64 leftValue
+argument computeCall b Int64 rightValue
 run computeCall
-bind ok computeResult I64 computeCall
-memory main mutable outputVar I64 fiveInitial
+bind ok computeResult Int64 computeCall
+memory main mutable outputVar Int64 fiveInitial
 set memory outputVar computeResult
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 outputVar
+argument writeCall value Int64 outputVar
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0

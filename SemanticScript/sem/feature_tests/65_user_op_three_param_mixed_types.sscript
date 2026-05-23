@@ -5,35 +5,35 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation indexCharInPair
-input operation indexCharInPair leftBuffer CNullTerminatedByteString
-input operation indexCharInPair rightBuffer CNullTerminatedByteString
-input operation indexCharInPair preferRight CSignedInt64
-output operation indexCharInPair Result CSignedInt64 Void
+input operation indexCharInPair leftBuffer String
+input operation indexCharInPair rightBuffer String
+input operation indexCharInPair preferRight Int64
+output operation indexCharInPair Result Int64 Void
 memory indexCharInPair heap no
 async indexCharInPair no
 purpose operation indexCharInPair "Take two strings and a selector. When selector is non-zero return the length of rightBuffer; otherwise the length of leftBuffer. Exercises mixed-type param signatures (i8*, i8*, i64) and pointer-typed arg2 emission at call sites."
 invariant operation indexCharInPair "Calls c.strlen on the chosen buffer."
 label startIndexCharInPair
-storage module immutable zeroSelectorThreshold CSignedInt64 0
-call selectorPositiveCall math.greaterThanI64
-argument selectorPositiveCall left CSignedInt64 preferRight
-argument selectorPositiveCall right CSignedInt64 zeroSelectorThreshold
+storage module immutable zeroSelectorThreshold Int64 0
+call selectorPositiveCall math.greaterThanInt64
+argument selectorPositiveCall left Int64 preferRight
+argument selectorPositiveCall right Int64 zeroSelectorThreshold
 run selectorPositiveCall
 bind value selectorPositive Bool selectorPositiveCall
 branch if condition selectorPositive target measureRightBuffer
 call leftLenCall c.strlen
-argument leftLenCall s CNullTerminatedByteString leftBuffer
+argument leftLenCall s String leftBuffer
 run leftLenCall
-bind value leftLength CByteCount leftLenCall
+bind value leftLength ByteCount leftLenCall
 return ok leftLength
 label measureRightBuffer
 call rightLenCall c.strlen
-argument rightLenCall s CNullTerminatedByteString rightBuffer
+argument rightLenCall s String rightBuffer
 run rightLenCall
-bind value rightLength CByteCount rightLenCall
+bind value rightLength ByteCount rightLenCall
 return ok rightLength
 
 operation main
@@ -46,20 +46,20 @@ async main no
 purpose operation main "Call indexCharInPair('short', 'something', 1) which returns length 9 (length of 'something')."
 invariant operation main "Exercises three-param user op with mixed i8*/i8*/i64 args."
 label startMain
-storage module immutable shortBuffer CNullTerminatedByteString "short"
-storage module immutable longBuffer CNullTerminatedByteString "something"
-storage module immutable useRightSelector CSignedInt64 1
+storage module immutable shortBuffer String "short"
+storage module immutable longBuffer String "something"
+storage module immutable useRightSelector Int64 1
 call measureCall indexCharInPair
-argument measureCall leftBuffer CNullTerminatedByteString shortBuffer
-argument measureCall rightBuffer CNullTerminatedByteString longBuffer
-argument measureCall preferRight CSignedInt64 useRightSelector
+argument measureCall leftBuffer String shortBuffer
+argument measureCall rightBuffer String longBuffer
+argument measureCall preferRight Int64 useRightSelector
 run measureCall
-bind ok measuredLength CSignedInt64 measureCall
-memory main mutable measuredStorage I64 0
+bind ok measuredLength Int64 measureCall
+memory main mutable measuredStorage Int64 0
 set memory measuredStorage measuredLength
 call writeCall console.writeIntegerLine
 argument writeCall console Console console
-argument writeCall value I64 measuredStorage
+argument writeCall value Int64 measuredStorage
 run writeCall
 ignore void source writeCall
 storage module immutable successfulExitCode ExitCode 0
