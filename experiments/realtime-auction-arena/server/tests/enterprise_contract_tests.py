@@ -50,7 +50,7 @@ def test_runtime_gap_shutdown_plan():
         "## Graceful Shutdown Plan",
         "Stop accepting new HTTP requests",
         "checkpoint/close SQLite",
-        "Native signal handling",
+        "process-signal accept-loop shutdown is executable",
     ]:
         assert_contains(gaps, needle, "shutdown plan")
 
