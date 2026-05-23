@@ -917,6 +917,44 @@ def test_auth_and_api_fail_closed():
         False,
         code="idempotency_conflict",
     )
+    db_path = SERVER_DIR / "auction_arena.sqlite3"
+    with sqlite3.connect(db_path) as conn:
+        chat_message_id = conn.execute(
+            """
+            SELECT message_id FROM chat_messages
+            WHERE auction_id = ? AND author_user_id = 'user_bidder_demo'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (auction_id,),
+        ).fetchone()[0]
+
+    chat_report = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/chat/messages/{chat_message_id}/report",
+        {"reason": "spam"},
+        active_headers,
+        "idem_e2e_chat_report_001",
+        200,
+        True,
+    )
+    assert chat_report["data"]["message"]["status"] == "reported"
+    replayed_chat_report = post_auction_command(
+        f"/api/v1/auctions/{auction_id}/chat/messages/{chat_message_id}/report",
+        {"reason": "spam"},
+        active_headers,
+        "idem_e2e_chat_report_001",
+        200,
+        True,
+    )
+    assert replayed_chat_report["data"]["message"]["reported"] is True
+    post_auction_command(
+        f"/api/v1/auctions/{auction_id}/chat/messages/msg_other/report",
+        {"reason": "spam"},
+        active_headers,
+        "idem_e2e_chat_report_001",
+        409,
+        False,
+        code="idempotency_conflict",
+    )
     expect_json(
         f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
         401,
@@ -938,6 +976,30 @@ def test_auth_and_api_fail_closed():
     relogin = login_as("auctioneer")
     active_headers = {"Authorization": f"Bearer {relogin['data']['accessToken']}"}
     logout_refresh_token = relogin["data"]["refreshToken"]
+    chat_delete = expect_json(
+        f"/api/v1/auctions/{auction_id}/chat/messages/{chat_message_id}",
+        200,
+        ok=True,
+        method="DELETE",
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_001"},
+    )
+    assert chat_delete["data"]["message"]["status"] == "deleted"
+    replayed_chat_delete = expect_json(
+        f"/api/v1/auctions/{auction_id}/chat/messages/{chat_message_id}",
+        200,
+        ok=True,
+        method="DELETE",
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_001"},
+    )
+    assert replayed_chat_delete["data"]["message"]["deleted"] is True
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/chat/messages/msg_other",
+        409,
+        ok=False,
+        code="idempotency_conflict",
+        method="DELETE",
+        headers={**active_headers, "Idempotency-Key": "idem_e2e_chat_delete_001"},
+    )
     expect_json(
         f"/api/v1/auctions/{auction_id}/chat/messages/msg_missing",
         404,
@@ -1022,11 +1084,11 @@ def test_auth_and_api_fail_closed():
     )
 
     events = expect_json(f"/api/v1/auctions/{auction_id}/events", 200, ok=True, headers=active_headers)
-    assert events["data"]["count"] == 7
+    assert events["data"]["count"] == 9
     assert events["data"]["after"] == 0
     assert events["data"]["limit"] == 200
-    assert events["data"]["nextAfter"] == 7
-    assert [event["eventTypeCode"] for event in events["data"]["events"]] == [1, 2, 3, 5, 5, 8, 4]
+    assert events["data"]["nextAfter"] == 9
+    assert [event["eventTypeCode"] for event in events["data"]["events"]] == [1, 2, 3, 5, 5, 8, 10, 9, 4]
     assert [event["eventType"] for event in events["data"]["events"]] == [
         "auction.created",
         "auction.started",
@@ -1034,6 +1096,8 @@ def test_auth_and_api_fail_closed():
         "bid.accepted",
         "bid.accepted",
         "chat.message.created",
+        "chat.message.reported",
+        "chat.message.deleted",
         "auction.closed",
     ]
     after_events_path = f"/api/v1/auctions/{auction_id}/events?after=2&limit=2"
@@ -1075,8 +1139,8 @@ def test_auth_and_api_fail_closed():
         route_path=f"/api/v1/auctions/{auction_id}/events",
     )
     assert last_event_id_events["data"]["after"] == 3
-    assert last_event_id_events["data"]["count"] == 4
-    assert [event["sequence"] for event in last_event_id_events["data"]["events"]] == [4, 5, 6, 7]
+    assert last_event_id_events["data"]["count"] == 6
+    assert [event["sequence"] for event in last_event_id_events["data"]["events"]] == [4, 5, 6, 7, 8, 9]
     db_path = SERVER_DIR / "auction_arena.sqlite3"
     with sqlite3.connect(db_path) as conn:
         seed_users = set(conn.execute("SELECT user_id, username, role FROM users").fetchall())
@@ -1094,17 +1158,21 @@ def test_auth_and_api_fail_closed():
             """,
             (auction_id,),
         ).fetchall()
-        assert len(audit_rows) == 6
+        assert len(audit_rows) == 8
         create_audit = [row for row in audit_rows if row[0] == "auction.create"]
         start_audit = [row for row in audit_rows if row[0] == "auction.start"]
         extend_audit = [row for row in audit_rows if row[0] == "auction.extend"]
         close_audit = [row for row in audit_rows if row[0] == "auction.close"]
         bid_audits = [row for row in audit_rows if row[0] == "bid.accepted"]
+        chat_report_audits = [row for row in audit_rows if row[0] == "chat.reported"]
+        chat_delete_audits = [row for row in audit_rows if row[0] == "chat.deleted"]
         assert len(create_audit) == 1
         assert len(start_audit) == 1
         assert len(extend_audit) == 1
         assert len(close_audit) == 1
         assert len(bid_audits) == 2
+        assert len(chat_report_audits) == 1
+        assert len(chat_delete_audits) == 1
         assert create_audit[0][1:] == (
             "user_auctioneer_001",
             20,
@@ -1139,6 +1207,30 @@ def test_auth_and_api_fail_closed():
             assert bid_audit[3] == auction_id
             assert bid_audit[4].startswith("bid_")
             assert bid_audit[5] == 1
+        assert chat_report_audits[0][1:] == (
+            "user_bidder_demo",
+            10,
+            auction_id,
+            chat_message_id,
+            1,
+        )
+        assert chat_delete_audits[0][1:] == (
+            "user_auctioneer_001",
+            20,
+            auction_id,
+            chat_message_id,
+            1,
+        )
+        chat_state = conn.execute(
+            """
+            SELECT status, deleted_at, reported_at FROM chat_messages
+            WHERE message_id = ?
+            """,
+            (chat_message_id,),
+        ).fetchone()
+        assert chat_state[0] == 2
+        assert chat_state[1] > 0
+        assert chat_state[2] > 0
         rejected_audit_rows = conn.execute(
             """
             SELECT action, outcome, error_code, payload_json
@@ -1155,7 +1247,7 @@ def test_auth_and_api_fail_closed():
             """
             SELECT scope, key, actor_user_id, auction_id
             FROM idempotency_keys
-            WHERE key IN (?, ?, ?, ?, ?, ?)
+            WHERE key IN (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "idem_e2e_create_001",
@@ -1163,6 +1255,8 @@ def test_auth_and_api_fail_closed():
                 "idem_e2e_extend_001",
                 "idem_e2e_bid_001",
                 "idem_e2e_bid_same_bidder_001",
+                "idem_e2e_chat_report_001",
+                "idem_e2e_chat_delete_001",
                 "idem_e2e_close_001",
             ),
         ).fetchall()
@@ -1172,6 +1266,8 @@ def test_auth_and_api_fail_closed():
             ("auction.extend", "idem_e2e_extend_001", "user_auctioneer_001", auction_id),
             ("auction.bid", "idem_e2e_bid_001", "user_bidder_demo", auction_id),
             ("auction.bid", "idem_e2e_bid_same_bidder_001", "user_bidder_demo", auction_id),
+            ("chat.report", "idem_e2e_chat_report_001", "user_bidder_demo", auction_id),
+            ("chat.delete", "idem_e2e_chat_delete_001", "user_auctioneer_001", auction_id),
             ("auction.close", "idem_e2e_close_001", "user_auctioneer_001", auction_id),
         } == set(idem_rows)
 
@@ -1218,12 +1314,29 @@ def test_auth_and_api_fail_closed():
         assert rate_limit_count >= 1
         auth_audit_actions = set(
             conn.execute(
-                "SELECT action, outcome, error_code FROM audit_events WHERE action LIKE 'auth.login.%'"
+                "SELECT action, outcome, error_code FROM audit_events WHERE action LIKE 'auth.%'"
             ).fetchall()
         )
         assert ("auth.login.accepted", 1, "") in auth_audit_actions
         assert ("auth.login.rejected", 4, "invalid_credentials") in auth_audit_actions
         assert ("auth.login.rejected", 4, "rate_limited") in auth_audit_actions
+        assert ("auth.refresh.accepted", 1, "") in auth_audit_actions
+        assert ("auth.refresh.rejected", 4, "invalid_refresh_token") in auth_audit_actions
+        assert ("auth.session.checked", 1, "") in auth_audit_actions
+
+        refresh_rows = conn.execute(
+            """
+            SELECT user_id, token_hash, issued_at, expires_at, revoked_at,
+                   replaced_by_refresh_token_id, created_by_request_id
+            FROM refresh_tokens
+            """
+        ).fetchall()
+        assert refresh_rows
+        assert all(row[1].startswith("$2") for row in refresh_rows)
+        assert all(row[3] > row[2] for row in refresh_rows)
+        assert all(row[6] == "req_runtime_header_unavailable" for row in refresh_rows)
+        assert any(row[0] == "user_auctioneer_001" and row[4] > 0 and row[5] for row in refresh_rows)
+        assert any(row[0] == "user_auctioneer_001" and row[4] == 0 for row in refresh_rows)
 
     logout = expect_json(
         "/api/v1/auth/logout",
@@ -1233,6 +1346,20 @@ def test_auth_and_api_fail_closed():
         body=json.dumps({"refreshToken": logout_refresh_token}),
     )
     assert logout["data"]["loggedOut"] is True
+
+    with sqlite3.connect(SERVER_DIR / "auction_arena.sqlite3") as conn:
+        logout_audit = conn.execute(
+            "SELECT outcome, error_code FROM audit_events WHERE action = 'auth.logout'"
+        ).fetchall()
+        assert (1, "") in logout_audit
+        revoked_bidder_refresh_after_logout = conn.execute(
+            """
+            SELECT count(*)
+            FROM refresh_tokens
+            WHERE user_id = 'user_bidder_demo' AND revoked_at > 0
+            """
+        ).fetchone()[0]
+        assert revoked_bidder_refresh_after_logout >= 1
 
     expect_json(
         "/api/v1/session",

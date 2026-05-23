@@ -28,6 +28,7 @@ exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionEve
 exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionEventsAfter
 exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuditEvent
 exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuditEventWithError
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionAuditEventsAfter
 exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertRequestLog
 exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertRateLimitBucket
 exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionExists
@@ -106,6 +107,9 @@ sql body sqlInsertAuditEvent
 storage module immutable sqlInsertAuditEventWithError SqlText
 sql body sqlInsertAuditEventWithError
   INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, idempotency_key, action, command_kind, auction_id, bid_id, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+storage module immutable sqlSelectAuctionAuditEventsAfter SqlText
+sql body sqlSelectAuctionAuditEventsAfter
+  SELECT audit_event_id, actor_user_id, actor_role, request_id, idempotency_key, action, command_kind, auction_id, bid_id, outcome, error_code, payload_json, created_at FROM audit_events WHERE auction_id = ? AND created_at > ? ORDER BY created_at ASC, audit_event_id ASC LIMIT ?
 storage module immutable sqlInsertRequestLog SqlText
 sql body sqlInsertRequestLog
   INSERT INTO request_log(request_id, method, path, route_pattern, status, actor_user_id, actor_role, duration_ms, auction_id, idempotency_key, ip_address_hash, user_agent_hash, request_bytes, response_bytes, error_code, started_at, finished_at) VALUES ('req_' || lower(hex(randomblob(8))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

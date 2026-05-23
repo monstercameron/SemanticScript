@@ -63,9 +63,9 @@ jsonBody chatContract
       "replayRule": "chat create, delete, and report events are persisted in auction_events and replay through the auction SSE stream using the same per-auction sequence",
       "auditRule": "delete and report write audit_events with actor userId, requestId, outcome, and messageId before SSE broadcast",
       "eventTypes": "chat.message.created, chat.message.deleted, chat.message.reported",
-      "runtimeStatus": "chat create is executable with JSON body parsing, SQLite persistence, rate-limit buckets, event persistence, dynamic auction route params, and bounded JSON replay; delete/report persistence and long-lived SSE fanout remain contract work",
-      "executableNow": "POST chat create route, bidder role check, byte limit, idempotency, text-only storage, chat.message.created event ordering, and replay are executable; moderation/reporting contracts remain parseable data",
-      "requiredRuntimeApis": "long-lived SSE fanout plus delete/report moderation persistence"
+      "runtimeStatus": "chat create, delete, and report are executable with JSON body parsing where required, SQLite persistence, idempotency, audit rows, event persistence, dynamic auction route params, and bounded JSON replay; long-lived SSE fanout remains contract work",
+      "executableNow": "POST chat create, DELETE chat message, and POST chat report routes enforce seeded role checks, idempotency, durable chat state, audit rows, event ordering, and replay through auction events",
+      "requiredRuntimeApis": "long-lived SSE fanout"
   }
 
 operation getChatContract

@@ -191,7 +191,7 @@ field AuthContract failureMarkers AuthFailureMarkers
 field AuthContract rolePolicies AuthRolePolicyRegistry
 field AuthContract scopes ScopeRegistryContract
 field AuthContract config AuthConfigContract
-field AuthContract mainIntegrationPatch MainIntegrationPatch
+field AuthContract authContextIntegrationPatch MainIntegrationPatch
 
 storage module immutable authContract AuthContract
 jsonBody authContract
@@ -242,28 +242,28 @@ jsonBody authContract
           "requiredBody": "username, password",
           "publicErrors": "invalid_credentials, rate_limited",
           "auditEvent": "auth.login.accepted or auth.login.rejected",
-          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, SQLite login rate-limit bucket, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer/bidder accounts, runtime-time claim-bearing HS256 access token issue, and durable login accepted/rejected audit rows; disabled-user lookup remains pending"
+          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, SQLite login rate-limit bucket, disabled-user lookup, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer/bidder accounts, runtime-time claim-bearing HS256 access token issue, durable refresh_tokens row insert, and durable login accepted/rejected audit rows"
       },
       "refresh": {
           "path": "POST /api/v1/auth/refresh",
           "requiredBody": "refreshToken",
           "publicErrors": "invalid_refresh_token, expired_refresh_token, revoked_refresh_token",
           "auditEvent": "auth.refresh.accepted or auth.refresh.rejected",
-          "runtimeStatus": "executable demo: opaque refresh token verifies against a process-local bcrypt hash, rotates, and issues a fresh runtime-time access token; durable SQLite refresh_tokens transaction pending in main.sem"
+          "runtimeStatus": "executable demo: disabled-user lookup, opaque refresh token verifies against the active process-local bcrypt hash, rotates, writes refresh_tokens replacement/revocation rows, appends refresh audit rows, and issues a fresh runtime-time access token; restart-safe refresh lookup remains blocked because opaque tokens carry no lookup id and the runtime exposes bcrypt verify but no keyed token-id extraction"
       },
       "logout": {
           "path": "POST /api/v1/auth/logout",
           "requiredBody": "refreshToken",
           "publicErrors": "unauthorized",
           "auditEvent": "auth.logout",
-          "runtimeStatus": "executable demo: valid refresh token hash revokes process-local session; durable refresh-token revocation, logout audit, and JWT denylist writes pending"
+          "runtimeStatus": "executable demo: valid refresh token hash revokes the process-local session, marks the durable refresh_tokens row revoked when present, and appends a logout audit row; JWT denylist writes remain blocked until the runtime exposes the active access-token jti"
       },
       "session": {
           "path": "GET /api/v1/session",
           "requiredBody": "none",
           "publicErrors": "unauthorized, expired_token, bad_signature, wrong_audience, insufficient_role",
           "auditEvent": "auth.session.checked",
-          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified with env/default secret, matched against process-local session, and checked against stored iat/nbf/exp runtime bounds; typed per-claim extraction, split failure envelopes, session audit, and durable denylist checks pending"
+          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified with env/default secret, matched against process-local session, checked against stored iat/nbf/exp runtime bounds, rejects disabled users, and appends accepted session audit rows; typed per-claim extraction, split failure envelopes, and durable denylist checks remain blocked"
       },
       "refreshTokenRow": {
           "tableName": "refresh_tokens",
@@ -281,7 +281,7 @@ jsonBody authContract
           "insertRule": "logout or admin revocation inserts the active JWT jti, user_id, exp, revoked_at, and request_id when typed claims are available",
           "lookupRule": "session and protected-route auth reject a signed token when revoked_jwts has the same jti and expires_at is still in the future",
           "cleanupRule": "maintenance may delete rows only after expires_at plus access-token clock skew",
-          "runtimeStatus": "contract; schema exists, but executable demo cannot persist or check revoked jti rows until typed JWT claim extraction and durable session wiring are added"
+          "runtimeStatus": "blocked contract; schema exists, but executable demo cannot persist or check revoked jti rows because standard.jwt currently signs/verifies HS256 tokens without exposing typed claim or jti extraction for arbitrary incoming bearer tokens"
       },
       "loginRateLimit": {
           "durableTable": "rate_limit_buckets",
@@ -301,7 +301,7 @@ jsonBody authContract
           "requiredFields": "auditEventId, requestId, actorUserId when known, actorRole when known, action, outcome, reason, payloadJson, createdAt, ipHash, userAgentHash",
           "redactionRule": "payloadJson must never contain plaintext passwords, password hashes, bearer tokens, refresh tokens, cookies, raw Authorization headers, raw IPs, or raw user agents",
           "transactionRule": "login success/failure and refresh/logout decisions append durable audit rows in the same SQLite transaction as the auth state they accept or reject",
-          "runtimeStatus": "executable for login accepted, invalid_credentials rejected, and rate_limited rejected rows; refresh, logout, and session audit rows remain pending"
+          "runtimeStatus": "executable for login accepted, invalid_credentials rejected, rate_limited rejected, refresh accepted/rejected, logout accepted, and accepted session-check rows"
       },
       "failureMarkers": {
           "disabledUser": "login and refresh reject disabled users as invalid_credentials or invalid_refresh_token without leaking account status",
@@ -403,7 +403,7 @@ jsonBody authContract
           "runtimeStatus": "executable reads AUCTION_ARENA_JWT_SECRET when present and at least 32 bytes, otherwise uses deterministic local demo fallback; production fatal-missing-secret mode remains pending"
       },
       "authContextIntegrationPatch": {
-          "value": "Remaining auth_context integration: replace process-local refresh state with a refresh_tokens row transaction; make production JWT secret absence fatal; add typed JWT claim extraction and durable revoked_jwts checks; split auth failure envelopes and 403 authorization failures; audit refresh/logout/session; wire viewer, admin, operator, service, and full chat role/scope policies."
+          "value": "Remaining auth_context integration: add restart-safe refresh lookup/session recovery once opaque refresh tokens carry a lookup id or keyed lookup hash; make production JWT secret absence fatal; add typed JWT claim extraction and durable revoked_jwts checks; split auth failure envelopes and 403 authorization failures; wire viewer, admin, operator, service, and full chat role/scope policies."
       }
   }
 

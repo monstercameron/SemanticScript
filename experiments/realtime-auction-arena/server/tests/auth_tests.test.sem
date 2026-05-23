@@ -2,9 +2,9 @@ module app.realtime_auction_arena.server.tests.auth_tests_coverage
 purpose module app.realtime_auction_arena.server.tests.auth_tests_coverage "Coverage marker for server/tests/auth_tests.sem."
 moduleOwns app.realtime_auction_arena.server.tests.auth_tests_coverage "Auth-test artifact coverage and naming."
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth_tests_coverage "Auth implementation."
-invariant module app.realtime_auction_arena.server.tests.auth_tests_coverage "Executable auth coverage now includes env-backed signing, runtime access-token time claims, login rate limiting, and login audit rows; typed JWT claim extraction cases remain named."
+invariant module app.realtime_auction_arena.server.tests.auth_tests_coverage "Executable auth coverage now includes env-backed signing, runtime access-token time claims, login rate limiting, durable refresh row writes, disabled-user checks, and auth audit rows; typed JWT claim extraction cases remain named as blocked."
 
-storage module immutable authTestsCoveragePlanSummary String "server/tests/auth_tests.sem coverage: invalid password, bcrypt 72-byte password limit, executable JWT secret config, executable JWT issue-time model, JWT denylist contract, durable refresh-token row model, executable login rate-limit rows, executable login audit events, disabled user, expired token, bad signature, wrong audience, and insufficient role."
+storage module immutable authTestsCoveragePlanSummary String "server/tests/auth_tests.sem coverage: invalid password, bcrypt 72-byte password limit, executable JWT secret config, executable JWT issue-time model, blocked JWT denylist contract, executable active-process refresh-token row insert/rotation/revocation model, executable login rate-limit rows, executable auth audit events, disabled user, expired token, bad signature, wrong audience, and insufficient role."
 
 operation getAuthTestsCoveragePlan
 output operation getAuthTestsCoveragePlan String
