@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.event_context "Event replay h
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.event_context "Route registration, auth implementation, SQLite runtime adapter, or long-lived SSE transport."
 invariant module app.realtime_auction_arena.server.tests.event_context "Event-context tests must cover authorization, cursor precedence, replay bounds, event ordering, and stable event type names."
 
-storage module immutable eventContextUnitTestPlanSummary String "server/src/event_context.sem coverage: auctionEventTypeNameFromCode maps auction lifecycle, accepted bid, and chat event codes; auctionEventsHandler rejects unauthorized requests; accepts seeded auctioneer and bidder viewer scopes; requires auctionId; honors Last-Event-ID over ?after; rejects negative cursors and limits outside 1..200; returns auction_not_found for missing auctions; replays committed rows ordered by sequence with eventTypeCode, eventType, payload, count, and nextAfter."
+storage module immutable eventContextUnitTestPlanSummary String "server/src/event_context.sem coverage: auctionEventTypeNameFromCode maps auction lifecycle, accepted bid, and chat event codes; auctionEventsHandler rejects unauthorized requests; accepts seeded auctioneer and bidder viewer scopes; requires auctionId; honors Last-Event-ID over ?after; rejects negative cursors and limits outside 1..200; returns auction_not_found for missing auctions; replays committed rows ordered by sequence with eventTypeCode, eventType, payload, count, and nextAfter; current transport remains bounded JSON replay, not long-lived SSE."
 
 operation getEventContextUnitTestPlan
 output operation getEventContextUnitTestPlan String

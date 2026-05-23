@@ -290,6 +290,9 @@ refresh/logout/session audit writes, and JWT denylist lookup remain open.
       and slow-client drop metric contracts for long-lived SSE.
 - [x] Expose zero-valued SSE active-client and slow-client-drop metrics plus
       heartbeat/queue-capacity gauges until runtime fanout is executable.
+- [x] Pin the native adapter limitation with tests/docs: current SSE support is
+      one-shot `http.responseSseEvent` over `Content-Length` +
+      `Connection: close`, not a long-lived stream.
 - [ ] Emit real heartbeat events on a long-lived SSE response.
 - [ ] Detect real disconnects and remove live clients.
 - [ ] Add executable per-client bounded queues.
@@ -383,8 +386,13 @@ refresh/logout/session audit writes, and JWT denylist lookup remain open.
 - [x] Add server build-tape config settings in `server/build.sem`, validated
       by `python experiments/realtime-auction-arena/server/tests/enterprise_contract_tests.py`.
 - [x] Add graceful shutdown plan in `server/docs/runtime-gaps.md` and
-      `server/docs/api-contract.md`; executable signal handling remains blocked
-      by native runtime cancellation support.
+      `server/docs/api-contract.md`.
+- [x] Add native HTTP fallback SIGINT/SIGTERM accept-loop shutdown: stop
+      accepting, let the active handler finish, close the listen socket, and
+      return `SS_HTTP_OK`.
+- [ ] Add SemanticScript-visible shutdown/cancellation hooks so handlers can
+      observe drain state, reject new commands with `server_shutting_down`, and
+      close/drain future SSE subscribers.
 - [x] Add database backup/export plan in `server/docs/api-contract.md`.
 - [x] Add local development seed data for auctioneer and bidder principals,
       including password credential rows verified by the E2E harness.

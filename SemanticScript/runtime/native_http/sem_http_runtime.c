@@ -1,6 +1,7 @@
 #include "sem_http_runtime.h"
 
 #include <ctype.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,7 @@
 #define SS_HTTP_MAX_QUERY_PARAMS 32
 #define SS_HTTP_MAX_MULTIPART_PARTS 16
 #define SS_HTTP_MULTIPART_BOUNDARY_MAX 128
+#define SS_HTTP_SHUTDOWN_POLL_MILLIS 250
 
 /* Pattern-route knobs. SS_HTTP_MAX_PATH_PARAMS bounds the number of
  * :name segments per request — 8 is more than any realistic REST path.
@@ -57,6 +59,7 @@ static void ss_close_socket(ss_socket_t socket_handle) {
 #include <arpa/inet.h>
 #include <errno.h>
 #include <sys/stat.h>          /* mkdir for ss_http_filesystem_ensure_directory */
+#include <sys/select.h>
 #include <time.h>              /* clock_gettime for ss_http_now_millis */
 #include <netdb.h>
 #include <sys/socket.h>
@@ -68,6 +71,44 @@ static void ss_close_socket(ss_socket_t socket_handle) {
     close(socket_handle);
 }
 #endif
+
+static volatile sig_atomic_t g_http_shutdown_requested = 0;
+
+static void request_http_shutdown_from_signal(int signal_number) {
+    (void)signal_number;
+    g_http_shutdown_requested = 1;
+}
+
+static void reset_http_shutdown_state(void) {
+    g_http_shutdown_requested = 0;
+}
+
+static int http_shutdown_requested(void) {
+    return g_http_shutdown_requested != 0;
+}
+
+#ifdef _WIN32
+static BOOL WINAPI http_console_ctrl_handler(DWORD ctrl_type) {
+    switch (ctrl_type) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        g_http_shutdown_requested = 1;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#endif
+
+static void install_http_shutdown_handlers(void) {
+    signal(SIGINT, request_http_shutdown_from_signal);
+    signal(SIGTERM, request_http_shutdown_from_signal);
+#ifdef _WIN32
+    SetConsoleCtrlHandler(http_console_ctrl_handler, TRUE);
+#endif
+}
 
 struct SSHttpRequest {
     const char *method;
@@ -2083,6 +2124,23 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     return response_status;
 }
 
+static int wait_for_listen_socket(ss_socket_t listen_socket) {
+    fd_set read_set;
+    struct timeval timeout;
+    int ready;
+
+    FD_ZERO(&read_set);
+    FD_SET(listen_socket, &read_set);
+    timeout.tv_sec = SS_HTTP_SHUTDOWN_POLL_MILLIS / 1000;
+    timeout.tv_usec = (SS_HTTP_SHUTDOWN_POLL_MILLIS % 1000) * 1000;
+
+    ready = select((int)(listen_socket + 1), &read_set, NULL, NULL, &timeout);
+    if (ready <= 0) {
+        return ready;
+    }
+    return FD_ISSET(listen_socket, &read_set) ? 1 : 0;
+}
+
 int ss_http_server_run(const SSHttpServerConfig *config) {
     struct addrinfo hints;
     struct addrinfo *result = NULL;
@@ -2093,6 +2151,9 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     if (!has_valid_route_table(config)) {
         return SS_HTTP_ERR_CONFIG;
     }
+
+    reset_http_shutdown_state();
+    install_http_shutdown_handlers();
 
     /* Pre-parse every route path into segment tables exactly once. A
      * compile failure (bad pattern, malloc OOM) aborts startup with the
@@ -2122,6 +2183,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     hints.ai_flags = AI_PASSIVE;
 
     if (getaddrinfo(config->host, port_text, &hints, &result) != 0) {
+        free_compiled_routes();
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -2151,6 +2213,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     freeaddrinfo(result);
 
     if (listen_socket == SS_INVALID_SOCKET) {
+        free_compiled_routes();
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -2159,6 +2222,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
 
     if (listen(listen_socket, 128) != 0) {
         ss_close_socket(listen_socket);
+        free_compiled_routes();
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -2168,14 +2232,38 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     printf("SemanticScript HTTP server listening at http://%s:%hu\n", config->host, config->port);
     fflush(stdout);
 
-    for (;;) {
-        ss_socket_t client_socket = accept(listen_socket, NULL, NULL);
+    while (!http_shutdown_requested()) {
+        int ready = wait_for_listen_socket(listen_socket);
+        ss_socket_t client_socket;
+        if (ready == 0) {
+            continue;
+        }
+        if (ready < 0) {
+#ifndef _WIN32
+            if (errno == EINTR) {
+                continue;
+            }
+#endif
+            if (http_shutdown_requested()) {
+                break;
+            }
+            continue;
+        }
+
+        client_socket = accept(listen_socket, NULL, NULL);
         if (client_socket == SS_INVALID_SOCKET) {
             continue;
         }
         (void)handle_client(client_socket, config);
         ss_close_socket(client_socket);
     }
+
+    ss_close_socket(listen_socket);
+    free_compiled_routes();
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return SS_HTTP_OK;
 }
 
 #endif

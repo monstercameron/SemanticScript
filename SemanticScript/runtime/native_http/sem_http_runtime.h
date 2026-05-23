@@ -57,6 +57,17 @@ enum {
     SS_HTTP_MIDDLEWARE_SHORT_CIRCUIT = 1
 };
 
+/*
+ * Runs the blocking native HTTP/1.1 fallback server until the process receives
+ * SIGINT/SIGTERM (or the equivalent Windows console close/break event). Signal
+ * shutdown stops accepting new clients, lets the currently accepted request
+ * return from its handler and flush its one-shot response, closes the listen
+ * socket, frees compiled route state, and returns SS_HTTP_OK.
+ *
+ * This is process-level graceful shutdown only. It does not expose a
+ * SemanticScript cancellation token, does not interrupt an in-flight handler,
+ * and does not make long-lived streaming responses executable.
+ */
 int ss_http_server_run(const SSHttpServerConfig *config);
 
 int ss_http_response_text(

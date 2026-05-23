@@ -243,9 +243,13 @@ Graceful shutdown contract:
   hard termination.
 
 The current executable does not have a signal/cancellation API exposed to
-SemanticScript. The Python E2E, load, and demo scripts terminate the local
-process after requests complete and validate that this does not leave the demo
-database unreadable.
+SemanticScript handlers. The native HTTP fallback adapter does handle
+process-level SIGINT/SIGTERM by stopping accepts, letting the currently accepted
+request finish, closing the listen socket, and returning `SS_HTTP_OK`. The
+Python E2E, load, and demo scripts terminate the local process after requests
+complete and validate that this does not leave the demo database unreadable.
+Handler-observable drain state, request cancellation tokens, and SSE subscriber
+drain/close hooks remain planned runtime work.
 
 ## Stable Error-Code Registry
 
@@ -362,7 +366,9 @@ The executable `/metrics` endpoint publishes runtime-backed request/auth/bid
 and rate-limit series, zero-valued SSE gauges/counters, and the configured
 heartbeat/queue capacity. Long-lived SSE fanout, heartbeat writes, disconnect
 detection, and slow-client handling remain blocked on native streaming response
-and cancellation APIs.
+and request/connection cancellation APIs. The current native adapter sends each
+response with `Content-Length` and `Connection: close`; `http.responseSseEvent`
+is a one-shot frame formatter, not a live stream.
 
 ## CORS And CSRF Contract
 

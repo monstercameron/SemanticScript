@@ -66,7 +66,9 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
   event type naming are executable for the JSON fallback. The contract now fixes
   replay-before-live ordering, 15000 ms heartbeats, 256-item per-client queues,
   disconnect cleanup, and slow-client drop metrics for the future streaming
-  path.
+  path. The native HTTP adapter still has only one-shot response writers:
+  `http.responseSseEvent` formats a single `text/event-stream` body, and the
+  fallback transport sends `Content-Length` plus `Connection: close`.
 - Chat create is executable; chat delete/report are registered guard routes
   while moderation persistence remains contract work. Audit query and admin APIs
   are not registered handlers yet.
@@ -85,9 +87,12 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
 - Event replay cursor and limit parsing is executable but uses the standard
   decimal-prefix parser; strict rejection of trailing junk and the dedicated
   `replay_cursor_invalid` envelope remain planned.
-- Production-grade graceful shutdown remains blocked on signal/cancellation
-  APIs. The server contract and Python harnesses define shutdown order and
-  terminate only after current smoke/load/demo requests complete.
+- The native HTTP fallback server now handles process-level SIGINT/SIGTERM
+  shutdown by stopping the accept loop, letting the currently accepted request
+  finish, closing the listen socket, and returning `SS_HTTP_OK`. Production
+  command-drain behavior is still incomplete because SemanticScript does not yet
+  expose source-level cancellation tokens, server drain state, or async
+  subscriber drains to handlers.
 
 ## Graceful Shutdown Plan
 
@@ -107,8 +112,10 @@ The app-level shutdown sequence is:
 
 Current executable validation uses the Python E2E/load/demo harnesses: each
 starts the local server, completes requests, terminates the process, and then
-opens SQLite to verify the database remains readable. Native signal handling,
-task cancellation, and async subscriber drains remain runtime features.
+opens SQLite to verify the database remains readable. The native HTTP adapter's
+process-signal accept-loop shutdown is executable, but task cancellation,
+handler-observable drain state, and async subscriber drains remain runtime
+features.
 
 ## Language And Runtime Pressure Points
 
@@ -121,6 +128,8 @@ task cancellation, and async subscriber drains remain runtime features.
   queues, and per-auction supervisors.
 - Long-lived HTTP response streams for SSE, plus client-disconnect detection
   and nonblocking per-subscriber writes.
+- SemanticScript-visible HTTP shutdown/cancellation hooks, including
+  handler-observable drain state and a request/connection cancellation token.
 - Structured logging and monotonic time measurement.
 - Native HTTP client and async-safe Win32 UI update primitives for the desktop
   client.
