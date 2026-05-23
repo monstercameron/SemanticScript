@@ -2,6 +2,20 @@
 
 ## 2026-05-22
 
+- `0ba6ca4f2dbbabd5e8ea685bcd924c4ab51ab718` - `tools: cover agent command contracts`
+  - Adds unit and subprocess contract coverage for the new `sem` agent surfaces, including version, doctor, skills, check, explain, graph, slice, fix, patch, and size JSON payloads.
+  - Refines `sem check` status reporting, curated diagnostic explainers, skill aliases, patch-plan precondition hashes, `sem size`, global `--version --json`, and TODO status for the implemented agent tooling pass.
+- `d3f922d01a21d448ed8556a2dce3acb1cb289433` - `tools: relax fix and patch dry-run status`
+  - Makes `sem fix --plan` succeed even when no repairs are available, reports `repairCount`, and avoids running verification for `sem patch --dry-run`.
+- `a9dc21910861109a62e388693da1330ce6995684` - `tools: add agent contract command surfaces`
+  - Seeds the `sem` agent command layer with version-matched skills, diagnostic explain data, `sem check --json`, graph/slice payload builders, fix-plan and patch-plan helpers, plus CLI commands for version, graph, slice, explain, fix, patch, and skills.
+  - Adds TODO tracking for agent product contract parity, repair-loop contracts, semantic slicing, command snapshots, release validation, and external platform weakness research.
+- `ef5fe2aec07731a26bb242c201a6c1121b0995c4` - `experiments: fix auction SQLite command flows`
+  - Converts Realtime Auction Arena SQL constants and prepare calls to `SqlText`/`sql body`, uses SQLite `RETURNING` for auction, bid, chat, and login rate-limit writes, drains `RETURNING` before commit, caches the JWT signing secret, and transacts login rate-limit updates.
+  - Simplifies chat event/idempotency persistence, reuses replay timestamps consistently, and expands E2E coverage for rate-limit persistence plus chat idempotency replay/conflict behavior.
+- `2afaba61431768fbc795a3b2f19adf8a0faa4b16` - `compiler: tighten strict SQLite diagnostics`
+  - Adds strict compiler and semlint diagnostics for `SqlText`-backed SQL, SQLite round-trip/transaction hazards, `RETURNING` drain requirements, `last_insert_rowid`, uncached `getenv`, repeated request timestamps, idempotency replay classification, large local static literals, and unreachable operation rows.
+  - Expands compiler/linter coverage and migrates SQLite samples plus TaskForge SQL constants to `SqlText` `sql body` / `literalSource` usage.
 - `c97c21564408ce8700fd9e9e0d3f790591ea28ea` - `experiments: adjust auction chat guard smoke`
   - Updates the Realtime Auction Arena E2E smoke contract for chat delete guards: bidder tokens are denied before missing-message lookup, while auctioneer tokens still receive `message_not_found`.
 - `b29f6a602039877f8e80c1a71354d85389f552a5` - `experiments: refresh auction route smoke coverage`
