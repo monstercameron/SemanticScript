@@ -52,21 +52,24 @@ the E2E harness verifies:
   heartbeat output;
 - oversized login bodies return a clean `413 payload_too_large` JSON envelope.
 
-This is still not a production-complete backend. Restart-safe durable session
-lookup, operator metrics auth, long-lived live SSE fanout, and production
-fatal-missing-secret mode are still open work tracked in `TODO.md`. HS256
-access-token signing, signature verification, typed
-`aud`/`exp`/`jti` claim checks, executable JWT denylist checks, environment JWT
-secret override, process-local bcrypt-hashed refresh-token rotation with
-best-effort durable refresh rows, seeded admin audit authorization, and the
+This is still not a production-complete backend. Restart-safe durable
+multi-session auth lookup, long-lived live SSE fanout, production actor-loop
+integration, request cancellation, and app-level shutdown finalization remain
+open work tracked in `TODO.md`. HS256 access-token signing, signature
+verification, typed `aud`/`exp`/`jti` claim checks, executable JWT denylist
+checks, environment JWT secret override, production fail-closed JWT secret
+validation, process-local bcrypt-hashed refresh-token rotation with best-effort
+durable refresh rows, seeded admin audit/metrics authorization, and the
 persisted create/start/bid/extend/close/chat/event/audit happy path are
 executable.
 
 The executable API harness asserts opt-in SSE replay frames, heartbeat output,
-and opaque audit cursor pagination with an audit id tiebreak. It intentionally
-does not assert long-lived live SSE subscriptions, durable multi-session auth,
-or operator metrics auth. Those remain target contracts until their runtime,
-authorization, and streaming integrations exist.
+opaque audit cursor pagination with an audit id tiebreak, and admin-only metrics
+auth with `401` for anonymous callers, `403` for valid non-admin callers, and
+`200` for the seeded admin bearer. It intentionally does not assert
+long-lived live SSE subscriptions or restart-safe durable multi-session auth.
+Those remain target contracts until their runtime, authorization, and streaming
+integrations exist.
 
 ## Agent Loop
 
@@ -112,9 +115,10 @@ AUCTION_ARENA_SSE_HEARTBEAT_MILLIS
 AUCTION_ARENA_REQUEST_LOG_MODE
 ```
 
-Production readiness must fail closed when required secret/config material is
-missing or unsafe demo defaults are enabled. The source-embedded demo JWT secret
-is still a development-only blocker tracked in `TODO.md`.
+When `AUCTION_ARENA_PROFILE=production`, readiness and login fail closed unless
+`AUCTION_ARENA_JWT_SECRET` is present and at least 32 bytes. Development mode
+keeps the source-embedded demo JWT secret as a deterministic local fallback
+only; it must not be used for production deployments.
 
 Graceful shutdown is implemented as a layered contract: the native webServer
 surface owns signal detection and exposes `standard.http.serverIsShuttingDown`,
@@ -156,13 +160,13 @@ chat persistence, and audit rows.
 - Persist append-only auction events, chat events, audit events, request logs,
   idempotency keys, users, sessions, and refresh tokens.
 
-## Planned Routes
+## Route Surface
 
 ```text
-GET  /                         browser shell
+GET  /                         planned browser shell, not registered yet
 GET  /healthz                  process liveness
 GET  /readyz                   database/runtime readiness
-GET  /metrics                  JSON or text operational metrics
+GET  /metrics                  admin-protected Prometheus metrics
 
 POST /api/v1/auth/login
 POST /api/v1/auth/refresh
@@ -1084,7 +1088,7 @@ src/
   auction_context.sem          auction list/snapshot/create/start/extend/close/bid handlers
   event_context.sem            event type names and JSON replay handler
   sse_context.sem              opt-in SSE replay frames, heartbeat, disconnect checks
-  chat_context.sem             chat create handler plus registered delete/report guards
+  chat_context.sem             chat create/delete/report persistence and moderation handlers
   runtime_constants.sem        HTTP/auth/JSON/bind/event constants imported by contexts
   sql_queries.sem              executable SQLite statement text imported by contexts
   wire_envelopes.sem           static native HTTP JSON wire bodies imported by helpers

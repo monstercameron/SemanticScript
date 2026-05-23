@@ -107,9 +107,13 @@ Current executable route set:
 | POST | `/api/v1/auctions/:auctionId/close` | executable SQLite close with idempotency |
 | POST | `/api/v1/auctions/:auctionId/bids` | executable SQLite bid with idempotency and active bidder attribution |
 | GET | `/api/v1/auctions/:auctionId/events` | executable authenticated bounded JSON replay by default; `Accept: text/event-stream` returns SSE replay frames with `id`, `event`, `data`, and a heartbeat |
+| GET | `/api/v1/auctions/:auctionId/audit` | executable admin-protected bounded audit replay with opaque cursor pagination |
+| POST | `/api/v1/auctions/:auctionId/chat/messages` | executable SQLite chat create with idempotency and rate limiting |
+| DELETE | `/api/v1/auctions/:auctionId/chat/messages/:messageId` | executable SQLite chat delete/moderation with idempotency |
+| POST | `/api/v1/auctions/:auctionId/chat/messages/:messageId/report` | executable SQLite chat report with idempotency |
 
 Long-lived live SSE fanout, restart-safe durable sessions, all-route request
-start logging, reusable request context, and non-auth rate-limit enforcement
+start logging, reusable request context, and broader route-family rate limiting
 remain planned runtime work. Registered auction command accepts and bid rejects
 persist durable request finish rows with non-zero completed durations.
 Chat route policy, message length,
@@ -133,8 +137,11 @@ Auth hardening contract:
   decoded incoming token `aud`/`exp`/`jti` claims; validates stored
   active-token time bounds on session; rejects active revoked jti rows; cleans
   expired denylist rows; enforces login buckets in SQLite; and writes durable
-  login/refresh/logout/session audit rows. Restart-safe durable
-  refresh-token/session lookup remains planned.
+  login/refresh/logout/session audit rows. When
+  `AUCTION_ARENA_PROFILE=production`, readiness and login return
+  `configuration_invalid` until `AUCTION_ARENA_JWT_SECRET` is present and at
+  least 32 bytes. Restart-safe durable refresh-token/session lookup remains
+  planned.
 
 Unsupported methods on known executable paths return `405 method_not_allowed`
 through the native routeMethodNotAllowed fallback, which detects a matching
@@ -241,11 +248,12 @@ Initial target ordering:
 `server/build.sem` declares the build-time defaults and deployment config keys.
 Executable local defaults bind to `127.0.0.1:18083`, use
 `auction_arena.sqlite3`, and keep the native webServer profile in development
-mode. Production deployments should provide `AUCTION_ARENA_JWT_SECRET` as at
-least 32 random bytes. The current executable uses that value for signing and
-verification when present; the source literal remains only as deterministic
-local-demo fallback until production startup-mode config can make missing
-secrets fatal.
+mode. Production deployments must set `AUCTION_ARENA_PROFILE=production` and
+provide `AUCTION_ARENA_JWT_SECRET` as at least 32 random bytes. The current
+executable uses that value for signing and verification when present; in
+production profile it returns `configuration_invalid` from readiness and login
+when the secret is absent or too short. The source literal remains only as a
+deterministic development-mode fallback.
 
 Graceful shutdown contract:
 

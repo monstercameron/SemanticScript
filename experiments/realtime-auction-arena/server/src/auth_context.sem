@@ -1227,8 +1227,8 @@ async requestHasAuctioneerBearerToken no
 useCapability requestHasAuctioneerBearerToken httpRequestReader
 useCapability requestHasAuctioneerBearerToken memoryBufferReadWriteCapability
 useCapability requestHasAuctioneerBearerToken jwtTokenSigner
-purpose operation requestHasAuctioneerBearerToken "Return true when the active bearer token belongs to the seeded auctioneer role."
-invariant operation requestHasAuctioneerBearerToken "Write routes for auction management fail closed unless the active process-local principal is an auctioneer."
+purpose operation requestHasAuctioneerBearerToken "Return true when the active bearer token belongs to the seeded auctioneer role or the seeded admin role with the admin scope set."
+invariant operation requestHasAuctioneerBearerToken "Write routes for auction management fail closed unless the active process-local principal is an auctioneer or scoped admin."
 label startRequestHasAuctioneerBearerToken
 call auctioneerBearerValidCall requestHasValidBearerToken
 argument auctioneerBearerValidCall request HttpRequest request

@@ -29,18 +29,21 @@ In another shell:
 
 ```powershell
 Invoke-WebRequest http://127.0.0.1:18083/healthz -UseBasicParsing
-Invoke-WebRequest http://127.0.0.1:18083/metrics -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:18083/readyz -UseBasicParsing
 ```
 
 The executable currently serves the versioned API shell, static and dynamic JSON
 envelopes, bootstrap metrics, bcrypt-backed demo auth, HS256 bearer tokens
 signed from app-owned claim payloads, SQLite schema initialization,
-create/list/snapshot/start/bid command routes, scoped idempotency replay and
-conflict handling, seeded auctioneer/bidder role guards, accepted-command audit
-rows, and JSON event replay. True long-lived SSE, chat, durable auth sessions,
-full admin/service/viewer policies, extend/close commands, request logs, rate
-limits, and the Win32/browser clients are still tracked in
-[server/TODO.md](server/TODO.md).
+create/list/snapshot/start/bid/extend/close command routes, chat
+create/delete/report, scoped idempotency replay and conflict handling, seeded
+auctioneer/bidder/admin role guards, protected admin metrics, accepted-command
+audit rows, durable request-log finish rows, login/bid/chat rate limits, JSON
+event replay, and opt-in SSE replay frames. True long-lived live SSE fanout,
+restart-safe durable multi-session auth, production actor-loop integration, and
+the Win32/browser clients are still tracked in [server/TODO.md](server/TODO.md).
+`GET /metrics` is admin-protected; use the seeded `admin` login and pass its
+bearer token when checking Prometheus metrics manually.
 
 ## Demo Story
 
@@ -92,10 +95,10 @@ The server owns auction state and exposes HTTP/SSE endpoints.
 Planned routes:
 
 ```text
-GET  /                         static browser client shell
+GET  /                         planned static browser client shell
 GET  /healthz                  process liveness
 GET  /readyz                   database/runtime readiness
-GET  /metrics                  operational counters
+GET  /metrics                  admin-protected Prometheus metrics
 
 POST /api/v1/auth/login        issue access JWT and refresh token
 POST /api/v1/auth/refresh      rotate refresh token and issue a new JWT
