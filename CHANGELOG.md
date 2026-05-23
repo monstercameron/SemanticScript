@@ -2,6 +2,9 @@
 
 ## 2026-05-23
 
+- `63318b755dc466d21e443b68ea1bf1ba99a878fb` - `docs: align root docs with runtime surfaces`
+  - Updates the root README and first-party docs index to include Realtime Auction Arena, native async/event support, outbound `standard.net`, blocking SSE primitives, and shutdown drain-state support.
+  - Refreshes concurrency, outbound network, and compatibility docs so they distinguish synchronous fallback rows from executable native async, `standard.event`, and prototype HTTP client surfaces.
 - `378a0f288bbf121b1a06fbf9ac70243435d369e4` - `experiments: align auction docs with executable contracts`
   - Updates the Realtime Auction Arena README, server README, and API contract so protected metrics, production JWT secret validation, chat/audit routes, request logs, rate limits, and opt-in SSE replay match the executable server.
   - Aligns source-level route/auth contract text with the bound `authReadyHandler`, `protectedMetricsHandler`, and admin-or-auctioneer command guard behavior.
