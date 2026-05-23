@@ -547,7 +547,7 @@ def main():
             assert_raw_response(
                 b"POST /reflect/body HTTP/1.1\r\n"
                 b"Host: 127.0.0.1\r\n"
-                b"Content-Length: 70000\r\n"
+                b"Content-Length: 1048577\r\n"
                 b"\r\n",
                 413,
                 "payload too large\n",
