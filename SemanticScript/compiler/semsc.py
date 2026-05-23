@@ -13382,18 +13382,22 @@ def _strict_reachable_line_numbers(op: Operation) -> set:
                     continue
                 if candidate_verb == "case":
                     found_wait_set = True
-                    if len(candidate_args) >= 2:
-                        add_label_successor(successors, candidate_args[1])
+                    successors.append(cursor)
                     cursor += 1
                     continue
                 if candidate_verb == "done":
                     found_wait_set = True
-                    if candidate_args:
-                        add_label_successor(successors, candidate_args[0])
+                    successors.append(cursor)
                     break
                 break
             if found_wait_set:
                 return successors
+        if verb == "case" and len(args) >= 2:
+            add_label_successor(successors, args[1])
+            return successors
+        if verb == "done" and args:
+            add_label_successor(successors, args[0])
+            return successors
         if verb in {"return", "returnOk", "returnError", "returnVoid"}:
             return successors
         if verb == "jump" and len(args) >= 2 and args[0] == "target":
