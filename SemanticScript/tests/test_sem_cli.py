@@ -122,6 +122,183 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertNotIn("migrate", " ".join(compiler_args).lower())
         self.assertNotIn("convert", " ".join(compiler_args).lower())
 
+    def test_check_payload_is_machine_readable(self) -> None:
+        with mock.patch.object(sem, "_compiler_check_probe", return_value={
+            "attempted": True,
+            "ok": True,
+            "returnCode": 0,
+            "stdout": "",
+            "stderr": "",
+        }):
+            payload = sem._build_check_payload(Path("SemanticScript/tests/tiny.sem"), [])
+
+        self.assertEqual(payload["schemaVersion"], "sem.check.v1")
+        self.assertIn("diagnostics", payload)
+        self.assertIn("summary", payload)
+        self.assertIn("targetReadiness", payload)
+        self.assertEqual(payload["targetReadiness"]["status"], "not-yet-computed")
+        self.assertIn(payload["status"], {"ok", "ok-with-warnings"})
+        diagnostic = payload["diagnostics"][0]
+        self.assertIn("expected", diagnostic)
+        self.assertIn("actual", diagnostic)
+        self.assertIn("span", diagnostic)
+        self.assertIn("repair", diagnostic)
+
+    def test_graph_payload_calls_view(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(NEW_SYNTAX_SOURCE, encoding="utf-8")
+
+            payload = sem._graph_payload(source, "calls")
+
+        self.assertEqual(payload["schemaVersion"], "sem.graph.v1")
+        self.assertEqual(payload["kind"], "calls")
+        self.assertEqual(payload["summary"]["edgeCount"], 2)
+        self.assertEqual(payload["edges"][0]["fromOperation"], "main")
+
+    def test_slice_operation_payload_includes_neighborhood(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(NEW_SYNTAX_SOURCE, encoding="utf-8")
+
+            payload = sem._slice_operation_payload(source, "main")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["anchor"]["kind"], "operation")
+        self.assertEqual(payload["operation"]["name"], "main")
+        self.assertGreaterEqual(len(payload["calledOperations"]), 2)
+        self.assertIn("purposes", payload)
+        self.assertIn("invariants", payload)
+
+    def test_skill_registry_is_version_matched(self) -> None:
+        payload = sem._skill_registry_payload()
+        names = {item["name"] for item in payload}
+        self.assertIn("language-core", names)
+        self.assertIn("errors-effects-capabilities", names)
+        skill = sem._skill_content("language-core")
+        self.assertIsNotNone(skill)
+        self.assertIn("program-structure", skill["content"])
+
+    def test_explain_payload_finds_linter_codes(self) -> None:
+        payload = sem._diagnostic_explain_payload("SS3104")
+        self.assertTrue(payload["found"])
+        self.assertEqual(payload["code"], "SS3104")
+        self.assertTrue(payload["references"])
+        self.assertTrue(payload["whyItMatters"])
+        self.assertTrue(payload["commonFixes"])
+
+    def test_fix_plan_generates_inline_authority_edit(self) -> None:
+        source_text = """\
+module demo.agent
+operation main
+input operation main request Console
+output operation main ExitCode
+effect main write console.stdout
+memory main heap no
+async main no
+return value request
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(source_text, encoding="utf-8")
+            with mock.patch.object(sem, "_compiler_check_probe", return_value={
+                "attempted": True,
+                "ok": True,
+                "returnCode": 0,
+                "stdout": "",
+                "stderr": "",
+            }):
+                payload = sem._build_fix_plan_payload(source, [])
+
+        repairs = [repair for repair in payload["repairs"] if repair["diagnostic"] == "SS3104"]
+        self.assertTrue(repairs)
+        authority_edit = repairs[0]["edits"][0]
+        self.assertEqual(authority_edit["op"], "insertAfterLine")
+        self.assertIn("authority main write console.stdout", authority_edit["text"])
+
+    def test_patch_plan_apply_updates_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            plan = {
+                "schemaVersion": "sem.fixPlan.v1",
+                "inputPath": str(source),
+                "repairs": [
+                    {
+                        "diagnostic": "SSTEST",
+                        "edits": [
+                            {
+                                "op": "insertAfterLine",
+                                "file": str(source),
+                                "afterLine": 2,
+                                "text": 'purpose operation main "demo"',
+                            }
+                        ],
+                    }
+                ],
+            }
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "ok": True,
+                "summary": {"errors": 0, "warnings": 0},
+            }):
+                payload = sem._execute_patch_plan(plan, "apply")
+
+            self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
+            self.assertEqual(payload["mode"], "apply")
+            self.assertIn(str(source), payload["filesChanged"])
+            updated = source.read_text(encoding="utf-8")
+            self.assertIn('purpose operation main "demo"', updated)
+
+    def test_patch_plan_rejects_stale_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            original_hash = sem._file_sha256(source)
+            plan = {
+                "schemaVersion": "sem.fixPlan.v1",
+                "inputPath": str(source),
+                "preconditions": {"fileHashes": {str(source): original_hash}},
+                "repairs": [
+                    {
+                        "diagnostic": "SSTEST",
+                        "edits": [
+                            {
+                                "op": "insertAfterLine",
+                                "file": str(source),
+                                "afterLine": 2,
+                                "text": 'purpose operation main "demo"',
+                            }
+                        ],
+                    }
+                ],
+            }
+            source.write_text("module demo.agent\noperation main\nreturn value changed\n", encoding="utf-8")
+            payload = sem._execute_patch_plan(plan, "apply")
+            self.assertFalse(payload["ok"])
+            self.assertTrue(payload["staleFiles"])
+
+    def test_size_payload_reports_source_and_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(NEW_SYNTAX_SOURCE, encoding="utf-8")
+            payload = sem._size_payload(source)
+
+        self.assertEqual(payload["schemaVersion"], "sem.size.v1")
+        self.assertEqual(payload["summary"]["operationCount"], 1)
+        self.assertEqual(payload["summary"]["callCount"], 2)
+        self.assertGreater(payload["summary"]["sourceBytes"], 0)
+
+    def test_main_supports_version_json(self) -> None:
+        with mock.patch("sys.stdout") as stdout:
+            result = sem.main(["version", "--json"])
+        self.assertEqual(result, 0)
+        self.assertTrue(stdout.write.called)
+
+        with mock.patch("sys.stdout") as stdout:
+            result = sem.main(["--version", "--json"])
+        self.assertEqual(result, 0)
+        self.assertTrue(stdout.write.called)
+
 
 class TestCallContracts(unittest.TestCase):
     def test_call_classes_use_cutover_channel_vocabulary(self) -> None:

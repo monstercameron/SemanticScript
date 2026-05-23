@@ -123,6 +123,63 @@ If SemanticScript already has better repair geometry in the source, then the
 tooling has to prove it moment-to-moment. The winning loop is one where the
 agent never has to guess.
 
+### Agent-First Tooling Pass - 2026-05-23
+
+These items came directly from
+`experiments/agent-first-tooling-research/README.md` and were implemented as a
+first-pass agent contract in `SemanticScript/tools/sem.py`.
+
+- [x] Add `sem version --json` and `sem --version --json`.
+      The CLI now emits a machine-readable tool/version/runtime/syntax payload
+      instead of only human text.
+
+- [x] Add `sem check --json`.
+      The wrapper now emits `sem.check.v1` with project facts, diagnostics,
+      summary counts, unresolved references, runtime flags, and a target-
+      readiness placeholder instead of requiring agents to scrape prose.
+
+- [x] Add version-matched built-in skills through `sem skills list|get`.
+      The first pass serves repository-backed skill payloads for language core,
+      effects/capabilities, graph/slice workflows, TaskForge patterns, SQLite
+      patterns, HTTP/HTML patterns, and patch/repair guidance.
+
+- [x] Add `sem explain CODE` with JSON support.
+      The first pass indexes current docs and linter tests so diagnostic codes
+      are discoverable through one machine-readable explainer surface.
+
+- [x] Add `sem graph --kind ... --json`.
+      Implemented graph kinds: `summary`, `calls`, `effects`, `capabilities`,
+      `routes`, `dataflow`, `types`, and `ownership`.
+
+- [x] Add `sem size --json`.
+      The first pass reports source footprint, operation/call/route counts, and
+      retained helper-family counts so agents can inspect artifact pressure
+      without dropping straight into LLVM or backend internals.
+
+- [x] Add `sem slice --json`.
+      Implemented operation, route, symbol, effect, capability, and type
+      anchors with neighborhood payloads that include semantic facts, callers,
+      routes, and related docs/tests when discoverable.
+
+- [x] Add `sem fix --plan --json`.
+      The first pass generates structured reviewable repair plans from current
+      diagnostics, including inline authority insertion for capability-coverage
+      gaps and metadata-row insertion templates for missing purpose/invariant
+      rows.
+
+- [x] Add `sem patch --dry-run|--apply`.
+      Patch application now consumes structured plan JSON, applies typed edits,
+      rejects stale plans when target files drift, runs formatter normalization
+      on apply, and returns a machine-readable verification payload.
+
+- [x] Add focused CLI contract tests for the new agent surfaces.
+      `SemanticScript/tests/test_sem_cli.py` now covers check payloads, graph,
+      slice, skills, explain, fix-plan generation, patch application, and
+      version JSON behavior.
+      `SemanticScript/tests/test_command_contracts.py` now covers the actual
+      subprocess command contracts for version, doctor, skills, check, explain,
+      graph, slice, fix, patch, and size.
+
 - [ ] Make `sem check --json` the non-negotiable source of truth for structured
       diagnostics.
       This is table stakes. Every serious compiler or linter failure that an

@@ -115,11 +115,88 @@ DIAGNOSTIC_INDEX_PATHS = (
     "docs/agents.md",
     "SemanticScript/linter/test_semlint.py",
 )
+SKILL_ALIASES = {
+    "sem": "language-core",
+    "sem-agent": "graph-and-slice",
+    "sem-language": "language-core",
+    "sem-diagnostics": "patch-and-repair",
+    "sem-stdlib": "sqlite-patterns",
+    "sem-builds": "patch-and-repair",
+    "sem-packages": "patch-and-repair",
+    "sem-testing": "graph-and-slice",
+}
+DIAGNOSTIC_EXPLAINERS = {
+    "SS3101": {
+        "title": "missing purpose metadata",
+        "summary": "Operations should declare a purpose row so agents and reviewers can recover intent without guessing from implementation alone.",
+        "whyItMatters": [
+            "Long sessions lose context first in business intent, not in syntax.",
+            "Purpose rows give repair tools a stable summary of why the operation exists."
+        ],
+        "commonFixes": [
+            "Add a `purpose operation ...` row that states what the operation does in one sentence."
+        ],
+    },
+    "SS3102": {
+        "title": "missing invariant metadata",
+        "summary": "Operations should declare at least one invariant row describing the safety or business rule that must remain true.",
+        "whyItMatters": [
+            "Invariants are the facts most likely to drift during multi-file agent edits.",
+            "Explicit invariants make semantic regressions easier to catch in review and lint."
+        ],
+        "commonFixes": [
+            "Add an `invariant operation ...` row that states the non-negotiable rule the operation preserves."
+        ],
+    },
+    "SS3104": {
+        "title": "missing capability coverage",
+        "summary": "An operation declares an effect without an authorizing capability or authority proof.",
+        "whyItMatters": [
+            "Effects without authority are one of the fastest ways for semantic drift to hide in a codebase.",
+            "Agents need explicit proof of who is allowed to perform side effects."
+        ],
+        "commonFixes": [
+            "Add `authority OP ACTION PATH` when the authority is local and obvious.",
+            "Declare a reusable capability and attach it with `useCapability` when the same proof recurs."
+        ],
+    },
+    "SS0104": {
+        "title": "unused errorCase",
+        "summary": "An error case was declared but never constructed on any observed failure path.",
+        "whyItMatters": [
+            "Dead error variants often mean an incomplete failure path rather than harmless clutter.",
+            "Agents should confirm whether the missing raise is the real bug before removing the declaration."
+        ],
+        "commonFixes": [
+            "Wire the error case into the intended failure path.",
+            "Remove the dead variant only if the domain truly no longer uses it."
+        ],
+    },
+    "SSRUN001": {
+        "title": "runtime panic",
+        "summary": "The program trapped with SemanticScript runtime panic context enabled.",
+        "whyItMatters": [
+            "This means execution reached a runtime safety boundary that static checks did not eliminate.",
+            "The panic block should identify the source row, operation, and call involved."
+        ],
+        "commonFixes": [
+            "Re-run under dev panic mode and inspect the referenced operation, call, and source row.",
+            "Use `sem inspect-ir` or trace output when the failure depends on runtime lowering."
+        ],
+    },
+}
 
 
 def _source_fingerprint(source: Path) -> str:
     try:
         return hashlib.sha256(source.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _file_sha256(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return ""
 
@@ -1433,6 +1510,10 @@ def _normalize_lint_diagnostic(diagnostic: dict) -> dict:
             "safe": auto_applicable or diagnostic.get("code") in {"SS3104"},
             "fixSafety": fix_safety,
         },
+        "explain": {
+            "code": diagnostic.get("code", ""),
+            "command": f"sem explain {diagnostic.get('code', '')} --json".strip(),
+        },
     }
 
 
@@ -1492,6 +1573,12 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
     compiler = _compiler_check_probe(compiler_source, compiler_args)
     errors = sum(1 for item in diagnostics if item.get("severity") == "error" or item.get("blocksCompile"))
     warnings = sum(1 for item in diagnostics if item.get("severity") == "warning" and not item.get("blocksCompile"))
+    ok = bool(compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"])
+    status = "ok"
+    if not ok:
+        status = "diagnostics"
+    elif warnings:
+        status = "ok-with-warnings"
     payload = {
         "schemaVersion": "sem.check.v1",
         "tool": {"name": "sem", "version": VERSION},
@@ -1500,8 +1587,8 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
             "compilerSource": str(compiler_source.resolve()) if compiler_source.exists() else str(compiler_source),
             "buildTape": context["project"].get("buildTape", ""),
         },
-        "ok": bool(compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"]),
-        "status": "ok" if compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"] else "diagnostics",
+        "ok": ok,
+        "status": status,
         "project": context["project"],
         "sourceFiles": context["sourceFiles"],
         "diagnostics": diagnostics,
@@ -1933,6 +2020,61 @@ def _slice_payload(path: Path, args: argparse.Namespace) -> dict:
     }
 
 
+def _size_payload(path: Path) -> dict:
+    bundle = _collect_facts_bundle(path)
+    symbols = _symbol_graph_payload(path)
+    total_bytes = 0
+    total_lines = 0
+    helper_counts: dict[str, int] = {}
+    source_sizes = []
+    for item in bundle["files"]:
+        source = item["path"]
+        try:
+            text = source.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        size = len(text.encode("utf-8"))
+        line_count = len(text.splitlines())
+        total_bytes += size
+        total_lines += line_count
+        source_sizes.append({
+            "path": str(source.resolve()),
+            "bytes": size,
+            "lines": line_count,
+        })
+    for file_payload in symbols["files"]:
+        for operation in file_payload["operations"]:
+            for call in operation["calls"]:
+                target = call["target"]
+                family = target.split(".", 1)[0] if "." in target else "local"
+                helper_counts[family] = helper_counts.get(family, 0) + 1
+    retained_helpers = [
+        {"family": family, "callCount": count}
+        for family, count in sorted(helper_counts.items())
+    ]
+    return {
+        "schemaVersion": "sem.size.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "inputPath": str(path.resolve()),
+        "summary": {
+            "fileCount": len(source_sizes),
+            "sourceBytes": total_bytes,
+            "sourceLines": total_lines,
+            "operationCount": symbols["summary"]["operationCount"],
+            "callCount": symbols["summary"]["callCount"],
+            "routeCount": symbols["summary"]["routeCount"],
+        },
+        "sourceFiles": source_sizes,
+        "retainedHelpers": retained_helpers,
+        "runtimeFeatureFlags": _runtime_feature_flags(),
+        "profileBudget": {
+            "status": "not-yet-computed",
+            "note": "Artifact-size and backend-retention accounting is not yet computed by this wrapper; this payload currently summarizes source and helper-family footprint.",
+        },
+        "errors": list(bundle["errors"]) + list(symbols["errors"]),
+    }
+
+
 def _skill_registry_payload() -> list[dict]:
     payload = []
     for entry in SKILL_REGISTRY:
@@ -2025,26 +2167,31 @@ def _diagnostic_index_payload() -> dict[str, dict]:
 def _diagnostic_explain_payload(code: str) -> dict:
     index = _diagnostic_index_payload()
     entry = index.get(code)
+    curated = DIAGNOSTIC_EXPLAINERS.get(code, {})
     if entry is None:
         return {
             "schemaVersion": "sem.explain.v1",
             "tool": {"name": "sem", "version": VERSION},
             "code": code,
             "found": False,
-            "title": "",
-            "summary": "",
+            "title": curated.get("title", ""),
+            "summary": curated.get("summary", ""),
             "references": [],
             "relatedCodes": [],
+            "whyItMatters": curated.get("whyItMatters", []),
+            "commonFixes": curated.get("commonFixes", []),
         }
     return {
         "schemaVersion": "sem.explain.v1",
         "tool": {"name": "sem", "version": VERSION},
         "code": code,
         "found": True,
-        "title": entry.get("title", code),
-        "summary": entry.get("summary", entry.get("title", code)),
+        "title": curated.get("title", entry.get("title", code)),
+        "summary": curated.get("summary", entry.get("summary", entry.get("title", code))),
         "references": entry.get("references", []),
         "relatedCodes": entry.get("relatedCodes", []),
+        "whyItMatters": curated.get("whyItMatters", []),
+        "commonFixes": curated.get("commonFixes", []),
         "note": "This is a repository-backed explainer built from the current docs and linter tests. Use the cited sources for full rule context.",
     }
 
@@ -2136,6 +2283,9 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict) -> d
 def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
     check_payload = _build_check_payload(path, compiler_args)
     bundle = _collect_facts_bundle(path)
+    file_hashes = {}
+    for item in bundle["files"]:
+        file_hashes[str(item["path"].resolve())] = _file_sha256(item["path"])
     repairs = [
         _repair_plan_for_diagnostic(path.resolve(), diagnostic, bundle)
         for diagnostic in check_payload["diagnostics"]
@@ -2149,6 +2299,9 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
         "diagnosticCount": len(check_payload["diagnostics"]),
         "repairCount": len(repairs),
         "repairs": repairs,
+        "preconditions": {
+            "fileHashes": file_hashes,
+        },
         "checkSummary": check_payload["summary"],
     }
 
@@ -2172,6 +2325,28 @@ def _apply_replace_line(lines: list[str], line_number: int, text: str) -> list[s
 
 
 def _execute_patch_plan(plan: dict, mode: str) -> dict:
+    file_hashes = dict(plan.get("preconditions", {}).get("fileHashes", {}))
+    stale = []
+    for file_name, expected_hash in sorted(file_hashes.items()):
+        current_hash = _file_sha256(Path(file_name))
+        if expected_hash and current_hash and expected_hash != current_hash:
+            stale.append({
+                "file": file_name,
+                "expectedHash": expected_hash,
+                "actualHash": current_hash,
+            })
+    if stale:
+        return {
+            "schemaVersion": "sem.patch.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "mode": mode,
+            "error": "patch precondition failed; one or more target files changed since the plan was generated",
+            "staleFiles": stale,
+            "filesChanged": [],
+            "editCount": 0,
+            "verification": {"formatOk": None, "checkOk": None, "checkSummary": {}},
+        }
     changed_files = {}
     for repair in plan.get("repairs", []):
         for edit in repair.get("edits", []):
@@ -2805,6 +2980,20 @@ def command_symbols(args: argparse.Namespace) -> int:
     return 0 if not payload["errors"] else 1
 
 
+def command_size(args: argparse.Namespace) -> int:
+    payload = _size_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if not payload.get("errors") else 1
+    summary = payload["summary"]
+    print(f"files: {summary['fileCount']}")
+    print(f"source bytes: {summary['sourceBytes']}")
+    print(f"operations: {summary['operationCount']}")
+    print(f"calls: {summary['callCount']}")
+    print("use --json for machine-readable size output")
+    return 0 if not payload.get("errors") else 1
+
+
 def command_graph(args: argparse.Namespace) -> int:
     payload = _graph_payload(Path(args.path), args.kind)
     if args.json:
@@ -2901,7 +3090,7 @@ def command_skills(args: argparse.Namespace) -> int:
                 print(f"{skill['name']}: {skill['description']}")
         return 0
     if args.skills_command == "get":
-        names = list(args.names)
+        names = [SKILL_ALIASES.get(name, name) for name in args.names]
         if args.all:
             names = [skill["name"] for skill in _skill_registry_payload()]
         entries = []
@@ -3176,6 +3365,15 @@ def build_parser() -> argparse.ArgumentParser:
                             help="compatibility flag; returns full content")
     skills_get.add_argument("names", nargs="*")
     skills_get.set_defaults(func=command_skills)
+
+    size = subparsers.add_parser(
+        "size",
+        help="emit agent-readable source and helper-footprint facts",
+    )
+    size.add_argument("--json", action="store_true",
+                      help="emit machine-readable size facts")
+    size.add_argument("path", nargs="?", default=".")
+    size.set_defaults(func=command_size)
 
     migrate_syntax = subparsers.add_parser(
         "migrate-syntax",
