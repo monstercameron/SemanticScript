@@ -143,6 +143,8 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertIn("actual", diagnostic)
         self.assertIn("span", diagnostic)
         self.assertIn("repair", diagnostic)
+        self.assertTrue(payload["nextCommands"])
+        self.assertTrue(any(item["kind"] == "explain" for item in payload["nextCommands"]))
 
     def test_graph_payload_calls_view(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -173,6 +175,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.readiness.v1")
         self.assertIn(payload["status"], {"supported", "partial", "blocked"})
         self.assertIn("requestedTargets", payload)
+        self.assertTrue(any(item["kind"] == "doctor" for item in payload["nextCommands"]))
 
     def test_dev_payload_is_watch_plan(self) -> None:
         payload = sem._dev_payload(Path("SemanticScript/tests/tiny.sem"), trace=True)
@@ -214,6 +217,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(payload["references"])
         self.assertTrue(payload["whyItMatters"])
         self.assertTrue(payload["commonFixes"])
+        self.assertTrue(payload["nextCommands"])
 
     def test_fix_plan_generates_inline_authority_edit(self) -> None:
         source_text = """\
@@ -243,6 +247,7 @@ return value request
         authority_edit = repairs[0]["edits"][0]
         self.assertEqual(authority_edit["op"], "insertAfterLine")
         self.assertIn("authority main write console.stdout", authority_edit["text"])
+        self.assertTrue(any(item["kind"] == "patch" for item in payload["nextCommands"]))
 
     def test_fix_plan_marks_metadata_repairs_as_human_review(self) -> None:
         source_text = """\
@@ -303,6 +308,7 @@ return value 0
             self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
             self.assertEqual(payload["mode"], "apply")
             self.assertIn(str(source), payload["filesChanged"])
+            self.assertTrue(any(item["kind"] == "test" for item in payload["nextCommands"]))
             updated = source.read_text(encoding="utf-8")
             self.assertIn('purpose operation main "demo"', updated)
 
@@ -333,6 +339,7 @@ return value 0
             payload = sem._execute_patch_plan(plan, "apply")
             self.assertFalse(payload["ok"])
             self.assertTrue(payload["staleFiles"])
+            self.assertTrue(any(item["kind"] == "fix" for item in payload["nextCommands"]))
 
     def test_size_payload_reports_source_and_helpers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -366,6 +373,7 @@ return value 0
         self.assertEqual(payload["schemaVersion"], "sem.test.v1")
         self.assertEqual(payload["discoveredTests"], 1)
         self.assertEqual(payload["failedTests"], 0)
+        self.assertTrue(any(item["kind"] == "check" for item in payload["nextCommands"]))
 
     def test_main_supports_version_json(self) -> None:
         with mock.patch("sys.stdout") as stdout:

@@ -196,6 +196,11 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       subprocess command contracts for version, doctor, readiness, skills,
       check, explain, graph, slice, fix, patch, size, dev, and test.
 
+- [x] Add explicit next-step guidance to the core JSON contracts.
+      `sem check`, `sem readiness`, `sem explain`, `sem fix --plan`, `sem patch`,
+      and `sem test` now return `nextCommands` entries so an agent can follow
+      the local repair loop from the tool payload itself.
+
 - [x] Make `sem check --json` the non-negotiable source of truth for structured
       diagnostics.
       This is table stakes. Every serious compiler or linter failure that an

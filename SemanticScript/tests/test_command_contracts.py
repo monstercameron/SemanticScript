@@ -64,6 +64,7 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.check.v1")
         self.assertIn("diagnostics", payload)
+        self.assertIn("nextCommands", payload)
         self.assertIn("summary", payload)
         self.assertIn("targetReadiness", payload)
         self.assertIn(payload["status"], {"ok", "ok-with-warnings", "diagnostics", "compiler-error"})
@@ -80,6 +81,7 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.explain.v1")
         self.assertTrue(payload["found"])
         self.assertIn("whyItMatters", payload)
+        self.assertIn("nextCommands", payload)
 
     def test_graph_json_contract(self) -> None:
         code, payload = _sem_json("graph", "--kind", "calls", "--json", str(TINY_PATH))
@@ -101,6 +103,7 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.fixPlan.v1")
         self.assertIn("repairs", payload)
         self.assertIn("preconditions", payload)
+        self.assertIn("nextCommands", payload)
 
     def test_size_json_contract(self) -> None:
         code, payload = _sem_json("size", "--json", str(TINY_PATH))
@@ -137,6 +140,7 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.test.v1")
         self.assertEqual(payload["discoveredTests"], 1)
+        self.assertIn("nextCommands", payload)
 
     def test_patch_dry_run_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -166,6 +170,7 @@ class TestSemCommandContracts(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
             self.assertEqual(payload["mode"], "dry-run")
+            self.assertIn("nextCommands", payload)
 
 
 if __name__ == "__main__":

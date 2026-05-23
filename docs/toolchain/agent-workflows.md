@@ -102,6 +102,9 @@ python SemanticScript\tools\sem.py dev --json PATH
 python SemanticScript\tools\sem.py test --json PATH
 ```
 
+These payloads should not stop at facts. The core agent surfaces also return a
+`nextCommands` list with concrete follow-up CLI steps and reasons.
+
 Current schema versions:
 
 - `sem.version.v1`

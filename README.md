@@ -555,6 +555,10 @@ These commands are covered by focused unit and subprocess contract tests in
 `SemanticScript/tests/test_sem_cli.py` and
 `SemanticScript/tests/test_command_contracts.py`.
 
+The machine-readable payloads also carry `nextCommands` hints so an agent can
+move from check to explain, slice, fix-plan, patch, and test without inventing
+the loop from scratch.
+
 ## Repository Layout
 
 ```text

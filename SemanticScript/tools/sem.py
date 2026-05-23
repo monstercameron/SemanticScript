@@ -1564,6 +1564,205 @@ def _compiler_check_probe(source: Path, compiler_args: list[str]) -> dict:
     }
 
 
+def _append_next_command(entries: list[dict], seen: set[str], kind: str, command: str, reason: str) -> None:
+    if not command or command in seen:
+        return
+    seen.add(command)
+    entries.append({
+        "kind": kind,
+        "command": command,
+        "reason": reason,
+    })
+
+
+def _check_next_commands(path: Path, diagnostics: list[dict], status: str) -> list[dict]:
+    resolved = str(path.resolve())
+    entries: list[dict] = []
+    seen: set[str] = set()
+    for diagnostic in diagnostics[:8]:
+        code = diagnostic.get("code", "")
+        if code:
+            _append_next_command(
+                entries,
+                seen,
+                "explain",
+                f"sem explain {code} --json",
+                "load the current rule explanation for this diagnostic code",
+            )
+        if diagnostic.get("subjectKind") == "operation" and diagnostic.get("subjectName"):
+            _append_next_command(
+                entries,
+                seen,
+                "slice",
+                f"sem slice --operation {diagnostic['subjectName']} --json {resolved}",
+                "inspect the semantic neighborhood around the affected operation",
+            )
+    if any(item.get("repair", {}).get("id") for item in diagnostics):
+        _append_next_command(
+            entries,
+            seen,
+            "fix",
+            f"sem fix --plan --json {resolved}",
+            "generate a reviewable repair plan for the current diagnostics",
+        )
+    _append_next_command(
+        entries,
+        seen,
+        "graph",
+        f"sem graph --kind calls --json {resolved}",
+        "inspect the local call graph before editing shared behavior",
+    )
+    if status in {"ok", "ok-with-warnings"}:
+        _append_next_command(
+            entries,
+            seen,
+            "test",
+            f"sem test --json {resolved}",
+            "verify the current source state beyond syntax and lint passes",
+        )
+    return entries
+
+
+def _readiness_next_commands(path: Path, payload: dict) -> list[dict]:
+    resolved = str(path.resolve())
+    entries: list[dict] = []
+    seen: set[str] = set()
+    _append_next_command(
+        entries,
+        seen,
+        "doctor",
+        "sem doctor --json",
+        "inspect the current toolchain and environment state",
+    )
+    _append_next_command(
+        entries,
+        seen,
+        "check",
+        f"sem check --json {resolved}",
+        "separate environment blockers from source-level diagnostics",
+    )
+    if payload.get("graphSummary", {}).get("routeCount", 0):
+        _append_next_command(
+            entries,
+            seen,
+            "graph",
+            f"sem graph --kind routes --json {resolved}",
+            "inspect the route-hosting surface that depends on runtime availability",
+        )
+    return entries
+
+
+def _fix_plan_next_commands(path: Path) -> list[dict]:
+    resolved = str(path.resolve())
+    return [
+        {
+            "kind": "patch",
+            "command": "sem patch --dry-run --json <PLAN.json>",
+            "reason": "preview the exact edits before mutating source files",
+        },
+        {
+            "kind": "patch",
+            "command": "sem patch --apply --json <PLAN.json>",
+            "reason": "apply the reviewed repair plan with formatter and check verification",
+        },
+        {
+            "kind": "check",
+            "command": f"sem check --json {resolved}",
+            "reason": "recompute the current diagnostic set after reviewing the plan",
+        },
+        {
+            "kind": "test",
+            "command": f"sem test --json {resolved}",
+            "reason": "run test discovery once the repair plan is accepted",
+        },
+    ]
+
+
+def _patch_next_commands(plan: dict, mode: str, ok: bool) -> list[dict]:
+    input_path = str(Path(plan.get("inputPath", ".")).resolve())
+    if not ok:
+        return [
+            {
+                "kind": "fix",
+                "command": f"sem fix --plan --json {input_path}",
+                "reason": "regenerate the repair plan against the current file contents",
+            },
+            {
+                "kind": "check",
+                "command": f"sem check --json {input_path}",
+                "reason": "confirm the current source state before applying a new plan",
+            },
+        ]
+    if mode == "dry-run":
+        return [
+            {
+                "kind": "patch",
+                "command": "sem patch --apply --json <PLAN.json>",
+                "reason": "apply the reviewed plan once the dry-run diff is acceptable",
+            },
+            {
+                "kind": "check",
+                "command": f"sem check --json {input_path}",
+                "reason": "verify the current diagnostics before real application",
+            },
+        ]
+    return [
+        {
+            "kind": "check",
+            "command": f"sem check --json {input_path}",
+            "reason": "re-run structured diagnostics after the patch landed",
+        },
+        {
+            "kind": "test",
+            "command": f"sem test --json {input_path}",
+            "reason": "verify behavior after the patch and formatter normalization",
+        },
+        {
+            "kind": "graph",
+            "command": f"sem graph --kind calls --json {input_path}",
+            "reason": "inspect the post-patch call graph if shared behavior changed",
+        },
+    ]
+
+
+def _test_next_commands(path: Path, failed: int) -> list[dict]:
+    resolved = str(path.resolve())
+    entries = [
+        {
+            "kind": "check",
+            "command": f"sem check --json {resolved}",
+            "reason": "inspect structured diagnostics for the same project surface",
+        },
+        {
+            "kind": "graph",
+            "command": f"sem graph --kind calls --json {resolved}",
+            "reason": "inspect the call graph around failing semantic tests or app harnesses",
+        },
+    ]
+    if failed:
+        entries.insert(0, {
+            "kind": "fix",
+            "command": f"sem fix --plan --json {resolved}",
+            "reason": "generate candidate repairs for issues surfaced by the failing tests",
+        })
+    return entries
+
+
+def _explain_next_commands(code: str) -> list[dict]:
+    return [
+        {
+            "kind": "skills",
+            "command": "sem skills get sem-diagnostics --json",
+            "reason": "load the current diagnostic and repair workflow guidance for this tool version",
+        },
+        {
+            "kind": "related",
+            "command": f"sem explain {code} --json",
+            "reason": "re-use this command after following a related diagnostic edge from the current explainer",
+        },
+    ]
+
+
 def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
     context = _build_context_payload(path)
     symbols = _symbol_graph_payload(path)
@@ -1615,6 +1814,7 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
     }
     if not compiler["ok"] and payload["status"] == "diagnostics":
         payload["status"] = "compiler-error"
+    payload["nextCommands"] = _check_next_commands(path, diagnostics, payload["status"])
     return payload
 
 
@@ -2128,7 +2328,7 @@ def _readiness_payload(path: Path) -> dict:
         status = "blocked"
     elif partial_checks:
         status = "partial"
-    return {
+    payload = {
         "schemaVersion": "sem.readiness.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
@@ -2160,6 +2360,8 @@ def _readiness_payload(path: Path) -> dict:
             "It does not yet guarantee backend-specific artifact emission for every target."
         ),
     }
+    payload["nextCommands"] = _readiness_next_commands(path, payload)
+    return payload
 
 
 def _interface_fingerprints(path: Path) -> dict:
@@ -2315,7 +2517,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict
             passed += 1
         else:
             failed += 1
-    return {
+    payload = {
         "schemaVersion": "sem.test.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
@@ -2327,6 +2529,8 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict
         "skippedTests": skipped,
         "results": results,
     }
+    payload["nextCommands"] = _test_next_commands(path, failed)
+    return payload
 
 
 def _skill_registry_payload() -> list[dict]:
@@ -2440,6 +2644,7 @@ def _diagnostic_explain_payload(code: str) -> dict:
             "relatedCodes": [],
             "whyItMatters": curated.get("whyItMatters", []),
             "commonFixes": curated.get("commonFixes", []),
+            "nextCommands": _explain_next_commands(code),
         }
     return {
         "schemaVersion": "sem.explain.v1",
@@ -2453,6 +2658,7 @@ def _diagnostic_explain_payload(code: str) -> dict:
         "whyItMatters": curated.get("whyItMatters", []),
         "commonFixes": curated.get("commonFixes", []),
         "note": "This is a repository-backed explainer built from the current docs and linter tests. Use the cited sources for full rule context.",
+        "nextCommands": _explain_next_commands(code),
     }
 
 
@@ -2563,6 +2769,7 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str]) -> dict:
             "fileHashes": file_hashes,
         },
         "checkSummary": check_payload["summary"],
+        "nextCommands": _fix_plan_next_commands(path),
     }
 
 
@@ -2606,6 +2813,7 @@ def _execute_patch_plan(plan: dict, mode: str) -> dict:
             "filesChanged": [],
             "editCount": 0,
             "verification": {"formatOk": None, "checkOk": None, "checkSummary": {}},
+            "nextCommands": _patch_next_commands(plan, mode, False),
         }
     changed_files = {}
     for repair in plan.get("repairs", []):
@@ -2646,6 +2854,7 @@ def _execute_patch_plan(plan: dict, mode: str) -> dict:
         "filesChanged": [str(path) for path in sorted(changed_files, key=lambda item: str(item).lower())],
         "editCount": sum(len(repair.get("edits", [])) for repair in plan.get("repairs", [])),
         "verification": verification,
+        "nextCommands": _patch_next_commands(plan, mode, True),
     }
 
 
