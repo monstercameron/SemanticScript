@@ -2,6 +2,12 @@
 
 ## 2026-05-23
 
+- `d3454aa89567136ef103e402adb80f1f712f5bcf` - `experiments: harden auction metrics and config contracts`
+  - Routes readiness and metrics through auth-owned handlers so production JWT secret validation is enforced on readiness/login and `/metrics` is admin-only with 401/403/200 coverage.
+  - Extends auction E2E/API docs and tests around protected metrics behavior, production auth readiness, and positive request-log duration assertions.
+- `97cf00de2dadfcce97a4f83357c43892100a8f6b` - `runtime: harden durable event stream docs and tests`
+  - Documents async cancel-token tombstones and durable stream locked append-log semantics, including torn-tail recovery, bounded retained tails, and queue-gap behavior.
+  - Expands native event runtime tests for bounded durable replay, filtered cursor gaps, torn-write recovery, and cross-process writer IDs.
 - `f243d4c0a89578cddb1e1c9a2ebb203acfec1733` - `experiments: normalize auction request log durations`
   - Normalizes persisted Realtime Auction Arena request durations so completed request-log rows always record a positive `duration_ms`, using timestamp-derived values when available and a one-millisecond floor otherwise.
 - `ecd5df735f0fa45829fd4de729bb241385323d81` - `tests: cover auction production auth config`
