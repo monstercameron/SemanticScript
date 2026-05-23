@@ -58,7 +58,9 @@ question in an agent edit loop.
   language rules, repair conventions, or app patterns from stale memory.
 - `sem check --json`:
   the primary semantic gate. Use it before edits to see what is wrong and after
-  edits to verify the source state actually improved.
+  edits to verify the source state actually improved. By default it stays on the
+  source lane; use `--with-readiness` only when you explicitly want environment
+  and runtime-adapter facts embedded into the same payload.
 - `sem graph --json`:
   the coarse map. Use `summary` or `routes` first to decide where to drill
   before spending context on detailed source neighborhoods.
@@ -70,7 +72,11 @@ question in an agent edit loop.
   needs the reasoning and safe repair shapes behind that rule.
 - `sem fix --plan --json`:
   the proposal step. It turns diagnostics into reviewable candidate edits
-  without mutating source.
+  without mutating source. By default it is blocker-first and does not spend
+  time synthesizing warning-only repairs; add `--include-warnings` when the
+  source is already buildable and you want cleanup guidance. A `mixed` plan is
+  still usable when `planUsable: true`, and the command now exits `0` in that
+  case so an agent can continue into review or dry-run patching.
 - `sem patch --dry-run|--apply`:
   the execution step for an already-reviewed plan. It protects against stale
   files and re-verifies formatting and `check` after apply.
@@ -110,10 +116,14 @@ python SemanticScript\tools\sem.py fmt --check .\scratch.sem
 python SemanticScript\tools\sem.py check --json .\scratch.sem
 ```
 
-Only apply the plan when `sem fix --plan --json` returns
-`status: "actionable"` and `planUsable: true`. The `tiny.sem` demo is useful
-for showing one machine-applicable repair; it can still leave follow-up
-warnings after that first patch.
+Only auto-apply a plan when `sem fix --plan --json` returns
+`status: "actionable"` and `planUsable: true`. If the payload reports
+`status: "mixed"`, the machine edits are only a subset of the remaining work;
+use `sem patch --dry-run` first and keep the rest of the diagnostics in view.
+If the payload reports `status: "suggestions-only"`, there is no
+machine-applicable patch at all. Compact fix payloads are for review only:
+generate `--full` before saving a plan for `sem patch`, and `sem patch` now
+rejects truncated plans.
 
 ## Why This Exists
 
@@ -565,6 +575,20 @@ Install Python dependencies:
 python -m pip install -r requirements.txt
 ```
 
+List and run the central project test suites:
+
+```powershell
+python SemanticScript\tests\run_suite.py --list
+python SemanticScript\tests\run_suite.py unit
+python SemanticScript\tests\run_suite.py component
+python SemanticScript\tests\run_suite.py integration
+python SemanticScript\tests\run_suite.py e2e
+python SemanticScript\tests\run_suite.py all
+```
+
+GitHub Actions uses the same runner through the `ci-fast`, `editor`, and
+`ci-release` suite aliases.
+
 Run the sem-first quick path:
 
 ```powershell
@@ -593,11 +617,8 @@ python -m unittest SemanticScript.tests.test_app_runtime_smoke -v
 Run broader validation:
 
 ```powershell
-python -m compileall -q SemanticScript python
-python -m unittest SemanticScript/linter/test_semlint.py -v
-python SemanticScript/tests/test_compiler.py
-python SemanticScript/tests/test_stdlib.py
-npm --prefix vscode-semanticscript run check
+python SemanticScript\tests\run_suite.py ci-fast
+python SemanticScript\tests\run_suite.py ci-release
 ```
 
 ## Agent Workflow Interfaces
@@ -684,16 +705,24 @@ status as `sem check --json apps\taskforge-web`. A passing app harness no
 longer masks project-level diagnostics. Use `--skip-python-harnesses` when the
 goal is process-free app-harness suppression rather than semantic validation;
 for project surfaces, `sem check --json` remains the primary semantic gate.
-Project surfaces still report `status: "diagnostics"` when the preflight
-semantic check is red, and Python harness execution is deferred until the
-semantic preflight is clean.
+`sem check --json` now distinguishes source states more explicitly:
+`ok`, `ok-with-warnings`, `lint-diagnostics`, `compiler-error`, and
+`tool-error`. `sem test --json` still reports top-level `status: "diagnostics"`
+when preflight is red, but the nested `preflightStatus` carries the finer
+source-lane state. Python harness execution is deferred until semantic
+preflight is clean unless you use `--allow-red-preflight-harnesses`; in that
+mode the tool prioritizes runtime harnesses and defers project-surface
+semantic contract files.
 
-`sem dev --json apps\taskforge-web` currently demonstrates a blocked watch plan
-for the flagship app, not a restart-ready loop. It is useful for inspecting
-watch files, scope, and follow-up commands while the project is diagnostic-red.
+`sem dev --json apps\taskforge-web` currently demonstrates a quality-red watch
+plan for the flagship app, not a restart-ready loop. It is useful for
+inspecting watch files, scope, and follow-up commands while the project is
+still failing semantic quality checks.
 
-Only hand `sem patch` a plan when `sem fix --plan --json` returns
-`status: "actionable"` and `planUsable: true`.
+Only hand `sem patch --apply` a plan when `sem fix --plan --json` returns
+`status: "actionable"` and `planUsable: true`. A `mixed` plan is still useful,
+but it is review-first and should start with `sem patch --dry-run`. A compact
+fix payload is not a valid patch input; emit `--full` before saving a plan.
 
 Current stable `v1` JSON contracts:
 
@@ -724,7 +753,16 @@ The core repair-loop payloads also carry `nextCommands` hints so an agent can
 move from check to explain, slice, fix-plan, patch, and test without inventing
 the loop from scratch. `context`, `symbols`, and `doctor` are still useful
 lower-level retrieval or environment surfaces, but they are not the main repair
-navigation path.
+navigation path. These follow-ups now carry:
+
+- `argv`: replay-safe argument vectors
+- `cwd`: the intended working directory
+- `replayable`: whether the step can be executed exactly as emitted
+- `requiredArgs` / `artifactInputs`: extra path or artifact requirements for
+  non-replayable follow-ups
+
+`sem test --json` also separates source and runtime lanes with
+`preflightStatus`, `runtimeHarnessStatus`, and `compositeStatus`.
 
 ## Repository Layout
 

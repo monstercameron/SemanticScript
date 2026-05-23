@@ -25,25 +25,20 @@ on `vscode-semanticscript/`.
 Run these before sending a narrow tooling or docs change:
 
 ```powershell
-python -m compileall -q SemanticScript python
-python -m unittest SemanticScript/formatter/test_semfmt.py -v
-python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
-python -m unittest SemanticScript/linter/test_semlint.py -v
-python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
-python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
-python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
-npm --prefix vscode-semanticscript run check
+python SemanticScript/tests/run_suite.py ci-fast
 ```
 
 Use broader checks when changing compiler lowering, stdlib behavior, sample
 programs, or source-file extension handling:
 
 ```powershell
-python SemanticScript/tests/test_compiler.py
-python SemanticScript/tests/test_stdlib.py
-python SemanticScript/tests/compare.py
-python SemanticScript/tests/sem_alias_parity.py
+python SemanticScript/tests/run_suite.py ci-release
+```
+
+List all unit, component, integration, and e2e lanes with:
+
+```powershell
+python SemanticScript/tests/run_suite.py --list
 ```
 
 Some broader checks require Node.js, LLVM/clang, and a working native compiler

@@ -2,14 +2,15 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - master
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   python-validation:
@@ -34,48 +35,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Compile Python sources
-        run: python -m compileall -q SemanticScript python
-
-      - name: Print release version matrix
-        run: python SemanticScript/tools/release_versions.py
-
-      - name: Run formatter unit tests
-        run: python -m unittest SemanticScript/formatter/test_semfmt.py -v
-
-      - name: Check formatter output
-        run: python SemanticScript/formatter/semfmt.py --check SemanticScript/tests/tiny.sem
-
-      - name: Run linter unit tests
-        run: python -m unittest SemanticScript/linter/test_semlint.py -v
-
-      - name: Run sem CLI unit tests
-        run: python -m unittest SemanticScript.tests.test_sem_cli -v
-
-      - name: Run sem command-contract tests
-        run: python -m unittest SemanticScript.tests.test_command_contracts -v
-
-      - name: Parse smoke fixtures
-        run: |
-          python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sscript --parse-only
-          python SemanticScript/compiler/semsc.py SemanticScript/tests/tiny.sem --parse-only
-
-      - name: Lint smoke fixtures
-        run: |
-          python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sscript --summary
-          python SemanticScript/linter/semlint.py SemanticScript/tests/tiny.sem --summary
-
-      - name: Smoke agent-facing sem JSON commands
-        run: |
-          python SemanticScript/tools/sem.py --version --json
-          python SemanticScript/tools/sem.py skills list --json
-          python SemanticScript/tools/sem.py check --json SemanticScript/tests/tiny.sem
+      - name: Run fast Python suite
+        run: python SemanticScript/tests/run_suite.py ci-fast
 
   vscode-validation:
     name: VS Code extension validation
@@ -90,8 +58,13 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Check extension JavaScript
-        run: npm --prefix vscode-semanticscript run check
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run editor suite
+        run: python SemanticScript/tests/run_suite.py editor
 
   release-validation:
     name: Full release validation
@@ -109,20 +82,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Run compiler unit tests
-        run: python SemanticScript/tests/test_compiler.py
-
-      - name: Run standard library tests
-        run: python SemanticScript/tests/test_stdlib.py
-
-      - name: Run reference parity tests
-        run: python SemanticScript/tests/compare.py
-
-      - name: Run .sem alias source/parity tests
-        run: python SemanticScript/tests/sem_alias_parity.py
+      - name: Run release suite
+        run: python SemanticScript/tests/run_suite.py ci-release

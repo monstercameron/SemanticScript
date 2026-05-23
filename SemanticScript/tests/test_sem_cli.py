@@ -1,5 +1,7 @@
 import argparse
+import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,6 +47,10 @@ return value product
 label failed
 return error overflow
 """
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
+AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
 
 
 class TestSemAgentPayloads(unittest.TestCase):
@@ -131,14 +137,14 @@ class TestSemAgentPayloads(unittest.TestCase):
             "stdout": "",
             "stderr": "",
         }):
-            payload = sem._build_check_payload(Path("SemanticScript/tests/tiny.sem"), [])
+            payload = sem._build_check_payload(Path("SemanticScript/tests/tiny.sem"), [], include_readiness=True)
 
         self.assertEqual(payload["schemaVersion"], "sem.check.v1")
         self.assertIn("diagnostics", payload)
         self.assertIn("summary", payload)
         self.assertIn("targetReadiness", payload)
-        self.assertIn(payload["targetReadiness"]["status"], {"supported", "partial", "blocked"})
-        self.assertIn(payload["status"], {"ok", "ok-with-warnings"})
+        self.assertIn(payload["targetReadiness"]["status"], {"supported", "partial", "blocked", "source-diagnostics"})
+        self.assertIn(payload["status"], {"ok", "ok-with-warnings", "lint-diagnostics"})
         diagnostic = payload["diagnostics"][0]
         self.assertIn("expected", diagnostic)
         self.assertIn("actual", diagnostic)
@@ -146,6 +152,50 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertIn("repair", diagnostic)
         self.assertTrue(payload["nextCommands"])
         self.assertTrue(any(item["kind"] == "explain" for item in payload["nextCommands"]))
+        self.assertTrue(all("argv" in item for item in payload["nextCommands"]))
+        self.assertTrue(all("replayable" in item for item in payload["nextCommands"]))
+
+    def test_check_command_with_readiness_fails_when_embedded_readiness_is_not_ok(self) -> None:
+        args = argparse.Namespace(json=True, full=False, with_readiness=True, path=".", compiler_args=[])
+        payload = {
+            "ok": True,
+            "status": "ok",
+            "targetReadiness": {"ok": False, "status": "partial"},
+        }
+        with mock.patch.object(sem, "_build_check_payload", return_value=payload), mock.patch.object(
+            sem, "_compact_check_payload_for_cli", side_effect=lambda _path, value, full: value
+        ), mock.patch("sys.stdout", new=io.StringIO()):
+            code = sem.command_check(args)
+
+        self.assertEqual(code, 1)
+
+    def test_check_next_commands_use_include_warnings_for_warning_only_surfaces(self) -> None:
+        entries = sem._check_next_commands(
+            Path("SemanticScript/tests/tiny.sem"),
+            [{"repair": {"id": "inlineAuthority"}}],
+            "ok-with-warnings",
+            include_readiness=False,
+        )
+
+        fix_entry = next(item for item in entries if item["kind"] == "fix")
+        self.assertIn("--include-warnings", fix_entry["command"])
+
+    def test_check_next_commands_quote_paths_with_spaces(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sem space ") as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(NEW_SYNTAX_SOURCE, encoding="utf-8")
+            with mock.patch.object(sem, "_compiler_check_probe", return_value={
+                "attempted": True,
+                "ok": True,
+                "returnCode": 0,
+                "stdout": "",
+                "stderr": "",
+            }):
+                payload = sem._build_check_payload(source, [])
+
+        slice_entry = next(item for item in payload["nextCommands"] if item["kind"] == "slice")
+        self.assertEqual(slice_entry["argv"][-1], str(source.resolve()))
+        self.assertIn(f"\"{source.resolve()}\"", slice_entry["command"])
 
     def test_check_payload_normalizes_compiler_diagnostic(self) -> None:
         compiler_json = json.dumps({
@@ -282,9 +332,17 @@ class TestSemAgentPayloads(unittest.TestCase):
     def test_readiness_payload_reports_status(self) -> None:
         payload = sem._readiness_payload(Path("SemanticScript/tests/tiny.sem"))
         self.assertEqual(payload["schemaVersion"], "sem.readiness.v1")
-        self.assertIn(payload["status"], {"supported", "partial", "blocked"})
+        self.assertIn(payload["status"], {"supported", "partial", "blocked", "source-diagnostics", "quality-diagnostics"})
         self.assertIn("requestedTargets", payload)
         self.assertTrue(any(item["kind"] == "doctor" for item in payload["nextCommands"]))
+
+    def test_readiness_command_returns_nonzero_when_payload_not_ok(self) -> None:
+        args = argparse.Namespace(json=True, path=".")
+        payload = {"ok": False, "status": "quality-diagnostics", "blockingChecks": [], "partialChecks": [], "requestedTargets": []}
+        with mock.patch.object(sem, "_readiness_payload", return_value=payload), mock.patch("sys.stdout", new=io.StringIO()):
+            code = sem.command_readiness(args)
+
+        self.assertEqual(code, 1)
 
     def test_dev_payload_is_watch_plan(self) -> None:
         payload = sem._dev_payload(Path("SemanticScript/tests/tiny.sem"), trace=True)
@@ -440,7 +498,7 @@ return value request
                 "stdout": "",
                 "stderr": "",
             }):
-                payload = sem._build_fix_plan_payload(source, [])
+                payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
 
         repairs = [repair for repair in payload["repairs"] if repair["diagnostic"] == "SS3104"]
         self.assertTrue(repairs)
@@ -477,7 +535,7 @@ return value 0
                 "stdout": "",
                 "stderr": "",
             }):
-                payload = sem._build_fix_plan_payload(source, [])
+                payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
 
         repair_by_code = {repair["diagnostic"]: repair for repair in payload["repairs"]}
         self.assertEqual(repair_by_code["SS3101"]["fixSafety"], "requires-human-review")
@@ -532,7 +590,7 @@ return value 0
                 "stdout": "",
                 "stderr": "",
             }):
-                payload = sem._build_fix_plan_payload(source, [])
+                payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
 
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], "suggestions-only")
@@ -549,12 +607,137 @@ return value 0
                 "diagnostics": [{"code": "SEMSC_PARSE"}],
                 "summary": {"errors": 1, "warnings": 0},
             }):
-                payload = sem._build_fix_plan_payload(source, [])
+                payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
 
         self.assertFalse(payload["ok"])
         self.assertFalse(payload["planUsable"])
         self.assertEqual(payload["status"], "blocked")
         self.assertFalse(any(item["kind"] == "patch" for item in payload["nextCommands"]))
+
+    def test_fix_plan_reports_mixed_status_when_only_some_repairs_are_patchable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn value nope\n", encoding="utf-8")
+            bundle = {"files": [{"path": source}], "semlint": None}
+            diagnostics = [
+                {"code": "SS3101", "repair": {"id": "addPurpose"}},
+                {"code": "SS2506", "repair": {"id": "declareExportedSymbol"}},
+            ]
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "status": "diagnostics",
+                "scope": {"diagnosticsScope": "file"},
+                "diagnostics": diagnostics,
+                "summary": {"errors": 2, "warnings": 0},
+            }), mock.patch.object(sem, "_collect_facts_bundle", return_value=bundle), mock.patch.object(
+                sem,
+                "_repair_plan_for_diagnostic",
+                side_effect=[
+                    {
+                        "diagnostic": "SS3101",
+                        "subjectName": "main",
+                        "edits": [{"op": "insertAfterLine", "file": str(source), "afterLine": 2, "text": 'purpose operation main "demo"'}],
+                        "fixSafety": "local-edit",
+                    },
+                    {
+                        "diagnostic": "SS2506",
+                        "subjectName": "main",
+                        "edits": [],
+                        "fixSafety": "requires-human-review",
+                    },
+                ],
+            ):
+                payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["planUsable"])
+        self.assertEqual(payload["status"], "mixed")
+        self.assertEqual(payload["patchableRepairCount"], 1)
+        self.assertEqual(payload["repairSummary"]["suggestionsOnly"], 1)
+        self.assertTrue(any(item["kind"] == "patch" for item in payload["nextCommands"]))
+        self.assertFalse(any(item["command"] == "sem patch --apply --json <PLAN.json>" for item in payload["nextCommands"]))
+
+    def test_fix_command_returns_zero_for_plan_usable_mixed_status(self) -> None:
+        args = argparse.Namespace(plan=True, json=True, full=False, include_warnings=True, path=".", compiler_args=[])
+        payload = {"ok": False, "status": "mixed", "planUsable": True, "repairs": []}
+        with mock.patch.object(sem, "_build_fix_plan_payload", return_value=payload), mock.patch.object(
+            sem, "_compact_fix_payload_for_cli", side_effect=lambda _path, value, full: value
+        ), mock.patch("sys.stdout", new=io.StringIO()):
+            code = sem.command_fix(args)
+
+        self.assertEqual(code, 0)
+
+    def test_fix_plan_downgrades_review_only_edits_to_non_patchable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn value nope\n", encoding="utf-8")
+            bundle = {"files": [{"path": source}], "semlint": None}
+            diagnostics = [{"code": "SS3102", "repair": {"id": "addInvariant"}}]
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "status": "diagnostics",
+                "scope": {"diagnosticsScope": "file"},
+                "diagnostics": diagnostics,
+                "summary": {"errors": 1, "warnings": 0},
+            }), mock.patch.object(sem, "_collect_facts_bundle", return_value=bundle), mock.patch.object(
+                sem,
+                "_repair_plan_for_diagnostic",
+                return_value={
+                    "diagnostic": "SS3102",
+                    "subjectName": "main",
+                    "edits": [{"op": "insertAfterLine", "file": str(source), "afterLine": 2, "text": 'invariant operation main "<fill me>"'}],
+                    "fixSafety": "requires-human-review",
+                },
+            ):
+                payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+        self.assertFalse(payload["planUsable"])
+        self.assertEqual(payload["status"], "suggestions-only")
+        self.assertEqual(payload["patchableRepairCount"], 0)
+        self.assertEqual(payload["repairSummary"]["reviewOnlyEdits"], 1)
+        self.assertEqual(payload["repairs"][0]["edits"], [])
+        self.assertEqual(len(payload["repairs"][0]["reviewEdits"]), 1)
+
+    def test_fix_plan_hashes_only_machine_patchable_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            other = Path(tmp) / "other.sem"
+            source.write_text("module demo.agent\noperation main\nreturn value nope\n", encoding="utf-8")
+            other.write_text("module demo.other\noperation nope\nreturn void\n", encoding="utf-8")
+            bundle = {"files": [{"path": source}, {"path": other}], "semlint": None}
+            diagnostics = [{"code": "SS3104", "repair": {"id": "inlineAuthority"}}]
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "status": "diagnostics",
+                "scope": {"diagnosticsScope": "file"},
+                "diagnostics": diagnostics,
+                "summary": {"errors": 1, "warnings": 0},
+            }), mock.patch.object(sem, "_collect_facts_bundle", return_value=bundle), mock.patch.object(
+                sem,
+                "_repair_plan_for_diagnostic",
+                return_value={
+                    "diagnostic": "SS3104",
+                    "subjectName": "main",
+                    "edits": [{"op": "insertAfterLine", "file": str(source), "afterLine": 2, "text": "authority main write console.stdout"}],
+                    "fixSafety": "local-edit",
+                },
+            ):
+                payload = sem._build_fix_plan_payload(source, [])
+
+        self.assertEqual(list(payload["preconditions"]["fileHashes"].keys()), [str(source.resolve())])
+
+    def test_compact_fix_payload_surfaces_patchable_repairs_first(self) -> None:
+        payload = {
+            "schemaVersion": "sem.fixPlan.v1",
+            "repairs": [
+                {"diagnostic": f"SS{i:04d}", "subjectName": f"item{i}", "edits": [], "fixSafety": "requires-human-review"}
+                for i in range(35)
+            ],
+        }
+        payload["repairs"][-1]["edits"] = [{"op": "insertAfterLine", "file": "demo.sem", "afterLine": 1, "text": "purpose operation demo \"x\""}]
+        payload["repairs"][-1]["fixSafety"] = "local-edit"
+
+        compacted = sem._compact_fix_payload_for_cli(Path("demo.sem"), payload, full=False)
+
+        self.assertEqual(compacted["repairs"][0]["diagnostic"], "SS0034")
+        self.assertIn("repairs", compacted["view"]["truncation"])
 
     def test_patch_plan_apply_updates_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -563,6 +746,7 @@ return value 0
             plan = {
                 "schemaVersion": "sem.fixPlan.v1",
                 "inputPath": str(source),
+                "_inputPlanPath": str(Path(tmp) / "plan.json"),
                 "repairs": [
                     {
                         "diagnostic": "SSTEST",
@@ -585,6 +769,7 @@ return value 0
 
             self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
             self.assertEqual(payload["mode"], "apply")
+            self.assertTrue(payload["inputPlanPath"].endswith("plan.json"))
             self.assertIn(str(source), payload["filesChanged"])
             self.assertTrue(any(item["kind"] == "graph" for item in payload["nextCommands"]))
             updated = source.read_text(encoding="utf-8")
@@ -705,6 +890,19 @@ return value 0
         self.assertTrue(payload["details"])
         self.assertIn("unsupported op", payload["details"][0])
 
+    def test_patch_plan_rejects_truncated_fix_payload(self) -> None:
+        plan = {
+            "schemaVersion": "sem.fixPlan.v1",
+            "status": "actionable",
+            "planUsable": True,
+            "view": {"mode": "compact", "truncation": {"repairs": {"returned": 30, "total": 100, "truncated": 70}}},
+            "inputPath": str(Path("SemanticScript/tests/tiny.sem").resolve()),
+            "repairs": [],
+        }
+        payload = sem._execute_patch_plan(plan, "dry-run")
+        self.assertFalse(payload["ok"])
+        self.assertIn("truncated", payload["details"][0])
+
     def test_patch_plan_rejects_out_of_range_replace_coordinates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "main.sem"
@@ -775,6 +973,80 @@ return value 0
         self.assertTrue(payload["ok"])
         refresh = next(item for item in payload["nextCommands"] if item["kind"] == "slice")
         self.assertIn("--route POST:/api/todos", refresh["command"])
+        self.assertIn("POST:/api/todos", refresh["argv"])
+
+    def test_slice_payload_rejects_conflicting_anchors(self) -> None:
+        args = argparse.Namespace(
+            operation="healthHandler",
+            route="POST:/api/todos",
+            symbol=None,
+            effect=None,
+            capability=None,
+            type_name=None,
+        )
+        payload = sem._slice_payload(Path("apps/taskforge-web"), args)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "error")
+        self.assertIn("exactly one anchor", payload["error"])
+        self.assertEqual(payload["anchorOptions"], ["operation", "route"])
+
+    def test_route_slice_promotes_source_file_to_project_surface_for_handler_resolution(self) -> None:
+        args = argparse.Namespace(
+            operation=None,
+            route="GET:/api/v1/auctions/:auctionId/events",
+            symbol=None,
+            effect=None,
+            capability=None,
+            type_name=None,
+        )
+
+        payload = sem._slice_payload(AUCTION_SERVER_MAIN_PATH, args)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["anchor"]["kind"], "route")
+        self.assertEqual(payload["operation"]["name"], "auctionEventsHandler")
+        self.assertEqual(payload["scope"]["retrievalScope"], "project")
+        self.assertEqual(payload["surfaceShift"]["to"], "project")
+        self.assertTrue(payload["handlerFile"].endswith("event_context.sem"))
+
+    def test_discover_test_entries_includes_python_harnesses_without_test_prefix(self) -> None:
+        entries = sem._discover_test_entries(AUCTION_SERVER_PATH)
+        names = {entry["name"] for entry in entries if entry["kind"] == "python"}
+        self.assertIn("api_tests", names)
+        self.assertIn("enterprise_contract_tests", names)
+        self.assertIn("e2e_api_smoke", names)
+
+    def test_test_payload_can_run_python_harnesses_even_when_preflight_is_red(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "main.sem").write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            (root / "marker.txt").write_text("runtime ok\n", encoding="utf-8")
+            tests_dir = root / "tests"
+            tests_dir.mkdir()
+            harness = tests_dir / "runtime_probe.py"
+            harness.write_text(
+                "from pathlib import Path\n"
+                "print(Path('marker.txt').read_text(encoding='utf-8').strip())\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "ok": False,
+                "status": "lint-diagnostics",
+                "summary": {"errors": 1, "warnings": 0},
+                "scope": {"diagnosticsScope": "file"},
+                "diagnostics": [],
+            }):
+                payload = sem._run_test_payload(root, allow_red_preflight_harnesses=True)
+
+        self.assertEqual(payload["status"], "diagnostics")
+        self.assertEqual(payload["executedTests"], 1)
+        self.assertFalse(payload["pythonHarnessesDeferred"])
+        self.assertEqual(payload["preflightStatus"], "lint-diagnostics")
+        self.assertEqual(payload["runtimeHarnessStatus"], "passed")
+        result = payload["results"][0]
+        self.assertEqual(result["cwd"], str(root.resolve()))
+        self.assertEqual(result["lane"], "runtime-harness")
 
     def test_test_payload_runs_semantic_tests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -858,8 +1130,35 @@ return value 0
 
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["status"], "diagnostics")
+        self.assertEqual(payload["compositeStatus"], "diagnostics/runtime-deferred")
         self.assertEqual(payload["preflightCheck"]["status"], "diagnostics")
         self.assertTrue(any(item["kind"] == "fix" for item in payload["nextCommands"]))
+
+    def test_test_payload_reports_runtime_harness_timeout_structurally(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            harness = root / "tests" / "runtime_probe.py"
+            harness.parent.mkdir()
+            harness.write_text("print('slow')\n", encoding="utf-8")
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "ok": True,
+                "status": "ok",
+                "summary": {"errors": 0, "warnings": 0},
+                "scope": {"diagnosticsScope": "project"},
+                "diagnostics": [],
+            }), mock.patch.object(sem, "_discover_test_entries", return_value=[
+                {"name": "runtime_probe", "kind": "python", "path": harness}
+            ]), mock.patch.object(
+                sem.subprocess,
+                "run",
+                side_effect=subprocess.TimeoutExpired(cmd=["python", str(harness)], timeout=600),
+            ):
+                payload = sem._run_test_payload(root, include_python_harnesses=True)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["runtimeHarnessStatus"], "failed")
+        self.assertEqual(payload["coverageSummary"]["runtimeHarnessesFailed"], 1)
+        self.assertEqual(payload["results"][0]["status"], "timed-out")
 
     def test_dev_payload_omits_test_action_when_no_tests_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -49,6 +49,7 @@ Iteration roles:
 
 Check and inspect:
   python SemanticScript\tools\sem.py check --json PATH
+  python SemanticScript\tools\sem.py check --json --with-readiness PATH
   python SemanticScript\tools\sem.py readiness --json PATH
   python SemanticScript\tools\sem.py graph --kind summary --json PATH
   python SemanticScript\tools\sem.py graph --kind routes --json PATH
@@ -66,8 +67,11 @@ Repair and verify:
   python SemanticScript\tools\sem.py fmt --check PATH
   python SemanticScript\tools\sem.py check --json PATH
 
-Only apply a plan when the fix payload reports `status: "actionable"` and
-`planUsable: true`.
+Only auto-apply a plan when the fix payload reports `status: "actionable"` and
+`planUsable: true`. A `mixed` plan still contains useful edits, but it should
+start with `sem patch --dry-run`, not blind apply. A `suggestions-only` plan
+has no machine-applicable patch, and a compact fix payload is not valid patch
+input.
 
 Harness loop, only after semantic preflight is clean:
   python SemanticScript\tools\sem.py test --json PATH
@@ -78,7 +82,27 @@ points at a project surface. Use `--skip-python-harnesses` when the goal is to
 skip process-level harness work, not when the goal is project-surface semantic
 validation; for that, use `sem check --json PATH`. Skipping Python harnesses
 does not hide preflight source diagnostics on project surfaces, and project
-Python harnesses are deferred until semantic preflight is clean.
+Python harnesses are deferred until semantic preflight is clean. Use
+`--allow-red-preflight-harnesses` when runtime signal is still worth gathering
+on a semantic-red project; in that mode the runtime harnesses are prioritized
+and project-surface semantic contract files are deferred. Project test
+discovery now includes `tests\*.py`, not only `test_*.py`. Read
+`preflightStatus`, `runtimeHarnessStatus`, and `compositeStatus` together
+before deciding whether the surface is blocked by source debt, runtime
+failures, or both.
+
+`sem check --json` now reports the source lane as one of
+`ok`, `ok-with-warnings`, `lint-diagnostics`, `compiler-error`, or
+`tool-error`. `sem readiness --json` is the environment lane and exits
+nonzero unless the payload is actually `ok`. `sem fix --plan --json` is
+blocker-first by default; use `--include-warnings` only when a buildable
+surface still needs cleanup guidance. A `mixed` fix plan with
+`planUsable: true` is still a valid machine step.
+
+`nextCommands` entries are machine-facing. Prefer `argv` over `command`, honor
+`cwd`, and only auto-replay entries where `replayable` is true. When
+`replayable` is false, use `requiredArgs` or `artifactInputs` to supply the
+missing project path or saved plan file.
 
 Current JSON surfaces:
   sem.version.v1

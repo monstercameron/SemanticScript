@@ -1,9 +1,11 @@
+import copy
 import hashlib
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -13,17 +15,25 @@ TINY_PATH = REPO_ROOT / "SemanticScript" / "tests" / "tiny.sem"
 AGENT_DEMO_TEST_PATH = REPO_ROOT / "SemanticScript" / "tests" / "agent_cli_demo.test.sem"
 TASKFORGE_PATH = REPO_ROOT / "apps" / "taskforge-web"
 TASKFORGE_MAIN_PATH = TASKFORGE_PATH / "main.sem"
+AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
+AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
 
 
-def _sem_json(*args: str) -> tuple[int, dict]:
+@lru_cache(maxsize=256)
+def _sem_json_cached(*args: str) -> tuple[int, str]:
     proc = subprocess.run(
         [sys.executable, str(SEM_PATH), *args],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=180,
     )
-    return proc.returncode, json.loads(proc.stdout)
+    return proc.returncode, proc.stdout
+
+
+def _sem_json(*args: str) -> tuple[int, dict]:
+    code, stdout = _sem_json_cached(*args)
+    return code, copy.deepcopy(json.loads(stdout))
 
 
 class TestSemCommandContracts(unittest.TestCase):
@@ -68,6 +78,8 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["skills"][0]["contentMode"], "summary")
         self.assertIn("sectionIndex", payload["skills"][0])
         self.assertNotIn("content", payload["skills"][0])
+        self.assertFalse(payload["nextCommands"][0]["replayable"])
+        self.assertIn("requiredArgs", payload["nextCommands"][0])
 
     def test_skills_get_full_contract(self) -> None:
         code, payload = _sem_json("skills", "get", "sem", "--full", "--json")
@@ -88,15 +100,44 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.check.v1")
         self.assertIn("diagnostics", payload)
         self.assertIn("nextCommands", payload)
+        self.assertTrue(all("argv" in item for item in payload["nextCommands"]))
+        self.assertTrue(all("replayable" in item for item in payload["nextCommands"]))
         self.assertIn("summary", payload)
-        self.assertIn("targetReadiness", payload)
-        self.assertIn(payload["status"], {"ok", "ok-with-warnings", "diagnostics", "compiler-error", "tool-error"})
+        self.assertNotIn("targetReadiness", payload)
+        self.assertIn(payload["status"], {"ok", "ok-with-warnings", "lint-diagnostics", "compiler-error", "tool-error"})
         if payload["diagnostics"]:
             diagnostic = payload["diagnostics"][0]
             self.assertIn("expected", diagnostic)
             self.assertIn("actual", diagnostic)
             self.assertIn("repair", diagnostic)
             self.assertIn("explain", diagnostic)
+
+    def test_check_with_readiness_json_contract(self) -> None:
+        code, payload = _sem_json("check", "--json", "--with-readiness", str(TINY_PATH))
+        self.assertEqual(code, 0)
+        self.assertIn("targetReadiness", payload)
+
+    def test_replayable_next_command_argv_executes_from_payload(self) -> None:
+        code, payload = _sem_json("check", "--json", str(TINY_PATH))
+        self.assertEqual(code, 0)
+        replayable = next(item for item in payload["nextCommands"] if item["kind"] == "graph" and item["replayable"])
+        proc = subprocess.run(
+            replayable["argv"],
+            cwd=replayable["cwd"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertIn(proc.returncode, {0, 1})
+        self.assertTrue(proc.stdout.strip())
+        followup_payload = json.loads(proc.stdout)
+        self.assertIn("schemaVersion", followup_payload)
+
+    def test_check_accepts_trailing_json_flag_after_path(self) -> None:
+        code, payload = _sem_json("check", str(AGENT_DEMO_TEST_PATH), "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.check.v1")
+        self.assertEqual(payload["status"], "ok")
 
     def test_taskforge_check_json_compacts_project_payload(self) -> None:
         code, payload = _sem_json("check", "--json", str(TASKFORGE_PATH))
@@ -132,6 +173,19 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertFalse(any("<" in item["command"] for item in payload["nextCommands"]))
 
+    def test_auction_server_source_graph_followup_uses_project_surface(self) -> None:
+        code, payload = _sem_json("graph", "--kind", "summary", "--json", str(AUCTION_SERVER_MAIN_PATH))
+        self.assertEqual(code, 0)
+        followup = next(item for item in payload["nextCommands"] if item["kind"] == "graph")
+        self.assertIn(str(AUCTION_SERVER_PATH), followup["command"])
+        self.assertNotIn(str(AUCTION_SERVER_MAIN_PATH), followup["command"])
+
+    def test_auction_server_routes_graph_has_nodes(self) -> None:
+        code, payload = _sem_json("graph", "--kind", "routes", "--json", str(AUCTION_SERVER_PATH))
+        self.assertEqual(code, 0)
+        self.assertGreater(payload["summary"]["nodeCount"], 0)
+        self.assertTrue(any(node["kind"] == "route" for node in payload["nodes"]))
+
     def test_slice_json_contract(self) -> None:
         code, payload = _sem_json("slice", "--operation", "healthHandler", "--json", str(TASKFORGE_PATH))
         self.assertEqual(code, 0)
@@ -140,6 +194,14 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["operation"]["name"], "healthHandler")
         self.assertIn("inputPath", payload)
         self.assertIn("nextCommands", payload)
+        self.assertTrue(all("argv" in item for item in payload["nextCommands"]))
+
+    def test_slice_rejects_conflicting_anchors(self) -> None:
+        code, payload = _sem_json("slice", "--operation", "healthHandler", "--route", "POST:/api/todos", "--json", str(TASKFORGE_PATH))
+        self.assertEqual(code, 1)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "error")
+        self.assertEqual(payload["anchorOptions"], ["operation", "route"])
 
     def test_readme_route_slice_example_is_valid(self) -> None:
         code, payload = _sem_json("slice", "--route", "POST:/api/todos", "--json", str(TASKFORGE_PATH))
@@ -153,20 +215,54 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["symbolType"], "storage")
 
+    def test_auction_server_route_slice_from_source_file_resolves_handler(self) -> None:
+        code, payload = _sem_json("slice", "--route", "GET:/api/v1/auctions/:auctionId/events", "--json", str(AUCTION_SERVER_MAIN_PATH))
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["scope"]["retrievalScope"], "project")
+        self.assertEqual(payload["operation"]["name"], "auctionEventsHandler")
+        self.assertTrue(payload["handlerFile"].endswith("event_context.sem"))
+
     def test_fix_json_contract(self) -> None:
         code, payload = _sem_json("fix", "--plan", "--json", str(TINY_PATH))
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertEqual(payload["schemaVersion"], "sem.fixPlan.v1")
-        self.assertEqual(payload["status"], "actionable")
+        self.assertEqual(payload["status"], "no-repairs")
+        self.assertFalse(payload["planUsable"])
         self.assertIn("repairs", payload)
         self.assertIn("preconditions", payload)
         self.assertIn("nextCommands", payload)
+        self.assertEqual(payload["patchableRepairCount"], 0)
+
+    def test_fix_include_warnings_json_contract(self) -> None:
+        code, payload = _sem_json("fix", "--plan", "--json", "--include-warnings", str(TINY_PATH))
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.fixPlan.v1")
+        self.assertEqual(payload["status"], "mixed")
+        self.assertTrue(payload["planUsable"])
+        self.assertTrue(any(not item["replayable"] and item.get("artifactInputs") for item in payload["nextCommands"]))
+
+    def test_fix_accepts_trailing_flags_after_path(self) -> None:
+        code, payload = _sem_json("fix", str(TINY_PATH), "--plan", "--json", "--include-warnings")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.fixPlan.v1")
+        self.assertEqual(payload["status"], "mixed")
 
     def test_taskforge_fix_json_compacts_project_payload(self) -> None:
         code, payload = _sem_json("fix", "--plan", "--json", str(TASKFORGE_PATH))
         self.assertEqual(code, 1)
         self.assertEqual(payload["view"]["mode"], "compact")
         self.assertIn("repairs", payload["view"]["truncation"])
+
+    def test_auction_server_fix_reports_mixed_status(self) -> None:
+        code, payload = _sem_json("fix", "--plan", "--json", str(AUCTION_SERVER_PATH))
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["status"], "suggestions-only")
+        self.assertFalse(payload["planUsable"])
+        self.assertEqual(payload["patchableRepairCount"], 0)
+        self.assertIn("focusAnchors", payload)
+        self.assertGreater(len(payload["focusAnchors"]["topFiles"]), 0)
+        self.assertFalse(any(item["kind"] == "patch" for item in payload["nextCommands"]))
 
     def test_size_json_contract(self) -> None:
         code, payload = _sem_json("size", "--json", str(TINY_PATH))
@@ -211,15 +307,17 @@ class TestSemCommandContracts(unittest.TestCase):
 
     def test_taskforge_dev_reports_blocked_project_watch_plan(self) -> None:
         code, payload = _sem_json("dev", "--json", str(TASKFORGE_MAIN_PATH))
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0)
         self.assertEqual(payload["schemaVersion"], "sem.dev.v1")
-        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["status"], "quality-diagnostics")
         self.assertFalse(payload["ok"])
+        self.assertTrue(payload["buildableSource"])
         self.assertIn("components\\main.sem", "\n".join(payload["watch"]["files"]))
         self.assertIn("pages\\main.sem", "\n".join(payload["watch"]["files"]))
         self.assertEqual(payload["surfaceShift"]["from"], "source-file")
         self.assertEqual(payload["surfaceShift"]["to"], "project")
-        self.assertIn("graph --kind routes", payload["actions"][2]["command"])
+        graph_action = next(item for item in payload["actions"] if item["kind"] == "graph")
+        self.assertIn("graph --kind routes", graph_action["command"])
         self.assertIn("routes are present", payload["restart"]["reason"])
 
     def test_taskforge_check_and_dev_surface_shift_agree(self) -> None:
@@ -276,8 +374,12 @@ class TestSemCommandContracts(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
             self.assertEqual(payload["mode"], "dry-run")
+            self.assertEqual(payload["inputPlanPath"], str(plan.resolve()))
             self.assertFalse(payload["applied"])
             self.assertIn("nextCommands", payload)
+            apply_entry = next(item for item in payload["nextCommands"] if item["kind"] == "patch")
+            self.assertEqual(apply_entry["argv"][-1], str(plan.resolve()))
+            self.assertTrue(apply_entry["replayable"])
 
     def test_patch_accepts_utf8_bom_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -340,7 +442,7 @@ class TestSemCommandContracts(unittest.TestCase):
         check_code, check_payload = _sem_json("check", "--json", str(TASKFORGE_PATH))
         test_code, test_payload = _sem_json("test", "--json", str(TASKFORGE_PATH))
         self.assertEqual(check_code, 1)
-        self.assertIn(check_payload["status"], {"diagnostics", "compiler-error", "tool-error"})
+        self.assertIn(check_payload["status"], {"lint-diagnostics", "compiler-error", "tool-error"})
         self.assertEqual(test_code, 1)
         self.assertEqual(test_payload["status"], "diagnostics")
         self.assertFalse(test_payload["ok"])
@@ -357,6 +459,26 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(test_payload["executedTests"], 0)
         self.assertEqual(test_payload["skippedTests"], 1)
         self.assertFalse(test_payload["preflightCheck"]["ok"])
+
+    def test_auction_server_test_discovers_python_harnesses(self) -> None:
+        test_code, test_payload = _sem_json("test", "--json", "--skip-python-harnesses", str(AUCTION_SERVER_PATH))
+        self.assertEqual(test_code, 1)
+        self.assertEqual(test_payload["status"], "diagnostics")
+        self.assertGreater(test_payload["discoveredTests"], 26)
+        self.assertTrue(any(result["name"] == "api_tests" for result in test_payload["results"]))
+        self.assertTrue(any(result["status"] == "skipped" and result["kind"] == "python" for result in test_payload["results"]))
+        self.assertEqual(test_payload["coverageSummary"]["runtimeSignalStatus"], "deferred")
+
+    def test_auction_server_test_can_force_runtime_harnesses_when_preflight_is_red(self) -> None:
+        test_code, test_payload = _sem_json("test", "--json", "--allow-red-preflight-harnesses", str(AUCTION_SERVER_PATH))
+        self.assertEqual(test_code, 1)
+        self.assertEqual(test_payload["status"], "diagnostics")
+        self.assertGreater(test_payload["coverageSummary"]["runtimeHarnessesExecuted"], 0)
+        self.assertEqual(test_payload["coverageSummary"]["runtimeSignalStatus"], "executed")
+        self.assertIn(test_payload["preflightStatus"], {"lint-diagnostics", "compiler-error", "tool-error"})
+        self.assertIn(test_payload["compositeStatus"], {"lint-diagnostics/runtime-passed", "compiler-error/runtime-passed", "tool-error/runtime-passed", "lint-diagnostics/runtime-failed", "compiler-error/runtime-failed", "tool-error/runtime-failed"})
+        self.assertIn(test_payload["runtimeHarnessStatus"], {"passed", "failed"})
+        self.assertEqual(test_payload["coverageSummary"]["semanticContractsExecuted"], 0)
 
 
 if __name__ == "__main__":

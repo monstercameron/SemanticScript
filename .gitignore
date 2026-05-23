@@ -9,6 +9,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 
 *.exe
@@ -31,10 +32,12 @@ htmlcov/
 
 *.vsix
 node_modules/
+**/node_modules/
 .vscode-test/
 out/
 dist/
 coverage/
+**/.coverage.*
 
 # SemanticScript compiler-managed artifact directories (.exe, .ll, resources).
 build/
@@ -86,3 +89,5 @@ experiments/realtime-auction-arena/**/build/
 experiments/realtime-auction-arena/server/*.sqlite3
 experiments/realtime-auction-arena/server/*.sqlite3-shm
 experiments/realtime-auction-arena/server/*.sqlite3-wal
+experiments/realtime-auction-arena/**/node_modules/
+experiments/realtime-auction-arena/**/.coverage.*

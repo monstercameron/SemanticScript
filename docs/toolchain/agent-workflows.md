@@ -36,8 +36,13 @@ python SemanticScript\tools\sem.py check --json PATH
 
 `skills get --json` now returns a summary/index payload by default. Use
 `--full --json` only when an agent truly needs the raw skill source bodies.
-Only apply a patch plan after confirming `status: "actionable"` and
-`planUsable: true` from `sem fix --plan --json`.
+Only auto-apply a patch plan after confirming `status: "actionable"` and
+`planUsable: true` from `sem fix --plan --json`. If the plan reports
+`status: "mixed"`, the machine edits only cover part of the surface; start
+with `sem patch --dry-run` and keep the remaining diagnostics visible. If the
+plan reports `status: "suggestions-only"`, there is no machine-applicable
+patch. Compact fix payloads are review-only; use `--full` before saving a plan
+for `sem patch`.
 
 On large project surfaces, `check`, `fix`, `graph`, and `slice` are compact by
 default. Add `--full` when you explicitly need the entire machine payload.
@@ -79,7 +84,8 @@ exist?" but "what uncertainty does each command remove?"
   It tells the agent what to watch, when restart is legal, and what follow-up
   steps make sense.
 - `readiness --json` removes environment uncertainty.
-  It separates code problems from toolchain/runtime/target problems.
+  It separates code problems from toolchain/runtime/target problems. Keep it as
+  a separate hop from `check` unless you explicitly need `--with-readiness`.
 - `size --json` removes footprint uncertainty.
   It is the cheap probe before spending context on bigger graph surfaces.
 
@@ -194,7 +200,15 @@ python SemanticScript\tools\sem.py slice --capability session.user --json PATH
 ```
 
 These payloads should not stop at facts. The core agent surfaces also return a
-`nextCommands` list with concrete follow-up CLI steps and reasons.
+`nextCommands` list with concrete follow-up CLI steps and reasons. Treat
+`command` as display text and `argv` as the replay-safe machine surface. Each
+follow-up can also carry:
+
+- `cwd` for the intended working directory
+- `replayable` to distinguish exact follow-ups from templates
+- `requiredArgs` for missing user/project path inputs
+- `artifactInputs` for steps that depend on a saved prior payload such as a fix
+  plan file
 
 Current stable `v1` schema versions:
 
@@ -216,6 +230,15 @@ Current stable `v1` schema versions:
 Current provisional machine surface:
 
 - `sem.doctor.v0`
+
+For project-surface `sem test --json`, read these fields together:
+
+- `preflightStatus`
+- `runtimeHarnessStatus`
+- `compositeStatus`
+
+This keeps semantic-red/runtime-green surfaces explicit instead of collapsing
+them into one ambiguous top-level status.
 
 Representative `sem check --json` diagnostic shape:
 
@@ -268,7 +291,11 @@ but `graph` and `slice` are the primary agent-repair retrieval surfaces.
 ## Repair And Patch
 
 `sem fix --plan --json` is the proposal step. It should be reviewed or
-transformed before `sem patch`.
+transformed before `sem patch`. By default it is blocker-first; add
+`--include-warnings` only when you want cleanup guidance on an already
+buildable surface. When the payload reports `status: "mixed"` together with
+`planUsable: true`, the plan is still a valid next step and the command exits
+success so an agent can continue into review or dry-run patching.
 
 ```powershell
 Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
@@ -282,8 +309,10 @@ python SemanticScript\tools\sem.py fmt --check .\scratch.sem
 python SemanticScript\tools\sem.py check --json .\scratch.sem
 ```
 
-Only apply a plan when the fix payload reports `status: "actionable"` and
-`planUsable: true`.
+Only auto-apply a plan when the fix payload reports `status: "actionable"` and
+`planUsable: true`. A `mixed` plan is review-first and should begin with
+`sem patch --dry-run`, but it is still a usable machine contract. A compact
+fix payload is not a valid patch input; emit `--full` before saving a plan.
 
 `patch` rejects stale plans when file hashes no longer match the generation
 time state. On apply, it normalizes touched files through `semfmt` and re-runs
@@ -298,6 +327,11 @@ source-related:
 ```powershell
 python SemanticScript\tools\sem.py readiness --json apps\taskforge-web
 ```
+
+`sem check --json` is the source lane. `sem readiness --json` is the
+environment/target lane. If you need one payload for both, use
+`sem check --json --with-readiness PATH`; that call now fails when the embedded
+readiness payload is not `ok`.
 
 Use the dev payload to hand an agent a stable watch-plan contract:
 
@@ -322,13 +356,16 @@ Passing a non-test source path is still legal, but it now reports
 happened.
 
 When the requested surface has semantic diagnostics, `sem test --json PATH`
-surfaces that preflight state in `status` and `preflightCheck` even if a Python
-app harness succeeds. Agents should treat `check` as the source-of-truth gate
-and use `--skip-python-harnesses` only to suppress process-level harness work.
-For project-surface semantic validation, use `sem check --json PATH`. Skipping
-Python harnesses does not hide preflight source diagnostics on project
-surfaces, and project-surface Python harnesses are deferred until semantic
-preflight is clean.
+surfaces that preflight state in `status`, `preflightCheck`, and
+`preflightStatus` even if a Python app harness succeeds. Agents should treat
+`check` as the source-of-truth gate and use `--skip-python-harnesses` only to
+suppress process-level harness work. For project-surface semantic validation,
+use `sem check --json PATH`. Skipping Python harnesses does not hide preflight
+source diagnostics on project surfaces, and project-surface Python harnesses
+are deferred until semantic preflight is clean. Use
+`--allow-red-preflight-harnesses` when runtime-harness signal is still
+valuable on a semantic-red project. In that mode, runtime harnesses are
+prioritized and project-surface semantic contract files are deferred.
 
 ## Contract Validation
 
