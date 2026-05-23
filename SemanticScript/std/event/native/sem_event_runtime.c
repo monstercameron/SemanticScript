@@ -1285,6 +1285,7 @@ static long long ss_event_receive_next(
     SSEventRecord *first_pending_match = NULL;
     int pending_match_count = 0;
     int copy_status;
+    int store_status;
 
     if (subscription == NULL || subscription->magic != SS_EVENT_SUBSCRIPTION_MAGIC) {
         return SS_EVENT_ERR_CONFIG;
@@ -1295,6 +1296,15 @@ static long long ss_event_receive_next(
     }
     if (stream->closed) {
         return SS_EVENT_ERR_SUBSCRIPTION_CLOSED;
+    }
+    if (stream->durable) {
+        store_status = ss_event_store_load_records_after(
+            stream,
+            stream->durable_loaded_through_event_id
+        );
+        if (store_status != SS_EVENT_OK) {
+            return store_status;
+        }
     }
     if (subscription->dropped_matching_event_gap) {
         return SS_EVENT_ERR_QUEUE_FULL;
@@ -1412,7 +1422,7 @@ static void ss_event_drop_oldest_if_needed(SSEventStream *stream) {
     SSEventRecord *oldest;
     SSEventSubscription *subscription;
 
-    if (stream->durable || stream->strict_capacity) {
+    if (stream == NULL || stream->strict_capacity) {
         return;
     }
     while (stream->retained_count > stream->queue_capacity && stream->head != NULL) {
@@ -1547,6 +1557,15 @@ static void *ss_event_open_stream_locked(
     if (stream != NULL) {
         if (queue_capacity > stream->queue_capacity) {
             stream->queue_capacity = queue_capacity;
+        }
+        if (stream->durable) {
+            load_status = ss_event_store_load_records_after(
+                stream,
+                stream->durable_loaded_through_event_id
+            );
+            if (load_status != SS_EVENT_OK) {
+                return NULL;
+            }
         }
         return ss_event_create_stream_handle_locked(stream);
     }
@@ -1685,8 +1704,8 @@ long long ss_event_append(
     const char *payload_json
 ) {
     SSEventStream *stream;
-    SSEventRecord *record;
-    long long assigned_event_id;
+    SSEventRecord *record = NULL;
+    long long assigned_event_id = 0;
     int store_status;
 
     ss_event_lock();
@@ -1704,27 +1723,33 @@ long long ss_event_append(
         return SS_EVENT_ERR_QUEUE_FULL;
     }
     if (stream->durable) {
-        long long durable_next_event_id = ss_event_store_next_event_id(stream->store_path);
-        if (durable_next_event_id < 0) {
+        store_status = ss_event_store_append_new_record(
+            stream->store_path,
+            event_type,
+            event_key,
+            payload_json,
+            &assigned_event_id
+        );
+        if (store_status != SS_EVENT_OK) {
             ss_event_unlock();
-            return durable_next_event_id;
+            return store_status;
         }
-        if (durable_next_event_id > stream->next_event_id) {
-            stream->next_event_id = durable_next_event_id;
+        store_status = ss_event_store_load_records_after(
+            stream,
+            stream->durable_loaded_through_event_id
+        );
+        if (store_status != SS_EVENT_OK) {
+            ss_event_unlock();
+            return store_status;
         }
+        ss_event_complete_pending_receives(stream);
+        ss_event_unlock();
+        return assigned_event_id;
     }
     record = ss_event_create_record(stream->next_event_id, event_type, event_key, payload_json);
     if (record == NULL) {
         ss_event_unlock();
         return SS_EVENT_ERR_ENGINE;
-    }
-    if (stream->durable) {
-        store_status = ss_event_store_append_record(stream->store_path, record);
-        if (store_status != SS_EVENT_OK) {
-            ss_event_free_record(record);
-            ss_event_unlock();
-            return store_status;
-        }
     }
     stream->next_event_id += 1;
     assigned_event_id = record->event_id;
@@ -1744,12 +1769,24 @@ void *ss_event_subscribe(
 ) {
     SSEventStream *stream;
     SSEventSubscription *subscription;
+    int store_status;
+    int has_dropped_match;
 
     ss_event_lock();
     stream = ss_event_stream_from_handle_locked(stream_handle);
     if (stream == NULL || stream->magic != SS_EVENT_STREAM_MAGIC || after_event_id < 0 || queue_capacity <= 0) {
         ss_event_unlock();
         return NULL;
+    }
+    if (stream->durable) {
+        store_status = ss_event_store_load_records_after(
+            stream,
+            stream->durable_loaded_through_event_id
+        );
+        if (store_status != SS_EVENT_OK) {
+            ss_event_unlock();
+            return NULL;
+        }
     }
     subscription = (SSEventSubscription *)calloc(1, sizeof(*subscription));
     if (subscription == NULL) {
@@ -1777,6 +1814,32 @@ void *ss_event_subscribe(
         free(subscription);
         ss_event_unlock();
         return NULL;
+    }
+    if (stream->durable && stream->head != NULL
+            && after_event_id + 1 < stream->head->event_id) {
+        if (subscription->event_type_filter[0] == '\0'
+                && subscription->event_key_filter[0] == '\0') {
+            subscription->dropped_matching_event_gap = 1;
+        } else {
+            store_status = ss_event_store_has_matching_record_before(
+                stream->store_path,
+                after_event_id,
+                stream->head->event_id,
+                subscription->event_type_filter,
+                subscription->event_key_filter,
+                &has_dropped_match
+            );
+            if (store_status != SS_EVENT_OK) {
+                free(subscription->event_type_filter);
+                free(subscription->event_key_filter);
+                free(subscription);
+                ss_event_unlock();
+                return NULL;
+            }
+            if (has_dropped_match) {
+                subscription->dropped_matching_event_gap = 1;
+            }
+        }
     }
     subscription->next_subscription = stream->subscriptions;
     stream->subscriptions = subscription;
