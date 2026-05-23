@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-05-23
+
+- `f243d4c0a89578cddb1e1c9a2ebb203acfec1733` - `experiments: normalize auction request log durations`
+  - Normalizes persisted Realtime Auction Arena request durations so completed request-log rows always record a positive `duration_ms`, using timestamp-derived values when available and a one-millisecond floor otherwise.
+- `ecd5df735f0fa45829fd4de729bb241385323d81` - `tests: cover auction production auth config`
+  - Extends the Realtime Auction Arena E2E smoke harness to boot with explicit environment overrides and assert that production profile mode fails closed when the JWT secret is missing or too short, while still reporting ready once a valid secret is supplied.
+- `9f410169214d8e9f278fe7a53b89b77f6296ffbc` - `runtime: reload durable event stream records`
+  - Reloads durable event-store records before append, subscribe, open, and receive paths so durable streams stay synchronized with persisted events and surface queue-gap failures correctly for filtered subscribers.
+- `dc3111ee2c6977f27e85d332312984ba56c6190d` - `experiments: gate auction readiness on auth config`
+  - Makes the Realtime Auction Arena treat `AUCTION_ARENA_PROFILE=production` as a hard requirement for non-demo JWT secret material, returning a shared configuration failure envelope instead of falling back to the demo secret.
+  - Routes readiness through auth configuration validation so `/ready` and login stay unavailable until production auth is configured safely.
+- `4ae8cd15ab30c023ee7b2045df75046098340b05` - `docs: refresh runtime status surfaces`
+  - Refreshes runtime status docs across `SYNTAX.md`, `SemanticScript/README.md`, native async/native HTTP references, compiler docs, and TODO tracking so the documented gaps match the current implementation state.
+- `38801a5a268afc6e4c37a39132e9e2990bc676db` - `runtime: dedupe event store helpers`
+  - Removes duplicated event-store helpers from `sem_event_runtime.c` after the shared runtime path landed, reducing redundant native code in the event runtime.
+- `856cebe00378286139a3afdce41e74846f9fa66f` - `experiments: add auction SSR client and SSE replay`
+  - Rebuilds the Realtime Auction Arena browser client as a SemanticScript SSR app, adds SSE streaming and replay support on the server, and expands the surrounding auction/auth/observability/persistence coverage around the new event flow.
+- `997d8e404799418729026de398b00074e8c54858` - `tools: expand sem workflows and test lanes`
+  - Extends `sem` workflow coverage, adds dedicated suite, clean, and release-version tests, widens CI lanes, and refreshes agent/test documentation for the expanded command surface.
+  - Expands ignore patterns and coverage configuration for the new Python and Node-backed test surfaces.
+- `91d5e3ffdf501a6b4a62dad3032d13eca933cd1a` - `runtime+stdlib: add event streams and HTTP helpers`
+  - Adds the `std.event` surface, native event runtime support, HTTP/runtime helper expansion, and the `apps/event-stream-smoke` sample.
+  - Extends compiler, linter, stdlib, and native runtime coverage around event streams, async runtime behavior, native HTTP handling, JWT helpers, and supporting stdlib modules.
+
 ## 2026-05-22
 
 - `2a244f814c55b8dccff683f336cea43574ed5efb` - `docs: clarify sem-first agent workflow`
