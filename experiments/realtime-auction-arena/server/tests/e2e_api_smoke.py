@@ -1231,6 +1231,14 @@ def test_auth_and_api_fail_closed():
         assert chat_state[0] == 2
         assert chat_state[1] > 0
         assert chat_state[2] > 0
+        chat_report_payload = conn.execute(
+            """
+            SELECT payload_json FROM audit_events
+            WHERE auction_id = ? AND action = 'chat.reported'
+            """,
+            (auction_id,),
+        ).fetchone()[0]
+        assert json.loads(chat_report_payload)["reason"] == "spam"
         rejected_audit_rows = conn.execute(
             """
             SELECT action, outcome, error_code, payload_json

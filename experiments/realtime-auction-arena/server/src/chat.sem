@@ -59,7 +59,7 @@ jsonBody chatContract
       "sanitizationRule": "request text is stored as text, never HTML; every JSON response and replay payload must be serialized through the JSON writer so <, >, &, quotes, backslash, and control characters cannot break envelope structure or browser text rendering",
       "persistenceRule": "chat create inserts chat_messages plus chat.message.created; delete marks chat_messages deleted and appends audit_events plus chat.message.deleted; report marks reported_at and appends audit_events plus chat.message.reported",
       "moderationRule": "delete is idempotent by messageId and emits chat.message.deleted exactly once for a visible message; repeated delete returns the existing deleted status",
-      "reportRule": "report records reporter userId, reason, and reportedAtUtcMillis; repeated report by the same user is idempotent and does not duplicate replay events",
+      "reportRule": "report records reporter userId in audit_events, stores the request JSON reason in the report audit payload, marks reportedAtUtcMillis on the message, and repeated reports return the reported state without duplicating replay events",
       "replayRule": "chat create, delete, and report events are persisted in auction_events and replay through the auction SSE stream using the same per-auction sequence",
       "auditRule": "delete and report write audit_events with actor userId, requestId, outcome, and messageId before SSE broadcast",
       "eventTypes": "chat.message.created, chat.message.deleted, chat.message.reported",
