@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.server_context "Assertions th
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.server_context "Native route registration, auth commands, auction commands, chat commands, or durable business-rule tests."
 invariant module app.realtime_auction_arena.server.tests.server_context "The shell-context plan must keep handler names stable so main.sem route declarations remain ABI-only wiring."
 
-storage module immutable serverContextUnitTestPlanSummary String "server/src/server_context.sem coverage: schema literal and database readiness cache, openOrReuseArenaDatabase success/failure/cache branches, health and readiness envelopes, Prometheus metrics formatting from process counters, API index/not-found/method-not-allowed envelopes, requestContextMiddleware request counter plus request-id/path header stamping, and shutdown contract docs that distinguish native accept-loop signals from handler-visible drain state."
+storage module immutable serverContextUnitTestPlanSummary String "server/src/server_context.sem coverage: schema literal and database readiness cache, openOrReuseArenaDatabase success/failure/cache branches, health and drain-aware readiness envelopes, Prometheus metrics formatting from process counters, API index/not-found/method-not-allowed envelopes, requestContextMiddleware request counter plus request-id/path header stamping, and shutdown drain-state short-circuit behavior for command methods."
 
 operation getServerContextUnitTestPlan
 output operation getServerContextUnitTestPlan String

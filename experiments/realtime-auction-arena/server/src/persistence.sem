@@ -55,7 +55,7 @@ jsonBody persistencePlan
       "requestLogRule": "request_log stores request_id, method, path, route_pattern, status, actor, auction_id, idempotency_key, duration_ms, byte counts, hashed client metadata, stable error_code, started_at, and finished_at.",
       "rateLimitRule": "rate_limit_buckets stores one row per bucket_key/window_start with scope, actor_user_id, route_pattern, count, denied_count, limit_count, reset_at, and updated_at for login, bid, and chat limiters.",
       "rejectedBidRule": "Rejected bids use bids.status = 2 with reject_reason > 0, bidder_user_id as actor, amount_minor, auction_revision, expected_revision, request_id, idempotency_key, response_status, error_code, and created_at.",
-      "seedRule": "Schema seed data creates schema_versions, schema_migrations, demo auctioneer/bidder users, and the demo auctioneer password_credentials row used by the executable login path.",
+      "seedRule": "Schema seed data creates schema_versions, schema_migrations, demo auctioneer/bidder/admin users, a disabled demo user, and matching password_credentials rows used by the executable login path.",
       "schemaArtifactRule": "sqliteSchemaV1 is loaded from server/sql/schema.sql so the runtime schema artifact and persistence contract stay in one source of truth."
   }
 

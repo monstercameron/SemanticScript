@@ -31,6 +31,9 @@ exportConstant app.realtime_auction_arena.server.runtime_constants serverErrorSt
 exportConstant app.realtime_auction_arena.server.runtime_constants jsonContentType
 exportConstant app.realtime_auction_arena.server.runtime_constants textContentType
 exportConstant app.realtime_auction_arena.server.runtime_constants sseContentType
+exportConstant app.realtime_auction_arena.server.runtime_constants acceptHeaderName
+exportConstant app.realtime_auction_arena.server.runtime_constants sseAcceptHeaderPrefix
+exportConstant app.realtime_auction_arena.server.runtime_constants sseAcceptHeaderPrefixLength
 exportConstant app.realtime_auction_arena.server.runtime_constants contentTypeHeaderName
 exportConstant app.realtime_auction_arena.server.runtime_constants applicationJsonContentTypePrefix
 exportConstant app.realtime_auction_arena.server.runtime_constants applicationJsonContentTypePrefixLength
@@ -55,6 +58,8 @@ exportConstant app.realtime_auction_arena.server.runtime_constants authPasswordS
 exportConstant app.realtime_auction_arena.server.runtime_constants authRefreshScratchCapacity
 exportConstant app.realtime_auction_arena.server.runtime_constants authAccessTokenBufferCapacity
 exportConstant app.realtime_auction_arena.server.runtime_constants authAccessTokenCapacityArg
+exportConstant app.realtime_auction_arena.server.runtime_constants authJwtClaimBufferCapacity
+exportConstant app.realtime_auction_arena.server.runtime_constants authJwtClaimCapacityArg
 exportConstant app.realtime_auction_arena.server.runtime_constants authEnvelopeBodyBufferCapacity
 exportConstant app.realtime_auction_arena.server.runtime_constants authEnvelopeBodyCapacityArg
 exportConstant app.realtime_auction_arena.server.runtime_constants authRefreshRandomBufferCapacity
@@ -68,6 +73,7 @@ exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefr
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefreshTokenOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefreshHashOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueResponseBodyOffset
+exportConstant app.realtime_auction_arena.server.runtime_constants authIssueJwtIdOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueArenaCapacity
 exportConstant app.realtime_auction_arena.server.runtime_constants authBcryptCost
 exportConstant app.realtime_auction_arena.server.runtime_constants authSuccessCode
@@ -93,10 +99,21 @@ exportConstant app.realtime_auction_arena.server.runtime_constants demoBidderUse
 exportConstant app.realtime_auction_arena.server.runtime_constants demoBidderDisplayName
 exportConstant app.realtime_auction_arena.server.runtime_constants demoBidderRoleName
 exportConstant app.realtime_auction_arena.server.runtime_constants demoBidderScopesJson
+exportConstant app.realtime_auction_arena.server.runtime_constants demoAdminUserId
+exportConstant app.realtime_auction_arena.server.runtime_constants demoAdminUsername
+exportConstant app.realtime_auction_arena.server.runtime_constants demoAdminDisplayName
+exportConstant app.realtime_auction_arena.server.runtime_constants demoAdminRoleName
+exportConstant app.realtime_auction_arena.server.runtime_constants demoAdminScopesJson
+exportConstant app.realtime_auction_arena.server.runtime_constants demoDisabledUserId
+exportConstant app.realtime_auction_arena.server.runtime_constants demoDisabledUsername
+exportConstant app.realtime_auction_arena.server.runtime_constants demoDisabledDisplayName
+exportConstant app.realtime_auction_arena.server.runtime_constants demoDisabledRoleName
+exportConstant app.realtime_auction_arena.server.runtime_constants demoDisabledScopesJson
 exportConstant app.realtime_auction_arena.server.runtime_constants demoPasswordHash
 exportConstant app.realtime_auction_arena.server.runtime_constants demoJwtSigningSecret
 exportConstant app.realtime_auction_arena.server.runtime_constants demoAccessTokenPayloadTemplate
 exportConstant app.realtime_auction_arena.server.runtime_constants demoBidderAccessTokenPayloadTemplate
+exportConstant app.realtime_auction_arena.server.runtime_constants demoAdminAccessTokenPayloadTemplate
 exportConstant app.realtime_auction_arena.server.runtime_constants arenaDatabasePath
 exportConstant app.realtime_auction_arena.server.runtime_constants emptyArenaDatabase
 exportConstant app.realtime_auction_arena.server.runtime_constants arenaDatabaseReadyFlag
@@ -254,6 +271,8 @@ exportConstant app.realtime_auction_arena.server.runtime_constants eventTypeChat
 exportConstant app.realtime_auction_arena.server.runtime_constants auctioneerRoleCode
 exportConstant app.realtime_auction_arena.server.runtime_constants bidderRoleCode
 exportConstant app.realtime_auction_arena.server.runtime_constants adminRoleCode
+exportConstant app.realtime_auction_arena.server.runtime_constants viewerRoleCode
+exportConstant app.realtime_auction_arena.server.runtime_constants serviceRoleCode
 exportConstant app.realtime_auction_arena.server.runtime_constants auditOutcomeAcceptedCode
 exportConstant app.realtime_auction_arena.server.runtime_constants auditOutcomeRejectedCode
 exportConstant app.realtime_auction_arena.server.runtime_constants auditOutcomeDeniedCode
@@ -327,6 +346,9 @@ storage module immutable serverErrorStatus CSignedInt32 500
 storage module immutable jsonContentType CNullTerminatedByteString "application/json; charset=utf-8"
 storage module immutable textContentType CNullTerminatedByteString "text/plain; charset=utf-8"
 storage module immutable sseContentType CNullTerminatedByteString "text/event-stream; charset=utf-8"
+storage module immutable acceptHeaderName CNullTerminatedByteString "Accept"
+storage module immutable sseAcceptHeaderPrefix CNullTerminatedByteString "text/event-stream"
+storage module immutable sseAcceptHeaderPrefixLength CByteCount 17
 storage module immutable contentTypeHeaderName CNullTerminatedByteString "Content-Type"
 storage module immutable applicationJsonContentTypePrefix CNullTerminatedByteString "application/json"
 storage module immutable applicationJsonContentTypePrefixLength CByteCount 16
@@ -351,6 +373,8 @@ storage module immutable authPasswordScratchCapacity CByteCount 256
 storage module immutable authRefreshScratchCapacity CByteCount 128
 storage module immutable authAccessTokenBufferCapacity CByteCount 512
 storage module immutable authAccessTokenCapacityArg CSignedInt32 512
+storage module immutable authJwtClaimBufferCapacity CByteCount 128
+storage module immutable authJwtClaimCapacityArg CSignedInt32 128
 storage module immutable authEnvelopeBodyBufferCapacity CByteCount 2048
 storage module immutable authEnvelopeBodyCapacityArg CSignedInt32 2048
 storage module immutable authRefreshRandomBufferCapacity CByteCount 32
@@ -364,8 +388,9 @@ storage module immutable authIssueRefreshRandomOffset CByteCount 512
 storage module immutable authIssueRefreshTokenOffset CByteCount 544
 storage module immutable authIssueRefreshHashOffset CByteCount 588
 storage module immutable authIssuePayloadTemplateOffset CByteCount 656
-storage module immutable authIssueResponseBodyOffset CByteCount 1184
-storage module immutable authIssueArenaCapacity CByteCount 3232
+storage module immutable authIssueJwtIdOffset CByteCount 1184
+storage module immutable authIssueResponseBodyOffset CByteCount 1312
+storage module immutable authIssueArenaCapacity CByteCount 3360
 storage module immutable authBcryptCost CSignedInt32 12
 storage module immutable authSuccessCode CSignedInt32 0
 storage module immutable authMatchCode CSignedInt32 1
@@ -390,10 +415,21 @@ storage module immutable demoBidderUsername CNullTerminatedByteString "bidder"
 storage module immutable demoBidderDisplayName CNullTerminatedByteString "Demo Bidder"
 storage module immutable demoBidderRoleName CNullTerminatedByteString "bidder"
 storage module immutable demoBidderScopesJson CNullTerminatedByteString "[\"auctions:read\",\"bids:write\",\"chat:write\"]"
+storage module immutable demoAdminUserId CNullTerminatedByteString "user_admin_demo"
+storage module immutable demoAdminUsername CNullTerminatedByteString "admin"
+storage module immutable demoAdminDisplayName CNullTerminatedByteString "Demo Admin"
+storage module immutable demoAdminRoleName CNullTerminatedByteString "admin"
+storage module immutable demoAdminScopesJson CNullTerminatedByteString "[\"auctions:write\",\"audit:read\",\"chat:moderate\",\"metrics:read\"]"
+storage module immutable demoDisabledUserId CNullTerminatedByteString "user_disabled_demo"
+storage module immutable demoDisabledUsername CNullTerminatedByteString "disabled"
+storage module immutable demoDisabledDisplayName CNullTerminatedByteString "Disabled Demo User"
+storage module immutable demoDisabledRoleName CNullTerminatedByteString "bidder"
+storage module immutable demoDisabledScopesJson CNullTerminatedByteString "[\"auctions:read\",\"bids:write\",\"chat:write\"]"
 storage module immutable demoPasswordHash CNullTerminatedByteString "$2b$12$spS9g0nnkiKOYi.lPsq4duqGlWsYUn8IYZWhgGeJRLskqmwJCsIhi"
 storage module immutable demoJwtSigningSecret JwtSecret "auction-arena-local-demo-hs256-secret-change-before-production"
 storage module immutable demoAccessTokenPayloadTemplate JwtPayloadTemplate "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_auctioneer_001\",\"role\":\"auctioneer\",\"scopes\":[\"auctions:write\",\"bids:read\",\"chat:moderate\"],\"iat\":1700000000,\"nbf\":0,\"exp\":2000000000,\"jti\":\"%s\"}"
 storage module immutable demoBidderAccessTokenPayloadTemplate JwtPayloadTemplate "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_bidder_demo\",\"role\":\"bidder\",\"scopes\":[\"auctions:read\",\"bids:write\",\"chat:write\"],\"iat\":1700000000,\"nbf\":0,\"exp\":2000000000,\"jti\":\"%s\"}"
+storage module immutable demoAdminAccessTokenPayloadTemplate JwtPayloadTemplate "{\"iss\":\"realtime-auction-arena\",\"aud\":\"api-v1\",\"sub\":\"user_admin_demo\",\"role\":\"admin\",\"scopes\":[\"auctions:write\",\"audit:read\",\"chat:moderate\",\"metrics:read\"],\"iat\":1700000000,\"nbf\":0,\"exp\":2000000000,\"jti\":\"%s\"}"
 storage module immutable arenaDatabasePath CNullTerminatedByteString "auction_arena.sqlite3"
 storage module immutable emptyArenaDatabase SqliteDatabase 0
 storage module immutable arenaDatabaseReadyFlag CSignedInt32 1
@@ -548,9 +584,11 @@ storage module immutable eventTypeBidAcceptedCode CSignedInt64 5
 storage module immutable eventTypeChatMessageCreatedCode CSignedInt64 8
 storage module immutable eventTypeChatMessageDeletedCode CSignedInt64 9
 storage module immutable eventTypeChatMessageReportedCode CSignedInt64 10
-storage module immutable auctioneerRoleCode CSignedInt64 20
+storage module immutable viewerRoleCode CSignedInt64 5
 storage module immutable bidderRoleCode CSignedInt64 10
+storage module immutable auctioneerRoleCode CSignedInt64 20
 storage module immutable adminRoleCode CSignedInt64 30
+storage module immutable serviceRoleCode CSignedInt64 40
 storage module immutable auditOutcomeAcceptedCode CSignedInt64 1
 storage module immutable auditOutcomeRejectedCode CSignedInt64 2
 storage module immutable auditOutcomeDeniedCode CSignedInt64 3

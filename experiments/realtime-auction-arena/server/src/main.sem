@@ -11,6 +11,7 @@ import jwt standard.jwt
 import stdlib standard.stdlib
 import runtime app.realtime_auction_arena.server.runtime_constants
 import sql app.realtime_auction_arena.server.sql_queries
+import tx app.realtime_auction_arena.server.persistence_tx
 import helpers app.realtime_auction_arena.server.http_helpers
 import domain app.realtime_auction_arena.server.auction_domain
 import wire app.realtime_auction_arena.server.wire_envelopes
@@ -23,32 +24,32 @@ import event_context app.realtime_auction_arena.server.event_context
 import chat_context app.realtime_auction_arena.server.chat_context
 import audit_context app.realtime_auction_arena.server.audit_context
 
+importOperation healthHandler server_context healthHandler
+importOperation readyHandler server_context readyHandler
+importOperation metricsHandler auth_context protectedMetricsHandler
+importOperation apiIndexHandler server_context apiIndexHandler
+importOperation methodNotAllowedHandler server_context methodNotAllowedHandler
+importOperation apiNotFoundHandler server_context apiNotFoundHandler
+importOperation requestContextMiddleware server_context requestContextMiddleware
+importOperation authLoginHandler auth_context authLoginHandler
+importOperation authRefreshHandler auth_context authRefreshHandler
+importOperation authLogoutHandler auth_context authLogoutHandler
+importOperation sessionHandler auth_context sessionHandler
+importOperation auctionsListHandler auction_context auctionsListHandler
+importOperation auctionsCreateHandler auction_context auctionsCreateHandler
+importOperation auctionSnapshotHandler auction_context auctionSnapshotHandler
+importOperation auctionStartHandler auction_context auctionStartHandler
+importOperation auctionExtendHandler auction_context auctionExtendHandler
+importOperation auctionCloseHandler auction_context auctionCloseHandler
+importOperation auctionBidHandler auction_context auctionBidHandler
+importOperation auctionEventsHandler event_context auctionEventsHandler
+importOperation auctionAuditHandler audit_context auctionAuditHandler
+importOperation chatCreateHandler chat_context chatCreateHandler
+importOperation chatDeleteHandler chat_context chatDeleteHandler
+importOperation chatReportHandler chat_context chatReportHandler
+
 exportCapability app.realtime_auction_arena.server httpRequestReader
 exportCapability app.realtime_auction_arena.server httpResponseWriter
-exportOperation app.realtime_auction_arena.server healthHandler
-exportOperation app.realtime_auction_arena.server readyHandler
-exportOperation app.realtime_auction_arena.server metricsHandler
-exportOperation app.realtime_auction_arena.server apiIndexHandler
-exportOperation app.realtime_auction_arena.server authLoginHandler
-exportOperation app.realtime_auction_arena.server authRefreshHandler
-exportOperation app.realtime_auction_arena.server authLogoutHandler
-exportOperation app.realtime_auction_arena.server sessionHandler
-exportOperation app.realtime_auction_arena.server auctionsListHandler
-exportOperation app.realtime_auction_arena.server auctionsCreateHandler
-exportOperation app.realtime_auction_arena.server auctionSnapshotHandler
-exportOperation app.realtime_auction_arena.server auctionStartHandler
-exportOperation app.realtime_auction_arena.server auctionExtendHandler
-exportOperation app.realtime_auction_arena.server auctionCloseHandler
-exportOperation app.realtime_auction_arena.server auctionBidHandler
-exportOperation app.realtime_auction_arena.server auctionEventsHandler
-exportOperation app.realtime_auction_arena.server auctionAuditHandler
-exportOperation app.realtime_auction_arena.server chatCreateHandler
-exportOperation app.realtime_auction_arena.server chatDeleteHandler
-exportOperation app.realtime_auction_arena.server chatReportHandler
-exportOperation app.realtime_auction_arena.server methodNotAllowedHandler
-exportOperation app.realtime_auction_arena.server apiNotFoundHandler
-exportOperation app.realtime_auction_arena.server requestContextMiddleware
-
 webServer realtimeAuctionArenaServer
 purpose operation realtimeAuctionArenaServer "Serve the Realtime Auction Arena HTTP API skeleton through the current native HTTP/1.1 adapter."
 serverHost realtimeAuctionArenaServer "127.0.0.1"
@@ -73,101 +74,8 @@ route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/audit" auction
 route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages" chatCreateHandler
 route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/chat/messages/:messageId" chatDeleteHandler
 route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" chatReportHandler
-route realtimeAuctionArenaServer GET "/api/v1/not-found" apiNotFoundHandler
-route realtimeAuctionArenaServer POST "/healthz" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/healthz" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/healthz" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/healthz" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/healthz" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/readyz" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/readyz" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/readyz" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/readyz" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/readyz" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/metrics" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/metrics" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/metrics" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/metrics" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/metrics" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/api/v1" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auth/login" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auth/login" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auth/login" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auth/login" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auth/login" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auth/refresh" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auth/refresh" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auth/refresh" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auth/refresh" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auth/refresh" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auth/logout" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auth/logout" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auth/logout" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auth/logout" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auth/logout" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/api/v1/session" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/session" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/session" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/session" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/session" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/start" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/start" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/start" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/start" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/start" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/extend" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/extend" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/extend" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/extend" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/extend" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/close" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/close" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/close" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/close" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/close" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/bids" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/bids" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/bids" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/bids" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/bids" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/events" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/audit" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/chat/messages" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/chat/messages/:messageId" methodNotAllowedHandler
-route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages/:messageId" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/chat/messages/:messageId" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/chat/messages/:messageId" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/chat/messages/:messageId" methodNotAllowedHandler
-route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" methodNotAllowedHandler
-route realtimeAuctionArenaServer PUT "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" methodNotAllowedHandler
-route realtimeAuctionArenaServer PATCH "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" methodNotAllowedHandler
-route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" methodNotAllowedHandler
-route realtimeAuctionArenaServer OPTIONS "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" methodNotAllowedHandler
+routeNotFound realtimeAuctionArenaServer apiNotFoundHandler
+routeMethodNotAllowed realtimeAuctionArenaServer methodNotAllowedHandler
 
 timeoutBudget requestTimeoutBudget DurationMilliseconds 2000
 purpose operation requestTimeoutBudget "Document the desired per-route timeout; the current blocking adapter parses this as metadata only."
@@ -190,7 +98,6 @@ routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" requ
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestTimeoutBudget
 routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/not-found" requestTimeoutBudget
 
 routeMiddleware realtimeAuctionArenaServer "/healthz" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/readyz" requestContextMiddleware
@@ -211,7 +118,6 @@ routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" r
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestContextMiddleware
-routeMiddleware realtimeAuctionArenaServer "/api/v1/not-found" requestContextMiddleware
 
 capability httpRequestReader http.request read
 purpose operation httpRequestReader "Authority to inspect incoming request path, method, headers, and bounded bodies."

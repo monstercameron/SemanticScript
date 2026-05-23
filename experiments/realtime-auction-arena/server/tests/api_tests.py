@@ -221,6 +221,26 @@ def test_api_index_only_asserts_executable_routes():
 
 def test_metrics_smoke():
     status, headers, text = request("/metrics")
+    assert status == 401
+    assert_common_headers(headers, "/metrics")
+    payload = json.loads(text)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "unauthorized"
+
+    login = expect_json(
+        "/api/v1/auth/login",
+        200,
+        ok=True,
+        method="POST",
+        body='{"username":"admin","password":"auctioneer-demo-password"}',
+    )
+    token_payload = decode_jwt_payload(login["data"]["accessToken"])
+    assert token_payload["role"] == "admin"
+    assert "metrics:read" in token_payload["scopes"]
+    status, headers, text = request(
+        "/metrics",
+        headers={"Authorization": f"Bearer {login['data']['accessToken']}"},
+    )
     assert status == 200
     assert_common_headers(headers, "/metrics")
     assert "auction_server_bootstrap_info" in text

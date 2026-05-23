@@ -263,7 +263,7 @@ jsonBody middlewareContract
           "heartbeatMillis": 15000,
           "subscriberQueueLimit": 256,
           "disconnectRule": "client disconnect removes subscriber, decrements active_sse_clients, and never rolls back committed events",
-          "runtimeStatus": "current executable route returns bounded JSON replay with Last-Event-ID/?after/?limit and does not keep a long-lived SSE response open"
+          "runtimeStatus": "current executable route returns bounded JSON replay by default and opt-in SSE replay frames with Last-Event-ID/?after/?limit; it does not keep a live fanout subscription open"
       },
       "config": {
           "databasePathEnv": "AUCTION_ARENA_DB optional path override, default local auction_arena.sqlite3",

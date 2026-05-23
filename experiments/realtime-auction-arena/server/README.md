@@ -2,8 +2,8 @@
 
 This subproject is the authoritative SemanticScript server for Realtime Auction
 Arena. It owns auction state, validates bids, runs timing rules, authenticates
-users, persists replayable events, and broadcasts live updates to browser
-clients.
+users, persists replayable events, and defines the live-update contract for
+browser clients.
 
 The server should feel like a compact enterprise backend, not a toy route
 handler. Browser clients and the Win32 auctioneer console are only clients. The
@@ -34,32 +34,65 @@ the E2E harness verifies:
 - seeded role/scope guards for registered auctioneer command routes and the
   bidder bid route;
 - `405 method_not_allowed` envelopes for unsupported methods on known
-  executable paths;
+  executable paths through the native routeMethodNotAllowed fallback;
 - idempotency replay and conflict handling for create/start/bid/extend/close
   commands;
-- persisted auction event rows and bounded JSON event replay for
+- persisted auction event rows and bounded JSON/SSE replay for
   create/start/bid/extend/close;
 - durable accepted-command audit rows for create/start/bid/extend/close;
-- executable chat create with bidder auth, strict JSON `text` parsing,
-  text-only storage, `chat.message.created` event append, and replay ordering;
+- executable chat create/delete/report with seeded bidder/auctioneer auth,
+  text-only storage, moderation persistence, audit rows, `chat.message.*` event
+  append, idempotency, and replay ordering;
+- bounded authenticated audit replay for persisted auction audit rows with
+  opaque `createdAtUtcMillis:auditEventId` cursor pagination;
 - runtime-backed request, auth, command, bid, rate-limit, and auction-count
-  metrics plus explicit zero-valued SSE placeholder gauges/counters;
+  metrics plus active SSE replay gauges and slow-stream drop counters;
+- authenticated event replay over JSON by default and opt-in
+  `Accept: text/event-stream` SSE frames with `id`, `event`, `data`, and
+  heartbeat output;
 - oversized login bodies return a clean `413 payload_too_large` JSON envelope.
 
-This is still not a production-complete backend. SQLite-backed
-refresh-token/session persistence, full admin/service/viewer policy coverage,
-a separate `403 forbidden` authz response, long-lived SSE streams, chat
-delete/report persistence, refresh/logout/session audit rows, JWT denylist
-checks, and production fatal-missing-secret mode are still open work tracked in
-`TODO.md`. HS256 access-token signing, signature verification, environment JWT
-secret override, process-local bcrypt-hashed refresh-token rotation, and the
+This is still not a production-complete backend. Restart-safe durable session
+lookup, operator metrics auth, long-lived live SSE fanout, and production
+fatal-missing-secret mode are still open work tracked in `TODO.md`. HS256
+access-token signing, signature verification, typed
+`aud`/`exp`/`jti` claim checks, executable JWT denylist checks, environment JWT
+secret override, process-local bcrypt-hashed refresh-token rotation with
+best-effort durable refresh rows, seeded admin audit authorization, and the
 persisted create/start/bid/extend/close/chat/event/audit happy path are
 executable.
 
-The executable API harness intentionally does not assert long-lived SSE
-subscriptions, durable multi-session auth, chat delete/report moderation, or
-admin audit-query behavior. Those remain target contracts until their runtime
-storage and streaming integrations exist.
+The executable API harness asserts opt-in SSE replay frames, heartbeat output,
+and opaque audit cursor pagination with an audit id tiebreak. It intentionally
+does not assert long-lived live SSE subscriptions, durable multi-session auth,
+or operator metrics auth. Those remain target contracts until their runtime,
+authorization, and streaming integrations exist.
+
+## Agent Loop
+
+Use the server through two explicit lanes:
+
+```powershell
+python SemanticScript/tools/sem.py check --json experiments/realtime-auction-arena/server
+python SemanticScript/tools/sem.py test --json --allow-red-preflight-harnesses experiments/realtime-auction-arena/server
+python SemanticScript/tools/sem.py dev --json experiments/realtime-auction-arena/server
+```
+
+- `sem check --json` is the source-health lane. It reports the current
+  SemanticScript diagnostics and should be treated as the authority for source
+  debt. Add `--with-readiness` only when you want environment facts embedded
+  into the same payload.
+- `sem test --json --allow-red-preflight-harnesses` is the runtime-validation
+  lane. It can report a passing runtime-harness lane even while source
+  diagnostics are still red. Read `preflightStatus`, `runtimeHarnessStatus`,
+  and `compositeStatus` together. On red project surfaces it now prioritizes
+  runtime harnesses and defers project-surface semantic contract files.
+- `sem dev --json` is still a watch-plan surface, but it now distinguishes
+  `buildableSource: true` from `sourceOk: false`. On this project the build
+  lane is restartable while the lint/semantic quality lane is still red.
+- Current project reality: the sem tooling loop is healthy, the native build
+  lane is green, and the remaining red state is mostly in the server source and
+  end-to-end behavior itself rather than in the CLI wrapper contract.
 
 ## Build Config And Hardening Knobs
 
@@ -83,12 +116,12 @@ Production readiness must fail closed when required secret/config material is
 missing or unsafe demo defaults are enabled. The source-embedded demo JWT secret
 is still a development-only blocker tracked in `TODO.md`.
 
-Graceful shutdown is documented as a server contract because the current native
-webServer surface does not expose signal/cancellation hooks to SemanticScript.
-The app-level order is: stop accepting requests, reject new commands, drain
-accepted SQLite transactions, broadcast only committed events, close live
-subscribers once SSE exists, checkpoint/close SQLite, and exit within the grace
-deadline.
+Graceful shutdown is implemented as a layered contract: the native webServer
+surface owns signal detection and exposes `standard.http.serverIsShuttingDown`,
+while this server's SemanticScript readiness/middleware policy rejects new
+commands with `server_shutting_down`. The remaining order is to drain accepted
+SQLite transactions, broadcast only committed events, close live subscribers
+once SSE exists, checkpoint/close SQLite, and exit within the grace deadline.
 
 ## Demo And Load Harnesses
 
@@ -152,10 +185,10 @@ DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId
 POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report
 ```
 
-Routes listed with create/list/snapshot/start/extend/close/bid/event replay,
-bounded audit replay, and chat create/delete/report are executable as called out
-above. Full admin principal policy and true long-lived SSE semantics remain
-planned enterprise work.
+Routes listed with create/list/snapshot/start/extend/close/bid/JSON+SSE event
+replay, bounded audit replay with opaque cursors, and chat create/delete/report
+are executable as called out above. Full admin principal policy and true
+long-lived SSE semantics remain planned enterprise work.
 
 ## API Contract
 
@@ -631,7 +664,9 @@ record RequestLogEntry
 
 Rules:
 
-- Audit is durable and queryable by admins.
+- Audit is durable and queryable through the executable audit route; the demo
+  guard requires the seeded admin bearer and returns `insufficient_role` for
+  valid non-admin callers.
 - Request logs are operational and may be sampled later.
 - Do not store raw IP/user-agent in the first pass; hash or redact them.
 
@@ -649,18 +684,29 @@ role: auctioneer
 username: bidder
 password: auctioneer-demo-password
 role: bidder
+
+username: admin
+password: auctioneer-demo-password
+role: admin
+
+username: disabled
+password: auctioneer-demo-password
+role: bidder (disabled; login must return invalid_credentials)
 ```
 
 `POST /api/v1/auth/login` parses JSON, verifies the password with the native
 bcrypt adapter, builds the Realtime Auction Arena claim payload in
 `server/src/auth_context.sem`, asks `standard.jwt` to sign that caller-owned payload,
-returns an HS256 bearer JWT and an opaque random refresh token, stores only the
-refresh token's bcrypt hash in process-local state, and activates a
-process-local demo session. `GET /api/v1/session` verifies the
-`Authorization: Bearer ...` token signature and accepts only the current active
-access token. `POST /api/v1/auth/refresh` verifies the refresh hash and rotates
-both tokens. `POST /api/v1/auth/logout` verifies the current refresh token and
-revokes that process-local session.
+returns an HS256 bearer JWT and an opaque random refresh token, stores the
+refresh token's bcrypt hash in process-local state, writes best-effort
+`refresh_tokens` rows, and activates a process-local demo session.
+`GET /api/v1/session` verifies the `Authorization: Bearer ...` token
+signature, decodes `aud`/`exp`/`jti`, rejects wrong-audience or expired signed
+tokens with split envelopes, checks `revoked_jwts`, and accepts only the current
+active access token. `POST /api/v1/auth/refresh` verifies the refresh hash and
+rotates both tokens. `POST /api/v1/auth/logout` verifies the current refresh
+token, writes the active access-token `jti` to `revoked_jwts`, and revokes that
+process-local session.
 
 Roles:
 
@@ -757,6 +803,13 @@ The supervisor should be the single writer for an auction. It should process
 bid commands, timer expiry, manual close, and chat/moderation events in a
 deterministic order.
 
+Current executable status: `server/src/auction_supervisor.sem` uses
+`standard.event` strict process queues for bounded command delivery, monotonic
+receive ordering, explicit `queue_full` backpressure, and
+timer-expired/shutdown command smoke coverage. Route handlers still mutate
+through SQLite transactions directly until the production actor loop, fake
+clock, async select, and cancelable timer producers are wired.
+
 ## Auction Floor Chat
 
 Chat is in scope as an enterprise live feature, but true HTTP/2 or WebSocket
@@ -774,7 +827,8 @@ Rules:
 
 - `viewer` can read chat;
 - `bidder` can post chat;
-- `auctioneer` and `admin` can delete or moderate messages;
+- `auctioneer` and `admin` can delete or moderate messages; the executable demo
+  currently seeds only the auctioneer moderator path;
 - all chat writes are authenticated;
 - messages are rate-limited by user/session/IP where available;
 - display text is escaped before rendering;
@@ -1028,7 +1082,8 @@ src/
   auth_context.sem             login, refresh, logout, session, bearer auth helpers
   observability_context.sem    metrics state, audit insert helpers, request-log helpers
   auction_context.sem          auction list/snapshot/create/start/extend/close/bid handlers
-  event_context.sem            event type names and bounded JSON replay handler
+  event_context.sem            event type names and JSON replay handler
+  sse_context.sem              opt-in SSE replay frames, heartbeat, disconnect checks
   chat_context.sem             chat create handler plus registered delete/report guards
   runtime_constants.sem        HTTP/auth/JSON/bind/event constants imported by contexts
   sql_queries.sem              executable SQLite statement text imported by contexts
@@ -1037,7 +1092,7 @@ src/
   models.sem                   shared records, enums, and role types
   auction_domain.sem           records, enums, and validation rules
   auction_events.sem           event records and JSON encoding
-  auction_supervisor.sem       async command loop once channels exist
+  auction_supervisor.sem       standard.event queue adapter and supervisor gaps
   routes.sem                   route catalog and enterprise behavior contract
   auth.sem                     bcrypt login, JWT verification, role checks
   middleware.sem               request id, logging, auth, idempotency
@@ -1059,10 +1114,11 @@ docs/
 This server should expose missing or immature features quickly:
 
 - real long-lived SSE streams;
-- async channels and `select`;
+- production route-to-supervisor actor-loop integration;
+- async `select`;
 - cancelable monotonic timers;
 - safe shared-state ownership;
-- typed JWT claim validation, expiration checks, and key rotation;
+- production JWT key rotation and asymmetric signing;
 - bcrypt password storage ergonomics;
 - public-key signing primitives;
 - cookie and CSRF helpers;
@@ -1090,6 +1146,6 @@ in-memory placeholder:
 8. The E2E harness verifies accepted-command audit rows and scoped idempotency
    rows in SQLite.
 
-Once that works, move bid handling behind an async supervisor and replace
-polling with SSE broadcast, then add chat over POST plus the same SSE event
-stream.
+Next, move bid handling behind the queue-backed async supervisor and replace
+polling with live SSE broadcast. Chat already uses POST plus the same replay
+event stream shape; the remaining transport work is true live fanout.

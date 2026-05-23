@@ -242,7 +242,7 @@ jsonBody authContract
           "requiredBody": "username, password",
           "publicErrors": "invalid_credentials, rate_limited",
           "auditEvent": "auth.login.accepted or auth.login.rejected",
-          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, SQLite login rate-limit bucket, disabled-user lookup, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer/bidder accounts, runtime-time claim-bearing HS256 access token issue, durable refresh_tokens row insert, and durable login accepted/rejected audit rows"
+          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, SQLite login rate-limit bucket, disabled-user lookup, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer/bidder/admin accounts, runtime-time claim-bearing HS256 access token issue, durable refresh_tokens row insert, and durable login accepted/rejected audit rows"
       },
       "refresh": {
           "path": "POST /api/v1/auth/refresh",
@@ -256,14 +256,14 @@ jsonBody authContract
           "requiredBody": "refreshToken",
           "publicErrors": "unauthorized",
           "auditEvent": "auth.logout",
-          "runtimeStatus": "executable demo: valid refresh token hash revokes the process-local session, marks the durable refresh_tokens row revoked when present, and appends a logout audit row; JWT denylist writes remain blocked until the runtime exposes the active access-token jti"
+          "runtimeStatus": "executable demo: valid refresh token hash revokes the process-local session, marks the durable refresh_tokens row revoked when present, writes the active access-token jti to revoked_jwts through standard.jwt claim extraction, cleans expired denylist rows, and appends a logout audit row"
       },
       "session": {
           "path": "GET /api/v1/session",
           "requiredBody": "none",
           "publicErrors": "unauthorized, expired_token, bad_signature, wrong_audience, insufficient_role",
           "auditEvent": "auth.session.checked",
-          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified with env/default secret, matched against process-local session, checked against stored iat/nbf/exp runtime bounds, rejects disabled users, and appends accepted session audit rows; typed per-claim extraction, split failure envelopes, and durable denylist checks remain blocked"
+          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified with env/default secret, claim-decoded for aud/exp/jti, matched against process-local session, checked against stored iat/nbf/exp runtime bounds, rejects disabled users and revoked jti rows, returns split wrong_audience/expired_token envelopes, and appends accepted session audit rows"
       },
       "refreshTokenRow": {
           "tableName": "refresh_tokens",
@@ -278,10 +278,10 @@ jsonBody authContract
       "jwtDenylist": {
           "tableName": "revoked_jwts",
           "primaryKey": "jti",
-          "insertRule": "logout or admin revocation inserts the active JWT jti, user_id, exp, revoked_at, and request_id when typed claims are available",
+          "insertRule": "logout or admin revocation inserts the active JWT jti, user_id, exp, revoked_at, and request_id through standard.jwt claim readers",
           "lookupRule": "session and protected-route auth reject a signed token when revoked_jwts has the same jti and expires_at is still in the future",
           "cleanupRule": "maintenance may delete rows only after expires_at plus access-token clock skew",
-          "runtimeStatus": "blocked contract; schema exists, but executable demo cannot persist or check revoked jti rows because standard.jwt currently signs/verifies HS256 tokens without exposing typed claim or jti extraction for arbitrary incoming bearer tokens"
+          "runtimeStatus": "executable demo: logout persists active jti rows, session and protected-route bearer validation reject non-expired revoked jtis, and validation cleans expired denylist rows best-effort"
       },
       "loginRateLimit": {
           "durableTable": "rate_limit_buckets",
@@ -333,7 +333,7 @@ jsonBody authContract
               "requiredScopes": "auctions:read or bids:read",
               "routeFamilies": "GET /api/v1/auctions, GET /api/v1/auctions/:auctionId, GET /api/v1/auctions/:auctionId/events",
               "failureStatus": "401 unauthorized or 403 forbidden",
-              "runtimeStatus": "contract; current executable accepts the active demo bearer token for reads without viewer per-scope enforcement"
+              "runtimeStatus": "executable helper exists for known read-capable roles; current read routes accept the active bearer token while future route-specific scope splitting remains available through the helper"
           },
           "bidder": {
               "name": "bidder",
@@ -349,7 +349,7 @@ jsonBody authContract
               "requiredScopes": "auctions:write for create/start/extend/close; chat:moderate for moderation",
               "routeFamilies": "auction create/start/extend/close and chat delete",
               "failureStatus": "401 unauthorized or 403 forbidden",
-              "runtimeStatus": "executable for registered create/start routes with seeded auctioneer role and auctions:write scope; extend/close remain handler work"
+              "runtimeStatus": "executable for registered create/start/extend/close and chat moderation routes with seeded auctioneer/admin roles and exact scope sets"
           },
           "admin": {
               "name": "admin",
@@ -357,7 +357,7 @@ jsonBody authContract
               "requiredScopes": "audit:read and users:write where applicable",
               "routeFamilies": "audit queries, future user management",
               "failureStatus": "401 unauthorized or 403 forbidden",
-              "runtimeStatus": "contract only"
+              "runtimeStatus": "executable for the bounded audit route with seeded admin role and audit:read scope; authenticated non-admin callers receive 403 insufficient_role"
           },
           "operator": {
               "name": "operator",
@@ -373,7 +373,7 @@ jsonBody authContract
               "requiredScopes": "service:internal plus route-specific scopes",
               "routeFamilies": "automation, load tests, future internal maintenance",
               "failureStatus": "401 unauthorized or 403 forbidden",
-              "runtimeStatus": "contract only"
+              "runtimeStatus": "executable guard helper exists for future service-principal routes; no public service login route is registered"
           }
       },
       "scopes": {
@@ -388,7 +388,7 @@ jsonBody authContract
           "metricsRead": "metrics:read",
           "serviceInternal": "service:internal",
           "matchingRule": "authorization succeeds only when the principal role is allowed by policy and at least one listed scope satisfies the route requirement; service principals must also carry service:internal",
-          "runtimeStatus": "registered auctioneer command routes and the bid route check exact seeded scope sets; viewer/admin/operator/service policy matching remains contract work"
+          "runtimeStatus": "registered auctioneer/admin command routes, bidder routes, admin audit, admin metrics, viewer helper, and service guard helper check seeded role/scope state"
       },
       "config": {
           "jwtSecretEnv": "AUCTION_ARENA_JWT_SECRET required outside deterministic local demo mode",
@@ -397,13 +397,13 @@ jsonBody authContract
           "accessTtlSeconds": "AUCTION_ARENA_ACCESS_TOKEN_TTL_SECONDS default 900 and clamped to 300..900",
           "refreshTtlSeconds": "AUCTION_ARENA_REFRESH_TOKEN_TTL_SECONDS default 2592000 and clamped by deployment policy",
           "bcryptCostEnv": "AUCTION_ARENA_BCRYPT_COST default 12, minimum 10",
-          "demoSeedEnv": "AUCTION_ARENA_DEMO_SEED enables seeded auctioneer and demo bidder only for local development",
+          "demoSeedEnv": "AUCTION_ARENA_DEMO_SEED enables seeded auctioneer, bidder, admin, and disabled demo principals only for local development",
           "secretLoadingRule": "AUCTION_ARENA_JWT_SECRET must be read from environment or config at startup, be at least 32 random bytes after decoding, be redacted from logs, and never use a source literal outside deterministic local demo mode",
           "failureMode": "startup fails readiness if required production auth config is absent or invalid",
           "runtimeStatus": "executable reads AUCTION_ARENA_JWT_SECRET when present and at least 32 bytes, otherwise uses deterministic local demo fallback; production fatal-missing-secret mode remains pending"
       },
       "authContextIntegrationPatch": {
-          "value": "Remaining auth_context integration: add restart-safe refresh lookup/session recovery once opaque refresh tokens carry a lookup id or keyed lookup hash; make production JWT secret absence fatal; add typed JWT claim extraction and durable revoked_jwts checks; split auth failure envelopes and 403 authorization failures; wire viewer, admin, operator, service, and full chat role/scope policies."
+          "value": "Remaining auth_context integration: add restart-safe refresh lookup/session recovery once opaque refresh tokens carry a lookup id or keyed lookup hash; make production JWT secret absence fatal; protect operator metrics once metrics auth is enabled; add durable multi-session principal lookup beyond the active process-local demo session."
       }
   }
 

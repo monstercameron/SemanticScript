@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.http_helpers "Assertions that
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.http_helpers "Route-specific auction command behavior or native runtime implementation."
 invariant module app.realtime_auction_arena.server.tests.http_helpers "The helper coverage summary must mention common headers, JSON envelope writing, content-type checks, static envelope writers, and dynamic envelope seeding."
 
-storage module immutable serverHttpHelpersUnitTestPlanSummary String "server/src/http_helpers.sem coverage: common response headers, JSON envelope writer, JSON content-type predicate, auth parse/allocation acknowledgements, static envelope writer helpers including chat error writers, and dynamic success-envelope seeding."
+storage module immutable serverHttpHelpersUnitTestPlanSummary String "server/src/http_helpers.sem coverage: common response headers, JSON envelope writer, JSON content-type predicate, auth parse/allocation acknowledgements, static envelope writer helpers including chat and shutdown error writers, and dynamic success-envelope seeding."
 
 operation getServerHttpHelpersUnitTestPlan
 output operation getServerHttpHelpersUnitTestPlan String

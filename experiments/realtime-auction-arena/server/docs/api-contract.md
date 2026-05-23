@@ -105,40 +105,40 @@ Current executable route set:
 | POST | `/api/v1/auctions/:auctionId/extend` | executable SQLite extend with idempotency |
 | POST | `/api/v1/auctions/:auctionId/close` | executable SQLite close with idempotency |
 | POST | `/api/v1/auctions/:auctionId/bids` | executable SQLite bid with idempotency and active bidder attribution |
-| GET | `/api/v1/auctions/:auctionId/events` | executable authenticated bounded JSON replay with `Last-Event-ID`/`?after`/`?limit` and stable `eventType`, not long-lived SSE |
+| GET | `/api/v1/auctions/:auctionId/events` | executable authenticated bounded JSON replay by default; `Accept: text/event-stream` returns SSE replay frames with `id`, `event`, `data`, and a heartbeat |
 
-Audit query, live chat handlers, long-lived SSE, durable sessions,
-admin/service/viewer-scope policy coverage, all-route request start logging,
-and non-auth rate-limit enforcement remain planned runtime work. Registered
-auction command accepts and bid rejects persist durable request finish rows.
+Long-lived live SSE fanout, restart-safe durable sessions, all-route request start logging,
+operator metrics auth, and non-auth rate-limit enforcement remain planned
+runtime work. Registered auction command accepts and bid rejects persist durable
+request finish rows.
 Chat route policy, message length,
 sanitization, persistence SQL, event ordering, and revision-isolation contracts
 are complete in `server/src/chat.sem` and `server/src/sql_queries.sem`.
-Registered auctioneer command routes, the bidder bid route, and the event
-replay route already enforce the seeded demo role/scope split. Event replay is
-authorized for the active seeded auctioneer or bidder principals; production
-viewer/admin/service authorization and the `403 forbidden` split remain
-planned.
+Registered auctioneer/admin command routes, the bidder bid route, the event
+replay route, and the admin audit route enforce the seeded demo role/scope
+split. Event replay is authorized for the active seeded auctioneer or bidder
+principals; audit replay requires the seeded admin principal and returns
+`403 insufficient_role` for authenticated non-admin callers.
 
 Auth hardening contract:
 
 - `server/src/auth.sem` owns the JWT secret config shape, access-token
-  time-claim validation rules, `revoked_jwts` denylist lookup/cleanup plan,
-  durable auth audit event names, and login rate-limit bucket policy.
+  time-claim validation rules, executable `revoked_jwts` denylist
+  lookup/cleanup, durable auth audit event names, and login rate-limit bucket
+  policy.
 - The executable demo reads `AUCTION_ARENA_JWT_SECRET` when present and at
   least 32 bytes, otherwise falls back to the deterministic local demo secret;
   issues `iat`/`nbf` from runtime UTC seconds with `exp = iat + 900`; validates
-  stored active-token time bounds on session; enforces login buckets in
-  SQLite; and writes durable login accepted/rejected audit rows. Process-local
-  sessions, durable refresh-token/session rows, refresh/logout/session audit
-  rows, typed JWT claim extraction for arbitrary incoming tokens, and
-  `revoked_jwts` denylist lookup remain planned.
+  decoded incoming token `aud`/`exp`/`jti` claims; validates stored
+  active-token time bounds on session; rejects active revoked jti rows; cleans
+  expired denylist rows; enforces login buckets in SQLite; and writes durable
+  login/refresh/logout/session audit rows. Restart-safe durable
+  refresh-token/session lookup remains planned.
 
-Unsupported methods on known executable paths are registered to return
-`405 method_not_allowed`. The method guard is registered explicitly for health,
-readiness, metrics, API index, auth, session, auction list/create, auction
-snapshot, start, extend, close, bid, and event-replay paths. Unknown paths
-remain native dispatcher/not-found behavior.
+Unsupported methods on known executable paths return `405 method_not_allowed`
+through the native routeMethodNotAllowed fallback, which detects a matching
+path pattern with no matching method. Unknown paths use the routeNotFound JSON
+fallback.
 
 ## Route Contract Artifact
 
@@ -159,8 +159,9 @@ auction events. Their source of truth is `server/src/chat.sem`, with SQL text in
   `chat:write`, `Idempotency-Key`, JSON text that is non-empty and at most
   `1000` bytes, and the per-actor/per-auction chat rate-limit window.
 - `DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId` requires
-  auctioneer or admin moderation authority with `chat:moderate`; repeated
-  deletes are idempotent and do not emit duplicate delete events.
+  auctioneer or admin moderation authority with `chat:moderate`; the executable
+  demo currently seeds the auctioneer moderator path; repeated deletes are
+  idempotent and do not emit duplicate delete events.
 - `POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report` requires
   bidder `chat:write`; repeated reports by the same actor are idempotent.
 - Chat text is stored as text, never HTML. JSON responses and replay payloads
@@ -173,10 +174,12 @@ auction events. Their source of truth is `server/src/chat.sem`, with SQL text in
 ## Admin Audit Query Filter Contract
 
 `GET /api/v1/auctions/:auctionId/audit` is registered as an executable bounded
-audit replay. The current seeded demo guard accepts the auctioneer bearer as the
-audit operator until a seeded admin principal exists. The executable query
-supports `?after=<created_at_millis>` and `?limit=1..100`; the broader
-enterprise filter contract remains:
+audit replay. The seeded demo guard requires the admin bearer with `audit:read`
+and returns `403 insufficient_role` for authenticated non-admin callers. The
+executable query supports `?cursor=<opaque>`, legacy
+`?after=<created_at_millis>`, and `?limit=1..100`. `cursor` takes precedence
+when both cursor forms are supplied. The broader enterprise filter contract
+remains:
 
 | Query parameter | Default | Rule |
 |---|---|---|
@@ -191,13 +194,17 @@ enterprise filter contract remains:
 | `limit` | `50` | integer `1..200` |
 | `cursor` | omitted | opaque cursor returned by the previous page |
 
-The executable response shape is `data.auctionId`, `data.after`, `data.limit`,
-`data.count`, `data.nextAfter`, and `data.auditEvents[]`. Each audit row returns
-the durable audit id, actor, role, request id, idempotency key, action, command
-kind, auction id, bid/message id, outcome, error code, payload JSON as a string,
-and `createdAtUtcMillis`. The future full filter response shape will add
-`data.page` with `nextCursor` and `hasMore`. Raw IP addresses, user-agent
-strings, JWTs, refresh tokens, password hashes, and request bodies must never
+The executable response shape is `data.auctionId`, `data.after`,
+`data.cursor`, `data.limit`, `data.count`, `data.nextAfter`,
+`data.nextCursor`, and `data.auditEvents[]`. Each audit row returns the durable
+audit id, actor, role, request id, idempotency key, action, command kind,
+auction id, bid/message id, outcome, error code, structured `payloadJson` as a
+string, and `createdAtUtcMillis`. Executable cursors are opaque to clients; the
+v1 encoding is `createdAtUtcMillis:auditEventId`, and the SQL predicate uses
+`created_at > cursor.createdAt OR (created_at = cursor.createdAt AND
+audit_event_id > cursor.auditEventId)` so same-millisecond pages cannot skip or
+duplicate rows. Raw IP addresses, user-agent strings, JWTs, refresh tokens,
+password hashes, raw auth headers, and raw unredacted request bodies must never
 appear in audit query responses.
 
 ## Pagination Contract
@@ -208,8 +215,10 @@ documents a compatibility exception:
 - `limit` defaults to `50`, is capped at `200`, and rejects non-integer values.
 - `cursor` is opaque to clients. Version `v1` cursors encode a stable ordered
   tuple, not a raw SQL offset.
-- Results are ordered newest-first for admin/audit/history views and
-  sequence-ascending for auction event replay.
+- Results are ordered newest-first for future admin/history views and
+  sequence-ascending for auction event replay. The executable audit replay is a
+  compatibility exception ordered by `created_at ASC, audit_event_id ASC` with
+  an opaque `(createdAtUtcMillis, auditEventId)` cursor.
 - `data.page` contains `limit`, `count`, `nextCursor`, and `hasMore` for new
   collection pages. The executable event replay JSON fallback is the current
   exception and returns `after`, `limit`, `count`, and `nextAfter` directly in
@@ -223,7 +232,7 @@ Initial target ordering:
 |---|---|---|
 | `GET /api/v1/auctions` | `created_at DESC, auction_id DESC` | `createdAtUtcMillis,auctionId` |
 | `GET /api/v1/auctions/:auctionId/events` | `sequence ASC` | `sequence` or `eventId` once SSE ids are exposed |
-| `GET /api/v1/auctions/:auctionId/audit` | `created_at DESC, audit_event_id DESC` | `createdAtUtcMillis,auditEventId` |
+| `GET /api/v1/auctions/:auctionId/audit` | executable: `created_at ASC, audit_event_id ASC`; target: `created_at DESC, audit_event_id DESC` | `createdAtUtcMillis,auditEventId` |
 | future bid history | `created_at DESC, bid_id DESC` | `createdAtUtcMillis,bidId` |
 
 ## Server Config And Shutdown Contract
@@ -248,13 +257,15 @@ Graceful shutdown contract:
 - exit after the configured grace period, then rely on the process manager for
   hard termination.
 
-The current executable does not have a signal/cancellation API exposed to
-SemanticScript handlers. The native HTTP fallback adapter does handle
-process-level SIGINT/SIGTERM by stopping accepts, letting the currently accepted
-request finish, closing the listen socket, and returning `SS_HTTP_OK`. The
-Python E2E, load, and demo scripts terminate the local process after requests
-complete and validate that this does not leave the demo database unreadable.
-Handler-observable drain state, request cancellation tokens, and SSE subscriber
+`standard.http.serverIsShuttingDown` exposes the native graceful-shutdown drain
+flag to SemanticScript. The readiness handler returns `server_shutting_down`
+during drain, and request middleware short-circuits registered POST/DELETE
+command routes with the same code before business handlers run. The native HTTP
+fallback adapter handles process-level SIGINT/SIGTERM by stopping accepts,
+letting the currently accepted request finish, closing the listen socket, and
+returning `SS_HTTP_OK`. The Python E2E, load, and demo scripts terminate the
+local process after requests complete and validate that this does not leave the
+demo database unreadable. Request cancellation tokens and SSE subscriber
 drain/close hooks remain planned runtime work.
 
 ## Stable Error-Code Registry
@@ -265,14 +276,14 @@ drain/close hooks remain planned runtime work.
 | `invalid_credentials` | 401 | executable login envelope |
 | `invalid_refresh_token` | 401 | executable refresh/logout envelope |
 | `unauthorized` | 401 | executable auth guard envelope |
-| `bad_signature` | 401 | contract-only until typed JWT failure envelopes split from `unauthorized` |
-| `expired_token` | 401 | envelope constant exists; live session validates active-token stored `exp` but still returns `unauthorized` until failure envelopes split |
-| `wrong_audience` | 401 | contract-only until typed JWT audience validation executes |
-| `token_revoked` | 401 | contract-only until `revoked_jwts` lookup executes |
-| `forbidden` | 403 | contract-only until authn/authz responses are split; registered wrong-role writes currently return `unauthorized` |
-| `insufficient_role` | 403 | contract-only until the 403 authz split executes |
-| `not_found` | 404 | executable explicit API not-found envelope |
-| `method_not_allowed` | 405 | registered wrong-method envelope for known paths |
+| `bad_signature` | 401 | contract-only; bad signatures currently share the generic `unauthorized` envelope |
+| `expired_token` | 401 | executable split envelope for signed expired access tokens on session |
+| `wrong_audience` | 401 | executable split envelope for signed access tokens with non-`api-v1` audience |
+| `token_revoked` | 401 | executable denylist lookup rejects revoked jtis through the generic `unauthorized` envelope |
+| `forbidden` | 403 | route-family status for authenticated-but-unauthorized callers |
+| `insufficient_role` | 403 | executable for admin audit when a valid non-admin bearer is supplied |
+| `not_found` | 404 | executable routeNotFound JSON envelope |
+| `method_not_allowed` | 405 | routeMethodNotAllowed envelope for known paths |
 | `auction_not_found` | 404 | executable auction lookup envelope |
 | `payload_too_large` | 413 | executable body-limit envelope |
 | `unsupported_media_type` | 415 | executable JSON write guard envelope |
@@ -316,8 +327,8 @@ Examples show the contract shape.
 | `POST /api/v1/auctions/:auctionId/extend` | bearer, `Idempotency-Key`, `{"expectedRevision":1,"extendByMillis":60000}` | `200`, running auction with advanced close time and revision |
 | `POST /api/v1/auctions/:auctionId/close` | bearer, `Idempotency-Key`, `{"expectedRevision":4}` | `200`, closed auction with final bid/winner fields |
 | `POST /api/v1/auctions/:auctionId/bids` | bearer, `Idempotency-Key`, `{"amount":120,"expectedRevision":1}` | `201`, accepted bid and advanced revision |
-| `GET /api/v1/auctions/:auctionId/events` | bearer, optional `Last-Event-ID`, `?after`, `?limit=1..200` | `200`, bounded JSON replay of committed auction events |
-| `GET /api/v1/auctions/:auctionId/audit` | seeded audit-operator bearer, `?after`, `?limit=1..100` | `200`, bounded audit event replay |
+| `GET /api/v1/auctions/:auctionId/events` | bearer, optional `Last-Event-ID`, `?after`, `?limit=1..200`; add `Accept: text/event-stream` for SSE replay | `200`, bounded JSON replay or SSE `id`/`event`/`data` frames of committed auction events |
+| `GET /api/v1/auctions/:auctionId/audit` | seeded audit-operator bearer, `?cursor` or legacy `?after`, `?limit=1..100` | `200`, bounded audit event replay |
 | `POST /api/v1/auctions/:auctionId/chat/messages` | bidder bearer, `Idempotency-Key`, `{"text":"..."}` | `201`, `chat.message.created` event response |
 | `DELETE /api/v1/auctions/:auctionId/chat/messages/:messageId` | moderator bearer, `Idempotency-Key` | `200`, `chat.message.deleted` event response |
 | `POST /api/v1/auctions/:auctionId/chat/messages/:messageId/report` | bidder bearer, `Idempotency-Key`, `{"reason":"..."}` | `200`, `chat.message.reported` event response |
@@ -341,20 +352,25 @@ requires a new event schema version even if the HTTP route remains `/api/v1`.
 
 ## Event Replay Contract
 
-`GET /api/v1/auctions/:auctionId/events` currently returns JSON, not a
-long-lived `text/event-stream`. The executable replay reads committed
-`auction_events` rows where `sequence > cursor`, ordered by sequence ascending.
-The cursor comes from `Last-Event-ID` when present, otherwise from `?after`;
-`Last-Event-ID` wins when both are supplied. `?limit` is optional and must be in
-the inclusive range `1..200`; the default is `200`. The current executable uses
-the standard decimal-prefix parser, so strict junk-after-number rejection is
-still planned.
+`GET /api/v1/auctions/:auctionId/events` returns bounded JSON replay by default.
+When the client sends `Accept: text/event-stream`, the same authenticated replay
+is emitted as SSE frames. Both transports read committed `auction_events` rows
+where `sequence > cursor`, ordered by sequence ascending. The cursor comes from
+`Last-Event-ID` when present, otherwise from `?after`; `Last-Event-ID` wins when
+both are supplied. `?limit` is optional and must be in the inclusive range
+`1..200`; the default is `200`. The current executable uses the standard
+decimal-prefix parser, so strict junk-after-number rejection is still planned.
 
-Each event row includes `sequence`, `auctionRevision`, stable `eventType`,
+Each JSON event row includes `sequence`, `auctionRevision`, stable `eventType`,
 numeric `eventTypeCode`, `payload`, and `createdAtUtcMillis`. The response
 `data` includes `auctionId`, `after`, `limit`, `events`, `count`, and
 `nextAfter`. `nextAfter` is the last returned sequence, or the input cursor when
 no rows are returned.
+
+Each SSE frame uses the persisted `sequence` as `id:`, the stable event type
+text as `event:`, and the persisted `payload_json` as `data:`. The executable
+stream writes a heartbeat comment after replay and closes the response. It is a
+streaming replay transport, not a multi-client live subscription yet.
 
 Long-lived SSE target behavior:
 
@@ -368,12 +384,13 @@ Long-lived SSE target behavior:
 - keep broadcast after commit so clients never observe rolled-back events.
 
 The executable `/metrics` endpoint publishes runtime-backed request/auth/bid
-and rate-limit series, zero-valued SSE gauges/counters, and the configured
-heartbeat/queue capacity. Long-lived SSE fanout, heartbeat writes, disconnect
-detection, and slow-client handling remain blocked on native streaming response
-and request/connection cancellation APIs. The current native adapter sends each
-response with `Content-Length` and `Connection: close`; `http.responseSseEvent`
-is a one-shot frame formatter, not a live stream.
+and rate-limit series, active SSE stream gauge, slow-write drop counter, and the
+configured heartbeat/queue capacity. Long-lived live fanout, per-client queues,
+queue overflow drops, and cancellation-aware subscriber drains remain route and
+async-runtime work. `standard.http` now owns `openSseStream`, `writeSseEvent`,
+`writeSseEventWithId`, `writeSseHeartbeat`, `closeSseStream`, and
+`clientDisconnected` as runtimeBinding wrappers. `http.responseSseEvent`
+remains a one-shot frame formatter.
 
 ## CORS And CSRF Contract
 

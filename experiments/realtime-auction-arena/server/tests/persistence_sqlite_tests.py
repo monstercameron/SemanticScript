@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 SERVER_ROOT = Path(__file__).resolve().parents[1]
+SERVER_SRC = SERVER_ROOT / "src"
 SCHEMA_SQL = SERVER_ROOT / "sql" / "schema.sql"
 
 
@@ -71,8 +72,9 @@ def test_schema_migration_idempotency_and_seed_rows() -> None:
 
         assert conn.execute("SELECT current_version FROM schema_versions").fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM schema_migrations WHERE version = 1").fetchone()[0] == 1
-        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 2
-        assert conn.execute("SELECT count(*) FROM password_credentials").fetchone()[0] == 2
+        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 4
+        assert conn.execute("SELECT count(*) FROM password_credentials").fetchone()[0] == 4
+        assert conn.execute("SELECT disabled FROM users WHERE user_id = 'user_disabled_demo'").fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM sqlite_master WHERE name = 'request_log'").fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM sqlite_master WHERE name = 'rate_limit_buckets'").fetchone()[0] == 1
 
@@ -159,6 +161,40 @@ def test_command_rollback_preserves_no_partial_domain_rows() -> None:
 
         assert conn.execute("SELECT count(*) FROM auctions WHERE auction_id = 'auc_rollback'").fetchone()[0] == 0
         assert conn.execute("SELECT count(*) FROM auction_events WHERE auction_id = 'auc_rollback'").fetchone()[0] == 0
+
+
+def test_persistence_transaction_helpers_own_handler_boilerplate() -> None:
+    persistence_source = (SERVER_SRC / "persistence_tx.sem").read_text(encoding="utf-8")
+    sql_query_source = (SERVER_SRC / "sql_queries.sem").read_text(encoding="utf-8")
+
+    assert "operation beginSqliteCommandTransaction" in persistence_source
+    assert "operation commitSqliteCommandTransaction" in persistence_source
+    assert "operation rollbackSqliteCommandTransaction" in persistence_source
+    assert "sql body sqlBeginImmediateCommandTransaction\n  BEGIN IMMEDIATE" in persistence_source
+    assert "sql body sqlCommitCommandTransaction\n  COMMIT" in persistence_source
+    assert "sql body sqlRollbackCommandTransaction\n  ROLLBACK" in persistence_source
+
+    assert "sqlBeginTransaction" not in sql_query_source
+    assert "sqlCommitTransaction" not in sql_query_source
+    assert "sqlRollbackTransaction" not in sql_query_source
+
+    for module_name, expected_count in [
+        ("auction_context.sem", 6),
+        ("chat_context.sem", 5),
+        ("auth_context.sem", 2),
+    ]:
+        source = (SERVER_SRC / module_name).read_text(encoding="utf-8")
+        assert "sql.sqlBeginTransaction" not in source
+        assert "sql.sqlCommitTransaction" not in source
+        assert "sql.sqlRollbackTransaction" not in source
+        assert not any(
+            line.startswith("defer ") and " sqlite.exec " in line
+            for line in source.splitlines()
+        )
+        assert source.count("tx.beginSqliteCommandTransaction") == expected_count
+        assert source.count("tx.commitSqliteCommandTransaction") == expected_count
+        assert source.count("defer ") >= expected_count
+        assert source.count(" rollbackSqliteCommandTransaction ") == expected_count
 
 
 def test_scoped_idempotency_uniqueness_and_replace() -> None:
@@ -293,6 +329,10 @@ def test_audit_outcome_contract_and_rejection_checks() -> None:
 
         assert conn.execute("SELECT count(*) FROM audit_events").fetchone()[0] == 4
         assert conn.execute("SELECT count(*) FROM audit_events WHERE outcome = 2").fetchone()[0] == 1
+        audit_cursor_indexes = {
+            row[1] for row in conn.execute("PRAGMA index_list('audit_events')").fetchall()
+        }
+        assert "idx_audit_auction_cursor" in audit_cursor_indexes
 
         expect_integrity_error(
             lambda: conn.execute(
@@ -405,6 +445,7 @@ def main() -> None:
         test_event_sequence_uniqueness_per_auction,
         test_rejected_bid_storage_contract_and_checks,
         test_command_rollback_preserves_no_partial_domain_rows,
+        test_persistence_transaction_helpers_own_handler_boilerplate,
         test_scoped_idempotency_uniqueness_and_replace,
         test_request_log_contract_and_timestamp_checks,
         test_audit_outcome_contract_and_rejection_checks,

@@ -13,6 +13,26 @@ exportOperation app.realtime_auction_arena.server.observability_context insertOb
 exportOperation app.realtime_auction_arena.server.observability_context insertRequestLogEvent
 exportOperation app.realtime_auction_arena.server.observability_context insertRequestLogRow
 exportOperation app.realtime_auction_arena.server.observability_context insertRejectedAuditEvent
+exportOperation app.realtime_auction_arena.server.observability_context metricsHttpRequestsTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsAuthLoginAcceptedTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsAuthLoginRejectedTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsAuctionCommandsAcceptedTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsAuctionCommandsRejectedTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsBidAcceptedTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsRateLimitHitsTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsActiveSseClientsValue
+exportOperation app.realtime_auction_arena.server.observability_context metricsSseSlowClientDropsTotalValue
+exportOperation app.realtime_auction_arena.server.observability_context incrementHttpRequestsTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementAuthLoginAcceptedTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementAuthLoginRejectedTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementAuctionCommandsAcceptedTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementAuctionCommandsRejectedTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementBidAcceptedTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementRateLimitHitsTotal
+exportOperation app.realtime_auction_arena.server.observability_context incrementBidRateLimitObservedCount
+exportOperation app.realtime_auction_arena.server.observability_context incrementActiveSseClients
+exportOperation app.realtime_auction_arena.server.observability_context decrementActiveSseClients
+exportOperation app.realtime_auction_arena.server.observability_context incrementSseSlowClientDropsTotal
 
 capability sqliteDatabaseReadWriter database readWrite
 purpose operation sqliteDatabaseReadWriter "Authority to execute SQLite audit and request-log statements through standard.sqlite."
@@ -25,8 +45,226 @@ storage module mutable metricsAuctionCommandsRejectedTotal CSignedInt64 0
 storage module mutable metricsBidAcceptedTotal CSignedInt64 0
 storage module mutable metricsRateLimitHitsTotal CSignedInt64 0
 storage module mutable metricsActiveSseClients CSignedInt64 0
+storage module mutable metricsSseSlowClientDropsTotal CSignedInt64 0
 storage module mutable loginRateLimitObservedCount CSignedInt64 0
 storage module mutable bidRateLimitObservedCount CSignedInt64 0
+
+operation metricsHttpRequestsTotalValue
+output operation metricsHttpRequestsTotalValue CSignedInt64
+memory metricsHttpRequestsTotalValue heap no
+async metricsHttpRequestsTotalValue no
+purpose operation metricsHttpRequestsTotalValue "Return the current HTTP request metric counter."
+return value metricsHttpRequestsTotal
+
+operation metricsAuthLoginAcceptedTotalValue
+output operation metricsAuthLoginAcceptedTotalValue CSignedInt64
+memory metricsAuthLoginAcceptedTotalValue heap no
+async metricsAuthLoginAcceptedTotalValue no
+purpose operation metricsAuthLoginAcceptedTotalValue "Return the accepted login metric counter."
+return value metricsAuthLoginAcceptedTotal
+
+operation metricsAuthLoginRejectedTotalValue
+output operation metricsAuthLoginRejectedTotalValue CSignedInt64
+memory metricsAuthLoginRejectedTotalValue heap no
+async metricsAuthLoginRejectedTotalValue no
+purpose operation metricsAuthLoginRejectedTotalValue "Return the rejected login metric counter."
+return value metricsAuthLoginRejectedTotal
+
+operation metricsAuctionCommandsAcceptedTotalValue
+output operation metricsAuctionCommandsAcceptedTotalValue CSignedInt64
+memory metricsAuctionCommandsAcceptedTotalValue heap no
+async metricsAuctionCommandsAcceptedTotalValue no
+purpose operation metricsAuctionCommandsAcceptedTotalValue "Return the accepted auction command metric counter."
+return value metricsAuctionCommandsAcceptedTotal
+
+operation metricsAuctionCommandsRejectedTotalValue
+output operation metricsAuctionCommandsRejectedTotalValue CSignedInt64
+memory metricsAuctionCommandsRejectedTotalValue heap no
+async metricsAuctionCommandsRejectedTotalValue no
+purpose operation metricsAuctionCommandsRejectedTotalValue "Return the rejected auction command metric counter."
+return value metricsAuctionCommandsRejectedTotal
+
+operation metricsBidAcceptedTotalValue
+output operation metricsBidAcceptedTotalValue CSignedInt64
+memory metricsBidAcceptedTotalValue heap no
+async metricsBidAcceptedTotalValue no
+purpose operation metricsBidAcceptedTotalValue "Return the accepted bid metric counter."
+return value metricsBidAcceptedTotal
+
+operation metricsRateLimitHitsTotalValue
+output operation metricsRateLimitHitsTotalValue CSignedInt64
+memory metricsRateLimitHitsTotalValue heap no
+async metricsRateLimitHitsTotalValue no
+purpose operation metricsRateLimitHitsTotalValue "Return the rate-limit hit metric counter."
+return value metricsRateLimitHitsTotal
+
+operation metricsActiveSseClientsValue
+output operation metricsActiveSseClientsValue CSignedInt64
+memory metricsActiveSseClientsValue heap no
+async metricsActiveSseClientsValue no
+purpose operation metricsActiveSseClientsValue "Return the active SSE client gauge."
+return value metricsActiveSseClients
+
+operation metricsSseSlowClientDropsTotalValue
+output operation metricsSseSlowClientDropsTotalValue CSignedInt64
+memory metricsSseSlowClientDropsTotalValue heap no
+async metricsSseSlowClientDropsTotalValue no
+purpose operation metricsSseSlowClientDropsTotalValue "Return the SSE slow-client drop counter."
+return value metricsSseSlowClientDropsTotal
+
+operation incrementHttpRequestsTotal
+output operation incrementHttpRequestsTotal CSignedInt64
+memory incrementHttpRequestsTotal heap no
+async incrementHttpRequestsTotal no
+purpose operation incrementHttpRequestsTotal "Increment the HTTP request metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsHttpRequestsTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsHttpRequestsTotal nextValue
+return value nextValue
+
+operation incrementAuthLoginAcceptedTotal
+output operation incrementAuthLoginAcceptedTotal CSignedInt64
+memory incrementAuthLoginAcceptedTotal heap no
+async incrementAuthLoginAcceptedTotal no
+purpose operation incrementAuthLoginAcceptedTotal "Increment the accepted login metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsAuthLoginAcceptedTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsAuthLoginAcceptedTotal nextValue
+return value nextValue
+
+operation incrementAuthLoginRejectedTotal
+output operation incrementAuthLoginRejectedTotal CSignedInt64
+memory incrementAuthLoginRejectedTotal heap no
+async incrementAuthLoginRejectedTotal no
+purpose operation incrementAuthLoginRejectedTotal "Increment the rejected login metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsAuthLoginRejectedTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsAuthLoginRejectedTotal nextValue
+return value nextValue
+
+operation incrementAuctionCommandsAcceptedTotal
+output operation incrementAuctionCommandsAcceptedTotal CSignedInt64
+memory incrementAuctionCommandsAcceptedTotal heap no
+async incrementAuctionCommandsAcceptedTotal no
+purpose operation incrementAuctionCommandsAcceptedTotal "Increment the accepted auction command metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsAuctionCommandsAcceptedTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsAuctionCommandsAcceptedTotal nextValue
+return value nextValue
+
+operation incrementAuctionCommandsRejectedTotal
+output operation incrementAuctionCommandsRejectedTotal CSignedInt64
+memory incrementAuctionCommandsRejectedTotal heap no
+async incrementAuctionCommandsRejectedTotal no
+purpose operation incrementAuctionCommandsRejectedTotal "Increment the rejected auction command metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsAuctionCommandsRejectedTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsAuctionCommandsRejectedTotal nextValue
+return value nextValue
+
+operation incrementBidAcceptedTotal
+output operation incrementBidAcceptedTotal CSignedInt64
+memory incrementBidAcceptedTotal heap no
+async incrementBidAcceptedTotal no
+purpose operation incrementBidAcceptedTotal "Increment the accepted bid metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsBidAcceptedTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsBidAcceptedTotal nextValue
+return value nextValue
+
+operation incrementRateLimitHitsTotal
+output operation incrementRateLimitHitsTotal CSignedInt64
+memory incrementRateLimitHitsTotal heap no
+async incrementRateLimitHitsTotal no
+purpose operation incrementRateLimitHitsTotal "Increment the rate-limit hit metric counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsRateLimitHitsTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsRateLimitHitsTotal nextValue
+return value nextValue
+
+operation incrementBidRateLimitObservedCount
+output operation incrementBidRateLimitObservedCount CSignedInt64
+memory incrementBidRateLimitObservedCount heap no
+async incrementBidRateLimitObservedCount no
+purpose operation incrementBidRateLimitObservedCount "Increment the process-local bid rate-limit probe counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 bidRateLimitObservedCount
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage bidRateLimitObservedCount nextValue
+return value nextValue
+
+operation incrementActiveSseClients
+output operation incrementActiveSseClients CSignedInt64
+memory incrementActiveSseClients heap no
+async incrementActiveSseClients no
+purpose operation incrementActiveSseClients "Increment the active SSE client gauge and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsActiveSseClients
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsActiveSseClients nextValue
+return value nextValue
+
+operation decrementActiveSseClients
+output operation decrementActiveSseClients CSignedInt64
+memory decrementActiveSseClients heap no
+async decrementActiveSseClients no
+purpose operation decrementActiveSseClients "Decrement the active SSE client gauge and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call decrementCall math.subtractI64
+argument decrementCall left I64 metricsActiveSseClients
+argument decrementCall right I64 metricStep
+run decrementCall
+bind value nextValue CSignedInt64 decrementCall
+set storage metricsActiveSseClients nextValue
+return value nextValue
+
+operation incrementSseSlowClientDropsTotal
+output operation incrementSseSlowClientDropsTotal CSignedInt64
+memory incrementSseSlowClientDropsTotal heap no
+async incrementSseSlowClientDropsTotal no
+purpose operation incrementSseSlowClientDropsTotal "Increment the SSE slow-client drop counter and return the new value."
+storage local immutable metricStep CSignedInt64 1
+call incrementCall math.addI64
+argument incrementCall left I64 metricsSseSlowClientDropsTotal
+argument incrementCall right I64 metricStep
+run incrementCall
+bind value nextValue CSignedInt64 incrementCall
+set storage metricsSseSlowClientDropsTotal nextValue
+return value nextValue
 
 operation insertAcceptedAuditEvent
 input operation insertAcceptedAuditEvent database SqliteDatabase

@@ -4,7 +4,7 @@ moduleOwns app.realtime_auction_arena.server.tests.persistence "SQLite schema, m
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.persistence "SQLite runtime internals or main.sem route wiring."
 invariant module app.realtime_auction_arena.server.tests.persistence "Every durable table in the schema plan must be listed in persistence unit coverage."
 invariant module app.realtime_auction_arena.server.tests.persistence "Readiness coverage must check schema_versions.current_version, schema_migrations, required indexes, seed rows, foreign-key mode, and a prepared read against core tables."
-invariant module app.realtime_auction_arena.server.tests.persistence "Command transaction coverage must check scoped idempotency replay/conflict behavior, rejected bid storage, rollback before broadcast, and committed auction_events sequence ordering."
+invariant module app.realtime_auction_arena.server.tests.persistence "Command transaction coverage must check scoped idempotency replay/conflict behavior, rejected bid storage, rollback before broadcast, committed auction_events sequence ordering, and persistence_tx begin/commit/rollback helpers."
 
 record PersistenceUnitCoveragePlan
 field PersistenceUnitCoveragePlan schemaTables String
@@ -21,17 +21,17 @@ storage module immutable persistenceUnitCoveragePlan PersistenceUnitCoveragePlan
 jsonBody persistenceUnitCoveragePlan
   {
       "schemaTables": "schema_versions, schema_migrations, users, password_credentials, refresh_tokens, revoked_jwts, auctions, bids, auction_events, chat_messages, audit_events, request_log, idempotency_keys, rate_limit_buckets",
-      "seedRows": "schema version row, migration row, demo auctioneer, demo bidder, demo auctioneer password_credentials hash",
+      "seedRows": "schema version row, migration row, demo auctioneer, demo bidder, demo admin, disabled demo user, and matching password_credentials hashes",
       "indexes": "role/status, auth expiry, auction list/seller, accepted/rejected bid history, event replay/time, chat time, audit request/actor/auction/action/bid, request route/actor/auction/error, idempotency expiry/scoped expiry, rate-limit reset/actor scope",
       "idempotency": "Primary key and replay lookup are scoped by scope, key, actor_user_id, and auction_id; request_hash remains current raw-body hash, with canonical_request_hash fields reserved for canonical JSON hashing.",
       "rejectedBids": "bids.status = 2 stores reject_reason, bidder_user_id actor, amount_minor, auction_revision, expected_revision, request_id, idempotency_key, response_status, error_code, and created_at.",
       "requestLogs": "request_log persists request_id, route, status, actor, auction_id, idempotency_key, duration, request/response byte counts, hashed client metadata, stable error code, start, and finish.",
       "rateLimits": "rate_limit_buckets persists bucket_key/window_start with scope, actor_user_id, route_pattern, count, denied_count, limit_count, reset_at, and updated_at.",
       "audit": "audit_events indexes support request, actor time, auction time, action/outcome time, and bid time queries for accepted, rejected, denied, and failed outcomes.",
-      "transaction": "BEGIN IMMEDIATE command transaction covers state, events, audit, request log, idempotency, and rate-limit writes before commit and before any event broadcast."
+      "transaction": "tx.beginSqliteCommandTransaction opens BEGIN IMMEDIATE, tx.commitSqliteCommandTransaction commits, and defer rollbackSqliteCommandTransaction owns rollback cleanup for state, events, audit, request log, idempotency, and rate-limit writes before any event broadcast."
   }
 
-storage module immutable persistenceUnitTestPlanSummary String "server/src/persistence.sem coverage: schema_versions, schema_migrations, users, password_credentials, refresh_tokens as durable refresh sessions, revoked_jwts, auctions, bids with accepted and rejected rows, auction_events, chat_messages, audit_events, request_log, idempotency_keys scoped by command/actor/auction, rate_limit_buckets, seed rows, uniqueness constraints, replay/history/expiry indexes, readiness probes, migration idempotency, cleanup policy, rollback, and BEGIN IMMEDIATE command transactions."
+storage module immutable persistenceUnitTestPlanSummary String "server/src/persistence.sem and persistence_tx.sem coverage: schema_versions, schema_migrations, users, password_credentials, refresh_tokens as durable refresh sessions, revoked_jwts, auctions, bids with accepted and rejected rows, auction_events, chat_messages, audit_events, request_log, idempotency_keys scoped by command/actor/auction, rate_limit_buckets, seed rows, uniqueness constraints, replay/history/expiry indexes, readiness probes, migration idempotency, cleanup policy, persistence_tx begin/commit/rollback helpers, executable rollback defers, and BEGIN IMMEDIATE command transactions."
 
 operation getPersistenceUnitCoveragePlan
 output operation getPersistenceUnitCoveragePlan PersistenceUnitCoveragePlan

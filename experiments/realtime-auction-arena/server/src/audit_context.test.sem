@@ -8,5 +8,5 @@ output operation auditContextContractMarkers Bool
 memory auditContextContractMarkers heap no
 async auditContextContractMarkers no
 purpose operation auditContextContractMarkers "Name the executable audit replay behavior covered by Python API smoke tests."
-invariant operation auditContextContractMarkers "The route returns auditEvents, after, limit, count, and nextAfter from persisted audit_events rows."
+invariant operation auditContextContractMarkers "The route returns auditEvents, after, cursor, limit, count, nextAfter, and nextCursor from persisted audit_events rows ordered by created_at plus audit_event_id."
 return value true

@@ -252,6 +252,7 @@ ON idempotency_keys(scope, actor_user_id, auction_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_audit_request ON audit_events(request_id);
 CREATE INDEX IF NOT EXISTS idx_audit_actor_time ON audit_events(actor_user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_auction_time ON audit_events(auction_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_auction_cursor ON audit_events(auction_id, created_at, audit_event_id);
 CREATE INDEX IF NOT EXISTS idx_audit_action_outcome_time ON audit_events(action, outcome, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_bid_time ON audit_events(bid_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_request_log_route_status_time ON request_log(route_pattern, status, started_at);
@@ -273,8 +274,20 @@ VALUES ('user_auctioneer_001', 'auctioneer', 'auctioneer', 'Demo Auctioneer', 20
 INSERT OR IGNORE INTO users(user_id, username, username_norm, display_name, role, status, created_at, updated_at)
 VALUES ('user_bidder_demo', 'bidder', 'bidder', 'Demo Bidder', 10, 1, 0, 0);
 
+INSERT OR IGNORE INTO users(user_id, username, username_norm, display_name, role, status, disabled, created_at, updated_at)
+VALUES ('user_admin_demo', 'admin', 'admin', 'Demo Admin', 30, 1, 0, 0, 0);
+
+INSERT OR IGNORE INTO users(user_id, username, username_norm, display_name, role, status, disabled, created_at, updated_at)
+VALUES ('user_disabled_demo', 'disabled', 'disabled', 'Disabled Demo User', 10, 1, 1, 0, 0);
+
 INSERT OR IGNORE INTO password_credentials(user_id, password_hash, cost, password_updated_at)
 VALUES ('user_auctioneer_001', '$2b$12$spS9g0nnkiKOYi.lPsq4duqGlWsYUn8IYZWhgGeJRLskqmwJCsIhi', 12, 0);
 
 INSERT OR IGNORE INTO password_credentials(user_id, password_hash, cost, password_updated_at)
 VALUES ('user_bidder_demo', '$2b$12$spS9g0nnkiKOYi.lPsq4duqGlWsYUn8IYZWhgGeJRLskqmwJCsIhi', 12, 0);
+
+INSERT OR IGNORE INTO password_credentials(user_id, password_hash, cost, password_updated_at)
+VALUES ('user_admin_demo', '$2b$12$spS9g0nnkiKOYi.lPsq4duqGlWsYUn8IYZWhgGeJRLskqmwJCsIhi', 12, 0);
+
+INSERT OR IGNORE INTO password_credentials(user_id, password_hash, cost, password_updated_at)
+VALUES ('user_disabled_demo', '$2b$12$spS9g0nnkiKOYi.lPsq4duqGlWsYUn8IYZWhgGeJRLskqmwJCsIhi', 12, 0);

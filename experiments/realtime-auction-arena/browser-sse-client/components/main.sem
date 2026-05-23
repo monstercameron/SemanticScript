@@ -1,0 +1,237 @@
+# Realtime Auction Arena client - reusable HTML components.
+#
+# Same pattern as apps/taskforge-web/components: each component is one
+# `html template` + a render-operation returning an HtmlFragment. Pages compose
+# these fragments into full documents via html.hydrate. Components are pure
+# presentation - they take hydrate arguments and emit HTML, never read SQL or
+# reach into another component's markup.
+#
+# Hole typing: String holes are HTML-escaped by the hydrator (safe for any
+# DB/user text); HtmlFragment holes are inserted raw (only for already-built
+# child fragments such as a server-rendered list body).
+
+module app.realtime_auction_arena.client.components
+purpose module app.realtime_auction_arena.client.components "Reusable HTML component templates for the Realtime Auction Arena SSR client: page head, top bar, auction stage, bid form, chat panel, and list wrappers."
+moduleOwns app.realtime_auction_arena.client.components "Page head (Tailwind CDN + floor-dark tokens), top bar, auction stage, bid form, chat panel, feed/list wrappers, and their component-local classes."
+moduleDoesNotOwn app.realtime_auction_arena.client.components "Page layout (pages/), routing, SQLite reads, or the live-update JS. Components are pure render."
+invariant module app.realtime_auction_arena.client.components "Dynamic text flows through String holes (escaped); only pre-built child fragments use HtmlFragment holes (raw)."
+
+import html standard.html
+
+exportOperation app.realtime_auction_arena.client.components renderPageHead
+exportOperation app.realtime_auction_arena.client.components renderTopBar
+exportOperation app.realtime_auction_arena.client.components renderAuctionStage
+exportOperation app.realtime_auction_arena.client.components renderBidForm
+exportOperation app.realtime_auction_arena.client.components renderChatPanel
+exportOperation app.realtime_auction_arena.client.components renderListSection
+
+# ===== PageHeadComponent =====
+# Shared <head>: Tailwind CDN, floor-dark token config, and a small <style>
+# block for the data-* reactive component classes (status chip, connection
+# pill, price flash, urgent countdown). Visual system lives in one place.
+
+html template PageHeadComponent
+html body template PageHeadComponent
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>{pageTitleText}</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+
+operation renderPageHead
+input operation renderPageHead pageTitleText String
+output operation renderPageHead HtmlFragment
+memory renderPageHead arena request
+async renderPageHead no
+purpose operation renderPageHead "Hydrate the shared <head> (Tailwind CDN + floor-dark tokens + reactive component CSS) for a given page title."
+
+label startRenderPageHead
+call hydratePageHeadCall html.hydrate.PageHeadComponent
+argument hydratePageHeadCall pageTitleText String pageTitleText
+run hydratePageHeadCall
+bind value pageHeadFragment HtmlFragment hydratePageHeadCall
+return value pageHeadFragment
+
+# ===== TopBarComponent =====
+# Brand row + a connection indicator the live JS toggles via data-conn.
+
+html template TopBarComponent
+html body template TopBarComponent
+  <header class="mb-6 flex items-center justify-between gap-4">
+  <a href="/" class="block">
+  <p class="text-xs font-semibold uppercase tracking-widest text-accent">Bidder floor</p>
+  <h1 class="text-2xl font-bold text-ink">{brandText}</h1>
+  </a>
+  <span id="connectionPill" class="pill inline-flex items-center gap-2 rounded-full border border-floor-edge bg-floor-raised px-3 py-1 text-sm font-medium text-muted" data-conn="offline">
+  <span class="h-2 w-2 rounded-full bg-current"></span>
+  <span id="connectionText">Server-rendered</span>
+  </span>
+  </header>
+
+operation renderTopBar
+input operation renderTopBar brandText String
+output operation renderTopBar HtmlFragment
+memory renderTopBar arena request
+async renderTopBar no
+purpose operation renderTopBar "Render the page top bar: brand link plus a connection indicator the live JS updates."
+
+label startRenderTopBar
+call hydrateTopBarCall html.hydrate.TopBarComponent
+argument hydrateTopBarCall brandText String brandText
+run hydrateTopBarCall
+bind value topBarFragment HtmlFragment hydrateTopBarCall
+return value topBarFragment
+
+# ===== AuctionStageComponent =====
+# The single-auction scalar state, server-rendered. The live JS patches the
+# #currentBid / #currentWinner / #auctionStatus / #countdown nodes by id and
+# seeds the countdown from data-closes-at.
+
+html template AuctionStageComponent
+html body template AuctionStageComponent
+  <section class="rounded-2xl border border-floor-edge bg-floor-panel p-6" aria-labelledby="auctionTitle">
+  <div class="mb-3 flex items-center gap-3">
+  <span id="auctionStatus" class="status-chip inline-flex items-center gap-1.5 rounded-md bg-floor-raised px-2 py-0.5 text-xs font-semibold uppercase tracking-wide" data-status="{statusText}">{statusText}</span>
+  <span class="font-mono text-xs text-muted">{auctionIdText}</span>
+  </div>
+  <h2 id="auctionTitle" class="text-2xl font-bold text-ink">{titleText}</h2>
+  <p id="auctionDescription" class="mt-1 text-sm text-muted">{descriptionText}</p>
+  <div class="mt-6 grid grid-cols-2 gap-4">
+  <div aria-live="polite">
+  <p class="text-xs uppercase tracking-wide text-muted">Current bid</p>
+  <p id="currentBid" class="price font-mono text-3xl font-bold tabular-nums text-ink">{currentBidText}</p>
+  </div>
+  <div>
+  <p class="text-xs uppercase tracking-wide text-muted">Winner</p>
+  <p id="currentWinner" class="mt-1 text-lg font-semibold text-ink">{winnerText}</p>
+  </div>
+  </div>
+  <div id="timerBlock" class="mt-6 rounded-xl border border-floor-edge bg-floor-raised p-4">
+  <p class="text-xs uppercase tracking-wide text-muted">Closes in</p>
+  <p id="countdown" class="countdown font-mono text-2xl font-bold tabular-nums text-ink" data-phase="normal" data-closes-at="{closesAtText}">--:--</p>
+  </div>
+  </section>
+
+operation renderAuctionStage
+input operation renderAuctionStage statusText String
+input operation renderAuctionStage auctionIdText String
+input operation renderAuctionStage titleText String
+input operation renderAuctionStage descriptionText String
+input operation renderAuctionStage currentBidText String
+input operation renderAuctionStage winnerText String
+input operation renderAuctionStage closesAtText String
+output operation renderAuctionStage HtmlFragment
+memory renderAuctionStage arena request
+async renderAuctionStage no
+purpose operation renderAuctionStage "Server-render one auction's scalar state (status, title, current bid, winner, countdown seed). The live JS patches these nodes by id."
+
+label startRenderAuctionStage
+call hydrateAuctionStageCall html.hydrate.AuctionStageComponent
+argument hydrateAuctionStageCall statusText String statusText
+argument hydrateAuctionStageCall auctionIdText String auctionIdText
+argument hydrateAuctionStageCall titleText String titleText
+argument hydrateAuctionStageCall descriptionText String descriptionText
+argument hydrateAuctionStageCall currentBidText String currentBidText
+argument hydrateAuctionStageCall winnerText String winnerText
+argument hydrateAuctionStageCall closesAtText String closesAtText
+run hydrateAuctionStageCall
+bind value auctionStageFragment HtmlFragment hydrateAuctionStageCall
+return value auctionStageFragment
+
+# ===== BidFormComponent =====
+# Posts to the API server (cross-origin) via the live JS; data-* carry the
+# config the JS needs. Server-rendered min-bid hint.
+
+html template BidFormComponent
+html body template BidFormComponent
+  <section class="mt-6 rounded-2xl border border-floor-edge bg-floor-panel p-6" aria-labelledby="bidHeading">
+  <div class="mb-4 flex items-center justify-between">
+  <h2 id="bidHeading" class="text-base font-semibold text-ink">Place a bid</h2>
+  <span id="minimumBidLabel" class="rounded-md bg-floor-raised px-2 py-0.5 text-xs font-medium text-muted">{minBidText}</span>
+  </div>
+  <form id="bidForm" class="flex flex-col gap-3" data-api="{apiBaseUrlText}" data-auction="{auctionIdText}">
+  <label class="flex flex-col gap-1.5 text-sm text-muted">Amount
+  <input id="bidAmountInput" type="number" min="0" step="0.01" inputmode="decimal" required class="rounded-lg border border-floor-edge bg-floor-bg px-3 py-2 text-ink" />
+  </label>
+  <button id="bidButton" type="submit" class="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-floor-bg hover:bg-accent/90">Place bid</button>
+  </form>
+  <p id="lastRejectedBid" class="mt-3 rounded-lg border border-reject/40 bg-reject/10 px-3 py-2 text-sm text-reject" role="alert" hidden></p>
+  </section>
+
+operation renderBidForm
+input operation renderBidForm minBidText String
+input operation renderBidForm apiBaseUrlText String
+input operation renderBidForm auctionIdText String
+output operation renderBidForm HtmlFragment
+memory renderBidForm arena request
+async renderBidForm no
+purpose operation renderBidForm "Render the bid composer; the live JS reads data-api/data-auction and submits the authenticated bid to the API server."
+
+label startRenderBidForm
+call hydrateBidFormCall html.hydrate.BidFormComponent
+argument hydrateBidFormCall minBidText String minBidText
+argument hydrateBidFormCall apiBaseUrlText String apiBaseUrlText
+argument hydrateBidFormCall auctionIdText String auctionIdText
+run hydrateBidFormCall
+bind value bidFormFragment HtmlFragment hydrateBidFormCall
+return value bidFormFragment
+
+# ===== ChatPanelComponent =====
+# The chat log is filled by the live JS from the same-origin /live endpoint
+# (the server reads chat_messages directly). Composer posts to the API.
+
+html template ChatPanelComponent
+html body template ChatPanelComponent
+  <section class="mt-6 rounded-2xl border border-floor-edge bg-floor-panel p-6" aria-labelledby="chatHeading">
+  <h2 id="chatHeading" class="mb-3 text-base font-semibold text-ink">Floor chat</h2>
+  <div id="chatMessages" class="flex max-h-56 flex-col gap-2 overflow-y-auto" aria-live="polite">{chatBodyFragment}</div>
+  <form id="chatForm" class="mt-3 flex gap-2" data-api="{apiBaseUrlText}" data-auction="{auctionIdText}">
+  <input id="chatInput" maxlength="500" placeholder="Message the floor" class="flex-1 rounded-lg border border-floor-edge bg-floor-bg px-3 py-2 text-ink" />
+  <button id="chatButton" type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-floor-bg">Send</button>
+  </form>
+  </section>
+
+operation renderChatPanel
+input operation renderChatPanel chatBodyFragment HtmlFragment
+input operation renderChatPanel apiBaseUrlText String
+input operation renderChatPanel auctionIdText String
+output operation renderChatPanel HtmlFragment
+memory renderChatPanel arena request
+async renderChatPanel no
+purpose operation renderChatPanel "Render the chat panel around a server-built message-list fragment; the composer posts to the API."
+
+label startRenderChatPanel
+call hydrateChatPanelCall html.hydrate.ChatPanelComponent
+argument hydrateChatPanelCall chatBodyFragment HtmlFragment chatBodyFragment
+argument hydrateChatPanelCall apiBaseUrlText String apiBaseUrlText
+argument hydrateChatPanelCall auctionIdText String auctionIdText
+run hydrateChatPanelCall
+bind value chatPanelFragment HtmlFragment hydrateChatPanelCall
+return value chatPanelFragment
+
+# ===== ListSectionComponent =====
+# Generic titled section wrapping a pre-built list body fragment (lobby grid
+# or event feed). The body is built server-side by the page handler.
+
+html template ListSectionComponent
+html body template ListSectionComponent
+  <section class="mt-6">
+  <h2 class="mb-4 text-lg font-semibold text-ink">{sectionTitleText}</h2>
+  <div class="grid gap-4 sm:grid-cols-2">{listBodyFragment}</div>
+  </section>
+
+operation renderListSection
+input operation renderListSection sectionTitleText String
+input operation renderListSection listBodyFragment HtmlFragment
+output operation renderListSection HtmlFragment
+memory renderListSection arena request
+async renderListSection no
+purpose operation renderListSection "Wrap a server-built list body (lobby cards or feed rows) in a titled section."
+
+label startRenderListSection
+call hydrateListSectionCall html.hydrate.ListSectionComponent
+argument hydrateListSectionCall sectionTitleText String sectionTitleText
+argument hydrateListSectionCall listBodyFragment HtmlFragment listBodyFragment
+run hydrateListSectionCall
+bind value listSectionFragment HtmlFragment hydrateListSectionCall
+return value listSectionFragment

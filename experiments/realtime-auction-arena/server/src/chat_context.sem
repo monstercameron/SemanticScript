@@ -10,7 +10,19 @@ import json standard.json
 import jwt standard.jwt
 import runtime app.realtime_auction_arena.server.runtime_constants
 import sql app.realtime_auction_arena.server.sql_queries
+import tx app.realtime_auction_arena.server.persistence_tx
 import helpers app.realtime_auction_arena.server.http_helpers
+import auth_context app.realtime_auction_arena.server.auth_context
+import server_context app.realtime_auction_arena.server.server_context
+import observability_context app.realtime_auction_arena.server.observability_context
+
+importOperation requestHasBidderBearerToken auth_context requestHasBidderBearerToken
+importOperation requestHasAuctioneerBearerToken auth_context requestHasAuctioneerBearerToken
+importOperation openOrReuseArenaDatabase server_context openOrReuseArenaDatabase
+importOperation insertAcceptedAuditEvent observability_context insertAcceptedAuditEvent
+importOperation insertRequestLogRow observability_context insertRequestLogRow
+importOperation currentAuthUserIdValue auth_context currentAuthUserIdValue
+importOperation incrementRateLimitHitsTotal observability_context incrementRateLimitHitsTotal
 
 capability httpRequestReader http.request read
 purpose operation httpRequestReader "Authority to inspect incoming chat request path, headers, and bounded bodies."
@@ -100,6 +112,9 @@ branch if condition chatAuthenticated target chatAuthenticatedAccepted
 branch else target chatUnauthorized
 
 label chatAuthenticatedAccepted
+call chatAuthUserCall currentAuthUserIdValue
+run chatAuthUserCall
+bind value currentAuthUserId CNullTerminatedByteString chatAuthUserCall
 call chatAuctionIdParamCall http.requestPathParam
 argument chatAuctionIdParamCall request HttpRequest request
 argument chatAuctionIdParamCall name CNullTerminatedByteString runtime.auctionIdParamName
@@ -379,14 +394,14 @@ argument chatExpiresCall right I64 runtime.idempotencyTtlMillis
 run chatExpiresCall
 bind value chatIdempotencyExpires CSignedInt64 chatExpiresCall
 
-call beginChatTxCall sqlite.exec
+call beginChatTxCall tx.beginSqliteCommandTransaction
 argument beginChatTxCall database SqliteDatabase chatDatabase
-argument beginChatTxCall sql SqlText sql.sqlBeginTransaction
 run beginChatTxCall
-ignore void source beginChatTxCall
-bind error beginChatTxError SqliteDatabaseExecFailure beginChatTxCall
-branch error source beginChatTxCall target chatDatabaseUnavailable
-defer rollbackChatTxDefer sqlite.exec chatDatabase sql.sqlRollbackTransaction
+bind value beginChatTxCallOpened Bool beginChatTxCall
+branch if condition beginChatTxCallOpened target beginChatTxCallOpened
+branch else target chatDatabaseUnavailable
+label beginChatTxCallOpened
+defer rollbackChatTxDefer rollbackSqliteCommandTransaction chatDatabase
 
 label chatRateInsertActive
 call prepareChatRateInsertCall sqlite.prepareStatement
@@ -684,13 +699,13 @@ ignore ok source stepInsertChatIdemCall type CSignedInt32
 bind error stepInsertChatIdemError SqliteStatementStepFailure stepInsertChatIdemCall
 branch error source stepInsertChatIdemCall target chatDatabaseUnavailable
 
-call commitEarlyChatTxCall sqlite.exec
+call commitEarlyChatTxCall tx.commitSqliteCommandTransaction
 argument commitEarlyChatTxCall database SqliteDatabase chatDatabase
-argument commitEarlyChatTxCall sql SqlText sql.sqlCommitTransaction
 run commitEarlyChatTxCall
-ignore void source commitEarlyChatTxCall
-bind error commitEarlyChatTxError SqliteDatabaseExecFailure commitEarlyChatTxCall
-branch error source commitEarlyChatTxCall target chatDatabaseUnavailable
+bind value commitEarlyChatTxCallCommitted Bool commitEarlyChatTxCall
+branch if condition commitEarlyChatTxCallCommitted target commitEarlyChatTxCallCommitted
+branch else target chatDatabaseUnavailable
+label commitEarlyChatTxCallCommitted
 call chatEarlyWriteCall helpers.writeJsonEnvelope
 argument chatEarlyWriteCall response HttpResponse response
 argument chatEarlyWriteCall status CSignedInt32 runtime.createdStatus
@@ -742,13 +757,9 @@ run chatRejectedWriteCall
 bind value chatRejectedWriteStatus CSignedInt32 chatRejectedWriteCall
 return value chatRejectedWriteStatus
 label chatRateLimited
-storage local immutable chatRateLimitMetricStep CSignedInt64 1
-call incrementChatRateLimitHitsMetricCall math.addI64
-argument incrementChatRateLimitHitsMetricCall left I64 metricsRateLimitHitsTotal
-argument incrementChatRateLimitHitsMetricCall right I64 chatRateLimitMetricStep
+call incrementChatRateLimitHitsMetricCall incrementRateLimitHitsTotal
 run incrementChatRateLimitHitsMetricCall
-bind value nextChatRateLimitHitsTotal CSignedInt64 incrementChatRateLimitHitsMetricCall
-set storage metricsRateLimitHitsTotal nextChatRateLimitHitsTotal
+ignore value source incrementChatRateLimitHitsMetricCall type CSignedInt64
 call chatRateLimitedWriteCall helpers.writeRateLimitedEnvelope
 argument chatRateLimitedWriteCall response HttpResponse response
 run chatRateLimitedWriteCall
@@ -803,6 +814,9 @@ bind value chatDeleteAuthenticated Bool chatDeleteAuthCall
 branch if condition chatDeleteAuthenticated target chatDeleteAuthenticatedAccepted
 branch else target chatDeleteUnauthorized
 label chatDeleteAuthenticatedAccepted
+call chatDeleteAuthUserCall currentAuthUserIdValue
+run chatDeleteAuthUserCall
+bind value currentAuthUserId CNullTerminatedByteString chatDeleteAuthUserCall
 call chatDeleteAuctionIdParamCall http.requestPathParam
 argument chatDeleteAuctionIdParamCall request HttpRequest request
 argument chatDeleteAuctionIdParamCall name CNullTerminatedByteString runtime.auctionIdParamName
@@ -978,14 +992,14 @@ branch else target chatDeletePersistMutation
 
 label chatDeleteAlreadyDeletedResponse
 storage local immutable chatDeleteResponseBody CNullTerminatedByteString "{\"apiVersion\":\"v1\",\"requestId\":\"req_runtime_header_unavailable\",\"ok\":true,\"data\":{\"message\":{\"status\":\"deleted\",\"deleted\":true}},\"error\":null}\n"
-call beginChatDeleteIdemOnlyTxCall sqlite.exec
+call beginChatDeleteIdemOnlyTxCall tx.beginSqliteCommandTransaction
 argument beginChatDeleteIdemOnlyTxCall database SqliteDatabase chatDeleteDatabase
-argument beginChatDeleteIdemOnlyTxCall sql SqlText sql.sqlBeginTransaction
 run beginChatDeleteIdemOnlyTxCall
-ignore void source beginChatDeleteIdemOnlyTxCall
-bind error beginChatDeleteIdemOnlyTxError SqliteDatabaseExecFailure beginChatDeleteIdemOnlyTxCall
-branch error source beginChatDeleteIdemOnlyTxCall target chatDeleteDatabaseUnavailable
-defer rollbackChatDeleteIdemOnlyTxDefer sqlite.exec chatDeleteDatabase sql.sqlRollbackTransaction
+bind value beginChatDeleteIdemOnlyTxCallOpened Bool beginChatDeleteIdemOnlyTxCall
+branch if condition beginChatDeleteIdemOnlyTxCallOpened target beginChatDeleteIdemOnlyTxCallOpened
+branch else target chatDeleteDatabaseUnavailable
+label beginChatDeleteIdemOnlyTxCallOpened
+defer rollbackChatDeleteIdemOnlyTxDefer rollbackSqliteCommandTransaction chatDeleteDatabase
 call prepareInsertChatDeleteIdemOnlyCall sqlite.prepareStatement
 argument prepareInsertChatDeleteIdemOnlyCall database SqliteDatabase chatDeleteDatabase
 argument prepareInsertChatDeleteIdemOnlyCall sql SqlText sql.sqlInsertIdempotency
@@ -1054,13 +1068,13 @@ run stepInsertChatDeleteIdemOnlyCall
 ignore ok source stepInsertChatDeleteIdemOnlyCall type CSignedInt32
 bind error stepInsertChatDeleteIdemOnlyError SqliteStatementStepFailure stepInsertChatDeleteIdemOnlyCall
 branch error source stepInsertChatDeleteIdemOnlyCall target chatDeleteDatabaseUnavailable
-call commitChatDeleteIdemOnlyTxCall sqlite.exec
+call commitChatDeleteIdemOnlyTxCall tx.commitSqliteCommandTransaction
 argument commitChatDeleteIdemOnlyTxCall database SqliteDatabase chatDeleteDatabase
-argument commitChatDeleteIdemOnlyTxCall sql SqlText sql.sqlCommitTransaction
 run commitChatDeleteIdemOnlyTxCall
-ignore void source commitChatDeleteIdemOnlyTxCall
-bind error commitChatDeleteIdemOnlyTxError SqliteDatabaseExecFailure commitChatDeleteIdemOnlyTxCall
-branch error source commitChatDeleteIdemOnlyTxCall target chatDeleteDatabaseUnavailable
+bind value commitChatDeleteIdemOnlyTxCallCommitted Bool commitChatDeleteIdemOnlyTxCall
+branch if condition commitChatDeleteIdemOnlyTxCallCommitted target commitChatDeleteIdemOnlyTxCallCommitted
+branch else target chatDeleteDatabaseUnavailable
+label commitChatDeleteIdemOnlyTxCallCommitted
 call chatDeleteAlreadyWriteCall helpers.writeJsonEnvelope
 argument chatDeleteAlreadyWriteCall response HttpResponse response
 argument chatDeleteAlreadyWriteCall status CSignedInt32 runtime.okStatus
@@ -1070,14 +1084,14 @@ bind value chatDeleteAlreadyWriteStatus CSignedInt32 chatDeleteAlreadyWriteCall
 return value chatDeleteAlreadyWriteStatus
 
 label chatDeletePersistMutation
-call beginChatDeleteTxCall sqlite.exec
+call beginChatDeleteTxCall tx.beginSqliteCommandTransaction
 argument beginChatDeleteTxCall database SqliteDatabase chatDeleteDatabase
-argument beginChatDeleteTxCall sql SqlText sql.sqlBeginTransaction
 run beginChatDeleteTxCall
-ignore void source beginChatDeleteTxCall
-bind error beginChatDeleteTxError SqliteDatabaseExecFailure beginChatDeleteTxCall
-branch error source beginChatDeleteTxCall target chatDeleteDatabaseUnavailable
-defer rollbackChatDeleteTxDefer sqlite.exec chatDeleteDatabase sql.sqlRollbackTransaction
+bind value beginChatDeleteTxCallOpened Bool beginChatDeleteTxCall
+branch if condition beginChatDeleteTxCallOpened target beginChatDeleteTxCallOpened
+branch else target chatDeleteDatabaseUnavailable
+label beginChatDeleteTxCallOpened
+defer rollbackChatDeleteTxDefer rollbackSqliteCommandTransaction chatDeleteDatabase
 
 call prepareMarkChatDeletedCall sqlite.prepareStatement
 argument prepareMarkChatDeletedCall database SqliteDatabase chatDeleteDatabase
@@ -1310,13 +1324,13 @@ ignore ok source stepInsertChatDeleteIdemCall type CSignedInt32
 bind error stepInsertChatDeleteIdemError SqliteStatementStepFailure stepInsertChatDeleteIdemCall
 branch error source stepInsertChatDeleteIdemCall target chatDeleteDatabaseUnavailable
 
-call commitChatDeleteTxCall sqlite.exec
+call commitChatDeleteTxCall tx.commitSqliteCommandTransaction
 argument commitChatDeleteTxCall database SqliteDatabase chatDeleteDatabase
-argument commitChatDeleteTxCall sql SqlText sql.sqlCommitTransaction
 run commitChatDeleteTxCall
-ignore void source commitChatDeleteTxCall
-bind error commitChatDeleteTxError SqliteDatabaseExecFailure commitChatDeleteTxCall
-branch error source commitChatDeleteTxCall target chatDeleteDatabaseUnavailable
+bind value commitChatDeleteTxCallCommitted Bool commitChatDeleteTxCall
+branch if condition commitChatDeleteTxCallCommitted target commitChatDeleteTxCallCommitted
+branch else target chatDeleteDatabaseUnavailable
+label commitChatDeleteTxCallCommitted
 call chatDeleteWriteCall helpers.writeJsonEnvelope
 argument chatDeleteWriteCall response HttpResponse response
 argument chatDeleteWriteCall status CSignedInt32 runtime.okStatus
@@ -1427,6 +1441,9 @@ bind value chatReportAuthenticated Bool chatReportAuthCall
 branch if condition chatReportAuthenticated target chatReportAuthenticatedAccepted
 branch else target chatReportUnauthorized
 label chatReportAuthenticatedAccepted
+call chatReportAuthUserCall currentAuthUserIdValue
+run chatReportAuthUserCall
+bind value currentAuthUserId CNullTerminatedByteString chatReportAuthUserCall
 call chatReportAuctionIdParamCall http.requestPathParam
 argument chatReportAuctionIdParamCall request HttpRequest request
 argument chatReportAuctionIdParamCall name CNullTerminatedByteString runtime.auctionIdParamName
@@ -1613,14 +1630,14 @@ branch else target chatReportPersistMutation
 
 label chatReportAlreadyReportedResponse
 storage local immutable chatReportResponseBody CNullTerminatedByteString "{\"apiVersion\":\"v1\",\"requestId\":\"req_runtime_header_unavailable\",\"ok\":true,\"data\":{\"message\":{\"status\":\"reported\",\"reported\":true}},\"error\":null}\n"
-call beginChatReportIdemOnlyTxCall sqlite.exec
+call beginChatReportIdemOnlyTxCall tx.beginSqliteCommandTransaction
 argument beginChatReportIdemOnlyTxCall database SqliteDatabase chatReportDatabase
-argument beginChatReportIdemOnlyTxCall sql SqlText sql.sqlBeginTransaction
 run beginChatReportIdemOnlyTxCall
-ignore void source beginChatReportIdemOnlyTxCall
-bind error beginChatReportIdemOnlyTxError SqliteDatabaseExecFailure beginChatReportIdemOnlyTxCall
-branch error source beginChatReportIdemOnlyTxCall target chatReportDatabaseUnavailable
-defer rollbackChatReportIdemOnlyTxDefer sqlite.exec chatReportDatabase sql.sqlRollbackTransaction
+bind value beginChatReportIdemOnlyTxCallOpened Bool beginChatReportIdemOnlyTxCall
+branch if condition beginChatReportIdemOnlyTxCallOpened target beginChatReportIdemOnlyTxCallOpened
+branch else target chatReportDatabaseUnavailable
+label beginChatReportIdemOnlyTxCallOpened
+defer rollbackChatReportIdemOnlyTxDefer rollbackSqliteCommandTransaction chatReportDatabase
 call prepareInsertChatReportIdemOnlyCall sqlite.prepareStatement
 argument prepareInsertChatReportIdemOnlyCall database SqliteDatabase chatReportDatabase
 argument prepareInsertChatReportIdemOnlyCall sql SqlText sql.sqlInsertIdempotency
@@ -1689,13 +1706,13 @@ run stepInsertChatReportIdemOnlyCall
 ignore ok source stepInsertChatReportIdemOnlyCall type CSignedInt32
 bind error stepInsertChatReportIdemOnlyError SqliteStatementStepFailure stepInsertChatReportIdemOnlyCall
 branch error source stepInsertChatReportIdemOnlyCall target chatReportDatabaseUnavailable
-call commitChatReportIdemOnlyTxCall sqlite.exec
+call commitChatReportIdemOnlyTxCall tx.commitSqliteCommandTransaction
 argument commitChatReportIdemOnlyTxCall database SqliteDatabase chatReportDatabase
-argument commitChatReportIdemOnlyTxCall sql SqlText sql.sqlCommitTransaction
 run commitChatReportIdemOnlyTxCall
-ignore void source commitChatReportIdemOnlyTxCall
-bind error commitChatReportIdemOnlyTxError SqliteDatabaseExecFailure commitChatReportIdemOnlyTxCall
-branch error source commitChatReportIdemOnlyTxCall target chatReportDatabaseUnavailable
+bind value commitChatReportIdemOnlyTxCallCommitted Bool commitChatReportIdemOnlyTxCall
+branch if condition commitChatReportIdemOnlyTxCallCommitted target commitChatReportIdemOnlyTxCallCommitted
+branch else target chatReportDatabaseUnavailable
+label commitChatReportIdemOnlyTxCallCommitted
 call chatReportAlreadyWriteCall helpers.writeJsonEnvelope
 argument chatReportAlreadyWriteCall response HttpResponse response
 argument chatReportAlreadyWriteCall status CSignedInt32 runtime.okStatus
@@ -1705,14 +1722,14 @@ bind value chatReportAlreadyWriteStatus CSignedInt32 chatReportAlreadyWriteCall
 return value chatReportAlreadyWriteStatus
 
 label chatReportPersistMutation
-call beginChatReportTxCall sqlite.exec
+call beginChatReportTxCall tx.beginSqliteCommandTransaction
 argument beginChatReportTxCall database SqliteDatabase chatReportDatabase
-argument beginChatReportTxCall sql SqlText sql.sqlBeginTransaction
 run beginChatReportTxCall
-ignore void source beginChatReportTxCall
-bind error beginChatReportTxError SqliteDatabaseExecFailure beginChatReportTxCall
-branch error source beginChatReportTxCall target chatReportDatabaseUnavailable
-defer rollbackChatReportTxDefer sqlite.exec chatReportDatabase sql.sqlRollbackTransaction
+bind value beginChatReportTxCallOpened Bool beginChatReportTxCall
+branch if condition beginChatReportTxCallOpened target beginChatReportTxCallOpened
+branch else target chatReportDatabaseUnavailable
+label beginChatReportTxCallOpened
+defer rollbackChatReportTxDefer rollbackSqliteCommandTransaction chatReportDatabase
 
 call prepareMarkChatReportedCall sqlite.prepareStatement
 argument prepareMarkChatReportedCall database SqliteDatabase chatReportDatabase
@@ -1945,13 +1962,13 @@ ignore ok source stepInsertChatReportIdemCall type CSignedInt32
 bind error stepInsertChatReportIdemError SqliteStatementStepFailure stepInsertChatReportIdemCall
 branch error source stepInsertChatReportIdemCall target chatReportDatabaseUnavailable
 
-call commitChatReportTxCall sqlite.exec
+call commitChatReportTxCall tx.commitSqliteCommandTransaction
 argument commitChatReportTxCall database SqliteDatabase chatReportDatabase
-argument commitChatReportTxCall sql SqlText sql.sqlCommitTransaction
 run commitChatReportTxCall
-ignore void source commitChatReportTxCall
-bind error commitChatReportTxError SqliteDatabaseExecFailure commitChatReportTxCall
-branch error source commitChatReportTxCall target chatReportDatabaseUnavailable
+bind value commitChatReportTxCallCommitted Bool commitChatReportTxCall
+branch if condition commitChatReportTxCallCommitted target commitChatReportTxCallCommitted
+branch else target chatReportDatabaseUnavailable
+label commitChatReportTxCallCommitted
 call chatReportWriteCall helpers.writeJsonEnvelope
 argument chatReportWriteCall response HttpResponse response
 argument chatReportWriteCall status CSignedInt32 runtime.okStatus

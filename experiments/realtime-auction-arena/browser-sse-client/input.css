@@ -1,0 +1,98 @@
+/*
+ * Realtime Auction Arena - committed, self-contained stylesheet.
+ *
+ * Build:  npm run build:css   ->  assets/app.css  (served at /assets/app.css)
+ *
+ * No CDN: the .sem page templates link this prebuilt file, so the UI renders
+ * instantly and offline. @source scans the .sem template bodies for the
+ * Tailwind utility classes they use.
+ */
+@import "tailwindcss";
+@source "./main.sem";
+@source "./components/main.sem";
+
+@theme {
+  --color-floor-bg: #07080c;
+  --color-floor-panel: #12141d;
+  --color-floor-raised: #1a1e2b;
+  --color-floor-edge: #2b3142;
+  --color-ink: #eef1f8;
+  --color-muted: #9aa3b8;
+  --color-accent: #f5b942;
+  --color-accent-2: #fb7185;
+  --color-accept: #34d399;
+  --color-reject: #fb7185;
+  --color-warn: #fbbf24;
+  --color-info: #60a5fa;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+}
+
+@layer base {
+  html, body { min-height: 100%; }
+  body {
+    background:
+      radial-gradient(60rem 60rem at 12% -10%, rgba(245,185,66,0.10), transparent 60%),
+      radial-gradient(50rem 50rem at 110% 10%, rgba(251,113,133,0.10), transparent 55%),
+      radial-gradient(70rem 70rem at 50% 120%, rgba(96,165,250,0.08), transparent 60%),
+      #07080c;
+    color: var(--color-ink);
+    font-feature-settings: "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  a { color: inherit; }
+}
+
+@layer components {
+  .panel {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, var(--color-floor-edge) 70%, transparent);
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0)) , var(--color-floor-panel);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 24px 60px -30px rgba(0,0,0,0.8);
+    padding: 1.25rem;
+  }
+
+  /* Connection pill (data-conn) */
+  .pill { border: 1px solid var(--color-floor-edge); background: var(--color-floor-raised); color: var(--color-muted); }
+  .pill[data-conn="live"] { color: var(--color-accept); border-color: color-mix(in oklab, var(--color-accept) 45%, transparent); }
+  .pill[data-conn="polling"] { color: var(--color-info); }
+  .pill[data-conn="error"] { color: var(--color-reject); border-color: color-mix(in oklab, var(--color-reject) 45%, transparent); }
+  .pill[data-conn="live"] .dot, .pill[data-conn="connecting"] .dot { animation: pulse-dot 1.4s ease-in-out infinite; box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 25%, transparent); }
+
+  /* Status chip (data-status) */
+  .status-chip { background: var(--color-floor-raised); color: var(--color-muted); }
+  .status-chip[data-status="draft"] { color: #cbd5e1; }
+  .status-chip[data-status="running"] { color: var(--color-accept); background: color-mix(in oklab, var(--color-accept) 14%, var(--color-floor-raised)); }
+  .status-chip[data-status="closed"] { color: #9aa3b8; }
+  .status-chip[data-status="cancelled"] { color: var(--color-reject); }
+
+  /* Buttons */
+  .btn { transition: transform .08s ease, background .15s ease, box-shadow .15s ease; }
+  .btn-primary { background: linear-gradient(180deg, #f7c75f, var(--color-accent)); color: #1a1305; box-shadow: 0 10px 24px -10px rgba(245,185,66,0.6); }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-ghost { border: 1px solid var(--color-floor-edge); background: var(--color-floor-raised); color: var(--color-ink); }
+  .btn-ghost:hover { background: var(--color-floor-edge); }
+
+  /* Price + countdown */
+  .price { font-family: var(--font-mono); letter-spacing: -0.02em; text-shadow: 0 0 30px rgba(245,185,66,0.25); }
+  .price[data-flash="up"] { animation: flash-up 0.9s ease-out; }
+  .countdown { font-family: var(--font-mono); }
+  .countdown[data-phase="warning"] { color: var(--color-warn); animation: pulse-soft 1s ease-in-out infinite; }
+  .countdown[data-phase="closed"] { color: var(--color-muted); }
+  .timer-block:has(.countdown[data-phase="warning"]) { border-color: color-mix(in oklab, var(--color-warn) 55%, transparent); background: color-mix(in oklab, var(--color-warn) 8%, transparent); }
+
+  /* Auction cards */
+  .auction-card { transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease; }
+  .auction-card:hover, .auction-card:focus-visible { transform: translateY(-3px); border-color: color-mix(in oklab, var(--color-accent) 55%, transparent); box-shadow: 0 24px 50px -24px rgba(0,0,0,0.85), 0 0 0 1px color-mix(in oklab, var(--color-accent) 30%, transparent); }
+
+  /* Feed + chat */
+  .feed-item { transition: background .12s ease; }
+  .feed-item:hover { background: rgba(255,255,255,0.02); }
+  .alert-reject { animation: shake 0.4s ease-in-out; }
+}
+
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes pulse-soft { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+@keyframes flash-up { 0% { color: var(--color-accept); transform: scale(1.05); } 100% { transform: scale(1); } }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

@@ -36,6 +36,8 @@ def test_api_contract_enterprise_sections():
         "`actorUserId`",
         "`fromUtcMillis`",
         "`toUtcMillis`",
+        "createdAtUtcMillis:auditEventId",
+        "same-millisecond pages cannot skip or",
         "## Pagination Contract",
         "data.page",
         "## Server Config And Shutdown Contract",
@@ -50,9 +52,26 @@ def test_runtime_gap_shutdown_plan():
         "## Graceful Shutdown Plan",
         "Stop accepting new HTTP requests",
         "checkpoint/close SQLite",
-        "process-signal accept-loop shutdown is executable",
+        "process-signal accept-loop shutdown and handler-observable drain state are",
+        "task cancellation and async subscriber drains remain runtime",
     ]:
         assert_contains(gaps, needle, "shutdown plan")
+
+
+def test_async_supervisor_event_queue_contract():
+    supervisor = read("src/auction_supervisor.sem")
+    for needle in [
+        "import event standard.event",
+        "event.openProcessQueue",
+        "auctionSupervisorAsyncOrderingSmoke",
+        "auctionSupervisorQueueBackpressureSmoke",
+        "supervisorCommandTimerExpired",
+        "supervisorCommandShutdown",
+        "supervisorQueueFullEventId",
+    ]:
+        assert_contains(supervisor, needle, "async supervisor queue contract")
+    build = read("build.sem")
+    assert_contains(build, '"asyncRuntime": "libuv"', "server async runtime selection")
 
 
 def test_worker6_scripts_exist():
@@ -68,6 +87,7 @@ def main():
     test_build_config_contract()
     test_api_contract_enterprise_sections()
     test_runtime_gap_shutdown_plan()
+    test_async_supervisor_event_queue_contract()
     test_worker6_scripts_exist()
     print("Enterprise hardening contract tests passed")
 

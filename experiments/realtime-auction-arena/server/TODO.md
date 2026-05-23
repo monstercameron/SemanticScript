@@ -23,9 +23,22 @@ secret override loading, access-token runtime `iat`/`nbf`/`exp` issue and
 session validation, login rate limiting, durable login auth audit rows,
 runtime-backed request/command metrics, request-log rows, chat-create/delete/report
 persistence, bounded audit replay, and the scripted full demo are now wired.
-Restart-safe durable session lookup, full admin/service/viewer policy coverage,
-403 forbidden response split, long-lived SSE, and JWT denylist lookup remain
-open.
+Auth hardening now includes disabled-user rejection, typed access-token
+`aud`/`exp`/`jti` checks, JWT denylist lookup, seeded admin audit access, and
+`403 insufficient_role` splitting. Audit replay now supports opaque
+`createdAtUtcMillis:auditEventId` cursor pagination with an audit id tiebreak.
+Source-health cleanup, restart-safe durable session lookup, production secret
+fail-fast, canonical idempotency hashing, operator metrics auth, complete
+request observability, non-SSE shutdown cancellation, and long-lived live SSE
+fanout remain open.
+
+Agent loop note: use `sem check --json experiments/realtime-auction-arena/server`
+for source-health signal, use
+`sem test --json --allow-red-preflight-harnesses experiments/realtime-auction-arena/server`
+for runtime-harness signal while source diagnostics remain red, and treat
+`sem dev --json` as a watch-plan surface that now separates `buildableSource`
+from `sourceOk`; the server can restart while the semantic quality lane remains
+red.
 
 ## Verified Working Runtime
 
@@ -38,8 +51,8 @@ open.
       and echoed `X-Request-Id`.
 - [x] Serve `GET /metrics` with Prometheus-style bootstrap metrics text.
 - [x] Expose runtime-backed request, auth, command, bid, rate-limit, and
-      auction-count metrics, plus explicit zero-valued long-lived SSE
-      placeholder gauges/counters until streaming fanout exists.
+      auction-count metrics, plus active SSE replay gauges/counters while
+      live streaming fanout remains open.
 - [x] Serve `GET /api/v1` with versioned route metadata.
 - [x] Serve authenticated `GET /api/v1/auctions` from persisted SQLite rows.
 - [x] Serve unknown API routes as status `404` with stable error code
@@ -130,6 +143,15 @@ open.
       claims, denylist behavior, login rate limits, auth audit events, and
       negative authz cases.
 
+## P0 - Source Health Gate
+
+- [ ] Make `python SemanticScript/tools/sem.py check --json
+      experiments/realtime-auction-arena/server` pass with `sourceOk: true`,
+      zero compile-blocking strict/lint diagnostics, and no unresolved
+      cross-context symbol references.
+- [ ] Add a CI/preflight gate that fails when the server build is green but
+      the source-health lane is red.
+
 ## P0 - Make Auth Actually Work
 
 - [x] Add a real bcrypt adapter or stdlib binding used by the server runtime.
@@ -154,6 +176,12 @@ open.
       `iat`, and `nbf` against runtime time.
 - [x] Issue opaque refresh tokens and store only hashed refresh-token material
       in process-local demo state.
+- [ ] Replace process-local active-session state with durable multi-session
+      lookup through `sessions`/`refresh_tokens`, so session, refresh, logout,
+      and JWT denylist checks survive process restart.
+- [ ] Add live restart-safety coverage: login, restart server, verify session,
+      refresh, logout, stale-token rejection, refresh replay rejection, and
+      disabled-user rejection still work from durable auth state.
 - [x] Append durable login success/failure audit events for accepted,
       invalid-credential, and rate-limited login decisions.
 - [x] Implement `POST /api/v1/auth/refresh` for the process-local demo token.
@@ -165,17 +193,25 @@ open.
 - [x] Define the JWT denylist plan for active JWT ids until expiration in
       `server/src/auth.sem`, backed by the existing `revoked_jwts` schema
       contract.
-- [ ] Wire executable JWT denylist lookup and cleanup into logout/session once
-      typed JWT claim extraction and durable session wiring are available.
+- [x] Wire executable JWT denylist lookup and cleanup into logout/session with
+      `standard.jwt` claim extraction for active access-token `jti` values.
 - [x] Implement authenticated `GET /api/v1/session` for the active bearer
       token.
 - [x] Protect registered auctioneer command routes by seeded role and scope.
 - [x] Protect the registered bid route by seeded bidder role and scope.
-- [ ] Protect future admin, service, viewer-scope, and full decoded-scope
+- [x] Protect future admin, service, viewer-scope, and full decoded-scope
       policies once those handlers/principals exist.
+- [ ] Make missing or short `AUCTION_ARENA_JWT_SECRET` fatal in production
+      startup mode while preserving the deterministic local demo fallback for
+      development.
+- [ ] Add live production-config coverage that proves production mode fails
+      readiness/startup without a valid JWT secret and succeeds with a valid
+      secret.
+- [ ] Replace seeded process-local role checks with durable principal lookup
+      plus decoded-scope authorization for every protected route.
 - [x] Add live API tests for bad JWT signature, stale access token, and refresh
       replay.
-- [ ] Add live API tests for disabled user, expired token, wrong audience, and
+- [x] Add live API tests for disabled user, expired token, wrong audience, and
       insufficient role.
 - [x] Add live API tests for wrong-role bid denial on the registered bid
       route.
@@ -188,21 +224,26 @@ open.
 - [x] Add explicit schema initialization from `server/sql/schema.sql`.
 - [x] Make `/readyz` fail when database open/schema initialization fails.
 - [x] Use SQLite transactions for create/start/bid command handlers.
-- [ ] Factor repeated `BEGIN IMMEDIATE` / deferred rollback / `COMMIT` rows
-      into a transaction helper once the language has a clean helper shape.
+- [x] Factor repeated `BEGIN IMMEDIATE` / deferred rollback / `COMMIT` rows
+      into the executable `persistence_tx` transaction helper module with
+      rollback defers.
 - [x] Ensure registered auction command writes commit auction state, emitted
       events, audit, request log, and idempotency state atomically.
 - [x] Ensure create/start/bid/extend/close accepted command writes commit
       auction state, domain events, accepted audit rows, request logs, and
       idempotency state atomically.
 - [x] Keep executable event exposure after commit; live fanout broadcast remains
-      part of the long-lived SSE work.
+      part of the long-lived live SSE work.
 - [x] Roll back create/start/bid state changes on command failure with deferred
       rollback guards.
 - [x] Return stable errors for every rejected lifecycle/bid reason used by the
       executable start/extend/close/bid handlers.
 - [x] Persist rejected bids with reason, actor, amount, auction revision, and
       request id.
+- [ ] Replace raw request-body idempotency hash surrogates with canonical JSON
+      request hashing for all idempotent command routes.
+- [ ] Make idempotency replay lookup, command mutation, response capture, and
+      idempotency row write fully atomic for concurrent duplicate requests.
 - [x] Persist request logs for registered auction command accepts and bid
       rejects with request id, route, status, actor, duration, and stable error
       code.
@@ -257,54 +298,68 @@ open.
 - [x] Document the closest runtime-supported supervisor equivalent: current
       command routes serialize each accepted command through SQLite
       transactions, persist ordered auction event sequences, and expose the
-      pending async-supervisor runtime gap in `/metrics`.
-- [ ] Receive create/start/bid/extend/close commands through bounded queues.
+      remaining route-to-supervisor integration gap in `/metrics`.
+- [x] Receive create/start/bid/extend/close commands through bounded
+      `standard.event` process queues.
 - [x] Define bounded command queue, timer, shutdown, deterministic ordering,
       and command backpressure contracts in the supervisor contract artifact;
-      executable queues remain blocked by runtime async primitives.
-- [ ] Receive timer expiration and shutdown/cancellation events in an
-      executable supervisor loop.
-- [ ] Add executable deterministic ordering tests for simultaneous bids and
-      timer expiry once fake clocks and async select exist.
-- [ ] Add executable backpressure behavior for saturated command queues.
+      executable queue operations now use libuv-backed async runtime bindings.
+- [x] Receive timer expiration and shutdown command events through the
+      executable bounded supervisor queue smoke.
+- [x] Add executable deterministic queue ordering smoke for
+      create/start/bid/extend/close/timer-expired/shutdown command events.
+- [x] Add executable backpressure behavior for saturated command queues.
 - [ ] Add fake-clock tests for anti-sniping and close timers.
-- [ ] Add async `select`, bounded channels, cancelable timers, and fake clock to
-      the language/runtime if they are still missing.
+- [x] Add `standard.event` strict process queues for bounded command-channel
+      semantics and explicit `queue_full` backpressure.
+- [ ] Add async `select`, cancelable timer producers, fake clock, and
+      route-handler actor-loop integration to finish the production supervisor.
+- [ ] Add fake-clock/select ordering tests for simultaneous bids versus timer
+      expiry after those primitives are exposed.
 
 ## P1 - SSE Streaming And Replay
 
 - [x] Implement authenticated JSON event replay at
       `GET /api/v1/auctions/:auctionId/events`.
-- [ ] Upgrade `GET /api/v1/auctions/:auctionId/events` to a long-lived SSE
-      stream.
-- [x] Authenticate and authorize the executable event subscriber fallback
+- [x] Add opt-in `Accept: text/event-stream` SSE replay at
+      `GET /api/v1/auctions/:auctionId/events`.
+- [ ] Upgrade the executable SSE replay response to a true long-lived live
+      fanout subscription.
+- [x] Authenticate and authorize the executable event replay path
       before replay for seeded auctioneer and bidder principals.
-- [x] Support `Last-Event-ID` and `?after=<eventId>` replay in the bounded
-      JSON fallback, with `Last-Event-ID` taking precedence.
-- [x] Replay missed events from SQLite in committed sequence order for the JSON
-      fallback and define replay-before-live attachment ordering for the future
-      long-lived SSE path.
+- [x] Support `Last-Event-ID` and `?after=<eventId>` replay in JSON and SSE
+      replay, with `Last-Event-ID` taking precedence.
+- [x] Replay missed events from SQLite in committed sequence order for JSON and
+      SSE replay, and define replay-before-live attachment ordering for the
+      future long-lived SSE path.
 - [x] Add stable `eventType` text beside numeric event codes in event replay
       rows for future SSE `event:` names.
 - [x] Define heartbeat interval, disconnect cleanup, per-client queue capacity,
       and slow-client drop metric contracts for long-lived SSE.
-- [x] Expose zero-valued SSE active-client and slow-client-drop metrics plus
-      heartbeat/queue-capacity gauges until runtime fanout is executable.
-- [x] Pin the native adapter limitation with tests/docs: current SSE support is
-      one-shot `http.responseSseEvent` over `Content-Length` +
-      `Connection: close`, not a long-lived stream.
-- [ ] Emit real heartbeat events on a long-lived SSE response.
-- [ ] Detect real disconnects and remove live clients.
+- [x] Expose runtime-backed active SSE replay and slow-stream-drop metrics plus
+      heartbeat/queue-capacity gauges while live fanout is still pending.
+- [x] Pin the current executable limitation with tests/docs: `/events` now has
+      authenticated JSON replay plus opt-in SSE replay frames, but true live
+      fanout still waits on route-level fanout, cancellation, and queues.
+- [x] Add standard-library-owned SSE stream APIs:
+      `http.openSseStream`, `http.writeSseEvent`, `http.writeSseEventWithId`,
+      `http.writeSseHeartbeat`, `http.closeSseStream`, and
+      `http.clientDisconnected`, backed by runtimeBinding native hooks rather
+      than compiler-specific `http.sse*` lowering.
+- [x] Emit real heartbeat comments on executable SSE replay responses.
+- [x] Check native disconnect state after each SSE frame write and decrement
+      active stream metrics on every exit path.
+- [ ] Remove live subscribers from the future fanout set when disconnects are
+      observed.
 - [ ] Add executable per-client bounded queues.
 - [ ] Drop slow clients after queue overflow in the live fanout path and count
       the drop in runtime metrics.
 - [x] Add focused API smoke coverage for event replay auth, cursor bounds,
-      event type names, SSE metric placeholders, and Last-Event-ID precedence.
-- [ ] Add multi-client broadcast, reconnect, replay-after-event, heartbeat, and
-      slow-client tests once native streaming SSE exists.
-- [ ] Add runtime SSE APIs if still missing:
-      `http.sseOpen`, `http.sseWriteEvent`, `http.sseHeartbeat`,
-      `http.sseClose`, and `http.clientDisconnected`.
+      event type names, SSE metrics, and Last-Event-ID precedence.
+- [x] Add focused API smoke coverage for opt-in SSE replay frames,
+      Last-Event-ID precedence, and heartbeat output.
+- [ ] Add multi-client broadcast, reconnect, periodic heartbeat, and slow-client
+      tests once the route uses live fanout.
 
 ## P1 - Auction Floor Chat
 
@@ -365,6 +420,16 @@ open.
 - [x] Add CSRF plan before any cookie-authenticated writes in
       `server/docs/api-contract.md`.
 - [x] Add metrics and audit tests for auth and command routes.
+- [ ] Protect `/metrics` with an operator/admin policy or explicit
+      development-only mode so production metrics are not public.
+- [ ] Add durable request-start rows, reusable request context, monotonic
+      duration measurement, non-zero duration assertions, and broader
+      route-family request-log coverage.
+- [ ] Remove or rename non-SSE runtime-gap metric markers once durable auth,
+      production config, request logging, and idempotency gaps are closed.
+- [ ] Add runtime behavioral tests for metrics auth, production secret
+      fail-fast, durable-session restart safety, canonical idempotency
+      conflicts, and request-log duration measurement.
 
 ## P2 - Enterprise Hardening
 
@@ -382,6 +447,8 @@ open.
 - [x] Add pagination contracts for auctions, bids, and audit in
       `server/docs/api-contract.md`; event replay pagination is executable
       through `?after`/`Last-Event-ID` plus `?limit=1..200`.
+- [x] Upgrade executable audit replay from timestamp-only `after` pagination to
+      the full opaque cursor with an `audit_event_id` tiebreak.
 - [x] Add server build-tape config settings in `server/build.sem`, validated
       by `python experiments/realtime-auction-arena/server/tests/enterprise_contract_tests.py`.
 - [x] Add graceful shutdown plan in `server/docs/runtime-gaps.md` and
@@ -389,9 +456,21 @@ open.
 - [x] Add native HTTP fallback SIGINT/SIGTERM accept-loop shutdown: stop
       accepting, let the active handler finish, close the listen socket, and
       return `SS_HTTP_OK`.
-- [ ] Add SemanticScript-visible shutdown/cancellation hooks so handlers can
-      observe drain state, reject new commands with `server_shutting_down`, and
-      close/drain future SSE subscribers.
+- [x] Add SemanticScript-visible shutdown drain-state hook in `standard.http`
+      and use it from server readiness/middleware so new command routes reject
+      with `server_shutting_down` during drain.
+- [ ] Add app-level shutdown finalization for non-SSE work: stop accepting,
+      reject new commands, let accepted SQLite transactions finish, checkpoint
+      and close SQLite, flush durable request/audit logs, and verify the grace
+      deadline in a live harness.
+- [ ] Expose SemanticScript-visible request cancellation tokens for non-SSE
+      handlers so long-running auth, auction, chat, and audit work can abort
+      during client disconnect or process drain.
+- [x] Close and drain current executable SSE replay streams on every handler
+      exit path, including heartbeat completion, disconnect detection, write
+      failure, and active stream metric decrement.
+- [ ] Add request cancellation tokens and close/drain future long-lived SSE
+      fanout subscribers once async fanout exists.
 - [x] Add database backup/export plan in `server/docs/api-contract.md`.
 - [x] Add local development seed data for auctioneer and bidder principals,
       including password credential rows verified by the E2E harness.

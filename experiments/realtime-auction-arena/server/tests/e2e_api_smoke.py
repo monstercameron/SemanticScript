@@ -21,6 +21,13 @@ REQUEST_ID = "req_e2e_smoke"
 TEST_JWT_SECRET = "e2e-secret-with-at-least-thirty-two-bytes"
 
 
+def delete_db_files():
+    for suffix in ["", "-wal", "-shm"]:
+        db_path = SERVER_DIR / f"auction_arena.sqlite3{suffix}"
+        if db_path.exists():
+            db_path.unlink()
+
+
 def run_build():
     cmd = [
         sys.executable,
@@ -37,15 +44,13 @@ def port_is_open(host="127.0.0.1", port=18083):
         return sock.connect_ex((host, port)) == 0
 
 
-def start_server():
+def start_server(reset_db=True):
     if port_is_open():
         raise RuntimeError("port 18083 is already in use; stop the existing server before E2E")
     if not EXE.exists():
         raise RuntimeError(f"server executable missing after build: {EXE}")
-    for suffix in ["", "-wal", "-shm"]:
-        db_path = SERVER_DIR / f"auction_arena.sqlite3{suffix}"
-        if db_path.exists():
-            db_path.unlink()
+    if reset_db:
+        delete_db_files()
 
     kwargs = {
         "cwd": SERVER_DIR,
@@ -161,6 +166,19 @@ def expect_json(path, status, ok=None, code=None, method="GET", body=None, heade
     return payload
 
 
+def expect_sse(path, status, headers=None, route_path=None):
+    merged_headers = {"Accept": "text/event-stream"}
+    if headers:
+        merged_headers.update(headers)
+    actual_status, response_headers, text = request(path, headers=merged_headers)
+    assert actual_status == status, f"{path}: expected {status}, got {actual_status}: {text}"
+    assert_common_headers(response_headers, route_path or path)
+    assert_header(response_headers, "Content-Type", "text/event-stream; charset=utf-8")
+    assert "Content-Length" not in response_headers
+    print(f"PASS SSE GET {path} -> {status}")
+    return text
+
+
 def assert_rate_limit_probe_bucket():
     db_path = SERVER_DIR / "auction_arena.sqlite3"
     with sqlite3.connect(db_path) as conn:
@@ -182,6 +200,19 @@ def decode_jwt_payload(token):
     payload_segment = token.split(".")[1]
     padded = payload_segment + "=" * (-len(payload_segment) % 4)
     return json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+
+
+def sign_hs256_payload(payload, secret=TEST_JWT_SECRET):
+    header = {"alg": "HS256", "typ": "JWT"}
+
+    def segment(value):
+        raw = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    header_payload = f"{segment(header)}.{segment(payload)}"
+    digest = hmac.new(secret.encode("utf-8"), header_payload.encode("ascii"), hashlib.sha256).digest()
+    signature = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return f"{header_payload}.{signature}"
 
 
 def assert_hs256_signature(token, secret):
@@ -214,21 +245,27 @@ def post_auction_command(path, body, headers, key, status, ok, code=None):
 
 
 def registered_method_not_allowed_cases():
-    cases = []
+    methods = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+    methods_by_path = {}
     main_source = SERVER_DIR / "src" / "main.sem"
     for line in main_source.read_text(encoding="utf-8").splitlines():
         if not line.startswith("route realtimeAuctionArenaServer "):
             continue
-        if not line.endswith(" methodNotAllowedHandler"):
-            continue
         method = line.split()[2]
         route_pattern = line.split('"')[1]
+        if route_pattern == "*":
+            continue
+        methods_by_path.setdefault(route_pattern, set()).add(method)
+    cases = []
+    for route_pattern, declared_methods in sorted(methods_by_path.items()):
         path = (
             route_pattern
             .replace(":auctionId", "auc_method_matrix")
             .replace(":messageId", "msg_method_matrix")
         )
-        cases.append((method, path))
+        for method in methods:
+            if method not in declared_methods:
+                cases.append((method, path))
     return cases
 
 
@@ -282,7 +319,7 @@ def test_public_routes():
 
 def test_registered_method_not_allowed_routes():
     cases = registered_method_not_allowed_cases()
-    assert len(cases) >= 80, f"expected broad method guard matrix, got {len(cases)}"
+    assert len(cases) >= 90, f"expected broad method guard matrix, got {len(cases)}"
     for method, path in cases:
         expect_json(path, 405, ok=False, code="method_not_allowed", method=method)
 
@@ -309,6 +346,16 @@ def test_generated_request_id_without_client_header():
 
 def test_metrics_route():
     status, headers, text = request("/metrics")
+    assert status == 401
+    assert_common_headers(headers, "/metrics")
+    assert_envelope(text, ok=False, code="unauthorized")
+
+    login = login_as("admin")
+    token_payload = decode_jwt_payload(login["data"]["accessToken"])
+    assert token_payload["role"] == "admin"
+    assert "metrics:read" in token_payload["scopes"]
+    auth = {"Authorization": f"Bearer {login['data']['accessToken']}"}
+    status, headers, text = request("/metrics", headers=auth)
     assert status == 200
     assert_common_headers(headers, "/metrics")
     assert "auction_server_bootstrap_info" in text
@@ -326,7 +373,7 @@ def test_metrics_route():
     assert "auction_server_sse_slow_client_drops_total 0" in text
     assert "auction_server_sse_subscriber_queue_capacity 256" in text
     assert "auction_server_sse_heartbeat_millis 15000" in text
-    print("PASS GET /metrics -> 200")
+    print("PASS GET /metrics requires admin metrics scope")
 
 
 def test_auth_and_api_fail_closed():
@@ -339,6 +386,14 @@ def test_auth_and_api_fail_closed():
         code="invalid_credentials",
         method="POST",
         body='{"username":"auctioneer","password":"wrong-password"}',
+    )
+    expect_json(
+        "/api/v1/auth/login",
+        401,
+        ok=False,
+        code="invalid_credentials",
+        method="POST",
+        body='{"username":"disabled","password":"auctioneer-demo-password"}',
     )
     expect_json(
         "/api/v1/auth/login",
@@ -357,6 +412,9 @@ def test_auth_and_api_fail_closed():
         method="POST",
         body=json.dumps({"username": "auctioneer", "password": "x" * 73}),
     )
+    millis_into_login_rate_window = int(time.time() * 1000) % 60000
+    if millis_into_login_rate_window > 45000:
+        time.sleep(((60000 - millis_into_login_rate_window) / 1000) + 0.2)
     for attempt in range(10):
         expect_json(
             "/api/v1/auth/login",
@@ -401,6 +459,32 @@ def test_auth_and_api_fail_closed():
     assert token_payload["nbf"] == token_payload["iat"]
     assert token_payload["exp"] == token_payload["iat"] + 900
     assert "jti" in token_payload
+
+    wrong_audience_payload = dict(token_payload)
+    wrong_audience_payload["aud"] = "api-v2"
+    wrong_audience_payload["jti"] = "jwt_wrong_audience_e2e"
+    wrong_audience_token = sign_hs256_payload(wrong_audience_payload)
+    expect_json(
+        "/api/v1/session",
+        401,
+        ok=False,
+        code="wrong_audience",
+        headers={"Authorization": f"Bearer {wrong_audience_token}"},
+    )
+
+    expired_payload = dict(token_payload)
+    expired_payload["iat"] = int(time.time()) - 1000
+    expired_payload["nbf"] = expired_payload["iat"]
+    expired_payload["exp"] = int(time.time()) - 60
+    expired_payload["jti"] = "jwt_expired_e2e"
+    expired_token = sign_hs256_payload(expired_payload)
+    expect_json(
+        "/api/v1/session",
+        401,
+        ok=False,
+        code="expired_token",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
 
     bearer_headers = {"Authorization": f"Bearer {login['data']['accessToken']}"}
     tampered_headers = {"Authorization": f"Bearer {tamper_token(login['data']['accessToken'])}"}
@@ -1142,14 +1226,26 @@ def test_auth_and_api_fail_closed():
     assert last_event_id_events["data"]["after"] == 3
     assert last_event_id_events["data"]["count"] == 6
     assert [event["sequence"] for event in last_event_id_events["data"]["events"]] == [4, 5, 6, 7, 8, 9]
+    sse_events = expect_sse(
+        f"/api/v1/auctions/{auction_id}/events?after=1&limit=2",
+        200,
+        headers={**active_headers, "Last-Event-ID": "3"},
+        route_path=f"/api/v1/auctions/{auction_id}/events",
+    )
+    assert "id: 4\n" in sse_events
+    assert "id: 5\n" in sse_events
+    assert "id: 3\n" not in sse_events
+    assert "event: bid.accepted\n" in sse_events
+    assert "data: {" in sse_events
+    assert ": heartbeat\n\n" in sse_events
     expect_json(
         f"/api/v1/auctions/{auction_id}/audit",
-        401,
+        403,
         ok=False,
-        code="unauthorized",
+        code="insufficient_role",
         headers=active_headers,
     )
-    audit_login = login_as("auctioneer")
+    audit_login = login_as("admin")
     audit_headers = {"Authorization": f"Bearer {audit_login['data']['accessToken']}"}
     active_headers = audit_headers
     logout_refresh_token = audit_login["data"]["refreshToken"]
@@ -1162,9 +1258,11 @@ def test_auth_and_api_fail_closed():
     )
     assert audit["data"]["auctionId"] == auction_id
     assert audit["data"]["after"] == 0
+    assert audit["data"]["cursor"] == "0:"
     assert audit["data"]["limit"] == 20
     assert audit["data"]["count"] >= 8
     assert audit["data"]["nextAfter"] > 0
+    assert audit["data"]["nextCursor"].startswith(f"{audit['data']['nextAfter']}:")
     audit_actions = [row["action"] for row in audit["data"]["auditEvents"]]
     assert "auction.create" in audit_actions
     assert "auction.start" in audit_actions
@@ -1175,8 +1273,63 @@ def test_auth_and_api_fail_closed():
     assert "chat.deleted" in audit_actions
     chat_report_rows = [row for row in audit["data"]["auditEvents"] if row["action"] == "chat.reported"]
     assert json.loads(chat_report_rows[0]["payloadJson"])["reason"] == "spam"
+    audit_response_text = json.dumps(audit)
+    assert "auctioneer-demo-password" not in audit_response_text
+    assert "Bearer " not in audit_response_text
+    assert audit_login["data"]["refreshToken"] not in audit_response_text
+    audit_page_one = expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?limit=2",
+        200,
+        ok=True,
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    assert audit_page_one["data"]["count"] == 2
+    audit_page_two = expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?cursor={audit_page_one['data']['nextCursor']}&limit=2",
+        200,
+        ok=True,
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    assert audit_page_two["data"]["count"] == 2
+    assert {
+        row["auditEventId"] for row in audit_page_one["data"]["auditEvents"]
+    }.isdisjoint({row["auditEventId"] for row in audit_page_two["data"]["auditEvents"]})
     expect_json(
         f"/api/v1/auctions/{auction_id}/audit?limit=0",
+        400,
+        ok=False,
+        code="validation_failed",
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?cursor=bad-cursor&limit=1",
+        400,
+        ok=False,
+        code="validation_failed",
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?cursor=123x:aud_cursor_invalid&limit=1",
+        400,
+        ok=False,
+        code="validation_failed",
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?cursor=:aud_cursor_invalid&limit=1",
+        400,
+        ok=False,
+        code="validation_failed",
+        headers=audit_headers,
+        route_path=f"/api/v1/auctions/{auction_id}/audit",
+    )
+    expect_json(
+        f"/api/v1/auctions/{auction_id}/audit?cursor=1:&limit=1",
         400,
         ok=False,
         code="validation_failed",
@@ -1195,9 +1348,13 @@ def test_auth_and_api_fail_closed():
         seed_users = set(conn.execute("SELECT user_id, username, role FROM users").fetchall())
         assert ("user_auctioneer_001", "auctioneer", 20) in seed_users
         assert ("user_bidder_demo", "bidder", 10) in seed_users
+        assert ("user_admin_demo", "admin", 30) in seed_users
+        assert ("user_disabled_demo", "disabled", 10) in seed_users
         credential_users = set(conn.execute("SELECT user_id FROM password_credentials").fetchall())
         assert ("user_auctioneer_001",) in credential_users
         assert ("user_bidder_demo",) in credential_users
+        assert ("user_admin_demo",) in credential_users
+        assert ("user_disabled_demo",) in credential_users
 
         audit_rows = conn.execute(
             """
@@ -1417,6 +1574,14 @@ def test_auth_and_api_fail_closed():
             """
         ).fetchone()[0]
         assert revoked_refresh_after_logout >= 1
+        revoked_jwts_after_logout = conn.execute(
+            """
+            SELECT user_id, expires_at, revoked_at, request_id
+            FROM revoked_jwts
+            """
+        ).fetchall()
+        assert revoked_jwts_after_logout
+        assert any(row[0] == "user_admin_demo" and row[1] > row[2] and row[3] == "req_runtime_header_unavailable" for row in revoked_jwts_after_logout)
 
     expect_json(
         "/api/v1/session",
@@ -1425,6 +1590,78 @@ def test_auth_and_api_fail_closed():
         code="unauthorized",
         headers=active_headers,
     )
+
+
+def test_audit_cursor_tiebreak_endpoint_preseeded():
+    delete_db_files()
+    init_process = start_server(reset_db=False)
+    try:
+        expect_json("/readyz", 200, ok=True)
+    finally:
+        stop_server(init_process)
+
+    db_path = SERVER_DIR / "auction_arena.sqlite3"
+    auction_id = "auc_audit_cursor_tiebreak"
+    same_millis = int(time.time() * 1000) + 100000
+    cursor_audit_id_a = "aud_cursor_tiebreak_a"
+    cursor_audit_id_b = "aud_cursor_tiebreak_b"
+    cursor_audit_id_c = "aud_cursor_tiebreak_c"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO auctions(
+              auction_id, seller_user_id, created_by_user_id, status, title, description,
+              starting_bid_minor, minimum_increment_minor, max_bid_minor,
+              anti_sniping_window_ms, anti_sniping_extension_ms, current_bid_minor,
+              current_winner_user_id, last_bid_id, last_bidder_user_id,
+              accepted_bid_count, rejected_bid_count, revision, event_sequence,
+              created_at, starts_at, closes_at, closed_at, updated_at
+            )
+            VALUES (?, 'user_auctioneer_001', 'user_auctioneer_001', 2,
+              'Audit cursor fixture', 'Audit cursor fixture', 100, 10, 1000,
+              60000, 30000, 100, '', '', '', 0, 0, 0, 0, ?, ?, ?, 0, ?)
+            """,
+            (auction_id, same_millis, same_millis, same_millis + 60000, same_millis),
+        )
+        conn.executemany(
+            """
+            INSERT INTO audit_events(
+              audit_event_id, schema_version, actor_user_id, actor_role,
+              request_id, idempotency_key, action, command_kind, auction_id,
+              bid_id, outcome, error_code, payload_json, created_at
+            )
+            VALUES (?, 1, 'user_admin_demo', 30, 'req_audit_cursor_e2e',
+              '', 'audit.cursor.test', 0, ?, '', 4, 'cursor_test', '{}', ?)
+            """,
+            [
+                (cursor_audit_id_a, auction_id, same_millis),
+                (cursor_audit_id_b, auction_id, same_millis),
+                (cursor_audit_id_c, auction_id, same_millis),
+            ],
+        )
+        conn.commit()
+
+    process = start_server(reset_db=False)
+    try:
+        audit_login = login_as("admin")
+        audit_headers = {"Authorization": f"Bearer {audit_login['data']['accessToken']}"}
+        audit_tiebreak = expect_json(
+            f"/api/v1/auctions/{auction_id}/audit?cursor={same_millis}:{cursor_audit_id_a}&limit=2",
+            200,
+            ok=True,
+            headers=audit_headers,
+            route_path=f"/api/v1/auctions/{auction_id}/audit",
+        )
+        assert audit_tiebreak["data"]["cursor"] == f"{same_millis}:{cursor_audit_id_a}"
+        audit_tiebreak_ids = [row["auditEventId"] for row in audit_tiebreak["data"]["auditEvents"]]
+        assert audit_tiebreak_ids == [
+            cursor_audit_id_b,
+            cursor_audit_id_c,
+        ], audit_tiebreak
+        assert audit_tiebreak["data"]["nextAfter"] == same_millis
+        assert audit_tiebreak["data"]["nextCursor"] == f"{same_millis}:{audit_tiebreak_ids[-1]}"
+    finally:
+        stop_server(process)
 
 
 def main():
@@ -1438,6 +1675,7 @@ def main():
         test_metrics_route()
     finally:
         stop_server(process)
+    test_audit_cursor_tiebreak_endpoint_preseeded()
     print("E2E API smoke passed")
 
 

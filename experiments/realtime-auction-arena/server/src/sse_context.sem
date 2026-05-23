@@ -1,0 +1,258 @@
+module app.realtime_auction_arena.server.sse_context
+purpose module app.realtime_auction_arena.server.sse_context "Executable SSE transport helpers for Realtime Auction Arena event replay."
+moduleOwns app.realtime_auction_arena.server.sse_context "SSE content negotiation, stream opening, persisted event frame replay, heartbeat writes, disconnect checks, and SSE metrics updates."
+moduleDoesNotOwn app.realtime_auction_arena.server.sse_context "Auction command persistence, event schema ownership, auth decisions, native socket writes, or compiler lowering."
+invariant module app.realtime_auction_arena.server.sse_context "SSE frames are emitted only after the event route has authenticated, authorized, validated cursor bounds, and verified the auction exists."
+
+import http standard.http
+import sqlite_std standard.sqlite
+import runtime app.realtime_auction_arena.server.runtime_constants
+import sql app.realtime_auction_arena.server.sql_queries
+import helpers app.realtime_auction_arena.server.http_helpers
+import observability_context app.realtime_auction_arena.server.observability_context
+
+importOperation incrementActiveSseClients observability_context incrementActiveSseClients
+importOperation decrementActiveSseClients observability_context decrementActiveSseClients
+importOperation incrementSseSlowClientDropsTotal observability_context incrementSseSlowClientDropsTotal
+
+exportOperation app.realtime_auction_arena.server.sse_context requestAcceptsSse
+exportOperation app.realtime_auction_arena.server.sse_context streamAuctionEventsSse
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to inspect the Accept header for SSE content negotiation."
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to open, write, heartbeat, and close native SSE streams."
+capability httpResponseReader http.response read
+purpose operation httpResponseReader "Authority to inspect native SSE disconnect state after stream writes."
+capability sqliteDatabaseReader database read
+purpose operation sqliteDatabaseReader "Authority to read committed auction events from SQLite."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to compare bounded Accept header prefixes."
+
+operation requestAcceptsSse
+input operation requestAcceptsSse request HttpRequest
+output operation requestAcceptsSse Bool
+effect requestAcceptsSse read http.request.header
+effect requestAcceptsSse read memory.buffer
+memory requestAcceptsSse arena request
+async requestAcceptsSse no
+useCapability requestAcceptsSse httpRequestReader
+useCapability requestAcceptsSse memoryBufferReadWriteCapability
+purpose operation requestAcceptsSse "Return true when the client explicitly requests text/event-stream."
+invariant operation requestAcceptsSse "SSE is opt-in so existing JSON replay clients keep the stable v1 response shape."
+label startRequestAcceptsSse
+call acceptHeaderCall http.requestHeader
+argument acceptHeaderCall request HttpRequest request
+argument acceptHeaderCall name CNullTerminatedByteString runtime.acceptHeaderName
+run acceptHeaderCall
+bind value acceptHeader CNullTerminatedByteString acceptHeaderCall
+call acceptHeaderMissingCall pointer.isNull
+argument acceptHeaderMissingCall ptr COpaqueMemoryAddress acceptHeader
+run acceptHeaderMissingCall
+bind value acceptHeaderMissing Bool acceptHeaderMissingCall
+branch if condition acceptHeaderMissing target sseAcceptRejected
+call sseAcceptPrefixCompareCall c.strncmp
+argument sseAcceptPrefixCompareCall left CNullTerminatedByteString acceptHeader
+argument sseAcceptPrefixCompareCall right CNullTerminatedByteString runtime.sseAcceptHeaderPrefix
+argument sseAcceptPrefixCompareCall count CSignedInt64 runtime.sseAcceptHeaderPrefixLength
+run sseAcceptPrefixCompareCall
+bind value sseAcceptPrefixCompare CSignedInt32 sseAcceptPrefixCompareCall
+call sseAcceptMatchesCall math.equalCSignedInt32
+argument sseAcceptMatchesCall left CSignedInt32 sseAcceptPrefixCompare
+argument sseAcceptMatchesCall right CSignedInt32 runtime.authSuccessCode
+run sseAcceptMatchesCall
+bind value sseAcceptMatches Bool sseAcceptMatchesCall
+branch if condition sseAcceptMatches target sseAcceptAccepted
+label sseAcceptRejected
+storage local immutable sseRejected Bool false
+return value sseRejected
+label sseAcceptAccepted
+storage local immutable sseAccepted Bool true
+return value sseAccepted
+
+operation streamAuctionEventsSse
+input operation streamAuctionEventsSse response HttpResponse
+input operation streamAuctionEventsSse database SqliteDatabase
+input operation streamAuctionEventsSse auctionId CNullTerminatedByteString
+input operation streamAuctionEventsSse replayCursor CSignedInt64
+input operation streamAuctionEventsSse replayLimit CSignedInt64
+output operation streamAuctionEventsSse CSignedInt32
+effect streamAuctionEventsSse read database
+effect streamAuctionEventsSse write http.response
+effect streamAuctionEventsSse read http.response
+memory streamAuctionEventsSse heap yes
+async streamAuctionEventsSse no
+useCapability streamAuctionEventsSse sqliteDatabaseReader
+useCapability streamAuctionEventsSse httpResponseWriter
+useCapability streamAuctionEventsSse httpResponseReader
+purpose operation streamAuctionEventsSse "Stream committed auction event rows as SSE frames and finish with a heartbeat."
+invariant operation streamAuctionEventsSse "The persisted event sequence is the SSE id; the persisted event type name is the SSE event name; payload_json is emitted as the data body."
+label startStreamAuctionEventsSse
+storage local immutable sseMetricDelta CSignedInt64 1
+storage local immutable sseOkHttpStatus HttpStatusCode 200
+call prepareSseEventsCall sqlite.prepareStatement
+argument prepareSseEventsCall database SqliteDatabase database
+argument prepareSseEventsCall sql SqlText sql.sqlSelectAuctionEventsAfter
+run prepareSseEventsCall
+bind ok sseEventsStatement SqliteStatement prepareSseEventsCall
+bind error prepareSseEventsError SqliteStatementPrepareFailure prepareSseEventsCall
+branch error source prepareSseEventsCall target sseDatabaseUnavailable
+defer finalizeSseEventsDefer sqlite.finalizeStatement sseEventsStatement
+call bindSseAuctionIdCall sqlite.bindText
+argument bindSseAuctionIdCall statement SqliteStatement sseEventsStatement
+argument bindSseAuctionIdCall parameterIndex CSignedInt32 runtime.bindIndex1
+argument bindSseAuctionIdCall value CNullTerminatedByteString auctionId
+run bindSseAuctionIdCall
+ignore void source bindSseAuctionIdCall
+bind error bindSseAuctionIdError SqliteStatementBindFailure bindSseAuctionIdCall
+branch error source bindSseAuctionIdCall target sseDatabaseUnavailable
+call bindSseCursorCall sqlite.bindInt64
+argument bindSseCursorCall statement SqliteStatement sseEventsStatement
+argument bindSseCursorCall parameterIndex CSignedInt32 runtime.bindIndex2
+argument bindSseCursorCall value CSignedInt64 replayCursor
+run bindSseCursorCall
+ignore void source bindSseCursorCall
+bind error bindSseCursorError SqliteStatementBindFailure bindSseCursorCall
+branch error source bindSseCursorCall target sseDatabaseUnavailable
+call bindSseLimitCall sqlite.bindInt64
+argument bindSseLimitCall statement SqliteStatement sseEventsStatement
+argument bindSseLimitCall parameterIndex CSignedInt32 runtime.bindIndex3
+argument bindSseLimitCall value CSignedInt64 replayLimit
+run bindSseLimitCall
+ignore void source bindSseLimitCall
+bind error bindSseLimitError SqliteStatementBindFailure bindSseLimitCall
+branch error source bindSseLimitCall target sseDatabaseUnavailable
+
+call addSseCommonHeadersCall helpers.addCommonHeaders
+argument addSseCommonHeadersCall response HttpResponse response
+run addSseCommonHeadersCall
+ignore void source addSseCommonHeadersCall
+call openSseStreamCall http.openSseStream
+argument openSseStreamCall response HttpResponse response
+argument openSseStreamCall status HttpStatusCode sseOkHttpStatus
+run openSseStreamCall
+bind value openSseStatus CSignedInt32 openSseStreamCall
+call openSseStatusOkCall math.equalCSignedInt32
+argument openSseStatusOkCall left CSignedInt32 openSseStatus
+argument openSseStatusOkCall right CSignedInt32 runtime.authSuccessCode
+run openSseStatusOkCall
+bind value openSseStatusOk Bool openSseStatusOkCall
+branch if condition openSseStatusOk target sseStreamOpened
+return value openSseStatus
+
+label sseStreamOpened
+call incrementActiveSseCall incrementActiveSseClients
+run incrementActiveSseCall
+ignore value source incrementActiveSseCall type CSignedInt64
+
+label sseReplayLoop
+call stepSseEventsCall sqlite.stepStatement
+argument stepSseEventsCall statement SqliteStatement sseEventsStatement
+run stepSseEventsCall
+bind ok sseStepResult CSignedInt32 stepSseEventsCall
+bind error stepSseEventsError SqliteStatementStepFailure stepSseEventsCall
+branch error source stepSseEventsCall target sseStreamWriteFailed
+call sseRowAvailableCall math.equalCSignedInt32
+argument sseRowAvailableCall left CSignedInt32 sseStepResult
+argument sseRowAvailableCall right CSignedInt32 runtime.sqliteRowStepStatus
+run sseRowAvailableCall
+bind value sseRowAvailable Bool sseRowAvailableCall
+branch if condition sseRowAvailable target sseWriteRow
+branch else target sseRowsDone
+
+label sseWriteRow
+call readSseEventSequenceCall sqlite.columnInt64
+argument readSseEventSequenceCall statement SqliteStatement sseEventsStatement
+argument readSseEventSequenceCall columnIndex CSignedInt32 runtime.columnIndex0
+run readSseEventSequenceCall
+bind value sseEventSequence SseEventId readSseEventSequenceCall
+call readSseEventTypeCall sqlite.columnInt64
+argument readSseEventTypeCall statement SqliteStatement sseEventsStatement
+argument readSseEventTypeCall columnIndex CSignedInt32 runtime.columnIndex2
+run readSseEventTypeCall
+bind value sseEventTypeCode CSignedInt64 readSseEventTypeCall
+call sseEventTypeNameCall auctionEventTypeNameFromCode
+argument sseEventTypeNameCall eventTypeCode CSignedInt64 sseEventTypeCode
+run sseEventTypeNameCall
+bind value sseEventTypeName SseEventName sseEventTypeNameCall
+call readSsePayloadCall sqlite.columnText
+argument readSsePayloadCall statement SqliteStatement sseEventsStatement
+argument readSsePayloadCall columnIndex CSignedInt32 runtime.columnIndex3
+run readSsePayloadCall
+bind value sseEventPayload SseEventData readSsePayloadCall
+call writeSseEventCall http.writeSseEventWithId
+argument writeSseEventCall response HttpResponse response
+argument writeSseEventCall id SseEventId sseEventSequence
+argument writeSseEventCall event SseEventName sseEventTypeName
+argument writeSseEventCall data SseEventData sseEventPayload
+run writeSseEventCall
+bind value writeSseStatus CSignedInt32 writeSseEventCall
+call writeSseStatusOkCall math.equalCSignedInt32
+argument writeSseStatusOkCall left CSignedInt32 writeSseStatus
+argument writeSseStatusOkCall right CSignedInt32 runtime.authSuccessCode
+run writeSseStatusOkCall
+bind value writeSseStatusOk Bool writeSseStatusOkCall
+branch if condition writeSseStatusOk target sseCheckDisconnect
+branch else target sseStreamWriteFailed
+
+label sseCheckDisconnect
+call clientDisconnectedCall http.clientDisconnected
+argument clientDisconnectedCall response HttpResponse response
+run clientDisconnectedCall
+bind value clientDisconnected Bool clientDisconnectedCall
+branch if condition clientDisconnected target sseStreamDisconnected
+jump target sseReplayLoop
+
+label sseRowsDone
+call writeSseHeartbeatCall http.writeSseHeartbeat
+argument writeSseHeartbeatCall response HttpResponse response
+argument writeSseHeartbeatCall comment SseHeartbeatComment http.sseDefaultHeartbeatComment
+run writeSseHeartbeatCall
+bind value writeSseHeartbeatStatus CSignedInt32 writeSseHeartbeatCall
+call heartbeatStatusOkCall math.equalCSignedInt32
+argument heartbeatStatusOkCall left CSignedInt32 writeSseHeartbeatStatus
+argument heartbeatStatusOkCall right CSignedInt32 runtime.authSuccessCode
+run heartbeatStatusOkCall
+bind value heartbeatStatusOk Bool heartbeatStatusOkCall
+branch if condition heartbeatStatusOk target sseCloseClean
+branch else target sseStreamWriteFailed
+
+label sseCloseClean
+call closeSseStreamCall http.closeSseStream
+argument closeSseStreamCall response HttpResponse response
+run closeSseStreamCall
+bind value closeSseStatus CSignedInt32 closeSseStreamCall
+call decrementActiveSseCall decrementActiveSseClients
+run decrementActiveSseCall
+ignore value source decrementActiveSseCall type CSignedInt64
+return value closeSseStatus
+
+label sseStreamDisconnected
+call closeDisconnectedSseStreamCall http.closeSseStream
+argument closeDisconnectedSseStreamCall response HttpResponse response
+run closeDisconnectedSseStreamCall
+ignore value source closeDisconnectedSseStreamCall type CSignedInt32
+call decrementDisconnectedSseCall decrementActiveSseClients
+run decrementDisconnectedSseCall
+ignore value source decrementDisconnectedSseCall type CSignedInt64
+return value runtime.authSuccessCode
+
+label sseStreamWriteFailed
+call incrementSlowDropCall incrementSseSlowClientDropsTotal
+run incrementSlowDropCall
+ignore value source incrementSlowDropCall type CSignedInt64
+call closeFailedSseStreamCall http.closeSseStream
+argument closeFailedSseStreamCall response HttpResponse response
+run closeFailedSseStreamCall
+ignore value source closeFailedSseStreamCall type CSignedInt32
+call decrementFailedSseCall decrementActiveSseClients
+run decrementFailedSseCall
+ignore value source decrementFailedSseCall type CSignedInt64
+return value runtime.authSuccessCode
+
+label sseDatabaseUnavailable
+call sseDatabaseUnavailableWriteCall helpers.writeDatabaseUnavailableEnvelope
+argument sseDatabaseUnavailableWriteCall response HttpResponse response
+run sseDatabaseUnavailableWriteCall
+bind value sseDatabaseUnavailableStatus CSignedInt32 sseDatabaseUnavailableWriteCall
+return value sseDatabaseUnavailableStatus

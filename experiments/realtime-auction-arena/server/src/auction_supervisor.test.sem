@@ -2,7 +2,7 @@ module app.realtime_auction_arena.server.tests.auction_supervisor
 purpose module app.realtime_auction_arena.server.tests.auction_supervisor "Unit coverage contract for server/src/auction_supervisor.sem."
 moduleOwns app.realtime_auction_arena.server.tests.auction_supervisor "Supervisor command loop, fake-time, ordering, cancellation, channel, and backpressure coverage."
 moduleDoesNotOwn app.realtime_auction_arena.server.tests.auction_supervisor "The async runtime primitives themselves."
-invariant module app.realtime_auction_arena.server.tests.auction_supervisor "Async runtime gaps must remain named until executable supervisor tests can run."
+invariant module app.realtime_auction_arena.server.tests.auction_supervisor "standard.event queue-backed supervisor smoke operations must remain present until route handlers move behind the actor loop."
 
 record AuctionSupervisorTestPlan
 field AuctionSupervisorTestPlan parseableNow String
@@ -17,12 +17,12 @@ storage module immutable auctionSupervisorUnitTestPlan AuctionSupervisorTestPlan
 jsonBody auctionSupervisorUnitTestPlan
   {
       "parseableNow": "contract constants and this test plan parse without async runtime support",
-      "commandQueueBackpressure": "when the 1024 item command queue is full, submit returns queue_full and does not enqueue or reorder commands",
+      "commandQueueBackpressure": "auctionSupervisorQueueBackpressureSmoke opens a capacity-two standard.event process queue and verifies the third submit returns queue_full",
       "subscriberQueueBackpressure": "when a 256 item subscriber queue is full, only that subscriber is closed and the auction command loop continues",
-      "deterministicOrdering": "bids, close commands, and timerExpired are processed in monotonic receive order with a stable event sequence",
+      "deterministicOrdering": "auctionSupervisorAsyncOrderingSmoke queues create/start/bid/extend/close/timerExpired/shutdown and receives event ids 1..7 in monotonic order",
       "timerCancellation": "auction extension cancels the previous close timer and enqueues only the replacement timerExpired command",
       "shutdownDrain": "shutdown rejects new commands, drains already accepted commands, resolves replies, and closes subscriber queues",
-      "requiredRuntimeApis": "executable assertions require bounded channels, trySend, async select, fake clock, cancelable timers, and task cancellation"
+      "requiredRuntimeApis": "remaining executable assertions require route async integration, fake clock, cancelable production timers, and task cancellation"
   }
 
 operation getAuctionSupervisorUnitTestPlan
