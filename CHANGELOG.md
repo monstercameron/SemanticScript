@@ -2,6 +2,9 @@
 
 ## 2026-05-22
 
+- `1bbc7388ee62f96e11acd2ac6a7acbf2cd6057d3` - `tools: add readiness dev and test commands`
+  - Adds `sem readiness`, `sem dev`, and `sem test` JSON command surfaces, embeds readiness in `sem check`, and reports runtime/toolchain readiness, watch plans, interface fingerprints, and structured test results.
+  - Extends sem CLI and subprocess command-contract coverage plus TODO status for readiness, dev, test, size, patch preconditions, and the implemented agent tooling pass.
 - `0ba6ca4f2dbbabd5e8ea685bcd924c4ab51ab718` - `tools: cover agent command contracts`
   - Adds unit and subprocess contract coverage for the new `sem` agent surfaces, including version, doctor, skills, check, explain, graph, slice, fix, patch, and size JSON payloads.
   - Refines `sem check` status reporting, curated diagnostic explainers, skill aliases, patch-plan precondition hashes, `sem size`, global `--version --json`, and TODO status for the implemented agent tooling pass.
