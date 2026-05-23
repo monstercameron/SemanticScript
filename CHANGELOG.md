@@ -2,6 +2,27 @@
 
 ## 2026-05-22
 
+- `2a244f814c55b8dccff683f336cea43574ed5efb` - `docs: clarify sem-first agent workflow`
+  - Adds a top-level sem-first quick path, explains each agent-facing command's role in the edit loop, and refreshes README, agents, workflow, release, and TODO guidance around compact JSON, green fixture validation, patch safety, semantic preflight, and formatter checks.
+- `96ab80e960a44777aed1f12386639aa15de5ef95` - `experiments: cover chat report audit payload`
+  - Clarifies that chat reports persist the request reason in audit payloads and asserts the E2E database row records the reported reason.
+- `eab23ee43cf9a8474a522922d8129d1fe4d0ee9d` - `experiments: fix chat report audit payload`
+  - Persists the finalized chat report response body text as the chat report audit payload.
+- `6ab39e9c2550753715898b1f28491cf673aa4e36` - `experiments: persist auction auth and chat moderation`
+  - Adds durable refresh-token insert/rotation/revocation helpers, enabled-user checks across auth/session paths, and refresh/logout/session audit rows for the Realtime Auction Arena experiment.
+  - Makes chat report/delete routes execute durable SQLite moderation flows with idempotency replay/conflict handling, audit/request/event rows, route/chat/auth contract updates, and E2E assertions.
+- `e6020239dfd8936537e36d30fed0fe7ec3d77f1e` - `tests: align auction shutdown contract assertion`
+  - Updates the enterprise runtime-gap check to assert the native HTTP process-signal accept-loop shutdown contract.
+- `e2aa4775593713bcab8f2fba7fcfd1917fe9a112` - `runtime: handle native HTTP signal shutdown`
+  - Adds SIGINT/SIGTERM-driven shutdown to the native HTTP fallback accept loop, including polling, listener cleanup, compiled-route cleanup, and documented one-shot SSE limitations.
+  - Covers the shutdown/SSE contract with auction server docs, SemanticScript test-plan text, and a Python contract test that pins process-level shutdown without claiming handler-visible cancellation.
+- `c26dbd9fb9e4bec55701b88aedb496cef12df7e6` - `tools: harden sem agent command contracts`
+  - Normalizes compiler diagnostics into `sem check`, adds compact default JSON windows for large check/fix/graph/slice payloads, and makes `sem skills get --json` summary-first with `--full` for raw bodies.
+  - Tightens fix/patch/test/dev behavior with actionable plan statuses, UTF-8 BOM plan loading, structured patch errors and rollback, semantic preflight-aware tests, concrete `nextCommands`, and a green agent CLI demo fixture.
+- `d6b54697bc13b83987d53bdd9cf7aa2b52524395` - `tests: raise HTTP oversized body smoke`
+  - Updates the HTTP runtime gauntlet oversized-body request to exceed the 1 MiB request-body ceiling explicitly before asserting the 413 response.
+- `3a6c47bd972d38b2330cab32c3bd99e3e2ad2644` - `compiler: fix wait-set reachability traversal`
+  - Treats inline `case` and `done` rows as local successors while preserving label successors when those rows are reached directly, so strict reachability can walk wait-set blocks without skipping sequential rows.
 - `b909b3f77cb96a961b632f359dbea5140f339d11` - `tools: add next command hints`
   - Adds `nextCommands` guidance to core `sem` JSON payloads for check, readiness, explain, fix plans, patch execution, and test results so agents can follow the repair loop directly from tool output.
   - Covers the new hints in sem CLI and subprocess command-contract tests, and documents the contract in the README, agent workflow guide, and TODO status.
