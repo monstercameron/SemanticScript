@@ -2,6 +2,15 @@
 
 ## 2026-05-22
 
+- `b909b3f77cb96a961b632f359dbea5140f339d11` - `tools: add next command hints`
+  - Adds `nextCommands` guidance to core `sem` JSON payloads for check, readiness, explain, fix plans, patch execution, and test results so agents can follow the repair loop directly from tool output.
+  - Covers the new hints in sem CLI and subprocess command-contract tests, and documents the contract in the README, agent workflow guide, and TODO status.
+- `afd5312fdb05efad2ee9d5c7ccebe14d91320611` - `docs: document and validate agent workflows`
+  - Documents the stable `sem` agent loop in the README, agent docs, workflow guide, and release checklist, including JSON schema inventory, skill aliases, semantic retrieval, fix/patch, readiness, dev, and test commands.
+  - Wires sem CLI and command-contract validation plus JSON smoke commands into CI, adds `skills get sem --json` alias contract coverage, and updates TODO status for the completed agent command workstream.
+- `2175950fbca38785b619f76868e7c694934cd1f7` - `tools: expose skill aliases and auth graph`
+  - Adds canonical skill aliases and an `aliasIndex` to `sem skills` JSON payloads, enriches normalized diagnostics with expected/actual/repair/explain metadata, and keeps metadata repairs marked for human review.
+  - Adds `sem graph --kind auth` authority/capability edges and extends sem CLI plus command-contract tests for alias discovery, diagnostic metadata, and auth graph output.
 - `1bbc7388ee62f96e11acd2ac6a7acbf2cd6057d3` - `tools: add readiness dev and test commands`
   - Adds `sem readiness`, `sem dev`, and `sem test` JSON command surfaces, embeds readiness in `sem check`, and reports runtime/toolchain readiness, watch plans, interface fingerprints, and structured test results.
   - Extends sem CLI and subprocess command-contract coverage plus TODO status for readiness, dev, test, size, patch preconditions, and the implemented agent tooling pass.
