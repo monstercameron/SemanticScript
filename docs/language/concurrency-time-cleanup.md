@@ -1,22 +1,27 @@
 # Concurrency, Time, and Cleanup
 
-The syntax already exposes concurrency and cleanup contracts. The reference
-compiler currently targets a single-thread, single-process execution model, so
-many constructs lower to synchronous or metadata-preserving behavior. That is
-not a license to omit the contract lines; future runtimes depend on them.
+The syntax already exposes concurrency and cleanup contracts. The default
+reference-compiler path still targets a single-thread, single-process execution
+model for ordinary user-operation calls, so many source-level constructs lower
+to synchronous or metadata-preserving behavior. The repository also ships an
+experimental native async adapter and `standard.event` runtime bindings; use
+the runtime-specific docs when a program depends on those executable async
+surfaces.
 
 ## 1.0 Runtime Boundary
 
-SemanticScript 1.0 does not ship a real scheduler, event loop, timer wheel, or
-thread pool runtime. `async`, `start`, task groups, worker pools, intervals,
-channels, select, and locks are contract syntax plus single-thread lowering.
-They are useful because they pin down the future runtime contract, but they do
-not create parallel execution, preemption, real event-loop scheduling, mutex
-contention, or timer delays in the current compiler.
+SemanticScript 1.0 does not guarantee a full language-level scheduler, timer
+wheel, task group runtime, or mutex runtime for every `async` operation. The
+native async adapter under `SemanticScript/runtime/native_async/` provides the
+experimental C ABI for futures, one-shot timers, cancel tokens, queued work,
+and optional libuv integration. `standard.event` builds on that ABI for process
+streams, strict process queues, and durable local event streams.
 
-Do not describe these constructs as providing runtime concurrency in 1.0
-programs. When an example relies on future scheduler behavior, add a `warning`
-or rationale line that says the current lowering is synchronous.
+Do not describe ordinary `async`, task group, channel, interval, worker-pool,
+or lock rows as automatically providing runtime concurrency. When an example
+relies on the native async adapter, `standard.event`, or wait-set lowering, say
+that explicitly; otherwise the current source-level fallback is synchronous or
+metadata-only.
 
 ## Start and Await
 
@@ -29,9 +34,12 @@ bind ok accountBalance AccountBalance fetchAccountCall
 bind error accountLookupError AccountLookupError fetchAccountCall
 ```
 
-Current lowering: `start CALL` executes like `run CALL`; `await CALL` is a
-no-op because the work has already completed. This is the correct synchronous
-fallback when no scheduler runtime is bound.
+Current ordinary user-operation fallback: `start CALL` executes like
+`run CALL`; `await CALL` is a no-op because the work has already completed.
+Runtime-backed stdlib/native calls can create futures through their
+`runtimeBindingAsyncStart` / `runtimeBindingAsyncAwait` rows, and the libuv
+console async path has dedicated wait-set lowering documented in
+`docs/toolchain/native-async-runtime.md`.
 
 ## Retry
 
@@ -99,9 +107,10 @@ receive receivedTask Task taskChannel
 branchIfChannelClosed taskChannel channelClosed
 ```
 
-Current lowering models channels as a single slot in the current operation. A
-future runtime can replace this with a queue without changing the source
-contract.
+Current lowering for the legacy `channel` / `send` / `receive` rows models a
+single slot in the current operation. Use `standard.event.openProcessQueue`
+when the program needs the executable bounded queue/backpressure runtime
+surface.
 
 ## Locks
 
@@ -131,9 +140,10 @@ runSelect nextEventSelect
 branchSelected nextEventSelect taskReadyBranch handleTaskReady
 ```
 
-Current lowering: selection metadata is preserved and the single-thread
-execution path falls through. `semlint.py` checks selects without cases and
-cases that reference unknown selects.
+Current lowering for legacy `select` / `selectCase` rows preserves selection
+metadata and the single-thread execution path falls through. The newer
+`await WAIT_SET` / `case CALL LABEL` / `done LABEL` shape lowers for the libuv
+console async path; use a fresh wait-set block for each await batch.
 
 ## Intervals
 
@@ -144,7 +154,9 @@ awaitIntervalTick heartbeatInterval
 ```
 
 Current lowering: interval handles are metadata; start and await tick are
-no-ops without a timer runtime.
+no-ops without a timer runtime. Native one-shot timers exist in
+`native_async`, but the source-level `interval` rows are still not wired to a
+general timer producer.
 
 ## Worker Pools
 
@@ -158,4 +170,6 @@ awaitWork hashFileWork
 
 Current lowering: worker-pool work dispatches directly on the same thread.
 `submitWork` builds a synthetic call from `work target` and `workArg` lines;
-`awaitWork` binds the result that direct dispatch already produced.
+`awaitWork` binds the result that direct dispatch already produced. The native
+async adapter exposes `ss_async_queue_work` for runtimeBinding code, but the
+source-level worker-pool rows are not yet a general scheduler surface.

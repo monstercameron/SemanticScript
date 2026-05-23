@@ -19,8 +19,9 @@ Rows marked `Impl'd` in `SYNTAX.md` are the stable 1.0 executable surface for
 the Python reference compiler unless a row explicitly scopes support to tooling
 or metadata. This includes core project, operation, storage, call, argument,
 branch, return, effect, capability, record, enum, error, build-tape, module,
-import, export, native executable, native HTTP, SQLite, HTML, and implemented
-JSON document/primitive APIs.
+import, export, native executable, native HTTP, SQLite, JSON
+document/primitive APIs, bcrypt, HTML, and the implemented Win32 GUI adapter
+surface.
 
 `build.sem` compatibility covers the documented project schema, strict
 diagnostics for malformed rows, source-root and module registration behavior,
@@ -64,9 +65,10 @@ Rows marked `Partial`, `Not impl'd`, or `Proposed` in `SYNTAX.md` are not stable
 or design targets for future compiler/runtime work.
 
 Package fetching, language server, documentation generator, test runner,
-installer/version manager, full registry workflow, record JSON codecs, and
-declarative GUI top-level rows are preview or future work unless a narrower row
-in `SYNTAX.md` says otherwise.
+installer/version manager, full registry workflow, record JSON codecs,
+outbound `standard.net`, native async/event-stream integration, H2O/HTTP/2,
+WinUI 3, and declarative GUI top-level rows are preview or future work unless a
+narrower row in `SYNTAX.md` says otherwise.
 
 ## Deprecation
 

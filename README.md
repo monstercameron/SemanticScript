@@ -554,8 +554,10 @@ The current repository contains:
 
 - `SemanticScript/compiler/semsc.py`: Python reference compiler.
 - `SemanticScript/linter/semlint.py`: structured diagnostics linter.
-- `SemanticScript/std/`: standard-library modules.
-- `SemanticScript/runtime/`: native runtime adapters.
+- `SemanticScript/std/`: standard-library modules, including HTTP, JSON,
+  SQLite, bcrypt, HTML, GUI, outbound network, and event contracts.
+- `SemanticScript/runtime/`: native runtime adapters, including HTTP, SQLite,
+  JSON, bcrypt, async/event support, native HTTP client, and GUI adapters.
 - `apps/`: curated runnable app demos.
 - `experiments/kilo-port/`: native terminal editor stress port.
 - `vscode-semanticscript/`: local VS Code language extension.
@@ -563,9 +565,10 @@ The current repository contains:
 
 The compiler supports project tapes, module imports, operation contracts,
 storage, calls, branches, typed returns, native executables, native HTTP,
-SQLite, JSON, bcrypt, HTML hydration, GUI and terminal runtime adapters, and
-many refined metadata rows. `SYNTAX.md` is the source of truth for which rows
-are implemented, partial, or design-target syntax.
+SQLite, JSON, bcrypt, HTML hydration, GUI and terminal runtime adapters,
+experimental native async/event and outbound HTTP client surfaces, and many
+refined metadata rows. `SYNTAX.md` is the source of truth for which rows are
+implemented, partial, or design-target syntax.
 
 ## Quick Start
 
@@ -788,6 +791,7 @@ apps/
 
 experiments/
   kilo-port/                       SemanticScript port of antirez/kilo
+  realtime-auction-arena/          Enterprise realtime auction server/client stress demo
 
 python/                            Python comparison programs
 vscode-semanticscript/             Local VS Code extension

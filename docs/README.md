@@ -48,7 +48,9 @@ matrix. The release-level boundary is:
 | Python reference compiler | Supported release compiler for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. | `SemanticScript/compiler/semsc.py`, [toolchain/compiler.md](toolchain/compiler.md) |
 | VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
 | Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `SYNTAX.md`, [toolchain/compiler.md](toolchain/compiler.md) |
-| Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, and response writers; HTTP/2/H2O remains future work. | [toolchain/compiler.md](toolchain/compiler.md) |
+| Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, response writers, blocking SSE primitives, and handler-visible shutdown drain state; HTTP/2/H2O remains future work. | [toolchain/compiler.md](toolchain/compiler.md) |
+| Native async and event streams | Experimental adapter and stdlib surface for futures, timers, cancel tokens, queued work, `standard.event` process queues, and durable local event streams. | [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) |
+| Outbound `standard.net` client | Experimental prototype for `net.fetchText` / `net.fetchBytes`; real network behavior needs the optional libcurl/libuv runtime path. | [language/native-http-client-api.md](language/native-http-client-api.md), [toolchain/compiler.md](toolchain/compiler.md) |
 | Runtime flags | Supported compiler interface for build profile, runtime checks, diagnostics format, IR persistence, and optimization level. | [toolchain/compiler.md](toolchain/compiler.md) |
 
 ## Reading Order
@@ -68,7 +70,7 @@ matrix. The release-level boundary is:
 | [language/records-codecs-boundaries.md](language/records-codecs-boundaries.md) | Records, builders, JSON codecs, trust boundaries. |
 | [language/concurrency-time-cleanup.md](language/concurrency-time-cleanup.md) | Cleanup, retry, async, groups, channels, locks, worker pools. |
 | [language/native-http-api.md](language/native-http-api.md) | Current native HTTP server API, route metadata, request readers, response writers, and route-handler ABI. |
-| [language/native-http-client-api.md](language/native-http-client-api.md) | Future outbound HTTP client API, `standard.net`, `net.fetch*`, effects, and libuv/libcurl prototype shape. |
+| [language/native-http-client-api.md](language/native-http-client-api.md) | Prototype outbound HTTP client API, `standard.net`, `net.fetch*`, effects, and libuv/libcurl runtime shape. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
 | [reference/install-policy.md](reference/install-policy.md) | Initial archive install shape and future version-manager plan. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |

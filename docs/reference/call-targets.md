@@ -140,7 +140,7 @@ arithmetic/check operations.
 
 ## Outbound Network Targets
 
-The future runtime HTTP client surface is reserved under `standard.net` and
+The prototype runtime HTTP client surface lives under `standard.net` and
 `net.fetch*` so it cannot collide with server-side `http.request*` and
 `http.response*` APIs.
 
@@ -169,7 +169,9 @@ contains `status` and caller-owned `body`; release that body with
 The native prototype lives in `SemanticScript/runtime/native_http_client/` and
 uses `SemanticScript/runtime/native_async/` when libuv is enabled. Application
 source must declare `effect OP write network.http.client` for outbound fetch
-work.
+work. Real network behavior still depends on the optional libcurl/libuv runtime
+build; the source/API shape is intentionally separate from server-side
+`standard.http`.
 
 ## Domain Methods
 

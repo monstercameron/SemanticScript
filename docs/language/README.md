@@ -23,8 +23,8 @@ authority for executable lowering.
 This folder contains the language explanation layer: lexical rules, program
 structure, project layout and `build.sem`, types, operations/dataflow,
 effects/errors, memory/state, records, codecs, cleanup, concurrency,
-time-related syntax, native HTTP server APIs, and future outbound HTTP client
-shape.
+time-related syntax, native HTTP server APIs, and prototype outbound HTTP
+client shape.
 
 - [lexical-model.md](lexical-model.md) defines tokenization, comments,
   strings, identifiers, and rejected syntax.
@@ -50,9 +50,9 @@ shape.
   retry, async, groups, channels, locks, and worker pools.
 - [native-http-api.md](native-http-api.md) describes the native HTTP server API,
   route metadata, request readers, response writers, and route-handler ABI.
-- [native-http-client-api.md](native-http-client-api.md) describes the future
-  outbound HTTP client API, `standard.net`, `net.fetch*`, effects, and native
-  libuv/libcurl prototype.
+- [native-http-client-api.md](native-http-client-api.md) describes the
+  prototype outbound HTTP client API, `standard.net`, `net.fetch*`, effects,
+  and native libuv/libcurl runtime path.
 
 ## Current Status
 
