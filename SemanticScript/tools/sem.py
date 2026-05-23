@@ -1571,6 +1571,7 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
     build_tape = _find_build_tape(path)
     compiler_source = build_tape if build_tape is not None else path
     compiler = _compiler_check_probe(compiler_source, compiler_args)
+    readiness = _readiness_payload(path)
     errors = sum(1 for item in diagnostics if item.get("severity") == "error" or item.get("blocksCompile"))
     warnings = sum(1 for item in diagnostics if item.get("severity") == "warning" and not item.get("blocksCompile"))
     ok = bool(compiler["ok"] and errors == 0 and not lint_errors and not symbols["errors"])
@@ -1609,11 +1610,7 @@ def _build_check_payload(path: Path, compiler_args: list[str]) -> dict:
         "graphSummary": symbols["summary"],
         "runtimeFeatureFlags": context["runtimeFeatureFlags"],
         "supportedSyntax": context["supportedSyntax"],
-        "targetReadiness": {
-            "status": "not-yet-computed",
-            "requestedTargets": list(context["project"].get("targets", [])),
-            "note": "sem check currently validates parse/lint/context; artifact emission readiness is not yet evaluated by this wrapper.",
-        },
+        "targetReadiness": readiness,
         "errors": lint_errors + list(symbols["errors"]),
     }
     if not compiler["ok"] and payload["status"] == "diagnostics":
@@ -2072,6 +2069,255 @@ def _size_payload(path: Path) -> dict:
             "note": "Artifact-size and backend-retention accounting is not yet computed by this wrapper; this payload currently summarizes source and helper-family footprint.",
         },
         "errors": list(bundle["errors"]) + list(symbols["errors"]),
+    }
+
+
+def _runtime_requirements(symbols: dict) -> list[str]:
+    families = set()
+    for file_payload in symbols["files"]:
+        if file_payload["routes"]:
+            families.add("nativeHttpRuntime")
+        for operation in file_payload["operations"]:
+            for effect in operation["effects"]:
+                effect_path = effect["path"]
+                if effect_path.startswith("http."):
+                    families.add("nativeHttpRuntime")
+                elif effect_path.startswith("database.") or effect_path.startswith("sqlite."):
+                    families.add("nativeSqliteRuntime")
+            for call in operation["calls"]:
+                target = call["target"]
+                if target.startswith("http."):
+                    families.add("nativeHttpRuntime")
+                elif target.startswith("sqlite."):
+                    families.add("nativeSqliteRuntime")
+                elif target.startswith("json."):
+                    families.add("nativeJsonRuntime")
+                elif target.startswith("bcrypt."):
+                    families.add("nativeBcryptRuntime")
+                elif target.startswith("gui."):
+                    families.add("nativeWin32GuiRuntime")
+    return sorted(families)
+
+
+def _readiness_payload(path: Path) -> dict:
+    context = _build_context_payload(path)
+    symbols = _symbol_graph_payload(path)
+    doctor = _doctor_payload()
+    checks = {check["name"]: check for check in doctor["checks"]}
+    required_runtimes = _runtime_requirements(symbols)
+    runtime_flags = context["runtimeFeatureFlags"]
+    missing_runtimes = [name for name in required_runtimes if not runtime_flags.get(name, False)]
+    blocking_checks = []
+    if not checks.get("python", {}).get("ok", False):
+        blocking_checks.append("python")
+    if not checks.get("llvmlite", {}).get("ok", False):
+        blocking_checks.append("llvmlite")
+    partial_checks = []
+    if not checks.get("clang", {}).get("ok", False):
+        partial_checks.append("clang")
+    status = "supported"
+    if blocking_checks or missing_runtimes:
+        status = "blocked"
+    elif partial_checks:
+        status = "partial"
+    return {
+        "schemaVersion": "sem.readiness.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "inputPath": str(path.resolve()),
+        "status": status,
+        "requestedTargets": list(context["project"].get("targets", [])) or ["host"],
+        "requiredRuntimeAdapters": required_runtimes,
+        "missingRuntimeAdapters": missing_runtimes,
+        "blockingChecks": [
+            {
+                "name": name,
+                "detail": checks.get(name, {}).get("detail", ""),
+                "fix": checks.get(name, {}).get("fix", ""),
+            }
+            for name in blocking_checks
+        ],
+        "partialChecks": [
+            {
+                "name": name,
+                "detail": checks.get(name, {}).get("detail", ""),
+                "fix": checks.get(name, {}).get("fix", ""),
+            }
+            for name in partial_checks
+        ],
+        "doctorStatus": doctor["ok"],
+        "graphSummary": symbols["summary"],
+        "runtimeFeatureFlags": runtime_flags,
+        "note": (
+            "supported means the wrapper sees no obvious environment or runtime-adapter blockers. "
+            "It does not yet guarantee backend-specific artifact emission for every target."
+        ),
+    }
+
+
+def _interface_fingerprints(path: Path) -> dict:
+    bundle = _collect_facts_bundle(path)
+    module_hashes = []
+    for item in bundle["files"]:
+        module_hashes.append({
+            "path": str(item["path"].resolve()),
+            "sha256": _file_sha256(item["path"]),
+        })
+    hasher = hashlib.sha256()
+    for module in module_hashes:
+        hasher.update(module["path"].encode("utf-8"))
+        hasher.update(module["sha256"].encode("utf-8"))
+    return {
+        "algorithm": "sha256-sem-interface-v1",
+        "projectHash": hasher.hexdigest(),
+        "modules": module_hashes,
+    }
+
+
+def _dev_payload(path: Path, trace: bool) -> dict:
+    context = _build_context_payload(path)
+    readiness = _readiness_payload(path)
+    symbols = _symbol_graph_payload(path)
+    rerun = ["check", "test", "graph"]
+    restart_on_success = symbols["summary"]["routeCount"] > 0
+    watch_files = list(context["sourceFiles"])
+    if context["project"].get("buildTape"):
+        watch_files.append(context["project"]["buildTape"])
+    watch_files = sorted(set(watch_files))
+    return {
+        "schemaVersion": "sem.dev.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "mode": "watch-plan",
+        "inputPath": str(path.resolve()),
+        "watch": {
+            "planOnly": True,
+            "files": watch_files,
+            "rerun": rerun,
+            "restartOnSuccess": restart_on_success,
+        },
+        "restart": {
+            "runnableCli": restart_on_success,
+            "reason": "routes detected in project graph" if restart_on_success else "no route-hosting surface detected",
+        },
+        "trace": {
+            "enabled": True,
+            "requested": bool(trace),
+            "phaseTiming": bool(trace),
+            "cacheFacts": bool(trace),
+            "diagnosticsPassthrough": True,
+        },
+        "interfaceFingerprints": _interface_fingerprints(path),
+        "targetReadiness": readiness,
+        "actions": [
+            {"kind": "check", "command": f"sem check --json {path}"},
+            {"kind": "test", "command": f"sem test --json {path}"},
+            {"kind": "graph", "command": f"sem graph --kind calls --json {path}"},
+            {"kind": "restart", "enabled": restart_on_success},
+        ],
+    }
+
+
+def _discover_test_entries(path: Path) -> list[dict]:
+    requested = path.resolve()
+    build_tape = _find_build_tape(path)
+    if requested.is_file() and requested.suffix.lower() in {".sem", ".sscript"} and ".test." in requested.name:
+        return [{"kind": "semantic", "path": requested, "name": requested.stem}]
+    roots = []
+    if build_tape is not None:
+        roots.append(build_tape.parent.resolve())
+    elif requested.is_dir():
+        roots.append(requested)
+    else:
+        roots.append(requested.parent)
+    discovered = []
+    seen = set()
+    for root in roots:
+        for pattern, kind in (
+            ("**/*.test.sem", "semantic"),
+            ("**/*.test.sscript", "semantic"),
+            ("**/build.test.sem", "semantic"),
+            ("**/scripts/test_*.py", "python"),
+            ("**/tests/test_*.py", "python"),
+        ):
+            for candidate in root.glob(pattern):
+                if not candidate.is_file():
+                    continue
+                resolved = candidate.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                discovered.append({"kind": kind, "path": resolved, "name": resolved.stem})
+    return sorted(discovered, key=lambda item: (item["kind"], str(item["path"]).lower()))
+
+
+def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict:
+    discovered = _discover_test_entries(path)
+    results = []
+    passed = 0
+    failed = 0
+    skipped = 0
+    for entry in discovered:
+        start = time.time()
+        if entry["kind"] == "semantic":
+            payload = _build_check_payload(entry["path"], [])
+            ok = bool(payload["ok"])
+            duration_ms = int((time.time() - start) * 1000)
+            results.append({
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "path": str(entry["path"]),
+                "status": "passed" if ok else "failed",
+                "durationMs": duration_ms,
+                "summary": payload["summary"],
+            })
+            if ok:
+                passed += 1
+            else:
+                failed += 1
+            continue
+        if entry["kind"] == "python" and not include_python_harnesses:
+            results.append({
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "path": str(entry["path"]),
+                "status": "skipped",
+                "reason": "python harness execution disabled",
+            })
+            skipped += 1
+            continue
+        proc = subprocess.run(
+            [sys.executable, str(entry["path"])],
+            cwd=str(ROOT.parent),
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        duration_ms = int((time.time() - start) * 1000)
+        ok = proc.returncode == 0
+        results.append({
+            "name": entry["name"],
+            "kind": entry["kind"],
+            "path": str(entry["path"]),
+            "status": "passed" if ok else "failed",
+            "durationMs": duration_ms,
+            "stdoutSnippet": proc.stdout[:2000],
+            "stderrSnippet": proc.stderr[:2000],
+        })
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+    return {
+        "schemaVersion": "sem.test.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "inputPath": str(path.resolve()),
+        "ok": failed == 0,
+        "discoveredTests": len(discovered),
+        "selectedTests": len(discovered),
+        "passedTests": passed,
+        "failedTests": failed,
+        "skippedTests": skipped,
+        "results": results,
     }
 
 
@@ -2952,6 +3198,24 @@ def command_version(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_readiness(args: argparse.Namespace) -> int:
+    payload = _readiness_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"status: {payload['status']}")
+        print(f"targets: {', '.join(payload['requestedTargets'])}")
+        if payload["blockingChecks"]:
+            print("blocking:")
+            for check in payload["blockingChecks"]:
+                print(f"- {check['name']}: {check['detail']}")
+        if payload["partialChecks"]:
+            print("partial:")
+            for check in payload["partialChecks"]:
+                print(f"- {check['name']}: {check['detail']}")
+    return 0 if payload["status"] != "blocked" else 1
+
+
 def command_context(args: argparse.Namespace) -> int:
     payload = _build_context_payload(Path(args.path))
     if args.json:
@@ -2992,6 +3256,29 @@ def command_size(args: argparse.Namespace) -> int:
     print(f"calls: {summary['callCount']}")
     print("use --json for machine-readable size output")
     return 0 if not payload.get("errors") else 1
+
+
+def command_dev(args: argparse.Namespace) -> int:
+    payload = _dev_payload(Path(args.path), bool(args.trace))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print("watch plan only; use --json for machine-readable agent workflow facts")
+    print(f"watch files: {len(payload['watch']['files'])}")
+    print(f"rerun: {', '.join(payload['watch']['rerun'])}")
+    return 0
+
+
+def command_test(args: argparse.Namespace) -> int:
+    payload = _run_test_payload(Path(args.path), include_python_harnesses=not args.skip_python_harnesses)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"discovered: {payload['discoveredTests']}")
+        print(f"passed: {payload['passedTests']}")
+        print(f"failed: {payload['failedTests']}")
+        print(f"skipped: {payload['skippedTests']}")
+    return 0 if payload["ok"] else 1
 
 
 def command_graph(args: argparse.Namespace) -> int:
@@ -3258,6 +3545,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="emit machine-readable prerequisite checks")
     doctor.set_defaults(func=command_doctor)
 
+    readiness = subparsers.add_parser(
+        "readiness",
+        help="emit target, runtime, and toolchain readiness facts for agent workflows",
+    )
+    readiness.add_argument("--json", action="store_true",
+                           help="emit machine-readable readiness facts")
+    readiness.add_argument("path", nargs="?", default=".")
+    readiness.set_defaults(func=command_readiness)
+
     context = subparsers.add_parser(
         "context",
         help="emit project context for agents and tooling",
@@ -3374,6 +3670,28 @@ def build_parser() -> argparse.ArgumentParser:
                       help="emit machine-readable size facts")
     size.add_argument("path", nargs="?", default=".")
     size.set_defaults(func=command_size)
+
+    dev = subparsers.add_parser(
+        "dev",
+        help="emit an agent-first watch plan for iterative edit loops",
+    )
+    dev.add_argument("--json", action="store_true",
+                     help="emit machine-readable watch-plan facts")
+    dev.add_argument("--trace", action="store_true",
+                     help="include phase-timing and cache-fact intent in the watch plan")
+    dev.add_argument("path", nargs="?", default=".")
+    dev.set_defaults(func=command_dev)
+
+    test = subparsers.add_parser(
+        "test",
+        help="run a first-pass SemanticScript and harness test surface",
+    )
+    test.add_argument("--json", action="store_true",
+                      help="emit machine-readable test results")
+    test.add_argument("--skip-python-harnesses", action="store_true",
+                      help="skip Python-based app harnesses and run only SemanticScript test files")
+    test.add_argument("path", nargs="?", default=".")
+    test.set_defaults(func=command_test)
 
     migrate_syntax = subparsers.add_parser(
         "migrate-syntax",

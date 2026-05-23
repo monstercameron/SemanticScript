@@ -151,6 +151,12 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       Implemented graph kinds: `summary`, `calls`, `effects`, `capabilities`,
       `routes`, `dataflow`, `types`, and `ownership`.
 
+- [x] Add structured readiness reporting.
+      `sem readiness --json` now reports requested targets, required runtime
+      adapters, missing adapters, blocking toolchain checks, partial toolchain
+      checks, and a supported/partial/blocked status. `sem check --json` now
+      embeds the same readiness contract instead of a placeholder.
+
 - [x] Add `sem size --json`.
       The first pass reports source footprint, operation/call/route counts, and
       retained helper-family counts so agents can inspect artifact pressure
@@ -172,13 +178,23 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
       rejects stale plans when target files drift, runs formatter normalization
       on apply, and returns a machine-readable verification payload.
 
+- [x] Add `sem dev --json`.
+      The first pass emits a watch-plan style contract with watched files,
+      rerun actions, restart hints, interface fingerprints, trace intent, and
+      target readiness facts for multi-step agent loops.
+
+- [x] Add `sem test --json`.
+      The first pass discovers SemanticScript `*.test.sem` / `*.test.sscript`
+      files plus Python app harnesses, runs them through a structured result
+      contract, and supports skipping Python harness execution when needed.
+
 - [x] Add focused CLI contract tests for the new agent surfaces.
       `SemanticScript/tests/test_sem_cli.py` now covers check payloads, graph,
-      slice, skills, explain, fix-plan generation, patch application, and
-      version JSON behavior.
+      slice, readiness, size, dev, skills, explain, fix-plan generation, test,
+      patch application, and version JSON behavior.
       `SemanticScript/tests/test_command_contracts.py` now covers the actual
-      subprocess command contracts for version, doctor, skills, check, explain,
-      graph, slice, fix, patch, and size.
+      subprocess command contracts for version, doctor, readiness, skills,
+      check, explain, graph, slice, fix, patch, size, dev, and test.
 
 - [ ] Make `sem check --json` the non-negotiable source of truth for structured
       diagnostics.

@@ -38,6 +38,12 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.doctor.v0")
         self.assertIn("checks", payload)
 
+    def test_readiness_json_contract(self) -> None:
+        code, payload = _sem_json("readiness", "--json", str(TINY_PATH))
+        self.assertIn(code, {0, 1})
+        self.assertEqual(payload["schemaVersion"], "sem.readiness.v1")
+        self.assertIn("status", payload)
+
     def test_skills_json_contract(self) -> None:
         code, payload = _sem_json("skills", "list", "--json")
         self.assertEqual(code, 0)
@@ -87,6 +93,35 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["schemaVersion"], "sem.size.v1")
         self.assertIn("summary", payload)
         self.assertIn("retainedHelpers", payload)
+
+    def test_dev_json_contract(self) -> None:
+        code, payload = _sem_json("dev", "--json", str(TINY_PATH))
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.dev.v1")
+        self.assertEqual(payload["mode"], "watch-plan")
+        self.assertIn("watch", payload)
+
+    def test_test_json_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "demo.test.sem"
+            source.write_text(
+                "project DemoTest\n"
+                "target console\n"
+                "runtime AgentRuntime 0.1\n"
+                "entry console main\n"
+                "operation main\n"
+                "output operation main ExitCode\n"
+                "memory main heap no\n"
+                "async main no\n"
+                "purpose operation main \"demo test\"\n"
+                "invariant operation main \"returns zero\"\n"
+                "return value 0\n",
+                encoding="utf-8",
+            )
+            code, payload = _sem_json("test", "--json", str(source))
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.test.v1")
+        self.assertEqual(payload["discoveredTests"], 1)
 
     def test_patch_dry_run_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

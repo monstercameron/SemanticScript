@@ -136,7 +136,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertIn("diagnostics", payload)
         self.assertIn("summary", payload)
         self.assertIn("targetReadiness", payload)
-        self.assertEqual(payload["targetReadiness"]["status"], "not-yet-computed")
+        self.assertIn(payload["targetReadiness"]["status"], {"supported", "partial", "blocked"})
         self.assertIn(payload["status"], {"ok", "ok-with-warnings"})
         diagnostic = payload["diagnostics"][0]
         self.assertIn("expected", diagnostic)
@@ -155,6 +155,19 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(payload["kind"], "calls")
         self.assertEqual(payload["summary"]["edgeCount"], 2)
         self.assertEqual(payload["edges"][0]["fromOperation"], "main")
+
+    def test_readiness_payload_reports_status(self) -> None:
+        payload = sem._readiness_payload(Path("SemanticScript/tests/tiny.sem"))
+        self.assertEqual(payload["schemaVersion"], "sem.readiness.v1")
+        self.assertIn(payload["status"], {"supported", "partial", "blocked"})
+        self.assertIn("requestedTargets", payload)
+
+    def test_dev_payload_is_watch_plan(self) -> None:
+        payload = sem._dev_payload(Path("SemanticScript/tests/tiny.sem"), trace=True)
+        self.assertEqual(payload["schemaVersion"], "sem.dev.v1")
+        self.assertEqual(payload["mode"], "watch-plan")
+        self.assertTrue(payload["watch"]["planOnly"])
+        self.assertTrue(payload["trace"]["requested"])
 
     def test_slice_operation_payload_includes_neighborhood(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -287,6 +300,28 @@ return value request
         self.assertEqual(payload["summary"]["operationCount"], 1)
         self.assertEqual(payload["summary"]["callCount"], 2)
         self.assertGreater(payload["summary"]["sourceBytes"], 0)
+
+    def test_test_payload_runs_semantic_tests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "demo.test.sem"
+            source.write_text(
+                "project DemoTest\n"
+                "target console\n"
+                "runtime AgentRuntime 0.1\n"
+                "entry console main\n"
+                "operation main\n"
+                "output operation main ExitCode\n"
+                "memory main heap no\n"
+                "async main no\n"
+                "purpose operation main \"demo test\"\n"
+                "invariant operation main \"returns zero\"\n"
+                "return value 0\n",
+                encoding="utf-8",
+            )
+            payload = sem._run_test_payload(source, include_python_harnesses=False)
+        self.assertEqual(payload["schemaVersion"], "sem.test.v1")
+        self.assertEqual(payload["discoveredTests"], 1)
+        self.assertEqual(payload["failedTests"], 0)
 
     def test_main_supports_version_json(self) -> None:
         with mock.patch("sys.stdout") as stdout:
