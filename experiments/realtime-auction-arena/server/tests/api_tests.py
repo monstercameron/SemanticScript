@@ -227,6 +227,17 @@ def test_metrics_smoke():
     assert payload["ok"] is False
     assert payload["error"]["code"] == "unauthorized"
 
+    bidder_login = login_as_bidder()
+    status, headers, text = request(
+        "/metrics",
+        headers={"Authorization": f"Bearer {bidder_login['data']['accessToken']}"},
+    )
+    assert status == 403
+    assert_common_headers(headers, "/metrics")
+    payload = json.loads(text)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "insufficient_role"
+
     login = expect_json(
         "/api/v1/auth/login",
         200,

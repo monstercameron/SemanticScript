@@ -1398,12 +1398,19 @@ useCapability protectedMetricsHandler sqliteDatabaseReadWriter
 purpose operation protectedMetricsHandler "Protect Prometheus metrics with the same seeded admin role and explicit metrics-read scope used by the enterprise auth contract."
 invariant operation protectedMetricsHandler "Unauthenticated or wrong-role callers never receive process metrics."
 label startProtectedMetricsHandler
+call metricsBearerValidCall requestHasValidBearerToken
+argument metricsBearerValidCall request HttpRequest request
+run metricsBearerValidCall
+bind value metricsBearerAccepted Bool metricsBearerValidCall
+branch if condition metricsBearerAccepted target metricsBearerAuthenticated
+branch else target metricsAdminUnauthorized
+label metricsBearerAuthenticated
 call metricsAdminAuthCall requestHasAdminBearerToken
 argument metricsAdminAuthCall request HttpRequest request
 run metricsAdminAuthCall
 bind value metricsAdminAuthAccepted Bool metricsAdminAuthCall
 branch if condition metricsAdminAuthAccepted target metricsAdminAuthorized
-branch else target metricsAdminUnauthorized
+branch else target metricsAdminForbidden
 label metricsAdminAuthorized
 call protectedMetricsWriteCall serverMetricsHandler
 argument protectedMetricsWriteCall request HttpRequest request
@@ -1417,6 +1424,12 @@ argument metricsUnauthorizedWriteCall response HttpResponse response
 run metricsUnauthorizedWriteCall
 bind value metricsUnauthorizedStatus CSignedInt32 metricsUnauthorizedWriteCall
 return value metricsUnauthorizedStatus
+label metricsAdminForbidden
+call metricsForbiddenWriteCall helpers.writeInsufficientRoleEnvelope
+argument metricsForbiddenWriteCall response HttpResponse response
+run metricsForbiddenWriteCall
+bind value metricsForbiddenStatus CSignedInt32 metricsForbiddenWriteCall
+return value metricsForbiddenStatus
 
 operation authReadyHandler
 input operation authReadyHandler request HttpRequest

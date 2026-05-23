@@ -55,14 +55,14 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
 
 ## Still Missing
 
-- Production auth hardening still missing: production mode that makes absent or
-  invalid `AUCTION_ARENA_JWT_SECRET` fatal, durable multi-session
-  refresh-token/session lookup, and account-lock policy beyond the seeded
-  disabled-user check.
+- Production auth hardening now fails readiness and login when
+  `AUCTION_ARENA_PROFILE=production` and `AUCTION_ARENA_JWT_SECRET` is absent
+  or shorter than 32 bytes. Durable multi-session refresh-token/session lookup
+  and account-lock policy beyond the seeded disabled-user check remain open.
 - Registered create/start/extend/close routes, bid routes, chat routes, event
-  replay, and admin audit enforce the process-local seeded role/scope split.
-  Viewer/admin/service guard helpers exist; operator metrics protection remains
-  missing until metrics auth is enabled.
+  replay, admin audit, and metrics enforce the process-local seeded role/scope
+  split. Viewer/admin/service guard helpers exist for current and future route
+  families.
 - Long-lived live SSE fanout still needs route-level fanout,
   request/connection cancellation, per-client queues, and backpressure.
   `/events` is authenticated and authorized bounded JSON replay by default for
@@ -83,9 +83,10 @@ in `experiments/realtime-auction-arena/server/src`, not in native runtime code.
   timestamp input still accepted for compatibility. Broader admin
   user-management routes remain future work.
 - Request logging now writes durable finish rows for registered auction command
-  accepts and bid rejects, but still needs a reusable request context,
-  monotonic duration measurement, dynamic request-id generation for every path,
-  start rows, and broader runtime-backed counters/gauges.
+  accepts and bid rejects, and completed rows normalize zero-duration inputs to
+  a positive persisted duration. A reusable request context, true monotonic
+  duration source, dynamic request-id generation for every path, start rows,
+  and broader runtime-backed counters/gauges remain open.
 - Rejected bid audit rows and auth login/refresh/logout/session audit rows are
   durable for executable paths. Broader denied/failed command audit rows remain
   planned.
@@ -137,10 +138,11 @@ features.
 - SQLite transaction helper ergonomics for `BEGIN IMMEDIATE`, rollback guards,
   and commit.
 - `standard.event` now provides libuv-backed start/await process queues with
-  strict capacity and `queue_full` backpressure, and the auction supervisor has
-  executable ordering/backpressure smoke coverage. Production route-handler
-  actor-loop wiring, async `select`, cancelable timer producers, and fake clocks
-  remain open.
+  strict capacity and `queue_full` backpressure, plus local durable streams with
+  locked checksummed append logs, torn-tail recovery, and bounded in-memory
+  replay. The auction supervisor has executable ordering/backpressure smoke
+  coverage. Production route-handler actor-loop wiring, async `select`,
+  cancelable timer producers, and fake clocks remain open.
 - Long-lived live SSE fanout on top of the new blocking stream primitives:
   client-disconnect-aware cancellation, async subscriber drains, and
   nonblocking per-subscriber writes.

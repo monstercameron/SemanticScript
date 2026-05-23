@@ -27,10 +27,9 @@ Auth hardening now includes disabled-user rejection, typed access-token
 `aud`/`exp`/`jti` checks, JWT denylist lookup, seeded admin audit access, and
 `403 insufficient_role` splitting. Audit replay now supports opaque
 `createdAtUtcMillis:auditEventId` cursor pagination with an audit id tiebreak.
-Source-health cleanup, restart-safe durable session lookup, production secret
-fail-fast, canonical idempotency hashing, operator metrics auth, complete
-request observability, non-SSE shutdown cancellation, and long-lived live SSE
-fanout remain open.
+Source-health cleanup, restart-safe durable session lookup, canonical
+idempotency hashing, reusable request-start context, non-SSE shutdown
+cancellation, and long-lived live SSE fanout remain open.
 
 Agent loop note: use `sem check --json experiments/realtime-auction-arena/server`
 for source-health signal, use
@@ -201,10 +200,10 @@ red.
 - [x] Protect the registered bid route by seeded bidder role and scope.
 - [x] Protect future admin, service, viewer-scope, and full decoded-scope
       policies once those handlers/principals exist.
-- [ ] Make missing or short `AUCTION_ARENA_JWT_SECRET` fatal in production
+- [x] Make missing or short `AUCTION_ARENA_JWT_SECRET` fatal in production
       startup mode while preserving the deterministic local demo fallback for
       development.
-- [ ] Add live production-config coverage that proves production mode fails
+- [x] Add live production-config coverage that proves production mode fails
       readiness/startup without a valid JWT secret and succeeds with a valid
       secret.
 - [ ] Replace seeded process-local role checks with durable principal lookup
@@ -420,16 +419,19 @@ red.
 - [x] Add CSRF plan before any cookie-authenticated writes in
       `server/docs/api-contract.md`.
 - [x] Add metrics and audit tests for auth and command routes.
-- [ ] Protect `/metrics` with an operator/admin policy or explicit
+- [x] Protect `/metrics` with an operator/admin policy or explicit
       development-only mode so production metrics are not public.
+- [x] Normalize completed request-log durations to non-zero persisted values
+      and add live E2E assertions for command request-log duration rows.
 - [ ] Add durable request-start rows, reusable request context, monotonic
-      duration measurement, non-zero duration assertions, and broader
-      route-family request-log coverage.
+      duration measurement source, and broader route-family request-log
+      coverage.
 - [ ] Remove or rename non-SSE runtime-gap metric markers once durable auth,
-      production config, request logging, and idempotency gaps are closed.
-- [ ] Add runtime behavioral tests for metrics auth, production secret
-      fail-fast, durable-session restart safety, canonical idempotency
-      conflicts, and request-log duration measurement.
+      reusable request-context logging, and idempotency gaps are closed.
+- [x] Add runtime behavioral tests for metrics auth, production secret
+      fail-fast, and request-log duration measurement.
+- [ ] Add runtime behavioral tests for durable-session restart safety and
+      canonical idempotency conflicts after those implementations land.
 
 ## P2 - Enterprise Hardening
 

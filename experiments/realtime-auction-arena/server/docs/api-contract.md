@@ -73,9 +73,10 @@ A replay with a different body returns `idempotency_conflict`.
 
 Observability contract:
 
-- `GET /metrics` emits Prometheus-style bootstrap info plus runtime-backed
-  counters/gauges for routed requests, login outcomes, command outcomes, bid
-  accepts, rate-limit hits, and active SSE clients.
+- `GET /metrics` requires a seeded admin bearer with `metrics:read` and emits
+  Prometheus-style bootstrap info plus runtime-backed counters/gauges for
+  routed requests, login outcomes, command outcomes, bid accepts,
+  rate-limit hits, and active SSE clients.
 - Metrics use bounded route-pattern and outcome labels, not raw paths, ids,
   usernames, tokens, IPs, user agents, or request bodies.
 - Request finish logs persist `request_log` rows with route pattern, status,
@@ -92,7 +93,7 @@ Current executable route set:
 |---|---|---|
 | GET | `/healthz` | executable |
 | GET | `/readyz` | executable |
-| GET | `/metrics` | executable |
+| GET | `/metrics` | executable admin-protected metrics |
 | GET | `/api/v1` | executable |
 | POST | `/api/v1/auth/login` | executable demo auth |
 | POST | `/api/v1/auth/refresh` | executable demo auth |
@@ -107,10 +108,10 @@ Current executable route set:
 | POST | `/api/v1/auctions/:auctionId/bids` | executable SQLite bid with idempotency and active bidder attribution |
 | GET | `/api/v1/auctions/:auctionId/events` | executable authenticated bounded JSON replay by default; `Accept: text/event-stream` returns SSE replay frames with `id`, `event`, `data`, and a heartbeat |
 
-Long-lived live SSE fanout, restart-safe durable sessions, all-route request start logging,
-operator metrics auth, and non-auth rate-limit enforcement remain planned
-runtime work. Registered auction command accepts and bid rejects persist durable
-request finish rows.
+Long-lived live SSE fanout, restart-safe durable sessions, all-route request
+start logging, reusable request context, and non-auth rate-limit enforcement
+remain planned runtime work. Registered auction command accepts and bid rejects
+persist durable request finish rows with non-zero completed durations.
 Chat route policy, message length,
 sanitization, persistence SQL, event ordering, and revision-isolation contracts
 are complete in `server/src/chat.sem` and `server/src/sql_queries.sem`.
@@ -314,7 +315,7 @@ Examples show the contract shape.
 |---|---|---|
 | `GET /healthz` | `X-Request-Id: req_...` | `200`, `ok:true`, `data.status:"ok"` |
 | `GET /readyz` | `X-Request-Id: req_...` | `200`, `ok:true`, `data.ready:true` |
-| `GET /metrics` | `X-Request-Id: req_...` | `200` Prometheus text with bootstrap and runtime-gap series |
+| `GET /metrics` | admin bearer, `X-Request-Id: req_...` | `200` Prometheus text with bootstrap and runtime-gap series; unauthenticated callers receive `401 unauthorized`, valid non-admin callers receive `403 insufficient_role` |
 | `GET /api/v1` | `X-Request-Id: req_...` | `200`, executable route strings |
 | `POST /api/v1/auth/login` | `{"username":"auctioneer","password":"auctioneer-demo-password"}` | `200`, bearer access token, refresh token, user |
 | `POST /api/v1/auth/refresh` | `{"refreshToken":"..."}` | `200`, rotated bearer and refresh tokens |
@@ -383,11 +384,12 @@ Long-lived SSE target behavior:
   `auction_server_sse_slow_client_drops_total`;
 - keep broadcast after commit so clients never observe rolled-back events.
 
-The executable `/metrics` endpoint publishes runtime-backed request/auth/bid
-and rate-limit series, active SSE stream gauge, slow-write drop counter, and the
-configured heartbeat/queue capacity. Long-lived live fanout, per-client queues,
-queue overflow drops, and cancellation-aware subscriber drains remain route and
-async-runtime work. `standard.http` now owns `openSseStream`, `writeSseEvent`,
+The executable `/metrics` endpoint is protected by seeded admin auth and
+publishes runtime-backed request/auth/bid and rate-limit series, active SSE
+stream gauge, slow-write drop counter, and the configured heartbeat/queue
+capacity. Long-lived live fanout, per-client queues, queue overflow drops, and
+cancellation-aware subscriber drains remain route and async-runtime work.
+`standard.http` now owns `openSseStream`, `writeSseEvent`,
 `writeSseEventWithId`, `writeSseHeartbeat`, `closeSseStream`, and
 `clientDisconnected` as runtimeBinding wrappers. `http.responseSseEvent`
 remains a one-shot frame formatter.

@@ -360,6 +360,13 @@ def test_metrics_route():
     assert_common_headers(headers, "/metrics")
     assert_envelope(text, ok=False, code="unauthorized")
 
+    bidder_login = login_as("bidder")
+    bidder_auth = {"Authorization": f"Bearer {bidder_login['data']['accessToken']}"}
+    status, headers, text = request("/metrics", headers=bidder_auth)
+    assert status == 403
+    assert_common_headers(headers, "/metrics")
+    assert_envelope(text, ok=False, code="insufficient_role")
+
     login = login_as("admin")
     token_payload = decode_jwt_payload(login["data"]["accessToken"])
     assert token_payload["role"] == "admin"
@@ -1541,18 +1548,22 @@ def test_auth_and_api_fail_closed():
             """,
             (auction_id,),
         ).fetchall()
-        comparable_request_log_rows = {row[:5] for row in request_log_rows}
+        comparable_request_log_rows = {
+            (row[0], row[1], row[2], row[4])
+            for row in request_log_rows
+        }
         assert {
-            ("/api/v1/auctions", 201, "user_auctioneer_001", 0, ""),
-            ("/api/v1/auctions/:auctionId/start", 200, "user_auctioneer_001", 0, ""),
-            ("/api/v1/auctions/:auctionId/extend", 200, "user_auctioneer_001", 0, ""),
-            ("/api/v1/auctions/:auctionId/close", 200, "user_auctioneer_001", 0, ""),
-            ("/api/v1/auctions/:auctionId/bids", 201, "user_bidder_demo", 0, ""),
-            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", 0, "auction_not_running"),
-            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", 0, "bid_below_minimum"),
-            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", 0, "amount_too_high"),
-            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", 0, "stale_revision"),
+            ("/api/v1/auctions", 201, "user_auctioneer_001", ""),
+            ("/api/v1/auctions/:auctionId/start", 200, "user_auctioneer_001", ""),
+            ("/api/v1/auctions/:auctionId/extend", 200, "user_auctioneer_001", ""),
+            ("/api/v1/auctions/:auctionId/close", 200, "user_auctioneer_001", ""),
+            ("/api/v1/auctions/:auctionId/bids", 201, "user_bidder_demo", ""),
+            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", "auction_not_running"),
+            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", "bid_below_minimum"),
+            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", "amount_too_high"),
+            ("/api/v1/auctions/:auctionId/bids", 409, "user_bidder_demo", "stale_revision"),
         }.issubset(comparable_request_log_rows)
+        assert all(row[3] >= 1 for row in request_log_rows)
         assert all(row[5] == "redacted" for row in request_log_rows)
         assert all(row[6] == "redacted" for row in request_log_rows)
         rejected_bid_rows = conn.execute(

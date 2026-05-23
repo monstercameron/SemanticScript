@@ -363,9 +363,9 @@ jsonBody authContract
               "name": "operator",
               "allowedRoles": "admin, service",
               "requiredScopes": "metrics:read",
-              "routeFamilies": "GET /metrics once protected",
+              "routeFamilies": "GET /metrics",
               "failureStatus": "401 unauthorized or 403 forbidden",
-              "runtimeStatus": "contract; metrics endpoint is currently public bootstrap text"
+              "runtimeStatus": "executable for GET /metrics with seeded admin role plus metrics:read scope; unauthenticated callers receive 401 and valid non-admin callers receive 403 insufficient_role"
           },
           "service": {
               "name": "service",
@@ -400,10 +400,10 @@ jsonBody authContract
           "demoSeedEnv": "AUCTION_ARENA_DEMO_SEED enables seeded auctioneer, bidder, admin, and disabled demo principals only for local development",
           "secretLoadingRule": "AUCTION_ARENA_JWT_SECRET must be read from environment or config at startup, be at least 32 random bytes after decoding, be redacted from logs, and never use a source literal outside deterministic local demo mode",
           "failureMode": "startup fails readiness if required production auth config is absent or invalid",
-          "runtimeStatus": "executable reads AUCTION_ARENA_JWT_SECRET when present and at least 32 bytes, otherwise uses deterministic local demo fallback; production fatal-missing-secret mode remains pending"
+          "runtimeStatus": "executable reads AUCTION_ARENA_JWT_SECRET when present and at least 32 bytes, otherwise uses deterministic local demo fallback; AUCTION_ARENA_PROFILE=production fails readiness and login with configuration_invalid when the secret is absent or too short"
       },
       "authContextIntegrationPatch": {
-          "value": "Remaining auth_context integration: add restart-safe refresh lookup/session recovery once opaque refresh tokens carry a lookup id or keyed lookup hash; make production JWT secret absence fatal; protect operator metrics once metrics auth is enabled; add durable multi-session principal lookup beyond the active process-local demo session."
+          "value": "Remaining auth_context integration: add restart-safe refresh lookup/session recovery once opaque refresh tokens carry a lookup id or keyed lookup hash; add durable multi-session principal lookup beyond the active process-local demo session."
       }
   }
 
