@@ -1720,7 +1720,7 @@ def _graph_payload(path: Path, kind: str) -> dict:
                         "path": effect["path"],
                         "location": effect["location"],
                     })
-    elif kind == "capabilities":
+    elif kind in {"capabilities", "auth"}:
         for file_payload in symbols["files"]:
             for operation in file_payload["operations"]:
                 for capability in operation["capabilities"]:
@@ -1729,6 +1729,14 @@ def _graph_payload(path: Path, kind: str) -> dict:
                         "operation": operation["name"],
                         "capability": capability["name"],
                         "location": capability["location"],
+                    })
+                for authority in operation.get("authorities", []):
+                    edges.append({
+                        "kind": "authority",
+                        "operation": operation["name"],
+                        "action": authority["action"],
+                        "path": authority["path"],
+                        "location": authority["location"],
                     })
     elif kind == "routes":
         for file_payload in symbols["files"]:
@@ -1786,7 +1794,7 @@ def _graph_payload(path: Path, kind: str) -> dict:
             "inputPath": str(path.resolve()),
             "ok": False,
             "error": f"unsupported graph kind: {kind}",
-            "supportedKinds": ["summary", "calls", "effects", "capabilities", "routes", "dataflow", "types", "ownership"],
+            "supportedKinds": ["summary", "calls", "effects", "capabilities", "auth", "routes", "dataflow", "types", "ownership"],
         }
 
     return {
@@ -2322,6 +2330,9 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True) -> dict
 
 
 def _skill_registry_payload() -> list[dict]:
+    alias_groups: dict[str, list[str]] = {}
+    for alias, canonical in SKILL_ALIASES.items():
+        alias_groups.setdefault(canonical, []).append(alias)
     payload = []
     for entry in SKILL_REGISTRY:
         files = [str((ROOT.parent / relative).resolve()) for relative in entry["files"]]
@@ -2329,6 +2340,7 @@ def _skill_registry_payload() -> list[dict]:
             "name": entry["name"],
             "description": entry["description"],
             "files": files,
+            "aliases": sorted(alias_groups.get(entry["name"], [])),
         })
     return payload
 
@@ -2337,6 +2349,7 @@ def _skill_content(name: str) -> dict | None:
     for entry in SKILL_REGISTRY:
         if entry["name"] != name:
             continue
+        aliases = sorted(alias for alias, canonical in SKILL_ALIASES.items() if canonical == name)
         sections = []
         for relative in entry["files"]:
             path = ROOT.parent / relative
@@ -2351,6 +2364,7 @@ def _skill_content(name: str) -> dict | None:
             "name": entry["name"],
             "description": entry["description"],
             "files": [str((ROOT.parent / relative).resolve()) for relative in entry["files"]],
+            "aliases": aliases,
             "content": "\n".join(sections).strip() + ("\n" if sections else ""),
         }
     return None
@@ -3369,6 +3383,7 @@ def command_skills(args: argparse.Namespace) -> int:
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
             "skills": _skill_registry_payload(),
+            "aliasIndex": dict(sorted(SKILL_ALIASES.items())),
         }
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
@@ -3389,6 +3404,7 @@ def command_skills(args: argparse.Namespace) -> int:
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
             "skills": entries,
+            "aliasIndex": dict(sorted(SKILL_ALIASES.items())),
         }
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
@@ -3577,7 +3593,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="emit an agent-first architecture graph derived from SemanticScript source",
     )
     graph.add_argument("--kind", default="summary",
-                       choices=("summary", "calls", "effects", "capabilities", "routes", "dataflow", "types", "ownership"),
+                       choices=("summary", "calls", "effects", "capabilities", "auth", "routes", "dataflow", "types", "ownership"),
                        help="graph view to emit")
     graph.add_argument("--json", action="store_true",
                        help="emit machine-readable graph payload")
