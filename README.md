@@ -26,8 +26,9 @@ source that gives humans, agents, editors, linters, and compilers enough context
 to make careful changes without reconstructing intent from framework convention
 or expression nesting.
 
-Current release status: `0.0.1` pre-release. No stable public release has been
-published yet. Main-branch prerelease builds are published on
+Current release status: pre-release, with the repository version recorded in
+[`version.json`](version.json). No stable public release has been published yet.
+Main-branch prerelease builds are published on
 [GitHub Releases](https://github.com/monstercameron/SemanticScript/releases)
 with a Windows `sem.exe`, VS Code VSIX, and checksum manifest.
 

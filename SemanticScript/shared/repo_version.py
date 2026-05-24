@@ -25,6 +25,17 @@ def format_semver(major: int, minor: int, patch: int) -> str:
     return f"{major}.{minor}.{patch}"
 
 
+def bump_semver(version: str, part: str) -> str:
+    major, minor, patch = parse_semver(version)
+    if part == "major":
+        return format_semver(major + 1, 0, 0)
+    if part == "minor":
+        return format_semver(major, minor + 1, 0)
+    if part == "patch":
+        return format_semver(major, minor, patch + 1)
+    raise ValueError(f"unsupported semantic version bump part: {part!r}")
+
+
 def read_version_payload(path: Path = VERSION_FILE) -> dict:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -57,5 +68,4 @@ def write_repo_version(version: str, path: Path = VERSION_FILE) -> None:
 
 
 def bump_patch(version: str) -> str:
-    major, minor, patch = parse_semver(version)
-    return format_semver(major, minor, patch + 1)
+    return bump_semver(version, "patch")
