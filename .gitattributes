@@ -20,6 +20,10 @@
 *.yaml text eol=lf
 *.yml text eol=lf
 
+# Git hooks are POSIX shell with no extension; keep LF so they stay valid and
+# executable on every platform (a CRLF shebang breaks the hook).
+.githooks/** text eol=lf
+
 # Windows entry points are checked out with CRLF for native tooling.
 *.bat text eol=crlf
 *.cmd text eol=crlf
