@@ -11533,6 +11533,694 @@ def check_scalar_literal_ranges(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+# Integer divide / modulo targets (plus their short aliases). The `right`
+# operand is the divisor; an `srem`/`sdiv` by zero is LLVM undefined behavior,
+# not a trap, so a divisor that the linter can *prove* is the literal 0 must
+# never reach codegen.
+DIVISION_INT64_TARGETS: frozenset = frozenset({
+    "math.divideInt64", "math.moduloInt64",
+    "math.divInt64", "math.modInt64",
+})
+
+# Shift targets. The `right` operand is the shift count and must be in [0, 63];
+# a constant count outside that range is LLVM poison (undefined), matching the
+# `standard.bit` module's documented "bitIndex must be in [0, 63]" contract.
+SHIFT_INT64_TARGETS: frozenset = frozenset({
+    "math.shiftLeftInt64",
+    "math.shiftRightLogicalInt64",
+    "math.shiftRightArithmeticInt64",
+})
+
+# Domain-typed method names that lower to integer divide/modulo. A call like
+# `QuotaCount.divide` (where `QuotaCount` aliases Int64) lowers to sdiv, so the
+# divide-by-zero check must see through the domain surface — matching the
+# compiler's `_strict_resolve_arith_target`. Float64 divide is defined on 0
+# (inf/nan), so it is intentionally excluded.
+DOMAIN_DIVISION_METHODS: frozenset = frozenset({"divide", "modulo", "moduloBy"})
+
+
+def _resolve_division_or_shift_target(
+    targetName: str,
+    typeAliases: Dict[str, str],
+) -> str:
+    """Resolve a domain-typed `Type.divide`/`Type.modulo` call to its integer
+    division primitive when `Type` heads to Int64, so the constant-zero check
+    matches the compiler wall on idiomatic domain-typed arithmetic."""
+    if targetName in DIVISION_INT64_TARGETS or targetName in SHIFT_INT64_TARGETS:
+        return targetName
+    if "." not in targetName:
+        return targetName
+    typePart, methodPart = targetName.split(".", 1)
+    if methodPart not in DOMAIN_DIVISION_METHODS:
+        return targetName
+    if _resolve_type_alias_head(typePart, typeAliases) == "Int64":
+        return "math.moduloInt64" if methodPart != "divide" else "math.divideInt64"
+    return targetName
+
+
+def _resolve_literal_int(
+    valueName: str,
+    literalMap: Dict[str, Tuple[str, str, SourceLine]],
+) -> Optional[int]:
+    """Resolve a divisor/shift-count operand to a concrete integer when it is a
+    compile-time constant — either an inline integer literal token or a named
+    `domainLiteral`/`const`/`literal`/`storage`/`memory` immutable bound to an
+    integer literal. Returns None when the value is not a provable constant
+    (a runtime binding, an opaque/namespaced constant, etc.), in which case
+    these checks stay silent — they only fire on values they can *prove* bad,
+    so they never false-positive on guarded or runtime divisors."""
+    seen: Set[str] = set()
+    current = valueName
+    # Follow a bounded constant->constant alias chain (e.g.
+    # `domainLiteral zeroB Int64 zeroA` where `zeroA` is itself 0).
+    for _ in range(8):
+        if _is_integer_literal(current):
+            return int(current)
+        if current in seen:
+            return None
+        seen.add(current)
+        entry = literalMap.get(current)
+        if entry is None:
+            return None
+        current = entry[1]
+    return None
+
+
+def _immutable_constant_row(sourceLine: SourceLine) -> Optional[Tuple[str, str, str]]:
+    """Return (name, typeName, valueToken) for an *immutable* constant row, or
+    None. Mutable `storage`/`memory` slots are excluded on purpose: a slot
+    `memory OP mutable counter Int64 0` is initialized to 0 but reassigned via
+    `set memory`, so its initializer is not its value at a later divide/shift
+    site (this is why the GCD/Newton loops in the stdlib are not flagged)."""
+    verb = sourceLine.verb
+    args = sourceLine.args
+    if verb in {"domainLiteral", "const", "literal"} and len(args) >= 3:
+        return args[0], args[1], args[2]
+    if verb in {"storage", "sharedState"} and len(args) >= 5 and args[1] == "immutable":
+        return args[2], args[3], args[4]   # storage/sharedState SCOPE immutable NAME TYPE VALUE
+    if verb == "memory" and len(args) >= 5 and args[1] == "immutable":
+        return args[2], args[3], args[4]    # memory OP immutable NAME TYPE VALUE
+    return None
+
+
+def _rebound_name(sourceLine: SourceLine) -> Optional[str]:
+    """The local name introduced/reassigned by this row, if any. Such a name is
+    a runtime binding, so any same-named module constant must NOT be trusted
+    inside this operation (shadowing / rebinding wins)."""
+    verb = sourceLine.verb
+    args = sourceLine.args
+    inputParts = input_parts(sourceLine)
+    if inputParts is not None:
+        return inputParts[1]
+    bindParts = bind_parts(sourceLine)
+    if bindParts is not None:
+        return bindParts[1]
+    if verb == "set" and len(args) >= 2 and args[0] in {"memory", "storage", "sharedState"}:
+        return args[1]
+    # A mutable storage/memory/sharedState slot is a runtime binding even at its
+    # declaration.
+    if verb in {"storage", "sharedState"} and len(args) >= 4 and args[1] == "mutable":
+        return args[2]
+    if verb == "memory" and len(args) >= 4 and args[1] == "mutable":
+        return args[2]
+    return None
+
+
+def _module_immutable_constants(facts: ExtendedFacts) -> Dict[str, Tuple[str, str, SourceLine]]:
+    """Module-scope immutable constants only. Lines that belong to an operation
+    body are skipped so operation-local `storage local`/`memory` declarations do
+    not leak across operations (that global leak was a real false-positive
+    source: a `storage local immutable cnt 64` in op A must not resolve `cnt`
+    inside op B where it is a runtime input)."""
+    operationLineKeys = {
+        (sourceLine.path, sourceLine.number)
+        for operation in facts.base.operations.values()
+        for sourceLine in operation.lines
+    }
+    constants: Dict[str, Tuple[str, str, SourceLine]] = {}
+    for sourceLine in facts.base.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        if (sourceLine.path, sourceLine.number) in operationLineKeys:
+            continue
+        row = _immutable_constant_row(sourceLine)
+        if row is not None:
+            constants[row[0]] = (row[1], row[2], sourceLine)
+    return constants
+
+
+def _operation_constant_map(
+    facts: ExtendedFacts,
+    operation: OperationFact,
+    moduleConstants: Dict[str, Tuple[str, str, SourceLine]],
+) -> Dict[str, Tuple[str, str, SourceLine]]:
+    """Module constants, plus this operation's own immutable constants, minus
+    any name the operation rebinds (`input`/`bind`/`set`/mutable slot). Scope is
+    operation-local so a constant in one op never resolves a runtime name in
+    another, and a runtime binding always shadows a same-named module constant."""
+    constants = dict(moduleConstants)
+    rebound: Set[str] = set()
+    for sourceLine in operation.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        row = _immutable_constant_row(sourceLine)
+        if row is not None:
+            constants[row[0]] = (row[1], row[2], sourceLine)
+            continue
+        reboundName = _rebound_name(sourceLine)
+        if reboundName is not None:
+            rebound.add(reboundName)
+    for name in rebound:
+        constants.pop(name, None)
+    return constants
+
+
+def check_constant_division_or_shift_ub(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4308 / SS4309 — integer arithmetic whose operand the linter can prove
+    triggers undefined behavior at the LLVM level:
+
+      * SS4308 divisionByConstantZero — `math.divideInt64`/`math.moduloInt64`
+        whose `right` divisor resolves to the literal 0 (sdiv/srem by 0 is UB).
+      * SS4309 shiftCountOutOfRange — a shift whose `right` count resolves to a
+        constant outside [0, 63] (a poison shift, not a wrap).
+
+    Both fire only when the operand is a *provable* constant, so a runtime or
+    comparison-guarded divisor/count is never flagged here — that broader,
+    dataflow-sensitive case is tracked separately and needs an explicit
+    range-discharge construct. This pass is the zero-false-positive floor."""
+    diagnostics: List[Diagnostic] = []
+    moduleConstants = _module_immutable_constants(facts)
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        literalMap = _operation_constant_map(facts, operation, moduleConstants)
+        callTargetByName: Dict[str, str] = {}
+        rightArgLineByCall: Dict[str, SourceLine] = {}
+        rightValueByCall: Dict[str, str] = {}
+        for sourceLine in operation.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargetByName[sourceLine.args[0]] = sourceLine.args[1]
+                continue
+            argParts = argument_parts(sourceLine)
+            if argParts is not None and argParts[1] == "right":
+                rightArgLineByCall[argParts[0]] = sourceLine
+                rightValueByCall[argParts[0]] = argParts[3]
+
+        for callName, rawTargetName in callTargetByName.items():
+            divisorValue = rightValueByCall.get(callName)
+            if divisorValue is None:
+                continue
+            targetName = _resolve_division_or_shift_target(
+                rawTargetName, facts.base.type_aliases)
+            argLine = rightArgLineByCall[callName]
+            resolved = _resolve_literal_int(divisorValue, literalMap)
+
+            if targetName in DIVISION_INT64_TARGETS and resolved == 0:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS4308",
+                    kind="typeIntegrity.divisionByConstantZero",
+                    severity=Severity.ERROR,
+                    subjectName=callName,
+                    subjectKind="call",
+                    gapEdge="nonZeroDivisor",
+                    intentSlogan="divide/modulo by constant zero",
+                    primary=span_of_line(argLine, "divisorArgument"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        f"`{targetName}` lowers to LLVM sdiv/srem; a divisor of 0 "
+                        f"is undefined behavior. semsc emits a runtime divisor-zero "
+                        f"trap by default, but it is silent UB under "
+                        f"`runtimeChecks off` — and a constant-zero divisor is "
+                        f"never intended. `{callName}` divides by `{divisorValue}` "
+                        f"which is the constant 0."
+                    ),
+                    specAnchor="docs/language/types-values.md#primitive-lowering",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="guardDivisorIsNonZero",
+                            shape=(
+                                f"call {callName}DivisorCheck math.equalInt64\n"
+                                f"argument {callName}DivisorCheck left Int64 {divisorValue}\n"
+                                f"argument {callName}DivisorCheck right Int64 <zeroConstant>\n"
+                                f"run {callName}DivisorCheck\n"
+                                f"bind value {callName}DivisorIsZero Bool {callName}DivisorCheck\n"
+                                f"branch if condition {callName}DivisorIsZero target <divideByZeroLabel>"
+                            ),
+                            evidence=[span_of_line(argLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_constant_division_or_shift_ub",
+                    agentHint=(
+                        "a literal zero divisor is always undefined behavior; "
+                        "change the divisor or guard the path so the divide is "
+                        "unreachable when the divisor is zero"
+                    ),
+                ))
+                continue
+
+            if targetName in SHIFT_INT64_TARGETS and resolved is not None and not (0 <= resolved <= 63):
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS4309",
+                    kind="typeIntegrity.shiftCountOutOfRange",
+                    severity=Severity.ERROR,
+                    subjectName=callName,
+                    subjectKind="call",
+                    gapEdge="shiftCountInRange",
+                    intentSlogan="shift count outside [0, 63]",
+                    primary=span_of_line(argLine, "shiftCountArgument"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        f"`{targetName}` shift count must be in [0, 63]; a count "
+                        f"of {resolved} is LLVM poison (undefined), not a wrap. "
+                        f"`{callName}` shifts by `{divisorValue}` = {resolved}."
+                    ),
+                    specAnchor="docs/language/types-values.md#primitive-lowering",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="maskShiftCountIntoRange",
+                            shape=(
+                                f"# shift counts must be in [0, 63]; mask the count "
+                                f"with `math.bitwiseAndInt64` against 63 before "
+                                f"`argument {callName} right Int64 ...`"
+                            ),
+                            evidence=[span_of_line(argLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_constant_division_or_shift_ub",
+                    agentHint=(
+                        "an out-of-range constant shift count is undefined at the "
+                        "LLVM level; keep the count in [0, 63] (mask with & 63)"
+                    ),
+                ))
+
+    return diagnostics
+
+
+# Non-cryptographic PRNG call targets (CWE-338): libc `rand`/`srand` and the
+# POSIX `random`/`drand48` relatives. Dual-use: fine for simulations/sampling,
+# never for security-sensitive values. Advisory in the permissive surface;
+# `semsc --strict` (SS4601) blocks them outright. Kept in sync with the
+# compiler's `_STRICT_INSECURE_RANDOM_TARGETS` (parity asserted by tests).
+INSECURE_PSEUDORANDOM_TARGETS: frozenset = frozenset(
+    "c." + symbol for symbol in (
+        "rand", "srand", "random", "srandom", "rand_r", "random_r",
+        "drand48", "lrand48", "mrand48", "srand48", "seed48", "lcong48",
+        "initstate", "setstate",
+    )
+)
+
+
+def check_insecure_pseudorandom(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4601 — flag non-cryptographic PRNG targets (c.rand/c.srand/c.random).
+    Predictable randomness must not back tokens, keys, nonces, or salts."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in collect_operation_calls(operation).values():
+            if callFact.target not in INSECURE_PSEUDORANDOM_TARGETS:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS4601",
+                kind="security.insecurePseudoRandom",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge="cryptographicRandomness",
+                intentSlogan="non-cryptographic PRNG",
+                primary=span_of_line(callFact.line, "insecureRandomCall"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{callFact.target}` is a deterministic LCG (CWE-338); its "
+                    "output is predictable and must never back a token, key, "
+                    "nonce, salt, or session id. It is acceptable only for "
+                    "non-security sampling/simulation."
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#random",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useCryptographicRandomSource",
+                        shape=(
+                            "# fill a BcryptRandomBuffer with `bcrypt.randomBytes` "
+                            "(platform CSPRNG) and derive the value from those "
+                            "bytes instead of calling " + callFact.target
+                        ),
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_insecure_pseudorandom",
+                agentHint=(
+                    "if this randomness is security-sensitive, switch to "
+                    "`bcrypt.randomBytes` (the platform CSPRNG in standard.bcrypt); "
+                    "strict mode (SS4601) rejects the libc PRNG family outright"
+                ),
+            ))
+    return diagnostics
+
+
+# bcrypt password-hash target and the security floor for the cost factor.
+# `bcrypt.hashPassword` is *by definition* password hashing, so a cost below the
+# OWASP-ASVS floor (10) is a CWE-916 weak work factor — not dual-use. Cost 4-9
+# is brute-forceable; the module's `bcryptRecommendedCost` is 12.
+#
+# Match only the qualified intrinsic spelling — NOT a bare `hashPassword`, which
+# would false-positive a user operation that happens to be named `hashPassword`
+# (a real risk: `hashPassword` is also the std export name). A singular-import
+# alias of the intrinsic is a conservative advisory miss here; the strict wall
+# still catches it via target resolution.
+PASSWORD_HASH_TARGET: str = "bcrypt.hashPassword"
+SECURE_BCRYPT_COST_FLOOR: int = 10
+
+
+def check_weak_password_hash_cost(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4602 — `bcrypt.hashPassword` with a provable constant cost below the
+    security floor (CWE-916). Advisory here (tests legitimately hash at low cost
+    for speed); `semsc --strict` blocks it for production builds."""
+    diagnostics: List[Diagnostic] = []
+    moduleConstants = _module_immutable_constants(facts)
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        literalMap = _operation_constant_map(facts, operation, moduleConstants)
+        callTargetByName: Dict[str, str] = {}
+        callLineByName: Dict[str, SourceLine] = {}
+        costArgLineByCall: Dict[str, SourceLine] = {}
+        costValueByCall: Dict[str, str] = {}
+        for sourceLine in operation.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargetByName[sourceLine.args[0]] = sourceLine.args[1]
+                callLineByName[sourceLine.args[0]] = sourceLine
+                continue
+            argParts = argument_parts(sourceLine)
+            if argParts is not None and argParts[1] == "cost":
+                costArgLineByCall[argParts[0]] = sourceLine
+                costValueByCall[argParts[0]] = argParts[3]
+
+        for callName, targetName in callTargetByName.items():
+            if targetName != PASSWORD_HASH_TARGET:
+                continue
+            costValue = costValueByCall.get(callName)
+            if costValue is None:
+                # Missing `cost` — bcrypt needs an explicit work factor; omitting
+                # it otherwise slips past the check (and ValueErrors in codegen).
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS4602",
+                    kind="security.weakPasswordHashCost",
+                    severity=Severity.WARNING,
+                    subjectName=callName,
+                    subjectKind="call",
+                    gapEdge="bcryptCostFactor",
+                    intentSlogan="bcrypt missing cost factor",
+                    primary=span_of_line(callLineByName[callName], "bcryptHashCall"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        "`bcrypt.hashPassword` is missing the required `cost` "
+                        "argument; bcrypt needs an explicit work factor (CWE-916). "
+                        "Use `bcryptRecommendedCost` (12)."
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#bcrypt",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addBcryptCost",
+                            shape=f"argument {callName} cost Int32 bcryptRecommendedCost",
+                            evidence=[span_of_line(callLineByName[callName])],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_weak_password_hash_cost",
+                    agentHint=(
+                        "bcrypt requires an explicit cost; add "
+                        "`cost Int32 bcryptRecommendedCost` (strict mode SS4602 "
+                        "rejects a missing or weak cost)"
+                    ),
+                ))
+                continue
+            resolved = _resolve_literal_int(costValue, literalMap)
+            if resolved is None or resolved >= SECURE_BCRYPT_COST_FLOOR:
+                continue
+            argLine = costArgLineByCall[callName]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS4602",
+                kind="security.weakPasswordHashCost",
+                severity=Severity.WARNING,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="bcryptCostFactor",
+                intentSlogan="bcrypt cost below security floor",
+                primary=span_of_line(argLine, "bcryptCostArgument"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`bcrypt.hashPassword` cost {resolved} is below the security "
+                    f"floor of {SECURE_BCRYPT_COST_FLOOR} (CWE-916). bcrypt cost is "
+                    f"a work factor; a low constant cost is brute-forceable. Use "
+                    f"`bcryptRecommendedCost` (12) unless application policy chooses "
+                    f"otherwise. Low cost is acceptable only in tests."
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#bcrypt",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useRecommendedBcryptCost",
+                        shape=f"argument {callName} cost Int32 bcryptRecommendedCost",
+                        evidence=[span_of_line(argLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_weak_password_hash_cost",
+                agentHint=(
+                    "raise the bcrypt cost to bcryptRecommendedCost (12); strict "
+                    "mode (SS4602) rejects a cost below "
+                    f"{SECURE_BCRYPT_COST_FLOOR} outright"
+                ),
+            ))
+    return diagnostics
+
+
+# OS command-execution targets (CWE-78). `c.system` hands its argument to a
+# shell; a non-constant command is command injection.
+SHELL_COMMAND_TARGETS: frozenset = frozenset({"c.system"})
+
+
+def check_shell_command_not_constant(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4603 — `c.system` must take a compile-time-constant command string; a
+    runtime/untrusted command is OS command injection (CWE-78). Advisory here;
+    `semsc --strict` blocks it."""
+    diagnostics: List[Diagnostic] = []
+    moduleConstants = _module_immutable_constants(facts)
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        constants = _operation_constant_map(facts, operation, moduleConstants)
+        for callFact in collect_operation_calls(operation).values():
+            if callFact.target not in SHELL_COMMAND_TARGETS:
+                continue
+            for argLine in callFact.arg_lines:
+                parts = argument_parts(argLine)
+                if parts is None:
+                    continue
+                commandValue = parts[3]
+                if commandValue in constants:
+                    continue
+                # An inline string literal (`c.system("ls -la")`) is a constant;
+                # the value token carries the quoted flag. Only a bare-name value
+                # that is not a resolvable immutable constant is the injection risk.
+                if argLine.tokens and argLine.tokens[-1].quoted:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS4603",
+                    kind="security.shellCommandNotConstant",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="constantShellCommand",
+                    intentSlogan="non-constant shell command",
+                    primary=span_of_line(argLine, "shellCommandArgument"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        f"`c.system` runs `{commandValue}` through a shell; the "
+                        "command must be a compile-time-constant string (a "
+                        "module/op-local immutable), never runtime/untrusted data "
+                        "— that is OS command injection (CWE-78). There is no safe "
+                        "shell-parameterization in this toolchain."
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#system",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useConstantCommand",
+                            shape=('storage module immutable commandText String "<fixed command>"'),
+                            evidence=[span_of_line(argLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_shell_command_not_constant",
+                    agentHint=(
+                        "never build a shell command from input/runtime values; "
+                        "pass a constant string to c.system (strict mode SS4603 "
+                        "blocks a non-constant command), or avoid shelling out"
+                    ),
+                ))
+                break
+    return diagnostics
+
+
+def _secret_trust_types(facts: ExtendedFacts) -> Set[str]:
+    """Type names declared `typeTrust <T> secret` in THIS file.
+
+    NOTE: single-file only — the linter has no import resolution, so a secret
+    type defined in an imported module (e.g. std `JwtSecret`) is not visible
+    here. The advisory floor therefore under-reports cross-module hard-coded
+    secrets; the binding `semsc --strict` wall (which flattens imports before
+    parse) does catch them. This is an advisory-floor limitation, not a wall
+    gap."""
+    secretTypes: Set[str] = set()
+    for sourceLine in facts.base.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        if (sourceLine.verb == "typeTrust" and len(sourceLine.args) >= 2
+                and sourceLine.args[1] == "secret"):
+            secretTypes.add(sourceLine.args[0])
+    return secretTypes
+
+
+def _type_chain_is_secret(
+    typeName: str,
+    typeAliases: Dict[str, str],
+    secretTypes: Set[str],
+) -> bool:
+    """True if `typeName`, or any type it aliases through, is secret-trust.
+    Closes the `type AppSecret JwtSecret` alias evasion."""
+    seen: Set[str] = set()
+    current: Optional[str] = typeName
+    while current is not None and current not in seen:
+        if current in secretTypes:
+            return True
+        seen.add(current)
+        current = typeAliases.get(current)
+    return False
+
+
+def _resolve_string_const_chain(
+    name: str,
+    constMap: Dict[str, Tuple[str, str, SourceLine]],
+) -> Optional[str]:
+    """Follow a const-name chain to its ultimate value (mirrors the compiler's
+    `_strict_resolve_const_chain`): a secret bound to another constant that
+    resolves to a non-empty literal is still hard-coded."""
+    seen: Set[str] = set()
+    current: Optional[str] = name
+    resolvedAny = False
+    for _ in range(8):
+        if current is None or current in seen:
+            return None
+        entry = constMap.get(current)
+        if entry is None:
+            # Reached a leaf. It's a hard-coded literal only if we actually
+            # walked at least one immutable-constant hop to get here; a value
+            # name that is NOT an immutable constant (a mutable/runtime-filled
+            # sentinel, an undeclared name) is not a source literal.
+            return current if resolvedAny else None
+        seen.add(current)
+        current = entry[1]
+        resolvedAny = True
+    return current
+
+
+def check_hardcoded_secret(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4604 — a non-empty compile-time value bound to a secret-trust-typed
+    storage is a hard-coded credential (CWE-798). Empty sentinels filled at
+    runtime are the good pattern and are not flagged. Resolves const-name chains
+    (parity with the compiler). Advisory here; `semsc --strict` blocks."""
+    secretTypes = _secret_trust_types(facts)
+    if not secretTypes:
+        return []
+    moduleConstants = _module_immutable_constants(facts)
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        args = sourceLine.args
+        # storage/sharedState SCOPE MUT NAME TYPE VALUE ; memory OP MUT NAME TYPE VALUE
+        if sourceLine.verb not in {"storage", "sharedState", "memory"}:
+            continue
+        if len(args) < 5 or args[1] not in {"mutable", "immutable"}:
+            continue
+        declaredName, declaredType = args[2], args[3]
+        if not _type_chain_is_secret(declaredType, facts.base.type_aliases, secretTypes):
+            continue
+        # A non-empty quoted literal is a hard-coded secret directly; a NAME value
+        # is resolved through the constant chain (e.g. `secret <- realSecret <-
+        # "literal"`). An empty "" sentinel or a name that resolves to nothing/
+        # empty (a runtime-filled slot) is the good pattern and is not flagged.
+        valueToken = sourceLine.tokens[-1]
+        if valueToken.quoted:
+            effectiveValue = valueToken.text
+        else:
+            effectiveValue = _resolve_string_const_chain(args[4], moduleConstants)
+        if not effectiveValue:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS4604",
+            kind="security.hardCodedSecret",
+            severity=Severity.WARNING,
+            subjectName=declaredName,
+            subjectKind="storage",
+            gapEdge="runtimeSecretSource",
+            intentSlogan="hard-coded secret literal",
+            primary=span_of_line(sourceLine, "secretLiteral"),
+            invariantRule=(
+                f"`{declaredName}` is `{declaredType}` (typeTrust secret) but is "
+                "bound to a source string literal — a hard-coded credential "
+                "(CWE-798). Load it from the environment (`c.getenv`) or secure "
+                "config at runtime; embed only an empty `\"\"` sentinel in source."
+            ),
+            specAnchor="docs/reference/syntax-inventory.md#typeTrust",
+            fixCandidates=[
+                FixCandidate(
+                    name="useEmptySentinelFilledFromEnv",
+                    shape=f'storage module mutable {declaredName} {declaredType} ""',
+                    evidence=[span_of_line(sourceLine)],
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_hardcoded_secret",
+            agentHint=(
+                "never put a real secret in source; read it from the environment "
+                "into this secret-typed slot at runtime (strict mode SS4604 blocks "
+                "a hard-coded secret)"
+            ),
+        ))
+    return diagnostics
+
+
 def check_duplicate_declarations(facts: ExtendedFacts) -> List[Diagnostic]:
     """Same name declared twice in the same scope. Operation-scoped kinds
     (label, call) collide only within the same op; module-scoped kinds
@@ -18413,6 +19101,11 @@ CHECKERS = [
     check_scalar_literal_ranges,
     check_enum_return_uses_case,
     check_math_operand_width_drift,
+    check_constant_division_or_shift_ub,
+    check_insecure_pseudorandom,
+    check_weak_password_hash_cost,
+    check_shell_command_not_constant,
+    check_hardcoded_secret,
     check_duplicate_declarations,
     check_unknown_verbs,
     check_project_build_tape_schema,

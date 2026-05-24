@@ -137,6 +137,18 @@ SEM_TERMINAL = {
 }
 
 # ---- <stdlib.h> ----
+# Non-cryptographic PRNG symbols (CWE-338). Single source of truth for the
+# SS4601 security rule (semsc derives its target set from this; the semlint
+# floor mirrors it under a parity test). Listing the full POSIX `random`/
+# `drand48` family — not just the `rand`/`srand` wired in STDLIB today — makes
+# the rule forward-safe: if any of these is later added as a callable target it
+# is automatically covered. `rand_s` (Windows CSPRNG) is deliberately absent.
+INSECURE_PRNG_SYMBOLS = frozenset({
+    "rand", "srand", "random", "srandom", "rand_r", "random_r",
+    "drand48", "lrand48", "mrand48", "srand48", "seed48", "lcong48",
+    "initstate", "setstate",
+})
+
 STDLIB = {
     "malloc":     ("OpaquePointer", ["ByteCount"], False),
     "calloc":     ("OpaquePointer", ["ByteCount", "ByteCount"], False),

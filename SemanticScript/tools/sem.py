@@ -141,6 +141,7 @@ DIAGNOSTIC_INDEX_PATHS = (
     "docs/toolchain/compiler.md",
     "docs/toolchain/linter.md",
     "docs/agents.md",
+    "docs/reference/security-rules.md",
     "SemanticScript/linter/test_semlint.py",
 )
 SKILL_ALIASES = {
@@ -248,6 +249,91 @@ DIAGNOSTIC_EXPLAINERS = {
         "commonFixes": [
             "Inspect the cited source line and restore a valid current-row form from docs/reference/syntax-inventory.md or `sem skills get sem --json`.",
             "Run `sem check --json` again after fixing the malformed row so higher-level diagnostics are trustworthy."
+        ],
+    },
+    # ---- Security rule family (SS43xx arithmetic-UB + SS46xx security) ----
+    # Discoverable here so `sem explain <code>` works for every security rule.
+    # The full rule x layer x CWE matrix lives in docs/reference/security-rules.md.
+    "SS4308": {
+        "title": "divide / modulo by a constant zero (CWE-369)",
+        "summary": "math.divideInt64/moduloInt64 whose divisor is a provable constant 0. LLVM sdiv/srem by 0 is undefined behavior, so this is blocked on EVERY build (always-on security floor), not just under --strict.",
+        "whyItMatters": [
+            "A constant-zero divisor is never an intended program; it is pure UB with no legitimate use in any context.",
+            "Catching it at compile time is strictly safer than relying on a runtime trap (which is disabled under --runtime-checks off)."
+        ],
+        "commonFixes": [
+            "Change the divisor to a non-zero value, or guard the divide so it is unreachable when the divisor is zero.",
+        ],
+    },
+    "SS4309": {
+        "title": "shift count outside [0, 63] (CWE-682)",
+        "summary": "A shift (math.shiftLeftInt64/shiftRight*) whose count is a provable constant outside [0, 63]. An out-of-range shift count is LLVM poison, not a wrap. Blocked on every build (always-on floor).",
+        "whyItMatters": [
+            "A constant out-of-range shift count is undefined at the LLVM level and never intended.",
+        ],
+        "commonFixes": [
+            "Keep the shift count in [0, 63]; mask the count with `math.bitwiseAndInt64` against 63 first.",
+        ],
+    },
+    "SS4601": {
+        "title": "non-cryptographic pseudo-random source (CWE-338)",
+        "summary": "A call to the libc PRNG family (c.rand/c.srand/c.random/...). These are deterministic generators, predictable, and must never back tokens, keys, nonces, salts, or session ids. Strict-blocked; advisory on default builds.",
+        "whyItMatters": [
+            "Predictable randomness in a security-sensitive value is a direct CWE-338 vulnerability.",
+            "libc rand/srand are acceptable only for non-security sampling/simulation."
+        ],
+        "commonFixes": [
+            "Use `bcrypt.randomBytes` (the platform CSPRNG in standard.bcrypt) for any security-sensitive value.",
+        ],
+    },
+    "SS4602": {
+        "title": "weak or missing bcrypt work factor (CWE-916)",
+        "summary": "bcrypt.hashPassword with a missing cost argument or a provable constant cost below the security floor (10). A weak work factor is brute-forceable. Blocked on every non-test build (always-on floor); *.test.sem is exempt for fast test hashing.",
+        "whyItMatters": [
+            "A sub-floor or unspecified bcrypt cost has no legitimate production use.",
+        ],
+        "commonFixes": [
+            "Pass `cost Int32 bcryptRecommendedCost` (12), or a higher application-policy constant.",
+        ],
+    },
+    "SS4603": {
+        "title": "non-constant shell command - OS command injection (CWE-78)",
+        "summary": "c.system whose command is not a compile-time-constant string. Untrusted/runtime data in a shell command is command injection; there is no safe shell-parameterization in this toolchain. Strict-blocked; advisory on default builds.",
+        "whyItMatters": [
+            "A shell command built from input/runtime data is a classic CWE-78 vector with no parameterized form.",
+        ],
+        "commonFixes": [
+            "Declare the command as a `storage module immutable <name> String \"...\"` and pass that, or avoid c.system.",
+        ],
+    },
+    "SS4604": {
+        "title": "hard-coded credential (CWE-798)",
+        "summary": "A non-empty compile-time value bound to a secret-trust-typed (`typeTrust ... secret`) storage slot. A secret embedded in source is a hard-coded credential. Strict-blocked; advisory on default builds.",
+        "whyItMatters": [
+            "Secrets in source leak through version control, images, and logs, and cannot be rotated without a rebuild.",
+        ],
+        "commonFixes": [
+            "Declare an empty `\"\"` sentinel and fill it at runtime from `c.getenv` / secure config.",
+        ],
+    },
+    "SS3310": {
+        "title": "non-constant format string - format-string injection (CWE-134)",
+        "summary": "A c.snprintf/printf-family `format` argument that is not a module-scope immutable String. A runtime format string allows %n/%s injection. Strict-blocked; advisory on default builds.",
+        "whyItMatters": [
+            "An attacker-influenced format string can read or corrupt memory via %n/%s.",
+        ],
+        "commonFixes": [
+            "Use a `storage * immutable String` format and pass values as arguments, never as the format itself.",
+        ],
+    },
+    "SS3911": {
+        "title": "non-constant SQL text - SQL injection (CWE-89)",
+        "summary": "A sqlite.prepareStatement/exec `sql` argument that is not a module-scope immutable SqlText constant. Building SQL from runtime data is SQL injection. Strict-blocked; advisory on default builds.",
+        "whyItMatters": [
+            "Concatenating untrusted data into SQL is the canonical injection vector.",
+        ],
+        "commonFixes": [
+            "Use a module-scope immutable `SqlText` constant and bind dynamic values with sqlite.bind*, not string concatenation.",
         ],
     },
 }
