@@ -1,5 +1,10 @@
 # Reference Compiler
 
+Most users should start with the release-built `sem.exe` attached to
+[GitHub Releases](https://github.com/monstercameron/SemanticScript/releases).
+This page documents the compiler internals and source-checkout commands behind
+that release CLI.
+
 The reference compiler is `SemanticScript/compiler/semsc.py`. It parses
 line-oriented SemanticScript, resolves imports and external literals, builds an
 AST, emits LLVM IR with `llvmlite`, can JIT-run, and can call `clang` for
@@ -11,7 +16,9 @@ implement a second build engine.
 
 ## Commands
 
-Run from the repository's `SemanticScript/` directory unless paths are explicit:
+Installed release users should run the top-level `sem` command. Source-checkout
+compiler developers can run the Python files directly. The examples below run
+from the repository's `SemanticScript/` directory unless paths are explicit:
 
 ```powershell
 python compiler/semsc.py --version
@@ -73,6 +80,8 @@ CLI flags:
 | `--quiet` | Suppress success messages. |
 
 Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
+See [LLVM Compiler Installation](llvm-compiler-install.md) for platform-specific
+LLVM/clang setup.
 Set `SEMANTICSCRIPT_STD_PATH` or `SEMSC_STD_PATH` to one or more std roots
 separated by the platform path separator when the standard library is installed
 outside the compiler bundle. Set `SEMSC_TRACEBACK=1` to print Python

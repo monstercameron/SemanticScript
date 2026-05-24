@@ -13,11 +13,13 @@ goal is code that humans and agents can inspect, repair, and validate without
 guessing.
 
 Current release status: `0.0.1` pre-release. No stable public release has been
-published yet.
+published yet. Main-branch prerelease builds are published on
+[GitHub Releases](https://github.com/monstercameron/SemanticScript/releases)
+with a Windows `sem.exe`, VS Code VSIX, and checksum manifest.
 
 ## What Works
 
-- Python reference compiler for `.sscript` and `.sem`.
+- Release-built `sem.exe` CLI for `.sscript` and `.sem`.
 - LLVM IR generation, JIT execution, and clang-linked native executables.
 - Structured linter, formatter, and semantic diagnostics.
 - `sem` CLI for validation, graph/slice retrieval, repair planning, patching,
@@ -34,33 +36,62 @@ implementation inventory in
 [docs/reference/syntax-inventory.md](docs/reference/syntax-inventory.md) as the
 source of truth.
 
-## Quickstart
+## Install
 
-From the repository root:
+Download the latest `main-<SHORT_SHA>` prerelease from
+[GitHub Releases](https://github.com/monstercameron/SemanticScript/releases).
+Each main-channel prerelease includes:
+
+- `semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe`: standalone Windows
+  `sem` CLI.
+- `semanticscript-vscode-main-<SHORT_SHA>.vsix`: local VS Code extension
+  package.
+- `semanticscript-merge-release-manifest-main-<SHORT_SHA>.json`: artifact
+  metadata and SHA-256 checksums.
+
+Install the compiler CLI on Windows:
 
 ```powershell
-python -m pip install -r requirements.txt -c constraints.txt
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+$InstallDir = "$env:LOCALAPPDATA\Programs\SemanticScript"
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+Copy-Item ".\semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe" "$InstallDir\sem.exe"
+& "$InstallDir\sem.exe" version --json
 ```
+
+Install the editor extension from the same release:
+
+```powershell
+code --install-extension ".\semanticscript-vscode-main-<SHORT_SHA>.vsix"
+```
+
+Add `$InstallDir` to `PATH` if you want to run `sem` from any terminal.
+
+Install LLVM/clang when you need native executable output through `sem build`
+or compiler `--emit-exe` paths. See
+[docs/toolchain/llvm-compiler-install.md](docs/toolchain/llvm-compiler-install.md).
+After LLVM is installed, run `sem doctor` to verify the native backend.
+
+## Quickstart
 
 Scaffold a small project:
 
 ```powershell
-python SemanticScript\tools\sem.py new hello-world
-python SemanticScript\tools\sem.py check --json hello-world
+sem new hello-world
+sem check --json hello-world
 ```
 
-List the central validation lanes:
+Inspect the toolchain and available workflows:
 
 ```powershell
-python SemanticScript\tests\run_suite.py --list
+sem version --json
+sem skills list --json
 ```
 
-Run the CI-equivalent fast lane:
+For source checkout development, use the Python driver and test suite directly:
 
 ```powershell
+python -m pip install -r requirements.txt -c constraints.txt
+python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tests\run_suite.py ci-fast
 ```
 
@@ -93,14 +124,14 @@ what the operation reads, writes, allocates, authorizes, and must preserve.
 Use `sem` before dropping to compiler or linter internals:
 
 ```powershell
-python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind summary --json PATH
-python SemanticScript\tools\sem.py slice --operation NAME --json PATH
-python SemanticScript\tools\sem.py explain CODE --json
-python SemanticScript\tools\sem.py fix --plan --json PATH
-python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
-python SemanticScript\tools\sem.py test --json PATH
+sem skills list --json
+sem check --json PATH
+sem graph --kind summary --json PATH
+sem slice --operation NAME --json PATH
+sem explain CODE --json
+sem fix --plan --json PATH
+sem patch --dry-run --json PLAN.json
+sem test --json PATH
 ```
 
 The intended repair loop is:
@@ -159,6 +190,8 @@ guarantee.
 - [docs/language/README.md](docs/language/README.md): language model.
 - [docs/toolchain/compiler.md](docs/toolchain/compiler.md): compiler and
   backend behavior.
+- [docs/toolchain/llvm-compiler-install.md](docs/toolchain/llvm-compiler-install.md):
+  LLVM/clang installation for native executable builds.
 - [docs/toolchain/agent-workflows.md](docs/toolchain/agent-workflows.md):
   agent-facing command loop.
 - [docs/toolchain/vscode-extension.md](docs/toolchain/vscode-extension.md):
@@ -174,9 +207,9 @@ guarantee.
 
 ## Release And Extension Status
 
-The repository is pre-release. The GitHub release workflow validates release
-candidates, packages the local VS Code extension, and can attach release
-artifacts for a matching `v*` tag.
+The repository is pre-release. Main-branch merges publish prerelease handoff
+builds with `sem.exe`, the local VS Code VSIX, and a manifest. Stable public
+version releases will use `v*` tags once the compatibility boundary is ready.
 
 The VS Code extension currently uses `publisher: semanticscript-local` for
 local VSIX packaging. Choose a real Marketplace publisher before public
