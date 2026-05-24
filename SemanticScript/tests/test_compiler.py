@@ -5022,6 +5022,15 @@ def test_build_tape_validation_accepts_dependency_fetch_rows():
               msg)
 
 
+def test_build_tape_validation_rejects_confusable_github_hosts():
+    check("build tape: github owner/repo accepts canonical host prefix",
+          semsc._github_owner_repo_is_valid("github.com/example/semstd"),
+          "canonical github.com owner/repo should validate")
+    check("build tape: github owner/repo rejects host-like owner",
+          not semsc._github_owner_repo_is_valid("github.com.evil/example"),
+          "host-like owner must not validate as a GitHub repository")
+
+
 def test_build_tape_validation_rejects_insecure_dependency_fetch():
     with tempfile.TemporaryDirectory() as tmpdir:
         build_path = Path(tmpdir) / "build.sem"
@@ -7394,6 +7403,7 @@ def main():
     test_build_tape_path_normalization()
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_validation_accepts_dependency_fetch_rows()
+    test_build_tape_validation_rejects_confusable_github_hosts()
     test_build_tape_validation_rejects_insecure_dependency_fetch()
     test_desktop_window_smoke_sample_uses_refined_gui_surface()
     test_desktop_window_smoke_parser_contract_when_supported()

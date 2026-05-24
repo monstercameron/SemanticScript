@@ -215,6 +215,18 @@ class TaskForgeApiClientTests(unittest.TestCase):
         self.assertIn('"/api/todos"', app_js)
         self.assertNotIn("127.0.0.1:18090", app_js)
 
+    def test_static_paths_reject_relative_segments(self) -> None:
+        self.assertIsNone(dev_proxy._safe_static_path(APP_ROOT, "/../scripts/dev_proxy.py"))
+        self.assertIsNone(dev_proxy._safe_static_path(APP_ROOT, "/%2e%2e/scripts/dev_proxy.py"))
+
+    def test_api_origin_must_be_loopback(self) -> None:
+        with self.assertRaises(ValueError):
+            dev_proxy.make_handler(APP_ROOT, "http://example.com:18090")
+
+    def test_forwarded_headers_reject_line_breaks(self) -> None:
+        self.assertIsNone(dev_proxy._safe_header_pair("X-Test", "ok\r\nX-Injected: yes"))
+        self.assertIsNone(dev_proxy._safe_header_pair("X-Test\nInjected", "ok"))
+
 
 if __name__ == "__main__":
     unittest.main()
