@@ -1,0 +1,186 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump to prepare. Use exact with the version input."
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - exact
+      version:
+        description: "Exact semantic version, with or without a leading v, when bump is exact."
+        required: false
+        type: string
+      release_notes:
+        description: "Curated Markdown release notes to commit with the release PR."
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release PR
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Apply version bump and release notes
+        id: release
+        shell: pwsh
+        env:
+          BUMP: ${{ inputs.bump }}
+          EXACT_VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $defaultBranch = "${{ github.event.repository.default_branch }}"
+          if ("${{ github.ref_name }}" -ne $defaultBranch) {
+            throw "Prepare Release must be run from the default branch '$defaultBranch'."
+          }
+
+          $bump = ([string]$env:BUMP).Trim()
+          $exactVersion = ([string]$env:EXACT_VERSION).Trim()
+          if ($exactVersion.StartsWith("v")) {
+            $exactVersion = $exactVersion.Substring(1)
+          }
+
+          if ($bump -eq "exact") {
+            if (-not $exactVersion) {
+              throw "The version input is required when bump is exact."
+            }
+            $bumpArgs = @("--set", $exactVersion, "--json")
+          } else {
+            if ($exactVersion) {
+              throw "The version input is only accepted when bump is exact."
+            }
+            $bumpArgs = @("--bump", $bump, "--json")
+          }
+
+          $releaseNotes = ([string]$env:RELEASE_NOTES).Trim()
+          if (-not $releaseNotes) {
+            throw "release_notes must not be empty."
+          }
+
+          git fetch --force --tags origin
+
+          $bumpOutput = & python SemanticScript/tools/bump_version.py @bumpArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "bump_version.py failed with exit code $LASTEXITCODE."
+          }
+          $payload = ($bumpOutput | Out-String | ConvertFrom-Json)
+          $version = $payload.version
+          $tag = "v$version"
+
+          $existingTag = git rev-parse -q --verify "refs/tags/$tag" 2>$null
+          if ($LASTEXITCODE -eq 0 -and $existingTag) {
+            throw "Release tag '$tag' already exists."
+          }
+
+          $releaseDir = Join-Path "releases" $tag
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+          $notesPath = Join-Path $releaseDir "notes.md"
+          Set-Content -Path $notesPath -Value ($releaseNotes + "`n") -Encoding utf8
+
+          python SemanticScript/tools/bump_version.py --check --json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Version synchronization check failed."
+          }
+          python SemanticScript/tools/release_versions.py --json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release version matrix check failed."
+          }
+
+          $branch = "release/$tag"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "branch=$branch" >> $env:GITHUB_OUTPUT
+          "notes_path=$($notesPath.Replace('\', '/'))" >> $env:GITHUB_OUTPUT
+
+      - name: Run release-version unit tests
+        run: python -m unittest SemanticScript.tests.test_release_versions -v
+
+      - name: Create or update release PR
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
+          RELEASE_NOTES_PATH: ${{ steps.release.outputs.notes_path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $true
+          }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git switch -c $env:RELEASE_BRANCH
+          git add version.json vscode-semanticscript/package.json vscode-semanticscript/package-lock.json $env:RELEASE_NOTES_PATH
+          git commit -m "release: prepare $env:RELEASE_TAG"
+          git push --force-with-lease origin "HEAD:$env:RELEASE_BRANCH"
+
+          gh workflow run ci.yml `
+            --repo "${{ github.repository }}" `
+            --ref $env:RELEASE_BRANCH
+
+          $bodyPath = Join-Path $env:RUNNER_TEMP "release-pr-body.md"
+          $body = @(
+            "Automated release preparation for ``$env:RELEASE_TAG``.",
+            "",
+            "- Updates repository-wide version metadata to ``$env:RELEASE_VERSION``.",
+            "- Commits curated release notes at ``$env:RELEASE_NOTES_PATH``.",
+            "- Verifies ``bump_version.py --check`` and ``release_versions.py --json``.",
+            "- Dispatches ``ci.yml`` on the generated release branch because bot-created PR events are suppressed by GitHub.",
+            "",
+            "After this PR merges, run the ``Publish Release`` workflow with version ``$env:RELEASE_VERSION``."
+          ) -join "`n"
+          Set-Content -Path $bodyPath -Value $body -Encoding utf8
+
+          $existingPr = gh pr list `
+            --repo "${{ github.repository }}" `
+            --head $env:RELEASE_BRANCH `
+            --base "${{ github.event.repository.default_branch }}" `
+            --state open `
+            --json number `
+            --jq ".[0].number"
+
+          if ($existingPr) {
+            gh pr edit $existingPr `
+              --repo "${{ github.repository }}" `
+              --title "release: $env:RELEASE_TAG" `
+              --body-file $bodyPath
+          } else {
+            gh pr create `
+              --repo "${{ github.repository }}" `
+              --base "${{ github.event.repository.default_branch }}" `
+              --head $env:RELEASE_BRANCH `
+              --title "release: $env:RELEASE_TAG" `
+              --body-file $bodyPath
+          }

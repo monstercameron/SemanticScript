@@ -1,12 +1,28 @@
 name: Release
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, matching version.json (for example v0.0.1)."
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease."
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
         description: "Existing release tag to publish, matching version.json (for example v0.0.1)."
         required: true
         type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease."
+        required: true
+        default: true
+        type: boolean
   push:
     tags:
       - "v*"
@@ -28,7 +44,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -161,9 +177,15 @@ jobs:
           if (-not $repoVersion) {
             throw "version.json does not contain a version field."
           }
+          $inputPrerelease = "${{ inputs.prerelease }}"
+          if ($inputPrerelease) {
+            $releaseIsPrerelease = [System.Convert]::ToBoolean($inputPrerelease)
+          } else {
+            $releaseIsPrerelease = $repoVersion.StartsWith("0.")
+          }
 
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.ref_name }}" -ne "${{ github.event.repository.default_branch }}") {
-            throw "Manual release dispatch must run from the default branch."
+          if (("${{ github.event_name }}" -eq "workflow_dispatch" -or "${{ github.event_name }}" -eq "workflow_call") -and "${{ github.ref_name }}" -ne "${{ github.event.repository.default_branch }}") {
+            throw "Manual or reusable release dispatch must run from the default branch."
           }
 
           if ("${{ github.ref_type }}" -eq "tag") {
@@ -177,6 +199,16 @@ jobs:
 
           if ($releaseTag -ne "v$repoVersion") {
             throw "Tag '$releaseTag' does not match version.json version '$repoVersion'. Expected 'v$repoVersion'."
+          }
+
+          $curatedNotesPath = Join-Path "releases" $releaseTag "notes.md"
+          $curatedNotes = ""
+          if (Test-Path -Path $curatedNotesPath -PathType Leaf) {
+            $curatedNotes = (Get-Content -Raw -Path $curatedNotesPath).Trim()
+          }
+          $curatedNotesManifestPath = ""
+          if ($curatedNotes) {
+            $curatedNotesManifestPath = $curatedNotesPath.Replace("\", "/")
           }
 
           git fetch --force --tags
@@ -301,6 +333,9 @@ jobs:
             commitRange = $commitRange
             commitRangeLabel = $commitRangeLabel
             commitListTruncated = $commitListTruncated
+            prerelease = $releaseIsPrerelease
+            curatedReleaseNotesPath = $curatedNotesManifestPath
+            curatedReleaseNotes = $curatedNotes
             releaseCommit = [ordered]@{
               sha = $releaseCommit
               shortSha = $releaseShortSha
@@ -328,10 +363,24 @@ jobs:
           if ($commitListTruncated) {
             $changeLines += "- Commit list truncated to the latest 50 commits because this release has no previous tag."
           }
+          $curatedNoteLines = @()
+          if ($curatedNotes) {
+            $curatedNoteLines = @(
+              "Curated release notes:",
+              "",
+              $curatedNotes,
+              ""
+            )
+          }
 
-          $notes = @(
+          $noteParts = @(
             "SemanticScript $releaseTag",
-            "",
+            ""
+          )
+          if ($curatedNoteLines) {
+            $noteParts += $curatedNoteLines
+          }
+          $noteParts += @(
             "Version note:",
             "- Repository/toolchain version: $repoVersion",
             "- Compiler/toolchain download: $releaseSemExeName",
@@ -356,13 +405,15 @@ jobs:
             "- PyInstaller sem single-file executable smoke validation",
             "- npm --prefix vscode-semanticscript ci",
             "- npm --prefix vscode-semanticscript run package:vsix"
-          ) -join "`n"
+          )
+          $notes = $noteParts -join "`n"
 
           $notesPath = Join-Path $artifactDir "semanticscript-release-notes-$releaseTag.md"
           $notes | Set-Content -Path $notesPath -Encoding utf8
 
           "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
           "repo_version=$repoVersion" >> $env:GITHUB_OUTPUT
+          "release_is_prerelease=$($releaseIsPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "release_commit=$releaseCommit" >> $env:GITHUB_OUTPUT
           "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
           "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
@@ -410,6 +461,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.manifest.outputs.release_tag }}
           REPO_VERSION: ${{ steps.manifest.outputs.repo_version }}
+          RELEASE_IS_PRERELEASE: ${{ steps.manifest.outputs.release_is_prerelease }}
           RELEASE_COMMIT: ${{ steps.manifest.outputs.release_commit }}
           SEM_EXE_PATH: ${{ steps.manifest.outputs.sem_exe_path }}
           VSIX_PATH: ${{ steps.manifest.outputs.vsix_path }}
@@ -422,12 +474,28 @@ jobs:
           }
 
           $title = "SemanticScript $env:RELEASE_TAG"
+          $releaseArgs = @(
+            $env:RELEASE_TAG,
+            "--repo", "${{ github.repository }}",
+            "--title", $title,
+            "--notes-file", $env:NOTES_PATH,
+            "--target", $env:RELEASE_COMMIT
+          )
+          if ($env:RELEASE_IS_PRERELEASE -eq "true") {
+            $releaseArgs += @("--prerelease")
+          }
 
           gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target $env:RELEASE_COMMIT
+            gh release edit @releaseArgs
           } else {
-            gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target $env:RELEASE_COMMIT --verify-tag
+            $createArgs = @($env:RELEASE_TAG)
+            $createArgs += $releaseArgs[1..($releaseArgs.Count - 1)]
+            $createArgs += @("--verify-tag")
+            if ($env:RELEASE_IS_PRERELEASE -eq "true") {
+              $createArgs += @("--latest=false")
+            }
+            gh release create @createArgs
           }
 
           # Stable-named copies (sem.exe, semanticscript.mcpb) plus the stamped
