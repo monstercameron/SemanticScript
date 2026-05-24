@@ -21,7 +21,7 @@ static long long fib(long long n) {
 }
 
 int main(void) {
-    long long n = 38;
+    long long n = 39;
 
     LARGE_INTEGER frequency;
     LARGE_INTEGER start_counter;

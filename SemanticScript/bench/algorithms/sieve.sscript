@@ -22,20 +22,23 @@ memory main stack max 8KiB
 async main no
 
 purpose operation main "Run the Sieve of Eratosthenes up to sieveUpperLimit repeatedly and report the summed prime count plus elapsed seconds"
-invariant operation main "A sieve cell holds zero while its index is still a prime candidate and one once marked composite"
-invariant operation main "Composite marking starts at candidate squared because every smaller multiple was already marked by a smaller prime"
+invariant operation main "A sieve cell holds one while its index is still prime and zero once struck out as composite"
+invariant operation main "Composite marking only needs candidates up to the square root of sieveUpperLimit, since every composite has a prime factor at or below its square root"
 invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided by the Windows CLOCKS_PER_SEC of 1000"
 
 label startMain
 
 storage module immutable sieveUpperLimit Int64 2000000
 storage module immutable sieveByteArraySize ByteCount 2000001
-storage module immutable sieveRepeatCount Int64 20
+storage module immutable sieveRepeatCount Int64 40
 storage module immutable firstCandidateIndex Int64 2
+storage module immutable firstCountIndex Int64 2
 storage module immutable loopStepIncrement Int64 1
-storage module immutable primeCandidateMarker Int64 0
-storage module immutable compositeMarkerValue Int32 1
-storage module immutable sieveZeroFillByte Int64 0
+storage module immutable primeCellMarker Int32 1
+storage module immutable compositeCellMarker Int32 0
+storage module immutable primeCellFillByte Int64 1
+storage module immutable zeroIndex Int64 0
+storage module immutable oneIndex Int64 1
 storage module immutable repeatIndexInitial Int64 0
 storage module immutable primeCountInitial Int64 0
 storage module immutable windowsClocksPerSecond Float64 1000.0
@@ -50,6 +53,7 @@ memory main mutable totalPrimeCount Int64 primeCountInitial
 memory main mutable currentPrimeCount Int64 primeCountInitial
 memory main mutable currentCandidateIndex Int64 firstCandidateIndex
 memory main mutable currentMultipleIndex Int64 firstCandidateIndex
+memory main mutable currentCountIndex Int64 firstCountIndex
 
 call benchmarkStartClockCall c.clock
 run benchmarkStartClockCall
@@ -65,22 +69,39 @@ branch if condition repeatShouldContinue target repeatLoopBody
 branch else target repeatLoopFinished
 
 label repeatLoopBody
-# Re-zero the whole sieve so every repeat starts from all-candidate state,
-# mirroring the fresh zeroed array the other languages allocate per repeat.
-call sieveZeroFillCall c.memset
-argument sieveZeroFillCall buffer OpaquePointer sieveBuffer
-argument sieveZeroFillCall fillByte Int64 sieveZeroFillByte
-argument sieveZeroFillCall byteCount ByteCount sieveByteArraySize
-run sieveZeroFillCall
-bind value sieveZeroFillReturn OpaquePointer sieveZeroFillCall
+# Start every cell as prime, then strike out indices 0 and 1 which are not.
+call sievePrimeFillCall c.memset
+argument sievePrimeFillCall buffer OpaquePointer sieveBuffer
+argument sievePrimeFillCall fillByte Int64 primeCellFillByte
+argument sievePrimeFillCall byteCount ByteCount sieveByteArraySize
+run sievePrimeFillCall
+bind value sievePrimeFillReturn OpaquePointer sievePrimeFillCall
 
-set memory currentPrimeCount primeCountInitial
+call strikeZeroCall pointer.storeByte
+argument strikeZeroCall buffer OpaquePointer sieveBuffer
+argument strikeZeroCall offset Int64 zeroIndex
+argument strikeZeroCall value Int32 compositeCellMarker
+run strikeZeroCall
+
+call strikeOneCall pointer.storeByte
+argument strikeOneCall buffer OpaquePointer sieveBuffer
+argument strikeOneCall offset Int64 oneIndex
+argument strikeOneCall value Int32 compositeCellMarker
+run strikeOneCall
+
 set memory currentCandidateIndex firstCandidateIndex
 jump target candidateLoopHead
 
 label candidateLoopHead
+# Continue while currentCandidateIndex squared is still within the limit.
+call candidateSquaredGuardCall math.multiplyInt64
+argument candidateSquaredGuardCall left Int64 currentCandidateIndex
+argument candidateSquaredGuardCall right Int64 currentCandidateIndex
+run candidateSquaredGuardCall
+bind value candidateSquaredGuard Int64 candidateSquaredGuardCall
+
 call candidateShouldContinueCall math.lessThanOrEqualInt64
-argument candidateShouldContinueCall left Int64 currentCandidateIndex
+argument candidateShouldContinueCall left Int64 candidateSquaredGuard
 argument candidateShouldContinueCall right Int64 sieveUpperLimit
 run candidateShouldContinueCall
 bind value candidateShouldContinue Bool candidateShouldContinueCall
@@ -94,28 +115,16 @@ argument loadCandidateCellCall offset Int64 currentCandidateIndex
 run loadCandidateCellCall
 bind value candidateCellValue Int8 loadCandidateCellCall
 
-call candidateIsPrimeCall math.equalInt64
+call candidateIsPrimeCall math.notEqualInt64
 argument candidateIsPrimeCall left Int64 candidateCellValue
-argument candidateIsPrimeCall right Int64 primeCandidateMarker
+argument candidateIsPrimeCall right Int64 primeCountInitial
 run candidateIsPrimeCall
 bind value candidateIsPrime Bool candidateIsPrimeCall
 branch if condition candidateIsPrime target candidateIsPrimeStep
 branch else target candidateAdvance
 
 label candidateIsPrimeStep
-call incrementPrimeCountCall math.addInt64
-argument incrementPrimeCountCall left Int64 currentPrimeCount
-argument incrementPrimeCountCall right Int64 loopStepIncrement
-run incrementPrimeCountCall
-bind value nextPrimeCount Int64 incrementPrimeCountCall
-set memory currentPrimeCount nextPrimeCount
-
-call candidateSquaredCall math.multiplyInt64
-argument candidateSquaredCall left Int64 currentCandidateIndex
-argument candidateSquaredCall right Int64 currentCandidateIndex
-run candidateSquaredCall
-bind value candidateSquared Int64 candidateSquaredCall
-set memory currentMultipleIndex candidateSquared
+set memory currentMultipleIndex candidateSquaredGuard
 jump target markLoopHead
 
 label markLoopHead
@@ -131,7 +140,7 @@ label markLoopBody
 call markCompositeCall pointer.storeByte
 argument markCompositeCall buffer OpaquePointer sieveBuffer
 argument markCompositeCall offset Int64 currentMultipleIndex
-argument markCompositeCall value Int32 compositeMarkerValue
+argument markCompositeCall value Int32 compositeCellMarker
 run markCompositeCall
 
 call advanceMultipleCall math.addInt64
@@ -152,11 +161,48 @@ set memory currentCandidateIndex nextCandidateIndex
 jump target candidateLoopHead
 
 label candidateLoopFinished
+# Count surviving primes in a final pass over indices 2..sieveUpperLimit.
+set memory currentPrimeCount primeCountInitial
+set memory currentCountIndex firstCountIndex
+jump target countLoopHead
+
+label countLoopHead
+call countShouldContinueCall math.lessThanOrEqualInt64
+argument countShouldContinueCall left Int64 currentCountIndex
+argument countShouldContinueCall right Int64 sieveUpperLimit
+run countShouldContinueCall
+bind value countShouldContinue Bool countShouldContinueCall
+branch if condition countShouldContinue target countLoopBody
+branch else target countLoopFinished
+
+label countLoopBody
+call loadCountCellCall pointer.loadByte
+argument loadCountCellCall buffer OpaquePointer sieveBuffer
+argument loadCountCellCall offset Int64 currentCountIndex
+run loadCountCellCall
+bind value countCellValue Int8 loadCountCellCall
+
 call accumulatePrimeCountCall math.addInt64
-argument accumulatePrimeCountCall left Int64 totalPrimeCount
-argument accumulatePrimeCountCall right Int64 currentPrimeCount
+argument accumulatePrimeCountCall left Int64 currentPrimeCount
+argument accumulatePrimeCountCall right Int64 countCellValue
 run accumulatePrimeCountCall
-bind value nextTotalPrimeCount Int64 accumulatePrimeCountCall
+bind value nextPrimeCount Int64 accumulatePrimeCountCall
+set memory currentPrimeCount nextPrimeCount
+
+call advanceCountIndexCall math.addInt64
+argument advanceCountIndexCall left Int64 currentCountIndex
+argument advanceCountIndexCall right Int64 loopStepIncrement
+run advanceCountIndexCall
+bind value nextCountIndex Int64 advanceCountIndexCall
+set memory currentCountIndex nextCountIndex
+jump target countLoopHead
+
+label countLoopFinished
+call accumulateTotalPrimeCountCall math.addInt64
+argument accumulateTotalPrimeCountCall left Int64 totalPrimeCount
+argument accumulateTotalPrimeCountCall right Int64 currentPrimeCount
+run accumulateTotalPrimeCountCall
+bind value nextTotalPrimeCount Int64 accumulateTotalPrimeCountCall
 set memory totalPrimeCount nextTotalPrimeCount
 
 call advanceRepeatCall math.addInt64

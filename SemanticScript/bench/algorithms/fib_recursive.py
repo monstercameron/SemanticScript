@@ -16,7 +16,7 @@ def fib(n):
 
 def main():
     sys.setrecursionlimit(100000)
-    n = 38
+    n = 39
     start = time.perf_counter()
     checksum = fib(n)
     end = time.perf_counter()

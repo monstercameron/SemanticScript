@@ -622,15 +622,20 @@ implemented, partial, or design-target syntax.
 ## Performance
 
 Because SemanticScript lowers to LLVM and is optimized by `clang -O2`, its
-compiled output runs at native-C speed. A cross-language benchmark suite
-(`SemanticScript/bench/algorithms/`) checks this against C, JavaScript (Node),
-and Python (CPython) on four classic algorithms — recursive Fibonacci, Collatz,
-the Sieve of Eratosthenes, and Mandelbrot — verifying every language computes
-the same checksum before comparing timings. SemanticScript lands within a few
-percent of C on all four. See
+compiled loop bodies carry no abstraction tax — and the benchmark suite *proves*
+it rather than just timing it: `clang` emits **instruction-identical inner-loop
+machine code** for SemanticScript and C (a safety check the language inserts is
+even proven unnecessary and hoisted out of the hot loop at zero cost). A
+cross-language suite (`SemanticScript/bench/algorithms/`) compares against C,
+JavaScript (Node), and Python (CPython) on four classic algorithms — recursive
+Fibonacci, Collatz, the Sieve of Eratosthenes, and Mandelbrot — verifying every
+language computes the same checksum before comparing timings, and reporting the
+run-to-run spread. SemanticScript is statistically tied with C on three of four;
+the fourth (recursion) exposes a real ~16% per-call overhead — an honest finding
+the suite was built to surface. See
 [`SemanticScript/bench/algorithms/BENCHMARK_NOTES.md`](SemanticScript/bench/algorithms/BENCHMARK_NOTES.md)
-for the full write-up (methodology, gotchas, and how to read the results), or
-run it with `python SemanticScript\bench\run_multilang.py`.
+for the full write-up (the assembly proof, methodology, gotchas, and how to read
+the results), or run it with `python SemanticScript\bench\run_multilang.py`.
 
 ## Validation Commands
 

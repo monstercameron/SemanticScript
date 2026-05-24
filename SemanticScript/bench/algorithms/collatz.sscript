@@ -22,7 +22,7 @@ invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided
 
 label startMain
 
-storage module immutable collatzStartUpperLimit Int64 600000
+storage module immutable collatzStartUpperLimit Int64 1000000
 storage module immutable collatzStartLowerLimit Int64 1
 storage module immutable loopStepIncrement Int64 1
 storage module immutable collatzTerminationValue Int64 1

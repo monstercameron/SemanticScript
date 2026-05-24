@@ -11,7 +11,7 @@ import time
 
 
 def main():
-    n = 600000
+    n = 1000000
     total_steps = 0
 
     start = time.perf_counter()

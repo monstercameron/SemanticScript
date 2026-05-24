@@ -12,7 +12,7 @@ function fib(n) {
 }
 
 function main() {
-  const n = 38;
+  const n = 39;
   const start = performance.now();
   const checksum = fib(n);
   const end = performance.now();

@@ -12,7 +12,7 @@
 #include <windows.h>
 
 int main(void) {
-    long long n = 600000;
+    long long n = 1000000;
     long long total_steps = 0;
 
     LARGE_INTEGER frequency;

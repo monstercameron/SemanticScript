@@ -17,8 +17,9 @@ The harness:
   3. Cross-checks that all four languages reported the SAME checksum for the
      algorithm. A mismatch means the implementations diverged and the timings
      are not comparable, so it is flagged loudly.
-  4. Reports the median elapsedSeconds per language and the slowdown factor
-     relative to C (median_lang / median_c).
+  4. Reports min / median / relative standard deviation per language and the
+     slowdown factor relative to C (median_lang / median_c). Default 9 runs +
+     2 warm-ups; raise with --runs for steadier numbers.
 
 Timing note: C, JS, and Python use sub-microsecond clocks. SemanticScript can
 only reach libc clock() (1 ms resolution on Windows), so each algorithm is
@@ -60,8 +61,8 @@ LANGUAGE_LABELS = {
 class Algorithm:
     name: str
     description: str
-    runs: int = 5
-    warmup_runs: int = 1
+    runs: int = 9
+    warmup_runs: int = 2
     sources: dict = field(default_factory=dict)
 
 
@@ -156,9 +157,14 @@ def run_suite(selected: set[str] | None, runs_override: int | None,
         checksums = {}
         for language in LANGUAGE_ORDER:
             samples, checksum = measure(commands[language], runs, warmup)
+            median = statistics.median(samples)
+            stddev = statistics.stdev(samples) if len(samples) > 1 else 0.0
             per_language[language] = {
                 "samples": samples,
-                "median": statistics.median(samples),
+                "min": min(samples),
+                "median": median,
+                "stddev": stddev,
+                "stddevPct": (100.0 * stddev / median) if median else 0.0,
             }
             checksums[language] = checksum
 
@@ -193,13 +199,14 @@ def print_report(results: list[dict]) -> None:
         print(f"   {result['description']}")
         if not result["checksumOk"]:
             print(f"   checksums: {result['checksums']}")
-        print(f"   {'language':<20} {'median sec':>12} {'vs C':>10}")
-        print("   " + "-" * 44)
+        print(f"   {'language':<20} {'min sec':>10} {'median sec':>12} "
+              f"{'stddev':>10} {'vs C':>9}")
+        print("   " + "-" * 64)
         for language in LANGUAGE_ORDER:
             entry = result["languages"][language]
             label = LANGUAGE_LABELS[language]
-            print(f"   {label:<20} {entry['median']:>12.6f} "
-                  f"{entry['slowdownVsC']:>9.2f}x")
+            print(f"   {label:<20} {entry['min']:>10.6f} {entry['median']:>12.6f} "
+                  f"{entry['stddevPct']:>9.1f}% {entry['slowdownVsC']:>8.2f}x")
         print()
 
 

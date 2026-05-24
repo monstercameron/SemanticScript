@@ -23,9 +23,9 @@ machine-readable report, `--algorithm <name>` to select one).
 
 | Algorithm        | Stresses                                     | Workload                                  | Checksum (all four agree) |
 |------------------|----------------------------------------------|-------------------------------------------|---------------------------|
-| `fib_recursive`  | Function-call / recursion overhead           | `fib(38)`                                 | `39088169`                |
-| `collatz`        | Integer arithmetic + data-dependent branches | sum of stopping times, starts 1..600 000  | `75668736`                |
-| `sieve`          | Byte-array memory throughput                 | Sieve to 2 000 000, ×20 repeats           | `2978660` (20 × 148 933)  |
+| `fib_recursive`  | Function-call / recursion overhead           | `fib(39)`                                 | `63245986`                |
+| `collatz`        | Integer arithmetic + data-dependent branches | sum of stopping times, starts 1..1 000 000 | `131434424`              |
+| `sieve`          | Byte-array memory throughput                 | Sieve to 2 000 000, ×40 repeats           | `5957320` (40 × 148 933)  |
 | `mandelbrot`     | Double-precision float compute               | 600×400 grid, 1000 iteration cap          | `61930405`                |
 
 ## Methodology
@@ -40,7 +40,8 @@ checksum=<int> elapsedSeconds=<float>
 This deliberately excludes process startup and JIT warm-up of the interpreter
 process (Node/CPython launch cost would otherwise dominate the fast cases and
 measure the OS, not the language). The harness runs each program `warmup + N`
-times and takes the **median** elapsedSeconds.
+times (default 9 measured, 2 warm-up) and reports **min, median, and relative
+standard deviation**, so "tied with C" can be judged against the actual spread.
 
 **Clocks.**
 
@@ -76,56 +77,58 @@ slice assignment instead of a Python-level loop.
 
 **Fairness for the compiled pair.** Both C and SemanticScript are lowered to
 LLVM IR and compiled with `clang -O2`. The C-vs-SemanticScript ratio therefore
-isolates the quality of the IR the prototype generates, not a difference of
-backend or optimizer.
+isolates the quality of the IR the prototype generates — and for loop bodies the
+generated machine code is *instruction-identical* to C (see the assembly
+walk-through in [`BENCHMARK_NOTES.md`](BENCHMARK_NOTES.md#the-proof-identical-machine-code)).
 
 ## Results
 
-Host: Windows 11, clang 22.1.4, Node v25, CPython 3.10.11. Median of 5 runs
-(1 warm-up), with JS and Python in their optimized idiomatic form. Numbers
-will vary by machine; regenerate with `run_multilang.py`.
+Host: Windows 11, clang 22.1.4, Node v25, CPython 3.10.11, otherwise idle.
+Median of 9 runs (2 warm-ups), with JS and Python in their optimized idiomatic
+form. Numbers will vary by machine; regenerate with `run_multilang.py`.
 
 | Algorithm       | C          | SemanticScript | JavaScript | Python      |
 |-----------------|-----------:|---------------:|-----------:|------------:|
-| `fib_recursive` | 1.00×      | **1.13×**      | 3.94×      | 87.8×       |
-| `collatz`       | 1.00×      | **0.96×**      | 8.40×      | 64.9×       |
-| `sieve`         | 1.00×      | **0.99×**      | 1.41×      | 3.44×       |
-| `mandelbrot`    | 1.00×      | **0.97×**      | 1.03×      | 48.1×       |
+| `fib_recursive` | 1.00×      | **1.16×**      | 3.87×      | 83.7×       |
+| `collatz`       | 1.00×      | **0.98×**      | 8.75×      | 65.1×       |
+| `sieve`         | 1.00×      | **1.00×**      | 1.41×      | 5.54×       |
+| `mandelbrot`    | 1.00×      | **0.98×**      | 1.04×      | 48.2×       |
 
-(× = slowdown relative to C; lower is faster. <1.0× means it beat C in that
-run, which for the compiled pair is measurement noise.)
+(× = slowdown relative to C; lower is faster. The compiled-pair std-devs are
+~0.5–2.6%, so collatz/sieve/mandelbrot are statistically tied with C; fib is a
+real gap.)
 
-Absolute medians (seconds) from the reference run:
+Absolute medians (seconds) with relative standard deviation:
 
-| Algorithm       | C        | SemanticScript | JavaScript | Python   |
-|-----------------|---------:|---------------:|-----------:|---------:|
-| `fib_recursive` | 0.069    | 0.078          | 0.271      | 6.033    |
-| `collatz`       | 0.073    | 0.070          | 0.610      | 4.711    |
-| `sieve`         | 0.097    | 0.096          | 0.137      | 0.333    |
-| `mandelbrot`    | 0.144    | 0.140          | 0.149      | 6.926    |
+| Algorithm       | C (rsd)      | SemanticScript | JavaScript | Python        |
+|-----------------|-------------:|---------------:|-----------:|--------------:|
+| `fib_recursive` | 0.110 (0.5%) | 0.128 (1.2%)   | 0.427      | 9.223         |
+| `collatz`       | 0.125 (0.6%) | 0.122 (0.8%)   | 1.094      | 8.133         |
+| `sieve`         | 0.120 (0.7%) | 0.119 (2.6%)   | 0.168      | 0.662         |
+| `mandelbrot`    | 0.142 (0.5%) | 0.139 (0.8%)   | 0.148      | 6.853         |
 
 ## What the numbers say
 
-- **SemanticScript runs at native-C speed.** Across all four algorithms it
-  lands in the 0.94×–1.17× band around C. That is expected and reassuring: it
-  shares C's LLVM/`clang -O2` backend, so once the prototype emits reasonable IR
-  the optimizer does the rest. The benchmark's real claim is that the IR it
-  emits *is* reasonable — no accidental abstraction tax in the lowered code.
+- **No abstraction tax in compiled loops — proven, not just timed.** On collatz,
+  sieve, and mandelbrot SemanticScript is statistically tied with C, and the
+  reason is concrete: `clang -O2` emits the *same inner-loop machine code* for
+  SemanticScript and C (instruction-identical modulo register allocation; see the
+  assembly section in the notes). Safety checks the language inserts are proven
+  unnecessary and hoisted out of hot loops at zero cost.
 
-- **The one soft spot is recursion** (`fib_recursive`, 1.13×). Function-call
-  heavy code is slightly slower than C, pointing at calling-convention or
-  result/error-bind overhead per frame rather than loop-body codegen. It is the
-  natural place to look next for prototype codegen wins.
+- **The one real gap is recursion** (`fib_recursive`, 1.16×). This is outside the
+  measurement noise (SemanticScript 0.125–0.128 s vs C 0.109–0.110 s, no overlap),
+  so it's a genuine finding: with trivial loop bodies, the ~16% is per-call
+  overhead — the prototype's calling convention or result/error binding does more
+  work per frame than C's bare `call`/`ret`. The most actionable codegen target.
 
-- **JIT vs interpreter.** Node is within ~3% of C on the float-heavy
-  `mandelbrot` and ~1.4× on the memory-bound `sieve`, but pays 4–8× on tight
-  integer/recursion loops where number-boxing and call overhead show. CPython
-  ranges from 3.4× to 88× — the spread is the story: it is two orders of
-  magnitude slower when the work stays in the bytecode interpreter
-  (`fib_recursive`, `mandelbrot`), but only ~3× on `sieve` once the hot path is
-  expressed as bulk C-level operations (strided slice assignment + `sum()`).
-  The lesson is the usual one for dynamic languages: speed comes from pushing
-  the inner loop out of the interpreter and into the runtime's C core.
+- **JIT vs interpreter.** Node is within ~4% of C on float-heavy `mandelbrot` and
+  ~1.4× on memory-bound `sieve`, but pays 4–9× on tight integer/recursion loops
+  where number-boxing and call overhead show. CPython ranges from 5.5× to 84× —
+  the spread is the story: it is ~80× slower when work stays in the bytecode
+  interpreter (`fib_recursive`), but only ~5.5× on `sieve` once the hot path is
+  bulk C-level operations. The lesson for dynamic languages: speed comes from
+  pushing the inner loop out of the interpreter and into the runtime's C core.
 
 ## Per-language implementation notes
 
@@ -135,10 +138,13 @@ choices, and the optimizations deliberately *not* taken:
 - **`fib_recursive` (all):** kept genuinely recursive. Memoization or an
   iterative rewrite would be faster but would defeat the benchmark, whose
   entire purpose is to measure function-call overhead.
-- **Python `sieve`:** marks composites with strided slice assignment
-  (`sieve[start::step] = b"\x00" * count`), loops only to `isqrt(limit)`, and
-  counts primes with `sum()`. This keeps the hot work in C-level routines and
-  is ~10× faster than the per-element Python loop it replaced (3.4 s → 0.33 s).
+- **`sieve` (all):** identical structure in every language — start all-prime,
+  strike out composites for primes up to √limit, then count survivors. The only
+  difference is the bulk primitive: C/JS/SemanticScript walk each prime's
+  multiples in a loop, while Python uses a strided slice assignment
+  (`sieve[start::step] = b"\x00" * count`) and `sum()`, its idiomatic C-level
+  way to do the same passes (~10× faster than the per-element Python loop it
+  replaced).
 - **Python `collatz`:** uses bitwise `value & 1` / `value >> 1`, which is correct
   for Python's arbitrary-precision ints and faster than `% 2` / `// 2`.
 - **JavaScript `collatz`:** must use arithmetic (`% 2`, `/ 2`), *not* bitwise
@@ -158,8 +164,9 @@ choices, and the optimizations deliberately *not* taken:
 
 - These are **microbenchmarks**, not a language conformance suite or a verdict
   on real-world throughput. They measure tight compute kernels only.
-- SemanticScript's 1 ms timer is the weakest link in the methodology; sizing
-  keeps the error small but it is coarser than the other three.
-- Workloads are sized so CPython stays under ~8 s/run. That bounds how large the
-  compiled-language runs can be, which is why their absolute times are short.
+- SemanticScript's 1 ms timer is the weakest link in the methodology; workloads
+  are sized to ~120–140 ms so quantization stays ~1%, but it is coarser than the
+  other three clocks (and shows up as its slightly higher std-dev).
+- Workloads are sized so SemanticScript stays above ~100 ms, which in turn keeps
+  CPython's slowest tests (~6–9 s) from making the suite tediously long.
 - Results are single-host. Re-run on the target machine before quoting numbers.

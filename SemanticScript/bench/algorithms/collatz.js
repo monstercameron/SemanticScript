@@ -8,7 +8,7 @@
 // main() so V8 JIT-optimizes it.
 
 function main() {
-  const n = 600000;
+  const n = 1000000;
   let totalSteps = 0;
 
   const start = performance.now();

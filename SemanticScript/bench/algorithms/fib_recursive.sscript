@@ -80,7 +80,7 @@ invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided
 
 label startMain
 
-storage module immutable fibonacciInputIndex Int64 38
+storage module immutable fibonacciInputIndex Int64 39
 storage module immutable windowsClocksPerSecond Float64 1000.0
 
 call benchmarkStartClockCall c.clock

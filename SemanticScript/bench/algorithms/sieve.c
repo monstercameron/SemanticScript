@@ -1,10 +1,12 @@
 /* sieve.c - Sieve of Eratosthenes up to LIMIT, repeated REPEATS times.
  *
- * A flat byte array marks composites (0 = prime, 1 = composite). The work is
- * dominated by streaming byte writes across a multi-megabyte array, so this
- * exercises memory throughput and simple integer indexing. The sieve is run
- * REPEATS times and the per-run prime counts are summed, so every repeat is
- * observable in the checksum and cannot be optimized away.
+ * All four language versions use the same structure: a byte array starts as
+ * all-prime (1), composites are struck out (0) by walking each prime's
+ * multiples for primes up to sqrt(LIMIT), and the prime count is a final pass
+ * over the array. The work is dominated by streaming byte writes across a
+ * multi-megabyte array, so this exercises memory throughput and simple integer
+ * indexing. The sieve is run REPEATS times and the per-run prime counts are
+ * summed, so every repeat is observable in the checksum.
  *
  * Build: clang -O2 -o sieve.c.exe sieve.c
  */
@@ -16,7 +18,7 @@
 
 int main(void) {
     long long limit = 2000000;
-    long long repeats = 20;
+    long long repeats = 40;
     long long array_size = limit + 1;
 
     unsigned char *sieve = (unsigned char *)malloc((size_t)array_size);
@@ -33,16 +35,20 @@ int main(void) {
 
     QueryPerformanceCounter(&start_counter);
     for (long long repeat = 0; repeat < repeats; repeat++) {
-        memset(sieve, 0, (size_t)array_size);
-        long long prime_count = 0;
-        for (long long candidate = 2; candidate <= limit; candidate++) {
-            if (sieve[candidate] == 0) {
-                prime_count++;
+        memset(sieve, 1, (size_t)array_size);
+        sieve[0] = 0;
+        sieve[1] = 0;
+        for (long long candidate = 2; candidate * candidate <= limit; candidate++) {
+            if (sieve[candidate]) {
                 for (long long multiple = candidate * candidate;
                      multiple <= limit; multiple += candidate) {
-                    sieve[multiple] = 1;
+                    sieve[multiple] = 0;
                 }
             }
+        }
+        long long prime_count = 0;
+        for (long long index = 2; index <= limit; index++) {
+            prime_count += sieve[index];
         }
         total_prime_count += prime_count;
     }

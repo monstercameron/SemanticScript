@@ -1,16 +1,16 @@
 """sieve.py - Sieve of Eratosthenes up to LIMIT, repeated REPEATS times.
 
-Mirrors sieve.c's algorithm and checksum, written in idiomatic fast Python:
+Same structure as the other three languages (all-prime bytearray, strike out
+composites for primes up to sqrt(LIMIT), then count surviving primes), written
+with Python's idiomatic bulk primitives:
   - a bytearray holds 1 for "still prime", 0 for "composite";
-  - composites are struck out with a single strided slice assignment per prime
-    (a C-level bulk store) instead of a Python-level inner loop;
-  - the outer loop only runs to sqrt(LIMIT), since every composite has a prime
-    factor at or below its square root;
-  - the prime count is sum() over the bytearray, another C-level pass.
+  - composites are struck out with one strided slice assignment per prime (a
+    C-level bulk store), where C/JS/SemanticScript walk the multiples in a loop;
+  - the prime count is sum() over the bytearray, a C-level pass, where the other
+    three accumulate in a loop.
 
-This is the form a competent Python developer writes for speed. The task and
-the resulting prime count are identical to the other three languages; only the
-in-language mechanics differ. Timed with time.perf_counter().
+Same algorithm and prime count; only the in-language primitive for the
+mark/count passes differs. Timed with time.perf_counter().
 """
 
 import time
@@ -19,7 +19,7 @@ from math import isqrt
 
 def main():
     limit = 2000000
-    repeats = 20
+    repeats = 40
     array_size = limit + 1
     sqrt_limit = isqrt(limit)
     total_prime_count = 0
