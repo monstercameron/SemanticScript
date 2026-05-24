@@ -158,8 +158,9 @@ Open representative files:
 
 ```powershell
 cd vscode-semanticscript
+npm ci
 npm run check
-npx --yes @vscode/vsce package
+npm run package:vsix
 ```
 
 The packaged `.vsix` is ignored by git. After installing a new VSIX, reload VS
