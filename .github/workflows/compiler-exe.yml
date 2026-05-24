@@ -227,26 +227,48 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
-            $PSNativeCommandUseErrorActionPreference = $true
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+
+          function Invoke-GhChecked {
+            param(
+              [Parameter(ValueFromRemainingArguments = $true)]
+              [string[]] $Arguments
+            )
+
+            & gh @Arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "gh $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+            }
           }
 
           $title = "SemanticScript $env:RELEASE_TAG"
 
-          gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target "${{ github.sha }}" --prerelease
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          $null = & gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" 2>$null
+          $viewExitCode = $LASTEXITCODE
+          $ErrorActionPreference = $previousErrorActionPreference
+          $releaseExists = $viewExitCode -eq 0
+
+          if ($releaseExists) {
+            Invoke-GhChecked release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target "${{ github.sha }}" --prerelease
           } else {
-            gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target "${{ github.sha }}" --prerelease
+            Invoke-GhChecked release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target "${{ github.sha }}" --prerelease
           }
 
-          gh release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
+          Invoke-GhChecked release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
 
           $expectedAssets = @(
             (Split-Path -Leaf $env:SEM_EXE_PATH),
             (Split-Path -Leaf $env:VSIX_PATH),
             (Split-Path -Leaf $env:MANIFEST_PATH)
           )
-          $release = gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" --json assets,isPrerelease | ConvertFrom-Json
+          $releaseJson = & gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" --json assets,isPrerelease
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to verify GitHub release '$env:RELEASE_TAG'."
+          }
+          $release = $releaseJson | ConvertFrom-Json
           if (-not $release.isPrerelease) {
             throw "GitHub release '$env:RELEASE_TAG' is not marked as a prerelease."
           }
