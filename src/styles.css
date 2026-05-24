@@ -227,9 +227,80 @@ pre {
   line-height: 1.62;
 }
 
-.heroPanel pre {
-  margin-bottom: 24px;
+.markedSnippet {
+  min-width: 0;
+}
+
+.markedSnippet .markedPre {
+  margin: 0;
   padding: 22px;
+  border: 1px solid rgba(96, 230, 194, 0.18);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(12, 22, 19, 0.94), rgba(5, 10, 8, 0.98)),
+    #050a08;
+  color: #eaffd9;
+  overflow: auto;
+  white-space: pre;
+  word-break: normal;
+}
+
+.markedSnippet code {
+  display: block;
+  min-width: max-content;
+  font: inherit;
+}
+
+.marked-semanticscript .markedPre {
+  border-color: rgba(185, 255, 103, 0.24);
+  box-shadow: inset 4px 0 0 rgba(185, 255, 103, 0.24);
+}
+
+.marked-powershell .markedPre {
+  border-color: rgba(96, 230, 194, 0.2);
+}
+
+.sem-token {
+  color: #dcefe4;
+}
+
+.sem-verb {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.sem-keyword {
+  color: #b9a7ff;
+}
+
+.sem-type {
+  color: #8fd2ff;
+  font-weight: 750;
+}
+
+.sem-string {
+  color: #ffd58a;
+}
+
+.sem-number {
+  color: #ffb064;
+}
+
+.sem-path {
+  color: var(--accent-2);
+}
+
+.sem-comment {
+  color: #779184;
+  font-style: italic;
+}
+
+.heroPanel .markedSnippet {
+  margin-bottom: 24px;
+}
+
+.heroPanel .markedPre {
+  margin-bottom: 0;
   border: 1px solid rgba(185, 255, 103, 0.22);
   border-radius: 18px;
   background: #050a08;
@@ -262,11 +333,45 @@ pre {
   color: var(--muted);
 }
 
-.quickstartCard pre {
-  padding: 22px;
+.quickstartCard .markedPre {
   border: 1px solid rgba(185, 255, 103, 0.2);
+}
+
+.factStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.factCard {
+  min-height: 152px;
+  padding: 18px;
+  border: 1px solid var(--line);
   border-radius: 20px;
-  background: #050a08;
+  background: rgba(231, 243, 234, 0.045);
+}
+
+.factCard p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.factCard strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #f4fff5;
+  font-size: 1.08rem;
+}
+
+.factCard span {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .section {
@@ -358,12 +463,12 @@ pre {
   color: var(--muted);
 }
 
-.compareCard pre {
+.compareCard .markedSnippet {
   flex: 1;
-  padding: 22px;
+}
+
+.compareCard .markedPre {
   border: 1px solid rgba(96, 230, 194, 0.18);
-  border-radius: 20px;
-  background: #050a08;
 }
 
 .mutedCard {
@@ -418,13 +523,9 @@ pre {
   color: var(--muted);
 }
 
-.mechanicCard pre,
-.commandBlock {
-  padding: 22px;
+.mechanicCard .markedPre,
+.commandBlock .markedPre {
   border: 1px solid rgba(96, 230, 194, 0.18);
-  border-radius: 20px;
-  background: #050a08;
-  overflow: auto;
 }
 
 .split {
@@ -524,6 +625,13 @@ tr:last-child td {
   margin: 16px 0 0;
 }
 
+.inlineLink {
+  display: inline-flex;
+  margin-top: 16px;
+  color: var(--accent);
+  font-weight: 800;
+}
+
 .workflowRail {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -553,12 +661,12 @@ tr:last-child td {
   font-weight: 800;
 }
 
-.commandBlock {
+.commandBlock .markedPre {
   color: #d8ffe4;
 }
 
 .docsGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .docCard {
@@ -603,7 +711,8 @@ tr:last-child td {
   .valueGrid,
   .proofGrid,
   .lawGrid,
-  .docsGrid {
+  .docsGrid,
+  .factStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -638,6 +747,7 @@ tr:last-child td {
   .proofGrid,
   .lawGrid,
   .docsGrid,
+  .factStrip,
   .workflowRail {
     grid-template-columns: 1fr;
   }
