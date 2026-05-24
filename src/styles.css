@@ -196,6 +196,16 @@ h3 {
   border-radius: 28px;
 }
 
+.brandLogoCard {
+  display: block;
+  width: min(100%, 340px);
+  margin: -4px auto 22px;
+  border: 1px solid rgba(96, 230, 194, 0.22);
+  border-radius: 26px;
+  background: #030813;
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.34);
+}
+
 .heroPanel::before {
   position: absolute;
   inset: 16px;
@@ -716,6 +726,16 @@ tr:last-child td {
   max-width: 900px;
   margin: 0 auto;
   text-align: center;
+}
+
+.closingMascot {
+  display: block;
+  width: min(190px, 52vw);
+  margin: -8px auto 20px;
+  border: 1px solid rgba(96, 230, 194, 0.2);
+  border-radius: 34px;
+  background: #030813;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.32);
 }
 
 .closingCard .ctaRow {
