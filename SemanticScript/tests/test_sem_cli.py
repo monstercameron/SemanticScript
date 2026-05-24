@@ -427,8 +427,16 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue((root / "main.sem").is_file())
             self.assertTrue((root / "main.test.sem").is_file())
             self.assertTrue((root / ".github" / "workflows" / "ci.yml").is_file())
+            self.assertTrue((root / ".gitignore").is_file())
+
+            gitignore_text = (root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn(".semcache/", gitignore_text)
+            self.assertIn("!sem.lock", gitignore_text)  # lockfile stays committed
 
             build_text = (root / "build.sem").read_text(encoding="utf-8")
+            # build.sem documents the dependency workflow this scaffold aligns with.
+            self.assertIn("sem deps sync", build_text)
+            self.assertIn("dependencyFetch", build_text)
             main_text = (root / "main.sem").read_text(encoding="utf-8")
             test_text = (root / "main.test.sem").read_text(encoding="utf-8")
             workflow_text = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

@@ -500,6 +500,15 @@ def _starter_build_sem_text(meta: dict) -> str:
         f"nativeOutput {meta['buildProject']} \"{meta['nativeOutput']}\"",
         f"import {meta['moduleAlias']} {meta['moduleName']}",
         "",
+        "# External dependencies (optional). Declare them here, then run",
+        "# `sem deps sync` to fetch + verify + lock, and import by module path.",
+        "# Fetching is build-time authority: only `sem deps sync` touches the",
+        "# network; `sem check`/`sem build` resolve imports from the cache offline.",
+        f"# dependency {meta['buildProject']} exampleLib github.com/OWNER/REPO v1.0.0",
+        f"# dependencyFetch {meta['buildProject']} exampleLib github OWNER/REPO v1.0.0",
+        f"# dependencyIntegrity {meta['buildProject']} exampleLib sha256:<archive-digest from first sync>",
+        "# then in main.sem:  import exampleLib github.com/OWNER/REPO",
+        "",
     ])
 
 
@@ -557,6 +566,29 @@ def _starter_test_sem_text(meta: dict) -> str:
         "purpose operation main \"Keep the starter project green with one passing semantic smoke test.\"",
         "invariant operation main \"The starter semantic smoke test remains side-effect free and exits with code 0.\"",
         "return value 0",
+        "",
+    ])
+
+
+def _starter_gitignore_text(meta: dict) -> str:
+    return "\n".join([
+        "# SemanticScript build + dependency cache artifacts.",
+        "# The fetched-dependency cache is a build input, not checked-in source.",
+        ".semcache/",
+        "**/.semcache/",
+        "build/",
+        "**/build/",
+        f"{meta['nativeOutput']}",
+        "*.exe",
+        "*.ll",
+        "*.obj",
+        "*.o",
+        "*.pdb",
+        "__pycache__/",
+        "",
+        "# Keep sem.lock committed: it pins resolved dependency versions and",
+        "# checksums so `sem deps sync` is reproducible across machines.",
+        "!sem.lock",
         "",
     ])
 
@@ -639,6 +671,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
     main_path = root / "main.sem"
     test_path = root / meta["testFileName"]
     workflow_path = root / ".github" / "workflows" / "ci.yml"
+    gitignore_path = root / ".gitignore"
     files_created: list[str] = []
     files_overwritten: list[str] = []
     next_commands = [
@@ -679,6 +712,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             "mainFile": str(main_path),
             "testFile": str(test_path),
             "workflowFile": str(workflow_path),
+            "gitignoreFile": str(gitignore_path),
             "projectVersion": meta["projectVersion"],
             "nativeOutput": meta["nativeOutput"],
             "githubRepoUrl": meta["githubRepoUrl"],
@@ -710,6 +744,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             (main_path, _starter_main_sem_text(meta)),
             (test_path, _starter_test_sem_text(meta)),
             (workflow_path, _starter_ci_workflow_text(meta)),
+            (gitignore_path, _starter_gitignore_text(meta)),
         ):
             if target_path.exists():
                 files_overwritten.append(str(target_path))
