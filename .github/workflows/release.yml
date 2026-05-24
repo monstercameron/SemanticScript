@@ -355,6 +355,9 @@ jobs:
           NOTES_PATH: ${{ steps.manifest.outputs.notes_path }}
         run: |
           $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $true
+          }
 
           $title = "SemanticScript $env:RELEASE_TAG"
 
@@ -366,3 +369,16 @@ jobs:
           }
 
           gh release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
+
+          $expectedAssets = @(
+            (Split-Path -Leaf $env:SEM_EXE_PATH),
+            (Split-Path -Leaf $env:VSIX_PATH),
+            (Split-Path -Leaf $env:MANIFEST_PATH)
+          )
+          $release = gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          foreach ($assetName in $expectedAssets) {
+            if ($assetName -notin $assetNames) {
+              throw "GitHub release '$env:RELEASE_TAG' is missing downloadable asset '$assetName'."
+            }
+          }
