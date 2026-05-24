@@ -42,18 +42,28 @@ and records the SHA-256 checksum in the generated release manifest.
 ## Main-Branch Artifact Builds
 
 `.github/workflows/compiler-exe.yml` builds the same PyInstaller executable on
-every push to `main`, which is the normal result of merging a PR. That workflow
-validates the executable with `version`, `check`, and `fmt --check`, then uploads
-a GitHub Actions artifact named `semanticscript-sem-windows-x64` containing:
+every push to `main`, which is the normal result of merging a PR. It also builds
+the local VS Code extension package. The workflow validates the executable with
+`version`, `skills list`, `check`, and `fmt --check`, then uploads GitHub
+Actions artifacts named `semanticscript-sem-windows-x64`,
+`semanticscript-vscode-vsix`, and `semanticscript-merge-release-manifest`
+containing:
 
 ```text
-semanticscript-sem-windows-x64-<SHORT_SHA>.exe
+semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe
+semanticscript-vscode-main-<SHORT_SHA>.vsix
+semanticscript-merge-release-manifest-main-<SHORT_SHA>.json
 ```
 
-This artifact is a merge-build smoke and handoff artifact, not a tagged public
-release. Tagged releases still use `.github/workflows/release.yml`, rename the
-executable with the release tag, generate the release manifest and checksums, and
-attach the compiler executable to the GitHub Release.
+The same workflow creates or updates a GitHub prerelease tagged
+`main-<SHORT_SHA>` and attaches those three files as downloadable release
+assets. These merge prereleases are build handoff artifacts, not stable public
+version releases.
+
+Tagged releases still use `.github/workflows/release.yml`, rename the executable
+and VSIX with the release tag, generate the stable release manifest and
+checksums, and attach the compiler executable plus VSIX to the GitHub Release for
+the matching `v*` tag.
 
 ## Validation
 

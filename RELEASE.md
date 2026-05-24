@@ -68,6 +68,12 @@ version, the resolved release commit SHA and subject, commits since the previous
 tag, download entries for the Windows compiler/toolchain executable and VSIX,
 SHA-256 checksums, and the validation commands that passed.
 
+Every merge to `main` also runs `.github/workflows/compiler-exe.yml`. That
+workflow packages `sem.exe`, packages the local VS Code VSIX, uploads both as
+Actions artifacts, and creates a `main-<SHORT_SHA>` GitHub prerelease with the
+same downloadable files plus a merge-release manifest. Those prereleases are
+continuous merge handoff builds, not stable version releases.
+
 ## Environment
 
 Minimum release validation environment:
