@@ -64,8 +64,8 @@ CLI flags:
 | `--strict` | Run the compiler's built-in lint pass, enable the current strict fallible-call disposition checks, and treat diagnostics as fatal. This is a CI strictness flag; it is separate from source-level `languageMode strictExecutable`. |
 | `--parse-only` | Parse, optionally lint, and stop before codegen. |
 | `--opt-level N` | LLVM optimization level `0..3`, default `2` unless `build.sem` provides `optLevel PROJECT N`. |
-| `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
-| `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
+| `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context plus `SSRUN002` last-site tracking; `prod` keeps trap checks and the `SSRUN002` fatal-signal handler but hides source context. See [Runtime Crash Reporting](#runtime-crash-reporting). |
+| `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks and no crash handler, `traps` emits silent `llvm.trap` checks plus a header-only `SSRUN002` handler, and `panic` embeds the SemanticScript panic message before trapping and records the last semantic site for `SSRUN002`. |
 | `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that import their registered main module directly. |
 | `--std-path PATH` | Add an explicit standard-library root. May be repeated. Accepts a `std` root containing `module.sem`, a `SemanticScript` root containing `std/`, or a repo root containing `SemanticScript/std`. |
 | `--keep-resources` | Retain the intermediate Windows resource files (`.rc` / `.res` / `.ico`) next to the executable for debugging. Default behavior writes them to a tempdir and deletes after linking — the bytes survive only inside the `.exe`'s PE resource section. Overrides `keepResources PROJECT no` in the build tape. |
@@ -190,6 +190,81 @@ repeatable without TOML/YAML sidecars:
 | `guiBackend PROJECT win32\|winui3` | No CLI flag; native GUI backend selector. `win32` is active/default, `winui3` is recognized but currently rejected with a toolchain diagnostic. |
 
 CLI flags win over build-tape defaults for one-off invocations.
+
+## Runtime Crash Reporting
+
+The compiler emits two layers of runtime diagnostics, both gated by
+`--runtime-checks` / `--build-profile`:
+
+- **`SSRUN001` (proactive)** — guarded checks that trap *before* undefined
+  behavior at the two sites the compiler can predict: a zero integer divisor
+  and a null buffer pointer to a `memcpy`/`memset`-style call. The check writes
+  an `SSRUN001` block naming the source row, then `llvm.trap`s.
+- **`SSRUN002` (reactive)** — a fatal-signal handler installed at program
+  entry for faults no static check can prevent (wild pointer, illegal
+  instruction, and stack overflow on Windows — see limitations below). When a
+  fatal signal arrives it writes an `SSRUN002`
+  block with the **operation call stack** (a shadow stack of the active
+  operation chain, outermost first) plus the **last semantic site the program
+  entered** — the operation, call, and source line — then restores the default
+  disposition and re-raises so the real exit status / core dump is preserved.
+
+The call stack is a software shadow stack: a frame is pushed caller-side around
+each *synchronous* operation-to-operation call and popped when it returns, so it
+stays balanced across every return path and survives inlining. It is bounded (64
+frames) and recorded only in `panic` mode. It is a single process-global stack,
+so the chain is accurate for the current single-threaded backend; it is not yet
+per-thread, and async (start/await) call paths are not wrapped, so those chains
+appear shallower. A faulting two-deep synchronous chain reports:
+
+```text
+Call stack (most recent last):
+  #0 operation main (entry)
+  #1 operation middleStep (call middleCall line 34)
+  #2 operation faultingLeaf (call leafCall line 24)
+
+Last site:
+  operation faultingLeaf call lenCall -> c.strlen line 13
+
+Signal: 11 (SIGSEGV)
+```
+
+`SSRUN002` works as follows by profile:
+
+| Profile / flag | Handler installed | Last-site recorded |
+| --- | --- | --- |
+| `dev` (`--runtime-checks panic`) | yes | yes (operation + call + line) |
+| `prod` (`--runtime-checks traps`) | yes | no — header + signal only, matching how `prod` hides `SSRUN001` source context |
+| `--runtime-checks off` | no | no |
+
+Last-site tracking is a single pointer store at each operation entry and each
+call, emitted only in `panic` mode, so `prod`/`off` builds carry no overhead.
+
+On POSIX the handler is a C `signal()` handler covering `SIGSEGV`, `SIGABRT`,
+`SIGBUS`, `SIGILL`, and `SIGFPE`. The handler resets the signal to its default
+disposition *first* (so a fault while reporting terminates cleanly instead of
+re-entering) and uses a once-guard so a second fatal signal reports only once.
+On Windows it also installs a `SetUnhandledExceptionFilter` so structured
+exceptions (access violations, illegal instructions) that the CRT does not
+translate to a C signal still report `SSRUN002`.
+
+Two limitations are worth stating plainly:
+
+- **Stack-overflow capture is Windows-only.** The Windows SEH filter runs after
+  the kernel has handled the guard page, so it reports. The POSIX path uses a
+  plain `signal()` handler with no alternate signal stack, so a stack-overflow
+  `SIGSEGV` re-faults on the exhausted stack and dies silently; reporting it on
+  POSIX would require installing the handler with `sigaltstack` (future work).
+- **Windows `abort()` / `__fastfail` is uncatchable** (exit `0xC0000409`): it
+  bypasses every handler by design, so a missing `SSRUN002` with that exit code
+  means a deliberate abort path.
+
+Use `sem run --explain-crash PATH` to get this as a machine-readable
+`sem.crash.v0` report: it runs the program in a subprocess, parses the
+`SSRUN001`/`SSRUN002` block into `panic` (with `operation`, `call`, `line`,
+`signalName`, and a structured `callStack` array), sets `suspectedCategory`
+(`runtimePanic`, `nativeFault`, `nativeTrap`, or `noCrash`), and emits
+operation-anchored `fixCandidates`.
 
 ## Build-Time Resources
 
