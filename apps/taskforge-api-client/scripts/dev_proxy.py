@@ -7,11 +7,13 @@ import json
 import os
 import posixpath
 import re
+import secrets
 import sys
+import threading
 from dataclasses import dataclass
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import urlsplit
 
 
@@ -38,6 +40,10 @@ STATIC_CONTENT_TYPES = {
 
 STATIC_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
 HEADER_NAME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+COOKIE_VALUE_RE = re.compile(r"^[A-Za-z0-9._~-]{1,256}$")
+
+PROXY_SESSION_COOKIE_NAME = "__taskforge_proxy_session"
+UPSTREAM_SESSION_COOKIE_NAME = "session"
 
 
 @dataclass(frozen=True)
@@ -130,9 +136,10 @@ def _static_content_type(path: Path) -> str:
 
 
 def _safe_header_value(value: str) -> str | None:
-    if any(char in value for char in "\r\n\0"):
+    safe_value = value.replace("\r", "").replace("\n", "").replace("\0", "")
+    if safe_value != value:
         return None
-    return value
+    return safe_value
 
 
 def _safe_header_pair(name: str, value: str) -> tuple[str, str] | None:
@@ -169,7 +176,7 @@ def _forwardable_request_headers(headers) -> dict[str, str]:
     forwarded: dict[str, str] = {}
     for name, value in headers.items():
         lower = name.lower()
-        if lower in HOP_BY_HOP_HEADERS or lower == "host":
+        if lower in HOP_BY_HOP_HEADERS or lower in {"host", "cookie"}:
             continue
         safe_header = _safe_header_pair(name, value)
         if safe_header is not None:
@@ -177,19 +184,64 @@ def _forwardable_request_headers(headers) -> dict[str, str]:
     return forwarded
 
 
-def _forwardable_response_headers(headers) -> Iterable[tuple[str, str]]:
-    for name, value in headers.items():
-        lower = name.lower()
-        if lower in HOP_BY_HOP_HEADERS or lower in {"content-length", "server", "date"}:
-            continue
-        safe_header = _safe_header_pair(name, value)
-        if safe_header is not None:
-            yield safe_header
+def _load_cookie_header(value: str) -> SimpleCookie | None:
+    safe_value = _safe_header_value(value)
+    if safe_value is None:
+        return None
+    cookie = SimpleCookie()
+    try:
+        cookie.load(safe_value)
+    except CookieError:
+        return None
+    return cookie
+
+
+def _upstream_session_from_set_cookie(value: str) -> tuple[str, str | None] | None:
+    cookie = _load_cookie_header(value)
+    if cookie is None or UPSTREAM_SESSION_COOKIE_NAME not in cookie:
+        return None
+
+    morsel = cookie[UPSTREAM_SESSION_COOKIE_NAME]
+    session_value = morsel.value
+    max_age = morsel["max-age"].strip()
+    if session_value == "" or max_age == "0":
+        return "clear", None
+    if not COOKIE_VALUE_RE.fullmatch(session_value):
+        return None
+    return "set", session_value
+
+
+def _proxy_session_from_cookie_header(value: str | None) -> str | None:
+    if not value:
+        return None
+    cookie = _load_cookie_header(value)
+    if cookie is None or PROXY_SESSION_COOKIE_NAME not in cookie:
+        return None
+    session_value = cookie[PROXY_SESSION_COOKIE_NAME].value
+    if not COOKIE_VALUE_RE.fullmatch(session_value):
+        return None
+    return session_value
+
+
+def _proxy_session_cookie_header(session_value: str) -> str:
+    return (
+        f"{PROXY_SESSION_COOKIE_NAME}={session_value}; "
+        "Path=/; HttpOnly; SameSite=Strict"
+    )
+
+
+def _proxy_session_clear_cookie_header() -> str:
+    return (
+        f"{PROXY_SESSION_COOKIE_NAME}=; "
+        "Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+    )
 
 
 def make_handler(static_root: Path, api_origin: str):
     static_root = static_root.resolve()
     api_origin = _validated_api_origin(api_origin)
+    session_lock = threading.Lock()
+    upstream_sessions: dict[str, str] = {}
 
     class TaskForgeApiClientHandler(BaseHTTPRequestHandler):
         server_version = "TaskForgeApiClient/0.1"
@@ -266,13 +318,17 @@ def make_handler(static_root: Path, api_origin: str):
             body = self.rfile.read(content_length) if content_length else None
             connection_cls = http.client.HTTPSConnection if api_origin.scheme == "https" else http.client.HTTPConnection
             connection = connection_cls(api_origin.host, api_origin.port, timeout=20)
+            request_headers = _forwardable_request_headers(self.headers)
+            upstream_cookie = self._upstream_cookie_header()
+            if upstream_cookie is not None:
+                request_headers["Cookie"] = upstream_cookie
 
             try:
                 connection.request(
                     self.command,
                     upstream_target,
                     body=body,
-                    headers=_forwardable_request_headers(self.headers),
+                    headers=request_headers,
                 )
                 response = connection.getresponse()
                 response_body = response.read()
@@ -294,16 +350,47 @@ def make_handler(static_root: Path, api_origin: str):
             finally:
                 connection.close()
 
+        def _upstream_cookie_header(self) -> str | None:
+            proxy_session = _proxy_session_from_cookie_header(self.headers.get("Cookie"))
+            if proxy_session is None:
+                return None
+            with session_lock:
+                upstream_session = upstream_sessions.get(proxy_session)
+            if upstream_session is None:
+                return None
+            return f"{UPSTREAM_SESSION_COOKIE_NAME}={upstream_session}"
+
+        def _store_upstream_session(self, upstream_session: str) -> str:
+            previous_proxy_session = _proxy_session_from_cookie_header(self.headers.get("Cookie"))
+            proxy_session = secrets.token_urlsafe(32)
+            with session_lock:
+                if previous_proxy_session is not None:
+                    upstream_sessions.pop(previous_proxy_session, None)
+                upstream_sessions[proxy_session] = upstream_session
+            return proxy_session
+
+        def _clear_upstream_session(self) -> None:
+            proxy_session = _proxy_session_from_cookie_header(self.headers.get("Cookie"))
+            if proxy_session is None:
+                return
+            with session_lock:
+                upstream_sessions.pop(proxy_session, None)
+
         def _copy_response_headers(self, headers, response_body: bytes) -> None:
             set_cookies = headers.get_all("Set-Cookie") if hasattr(headers, "get_all") else []
-            for name, value in _forwardable_response_headers(headers):
-                if name.lower() == "set-cookie":
-                    continue
-                self.send_header(name, value)
             for cookie in set_cookies or []:
-                safe_cookie = _safe_header_value(cookie)
-                if safe_cookie is not None:
-                    self.send_header("Set-Cookie", safe_cookie)
+                upstream_session = _upstream_session_from_set_cookie(cookie)
+                if upstream_session is None:
+                    continue
+                action, session_value = upstream_session
+                if action == "clear":
+                    self._clear_upstream_session()
+                    self.send_header("Set-Cookie", _proxy_session_clear_cookie_header())
+                    continue
+                if session_value is not None:
+                    proxy_session = self._store_upstream_session(session_value)
+                    self.send_header("Set-Cookie", _proxy_session_cookie_header(proxy_session))
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(response_body)))
             self.send_header("Cache-Control", "no-store")
 
