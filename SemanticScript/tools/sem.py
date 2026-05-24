@@ -6072,6 +6072,29 @@ def command_migrate_syntax(args: argparse.Namespace) -> int:
     return subprocess.call(command)
 
 
+def command_mcp(args: argparse.Namespace) -> int:
+    try:
+        from tools import sem_mcp
+    except ModuleNotFoundError as exc:
+        if exc.name == "mcp":
+            print(
+                "sem mcp: the Model Context Protocol SDK is not installed.\n"
+                '        fix: python -m pip install "mcp>=1.2"',
+                file=sys.stderr,
+            )
+            return 2
+        raise
+    server_args = ["--transport", args.transport]
+    if args.host is not None:
+        server_args += ["--host", args.host]
+    if args.port is not None:
+        server_args += ["--port", str(args.port)]
+    if args.path is not None:
+        server_args += ["--path", args.path]
+    sem_mcp.main(server_args)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sem",
@@ -6394,6 +6417,22 @@ def build_parser() -> argparse.ArgumentParser:
                                 help="emit machine-readable migration results")
     migrate_syntax.add_argument("paths", nargs="+")
     migrate_syntax.set_defaults(func=command_migrate_syntax)
+
+    mcp_server = subparsers.add_parser(
+        "mcp",
+        help="run the SemanticScript MCP server (Model Context Protocol); stdio by default, "
+        "pass --transport streamable-http to serve over HTTP",
+    )
+    mcp_server.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http", "sse"),
+        default="stdio",
+        help="transport to serve on (default: stdio)",
+    )
+    mcp_server.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
+    mcp_server.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
+    mcp_server.add_argument("--path", help="HTTP route for the streamable-http transport")
+    mcp_server.set_defaults(func=command_mcp)
 
     return parser
 

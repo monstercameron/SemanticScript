@@ -39,8 +39,8 @@ python tools/sem.py context --json ../apps/taskforge-tui
 python tools/sem.py symbols --json ../apps/taskforge-tui
 ```
 
-The `sem` driver also exposes `run`, `inspect-ir`, `compare-profiles`, and
-`bench`. `context --json` reports project roots, entrypoints, tool versions,
+The `sem` driver also exposes `run`, `inspect-ir`, `compare-profiles`, `bench`,
+and `mcp` (see "MCP server" below). `context --json` reports project roots, entrypoints, tool versions,
 runtime feature flags, syntax support counts, and known deferred feature counts.
 `symbols --json` reports source files, modules, imports, operations, calls,
 inputs, outputs, effects, routes, source locations, and unresolved references.
@@ -49,6 +49,40 @@ with `--force`. `lint` currently supports the canonical `--engine semlint`
 backend; `fmt` delegates to `SemanticScript/formatter/semfmt.py`; `doctor`
 checks Python, llvmlite, clang, Node.js, and native HTTP runtime build
 prerequisites.
+
+### MCP server
+
+`sem mcp` runs a Model Context Protocol server that exposes the stable `sem`
+JSON surfaces (`check`, `readiness`, `context`, `symbols`, `graph`, `slice`,
+`size`, `explain`, `skills`, `fix`, `patch`, `test`, `dev`, plus `version` and
+`doctor`) as MCP tools, so MCP-capable agents and editors can call the toolchain
+natively instead of shelling out. It is a thin wrapper over the same `sem` CLI,
+so behavior and versioning stay identical.
+
+The server needs the optional MCP SDK: `python -m pip install -r requirements-mcp.txt`
+(bundled automatically into the released `sem.exe`). It defaults to the stdio
+transport that desktop clients launch:
+
+```bash
+sem mcp
+```
+
+Register it with a client, for example Claude Code:
+
+```bash
+claude mcp add semanticscript -- sem mcp
+```
+
+Pass `--transport streamable-http --host HOST --port PORT` to serve over HTTP for
+remote or multi-client use. Because the server exposes file-mutating (`patch`)
+and code-executing (`test`) tools, bind only trusted hosts; it defaults to
+`127.0.0.1` and warns when bound to a non-loopback address.
+
+To add a tool, wrap the corresponding `sem` subcommand with a new
+`@mcp.tool()` function in `SemanticScript/tools/sem_mcp.py` (each tool just
+forwards to the CLI via `_run_sem`) and register its name in
+`SemanticScript/tests/test_sem_mcp.py`. The module docstring of `sem_mcp.py`
+has the step-by-step recipe.
 
 CLI flags:
 

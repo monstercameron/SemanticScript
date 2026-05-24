@@ -83,6 +83,31 @@ or compiler `--emit-exe` paths. See
 [docs/toolchain/llvm-compiler-install.md](docs/toolchain/llvm-compiler-install.md).
 After LLVM is installed, run `sem doctor` to verify the native backend.
 
+### Package managers and MCP
+
+Tagged `v<version>` releases also publish package-manager and MCP artifacts:
+
+```powershell
+# Scoop (after adding the manifest to a bucket)
+scoop install semanticscript
+
+# winget
+winget install monstercameron.SemanticScript
+```
+
+The release includes `semanticscript.mcpb`, a one-click
+[MCP Bundle](https://github.com/modelcontextprotocol/mcpb) for desktop clients
+such as Claude Desktop. To run the bundled MCP server from an installed `sem`:
+
+```bash
+sem mcp                          # stdio transport (default)
+claude mcp add semanticscript -- sem mcp
+```
+
+See [docs/toolchain/compiler.md](docs/toolchain/compiler.md) ("MCP server") for
+transports and the exposed tools. Manifest sources live under `packaging/`
+(`scoop/`, `winget/`, `mcpb/`, `registry/`).
+
 ## Quickstart
 
 Scaffold a small project:

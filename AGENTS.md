@@ -48,6 +48,12 @@ move with editor changes.
 
 Prefer the `sem` wrapper before using raw compiler or linter internals.
 
+MCP-capable agents can reach the same JSON surfaces through the built-in MCP
+server instead of shelling out: run `sem mcp` (stdio) and call the matching
+tool (`check`, `readiness`, `graph`, `slice`, `fix`, `patch`, `test`, etc.).
+The tools are thin wrappers over these same subcommands, so the loop below
+applies unchanged. See `docs/toolchain/compiler.md` ("MCP server").
+
 Load version-matched agent rules:
 
 ```powershell
