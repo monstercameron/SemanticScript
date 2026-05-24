@@ -1,0 +1,40 @@
+name: Branch name
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate branch name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check head branch against the naming convention
+        env:
+          # Passed via env (not inline) so a crafted branch name cannot inject
+          # shell. See CONTRIBUTING.md (Branch Naming).
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          echo "Head branch: $BRANCH"
+          case "$BRANCH" in
+            dependabot/*|release/*|main|master)
+              echo "Exempt from the naming convention: $BRANCH"
+              exit 0
+              ;;
+          esac
+          regex='^(feat|fix|docs|chore|refactor|test|perf|build|ci)/[a-z0-9]+(-[a-z0-9]+)*$'
+          if printf '%s' "$BRANCH" | grep -Eq "$regex"; then
+            echo "OK: '$BRANCH' matches type/kebab-description."
+          else
+            echo "::error::Branch '$BRANCH' does not match the required structure 'type/kebab-description'. Allowed types: feat, fix, docs, chore, refactor, test, perf, build, ci. See CONTRIBUTING.md."
+            exit 1
+          fi

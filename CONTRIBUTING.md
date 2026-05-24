@@ -62,6 +62,50 @@ List all unit, component, integration, and e2e lanes with:
 Some broader checks require Node.js, LLVM/clang, and a working native compiler
 toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
 
+## Branch Naming
+
+Branches follow a `type/short-description` structure (Conventional-Branch
+style), where `type` mirrors our commit types and `short-description` is
+lowercase kebab-case:
+
+```text
+type/short-description
+```
+
+Allowed types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`,
+`build`, `ci`.
+
+The exact rule (the same regex CI enforces):
+
+```text
+^(feat|fix|docs|chore|refactor|test|perf|build|ci)/[a-z0-9]+(-[a-z0-9]+)*$
+```
+
+Examples:
+
+```text
+feat/crash-metadata
+fix/null-deref-guard
+docs/branch-naming
+chore/bump-llvmlite
+refactor/codegen-emit
+```
+
+Enforcement is two-layered:
+
+- **CI** — `.github/workflows/branch-name.yml` validates the head branch of
+  every pull request and fails non-conforming names. Automation branches
+  (`dependabot/**`) and the protected `main`/`master`/`release/**` branches are
+  exempt.
+- **Local (optional)** — install the pre-push hook so a bad name is caught
+  before it reaches the remote:
+
+  ```powershell
+  git config core.hooksPath .githooks
+  ```
+
+  The hook lives at `.githooks/pre-push` and applies the same regex.
+
 ## Pull Request Notes
 
 - Include the commands you ran and any skipped checks.
