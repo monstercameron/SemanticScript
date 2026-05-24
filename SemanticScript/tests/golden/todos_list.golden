@@ -1,0 +1,31 @@
+Raw Node Todo Console
+
+Todo Console
+============
+1. List todos
+2. View todo
+3. Add todo
+4. Update todo title
+5. Toggle todo complete
+6. Delete todo
+7. Quit
+
+Choose an action: 1
+
+Todos
+-----
+1. [open] Write SemanticScript baseline examples
+2. [done] Run the JavaScript snippets
+
+Todo Console
+============
+1. List todos
+2. View todo
+3. Add todo
+4. Update todo title
+5. Toggle todo complete
+6. Delete todo
+7. Quit
+
+Choose an action: 7
+Goodbye.

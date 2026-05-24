@@ -46,6 +46,40 @@ jobs:
       - name: Run fast Python suite
         run: python SemanticScript/tests/run_suite.py ci-fast
 
+  linux-validation:
+    name: Linux validation + AddressSanitizer (clang)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -c constraints.txt
+
+      - name: Install clang/LLVM (ASan-capable toolchain)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+          echo "SEMSC_CLANG=$(command -v clang)" >> "$GITHUB_ENV"
+
+      - name: Run portable suite on Linux
+        run: python SemanticScript/tests/run_suite.py ci-fast
+
+      - name: Run AddressSanitizer over the C runtime
+        run: python SemanticScript/tests/run_suite.py runtime.asan
+
   vscode-validation:
     name: VS Code extension validation
     runs-on: windows-latest

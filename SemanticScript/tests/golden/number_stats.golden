@@ -1,0 +1,12 @@
+Number Statistics
+=================
+values: 42, 7, 19, 7, 100, 13, 42, 58, 7, 31
+sorted: 7, 7, 7, 13, 19, 31, 42, 42, 58, 100
+count: 10
+sum: 326
+min: 7
+max: 100
+mean: 32.60
+median: 25
+mode: 7
+populationStdDev: 28.11
