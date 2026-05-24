@@ -124,9 +124,11 @@ source breaks on "magnitude > 4" while the SemanticScript source continues on
 # C -> assembly
 clang -O2 -S -masm=intel -o collatz.c.s algorithms/collatz.c
 # SemanticScript -> LLVM IR -> assembly
-python ../compiler/semsc.py algorithms/collatz.sscript --emit-exe out.exe `
-    --persist-llvm-ir yes --opt-level 2
-clang -O2 -S -masm=intel -o collatz.ss.s <the emitted .ll sidecar>
+python ../compiler/semsc.py algorithms/collatz.sscript --emit-ir "$PWD\collatz.ll" --opt-level 2
+clang -O2 -S -masm=intel -o collatz.ss.s collatz.ll
+# compare the inner loops (look for the cmovne block):
+#   collatz.c.s    -> label .LBB0_3
+#   collatz.ss.s   -> label .LBB0_5 (%after_panic_check_collatzParityCall)
 ```
 
 This is the result that should actually interest an engineer: not "trust my
