@@ -83,7 +83,8 @@ Minimum release validation environment:
   same pinned dependency floor as CI/release validation
 - PyInstaller 6.20.0 for the single-file Windows executable
 - Node.js 20 or newer for VS Code extension syntax checks
-- LLVM/clang for native emit, stdlib, and parity checks
+- LLVM/clang for native emit, stdlib, and parity checks. See
+  [docs/toolchain/llvm-compiler-install.md](docs/toolchain/llvm-compiler-install.md).
 
 On Windows, set `SEMSC_CLANG` when clang is not on PATH:
 
