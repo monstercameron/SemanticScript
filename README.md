@@ -2,242 +2,71 @@
 
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmonstercameron%2FSemanticScript%2Fmain%2Fversion.json&query=%24.version&label=version)](https://github.com/monstercameron/SemanticScript/blob/main/version.json)
 [![CI](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-SemanticScript is an agent-first application language and toolchain.
+SemanticScript is a pre-release, agent-first application language and toolchain.
 
-It is built around a flat, line-oriented semantic tape where every executable
-line is an atomic, named, checkable record. The language does not try to make
-source code short. It tries to make source code easy to recover, audit, edit,
-and verify inside an agent attention window.
+It is designed around explicit, line-addressable source records: operations
+name their effects, capabilities, memory behavior, failure paths, runtime
+edges, and review intent directly in the source. The goal is not terse code. The
+goal is code that humans and agents can inspect, repair, and validate without
+guessing.
 
-The core idea is simple:
+Current release status: `0.0.1` pre-release. No stable public release has been
+published yet.
 
-```text
-Do not minimize source.
-Maximize recoverable context.
-```
+## What Works
 
-That is context maxxing: spending source text on names, effects, types,
-capabilities, memory behavior, failure paths, cleanup, trust boundaries, route
-contracts, and comments so the next maintainer does not have to infer them from
-framework magic or runtime convention.
+- Python reference compiler for `.sscript` and `.sem`.
+- LLVM IR generation, JIT execution, and clang-linked native executables.
+- Structured linter, formatter, and semantic diagnostics.
+- `sem` CLI for validation, graph/slice retrieval, repair planning, patching,
+  readiness checks, and test orchestration.
+- VS Code extension for syntax, semantic highlighting, hovers, diagnostics, and
+  compiler integration.
+- Native runtime adapters for HTTP, SQLite, JSON, bcrypt, HTML templating, and
+  selected GUI/terminal surfaces.
+- Curated app and runtime demos under `apps/`.
 
-SemanticScript already has a working Python reference compiler. It parses
-SemanticScript, resolves modules, emits LLVM IR through `llvmlite`, can JIT-run
-programs, and can link native executables through `clang`. The long-term target
-is real application development in the same problem space as Node, Python, Bun,
-Deno, Express, FastAPI, and Go services, but with source shaped for agentic
-maintenance instead of human terseness.
+SemanticScript is still evolving. Treat the compatibility boundary in
+[docs/reference/compatibility.md](docs/reference/compatibility.md) and the
+implementation inventory in
+[docs/reference/syntax-inventory.md](docs/reference/syntax-inventory.md) as the
+source of truth.
 
-## Start Here
+## Quickstart
 
-Install dependencies, check the tool wrapper, scaffold a small project, and run
-the green validation fixture:
+From the repository root:
 
 ```powershell
 python -m pip install -r requirements.txt -c constraints.txt
 python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py new hello-world
 python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
 python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
 ```
 
-Use the `sem` wrapper first. It is the public agent-facing surface for
-validation, retrieval, repair planning, patching, and test orchestration.
-
-`sem new` scaffolds `build.sem`, `main.sem`, `main.test.sem`, and a Windows
-GitHub Actions CI workflow for a minimal hello-world project. Add
-`--github-url https://github.com/you/hello-world` when you want the generated
-project metadata to point at a remote repository.
-
-`SemanticScript\tests\agent_cli_demo.test.sem` is the green validation fixture.
-`SemanticScript\tests\tiny.sem` is intentionally diagnostic-heavy and is useful
-for repair-plan demos.
-
-On large project surfaces, `check`, `fix`, `graph`, and `slice` JSON output is
-compact by default for agent sessions. Use `--full` when you explicitly need
-the full payload expansion.
-
-## Hello World Shape
-
-This shortened `main.sem` excerpt shows the core language shape: named records,
-explicit effects, typed failure, and named call dataflow. `sem new hello-world`
-creates the complete runnable version.
-
-```semanticscript
-module app.hello_world
-purpose module app.hello_world "Console hello-world example."
-invariant module app.hello_world "The main operation emits one greeting line or returns a typed console-write failure."
-
-error MainError
-errorCase MainError ConsoleWriteFailed ConsoleWriteError
-
-storage module immutable greetingText String "Hello, world!"
-
-operation main
-input operation main console Console
-output operation main Result ExitCode MainError
-effect main write console.stdout
-authority main write console.stdout
-memory main heap no
-async main no
-purpose operation main "Write Hello, world! to standard output and exit successfully."
-invariant operation main "The operation makes one console.writeLine call before returning either success or ConsoleWriteFailed."
-
-call writeGreetingCall console.writeLine
-argument writeGreetingCall console Console console
-argument writeGreetingCall text String greetingText
-run writeGreetingCall
-bind error writeGreetingError ConsoleWriteError writeGreetingCall
-branch error source writeGreetingCall target writeGreetingFailed
-storage local immutable successCode ExitCode 0
-return ok successCode
-label writeGreetingFailed
-makeError consoleWriteFailure MainError.ConsoleWriteFailed writeGreetingError
-return error consoleWriteFailure
-```
-
-## How The Tools Help In Iteration
-
-These commands are not interchangeable. Each exists to answer one specific
-question in an agent edit loop.
-
-- `sem skills get`:
-  load version-matched repo guidance before editing so the agent does not guess
-  language rules, repair conventions, or app patterns from stale memory.
-- `sem check --json`:
-  the primary semantic gate. Use it before edits to see what is wrong and after
-  edits to verify the source state actually improved. By default it stays on the
-  source lane; use `--with-readiness` only when you explicitly want environment
-  and runtime-adapter facts embedded into the same payload.
-- `sem graph --json`:
-  the coarse map. Use `summary` or `routes` first to decide where to drill
-  before spending context on detailed source neighborhoods.
-- `sem slice --json`:
-  the local working set. Use it to pull one operation, route, effect, or
-  capability neighborhood into context before making a targeted edit.
-- `sem explain CODE --json`:
-  the rule explainer. Use it when a diagnostic code is unfamiliar and the agent
-  needs the reasoning and safe repair shapes behind that rule.
-- `sem fix --plan --json`:
-  the proposal step. It turns diagnostics into reviewable candidate edits
-  without mutating source. By default it is blocker-first and does not spend
-  time synthesizing warning-only repairs; add `--include-warnings` when the
-  source is already buildable and you want cleanup guidance. A `mixed` plan is
-  still usable when `planUsable: true`, and the command now exits `0` in that
-  case so an agent can continue into review or dry-run patching.
-- `sem patch --dry-run|--apply`:
-  the execution step for an already-reviewed plan. It protects against stale
-  files and re-verifies formatting and `check` after apply.
-- `sem fmt --check`:
-  the diff stabilizer. Use it to make sure the source is normalized before
-  trusting a patch or review diff.
-- `sem test --json`:
-  behavior validation after semantic preflight is clean. This is not the first
-  gate on a broken project surface.
-- `sem dev --json`:
-  the watch/restart contract once the source is close enough to runnable. Use
-  it to inspect watch files, restart conditions, and follow-up steps.
-- `sem readiness --json`:
-  the environment/target separator. Use it when you need to know whether the
-  blocker is source code, runtime support, or missing local toolchains.
-- `sem size --json`:
-  the cheap footprint probe. Use it before heavier graph work when you want a
-  quick sense of source volume and helper-family usage.
-
-In practice:
-
-```text
-skills -> check -> graph/summary -> slice -> explain -> fix --plan -> patch -> fmt/check -> test/dev
-```
-
-Copyable repair loop on a disposable copy:
+Scaffold a small project:
 
 ```powershell
-Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
-python SemanticScript\tools\sem.py explain SS3104 --json
-python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
-python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
-python SemanticScript\tools\sem.py patch --dry-run --json plan.json
-python SemanticScript\tools\sem.py patch --apply --json plan.json
-python SemanticScript\tools\sem.py fmt --check .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
+python SemanticScript\tools\sem.py new hello-world
+python SemanticScript\tools\sem.py check --json hello-world
 ```
 
-Only auto-apply a plan when `sem fix --plan --json` returns
-`status: "actionable"` and `planUsable: true`. If the payload reports
-`status: "mixed"`, the machine edits are only a subset of the remaining work;
-use `sem patch --dry-run` first and keep the rest of the diagnostics in view.
-If the payload reports `status: "suggestions-only"`, there is no
-machine-applicable patch at all. Compact fix payloads are for review only:
-generate `--full` before saving a plan for `sem patch`, and `sem patch` now
-rejects truncated plans.
+List the central validation lanes:
 
-## Why This Exists
-
-Modern codebases are increasingly read, patched, reviewed, and migrated by
-agents. Conventional languages were optimized for humans writing compact source:
-expressions, inference, exceptions, implicit runtime behavior, object shapes,
-framework conventions, and dynamic dispatch.
-
-That compactness is expensive for agents. The agent has to reconstruct hidden
-context before it can make a safe edit.
-
-SemanticScript moves that context into the source.
-
-- A call has a name.
-- Every argument edge has a name.
-- Every operation declares effects.
-- Failure is dataflow, not ambient exception control.
-- Mutable state says where it lives and how it changes.
-- Runtime authority is explicit through capabilities.
-- HTML, JSON, SQL, HTTP, and native runtime edges have typed surfaces.
-- Comments are contract context for tools, not decoration.
-
-The result is source that is longer, but more inspectable. The compiler can
-erase redundancy from generated code. The source keeps redundancy where review
-tools, linters, indexers, and agents need it.
-
-## The Sell
-
-SemanticScript is for code that should be maintained by humans and agents
-without guessing.
-
-It is a bet that the best source format for agent-authored software is not the
-smallest one. It is the one where the next correct edit is easiest to infer,
-verify, and review.
-
-What you get:
-
-- Local reasoning: an operation carries its own purpose, effects, memory model,
-  async model, and invariants.
-- Safer edits: call sites are named records, so tools can patch one argument or
-  one branch without rewriting a nested expression tree.
-- Better reviews: diffs show changed effects, changed failure paths, changed
-  routes, changed storage, and changed capabilities as first-class rows.
-- Stronger linting: vague names, missing capabilities, hidden effects,
-  unresolved values, type drift, route drift, and trust-boundary gaps can be
-  diagnosed from source-level facts.
-- Runtime clarity: native adapters are explicit. App behavior stays in
-  SemanticScript source or runtime libraries, not hidden inside compiler magic.
-- Agent ergonomics: source is easy to slice. An agent can retrieve one
-  operation, one failure path, one route, or one storage flow and still have the
-  context needed to edit it.
-
-In short:
-
-```text
-JavaScript/Python: compress intent into syntax, scope, libraries, and runtime behavior.
-SemanticScript: preserve intent as explicit, line-addressable facts.
+```powershell
+python SemanticScript\tests\run_suite.py --list
 ```
 
-## Context Maxxing
+Run the CI-equivalent fast lane:
 
-Context maxxing is the design discipline behind SemanticScript.
+```powershell
+python SemanticScript\tests\run_suite.py ci-fast
+```
 
-It means every line should carry useful local context, and every important edge
-should be named:
+## Language Shape
+
+SemanticScript source is a semantic tape. Each row records one fact.
 
 ```semanticscript
 operation createTodoHandler
@@ -247,667 +76,116 @@ output operation createTodoHandler Int32
 effect createTodoHandler read http.request.body
 effect createTodoHandler readWrite database
 effect createTodoHandler write http.response
-memory createTodoHandler heap auto
-async createTodoHandler no
-purpose createTodoHandler "Create one todo owned by the authenticated session user."
-invariant createTodoHandler "The user id comes from the session, never from request JSON."
 useCapability createTodoHandler httpRequestReader
 useCapability createTodoHandler httpResponseWriter
 useCapability createTodoHandler sqliteDatabaseReadWriter
+memory createTodoHandler heap auto
+async createTodoHandler no
+purpose operation createTodoHandler "Create one todo owned by the authenticated session user."
+invariant operation createTodoHandler "The user id comes from the session, never from request JSON."
 ```
 
-That header is not boilerplate. It is a compact review packet:
+That header is not decoration. It gives tools and reviewers a compact contract:
+what the operation reads, writes, allocates, authorizes, and must preserve.
 
-- What resource is read?
-- What resource is written?
-- Does the operation allocate?
-- Can it suspend?
-- Which capability authorizes each effect?
-- What security invariant must survive refactors?
+## Tooling Loop
 
-Traditional code often hides those answers in implementation details. In
-SemanticScript, those answers are part of the operation's shape.
-
-## Current Apps
-
-This repo now contains real executable apps, not only toy syntax fixtures.
-
-### TaskForge Web
-
-`apps/taskforge-web/` is a multi-user web app backed by native HTTP, SQLite, JSON,
-and bcrypt runtime adapters.
-
-It currently covers:
-
-- HTML landing and dashboard pages through `standard.html`.
-- Static assets served by the HTTP runtime.
-- Register and login with bcrypt cost-12 password hashing.
-- Session cookies with HttpOnly and SameSite settings.
-- SQLite schema bootstrap with seeded demo data.
-- Authenticated todo create, list, complete, uncomplete, and delete flows.
-- Cross-user isolation checks in the end-to-end test harness.
-- Deliberate 501 response for the remaining item-detail route while the full
-  detail page contract is being finalized.
-
-Run the verification harness:
+Use `sem` before dropping to compiler or linter internals:
 
 ```powershell
-python apps\taskforge-web\scripts\test_taskforge_web.py
-```
-
-### Curated App Set
-
-`apps/` keeps the maintained demo set:
-
-- `apps/taskforge-tui/`: console todo app with JSON persistence.
-- `apps/desktop-window-smoke/`: minimal Windows GUI smoke fixture.
-- `apps/html-template-lab/`: first-class HTML/template syntax demo.
-- `apps/http-runtime-gauntlet/`: native HTTP conformance harness.
-- `apps/taskforge-web/`: flagship web app.
-
-The Kilo port is parked at `experiments/kilo-port/` as a large
-terminal-editor stress fixture outside the curated app demo set.
-
-## Syntax Tour
-
-SemanticScript source is a tape of records. There is no expression soup hidden
-inside a line. Each row has one job.
-
-### Project Tape
-
-`build.sem` declares the project, registered modules, runtime target, artifacts,
-and build-wide constants.
-
-```semanticscript
-buildProject taskForgeWeb
-project TaskForgeWeb
-modulePath taskForgeWeb github.com/monstercameron/SemanticScript/apps/taskforge-web
-languageVersion taskForgeWeb "1.0"
-projectVersion taskForgeWeb "1.0.0"
-projectLicense taskForgeWeb MIT
-
-sourceRoot taskForgeWeb "."
-registerModule taskForgeWeb app.taskforge_web "."
-registerModule taskForgeWeb app.taskforge_web.components "components"
-registerModule taskForgeWeb app.taskforge_web.pages "pages"
-
-buildConstant taskForgeWeb serverHostText String "127.0.0.1"
-buildConstant taskForgeWeb serverPortNumber Int32 18090
-buildConstant taskForgeWeb databasePath String "taskforge_web.db"
-
-mainFile taskForgeWeb "main.sem"
-mainOperation taskForgeWeb main
-targetRuntime taskForgeWeb nativeExe
-nativeOutput taskForgeWeb "taskforge_web.exe"
-
-import taskForgeWeb app.taskforge_web
-```
-
-The build tape is intentionally explicit. It gives compilers, editors, CI,
-release tooling, and agents the same project facts.
-
-### Project Layout
-
-A minimal console app keeps the build tape and executable source at the project
-root:
-
-```text
-hello-console/
-  build.sem
-  main.sem
-  main.test.sem
-```
-
-A native web app usually keeps route handlers in the root module and supporting
-code in registered folders:
-
-```text
-taskforge-web/
-  build.sem
-  main.sem
-  routes/
-    main.sem
-    main.test.sem
-  storage/
-    main.sem
-    main.test.sem
-```
-
-A multi-module library registers each module folder in `build.sem`; colocated
-`*.test.sem` files live beside the modules they validate:
-
-```text
-todo-domain/
-  build.sem
-  domain/
-    main.sem
-    main.test.sem
-  persistence/
-    main.sem
-    main.test.sem
-  facade/
-    main.sem
-    main.test.sem
-```
-
-Generated artifacts belong in ignored build/cache folders such as `build/` and
-`.semcache/`, not beside source modules.
-
-### Module Context
-
-Modules carry ownership and non-ownership context. This is useful for agents:
-they know where behavior belongs before editing.
-
-```semanticscript
-module app.kiloport
-modulePurpose app.kiloport "Kilo-style terminal editor ported to executable SemanticScript."
-moduleOwns app.kiloport "Editor row storage, file load/save, ANSI rendering, keyboard handling, search, and mutation flow."
-moduleDoesNotOwn app.kiloport "SemanticScript compiler/runtime terminal primitives or the upstream Kilo C source."
-moduleInvariant app.kiloport "The edited file path comes from argv[1] when present, then KILO_FILE, otherwise kilo.txt."
-```
-
-### Storage, Not Var Or Const
-
-Current SemanticScript uses `storage`, with scope and mutability on the row.
-
-```semanticscript
-storage module immutable maxRows Int64 2048
-storage module immutable rowCapacity Int64 4096
-storage module immutable successExitCode ExitCode 0
-
-operation moveCursorRight
-input operation moveCursorRight currentColumn Int64
-output operation moveCursorRight Int64
-memory moveCursorRight noHeapAllocation
-async moveCursorRight no
-purpose moveCursorRight "Return the next cursor column."
-
-storage local immutable oneColumn Int64 1
-call nextColumnCall math.addInt64
-argument nextColumnCall left Int64 currentColumn
-argument nextColumnCall right Int64 oneColumn
-run nextColumnCall
-bind value nextColumn Int64 nextColumnCall
-return value nextColumn
-```
-
-Mutable storage is equally explicit:
-
-```semanticscript
-storage local mutable cursorColumn Int64 zeroInt64
-storage local immutable cursorColumnAfterInsert Int64 nextCursorColumn
-set local cursorColumn cursorColumnAfterInsert
-```
-
-The names are deliberately contextual. `cursorColumn` carries more maintenance
-value than `x`, `cx`, or `i`.
-
-### Calls Are Dataflow Records
-
-SemanticScript does not hide a call inside an expression. It gives the call a
-stable identity, names each argument edge, runs it, and binds the result.
-
-```semanticscript
-call renderedCursorColumnCall renderedColumnForFileColumn
-argument renderedCursorColumnCall rowPointer EditorRowPointer cursorRowPointer
-argument renderedCursorColumnCall rowLength Int64 cursorRowLength
-argument renderedCursorColumnCall leftVisibleColumn Int64 leftVisibleColumn
-argument renderedCursorColumnCall fileColumn Int64 cursorFileColumn
-run renderedCursorColumnCall
-bind value cursorRenderedColumn Int64 renderedCursorColumnCall
-```
-
-That shape is verbose, but it gives tools a precise patch target. A formatter,
-linter, editor action, or agent can change one argument without reconstructing a
-whole expression.
-
-### Failure Is Named Dataflow
-
-Fallible calls expose both the success and error edge.
-
-```semanticscript
-call openDatabaseCall sqlite.openDatabase
-argument openDatabaseCall path String databasePath
-argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode
-run openDatabaseCall
-bind ok openedDatabase SqliteDatabase openDatabaseCall
-bind error openDatabaseError SqliteOpenFailure openDatabaseCall
-branch error source openDatabaseCall target openDatabaseFailed
-
-defer closeDatabaseDefer sqlite.closeDatabase openedDatabase
-```
-
-The cleanup is beside the acquisition. The failure label is named. The error
-value is a value. Review tools can see the whole shape.
-
-### HTTP Routes Are Source Facts
-
-Routes are not hidden inside a framework registration callback.
-
-```semanticscript
-webServer taskForgeWebServer
-purpose operation taskForgeWebServer "Host the TaskForge Web JSON REST API on localhost:18090."
-serverHost taskForgeWebServer "127.0.0.1"
-serverPort taskForgeWebServer 18090
-
-route taskForgeWebServer GET "/" homePageHandler
-route taskForgeWebServer GET "/dashboard" dashboardPageHandler
-route taskForgeWebServer GET "/assets/:filename" staticAssetHandler
-route taskForgeWebServer GET "/health" healthHandler
-route taskForgeWebServer GET "/api/version" versionHandler
-route taskForgeWebServer POST "/api/auth/register" registerHandler
-route taskForgeWebServer POST "/api/auth/login" loginHandler
-route taskForgeWebServer POST "/api/auth/logout" logoutHandler
-route taskForgeWebServer GET "/api/auth/me" meHandler
-route taskForgeWebServer GET "/api/todos" listTodosHandler
-route taskForgeWebServer POST "/api/todos" createTodoHandler
-route taskForgeWebServer GET "/api/todos/:id" showTodoHandler
-route taskForgeWebServer DELETE "/api/todos/:id" deleteTodoHandler
-route taskForgeWebServer POST "/api/todos/:id/complete" completeTodoHandler
-route taskForgeWebServer POST "/api/todos/:id/uncomplete" uncompleteTodoHandler
-route taskForgeWebServer GET "*" notFoundPageHandler
-```
-
-That route table is easy to index, diff, lint, and summarize.
-
-### HTML Infers Hydrate Holes
-
-`standard.html` templates infer hydrate arguments from `{name}` and
-`{record.field}` holes in the template body. Plain text/class-like values are
-`String`; generated markup stays explicit as `HtmlFragment` or `HtmlDocument`.
-
-```semanticscript
-html template StatusCardComponent
-html body template StatusCardComponent
-  <section class="rounded-xl border border-ink-200 bg-white p-4">
-  <div class="{statusBadgeClass}">Server online</div>
-  <p>API base: {apiBaseUrlText}</p>
-  </section>
-
-operation renderStatusCard
-input operation renderStatusCard apiBaseUrlText String
-input operation renderStatusCard statusBadgeClass String
-output operation renderStatusCard HtmlFragment
-memory renderStatusCard arena request
-async renderStatusCard no
-purpose operation renderStatusCard "Render the status card with inferred HTML holes."
-
-call hydrateStatusCardCall html.hydrate.StatusCardComponent
-argument hydrateStatusCardCall apiBaseUrlText String apiBaseUrlText
-argument hydrateStatusCardCall statusBadgeClass String statusBadgeClass
-run hydrateStatusCardCall
-bind value statusCardFragment HtmlFragment hydrateStatusCardCall
-return value statusCardFragment
-```
-
-String holes are escaped by sink context. Fragment and document values can only
-hydrate text-content positions where raw markup composition is intentional.
-
-### Native Runtime Boundaries Stay Small
-
-App behavior belongs in SemanticScript or runtime libraries. The compiler only
-links generic runtime surfaces.
-
-```semanticscript
-call rawModeCall c.terminalEnableRaw
-run rawModeCall
-bind value rawModeStatus Int32 rawModeCall
-
-call keyCall c.terminalReadKey
-run keyCall
-bind value keyCode KiloKeyCode keyCall
-```
-
-The Kilo editor behavior is not embedded in the compiler. The compiler sees
-generic terminal calls; the editor logic lives in `experiments/kilo-port/main.sem`.
-
-## Benefits By Role
-
-### For Agents
-
-- Less hidden context to infer before editing.
-- More stable names to target in patches.
-- Operation slices carry purpose, effects, memory, async, and failure shape.
-- Route, SQL, HTML, JSON, and runtime edges are easy to index.
-- Linter diagnostics can cite the exact row and the missing contract.
-
-### For Reviewers
-
-- Diffs show semantic changes directly.
-- Capability changes are visible.
-- Failure-path changes are visible.
-- Route and dependency changes are visible.
-- Vague naming is easier to reject early.
-
-### For Tooling
-
-- The source is already a fact table.
-- Editors can provide line-schema hovers and semantic token roles.
-- CI can lint unresolved capabilities, effect drift, missing cleanup, and
-  trust-boundary violations.
-- Future indexing tools can build call graphs, route maps, failure graphs, and
-  memory graphs without framework-specific guessing.
-
-### For Runtime Work
-
-- Native adapters stay explicit.
-- Apps call `standard.http`, `standard.sqlite`, `standard.json`,
-  `standard.bcrypt`, `standard.html`, and terminal primitives through named
-  surfaces.
-- The compiler links runtime sources only when the program uses those targets.
-- App logic does not get smuggled into compiler lowering.
-
-## Current Implementation
-
-The current repository contains:
-
-- `SemanticScript/compiler/semsc.py`: Python reference compiler.
-- `SemanticScript/linter/semlint.py`: structured diagnostics linter.
-- `SemanticScript/std/`: standard-library modules, including HTTP, JSON,
-  SQLite, bcrypt, HTML, GUI, outbound network, and event contracts.
-- `SemanticScript/runtime/`: native runtime adapters, including HTTP, SQLite,
-  JSON, bcrypt, async/event support, native HTTP client, and GUI adapters.
-- `apps/`: curated runnable app demos.
-- `experiments/kilo-port/`: native terminal editor stress port.
-- `vscode-semanticscript/`: local VS Code language extension.
-- `docs/reference/syntax-inventory.md`: implementation-status table for the syntax surface.
-
-The compiler supports project tapes, module imports, operation contracts,
-storage, calls, branches, typed returns, native executables, native HTTP,
-SQLite, JSON, bcrypt, HTML hydration, GUI and terminal runtime adapters,
-experimental native async/event and outbound HTTP client surfaces, and many
-refined metadata rows. `docs/reference/syntax-inventory.md` is the source of truth for which rows are
-implemented, partial, or design-target syntax.
-
-## Validation Commands
-
-List and run the central project test suites:
-
-```powershell
-python SemanticScript\tests\run_suite.py --list
-python SemanticScript\tests\run_suite.py unit
-python SemanticScript\tests\run_suite.py component
-python SemanticScript\tests\run_suite.py integration
-python SemanticScript\tests\run_suite.py e2e
-python SemanticScript\tests\run_suite.py all
-```
-
-GitHub Actions uses the same runner through the `ci-fast`, `editor`, and
-`ci-release` suite aliases. The top-level `Start Here` section is the
-sem-first path for newcomers.
-
-Run the lower-level component smoke when working on compiler, linter, or
-formatter internals:
-
-```powershell
-python SemanticScript\compiler\semsc.py SemanticScript\tests\tiny.sem --parse-only
-python SemanticScript\linter\semlint.py SemanticScript\tests\tiny.sem --summary
-python SemanticScript\formatter\semfmt.py --check SemanticScript\tests\tiny.sem
-```
-
-Build and test the app demos:
-
-```powershell
-python -m unittest SemanticScript.tests.test_app_runtime_smoke -v
-```
-
-Run broader validation:
-
-```powershell
-python SemanticScript\tests\run_suite.py ci-fast
-python SemanticScript\tests\run_suite.py ci-release
-```
-
-## Agent Workflow Interfaces
-
-The `sem` wrapper is the stable agent-facing surface. Use it before dropping to
-direct compiler, linter, or runtime internals.
-
-Versioned rule and environment discovery:
-
-```powershell
-python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem sem-agent --json
-python SemanticScript\tools\sem.py readiness --json SemanticScript\tests\agent_cli_demo.test.sem
-```
-
-`sem skills get ... --json` is summary-first for long agent sessions. Add
-`--full` when the raw skill bodies are actually needed.
-
-Structured validation and architecture retrieval:
-
-```powershell
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
-python SemanticScript\tools\sem.py graph --kind summary --json apps\taskforge-web
-python SemanticScript\tools\sem.py graph --kind routes --json apps\taskforge-web
-python SemanticScript\tools\sem.py graph --kind effects --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --operation createTodoHandler --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --route POST:/api/todos --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --symbol serverPortNumber --json apps\taskforge-web
-python SemanticScript\tools\sem.py explain SS3104 --json
-python SemanticScript\tools\sem.py size --json apps\taskforge-web
-```
-
-Lower-level fallback surfaces:
-
-```powershell
-python SemanticScript\tools\sem.py context --json apps\taskforge-web
-python SemanticScript\tools\sem.py symbols --json apps\taskforge-web
-```
-
-Use `agent_cli_demo.test.sem` for a clean green-path validation loop. Use
-`apps\taskforge-web` for richer graph, slice, readiness, dev, and app-harness
-inspection.
-
-Repair, patch, and multi-step loop commands:
-
-```powershell
-Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
-python SemanticScript\tools\sem.py explain SS3104 --json
-python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
-python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
-python SemanticScript\tools\sem.py patch --dry-run --json plan.json
-python SemanticScript\tools\sem.py patch --apply --json plan.json
-python SemanticScript\tools\sem.py fmt --check .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
-python SemanticScript\tools\sem.py dev --json apps\taskforge-web
-python SemanticScript\tools\sem.py test --json apps\taskforge-web
-```
-
-Use the semantic loop first:
-
-```powershell
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
 python SemanticScript\tools\sem.py explain CODE --json
 python SemanticScript\tools\sem.py fix --plan --json PATH
 python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
-python SemanticScript\tools\sem.py patch --apply --json PLAN.json
-python SemanticScript\tools\sem.py check --json PATH
-```
-
-Use the harness loop only when semantic preflight is clean:
-
-```powershell
 python SemanticScript\tools\sem.py test --json PATH
-python SemanticScript\tools\sem.py dev --json PATH
 ```
 
-`sem test --json apps\taskforge-web` now carries the same preflight semantic
-status as `sem check --json apps\taskforge-web`. A passing app harness no
-longer masks project-level diagnostics. Use `--skip-python-harnesses` when the
-goal is process-free app-harness suppression rather than semantic validation;
-for project surfaces, `sem check --json` remains the primary semantic gate.
-`sem check --json` now distinguishes source states more explicitly:
-`ok`, `ok-with-warnings`, `lint-diagnostics`, `compiler-error`, and
-`tool-error`. `sem test --json` still reports top-level `status: "diagnostics"`
-when preflight is red, but the nested `preflightStatus` carries the finer
-source-lane state. Python harness execution is deferred until semantic
-preflight is clean unless you use `--allow-red-preflight-harnesses`; in that
-mode the tool prioritizes runtime harnesses and defers project-surface
-semantic contract files.
-
-`sem dev --json apps\taskforge-web` currently demonstrates the watch-plan
-contract for a project surface that still has semantic follow-up work. Use it
-for inspecting watch files, scope, and follow-up commands; use `sem check`
-before treating the project as restart-ready.
-
-Only hand `sem patch --apply` a plan when `sem fix --plan --json` returns
-`status: "actionable"` and `planUsable: true`. A `mixed` plan is still useful,
-but it is review-first and should start with `sem patch --dry-run`. A compact
-fix payload is not a valid patch input; emit `--full` before saving a plan.
-
-Current stable `v1` JSON contracts:
-
-- `sem.version.v1`
-- `sem.skills.v1`
-- `sem.readiness.v1`
-- `sem.context.v1`
-- `sem.symbols.v1`
-- `sem.check.v1`
-- `sem.graph.v1`
-- `sem.slice.v1`
-- `sem.explain.v1`
-- `sem.fixPlan.v1`
-- `sem.patch.v1`
-- `sem.size.v1`
-- `sem.dev.v1`
-- `sem.test.v1`
-
-Current provisional machine surface:
-
-- `sem.doctor.v0`
-
-These commands are covered by focused unit and subprocess contract tests in
-`SemanticScript/tests/test_sem_cli.py` and
-`SemanticScript/tests/test_command_contracts.py`.
-
-The core repair-loop payloads also carry `nextCommands` hints so an agent can
-move from check to explain, slice, fix-plan, patch, and test without inventing
-the loop from scratch. `context`, `symbols`, and `doctor` are still useful
-lower-level retrieval or environment surfaces, but they are not the main repair
-navigation path. These follow-ups now carry:
-
-- `argv`: replay-safe argument vectors
-- `cwd`: the intended working directory
-- `replayable`: whether the step can be executed exactly as emitted
-- `requiredArgs` / `artifactInputs`: extra path or artifact requirements for
-  non-replayable follow-ups
-
-`sem test --json` also separates source and runtime lanes with
-`preflightStatus`, `runtimeHarnessStatus`, and `compositeStatus`.
-
-## Repository Layout
+The intended repair loop is:
 
 ```text
-docs/reference/syntax-inventory.md                          Syntax inventory and implementation status
-CHANGELOG.md                       Repository changelog
-docs/                              Maintained developer documentation
-docs/semantic-script.md             Root language/specification document
+skills -> check -> graph/slice -> explain -> fix plan -> dry-run patch -> apply -> check -> test
+```
 
+## Repository Map
+
+```text
 SemanticScript/
-  compiler/semsc.py                Python reference compiler
-  linter/semlint.py                Structured diagnostics linter
-  runtime/                         Native runtime adapters
-  std/                             SemanticScript standard library
-  tests/                           Compiler, parity, and stdlib tests
+  compiler/       Reference compiler
+  linter/         Structured diagnostics linter
+  formatter/      Source formatter
+  runtime/        Native runtime adapters
+  std/            Standard library modules
+  tests/          Unit, component, integration, and e2e suites
 
-apps/
-  desktop-window-smoke/            Minimal Windows GUI smoke fixture
-  html-template-lab/               HTML/template syntax demo
-  http-runtime-gauntlet/            Native HTTP conformance harness
-  taskforge-tui/                    Keyboard-driven terminal app with JSON persistence
-  taskforge-web/                    Native web app with HTTP, SQLite, JSON, bcrypt
-
-experiments/
-  kilo-port/                       SemanticScript port of antirez/kilo
-  realtime-auction-arena/          Enterprise realtime auction server/client stress demo
-
-vscode-semanticscript/             Local VS Code extension
-third_party/                       Vendored native dependencies and submodules
+apps/             Curated runnable demos and runtime harnesses
+docs/             Maintained documentation
+experiments/      Larger research and stress ports
+packaging/        Release packaging definitions
+vscode-semanticscript/
+                  Local VS Code language extension
+third_party/      Vendored native dependencies and notices
 ```
 
-## Documentation Map
+## Demos
 
-- `docs/README.md`: documentation entry point.
-- `docs/language/README.md`: language model and executable vs refined surfaces.
-- `docs/language/lexical-model.md`: identifiers, comments, strings, and
-  rejected syntax.
-- `docs/language/memory-state.md`: storage, mutation, shared state, and memory
-  behavior.
-- `docs/language/errors-effects-capabilities.md`: effects, capabilities, and
-  typed failure paths.
-- `docs/toolchain/compiler.md`: compiler CLI and backend behavior.
-- `docs/toolchain/agent-workflows.md`: stable agent-facing command paths and
-  multi-step SemanticScript repair loop.
-- `docs/toolchain/formatter.md`: formatter CLI and canonical source style.
-- `docs/toolchain/linter.md`: linter CLI and diagnostic formats.
-- `docs/reference/compatibility.md`: public 1.0 compatibility contract.
-- `docs/reference/syntax-inventory.md`: complete syntax inventory and implementation status table.
-- `docs/ast.md`: language and AST design notes.
-- `docs/semantic-script.md`: language specification and design intent.
-- `CHANGELOG.md`: dated repository history.
-- `apps/README.md`: curated app demo index.
-- `apps/taskforge-web/README.md`: TaskForge Web architecture and test commands.
-- `experiments/kilo-port/README.md`: Kilo port notes and parity commands.
+- `apps/taskforge-tui/`: console todo app with JSON persistence.
+- `apps/html-template-lab/`: compact HTML template and module-split rendering
+  demo.
+- `apps/http-runtime-gauntlet/`: native HTTP runtime conformance harness.
+- `apps/taskforge-web/`: preview multi-user web app with native HTTP, SQLite,
+  bcrypt, sessions, static assets, HTML pages, and JSON APIs.
+- `apps/desktop-window-smoke/`: minimal Windows GUI smoke fixture.
 
-## VS Code Extension
+TaskForge Web is a preview proof point, not a polished product surface. Its
+current status is documented in [apps/taskforge-web/README.md](apps/taskforge-web/README.md).
 
-The local extension is in `vscode-semanticscript/`. It provides:
+## Documentation
 
-- language registration for `.sscript` and `.sem`;
-- TextMate and semantic highlighting for current and refined syntax;
-- context-aware hovers for line schemas, symbols, operation metadata, call
-  objects, primitive targets, generated targets, schema values, and role
-  suffixes;
-- whole-line segment coloring for declaration, context, action, control, and
-  comment rows;
-- optional `semlint.py` diagnostics.
+- [docs/overview.md](docs/overview.md): language and toolchain overview.
+- [docs/README.md](docs/README.md): developer documentation entry point.
+- [docs/language/README.md](docs/language/README.md): language model.
+- [docs/toolchain/compiler.md](docs/toolchain/compiler.md): compiler and
+  backend behavior.
+- [docs/toolchain/agent-workflows.md](docs/toolchain/agent-workflows.md):
+  agent-facing command loop.
+- [docs/toolchain/vscode-extension.md](docs/toolchain/vscode-extension.md):
+  editor extension behavior.
+- [docs/reference/compatibility.md](docs/reference/compatibility.md): public
+  compatibility boundary.
+- [docs/reference/roadmap.md](docs/reference/roadmap.md): pre-release roadmap
+  and public status.
+- [docs/reference/release-hygiene.md](docs/reference/release-hygiene.md):
+  release repository-state and package metadata policy.
 
-Check or package it with:
+## Release And Extension Status
 
-```powershell
-cd vscode-semanticscript
-npm run check
-npx --yes @vscode/vsce package
-```
+The repository is pre-release. The GitHub release workflow validates release
+candidates, packages the local VS Code extension, and can attach release
+artifacts for a matching `v*` tag.
 
-Generated `.vsix` files are ignored and should be attached outside the repo.
+The VS Code extension currently uses `publisher: semanticscript-local` for
+local VSIX packaging. Choose a real Marketplace publisher before public
+Marketplace distribution.
 
-## Design Rules
+## Contributing
 
-These are the rules that shape the language:
+See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 
-1. Abstraction must increase context.
-2. Every executable line does one semantic thing.
-3. Hidden behavior is illegal by default.
-4. Failure is explicit dataflow.
-5. Cleanup lives next to acquisition.
-6. Async is structured, bounded, and cancellable.
-7. Types encode intent, trust, memory, and layout.
-8. Comments are semantic context.
-9. Control flow is graphable.
-10. Dependencies expose contracts.
-11. Trust boundaries are explicit.
-12. Observability is semantic.
+- Keep changes scoped.
+- Include validation commands in PRs.
+- Do not commit generated binaries, `.vsix` files, caches, local databases, or
+  build folders.
+- Keep docs synchronized with compiler, linter, runtime, and editor behavior.
 
-That is the practical meaning of context maxxing: source code should be dense
-with the facts needed to maintain it safely.
+## Security
 
-## Release Hygiene
+Do not report vulnerabilities in public issues. See
+[SECURITY.md](SECURITY.md) for private reporting instructions.
 
-Release policy lives in `docs/reference/release-hygiene.md`.
-The public 1.0 compatibility contract lives in
-`docs/reference/compatibility.md`.
+## License
 
-- First-party SemanticScript source, docs, samples, and tooling are distributed
-  under the MIT License in the root `LICENSE`.
-- `.sem` files directly under `SemanticScript/sem/` are tracked alias fixtures
-  and should stay aligned with their `.sscript` counterparts.
-- The initial VS Code extension release is local VSIX only.
-  `vscode-semanticscript/package.json` uses `semanticscript-local` for local
-  builds; choose a real Marketplace publisher before public publishing.
+SemanticScript is distributed under the [MIT License](LICENSE). Third-party code
+under `third_party/` keeps its upstream license terms.

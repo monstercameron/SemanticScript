@@ -16,8 +16,9 @@ apps/taskforge-tui/
 
 ## Build
 
+From the repository root:
+
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript
 python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --parse-only --lint
 python SemanticScript\linter\semlint.py apps\taskforge-tui\build.sem --summary
 python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe
@@ -26,8 +27,9 @@ python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe
 ## Run
 
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript\apps\taskforge-tui\build
+Push-Location apps\taskforge-tui\build
 .\taskforge_tui.exe
+Pop-Location
 ```
 
 Run from `build/` so `todos.json` is read and written beside the executable.

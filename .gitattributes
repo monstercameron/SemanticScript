@@ -1,5 +1,6 @@
 # Normalize text files while preserving explicit binary assets.
 * text=auto
+.gitattributes text eol=lf
 
 # Source and configuration files should use LF in the repository.
 *.c text eol=lf
@@ -10,6 +11,7 @@
 *.json text eol=lf
 *.md text eol=lf
 *.py text eol=lf
+*.spec text eol=lf
 *.sem text eol=lf
 *.sh text eol=lf
 *.toml text eol=lf

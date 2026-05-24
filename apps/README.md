@@ -19,8 +19,9 @@ The Kilo editor port now lives under `experiments/kilo-port` because it is usefu
 
 ## Standard Check
 
+From the repository root:
+
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript
 python -m unittest SemanticScript.tests.test_app_runtime_smoke -v
 ```
 

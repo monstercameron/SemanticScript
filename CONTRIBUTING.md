@@ -70,6 +70,16 @@ toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
 - Do not introduce public `.as` source-extension support.
 - Do not change the project license without a release-owner decision.
 
+## Review Policy
+
+`main` is protected and requires pull requests, strict required checks, and
+resolved conversations. While SemanticScript is maintained as a solo-maintainer
+pre-release project, required approving reviews are intentionally set to zero so
+the maintainer can merge after CI passes. If another maintainer becomes active,
+raise branch protection to require at least one approving review and CODEOWNER
+review for `.github/`, release, runtime, compiler, and security-sensitive
+changes.
+
 ## License
 
 SemanticScript is distributed under the MIT License. See the root `LICENSE` file
