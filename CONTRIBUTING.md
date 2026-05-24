@@ -62,6 +62,50 @@ List all unit, component, integration, and e2e lanes with:
 Some broader checks require Node.js, LLVM/clang, and a working native compiler
 toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
 
+## Branch Naming
+
+Branches follow a `type/short-description` structure (Conventional-Branch
+style), where `type` mirrors our commit types and `short-description` is
+lowercase kebab-case:
+
+```text
+type/short-description
+```
+
+Allowed types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`,
+`build`, `ci`.
+
+The exact rule (the same regex CI enforces):
+
+```text
+^(feat|fix|docs|chore|refactor|test|perf|build|ci)/[a-z0-9]+(-[a-z0-9]+)*$
+```
+
+Examples:
+
+```text
+feat/crash-metadata
+fix/null-deref-guard
+docs/branch-naming
+chore/bump-llvmlite
+refactor/codegen-emit
+```
+
+Enforcement is two-layered:
+
+- **CI** — `.github/workflows/branch-name.yml` validates the head branch of
+  every pull request and fails non-conforming names. Automation branches
+  (`dependabot/**`) and the protected `main`/`master`/`release/**` branches are
+  exempt.
+- **Local (optional)** — install the pre-push hook so a bad name is caught
+  before it reaches the remote:
+
+  ```powershell
+  git config core.hooksPath .githooks
+  ```
+
+  The hook lives at `.githooks/pre-push` and applies the same regex.
+
 ## Pull Request Notes
 
 - Include the commands you ran and any skipped checks.
@@ -69,6 +113,18 @@ toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
   packaged `.vsix` files, or `__pycache__/`.
 - Do not introduce public `.as` source-extension support.
 - Do not change the project license without a release-owner decision.
+- Follow the project [Code of Conduct](CODE_OF_CONDUCT.md) in issues, pull
+  requests, discussions, and other project spaces.
+
+## Review Policy
+
+`main` is protected with strict required checks and resolved conversations. The
+approving-review count is intentionally zero in solo-maintainer mode, and
+CODEOWNER review, stale-review dismissal, and last-push approval are disabled so
+the single maintainer is not blocked waiting for a second account. Release tag
+creation for `v*` is restricted to the maintainer, and existing `v*` tags are
+protected against update and deletion unless the tag ruleset is deliberately
+changed for recovery.
 
 ## License
 

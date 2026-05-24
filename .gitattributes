@@ -1,5 +1,6 @@
 # Normalize text files while preserving explicit binary assets.
 * text=auto
+.gitattributes text eol=lf
 
 # Source and configuration files should use LF in the repository.
 *.c text eol=lf
@@ -10,6 +11,7 @@
 *.json text eol=lf
 *.md text eol=lf
 *.py text eol=lf
+*.spec text eol=lf
 *.sem text eol=lf
 *.sh text eol=lf
 *.toml text eol=lf
@@ -17,6 +19,10 @@
 *.xml text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
+
+# Git hooks are POSIX shell with no extension; keep LF so they stay valid and
+# executable on every platform (a CRLF shebang breaks the hook).
+.githooks/** text eol=lf
 
 # Windows entry points are checked out with CRLF for native tooling.
 *.bat text eol=crlf

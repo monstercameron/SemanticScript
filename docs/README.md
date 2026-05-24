@@ -26,12 +26,13 @@ doc file that owns that behavior. Avoid giant catch-all edits.
 
 ## Contents
 
-- `agents.md` is the compact agent-facing guide.
+- `../AGENTS.md` is the compact agent-facing guide.
 - `ast.md` records the language and AST design notes.
 - `optimization-guide.md` records optimization and app-boundary rules.
 - `language/` explains the language model and schemas.
 - `reference/` contains target, verb, and maintenance references.
 - `toolchain/` documents compiler, linter, and editor tooling.
+- `overview.md` gives a compact project and design overview.
 
 ## Current Status
 
@@ -45,7 +46,7 @@ matrix. The release-level boundary is:
 
 | Surface | 1.0 support level | Source of truth |
 |---|---|---|
-| Python reference compiler | Supported release compiler for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. | `SemanticScript/compiler/semsc.py`, [toolchain/compiler.md](toolchain/compiler.md) |
+| Release `sem` CLI and Python reference compiler | Supported release compiler path for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. Main-channel prereleases publish a Windows `sem.exe`; source checkouts can run the same driver through Python. | [toolchain/compiler.md](toolchain/compiler.md), [toolchain/llvm-compiler-install.md](toolchain/llvm-compiler-install.md) |
 | VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
 | Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `docs/reference/syntax-inventory.md`, [toolchain/compiler.md](toolchain/compiler.md) |
 | Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, response writers, blocking SSE primitives, and handler-visible shutdown drain state; HTTP/2/H2O remains future work. | [toolchain/compiler.md](toolchain/compiler.md) |
@@ -57,7 +58,7 @@ matrix. The release-level boundary is:
 
 | File | Purpose |
 |---|---|
-| [agents.md](agents.md) | Compact agent-facing language guide with dense schemas and examples. |
+| [AGENTS.md](../AGENTS.md) | Compact agent-facing language guide with dense schemas and examples. |
 | [optimization-guide.md](optimization-guide.md) | Optimization rules that preserve semantic return and failure contracts. |
 | [language/README.md](language/README.md) | Language model, executable vs refined surfaces, minimal program. |
 | [language/lexical-model.md](language/lexical-model.md) | Tokenization, comments, strings, identifiers, rejected syntax. |
@@ -75,8 +76,10 @@ matrix. The release-level boundary is:
 | [reference/install-policy.md](reference/install-policy.md) | Initial archive install shape and future version-manager plan. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
 | [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |
+| [reference/roadmap.md](reference/roadmap.md) | Public pre-release roadmap and demo status. |
 | [reference/package-management.md](reference/package-management.md) | Package layout, dependency syntax, and registry deferral policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
+| [toolchain/llvm-compiler-install.md](toolchain/llvm-compiler-install.md) | LLVM/clang installation for native executable builds. |
 | [toolchain/linter.md](toolchain/linter.md) | semlint.py commands, diagnostics, tiers. |
 | [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) | Optional libuv async runtime experiment, build flags, timer/work/future ABI, and await model. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |

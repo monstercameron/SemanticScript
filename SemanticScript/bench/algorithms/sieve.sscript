@@ -1,0 +1,258 @@
+project Sieve
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError AllocationFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main read clock.cpu
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+effect main read memory.buffer
+memory main heap yes
+memory main stack max 8KiB
+async main no
+
+purpose operation main "Run the Sieve of Eratosthenes up to sieveUpperLimit repeatedly and report the summed prime count plus elapsed seconds"
+invariant operation main "A sieve cell holds one while its index is still prime and zero once struck out as composite"
+invariant operation main "Composite marking only needs candidates up to the square root of sieveUpperLimit, since every composite has a prime factor at or below its square root"
+invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided by the Windows CLOCKS_PER_SEC of 1000"
+
+label startMain
+
+storage module immutable sieveUpperLimit Int64 2000000
+storage module immutable sieveByteArraySize ByteCount 2000001
+storage module immutable sieveRepeatCount Int64 40
+storage module immutable firstCandidateIndex Int64 2
+storage module immutable firstCountIndex Int64 2
+storage module immutable loopStepIncrement Int64 1
+storage module immutable primeCellMarker Int32 1
+storage module immutable compositeCellMarker Int32 0
+storage module immutable primeCellFillByte Int64 1
+storage module immutable zeroIndex Int64 0
+storage module immutable oneIndex Int64 1
+storage module immutable repeatIndexInitial Int64 0
+storage module immutable primeCountInitial Int64 0
+storage module immutable windowsClocksPerSecond Float64 1000.0
+
+call sieveAllocateCall c.malloc
+argument sieveAllocateCall size ByteCount sieveByteArraySize
+run sieveAllocateCall
+bind value sieveBuffer OpaquePointer sieveAllocateCall
+
+memory main mutable currentRepeatIndex Int64 repeatIndexInitial
+memory main mutable totalPrimeCount Int64 primeCountInitial
+memory main mutable currentPrimeCount Int64 primeCountInitial
+memory main mutable currentCandidateIndex Int64 firstCandidateIndex
+memory main mutable currentMultipleIndex Int64 firstCandidateIndex
+memory main mutable currentCountIndex Int64 firstCountIndex
+
+call benchmarkStartClockCall c.clock
+run benchmarkStartClockCall
+bind value benchmarkStartClockTicks CpuClockTicks benchmarkStartClockCall
+
+label repeatLoopHead
+call repeatShouldContinueCall math.lessThanInt64
+argument repeatShouldContinueCall left Int64 currentRepeatIndex
+argument repeatShouldContinueCall right Int64 sieveRepeatCount
+run repeatShouldContinueCall
+bind value repeatShouldContinue Bool repeatShouldContinueCall
+branch if condition repeatShouldContinue target repeatLoopBody
+branch else target repeatLoopFinished
+
+label repeatLoopBody
+# Start every cell as prime, then strike out indices 0 and 1 which are not.
+call sievePrimeFillCall c.memset
+argument sievePrimeFillCall buffer OpaquePointer sieveBuffer
+argument sievePrimeFillCall fillByte Int64 primeCellFillByte
+argument sievePrimeFillCall byteCount ByteCount sieveByteArraySize
+run sievePrimeFillCall
+bind value sievePrimeFillReturn OpaquePointer sievePrimeFillCall
+
+call strikeZeroCall pointer.storeByte
+argument strikeZeroCall buffer OpaquePointer sieveBuffer
+argument strikeZeroCall offset Int64 zeroIndex
+argument strikeZeroCall value Int32 compositeCellMarker
+run strikeZeroCall
+
+call strikeOneCall pointer.storeByte
+argument strikeOneCall buffer OpaquePointer sieveBuffer
+argument strikeOneCall offset Int64 oneIndex
+argument strikeOneCall value Int32 compositeCellMarker
+run strikeOneCall
+
+set memory currentCandidateIndex firstCandidateIndex
+jump target candidateLoopHead
+
+label candidateLoopHead
+# Continue while currentCandidateIndex squared is still within the limit.
+call candidateSquaredGuardCall math.multiplyInt64
+argument candidateSquaredGuardCall left Int64 currentCandidateIndex
+argument candidateSquaredGuardCall right Int64 currentCandidateIndex
+run candidateSquaredGuardCall
+bind value candidateSquaredGuard Int64 candidateSquaredGuardCall
+
+call candidateShouldContinueCall math.lessThanOrEqualInt64
+argument candidateShouldContinueCall left Int64 candidateSquaredGuard
+argument candidateShouldContinueCall right Int64 sieveUpperLimit
+run candidateShouldContinueCall
+bind value candidateShouldContinue Bool candidateShouldContinueCall
+branch if condition candidateShouldContinue target candidateLoopBody
+branch else target candidateLoopFinished
+
+label candidateLoopBody
+call loadCandidateCellCall pointer.loadByte
+argument loadCandidateCellCall buffer OpaquePointer sieveBuffer
+argument loadCandidateCellCall offset Int64 currentCandidateIndex
+run loadCandidateCellCall
+bind value candidateCellValue Int8 loadCandidateCellCall
+
+call candidateIsPrimeCall math.notEqualInt64
+argument candidateIsPrimeCall left Int64 candidateCellValue
+argument candidateIsPrimeCall right Int64 primeCountInitial
+run candidateIsPrimeCall
+bind value candidateIsPrime Bool candidateIsPrimeCall
+branch if condition candidateIsPrime target candidateIsPrimeStep
+branch else target candidateAdvance
+
+label candidateIsPrimeStep
+set memory currentMultipleIndex candidateSquaredGuard
+jump target markLoopHead
+
+label markLoopHead
+call markShouldContinueCall math.lessThanOrEqualInt64
+argument markShouldContinueCall left Int64 currentMultipleIndex
+argument markShouldContinueCall right Int64 sieveUpperLimit
+run markShouldContinueCall
+bind value markShouldContinue Bool markShouldContinueCall
+branch if condition markShouldContinue target markLoopBody
+branch else target candidateAdvance
+
+label markLoopBody
+call markCompositeCall pointer.storeByte
+argument markCompositeCall buffer OpaquePointer sieveBuffer
+argument markCompositeCall offset Int64 currentMultipleIndex
+argument markCompositeCall value Int32 compositeCellMarker
+run markCompositeCall
+
+call advanceMultipleCall math.addInt64
+argument advanceMultipleCall left Int64 currentMultipleIndex
+argument advanceMultipleCall right Int64 currentCandidateIndex
+run advanceMultipleCall
+bind value nextMultipleIndex Int64 advanceMultipleCall
+set memory currentMultipleIndex nextMultipleIndex
+jump target markLoopHead
+
+label candidateAdvance
+call advanceCandidateCall math.addInt64
+argument advanceCandidateCall left Int64 currentCandidateIndex
+argument advanceCandidateCall right Int64 loopStepIncrement
+run advanceCandidateCall
+bind value nextCandidateIndex Int64 advanceCandidateCall
+set memory currentCandidateIndex nextCandidateIndex
+jump target candidateLoopHead
+
+label candidateLoopFinished
+# Count surviving primes in a final pass over indices 2..sieveUpperLimit.
+set memory currentPrimeCount primeCountInitial
+set memory currentCountIndex firstCountIndex
+jump target countLoopHead
+
+label countLoopHead
+call countShouldContinueCall math.lessThanOrEqualInt64
+argument countShouldContinueCall left Int64 currentCountIndex
+argument countShouldContinueCall right Int64 sieveUpperLimit
+run countShouldContinueCall
+bind value countShouldContinue Bool countShouldContinueCall
+branch if condition countShouldContinue target countLoopBody
+branch else target countLoopFinished
+
+label countLoopBody
+call loadCountCellCall pointer.loadByte
+argument loadCountCellCall buffer OpaquePointer sieveBuffer
+argument loadCountCellCall offset Int64 currentCountIndex
+run loadCountCellCall
+bind value countCellValue Int8 loadCountCellCall
+
+call accumulatePrimeCountCall math.addInt64
+argument accumulatePrimeCountCall left Int64 currentPrimeCount
+argument accumulatePrimeCountCall right Int64 countCellValue
+run accumulatePrimeCountCall
+bind value nextPrimeCount Int64 accumulatePrimeCountCall
+set memory currentPrimeCount nextPrimeCount
+
+call advanceCountIndexCall math.addInt64
+argument advanceCountIndexCall left Int64 currentCountIndex
+argument advanceCountIndexCall right Int64 loopStepIncrement
+run advanceCountIndexCall
+bind value nextCountIndex Int64 advanceCountIndexCall
+set memory currentCountIndex nextCountIndex
+jump target countLoopHead
+
+label countLoopFinished
+call accumulateTotalPrimeCountCall math.addInt64
+argument accumulateTotalPrimeCountCall left Int64 totalPrimeCount
+argument accumulateTotalPrimeCountCall right Int64 currentPrimeCount
+run accumulateTotalPrimeCountCall
+bind value nextTotalPrimeCount Int64 accumulateTotalPrimeCountCall
+set memory totalPrimeCount nextTotalPrimeCount
+
+call advanceRepeatCall math.addInt64
+argument advanceRepeatCall left Int64 currentRepeatIndex
+argument advanceRepeatCall right Int64 loopStepIncrement
+run advanceRepeatCall
+bind value nextRepeatIndex Int64 advanceRepeatCall
+set memory currentRepeatIndex nextRepeatIndex
+jump target repeatLoopHead
+
+label repeatLoopFinished
+
+call benchmarkEndClockCall c.clock
+run benchmarkEndClockCall
+bind value benchmarkEndClockTicks CpuClockTicks benchmarkEndClockCall
+
+call elapsedClockTicksCall math.subtractInt64
+argument elapsedClockTicksCall left CpuClockTicks benchmarkEndClockTicks
+argument elapsedClockTicksCall right CpuClockTicks benchmarkStartClockTicks
+run elapsedClockTicksCall
+bind value elapsedClockTicks Int64 elapsedClockTicksCall
+
+call elapsedClockTicksAsFloatCall math.convertInt64ToFloat64
+argument elapsedClockTicksAsFloatCall value Int64 elapsedClockTicks
+run elapsedClockTicksAsFloatCall
+bind value elapsedClockTicksAsFloat Float64 elapsedClockTicksAsFloatCall
+
+call elapsedSecondsCall math.divideFloat64
+argument elapsedSecondsCall left Float64 elapsedClockTicksAsFloat
+argument elapsedSecondsCall right Float64 windowsClocksPerSecond
+run elapsedSecondsCall
+bind value elapsedSeconds Float64 elapsedSecondsCall
+
+storage module immutable reportFormatText String "checksum=%lld elapsedSeconds=%.6f\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall checksum Int64 totalPrimeCount
+argument reportCall elapsedSeconds Float64 elapsedSeconds
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+call sieveFreeCall c.free
+argument sieveFreeCall pointer OpaquePointer sieveBuffer
+run sieveFreeCall
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure
