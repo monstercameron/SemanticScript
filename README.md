@@ -4,20 +4,44 @@
 [![CI](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-SemanticScript is a pre-release, agent-first application language and toolchain.
+<p align="center">
+  <a href="https://monstercameron.github.io/SemanticScript/">
+    <img src="docs/assets/semanticscript-logo-card.png" alt="SemanticScript logo with compiler graph and code glyphs" width="760">
+  </a>
+</p>
 
-It is designed around explicit, line-addressable source records: operations
-name their effects, capabilities, memory behavior, failure paths, runtime
-edges, and review intent directly in the source. The goal is not terse code. The
-goal is code that humans and agents can inspect, repair, and validate without
-guessing.
+<p align="center">
+  <img src="docs/assets/semanticscript-mascot.png" alt="SemanticScript mascot with code brackets" width="190">
+</p>
 
-Current release status: `0.0.1` pre-release. No stable public release has been
-published yet.
+Project site: <https://monstercameron.github.io/SemanticScript/>
+
+SemanticScript is a pre-release, agent-first application language and toolchain
+for code that should be easy to inspect, repair, and validate.
+
+It is built around explicit, line-addressable source records: operations name
+their effects, capabilities, memory behavior, failure paths, runtime edges, and
+review intent directly in the source. The goal is not terse code. The goal is
+source that gives humans, agents, editors, linters, and compilers enough context
+to make careful changes without reconstructing intent from framework convention
+or expression nesting.
+
+Current release status: pre-release, with the repository version recorded in
+[`version.json`](version.json). No stable public release has been published yet.
+Main-branch prerelease builds are published on
+[GitHub Releases](https://github.com/monstercameron/SemanticScript/releases)
+with a Windows `sem.exe`, VS Code VSIX, and checksum manifest.
+
+Review is especially useful now because the language, compiler, linter,
+formatter, editor extension, runtime adapters, docs, and demos are still moving
+together. A reviewer can trace one idea from syntax row to parser behavior,
+diagnostic, lowering path, editor support, and runnable app. A small PR can
+meaningfully improve the project while the compatibility boundary is still
+being shaped.
 
 ## What Works
 
-- Python reference compiler for `.sscript` and `.sem`.
+- Release-built `sem.exe` CLI for `.sscript` and `.sem`.
 - LLVM IR generation, JIT execution, and clang-linked native executables.
 - Structured linter, formatter, and semantic diagnostics.
 - `sem` CLI for validation, graph/slice retrieval, repair planning, patching,
@@ -34,35 +58,114 @@ implementation inventory in
 [docs/reference/syntax-inventory.md](docs/reference/syntax-inventory.md) as the
 source of truth.
 
-## Quickstart
+## Install
 
-From the repository root:
+Download the latest `main-<SHORT_SHA>` prerelease from
+[GitHub Releases](https://github.com/monstercameron/SemanticScript/releases).
+Each main-channel prerelease includes:
+
+- `semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe`: standalone Windows
+  `sem` CLI.
+- `semanticscript-vscode-main-<SHORT_SHA>.vsix`: local VS Code extension
+  package.
+- `semanticscript-merge-release-manifest-main-<SHORT_SHA>.json`: artifact
+  metadata and SHA-256 checksums.
+
+Install the compiler CLI on Windows:
 
 ```powershell
-python -m pip install -r requirements.txt -c constraints.txt
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+$InstallDir = "$env:LOCALAPPDATA\Programs\SemanticScript"
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+Copy-Item ".\semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe" "$InstallDir\sem.exe"
+& "$InstallDir\sem.exe" version --json
 ```
+
+Install the editor extension from the same release:
+
+```powershell
+code --install-extension ".\semanticscript-vscode-main-<SHORT_SHA>.vsix"
+```
+
+Add `$InstallDir` to `PATH` if you want to run `sem` from any terminal.
+
+Install LLVM/clang when you need native executable output through `sem build`
+or compiler `--emit-exe` paths. See
+[docs/toolchain/llvm-compiler-install.md](docs/toolchain/llvm-compiler-install.md).
+After LLVM is installed, run `sem doctor` to verify the native backend.
+
+### Package managers and MCP
+
+Tagged `v<version>` releases also publish package-manager and MCP artifacts:
+
+```powershell
+# Scoop (after adding the manifest to a bucket)
+scoop install semanticscript
+
+# winget
+winget install monstercameron.SemanticScript
+```
+
+The release includes `semanticscript.mcpb`, a one-click
+[MCP Bundle](https://github.com/modelcontextprotocol/mcpb) for desktop clients
+such as Claude Desktop. To run the bundled MCP server from an installed `sem`:
+
+```bash
+sem mcp                          # stdio transport (default)
+claude mcp add semanticscript -- sem mcp
+```
+
+See [docs/toolchain/compiler.md](docs/toolchain/compiler.md) ("MCP server") for
+transports and the exposed tools. Manifest sources live under `packaging/`
+(`scoop/`, `winget/`, `mcpb/`, `registry/`).
+
+## Quickstart
 
 Scaffold a small project:
 
 ```powershell
-python SemanticScript\tools\sem.py new hello-world
-python SemanticScript\tools\sem.py check --json hello-world
+sem new hello-world
+sem check --json hello-world
 ```
 
-List the central validation lanes:
+Inspect the toolchain and available workflows:
 
 ```powershell
-python SemanticScript\tests\run_suite.py --list
+sem version --json
+sem skills list --json
 ```
 
-Run the CI-equivalent fast lane:
+For source checkout development, use the Python driver and test suite directly:
 
 ```powershell
+python -m pip install -r requirements.txt -c constraints.txt
+python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tests\run_suite.py ci-fast
 ```
+
+## Start Reviewing
+
+If you are new to the project, start with one narrow pass:
+
+1. Read [docs/overview.md](docs/overview.md) for the design goal.
+2. Check [docs/reference/syntax-inventory.md](docs/reference/syntax-inventory.md)
+   to see what is implemented, partial, or metadata-only.
+3. Open one demo, such as `apps/taskforge-tui/`, then map it and inspect one
+   operation:
+
+   ```powershell
+   sem graph --kind summary --json apps/taskforge-tui
+   sem slice --operation main --json apps/taskforge-tui
+   ```
+
+4. File an issue or PR when something is unclear, inconsistent, under-tested, or
+   harder to review than it should be.
+
+Good first reviews often find mismatches between docs and implementation,
+confusing diagnostics, missing examples, editor support that moved ahead of the
+parser, or demo code that no longer shows the strongest current pattern.
+
+You do not need to design a language feature to help. A clear doc correction,
+better diagnostic example, smaller demo, or reproduced mismatch is valuable.
 
 ## Language Shape
 
@@ -93,14 +196,14 @@ what the operation reads, writes, allocates, authorizes, and must preserve.
 Use `sem` before dropping to compiler or linter internals:
 
 ```powershell
-python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind summary --json PATH
-python SemanticScript\tools\sem.py slice --operation NAME --json PATH
-python SemanticScript\tools\sem.py explain CODE --json
-python SemanticScript\tools\sem.py fix --plan --json PATH
-python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
-python SemanticScript\tools\sem.py test --json PATH
+sem skills list --json
+sem check --json PATH
+sem graph --kind summary --json PATH
+sem slice --operation NAME --json PATH
+sem explain CODE --json
+sem fix --plan --json PATH
+sem patch --dry-run --json PLAN.json
+sem test --json PATH
 ```
 
 The intended repair loop is:
@@ -159,6 +262,8 @@ guarantee.
 - [docs/language/README.md](docs/language/README.md): language model.
 - [docs/toolchain/compiler.md](docs/toolchain/compiler.md): compiler and
   backend behavior.
+- [docs/toolchain/llvm-compiler-install.md](docs/toolchain/llvm-compiler-install.md):
+  LLVM/clang installation for native executable builds.
 - [docs/toolchain/agent-workflows.md](docs/toolchain/agent-workflows.md):
   agent-facing command loop.
 - [docs/toolchain/vscode-extension.md](docs/toolchain/vscode-extension.md):
@@ -174,9 +279,9 @@ guarantee.
 
 ## Release And Extension Status
 
-The repository is pre-release. The GitHub release workflow validates release
-candidates, packages the local VS Code extension, and can attach release
-artifacts for a matching `v*` tag.
+The repository is pre-release. Main-branch merges publish prerelease handoff
+builds with `sem.exe`, the local VS Code VSIX, and a manifest. Stable public
+version releases will use `v*` tags once the compatibility boundary is ready.
 
 The VS Code extension currently uses `publisher: semanticscript-local` for
 local VSIX packaging. Choose a real Marketplace publisher before public
@@ -184,7 +289,21 @@ Marketplace distribution.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
+PRs are welcome. The best contributions are narrow, easy to review, and include
+the command or manual check used to validate the change. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, branch naming, and review policy.
+
+High-value contribution areas right now:
+
+- Documentation fixes that explain current behavior, status, or limitations more
+  clearly.
+- Focused compiler, linter, formatter, or editor fixes with tests.
+- Diagnostics that explain what went wrong and how to repair it.
+- Demo improvements that show the intended SemanticScript style without adding
+  unrelated complexity.
+- Small runtime or stdlib fixes backed by an app or feature test.
+
+The short version:
 
 - Keep changes scoped.
 - Include validation commands in PRs.

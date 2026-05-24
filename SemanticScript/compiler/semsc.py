@@ -4246,6 +4246,22 @@ class Codegen:
         self._trace_seq_global = None
         self._trace_decimal_writer_id = 0
         self._async_user_op_wrappers = {}
+        # Reactive crash reporting (SSRUN002): a single internal i8* global
+        # tracking the last semantic site entered, plus the emitted fatal-signal
+        # handler. Both stay None until first use; see _crash_site_global /
+        # _crash_handler_fn. Site tracking is emitted only in `panic` mode;
+        # the handler installs whenever runtime checks are not `off`.
+        self._crash_site_global = None
+        self._crash_handler = None
+        self._win_seh_filter = None
+        # Shadow call stack for SSRUN002: a fixed-capacity array of frame
+        # descriptor pointers plus a depth counter. Pushed/popped caller-side
+        # around user-op calls so it stays balanced no matter which return path
+        # the callee takes. Lets the handler print the SemanticScript operation
+        # chain, not just the leaf site.
+        self._crash_depth_global = None
+        self._crash_frames_global = None
+        self._crash_reported_global = None
         self._declare_externals()
 
     def _declare_externals(self):
@@ -4261,6 +4277,7 @@ class Codegen:
         self._win_get_std_handle = None
         self._win_write_file = None
         self._posix_write = None
+        self._win_set_unhandled_exception_filter = None
         # LLVM signed-multiply-with-overflow intrinsic. Produces a literal
         # struct { i64 product, i1 overflowOccurred }. Used to lower checked
         # multiplication call targets so callers can branchIfError on the
@@ -4336,6 +4353,14 @@ class Codegen:
                 self.module, ir.FunctionType(Int64, [Int32, Int8P, Int64]),
                 name="write")
         return self._posix_write
+
+    @property
+    def win_set_unhandled_exception_filter(self):
+        if self._win_set_unhandled_exception_filter is None:
+            self._win_set_unhandled_exception_filter = ir.Function(
+                self.module, ir.FunctionType(Int8P, [Int8P]),
+                name="SetUnhandledExceptionFilter")
+        return self._win_set_unhandled_exception_filter
 
     def _safe_block_name(self, raw: str) -> str:
         cleaned = re.sub(r"[^A-Za-z0-9_.]+", "_", raw or "runtime_check")
@@ -4566,6 +4591,388 @@ class Codegen:
             "==", pointer_value, ir.Constant(pointer_value.type, None),
             name=f"{self._safe_block_name(call.get('name'))}_isNull")
         self._emit_runtime_check(builder, failed, call, reason)
+
+    # ---------- reactive crash reporting (SSRUN002) ----------
+    # The guarded checks above (_emit_runtime_check) trap *before* undefined
+    # behavior at the two sites we can predict (zero divisor, null buffer).
+    # Everything else — a wild pointer load, a double free, a stack overflow,
+    # an explicit abort() — reaches the CPU as a fatal signal. Without a
+    # handler those die with only an exit code, which gives an agent nothing
+    # to fix. SSRUN002 closes that gap: a fatal-signal handler that prints the
+    # last semantic site the program entered, then re-raises so the real
+    # signal disposition (exit status / core dump) is preserved.
+
+    def _fatal_signal_table(self):
+        """(number, name) pairs for the signals we install a handler for.
+        Numbers differ by platform: the Windows CRT renumbers SIGABRT to 22
+        and has no SIGBUS, so we cannot share one table."""
+        triple = (self.module.triple or "").lower()
+        is_windows = ("windows" in triple or "win32" in triple
+                      or "msvc" in triple)
+        if is_windows:
+            return [(4, "SIGILL"), (8, "SIGFPE"), (11, "SIGSEGV"),
+                    (22, "SIGABRT")]
+        return [(4, "SIGILL"), (6, "SIGABRT"), (7, "SIGBUS"),
+                (8, "SIGFPE"), (11, "SIGSEGV")]
+
+    def _crash_site_global_var(self):
+        if self._crash_site_global is None:
+            gv = ir.GlobalVariable(self.module, Int8P, name="as.crash.site")
+            gv.linkage = "internal"
+            gv.global_constant = False
+            start = self._make_str_global(
+                "<program start; no operation entered>")
+            gv.initializer = start.gep(
+                [ir.Constant(Int32, 0), ir.Constant(Int32, 0)])
+            self._crash_site_global = gv
+        return self._crash_site_global
+
+    def _crash_reported_global_var(self):
+        # Once-guard shared by the signal handler and the Windows SEH filter:
+        # set on first entry so a second fatal signal (reentrancy) or a fault
+        # the CRT delivers to both paths reports exactly once.
+        if self._crash_reported_global is None:
+            gv = ir.GlobalVariable(self.module, Int32, name="as.crash.reported")
+            gv.linkage = "internal"
+            gv.global_constant = False
+            gv.initializer = ir.Constant(Int32, 0)
+            self._crash_reported_global = gv
+        return self._crash_reported_global
+
+    def _emit_crash_site_store(self, builder, descriptor: str):
+        # Site tracking only exists in panic mode; traps mode hides source
+        # context (matching SSRUN001), so there is nothing to record there.
+        if self.runtime_checks != "panic":
+            return
+        # volatile so the optimizer never elides the store as "dead": the only
+        # reader is the signal handler, reached via a runtime signal() that the
+        # optimizer cannot see, so a non-volatile store is legally removable.
+        store = builder.store(self._i8p(builder, descriptor),
+                              self._crash_site_global_var())
+        store.volatile = True
+
+    # Bounded so a runaway recursion cannot grow the frame array without limit;
+    # the depth counter still climbs past it, and printing clamps to this many.
+    _CRASH_FRAME_CAPACITY = 64
+
+    def _crash_depth_global_var(self):
+        if self._crash_depth_global is None:
+            gv = ir.GlobalVariable(self.module, Int32, name="as.crash.depth")
+            gv.linkage = "internal"
+            gv.global_constant = False
+            gv.initializer = ir.Constant(Int32, 0)
+            self._crash_depth_global = gv
+        return self._crash_depth_global
+
+    def _crash_frames_global_var(self):
+        if self._crash_frames_global is None:
+            arr_ty = ir.ArrayType(Int8P, self._CRASH_FRAME_CAPACITY)
+            gv = ir.GlobalVariable(self.module, arr_ty, name="as.crash.frames")
+            gv.linkage = "internal"
+            gv.global_constant = False
+            gv.initializer = ir.Constant(arr_ty, None)
+            self._crash_frames_global = gv
+        return self._crash_frames_global
+
+    def _emit_crash_frame_push(self, builder, descriptor: str):
+        if self.runtime_checks != "panic":
+            return
+        depth_gv = self._crash_depth_global_var()
+        depth = builder.load(depth_gv, name="crashPushDepth")
+        # Store the descriptor only while within capacity; always advance depth
+        # so the matching pop stays balanced even past the cap.
+        in_range = builder.icmp_signed(
+            "<", depth, ir.Constant(Int32, self._CRASH_FRAME_CAPACITY),
+            name="crashPushInRange")
+        fn = builder.function
+        store_bb = fn.append_basic_block("crashPushStore")
+        cont_bb = fn.append_basic_block("crashPushCont")
+        builder.cbranch(in_range, store_bb, cont_bb)
+        builder.position_at_end(store_bb)
+        slot = builder.gep(
+            self._crash_frames_global_var(), [ir.Constant(Int32, 0), depth],
+            inbounds=True, name="crashFrameSlot")
+        # volatile: the frame array is read only by the signal handler, which
+        # the optimizer cannot see is reachable, so non-volatile stores are
+        # legally dead-code-eliminated and the printed stack goes empty.
+        frame_store = builder.store(self._i8p(builder, descriptor), slot)
+        frame_store.volatile = True
+        builder.branch(cont_bb)
+        builder.position_at_end(cont_bb)
+        depth_store = builder.store(
+            builder.add(depth, ir.Constant(Int32, 1)), depth_gv)
+        depth_store.volatile = True
+
+    def _emit_crash_frame_pop(self, builder):
+        if self.runtime_checks != "panic":
+            return
+        depth_gv = self._crash_depth_global_var()
+        depth = builder.load(depth_gv, name="crashPopDepth")
+        positive = builder.icmp_signed(
+            ">", depth, ir.Constant(Int32, 0), name="crashPopPositive")
+        decremented = builder.sub(depth, ir.Constant(Int32, 1))
+        # Guard against underflow if an unwrapped path ever pops too far.
+        pop_store = builder.store(
+            builder.select(positive, decremented, ir.Constant(Int32, 0)),
+            depth_gv)
+        pop_store.volatile = True
+
+    def _emit_crash_stack_write(self, builder):
+        """Emit a runtime loop that prints the shadow call stack outermost
+        first. Only meaningful in panic mode, where frames were recorded."""
+        if self.runtime_checks != "panic":
+            return
+        self._emit_runtime_const_write(
+            builder, "\nCall stack (most recent last):\n")
+        fn = builder.function
+        depth = builder.load(self._crash_depth_global_var(), name="crashStackDepth")
+        capped = builder.icmp_signed(
+            ">", depth, ir.Constant(Int32, self._CRASH_FRAME_CAPACITY),
+            name="crashStackCapped")
+        count = builder.select(
+            capped, ir.Constant(Int32, self._CRASH_FRAME_CAPACITY), depth,
+            name="crashStackCount")
+        index_slot = builder.alloca(Int32, name="crashStackIndex")
+        builder.store(ir.Constant(Int32, 0), index_slot)
+        loop_bb = fn.append_basic_block("crashStackLoop")
+        body_bb = fn.append_basic_block("crashStackBody")
+        done_bb = fn.append_basic_block("crashStackDone")
+        builder.branch(loop_bb)
+        builder.position_at_end(loop_bb)
+        index = builder.load(index_slot, name="crashStackI")
+        builder.cbranch(
+            builder.icmp_signed("<", index, count, name="crashStackMore"),
+            body_bb, done_bb)
+        builder.position_at_end(body_bb)
+        self._emit_runtime_const_write(builder, "  #")
+        self._emit_runtime_u64_decimal_write(builder, builder.zext(index, Int64))
+        self._emit_runtime_const_write(builder, " ")
+        frame_ptr = builder.load(
+            builder.gep(self._crash_frames_global_var(),
+                        [ir.Constant(Int32, 0), index], inbounds=True,
+                        name="crashStackSlot"),
+            name="crashStackFrame")
+        self._emit_runtime_cstr_write(builder, frame_ptr)
+        self._emit_runtime_const_write(builder, "\n")
+        builder.store(builder.add(index, ir.Constant(Int32, 1)), index_slot)
+        builder.branch(loop_bb)
+        builder.position_at_end(done_bb)
+
+    def _emit_runtime_cstr_write(self, builder, ptr):
+        """Write a NUL-terminated runtime i8* to stderr. Used by the signal
+        handler for the dynamic last-site string, so length is not known at
+        compile time. The raw write syscall is async-signal-safe; strlen is not
+        on the POSIX safe list, but the only pointers ever passed here are
+        interned NUL-terminated constants, and the handler resets to SIG_DFL
+        first so a strlen fault terminates cleanly rather than re-entering."""
+        strlen = self._libc_func("strlen")
+        length = builder.call(strlen, [ptr], name="crashSiteLen")
+        if length.type != Int64:
+            length = builder.zext(length, Int64)
+        triple = (self.module.triple or "").lower()
+        if "windows" in triple or "win32" in triple or "msvc" in triple:
+            handle = builder.call(
+                self.win_get_std_handle, [ir.Constant(Int32, -12)],
+                name="crashStderr")
+            bytes_written = builder.alloca(Int32, name="crashBytesWritten")
+            builder.call(self.win_write_file, [
+                handle, ptr, builder.trunc(length, Int32),
+                bytes_written, ir.Constant(Int8P, None),
+            ])
+            return
+        builder.call(self.posix_write, [ir.Constant(Int32, 2), ptr, length])
+
+    def _ssrun002_header_lines(self):
+        return [
+            "error SSRUN002: SemanticScript native fault",
+            "--------------------------------------------",
+            "status: fatal signal delivered; runtime caught it before exit",
+            "reason: the process received a fatal signal that no guarded "
+            "check could prevent",
+        ]
+
+    def _win_exception_table(self):
+        """(code, name) pairs for the Windows structured exceptions a faulting
+        program is most likely to raise. Codes are NTSTATUS values; they are
+        stored as Python ints and narrowed to signed i32 at constant time."""
+        return [
+            (0xC0000005, "ACCESS_VIOLATION"),
+            (0xC00000FD, "STACK_OVERFLOW"),
+            (0xC0000094, "INTEGER_DIVIDE_BY_ZERO"),
+            (0xC000001D, "ILLEGAL_INSTRUCTION"),
+            (0xC0000409, "FAST_FAIL"),
+            (0x80000003, "BREAKPOINT"),
+        ]
+
+    def _emit_fault_name_write(self, builder, value, table, prefix):
+        """Emit an if-chain that writes the symbolic name matching `value`
+        (an i32) from `table`, or `unknown` if none match. `prefix` keeps the
+        generated block names unique between the signal and SEH handlers."""
+        fn = builder.function
+        done_bb = fn.append_basic_block(f"{prefix}NameDone")
+        for code, name in table:
+            signed = code if code < 2 ** 31 else code - 2 ** 32
+            match_bb = fn.append_basic_block(f"{prefix}_{name}")
+            next_bb = fn.append_basic_block(f"{prefix}Next_{name}")
+            is_match = builder.icmp_signed(
+                "==", value, ir.Constant(Int32, signed),
+                name=f"{prefix}Is{name}")
+            builder.cbranch(is_match, match_bb, next_bb)
+            builder.position_at_end(match_bb)
+            self._emit_runtime_const_write(builder, name)
+            builder.branch(done_bb)
+            builder.position_at_end(next_bb)
+        self._emit_runtime_const_write(builder, "unknown")
+        builder.branch(done_bb)
+        builder.position_at_end(done_bb)
+
+    def _emit_ssrun002_intro(self, builder):
+        """Write the shared header + last-site block. Both the POSIX signal
+        handler and the Windows SEH filter call this; they differ only in how
+        they name the fault and what they do after reporting."""
+        self._emit_runtime_const_write(
+            builder, "\n".join(self._ssrun002_header_lines()) + "\n")
+        if self.runtime_checks == "panic":
+            self._emit_crash_stack_write(builder)
+            self._emit_runtime_const_write(builder, "\nLast site:\n  ")
+            site = builder.load(self._crash_site_global_var(),
+                                name="crashSite")
+            self._emit_runtime_cstr_write(builder, site)
+            self._emit_runtime_const_write(builder, "\n")
+
+    def _emit_ssrun002_direction(self, builder):
+        if self.runtime_checks == "panic":
+            text = ("\nDirection:\n  Inspect the operation named in Last site; "
+                    "the fault is on or just after that row.\n")
+        else:
+            text = ("\nDirection:\n  Rebuild with --build-profile dev (or "
+                    "--runtime-checks panic) to capture the faulting operation "
+                    "and source row.\n")
+        self._emit_runtime_const_write(builder, text)
+
+    def _crash_handler_fn(self):
+        if self._crash_handler is not None:
+            return self._crash_handler
+        fn = ir.Function(self.module, ir.FunctionType(VOID, [Int32]),
+                         name="as.crash.handler")
+        fn.args[0].name = "signum"
+        self._crash_handler = fn
+        builder = ir.IRBuilder(fn.append_basic_block("entry"))
+        signum = fn.args[0]
+        signal_fn = self._libc_func("signal")
+        raise_fn = self._libc_func("raise")
+        # Restore the default disposition for this signal BEFORE doing anything
+        # else. If reporting itself faults (e.g. a corrupt site pointer), the
+        # recurrence now terminates cleanly instead of re-entering the handler
+        # and looping. The matching raise() at the end then delivers the fatal
+        # signal with its real exit status / core dump.
+        builder.call(signal_fn, [signum, ir.Constant(Int8P, None)])
+        # Once-guard: a second fatal signal, or a fault the CRT also routes to
+        # the SEH filter, must not print a second SSRUN002 block.
+        reported_gv = self._crash_reported_global_var()
+        already = builder.load(reported_gv, name="crashAlreadyReported")
+        handler_mark = builder.store(ir.Constant(Int32, 1), reported_gv)
+        handler_mark.volatile = True
+        is_first = builder.icmp_signed(
+            "==", already, ir.Constant(Int32, 0), name="crashFirstReport")
+        report_bb = fn.append_basic_block("crashReport")
+        reraise_bb = fn.append_basic_block("crashReraise")
+        builder.cbranch(is_first, report_bb, reraise_bb)
+        builder.position_at_end(report_bb)
+        self._emit_ssrun002_intro(builder)
+        self._emit_runtime_const_write(builder, "\nSignal: ")
+        self._emit_runtime_u64_decimal_write(
+            builder, builder.zext(signum, Int64))
+        self._emit_runtime_const_write(builder, " (")
+        self._emit_fault_name_write(
+            builder, signum, self._fatal_signal_table(), "crashSig")
+        self._emit_runtime_const_write(builder, ")\n")
+        self._emit_ssrun002_direction(builder)
+        builder.branch(reraise_bb)
+        builder.position_at_end(reraise_bb)
+        builder.call(raise_fn, [signum])
+        builder.ret_void()
+        return fn
+
+    def _win_seh_filter_fn(self):
+        """Windows top-level exception filter. The CRT `signal()` handler does
+        NOT see hardware faults (access violations, stack overflow) — those are
+        SEH exceptions. SetUnhandledExceptionFilter is the seam that does, so
+        the most common real crash on Windows still reports SSRUN002 context."""
+        if self._win_seh_filter is not None:
+            return self._win_seh_filter
+        fn = ir.Function(self.module, ir.FunctionType(Int32, [Int8P]),
+                         name="as.crash.sehFilter")
+        fn.args[0].name = "excPointers"
+        self._win_seh_filter = fn
+        builder = ir.IRBuilder(fn.append_basic_block("entry"))
+        terminate_bb = fn.append_basic_block("sehTerminate")
+        # Once-guard: if the signal handler already reported (or this filter
+        # ran before), terminate without a second SSRUN002 block.
+        reported_gv = self._crash_reported_global_var()
+        already = builder.load(reported_gv, name="sehAlreadyReported")
+        seh_mark = builder.store(ir.Constant(Int32, 1), reported_gv)
+        seh_mark.volatile = True
+        first_bb = fn.append_basic_block("sehReport")
+        builder.cbranch(
+            builder.icmp_signed("==", already, ir.Constant(Int32, 0),
+                                name="sehFirstReport"),
+            first_bb, terminate_bb)
+        builder.position_at_end(first_bb)
+        # EXCEPTION_POINTERS { EXCEPTION_RECORD* ExceptionRecord; CONTEXT*; }
+        # EXCEPTION_RECORD's first field is DWORD ExceptionCode, so the fault
+        # code is *(*(EXCEPTION_POINTERS*)arg). Guard the deref: a malformed or
+        # null pointers/record would otherwise fault inside the filter and loop.
+        ptrs_ty = ir.LiteralStructType([Int8P, Int8P]).as_pointer()
+        ptrs = builder.bitcast(fn.args[0], ptrs_ty, name="excPtrsTyped")
+        self._emit_ssrun002_intro(builder)
+        self._emit_runtime_const_write(builder, "\nException: ")
+        ptrs_null = builder.icmp_unsigned(
+            "==", fn.args[0], ir.Constant(Int8P, None), name="excPtrsNull")
+        record = builder.load(
+            builder.gep(ptrs, [ir.Constant(Int32, 0), ir.Constant(Int32, 0)],
+                        inbounds=True), name="excRecord")
+        record_null = builder.icmp_unsigned(
+            "==", record, ir.Constant(Int8P, None), name="excRecordNull")
+        missing = builder.or_(ptrs_null, record_null, name="excMissing")
+        have_bb = fn.append_basic_block("sehHaveRecord")
+        no_record_bb = fn.append_basic_block("sehNoRecord")
+        after_bb = fn.append_basic_block("sehAfterName")
+        builder.cbranch(missing, no_record_bb, have_bb)
+        builder.position_at_end(have_bb)
+        code = builder.load(
+            builder.bitcast(record, Int32.as_pointer()), name="excCode")
+        self._emit_fault_name_write(
+            builder, code, self._win_exception_table(), "crashSeh")
+        self._emit_runtime_const_write(builder, " (code ")
+        self._emit_runtime_u64_decimal_write(builder, builder.zext(code, Int64))
+        self._emit_runtime_const_write(builder, ")\n")
+        builder.branch(after_bb)
+        builder.position_at_end(no_record_bb)
+        self._emit_runtime_const_write(builder, "unknown (no exception record)\n")
+        builder.branch(after_bb)
+        builder.position_at_end(after_bb)
+        self._emit_ssrun002_direction(builder)
+        builder.branch(terminate_bb)
+        builder.position_at_end(terminate_bb)
+        # EXCEPTION_EXECUTE_HANDLER (1): stop the search and let the process
+        # terminate with the fault instead of returning to the faulting code.
+        builder.ret(ir.Constant(Int32, 1))
+        return fn
+
+    def _install_crash_handler(self, builder):
+        if self.runtime_checks == "off":
+            return
+        handler = self._crash_handler_fn()
+        handler_ptr = builder.bitcast(handler, Int8P, name="crashHandlerPtr")
+        signal_fn = self._libc_func("signal")
+        for num, _name in self._fatal_signal_table():
+            builder.call(signal_fn, [ir.Constant(Int32, num), handler_ptr])
+        triple = (self.module.triple or "").lower()
+        if "windows" in triple or "win32" in triple or "msvc" in triple:
+            seh_ptr = builder.bitcast(
+                self._win_seh_filter_fn(), Int8P, name="sehFilterPtr")
+            builder.call(self.win_set_unhandled_exception_filter, [seh_ptr])
 
     # Attribute groups applied to libc declarations so the LLVM optimizer can
     # treat them as nearly-pure functions. Without these the JIT cannot hoist
@@ -5775,6 +6182,8 @@ class Codegen:
         fn = ir.Function(self.module, fnty, name="main")
         entry_bb = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry_bb)
+        self._install_crash_handler(builder)
+        self._emit_crash_frame_push(builder, f"operation {op.name} (entry)")
         self._compile_body(op, fn, builder, initial_binds={})
 
     def _compile_webserver_program(self):
@@ -5862,6 +6271,8 @@ class Codegen:
         fn = ir.Function(self.module, fnty, name="main")
         entry_bb = fn.append_basic_block("entry")
         builder = ir.IRBuilder(entry_bb)
+        self._install_crash_handler(builder)
+        self._emit_crash_frame_push(builder, "operation main (entry)")
 
         route_count = len(server.routes)
         routes_ty = ir.ArrayType(route_ty, route_count)
@@ -7140,13 +7551,21 @@ class Codegen:
             call = calls.get(call_name)
             if call is None:
                 return
+            target_text = call.get("source_target", call.get("target", ""))
+            if event == "call.start":
+                self._emit_crash_site_store(
+                    builder,
+                    f"operation {op.name} call {call_name} -> {target_text} "
+                    f"line {call.get('line', 0)}")
             self._emit_trace_event(
                 builder, event, "call", op.name, call_name,
-                call.get("source_target", call.get("target", "")), call.get("line", 0))
+                target_text, call.get("line", 0))
 
         self._emit_trace_event(
             builder, "op.enter", "operation", op.name, op.name,
             "", op.decl_line)
+        self._emit_crash_site_store(
+            builder, f"operation {op.name} line {op.decl_line}")
 
         branch_else_by_line = {}
         attached_branch_else_lines = set()
@@ -10805,8 +11224,12 @@ class Codegen:
                 elif isinstance(_llty, ir.PointerType) and isinstance(v.type, ir.PointerType) and v.type != _llty:
                     v = builder.bitcast(v, _llty)
                 arg_values.append(v)
+            self._emit_crash_frame_push(
+                builder,
+                f"operation {target} (call {call_name} line {call.get('line', 0)})")
             result = builder.call(op_info["fn"], arg_values,
                                   name=f"{call_name}_res")
+            self._emit_crash_frame_pop(builder)
             call["result"] = result
             # User-defined operations may return either a libc-style
             # negative error code (when they propagate a primitive's error
@@ -19295,13 +19718,26 @@ def main():
     except OSError as e:
         print(f"semsc: cannot read source file: {e}", file=sys.stderr)
         sys.exit(2)
+    except UnicodeDecodeError as e:
+        # Source files must be UTF-8. A non-UTF-8 file is operator error, not a
+        # compiler bug: report it cleanly instead of letting the decode raise an
+        # unhandled traceback out of main().
+        print(f"semsc: source file is not valid UTF-8: {e}", file=sys.stderr)
+        sys.exit(2)
 
     source_ext = os.path.splitext(args.source)[1].lower()
     if source_ext not in (".sscript", ".sem"):
         print("semsc: source file must use .sscript or .sem", file=sys.stderr)
         sys.exit(2)
 
-    is_build_tape_source = _is_build_tape_path(args.source) or _looks_like_build_tape(source)
+    try:
+        is_build_tape_source = _is_build_tape_path(args.source) or _looks_like_build_tape(source)
+    except SyntaxError:
+        # Build-tape sniffing tokenizes the source; if it doesn't even lex
+        # (e.g. an unterminated string), it isn't a build tape. Defer to the
+        # guarded parse() path below, which reports the lex error cleanly
+        # instead of letting it escape main() as a traceback.
+        is_build_tape_source = False
     if is_build_tape_source:
         try:
             _validate_build_tape_source(source, args.source)

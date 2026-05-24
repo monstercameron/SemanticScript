@@ -11,6 +11,24 @@ ROOT = Path(SPECPATH).resolve().parents[1]
 llvmlite_datas, llvmlite_binaries, llvmlite_hiddenimports = collect_all("llvmlite")
 
 
+# The MCP server (sem mcp) is optional. Bundle the SDK only when it is present
+# in the build environment so `sem.exe mcp` works without making mcp a hard
+# build dependency.
+try:
+    mcp_datas, mcp_binaries, mcp_hiddenimports = [], [], ["SemanticScript.tools.sem_mcp"]
+    # mcp + its transitive runtime deps. pydantic_core is a compiled extension
+    # and anyio's backends are dynamically imported, so PyInstaller needs them
+    # collected explicitly rather than relying on static import discovery.
+    # uvicorn + starlette back the streamable-http / sse transports.
+    for _pkg in ("mcp", "pydantic", "pydantic_core", "anyio", "uvicorn", "starlette"):
+        _d, _b, _h = collect_all(_pkg)
+        mcp_datas += _d
+        mcp_binaries += _b
+        mcp_hiddenimports += _h
+except Exception:
+    mcp_datas, mcp_binaries, mcp_hiddenimports = [], [], []
+
+
 def tree(source: str, target: str | None = None) -> tuple[str, str]:
     return (str(ROOT / source), target or source.replace("\\", "/"))
 
@@ -30,13 +48,14 @@ datas = [
     tree("third_party/sqlite"),
     tree("third_party/bcrypt"),
     *llvmlite_datas,
+    *mcp_datas,
 ]
 
 
 a = Analysis(
     [str(ROOT / "packaging" / "pyinstaller" / "sem_launcher.py")],
     pathex=[str(ROOT), str(ROOT / "SemanticScript")],
-    binaries=llvmlite_binaries,
+    binaries=[*llvmlite_binaries, *mcp_binaries],
     datas=datas,
     hiddenimports=[
         "SemanticScript.tools.sem",
@@ -46,6 +65,7 @@ a = Analysis(
         "SemanticScript.bench.run_benchmarks",
         "SemanticScript.tools.syntax_migration",
         *llvmlite_hiddenimports,
+        *mcp_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},

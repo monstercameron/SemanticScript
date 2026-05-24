@@ -1,0 +1,54 @@
+Complex Checkout Saga
+=====================
+Order Results
+-------------
+order-1001 status=completed carrier=UPS total=$13.85
+order-1002 status=rejected failure="insufficient stock for BAG" total=$49.98
+order-1003 status=completed carrier=manual-review total=$29.98
+order-1004 status=failed failure="fraud review rejected customer" total=$1.29
+order-1001 status=completed carrier=UPS duplicate=true total=$13.85
+
+Inventory
+---------
+BAG available=0 reserved=0
+NOTEBOOK available=1 reserved=0
+PEN available=17 reserved=0
+
+Outbox
+------
+1. order.accepted order-1001
+2. inventory.reserved order-1001
+3. order.accepted order-1002
+4. order.rejected order-1002
+5. order.accepted order-1003
+6. inventory.reserved order-1003
+7. order.accepted order-1004
+8. inventory.reserved order-1004
+9. order.compensated order-1004
+10. order.completed order-1003
+11. order.completed order-1001
+
+Trace
+-----
+accepted order-1001
+reserved order-1001
+accepted order-1002
+rejected order-1002 reason=insufficient stock for BAG
+accepted order-1003
+reserved order-1003
+accepted order-1004
+reserved order-1004
+compensated order-1004 reason=fraud review rejected customer
+payment order-1001 attempt 1 failed: transient gateway refusal
+shipping fallback order-1003: shippingQuote order-1003 timed out after 35ms
+completed order-1003
+completed order-1001
+duplicate cmd-1001 reused order-1001
+
+Projection
+----------
+accepted=4
+reserved=3
+completed=2
+rejected=1
+compensated=1

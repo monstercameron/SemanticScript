@@ -5,6 +5,8 @@ Documentation for compiler, linter, and editor tooling.
 ## Contents
 
 - `compiler.md` documents `semsc.py` behavior and CLI usage.
+- `llvm-compiler-install.md` documents LLVM/clang installation for native
+  executable builds.
 - `agent-workflows.md` documents validation, graph inspection, generated-doc,
   and ignored-artifact workflows for agents.
 - `formatter.md` documents `semfmt.py` and canonical formatting defaults.
@@ -19,8 +21,9 @@ Documentation for compiler, linter, and editor tooling.
 
 ## Current Status
 
-Active toolchain documentation. It tracks the current Python reference compiler,
-standalone linters, editor integration, and native runtime integration plans.
+Active toolchain documentation. It tracks the release `sem` CLI, Python
+reference compiler internals, standalone linters, editor integration, and native
+runtime integration plans.
 
 ## Maintenance
 

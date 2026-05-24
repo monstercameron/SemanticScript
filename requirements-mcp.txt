@@ -1,0 +1,4 @@
+# Optional dependency for the SemanticScript MCP server
+# (SemanticScript/tools/sem_mcp.py). The core compiler and CLI use only the
+# standard library; install this only when running the MCP server.
+mcp>=1.2
