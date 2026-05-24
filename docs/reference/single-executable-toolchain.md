@@ -10,7 +10,8 @@ Use PyInstaller for the release executable.
 
 - It supports Windows onefile builds now, without rewriting the compiler or CLI.
 - It can bundle Python modules, llvmlite support files, docs used by `sem
-  skills`, the standard library, and runtime/vendor folders.
+  skills`, the standard library, and runtime/vendor folders without bundling app
+  demo source trees.
 - The project can keep the existing Python entry points for development while
   release CI publishes a single `semanticscript-sem-windows-x64-<TAG>.exe`.
 
@@ -37,6 +38,22 @@ release-artifacts\semanticscript-sem-windows-x64-<TAG>.exe
 ```
 
 and records the SHA-256 checksum in the generated release manifest.
+
+## Main-Branch Artifact Builds
+
+`.github/workflows/compiler-exe.yml` builds the same PyInstaller executable on
+every push to `main`, which is the normal result of merging a PR. That workflow
+validates the executable with `version`, `check`, and `fmt --check`, then uploads
+a GitHub Actions artifact named `semanticscript-sem-windows-x64` containing:
+
+```text
+semanticscript-sem-windows-x64-<SHORT_SHA>.exe
+```
+
+This artifact is a merge-build smoke and handoff artifact, not a tagged public
+release. Tagged releases still use `.github/workflows/release.yml`, rename the
+executable with the release tag, generate the release manifest and checksums, and
+attach the compiler executable to the GitHub Release.
 
 ## Validation
 
