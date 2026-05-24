@@ -1,0 +1,9 @@
+Counterintuitive Mutation
+=========================
+originalProfile.name => Grace
+originalProfile.tags => admin, beta, shared-array
+copiedTagsProfile.tags => admin, beta, copied-array
+numbers after sort() => 1, 10, 2
+sortedSameArray is numbers => true
+numericSortedCopy => 1, 2, 10
+const object can mutate status => closed
