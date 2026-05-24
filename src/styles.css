@@ -1,0 +1,664 @@
+:root {
+  color: #e7f3ea;
+  background: #07100d;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  --bg: #07100d;
+  --panel: #0d1b16;
+  --panel-strong: #122820;
+  --ink: #e7f3ea;
+  --muted: #9bb6a7;
+  --accent: #b9ff67;
+  --accent-2: #60e6c2;
+  --danger: #ffb064;
+  --line: rgba(231, 243, 234, 0.14);
+  --shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(185, 255, 103, 0.18), transparent 32rem),
+    radial-gradient(circle at 88% 12%, rgba(96, 230, 194, 0.12), transparent 30rem),
+    linear-gradient(180deg, #07100d 0%, #0a1411 46%, #050807 100%);
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(rgba(231, 243, 234, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(231, 243, 234, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+p,
+h1,
+h2,
+h3 {
+  margin-top: 0;
+}
+
+main {
+  overflow: hidden;
+}
+
+.hero,
+.section {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+.hero {
+  min-height: 92vh;
+  padding: 28px 0 88px;
+}
+
+.nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(7, 16, 13, 0.66);
+  backdrop-filter: blur(18px);
+}
+
+.nav a {
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.nav a:hover {
+  color: var(--ink);
+  background: rgba(231, 243, 234, 0.08);
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 36px;
+  align-items: center;
+  min-height: calc(92vh - 84px);
+}
+
+.eyebrow {
+  margin-bottom: 14px;
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 900px;
+  margin-bottom: 24px;
+  color: #f5fff7;
+  font-size: clamp(3.3rem, 8vw, 7.7rem);
+  line-height: 0.92;
+  letter-spacing: -0.075em;
+}
+
+h2 {
+  margin-bottom: 18px;
+  color: #f1fff4;
+  font-size: clamp(2.25rem, 5vw, 4.9rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+h3 {
+  margin-bottom: 12px;
+  color: #f4fff5;
+  font-size: 1.1rem;
+}
+
+.lead {
+  max-width: 720px;
+  margin-bottom: 34px;
+  color: #c6dacd;
+  font-size: clamp(1.08rem, 2vw, 1.34rem);
+}
+
+.ctaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.button.primary {
+  color: #06110d;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.button.ghost {
+  color: var(--ink);
+  background: rgba(231, 243, 234, 0.06);
+}
+
+.heroPanel,
+.proofCard,
+.valueCard,
+.mechanicCard,
+.researchCard,
+.benchmarkCard,
+.docCard,
+.closingCard,
+.quickstartCard,
+.compareCard,
+.notReadyCard {
+  border: 1px solid var(--line);
+  background: linear-gradient(145deg, rgba(18, 40, 32, 0.9), rgba(8, 19, 15, 0.9));
+  box-shadow: var(--shadow);
+}
+
+.heroPanel {
+  position: relative;
+  padding: 28px;
+  border-radius: 28px;
+}
+
+.heroPanel::before {
+  position: absolute;
+  inset: 16px;
+  z-index: -1;
+  content: "";
+  border: 1px solid rgba(185, 255, 103, 0.18);
+  border-radius: 22px;
+}
+
+.panelLabel {
+  width: max-content;
+  margin-bottom: 18px;
+  padding: 7px 10px;
+  border: 1px solid rgba(185, 255, 103, 0.28);
+  border-radius: 999px;
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #eaffd9;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.9rem;
+  line-height: 1.62;
+}
+
+.heroPanel pre {
+  margin-bottom: 24px;
+  padding: 22px;
+  border: 1px solid rgba(185, 255, 103, 0.22);
+  border-radius: 18px;
+  background: #050a08;
+  color: var(--accent);
+  font-size: clamp(1.25rem, 2vw, 1.6rem);
+  line-height: 1.35;
+}
+
+.heroPanel p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.quickstartCard {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: 26px;
+  align-items: center;
+  padding: 26px;
+  border-radius: 28px;
+}
+
+.quickstartCard h2 {
+  margin-bottom: 12px;
+  font-size: clamp(1.85rem, 3.2vw, 3.4rem);
+}
+
+.quickstartCard p:not(.eyebrow) {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.quickstartCard pre {
+  padding: 22px;
+  border: 1px solid rgba(185, 255, 103, 0.2);
+  border-radius: 20px;
+  background: #050a08;
+}
+
+.section {
+  padding: 76px 0;
+}
+
+.sectionHeader {
+  max-width: 840px;
+  margin-bottom: 32px;
+}
+
+.sectionHeader.compact {
+  max-width: 760px;
+}
+
+.sectionHeader p:not(.eyebrow),
+.theoryCopy p,
+.closingCard p {
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.valueGrid,
+.proofGrid,
+.docsGrid,
+.lawGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.valueGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.valueCard {
+  min-height: 190px;
+  padding: 22px;
+  border-radius: 24px;
+}
+
+.valueCard span {
+  display: block;
+  width: 34px;
+  height: 6px;
+  margin-bottom: 24px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.valueCard p,
+.proofCard p,
+.researchCard li,
+.benchmarkCard p,
+.docCard p {
+  color: var(--muted);
+}
+
+.proofGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.proofCard {
+  padding: 24px;
+  border-radius: 24px;
+}
+
+.proofValue {
+  margin-bottom: 26px;
+  color: var(--accent) !important;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-weight: 800;
+}
+
+.compareGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.compareCard {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px;
+  border-radius: 28px;
+}
+
+.compareCard p {
+  color: var(--muted);
+}
+
+.compareCard pre {
+  flex: 1;
+  padding: 22px;
+  border: 1px solid rgba(96, 230, 194, 0.18);
+  border-radius: 20px;
+  background: #050a08;
+}
+
+.mutedCard {
+  opacity: 0.82;
+}
+
+.strongCard {
+  border-color: rgba(185, 255, 103, 0.36);
+}
+
+.notReadyCard {
+  display: grid;
+  grid-template-columns: 0.42fr 1fr;
+  gap: 24px;
+  margin-top: 20px;
+  padding: 24px;
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(54, 36, 18, 0.92), rgba(13, 27, 22, 0.94));
+}
+
+.notReadyCard .eyebrow {
+  color: var(--danger);
+}
+
+.notReadyCard ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 18px;
+  color: #e6c9aa;
+}
+
+.mechanicStack {
+  display: grid;
+  gap: 20px;
+}
+
+.mechanicCard {
+  display: grid;
+  grid-template-columns: 0.74fr 1.26fr;
+  gap: 28px;
+  align-items: stretch;
+  padding: 24px;
+  border-radius: 28px;
+}
+
+.mechanicCard > div {
+  align-self: center;
+}
+
+.mechanicCard p {
+  color: var(--muted);
+}
+
+.mechanicCard pre,
+.commandBlock {
+  padding: 22px;
+  border: 1px solid rgba(96, 230, 194, 0.18);
+  border-radius: 20px;
+  background: #050a08;
+  overflow: auto;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.lawGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 34px;
+}
+
+.lawGrid p {
+  min-height: 116px;
+  margin: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(231, 243, 234, 0.045);
+  color: #d4ebdb;
+  font-weight: 750;
+}
+
+.evidenceGrid {
+  display: grid;
+  grid-template-columns: 0.86fr 1.14fr;
+  gap: 20px;
+}
+
+.researchCard,
+.benchmarkCard,
+.closingCard {
+  padding: 28px;
+  border-radius: 28px;
+}
+
+.researchCard ul {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.benchmarkIntro {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.benchmarkIntro p {
+  max-width: 360px;
+  margin-bottom: 0;
+  font-size: 0.92rem;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+th,
+td {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+th {
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+td {
+  color: #dbeee0;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.benchmarkNote {
+  margin: 16px 0 0;
+}
+
+.workflowRail {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.workflowStep {
+  min-height: 118px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(231, 243, 234, 0.045);
+}
+
+.workflowStep span {
+  display: block;
+  margin-bottom: 28px;
+  color: var(--accent-2);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+}
+
+.workflowStep p {
+  margin: 0;
+  color: #f2fff5;
+  font-weight: 800;
+}
+
+.commandBlock {
+  color: #d8ffe4;
+}
+
+.docsGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.docCard {
+  min-height: 164px;
+  padding: 24px;
+  border-radius: 24px;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease;
+}
+
+.docCard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(185, 255, 103, 0.42);
+}
+
+.closing {
+  padding-bottom: 110px;
+}
+
+.closingCard {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.closingCard .ctaRow {
+  justify-content: center;
+}
+
+@media (max-width: 980px) {
+  .heroGrid,
+  .quickstartCard,
+  .mechanicCard,
+  .split,
+  .evidenceGrid,
+  .compareGrid,
+  .notReadyCard {
+    grid-template-columns: 1fr;
+  }
+
+  .valueGrid,
+  .proofGrid,
+  .lawGrid,
+  .docsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflowRail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .hero,
+  .section {
+    width: min(100% - 28px, 1180px);
+  }
+
+  .hero {
+    min-height: auto;
+    padding-top: 16px;
+  }
+
+  .nav {
+    justify-content: center;
+    flex-wrap: wrap;
+    border-radius: 24px;
+  }
+
+  .heroGrid {
+    min-height: auto;
+    padding-top: 48px;
+  }
+
+  .valueGrid,
+  .proofGrid,
+  .lawGrid,
+  .docsGrid,
+  .workflowRail {
+    grid-template-columns: 1fr;
+  }
+
+  .mechanicCard,
+  .researchCard,
+  .benchmarkCard,
+  .closingCard,
+  .heroPanel,
+  .quickstartCard,
+  .compareCard,
+  .notReadyCard {
+    padding: 20px;
+    border-radius: 22px;
+  }
+
+  .benchmarkIntro {
+    display: block;
+  }
+
+  .button {
+    width: 100%;
+  }
+}
