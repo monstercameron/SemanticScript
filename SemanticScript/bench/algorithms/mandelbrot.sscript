@@ -1,0 +1,298 @@
+project Mandelbrot
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError ConsoleWriteFailed Int32
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main read clock.cpu
+effect main write console.stdout
+memory main heap no
+memory main stack max 16KiB
+async main no
+
+purpose operation main "Sum the escape-time iteration counts of a Mandelbrot grid and report checksum plus elapsed seconds"
+invariant operation main "A pixel keeps iterating while its iteration count is below maxIterationCount and its squared magnitude stays within escapeRadiusSquared"
+invariant operation main "Every floating-point step is a separate operation so no multiply-add is fused, keeping results bit-identical to the C, JavaScript, and Python versions"
+invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided by the Windows CLOCKS_PER_SEC of 1000"
+
+label startMain
+
+storage module immutable gridWidth Int64 600
+storage module immutable gridHeight Int64 400
+storage module immutable maxIterationCount Int64 1000
+storage module immutable loopStepIncrement Int64 1
+storage module immutable pixelIndexInitial Int64 0
+storage module immutable iterationInitial Int64 0
+storage module immutable totalIterationsInitial Int64 0
+
+storage module immutable floatZero Float64 0.0
+storage module immutable realAxisMinimumMagnitude Float64 2.0
+storage module immutable imaginaryAxisMinimumMagnitude Float64 1.0
+storage module immutable realAxisSpan Float64 3.0
+storage module immutable imaginaryAxisSpan Float64 2.0
+storage module immutable escapeRadiusSquared Float64 4.0
+storage module immutable crossTermMultiplier Float64 2.0
+storage module immutable componentInitial Float64 0.0
+storage module immutable windowsClocksPerSecond Float64 1000.0
+
+# The complex plane minimums are negative, so derive them by subtracting the
+# magnitude from zero rather than writing negative literals.
+call realAxisMinimumCall math.subtractFloat64
+argument realAxisMinimumCall left Float64 floatZero
+argument realAxisMinimumCall right Float64 realAxisMinimumMagnitude
+run realAxisMinimumCall
+bind value realAxisMinimum Float64 realAxisMinimumCall
+
+call imaginaryAxisMinimumCall math.subtractFloat64
+argument imaginaryAxisMinimumCall left Float64 floatZero
+argument imaginaryAxisMinimumCall right Float64 imaginaryAxisMinimumMagnitude
+run imaginaryAxisMinimumCall
+bind value imaginaryAxisMinimum Float64 imaginaryAxisMinimumCall
+
+call gridWidthAsFloatCall math.convertInt64ToFloat64
+argument gridWidthAsFloatCall value Int64 gridWidth
+run gridWidthAsFloatCall
+bind value gridWidthAsFloat Float64 gridWidthAsFloatCall
+
+call gridHeightAsFloatCall math.convertInt64ToFloat64
+argument gridHeightAsFloatCall value Int64 gridHeight
+run gridHeightAsFloatCall
+bind value gridHeightAsFloat Float64 gridHeightAsFloatCall
+
+memory main mutable currentPixelRow Int64 pixelIndexInitial
+memory main mutable currentPixelColumn Int64 pixelIndexInitial
+memory main mutable currentIteration Int64 iterationInitial
+memory main mutable totalIterationCount Int64 totalIterationsInitial
+memory main mutable currentRealZ Float64 componentInitial
+memory main mutable currentImaginaryZ Float64 componentInitial
+memory main mutable currentRealC Float64 componentInitial
+memory main mutable currentImaginaryC Float64 componentInitial
+
+call benchmarkStartClockCall c.clock
+run benchmarkStartClockCall
+bind value benchmarkStartClockTicks CpuClockTicks benchmarkStartClockCall
+
+label rowLoopHead
+call rowShouldContinueCall math.lessThanInt64
+argument rowShouldContinueCall left Int64 currentPixelRow
+argument rowShouldContinueCall right Int64 gridHeight
+run rowShouldContinueCall
+bind value rowShouldContinue Bool rowShouldContinueCall
+branch if condition rowShouldContinue target rowLoopBody
+branch else target rowLoopFinished
+
+label rowLoopBody
+call pixelRowAsFloatCall math.convertInt64ToFloat64
+argument pixelRowAsFloatCall value Int64 currentPixelRow
+run pixelRowAsFloatCall
+bind value pixelRowAsFloat Float64 pixelRowAsFloatCall
+
+call rowFractionCall math.divideFloat64
+argument rowFractionCall left Float64 pixelRowAsFloat
+argument rowFractionCall right Float64 gridHeightAsFloat
+run rowFractionCall
+bind value rowFraction Float64 rowFractionCall
+
+call imaginaryOffsetCall math.multiplyFloat64
+argument imaginaryOffsetCall left Float64 imaginaryAxisSpan
+argument imaginaryOffsetCall right Float64 rowFraction
+run imaginaryOffsetCall
+bind value imaginaryOffset Float64 imaginaryOffsetCall
+
+call imaginaryCoordinateCall math.addFloat64
+argument imaginaryCoordinateCall left Float64 imaginaryAxisMinimum
+argument imaginaryCoordinateCall right Float64 imaginaryOffset
+run imaginaryCoordinateCall
+bind value imaginaryCoordinate Float64 imaginaryCoordinateCall
+set memory currentImaginaryC imaginaryCoordinate
+
+set memory currentPixelColumn pixelIndexInitial
+jump target columnLoopHead
+
+label columnLoopHead
+call columnShouldContinueCall math.lessThanInt64
+argument columnShouldContinueCall left Int64 currentPixelColumn
+argument columnShouldContinueCall right Int64 gridWidth
+run columnShouldContinueCall
+bind value columnShouldContinue Bool columnShouldContinueCall
+branch if condition columnShouldContinue target columnLoopBody
+branch else target columnLoopFinished
+
+label columnLoopBody
+call pixelColumnAsFloatCall math.convertInt64ToFloat64
+argument pixelColumnAsFloatCall value Int64 currentPixelColumn
+run pixelColumnAsFloatCall
+bind value pixelColumnAsFloat Float64 pixelColumnAsFloatCall
+
+call columnFractionCall math.divideFloat64
+argument columnFractionCall left Float64 pixelColumnAsFloat
+argument columnFractionCall right Float64 gridWidthAsFloat
+run columnFractionCall
+bind value columnFraction Float64 columnFractionCall
+
+call realOffsetCall math.multiplyFloat64
+argument realOffsetCall left Float64 realAxisSpan
+argument realOffsetCall right Float64 columnFraction
+run realOffsetCall
+bind value realOffset Float64 realOffsetCall
+
+call realCoordinateCall math.addFloat64
+argument realCoordinateCall left Float64 realAxisMinimum
+argument realCoordinateCall right Float64 realOffset
+run realCoordinateCall
+bind value realCoordinate Float64 realCoordinateCall
+set memory currentRealC realCoordinate
+
+set memory currentRealZ componentInitial
+set memory currentImaginaryZ componentInitial
+set memory currentIteration iterationInitial
+jump target iterationLoopHead
+
+label iterationLoopHead
+call iterationWithinCapCall math.lessThanInt64
+argument iterationWithinCapCall left Int64 currentIteration
+argument iterationWithinCapCall right Int64 maxIterationCount
+run iterationWithinCapCall
+bind value iterationWithinCap Bool iterationWithinCapCall
+branch if condition iterationWithinCap target iterationMagnitudeCheck
+branch else target pixelIterationDone
+
+label iterationMagnitudeCheck
+call realSquaredCall math.multiplyFloat64
+argument realSquaredCall left Float64 currentRealZ
+argument realSquaredCall right Float64 currentRealZ
+run realSquaredCall
+bind value realSquared Float64 realSquaredCall
+
+call imaginarySquaredCall math.multiplyFloat64
+argument imaginarySquaredCall left Float64 currentImaginaryZ
+argument imaginarySquaredCall right Float64 currentImaginaryZ
+run imaginarySquaredCall
+bind value imaginarySquared Float64 imaginarySquaredCall
+
+call magnitudeSquaredCall math.addFloat64
+argument magnitudeSquaredCall left Float64 realSquared
+argument magnitudeSquaredCall right Float64 imaginarySquared
+run magnitudeSquaredCall
+bind value magnitudeSquared Float64 magnitudeSquaredCall
+
+call magnitudeWithinEscapeCall math.lessThanOrEqualFloat64
+argument magnitudeWithinEscapeCall left Float64 magnitudeSquared
+argument magnitudeWithinEscapeCall right Float64 escapeRadiusSquared
+run magnitudeWithinEscapeCall
+bind value magnitudeWithinEscape Bool magnitudeWithinEscapeCall
+branch if condition magnitudeWithinEscape target iterationLoopBody
+branch else target pixelIterationDone
+
+label iterationLoopBody
+call realDifferenceCall math.subtractFloat64
+argument realDifferenceCall left Float64 realSquared
+argument realDifferenceCall right Float64 imaginarySquared
+run realDifferenceCall
+bind value realDifference Float64 realDifferenceCall
+
+call nextRealZCall math.addFloat64
+argument nextRealZCall left Float64 realDifference
+argument nextRealZCall right Float64 currentRealC
+run nextRealZCall
+bind value nextRealZ Float64 nextRealZCall
+
+call realTimesImaginaryCall math.multiplyFloat64
+argument realTimesImaginaryCall left Float64 currentRealZ
+argument realTimesImaginaryCall right Float64 currentImaginaryZ
+run realTimesImaginaryCall
+bind value realTimesImaginary Float64 realTimesImaginaryCall
+
+call doubledCrossTermCall math.multiplyFloat64
+argument doubledCrossTermCall left Float64 crossTermMultiplier
+argument doubledCrossTermCall right Float64 realTimesImaginary
+run doubledCrossTermCall
+bind value doubledCrossTerm Float64 doubledCrossTermCall
+
+call nextImaginaryZCall math.addFloat64
+argument nextImaginaryZCall left Float64 doubledCrossTerm
+argument nextImaginaryZCall right Float64 currentImaginaryC
+run nextImaginaryZCall
+bind value nextImaginaryZ Float64 nextImaginaryZCall
+
+set memory currentRealZ nextRealZ
+set memory currentImaginaryZ nextImaginaryZ
+
+call advanceIterationCall math.addInt64
+argument advanceIterationCall left Int64 currentIteration
+argument advanceIterationCall right Int64 loopStepIncrement
+run advanceIterationCall
+bind value nextIteration Int64 advanceIterationCall
+set memory currentIteration nextIteration
+jump target iterationLoopHead
+
+label pixelIterationDone
+call accumulateIterationsCall math.addInt64
+argument accumulateIterationsCall left Int64 totalIterationCount
+argument accumulateIterationsCall right Int64 currentIteration
+run accumulateIterationsCall
+bind value nextTotalIterationCount Int64 accumulateIterationsCall
+set memory totalIterationCount nextTotalIterationCount
+
+call advanceColumnCall math.addInt64
+argument advanceColumnCall left Int64 currentPixelColumn
+argument advanceColumnCall right Int64 loopStepIncrement
+run advanceColumnCall
+bind value nextPixelColumn Int64 advanceColumnCall
+set memory currentPixelColumn nextPixelColumn
+jump target columnLoopHead
+
+label columnLoopFinished
+call advanceRowCall math.addInt64
+argument advanceRowCall left Int64 currentPixelRow
+argument advanceRowCall right Int64 loopStepIncrement
+run advanceRowCall
+bind value nextPixelRow Int64 advanceRowCall
+set memory currentPixelRow nextPixelRow
+jump target rowLoopHead
+
+label rowLoopFinished
+
+call benchmarkEndClockCall c.clock
+run benchmarkEndClockCall
+bind value benchmarkEndClockTicks CpuClockTicks benchmarkEndClockCall
+
+call elapsedClockTicksCall math.subtractInt64
+argument elapsedClockTicksCall left CpuClockTicks benchmarkEndClockTicks
+argument elapsedClockTicksCall right CpuClockTicks benchmarkStartClockTicks
+run elapsedClockTicksCall
+bind value elapsedClockTicks Int64 elapsedClockTicksCall
+
+call elapsedClockTicksAsFloatCall math.convertInt64ToFloat64
+argument elapsedClockTicksAsFloatCall value Int64 elapsedClockTicks
+run elapsedClockTicksAsFloatCall
+bind value elapsedClockTicksAsFloat Float64 elapsedClockTicksAsFloatCall
+
+call elapsedSecondsCall math.divideFloat64
+argument elapsedSecondsCall left Float64 elapsedClockTicksAsFloat
+argument elapsedSecondsCall right Float64 windowsClocksPerSecond
+run elapsedSecondsCall
+bind value elapsedSeconds Float64 elapsedSecondsCall
+
+storage module immutable reportFormatText String "checksum=%lld elapsedSeconds=%.6f\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall checksum Int64 totalIterationCount
+argument reportCall elapsedSeconds Float64 elapsedSeconds
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure

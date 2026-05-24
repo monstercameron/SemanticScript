@@ -113,6 +113,7 @@ skills -> check -> graph/slice -> explain -> fix plan -> dry-run patch -> apply 
 
 ```text
 SemanticScript/
+  bench/          Experimental benchmark harnesses
   compiler/       Reference compiler
   linter/         Structured diagnostics linter
   formatter/      Source formatter
@@ -142,6 +143,15 @@ third_party/      Vendored native dependencies and notices
 TaskForge Web is a preview proof point, not a polished product surface. Its
 current status is documented in [apps/taskforge-web/README.md](apps/taskforge-web/README.md).
 
+## Benchmarks
+
+Experimental cross-language microbenchmarks live under
+[SemanticScript/bench/algorithms](SemanticScript/bench/algorithms). They compare
+selected SemanticScript-generated native executables with equivalent C,
+JavaScript, and Python implementations on one host. Treat them as codegen
+regression fixtures and directional evidence, not a general performance
+guarantee.
+
 ## Documentation
 
 - [docs/overview.md](docs/overview.md): language and toolchain overview.
@@ -159,6 +169,8 @@ current status is documented in [apps/taskforge-web/README.md](apps/taskforge-we
   and public status.
 - [docs/reference/release-hygiene.md](docs/reference/release-hygiene.md):
   release repository-state and package metadata policy.
+- [SemanticScript/bench/algorithms/README.md](SemanticScript/bench/algorithms/README.md):
+  benchmark methodology, commands, and current single-host results.
 
 ## Release And Extension Status
 
