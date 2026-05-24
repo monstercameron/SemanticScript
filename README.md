@@ -619,6 +619,19 @@ experimental native async/event and outbound HTTP client surfaces, and many
 refined metadata rows. `docs/reference/syntax-inventory.md` is the source of truth for which rows are
 implemented, partial, or design-target syntax.
 
+## Performance
+
+Because SemanticScript lowers to LLVM and is optimized by `clang -O2`, its
+compiled output runs at native-C speed. A cross-language benchmark suite
+(`SemanticScript/bench/algorithms/`) checks this against C, JavaScript (Node),
+and Python (CPython) on four classic algorithms — recursive Fibonacci, Collatz,
+the Sieve of Eratosthenes, and Mandelbrot — verifying every language computes
+the same checksum before comparing timings. SemanticScript lands within a few
+percent of C on all four. See
+[`SemanticScript/bench/algorithms/BENCHMARK_NOTES.md`](SemanticScript/bench/algorithms/BENCHMARK_NOTES.md)
+for the full write-up (methodology, gotchas, and how to read the results), or
+run it with `python SemanticScript\bench\run_multilang.py`.
+
 ## Validation Commands
 
 List and run the central project test suites:
@@ -851,6 +864,8 @@ third_party/                       Vendored native dependencies and submodules
 - `docs/ast.md`: language and AST design notes.
 - `docs/semantic-script.md`: language specification and design intent.
 - `CHANGELOG.md`: dated repository history.
+- `SemanticScript/bench/algorithms/BENCHMARK_NOTES.md`: cross-language
+  performance benchmarks vs C, JavaScript, and Python (detailed write-up).
 - `apps/README.md`: curated app demo index.
 - `apps/taskforge-web/README.md`: TaskForge Web architecture and test commands.
 - `experiments/kilo-port/README.md`: Kilo port notes and parity commands.

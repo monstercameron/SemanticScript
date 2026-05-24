@@ -15,6 +15,10 @@ Each algorithm has four implementations of the same logic:
 Run everything with `python ../run_multilang.py` (add `--json` for a
 machine-readable report, `--algorithm <name>` to select one).
 
+> For the full narrative write-up — methodology rationale, the floating-point
+> and 32-bit-bitwise gotchas, per-algorithm analysis, and how to read the
+> results responsibly — see [`BENCHMARK_NOTES.md`](BENCHMARK_NOTES.md).
+
 ## Algorithms
 
 | Algorithm        | Stresses                                     | Workload                                  | Checksum (all four agree) |
