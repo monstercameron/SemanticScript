@@ -1,0 +1,10 @@
+Esoteric Self Referential Program
+=================================
+reproducesItself: true
+generatedLineCount: 9
+generatedCharacterCount: 351
+generatedPreview:
+'use strict';
+const template = (templateSource, quoteSource) => [
+  "'use strict';",
+  `const template = ${templateSource};`,

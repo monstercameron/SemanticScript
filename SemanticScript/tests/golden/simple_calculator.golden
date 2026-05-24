@@ -1,0 +1,7 @@
+Simple Calculator
+=================
+add      8 4 => 12
+subtract 8 4 => 4
+multiply 8 4 => 32
+divide   8 4 => 2
+power    2 5 => 32

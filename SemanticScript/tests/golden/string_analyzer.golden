@@ -1,0 +1,12 @@
+String Analyzer
+===============
+text: SemanticScript favors explicit context. Context helps agents patch code. Explicit names reduce guessing.
+characters: 104
+words: 13
+uniqueWords: 11
+topWords:
+  context: 2
+  explicit: 2
+  agents: 1
+  code: 1
+  favors: 1
