@@ -238,6 +238,19 @@ DIAGNOSTIC_EXPLAINERS = {
             "Use `sem inspect-ir` or trace output when the failure depends on runtime lowering."
         ],
     },
+    "SSRUN002": {
+        "title": "native fault",
+        "summary": "A fatal signal (or Windows structured exception) reached the process; the runtime caught it to report the last semantic site before terminating.",
+        "whyItMatters": [
+            "Unlike SSRUN001, the fault already happened: no guarded check could trap it ahead of time, so the report names the last operation/call the program entered rather than the exact offending row.",
+            "The named site is the place to start: a wild or null pointer, exhausted stack, or illegal instruction is usually on or just after that call."
+        ],
+        "commonFixes": [
+            "Open the operation and call named in `Last site` and check the pointer, length, or recursion bound used there.",
+            "Re-run with `sem run --explain-crash` under dev panic mode for the site; rebuild with `--build-profile dev` if the report has no Last site (prod hides it).",
+            "Note: on Windows an explicit abort()/__fastfail bypasses the handler, so a missing SSRUN002 with exit 0xC0000409 still means a deliberate abort."
+        ],
+    },
     "SEMSC_PARSE": {
         "title": "compiler parse failure",
         "summary": "The reference compiler could not parse the requested SemanticScript surface.",
@@ -4534,7 +4547,14 @@ def _diagnostic_index_payload() -> dict[str, dict]:
             "summary": "The program trapped with SemanticScript runtime panic context.",
             "references": [],
             "relatedCodes": [],
-        }
+        },
+        "SSRUN002": {
+            "code": "SSRUN002",
+            "title": "native fault",
+            "summary": "A fatal signal or structured exception was caught and reported with the last semantic site.",
+            "references": [],
+            "relatedCodes": ["SSRUN001"],
+        },
     }
     comment_pattern = re.compile(r"#\s*((?:SS(?:RUN)?\d{4,5})(?:\s*/\s*SS(?:RUN)?\d{4,5})*)\s+(.*)")
     code_pattern = re.compile(r"SS(?:RUN)?\d{4,5}")
@@ -5170,28 +5190,82 @@ def _inspect_payload(source: Path, compiler_args: list[str]) -> dict | None:
         return None
 
 
+def _parse_crash_last_site(descriptor: str, result: dict) -> None:
+    """Parse an SSRUN002 `Last site` descriptor emitted by the codegen, e.g.
+    `operation main call lenCall -> c.strlen line 13` or `operation main line
+    8`, into the same operation/call/line fields SSRUN001 reports."""
+    match = re.match(
+        r"operation (?P<op>\S+)(?: call (?P<call>\S+) -> (?P<target>\S+))?"
+        r" line (?P<line>\d+)",
+        descriptor.strip())
+    if not match:
+        return
+    result["operation"] = match.group("op")
+    if match.group("call"):
+        result["call"] = f"{match.group('call')} -> {match.group('target')}"
+    result["line"] = int(match.group("line"))
+
+
+def _parse_crash_stack_frame(line: str) -> dict | None:
+    """Parse one SSRUN002 call-stack frame, e.g.
+    `#1 operation middleStep (call middleCall line 34)` or `#0 operation main
+    (entry)`, into a structured frame."""
+    match = re.match(
+        r"#(?P<index>\d+) operation (?P<op>\S+)"
+        r"(?: \(call (?P<call>\S+) line (?P<line>\d+)\))?",
+        line.strip())
+    if not match:
+        return None
+    frame = {"index": int(match.group("index")), "operation": match.group("op")}
+    if match.group("call"):
+        frame["call"] = match.group("call")
+        frame["line"] = int(match.group("line"))
+    return frame
+
+
 def _parse_runtime_panic(stderr_text: str) -> dict:
     lines = stderr_text.splitlines()
     panic_index = next(
         (idx for idx, line in enumerate(lines)
-         if "SSRUN001" in line and "runtime panic" in line),
+         if ("SSRUN001" in line and "runtime panic" in line)
+         or ("SSRUN002" in line and "native fault" in line)),
         None)
     if panic_index is None:
         return {}
     block = lines[panic_index:]
-    result = {"code": "SSRUN001", "raw": "\n".join(block)}
+    code = "SSRUN002" if "SSRUN002" in lines[panic_index] else "SSRUN001"
+    result = {"code": code, "raw": "\n".join(block)}
     current_section = ""
     for line in block:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.endswith(":") and not stripped.startswith(("file:", "line:", "operation:", "call:", "reason:", "status:")):
+        if (stripped.endswith(":")
+                and not stripped.startswith(("file:", "line:", "operation:", "call:", "reason:", "status:"))):
             current_section = stripped[:-1].lower()
             continue
         if stripped.startswith("reason:"):
             result["reason"] = stripped.split(":", 1)[1].strip()
         elif stripped.startswith("status:"):
             result["status"] = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Signal:"):
+            result["fault"] = stripped.split(":", 1)[1].strip()
+            sig_match = re.match(r"(\d+)\s*\((\S+)\)", result["fault"])
+            if sig_match:
+                result["signalNumber"] = int(sig_match.group(1))
+                result["signalName"] = sig_match.group(2)
+        elif stripped.startswith("Exception:"):
+            result["fault"] = stripped.split(":", 1)[1].strip()
+            exc_match = re.match(r"(\S+)\s*\(code (\d+)\)", result["fault"])
+            if exc_match:
+                result["signalName"] = exc_match.group(1)
+                result["exceptionCode"] = int(exc_match.group(2))
+        elif current_section.startswith("call stack"):
+            frame = _parse_crash_stack_frame(stripped)
+            if frame is not None:
+                result.setdefault("callStack", []).append(frame)
+        elif current_section == "last site":
+            _parse_crash_last_site(stripped, result)
         elif current_section == "location" and stripped.startswith("file:"):
             result["file"] = stripped.split(":", 1)[1].strip()
         elif current_section == "location" and stripped.startswith("line:"):
@@ -5209,6 +5283,33 @@ def _parse_runtime_panic(stderr_text: str) -> dict:
         elif current_section == "direction":
             result.setdefault("direction", stripped)
     return result
+
+
+def _crash_fix_candidates(panic: dict, return_code: int) -> list[str]:
+    code = panic.get("code")
+    if code == "SSRUN001":
+        return [
+            "Patch the SemanticScript source row named by panic.sourceRow or the last trace event.",
+            "Use sem inspect-ir to inspect the operation, call, and LLVM block mapping.",
+            "If this is prod/traps mode, rerun with --build-profile dev --runtime-checks panic for source context.",
+        ]
+    if code == "SSRUN002":
+        op = panic.get("operation") or "the operation named in panic.operation"
+        call = panic.get("call")
+        site = f"{op} / call {call}" if call else op
+        return [
+            f"The fault landed in {site}: check the pointer, length, index, or recursion bound used on or just after that call.",
+            f"Open the row at line {panic.get('line', '?')} ({panic.get('signalName', 'fatal signal')}) and verify any c.* / pointer argument is non-null and in range.",
+            "If panic has no operation (prod/traps mode hides it), rebuild with --build-profile dev and rerun sem run --explain-crash.",
+        ]
+    if return_code != 0:
+        return [
+            "No SSRUN002 context was captured. On Windows an explicit abort()/__fastfail (exit 0xC0000409) bypasses the handler — check for a deliberate process.abort path.",
+            "Rebuild with --build-profile dev --runtime-checks panic and rerun; inspect the last trace event for the final operation entered.",
+        ]
+    return [
+        "No crash detected: the program exited cleanly. Re-check the input that was expected to fail.",
+    ]
 
 
 def _explain_crash(source: Path, compiler_args: list[str]) -> int:
@@ -5320,19 +5421,17 @@ def _explain_crash(source: Path, compiler_args: list[str]) -> int:
         "semanticContext": {
             "operation": context_operation,
             "call": panic.get("call", ""),
+            "callStack": panic.get("callStack", []),
             "routes": route_contexts,
             "lastEvent": last_event,
         },
         "lastTraceEvents": events[-20:],
         "suspectedCategory": (
             "runtimePanic" if panic.get("code") == "SSRUN001"
+            else "nativeFault" if panic.get("code") == "SSRUN002"
             else "nativeTrap" if run_proc.returncode != 0
             else "noCrash"),
-        "fixCandidates": [
-            "Patch the SemanticScript source row named by panic.sourceRow or the last trace event.",
-            "Use sem inspect-ir to inspect the operation, call, and LLVM block mapping.",
-            "If this is prod/traps mode, rerun with --build-profile dev --runtime-checks panic for source context.",
-        ],
+        "fixCandidates": _crash_fix_candidates(panic, run_proc.returncode),
         "artifacts": common_artifacts,
     }
     _write_json_artifact(crash_report_path, payload)
