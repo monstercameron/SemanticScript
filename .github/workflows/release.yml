@@ -25,12 +25,13 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -39,9 +40,14 @@ jobs:
             constraints.txt
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: vscode-semanticscript/package-lock.json
+
+      - name: Install VS Code extension dependencies
+        run: npm --prefix vscode-semanticscript ci
 
       - name: Install Python dependencies
         run: |
@@ -213,6 +219,7 @@ jobs:
             "dist/sem.exe lint SemanticScript/tests/tiny.sem -- --summary",
             "dist/sem.exe emit-ir SemanticScript/tests/agent_cli_demo.test.sem --quiet",
             "dist/sem.exe run SemanticScript/tests/agent_cli_demo.test.sem",
+            "npm --prefix vscode-semanticscript ci",
             "npm --prefix vscode-semanticscript run package:vsix"
           )
 
@@ -307,6 +314,7 @@ jobs:
             "- python SemanticScript/tests/run_suite.py editor",
             "- python SemanticScript/tests/run_suite.py ci-release",
             "- PyInstaller sem single-file executable smoke validation",
+            "- npm --prefix vscode-semanticscript ci",
             "- npm --prefix vscode-semanticscript run package:vsix"
           ) -join "`n"
 
@@ -322,21 +330,21 @@ jobs:
           "vsix_path=$releaseVsixPath" >> $env:GITHUB_OUTPUT
 
       - name: Upload sem executable artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: semanticscript-sem-windows-x64
           path: ${{ steps.manifest.outputs.sem_exe_path }}
           if-no-files-found: error
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: semanticscript-vscode-vsix
           path: ${{ steps.manifest.outputs.vsix_path }}
           if-no-files-found: error
 
       - name: Upload release manifest artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: semanticscript-release-manifest
           path: ${{ steps.manifest.outputs.manifest_path }}

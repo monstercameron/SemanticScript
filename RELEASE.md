@@ -17,6 +17,8 @@ playbook until the first tagged release is created.
   license also uses `MIT`.
 - Confirm the VS Code publisher target. The initial release is local VSIX only;
   `semanticscript-local` is valid only for local VSIX packaging.
+- Confirm GitHub private vulnerability reporting, Dependabot vulnerability
+  alerts, branch protection, and release-tag protections are enabled.
 - CI must pass on the release commit.
 - Generated files must not be committed unless they are intentionally tracked
   source artifacts.
@@ -152,10 +154,9 @@ Package the VS Code extension for local VSIX distribution only after validation
 passes and the release owner accepts the current extension metadata:
 
 ```powershell
+npm --prefix vscode-semanticscript ci
 npm --prefix vscode-semanticscript run check
-Push-Location vscode-semanticscript
-npx --yes @vscode/vsce package
-Pop-Location
+npm --prefix vscode-semanticscript run package:vsix
 ```
 
 Do not commit the generated `.vsix` unless the project later decides to track
@@ -218,7 +219,9 @@ local native toolchains, long-running app processes, or release-owner approval:
   `apps/taskforge-web/scripts/test_taskforge_web.py`;
 - native runtime CMake builds when a runner lacks the required compiler,
   pthreads, SQLite, or JSON runtime dependency shape;
-- VSIX packaging with `npm --prefix vscode-semanticscript run package:vsix`.
+- VSIX dependency installation and packaging with
+  `npm --prefix vscode-semanticscript ci` and
+  `npm --prefix vscode-semanticscript run package:vsix`.
 - local smoke validation of the generated
   `semanticscript-sem-windows-x64-<TAG>.exe` on a machine without a checked-out
   source tree, before publishing a public release.

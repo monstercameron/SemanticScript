@@ -69,16 +69,18 @@ toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
   packaged `.vsix` files, or `__pycache__/`.
 - Do not introduce public `.as` source-extension support.
 - Do not change the project license without a release-owner decision.
+- Follow the project [Code of Conduct](CODE_OF_CONDUCT.md) in issues, pull
+  requests, discussions, and other project spaces.
 
 ## Review Policy
 
-`main` is protected and requires pull requests, strict required checks, and
-resolved conversations. While SemanticScript is maintained as a solo-maintainer
-pre-release project, required approving reviews are intentionally set to zero so
-the maintainer can merge after CI passes. If another maintainer becomes active,
-raise branch protection to require at least one approving review and CODEOWNER
-review for `.github/`, release, runtime, compiler, and security-sensitive
-changes.
+`main` is protected with strict required checks and resolved conversations. The
+approving-review count is intentionally zero in solo-maintainer mode, and
+CODEOWNER review, stale-review dismissal, and last-push approval are disabled so
+the single maintainer is not blocked waiting for a second account. Release tag
+creation for `v*` is restricted to the maintainer, and existing `v*` tags are
+protected against update and deletion unless the tag ruleset is deliberately
+changed for recovery.
 
 ## License
 
