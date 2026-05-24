@@ -413,6 +413,15 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(skill["fileSummaries"])
         self.assertTrue(skill["sectionIndex"])
 
+    def test_package_dependencies_skill_is_discoverable(self) -> None:
+        self.assertEqual(sem.SKILL_ALIASES.get("sem-packages"), "package-dependencies")
+        self.assertEqual(sem.SKILL_ALIASES.get("sem-deps"), "package-dependencies")
+        content = sem._skill_content("package-dependencies", include_full_content=True)
+        self.assertIsNotNone(content)
+        sources = " ".join(str(content).lower().split())
+        self.assertIn("package-management.md", sources)
+        self.assertIn("sem deps", sources)
+
     def test_new_payload_creates_starter_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "hello-world"

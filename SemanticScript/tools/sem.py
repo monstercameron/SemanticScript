@@ -139,6 +139,14 @@ SKILL_REGISTRY = (
             "research/README.md",
         ),
     },
+    {
+        "name": "package-dependencies",
+        "description": "External dependency resolution: build.sem dependency rows, `sem deps` (sync/verify/list/cache/purge), the GitHub package format, cache, and sem.lock.",
+        "files": (
+            "docs/reference/package-management.md",
+            "docs/language/project-layout-build-sem.md",
+        ),
+    },
 )
 DIAGNOSTIC_INDEX_PATHS = (
     "docs/toolchain/compiler.md",
@@ -153,7 +161,8 @@ SKILL_ALIASES = {
     "sem-diagnostics": "patch-and-repair",
     "sem-stdlib": "sqlite-patterns",
     "sem-builds": "patch-and-repair",
-    "sem-packages": "patch-and-repair",
+    "sem-packages": "package-dependencies",
+    "sem-deps": "package-dependencies",
     "sem-testing": "graph-and-slice",
 }
 DIAGNOSTIC_EXPLAINERS = {
