@@ -337,7 +337,7 @@ def _source_kind(args):
     source_text = _unwrap(args[2])
     if source_text.startswith(("https://", "http://")):
         return "http", args[2:3]
-    if source_text.startswith("github.com/"):
+    if _has_github_host_prefix(source_text):
         return "github", args[2:3]
     return "local", args[2:3]
 
@@ -353,16 +353,30 @@ _GITHUB_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _GITHUB_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
+def _has_github_host_prefix(value: str) -> bool:
+    first_segment, separator, _ = value.partition("/")
+    return bool(separator) and first_segment.lower() == "github.com"
+
+
 def _validate_github_owner_repo(owner_repo: str) -> str:
-    cleaned = owner_repo[len("github.com/"):] if owner_repo.startswith("github.com/") else owner_repo
-    parts = cleaned.split("/")
-    valid = (len(parts) >= 2
+    parsed = urllib.parse.urlsplit(owner_repo)
+    if parsed.scheme or parsed.netloc:
+        raise DependencyError(
+            f"github source `{owner_repo}` must be OWNER/REPO or "
+            "github.com/OWNER/REPO, not a URL")
+
+    parts = owner_repo.split("/")
+    if parts and parts[0].lower() == "github.com":
+        parts = parts[1:]
+
+    valid = (len(parts) == 2
              and all(_GITHUB_SEGMENT_RE.match(part) and part not in (".", "..")
-                     for part in parts[:2]))
+                     for part in parts))
     if not valid:
         raise DependencyError(
-            f"github source `{owner_repo}` must be OWNER/REPO using only "
-            "letters, digits, '.', '_', or '-' (no '.' or '..' segment)")
+            f"github source `{owner_repo}` must be OWNER/REPO or "
+            "github.com/OWNER/REPO using only letters, digits, '.', '_', or "
+            "'-' (no '.' or '..' segment)")
     return f"{parts[0]}/{parts[1]}"
 
 
@@ -390,8 +404,9 @@ def cache_subdir(spec: DependencySpec) -> str:
     the same cache directory across machines."""
     if spec.source_kind == "github":
         owner_repo, ref = spec.source_payload
-        owner_repo = owner_repo[len("github.com/"):] if owner_repo.startswith("github.com/") else owner_repo
-        return _safe_join("github.com", *owner_repo.split("/"), _safe_ref(ref))
+        owner_repo = _validate_github_owner_repo(owner_repo)
+        owner, repo = owner_repo.split("/")
+        return _safe_join("github.com", owner, repo, _safe_ref(ref))
     if spec.source_kind == "http":
         (url,) = spec.source_payload
         digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]

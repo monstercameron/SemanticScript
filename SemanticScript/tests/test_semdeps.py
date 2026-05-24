@@ -133,6 +133,11 @@ class GithubSafetyTests(unittest.TestCase):
             semdeps._github_tarball_url("example/semstd", "v1.0.0"),
             "https://codeload.github.com/example/semstd/tar.gz/v1.0.0")
 
+    def test_github_owner_repo_allows_exact_host_shorthand(self):
+        self.assertEqual(
+            semdeps._github_tarball_url("github.com/example/semstd", "v1.0.0"),
+            "https://codeload.github.com/example/semstd/tar.gz/v1.0.0")
+
     def test_ref_with_slashes_is_encoded_as_path(self):
         self.assertEqual(
             semdeps._github_tarball_url("example/semstd", "refs/tags/v1.0.0"),
@@ -148,7 +153,15 @@ class GithubSafetyTests(unittest.TestCase):
                 semdeps._github_tarball_url("example/semstd", bad)
 
     def test_url_builder_rejects_bad_owner_repo(self):
-        for bad in ("..", "evil/..", "a b/c", "only-one-part"):
+        for bad in ("..", "evil/..", "a b/c", "only-one-part",
+                    "example/semstd/extra", "github.com/example/semstd/extra"):
+            with self.assertRaises(semdeps.DependencyError):
+                semdeps._github_tarball_url(bad, "v1.0.0")
+
+    def test_url_builder_rejects_url_like_owner_repo(self):
+        for bad in ("https://github.com/example/semstd",
+                    "https://evil.test/github.com/example/semstd",
+                    "//github.com/example/semstd"):
             with self.assertRaises(semdeps.DependencyError):
                 semdeps._github_tarball_url(bad, "v1.0.0")
 
@@ -175,6 +188,14 @@ class CacheKeyTests(unittest.TestCase):
         key = semdeps.cache_subdir(spec)
         self.assertEqual(key, os.path.join("github.com", "example", "semstd", "v1.0.0"))
         self.assertEqual(key, semdeps.cache_subdir(spec))
+
+    def test_github_key_normalizes_host_shorthand(self):
+        spec = semdeps.DependencySpec(
+            alias="a", module_path="github.com/example/semstd",
+            source_kind="github", source_payload=("github.com/example/semstd", "v1.0.0"))
+        self.assertEqual(
+            semdeps.cache_subdir(spec),
+            os.path.join("github.com", "example", "semstd", "v1.0.0"))
 
     def test_http_key_hashes_url(self):
         spec = semdeps.DependencySpec(
