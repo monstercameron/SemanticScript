@@ -54,10 +54,12 @@ prerequisites.
 
 `sem mcp` runs a Model Context Protocol server that exposes the stable `sem`
 JSON surfaces (`check`, `readiness`, `context`, `symbols`, `graph`, `slice`,
-`size`, `explain`, `skills`, `fix`, `patch`, `test`, `dev`, plus `version` and
-`doctor`) as MCP tools, so MCP-capable agents and editors can call the toolchain
-natively instead of shelling out. It is a thin wrapper over the same `sem` CLI,
-so behavior and versioning stay identical.
+`size`, `explain`, `skills`, `fix`, `patch`, `test`, `dev`, `deps`, `help`, plus
+`version` and `doctor`) as MCP tools, so MCP-capable agents and editors can call
+the toolchain natively instead of shelling out. `deps` resolves external
+dependencies (`sync`/`verify`/`list`/`cache`/`purge`, `sem.deps.v1`) and `help`
+returns the recommended next-step workflow (`sem.help.v1`). It is a thin wrapper
+over the same `sem` CLI, so behavior and versioning stay identical.
 
 The server needs the optional MCP SDK: `python -m pip install -r requirements-mcp.txt`
 (bundled automatically into the released `sem.exe`). It defaults to the stdio

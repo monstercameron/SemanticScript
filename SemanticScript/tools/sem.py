@@ -5974,6 +5974,90 @@ def command_deps(args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+def _help_payload(start: Path) -> dict:
+    """Recommend the next step for an agent working on this project.
+
+    Reports project state (build tape, declared/unsynced dependencies) and an
+    ordered, replayable nextCommands list so an agent always has a concrete
+    "what do I run now" answer, not just a flag dump."""
+    resolved = str(start.resolve())
+    build_tape = _find_build_tape(start)
+    state = {
+        "buildTape": str(build_tape) if build_tape else "",
+        "declaredDependencies": 0,
+        "dependenciesSynced": True,
+        "pendingDependencies": [],
+    }
+    entries: list[dict] = []
+    seen: set[str] = set()
+    _append_next_command(
+        entries, seen, "skills",
+        "sem skills get sem-agent --json",
+        "load version-matched agent workflow rules before editing",
+        argv=["sem", "skills", "get", "sem-agent", "--json"])
+    if build_tape is not None:
+        semdeps = _load_semdeps()
+        try:
+            config = semdeps.parse_build_sem(
+                build_tape.read_text(encoding="utf-8"), str(build_tape))
+            state["declaredDependencies"] = len(config.specs)
+            _resolved, pending = semdeps.resolve_import_registry(config)
+            pending_paths = sorted(pending.keys())
+            state["pendingDependencies"] = pending_paths
+            state["dependenciesSynced"] = not pending_paths
+            if pending_paths:
+                _append_next_command(
+                    entries, seen, "deps-sync",
+                    f"sem deps sync {resolved}",
+                    "materialize declared external dependencies so imports resolve",
+                    argv=["sem", "deps", "sync", resolved])
+        except (OSError, semdeps.DependencyError):
+            pass
+    _append_next_command(
+        entries, seen, "check",
+        f"sem check --json {resolved}",
+        "gate the project: parse, lint, and semantic checks",
+        argv=["sem", "check", "--json", resolved])
+    _append_next_command(
+        entries, seen, "graph",
+        f"sem graph --kind summary --json {resolved}",
+        "inspect architecture: operations, calls, effects, and routes",
+        argv=["sem", "graph", "--kind", "summary", "--json", resolved])
+    _append_next_command(
+        entries, seen, "test",
+        f"sem test --json {resolved}",
+        "run semantic preflight and harness tests once check is clean",
+        argv=["sem", "test", "--json", resolved])
+    return {
+        "schemaVersion": "sem.help.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "summary": ("Recommended loop: skills -> (deps sync) -> check -> "
+                    "graph/slice -> explain -> fix -> patch -> test. Run the "
+                    "first nextCommand entry next."),
+        "loop": ["skills", "deps sync", "check", "graph/slice", "explain",
+                 "fix", "patch", "test"],
+        "state": state,
+        "nextCommands": entries,
+    }
+
+
+def command_help(args: argparse.Namespace) -> int:
+    payload = _help_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(payload["summary"])
+    print(f"build tape: {payload['state']['buildTape'] or '(none)'}")
+    if payload["state"]["pendingDependencies"]:
+        print("unsynced dependencies: "
+              + ", ".join(payload["state"]["pendingDependencies"]))
+    print("next steps:")
+    for item in payload["nextCommands"]:
+        label = item.get("command") or " ".join(item.get("argv", []))
+        print(f"- {label}\n    {item['reason']}")
+    return 0
+
+
 def command_version(args: argparse.Namespace) -> int:
     payload = _version_payload()
     if args.json:
@@ -6514,6 +6598,15 @@ def build_parser() -> argparse.ArgumentParser:
     deps.add_argument("path", nargs="?", default=".",
                       help="project path or build.sem to resolve dependencies for")
     deps.set_defaults(func=command_deps)
+
+    help_cmd = subparsers.add_parser(
+        "help",
+        help="emit the recommended next-step agent workflow for a project (sem.help.v1)")
+    help_cmd.add_argument("--json", action="store_true",
+                          help="emit machine-readable next-step guidance")
+    help_cmd.add_argument("path", nargs="?", default=".",
+                          help="project path or build.sem to summarize next steps for")
+    help_cmd.set_defaults(func=command_help)
 
     readiness = subparsers.add_parser(
         "readiness",

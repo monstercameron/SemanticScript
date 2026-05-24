@@ -413,6 +413,19 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(skill["fileSummaries"])
         self.assertTrue(skill["sectionIndex"])
 
+    def test_help_payload_recommends_next_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "proj"
+            sem._starter_project_payload(root)
+            payload = sem._help_payload(root)
+            self.assertEqual(payload["schemaVersion"], "sem.help.v1")
+            self.assertTrue(payload["nextCommands"])
+            kinds = [item["kind"] for item in payload["nextCommands"]]
+            self.assertIn("skills", kinds)
+            self.assertIn("check", kinds)
+            self.assertEqual(
+                payload["state"]["buildTape"], str((root / "build.sem").resolve()))
+
     def test_package_dependencies_skill_is_discoverable(self) -> None:
         self.assertEqual(sem.SKILL_ALIASES.get("sem-packages"), "package-dependencies")
         self.assertEqual(sem.SKILL_ALIASES.get("sem-deps"), "package-dependencies")
