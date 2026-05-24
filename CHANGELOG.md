@@ -2,35 +2,95 @@
 
 ## 2026-05-24
 
-- `feat(deps): implement external SemanticScript dependency resolution`
-  - Adds `SemanticScript/compiler/semdeps.py`: parses `dependency*` build-tape
-    rows, materializes `path`/`local` (copy + tree-hash pin) and `github`/`http`
-    (download, SHA-256 verify, traversal-guarded extract) dependencies, writes
-    and verifies `sem.lock` (`sem.lock.v1`), and produces an offline module-path
-    registry.
-  - Wires a dependency→import bridge into the compiler so `import ALIAS MODULE_PATH`
-    resolves against the materialized cache. Import resolution stays offline; an
-    unsynced dependency raises an actionable `sem deps sync` error only when its
-    module is actually imported.
-  - Adds the `sem deps sync|verify|list` CLI (`sem.deps.v1` JSON surface) with a
-    shared, version-keyed machine cache (`SEMANTICSCRIPT_CACHE`) so multiple
-    projects share one download per pinned version while versions coexist;
-    `path`/`local` deps and explicit `dependencyCache` stay project-local.
-  - Marks the dependency rows `Impl'd` in the syntax inventory and updates the
-    compatibility boundary and `build.sem` layout docs. Transitive resolution,
-    version solving, and a hosted registry remain future work.
-  - Hardens the GitHub/HTTP fetch path: OWNER/REPO + REF validation and URL
-    encoding, https-only redirects, and an SSRF guard that refuses non-public
-    hosts. Clamps a fetched package's `registerModule` paths to its cache dir so
-    a hostile package cannot escape it. A live, network-gated test
-    (`SEMANTICSCRIPT_NETWORK_TESTS=1`) exercises the real transfer.
-  - Adds the package lifecycle (CRUD) for agents: `sem deps cache` inventories
-    materialized packages, `sem deps purge [--lock]` deletes them, and
-    `sem deps sync --force` redownloads/repairs a corrupt cache. Corrupt
-    `sem.lock` now yields an actionable error instead of a crash.
+- `137cd1ac1da49b43f83e70a521df30fe6ac49195` - `feat(deps): external dependency resolution for SemanticScript (#33)`
+  - Adds external dependency resolution for `build.sem` dependency rows, including `semdeps.py`, `sem.lock` verification, path/local and GitHub/HTTP materialization, offline import resolution through the compiler, and `sem deps sync|verify|list|cache|purge` workflows.
+  - Hardens dependency fetching with GitHub source validation, HTTPS-only redirects, SSRF and archive traversal protections, cache repair flows, network-gated tests, `sem new` scaffold guidance, package-dependency skills, and MCP `deps`/`help` tool integration.
+- `f3f7063ae40d7ce613d883f7fc9307e6962b1f2a` - `Refine GitHub Pages technical design (#24)`
+  - Refines the GitHub Pages site implementation, updating the main React application and stylesheet for the technical project presentation.
+- `b45a66c817bcd66343b5133800b819aa442c8e9a` - `feat(mcp): add MCP server, single-exe packaging, and distribution channels (#32)`
+  - Adds `sem mcp`, a FastMCP-based Model Context Protocol server that exposes stable `sem` JSON surfaces over stdio or streamable HTTP and is bundled into the frozen `sem.exe`.
+  - Adds MCP Desktop Extension, MCP registry, Scoop, and WinGet packaging manifests, release manifest stamping, optional Azure Trusted Signing, scoped mypy/pre-commit tooling, CI tests, and docs for adding MCP tools.
+- `33cf023db22cc1f00f15a6d33b0ffafdd6f6f5cb` - `ci: automate release preparation (#31)`
+  - Adds manual Prepare Release and Publish Release workflows so maintainers can generate version/notes PRs, dispatch CI for bot-created release branches, validate merged release commits, create tags, and invoke the reusable release build.
+  - Extends release tooling, tests, and docs around major/minor/patch version bumps, VS Code package-lock synchronization, curated release notes, previous-tag commit ranges, artifact manifests, and prerelease defaults.
+- `958544cfbf2a9c1dcebf04334d16323273ccf79f` - `chore(deps): bump actions/upload-pages-artifact from 3.0.1 to 5.0.0 (#30)`
+  - Updates the Pages workflow to use `actions/upload-pages-artifact` v5.0.0.
+- `08bdf935eb6de6eb54e9a969b3f9c801cee38454` - `chore(deps): bump actions/checkout from 4 to 6 (#29)`
+  - Updates the CI workflow to use `actions/checkout` v6.
+- `d798f91539ada538af84abe4c958f305d8fd0fca` - `chore(deps): bump github/codeql-action from 3.36.0 to 4.36.0 (#28)`
+  - Updates the CodeQL workflow to use `github/codeql-action` v4.36.0.
+- `6016811158611936a69cb0c31efb801fc65dde96` - `chore(deps): bump actions/setup-python from 5 to 6 (#27)`
+  - Updates the CI workflow to use `actions/setup-python` v6.
+- `256d71a9e8519df21a56bc2f0285113e7ffbab57` - `chore(deps): bump actions/deploy-pages from 4.0.5 to 5.0.0 (#26)`
+  - Updates the Pages workflow to use `actions/deploy-pages` v5.0.0.
+- `5bc5205045d47e9540072f3ffdba7d76694fd4ec` - `chore: harden gitignore artifact coverage (#25)`
+  - Expands `.gitignore` coverage for generated artifacts and local build/test outputs.
+- `859469efd87b826d3126ef103ee5c928c22ccf4d` - `docs: explain binary output size vs C and the Zero sub-10KiB claim (#23)`
+  - Adds a measured binary-size analysis showing SemanticScript output matches equivalent clang C output, Windows MSVC CRT linkage dominates artifact size, and sub-10 KiB numbers come from runtime/target choices rather than LLVM avoidance.
+- `ea2cd61d793eb56d6e4fbfd0482b338e47407744` - `docs: sharpen README review path (#22)`
+  - Refines the README review path so evaluators can find the project pitch, runnable surfaces, release downloads, and deeper technical docs more quickly.
+- `b8c83431c7c3efa8b45e8cdf189fae3c1e825bd3` - `chore: harden remaining workflows and add CodeQL scanning (#21)`
+  - Pins the GitHub Pages workflow actions, scopes Pages and id-token permissions to the deploy job, aligns the Pages Node version with CI, and adds root npm Dependabot coverage.
+  - Adds a SHA-pinned CodeQL workflow covering Python and JavaScript/TypeScript.
+- `0eac7a46707fadd1b4d446d88ce98a9b6ae5f4fe` - `test: full multi-lane + compiler-grade coverage (finds 7 compiler bugs) (#20)`
+  - Adds golden native E2E tests, native parity checks, feature-corpus compile/runtime harnesses, parser fuzzing, syntax-inventory proof mapping, stdlib coverage guards, tooling corpus smoke tests, and ASan/UBSan runtime coverage.
+  - Wires the new lanes into the suite and CI, documents the coverage map and known runtime discrepancies, and fixes clean compiler diagnostics for non-UTF-8 and unterminated-string sources.
+- `81a031e2d062add8525c5b870949e725a9a0ac8a` - `docs: add SemanticScript brand images (#19)`
+  - Adds SemanticScript logo/mascot image assets and surfaces them in the README and GitHub Pages site.
+- `98e457aa0e9cd238713f1d2750f1f4497d9b4f7e` - `docs: refine project pages content (#18)`
+  - Refines the GitHub Pages application content, layout, and styling for the public SemanticScript project site.
+- `198c63562f03c0ae5140e73b6b0ec4c52f7f4855` - `docs: add project site link to readme (#17)`
+  - Adds the hosted project-site link to the root README.
+- `403acbb23e152174240e35519c4e40f6e47b2aef` - `docs: make releases the default install path (#16)`
+  - Reorients install docs around GitHub release downloads, updates release policy references, and adds LLVM compiler installation guidance.
+- `4b36210eb8590fd0d06a2c700b80de3a20de6fef` - `docs: define and enforce the type/kebab-description branch-name convention (#14)`
+  - Documents the `type/kebab-description` branch naming convention in `CONTRIBUTING.md`, enforces it in pull-request CI, and adds a matching opt-in pre-push hook with LF protection for hook files.
+- `c684fa881d866ae8a66e987a9bc04d720891af76` - `feat(compiler): add SSRUN002 native-fault crash reporting with call stack (#12)`
+  - Adds development-mode native-fault reporting that emits SSRUN002 diagnostics with semantic operation/call-stack context before re-raising the original fault.
+  - Adds `sem run --explain-crash` parsing for structured crash reports, plus compiler tests and docs for the native-fault surface.
+- `5228fce78b6eaa17e04f036782b6004dc7e68b03` - `ci: fix main prerelease creation (#15)`
+  - Adjusts the compiler executable workflow so main-branch prerelease creation and asset updates work reliably.
+- `53b6c7eecfcbcc4c24d5a454b87885cf73021a7b` - `ci: publish main merge release assets (#13)`
+  - Extends the compiler executable workflow to build and publish continuous `main-<short-sha>` prerelease assets, including merge-release manifests and download metadata.
+  - Updates release hygiene and single-executable toolchain docs for the merge-prerelease handoff path.
+- `43c2215de0142f2bc64e843391123394f85d8d05` - `Add project website (#10)`
+  - Adds the Vite-based GitHub Pages site, Pages workflow, website package metadata, and site source files.
+  - Starts the compiler executable artifact workflow and refreshes single-executable packaging docs around the website/release surface.
+- `5fc8fee4404ee11f6fffe3f7a9e95843cd7c0b44` - `chore: harden repository hygiene (#11)`
+  - Adds public repository hygiene files and docs including the code of conduct, VS Code package-lock metadata, release hygiene updates, and workflow refinements.
+- `1ef3205c0537b43a7bcb804006220dc38566628e` - `Add cross-language benchmark suite (C / JS / Python / SemanticScript) (#9)`
+  - Adds C, JavaScript, Python, and SemanticScript implementations for Fibonacci, Collatz, Sieve of Eratosthenes, and Mandelbrot with shared checksum contracts and a multi-run benchmark harness.
+  - Documents benchmark methodology, variance, assembly proof notes, workload sizing, and language-specific optimization caveats.
+- `81bc75660c45772fa2d56d6d8d95c40c119d3c60` - `chore: refine public repository hygiene (#8)`
+  - Adds PyInstaller single-file packaging support, release download validation, release metadata output, public docs cleanup, roadmap/overview pages, and archived release backlog handling.
+- `321d22f79457dec95f968a412b0618ebbb151894` - `docs: add root agent guides (#7)`
+  - Adds root `AGENTS.md` and `CLAUDE.md` guides and replaces the old docs-only agent guide surface.
+- `51007db3c234ac3cb5523e6f849cd4acd1fcc8fb` - `chore(deps): bump actions/upload-artifact from 4 to 7`
+  - Updates the release workflow to use `actions/upload-artifact` v7.
+- `08dd4e11b6b48d08c95f24f3d6c203080f8d4fd7` - `chore(deps): bump actions/setup-python from 5 to 6`
+  - Updates CI and release workflows to use `actions/setup-python` v6.
+- `a5b4a84dd61476a687564a123621b8e70e75a727` - `chore(deps): bump actions/setup-node from 4 to 6`
+  - Updates CI and release workflows to use `actions/setup-node` v6.
+- `e9a15455738f2a45061abe494cd021f28198ddd5` - `chore: polish public repository surface`
+  - Removes retired Python comparison sidecars, moves the release backlog under `docs/reference`, updates release/security docs, expands generated-artifact ignores, and completes SemanticScript third-party notice naming.
+- `f2e6cade72e600f08ad9522da16ad0d0afa25700` - `chore(deps): bump actions/checkout from 4 to 6`
+  - Updates CI and release workflows to use `actions/checkout` v6.
+- `021c89cf84444bda4e4a65d43da2b043a8cb281f` - `docs: refresh repo standards and syntax inventory`
+  - Adds repository standards files and GitHub templates, moves the syntax inventory into `docs/reference`, introduces shared repository version helpers, expands `sem` release/version command coverage, and refreshes docs for the current SemanticScript surface.
 
 ## 2026-05-23
 
+- `a4ba68808193ac78be4e8a537f447a65f9df4c09` - `Normalize Windows release path assertions`
+  - Normalizes release-path assertions in the test suite so Windows path behavior matches the release harness expectations.
+- `250ce24a8cecfadcc517c65f527b055fe118ffcc` - `Relax auction runtime contract assertions`
+  - Relaxes auction runtime contract assertions in command-contract coverage to match the executable runtime surface.
+- `dad8b899f63ad2f903bb224b5e2e091f49f0ff49` - `Make CI Windows-only`
+  - Narrows the CI workflow to Windows and aligns sem CLI tests with the Windows runner contract.
+- `42eb5c99911c460a4a6b81016f7b72af5c01abf2` - `Fix sem command contracts for CI`
+  - Adjusts sem command-contract tests so they pass under the CI invocation and environment.
+- `685add5ba2b7e9e6977e47da25b3c4cd9b971074` - `Cut over repo to canonical primitive types`
+  - Migrates the compiler, linter, formatter tests, examples, feature corpus, stdlib, apps, docs, and VS Code support from legacy primitive spellings to canonical `Int64`, `Float64`, `Bool`, and related type names.
+  - Adds `standard.buffer`, `standard.bytes`, `standard.list`, `standard.map`, and related companion tests while keeping changelog and syntax references aligned with the type cutover.
 - `63318b755dc466d21e443b68ea1bf1ba99a878fb` - `docs: align root docs with runtime surfaces`
   - Updates the root README and first-party docs index to include Realtime Auction Arena, native async/event support, outbound `standard.net`, blocking SSE primitives, and shutdown drain-state support.
   - Refreshes concurrency, outbound network, and compatibility docs so they distinguish synchronous fallback rows from executable native async, `standard.event`, and prototype HTTP client surfaces.
@@ -64,6 +124,8 @@
 - `91d5e3ffdf501a6b4a62dad3032d13eca933cd1a` - `runtime+stdlib: add event streams and HTTP helpers`
   - Adds the `std.event` surface, native event runtime support, HTTP/runtime helper expansion, and the `apps/event-stream-smoke` sample.
   - Extends compiler, linter, stdlib, and native runtime coverage around event streams, async runtime behavior, native HTTP handling, JWT helpers, and supporting stdlib modules.
+- `9bcdfbfc65e1bc713922417c6764e5903ce38992` - `experiments: add bounded auction audit replay`
+  - Adds bounded audit replay support to the Realtime Auction Arena server, including audit context wiring, route/API docs, runtime-gap notes, and API/E2E coverage.
 
 ## 2026-05-22
 
