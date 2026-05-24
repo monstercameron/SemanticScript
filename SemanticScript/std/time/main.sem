@@ -1,39 +1,38 @@
 # SemanticScript standard-library canonical module: standard.time.
 
 module standard.time
-modulePurpose standard.time "Canonical standard-library module for time helpers."
+purpose module standard.time "Canonical standard-library module for time helpers."
 moduleOwns standard.time "The official import path `standard.time` and this module's implementation body."
 moduleDoesNotOwn standard.time "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.time "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.time "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.time timeModuleVersionText
-storage module immutable timeModuleVersionText CNullTerminatedByteString "standard.time 0.1"
+storage module immutable timeModuleVersionText String "standard.time 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: <time.h>-style time operations
 # ============================================================
 #
-# # rationale: C's <time.h> exposes clock() / time() as floor
+# rationale: C's <time.h> exposes clock() / time() as floor
 #   primitives and a flotilla of conversion macros for seconds /
 #   minutes / hours / days. The refined surface drops Result X Void
 #   from the total conversions, returns Bool from the predicate
 #   isGregorianLeapYear, and keeps clock/time reads as real
 #   operations with `effect read clock.realTime` declarations.
 #
-# # invariant: every conversion is integer-division based; results
+# invariant: every conversion is integer-division based; results
 #   are floor-rounded toward negative infinity for non-negative
 #   inputs (matching the LLVM sdiv semantics).
 #
-# # security: clock / time reveal coarse-grained timing
+# security: clock / time reveal coarse-grained timing
 #   information. Callers that handle secret-dependent data must
 #   not branch on these values.
 #
-# # timing: conversions are O(1). clock / time make one libc call.
+# timing: conversions are O(1). clock / time make one libc call.
 #
-# # observability: the OS-time wrappers do not log themselves;
+# observability: the OS-time wrappers do not log themselves;
 #   wrappers may.
-
 
 # This is a pure-module (library) file: it exports operations
 # consumed by other programs (notably std/time/main.test.sem which
@@ -53,56 +52,56 @@ capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
 # Canonical conversion factors.
-domainLiteral secondsPerMinuteValue CSignedInt64 60
+domainLiteral secondsPerMinuteValue Int64 60
 domainLiteralTrust secondsPerMinuteValue trustedStaticLiteral
-domainLiteral secondsPerHourValue CSignedInt64 3600
+domainLiteral secondsPerHourValue Int64 3600
 domainLiteralTrust secondsPerHourValue trustedStaticLiteral
-domainLiteral secondsPerDayValue CSignedInt64 86400
+domainLiteral secondsPerDayValue Int64 86400
 domainLiteralTrust secondsPerDayValue trustedStaticLiteral
 
 # Leap-year rule literals.
-domainLiteral leapYearDivisorFour CSignedInt64 4
+domainLiteral leapYearDivisorFour Int64 4
 domainLiteralTrust leapYearDivisorFour trustedStaticLiteral
-domainLiteral leapYearDivisorHundred CSignedInt64 100
+domainLiteral leapYearDivisorHundred Int64 100
 domainLiteralTrust leapYearDivisorHundred trustedStaticLiteral
-domainLiteral leapYearDivisorFourHundred CSignedInt64 400
+domainLiteral leapYearDivisorFourHundred Int64 400
 domainLiteralTrust leapYearDivisorFourHundred trustedStaticLiteral
-domainLiteral integerZeroBoundaryForTime CSignedInt64 0
+domainLiteral integerZeroBoundaryForTime Int64 0
 domainLiteralTrust integerZeroBoundaryForTime trustedStaticLiteral
-domainLiteral timeSlotByteSize CByteCount 8
+domainLiteral timeSlotByteSize ByteCount 8
 domainLiteralTrust timeSlotByteSize trustedStaticLiteral
 
 # section time.clockReaders
 
 operation readProcessCpuClockTicks
-output readProcessCpuClockTicks CSignedInt64
+output operation readProcessCpuClockTicks Int64
 useCapability readProcessCpuClockTicks clockCpuReadCapability
 effect readProcessCpuClockTicks read clock.cpu
-memoryHeap readProcessCpuClockTicks no
+memory readProcessCpuClockTicks heap no
 async readProcessCpuClockTicks no
-purpose readProcessCpuClockTicks "Returns CPU clock ticks since the start of this process via libc clock(). Divide by CLOCKS_PER_SEC for seconds."
-invariant readProcessCpuClockTicks "Monotonically non-decreasing within a single process run."
+purpose operation readProcessCpuClockTicks "Returns CPU clock ticks since the start of this process via libc clock(). Divide by CLOCKS_PER_SEC for seconds."
+invariant operation readProcessCpuClockTicks "Monotonically non-decreasing within a single process run."
 warning readProcessCpuClockTicks "Tick rate is platform-defined (CLOCKS_PER_SEC); do not compare across machines without conversion."
 guarantee readProcessCpuClockTicks "Always returns; never throws."
 label startReadProcessCpuClockTicks
 call libcClockCall c.clock
 run libcClockCall
-bind cpuClockTickCount CSignedInt64 libcClockCall
-returnValue cpuClockTickCount
+bind value cpuClockTickCount Int64 libcClockCall
+return value cpuClockTickCount
 
 operation readCurrentUnixEpochSeconds
-output readCurrentUnixEpochSeconds CSignedInt64
+output operation readCurrentUnixEpochSeconds Int64
 useCapability readCurrentUnixEpochSeconds clockRealTimeReadCapability
 useCapability readCurrentUnixEpochSeconds heapAllocationCapability
 useCapability readCurrentUnixEpochSeconds heapFreeCapability
 effect readCurrentUnixEpochSeconds read clock.realTime
 effect readCurrentUnixEpochSeconds allocate heap
 effect readCurrentUnixEpochSeconds free heap
-memoryHeap readCurrentUnixEpochSeconds yes
+memory readCurrentUnixEpochSeconds heap yes
 memoryAllocationSource readCurrentUnixEpochSeconds allocateTimeSlotCall
 async readCurrentUnixEpochSeconds no
-purpose readCurrentUnixEpochSeconds "Returns seconds since 1970-01-01 00:00:00 UTC via libc time(). Returns 0 on allocation failure of the libc time_t* output slot."
-invariant readCurrentUnixEpochSeconds "Monotonically non-decreasing per real-time clock; not guaranteed monotonic across clock adjustments."
+purpose operation readCurrentUnixEpochSeconds "Returns seconds since 1970-01-01 00:00:00 UTC via libc time(). Returns 0 on allocation failure of the libc time_t* output slot."
+invariant operation readCurrentUnixEpochSeconds "Monotonically non-decreasing per real-time clock; not guaranteed monotonic across clock adjustments."
 warning readCurrentUnixEpochSeconds "Wall-clock value is subject to NTP adjustments / DST / manual changes; for monotonic intervals use readProcessCpuClockTicks. A 0 return indicates allocation failure, not a 1970-01-01 timestamp."
 guarantee readCurrentUnixEpochSeconds "Always returns; never throws."
 # rationale: libc time() accepts a time_t* output parameter. We
@@ -117,17 +116,17 @@ guarantee readCurrentUnixEpochSeconds "Always returns; never throws."
 #   (1970-01-01 UTC) callers can flag separately if needed.
 label startReadCurrentUnixEpochSeconds
 call allocateTimeSlotCall c.malloc
-arg allocateTimeSlotCall size timeSlotByteSize
+argument allocateTimeSlotCall size ByteCount timeSlotByteSize
 run allocateTimeSlotCall
-bind timeSlotPointer COpaqueMemoryAddress allocateTimeSlotCall
-bindError timeSlotAllocationError CSignedInt32 allocateTimeSlotCall
-branchIfError allocateTimeSlotCall timeSlotAllocationFailedHandler
+bind value timeSlotPointer OpaquePointer allocateTimeSlotCall
+bind error timeSlotAllocationError Int32 allocateTimeSlotCall
+branch error source allocateTimeSlotCall target timeSlotAllocationFailedHandler
 defer releaseAllocateTimeSlotCall c.free timeSlotPointer
 call libcTimeCall c.time
-arg libcTimeCall slot timeSlotPointer
+argument libcTimeCall slot OpaquePointer timeSlotPointer
 run libcTimeCall
-bind currentUnixSeconds CSignedInt64 libcTimeCall
-returnValue currentUnixSeconds
+bind value currentUnixSeconds Int64 libcTimeCall
+return value currentUnixSeconds
 
 # Allocation-failure leg: c.malloc returned NULL. We surface the
 # bound error value (the pointer-as-i32 NULL = 0) as the return Ã¢â‚¬â€
@@ -136,141 +135,141 @@ returnValue currentUnixSeconds
 # (sign-extended from i32 to i64). We do NOT call c.free here
 # because we never successfully allocated.
 label timeSlotAllocationFailedHandler
-returnValue timeSlotAllocationError
+return value timeSlotAllocationError
 
 # section time.conversions
 
 operation convertSecondsToWholeHours
-input convertSecondsToWholeHours secondCount CSignedInt64
-output convertSecondsToWholeHours CSignedInt64
-memoryHeap convertSecondsToWholeHours no
+input operation convertSecondsToWholeHours secondCount Int64
+output operation convertSecondsToWholeHours Int64
+memory convertSecondsToWholeHours heap no
 async convertSecondsToWholeHours no
-purpose convertSecondsToWholeHours "Returns secondCount / 3600 Ã¢â‚¬â€ the number of whole hours represented."
-invariant convertSecondsToWholeHours "Floor-divides toward zero (LLVM sdiv) for non-negative inputs."
+purpose operation convertSecondsToWholeHours "Returns secondCount / 3600 Ã¢â‚¬â€ the number of whole hours represented."
+invariant operation convertSecondsToWholeHours "Floor-divides toward zero (LLVM sdiv) for non-negative inputs."
 guarantee convertSecondsToWholeHours "Total."
 label startConvertSecondsToWholeHours
-call divideBySecondsPerHourCall math.divideI64
-arg divideBySecondsPerHourCall left secondCount
-arg divideBySecondsPerHourCall right secondsPerHourValue
+call divideBySecondsPerHourCall math.divideInt64
+argument divideBySecondsPerHourCall left Int64 secondCount
+argument divideBySecondsPerHourCall right Int64 secondsPerHourValue
 run divideBySecondsPerHourCall
-bind wholeHoursResult CSignedInt64 divideBySecondsPerHourCall
-returnValue wholeHoursResult
+bind value wholeHoursResult Int64 divideBySecondsPerHourCall
+return value wholeHoursResult
 
 operation convertSecondsToWholeMinutes
-input convertSecondsToWholeMinutes secondCount CSignedInt64
-output convertSecondsToWholeMinutes CSignedInt64
-memoryHeap convertSecondsToWholeMinutes no
+input operation convertSecondsToWholeMinutes secondCount Int64
+output operation convertSecondsToWholeMinutes Int64
+memory convertSecondsToWholeMinutes heap no
 async convertSecondsToWholeMinutes no
-purpose convertSecondsToWholeMinutes "Returns secondCount / 60 Ã¢â‚¬â€ the number of whole minutes represented."
-invariant convertSecondsToWholeMinutes "Floor-divides toward zero."
+purpose operation convertSecondsToWholeMinutes "Returns secondCount / 60 Ã¢â‚¬â€ the number of whole minutes represented."
+invariant operation convertSecondsToWholeMinutes "Floor-divides toward zero."
 guarantee convertSecondsToWholeMinutes "Total."
 label startConvertSecondsToWholeMinutes
-call divideBySecondsPerMinuteCall math.divideI64
-arg divideBySecondsPerMinuteCall left secondCount
-arg divideBySecondsPerMinuteCall right secondsPerMinuteValue
+call divideBySecondsPerMinuteCall math.divideInt64
+argument divideBySecondsPerMinuteCall left Int64 secondCount
+argument divideBySecondsPerMinuteCall right Int64 secondsPerMinuteValue
 run divideBySecondsPerMinuteCall
-bind wholeMinutesResult CSignedInt64 divideBySecondsPerMinuteCall
-returnValue wholeMinutesResult
+bind value wholeMinutesResult Int64 divideBySecondsPerMinuteCall
+return value wholeMinutesResult
 
 operation convertMinutesToSeconds
-input convertMinutesToSeconds minuteCount CSignedInt64
-output convertMinutesToSeconds CSignedInt64
-memoryHeap convertMinutesToSeconds no
+input operation convertMinutesToSeconds minuteCount Int64
+output operation convertMinutesToSeconds Int64
+memory convertMinutesToSeconds heap no
 async convertMinutesToSeconds no
-purpose convertMinutesToSeconds "Returns minuteCount * 60 seconds."
-invariant convertMinutesToSeconds "Result wraps under multiplication overflow at CSignedInt64."
+purpose operation convertMinutesToSeconds "Returns minuteCount * 60 seconds."
+invariant operation convertMinutesToSeconds "Result wraps under multiplication overflow at Int64."
 guarantee convertMinutesToSeconds "Total."
 label startConvertMinutesToSeconds
-call multiplyMinutesBySixtyCall math.multiplyI64
-arg multiplyMinutesBySixtyCall left minuteCount
-arg multiplyMinutesBySixtyCall right secondsPerMinuteValue
+call multiplyMinutesBySixtyCall math.multiplyInt64
+argument multiplyMinutesBySixtyCall left Int64 minuteCount
+argument multiplyMinutesBySixtyCall right Int64 secondsPerMinuteValue
 run multiplyMinutesBySixtyCall
-bind secondsFromMinutesResult CSignedInt64 multiplyMinutesBySixtyCall
-returnValue secondsFromMinutesResult
+bind value secondsFromMinutesResult Int64 multiplyMinutesBySixtyCall
+return value secondsFromMinutesResult
 
 operation convertHoursToSeconds
-input convertHoursToSeconds hourCount CSignedInt64
-output convertHoursToSeconds CSignedInt64
-memoryHeap convertHoursToSeconds no
+input operation convertHoursToSeconds hourCount Int64
+output operation convertHoursToSeconds Int64
+memory convertHoursToSeconds heap no
 async convertHoursToSeconds no
-purpose convertHoursToSeconds "Returns hourCount * 3600 seconds."
-invariant convertHoursToSeconds "Result wraps under overflow."
+purpose operation convertHoursToSeconds "Returns hourCount * 3600 seconds."
+invariant operation convertHoursToSeconds "Result wraps under overflow."
 guarantee convertHoursToSeconds "Total."
 label startConvertHoursToSeconds
-call multiplyHoursBy3600Call math.multiplyI64
-arg multiplyHoursBy3600Call left hourCount
-arg multiplyHoursBy3600Call right secondsPerHourValue
+call multiplyHoursBy3600Call math.multiplyInt64
+argument multiplyHoursBy3600Call left Int64 hourCount
+argument multiplyHoursBy3600Call right Int64 secondsPerHourValue
 run multiplyHoursBy3600Call
-bind secondsFromHoursResult CSignedInt64 multiplyHoursBy3600Call
-returnValue secondsFromHoursResult
+bind value secondsFromHoursResult Int64 multiplyHoursBy3600Call
+return value secondsFromHoursResult
 
 operation convertUnixEpochSecondsToDays
-input convertUnixEpochSecondsToDays epochSecondCount CSignedInt64
-output convertUnixEpochSecondsToDays CSignedInt64
-memoryHeap convertUnixEpochSecondsToDays no
+input operation convertUnixEpochSecondsToDays epochSecondCount Int64
+output operation convertUnixEpochSecondsToDays Int64
+memory convertUnixEpochSecondsToDays heap no
 async convertUnixEpochSecondsToDays no
-purpose convertUnixEpochSecondsToDays "Returns whole days since 1970-01-01 from an epoch-seconds value."
-invariant convertUnixEpochSecondsToDays "Floor-divides toward zero."
+purpose operation convertUnixEpochSecondsToDays "Returns whole days since 1970-01-01 from an epoch-seconds value."
+invariant operation convertUnixEpochSecondsToDays "Floor-divides toward zero."
 guarantee convertUnixEpochSecondsToDays "Total."
 label startConvertUnixEpochSecondsToDays
-call divideBySecondsPerDayCall math.divideI64
-arg divideBySecondsPerDayCall left epochSecondCount
-arg divideBySecondsPerDayCall right secondsPerDayValue
+call divideBySecondsPerDayCall math.divideInt64
+argument divideBySecondsPerDayCall left Int64 epochSecondCount
+argument divideBySecondsPerDayCall right Int64 secondsPerDayValue
 run divideBySecondsPerDayCall
-bind daysSinceEpochResult CSignedInt64 divideBySecondsPerDayCall
-returnValue daysSinceEpochResult
+bind value daysSinceEpochResult Int64 divideBySecondsPerDayCall
+return value daysSinceEpochResult
 
 # section time.calendar
 
 operation isGregorianLeapYear
-input isGregorianLeapYear candidateYear CSignedInt64
-output isGregorianLeapYear Bool
-memoryHeap isGregorianLeapYear no
+input operation isGregorianLeapYear candidateYear Int64
+output operation isGregorianLeapYear Bool
+memory isGregorianLeapYear heap no
 async isGregorianLeapYear no
-purpose isGregorianLeapYear "Returns true when candidateYear is a Gregorian leap year (divisible by 4 AND (not divisible by 100 OR divisible by 400))."
-invariant isGregorianLeapYear "Pure function of candidateYear; result depends only on the year value."
+purpose operation isGregorianLeapYear "Returns true when candidateYear is a Gregorian leap year (divisible by 4 AND (not divisible by 100 OR divisible by 400))."
+invariant operation isGregorianLeapYear "Pure function of candidateYear; result depends only on the year value."
 guarantee isGregorianLeapYear "Total."
 # rationale: Gregorian leap-year rule per ISO 8601. The trichotomy
 #   below short-circuits at the cheapest divisor first (4), then
 #   400 (skipping the 100 check when divisible by 400), then 100.
 label startIsGregorianLeapYear
-call computeYearModuloFourCall math.moduloI64
-arg computeYearModuloFourCall left candidateYear
-arg computeYearModuloFourCall right leapYearDivisorFour
+call computeYearModuloFourCall math.moduloInt64
+argument computeYearModuloFourCall left Int64 candidateYear
+argument computeYearModuloFourCall right Int64 leapYearDivisorFour
 run computeYearModuloFourCall
-bind yearModuloFour I64 computeYearModuloFourCall
-call detectNotDivisibleByFourCall math.notEqualI64
-arg detectNotDivisibleByFourCall left yearModuloFour
-arg detectNotDivisibleByFourCall right integerZeroBoundaryForTime
+bind value yearModuloFour Int64 computeYearModuloFourCall
+call detectNotDivisibleByFourCall math.notEqualInt64
+argument detectNotDivisibleByFourCall left Int64 yearModuloFour
+argument detectNotDivisibleByFourCall right Int64 integerZeroBoundaryForTime
 run detectNotDivisibleByFourCall
-bind yearNotDivisibleByFour Bool detectNotDivisibleByFourCall
-branchIf yearNotDivisibleByFour returnNotLeapYear
-call computeYearModuloFourHundredCall math.moduloI64
-arg computeYearModuloFourHundredCall left candidateYear
-arg computeYearModuloFourHundredCall right leapYearDivisorFourHundred
+bind value yearNotDivisibleByFour Bool detectNotDivisibleByFourCall
+branch if condition yearNotDivisibleByFour target returnNotLeapYear
+call computeYearModuloFourHundredCall math.moduloInt64
+argument computeYearModuloFourHundredCall left Int64 candidateYear
+argument computeYearModuloFourHundredCall right Int64 leapYearDivisorFourHundred
 run computeYearModuloFourHundredCall
-bind yearModuloFourHundred I64 computeYearModuloFourHundredCall
-call detectDivisibleByFourHundredCall math.equalI64
-arg detectDivisibleByFourHundredCall left yearModuloFourHundred
-arg detectDivisibleByFourHundredCall right integerZeroBoundaryForTime
+bind value yearModuloFourHundred Int64 computeYearModuloFourHundredCall
+call detectDivisibleByFourHundredCall math.equalInt64
+argument detectDivisibleByFourHundredCall left Int64 yearModuloFourHundred
+argument detectDivisibleByFourHundredCall right Int64 integerZeroBoundaryForTime
 run detectDivisibleByFourHundredCall
-bind yearDivisibleByFourHundred Bool detectDivisibleByFourHundredCall
-branchIf yearDivisibleByFourHundred returnIsLeapYear
-call computeYearModuloHundredCall math.moduloI64
-arg computeYearModuloHundredCall left candidateYear
-arg computeYearModuloHundredCall right leapYearDivisorHundred
+bind value yearDivisibleByFourHundred Bool detectDivisibleByFourHundredCall
+branch if condition yearDivisibleByFourHundred target returnIsLeapYear
+call computeYearModuloHundredCall math.moduloInt64
+argument computeYearModuloHundredCall left Int64 candidateYear
+argument computeYearModuloHundredCall right Int64 leapYearDivisorHundred
 run computeYearModuloHundredCall
-bind yearModuloHundred I64 computeYearModuloHundredCall
-call detectDivisibleByHundredCall math.equalI64
-arg detectDivisibleByHundredCall left yearModuloHundred
-arg detectDivisibleByHundredCall right integerZeroBoundaryForTime
+bind value yearModuloHundred Int64 computeYearModuloHundredCall
+call detectDivisibleByHundredCall math.equalInt64
+argument detectDivisibleByHundredCall left Int64 yearModuloHundred
+argument detectDivisibleByHundredCall right Int64 integerZeroBoundaryForTime
 run detectDivisibleByHundredCall
-bind yearDivisibleByHundred Bool detectDivisibleByHundredCall
-branchIf yearDivisibleByHundred returnNotLeapYear
-branch returnIsLeapYear
+bind value yearDivisibleByHundred Bool detectDivisibleByHundredCall
+branch if condition yearDivisibleByHundred target returnNotLeapYear
+branch else target returnIsLeapYear
 label returnIsLeapYear
-const isLeapYearTrue Bool true
-returnValue isLeapYearTrue
+storage module immutable isLeapYearTrue Bool true
+return value isLeapYearTrue
 label returnNotLeapYear
-const isLeapYearFalse Bool false
-returnValue isLeapYearFalse
+storage module immutable isLeapYearFalse Bool false
+return value isLeapYearFalse

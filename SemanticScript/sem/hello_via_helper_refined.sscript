@@ -24,56 +24,56 @@ storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
 section program.helloViaHelperRefined.operations
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
-memoryHeap writeStandardOutputLine no
+memory writeStandardOutputLine heap no
 memoryStackLimit writeStandardOutputLine 1KiB
 async writeStandardOutputLine no
 operationBody writeStandardOutputLine sourceTape
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
-returnOk writeStandardOutputLineSuccessSentinel
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 operationBody main sourceTape
 
-purpose main "Smoke-test the writeStandardOutputLine helper by emitting the canonical greeting through it"
-invariant main "Exactly one helper call runs; its success leg returns ExitCode.Ok and its failure leg surfaces MainError.ConsoleWriteFailed"
+purpose operation main "Smoke-test the writeStandardOutputLine helper by emitting the canonical greeting through it"
+invariant operation main "Exactly one helper call runs; its success leg returns ExitCode.Ok and its failure leg surfaces MainError.ConsoleWriteFailed"
 
 label startMain
 
 call writeHelloGreetingLineCall writeStandardOutputLine
-arg writeHelloGreetingLineCall text helloGreetingText
+argument writeHelloGreetingLineCall text String helloGreetingText
 run writeHelloGreetingLineCall
-ignoreOk writeHelloGreetingLineCall Void
-bindError writeHelloGreetingLineError ConsoleWriteError writeHelloGreetingLineCall
-branchIfError writeHelloGreetingLineCall helloGreetingLineWriteFailed
+ignore void source writeHelloGreetingLineCall
+bind error writeHelloGreetingLineError ConsoleWriteError writeHelloGreetingLineCall
+branch error source writeHelloGreetingLineCall target helloGreetingLineWriteFailed
 
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label helloGreetingLineWriteFailed
 makeError helloGreetingLineWriteFailure MainError.ConsoleWriteFailed writeHelloGreetingLineError
-returnError helloGreetingLineWriteFailure
+return error helloGreetingLineWriteFailure

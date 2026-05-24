@@ -5,51 +5,51 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation pickFirstMatching
-input pickFirstMatching needle CNullTerminatedByteString
-input pickFirstMatching choice1 CNullTerminatedByteString
-input pickFirstMatching choice2 CNullTerminatedByteString
-output pickFirstMatching Result CNullTerminatedByteString Void
-purpose pickFirstMatching "Return choice1 if needle==choice1 else choice2."
+input operation pickFirstMatching needle String
+input operation pickFirstMatching choice1 String
+input operation pickFirstMatching choice2 String
+output operation pickFirstMatching Result String Void
+purpose operation pickFirstMatching "Return choice1 if needle==choice1 else choice2."
 label startPick
 call eqCall c.strcmp
-arg eqCall left needle
-arg eqCall right choice1
+argument eqCall left String needle
+argument eqCall right String choice1
 run eqCall
-bind cmp CSignedInt64 eqCall
-const zeroEq CSignedInt64 0
-call isEqCall math.equalI64
-arg isEqCall left cmp
-arg isEqCall right zeroEq
+bind value cmp Int64 eqCall
+storage module immutable zeroEq Int64 0
+call isEqCall math.equalInt64
+argument isEqCall left Int64 cmp
+argument isEqCall right Int64 zeroEq
 run isEqCall
-bind isEq Bool isEqCall
-branchIf isEq returnChoice1
-returnOk choice2
+bind value isEq Bool isEqCall
+branch if condition isEq target returnChoice1
+return ok choice2
 label returnChoice1
-returnOk choice1
+return ok choice1
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
 label startMain
-const wanted CNullTerminatedByteString "ok"
-const a CNullTerminatedByteString "ok"
-const b CNullTerminatedByteString "no"
+storage module immutable wanted String "ok"
+storage module immutable a String "ok"
+storage module immutable b String "no"
 call pickCall pickFirstMatching
-arg pickCall needle wanted
-arg pickCall choice1 a
-arg pickCall choice2 b
+argument pickCall needle String wanted
+argument pickCall choice1 String a
+argument pickCall choice2 String b
 run pickCall
-bindOk picked CNullTerminatedByteString pickCall
+bind ok picked String pickCall
 call w console.writeLine
-arg w console console
-arg w text picked
+argument w console Console console
+argument w text String picked
 run w
-ignoreOk w Void
-const okExit ExitCode 0
-returnOk okExit
+ignore void source w
+storage module immutable okExit ExitCode 0
+return ok okExit

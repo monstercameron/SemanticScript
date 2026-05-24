@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.rule_tests_coverage
+purpose module app.realtime_auction_arena.server.tests.rule_tests_coverage "Coverage marker for server/tests/rule_tests.sem."
+moduleOwns app.realtime_auction_arena.server.tests.rule_tests_coverage "Rule-test artifact coverage and naming."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.rule_tests_coverage "Auction-domain implementation."
+invariant module app.realtime_auction_arena.server.tests.rule_tests_coverage "The rule test artifact remains parseable and is promoted to executable once sibling-module resolution is wired."
+
+storage module immutable ruleTestsCoveragePlanSummary String "server/tests/rule_tests.sem coverage: command route preconditions, role rejects, bid reject reasons, anti-sniping, terminal states, monotonic revision, and event sequence."
+
+operation getRuleTestsCoveragePlan
+output operation getRuleTestsCoveragePlan String
+memory getRuleTestsCoveragePlan heap no
+async getRuleTestsCoveragePlan no
+purpose operation getRuleTestsCoveragePlan "Return the rule-test artifact coverage plan."
+return value ruleTestsCoveragePlanSummary

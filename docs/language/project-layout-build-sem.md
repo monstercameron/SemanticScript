@@ -1,7 +1,7 @@
 # Project Layout and build.sem
 
 This page defines the current SemanticScript project-layout rule set. It is
-based on the `app/todo` lab project and the current `semsc.py` / `semlint.py`
+based on the `apps/taskforge-tui` lab project and the current `semsc.py` / `semlint.py`
 behavior.
 
 The short version:
@@ -20,7 +20,7 @@ exports are explicit and must name symbols declared by that module source.
 Use one folder per project or app:
 
 ```text
-app/todo/
+apps/taskforge-tui/
   build.sem
   main.sem
   domain/
@@ -31,7 +31,7 @@ app/todo/
     main.sem
   main.test.sem
   build/
-    todo.exe
+    taskforge_tui.exe
     todo.ll
     resources/
   .semcache/
@@ -62,39 +62,39 @@ artifact policy, and future comptime hooks.
 Example:
 
 ```semanticscript
-buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
+buildProject taskForgeTui
+project TaskForgeTui
+modulePath taskForgeTui github.com/monstercameron/SemanticScript/apps/taskforge-tui
+languageVersion taskForgeTui "1.0"
+projectVersion taskForgeTui "1.0.0"
+projectLicense taskForgeTui MIT
 
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-registerModule todoTui app.todo.domain "domain"
-registerModule todoTui app.todo.persistence "persistence"
-mainFile todoTui "main.sem"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.taskforge_tui "."
+registerModule taskForgeTui app.taskforge_tui.domain "domain"
+registerModule taskForgeTui app.taskforge_tui.persistence "persistence"
+mainFile taskForgeTui "main.sem"
+mainOperation taskForgeTui main
+testPattern taskForgeTui "*.test.sem"
 
 target console
 runtime native 1
 entry console main
 
-targetRuntime todoTui nativeExe
-buildProfile todoTui dev
-optLevel todoTui 2
-runtimeChecks todoTui panic
-persistLlvmIr todoTui yes
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
-nativeOutput todoTui "todo.exe"
-keepResources todoTui no
+targetRuntime taskForgeTui nativeExe
+buildProfile taskForgeTui dev
+optLevel taskForgeTui 2
+runtimeChecks taskForgeTui panic
+persistLlvmIr taskForgeTui yes
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeatureCheck taskForgeTui auto
+nativeOutput taskForgeTui "taskforge_tui.exe"
+keepResources taskForgeTui no
 
-comptimeOperation todoTui configureTodoTuiBuild
+comptimeOperation taskForgeTui configureTaskForgeTuiBuild
 
-importModule app.todo
+import todo app.todo
 ```
 
 ### build.sem Schema Reference
@@ -127,7 +127,7 @@ Current responsibilities:
 - `formatterSetting`, `linterSetting`, and `docsOutput` expose project tool
   settings without adding a TOML/YAML sidecar.
 - `comptimeOperation` is reserved for future compile-time configuration work.
-- The final `importModule app.todo` is the current compiler bridge that inlines
+- The final `import todo app.todo` is the current compiler bridge that inlines
   the registered executable module.
 
 `build.sem` must not own public API export rows. Those belong in the module
@@ -156,6 +156,7 @@ starts with the same `PROJECT` token declared by `buildProject PROJECT`.
 | `targetRuntime PROJECT nativeExe\|webServer\|windowsGui\|library` | yes | Project build target class. |
 | `buildProfile PROJECT dev\|prod` | yes | Default compiler profile. |
 | `runtimeChecks PROJECT off\|traps\|panic` | yes | Runtime check lowering policy. |
+| `asyncRuntime PROJECT none\|libuv` | no | Optional post-1.0 async backend selector. Defaults to `none`; `libuv` is experimental and must not change 1.0 synchronous lowering unless the compiler/runtime feature gate is explicitly enabled. |
 | `optLevel PROJECT 0\|1\|2\|3` | yes | LLVM optimization level for JIT/AOT paths. |
 | `persistLlvmIr PROJECT auto\|yes\|no` | yes | Whether generated LLVM IR is kept. |
 | `emitLlvmIr PROJECT auto\|yes\|no` | no | Project default for pre-optimization `.ll` output. |
@@ -178,11 +179,38 @@ starts with the same `PROJECT` token declared by `buildProject PROJECT`.
 | `linterSetting PROJECT KEY VALUE` | no | Project linter setting row. |
 | `docsOutput PROJECT "PATH"` | no | Documentation output directory. |
 | `comptimeOperation PROJECT OPERATION` | reserved | Future 2.0 compile-time build hook. |
-| `importModule MODULE_PATH` | bridge | Current compiler bridge that inlines registered module source. |
+| `import ALIAS MODULE_PATH` | bridge | Current compiler bridge that inlines registered module source. |
 
 Strict checks now reject multiple `buildProject` rows, project-name drift,
 malformed project rows, invalid enum values, missing required rows, and
 `buildFolderName` values that are paths.
+
+## Entry Resolution Rules
+
+Executable project builds resolve their entry from `build.sem` first and then
+fall back to source conventions:
+
+- If `mainFile PROJECT "PATH"` is omitted for an executable target, use
+  `main.sem` in the source root.
+- If `mainOperation PROJECT OPERATION` is omitted for a `nativeExe` target, use
+  `operation main`.
+- If more than one plausible entry source or operation exists, require
+  explicit `mainFile` and `mainOperation` rows instead of guessing.
+- `targetRuntime PROJECT library` must not rely on accidental `operation main`
+  rows as public executable entry points.
+
+The root module is declared by `build.sem` through a `registerModule` row whose
+path selects the root source file or folder. `main.sem` may repeat
+`module MODULE_PATH` for local context, but it must exactly match the registered
+root module path. That repetition is documentation for humans and tools; it is
+not a second module declaration.
+
+For `targetRuntime PROJECT webServer`, `main.sem` may declare the primary
+`webServer`. If no explicit server-selection row exists, a webserver build must
+have exactly one routed server. Multiple routed servers require an explicit
+selection row before codegen. Route handler validation happens after registered
+modules and imports are resolved so handler operations can live in imported
+module sources.
 
 ## CPU Feature Checks
 
@@ -190,25 +218,25 @@ CPU flags are a build-tape concern, not a module-source concern. The safe
 default is portable:
 
 ```semanticscript
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeatureCheck taskForgeTui auto
 ```
 
 For a local-only performance build, a project may request host-native lowering:
 
 ```semanticscript
-cpuBaseline todoTui native
-cpuTune todoTui native
-cpuFeatureCheck todoTui require
+cpuBaseline taskForgeTui native
+cpuTune taskForgeTui native
+cpuFeatureCheck taskForgeTui require
 ```
 
 Specific features can be required or disabled:
 
 ```semanticscript
-cpuBaseline todoTui x86_64_v2
-cpuFeature todoTui avx2 off
-cpuFeatureCheck todoTui auto
+cpuBaseline taskForgeTui x86_64_v2
+cpuFeature taskForgeTui avx2 off
+cpuFeatureCheck taskForgeTui auto
 ```
 
 `cpuFeatureCheck auto` inspects the build machine with LLVM before codegen and
@@ -251,7 +279,7 @@ nativeOutput helloWeb "hello_web.exe"
 nativeHttpHost helloWeb "127.0.0.1"
 nativeHttpPort helloWeb 18080
 
-importModule app.hello_web
+import helloWeb app.hello_web
 ```
 
 ## Native Windows GUI Example
@@ -259,54 +287,53 @@ importModule app.hello_web
 The build tape owns only the target/link bridge. GUI vocabulary belongs to the
 imported `standard.gui` module, which should provide the metadata contracts,
 capabilities, and validation rules for application/window/control declarations.
-Use `importModule gui standard.gui` in GUI source. The legacy
-`importModule standard.gui as gui` form remains accepted during the
-compatibility window, but the alias-first form is preferred.
+Use `import gui standard.gui` in GUI source. Legacy `importModule` rows are
+rejected by the compiler; migrate older source before compiling.
 
 `build.sem`:
 
 ```semanticscript
-buildProject helloGui
-project HelloGui
-modulePath helloGui github.com/example/hello-gui
-languageVersion helloGui "1.0"
-projectVersion helloGui "1.0.0"
-projectLicense helloGui MIT
+buildProject desktopWindowSmoke
+project DesktopWindowSmoke
+modulePath desktopWindowSmoke github.com/example/desktop-window-smoke
+languageVersion desktopWindowSmoke "1.0"
+projectVersion desktopWindowSmoke "1.0.0"
+projectLicense desktopWindowSmoke MIT
 
-sourceRoot helloGui "."
-registerModule helloGui app.hello_gui "."
-mainFile helloGui "main.sem"
-testRoot helloGui "."
-testPattern helloGui "*.test.sem"
+sourceRoot desktopWindowSmoke "."
+registerModule desktopWindowSmoke app.desktop_window_smoke "."
+mainFile desktopWindowSmoke "main.sem"
+testRoot desktopWindowSmoke "."
+testPattern desktopWindowSmoke "*.test.sem"
 
 target windowsGui
 runtime native 1
 
-targetRuntime helloGui windowsGui
-buildProfile helloGui dev
-runtimeChecks helloGui panic
-optLevel helloGui 2
-persistLlvmIr helloGui yes
-buildFolderName helloGui build
-cpuBaseline helloGui generic
-cpuTune helloGui generic
-cpuFeatureCheck helloGui auto
-nativeOutput helloGui "hello_gui.exe"
+targetRuntime desktopWindowSmoke windowsGui
+buildProfile desktopWindowSmoke dev
+runtimeChecks desktopWindowSmoke panic
+optLevel desktopWindowSmoke 2
+persistLlvmIr desktopWindowSmoke yes
+buildFolderName desktopWindowSmoke build
+cpuBaseline desktopWindowSmoke generic
+cpuTune desktopWindowSmoke generic
+cpuFeatureCheck desktopWindowSmoke auto
+nativeOutput desktopWindowSmoke "desktop_window_smoke.exe"
 
 entry console main
-importModule app.hello_gui
+import desktopWindowSmoke app.desktop_window_smoke
 ```
 
 `main.sem`:
 
 ```semanticscript
-module app.hello_gui
-importModule gui standard.gui
+module app.desktop_window_smoke
+import gui standard.gui
 
-storage module immutable title GuiText "Hello GUI"
+storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
 storage module immutable height GuiPixels 480
-storage module immutable resizable CSignedInt32 1
+storage module immutable resizable Int32 1
 
 operation main
 output main ExitCode
@@ -317,34 +344,34 @@ authority main gui.application allocate
 authority main gui.window allocate
 authority main gui.window write
 call createApp gui.applicationCreate
-arg createApp title title
+argument createApp title GuiText title
 run createApp
-bind app GuiApplication createApp
+bind value app GuiApplication createApp
 call createWindow gui.windowCreate
-arg createWindow title title
-arg createWindow width width
-arg createWindow height height
-arg createWindow layout verticalStackGuiWindowLayout
-arg createWindow resizable resizable
+argument createWindow title GuiText title
+argument createWindow width GuiPixels width
+argument createWindow height GuiPixels height
+argument createWindow layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindow resizable Bool resizable
 run createWindow
-bind window GuiWindow createWindow
+bind value window GuiWindow createWindow
 call setMainWindow gui.applicationSetMainWindow
-arg setMainWindow application app
-arg setMainWindow window window
+argument setMainWindow application GuiApplication app
+argument setMainWindow window GuiWindow window
 run setMainWindow
-ignoreValue setMainWindow CSignedInt32
+ignore value source setMainWindow type Int32
 call runApp gui.applicationRun
-arg runApp application app
+argument runApp application GuiApplication app
 run runApp
-bind status ExitCode runApp
-returnValue status
+bind value status ExitCode runApp
+return value status
 ```
 
 Rules:
 
 - Do not declare `entry windowsGui` in a `windowsGui` build tape.
 - Use `entry console main` and keep GUI construction as explicit `gui.*` calls.
-- Use `importModule gui standard.gui` for the GUI contract namespace.
+- Use `import gui standard.gui` for the GUI contract namespace.
 - The compiler bridge should only lower `gui.*` calls and link the runtime.
 - Shape checks such as duplicate controls, allowed events, accessibility names,
   and GUI capability coverage belong in `standard.gui` and lint/tooling where
@@ -398,8 +425,8 @@ moduleOwns app.todo "TUI lifecycle, keyboard handling, todo state, and save/load
 moduleDoesNotOwn app.todo "Reusable standard library abstractions."
 moduleInvariant app.todo "main.sem is the executable entry selected by build.sem."
 
-importModule domain app.todo.domain
-importModule persistence app.todo.persistence
+import domain app.todo.domain
+import persistence app.todo.persistence
 
 exportType app.todo TodoItem
 exportError app.todo MainError
@@ -409,7 +436,7 @@ exportConstant app.todo maxTodoCount
 
 type TodoItem TodoItemRecord
 error MainError
-storage module immutable maxTodoCount CSignedInt64 128
+storage module immutable maxTodoCount Int64 128
 
 operation main
 ...
@@ -418,9 +445,9 @@ operation main
 Rules:
 
 - `module MODULE_PATH` must name a module registered by `build.sem`.
-- `importModule ALIAS MODULE_PATH` is the preferred project import form.
-  `importModule MODULE_PATH [as ALIAS]` remains supported for legacy source
-  and standard-library samples.
+- `import ALIAS MODULE_PATH` is the project and standard-library import form.
+  Legacy `importModule` rows are rejected by the compiler and should be
+  converted with the syntax migration tool.
 - `exportType`, `exportError`, `exportOperation`, `exportCapability`, and
   `exportConstant` are explicit public contract rows.
 - `exportType` covers aliases, records, and enums; there are no separate
@@ -432,13 +459,30 @@ Rules:
 - Public names are private by default. Importers may only rely on symbols that
   appear in the provider's export rows, even while the current compiler bridge
   still inlines registered module sources.
-- `exportConstant` is for stable value contracts: `const`, `literal`,
+- `exportConstant` is for stable value contracts: `storage module immutable`, `literal`,
   `domainLiteral`, or `storage module immutable`. Mutable module storage,
   local storage, and `sharedState` must cross module boundaries through
   exported operations with declared effects.
 - The export row does not need to appear after the declaration. The current
   parser has operation bodies without an `endOperation` marker, so operation
   exports are usually safest near the top of the file.
+
+## Module Path Mapping
+
+`modulePath PROJECT MODULE_PATH` defines the package root path. Folder module
+paths are derived from that root plus the normalized folder path unless
+`registerModule PROJECT MODULE_PATH "PATH"` provides an explicit override.
+
+Rules:
+
+- `..` path escapes are invalid in registered module paths.
+- `/` is the canonical separator in module-path derivation; Windows `\` input
+  paths normalize before comparison.
+- Case is preserved. Case-insensitive filesystems may find a folder, but the
+  declared module path remains byte-for-byte significant for imports, exports,
+  lock data, and docs.
+- Folder names with hyphens map to module path segments with hyphens; tools
+  must not silently rewrite them to underscores.
 
 ## Export Contract Tape
 
@@ -496,11 +540,11 @@ imports create qualified names backed by the provider's export contract tape.
 Good:
 
 ```semanticscript
-importModule persistence app.todo.persistence
+import persistence app.todo.persistence
 call loadCall persistence.loadTodos
 ```
 
-Compatibility:
+Legacy rows rejected by the compiler:
 
 ```semanticscript
 importModule app.todo.persistence as persistence
@@ -509,19 +553,22 @@ importModule app.todo.persistence
 
 The alias-first form is preferred for project modules because it puts the local
 namespace before the provider path and makes call sites mechanically
-predictable. Unaliased `importModule MODULE_PATH` keeps the legacy import bridge
-alive, but new multi-module code should use an alias.
+predictable.
+
+External dependency imports must use aliases. The alias is the local source
+name; the dependency alias and module path remain package identity in
+`build.sem` and `sem.lock`.
 
 ## Import Contracts
 
 Qualified names are resolved from provider export rows only:
 
 ```semanticscript
-importModule persistence app.todo.persistence
+import persistence app.todo.persistence
 call loadCall persistence.loadTodos
 input saveHandler todo persistence.TodoItem
 useCapability saveHandler persistence.todoStoreReader
-arg limitCall max persistence.maxTodoCount
+argument limitCall max Int64 persistence.maxTodoCount
 ```
 
 Rules:
@@ -544,7 +591,7 @@ Singular imports are allowed when a module intentionally wants a local facade
 name:
 
 ```semanticscript
-importModule persistence app.todo.persistence
+import persistence app.todo.persistence
 importOperation loadTodos persistence loadTodosFromDisk
 importType TodoItem persistence TodoItem
 importError TodoStoreError persistence TodoStoreError
@@ -565,7 +612,13 @@ Rules:
 - Bare unqualified calls into aliased modules are rejected unless there is a
   matching singular import row. Prefer qualified calls when the provider domain
   context helps the reader.
+- Singular imports are acceptable for central domain operations that are used
+  repeatedly enough that a local facade name improves readability.
+- Facade modules may use singular imports when they deliberately present a
+  smaller public API over one or more provider modules.
 - Many singular imports from the same module produce a readability warning.
+- Similar local aliases from different provider modules need a local rationale
+  comment or ownership row so reviewers can tell the domains apart.
 
 Imported operation contracts carry their exported input, output, effect,
 capability, and failure edges into linter checks. Imported types carry
@@ -580,7 +633,7 @@ consumer operation must restate that effect, or a broader hierarchical effect
 path, in its own source:
 
 ```semanticscript
-importModule github app.net.github
+import github app.net.github
 
 operation syncIssues
 output syncIssues Void
@@ -589,7 +642,7 @@ useCapability syncIssues githubApiReader
 
 call fetchIssueCall github.fetchIssue
 run fetchIssueCall
-returnVoid
+return void
 ```
 
 This keeps network, filesystem, database, and observability authority from
@@ -601,16 +654,16 @@ Dependency rows live in `build.sem` because fetching source is build-time
 authority, not ordinary program behavior.
 
 ```semanticscript
-dependency todoTui semstd github.com/example/semstd v1.0.0
-dependencyFetch todoTui semstd github example/semstd v1.0.0
-dependencyIntegrity todoTui semstd commit:abcdef1234567890
+dependency taskForgeTui semstd github.com/example/semstd v1.0.0
+dependencyFetch taskForgeTui semstd github example/semstd v1.0.0
+dependencyIntegrity taskForgeTui semstd commit:abcdef1234567890
 
-dependency todoTui semhttp github.com/example/semhttp v0.3.0
-dependencyFetch todoTui semhttp http "https://example.com/semhttp-v0.3.0.tar.gz"
-dependencyIntegrity todoTui semhttp sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+dependency taskForgeTui semhttp github.com/example/semhttp v0.3.0
+dependencyFetch taskForgeTui semhttp http "https://example.com/semhttp-v0.3.0.tar.gz"
+dependencyIntegrity taskForgeTui semhttp sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
-dependencyCache todoTui ".semcache"
-dependencyLock todoTui "sem.lock"
+dependencyCache taskForgeTui ".semcache"
+dependencyLock taskForgeTui "sem.lock"
 ```
 
 Rules:
@@ -658,10 +711,10 @@ The compiler-managed artifact directory defaults to `SOURCE_DIR/build`.
 Examples:
 
 ```powershell
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe --build-root ..\artifacts
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe --build-folder-name semantic-build
-python SemanticScript\compiler\semsc.py app\todo\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe --build-root ..\artifacts
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe --build-folder-name semantic-build
+python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
 ```
 
 Rules:
@@ -671,7 +724,7 @@ Rules:
   name, not a path.
 - `--build-dir PATH` selects the exact artifact directory and cannot be
   combined with `--build-root` or `--build-folder-name`.
-- Basename outputs such as `--emit-exe todo.exe` resolve into the managed build
+- Basename outputs such as `--emit-exe taskforge_tui.exe` resolve into the managed build
   directory.
 - Generated resources live under `build/resources/` only when resources are
   persisted for debugging; otherwise they are transient and embedded into the
@@ -705,7 +758,7 @@ The current linter enforces the project-module boundary with `SS250x` rules:
 | `SS2512` | Exported operation names should be domain-specific, not generic placeholders. |
 | `SS2513` | Exported operations should declare every effect implied by known runtime calls. |
 | `SS2514` | Exported dependency wrappers should carry module ownership context. |
-| `SS2530` | `importModule` rows must use a supported module/alias shape. |
+| `SS2530` | Legacy `importModule` rows must be converted to `import ALIAS MODULE_PATH`. |
 | `SS2531` | Module aliases must not collide or shadow local declarations. |
 | `SS2532` | Wildcard singular imports are rejected. |
 | `SS2533` | Singular imports must target a known module alias. |
@@ -730,6 +783,112 @@ These diagnostics are deliberately conservative. They prevent agents and tools
 from inventing public API from nearby code and make module boundaries auditable
 from the source text alone.
 
+## Agent Handoff Surfaces
+
+The current public-ish handoff surface is intentionally small. These helpers
+live in Python modules, but agents should treat their behavior as the stable
+contract unless this page changes with the code.
+
+Build-tape parsing and validation handoff:
+
+- `SemanticScript/compiler/semsc.py`:
+  - `_is_build_tape_path(source_path)` and `_looks_like_build_tape(source)`
+    decide whether a source stream is a build tape.
+  - `_validate_build_tape_source(source, source_path)` validates strict
+    `build.sem` row shape, singleton rows, enum choices, required rows,
+    dependency fetch/source shape, and executable entry requirements.
+  - `_normalize_build_tape_path(source_path, path_text, source_root_text)`
+    resolves project paths relative to `build.sem` and `sourceRoot`.
+  - `_collect_module_registry(source, source_path)` reads
+    `registerModule` and compatibility `moduleFolder` rows.
+  - `_resolve_registered_module_file(module_name, registered_path, main_files)`
+    selects the source file for a registered module.
+  - `_merge_build_file(prog, build_path, explicit_std_paths=None)` is the
+    compiler bridge that merges a validated build tape and its registered
+    module sources before lowering.
+- `SemanticScript/linter/semlint.py`:
+  - `parse_file(path)` produces base facts with source lines.
+  - `gather_extended(parse_file(path))` builds the richer fact graph used by
+    module, import, export, dependency, and documentation checks.
+  - `check_registered_module_contract(facts)` owns current `SS250x`
+    project-module diagnostics.
+
+Module and import index handoff:
+
+- `build_export_contract_tape(gather_extended(parse_file(path)))` returns the
+  streamable export contract tape for a provider module.
+- `build_import_contract_index(facts)` resolves the contracts visible to a
+  consumer module through the nearest `build.sem`, registered modules, aliases,
+  and singular imports.
+- `ImportContractIndex.modulesByAlias` stores provider module contracts keyed by
+  local alias.
+- `ImportContractIndex.qualifiedSymbols` stores `alias.symbol` entries selected
+  from provider export rows.
+- `ImportContractIndex.singularSymbols` stores explicit local facade imports
+  such as `importOperation loadTodos persistence loadTodosFromDisk`.
+
+Agents working on export validation, dependency loading, language-server
+indexing, or docs generation should use these fact/index shapes rather than
+re-parsing module rows ad hoc.
+
+Parser-only and compatibility assumptions for 1.x:
+
+- `comptimeOperation` is reserved and parsed, but not executed.
+- `dependency`, `dependencySource`, `dependencyFetch`, `dependencyIntegrity`,
+  `dependencyCache`, and `dependencyLock` are validated as build-tape metadata;
+  the compiler does not fetch dependencies or write locks yet.
+- `formatterSetting`, `linterSetting`, and `docsOutput` are metadata rows for
+  future tool integration.
+- `moduleFolder MODULE_PATH "PATH"` remains a compatibility alias for
+  `registerModule PROJECT MODULE_PATH "PATH"`.
+- `import ALIAS MODULE_PATH` is the committed import form. Legacy
+  `importModule MODULE_PATH as ALIAS` and unaliased `importModule MODULE_PATH`
+  are migration-tool inputs, not compiler-accepted rows.
+- Registered folder resolution accepts `main.sem`, `main.sscript`,
+  `index.sem`, `index.sscript`, a source file named after the module leaf, or
+  exactly one non-test `.sem` / `.sscript` file. Ambiguous folders should be
+  made explicit with a direct `registerModule` file path.
+
+## Integration Handoff
+
+Changed docs and examples:
+
+- `README.md` shows minimal console, native web, and multi-module library
+  project trees.
+- `docs/language/program-structure.md` explains `build.sem`, `main.sem`,
+  module registration, colocated tests, standard-library module layout, and
+  import/export boundaries.
+- `docs/reference/syntax-inventory.md` and `docs/reference/verb-index.md` list the build-tape,
+  module-metadata, import, and export rows.
+- `docs/reference/package-management.md` defines local/Git dependency syntax,
+  `.semcache/`, and `sem.lock` policy.
+- `docs/toolchain/agent-workflows.md` records the fast validation and graph
+  inspection commands agents should run.
+
+Compatibility warnings users should expect:
+
+- Prefer `import ALIAS MODULE_PATH`; run the syntax migration tool for legacy
+  `importModule` source.
+- Prefer `registerModule PROJECT MODULE_PATH "PATH"`; `moduleFolder` is a
+  compatibility alias.
+- Export rows belong in module source files, not `build.sem`.
+- `*.test.sem` files are test sources and are excluded from production module
+  source selection.
+- Remote dependency rows are metadata/validation surface today. Fetching,
+  cache mutation, and lock writing remain future tool-driver work.
+
+Final integration checklist:
+
+- Run `python SemanticScript/tools/sem.py context --json PATH` before changing
+  project/module behavior.
+- Run `python SemanticScript/tools/sem.py symbols --json PATH` before changing
+  import/export, route, effect, or capability behavior.
+- Run `python SemanticScript/tools/sem.py lint --engine semlint PATH --format json`
+  for rule diagnostics and fix candidates.
+- Run `python SemanticScript/tools/sem.py check PATH --quiet` before handing a
+  project-mode edit back.
+- Keep generated artifacts under ignored `build/` or `.semcache/` locations.
+
 ## Current Support Boundary
 
 This layout is the intended project model for SemanticScript, but the current
@@ -739,7 +898,7 @@ matures.
 Implemented now:
 
 - `.sem` and `.sscript` source files.
-- `build.sem` as a compiler entry point through the final `importModule`.
+- `build.sem` as a compiler entry point through the final `import` row.
 - registered module resolution before filesystem fallback.
 - compiler-managed build folders.
 - `sem build PATH` discovery through the thin `SemanticScript/tools/sem.py`

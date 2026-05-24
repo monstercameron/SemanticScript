@@ -1,0 +1,72 @@
+module app.html_template_lab.todo_pages
+purpose module app.html_template_lab.todo_pages "Page-level HTML assembly for the console-rendered todo dashboard."
+moduleOwns app.html_template_lab.todo_pages "Full-document HTML template and page hydration operation."
+moduleDoesNotOwn app.html_template_lab.todo_pages "Reusable todo-list component internals or executable console printing."
+invariant module app.html_template_lab.todo_pages "The page operation wires demo todo-domain constants into the component operation; the full-document template only receives the rendered HtmlFragment."
+
+import html standard.html
+import shared app.html_template_lab.shared
+import todoDomain app.html_template_lab.todo_domain
+import todoComponents app.html_template_lab.todo_components
+
+exportOperation app.html_template_lab.todo_pages renderTodoDashboardPage
+
+html template TodoDashboardPageTemplate
+html body template TodoDashboardPageTemplate
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>{pageTitleText}</title>
+      <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; color: #17202a; background: #f5f7fb; }
+        .todo-shell { max-width: 46rem; margin: 0 auto; }
+        .todo-panel { border: 1px solid #ccd4e0; border-radius: 8px; background: white; padding: 1rem 1.25rem; }
+        .todo-list { display: grid; gap: 0.5rem; padding-left: 1.25rem; }
+        .todo-row { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: center; }
+        .todo-row-done .todo-title { text-decoration: line-through; color: #506070; }
+        .todo-status { font-size: 0.85rem; color: #445; }
+      </style>
+    </head>
+    <body>
+      <main class="{shellClassName}">
+        <article class="{panelClassName}">
+          <h1>{pageTitleText}</h1>
+          <p>{introText}</p>
+          {todoListFragment}
+        </article>
+      </main>
+    </body>
+  </html>
+
+operation renderTodoDashboardPage
+output operation renderTodoDashboardPage HtmlDocument
+memory renderTodoDashboardPage heap no
+async renderTodoDashboardPage no
+purpose operation renderTodoDashboardPage "Hydrate the full HTML document from shared copy and the todo-list component fragment."
+invariant operation renderTodoDashboardPage "The page assembly layer depends on the component module through an explicit operation call and passes the resulting HtmlFragment into its own template."
+
+label startRenderTodoDashboardPage
+
+call renderTodoListFragmentCall todoComponents.renderTodoListFragment
+argument renderTodoListFragmentCall firstTodoTitleText String todoDomain.firstTodoTitleText
+argument renderTodoListFragmentCall firstTodoStatusText String todoDomain.firstTodoStatusText
+argument renderTodoListFragmentCall firstTodoClassName String todoDomain.firstTodoClassName
+argument renderTodoListFragmentCall secondTodoTitleText String todoDomain.secondTodoTitleText
+argument renderTodoListFragmentCall secondTodoStatusText String todoDomain.secondTodoStatusText
+argument renderTodoListFragmentCall secondTodoClassName String todoDomain.secondTodoClassName
+argument renderTodoListFragmentCall thirdTodoTitleText String todoDomain.thirdTodoTitleText
+argument renderTodoListFragmentCall thirdTodoStatusText String todoDomain.thirdTodoStatusText
+argument renderTodoListFragmentCall thirdTodoClassName String todoDomain.thirdTodoClassName
+run renderTodoListFragmentCall
+bind value todoListFragment HtmlFragment renderTodoListFragmentCall
+
+call hydrateDashboardPageCall html.hydrate.TodoDashboardPageTemplate
+argument hydrateDashboardPageCall pageTitleText String shared.todoDashboardPageTitleText
+argument hydrateDashboardPageCall introText String shared.todoDashboardIntroText
+argument hydrateDashboardPageCall shellClassName String shared.shellClassName
+argument hydrateDashboardPageCall panelClassName String shared.panelClassName
+argument hydrateDashboardPageCall todoListFragment HtmlFragment todoListFragment
+run hydrateDashboardPageCall
+bind value dashboardPageHtml HtmlDocument hydrateDashboardPageCall
+return value dashboardPageHtml

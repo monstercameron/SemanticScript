@@ -1,39 +1,39 @@
 # SemanticScript standard-library canonical module: standard.bool.
 
 module standard.bool
-modulePurpose standard.bool "Canonical standard-library module for boolean helpers."
+purpose module standard.bool "Canonical standard-library module for boolean helpers."
 moduleOwns standard.bool "The official import path `standard.bool` and this module's implementation body."
 moduleDoesNotOwn standard.bool "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.bool "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.bool "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.bool boolModuleVersionText
-storage module immutable boolModuleVersionText CNullTerminatedByteString "standard.bool 0.1"
+storage module immutable boolModuleVersionText String "standard.bool 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: native Bool helpers
 # ============================================================
 #
-# # rationale: C's <stdbool.h> existed because C added Bool late and
+# rationale: C's <stdbool.h> existed because C added Bool late and
 #   needed an integer compatibility layer. SemanticScript has Bool as a
-#   first-class primitive (`Bool` = LLVM i1, see AST.md Â§5), so this
+#   first-class primitive (`Bool` = LLVM i1, see docs/ast.md section 5), so this
 #   module exposes total Boolean combinators returning Bool directly.
-#   Two ABI-bridge ops translate between Bool and CSignedInt32 0/1
+#   Two ABI-bridge ops translate between Bool and Int32 0/1
 #   for FFI calls that still expect the C contract.
 #
-# # invariant: every operation in this module is total â€” no input
+# invariant: every operation in this module is total â€” no input
 #   combination produces a failure. That property is encoded in the
 #   `output op Bool` shape (no Result wrapper) and the absence of any
 #   `*Error` domain.
 #
-# # security: pure value-level computation; no effects; no allocation;
+# security: pure value-level computation; no effects; no allocation;
 #   no observable side channel beyond execution time, which is constant
 #   per call (no branches over secret-dependent data).
 #
-# # timing: each combinator is O(1) â€” at most two LLVM `xor`/`and`/`or`
+# timing: each combinator is O(1) â€” at most two LLVM `xor`/`and`/`or`
 #   instructions on i1.
 #
-# # observability: callers are responsible for any tracing; this module
+# observability: callers are responsible for any tracing; this module
 #   emits no logs, no metrics.
 #
 # Operations exposed:
@@ -44,9 +44,8 @@ storage module immutable boolModuleVersionText CNullTerminatedByteString "standa
 #   areBooleansEquivalent(firstOperand, secondOperand)        -> Bool
 #
 # ABI bridges (only for C-FFI callers):
-#   convertBooleanToCSignedInt32(sourceBoolean)               -> CSignedInt32
-#   convertCSignedInt32ToBoolean(sourceCSignedInt32Value)     -> Bool
-
+#   convertBooleanToInt32(sourceBoolean)               -> Int32
+#   convertInt32ToBoolean(sourceInt32Value)     -> Bool
 
 # This is a pure-module (library) file: it exports operations
 # consumed by other programs (notably std/bool/main.test.sem which
@@ -68,142 +67,141 @@ domainLiteralTrust canonicalBooleanFalse trustedStaticLiteral
 
 # ----- negateBoolean -----
 operation negateBoolean
-input negateBoolean valueToNegate Bool
-output negateBoolean Bool
-memoryHeap negateBoolean no
+input operation negateBoolean valueToNegate Bool
+output operation negateBoolean Bool
+memory negateBoolean heap no
 async negateBoolean no
-purpose negateBoolean "Returns the logical negation of valueToNegate (trueâ†’false, falseâ†’true)."
-invariant negateBoolean "Involutive: negateBoolean(negateBoolean(x)) == x for every Bool x."
+purpose operation negateBoolean "Returns the logical negation of valueToNegate (trueâ†’false, falseâ†’true)."
+invariant operation negateBoolean "Involutive: negateBoolean(negateBoolean(x)) == x for every Bool x."
 guarantee negateBoolean "Total: defined for every Bool input."
 # rationale: implemented as equality test against false, which the
 #   compiler lowers to a single `icmp eq i1 %v, 0` â€” the cheapest
 #   i1-level negation without branching on a secret-dependent bit.
 label startNegateBoolean
-const falseSentinel Bool false
-call detectInputIsFalseCall math.equalI64
-arg detectInputIsFalseCall left valueToNegate
-arg detectInputIsFalseCall right falseSentinel
+storage module immutable falseSentinel Bool false
+call detectInputIsFalseCall math.equalInt64
+argument detectInputIsFalseCall left Int64 valueToNegate
+argument detectInputIsFalseCall right Int64 falseSentinel
 run detectInputIsFalseCall
-bind isInputCurrentlyFalse Bool detectInputIsFalseCall
-returnValue isInputCurrentlyFalse
+bind value isInputCurrentlyFalse Bool detectInputIsFalseCall
+return value isInputCurrentlyFalse
 
 # ----- andBooleans -----
 operation andBooleans
-input andBooleans firstOperand Bool
-input andBooleans secondOperand Bool
-output andBooleans Bool
-memoryHeap andBooleans no
+input operation andBooleans firstOperand Bool
+input operation andBooleans secondOperand Bool
+output operation andBooleans Bool
+memory andBooleans heap no
 async andBooleans no
-purpose andBooleans "Logical AND of two Bool operands."
-invariant andBooleans "Commutative: andBooleans(a, b) == andBooleans(b, a)."
-invariant andBooleans "Associative: andBooleans(andBooleans(a, b), c) == andBooleans(a, andBooleans(b, c))."
+purpose operation andBooleans "Logical AND of two Bool operands."
+invariant operation andBooleans "Commutative: andBooleans(a, b) == andBooleans(b, a)."
+invariant operation andBooleans "Associative: andBooleans(andBooleans(a, b), c) == andBooleans(a, andBooleans(b, c))."
 guarantee andBooleans "Total: defined for every (Bool, Bool) input pair."
 # warning: this lowering evaluates both operands. There is no
 #   short-circuit form at this layer â€” callers that need lazy
 #   evaluation should branch explicitly via `branchIf`.
 label startAndBooleans
-const falseShortCircuit Bool false
-branchIf firstOperand bothOperandsLiveBranch
-returnValue falseShortCircuit
+storage module immutable falseShortCircuit Bool false
+branch if condition firstOperand target bothOperandsLiveBranch
+return value falseShortCircuit
 label bothOperandsLiveBranch
-returnValue secondOperand
+return value secondOperand
 
 # ----- orBooleans -----
 operation orBooleans
-input orBooleans firstOperand Bool
-input orBooleans secondOperand Bool
-output orBooleans Bool
-memoryHeap orBooleans no
+input operation orBooleans firstOperand Bool
+input operation orBooleans secondOperand Bool
+output operation orBooleans Bool
+memory orBooleans heap no
 async orBooleans no
-purpose orBooleans "Logical OR of two Bool operands."
-invariant orBooleans "Commutative: orBooleans(a, b) == orBooleans(b, a)."
-invariant orBooleans "Associative: orBooleans(orBooleans(a, b), c) == orBooleans(a, orBooleans(b, c))."
+purpose operation orBooleans "Logical OR of two Bool operands."
+invariant operation orBooleans "Commutative: orBooleans(a, b) == orBooleans(b, a)."
+invariant operation orBooleans "Associative: orBooleans(orBooleans(a, b), c) == orBooleans(a, orBooleans(b, c))."
 guarantee orBooleans "Total: defined for every (Bool, Bool) input pair."
 # warning: both operands are always evaluated (see andBooleans rationale).
 label startOrBooleans
-const trueShortCircuit Bool true
-branchIf firstOperand firstOperandTrueBranch
-returnValue secondOperand
+storage module immutable trueShortCircuit Bool true
+branch if condition firstOperand target firstOperandTrueBranch
+return value secondOperand
 label firstOperandTrueBranch
-returnValue trueShortCircuit
+return value trueShortCircuit
 
 # ----- exclusiveOrBooleans -----
 operation exclusiveOrBooleans
-input exclusiveOrBooleans firstOperand Bool
-input exclusiveOrBooleans secondOperand Bool
-output exclusiveOrBooleans Bool
-memoryHeap exclusiveOrBooleans no
+input operation exclusiveOrBooleans firstOperand Bool
+input operation exclusiveOrBooleans secondOperand Bool
+output operation exclusiveOrBooleans Bool
+memory exclusiveOrBooleans heap no
 async exclusiveOrBooleans no
-purpose exclusiveOrBooleans "Returns true when exactly one operand is true (logical XOR)."
-invariant exclusiveOrBooleans "Self-inverse: exclusiveOrBooleans(x, x) == false."
-invariant exclusiveOrBooleans "Identity over false: exclusiveOrBooleans(x, false) == x."
+purpose operation exclusiveOrBooleans "Returns true when exactly one operand is true (logical XOR)."
+invariant operation exclusiveOrBooleans "Self-inverse: exclusiveOrBooleans(x, x) == false."
+invariant operation exclusiveOrBooleans "Identity over false: exclusiveOrBooleans(x, false) == x."
 guarantee exclusiveOrBooleans "Total: defined for every (Bool, Bool) input pair."
 label startExclusiveOrBooleans
-call detectDistinctOperandsCall math.notEqualI64
-arg detectDistinctOperandsCall left firstOperand
-arg detectDistinctOperandsCall right secondOperand
+call detectDistinctOperandsCall math.notEqualInt64
+argument detectDistinctOperandsCall left Int64 firstOperand
+argument detectDistinctOperandsCall right Int64 secondOperand
 run detectDistinctOperandsCall
-bind operandsDiffer Bool detectDistinctOperandsCall
-returnValue operandsDiffer
+bind value operandsDiffer Bool detectDistinctOperandsCall
+return value operandsDiffer
 
 # ----- areBooleansEquivalent -----
 operation areBooleansEquivalent
-input areBooleansEquivalent firstOperand Bool
-input areBooleansEquivalent secondOperand Bool
-output areBooleansEquivalent Bool
-memoryHeap areBooleansEquivalent no
+input operation areBooleansEquivalent firstOperand Bool
+input operation areBooleansEquivalent secondOperand Bool
+output operation areBooleansEquivalent Bool
+memory areBooleansEquivalent heap no
 async areBooleansEquivalent no
-purpose areBooleansEquivalent "Returns true when both operands hold the same value (logical equivalence / XNOR)."
-invariant areBooleansEquivalent "Reflexive: areBooleansEquivalent(x, x) == true."
-invariant areBooleansEquivalent "Symmetric: areBooleansEquivalent(a, b) == areBooleansEquivalent(b, a)."
+purpose operation areBooleansEquivalent "Returns true when both operands hold the same value (logical equivalence / XNOR)."
+invariant operation areBooleansEquivalent "Reflexive: areBooleansEquivalent(x, x) == true."
+invariant operation areBooleansEquivalent "Symmetric: areBooleansEquivalent(a, b) == areBooleansEquivalent(b, a)."
 guarantee areBooleansEquivalent "Total: defined for every (Bool, Bool) input pair."
 label startAreBooleansEquivalent
-call detectMatchingOperandsCall math.equalI64
-arg detectMatchingOperandsCall left firstOperand
-arg detectMatchingOperandsCall right secondOperand
+call detectMatchingOperandsCall math.equalInt64
+argument detectMatchingOperandsCall left Int64 firstOperand
+argument detectMatchingOperandsCall right Int64 secondOperand
 run detectMatchingOperandsCall
-bind operandsMatch Bool detectMatchingOperandsCall
-returnValue operandsMatch
+bind value operandsMatch Bool detectMatchingOperandsCall
+return value operandsMatch
 
 # section bool.abiBridge
-# rationale: convert between Bool and the C-style 0/1 CSignedInt32 contract.
+# rationale: convert between Bool and the C-style 0/1 Int32 contract.
 
-# ----- convertBooleanToCSignedInt32 -----
-operation convertBooleanToCSignedInt32
-input convertBooleanToCSignedInt32 sourceBoolean Bool
-output convertBooleanToCSignedInt32 CSignedInt32
-memoryHeap convertBooleanToCSignedInt32 no
-async convertBooleanToCSignedInt32 no
-purpose convertBooleanToCSignedInt32 "Widen a Bool (i1) to the canonical C 0/1 CSignedInt32 result FFI callers expect."
-invariant convertBooleanToCSignedInt32 "Output is exactly 0 or 1; no other bit pattern is reachable."
-guarantee convertBooleanToCSignedInt32 "Total: defined for every Bool input."
+# ----- convertBooleanToInt32 -----
+operation convertBooleanToInt32
+input operation convertBooleanToInt32 sourceBoolean Bool
+output operation convertBooleanToInt32 Int32
+memory convertBooleanToInt32 heap no
+async convertBooleanToInt32 no
+purpose operation convertBooleanToInt32 "Widen a Bool (i1) to the canonical C 0/1 Int32 result FFI callers expect."
+invariant operation convertBooleanToInt32 "Output is exactly 0 or 1; no other bit pattern is reachable."
+guarantee convertBooleanToInt32 "Total: defined for every Bool input."
 # security: zero-extension (not sign-extension) so a true Bool widens
 #   to 1 not -1 â€” matches C `_Bool` ABI exactly and avoids the
 #   sign-extension trap that bit a refined-syntax demo earlier in the
 #   project.
-label startConvertBooleanToCSignedInt32
-const zeroCSignedInt32 CSignedInt32 0
-const oneCSignedInt32 CSignedInt32 1
-branchIf sourceBoolean returnCanonicalOne
-returnValue zeroCSignedInt32
+label startConvertBooleanToInt32
+storage module immutable zeroInt32 Int32 0
+storage module immutable oneInt32 Int32 1
+branch if condition sourceBoolean target returnCanonicalOne
+return value zeroInt32
 label returnCanonicalOne
-returnValue oneCSignedInt32
+return value oneInt32
 
-# ----- convertCSignedInt32ToBoolean -----
-operation convertCSignedInt32ToBoolean
-input convertCSignedInt32ToBoolean sourceCSignedInt32Value CSignedInt32
-output convertCSignedInt32ToBoolean Bool
-memoryHeap convertCSignedInt32ToBoolean no
-async convertCSignedInt32ToBoolean no
-purpose convertCSignedInt32ToBoolean "Narrow a C-style 0/non-zero CSignedInt32 to Bool; any non-zero input yields true."
-invariant convertCSignedInt32ToBoolean "Output is true iff sourceCSignedInt32Value is not equal to zero."
-guarantee convertCSignedInt32ToBoolean "Total: defined for every CSignedInt32 input."
-label startConvertCSignedInt32ToBoolean
-const zeroComparisonOperand I64 0
-call detectNonZeroInputCall math.notEqualI64
-arg detectNonZeroInputCall left sourceCSignedInt32Value
-arg detectNonZeroInputCall right zeroComparisonOperand
+# ----- convertInt32ToBoolean -----
+operation convertInt32ToBoolean
+input operation convertInt32ToBoolean sourceInt32Value Int32
+output operation convertInt32ToBoolean Bool
+memory convertInt32ToBoolean heap no
+async convertInt32ToBoolean no
+purpose operation convertInt32ToBoolean "Narrow a C-style 0/non-zero Int32 to Bool; any non-zero input yields true."
+invariant operation convertInt32ToBoolean "Output is true iff sourceInt32Value is not equal to zero."
+guarantee convertInt32ToBoolean "Total: defined for every Int32 input."
+label startConvertInt32ToBoolean
+storage module immutable zeroComparisonOperand Int64 0
+call detectNonZeroInputCall math.notEqualInt64
+argument detectNonZeroInputCall left Int64 sourceInt32Value
+argument detectNonZeroInputCall right Int64 zeroComparisonOperand
 run detectNonZeroInputCall
-bind sourceIsNonZero Bool detectNonZeroInputCall
-returnValue sourceIsNonZero
-
+bind value sourceIsNonZero Bool detectNonZeroInputCall
+return value sourceIsNonZero

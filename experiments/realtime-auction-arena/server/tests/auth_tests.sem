@@ -1,0 +1,46 @@
+module app.realtime_auction_arena.server.tests.auth
+purpose module app.realtime_auction_arena.server.tests.auth "Parse-oriented auth contract test markers for remaining auth hardening."
+moduleOwns app.realtime_auction_arena.server.tests.auth "Auth test plan cases that become executable once the SemanticScript test harness can import app modules and assert record fields."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth "Auth implementation."
+
+record AuthTestPlan
+field AuthTestPlan invalidPassword String
+field AuthTestPlan bcryptPasswordTooLong String
+field AuthTestPlan jwtSecretConfig String
+field AuthTestPlan jwtClaimModel String
+field AuthTestPlan jwtTimeClaims String
+field AuthTestPlan jwtDenylist String
+field AuthTestPlan refreshTokenDurableRow String
+field AuthTestPlan loginRateLimit String
+field AuthTestPlan authAuditEvents String
+field AuthTestPlan disabledUser String
+field AuthTestPlan expiredToken String
+field AuthTestPlan badSignature String
+field AuthTestPlan wrongAudience String
+field AuthTestPlan insufficientRole String
+
+storage module immutable authTestPlan AuthTestPlan
+jsonBody authTestPlan
+  {
+      "invalidPassword": "POST /api/v1/auth/login returns invalid_credentials and appends auth.login.rejected",
+      "bcryptPasswordTooLong": "POST /api/v1/auth/login rejects passwords over 72 bytes before bcrypt.verify; response must not accept bcrypt-truncated equivalents",
+      "jwtSecretConfig": "login, refresh, session, and protected-route bearer verification read AUCTION_ARENA_JWT_SECRET when it is at least 32 bytes; deterministic demo secret remains fallback for local runs",
+      "jwtClaimModel": "issued access JWT contains iss, aud, sub, role, scopes, exp, iat, nbf, and jti; typed per-claim extraction for arbitrary incoming tokens remains a runtime gap",
+      "jwtTimeClaims": "issued access JWT uses iat and nbf from runtime now, exp equals now plus 900 seconds, and session validation checks stored iat, nbf, and exp against runtime now with skew",
+      "jwtDenylist": "blocked contract: revoked_jwts schema exists, but logout/admin revocation cannot record or check active access-token jti until standard.jwt exposes typed claim extraction",
+      "refreshTokenDurableRow": "executable for active process state: login inserts refresh_tokens, refresh inserts replacement hash and revokes the previous hash, logout revokes the current hash; restart-safe lookup remains blocked by opaque token lookup-id support",
+      "loginRateLimit": "POST /api/v1/auth/login increments executable auth.login rate_limit_buckets by submitted username and returns rate_limited after 10 attempts per 60000 ms window",
+      "authAuditEvents": "auth login accepted, invalid-credential rejected, rate-limited rejected, refresh accepted/rejected, logout accepted, and accepted session-check decisions append redacted audit_events rows",
+      "disabledUser": "POST /api/v1/auth/login and refresh/session bearer checks reject disabled users without leaking account status",
+      "expiredToken": "GET /api/v1/session returns unauthorized with expired_token detail",
+      "badSignature": "GET /api/v1/session returns unauthorized with bad_signature detail",
+      "wrongAudience": "GET /api/v1/session returns unauthorized with wrong_audience detail",
+      "insufficientRole": "admin_or_auctioneer or bidder route returns forbidden with insufficient_role detail when principal lacks required role or scope"
+  }
+
+operation getAuthTestPlan
+output operation getAuthTestPlan AuthTestPlan
+memory getAuthTestPlan heap no
+async getAuthTestPlan no
+purpose operation getAuthTestPlan "Return auth test cases as a parseable contract."
+return value authTestPlan

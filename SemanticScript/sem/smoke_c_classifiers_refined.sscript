@@ -14,82 +14,82 @@ entry console main
 section program.smokeCClassifiersRefined.errors
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 section program.smokeCClassifiersRefined.literals
 
-domainLiteral formatLineText CNullTerminatedByteString "isnan(%g)=%d isinf(%g)=%d isfinite(%g)=%d isnormal(%g)=%d signbit(%g)=%d fpclassify(%g)=%d\n"
-domainLiteral probeValue CFloat64 3.14
-domainLiteral zeroValue CFloat64 0.0
+domainLiteral formatLineText String "isnan(%g)=%d isinf(%g)=%d isfinite(%g)=%d isnormal(%g)=%d signbit(%g)=%d fpclassify(%g)=%d\n"
+domainLiteral probeValue Float64 3.14
+domainLiteral zeroValue Float64 0.0
 storage module immutable successfulExitCode ExitCode 0
 
 section program.smokeCClassifiersRefined.operations
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 operationBody main sourceTape
 
-purpose main "Verify the <math.h> macro-classifiers (isnan/isinf/isfinite/isnormal/signbit/fpclassify) lower to LLVM ops rather than libc externs"
-invariant main "Each classifier reports the spec-defined int for a representative input"
+purpose operation main "Verify the <math.h> macro-classifiers (isnan/isinf/isfinite/isnormal/signbit/fpclassify) lower to LLVM ops rather than libc externs"
+invariant operation main "Each classifier reports the spec-defined int for a representative input"
 
 label startMain
 
 call isnanCall c.isnan
-arg isnanCall x probeValue
+argument isnanCall x Float64 probeValue
 run isnanCall
-bind isnanResult CSignedInt32 isnanCall
+bind value isnanResult Int32 isnanCall
 
 call isinfCall c.isinf
-arg isinfCall x probeValue
+argument isinfCall x Float64 probeValue
 run isinfCall
-bind isinfResult CSignedInt32 isinfCall
+bind value isinfResult Int32 isinfCall
 
 call isfiniteCall c.isfinite
-arg isfiniteCall x probeValue
+argument isfiniteCall x Float64 probeValue
 run isfiniteCall
-bind isfiniteResult CSignedInt32 isfiniteCall
+bind value isfiniteResult Int32 isfiniteCall
 
 call isnormalCall c.isnormal
-arg isnormalCall x probeValue
+argument isnormalCall x Float64 probeValue
 run isnormalCall
-bind isnormalResult CSignedInt32 isnormalCall
+bind value isnormalResult Int32 isnormalCall
 
 call signbitCall c.signbit
-arg signbitCall x probeValue
+argument signbitCall x Float64 probeValue
 run signbitCall
-bind signbitResult CSignedInt32 signbitCall
+bind value signbitResult Int32 signbitCall
 
 call fpclassifyCall c.fpclassify
-arg fpclassifyCall x zeroValue
+argument fpclassifyCall x Float64 zeroValue
 run fpclassifyCall
-bind fpclassifyResult CSignedInt32 fpclassifyCall
+bind value fpclassifyResult Int32 fpclassifyCall
 
 call reportCall c.printf
-arg reportCall format formatLineText
-arg reportCall isnanX probeValue
-arg reportCall isnanV isnanResult
-arg reportCall isinfX probeValue
-arg reportCall isinfV isinfResult
-arg reportCall isfiniteX probeValue
-arg reportCall isfiniteV isfiniteResult
-arg reportCall isnormalX probeValue
-arg reportCall isnormalV isnormalResult
-arg reportCall signbitX probeValue
-arg reportCall signbitV signbitResult
-arg reportCall fpclassifyX zeroValue
-arg reportCall fpclassifyV fpclassifyResult
+argument reportCall format String formatLineText
+argument reportCall isnanX Float64 probeValue
+argument reportCall isnanV Int32 isnanResult
+argument reportCall isinfX Float64 probeValue
+argument reportCall isinfV Int32 isinfResult
+argument reportCall isfiniteX Float64 probeValue
+argument reportCall isfiniteV Int32 isfiniteResult
+argument reportCall isnormalX Float64 probeValue
+argument reportCall isnormalV Int32 isnormalResult
+argument reportCall signbitX Float64 probeValue
+argument reportCall signbitV Int32 signbitResult
+argument reportCall fpclassifyX Float64 zeroValue
+argument reportCall fpclassifyV Int32 fpclassifyResult
 run reportCall
-ignoreOk reportCall Void
-bindError reportError CSignedInt32 reportCall
-branchIfError reportCall reportWriteFailed
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target reportWriteFailed
 
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label reportWriteFailed
 makeError reportWriteFailure MainError.ConsoleWriteFailed reportError
-returnError reportWriteFailure
+return error reportWriteFailure

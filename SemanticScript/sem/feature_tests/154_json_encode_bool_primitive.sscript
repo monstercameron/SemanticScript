@@ -1,40 +1,55 @@
 # expect.stdout: true\nfalse\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet implement json.encode.Bool. Direct semsc.py compilation is correct: the call lowers to a `select` between two interned strings. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `true` then `false`.
-project JsonEncodeBoolPrimitive
+languageMode permissiveExecutable
+project JsonStringifyBoolPrimitive
 target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError EncodeFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.encode.Bool returns 'true' for true input, 'false' for false."
-invariant main "Output is exactly 'true\\nfalse\\n'."
+purpose operation main "json.stringify.Bool returns true for true input and false for false."
+invariant operation main "Output is exactly true newline false newline."
 label startMain
-const trueValue Bool true
-const falseValue Bool false
-call encodeTrueCall json.encode.Bool
-arg encodeTrueCall value trueValue
-run encodeTrueCall
-bind trueEncodedString CNullTerminatedByteString encodeTrueCall
+storage module immutable trueValue Bool 1
+storage module immutable falseValue Bool 0
+call stringifyTrueCall json.stringify.Bool
+argument stringifyTrueCall value Bool trueValue
+run stringifyTrueCall
+bind ok trueEncodedString JsonText stringifyTrueCall
+bind error trueEncodeError JsonEncodeError stringifyTrueCall
+branch error source stringifyTrueCall target encodeFailed
 call writeTrueCall console.writeLine
-arg writeTrueCall console console
-arg writeTrueCall text trueEncodedString
+argument writeTrueCall console Console console
+argument writeTrueCall text JsonText trueEncodedString
 run writeTrueCall
-ignoreOk writeTrueCall Void
-call encodeFalseCall json.encode.Bool
-arg encodeFalseCall value falseValue
-run encodeFalseCall
-bind falseEncodedString CNullTerminatedByteString encodeFalseCall
+ignore void source writeTrueCall
+bind error writeTrueError ConsoleWriteError writeTrueCall
+branch error source writeTrueCall target consoleWriteFailed
+call stringifyFalseCall json.stringify.Bool
+argument stringifyFalseCall value Bool falseValue
+run stringifyFalseCall
+bind ok falseEncodedString JsonText stringifyFalseCall
+bind error falseEncodeError JsonEncodeError stringifyFalseCall
+branch error source stringifyFalseCall target encodeFailed
 call writeFalseCall console.writeLine
-arg writeFalseCall console console
-arg writeFalseCall text falseEncodedString
+argument writeFalseCall console Console console
+argument writeFalseCall text JsonText falseEncodedString
 run writeFalseCall
-ignoreOk writeFalseCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeFalseCall
+bind error writeFalseError ConsoleWriteError writeFalseCall
+branch error source writeFalseCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+label encodeFailed
+makeError encodeFailure MainError.EncodeFailed trueEncodeError
+return error encodeFailure
+label consoleWriteFailed
+makeError writeFailure MainError.ConsoleWriteFailed writeTrueError
+return error writeFailure

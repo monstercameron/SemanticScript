@@ -12,7 +12,7 @@ The current repository has two related surfaces:
   by `SemanticScript/sem/` and `SemanticScript/sem/feature_tests/`.
 - Refined SemanticScript: accepted as parseable metadata or synchronous fallback
   by the reference compiler/linter/editor, but not always backed by a runtime
-  service yet. `SYNTAX.md` is the status inventory.
+  service yet. `docs/reference/syntax-inventory.md` is the status inventory.
 
 Do not infer compiler support from VS Code highlighting alone. The editor
 tracks syntax and hover semantics for both surfaces; the compiler is the
@@ -23,7 +23,8 @@ authority for executable lowering.
 This folder contains the language explanation layer: lexical rules, program
 structure, project layout and `build.sem`, types, operations/dataflow,
 effects/errors, memory/state, records, codecs, cleanup, concurrency,
-time-related syntax, and planned native HTTP API shape.
+time-related syntax, native HTTP server APIs, and prototype outbound HTTP
+client shape.
 
 - [lexical-model.md](lexical-model.md) defines tokenization, comments,
   strings, identifiers, and rejected syntax.
@@ -35,7 +36,7 @@ time-related syntax, and planned native HTTP API shape.
 - [types-values.md](types-values.md) covers primitive types, aliases,
   constants, literals, records, and enums.
 - [operations-dataflow.md](operations-dataflow.md) covers operation contracts,
-  calls, bindings, variables, and control flow.
+  calls, bindings, storage mutation, and control flow.
 - [errors-effects-capabilities.md](errors-effects-capabilities.md) covers
   result flow, typed errors, effects, capabilities, and authority.
 - [memory-state.md](memory-state.md) covers storage, shared state, mutation,
@@ -47,10 +48,11 @@ time-related syntax, and planned native HTTP API shape.
   stringify/parse entry points.
 - [concurrency-time-cleanup.md](concurrency-time-cleanup.md) covers cleanup,
   retry, async, groups, channels, locks, and worker pools.
-- [native-http-api.md](native-http-api.md) describes the planned native HTTP
-  server API and route-handler ABI.
-- [strict-syntax-research.md](strict-syntax-research.md) maps recent bug
-  classes to stricter syntax and compile-blocking language rules.
+- [native-http-api.md](native-http-api.md) describes the native HTTP server API,
+  route metadata, request readers, response writers, and route-handler ABI.
+- [native-http-client-api.md](native-http-client-api.md) describes the
+  prototype outbound HTTP client API, `standard.net`, `net.fetch*`, effects,
+  and native libuv/libcurl runtime path.
 
 ## Current Status
 
@@ -70,14 +72,14 @@ output main ExitCode
 effect main write console.stdout
 purpose main "Print one greeting and exit successfully"
 
-const greetingText String "hello from SemanticScript"
+storage local immutable greetingText String "hello from SemanticScript"
 call writeGreetingCall console.writeLine
-arg writeGreetingCall text greetingText
+argument writeGreetingCall text String greetingText
 run writeGreetingCall
-ignoreOk writeGreetingCall Void
+ignore ok source writeGreetingCall type Void
 
-const successExitCode ExitCode 0
-returnValue successExitCode
+storage local immutable successExitCode ExitCode 0
+return value successExitCode
 ```
 
 The important details:
@@ -85,7 +87,7 @@ The important details:
 - `entry console main` chooses the operation named `main`.
 - `operation main` starts the body tape for that operation.
 - Operation header lines repeat the owning operation name.
-- Calls are name-addressable objects: `call`, `arg`, `run`, then bind or
+- Calls are name-addressable objects: `call`, `argument`, `run`, then bind or
   ignore the result.
 - The program declares its stdout effect before using `console.writeLine`.
 

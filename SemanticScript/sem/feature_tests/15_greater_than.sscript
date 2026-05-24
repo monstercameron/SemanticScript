@@ -7,40 +7,40 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "math.greaterThanI64: 9 > 3."
-invariant main "Strict > selects yes."
+purpose operation main "math.greaterThanInt64: 9 > 3."
+invariant operation main "Strict > selects yes."
 label startMain
-const nineInitial I64 9
-const threeCompare I64 3
-var leftOp I64 nineInitial
-call gtCall math.greaterThanI64
-arg gtCall left leftOp
-arg gtCall right threeCompare
+storage module immutable nineInitial Int64 9
+storage module immutable threeCompare Int64 3
+memory main mutable leftOp Int64 nineInitial
+call gtCall math.greaterThanInt64
+argument gtCall left Int64 leftOp
+argument gtCall right Int64 threeCompare
 run gtCall
-bind isGreater Bool gtCall
-branchIf isGreater yesLabel
-branch noLabel
+bind value isGreater Bool gtCall
+branch if condition isGreater target yesLabel
+branch else target noLabel
 label yesLabel
-const yesText CNullTerminatedByteString "yes"
+storage module immutable yesText String "yes"
 call writeYesCall console.writeLine
-arg writeYesCall console console
-arg writeYesCall text yesText
+argument writeYesCall console Console console
+argument writeYesCall text String yesText
 run writeYesCall
-ignoreOk writeYesCall Void
-branch endLabel
+ignore void source writeYesCall
+jump target endLabel
 label noLabel
-const noText CNullTerminatedByteString "no"
+storage module immutable noText String "no"
 call writeNoCall console.writeLine
-arg writeNoCall console console
-arg writeNoCall text noText
+argument writeNoCall console Console console
+argument writeNoCall text String noText
 run writeNoCall
-ignoreOk writeNoCall Void
-branch endLabel
+ignore void source writeNoCall
+jump target endLabel
 label endLabel
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

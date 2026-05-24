@@ -1,0 +1,415 @@
+module app.realtime_auction_arena.server.auth
+purpose module app.realtime_auction_arena.server.auth "Authentication, JWT, bcrypt, role, and session contract declarations for the server."
+moduleOwns app.realtime_auction_arena.server.auth "Auth API model shapes, algorithm decision, token lifetime constants, role policy labels, executable demo-auth status, and production runtime-gap markers."
+moduleDoesNotOwn app.realtime_auction_arena.server.auth "Native bcrypt/JWT implementation, secure secret storage, or database persistence."
+invariant module app.realtime_auction_arena.server.auth "Access tokens are short-lived JWTs, refresh tokens are opaque and stored only as hashes, and plaintext passwords are never persisted."
+
+type UserId String
+type SessionId String
+type RefreshTokenId String
+type JwtId String
+type JwtIssuer String
+type JwtAudience String
+type RoleName String
+type ScopeName String
+type ScopeList String
+type UtcSeconds Int64
+type BcryptPasswordHash String
+type RefreshTokenHash String
+type RateLimitBucketKey String
+
+enum AuthRuntimeStatus repr Int32
+enumCase AuthRuntimeStatus authRuntimeBlocked 0
+enumCase AuthRuntimeStatus authRuntimeAdapterReady 1
+
+record JwtTimeValidationContract
+field JwtTimeValidationContract nowSource String
+field JwtTimeValidationContract issuedAtRule String
+field JwtTimeValidationContract notBeforeRule String
+field JwtTimeValidationContract expirationRule String
+field JwtTimeValidationContract clockSkewSeconds Int64
+field JwtTimeValidationContract runtimeStatus String
+
+record JwtClaimModel
+field JwtClaimModel issuerClaim String
+field JwtClaimModel audienceClaim String
+field JwtClaimModel subjectClaim String
+field JwtClaimModel roleClaim String
+field JwtClaimModel scopesClaim String
+field JwtClaimModel expiresAtClaim String
+field JwtClaimModel issuedAtClaim String
+field JwtClaimModel notBeforeClaim String
+field JwtClaimModel jwtIdClaim String
+field JwtClaimModel clockSkewSeconds Int64
+field JwtClaimModel validationRule String
+
+record JwtAccessClaims
+field JwtAccessClaims iss JwtIssuer
+field JwtAccessClaims aud JwtAudience
+field JwtAccessClaims sub UserId
+field JwtAccessClaims role RoleName
+field JwtAccessClaims scopes ScopeList
+field JwtAccessClaims exp UtcSeconds
+field JwtAccessClaims iat UtcSeconds
+field JwtAccessClaims nbf UtcSeconds
+field JwtAccessClaims jti JwtId
+
+record JwtContract
+field JwtContract algorithm String
+field JwtContract issuer String
+field JwtContract audience String
+field JwtContract accessTokenTtlSeconds Int64
+field JwtContract signingSecretSource String
+field JwtContract futureAsymmetricAlgorithm String
+field JwtContract claimModel JwtClaimModel
+field JwtContract timeValidation JwtTimeValidationContract
+
+record BcryptLimitContract
+field BcryptLimitContract maxPlaintextBytes Int64
+field BcryptLimitContract enforcementPoint String
+field BcryptLimitContract tooLongPublicError String
+field BcryptLimitContract reason String
+
+record PasswordContract
+field PasswordContract hashAlgorithm String
+field PasswordContract recommendedCost Int64
+field PasswordContract maxPlaintextBytes Int64
+field PasswordContract storedFields String
+field PasswordContract byteLimit BcryptLimitContract
+
+record RefreshTokenDurableRowContract
+field RefreshTokenDurableRowContract tableName String
+field RefreshTokenDurableRowContract primaryKey String
+field RefreshTokenDurableRowContract userReference String
+field RefreshTokenDurableRowContract sessionReference String
+field RefreshTokenDurableRowContract tokenHashField String
+field RefreshTokenDurableRowContract rotationFields String
+field RefreshTokenDurableRowContract uniquenessRule String
+field RefreshTokenDurableRowContract transactionRule String
+
+record JwtDenylistContract
+field JwtDenylistContract tableName String
+field JwtDenylistContract primaryKey String
+field JwtDenylistContract insertRule String
+field JwtDenylistContract lookupRule String
+field JwtDenylistContract cleanupRule String
+field JwtDenylistContract runtimeStatus String
+
+record LoginRateLimitContract
+field LoginRateLimitContract durableTable String
+field LoginRateLimitContract bucketKey RateLimitBucketKey
+field LoginRateLimitContract subjectRule String
+field LoginRateLimitContract windowMillis Int64
+field LoginRateLimitContract limitCount Int64
+field LoginRateLimitContract publicError String
+field LoginRateLimitContract auditRule String
+field LoginRateLimitContract runtimeStatus String
+
+record AuthAuditEventContract
+field AuthAuditEventContract durableTable String
+field AuthAuditEventContract loginActions String
+field AuthAuditEventContract refreshActions String
+field AuthAuditEventContract sessionActions String
+field AuthAuditEventContract requiredFields String
+field AuthAuditEventContract redactionRule String
+field AuthAuditEventContract transactionRule String
+field AuthAuditEventContract runtimeStatus String
+
+record AuthFailureMarkers
+field AuthFailureMarkers disabledUser String
+field AuthFailureMarkers expiredToken String
+field AuthFailureMarkers wrongAudience String
+field AuthFailureMarkers insufficientRole String
+field AuthFailureMarkers bcryptInputTooLong String
+
+record AuthRolePolicy
+field AuthRolePolicy name String
+field AuthRolePolicy allowedRoles String
+field AuthRolePolicy requiredScopes String
+field AuthRolePolicy routeFamilies String
+field AuthRolePolicy failureStatus String
+field AuthRolePolicy runtimeStatus String
+
+record AuthRolePolicyRegistry
+field AuthRolePolicyRegistry anonymous AuthRolePolicy
+field AuthRolePolicyRegistry authenticated AuthRolePolicy
+field AuthRolePolicyRegistry viewer AuthRolePolicy
+field AuthRolePolicyRegistry bidder AuthRolePolicy
+field AuthRolePolicyRegistry adminOrAuctioneer AuthRolePolicy
+field AuthRolePolicyRegistry admin AuthRolePolicy
+field AuthRolePolicyRegistry operator AuthRolePolicy
+field AuthRolePolicyRegistry service AuthRolePolicy
+
+record ScopeRegistryContract
+field ScopeRegistryContract auctionsRead String
+field ScopeRegistryContract auctionsWrite String
+field ScopeRegistryContract bidsRead String
+field ScopeRegistryContract bidsWrite String
+field ScopeRegistryContract chatRead String
+field ScopeRegistryContract chatWrite String
+field ScopeRegistryContract chatModerate String
+field ScopeRegistryContract auditRead String
+field ScopeRegistryContract metricsRead String
+field ScopeRegistryContract serviceInternal String
+field ScopeRegistryContract matchingRule String
+field ScopeRegistryContract runtimeStatus String
+
+record AuthConfigContract
+field AuthConfigContract jwtSecretEnv String
+field AuthConfigContract issuerEnv String
+field AuthConfigContract audienceEnv String
+field AuthConfigContract accessTtlSeconds String
+field AuthConfigContract refreshTtlSeconds String
+field AuthConfigContract bcryptCostEnv String
+field AuthConfigContract demoSeedEnv String
+field AuthConfigContract secretLoadingRule String
+field AuthConfigContract failureMode String
+field AuthConfigContract runtimeStatus String
+
+record MainIntegrationPatch
+field MainIntegrationPatch value String
+
+record AuthEndpointContract
+field AuthEndpointContract path String
+field AuthEndpointContract requiredBody String
+field AuthEndpointContract publicErrors String
+field AuthEndpointContract auditEvent String
+field AuthEndpointContract runtimeStatus String
+
+record AuthContract
+field AuthContract jwt JwtContract
+field AuthContract password PasswordContract
+field AuthContract login AuthEndpointContract
+field AuthContract refresh AuthEndpointContract
+field AuthContract logout AuthEndpointContract
+field AuthContract session AuthEndpointContract
+field AuthContract refreshTokenRow RefreshTokenDurableRowContract
+field AuthContract jwtDenylist JwtDenylistContract
+field AuthContract loginRateLimit LoginRateLimitContract
+field AuthContract auditEvents AuthAuditEventContract
+field AuthContract failureMarkers AuthFailureMarkers
+field AuthContract rolePolicies AuthRolePolicyRegistry
+field AuthContract scopes ScopeRegistryContract
+field AuthContract config AuthConfigContract
+field AuthContract authContextIntegrationPatch MainIntegrationPatch
+
+storage module immutable authContract AuthContract
+jsonBody authContract
+  {
+      "jwt": {
+          "algorithm": "HS256",
+          "issuer": "realtime-auction-arena",
+          "audience": "api-v1",
+          "accessTokenTtlSeconds": 900,
+          "signingSecretSource": "environment:AUCTION_ARENA_JWT_SECRET",
+          "futureAsymmetricAlgorithm": "Ed25519 or RS256 once runtime signing primitives exist",
+          "claimModel": {
+              "issuerClaim": "iss",
+              "audienceClaim": "aud",
+              "subjectClaim": "sub",
+              "roleClaim": "role",
+              "scopesClaim": "scopes",
+              "expiresAtClaim": "exp",
+              "issuedAtClaim": "iat",
+              "notBeforeClaim": "nbf",
+              "jwtIdClaim": "jti",
+              "clockSkewSeconds": 30,
+              "validationRule": "verify signature first, then require iss and aud exact match, nbf <= now + skew, iat <= now + skew, exp > now - skew, non-empty sub, role, scopes, and jti, and reject revoked jti rows"
+          },
+          "timeValidation": {
+              "nowSource": "runtime wall-clock UTC seconds read at validation time",
+              "issuedAtRule": "iat must be <= now + 30 seconds and must not be older than the accepted access-token TTL plus skew",
+              "notBeforeRule": "nbf must be <= now + 30 seconds",
+              "expirationRule": "exp must be > now - 30 seconds and issued tokens use now + 900 seconds by default",
+              "clockSkewSeconds": 30,
+              "runtimeStatus": "executable for issued active demo tokens: login and refresh stamp iat/nbf from runtime UTC seconds, set exp to iat + 900, and session validates stored active-token iat/nbf/exp with skew; typed claim extraction for arbitrary incoming tokens remains a runtime gap"
+          }
+      },
+      "password": {
+          "hashAlgorithm": "bcrypt $2b$",
+          "recommendedCost": 12,
+          "maxPlaintextBytes": 72,
+          "storedFields": "password_hash, cost, password_updated_at",
+          "byteLimit": {
+              "maxPlaintextBytes": 72,
+              "enforcementPoint": "login JSON parse path before bcrypt.verify and before hash generation",
+              "tooLongPublicError": "invalid_credentials or validation_error/password_too_long with identical timing policy",
+              "reason": "bcrypt ignores bytes beyond 72; accepting longer plaintext can make distinct passwords equivalent"
+          }
+      },
+      "login": {
+          "path": "POST /api/v1/auth/login",
+          "requiredBody": "username, password",
+          "publicErrors": "invalid_credentials, rate_limited",
+          "auditEvent": "auth.login.accepted or auth.login.rejected",
+          "runtimeStatus": "executable demo: JSON body decode, content-type/body-size guards, SQLite login rate-limit bucket, disabled-user lookup, bcrypt 72-byte precheck, bcrypt verify against seeded auctioneer/bidder/admin accounts, runtime-time claim-bearing HS256 access token issue, durable refresh_tokens row insert, and durable login accepted/rejected audit rows"
+      },
+      "refresh": {
+          "path": "POST /api/v1/auth/refresh",
+          "requiredBody": "refreshToken",
+          "publicErrors": "invalid_refresh_token, expired_refresh_token, revoked_refresh_token",
+          "auditEvent": "auth.refresh.accepted or auth.refresh.rejected",
+          "runtimeStatus": "executable demo: disabled-user lookup, opaque refresh token verifies against the active process-local bcrypt hash, rotates, writes refresh_tokens replacement/revocation rows, appends refresh audit rows, and issues a fresh runtime-time access token; restart-safe refresh lookup remains blocked because opaque tokens carry no lookup id and the runtime exposes bcrypt verify but no keyed token-id extraction"
+      },
+      "logout": {
+          "path": "POST /api/v1/auth/logout",
+          "requiredBody": "refreshToken",
+          "publicErrors": "unauthorized",
+          "auditEvent": "auth.logout",
+          "runtimeStatus": "executable demo: valid refresh token hash revokes the process-local session, marks the durable refresh_tokens row revoked when present, writes the active access-token jti to revoked_jwts through standard.jwt claim extraction, cleans expired denylist rows, and appends a logout audit row"
+      },
+      "session": {
+          "path": "GET /api/v1/session",
+          "requiredBody": "none",
+          "publicErrors": "unauthorized, expired_token, bad_signature, wrong_audience, insufficient_role",
+          "auditEvent": "auth.session.checked",
+          "runtimeStatus": "executable demo: Authorization bearer token is HS256-verified with env/default secret, claim-decoded for aud/exp/jti, matched against process-local session, checked against stored iat/nbf/exp runtime bounds, rejects disabled users and revoked jti rows, returns split wrong_audience/expired_token envelopes, and appends accepted session audit rows"
+      },
+      "refreshTokenRow": {
+          "tableName": "refresh_tokens",
+          "primaryKey": "refresh_token_id",
+          "userReference": "user_id references users(user_id) and users.disabled=0 during refresh",
+          "sessionReference": "session_id references sessions/session model when durable sessions are added; process-local demo uses active session sentinel",
+          "tokenHashField": "token_hash stores only a bcrypt or stronger slow hash of opaque refresh token material",
+          "rotationFields": "issued_at, expires_at, last_used_at, revoked_at, replaced_by_refresh_token_id",
+          "uniquenessRule": "token_hash unique; active token is one row where revoked_at=0 and expires_at is in the future",
+          "transactionRule": "refresh runs in one transaction: select active row, verify hash, revoke old row, insert replacement row, append audit event, commit"
+      },
+      "jwtDenylist": {
+          "tableName": "revoked_jwts",
+          "primaryKey": "jti",
+          "insertRule": "logout or admin revocation inserts the active JWT jti, user_id, exp, revoked_at, and request_id through standard.jwt claim readers",
+          "lookupRule": "session and protected-route auth reject a signed token when revoked_jwts has the same jti and expires_at is still in the future",
+          "cleanupRule": "maintenance may delete rows only after expires_at plus access-token clock skew",
+          "runtimeStatus": "executable demo: logout persists active jti rows, session and protected-route bearer validation reject non-expired revoked jtis, and validation cleans expired denylist rows best-effort"
+      },
+      "loginRateLimit": {
+          "durableTable": "rate_limit_buckets",
+          "bucketKey": "auth.login:<username_norm>:<ip_hash>",
+          "subjectRule": "bucket by normalized username and hashed client IP so disabled or unknown users share the same public timing and error path",
+          "windowMillis": 60000,
+          "limitCount": 10,
+          "publicError": "rate_limited",
+          "auditRule": "append auth.login.rejected with reason rate_limited without disclosing whether the username exists",
+          "runtimeStatus": "executable for login by submitted username and 60000 ms window; client IP hashing remains blocked on request context support"
+      },
+      "auditEvents": {
+          "durableTable": "audit_events",
+          "loginActions": "auth.login.accepted, auth.login.rejected",
+          "refreshActions": "auth.refresh.accepted, auth.refresh.rejected, auth.logout",
+          "sessionActions": "auth.session.checked",
+          "requiredFields": "auditEventId, requestId, actorUserId when known, actorRole when known, action, outcome, reason, payloadJson, createdAt, ipHash, userAgentHash",
+          "redactionRule": "payloadJson must never contain plaintext passwords, password hashes, bearer tokens, refresh tokens, cookies, raw Authorization headers, raw IPs, or raw user agents",
+          "transactionRule": "login success/failure and refresh/logout decisions append durable audit rows in the same SQLite transaction as the auth state they accept or reject",
+          "runtimeStatus": "executable for login accepted, invalid_credentials rejected, rate_limited rejected, refresh accepted/rejected, logout accepted, and accepted session-check rows"
+      },
+      "failureMarkers": {
+          "disabledUser": "login and refresh reject disabled users as invalid_credentials or invalid_refresh_token without leaking account status",
+          "expiredToken": "JWT validation rejects exp <= now and returns unauthorized with expired_token detail",
+          "wrongAudience": "JWT validation requires aud == api-v1 and returns unauthorized with wrong_audience detail",
+          "insufficientRole": "authorization middleware returns forbidden with insufficient_role for authenticated principals without required role/scope",
+          "bcryptInputTooLong": "login rejects password plaintext longer than 72 bytes before bcrypt.verify"
+      },
+      "rolePolicies": {
+          "anonymous": {
+              "name": "anonymous",
+              "allowedRoles": "none required",
+              "requiredScopes": "none",
+              "routeFamilies": "auth.login and public health/readiness/index routes",
+              "failureStatus": "not applicable",
+              "runtimeStatus": "executable for public routes and login"
+          },
+          "authenticated": {
+              "name": "authenticated",
+              "allowedRoles": "viewer, bidder, auctioneer, admin, service",
+              "requiredScopes": "valid bearer token with non-empty sub, role, scopes, and active session",
+              "routeFamilies": "session, authenticated auction reads, event replay",
+              "failureStatus": "401 unauthorized",
+              "runtimeStatus": "executable demo bearer-token presence/signature/current-token/session check; registered write-route role and scope checks execute in main.sem"
+          },
+          "viewer": {
+              "name": "viewer",
+              "allowedRoles": "viewer, bidder, auctioneer, admin, service",
+              "requiredScopes": "auctions:read or bids:read",
+              "routeFamilies": "GET /api/v1/auctions, GET /api/v1/auctions/:auctionId, GET /api/v1/auctions/:auctionId/events",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable helper exists for known read-capable roles; current read routes accept the active bearer token while future route-specific scope splitting remains available through the helper"
+          },
+          "bidder": {
+              "name": "bidder",
+              "allowedRoles": "bidder or service acting with bids:write/chat:write",
+              "requiredScopes": "bids:write for bids, chat:write for chat create/report",
+              "routeFamilies": "POST /api/v1/auctions/:auctionId/bids, chat create, chat report",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable for the registered bid route with seeded bidder role and bids:write scope"
+          },
+          "adminOrAuctioneer": {
+              "name": "admin_or_auctioneer",
+              "allowedRoles": "auctioneer, admin, service",
+              "requiredScopes": "auctions:write for create/start/extend/close; chat:moderate for moderation",
+              "routeFamilies": "auction create/start/extend/close and chat delete",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable for registered create/start/extend/close and chat moderation routes with seeded auctioneer/admin roles and exact scope sets"
+          },
+          "admin": {
+              "name": "admin",
+              "allowedRoles": "admin, service",
+              "requiredScopes": "audit:read and users:write where applicable",
+              "routeFamilies": "audit queries, future user management",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable for the bounded audit route with seeded admin role and audit:read scope; authenticated non-admin callers receive 403 insufficient_role"
+          },
+          "operator": {
+              "name": "operator",
+              "allowedRoles": "admin, service",
+              "requiredScopes": "metrics:read",
+              "routeFamilies": "GET /metrics",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable for GET /metrics with seeded admin role plus metrics:read scope; unauthenticated callers receive 401 and valid non-admin callers receive 403 insufficient_role"
+          },
+          "service": {
+              "name": "service",
+              "allowedRoles": "service",
+              "requiredScopes": "service:internal plus route-specific scopes",
+              "routeFamilies": "automation, load tests, future internal maintenance",
+              "failureStatus": "401 unauthorized or 403 forbidden",
+              "runtimeStatus": "executable guard helper exists for future service-principal routes; no public service login route is registered"
+          }
+      },
+      "scopes": {
+          "auctionsRead": "auctions:read",
+          "auctionsWrite": "auctions:write",
+          "bidsRead": "bids:read",
+          "bidsWrite": "bids:write",
+          "chatRead": "chat:read",
+          "chatWrite": "chat:write",
+          "chatModerate": "chat:moderate",
+          "auditRead": "audit:read",
+          "metricsRead": "metrics:read",
+          "serviceInternal": "service:internal",
+          "matchingRule": "authorization succeeds only when the principal role is allowed by policy and at least one listed scope satisfies the route requirement; service principals must also carry service:internal",
+          "runtimeStatus": "registered auctioneer/admin command routes, bidder routes, admin audit, admin metrics, viewer helper, and service guard helper check seeded role/scope state"
+      },
+      "config": {
+          "jwtSecretEnv": "AUCTION_ARENA_JWT_SECRET required outside deterministic local demo mode",
+          "issuerEnv": "AUCTION_ARENA_JWT_ISSUER optional override, default realtime-auction-arena",
+          "audienceEnv": "AUCTION_ARENA_JWT_AUDIENCE optional override, default api-v1",
+          "accessTtlSeconds": "AUCTION_ARENA_ACCESS_TOKEN_TTL_SECONDS default 900 and clamped to 300..900",
+          "refreshTtlSeconds": "AUCTION_ARENA_REFRESH_TOKEN_TTL_SECONDS default 2592000 and clamped by deployment policy",
+          "bcryptCostEnv": "AUCTION_ARENA_BCRYPT_COST default 12, minimum 10",
+          "demoSeedEnv": "AUCTION_ARENA_DEMO_SEED enables seeded auctioneer, bidder, admin, and disabled demo principals only for local development",
+          "secretLoadingRule": "AUCTION_ARENA_JWT_SECRET must be read from environment or config at startup, be at least 32 random bytes after decoding, be redacted from logs, and never use a source literal outside deterministic local demo mode",
+          "failureMode": "startup fails readiness if required production auth config is absent or invalid",
+          "runtimeStatus": "executable reads AUCTION_ARENA_JWT_SECRET when present and at least 32 bytes, otherwise uses deterministic local demo fallback; AUCTION_ARENA_PROFILE=production fails readiness and login with configuration_invalid when the secret is absent or too short"
+      },
+      "authContextIntegrationPatch": {
+          "value": "Remaining auth_context integration: add restart-safe refresh lookup/session recovery once opaque refresh tokens carry a lookup id or keyed lookup hash; add durable multi-session principal lookup beyond the active process-local demo session."
+      }
+  }
+
+operation getAuthContract
+output operation getAuthContract AuthContract
+memory getAuthContract heap no
+async getAuthContract no
+purpose operation getAuthContract "Return the static authentication contract."
+return value authContract

@@ -10,7 +10,7 @@ mode capturedOutputReplay
 
 entry console main
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
@@ -18,47 +18,47 @@ errorCase MainError ConsoleWriteFailed ConsoleWriteError
 capability consoleStdoutWriteCapability console.stdout write
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 useCapability writeStandardOutputLine consoleStdoutWriteCapability
-memoryHeap writeStandardOutputLine no
+memory writeStandardOutputLine heap no
 memoryStackLimit writeStandardOutputLine 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
 storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 useCapability main consoleStdoutWriteCapability
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 
-purpose main "Print the deterministic calculator table from javascript/simple-calculator.js"
-invariant main "Each operation line is left-padded so the operation name occupies eight characters"
+purpose operation main "Print the deterministic calculator table from javascript/simple-calculator.js"
+invariant operation main "Each operation line is left-padded so the operation name occupies eight characters"
 
 label startMain
 
@@ -73,67 +73,67 @@ storage local immutable powerResultText String "power    2 5 => 32"
 storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeCalculatorTitleLineCall writeStandardOutputLine
-arg writeCalculatorTitleLineCall text calculatorTitleText
+argument writeCalculatorTitleLineCall text String calculatorTitleText
 run writeCalculatorTitleLineCall
-ignoreOk writeCalculatorTitleLineCall Void
-bindError writeCalculatorTitleLineError ConsoleWriteError writeCalculatorTitleLineCall
-set local lastConsoleWriteErrorCode writeCalculatorTitleLineError
-branchIfError writeCalculatorTitleLineCall consoleWriteFailed
+ignore void source writeCalculatorTitleLineCall
+bind error writeCalculatorTitleLineError ConsoleWriteError writeCalculatorTitleLineCall
+set memory lastConsoleWriteErrorCode writeCalculatorTitleLineError
+branch error source writeCalculatorTitleLineCall target consoleWriteFailed
 
 call writeCalculatorTitleUnderlineLineCall writeStandardOutputLine
-arg writeCalculatorTitleUnderlineLineCall text calculatorTitleUnderlineText
+argument writeCalculatorTitleUnderlineLineCall text String calculatorTitleUnderlineText
 run writeCalculatorTitleUnderlineLineCall
-ignoreOk writeCalculatorTitleUnderlineLineCall Void
-bindError writeCalculatorTitleUnderlineLineError ConsoleWriteError writeCalculatorTitleUnderlineLineCall
-set local lastConsoleWriteErrorCode writeCalculatorTitleUnderlineLineError
-branchIfError writeCalculatorTitleUnderlineLineCall consoleWriteFailed
+ignore void source writeCalculatorTitleUnderlineLineCall
+bind error writeCalculatorTitleUnderlineLineError ConsoleWriteError writeCalculatorTitleUnderlineLineCall
+set memory lastConsoleWriteErrorCode writeCalculatorTitleUnderlineLineError
+branch error source writeCalculatorTitleUnderlineLineCall target consoleWriteFailed
 
 call writeAddResultLineCall writeStandardOutputLine
-arg writeAddResultLineCall text addResultText
+argument writeAddResultLineCall text String addResultText
 run writeAddResultLineCall
-ignoreOk writeAddResultLineCall Void
-bindError writeAddResultLineError ConsoleWriteError writeAddResultLineCall
-set local lastConsoleWriteErrorCode writeAddResultLineError
-branchIfError writeAddResultLineCall consoleWriteFailed
+ignore void source writeAddResultLineCall
+bind error writeAddResultLineError ConsoleWriteError writeAddResultLineCall
+set memory lastConsoleWriteErrorCode writeAddResultLineError
+branch error source writeAddResultLineCall target consoleWriteFailed
 
 call writeSubtractResultLineCall writeStandardOutputLine
-arg writeSubtractResultLineCall text subtractResultText
+argument writeSubtractResultLineCall text String subtractResultText
 run writeSubtractResultLineCall
-ignoreOk writeSubtractResultLineCall Void
-bindError writeSubtractResultLineError ConsoleWriteError writeSubtractResultLineCall
-set local lastConsoleWriteErrorCode writeSubtractResultLineError
-branchIfError writeSubtractResultLineCall consoleWriteFailed
+ignore void source writeSubtractResultLineCall
+bind error writeSubtractResultLineError ConsoleWriteError writeSubtractResultLineCall
+set memory lastConsoleWriteErrorCode writeSubtractResultLineError
+branch error source writeSubtractResultLineCall target consoleWriteFailed
 
 call writeMultiplyResultLineCall writeStandardOutputLine
-arg writeMultiplyResultLineCall text multiplyResultText
+argument writeMultiplyResultLineCall text String multiplyResultText
 run writeMultiplyResultLineCall
-ignoreOk writeMultiplyResultLineCall Void
-bindError writeMultiplyResultLineError ConsoleWriteError writeMultiplyResultLineCall
-set local lastConsoleWriteErrorCode writeMultiplyResultLineError
-branchIfError writeMultiplyResultLineCall consoleWriteFailed
+ignore void source writeMultiplyResultLineCall
+bind error writeMultiplyResultLineError ConsoleWriteError writeMultiplyResultLineCall
+set memory lastConsoleWriteErrorCode writeMultiplyResultLineError
+branch error source writeMultiplyResultLineCall target consoleWriteFailed
 
 call writeDivideResultLineCall writeStandardOutputLine
-arg writeDivideResultLineCall text divideResultText
+argument writeDivideResultLineCall text String divideResultText
 run writeDivideResultLineCall
-ignoreOk writeDivideResultLineCall Void
-bindError writeDivideResultLineError ConsoleWriteError writeDivideResultLineCall
-set local lastConsoleWriteErrorCode writeDivideResultLineError
-branchIfError writeDivideResultLineCall consoleWriteFailed
+ignore void source writeDivideResultLineCall
+bind error writeDivideResultLineError ConsoleWriteError writeDivideResultLineCall
+set memory lastConsoleWriteErrorCode writeDivideResultLineError
+branch error source writeDivideResultLineCall target consoleWriteFailed
 
 call writePowerResultLineCall writeStandardOutputLine
-arg writePowerResultLineCall text powerResultText
+argument writePowerResultLineCall text String powerResultText
 run writePowerResultLineCall
-ignoreOk writePowerResultLineCall Void
-bindError writePowerResultLineError ConsoleWriteError writePowerResultLineCall
-set local lastConsoleWriteErrorCode writePowerResultLineError
-branchIfError writePowerResultLineCall consoleWriteFailed
+ignore void source writePowerResultLineCall
+bind error writePowerResultLineError ConsoleWriteError writePowerResultLineCall
+set memory lastConsoleWriteErrorCode writePowerResultLineError
+branch error source writePowerResultLineCall target consoleWriteFailed
 
 storage local immutable successfulExitCode ExitCode 0
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

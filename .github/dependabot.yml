@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "npm"
+    directory: "/vscode-semanticscript"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "vscode-extension"
+
+  - package-ecosystem: "npm"
+    directory: "/experiments/realtime-auction-arena/browser-sse-client"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "experiment"

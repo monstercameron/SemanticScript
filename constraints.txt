@@ -1,0 +1,4 @@
+# Reproducible dependency constraints for CI and release validation.
+# Keep broad compatibility in requirements.txt; pin here when a known-good
+# toolchain version is needed for repeatable validation.
+llvmlite==0.47.0

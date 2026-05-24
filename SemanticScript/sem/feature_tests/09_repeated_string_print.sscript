@@ -8,29 +8,29 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Same string const referenced three times in separate calls; verifies per-call (not per-const) puts emission."
-invariant main "Output line count equals call count, not unique-const count."
+purpose operation main "Same string const referenced three times in separate calls; verifies per-call (not per-const) puts emission."
+invariant operation main "Output line count equals call count, not unique-const count."
 label startMain
-const pingText CNullTerminatedByteString "ping"
+storage module immutable pingText String "ping"
 call writeOneCall console.writeLine
-arg writeOneCall console console
-arg writeOneCall text pingText
+argument writeOneCall console Console console
+argument writeOneCall text String pingText
 run writeOneCall
-ignoreOk writeOneCall Void
+ignore void source writeOneCall
 call writeTwoCall console.writeLine
-arg writeTwoCall console console
-arg writeTwoCall text pingText
+argument writeTwoCall console Console console
+argument writeTwoCall text String pingText
 run writeTwoCall
-ignoreOk writeTwoCall Void
+ignore void source writeTwoCall
 call writeThreeCall console.writeLine
-arg writeThreeCall console console
-arg writeThreeCall text pingText
+argument writeThreeCall console Console console
+argument writeThreeCall text String pingText
 run writeThreeCall
-ignoreOk writeThreeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeThreeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

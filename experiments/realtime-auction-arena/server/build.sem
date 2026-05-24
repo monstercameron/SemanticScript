@@ -1,0 +1,370 @@
+module app.realtime_auction_arena.server.build
+purpose module app.realtime_auction_arena.server.build "Build plan for the Realtime Auction Arena server scaffold."
+moduleOwns app.realtime_auction_arena.server.build "Project metadata, webServer target selection, native HTTP bind settings, and output naming."
+moduleDoesNotOwn app.realtime_auction_arena.server.build "Application route behavior or runtime adapter internals."
+invariant module app.realtime_auction_arena.server.build "The first runnable server uses target webServer and native runtime version 1."
+
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server "src/main.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.server_context "src/server_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auth_context "src/auth_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.observability_context "src/observability_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auction_context "src/auction_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.event_context "src/event_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.sse_context "src/sse_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.chat_context "src/chat_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.audit_context "src/audit_context.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.runtime_constants "src/runtime_constants.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.sql_queries "src/sql_queries.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.wire_envelopes "src/wire_envelopes.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.http_helpers "src/http_helpers.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.models "src/models.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auction_domain "src/auction_domain.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.responses "src/responses.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.routes "src/routes.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auth "src/auth.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.middleware "src/middleware.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.persistence "src/persistence.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.persistence_tx "src/persistence_tx.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auction_events "src/auction_events.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.auction_supervisor "src/auction_supervisor.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.chat "src/chat.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.build "build.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.main "src/main.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.server_context "src/server_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auth_context "src/auth_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.observability_context "src/observability_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auction_context "src/auction_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.event_context "src/event_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.sse_context "src/sse_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.chat_context "src/chat_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.audit_context "src/audit_context.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.runtime_constants "src/runtime_constants.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.sql_queries "src/sql_queries.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.wire_envelopes "src/wire_envelopes.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.http_helpers "src/http_helpers.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.models "src/models.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auction_domain "src/auction_domain.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auction_events "src/auction_events.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auction_supervisor "src/auction_supervisor.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.responses "src/responses.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.routes "src/routes.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auth_contract "src/auth.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.middleware "src/middleware.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.persistence "src/persistence.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.persistence_tx "src/persistence_tx.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.chat_contract "src/chat.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auth "tests/auth_tests.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.chat "tests/chat_tests.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.rules "tests/rule_tests.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.auth_tests_coverage "tests/auth_tests.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.chat_tests_coverage "tests/chat_tests.test.sem"
+registerModule realtimeAuctionArenaServer app.realtime_auction_arena.server.tests.rule_tests_coverage "tests/rule_tests.test.sem"
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+
+record BuildModules
+field BuildModules main BuildModule
+field BuildModules server_context BuildModule
+field BuildModules auth_context BuildModule
+field BuildModules observability_context BuildModule
+field BuildModules auction_context BuildModule
+field BuildModules event_context BuildModule
+field BuildModules sse_context BuildModule
+field BuildModules chat_context BuildModule
+field BuildModules audit_context BuildModule
+field BuildModules runtime_constants BuildModule
+field BuildModules sql_queries BuildModule
+field BuildModules persistence_tx BuildModule
+field BuildModules wire_envelopes BuildModule
+field BuildModules http_helpers BuildModule
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion Int64
+field BuildTarget profile String
+field BuildTarget optLevel Int64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget asyncRuntime String
+field BuildTarget nativeHttpHost String
+field BuildTarget nativeHttpPort Int64
+field BuildTarget formatterLineWidth Int64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+field BuildTarget comptimeOperation String
+
+record BuildMetadata
+field BuildMetadata apiVersion String
+field BuildMetadata runtimeContract String
+field BuildMetadata scaffoldScope String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildStringConstant
+field BuildStringConstant type String
+field BuildStringConstant value String
+
+record BuildInt64Constant
+field BuildInt64Constant type String
+field BuildInt64Constant value Int64
+
+record BuildConstants
+field BuildConstants projectApiVersion BuildStringConstant
+field BuildConstants fallbackRequestId BuildStringConstant
+field BuildConstants maxJsonBodyBytes BuildInt64Constant
+field BuildConstants bcryptPasswordMaxBytes BuildInt64Constant
+field BuildConstants nativeHttpHost BuildStringConstant
+field BuildConstants nativeHttpPort BuildInt64Constant
+field BuildConstants databasePath BuildStringConstant
+field BuildConstants executableRoutes BuildStringConstant
+field BuildConstants demoAuctioneerUsername BuildStringConstant
+field BuildConstants demoAuctioneerUserId BuildStringConstant
+field BuildConstants demoBidderUsername BuildStringConstant
+field BuildConstants demoBidderUserId BuildStringConstant
+field BuildConstants auctioneerRoleCode BuildInt64Constant
+field BuildConstants bidderRoleCode BuildInt64Constant
+field BuildConstants idempotencyTtlMillis BuildInt64Constant
+field BuildConstants runtimeConstantsModule BuildStringConstant
+field BuildConstants sqlQueriesModule BuildStringConstant
+field BuildConstants wireEnvelopesModule BuildStringConstant
+field BuildConstants httpHelpersModule BuildStringConstant
+
+record BuildServerConfig
+field BuildServerConfig profile String
+field BuildServerConfig configFile String
+field BuildServerConfig hostEnv String
+field BuildServerConfig portEnv String
+field BuildServerConfig databasePathEnv String
+field BuildServerConfig jwtSecretEnv String
+field BuildServerConfig maxJsonBodyBytesEnv String
+field BuildServerConfig corsOriginsEnv String
+field BuildServerConfig rateLimitModeEnv String
+field BuildServerConfig sseHeartbeatMillisEnv String
+field BuildServerConfig requestLogModeEnv String
+field BuildServerConfig productionValidationRule String
+
+record BuildGracefulShutdown
+field BuildGracefulShutdown graceMillis Int64
+field BuildGracefulShutdown readinessDuringDrain String
+field BuildGracefulShutdown requestRule String
+field BuildGracefulShutdown commandRule String
+field BuildGracefulShutdown sqliteRule String
+field BuildGracefulShutdown runtimeStatus String
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+field BuildPlan serverConfig BuildServerConfig
+field BuildPlan gracefulShutdown BuildGracefulShutdown
+
+storage module immutable realtimeAuctionArenaServerBuildPlan BuildPlan
+jsonBody realtimeAuctionArenaServerBuildPlan
+  {
+      "project": {
+          "name": "RealtimeAuctionArenaServer",
+          "id": "realtimeAuctionArenaServer",
+          "modulePath": "github.com/monstercameron/SemanticScript/experiments/realtime-auction-arena/server",
+          "languageVersion": "1.0",
+          "projectVersion": "0.1.0",
+          "license": "MIT",
+          "sourceRoot": "src",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.realtime_auction_arena.server",
+              "sourcePath": "src",
+              "mainFile": "main.sem"
+          },
+          "server_context": {
+              "moduleName": "app.realtime_auction_arena.server.server_context",
+              "sourcePath": "src/server_context.sem",
+              "mainFile": "server_context.sem"
+          },
+          "auth_context": {
+              "moduleName": "app.realtime_auction_arena.server.auth_context",
+              "sourcePath": "src/auth_context.sem",
+              "mainFile": "auth_context.sem"
+          },
+          "observability_context": {
+              "moduleName": "app.realtime_auction_arena.server.observability_context",
+              "sourcePath": "src/observability_context.sem",
+              "mainFile": "observability_context.sem"
+          },
+          "auction_context": {
+              "moduleName": "app.realtime_auction_arena.server.auction_context",
+              "sourcePath": "src/auction_context.sem",
+              "mainFile": "auction_context.sem"
+          },
+          "event_context": {
+              "moduleName": "app.realtime_auction_arena.server.event_context",
+              "sourcePath": "src/event_context.sem",
+              "mainFile": "event_context.sem"
+          },
+          "sse_context": {
+              "moduleName": "app.realtime_auction_arena.server.sse_context",
+              "sourcePath": "src/sse_context.sem",
+              "mainFile": "sse_context.sem"
+          },
+          "chat_context": {
+              "moduleName": "app.realtime_auction_arena.server.chat_context",
+              "sourcePath": "src/chat_context.sem",
+              "mainFile": "chat_context.sem"
+          },
+          "audit_context": {
+              "moduleName": "app.realtime_auction_arena.server.audit_context",
+              "sourcePath": "src/audit_context.sem",
+              "mainFile": "audit_context.sem"
+          },
+          "runtime_constants": {
+              "moduleName": "app.realtime_auction_arena.server.runtime_constants",
+              "sourcePath": "src/runtime_constants.sem",
+              "mainFile": "runtime_constants.sem"
+          },
+          "sql_queries": {
+              "moduleName": "app.realtime_auction_arena.server.sql_queries",
+              "sourcePath": "src/sql_queries.sem",
+              "mainFile": "sql_queries.sem"
+          },
+          "persistence_tx": {
+              "moduleName": "app.realtime_auction_arena.server.persistence_tx",
+              "sourcePath": "src/persistence_tx.sem",
+              "mainFile": "persistence_tx.sem"
+          },
+          "wire_envelopes": {
+              "moduleName": "app.realtime_auction_arena.server.wire_envelopes",
+              "sourcePath": "src/wire_envelopes.sem",
+              "mainFile": "wire_envelopes.sem"
+          },
+          "http_helpers": {
+              "moduleName": "app.realtime_auction_arena.server.http_helpers",
+              "sourcePath": "src/http_helpers.sem",
+              "mainFile": "http_helpers.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "webServer",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "generic",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "asyncRuntime": "libuv",
+          "nativeHttpHost": "127.0.0.1",
+          "nativeHttpPort": 18083,
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "docsOutput": "docs",
+          "nativeOutput": "realtime_auction_arena_server.exe",
+          "comptimeOperation": "configureRealtimeAuctionArenaServerBuild"
+      },
+      "versionInfo": {
+          "version": "0.1.0.0",
+          "publisher": "Earl Cameron",
+          "description": "Realtime Auction Arena server API/auth/persistence scaffold.",
+          "copyright": "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE.",
+          "productName": "Realtime Auction Arena Server",
+          "internalName": "realtime_auction_arena_server",
+          "originalFilename": "realtime_auction_arena_server.exe",
+          "comments": "Built from experiments/realtime-auction-arena/server/src/main.sem by the SemanticScript reference compiler.",
+          "metadata": {
+              "apiVersion": "v1",
+              "runtimeContract": "native webServer registered routes",
+              "scaffoldScope": "health|readiness|metrics|api-envelope|demo-auth|body-limit|content-type-contract|method-not-allowed|idempotency-contract|observability-contract|audit-replay|persistence-schema-plan|server-config-contract|shutdown-plan"
+          }
+      },
+      "constants": {
+          "projectApiVersion": { "type": "String", "value": "v1" },
+          "fallbackRequestId": { "type": "String", "value": "req_runtime_header_unavailable" },
+          "maxJsonBodyBytes": { "type": "Int64", "value": 65536 },
+          "bcryptPasswordMaxBytes": { "type": "Int64", "value": 72 },
+          "nativeHttpHost": { "type": "String", "value": "127.0.0.1" },
+          "nativeHttpPort": { "type": "Int64", "value": 18083 },
+          "databasePath": { "type": "String", "value": "auction_arena.sqlite3" },
+          "executableRoutes": { "type": "String", "value": "healthz,readyz,metrics,apiIndex,authLogin,authRefresh,authLogout,session,auctionsList,auctionsCreate,auctionSnapshot,auctionStart,auctionExtend,auctionClose,auctionBid,auctionEvents,auctionAudit,chatCreate,chatDelete,chatReport,apiNotFound" },
+          "demoAuctioneerUsername": { "type": "String", "value": "auctioneer" },
+          "demoAuctioneerUserId": { "type": "String", "value": "user_auctioneer_001" },
+          "demoBidderUsername": { "type": "String", "value": "bidder" },
+          "demoBidderUserId": { "type": "String", "value": "user_bidder_demo" },
+          "auctioneerRoleCode": { "type": "Int64", "value": 20 },
+          "bidderRoleCode": { "type": "Int64", "value": 10 },
+          "idempotencyTtlMillis": { "type": "Int64", "value": 86400000 },
+          "runtimeConstantsModule": { "type": "String", "value": "app.realtime_auction_arena.server.runtime_constants" },
+          "sqlQueriesModule": { "type": "String", "value": "app.realtime_auction_arena.server.sql_queries" },
+          "wireEnvelopesModule": { "type": "String", "value": "app.realtime_auction_arena.server.wire_envelopes" },
+          "httpHelpersModule": { "type": "String", "value": "app.realtime_auction_arena.server.http_helpers" }
+      },
+      "serverConfig": {
+          "profile": "dev",
+          "configFile": "server.config.json",
+          "hostEnv": "AUCTION_ARENA_HOST",
+          "portEnv": "AUCTION_ARENA_PORT",
+          "databasePathEnv": "AUCTION_ARENA_DB",
+          "jwtSecretEnv": "AUCTION_ARENA_JWT_SECRET",
+          "maxJsonBodyBytesEnv": "AUCTION_ARENA_MAX_JSON_BODY_BYTES",
+          "corsOriginsEnv": "AUCTION_ARENA_CORS_ORIGINS",
+          "rateLimitModeEnv": "AUCTION_ARENA_RATE_LIMIT_MODE",
+          "sseHeartbeatMillisEnv": "AUCTION_ARENA_SSE_HEARTBEAT_MILLIS",
+          "requestLogModeEnv": "AUCTION_ARENA_REQUEST_LOG_MODE",
+          "productionValidationRule": "production requires non-source JWT secret material, explicit CORS origins, durable database path, request logging enabled, and unsafe demo defaults disabled"
+      },
+      "gracefulShutdown": {
+          "graceMillis": 5000,
+          "readinessDuringDrain": "return not-ready once shutdown begins",
+          "requestRule": "stop accepting new requests before command drain",
+          "commandRule": "reject new commands, let accepted SQLite transactions commit or roll back, then close subscribers",
+          "sqliteRule": "checkpoint WAL when available, close database handles, and keep cold backups consistent",
+          "runtimeStatus": "plan declared; native signal/cancellation hooks are not exposed to SemanticScript yet"
+      }
+  }
+
+operation configureRealtimeAuctionArenaServerBuild
+output operation configureRealtimeAuctionArenaServerBuild BuildPlan
+memory configureRealtimeAuctionArenaServerBuild heap no
+async configureRealtimeAuctionArenaServerBuild no
+purpose operation configureRealtimeAuctionArenaServerBuild "Return the typed build plan for the server scaffold."
+return value realtimeAuctionArenaServerBuildPlan

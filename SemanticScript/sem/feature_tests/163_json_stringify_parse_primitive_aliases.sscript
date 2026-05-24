@@ -6,153 +6,153 @@ target console
 runtime AgentRuntime 0.1
 module jsonStringifyParsePrimitiveAliases
 
-importModule standard.json as json
+import json standard.json
 dependency standard.json version 0.1 source standard
 
 entry console main
 
 error MainError
-errorCase MainError EncodeFailed CSignedInt32
-errorCase MainError DecodeFailed CSignedInt32
-errorCase MainError RoundTripMismatch CSignedInt32
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError EncodeFailed Int32
+errorCase MainError DecodeFailed Int32
+errorCase MainError RoundTripMismatch Int32
+errorCase MainError ConsoleWriteFailed Int32
 
 capability jsonAliasStdout console.stdout write
-purpose jsonAliasStdout "Authority to write the primitive JSON alias smoke output."
+purpose operation jsonAliasStdout "Authority to write the primitive JSON alias smoke output."
 
 storage module immutable successExit ExitCode 0
-storage module immutable encodeFailedCode CSignedInt32 1
-storage module immutable decodeFailedCode CSignedInt32 2
-storage module immutable mismatchCode CSignedInt32 3
-storage module immutable consoleFailedCode CSignedInt32 4
+storage module immutable encodeFailedCode Int32 1
+storage module immutable decodeFailedCode Int32 2
+storage module immutable mismatchCode Int32 3
+storage module immutable consoleFailedCode Int32 4
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
 useCapability main jsonAliasStdout
-purpose main "Round-trip I64 and Bool values through json.stringify/json.parse primitive aliases and print byte-observable markers."
-invariant main "A no-op alias lowering cannot satisfy this test: stdout depends on real JSON text and parsed primitive control flow."
+purpose operation main "Round-trip Int64 and Bool values through json.stringify/json.parse primitive aliases and print byte-observable markers."
+invariant operation main "A no-op alias lowering cannot satisfy this test: stdout depends on real JSON text and parsed primitive control flow."
 
 label startMain
 
-const fortyTwoValue I64 42
-call stringifyIntegerCall json.stringify.I64
-arg stringifyIntegerCall value fortyTwoValue
+storage module immutable fortyTwoValue Int64 42
+call stringifyIntegerCall json.stringify.Int64
+argument stringifyIntegerCall value Int64 fortyTwoValue
 run stringifyIntegerCall
-bindOk encodedInteger JsonText stringifyIntegerCall
-bindError stringifyIntegerError JsonEncodeError stringifyIntegerCall
-branchIfError stringifyIntegerCall encodeFailed
+bind ok encodedInteger JsonText stringifyIntegerCall
+bind error stringifyIntegerError JsonEncodeError stringifyIntegerCall
+branch error source stringifyIntegerCall target encodeFailed
 
 call writeEncodedIntegerCall console.writeLine
-arg writeEncodedIntegerCall console console
-arg writeEncodedIntegerCall text encodedInteger
+argument writeEncodedIntegerCall console Console console
+argument writeEncodedIntegerCall text JsonText encodedInteger
 run writeEncodedIntegerCall
-ignoreOk writeEncodedIntegerCall Void
-bindError writeEncodedIntegerError ConsoleWriteError writeEncodedIntegerCall
-branchIfError writeEncodedIntegerCall consoleWriteFailed
+ignore void source writeEncodedIntegerCall
+bind error writeEncodedIntegerError ConsoleWriteError writeEncodedIntegerCall
+branch error source writeEncodedIntegerCall target consoleWriteFailed
 
-call parseIntegerCall json.parse.I64
-arg parseIntegerCall jsonText encodedInteger
+call parseIntegerCall json.parse.Int64
+argument parseIntegerCall jsonText JsonText encodedInteger
 run parseIntegerCall
-bindOk decodedInteger I64 parseIntegerCall
-bindError parseIntegerError JsonDecodeError parseIntegerCall
-branchIfError parseIntegerCall decodeFailed
+bind ok decodedInteger Int64 parseIntegerCall
+bind error parseIntegerError JsonDecodeError parseIntegerCall
+branch error source parseIntegerCall target decodeFailed
 
 call writeDecodedIntegerCall console.writeIntegerLine
-arg writeDecodedIntegerCall console console
-arg writeDecodedIntegerCall value decodedInteger
+argument writeDecodedIntegerCall console Console console
+argument writeDecodedIntegerCall value Int64 decodedInteger
 run writeDecodedIntegerCall
-ignoreOk writeDecodedIntegerCall Void
-bindError writeDecodedIntegerError ConsoleWriteError writeDecodedIntegerCall
-branchIfError writeDecodedIntegerCall consoleWriteFailed
+ignore void source writeDecodedIntegerCall
+bind error writeDecodedIntegerError ConsoleWriteError writeDecodedIntegerCall
+branch error source writeDecodedIntegerCall target consoleWriteFailed
 
-const trueValue Bool 1
+storage module immutable trueValue Bool 1
 call stringifyTrueCall json.stringify.Bool
-arg stringifyTrueCall value trueValue
+argument stringifyTrueCall value Bool trueValue
 run stringifyTrueCall
-bindOk encodedTrue JsonText stringifyTrueCall
-bindError stringifyTrueError JsonEncodeError stringifyTrueCall
-branchIfError stringifyTrueCall encodeFailed
+bind ok encodedTrue JsonText stringifyTrueCall
+bind error stringifyTrueError JsonEncodeError stringifyTrueCall
+branch error source stringifyTrueCall target encodeFailed
 
 call writeEncodedTrueCall console.writeLine
-arg writeEncodedTrueCall console console
-arg writeEncodedTrueCall text encodedTrue
+argument writeEncodedTrueCall console Console console
+argument writeEncodedTrueCall text JsonText encodedTrue
 run writeEncodedTrueCall
-ignoreOk writeEncodedTrueCall Void
-bindError writeEncodedTrueError ConsoleWriteError writeEncodedTrueCall
-branchIfError writeEncodedTrueCall consoleWriteFailed
+ignore void source writeEncodedTrueCall
+bind error writeEncodedTrueError ConsoleWriteError writeEncodedTrueCall
+branch error source writeEncodedTrueCall target consoleWriteFailed
 
 call parseTrueCall json.parse.Bool
-arg parseTrueCall jsonText encodedTrue
+argument parseTrueCall jsonText JsonText encodedTrue
 run parseTrueCall
-bindOk decodedTrue Bool parseTrueCall
-bindError parseTrueError JsonDecodeError parseTrueCall
-branchIfError parseTrueCall decodeFailed
+bind ok decodedTrue Bool parseTrueCall
+bind error parseTrueError JsonDecodeError parseTrueCall
+branch error source parseTrueCall target decodeFailed
 
-branchIf decodedTrue parsedTrueOk
-branch roundTripMismatch
+branch if condition decodedTrue target parsedTrueOk
+branch else target roundTripMismatch
 
 label parsedTrueOk
-const parsedTrueMarker CNullTerminatedByteString "parsedTrue"
+storage module immutable parsedTrueMarker String "parsedTrue"
 call writeParsedTrueCall console.writeLine
-arg writeParsedTrueCall console console
-arg writeParsedTrueCall text parsedTrueMarker
+argument writeParsedTrueCall console Console console
+argument writeParsedTrueCall text String parsedTrueMarker
 run writeParsedTrueCall
-ignoreOk writeParsedTrueCall Void
-bindError writeParsedTrueError ConsoleWriteError writeParsedTrueCall
-branchIfError writeParsedTrueCall consoleWriteFailed
+ignore void source writeParsedTrueCall
+bind error writeParsedTrueError ConsoleWriteError writeParsedTrueCall
+branch error source writeParsedTrueCall target consoleWriteFailed
 
-const falseValue Bool 0
+storage module immutable falseValue Bool 0
 call stringifyFalseCall json.stringify.Bool
-arg stringifyFalseCall value falseValue
+argument stringifyFalseCall value Bool falseValue
 run stringifyFalseCall
-bindOk encodedFalse JsonText stringifyFalseCall
-bindError stringifyFalseError JsonEncodeError stringifyFalseCall
-branchIfError stringifyFalseCall encodeFailed
+bind ok encodedFalse JsonText stringifyFalseCall
+bind error stringifyFalseError JsonEncodeError stringifyFalseCall
+branch error source stringifyFalseCall target encodeFailed
 
 call writeEncodedFalseCall console.writeLine
-arg writeEncodedFalseCall console console
-arg writeEncodedFalseCall text encodedFalse
+argument writeEncodedFalseCall console Console console
+argument writeEncodedFalseCall text JsonText encodedFalse
 run writeEncodedFalseCall
-ignoreOk writeEncodedFalseCall Void
-bindError writeEncodedFalseError ConsoleWriteError writeEncodedFalseCall
-branchIfError writeEncodedFalseCall consoleWriteFailed
+ignore void source writeEncodedFalseCall
+bind error writeEncodedFalseError ConsoleWriteError writeEncodedFalseCall
+branch error source writeEncodedFalseCall target consoleWriteFailed
 
 call parseFalseCall json.parse.Bool
-arg parseFalseCall jsonText encodedFalse
+argument parseFalseCall jsonText JsonText encodedFalse
 run parseFalseCall
-bindOk decodedFalse Bool parseFalseCall
-bindError parseFalseError JsonDecodeError parseFalseCall
-branchIfError parseFalseCall decodeFailed
+bind ok decodedFalse Bool parseFalseCall
+bind error parseFalseError JsonDecodeError parseFalseCall
+branch error source parseFalseCall target decodeFailed
 
-branchIf decodedFalse roundTripMismatch
+branch if condition decodedFalse target roundTripMismatch
 
-const parsedFalseMarker CNullTerminatedByteString "parsedFalse"
+storage module immutable parsedFalseMarker String "parsedFalse"
 call writeParsedFalseCall console.writeLine
-arg writeParsedFalseCall console console
-arg writeParsedFalseCall text parsedFalseMarker
+argument writeParsedFalseCall console Console console
+argument writeParsedFalseCall text String parsedFalseMarker
 run writeParsedFalseCall
-ignoreOk writeParsedFalseCall Void
-bindError writeParsedFalseError ConsoleWriteError writeParsedFalseCall
-branchIfError writeParsedFalseCall consoleWriteFailed
+ignore void source writeParsedFalseCall
+bind error writeParsedFalseError ConsoleWriteError writeParsedFalseCall
+branch error source writeParsedFalseCall target consoleWriteFailed
 
-returnOk successExit
+return ok successExit
 
 label encodeFailed
 makeError encodeFailure MainError.EncodeFailed encodeFailedCode
-returnError encodeFailure
+return error encodeFailure
 
 label decodeFailed
 makeError decodeFailure MainError.DecodeFailed decodeFailedCode
-returnError decodeFailure
+return error decodeFailure
 
 label roundTripMismatch
 makeError mismatchFailure MainError.RoundTripMismatch mismatchCode
-returnError mismatchFailure
+return error mismatchFailure
 
 label consoleWriteFailed
 makeError consoleFailure MainError.ConsoleWriteFailed consoleFailedCode
-returnError consoleFailure
+return error consoleFailure

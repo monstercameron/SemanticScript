@@ -5,30 +5,30 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Load first byte of 'Hi!' (ASCII 'H' = 72) and print."
-invariant main "Tests pointer.loadByte from user code with string-const buffer."
+purpose operation main "Load first byte of 'Hi!' (ASCII 'H' = 72) and print."
+invariant operation main "Tests pointer.loadByte from user code with string-const buffer."
 label startMain
-const greetingText CNullTerminatedByteString "Hi!"
-const zeroOffset I64 0
+storage module immutable greetingText String "Hi!"
+storage module immutable zeroOffset Int64 0
 call loadCall pointer.loadByte
-arg loadCall buffer greetingText
-arg loadCall offset zeroOffset
+argument loadCall buffer String greetingText
+argument loadCall offset Int64 zeroOffset
 run loadCall
-bind firstByte I8 loadCall
-var firstByteVar I64 zeroOffset
-set firstByteVar firstByte
+bind value firstByte Int8 loadCall
+memory main mutable firstByteVar Int64 zeroOffset
+set memory firstByteVar firstByte
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value firstByteVar
+argument writeCall console Console console
+argument writeCall value Int64 firstByteVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

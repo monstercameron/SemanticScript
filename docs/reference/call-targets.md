@@ -14,11 +14,11 @@ generated targets, domain methods, and `c.*` C standard-library functions.
 Example:
 
 ```semanticscript
-const greetingText String "hello"
+storage local immutable greetingText String "hello"
 call writeGreetingCall console.writeLine
-arg writeGreetingCall text greetingText
+argument writeGreetingCall text String greetingText
 run writeGreetingCall
-ignoreOk writeGreetingCall Void
+ignore ok source writeGreetingCall type Void
 ```
 
 Declare the effect:
@@ -32,78 +32,78 @@ effect main write console.stdout
 Canonical targets:
 
 ```text
-math.addI64
-math.subtractI64
-math.multiplyI64
-math.divideI64
-math.moduloI64
-math.equalI64
-math.notEqualI64
-math.lessThanI64
-math.lessThanOrEqualI64
-math.greaterThanI64
-math.greaterThanOrEqualI64
-math.checkedMultiplyI64
-math.equalCSignedInt32
-math.notEqualCSignedInt32
-math.lessThanCSignedInt32
-math.lessThanOrEqualCSignedInt32
-math.greaterThanCSignedInt32
-math.greaterThanOrEqualCSignedInt32
+math.addInt64
+math.subtractInt64
+math.multiplyInt64
+math.divideInt64
+math.moduloInt64
+math.equalInt64
+math.notEqualInt64
+math.lessThanInt64
+math.lessThanOrEqualInt64
+math.greaterThanInt64
+math.greaterThanOrEqualInt64
+math.checkedMultiplyInt64
+math.equalInt32
+math.notEqualInt32
+math.lessThanInt32
+math.lessThanOrEqualInt32
+math.greaterThanInt32
+math.greaterThanOrEqualInt32
 ```
 
-Short aliases such as `math.subI64`, `math.mulI64`, `math.divI64`, `math.eqI64`,
-and `math.ltI64` are normalized to canonical targets.
+Short aliases such as `math.subInt64`, `math.mulInt64`, `math.divInt64`, `math.eqInt64`,
+and `math.ltInt64` are normalized to canonical targets.
 
-Math target names are width contracts. `math.*I64` requires I64-shaped
-operands, and `math.*CSignedInt32` requires CSignedInt32-shaped operands. The
+Math target names are width contracts. `math.*Int64` requires Int64-shaped
+operands, and `math.*Int32` requires Int32-shaped operands. The
 compiler does not widen or narrow these operands implicitly; use an explicit
 conversion operation when the conversion is intended.
 
-`math.checkedMultiplyI64` returns a product plus an overflow predicate
+`math.checkedMultiplyInt64` returns a product plus an overflow predicate
 internally. Handle it like a fallible call:
 
 ```semanticscript
-call multiplyCall math.checkedMultiplyI64
-arg multiplyCall left leftValue
-arg multiplyCall right rightValue
+call multiplyCall math.checkedMultiplyInt64
+argument multiplyCall left Int64 leftValue
+argument multiplyCall right Int64 rightValue
 run multiplyCall
-bindOk productValue I64 multiplyCall
-bindError multiplyOverflow ArithmeticError multiplyCall
-branchIfError multiplyCall overflowLabel
+bind ok productValue Int64 multiplyCall
+bind error multiplyOverflow ArithmeticError multiplyCall
+branch error source multiplyCall target overflowLabel
 ```
 
 ## Floating-Point Math
 
 ```text
-math.addF64
-math.subtractF64
-math.multiplyF64
-math.divideF64
-math.equalF64
-math.notEqualF64
-math.lessThanF64
-math.lessThanOrEqualF64
-math.greaterThanF64
-math.greaterThanOrEqualF64
+math.addFloat64
+math.subtractFloat64
+math.multiplyFloat64
+math.divideFloat64
+math.equalFloat64
+math.notEqualFloat64
+math.lessThanFloat64
+math.lessThanOrEqualFloat64
+math.greaterThanFloat64
+math.greaterThanOrEqualFloat64
 ```
 
 Conversions:
 
 ```text
-math.intToFloat
-math.floatToInt
-math.signExtendCSignedInt32ToCSignedInt64
-math.truncateCSignedInt64ToCSignedInt32
+math.convertInt64ToFloat64
+math.convertFloat64ToInt64
+math.signExtendInt32ToInt64
+math.truncateInt64ToInt32
 math.convertSignedInt64ToFloat64
 math.convertFloat64ToSignedInt64
 math.convertSignedInt32ToSignedInt64
 math.convertSignedInt64ToSignedInt32
 ```
 
-F64 math requires F64-shaped operands. `math.intToFloat` accepts I64 input, and
-`math.floatToInt` accepts F64 input. `math.signExtendCSignedInt32ToCSignedInt64`
-and `math.truncateCSignedInt64ToCSignedInt32` are the explicit integer width
+Float64 math requires Float64-shaped operands. `math.convertInt64ToFloat64` accepts Int64 input, and
+`math.convertFloat64ToInt64` accepts Float64 input. `math.signExtendInt32ToInt64`
+and `math.truncateInt64ToInt32` are the explicit integer width
 conversion targets; the `math.convert*` names are normalized aliases.
 
 C macro-style classifiers are available as `c.*` calls and lower inline:
@@ -138,19 +138,54 @@ pointer.storeByte  write memory.buffer
 `pointer.offset`, `pointer.difference`, and `pointer.isNull` are pure pointer
 arithmetic/check operations.
 
+## Outbound Network Targets
+
+The prototype runtime HTTP client surface lives under `standard.net` and
+`net.fetch*` so it cannot collide with server-side `http.request*` and
+`http.response*` APIs.
+
+```text
+net.fetchText
+net.fetchBytes
+```
+
+`net.fetchText` is expected to take:
+
+```text
+request HttpGetRequest
+```
+
+and expose:
+
+```text
+Result HttpTextResponse HttpClientErrorCode
+```
+
+`HttpGetRequest` contains `url` and nested `policy.timeoutMillis`,
+`policy.maxBodyBytes`, and `policy.redirectLimit` fields. `HttpTextResponse`
+contains `status` and caller-owned `body`; release that body with
+`net.freeTextBody` or an equivalent heap free after use.
+
+The native prototype lives in `SemanticScript/runtime/native_http_client/` and
+uses `SemanticScript/runtime/native_async/` when libuv is enabled. Application
+source must declare `effect OP write network.http.client` for outbound fetch
+work. Real network behavior still depends on the optional libcurl/libuv runtime
+build; the source/API shape is intentionally separate from server-side
+`standard.http`.
+
 ## Domain Methods
 
 A target of the shape `TypeName.methodName` can lower to a primitive operation
 when `TypeName` aliases an integer or floating type.
 
 ```semanticscript
-type CountdownValue I64
+type CountdownValue Int64
 
 call decrementCall CountdownValue.subtractPositiveStep
-arg decrementCall left currentCountdownValue
-arg decrementCall right decrementStep
+argument decrementCall left CountdownValue currentCountdownValue
+argument decrementCall right CountdownValue decrementStep
 run decrementCall
-bind nextCountdownValue CountdownValue decrementCall
+bind value nextCountdownValue CountdownValue decrementCall
 ```
 
 Common integer domain methods include:
@@ -171,13 +206,13 @@ emits a direct LLVM call.
 
 ```semanticscript
 call helperCall writeStandardOutputLine
-arg helperCall text outputText
+argument helperCall text String outputText
 run helperCall
-bindError helperError ConsoleWriteError helperCall
-branchIfError helperCall helperFailed
+bind error helperError ConsoleWriteError helperCall
+branch error source helperCall target helperFailed
 ```
 
-The argument names in `arg` lines must match the callee's input names for
+The argument names in `argument` lines must match the callee's input names for
 maintainable source. The current compiler dispatches by callee input order.
 
 ## C Standard Library
@@ -185,11 +220,11 @@ maintainable source. The current compiler dispatches by callee input order.
 `c.<function>` routes through `SemanticScript/compiler/libc_registry.py`.
 
 ```semanticscript
-const byteCount CByteCount 64
+storage local immutable byteCount ByteCount 64
 call allocateBufferCall c.malloc
-arg allocateBufferCall size byteCount
+argument allocateBufferCall size ByteCount byteCount
 run allocateBufferCall
-bind allocatedBuffer COpaqueMemoryAddress allocateBufferCall
+bind value allocatedBuffer OpaquePointer allocateBufferCall
 ```
 
 The registry covers hosted C library functions across headers such as

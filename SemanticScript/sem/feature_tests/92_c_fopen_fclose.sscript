@@ -5,41 +5,41 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read filesystem
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Open a real existing file (this very test file) via c.fopen, then close it via c.fclose. Print 'opened' on success."
-invariant main "Exercises c.fopen, pointer.isNull on its result, and c.fclose."
+purpose operation main "Open a real existing file (this very test file) via c.fopen, then close it via c.fclose. Print 'opened' on success."
+invariant operation main "Exercises c.fopen, pointer.isNull on its result, and c.fclose."
 label startMain
-const filePath CNullTerminatedByteString "sem/feature_tests/92_c_fopen_fclose.sscript"
-const readMode CNullTerminatedByteString "r"
-const okMessage CNullTerminatedByteString "opened"
+storage module immutable filePath String "sem/feature_tests/92_c_fopen_fclose.sscript"
+storage module immutable readMode String "r"
+storage module immutable okMessage String "opened"
 call openCall c.fopen
-arg openCall path filePath
-arg openCall mode readMode
+argument openCall path String filePath
+argument openCall mode String readMode
 run openCall
-bind fileHandle COpaqueMemoryAddress openCall
+bind value fileHandle OpaquePointer openCall
 call nullCheckCall pointer.isNull
-arg nullCheckCall p fileHandle
+argument nullCheckCall p OpaquePointer fileHandle
 run nullCheckCall
-bind handleIsNull Bool nullCheckCall
-branchIf handleIsNull openFailed
+bind value handleIsNull Bool nullCheckCall
+branch if condition handleIsNull target openFailed
 call putsCall c.puts
-arg putsCall text okMessage
+argument putsCall text String okMessage
 run putsCall
-ignoreOk putsCall CSignedInt32
+ignore ok source putsCall type Int32
 call closeCall c.fclose
-arg closeCall stream fileHandle
+argument closeCall stream OpaquePointer fileHandle
 run closeCall
-ignoreOk closeCall CSignedInt32
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore ok source closeCall type Int32
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label openFailed
-const failedExit CSignedInt32 1
+storage module immutable failedExit Int32 1
 makeError openFailure MainError.Placeholder failedExit
-returnError openFailure
+return error openFailure

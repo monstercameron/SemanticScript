@@ -22,6 +22,8 @@ int main(void) {
         8080,
         routes,
         sizeof(routes) / sizeof(routes[0]),
+        NULL,
+        NULL,
     };
 
     int rc = ss_http_server_run(&config);

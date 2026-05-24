@@ -5,39 +5,39 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 record Counter layout row align 8
-purpose Counter "A single I64 counter wrapped in a record."
-field Counter value I64
+purpose operation Counter "A single Int64 counter wrapped in a record."
+field Counter value Int64
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Mutate a local var (compute 25 via add), then store it into a record field via fieldSet."
-invariant main "Counter.value ends at 25; print it."
+purpose operation main "Mutate a local var (compute 25 via add), then store it into a record field via fieldSet."
+invariant operation main "Counter.value ends at 25; print it."
 label startMain
-const fifteenC I64 15
-const tenC I64 10
-var localVal I64 fifteenC
-call sumCall math.addI64
-arg sumCall left localVal
-arg sumCall right tenC
+storage module immutable fifteenC Int64 15
+storage module immutable tenC Int64 10
+memory main mutable localVal Int64 fifteenC
+call sumCall math.addInt64
+argument sumCall left Int64 localVal
+argument sumCall right Int64 tenC
 run sumCall
-bind sumResult I64 sumCall
-set localVal sumResult
+bind value sumResult Int64 sumCall
+set memory localVal sumResult
 new myCounter Counter
 fieldSet myCounter value localVal
-fieldGet readValue I64 myCounter value
-var displayStore I64 0
-set displayStore readValue
+fieldGet readValue Int64 myCounter value
+memory main mutable displayStore Int64 0
+set memory displayStore readValue
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value displayStore
+argument writeCall console Console console
+argument writeCall value Int64 displayStore
 run writeCall
-ignoreOk writeCall Void
-const okExit ExitCode 0
-returnOk okExit
+ignore void source writeCall
+storage module immutable okExit ExitCode 0
+return ok okExit

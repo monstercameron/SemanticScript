@@ -1,0 +1,12 @@
+Placeholder for the future Windows application manifest.
+
+Planned manifest concerns:
+- UTF-8 process code page for GUI text crossing the SemanticScript runtime.
+- Common controls v6 dependency when the native Win32 backend exposes it.
+- DPI awareness once standard.gui exposes sizing/layout policy.
+- Requested execution level asInvoker.
+- Future app identity fields if this console is packaged.
+
+This is intentionally a note, not an active manifest, because the current
+SemanticScript Windows GUI build path does not yet consume per-project manifest
+resources.

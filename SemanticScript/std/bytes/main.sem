@@ -1,0 +1,333 @@
+# SemanticScript standard-library canonical module: standard.bytes.
+
+module standard.bytes
+purpose module standard.bytes "Canonical standard-library module for read-only byte-buffer scans and predicates."
+moduleOwns standard.bytes "The official import path `standard.bytes` and the executable `bytes.*` helper surface."
+moduleDoesNotOwn standard.bytes "Mutable buffer utilities, fixed-array helpers, or app-specific wrappers."
+invariant module standard.bytes "The standard byte-scanning entry point is this file; mutable byte-buffer edits live under `standard.buffer`."
+
+import memory standard.memory
+
+exportConstant standard.bytes bytesModuleVersionText
+storage module immutable bytesModuleVersionText String "standard.bytes 0.2"
+
+domainLiteral integerOneStepValue Int64 1
+domainLiteralTrust integerOneStepValue trustedStaticLiteral
+domainLiteral byteRoleAdjustmentValue Int64 256
+domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
+domainLiteral emptyBufferMinimumSentinel Int64 256
+domainLiteralTrust emptyBufferMinimumSentinel trustedStaticLiteral
+domainLiteral emptyBufferMaximumSentinel Int64 -1
+domainLiteralTrust emptyBufferMaximumSentinel trustedStaticLiteral
+
+storage module immutable bytesTrueResult Bool true
+storage module immutable bytesFalseResult Bool false
+storage module immutable bytesZeroValue Int64 0
+
+operation bytes.sum
+input operation bytes.sum byteBuffer OpaquePointer
+input operation bytes.sum byteCount ByteCount
+output operation bytes.sum Int64
+memory bytes.sum heap no
+async bytes.sum no
+purpose operation bytes.sum "Returns the sum of byte values in the first byteCount bytes of byteBuffer (each byte treated as an unsigned 0..255 value)."
+invariant operation bytes.sum "Result is non-negative when byteCount fits within the buffer's allocation."
+warning bytes.sum "Overflows silently when byteCount * 255 exceeds Int64."
+guarantee bytes.sum "Total."
+memory bytes.sum mutable bufferRunningSum Int64 0
+memory bytes.sum mutable bufferReadCursor Int64 0
+label bytesSumLoop
+call detectSumDoneCall math.greaterThanOrEqualInt64
+argument detectSumDoneCall left Int64 bufferReadCursor
+argument detectSumDoneCall right Int64 byteCount
+run detectSumDoneCall
+bind value sumLoopDone Bool detectSumDoneCall
+branch if condition sumLoopDone target bytesSumDone
+call loadByteForSumCall pointer.loadByte
+argument loadByteForSumCall buffer OpaquePointer byteBuffer
+argument loadByteForSumCall offset ByteCount bufferReadCursor
+run loadByteForSumCall
+bind value rawSignExtendedByte Int8 loadByteForSumCall
+call shiftByteForUnsignedSumCall math.addInt64
+argument shiftByteForUnsignedSumCall left Int64 rawSignExtendedByte
+argument shiftByteForUnsignedSumCall right Int64 byteRoleAdjustmentValue
+run shiftByteForUnsignedSumCall
+bind value shiftedByteForSum Int64 shiftByteForUnsignedSumCall
+call moduloByteForUnsignedSumCall math.moduloInt64
+argument moduloByteForUnsignedSumCall left Int64 shiftedByteForSum
+argument moduloByteForUnsignedSumCall right Int64 byteRoleAdjustmentValue
+run moduloByteForUnsignedSumCall
+bind value unsignedByteValue Int64 moduloByteForUnsignedSumCall
+call addByteToRunningSumCall math.addInt64
+argument addByteToRunningSumCall left Int64 bufferRunningSum
+argument addByteToRunningSumCall right Int64 unsignedByteValue
+run addByteToRunningSumCall
+bind value updatedRunningSum Int64 addByteToRunningSumCall
+set memory bufferRunningSum updatedRunningSum
+call advanceSumCursorCall math.addInt64
+argument advanceSumCursorCall left Int64 bufferReadCursor
+argument advanceSumCursorCall right Int64 integerOneStepValue
+run advanceSumCursorCall
+bind value nextSumCursorPosition Int64 advanceSumCursorCall
+set memory bufferReadCursor nextSumCursorPosition
+jump target bytesSumLoop
+label bytesSumDone
+return value bufferRunningSum
+
+operation bytes.min
+input operation bytes.min byteBuffer OpaquePointer
+input operation bytes.min byteCount ByteCount
+output operation bytes.min Int64
+memory bytes.min heap no
+async bytes.min no
+purpose operation bytes.min "Returns the smallest unsigned-byte value in [0, byteCount). For an empty buffer returns 256."
+invariant operation bytes.min "Result is in [0, 255] for non-empty input; 256 for empty input."
+guarantee bytes.min "Total."
+memory bytes.min mutable runningMinimumValue Int64 256
+memory bytes.min mutable minSearchCursor Int64 0
+label bytesMinLoop
+call detectMinSearchDoneCall math.greaterThanOrEqualInt64
+argument detectMinSearchDoneCall left Int64 minSearchCursor
+argument detectMinSearchDoneCall right Int64 byteCount
+run detectMinSearchDoneCall
+bind value minSearchDone Bool detectMinSearchDoneCall
+branch if condition minSearchDone target bytesMinComplete
+call loadByteForMinSearchCall pointer.loadByte
+argument loadByteForMinSearchCall buffer OpaquePointer byteBuffer
+argument loadByteForMinSearchCall offset ByteCount minSearchCursor
+run loadByteForMinSearchCall
+bind value minSearchRawByte Int8 loadByteForMinSearchCall
+call shiftByteForMinSearchCall math.addInt64
+argument shiftByteForMinSearchCall left Int64 minSearchRawByte
+argument shiftByteForMinSearchCall right Int64 byteRoleAdjustmentValue
+run shiftByteForMinSearchCall
+bind value shiftedMinSearchByte Int64 shiftByteForMinSearchCall
+call normalizeMinSearchByteCall math.moduloInt64
+argument normalizeMinSearchByteCall left Int64 shiftedMinSearchByte
+argument normalizeMinSearchByteCall right Int64 byteRoleAdjustmentValue
+run normalizeMinSearchByteCall
+bind value normalizedMinSearchByte Int64 normalizeMinSearchByteCall
+call compareForNewMinimumCall math.lessThanInt64
+argument compareForNewMinimumCall left Int64 normalizedMinSearchByte
+argument compareForNewMinimumCall right Int64 runningMinimumValue
+run compareForNewMinimumCall
+bind value newMinimumDiscovered Bool compareForNewMinimumCall
+branch if condition newMinimumDiscovered target recordNewMinimum
+jump target advanceMinSearchCursor
+label recordNewMinimum
+set memory runningMinimumValue normalizedMinSearchByte
+jump target advanceMinSearchCursor
+label advanceMinSearchCursor
+call advanceMinSearchCursorCall math.addInt64
+argument advanceMinSearchCursorCall left Int64 minSearchCursor
+argument advanceMinSearchCursorCall right Int64 integerOneStepValue
+run advanceMinSearchCursorCall
+bind value nextMinSearchCursor Int64 advanceMinSearchCursorCall
+set memory minSearchCursor nextMinSearchCursor
+jump target bytesMinLoop
+label bytesMinComplete
+return value runningMinimumValue
+
+operation bytes.max
+input operation bytes.max byteBuffer OpaquePointer
+input operation bytes.max byteCount ByteCount
+output operation bytes.max Int64
+memory bytes.max heap no
+async bytes.max no
+purpose operation bytes.max "Returns the largest unsigned-byte value in [0, byteCount). For an empty buffer returns -1."
+invariant operation bytes.max "Result is in [0, 255] for non-empty input; -1 for empty input."
+guarantee bytes.max "Total."
+memory bytes.max mutable runningMaximumValue Int64 -1
+memory bytes.max mutable maxSearchCursor Int64 0
+label bytesMaxLoop
+call detectMaxSearchDoneCall math.greaterThanOrEqualInt64
+argument detectMaxSearchDoneCall left Int64 maxSearchCursor
+argument detectMaxSearchDoneCall right Int64 byteCount
+run detectMaxSearchDoneCall
+bind value maxSearchDone Bool detectMaxSearchDoneCall
+branch if condition maxSearchDone target bytesMaxComplete
+call loadByteForMaxSearchCall pointer.loadByte
+argument loadByteForMaxSearchCall buffer OpaquePointer byteBuffer
+argument loadByteForMaxSearchCall offset ByteCount maxSearchCursor
+run loadByteForMaxSearchCall
+bind value maxSearchRawByte Int8 loadByteForMaxSearchCall
+call shiftByteForMaxSearchCall math.addInt64
+argument shiftByteForMaxSearchCall left Int64 maxSearchRawByte
+argument shiftByteForMaxSearchCall right Int64 byteRoleAdjustmentValue
+run shiftByteForMaxSearchCall
+bind value shiftedMaxSearchByte Int64 shiftByteForMaxSearchCall
+call normalizeMaxSearchByteCall math.moduloInt64
+argument normalizeMaxSearchByteCall left Int64 shiftedMaxSearchByte
+argument normalizeMaxSearchByteCall right Int64 byteRoleAdjustmentValue
+run normalizeMaxSearchByteCall
+bind value normalizedMaxSearchByte Int64 normalizeMaxSearchByteCall
+call compareForNewMaximumCall math.greaterThanInt64
+argument compareForNewMaximumCall left Int64 normalizedMaxSearchByte
+argument compareForNewMaximumCall right Int64 runningMaximumValue
+run compareForNewMaximumCall
+bind value newMaximumDiscovered Bool compareForNewMaximumCall
+branch if condition newMaximumDiscovered target recordNewMaximum
+jump target advanceMaxSearchCursor
+label recordNewMaximum
+set memory runningMaximumValue normalizedMaxSearchByte
+jump target advanceMaxSearchCursor
+label advanceMaxSearchCursor
+call advanceMaxSearchCursorCall math.addInt64
+argument advanceMaxSearchCursorCall left Int64 maxSearchCursor
+argument advanceMaxSearchCursorCall right Int64 integerOneStepValue
+run advanceMaxSearchCursorCall
+bind value nextMaxSearchCursor Int64 advanceMaxSearchCursorCall
+set memory maxSearchCursor nextMaxSearchCursor
+jump target bytesMaxLoop
+label bytesMaxComplete
+return value runningMaximumValue
+
+operation bytes.contains
+input operation bytes.contains byteBuffer OpaquePointer
+input operation bytes.contains byteCount ByteCount
+input operation bytes.contains targetValue Int32
+output operation bytes.contains Bool
+memory bytes.contains heap no
+async bytes.contains no
+purpose operation bytes.contains "Returns true if any byte in [0, byteCount) of byteBuffer equals targetValue."
+invariant operation bytes.contains "Returns true iff some byte in the scanned prefix [0, byteCount) equals targetValue."
+guarantee bytes.contains "Total."
+memory bytes.contains mutable containsSearchCursor Int64 0
+label bytesContainsLoop
+call detectContainsDoneCall math.greaterThanOrEqualInt64
+argument detectContainsDoneCall left Int64 containsSearchCursor
+argument detectContainsDoneCall right Int64 byteCount
+run detectContainsDoneCall
+bind value containsSearchDone Bool detectContainsDoneCall
+branch if condition containsSearchDone target bytesContainsNotFound
+call loadByteForContainsCall pointer.loadByte
+argument loadByteForContainsCall buffer OpaquePointer byteBuffer
+argument loadByteForContainsCall offset ByteCount containsSearchCursor
+run loadByteForContainsCall
+bind value containsRawByte Int8 loadByteForContainsCall
+call shiftByteForContainsCall math.addInt64
+argument shiftByteForContainsCall left Int64 containsRawByte
+argument shiftByteForContainsCall right Int64 byteRoleAdjustmentValue
+run shiftByteForContainsCall
+bind value shiftedContainsByte Int64 shiftByteForContainsCall
+call normalizeContainsByteCall math.moduloInt64
+argument normalizeContainsByteCall left Int64 shiftedContainsByte
+argument normalizeContainsByteCall right Int64 byteRoleAdjustmentValue
+run normalizeContainsByteCall
+bind value normalizedContainsByte Int64 normalizeContainsByteCall
+call detectContainsMatchCall math.equalInt64
+argument detectContainsMatchCall left Int64 normalizedContainsByte
+argument detectContainsMatchCall right Int64 targetValue
+run detectContainsMatchCall
+bind value containsMatchFound Bool detectContainsMatchCall
+branch if condition containsMatchFound target bytesContainsFound
+call advanceContainsCursorCall math.addInt64
+argument advanceContainsCursorCall left Int64 containsSearchCursor
+argument advanceContainsCursorCall right Int64 integerOneStepValue
+run advanceContainsCursorCall
+bind value nextContainsCursor Int64 advanceContainsCursorCall
+set memory containsSearchCursor nextContainsCursor
+jump target bytesContainsLoop
+label bytesContainsFound
+return value bytesTrueResult
+label bytesContainsNotFound
+return value bytesFalseResult
+
+operation bytes.count
+input operation bytes.count byteBuffer OpaquePointer
+input operation bytes.count byteCount ByteCount
+input operation bytes.count targetValue Int32
+output operation bytes.count Int64
+memory bytes.count heap no
+async bytes.count no
+purpose operation bytes.count "Returns the number of bytes in [0, byteCount) that equal targetValue."
+invariant operation bytes.count "Result stays within [0, byteCount] for non-negative byteCount inputs."
+guarantee bytes.count "Total."
+memory bytes.count mutable matchCounter Int64 0
+memory bytes.count mutable countSearchCursor Int64 0
+label bytesCountLoop
+call detectCountDoneCall math.greaterThanOrEqualInt64
+argument detectCountDoneCall left Int64 countSearchCursor
+argument detectCountDoneCall right Int64 byteCount
+run detectCountDoneCall
+bind value countSearchDone Bool detectCountDoneCall
+branch if condition countSearchDone target bytesCountComplete
+call loadByteForCountCall pointer.loadByte
+argument loadByteForCountCall buffer OpaquePointer byteBuffer
+argument loadByteForCountCall offset ByteCount countSearchCursor
+run loadByteForCountCall
+bind value countSearchRawByte Int8 loadByteForCountCall
+call shiftByteForCountCall math.addInt64
+argument shiftByteForCountCall left Int64 countSearchRawByte
+argument shiftByteForCountCall right Int64 byteRoleAdjustmentValue
+run shiftByteForCountCall
+bind value shiftedCountByte Int64 shiftByteForCountCall
+call normalizeCountByteCall math.moduloInt64
+argument normalizeCountByteCall left Int64 shiftedCountByte
+argument normalizeCountByteCall right Int64 byteRoleAdjustmentValue
+run normalizeCountByteCall
+bind value normalizedCountByte Int64 normalizeCountByteCall
+call detectCountMatchCall math.equalInt64
+argument detectCountMatchCall left Int64 normalizedCountByte
+argument detectCountMatchCall right Int64 targetValue
+run detectCountMatchCall
+bind value countMatchFound Bool detectCountMatchCall
+branch if condition countMatchFound target incrementMatchCounter
+jump target advanceCountCursor
+label incrementMatchCounter
+call incrementMatchCounterCall math.addInt64
+argument incrementMatchCounterCall left Int64 matchCounter
+argument incrementMatchCounterCall right Int64 integerOneStepValue
+run incrementMatchCounterCall
+bind value updatedMatchCounter Int64 incrementMatchCounterCall
+set memory matchCounter updatedMatchCounter
+jump target advanceCountCursor
+label advanceCountCursor
+call advanceCountCursorCall math.addInt64
+argument advanceCountCursorCall left Int64 countSearchCursor
+argument advanceCountCursorCall right Int64 integerOneStepValue
+run advanceCountCursorCall
+bind value nextCountCursor Int64 advanceCountCursorCall
+set memory countSearchCursor nextCountCursor
+jump target bytesCountLoop
+label bytesCountComplete
+return value matchCounter
+
+operation bytes.indexOf
+input operation bytes.indexOf byteBuffer OpaquePointer
+input operation bytes.indexOf byteCount ByteCount
+input operation bytes.indexOf targetValue Int32
+output operation bytes.indexOf Int64
+memory bytes.indexOf heap no
+async bytes.indexOf no
+purpose operation bytes.indexOf "Returns the first matching byte offset, or -1 when targetValue is absent."
+guarantee bytes.indexOf "Total."
+call delegateBytesIndexOfCall findByteValueInMemoryRange
+argument delegateBytesIndexOfCall byteBuffer OpaquePointer byteBuffer
+argument delegateBytesIndexOfCall targetValue Int32 targetValue
+argument delegateBytesIndexOfCall byteCount ByteCount byteCount
+run delegateBytesIndexOfCall
+bind value bytesIndexOfResult Int64 delegateBytesIndexOfCall
+return value bytesIndexOfResult
+
+operation bytes.equal
+input operation bytes.equal leftBuffer OpaquePointer
+input operation bytes.equal rightBuffer OpaquePointer
+input operation bytes.equal byteCount ByteCount
+output operation bytes.equal Bool
+memory bytes.equal heap no
+async bytes.equal no
+purpose operation bytes.equal "Returns true when the first byteCount bytes of leftBuffer and rightBuffer compare equal."
+guarantee bytes.equal "Total."
+call delegateBytesEqualCall compareMemoryByteRanges
+argument delegateBytesEqualCall leftBuffer OpaquePointer leftBuffer
+argument delegateBytesEqualCall rightBuffer OpaquePointer rightBuffer
+argument delegateBytesEqualCall byteCount ByteCount byteCount
+run delegateBytesEqualCall
+bind value bytesEqualCompareResult Int64 delegateBytesEqualCall
+call bytesEqualCheckCall math.equalInt64
+argument bytesEqualCheckCall left Int64 bytesEqualCompareResult
+argument bytesEqualCheckCall right Int64 bytesZeroValue
+run bytesEqualCheckCall
+bind value bytesEqualResult Bool bytesEqualCheckCall
+return value bytesEqualResult

@@ -1,0 +1,706 @@
+# Realtime Auction Arena deterministic auction rules.
+#
+# This module implements parseable, pure rule helpers inside the currently
+# supported SemanticScript operation surface. It deliberately avoids persistence,
+# JSON, SSE, wall-clock reads, mutation of records, and alias conversion.
+# Callers pass primitive scalar snapshots extracted from records and receive
+# primitive reason codes or scalar results. `models.sem` remains the durable
+# contract layer for the richer aliases and enums.
+
+module app.realtime_auction_arena.server.auction_domain
+purpose module app.realtime_auction_arena.server.auction_domain "Deterministic auction policy, lifecycle, bid, anti-sniping, and winner-selection rule helpers."
+moduleOwns app.realtime_auction_arena.server.auction_domain "Pure rule decisions that map model facts to stable enum reason codes and scalar transition results."
+moduleDoesNotOwn app.realtime_auction_arena.server.auction_domain "HTTP API authorization plumbing, database transactions, event persistence, idempotency caches, request logging, or SSE broadcast."
+invariant module app.realtime_auction_arena.server.auction_domain "Every operation is deterministic: identical scalar inputs return identical outputs and perform no IO."
+moduleWarning app.realtime_auction_arena.server.auction_domain "TODO(runtime): replace primitive scalar parameter lists with record-by-value inputs and explicit alias conversion helpers once record field reads across module boundaries are fully supported by the compiler."
+moduleWarning app.realtime_auction_arena.server.auction_domain "TODO(runtime): add complete command-to-event construction once tagged event variants and typed JSON codecs are available."
+
+exportOperation app.realtime_auction_arena.server.auction_domain validateAuctionPolicy
+exportOperation app.realtime_auction_arena.server.auction_domain getAuctionApiContract
+exportOperation app.realtime_auction_arena.server.auction_domain validateAuctionCommandRequestRequirements
+exportOperation app.realtime_auction_arena.server.auction_domain validateAuctionCommandActor
+exportOperation app.realtime_auction_arena.server.auction_domain validateLifecycleTransition
+exportOperation app.realtime_auction_arena.server.auction_domain validateBid
+exportOperation app.realtime_auction_arena.server.auction_domain shouldExtendForAntiSniping
+exportOperation app.realtime_auction_arena.server.auction_domain computeAntiSnipingCloseTime
+exportOperation app.realtime_auction_arena.server.auction_domain selectWinnerAfterBid
+exportOperation app.realtime_auction_arena.server.auction_domain nextRevisionAfterAcceptedCommand
+exportOperation app.realtime_auction_arena.server.auction_domain nextEventSequence
+
+storage module immutable zeroSignedInt64 Int64 0
+storage module immutable oneSignedInt64 Int64 1
+storage module immutable maxAntiSnipingWindowMillis Int64 300000
+storage module immutable maxAntiSnipingExtensionMillis Int64 600000
+
+storage module immutable anonymousUserRoleCode Int32 0
+storage module immutable bidderUserRoleCode Int32 10
+storage module immutable auctioneerUserRoleCode Int32 20
+storage module immutable adminUserRoleCode Int32 30
+storage module immutable draftAuctionStatusCode Int32 1
+storage module immutable runningAuctionStatusCode Int32 2
+storage module immutable closedAuctionStatusCode Int32 3
+storage module immutable cancelledAuctionStatusCode Int32 4
+
+storage module immutable createAuctionCommandKindCode Int32 1
+storage module immutable startAuctionCommandKindCode Int32 2
+storage module immutable extendAuctionCommandKindCode Int32 3
+storage module immutable closeAuctionCommandKindCode Int32 4
+storage module immutable placeBidCommandKindCode Int32 6
+
+storage module immutable bidRejectNoneCode Int64 0
+storage module immutable bidRejectAuctionMissingCode Int64 1
+storage module immutable bidRejectAuctionNotRunningCode Int64 2
+storage module immutable bidRejectActorNotBidderCode Int64 3
+storage module immutable bidRejectAmountTooLowCode Int64 4
+storage module immutable bidRejectAmountTooHighCode Int64 5
+storage module immutable bidRejectSameBidderInARowCode Int64 6
+storage module immutable bidRejectStaleRevisionCode Int64 7
+
+storage module immutable auctionPolicyRejectNoneCode Int64 0
+storage module immutable auctionPolicyRejectMinimumIncrementNotPositiveCode Int64 1
+storage module immutable auctionPolicyRejectMaxBidNotAboveStartingBidCode Int64 2
+storage module immutable auctionPolicyRejectAntiSnipingWindowOutOfBoundsCode Int64 3
+storage module immutable auctionPolicyRejectAntiSnipingExtensionOutOfBoundsCode Int64 4
+storage module immutable auctionPolicyRejectTitleTooLongCode Int64 5
+storage module immutable auctionPolicyRejectDescriptionTooLongCode Int64 6
+
+storage module immutable lifecycleRejectNoneCode Int64 0
+storage module immutable lifecycleRejectDraftOnlyStartsCode Int64 1
+storage module immutable lifecycleRejectRunningOnlyClosesOrCancelsCode Int64 2
+storage module immutable lifecycleRejectTerminalStateCode Int64 3
+storage module immutable lifecycleRejectUnsupportedTransitionCode Int64 4
+
+storage module immutable commandRejectNoneCode Int64 0
+storage module immutable commandRejectMissingAuctionIdCode Int64 10
+storage module immutable commandRejectMissingIdempotencyKeyCode Int64 11
+storage module immutable commandRejectMissingExpectedRevisionCode Int64 12
+storage module immutable commandRejectForbiddenCode Int64 13
+storage module immutable commandRejectUnsupportedCommandCode Int64 14
+
+record AuctionApiCommandContract
+field AuctionApiCommandContract method String
+field AuctionApiCommandContract path String
+field AuctionApiCommandContract commandKind String
+field AuctionApiCommandContract requiredPathParams String
+field AuctionApiCommandContract requiredRolePolicy String
+field AuctionApiCommandContract requiredScopes String
+field AuctionApiCommandContract idempotencyKey String
+field AuctionApiCommandContract expectedRevision String
+field AuctionApiCommandContract requestBody String
+field AuctionApiCommandContract successStatus String
+field AuctionApiCommandContract rejectionCodes String
+field AuctionApiCommandContract revisionRule String
+field AuctionApiCommandContract eventRule String
+field AuctionApiCommandContract runtimeStatus String
+
+record AuctionApiContract
+field AuctionApiContract create AuctionApiCommandContract
+field AuctionApiContract snapshot AuctionApiCommandContract
+field AuctionApiContract start AuctionApiCommandContract
+field AuctionApiContract extend AuctionApiCommandContract
+field AuctionApiContract close AuctionApiCommandContract
+field AuctionApiContract bid AuctionApiCommandContract
+
+storage module immutable auctionApiContract AuctionApiContract
+jsonBody auctionApiContract
+  {
+      "create": {
+          "method": "POST",
+          "path": "/api/v1/auctions",
+          "commandKind": "createAuction",
+          "requiredPathParams": "none",
+          "requiredRolePolicy": "admin or auctioneer",
+          "requiredScopes": "auctions:write",
+          "idempotencyKey": "required in Idempotency-Key header; repeated key with identical request returns cached response",
+          "expectedRevision": "not accepted on create; created auction revision is 0",
+          "requestBody": "title, description, startingBid, minimumIncrement, maxBidAmount, startsAtUtcMillis, closesAtUtcMillis, antiSnipingWindowMillis, antiSnipingExtensionMillis",
+          "successStatus": "201 Created",
+          "rejectionCodes": "unauthorized, forbidden, missing_idempotency_key, idempotency_conflict, invalid_json, validation_failed, auction_policy_rejected",
+          "revisionRule": "no existing revision check; insert starts at revision 0",
+          "eventRule": "persist auction.created with sequence 1 in same transaction",
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.created event persistence"
+      },
+      "snapshot": {
+          "method": "GET",
+          "path": "/api/v1/auctions/:auctionId",
+          "commandKind": "snapshot",
+          "requiredPathParams": "auctionId non-empty and under route-param byte limit",
+          "requiredRolePolicy": "authenticated viewer, bidder, auctioneer, or admin",
+          "requiredScopes": "auctions:read or bids:read",
+          "idempotencyKey": "not required",
+          "expectedRevision": "not required; optional If-None-Match may use revision for cache validation later",
+          "requestBody": "none",
+          "successStatus": "200 OK",
+          "rejectionCodes": "unauthorized, forbidden, invalid_route_param, auction_not_found",
+          "revisionRule": "snapshot returns current revision without changing it",
+          "eventRule": "no event emitted",
+          "runtimeStatus": "executable authenticated SQLite snapshot handler with native dynamic route params"
+      },
+      "start": {
+          "method": "POST",
+          "path": "/api/v1/auctions/:auctionId/start",
+          "commandKind": "startAuction",
+          "requiredPathParams": "auctionId non-empty and under route-param byte limit",
+          "requiredRolePolicy": "admin or auctioneer",
+          "requiredScopes": "auctions:write",
+          "idempotencyKey": "required in Idempotency-Key header",
+          "expectedRevision": "required in request body or If-Match; must equal current auction revision",
+          "requestBody": "expectedRevision",
+          "successStatus": "200 OK",
+          "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected",
+          "revisionRule": "draft to running increments revision by one",
+          "eventRule": "persist auction.started after state update in same transaction",
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.started event persistence"
+      },
+      "extend": {
+          "method": "POST",
+          "path": "/api/v1/auctions/:auctionId/extend",
+          "commandKind": "extendAuction",
+          "requiredPathParams": "auctionId non-empty and under route-param byte limit",
+          "requiredRolePolicy": "admin or auctioneer",
+          "requiredScopes": "auctions:write",
+          "idempotencyKey": "required in Idempotency-Key header",
+          "expectedRevision": "required in request body or If-Match; must equal current auction revision",
+          "requestBody": "expectedRevision, extendByMillis",
+          "successStatus": "200 OK",
+          "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected, extension_out_of_bounds",
+          "revisionRule": "running extension increments revision by one",
+          "eventRule": "persist auction.extended with previous and new close times",
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.extended event persistence"
+      },
+      "close": {
+          "method": "POST",
+          "path": "/api/v1/auctions/:auctionId/close",
+          "commandKind": "closeAuction",
+          "requiredPathParams": "auctionId non-empty and under route-param byte limit",
+          "requiredRolePolicy": "admin or auctioneer",
+          "requiredScopes": "auctions:write",
+          "idempotencyKey": "required in Idempotency-Key header",
+          "expectedRevision": "required in request body or If-Match; must equal current auction revision",
+          "requestBody": "expectedRevision",
+          "successStatus": "200 OK",
+          "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_not_found, lifecycle_rejected",
+          "revisionRule": "running to closed increments revision by one and freezes winner",
+          "eventRule": "persist auction.closed after state update in same transaction",
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, audit/request logs, and auction.closed event persistence"
+      },
+      "bid": {
+          "method": "POST",
+          "path": "/api/v1/auctions/:auctionId/bids",
+          "commandKind": "placeBid",
+          "requiredPathParams": "auctionId non-empty and under route-param byte limit",
+          "requiredRolePolicy": "bidder",
+          "requiredScopes": "bids:write",
+          "idempotencyKey": "required in Idempotency-Key header",
+          "expectedRevision": "required unless auction policy allowStaleExpectedRevision is true",
+          "requestBody": "amount, expectedRevision",
+          "successStatus": "201 Created for accepted bid, 409 Conflict for rule-rejected bid with persisted bid.rejected event",
+          "rejectionCodes": "unauthorized, forbidden, invalid_route_param, missing_idempotency_key, missing_expected_revision, stale_revision, auction_missing, auction_not_running, actor_not_bidder, amount_too_low, amount_too_high, same_bidder_in_a_row",
+          "revisionRule": "accepted bid increments revision by one; rejected bid preserves revision but is persisted for audit",
+          "eventRule": "accepted bid emits bid.accepted and maybe auction.extended when anti-sniping applies; rejected bid emits bid.rejected",
+          "runtimeStatus": "executable SQLite transaction with strict body parsing, idempotency replay/conflict, accepted/rejected bid persistence, audit/request logs, and event persistence"
+      }
+  }
+
+operation getAuctionApiContract
+output operation getAuctionApiContract AuctionApiContract
+memory getAuctionApiContract heap no
+async getAuctionApiContract no
+purpose operation getAuctionApiContract "Return the static create/start/extend/close/bid/snapshot API contract."
+return value auctionApiContract
+
+operation validateAuctionCommandRequestRequirements
+input operation validateAuctionCommandRequestRequirements requiresAuctionId Bool
+input operation validateAuctionCommandRequestRequirements hasAuctionId Bool
+input operation validateAuctionCommandRequestRequirements requiresIdempotencyKey Bool
+input operation validateAuctionCommandRequestRequirements hasIdempotencyKey Bool
+input operation validateAuctionCommandRequestRequirements requiresExpectedRevision Bool
+input operation validateAuctionCommandRequestRequirements hasExpectedRevision Bool
+output operation validateAuctionCommandRequestRequirements Int64
+memory validateAuctionCommandRequestRequirements heap no
+async validateAuctionCommandRequestRequirements no
+purpose operation validateAuctionCommandRequestRequirements "Validate route-param, idempotency, and expected-revision requirements before command-specific rule checks."
+invariant operation validateAuctionCommandRequestRequirements "Route params are checked before idempotency so malformed dynamic URLs never consume idempotency keys."
+
+label startValidateAuctionCommandRequestRequirements
+branch if condition requiresAuctionId target checkAuctionIdPresent
+jump target checkIdempotencyRequirement
+
+label checkAuctionIdPresent
+branch if condition hasAuctionId target checkIdempotencyRequirement
+return value commandRejectMissingAuctionIdCode
+
+label checkIdempotencyRequirement
+branch if condition requiresIdempotencyKey target checkIdempotencyPresent
+jump target checkExpectedRevisionRequirement
+
+label checkIdempotencyPresent
+branch if condition hasIdempotencyKey target checkExpectedRevisionRequirement
+return value commandRejectMissingIdempotencyKeyCode
+
+label checkExpectedRevisionRequirement
+branch if condition requiresExpectedRevision target checkExpectedRevisionPresent
+return value commandRejectNoneCode
+
+label checkExpectedRevisionPresent
+branch if condition hasExpectedRevision target acceptCommandRequestRequirements
+return value commandRejectMissingExpectedRevisionCode
+
+label acceptCommandRequestRequirements
+return value commandRejectNoneCode
+
+operation validateAuctionCommandActor
+input operation validateAuctionCommandActor actorRole Int32
+input operation validateAuctionCommandActor commandKind Int32
+output operation validateAuctionCommandActor Int64
+memory validateAuctionCommandActor heap no
+async validateAuctionCommandActor no
+purpose operation validateAuctionCommandActor "Validate role policy for auction create/start/extend/close/bid commands using stable command rejection codes."
+
+label startValidateAuctionCommandActor
+call commandIsBidCall math.equalInt32
+argument commandIsBidCall left Int32 commandKind
+argument commandIsBidCall right Int32 placeBidCommandKindCode
+run commandIsBidCall
+bind value commandIsBid Bool commandIsBidCall
+branch if condition commandIsBid target validateBidCommandActor
+
+call commandIsCreateCall math.equalInt32
+argument commandIsCreateCall left Int32 commandKind
+argument commandIsCreateCall right Int32 createAuctionCommandKindCode
+run commandIsCreateCall
+bind value commandIsCreate Bool commandIsCreateCall
+branch if condition commandIsCreate target validateAuctioneerCommandActor
+
+call commandIsStartCall math.equalInt32
+argument commandIsStartCall left Int32 commandKind
+argument commandIsStartCall right Int32 startAuctionCommandKindCode
+run commandIsStartCall
+bind value commandIsStart Bool commandIsStartCall
+branch if condition commandIsStart target validateAuctioneerCommandActor
+
+call commandIsExtendCall math.equalInt32
+argument commandIsExtendCall left Int32 commandKind
+argument commandIsExtendCall right Int32 extendAuctionCommandKindCode
+run commandIsExtendCall
+bind value commandIsExtend Bool commandIsExtendCall
+branch if condition commandIsExtend target validateAuctioneerCommandActor
+
+call commandIsCloseCall math.equalInt32
+argument commandIsCloseCall left Int32 commandKind
+argument commandIsCloseCall right Int32 closeAuctionCommandKindCode
+run commandIsCloseCall
+bind value commandIsClose Bool commandIsCloseCall
+branch if condition commandIsClose target validateAuctioneerCommandActor
+return value commandRejectUnsupportedCommandCode
+
+label validateBidCommandActor
+call actorIsBidderForCommandCall math.equalInt32
+argument actorIsBidderForCommandCall left Int32 actorRole
+argument actorIsBidderForCommandCall right Int32 bidderUserRoleCode
+run actorIsBidderForCommandCall
+bind value actorIsBidderForCommand Bool actorIsBidderForCommandCall
+branch if condition actorIsBidderForCommand target acceptAuctionCommandActor
+return value commandRejectForbiddenCode
+
+label validateAuctioneerCommandActor
+call actorIsAuctioneerCall math.equalInt32
+argument actorIsAuctioneerCall left Int32 actorRole
+argument actorIsAuctioneerCall right Int32 auctioneerUserRoleCode
+run actorIsAuctioneerCall
+bind value actorIsAuctioneer Bool actorIsAuctioneerCall
+branch if condition actorIsAuctioneer target acceptAuctionCommandActor
+call actorIsAdminCall math.equalInt32
+argument actorIsAdminCall left Int32 actorRole
+argument actorIsAdminCall right Int32 adminUserRoleCode
+run actorIsAdminCall
+bind value actorIsAdmin Bool actorIsAdminCall
+branch if condition actorIsAdmin target acceptAuctionCommandActor
+return value commandRejectForbiddenCode
+
+label acceptAuctionCommandActor
+return value commandRejectNoneCode
+
+operation validateAuctionPolicy
+input operation validateAuctionPolicy minimumIncrement Int64
+input operation validateAuctionPolicy startingBid Int64
+input operation validateAuctionPolicy maxBidAmount Int64
+input operation validateAuctionPolicy antiSnipingWindowMillis Int64
+input operation validateAuctionPolicy antiSnipingExtensionMillis Int64
+input operation validateAuctionPolicy titleBytes Int64
+input operation validateAuctionPolicy maxTitleBytes Int64
+input operation validateAuctionPolicy descriptionBytes Int64
+input operation validateAuctionPolicy maxDescriptionBytes Int64
+output operation validateAuctionPolicy Int64
+memory validateAuctionPolicy heap no
+async validateAuctionPolicy no
+purpose operation validateAuctionPolicy "Return the first stable policy rejection code, or zero when the policy is acceptable."
+invariant operation validateAuctionPolicy "Minimum increment must be positive."
+invariant operation validateAuctionPolicy "Max bid amount must be greater than starting bid."
+invariant operation validateAuctionPolicy "Anti-sniping window and extension durations must be non-negative and no larger than the module-level bounds."
+invariant operation validateAuctionPolicy "Title and description byte lengths must not exceed their configured maxima."
+
+label startValidateAuctionPolicy
+call minimumIncrementPositiveCall math.greaterThanInt64
+argument minimumIncrementPositiveCall left Int64 minimumIncrement
+argument minimumIncrementPositiveCall right Int64 zeroSignedInt64
+run minimumIncrementPositiveCall
+bind value minimumIncrementPositive Bool minimumIncrementPositiveCall
+branch if condition minimumIncrementPositive target checkMaxBid
+return value auctionPolicyRejectMinimumIncrementNotPositiveCode
+
+label checkMaxBid
+call maxBidAboveStartingCall math.greaterThanInt64
+argument maxBidAboveStartingCall left Int64 maxBidAmount
+argument maxBidAboveStartingCall right Int64 startingBid
+run maxBidAboveStartingCall
+bind value maxBidAboveStarting Bool maxBidAboveStartingCall
+branch if condition maxBidAboveStarting target checkAntiSnipingWindowNonNegative
+return value auctionPolicyRejectMaxBidNotAboveStartingBidCode
+
+label checkAntiSnipingWindowNonNegative
+call windowNegativeCall math.lessThanInt64
+argument windowNegativeCall left Int64 antiSnipingWindowMillis
+argument windowNegativeCall right Int64 zeroSignedInt64
+run windowNegativeCall
+bind value windowNegative Bool windowNegativeCall
+branch if condition windowNegative target rejectAntiSnipingWindow
+call windowTooLargeCall math.greaterThanInt64
+argument windowTooLargeCall left Int64 antiSnipingWindowMillis
+argument windowTooLargeCall right Int64 maxAntiSnipingWindowMillis
+run windowTooLargeCall
+bind value windowTooLarge Bool windowTooLargeCall
+branch if condition windowTooLarge target rejectAntiSnipingWindow
+jump target checkAntiSnipingExtensionNonNegative
+
+label rejectAntiSnipingWindow
+return value auctionPolicyRejectAntiSnipingWindowOutOfBoundsCode
+
+label checkAntiSnipingExtensionNonNegative
+call extensionNegativeCall math.lessThanInt64
+argument extensionNegativeCall left Int64 antiSnipingExtensionMillis
+argument extensionNegativeCall right Int64 zeroSignedInt64
+run extensionNegativeCall
+bind value extensionNegative Bool extensionNegativeCall
+branch if condition extensionNegative target rejectAntiSnipingExtension
+call extensionTooLargeCall math.greaterThanInt64
+argument extensionTooLargeCall left Int64 antiSnipingExtensionMillis
+argument extensionTooLargeCall right Int64 maxAntiSnipingExtensionMillis
+run extensionTooLargeCall
+bind value extensionTooLarge Bool extensionTooLargeCall
+branch if condition extensionTooLarge target rejectAntiSnipingExtension
+jump target checkTitleBytes
+
+label rejectAntiSnipingExtension
+return value auctionPolicyRejectAntiSnipingExtensionOutOfBoundsCode
+
+label checkTitleBytes
+call titleTooLongCall math.greaterThanInt64
+argument titleTooLongCall left Int64 titleBytes
+argument titleTooLongCall right Int64 maxTitleBytes
+run titleTooLongCall
+bind value titleTooLong Bool titleTooLongCall
+branch if condition titleTooLong target rejectTitleTooLong
+jump target checkDescriptionBytes
+
+label rejectTitleTooLong
+return value auctionPolicyRejectTitleTooLongCode
+
+label checkDescriptionBytes
+call descriptionTooLongCall math.greaterThanInt64
+argument descriptionTooLongCall left Int64 descriptionBytes
+argument descriptionTooLongCall right Int64 maxDescriptionBytes
+run descriptionTooLongCall
+bind value descriptionTooLong Bool descriptionTooLongCall
+branch if condition descriptionTooLong target rejectDescriptionTooLong
+return value auctionPolicyRejectNoneCode
+
+label rejectDescriptionTooLong
+return value auctionPolicyRejectDescriptionTooLongCode
+
+operation validateLifecycleTransition
+input operation validateLifecycleTransition currentStatus Int32
+input operation validateLifecycleTransition nextStatus Int32
+output operation validateLifecycleTransition Int64
+memory validateLifecycleTransition heap no
+async validateLifecycleTransition no
+purpose operation validateLifecycleTransition "Validate one auction lifecycle transition using stable status repr codes."
+invariant operation validateLifecycleTransition "Draft can become running."
+invariant operation validateLifecycleTransition "Running can become closed or cancelled."
+invariant operation validateLifecycleTransition "Closed and cancelled are terminal."
+
+label startValidateLifecycleTransition
+call currentDraftCall math.equalInt32
+argument currentDraftCall left Int32 currentStatus
+argument currentDraftCall right Int32 draftAuctionStatusCode
+run currentDraftCall
+bind value currentIsDraft Bool currentDraftCall
+branch if condition currentIsDraft target validateDraftTransition
+
+call currentRunningCall math.equalInt32
+argument currentRunningCall left Int32 currentStatus
+argument currentRunningCall right Int32 runningAuctionStatusCode
+run currentRunningCall
+bind value currentIsRunning Bool currentRunningCall
+branch if condition currentIsRunning target validateRunningTransition
+
+call currentClosedCall math.equalInt32
+argument currentClosedCall left Int32 currentStatus
+argument currentClosedCall right Int32 closedAuctionStatusCode
+run currentClosedCall
+bind value currentIsClosed Bool currentClosedCall
+branch if condition currentIsClosed target rejectTerminalLifecycle
+
+call currentCancelledCall math.equalInt32
+argument currentCancelledCall left Int32 currentStatus
+argument currentCancelledCall right Int32 cancelledAuctionStatusCode
+run currentCancelledCall
+bind value currentIsCancelled Bool currentCancelledCall
+branch if condition currentIsCancelled target rejectTerminalLifecycle
+return value lifecycleRejectUnsupportedTransitionCode
+
+label validateDraftTransition
+call nextRunningFromDraftCall math.equalInt32
+argument nextRunningFromDraftCall left Int32 nextStatus
+argument nextRunningFromDraftCall right Int32 runningAuctionStatusCode
+run nextRunningFromDraftCall
+bind value nextIsRunningFromDraft Bool nextRunningFromDraftCall
+branch if condition nextIsRunningFromDraft target acceptLifecycleTransition
+return value lifecycleRejectDraftOnlyStartsCode
+
+label validateRunningTransition
+call nextClosedFromRunningCall math.equalInt32
+argument nextClosedFromRunningCall left Int32 nextStatus
+argument nextClosedFromRunningCall right Int32 closedAuctionStatusCode
+run nextClosedFromRunningCall
+bind value nextIsClosedFromRunning Bool nextClosedFromRunningCall
+branch if condition nextIsClosedFromRunning target acceptLifecycleTransition
+call nextCancelledFromRunningCall math.equalInt32
+argument nextCancelledFromRunningCall left Int32 nextStatus
+argument nextCancelledFromRunningCall right Int32 cancelledAuctionStatusCode
+run nextCancelledFromRunningCall
+bind value nextIsCancelledFromRunning Bool nextCancelledFromRunningCall
+branch if condition nextIsCancelledFromRunning target acceptLifecycleTransition
+return value lifecycleRejectRunningOnlyClosesOrCancelsCode
+
+label rejectTerminalLifecycle
+return value lifecycleRejectTerminalStateCode
+
+label acceptLifecycleTransition
+return value lifecycleRejectNoneCode
+
+operation validateBid
+input operation validateBid auctionExists Bool
+input operation validateBid auctionStatus Int32
+input operation validateBid actorRole Int32
+input operation validateBid amount Int64
+input operation validateBid currentBid Int64
+input operation validateBid minimumIncrement Int64
+input operation validateBid maxBidAmount Int64
+input operation validateBid bidderUserId String
+input operation validateBid lastBidderUserId String
+input operation validateBid expectedRevision Int64
+input operation validateBid currentRevision Int64
+input operation validateBid hasExpectedRevision Bool
+input operation validateBid allowStaleExpectedRevision Bool
+output operation validateBid Int64
+memory validateBid heap no
+async validateBid no
+purpose operation validateBid "Return the first stable bid rejection code, or zero when the bid can be accepted."
+invariant operation validateBid "Checks are ordered to keep API errors deterministic and audit-friendly."
+warning validateBid "TODO(runtime): string equality for bidder ids currently depends on the compiler lowering String enum-like comparisons; replace with a standard.string equality helper when available."
+
+label startValidateBid
+branch if condition auctionExists target checkAuctionRunning
+return value bidRejectAuctionMissingCode
+
+label checkAuctionRunning
+call auctionRunningCall math.equalInt32
+argument auctionRunningCall left Int32 auctionStatus
+argument auctionRunningCall right Int32 runningAuctionStatusCode
+run auctionRunningCall
+bind value auctionRunning Bool auctionRunningCall
+branch if condition auctionRunning target checkActorBidder
+return value bidRejectAuctionNotRunningCode
+
+label checkActorBidder
+call actorBidderCall math.equalInt32
+argument actorBidderCall left Int32 actorRole
+argument actorBidderCall right Int32 bidderUserRoleCode
+run actorBidderCall
+bind value actorBidder Bool actorBidderCall
+branch if condition actorBidder target checkAmountLow
+return value bidRejectActorNotBidderCode
+
+label checkAmountLow
+call minimumAcceptedAmountCall math.addInt64
+argument minimumAcceptedAmountCall left Int64 currentBid
+argument minimumAcceptedAmountCall right Int64 minimumIncrement
+run minimumAcceptedAmountCall
+bind value minimumAcceptedAmount Int64 minimumAcceptedAmountCall
+call amountMeetsMinimumCall math.greaterThanOrEqualInt64
+argument amountMeetsMinimumCall left Int64 amount
+argument amountMeetsMinimumCall right Int64 minimumAcceptedAmount
+run amountMeetsMinimumCall
+bind value amountMeetsMinimum Bool amountMeetsMinimumCall
+branch if condition amountMeetsMinimum target checkAmountHigh
+return value bidRejectAmountTooLowCode
+
+label checkAmountHigh
+call amountTooHighCall math.greaterThanInt64
+argument amountTooHighCall left Int64 amount
+argument amountTooHighCall right Int64 maxBidAmount
+run amountTooHighCall
+bind value amountTooHigh Bool amountTooHighCall
+branch if condition amountTooHigh target rejectAmountTooHigh
+jump target checkSameBidder
+
+label rejectAmountTooHigh
+return value bidRejectAmountTooHighCode
+
+label checkSameBidder
+call sameBidderCall math.equalString
+argument sameBidderCall left String bidderUserId
+argument sameBidderCall right String lastBidderUserId
+run sameBidderCall
+bind value sameBidder Bool sameBidderCall
+branch if condition sameBidder target rejectSameBidder
+jump target checkExpectedRevisionPresence
+
+label rejectSameBidder
+return value bidRejectSameBidderInARowCode
+
+label checkExpectedRevisionPresence
+branch if condition hasExpectedRevision target checkExpectedRevisionPolicy
+return value bidRejectNoneCode
+
+label checkExpectedRevisionPolicy
+branch if condition allowStaleExpectedRevision target acceptBidWithPolicy
+call revisionMatchesCall math.equalInt64
+argument revisionMatchesCall left Int64 expectedRevision
+argument revisionMatchesCall right Int64 currentRevision
+run revisionMatchesCall
+bind value revisionMatches Bool revisionMatchesCall
+branch if condition revisionMatches target acceptBidWithPolicy
+return value bidRejectStaleRevisionCode
+
+label acceptBidWithPolicy
+return value bidRejectNoneCode
+
+operation shouldExtendForAntiSniping
+input operation shouldExtendForAntiSniping nowUtcMillis Int64
+input operation shouldExtendForAntiSniping closesAtUtcMillis Int64
+input operation shouldExtendForAntiSniping antiSnipingWindowMillis Int64
+output operation shouldExtendForAntiSniping Bool
+memory shouldExtendForAntiSniping heap no
+async shouldExtendForAntiSniping no
+purpose operation shouldExtendForAntiSniping "Return true when a bid arrives inside the configured anti-sniping window before close."
+invariant operation shouldExtendForAntiSniping "A zero anti-sniping window never extends the auction."
+
+label startShouldExtendForAntiSniping
+call windowPositiveCall math.greaterThanInt64
+argument windowPositiveCall left Int64 antiSnipingWindowMillis
+argument windowPositiveCall right Int64 zeroSignedInt64
+run windowPositiveCall
+bind value windowPositive Bool windowPositiveCall
+branch if condition windowPositive target computeRemainingMillis
+return value false
+
+label computeRemainingMillis
+call remainingCall math.subtractInt64
+argument remainingCall left Int64 closesAtUtcMillis
+argument remainingCall right Int64 nowUtcMillis
+run remainingCall
+bind value remainingMillis Int64 remainingCall
+call remainingNonNegativeCall math.greaterThanOrEqualInt64
+argument remainingNonNegativeCall left Int64 remainingMillis
+argument remainingNonNegativeCall right Int64 zeroSignedInt64
+run remainingNonNegativeCall
+bind value remainingNonNegative Bool remainingNonNegativeCall
+branch if condition remainingNonNegative target checkWithinWindow
+return value false
+
+label checkWithinWindow
+call withinWindowCall math.lessThanOrEqualInt64
+argument withinWindowCall left Int64 remainingMillis
+argument withinWindowCall right Int64 antiSnipingWindowMillis
+run withinWindowCall
+bind value withinWindow Bool withinWindowCall
+return value withinWindow
+
+operation computeAntiSnipingCloseTime
+input operation computeAntiSnipingCloseTime nowUtcMillis Int64
+input operation computeAntiSnipingCloseTime currentClosesAtUtcMillis Int64
+input operation computeAntiSnipingCloseTime antiSnipingExtensionMillis Int64
+output operation computeAntiSnipingCloseTime Int64
+memory computeAntiSnipingCloseTime heap no
+async computeAntiSnipingCloseTime no
+purpose operation computeAntiSnipingCloseTime "Return max(current close, now + extension) without reading wall-clock time."
+
+label startComputeAntiSnipingCloseTime
+call proposedCloseCall math.addInt64
+argument proposedCloseCall left Int64 nowUtcMillis
+argument proposedCloseCall right Int64 antiSnipingExtensionMillis
+run proposedCloseCall
+bind value proposedClose Int64 proposedCloseCall
+call proposedAfterCurrentCall math.greaterThanInt64
+argument proposedAfterCurrentCall left Int64 proposedClose
+argument proposedAfterCurrentCall right Int64 currentClosesAtUtcMillis
+run proposedAfterCurrentCall
+bind value proposedAfterCurrent Bool proposedAfterCurrentCall
+branch if condition proposedAfterCurrent target returnProposedClose
+return value currentClosesAtUtcMillis
+
+label returnProposedClose
+return value proposedClose
+
+operation selectWinnerAfterBid
+input operation selectWinnerAfterBid accepted Bool
+input operation selectWinnerAfterBid bidderUserId String
+input operation selectWinnerAfterBid currentWinnerUserId String
+output operation selectWinnerAfterBid String
+memory selectWinnerAfterBid heap no
+async selectWinnerAfterBid no
+purpose operation selectWinnerAfterBid "Accepted bids make the bidder the winner; rejected bids preserve the current winner."
+
+label startSelectWinnerAfterBid
+branch if condition accepted target returnBidderAsWinner
+return value currentWinnerUserId
+
+label returnBidderAsWinner
+return value bidderUserId
+
+operation nextRevisionAfterAcceptedCommand
+input operation nextRevisionAfterAcceptedCommand currentRevision Int64
+input operation nextRevisionAfterAcceptedCommand accepted Bool
+output operation nextRevisionAfterAcceptedCommand Int64
+memory nextRevisionAfterAcceptedCommand heap no
+async nextRevisionAfterAcceptedCommand no
+purpose operation nextRevisionAfterAcceptedCommand "Accepted state-changing commands increment revision by one; rejected commands preserve revision."
+
+label startNextRevisionAfterAcceptedCommand
+branch if condition accepted target incrementRevision
+return value currentRevision
+
+label incrementRevision
+call addRevisionCall math.addInt64
+argument addRevisionCall left Int64 currentRevision
+argument addRevisionCall right Int64 oneSignedInt64
+run addRevisionCall
+bind value nextRevision Int64 addRevisionCall
+return value nextRevision
+
+operation nextEventSequence
+input operation nextEventSequence currentSequence Int64
+output operation nextEventSequence Int64
+memory nextEventSequence heap no
+async nextEventSequence no
+purpose operation nextEventSequence "Return the next per-auction replay sequence."
+
+label startNextEventSequence
+call addSequenceCall math.addInt64
+argument addSequenceCall left Int64 currentSequence
+argument addSequenceCall right Int64 oneSignedInt64
+run addSequenceCall
+bind value incrementedSequence Int64 addSequenceCall
+return value incrementedSequence

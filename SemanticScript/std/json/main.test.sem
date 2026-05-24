@@ -3,24 +3,24 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule json standard.json
+import json standard.json
 importConstant importedJsonModuleVersionText json jsonModuleVersionText
 importType ImportedJsonBuilder json JsonBuilder
 
-storage module immutable okText CNullTerminatedByteString "OK"
+storage module immutable okText String "OK"
 storage module immutable successCode ExitCode 0
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main write console.stdout
-authority main console.stdout write
-memoryHeap main no
+authority main write console.stdout
+memory main heap no
 async main no
-purpose main "Smoke-test the canonical standard.json import path from its module folder."
+purpose operation main "Smoke-test the canonical standard.json import path from its module folder."
 
 call writeCall console.writeLine
-arg writeCall text okText
+argument writeCall text String okText
 run writeCall
-ignoreValue writeCall CSignedInt32
+ignore value source writeCall type Int32
 
-returnValue successCode
+return value successCode

@@ -4,9 +4,9 @@ runtime AgentRuntime 0.1
 
 entry console main
 
-type FactorialCounter I64
-type FactorialAccumulator I64
-type PositiveFactorialStep I64
+type FactorialCounter Int64
+type FactorialAccumulator Int64
+type PositiveFactorialStep Int64
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
@@ -14,52 +14,52 @@ errorCase MainError FactorialUpperLimitTooLarge
 errorCase MainError FactorialAccumulatorOverflowed FactorialOverflowError
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 16KiB
 async main no
 
-purpose main "Compute the factorial of factorialUpperLimit and print the result as a single line"
-invariant main "At factorialLoopHead, currentFactorialAccumulator equals factorial(currentFactorialCounter - 1)"
-invariant main "factorialUpperLimit must be less than or equal to factorialOverflowSafeUpperLimit before the loop runs"
-invariant main "factorialStepValue is strictly greater than zero"
+purpose operation main "Compute the factorial of factorialUpperLimit and print the result as a single line"
+invariant operation main "At factorialLoopHead, currentFactorialAccumulator equals factorial(currentFactorialCounter - 1)"
+invariant operation main "factorialUpperLimit must be less than or equal to factorialOverflowSafeUpperLimit before the loop runs"
+invariant operation main "factorialStepValue is strictly greater than zero"
 
 label startMain
 
-const factorialLowerLimit FactorialCounter 1
-const factorialUpperLimit FactorialCounter 10
-const factorialOverflowSafeUpperLimit FactorialCounter 20
-const factorialStepValue PositiveFactorialStep 1
-const factorialAccumulatorInitial FactorialAccumulator 1
+storage module immutable factorialLowerLimit FactorialCounter 1
+storage module immutable factorialUpperLimit FactorialCounter 10
+storage module immutable factorialOverflowSafeUpperLimit FactorialCounter 20
+storage module immutable factorialStepValue PositiveFactorialStep 1
+storage module immutable factorialAccumulatorInitial FactorialAccumulator 1
 
-var currentFactorialCounter FactorialCounter factorialLowerLimit
-var currentFactorialAccumulator FactorialAccumulator factorialAccumulatorInitial
+memory main mutable currentFactorialCounter FactorialCounter factorialLowerLimit
+memory main mutable currentFactorialAccumulator FactorialAccumulator factorialAccumulatorInitial
 
-# rationale: Confirm factorialUpperLimit stays inside the range where I64 factorial accumulation is provably safe.
+# rationale: Confirm factorialUpperLimit stays inside the range where Int64 factorial accumulation is provably safe.
 # The largest factorialUpperLimit whose factorial fits in a signed 64-bit integer is twenty, so any request
 # beyond that must be rejected with a typed MainError variant rather than silently overflowing.
 call factorialUpperLimitSafetyCheckCall FactorialCounter.lessThanOrEqual
-arg factorialUpperLimitSafetyCheckCall left factorialUpperLimit
-arg factorialUpperLimitSafetyCheckCall right factorialOverflowSafeUpperLimit
+argument factorialUpperLimitSafetyCheckCall left FactorialCounter factorialUpperLimit
+argument factorialUpperLimitSafetyCheckCall right FactorialCounter factorialOverflowSafeUpperLimit
 run factorialUpperLimitSafetyCheckCall
-bind factorialUpperLimitIsOverflowSafe Bool factorialUpperLimitSafetyCheckCall
+bind value factorialUpperLimitIsOverflowSafe Bool factorialUpperLimitSafetyCheckCall
 
-branchIf factorialUpperLimitIsOverflowSafe factorialLoopHead
-branch factorialUpperLimitRejected
+branch if condition factorialUpperLimitIsOverflowSafe target factorialLoopHead
+branch else target factorialUpperLimitRejected
 
 label factorialLoopHead
 
 # rationale: Continue while currentFactorialCounter is less than or equal to factorialUpperLimit.
 call factorialRangeCheckCall FactorialCounter.lessThanOrEqual
-arg factorialRangeCheckCall left currentFactorialCounter
-arg factorialRangeCheckCall right factorialUpperLimit
+argument factorialRangeCheckCall left FactorialCounter currentFactorialCounter
+argument factorialRangeCheckCall right FactorialCounter factorialUpperLimit
 run factorialRangeCheckCall
-bind factorialShouldContinue Bool factorialRangeCheckCall
+bind value factorialShouldContinue Bool factorialRangeCheckCall
 
-branchIf factorialShouldContinue factorialLoopBody
-branch factorialFinished
+branch if condition factorialShouldContinue target factorialLoopBody
+branch else target factorialFinished
 
 label factorialLoopBody
 
@@ -67,50 +67,50 @@ label factorialLoopBody
 # A successful multiplication binds the new accumulator value; an overflow takes the failure leg and
 # surfaces a typed FactorialOverflowError through MainError.FactorialAccumulatorOverflowed.
 call factorialAccumulatorMultiplyCall FactorialAccumulator.checkedMultiplyByCounter
-arg factorialAccumulatorMultiplyCall accumulator currentFactorialAccumulator
-arg factorialAccumulatorMultiplyCall counter currentFactorialCounter
+argument factorialAccumulatorMultiplyCall accumulator FactorialAccumulator currentFactorialAccumulator
+argument factorialAccumulatorMultiplyCall counter FactorialCounter currentFactorialCounter
 run factorialAccumulatorMultiplyCall
-bindOk nextFactorialAccumulator FactorialAccumulator factorialAccumulatorMultiplyCall
-bindError factorialAccumulatorOverflowError FactorialOverflowError factorialAccumulatorMultiplyCall
-branchIfError factorialAccumulatorMultiplyCall factorialAccumulatorOverflowed
+bind ok nextFactorialAccumulator FactorialAccumulator factorialAccumulatorMultiplyCall
+bind error factorialAccumulatorOverflowError FactorialOverflowError factorialAccumulatorMultiplyCall
+branch error source factorialAccumulatorMultiplyCall target factorialAccumulatorOverflowed
 
-set currentFactorialAccumulator nextFactorialAccumulator
+set memory currentFactorialAccumulator nextFactorialAccumulator
 
 # rationale: Advance the counter by exactly factorialStepValue; the typed PositiveFactorialStep guarantees forward progress.
 call factorialCounterIncrementCall FactorialCounter.addPositiveStep
-arg factorialCounterIncrementCall counter currentFactorialCounter
-arg factorialCounterIncrementCall step factorialStepValue
+argument factorialCounterIncrementCall counter FactorialCounter currentFactorialCounter
+argument factorialCounterIncrementCall step PositiveFactorialStep factorialStepValue
 run factorialCounterIncrementCall
-bind nextFactorialCounter FactorialCounter factorialCounterIncrementCall
+bind value nextFactorialCounter FactorialCounter factorialCounterIncrementCall
 
-set currentFactorialCounter nextFactorialCounter
-branch factorialLoopHead
+set memory currentFactorialCounter nextFactorialCounter
+jump target factorialLoopHead
 
 label factorialFinished
 
 # rationale: Emit the final accumulator as a single line of standard output.
 call writeFinalFactorialAccumulatorCall console.writeIntegerLine
-arg writeFinalFactorialAccumulatorCall console console
-arg writeFinalFactorialAccumulatorCall value currentFactorialAccumulator
+argument writeFinalFactorialAccumulatorCall console Console console
+argument writeFinalFactorialAccumulatorCall value FactorialAccumulator currentFactorialAccumulator
 run writeFinalFactorialAccumulatorCall
-ignoreOk writeFinalFactorialAccumulatorCall Void
-bindError writeFinalFactorialAccumulatorError ConsoleWriteError writeFinalFactorialAccumulatorCall
-branchIfError writeFinalFactorialAccumulatorCall consoleWriteFailed
+ignore void source writeFinalFactorialAccumulatorCall
+bind error writeFinalFactorialAccumulatorError ConsoleWriteError writeFinalFactorialAccumulatorCall
+branch error source writeFinalFactorialAccumulatorCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label factorialUpperLimitRejected
-# failure: The configured factorialUpperLimit exceeds the I64 overflow-safe limit; reject before any multiplication runs.
+# failure: The configured factorialUpperLimit exceeds the Int64 overflow-safe limit; reject before any multiplication runs.
 makeError factorialUpperLimitRejectedFailure MainError.FactorialUpperLimitTooLarge
-returnError factorialUpperLimitRejectedFailure
+return error factorialUpperLimitRejectedFailure
 
 label factorialAccumulatorOverflowed
 # failure: The checked multiplication reported overflow; carry the raw FactorialOverflowError through the typed MainError.
 makeError factorialAccumulatorOverflowFailure MainError.FactorialAccumulatorOverflowed factorialAccumulatorOverflowError
-returnError factorialAccumulatorOverflowFailure
+return error factorialAccumulatorOverflowFailure
 
 label consoleWriteFailed
 # failure: The console write failed after the factorial value was already computed; surface as MainError.ConsoleWriteFailed.
 makeError consoleWriteFailure MainError.ConsoleWriteFailed writeFinalFactorialAccumulatorError
-returnError consoleWriteFailure
+return error consoleWriteFailure

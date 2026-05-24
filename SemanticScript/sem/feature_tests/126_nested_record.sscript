@@ -1,6 +1,5 @@
 # expect.stdout: 15\n
 # expect.exit: 0
-# expect.xfail: nested records — `field Segment start Point` where Point is itself a record is treated as a flat i64 field (single alloca %mySegment_start). fieldSet/fieldGet with dotted paths (`start.x`) emit `%mySegment_start.x` which has no alloca. Requires (a) `new` walker to detect record-typed fields and recursively emit `%<var>_<outer>_<inner> = alloca <innerType>` per leaf field, and (b) fieldSet/fieldGet to translate dots to underscores when emitting SSA names. No corpus program currently uses nested records.
 project NestedRecord
 target console
 runtime AgentRuntime 0.1
@@ -9,56 +8,56 @@ error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 record Point layout row align 8
-field Point x I64
-field Point y I64
+field Point x Int64
+field Point y Int64
 
 record Segment layout row align 8
 field Segment start Point
 field Segment finish Point
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Construct Segment containing two nested Points, sum all four field values. 1+2+5+7 = 15."
-invariant main "Output is '15\\n'."
+purpose operation main "Construct Segment containing two nested Points, sum all four field values. 1+2+5+7 = 15."
+invariant operation main "Output is '15\\n'."
 label startMain
 new mySegment Segment
-const oneVal I64 1
-const twoVal I64 2
-const fiveVal I64 5
-const sevenVal I64 7
+storage module immutable oneVal Int64 1
+storage module immutable twoVal Int64 2
+storage module immutable fiveVal Int64 5
+storage module immutable sevenVal Int64 7
 fieldSet mySegment start.x oneVal
 fieldSet mySegment start.y twoVal
 fieldSet mySegment finish.x fiveVal
 fieldSet mySegment finish.y sevenVal
-fieldGet sx I64 mySegment start.x
-fieldGet sy I64 mySegment start.y
-fieldGet fx I64 mySegment finish.x
-fieldGet fy I64 mySegment finish.y
-call sum1Call math.addI64
-arg sum1Call left sx
-arg sum1Call right sy
+fieldGet sx Int64 mySegment start.x
+fieldGet sy Int64 mySegment start.y
+fieldGet fx Int64 mySegment finish.x
+fieldGet fy Int64 mySegment finish.y
+call sum1Call math.addInt64
+argument sum1Call left Int64 sx
+argument sum1Call right Int64 sy
 run sum1Call
-bind partial1 I64 sum1Call
-call sum2Call math.addI64
-arg sum2Call left fx
-arg sum2Call right fy
+bind value partial1 Int64 sum1Call
+call sum2Call math.addInt64
+argument sum2Call left Int64 fx
+argument sum2Call right Int64 fy
 run sum2Call
-bind partial2 I64 sum2Call
-call totalCall math.addI64
-arg totalCall left partial1
-arg totalCall right partial2
+bind value partial2 Int64 sum2Call
+call totalCall math.addInt64
+argument totalCall left Int64 partial1
+argument totalCall right Int64 partial2
 run totalCall
-bind totalResult I64 totalCall
-var totalVar I64 oneVal
-set totalVar totalResult
+bind value totalResult Int64 totalCall
+memory main mutable totalVar Int64 oneVal
+set memory totalVar totalResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value totalVar
+argument writeCall console Console console
+argument writeCall value Int64 totalVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

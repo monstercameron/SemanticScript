@@ -5,14 +5,14 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 memory main heap no
 async main no
-purpose main "Tests: non-zero const ExitCode is honored by ret i32 emission."
-invariant main "Returns the declared 42."
+purpose operation main "Tests: non-zero const ExitCode is honored by ret i32 emission."
+invariant operation main "Returns the declared 42."
 label startMain
-const fortyTwoExitCode ExitCode 42
-returnOk fortyTwoExitCode
+storage module immutable fortyTwoExitCode ExitCode 42
+return ok fortyTwoExitCode

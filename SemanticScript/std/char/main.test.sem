@@ -1,6 +1,115 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: ASCII char-code constants
+# ============================================================
+#
+# rationale: companion test file for std/char/main.sem. Imports
+#   the char module and verifies a representative subset of the
+#   ASCII char-code constants resolves to the right values.
+#
+# invariant: success prints "OK\n" and exits 0; any failed
+#   assertion surfaces MainError.CharSmokeAssertionFailed.
+#
+# pattern: canonical main.test.sem form — same directory as
+#   main.sem, import the module, project block local to the test,
+#   entry console main. The implementation file std/char/main.sem
+#   carries no smoke main itself.
+
 project StdCharTest
 target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.char
+import char standard.char
+error MainError
+errorCase MainError CharSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Verify a representative subset of the ASCII char-code constants resolves to the right values."
+invariant operation main "Newline is 10, NUL is 0, DEL is 127, SP is 32 — every smoke check must pass."
+
+label startMain
+
+# Newline literal must resolve to 10.
+storage module immutable tenValue Int32 10
+call checkNewlineCall math.equalInt64
+argument checkNewlineCall left Int64 asciiNewlineCharacterCode
+argument checkNewlineCall right Int64 tenValue
+run checkNewlineCall
+bind value newlineOk Bool checkNewlineCall
+branch if condition newlineOk target newlineHolds
+branch else target smokeAssertionFailed
+label newlineHolds
+
+# NUL literal must resolve to 0.
+storage module immutable zeroValue Int32 0
+call checkNullCall math.equalInt64
+argument checkNullCall left Int64 asciiNullCharacterCode
+argument checkNullCall right Int64 zeroValue
+run checkNullCall
+bind value nullOk Bool checkNullCall
+branch if condition nullOk target nullHolds
+branch else target smokeAssertionFailed
+label nullHolds
+
+# DEL literal must resolve to 127.
+storage module immutable oneHundredTwentySevenValue Int32 127
+call checkDeleteCall math.equalInt64
+argument checkDeleteCall left Int64 asciiDeleteCharacterCode
+argument checkDeleteCall right Int64 oneHundredTwentySevenValue
+run checkDeleteCall
+bind value deleteOk Bool checkDeleteCall
+branch if condition deleteOk target deleteHolds
+branch else target smokeAssertionFailed
+label deleteHolds
+
+# Space literal must resolve to 32.
+storage module immutable thirtyTwoValue Int32 32
+call checkSpaceCall math.equalInt64
+argument checkSpaceCall left Int64 asciiSpaceCharacterCode
+argument checkSpaceCall right Int64 thirtyTwoValue
+run checkSpaceCall
+bind value spaceOk Bool checkSpaceCall
+branch if condition spaceOk target spaceHolds
+branch else target smokeAssertionFailed
+label spaceHolds
+
+# All assertions hold. Emit "OK" via console.writeLine — using the
+# higher-level writer (rather than three raw c.putchar calls) keeps
+# the success path uniform with the other stdlib smokes and gives us
+# a single point at which to surface ConsoleWriteFailed.
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+# Failure leg: surface the raw negative Int32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+return error consoleWriteFailedFailure
+
+label smokeAssertionFailed
+makeError charSmokeFailure MainError.CharSmokeAssertionFailed
+return error charSmokeFailure

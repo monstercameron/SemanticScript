@@ -1,0 +1,47 @@
+module app.realtime_auction_arena.server.auction_events
+purpose module app.realtime_auction_arena.server.auction_events "Auction event, SSE replay, and schema compatibility contract declarations."
+moduleOwns app.realtime_auction_arena.server.auction_events "Event type registry, replay ordering rule, SSE runtime gap notes, and schema version policy."
+moduleDoesNotOwn app.realtime_auction_arena.server.auction_events "Auction rule engine or native long-lived SSE implementation."
+invariant module app.realtime_auction_arena.server.auction_events "Every persisted auction event carries schemaVersion and a monotonically increasing per-auction sequence; replay happens before live subscription."
+
+record EventContract
+field EventContract schemaVersion Int64
+field EventContract eventTypes String
+field EventContract sequenceRule String
+field EventContract replayRule String
+field EventContract replayBeforeLiveRule String
+field EventContract heartbeatRule String
+field EventContract heartbeatMillis Int64
+field EventContract disconnectRule String
+field EventContract backpressureRule String
+field EventContract subscriberQueueLimit Int64
+field EventContract slowClientMetric String
+field EventContract sseTransportStatus String
+field EventContract executableNow String
+field EventContract requiredRuntimeApis String
+
+storage module immutable auctionEventContract EventContract
+jsonBody auctionEventContract
+  {
+      "schemaVersion": 1,
+      "eventTypes": "auction.created, auction.started, auction.extended, auction.closed, bid.accepted, bid.rejected, chat.message.created, chat.message.deleted, chat.message.reported",
+      "sequenceRule": "sequence increments by one per auction event, including chat events, and is unique with auction_id",
+      "replayRule": "GET /api/v1/auctions/:auctionId/events replays persisted events with sequence greater than Last-Event-ID or ?after, bounded by ?limit 1..200; Last-Event-ID wins when both cursors are present; JSON rows include eventTypeCode and stable eventType text; Accept: text/event-stream emits SSE id/event/data frames",
+      "replayBeforeLiveRule": "long-lived SSE must finish SQLite replay for the requested cursor before attaching the subscriber to live fanout, then bridge any committed gap without reordering",
+      "heartbeatRule": "live SSE sends a comment heartbeat at least every 15000 ms and never consumes an auction event sequence",
+      "heartbeatMillis": 15000,
+      "disconnectRule": "client disconnect closes the subscriber handle, removes it from the auction fanout set, and does not affect persisted event order",
+      "backpressureRule": "each subscriber has a bounded outbound queue of 256 events; overflow closes that subscriber with retry hint instead of blocking persistence or other subscribers",
+      "subscriberQueueLimit": 256,
+      "slowClientMetric": "auction_server_sse_slow_client_drops_total increments when a stream write fails now and will increment when a future live subscriber queue overflows",
+      "sseTransportStatus": "current executable route is authenticated bounded JSON replay by default and opt-in SSE replay with id/event/data frames plus heartbeat; true long-lived live fanout still requires async subscriber queues and cancellation",
+      "executableNow": "schemaVersion, event type registry, route path, seeded viewer authorization, SQLite replay by Last-Event-ID/?after/?limit, replay ordering rule, eventType text, opt-in SSE replay frames, heartbeat writes, disconnect checks, and SSE metrics are executable contract data",
+      "requiredRuntimeApis": "cancellable per-subscriber queues, async live fanout, periodic timers, and request/connection cancellation"
+  }
+
+operation getAuctionEventContract
+output operation getAuctionEventContract EventContract
+memory getAuctionEventContract heap no
+async getAuctionEventContract no
+purpose operation getAuctionEventContract "Return the static auction event contract."
+return value auctionEventContract

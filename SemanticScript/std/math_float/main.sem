@@ -1,40 +1,39 @@
 # SemanticScript standard-library canonical module: standard.math_float.
 
 module standard.math_float
-modulePurpose standard.math_float "Canonical standard-library module for floating-point math helpers."
+purpose module standard.math_float "Canonical standard-library module for floating-point math helpers."
 moduleOwns standard.math_float "The official import path `standard.math_float` and this module's implementation body."
 moduleDoesNotOwn standard.math_float "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.math_float "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.math_float "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.math_float mathFloatModuleVersionText
-storage module immutable mathFloatModuleVersionText CNullTerminatedByteString "standard.math_float 0.1"
+storage module immutable mathFloatModuleVersionText String "standard.math_float 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: pure-SemanticScript float math
 # ============================================================
 #
-# # rationale: every operation lowers to math.{add,subtract,multiply,
-#   divide,less,greater,equal}F64 plus branching. NO libm call appears
+# rationale: every operation lowers to math.{add,subtract,multiply,
+#   divide,less,greater,equal}Float64 plus branching. NO libm call appears
 #   in the emitted IR Ã¢â‚¬â€ no c.sqrt, c.exp, c.log, c.fabs, c.pow, c.sin,
 #   c.cos, c.tan, etc. The point is a self-contained float surface
 #   that an SemanticScript program can ship without linking libm.
 #
-# # invariant: every operation is total in the language-theory sense
+# invariant: every operation is total in the language-theory sense
 #   over its declared domain Ã¢â‚¬â€ Result wrappers are dropped because
 #   the existing implementations did not expose typed error variants.
 #   Out-of-domain inputs (negative sqrt argument, log of zero, etc.)
 #   return either 0.0 or an IEEE-754 sentinel; callers that need
 #   strict validation should screen inputs upstream.
 #
-# # security: pure value-level computation. No allocation. No I/O.
+# security: pure value-level computation. No allocation. No I/O.
 #
-# # timing: each transcendental is implemented via a fixed-iteration
+# timing: each transcendental is implemented via a fixed-iteration
 #   Taylor series or Newton iteration. Worst case ~50 iterations
 #   (squareRoot Newton). Acceptable for tooling, not for hot loops.
 #
-# # observability: no logs, no metrics.
-
+# observability: no logs, no metrics.
 
 # This is a pure-module (library) file: it exports operations
 # consumed by other programs (notably std/math_float/main.test.sem
@@ -46,7 +45,7 @@ storage module immutable mathFloatModuleVersionText CNullTerminatedByteString "s
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: <math.h>-style float ops, pure SemanticScript.
 #
-# Implementations use only math.{add,subtract,multiply,divide}F64 and
+# Implementations use only math.{add,subtract,multiply,divide}Float64 and
 # comparison primitives. NO call to libm: no c.sqrt, c.exp, c.log,
 # c.fabs etc. appears in the emitted IR.
 #
@@ -68,1360 +67,1328 @@ storage module immutable mathFloatModuleVersionText CNullTerminatedByteString "s
 # linking against libm.
 # ============================================================
 
-
 operation absoluteFloat64
-input absoluteFloat64 inputValue CFloat64
-output absoluteFloat64 CFloat64
-memoryHeap absoluteFloat64 no
+input operation absoluteFloat64 inputValue Float64
+output operation absoluteFloat64 Float64
+memory absoluteFloat64 heap no
 async absoluteFloat64 no
-purpose absoluteFloat64 "|x| for double-precision x. Pure SemanticScript via comparison + multiply by -1."
+purpose operation absoluteFloat64 "|x| for double-precision x. Pure SemanticScript via comparison + multiply by -1."
 
 label startAbsoluteFloat64
-const zeroF CFloat64 0.0
-const negOneF CFloat64 -1.0
-call isNegCall math.lessThanF64
-arg isNegCall left inputValue
-arg isNegCall right zeroF
+storage module immutable zeroF Float64 0.0
+storage module immutable negOneF Float64 -1.0
+call isNegCall math.lessThanFloat64
+argument isNegCall left Float64 inputValue
+argument isNegCall right Float64 zeroF
 run isNegCall
-bind isNeg Bool isNegCall
-branchIf isNeg fabsFlip
-returnValue inputValue
+bind value isNeg Bool isNegCall
+branch if condition isNeg target fabsFlip
+return value inputValue
 label fabsFlip
-call flipCall math.multiplyF64
-arg flipCall left inputValue
-arg flipCall right negOneF
+call flipCall math.multiplyFloat64
+argument flipCall left Float64 inputValue
+argument flipCall right Float64 negOneF
 run flipCall
-bind flipped CFloat64 flipCall
-returnValue flipped
-
+bind value flipped Float64 flipCall
+return value flipped
 
 operation squareRootFloat64
-input squareRootFloat64 inputValue CFloat64
-output squareRootFloat64 CFloat64
-memoryHeap squareRootFloat64 no
+input operation squareRootFloat64 inputValue Float64
+output operation squareRootFloat64 Float64
+memory squareRootFloat64 heap no
 async squareRootFloat64 no
-purpose squareRootFloat64 "sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet Ã¢â‚¬â€ that needs IEEE special-value support)."
-invariant squareRootFloat64 "Newton iteration: x_{n+1} = (x_n + value/x_n) / 2. Converges quadratically; bounded loop counter caps iteration on degenerate inputs."
+purpose operation squareRootFloat64 "sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet Ã¢â‚¬â€ that needs IEEE special-value support)."
+invariant operation squareRootFloat64 "Newton iteration: x_{n+1} = (x_n + value/x_n) / 2. Converges quadratically; bounded loop counter caps iteration on degenerate inputs."
 
 label startSquareRootFloat64
-const zeroFS CFloat64 0.0
-const halfFS CFloat64 0.5
+storage module immutable zeroFS Float64 0.0
+storage module immutable halfFS Float64 0.5
 
-call lezCall math.lessThanOrEqualF64
-arg lezCall left inputValue
-arg lezCall right zeroFS
+call lezCall math.lessThanOrEqualFloat64
+argument lezCall left Float64 inputValue
+argument lezCall right Float64 zeroFS
 run lezCall
-bind lez Bool lezCall
-branchIf lez sqrtZero
+bind value lez Bool lezCall
+branch if condition lez target sqrtZero
 
 # Start at x itself (works for x >= 1; for 0 < x < 1, also converges).
-var guess CFloat64 1.0
-set guess inputValue
-var iter I64 0
-const maxIter I64 50
-const oneI I64 1
+memory squareRootFloat64 mutable guess Float64 1.0
+set memory guess inputValue
+memory squareRootFloat64 mutable iter Int64 0
+storage module immutable maxIter Int64 50
+storage module immutable oneI Int64 1
 
 label sqrtIter
-call divCall math.divideF64
-arg divCall left inputValue
-arg divCall right guess
+call divCall math.divideFloat64
+argument divCall left Float64 inputValue
+argument divCall right Float64 guess
 run divCall
-bind quot CFloat64 divCall
-call sumCall math.addF64
-arg sumCall left guess
-arg sumCall right quot
+bind value quot Float64 divCall
+call sumCall math.addFloat64
+argument sumCall left Float64 guess
+argument sumCall right Float64 quot
 run sumCall
-bind sumGuess CFloat64 sumCall
-call halveCall math.multiplyF64
-arg halveCall left sumGuess
-arg halveCall right halfFS
+bind value sumGuess Float64 sumCall
+call halveCall math.multiplyFloat64
+argument halveCall left Float64 sumGuess
+argument halveCall right Float64 halfFS
 run halveCall
-bind nextGuess CFloat64 halveCall
+bind value nextGuess Float64 halveCall
 
 # Convergence: |next - guess| < eps * |next|, but to keep math simple,
 # just bound iteration count.
-set guess nextGuess
-call incCall math.addI64
-arg incCall left iter
-arg incCall right oneI
+set memory guess nextGuess
+call incCall math.addInt64
+argument incCall left Int64 iter
+argument incCall right Int64 oneI
 run incCall
-bind nextIter I64 incCall
-set iter nextIter
-call iterDoneCall math.greaterThanOrEqualI64
-arg iterDoneCall left iter
-arg iterDoneCall right maxIter
+bind value nextIter Int64 incCall
+set memory iter nextIter
+call iterDoneCall math.greaterThanOrEqualInt64
+argument iterDoneCall left Int64 iter
+argument iterDoneCall right Int64 maxIter
 run iterDoneCall
-bind iterDoneCall Bool iterDoneCall
-branchIf iterDoneCall sqrtDone
-branch sqrtIter
+bind value iterDoneCall Bool iterDoneCall
+branch if condition iterDoneCall target sqrtDone
+branch else target sqrtIter
 
 label sqrtDone
-returnValue guess
+return value guess
 
 label sqrtZero
-returnValue zeroFS
-
+return value zeroFS
 
 operation exponentialBaseEFloat64
-input exponentialBaseEFloat64 inputValue CFloat64
-output exponentialBaseEFloat64 CFloat64
-memoryHeap exponentialBaseEFloat64 no
+input operation exponentialBaseEFloat64 inputValue Float64
+output operation exponentialBaseEFloat64 Float64
+memory exponentialBaseEFloat64 heap no
 async exponentialBaseEFloat64 no
-purpose exponentialBaseEFloat64 "e^x via Taylor series: sum_{k=0..29} x^k / k!. Accurate to ~12 decimals for |x| <= 2; degrades beyond that. No argument reduction yet."
-invariant exponentialBaseEFloat64 "Sums 30 Taylor terms; each term is the previous term * x / k. Negative inputs handled by computing 1 / e^|x|."
+purpose operation exponentialBaseEFloat64 "e^x via Taylor series: sum_{k=0..29} x^k / k!. Accurate to ~12 decimals for |x| <= 2; degrades beyond that. No argument reduction yet."
+invariant operation exponentialBaseEFloat64 "Sums 30 Taylor terms; each term is the previous term * x / k. Negative inputs handled by computing 1 / e^|x|."
 
 label startExponentialBaseEFloat64
-const oneFE CFloat64 1.0
-const oneI64E I64 1
-const maxTermsE I64 30
+storage module immutable oneFE Float64 1.0
+storage module immutable oneInt64E Int64 1
+storage module immutable maxTermsE Int64 30
 
-var sumE CFloat64 1.0
-var term CFloat64 1.0
-var k I64 1
+memory exponentialBaseEFloat64 mutable sumE Float64 1.0
+memory exponentialBaseEFloat64 mutable term Float64 1.0
+memory exponentialBaseEFloat64 mutable k Int64 1
 # Float counter kept in lockstep with k. Declared BEFORE the loop so
 # its initial store happens once, not on every iteration. SemanticScript has no
 # int-to-float intrinsic at this layer, so we maintain a parallel
 # float that we ++ by 1.0 each iteration.
-var kFloat CFloat64 1.0
+memory exponentialBaseEFloat64 mutable kFloat Float64 1.0
 
 label expLoop
-call doneECall math.greaterThanOrEqualI64
-arg doneECall left k
-arg doneECall right maxTermsE
+call doneECall math.greaterThanOrEqualInt64
+argument doneECall left Int64 k
+argument doneECall right Int64 maxTermsE
 run doneECall
-bind doneE Bool doneECall
-branchIf doneE expReturn
+bind value doneE Bool doneECall
+branch if condition doneE target expReturn
 # term = term * x / kFloat
-call mulCall math.multiplyF64
-arg mulCall left term
-arg mulCall right inputValue
+call mulCall math.multiplyFloat64
+argument mulCall left Float64 term
+argument mulCall right Float64 inputValue
 run mulCall
-bind mulRes CFloat64 mulCall
-call divFCall math.divideF64
-arg divFCall left mulRes
-arg divFCall right kFloat
+bind value mulRes Float64 mulCall
+call divFCall math.divideFloat64
+argument divFCall left Float64 mulRes
+argument divFCall right Float64 kFloat
 run divFCall
-bind nextTerm CFloat64 divFCall
-set term nextTerm
-call addCall math.addF64
-arg addCall left sumE
-arg addCall right nextTerm
+bind value nextTerm Float64 divFCall
+set memory term nextTerm
+call addCall math.addFloat64
+argument addCall left Float64 sumE
+argument addCall right Float64 nextTerm
 run addCall
-bind nextSum CFloat64 addCall
-set sumE nextSum
+bind value nextSum Float64 addCall
+set memory sumE nextSum
 # Increment k and kFloat.
-call incKCall math.addI64
-arg incKCall left k
-arg incKCall right oneI64E
+call incKCall math.addInt64
+argument incKCall left Int64 k
+argument incKCall right Int64 oneInt64E
 run incKCall
-bind nextK I64 incKCall
-set k nextK
-call incKFCall math.addF64
-arg incKFCall left kFloat
-arg incKFCall right oneFE
+bind value nextK Int64 incKCall
+set memory k nextK
+call incKFCall math.addFloat64
+argument incKFCall left Float64 kFloat
+argument incKFCall right Float64 oneFE
 run incKFCall
-bind nextKFloat CFloat64 incKFCall
-set kFloat nextKFloat
-branch expLoop
+bind value nextKFloat Float64 incKFCall
+set memory kFloat nextKFloat
+jump target expLoop
 
 label expReturn
-returnValue sumE
-
+return value sumE
 
 operation truncateFloat64TowardZero
-input truncateFloat64TowardZero inputValue CFloat64
-output truncateFloat64TowardZero CFloat64
-memoryHeap truncateFloat64TowardZero no
+input operation truncateFloat64TowardZero inputValue Float64
+output operation truncateFloat64TowardZero Float64
+memory truncateFloat64TowardZero heap no
 async truncateFloat64TowardZero no
-purpose truncateFloat64TowardZero "Truncate toward zero. Uses math.floatToInt (fptosi) which already truncates, then converts back."
+purpose operation truncateFloat64TowardZero "Truncate toward zero. Uses math.convertFloat64ToInt64 (fptosi) which already truncates, then converts back."
 label startTruncateFloat64TowardZero
-call toIntCall math.floatToInt
-arg toIntCall value inputValue
+call toIntCall math.convertFloat64ToInt64
+argument toIntCall value Float64 inputValue
 run toIntCall
-bind asInt CSignedInt64 toIntCall
-call backToFloatCall math.intToFloat
-arg backToFloatCall value asInt
+bind value asInt Int64 toIntCall
+call backToFloatCall math.convertInt64ToFloat64
+argument backToFloatCall value Int64 asInt
 run backToFloatCall
-bind backFloat CFloat64 backToFloatCall
-returnValue backFloat
-
+bind value backFloat Float64 backToFloatCall
+return value backFloat
 
 operation floorFloat64
-input floorFloat64 inputValue CFloat64
-output floorFloat64 CFloat64
-memoryHeap floorFloat64 no
+input operation floorFloat64 inputValue Float64
+output operation floorFloat64 Float64
+memory floorFloat64 heap no
 async floorFloat64 no
-purpose floorFloat64 "Largest integer <= x. trunc(x) is identical to floor for x >= 0, but for negative non-integer x we have to step down by 1."
+purpose operation floorFloat64 "Largest integer <= x. trunc(x) is identical to floor for x >= 0, but for negative non-integer x we have to step down by 1."
 label startFloorFloat64
-const zeroFlr CFloat64 0.0
-const oneFlr CFloat64 1.0
+storage module immutable zeroFlr Float64 0.0
+storage module immutable oneFlr Float64 1.0
 call trCall truncateFloat64TowardZero
-arg trCall x inputValue
+argument trCall x Float64 inputValue
 run trCall
-bindOk truncated CFloat64 trCall
+bind ok truncated Float64 trCall
 
 # If x >= 0, floor == trunc.
-call ngFCall math.lessThanF64
-arg ngFCall left inputValue
-arg ngFCall right zeroFlr
+call ngFCall math.lessThanFloat64
+argument ngFCall left Float64 inputValue
+argument ngFCall right Float64 zeroFlr
 run ngFCall
-bind isNg Bool ngFCall
-branchIf isNg floorMaybeStepDown
-returnValue truncated
+bind value isNg Bool ngFCall
+branch if condition isNg target floorMaybeStepDown
+return value truncated
 
 label floorMaybeStepDown
 # For negative x: if truncated == x exactly, x is integral -> floor is x.
 # Else floor = truncated - 1.
-call eqExactCall math.equalF64
-arg eqExactCall left truncated
-arg eqExactCall right inputValue
+call eqExactCall math.equalFloat64
+argument eqExactCall left Float64 truncated
+argument eqExactCall right Float64 inputValue
 run eqExactCall
-bind eqExact Bool eqExactCall
-branchIf eqExact floorIntegral
-call subOneCall math.subtractF64
-arg subOneCall left truncated
-arg subOneCall right oneFlr
+bind value eqExact Bool eqExactCall
+branch if condition eqExact target floorIntegral
+call subOneCall math.subtractFloat64
+argument subOneCall left Float64 truncated
+argument subOneCall right Float64 oneFlr
 run subOneCall
-bind floored CFloat64 subOneCall
-returnValue floored
+bind value floored Float64 subOneCall
+return value floored
 label floorIntegral
-returnValue truncated
-
+return value truncated
 
 operation ceilingFloat64
-input ceilingFloat64 inputValue CFloat64
-output ceilingFloat64 CFloat64
-memoryHeap ceilingFloat64 no
+input operation ceilingFloat64 inputValue Float64
+output operation ceilingFloat64 Float64
+memory ceilingFloat64 heap no
 async ceilingFloat64 no
-purpose ceilingFloat64 "Smallest integer >= x. Mirror image of floor: for x <= 0 trunc is the ceiling; for positive non-integer, ceil = trunc + 1."
+purpose operation ceilingFloat64 "Smallest integer >= x. Mirror image of floor: for x <= 0 trunc is the ceiling; for positive non-integer, ceil = trunc + 1."
 label startCeilingFloat64
-const zeroCl CFloat64 0.0
-const oneCl CFloat64 1.0
+storage module immutable zeroCl Float64 0.0
+storage module immutable oneCl Float64 1.0
 call trcCall truncateFloat64TowardZero
-arg trcCall x inputValue
+argument trcCall x Float64 inputValue
 run trcCall
-bindOk cTruncated CFloat64 trcCall
+bind ok cTruncated Float64 trcCall
 
-call gtZeroCall math.greaterThanF64
-arg gtZeroCall left inputValue
-arg gtZeroCall right zeroCl
+call gtZeroCall math.greaterThanFloat64
+argument gtZeroCall left Float64 inputValue
+argument gtZeroCall right Float64 zeroCl
 run gtZeroCall
-bind isPos Bool gtZeroCall
-branchIf isPos ceilMaybeStepUp
-returnValue cTruncated
+bind value isPos Bool gtZeroCall
+branch if condition isPos target ceilMaybeStepUp
+return value cTruncated
 
 label ceilMaybeStepUp
-call eqExactCCall math.equalF64
-arg eqExactCCall left cTruncated
-arg eqExactCCall right inputValue
+call eqExactCCall math.equalFloat64
+argument eqExactCCall left Float64 cTruncated
+argument eqExactCCall right Float64 inputValue
 run eqExactCCall
-bind eqExactC Bool eqExactCCall
-branchIf eqExactC ceilIntegral
-call addOneCall math.addF64
-arg addOneCall left cTruncated
-arg addOneCall right oneCl
+bind value eqExactC Bool eqExactCCall
+branch if condition eqExactC target ceilIntegral
+call addOneCall math.addFloat64
+argument addOneCall left Float64 cTruncated
+argument addOneCall right Float64 oneCl
 run addOneCall
-bind ceiled CFloat64 addOneCall
-returnValue ceiled
+bind value ceiled Float64 addOneCall
+return value ceiled
 label ceilIntegral
-returnValue cTruncated
-
+return value cTruncated
 
 operation floatingRemainderFloat64
-input floatingRemainderFloat64 dividendValue CFloat64
-input floatingRemainderFloat64 divisorValue CFloat64
-output floatingRemainderFloat64 CFloat64
-memoryHeap floatingRemainderFloat64 no
+input operation floatingRemainderFloat64 dividendValue Float64
+input operation floatingRemainderFloat64 divisorValue Float64
+output operation floatingRemainderFloat64 Float64
+memory floatingRemainderFloat64 heap no
 async floatingRemainderFloat64 no
-purpose floatingRemainderFloat64 "Floating-point remainder of x/y, truncating toward zero. fmod(x, y) = x - trunc(x/y) * y. Caller must ensure y != 0; we don't return NaN here (no IEEE special-value handling yet)."
+purpose operation floatingRemainderFloat64 "Floating-point remainder of x/y, truncating toward zero. fmod(x, y) = x - trunc(x/y) * y. Caller must ensure y != 0; we don't return NaN here (no IEEE special-value handling yet)."
 label startFloatingRemainderFloat64
-call qCall math.divideF64
-arg qCall left dividendValue
-arg qCall right divisorValue
+call qCall math.divideFloat64
+argument qCall left Float64 dividendValue
+argument qCall right Float64 divisorValue
 run qCall
-bind floatRemainderQuotient CFloat64 qCall
+bind value floatRemainderQuotient Float64 qCall
 call qTruncCall truncateFloat64TowardZero
-arg qTruncCall x floatRemainderQuotient
+argument qTruncCall x Float64 floatRemainderQuotient
 run qTruncCall
-bindOk qTrunc CFloat64 qTruncCall
-call scaleCall math.multiplyF64
-arg scaleCall left qTrunc
-arg scaleCall right divisorValue
+bind ok qTrunc Float64 qTruncCall
+call scaleCall math.multiplyFloat64
+argument scaleCall left Float64 qTrunc
+argument scaleCall right Float64 divisorValue
 run scaleCall
-bind scaled CFloat64 scaleCall
-call remCall math.subtractF64
-arg remCall left dividendValue
-arg remCall right scaled
+bind value scaled Float64 scaleCall
+call remCall math.subtractFloat64
+argument remCall left Float64 dividendValue
+argument remCall right Float64 scaled
 run remCall
-bind rem CFloat64 remCall
-returnValue rem
-
+bind value rem Float64 remCall
+return value rem
 
 operation naturalLogFloat64
-input naturalLogFloat64 inputValue CFloat64
-output naturalLogFloat64 CFloat64
-memoryHeap naturalLogFloat64 no
+input operation naturalLogFloat64 inputValue Float64
+output operation naturalLogFloat64 Float64
+memory naturalLogFloat64 heap no
 async naturalLogFloat64 no
-purpose naturalLogFloat64 "Natural log of x for x > 0. Uses range reduction (ln(x) = ln(x / 2^k) + k * ln(2), where k is chosen so x/2^k is in [1, 2)) before Newton iteration on f(y) = exp(y) - x. exponentialBaseEFloat64 is accurate in [0, 2], so the reduced ln(scaled) computation stays in the convergent zone. Returns 0.0 for x <= 0."
-invariant naturalLogFloat64 "Range-reduces x by repeated halving/doubling until in [1,2), then Newton-iterates on f(y) = exp(y) - x. Tracks the reduction factor k and re-applies via + k*ln(2) at the end."
+purpose operation naturalLogFloat64 "Natural log of x for x > 0. Uses range reduction (ln(x) = ln(x / 2^k) + k * ln(2), where k is chosen so x/2^k is in [1, 2)) before Newton iteration on f(y) = exp(y) - x. exponentialBaseEFloat64 is accurate in [0, 2], so the reduced ln(scaled) computation stays in the convergent zone. Returns 0.0 for x <= 0."
+invariant operation naturalLogFloat64 "Range-reduces x by repeated halving/doubling until in [1,2), then Newton-iterates on f(y) = exp(y) - x. Tracks the reduction factor k and re-applies via + k*ln(2) at the end."
 label startNaturalLogFloat64
-const zeroLn CFloat64 0.0
-const oneLn CFloat64 1.0
-const twoLn CFloat64 2.0
-const halfLn CFloat64 0.5
-const ln2Const CFloat64 0.6931471805599453
+storage module immutable zeroLn Float64 0.0
+storage module immutable oneLn Float64 1.0
+storage module immutable twoLn Float64 2.0
+storage module immutable halfLn Float64 0.5
+storage module immutable ln2Const Float64 0.6931471805599453
 
-call posCall math.lessThanOrEqualF64
-arg posCall left inputValue
-arg posCall right zeroLn
+call posCall math.lessThanOrEqualFloat64
+argument posCall left Float64 inputValue
+argument posCall right Float64 zeroLn
 run posCall
-bind nonPos Bool posCall
-branchIf nonPos lnReturnZero
+bind value nonPos Bool posCall
+branch if condition nonPos target lnReturnZero
 
 # Range reduction: pull x into [1, 2) by halving / doubling, tracking
 # the exponent shift k as an int.
-var scaled CFloat64 0.0
-set scaled inputValue
-var kInt I64 0
-const oneIk I64 1
-const negOneIk I64 -1
+memory naturalLogFloat64 mutable scaled Float64 0.0
+set memory scaled inputValue
+memory naturalLogFloat64 mutable kInt Int64 0
+storage module immutable oneIk Int64 1
+storage module immutable negOneIk Int64 -1
 
 label halveBigger
-call gtTwoCall math.greaterThanOrEqualF64
-arg gtTwoCall left scaled
-arg gtTwoCall right twoLn
+call gtTwoCall math.greaterThanOrEqualFloat64
+argument gtTwoCall left Float64 scaled
+argument gtTwoCall right Float64 twoLn
 run gtTwoCall
-bind isBig Bool gtTwoCall
-branchIf isBig halveOne
-branch maybeDouble
+bind value isBig Bool gtTwoCall
+branch if condition isBig target halveOne
+branch else target maybeDouble
 label halveOne
-call halveCall math.multiplyF64
-arg halveCall left scaled
-arg halveCall right halfLn
+call halveCall math.multiplyFloat64
+argument halveCall left Float64 scaled
+argument halveCall right Float64 halfLn
 run halveCall
-bind halved CFloat64 halveCall
-set scaled halved
-call kIncCall math.addI64
-arg kIncCall left kInt
-arg kIncCall right oneIk
+bind value halved Float64 halveCall
+set memory scaled halved
+call kIncCall math.addInt64
+argument kIncCall left Int64 kInt
+argument kIncCall right Int64 oneIk
 run kIncCall
-bind kNext I64 kIncCall
-set kInt kNext
-branch halveBigger
+bind value kNext Int64 kIncCall
+set memory kInt kNext
+jump target halveBigger
 
 label maybeDouble
-call ltOneCall math.lessThanF64
-arg ltOneCall left scaled
-arg ltOneCall right oneLn
+call ltOneCall math.lessThanFloat64
+argument ltOneCall left Float64 scaled
+argument ltOneCall right Float64 oneLn
 run ltOneCall
-bind isSmall Bool ltOneCall
-branchIf isSmall doubleOne
-branch lnNewton
+bind value isSmall Bool ltOneCall
+branch if condition isSmall target doubleOne
+branch else target lnNewton
 label doubleOne
-call dblCall math.multiplyF64
-arg dblCall left scaled
-arg dblCall right twoLn
+call dblCall math.multiplyFloat64
+argument dblCall left Float64 scaled
+argument dblCall right Float64 twoLn
 run dblCall
-bind doubled CFloat64 dblCall
-set scaled doubled
-call kDecCall math.addI64
-arg kDecCall left kInt
-arg kDecCall right negOneIk
+bind value doubled Float64 dblCall
+set memory scaled doubled
+call kDecCall math.addInt64
+argument kDecCall left Int64 kInt
+argument kDecCall right Int64 negOneIk
 run kDecCall
-bind kPrev I64 kDecCall
-set kInt kPrev
-branch maybeDouble
+bind value kPrev Int64 kDecCall
+set memory kInt kPrev
+jump target maybeDouble
 
 label lnNewton
 # scaled is in [1, 2). Newton's on ln(scaled). Initial guess scaled - 1
 # (in [0, 1)) gives fast convergence.
-var y CFloat64 0.0
-call initCall math.subtractF64
-arg initCall left scaled
-arg initCall right oneLn
+memory naturalLogFloat64 mutable y Float64 0.0
+call initCall math.subtractFloat64
+argument initCall left Float64 scaled
+argument initCall right Float64 oneLn
 run initCall
-bind y0 CFloat64 initCall
-set y y0
+bind value y0 Float64 initCall
+set memory y y0
 
-var iterL I64 0
-const maxIterLn I64 25
-const oneIL I64 1
+memory naturalLogFloat64 mutable iterL Int64 0
+storage module immutable maxIterLn Int64 25
+storage module immutable oneIL Int64 1
 
 label lnIter
 call expYCall exponentialBaseEFloat64
-arg expYCall x y
+argument expYCall x Float64 y
 run expYCall
-bindOk eyVal CFloat64 expYCall
-call resCall math.subtractF64
-arg resCall left eyVal
-arg resCall right scaled
+bind ok eyVal Float64 expYCall
+call resCall math.subtractFloat64
+argument resCall left Float64 eyVal
+argument resCall right Float64 scaled
 run resCall
-bind newtonResidual CFloat64 resCall
-call deltaCall math.divideF64
-arg deltaCall left newtonResidual
-arg deltaCall right eyVal
+bind value newtonResidual Float64 resCall
+call deltaCall math.divideFloat64
+argument deltaCall left Float64 newtonResidual
+argument deltaCall right Float64 eyVal
 run deltaCall
-bind delta CFloat64 deltaCall
-call newYCall math.subtractF64
-arg newYCall left y
-arg newYCall right delta
+bind value delta Float64 deltaCall
+call newYCall math.subtractFloat64
+argument newYCall left Float64 y
+argument newYCall right Float64 delta
 run newYCall
-bind newY CFloat64 newYCall
-set y newY
+bind value newY Float64 newYCall
+set memory y newY
 
-call iterIncCall math.addI64
-arg iterIncCall left iterL
-arg iterIncCall right oneIL
+call iterIncCall math.addInt64
+argument iterIncCall left Int64 iterL
+argument iterIncCall right Int64 oneIL
 run iterIncCall
-bind nextIter I64 iterIncCall
-set iterL nextIter
-call iterDoneCall math.greaterThanOrEqualI64
-arg iterDoneCall left iterL
-arg iterDoneCall right maxIterLn
+bind value nextIter Int64 iterIncCall
+set memory iterL nextIter
+call iterDoneCall math.greaterThanOrEqualInt64
+argument iterDoneCall left Int64 iterL
+argument iterDoneCall right Int64 maxIterLn
 run iterDoneCall
-bind done Bool iterDoneCall
-branchIf done lnDone
-branch lnIter
+bind value done Bool iterDoneCall
+branch if condition done target lnDone
+branch else target lnIter
 
 label lnDone
 # Result = y + k * ln(2)
-call kFloatCall math.intToFloat
-arg kFloatCall value kInt
+call kFloatCall math.convertInt64ToFloat64
+argument kFloatCall value Int64 kInt
 run kFloatCall
-bind kFloat CFloat64 kFloatCall
-call kLnCall math.multiplyF64
-arg kLnCall left kFloat
-arg kLnCall right ln2Const
+bind value kFloat Float64 kFloatCall
+call kLnCall math.multiplyFloat64
+argument kLnCall left Float64 kFloat
+argument kLnCall right Float64 ln2Const
 run kLnCall
-bind kTimesLn CFloat64 kLnCall
-call finalCall math.addF64
-arg finalCall left y
-arg finalCall right kTimesLn
+bind value kTimesLn Float64 kLnCall
+call finalCall math.addFloat64
+argument finalCall left Float64 y
+argument finalCall right Float64 kTimesLn
 run finalCall
-bind finalLn CFloat64 finalCall
-returnValue finalLn
+bind value finalLn Float64 finalCall
+return value finalLn
 
 label lnReturnZero
-returnValue zeroLn
-
+return value zeroLn
 
 operation powerFloat64
-input powerFloat64 baseValue CFloat64
-input powerFloat64 exponentValue CFloat64
-output powerFloat64 CFloat64
-memoryHeap powerFloat64 no
+input operation powerFloat64 baseValue Float64
+input operation powerFloat64 exponentValue Float64
+output operation powerFloat64 Float64
+memory powerFloat64 heap no
 async powerFloat64 no
-purpose powerFloat64 "base^exponent for base > 0 via exp(exponent * ln(base)). Returns 1.0 for exponent == 0."
+purpose operation powerFloat64 "base^exponent for base > 0 via exp(exponent * ln(base)). Returns 1.0 for exponent == 0."
 label startPowerFloat64
-const zeroPw CFloat64 0.0
-const oneFw CFloat64 1.0
-call eExpCall math.equalF64
-arg eExpCall left exponentValue
-arg eExpCall right zeroPw
+storage module immutable zeroPw Float64 0.0
+storage module immutable oneFw Float64 1.0
+call eExpCall math.equalFloat64
+argument eExpCall left Float64 exponentValue
+argument eExpCall right Float64 zeroPw
 run eExpCall
-bind expZero Bool eExpCall
-branchIf expZero powOne
+bind value expZero Bool eExpCall
+branch if condition expZero target powOne
 call lnBCall naturalLogFloat64
-arg lnBCall x baseValue
+argument lnBCall x Float64 baseValue
 run lnBCall
-bindOk lnBase CFloat64 lnBCall
-call prodCall math.multiplyF64
-arg prodCall left exponentValue
-arg prodCall right lnBase
+bind ok lnBase Float64 lnBCall
+call prodCall math.multiplyFloat64
+argument prodCall left Float64 exponentValue
+argument prodCall right Float64 lnBase
 run prodCall
-bind prod CFloat64 prodCall
+bind value prod Float64 prodCall
 call eResCall exponentialBaseEFloat64
-arg eResCall x prod
+argument eResCall x Float64 prod
 run eResCall
-bindOk powVal CFloat64 eResCall
-returnValue powVal
+bind ok powVal Float64 eResCall
+return value powVal
 label powOne
-returnValue oneFw
-
+return value oneFw
 
 operation sineRadiansFloat64
-input sineRadiansFloat64 inputValue CFloat64
-output sineRadiansFloat64 CFloat64
-memoryHeap sineRadiansFloat64 no
+input operation sineRadiansFloat64 inputValue Float64
+output operation sineRadiansFloat64 Float64
+memory sineRadiansFloat64 heap no
 async sineRadiansFloat64 no
-purpose sineRadiansFloat64 "sin(x) via Taylor series: x - x^3/3! + x^5/5! - x^7/7! + ... (20 terms). For best accuracy, caller should reduce x into [-pi, pi] beforehand. No argument reduction at this layer (yet)."
-invariant sineRadiansFloat64 "Sums 20 Taylor terms with alternating sign; each iteration multiplies the running term by -x^2 / ((2k)(2k+1))."
+purpose operation sineRadiansFloat64 "sin(x) via Taylor series: x - x^3/3! + x^5/5! - x^7/7! + ... (20 terms). For best accuracy, caller should reduce x into [-pi, pi] beforehand. No argument reduction at this layer (yet)."
+invariant operation sineRadiansFloat64 "Sums 20 Taylor terms with alternating sign; each iteration multiplies the running term by -x^2 / ((2k)(2k+1))."
 label startSineRadiansFloat64
-const oneISn I64 1
-const maxTermsSn I64 20
+storage module immutable oneISn Int64 1
+storage module immutable maxTermsSn Int64 20
 
 # accumulator = x (first term)
-var sumSn CFloat64 0.0
-set sumSn inputValue
-var termSn CFloat64 0.0
-set termSn inputValue
-var kSn I64 1
-var kFlSn CFloat64 1.0
+memory sineRadiansFloat64 mutable sumSn Float64 0.0
+set memory sumSn inputValue
+memory sineRadiansFloat64 mutable termSn Float64 0.0
+set memory termSn inputValue
+memory sineRadiansFloat64 mutable kSn Int64 1
+memory sineRadiansFloat64 mutable kFlSn Float64 1.0
 
 label sinLoop
-call sinDoneCall math.greaterThanOrEqualI64
-arg sinDoneCall left kSn
-arg sinDoneCall right maxTermsSn
+call sinDoneCall math.greaterThanOrEqualInt64
+argument sinDoneCall left Int64 kSn
+argument sinDoneCall right Int64 maxTermsSn
 run sinDoneCall
-bind doneSn Bool sinDoneCall
-branchIf doneSn sinReturn
+bind value doneSn Bool sinDoneCall
+branch if condition doneSn target sinReturn
 
 # Next term factor: -x^2 / ((2k)(2k+1)). We update term by multiplying.
 # numerator: -x*x
-call xSqCall math.multiplyF64
-arg xSqCall left inputValue
-arg xSqCall right inputValue
+call xSqCall math.multiplyFloat64
+argument xSqCall left Float64 inputValue
+argument xSqCall right Float64 inputValue
 run xSqCall
-bind xSq CFloat64 xSqCall
-const negOneSn CFloat64 -1.0
-call negXSqCall math.multiplyF64
-arg negXSqCall left xSq
-arg negXSqCall right negOneSn
+bind value xSq Float64 xSqCall
+storage module immutable negOneSn Float64 -1.0
+call negXSqCall math.multiplyFloat64
+argument negXSqCall left Float64 xSq
+argument negXSqCall right Float64 negOneSn
 run negXSqCall
-bind negXSq CFloat64 negXSqCall
+bind value negXSq Float64 negXSqCall
 
 # denominator: (2k)(2k+1) Ã¢â‚¬â€ both ints.
-const twoIsn I64 2
-call twoKCall math.multiplyI64
-arg twoKCall left kSn
-arg twoKCall right twoIsn
+storage module immutable twoIsn Int64 2
+call twoKCall math.multiplyInt64
+argument twoKCall left Int64 kSn
+argument twoKCall right Int64 twoIsn
 run twoKCall
-bind twoK I64 twoKCall
-call twoKPlus1Call math.addI64
-arg twoKPlus1Call left twoK
-arg twoKPlus1Call right oneISn
+bind value twoK Int64 twoKCall
+call twoKPlus1Call math.addInt64
+argument twoKPlus1Call left Int64 twoK
+argument twoKPlus1Call right Int64 oneISn
 run twoKPlus1Call
-bind twoKplus I64 twoKPlus1Call
-call denomIntCall math.multiplyI64
-arg denomIntCall left twoK
-arg denomIntCall right twoKplus
+bind value twoKplus Int64 twoKPlus1Call
+call denomIntCall math.multiplyInt64
+argument denomIntCall left Int64 twoK
+argument denomIntCall right Int64 twoKplus
 run denomIntCall
-bind denomInt I64 denomIntCall
-call denomFloatCall math.intToFloat
-arg denomFloatCall value denomInt
+bind value denomInt Int64 denomIntCall
+call denomFloatCall math.convertInt64ToFloat64
+argument denomFloatCall value Int64 denomInt
 run denomFloatCall
-bind denomFl CFloat64 denomFloatCall
+bind value denomFl Float64 denomFloatCall
 
 # term *= negXSq / denomFl
-call termMulCall math.multiplyF64
-arg termMulCall left termSn
-arg termMulCall right negXSq
+call termMulCall math.multiplyFloat64
+argument termMulCall left Float64 termSn
+argument termMulCall right Float64 negXSq
 run termMulCall
-bind tmpTerm CFloat64 termMulCall
-call termDivCall math.divideF64
-arg termDivCall left tmpTerm
-arg termDivCall right denomFl
+bind value tmpTerm Float64 termMulCall
+call termDivCall math.divideFloat64
+argument termDivCall left Float64 tmpTerm
+argument termDivCall right Float64 denomFl
 run termDivCall
-bind nextTerm CFloat64 termDivCall
-set termSn nextTerm
+bind value nextTerm Float64 termDivCall
+set memory termSn nextTerm
 
 # sum += term
-call sumAddCall math.addF64
-arg sumAddCall left sumSn
-arg sumAddCall right nextTerm
+call sumAddCall math.addFloat64
+argument sumAddCall left Float64 sumSn
+argument sumAddCall right Float64 nextTerm
 run sumAddCall
-bind nextSum CFloat64 sumAddCall
-set sumSn nextSum
+bind value nextSum Float64 sumAddCall
+set memory sumSn nextSum
 
-call kSnIncCall math.addI64
-arg kSnIncCall left kSn
-arg kSnIncCall right oneISn
+call kSnIncCall math.addInt64
+argument kSnIncCall left Int64 kSn
+argument kSnIncCall right Int64 oneISn
 run kSnIncCall
-bind nextK I64 kSnIncCall
-set kSn nextK
-branch sinLoop
+bind value nextK Int64 kSnIncCall
+set memory kSn nextK
+jump target sinLoop
 
 label sinReturn
-returnValue sumSn
-
+return value sumSn
 
 operation cosineRadiansFloat64
-input cosineRadiansFloat64 inputValue CFloat64
-output cosineRadiansFloat64 CFloat64
-memoryHeap cosineRadiansFloat64 no
+input operation cosineRadiansFloat64 inputValue Float64
+output operation cosineRadiansFloat64 Float64
+memory cosineRadiansFloat64 heap no
 async cosineRadiansFloat64 no
-purpose cosineRadiansFloat64 "cos(x) via Taylor series: 1 - x^2/2! + x^4/4! - ... (20 terms). Same range caveat as sineRadiansFloat64."
-invariant cosineRadiansFloat64 "Sums 20 Taylor terms starting from 1.0; each iteration multiplies the running term by -x^2 / ((2k-1)(2k))."
+purpose operation cosineRadiansFloat64 "cos(x) via Taylor series: 1 - x^2/2! + x^4/4! - ... (20 terms). Same range caveat as sineRadiansFloat64."
+invariant operation cosineRadiansFloat64 "Sums 20 Taylor terms starting from 1.0; each iteration multiplies the running term by -x^2 / ((2k-1)(2k))."
 label startCosineRadiansFloat64
-const oneICs I64 1
-const maxTermsCs I64 20
+storage module immutable oneICs Int64 1
+storage module immutable maxTermsCs Int64 20
 
-var sumCs CFloat64 1.0
-var termCs CFloat64 1.0
-var kCs I64 1
-var kFlCs CFloat64 1.0
+memory cosineRadiansFloat64 mutable sumCs Float64 1.0
+memory cosineRadiansFloat64 mutable termCs Float64 1.0
+memory cosineRadiansFloat64 mutable kCs Int64 1
+memory cosineRadiansFloat64 mutable kFlCs Float64 1.0
 
 label cosLoop
-call csDoneCall math.greaterThanOrEqualI64
-arg csDoneCall left kCs
-arg csDoneCall right maxTermsCs
+call csDoneCall math.greaterThanOrEqualInt64
+argument csDoneCall left Int64 kCs
+argument csDoneCall right Int64 maxTermsCs
 run csDoneCall
-bind doneCs Bool csDoneCall
-branchIf doneCs cosReturn
+bind value doneCs Bool csDoneCall
+branch if condition doneCs target cosReturn
 
 # denominator: (2k-1)(2k)
-const twoICs I64 2
-call twoKcCall math.multiplyI64
-arg twoKcCall left kCs
-arg twoKcCall right twoICs
+storage module immutable twoICs Int64 2
+call twoKcCall math.multiplyInt64
+argument twoKcCall left Int64 kCs
+argument twoKcCall right Int64 twoICs
 run twoKcCall
-bind twoKc I64 twoKcCall
-call twoKcMinus1Call math.subtractI64
-arg twoKcMinus1Call left twoKc
-arg twoKcMinus1Call right oneICs
+bind value twoKc Int64 twoKcCall
+call twoKcMinus1Call math.subtractInt64
+argument twoKcMinus1Call left Int64 twoKc
+argument twoKcMinus1Call right Int64 oneICs
 run twoKcMinus1Call
-bind twoKcm1 I64 twoKcMinus1Call
-call denomCsIntCall math.multiplyI64
-arg denomCsIntCall left twoKcm1
-arg denomCsIntCall right twoKc
+bind value twoKcm1 Int64 twoKcMinus1Call
+call denomCsIntCall math.multiplyInt64
+argument denomCsIntCall left Int64 twoKcm1
+argument denomCsIntCall right Int64 twoKc
 run denomCsIntCall
-bind denomCsInt I64 denomCsIntCall
-call denomCsFlCall math.intToFloat
-arg denomCsFlCall value denomCsInt
+bind value denomCsInt Int64 denomCsIntCall
+call denomCsFlCall math.convertInt64ToFloat64
+argument denomCsFlCall value Int64 denomCsInt
 run denomCsFlCall
-bind denomCsFl CFloat64 denomCsFlCall
+bind value denomCsFl Float64 denomCsFlCall
 
 # numerator: -x*x
-call xSqCsCall math.multiplyF64
-arg xSqCsCall left inputValue
-arg xSqCsCall right inputValue
+call xSqCsCall math.multiplyFloat64
+argument xSqCsCall left Float64 inputValue
+argument xSqCsCall right Float64 inputValue
 run xSqCsCall
-bind xSqCs CFloat64 xSqCsCall
-const negOneCs CFloat64 -1.0
-call negXSqCsCall math.multiplyF64
-arg negXSqCsCall left xSqCs
-arg negXSqCsCall right negOneCs
+bind value xSqCs Float64 xSqCsCall
+storage module immutable negOneCs Float64 -1.0
+call negXSqCsCall math.multiplyFloat64
+argument negXSqCsCall left Float64 xSqCs
+argument negXSqCsCall right Float64 negOneCs
 run negXSqCsCall
-bind negXSqCs CFloat64 negXSqCsCall
+bind value negXSqCs Float64 negXSqCsCall
 
-call termCsMulCall math.multiplyF64
-arg termCsMulCall left termCs
-arg termCsMulCall right negXSqCs
+call termCsMulCall math.multiplyFloat64
+argument termCsMulCall left Float64 termCs
+argument termCsMulCall right Float64 negXSqCs
 run termCsMulCall
-bind tmpTermCs CFloat64 termCsMulCall
-call termCsDivCall math.divideF64
-arg termCsDivCall left tmpTermCs
-arg termCsDivCall right denomCsFl
+bind value tmpTermCs Float64 termCsMulCall
+call termCsDivCall math.divideFloat64
+argument termCsDivCall left Float64 tmpTermCs
+argument termCsDivCall right Float64 denomCsFl
 run termCsDivCall
-bind nextTermCs CFloat64 termCsDivCall
-set termCs nextTermCs
+bind value nextTermCs Float64 termCsDivCall
+set memory termCs nextTermCs
 
-call sumCsAddCall math.addF64
-arg sumCsAddCall left sumCs
-arg sumCsAddCall right nextTermCs
+call sumCsAddCall math.addFloat64
+argument sumCsAddCall left Float64 sumCs
+argument sumCsAddCall right Float64 nextTermCs
 run sumCsAddCall
-bind nextSumCs CFloat64 sumCsAddCall
-set sumCs nextSumCs
+bind value nextSumCs Float64 sumCsAddCall
+set memory sumCs nextSumCs
 
-call kCsIncCall math.addI64
-arg kCsIncCall left kCs
-arg kCsIncCall right oneICs
+call kCsIncCall math.addInt64
+argument kCsIncCall left Int64 kCs
+argument kCsIncCall right Int64 oneICs
 run kCsIncCall
-bind nextKcs I64 kCsIncCall
-set kCs nextKcs
-branch cosLoop
+bind value nextKcs Int64 kCsIncCall
+set memory kCs nextKcs
+jump target cosLoop
 
 label cosReturn
-returnValue sumCs
-
+return value sumCs
 
 operation tangentRadiansFloat64
-input tangentRadiansFloat64 inputValue CFloat64
-output tangentRadiansFloat64 CFloat64
-memoryHeap tangentRadiansFloat64 no
+input operation tangentRadiansFloat64 inputValue Float64
+output operation tangentRadiansFloat64 Float64
+memory tangentRadiansFloat64 heap no
 async tangentRadiansFloat64 no
-purpose tangentRadiansFloat64 "tan(x) = sin(x) / cos(x). Inherits range caveats from sineRadiansFloat64 / cosineRadiansFloat64 (no argument reduction)."
+purpose operation tangentRadiansFloat64 "tan(x) = sin(x) / cos(x). Inherits range caveats from sineRadiansFloat64 / cosineRadiansFloat64 (no argument reduction)."
 label startTangentRadiansFloat64
 call sCall sineRadiansFloat64
-arg sCall x inputValue
+argument sCall x Float64 inputValue
 run sCall
-bindOk sV CFloat64 sCall
+bind ok sV Float64 sCall
 call cCall cosineRadiansFloat64
-arg cCall x inputValue
+argument cCall x Float64 inputValue
 run cCall
-bindOk cV CFloat64 cCall
-call divTanCall math.divideF64
-arg divTanCall left sV
-arg divTanCall right cV
+bind ok cV Float64 cCall
+call divTanCall math.divideFloat64
+argument divTanCall left Float64 sV
+argument divTanCall right Float64 cV
 run divTanCall
-bind tanV CFloat64 divTanCall
-returnValue tanV
-
+bind value tanV Float64 divTanCall
+return value tanV
 
 operation hyperbolicSineFloat64
-input hyperbolicSineFloat64 inputValue CFloat64
-output hyperbolicSineFloat64 CFloat64
-memoryHeap hyperbolicSineFloat64 no
+input operation hyperbolicSineFloat64 inputValue Float64
+output operation hyperbolicSineFloat64 Float64
+memory hyperbolicSineFloat64 heap no
 async hyperbolicSineFloat64 no
-purpose hyperbolicSineFloat64 "Hyperbolic sine: (exp(x) - exp(-x)) / 2."
+purpose operation hyperbolicSineFloat64 "Hyperbolic sine: (exp(x) - exp(-x)) / 2."
 label startHyperbolicSineFloat64
-const halfFShn CFloat64 0.5
-const negOneShn CFloat64 -1.0
+storage module immutable halfFShn Float64 0.5
+storage module immutable negOneShn Float64 -1.0
 call posExpCall exponentialBaseEFloat64
-arg posExpCall x inputValue
+argument posExpCall x Float64 inputValue
 run posExpCall
-bindOk posExp CFloat64 posExpCall
-call negXCall math.multiplyF64
-arg negXCall left inputValue
-arg negXCall right negOneShn
+bind ok posExp Float64 posExpCall
+call negXCall math.multiplyFloat64
+argument negXCall left Float64 inputValue
+argument negXCall right Float64 negOneShn
 run negXCall
-bind negX CFloat64 negXCall
+bind value negX Float64 negXCall
 call negExpCall exponentialBaseEFloat64
-arg negExpCall x negX
+argument negExpCall x Float64 negX
 run negExpCall
-bindOk negExp CFloat64 negExpCall
-call diffCall math.subtractF64
-arg diffCall left posExp
-arg diffCall right negExp
+bind ok negExp Float64 negExpCall
+call diffCall math.subtractFloat64
+argument diffCall left Float64 posExp
+argument diffCall right Float64 negExp
 run diffCall
-bind diff CFloat64 diffCall
-call halveCall math.multiplyF64
-arg halveCall left diff
-arg halveCall right halfFShn
+bind value diff Float64 diffCall
+call halveCall math.multiplyFloat64
+argument halveCall left Float64 diff
+argument halveCall right Float64 halfFShn
 run halveCall
-bind sinhResult CFloat64 halveCall
-returnValue sinhResult
-
+bind value sinhResult Float64 halveCall
+return value sinhResult
 
 operation hyperbolicCosineFloat64
-input hyperbolicCosineFloat64 inputValue CFloat64
-output hyperbolicCosineFloat64 CFloat64
-memoryHeap hyperbolicCosineFloat64 no
+input operation hyperbolicCosineFloat64 inputValue Float64
+output operation hyperbolicCosineFloat64 Float64
+memory hyperbolicCosineFloat64 heap no
 async hyperbolicCosineFloat64 no
-purpose hyperbolicCosineFloat64 "Hyperbolic cosine: (exp(x) + exp(-x)) / 2."
+purpose operation hyperbolicCosineFloat64 "Hyperbolic cosine: (exp(x) + exp(-x)) / 2."
 label startHyperbolicCosineFloat64
-const halfFchn CFloat64 0.5
-const negOneChn CFloat64 -1.0
+storage module immutable halfFchn Float64 0.5
+storage module immutable negOneChn Float64 -1.0
 call posExpCcallCall exponentialBaseEFloat64
-arg posExpCcallCall x inputValue
+argument posExpCcallCall x Float64 inputValue
 run posExpCcallCall
-bindOk posExpC CFloat64 posExpCcallCall
-call negXCcallCall math.multiplyF64
-arg negXCcallCall left inputValue
-arg negXCcallCall right negOneChn
+bind ok posExpC Float64 posExpCcallCall
+call negXCcallCall math.multiplyFloat64
+argument negXCcallCall left Float64 inputValue
+argument negXCcallCall right Float64 negOneChn
 run negXCcallCall
-bind negXC CFloat64 negXCcallCall
+bind value negXC Float64 negXCcallCall
 call negExpCcallCall exponentialBaseEFloat64
-arg negExpCcallCall x negXC
+argument negExpCcallCall x Float64 negXC
 run negExpCcallCall
-bindOk negExpC CFloat64 negExpCcallCall
-call sumCcallCall math.addF64
-arg sumCcallCall left posExpC
-arg sumCcallCall right negExpC
+bind ok negExpC Float64 negExpCcallCall
+call sumCcallCall math.addFloat64
+argument sumCcallCall left Float64 posExpC
+argument sumCcallCall right Float64 negExpC
 run sumCcallCall
-bind sumC CFloat64 sumCcallCall
-call halveCcallCall math.multiplyF64
-arg halveCcallCall left sumC
-arg halveCcallCall right halfFchn
+bind value sumC Float64 sumCcallCall
+call halveCcallCall math.multiplyFloat64
+argument halveCcallCall left Float64 sumC
+argument halveCcallCall right Float64 halfFchn
 run halveCcallCall
-bind resC CFloat64 halveCcallCall
-returnValue resC
-
+bind value resC Float64 halveCcallCall
+return value resC
 
 operation hyperbolicTangentFloat64
-input hyperbolicTangentFloat64 inputValue CFloat64
-output hyperbolicTangentFloat64 CFloat64
-memoryHeap hyperbolicTangentFloat64 no
+input operation hyperbolicTangentFloat64 inputValue Float64
+output operation hyperbolicTangentFloat64 Float64
+memory hyperbolicTangentFloat64 heap no
 async hyperbolicTangentFloat64 no
-purpose hyperbolicTangentFloat64 "Hyperbolic tangent: sinh(x) / cosh(x)."
+purpose operation hyperbolicTangentFloat64 "Hyperbolic tangent: sinh(x) / cosh(x)."
 label startHyperbolicTangentFloat64
 call snCall hyperbolicSineFloat64
-arg snCall x inputValue
+argument snCall x Float64 inputValue
 run snCall
-bindOk snV CFloat64 snCall
+bind ok snV Float64 snCall
 call csCall hyperbolicCosineFloat64
-arg csCall x inputValue
+argument csCall x Float64 inputValue
 run csCall
-bindOk csV CFloat64 csCall
-call divTanhCall math.divideF64
-arg divTanhCall left snV
-arg divTanhCall right csV
+bind ok csV Float64 csCall
+call divTanhCall math.divideFloat64
+argument divTanhCall left Float64 snV
+argument divTanhCall right Float64 csV
 run divTanhCall
-bind thV CFloat64 divTanhCall
-returnValue thV
-
+bind value thV Float64 divTanhCall
+return value thV
 
 operation logBaseTwoFloat64
-input logBaseTwoFloat64 inputValue CFloat64
-output logBaseTwoFloat64 CFloat64
-memoryHeap logBaseTwoFloat64 no
+input operation logBaseTwoFloat64 inputValue Float64
+output operation logBaseTwoFloat64 Float64
+memory logBaseTwoFloat64 heap no
 async logBaseTwoFloat64 no
-purpose logBaseTwoFloat64 "Base-2 log: ln(x) / ln(2)."
+purpose operation logBaseTwoFloat64 "Base-2 log: ln(x) / ln(2)."
 label startLogBaseTwoFloat64
-const ln2 CFloat64 0.6931471805599453
+storage module immutable ln2 Float64 0.6931471805599453
 call lnCall naturalLogFloat64
-arg lnCall x inputValue
+argument lnCall x Float64 inputValue
 run lnCall
-bindOk lnV CFloat64 lnCall
-call divLg2Call math.divideF64
-arg divLg2Call left lnV
-arg divLg2Call right ln2
+bind ok lnV Float64 lnCall
+call divLg2Call math.divideFloat64
+argument divLg2Call left Float64 lnV
+argument divLg2Call right Float64 ln2
 run divLg2Call
-bind l2V CFloat64 divLg2Call
-returnValue l2V
-
+bind value l2V Float64 divLg2Call
+return value l2V
 
 operation logBaseTenFloat64
-input logBaseTenFloat64 inputValue CFloat64
-output logBaseTenFloat64 CFloat64
-memoryHeap logBaseTenFloat64 no
+input operation logBaseTenFloat64 inputValue Float64
+output operation logBaseTenFloat64 Float64
+memory logBaseTenFloat64 heap no
 async logBaseTenFloat64 no
-purpose logBaseTenFloat64 "Base-10 log: ln(x) / ln(10)."
+purpose operation logBaseTenFloat64 "Base-10 log: ln(x) / ln(10)."
 label startLogBaseTenFloat64
-const ln10 CFloat64 2.302585092994046
+storage module immutable ln10 Float64 2.302585092994046
 call lnCall10Call naturalLogFloat64
-arg lnCall10Call x inputValue
+argument lnCall10Call x Float64 inputValue
 run lnCall10Call
-bindOk lnV10 CFloat64 lnCall10Call
-call divLg10Call math.divideF64
-arg divLg10Call left lnV10
-arg divLg10Call right ln10
+bind ok lnV10 Float64 lnCall10Call
+call divLg10Call math.divideFloat64
+argument divLg10Call left Float64 lnV10
+argument divLg10Call right Float64 ln10
 run divLg10Call
-bind l10V CFloat64 divLg10Call
-returnValue l10V
-
+bind value l10V Float64 divLg10Call
+return value l10V
 
 operation exponentialMinusOneFloat64
-input exponentialMinusOneFloat64 inputValue CFloat64
-output exponentialMinusOneFloat64 CFloat64
-memoryHeap exponentialMinusOneFloat64 no
+input operation exponentialMinusOneFloat64 inputValue Float64
+output operation exponentialMinusOneFloat64 Float64
+memory exponentialMinusOneFloat64 heap no
 async exponentialMinusOneFloat64 no
-purpose exponentialMinusOneFloat64 "exp(x) - 1. Not loss-of-precision-aware at this layer; production libm uses a separate series for tiny x."
+purpose operation exponentialMinusOneFloat64 "exp(x) - 1. Not loss-of-precision-aware at this layer; production libm uses a separate series for tiny x."
 label startExponentialMinusOneFloat64
-const oneEm CFloat64 1.0
+storage module immutable oneEm Float64 1.0
 call expCallEmCall exponentialBaseEFloat64
-arg expCallEmCall x inputValue
+argument expCallEmCall x Float64 inputValue
 run expCallEmCall
-bindOk expVem CFloat64 expCallEmCall
-call subOneCall math.subtractF64
-arg subOneCall left expVem
-arg subOneCall right oneEm
+bind ok expVem Float64 expCallEmCall
+call subOneCall math.subtractFloat64
+argument subOneCall left Float64 expVem
+argument subOneCall right Float64 oneEm
 run subOneCall
-bind emV CFloat64 subOneCall
-returnValue emV
-
+bind value emV Float64 subOneCall
+return value emV
 
 operation naturalLogOnePlusFloat64
-input naturalLogOnePlusFloat64 inputValue CFloat64
-output naturalLogOnePlusFloat64 CFloat64
-memoryHeap naturalLogOnePlusFloat64 no
+input operation naturalLogOnePlusFloat64 inputValue Float64
+output operation naturalLogOnePlusFloat64 Float64
+memory naturalLogOnePlusFloat64 heap no
 async naturalLogOnePlusFloat64 no
-purpose naturalLogOnePlusFloat64 "ln(1 + x). Same precision caveat as expm1."
+purpose operation naturalLogOnePlusFloat64 "ln(1 + x). Same precision caveat as expm1."
 label startNaturalLogOnePlusFloat64
-const oneL1p CFloat64 1.0
-call addOneCall math.addF64
-arg addOneCall left oneL1p
-arg addOneCall right inputValue
+storage module immutable oneL1p Float64 1.0
+call addOneCall math.addFloat64
+argument addOneCall left Float64 oneL1p
+argument addOneCall right Float64 inputValue
 run addOneCall
-bind plusX CFloat64 addOneCall
+bind value plusX Float64 addOneCall
 call lnCallL1pCall naturalLogFloat64
-arg lnCallL1pCall x plusX
+argument lnCallL1pCall x Float64 plusX
 run lnCallL1pCall
-bindOk l1pV CFloat64 lnCallL1pCall
-returnValue l1pV
-
+bind ok l1pV Float64 lnCallL1pCall
+return value l1pV
 
 operation hypotenuseFloat64
-input hypotenuseFloat64 firstLegValue CFloat64
-input hypotenuseFloat64 secondLegValue CFloat64
-output hypotenuseFloat64 CFloat64
-memoryHeap hypotenuseFloat64 no
+input operation hypotenuseFloat64 firstLegValue Float64
+input operation hypotenuseFloat64 secondLegValue Float64
+output operation hypotenuseFloat64 Float64
+memory hypotenuseFloat64 heap no
 async hypotenuseFloat64 no
-purpose hypotenuseFloat64 "sqrt(x^2 + y^2). Naive form may overflow for huge inputs; production libm scales first."
+purpose operation hypotenuseFloat64 "sqrt(x^2 + y^2). Naive form may overflow for huge inputs; production libm scales first."
 label startHypotenuseFloat64
-call xSqHypCall math.multiplyF64
-arg xSqHypCall left firstLegValue
-arg xSqHypCall right firstLegValue
+call xSqHypCall math.multiplyFloat64
+argument xSqHypCall left Float64 firstLegValue
+argument xSqHypCall right Float64 firstLegValue
 run xSqHypCall
-bind xSqV CFloat64 xSqHypCall
-call ySqHypCall math.multiplyF64
-arg ySqHypCall left secondLegValue
-arg ySqHypCall right secondLegValue
+bind value xSqV Float64 xSqHypCall
+call ySqHypCall math.multiplyFloat64
+argument ySqHypCall left Float64 secondLegValue
+argument ySqHypCall right Float64 secondLegValue
 run ySqHypCall
-bind ySqV CFloat64 ySqHypCall
-call sumSqHypCall math.addF64
-arg sumSqHypCall left xSqV
-arg sumSqHypCall right ySqV
+bind value ySqV Float64 ySqHypCall
+call sumSqHypCall math.addFloat64
+argument sumSqHypCall left Float64 xSqV
+argument sumSqHypCall right Float64 ySqV
 run sumSqHypCall
-bind sumSq CFloat64 sumSqHypCall
+bind value sumSq Float64 sumSqHypCall
 call sqrtHypCall squareRootFloat64
-arg sqrtHypCall x sumSq
+argument sqrtHypCall x Float64 sumSq
 run sqrtHypCall
-bindOk hypotenuseResult CFloat64 sqrtHypCall
-returnValue hypotenuseResult
-
+bind ok hypotenuseResult Float64 sqrtHypCall
+return value hypotenuseResult
 
 operation arctangentRadiansFloat64
-input arctangentRadiansFloat64 inputValue CFloat64
-output arctangentRadiansFloat64 CFloat64
-memoryHeap arctangentRadiansFloat64 no
+input operation arctangentRadiansFloat64 inputValue Float64
+output operation arctangentRadiansFloat64 Float64
+memory arctangentRadiansFloat64 heap no
 async arctangentRadiansFloat64 no
-purpose arctangentRadiansFloat64 "atan(x) via Taylor series for |x| <= 1; uses the identity atan(x) = sign(x)*pi/2 - atan(1/x) for |x| > 1."
-invariant arctangentRadiansFloat64 "For |x| <= 1, sums 50 Taylor terms with alternating sign. For |x| > 1, recurses on 1/x and reflects through sign(x) * pi/2."
+purpose operation arctangentRadiansFloat64 "atan(x) via Taylor series for |x| <= 1; uses the identity atan(x) = sign(x)*pi/2 - atan(1/x) for |x| > 1."
+invariant operation arctangentRadiansFloat64 "For |x| <= 1, sums 50 Taylor terms with alternating sign. For |x| > 1, recurses on 1/x and reflects through sign(x) * pi/2."
 label startArctangentRadiansFloat64
-const oneAt CFloat64 1.0
-const negOneAt CFloat64 -1.0
-const halfPiAt CFloat64 1.5707963267948966
-const zeroAt CFloat64 0.0
+storage module immutable oneAt Float64 1.0
+storage module immutable negOneAt Float64 -1.0
+storage module immutable halfPiAt Float64 1.5707963267948966
+storage module immutable zeroAt Float64 0.0
 
 # If |x| > 1, recurse via reciprocal identity.
 call absXAtCall absoluteFloat64
-arg absXAtCall x inputValue
+argument absXAtCall x Float64 inputValue
 run absXAtCall
-bindOk absX CFloat64 absXAtCall
-call largeCall math.greaterThanF64
-arg largeCall left absX
-arg largeCall right oneAt
+bind ok absX Float64 absXAtCall
+call largeCall math.greaterThanFloat64
+argument largeCall left Float64 absX
+argument largeCall right Float64 oneAt
 run largeCall
-bind isLarge Bool largeCall
-branchIf isLarge atanLargeBranch
-branch atanSeries
+bind value isLarge Bool largeCall
+branch if condition isLarge target atanLargeBranch
+branch else target atanSeries
 
 label atanLargeBranch
 # atan(x) = sign(x)*pi/2 - atan(1/x)
-call recipCall math.divideF64
-arg recipCall left oneAt
-arg recipCall right inputValue
+call recipCall math.divideFloat64
+argument recipCall left Float64 oneAt
+argument recipCall right Float64 inputValue
 run recipCall
-bind recipX CFloat64 recipCall
+bind value recipX Float64 recipCall
 call recCall arctangentRadiansFloat64
-arg recCall x recipX
+argument recCall x Float64 recipX
 run recCall
-bindOk recV CFloat64 recCall
+bind ok recV Float64 recCall
 # sign(x): if x >= 0 use +halfPi, else -halfPi.
-call posLargeCall math.greaterThanOrEqualF64
-arg posLargeCall left inputValue
-arg posLargeCall right zeroAt
+call posLargeCall math.greaterThanOrEqualFloat64
+argument posLargeCall left Float64 inputValue
+argument posLargeCall right Float64 zeroAt
 run posLargeCall
-bind isPos Bool posLargeCall
-var signedPi CFloat64 0.0
-branchIf isPos atanSetPosPi
-branch atanSetNegPi
+bind value isPos Bool posLargeCall
+memory arctangentRadiansFloat64 mutable signedPi Float64 0.0
+branch if condition isPos target atanSetPosPi
+branch else target atanSetNegPi
 label atanSetPosPi
-set signedPi halfPiAt
+set memory signedPi halfPiAt
 # Read signedPi between the two parallel sets so the linter's
 # flow-insensitive dead-store check sees an observation. The
 # compare-to-zero result is intentionally discarded Ã¢â‚¬â€ its only
 # purpose is to surface signedPi as a read between the two sets.
-call atanObservePositiveSignedPiCall math.equalF64
-arg atanObservePositiveSignedPiCall left signedPi
-arg atanObservePositiveSignedPiCall right zeroAt
+call atanObservePositiveSignedPiCall math.equalFloat64
+argument atanObservePositiveSignedPiCall left Float64 signedPi
+argument atanObservePositiveSignedPiCall right Float64 zeroAt
 run atanObservePositiveSignedPiCall
-ignoreValue atanObservePositiveSignedPiCall Bool
-branch atanCombine
+ignore value source atanObservePositiveSignedPiCall type Bool
+jump target atanCombine
 label atanSetNegPi
-call flipPiCall math.multiplyF64
-arg flipPiCall left halfPiAt
-arg flipPiCall right negOneAt
+call flipPiCall math.multiplyFloat64
+argument flipPiCall left Float64 halfPiAt
+argument flipPiCall right Float64 negOneAt
 run flipPiCall
-bind negPi CFloat64 flipPiCall
-set signedPi negPi
-branch atanCombine
+bind value negPi Float64 flipPiCall
+set memory signedPi negPi
+jump target atanCombine
 label atanCombine
-call combineCall math.subtractF64
-arg combineCall left signedPi
-arg combineCall right recV
+call combineCall math.subtractFloat64
+argument combineCall left Float64 signedPi
+argument combineCall right Float64 recV
 run combineCall
-bind atanLarge CFloat64 combineCall
-returnValue atanLarge
+bind value atanLarge Float64 combineCall
+return value atanLarge
 
 label atanSeries
 # Taylor for |x| <= 1: sum_{k=0..19} (-1)^k * x^(2k+1) / (2k+1)
-const maxTermsAt I64 25
-const oneIat I64 1
-var sumAt CFloat64 0.0
-var termAt CFloat64 0.0
-set termAt inputValue
-var kAt I64 0
-var signAt CFloat64 1.0
+storage module immutable maxTermsAt Int64 25
+storage module immutable oneIat Int64 1
+memory arctangentRadiansFloat64 mutable sumAt Float64 0.0
+memory arctangentRadiansFloat64 mutable termAt Float64 0.0
+set memory termAt inputValue
+memory arctangentRadiansFloat64 mutable kAt Int64 0
+memory arctangentRadiansFloat64 mutable signAt Float64 1.0
 # Add first term
-set sumAt inputValue
+set memory sumAt inputValue
 
 label atanLoop
-call atDoneCall math.greaterThanOrEqualI64
-arg atDoneCall left kAt
-arg atDoneCall right maxTermsAt
+call atDoneCall math.greaterThanOrEqualInt64
+argument atDoneCall left Int64 kAt
+argument atDoneCall right Int64 maxTermsAt
 run atDoneCall
-bind atDoneB Bool atDoneCall
-branchIf atDoneB atanReturn
+bind value atDoneB Bool atDoneCall
+branch if condition atDoneB target atanReturn
 
 # next term factor: -x^2 / (denominator we'll compute)
-call xSqAtCall math.multiplyF64
-arg xSqAtCall left inputValue
-arg xSqAtCall right inputValue
+call xSqAtCall math.multiplyFloat64
+argument xSqAtCall left Float64 inputValue
+argument xSqAtCall right Float64 inputValue
 run xSqAtCall
-bind xSqA CFloat64 xSqAtCall
-call negXSqAtCall math.multiplyF64
-arg negXSqAtCall left xSqA
-arg negXSqAtCall right negOneAt
+bind value xSqA Float64 xSqAtCall
+call negXSqAtCall math.multiplyFloat64
+argument negXSqAtCall left Float64 xSqA
+argument negXSqAtCall right Float64 negOneAt
 run negXSqAtCall
-bind negXSqA CFloat64 negXSqAtCall
+bind value negXSqA Float64 negXSqAtCall
 
 # new exponent index: 2*(k+1)+1 = 2k+3; we accumulate term = term * negXSq * (2k+1) / (2k+3)
-const twoIat I64 2
-call twoKatCall math.multiplyI64
-arg twoKatCall left kAt
-arg twoKatCall right twoIat
+storage module immutable twoIat Int64 2
+call twoKatCall math.multiplyInt64
+argument twoKatCall left Int64 kAt
+argument twoKatCall right Int64 twoIat
 run twoKatCall
-bind twoKAt I64 twoKatCall
-call oldExpCall math.addI64
-arg oldExpCall left twoKAt
-arg oldExpCall right oneIat
+bind value twoKAt Int64 twoKatCall
+call oldExpCall math.addInt64
+argument oldExpCall left Int64 twoKAt
+argument oldExpCall right Int64 oneIat
 run oldExpCall
-bind oldExpI I64 oldExpCall
-call newExpCall math.addI64
-arg newExpCall left twoKAt
-arg newExpCall right oneIat
+bind value oldExpI Int64 oldExpCall
+call newExpCall math.addInt64
+argument newExpCall left Int64 twoKAt
+argument newExpCall right Int64 oneIat
 run newExpCall
-bind newExpIA I64 newExpCall
-call newExp2Call math.addI64
-arg newExp2Call left newExpIA
-arg newExp2Call right twoIat
+bind value newExpIA Int64 newExpCall
+call newExp2Call math.addInt64
+argument newExp2Call left Int64 newExpIA
+argument newExp2Call right Int64 twoIat
 run newExp2Call
-bind newExpI I64 newExp2Call
+bind value newExpI Int64 newExp2Call
 
 # multiply term by negXSq
-call termTimesCall math.multiplyF64
-arg termTimesCall left termAt
-arg termTimesCall right negXSqA
+call termTimesCall math.multiplyFloat64
+argument termTimesCall left Float64 termAt
+argument termTimesCall right Float64 negXSqA
 run termTimesCall
-bind term1 CFloat64 termTimesCall
+bind value term1 Float64 termTimesCall
 # multiply by oldExpCall / newExpCall
-call oldExpFloatCall math.intToFloat
-arg oldExpFloatCall value oldExpI
+call oldExpFloatCall math.convertInt64ToFloat64
+argument oldExpFloatCall value Int64 oldExpI
 run oldExpFloatCall
-bind oldExpF CFloat64 oldExpFloatCall
-call newExpFloatCall math.intToFloat
-arg newExpFloatCall value newExpI
+bind value oldExpF Float64 oldExpFloatCall
+call newExpFloatCall math.convertInt64ToFloat64
+argument newExpFloatCall value Int64 newExpI
 run newExpFloatCall
-bind newExpF CFloat64 newExpFloatCall
-call termTimes2Call math.multiplyF64
-arg termTimes2Call left term1
-arg termTimes2Call right oldExpF
+bind value newExpF Float64 newExpFloatCall
+call termTimes2Call math.multiplyFloat64
+argument termTimes2Call left Float64 term1
+argument termTimes2Call right Float64 oldExpF
 run termTimes2Call
-bind term2 CFloat64 termTimes2Call
-call termDivCall math.divideF64
-arg termDivCall left term2
-arg termDivCall right newExpF
+bind value term2 Float64 termTimes2Call
+call termDivCall math.divideFloat64
+argument termDivCall left Float64 term2
+argument termDivCall right Float64 newExpF
 run termDivCall
-bind newTerm CFloat64 termDivCall
-set termAt newTerm
+bind value newTerm Float64 termDivCall
+set memory termAt newTerm
 
-call atSumCall math.addF64
-arg atSumCall left sumAt
-arg atSumCall right newTerm
+call atSumCall math.addFloat64
+argument atSumCall left Float64 sumAt
+argument atSumCall right Float64 newTerm
 run atSumCall
-bind nextSumAt CFloat64 atSumCall
-set sumAt nextSumAt
+bind value nextSumAt Float64 atSumCall
+set memory sumAt nextSumAt
 
-call kAtIncCall math.addI64
-arg kAtIncCall left kAt
-arg kAtIncCall right oneIat
+call kAtIncCall math.addInt64
+argument kAtIncCall left Int64 kAt
+argument kAtIncCall right Int64 oneIat
 run kAtIncCall
-bind nextKat I64 kAtIncCall
-set kAt nextKat
-branch atanLoop
+bind value nextKat Int64 kAtIncCall
+set memory kAt nextKat
+jump target atanLoop
 
 label atanReturn
-returnValue sumAt
-
+return value sumAt
 
 operation arcsineRadiansFloat64
-input arcsineRadiansFloat64 inputValue CFloat64
-output arcsineRadiansFloat64 CFloat64
-memoryHeap arcsineRadiansFloat64 no
+input operation arcsineRadiansFloat64 inputValue Float64
+output operation arcsineRadiansFloat64 Float64
+memory arcsineRadiansFloat64 heap no
 async arcsineRadiansFloat64 no
-purpose arcsineRadiansFloat64 "asin(x) = atan(x / sqrt(1 - x^2)). Domain: [-1, 1]."
+purpose operation arcsineRadiansFloat64 "asin(x) = atan(x / sqrt(1 - x^2)). Domain: [-1, 1]."
 label startArcsineRadiansFloat64
-const oneAs CFloat64 1.0
-call xSqAsCall math.multiplyF64
-arg xSqAsCall left inputValue
-arg xSqAsCall right inputValue
+storage module immutable oneAs Float64 1.0
+call xSqAsCall math.multiplyFloat64
+argument xSqAsCall left Float64 inputValue
+argument xSqAsCall right Float64 inputValue
 run xSqAsCall
-bind xSqAsV CFloat64 xSqAsCall
-call oneMinusCall math.subtractF64
-arg oneMinusCall left oneAs
-arg oneMinusCall right xSqAsV
+bind value xSqAsV Float64 xSqAsCall
+call oneMinusCall math.subtractFloat64
+argument oneMinusCall left Float64 oneAs
+argument oneMinusCall right Float64 xSqAsV
 run oneMinusCall
-bind denomSq CFloat64 oneMinusCall
+bind value denomSq Float64 oneMinusCall
 call sqrtAsCall squareRootFloat64
-arg sqrtAsCall x denomSq
+argument sqrtAsCall x Float64 denomSq
 run sqrtAsCall
-bindOk denom CFloat64 sqrtAsCall
-call divAsCall math.divideF64
-arg divAsCall left inputValue
-arg divAsCall right denom
+bind ok denom Float64 sqrtAsCall
+call divAsCall math.divideFloat64
+argument divAsCall left Float64 inputValue
+argument divAsCall right Float64 denom
 run divAsCall
-bind ratio CFloat64 divAsCall
+bind value ratio Float64 divAsCall
 call atanAsCall arctangentRadiansFloat64
-arg atanAsCall x ratio
+argument atanAsCall x Float64 ratio
 run atanAsCall
-bindOk asV CFloat64 atanAsCall
-returnValue asV
-
+bind ok asV Float64 atanAsCall
+return value asV
 
 operation arccosineRadiansFloat64
-input arccosineRadiansFloat64 inputValue CFloat64
-output arccosineRadiansFloat64 CFloat64
-memoryHeap arccosineRadiansFloat64 no
+input operation arccosineRadiansFloat64 inputValue Float64
+output operation arccosineRadiansFloat64 Float64
+memory arccosineRadiansFloat64 heap no
 async arccosineRadiansFloat64 no
-purpose arccosineRadiansFloat64 "acos(x) = pi/2 - asin(x). Domain: [-1, 1]."
+purpose operation arccosineRadiansFloat64 "acos(x) = pi/2 - asin(x). Domain: [-1, 1]."
 label startArccosineRadiansFloat64
-const halfPiAcos CFloat64 1.5707963267948966
+storage module immutable halfPiAcos Float64 1.5707963267948966
 call asCall arcsineRadiansFloat64
-arg asCall x inputValue
+argument asCall x Float64 inputValue
 run asCall
-bindOk asV CFloat64 asCall
-call subCall math.subtractF64
-arg subCall left halfPiAcos
-arg subCall right asV
+bind ok asV Float64 asCall
+call subCall math.subtractFloat64
+argument subCall left Float64 halfPiAcos
+argument subCall right Float64 asV
 run subCall
-bind acV CFloat64 subCall
-returnValue acV
-
+bind value acV Float64 subCall
+return value acV
 
 operation fusedMultiplyAddFloat64
-input fusedMultiplyAddFloat64 multiplicandValue CFloat64
-input fusedMultiplyAddFloat64 multiplierValue CFloat64
-input fusedMultiplyAddFloat64 addendValue CFloat64
-output fusedMultiplyAddFloat64 CFloat64
-memoryHeap fusedMultiplyAddFloat64 no
+input operation fusedMultiplyAddFloat64 multiplicandValue Float64
+input operation fusedMultiplyAddFloat64 multiplierValue Float64
+input operation fusedMultiplyAddFloat64 addendValue Float64
+output operation fusedMultiplyAddFloat64 Float64
+memory fusedMultiplyAddFloat64 heap no
 async fusedMultiplyAddFloat64 no
-purpose fusedMultiplyAddFloat64 "Fused multiply-add: a*b + c. Not actually fused at this layer (libm fma uses a hardware FMA instruction); we just do the two ops in sequence with normal IEEE-754 rounding between them."
+purpose operation fusedMultiplyAddFloat64 "Fused multiply-add: a*b + c. Not actually fused at this layer (libm fma uses a hardware FMA instruction); we just do the two ops in sequence with normal IEEE-754 rounding between them."
 label startFusedMultiplyAddFloat64
-call mulCall math.multiplyF64
-arg mulCall left multiplicandValue
-arg mulCall right multiplierValue
+call mulCall math.multiplyFloat64
+argument mulCall left Float64 multiplicandValue
+argument mulCall right Float64 multiplierValue
 run mulCall
-bind prod CFloat64 mulCall
-call addCall math.addF64
-arg addCall left prod
-arg addCall right addendValue
+bind value prod Float64 mulCall
+call addCall math.addFloat64
+argument addCall left Float64 prod
+argument addCall right Float64 addendValue
 run addCall
-bind fmaResult CFloat64 addCall
-returnValue fmaResult
-
+bind value fmaResult Float64 addCall
+return value fmaResult
 
 operation maximumFloat64
-input maximumFloat64 leftValue CFloat64
-input maximumFloat64 rightValue CFloat64
-output maximumFloat64 CFloat64
-memoryHeap maximumFloat64 no
+input operation maximumFloat64 leftValue Float64
+input operation maximumFloat64 rightValue Float64
+output operation maximumFloat64 Float64
+memory maximumFloat64 heap no
 async maximumFloat64 no
-purpose maximumFloat64 "Max of a and b. Returns the non-NaN argument if exactly one is NaN; for both-NaN we don't detect (no isnan yet)."
+purpose operation maximumFloat64 "Max of a and b. Returns the non-NaN argument if exactly one is NaN; for both-NaN we don't detect (no isnan yet)."
 label startMaximumFloat64
-call gtCall math.greaterThanF64
-arg gtCall left leftValue
-arg gtCall right rightValue
+call gtCall math.greaterThanFloat64
+argument gtCall left Float64 leftValue
+argument gtCall right Float64 rightValue
 run gtCall
-bind aGreater Bool gtCall
-branchIf aGreater fmaxA
-returnValue rightValue
+bind value aGreater Bool gtCall
+branch if condition aGreater target fmaxA
+return value rightValue
 label fmaxA
-returnValue leftValue
-
+return value leftValue
 
 operation minimumFloat64
-input minimumFloat64 leftValue CFloat64
-input minimumFloat64 rightValue CFloat64
-output minimumFloat64 CFloat64
-memoryHeap minimumFloat64 no
+input operation minimumFloat64 leftValue Float64
+input operation minimumFloat64 rightValue Float64
+output operation minimumFloat64 Float64
+memory minimumFloat64 heap no
 async minimumFloat64 no
-purpose minimumFloat64 "Min of a and b."
+purpose operation minimumFloat64 "Min of a and b."
 label startMinimumFloat64
-call ltCall math.lessThanF64
-arg ltCall left leftValue
-arg ltCall right rightValue
+call ltCall math.lessThanFloat64
+argument ltCall left Float64 leftValue
+argument ltCall right Float64 rightValue
 run ltCall
-bind aLess Bool ltCall
-branchIf aLess fminA
-returnValue rightValue
+bind value aLess Bool ltCall
+branch if condition aLess target fminA
+return value rightValue
 label fminA
-returnValue leftValue
-
+return value leftValue
 
 operation positiveDifferenceFloat64
-input positiveDifferenceFloat64 leftValue CFloat64
-input positiveDifferenceFloat64 rightValue CFloat64
-output positiveDifferenceFloat64 CFloat64
-memoryHeap positiveDifferenceFloat64 no
+input operation positiveDifferenceFloat64 leftValue Float64
+input operation positiveDifferenceFloat64 rightValue Float64
+output operation positiveDifferenceFloat64 Float64
+memory positiveDifferenceFloat64 heap no
 async positiveDifferenceFloat64 no
-purpose positiveDifferenceFloat64 "Positive difference: max(a - b, 0)."
+purpose operation positiveDifferenceFloat64 "Positive difference: max(a - b, 0)."
 label startPositiveDifferenceFloat64
-const zeroFd CFloat64 0.0
-call subCall math.subtractF64
-arg subCall left leftValue
-arg subCall right rightValue
+storage module immutable zeroFd Float64 0.0
+call subCall math.subtractFloat64
+argument subCall left Float64 leftValue
+argument subCall right Float64 rightValue
 run subCall
-bind diff CFloat64 subCall
-call ltzCall math.lessThanF64
-arg ltzCall left diff
-arg ltzCall right zeroFd
+bind value diff Float64 subCall
+call ltzCall math.lessThanFloat64
+argument ltzCall left Float64 diff
+argument ltzCall right Float64 zeroFd
 run ltzCall
-bind diffNeg Bool ltzCall
-branchIf diffNeg fdimZero
-returnValue diff
+bind value diffNeg Bool ltzCall
+branch if condition diffNeg target fdimZero
+return value diff
 label fdimZero
-returnValue zeroFd
-
+return value zeroFd
 
 operation copySignFloat64
-input copySignFloat64 magnitudeValue CFloat64
-input copySignFloat64 signSourceValue CFloat64
-output copySignFloat64 CFloat64
-memoryHeap copySignFloat64 no
+input operation copySignFloat64 magnitudeValue Float64
+input operation copySignFloat64 signSourceValue Float64
+output operation copySignFloat64 Float64
+memory copySignFloat64 heap no
 async copySignFloat64 no
-purpose copySignFloat64 "Returns |magnitude| with the sign of signSource. Doesn't yet preserve sign of zero (real libm copysign treats -0.0 specially; we don't have signed-zero detection without bit-level access)."
+purpose operation copySignFloat64 "Returns |magnitude| with the sign of signSource. Doesn't yet preserve sign of zero (real libm copysign treats -0.0 specially; we don't have signed-zero detection without bit-level access)."
 label startCopySignFloat64
-const zeroCp CFloat64 0.0
-const negOneCp CFloat64 -1.0
+storage module immutable zeroCp Float64 0.0
+storage module immutable negOneCp Float64 -1.0
 
 # absMag = |magnitude|
 call magAbsCall absoluteFloat64
-arg magAbsCall x magnitudeValue
+argument magAbsCall x Float64 magnitudeValue
 run magAbsCall
-bindOk absMag CFloat64 magAbsCall
+bind ok absMag Float64 magAbsCall
 
 # Sign of signSource: < 0 -> -1, else +1
-call sourceNegCall math.lessThanF64
-arg sourceNegCall left signSourceValue
-arg sourceNegCall right zeroCp
+call sourceNegCall math.lessThanFloat64
+argument sourceNegCall left Float64 signSourceValue
+argument sourceNegCall right Float64 zeroCp
 run sourceNegCall
-bind sourceIsNeg Bool sourceNegCall
-branchIf sourceIsNeg copysignFlip
-returnValue absMag
+bind value sourceIsNeg Bool sourceNegCall
+branch if condition sourceIsNeg target copysignFlip
+return value absMag
 label copysignFlip
-call flipCall math.multiplyF64
-arg flipCall left absMag
-arg flipCall right negOneCp
+call flipCall math.multiplyFloat64
+argument flipCall left Float64 absMag
+argument flipCall right Float64 negOneCp
 run flipCall
-bind flipped CFloat64 flipCall
-returnValue flipped
-
+bind value flipped Float64 flipCall
+return value flipped
 
 operation signOfFloat64
-input signOfFloat64 inputValue CFloat64
-output signOfFloat64 CFloat64
-memoryHeap signOfFloat64 no
+input operation signOfFloat64 inputValue Float64
+output operation signOfFloat64 Float64
+memory signOfFloat64 heap no
 async signOfFloat64 no
-purpose signOfFloat64 "Returns -1.0 if x < 0, 1.0 if x > 0, 0.0 if x == 0."
+purpose operation signOfFloat64 "Returns -1.0 if x < 0, 1.0 if x > 0, 0.0 if x == 0."
 label startSignOfFloat64
-const zeroSg CFloat64 0.0
-const oneSg CFloat64 1.0
-const negOneSg CFloat64 -1.0
-call ltCheckCall math.lessThanF64
-arg ltCheckCall left inputValue
-arg ltCheckCall right zeroSg
+storage module immutable zeroSg Float64 0.0
+storage module immutable oneSg Float64 1.0
+storage module immutable negOneSg Float64 -1.0
+call ltCheckCall math.lessThanFloat64
+argument ltCheckCall left Float64 inputValue
+argument ltCheckCall right Float64 zeroSg
 run ltCheckCall
-bind isNg Bool ltCheckCall
-branchIf isNg sgNeg
-call gtCheckCall math.greaterThanF64
-arg gtCheckCall left inputValue
-arg gtCheckCall right zeroSg
+bind value isNg Bool ltCheckCall
+branch if condition isNg target sgNeg
+call gtCheckCall math.greaterThanFloat64
+argument gtCheckCall left Float64 inputValue
+argument gtCheckCall right Float64 zeroSg
 run gtCheckCall
-bind isPs Bool gtCheckCall
-branchIf isPs sgPos
-returnValue zeroSg
+bind value isPs Bool gtCheckCall
+branch if condition isPs target sgPos
+return value zeroSg
 label sgNeg
-returnValue negOneSg
+return value negOneSg
 label sgPos
-returnValue oneSg
-
+return value oneSg
 
 operation roundFloat64ToNearestInteger
-input roundFloat64ToNearestInteger inputValue CFloat64
-output roundFloat64ToNearestInteger CFloat64
-memoryHeap roundFloat64ToNearestInteger no
+input operation roundFloat64ToNearestInteger inputValue Float64
+output operation roundFloat64ToNearestInteger Float64
+memory roundFloat64ToNearestInteger heap no
 async roundFloat64ToNearestInteger no
-purpose roundFloat64ToNearestInteger "Round half-away-from-zero to nearest integer (matching libm round, not lrint which uses banker's rounding)."
+purpose operation roundFloat64ToNearestInteger "Round half-away-from-zero to nearest integer (matching libm round, not lrint which uses banker's rounding)."
 label startRoundFloat64ToNearestInteger
-const halfRd CFloat64 0.5
-const zeroRd CFloat64 0.0
-call negCall math.lessThanF64
-arg negCall left inputValue
-arg negCall right zeroRd
+storage module immutable halfRd Float64 0.5
+storage module immutable zeroRd Float64 0.0
+call negCall math.lessThanFloat64
+argument negCall left Float64 inputValue
+argument negCall right Float64 zeroRd
 run negCall
-bind isNeg Bool negCall
-branchIf isNeg roundNeg
+bind value isNeg Bool negCall
+branch if condition isNeg target roundNeg
 # Positive: floor(x + 0.5)
-call addCall math.addF64
-arg addCall left inputValue
-arg addCall right halfRd
+call addCall math.addFloat64
+argument addCall left Float64 inputValue
+argument addCall right Float64 halfRd
 run addCall
-bind shifted CFloat64 addCall
+bind value shifted Float64 addCall
 call flCall floorFloat64
-arg flCall x shifted
+argument flCall x Float64 shifted
 run flCall
-bindOk rRes CFloat64 flCall
-returnValue rRes
+bind ok rRes Float64 flCall
+return value rRes
 label roundNeg
 # Negative: ceil(x - 0.5)
-call subCall math.subtractF64
-arg subCall left inputValue
-arg subCall right halfRd
+call subCall math.subtractFloat64
+argument subCall left Float64 inputValue
+argument subCall right Float64 halfRd
 run subCall
-bind shiftedN CFloat64 subCall
+bind value shiftedN Float64 subCall
 call cCall ceilingFloat64
-arg cCall x shiftedN
+argument cCall x Float64 shiftedN
 run cCall
-bindOk rResN CFloat64 cCall
-returnValue rResN
-
+bind ok rResN Float64 cCall
+return value rResN
 
 operation cubeRootFloat64
-input cubeRootFloat64 inputValue CFloat64
-output cubeRootFloat64 CFloat64
-memoryHeap cubeRootFloat64 no
+input operation cubeRootFloat64 inputValue Float64
+output operation cubeRootFloat64 Float64
+memory cubeRootFloat64 heap no
 async cubeRootFloat64 no
-purpose cubeRootFloat64 "Cube root: sign(x) * pow(|x|, 1/3). Handles negative inputs by computing on |x| and reattaching the sign."
+purpose operation cubeRootFloat64 "Cube root: sign(x) * pow(|x|, 1/3). Handles negative inputs by computing on |x| and reattaching the sign."
 label startCubeRootFloat64
-const zeroCb CFloat64 0.0
-const negOneCb CFloat64 -1.0
-const oneThirdCb CFloat64 0.3333333333333333
-call eqZeroCbCall math.equalF64
-arg eqZeroCbCall left inputValue
-arg eqZeroCbCall right zeroCb
+storage module immutable zeroCb Float64 0.0
+storage module immutable negOneCb Float64 -1.0
+storage module immutable oneThirdCb Float64 0.3333333333333333
+call eqZeroCbCall math.equalFloat64
+argument eqZeroCbCall left Float64 inputValue
+argument eqZeroCbCall right Float64 zeroCb
 run eqZeroCbCall
-bind xIsZero Bool eqZeroCbCall
-branchIf xIsZero cbrtZero
+bind value xIsZero Bool eqZeroCbCall
+branch if condition xIsZero target cbrtZero
 call absXcbCall absoluteFloat64
-arg absXcbCall x inputValue
+argument absXcbCall x Float64 inputValue
 run absXcbCall
-bindOk absXc CFloat64 absXcbCall
+bind ok absXc Float64 absXcbCall
 call powAbsCall powerFloat64
-arg powAbsCall base absXc
-arg powAbsCall exponent oneThirdCb
+argument powAbsCall base Float64 absXc
+argument powAbsCall exponent Float64 oneThirdCb
 run powAbsCall
-bindOk powAbsRes CFloat64 powAbsCall
-call ltZeroCheckCall math.lessThanF64
-arg ltZeroCheckCall left inputValue
-arg ltZeroCheckCall right zeroCb
+bind ok powAbsRes Float64 powAbsCall
+call ltZeroCheckCall math.lessThanFloat64
+argument ltZeroCheckCall left Float64 inputValue
+argument ltZeroCheckCall right Float64 zeroCb
 run ltZeroCheckCall
-bind xIsNeg Bool ltZeroCheckCall
-branchIf xIsNeg cbrtNegate
-returnValue powAbsRes
+bind value xIsNeg Bool ltZeroCheckCall
+branch if condition xIsNeg target cbrtNegate
+return value powAbsRes
 label cbrtNegate
-call flipCbCall math.multiplyF64
-arg flipCbCall left powAbsRes
-arg flipCbCall right negOneCb
+call flipCbCall math.multiplyFloat64
+argument flipCbCall left Float64 powAbsRes
+argument flipCbCall right Float64 negOneCb
 run flipCbCall
-bind flippedCb CFloat64 flipCbCall
-returnValue flippedCb
+bind value flippedCb Float64 flipCbCall
+return value flippedCb
 label cbrtZero
-returnValue zeroCb
-
+return value zeroCb
 
 operation exponentialBaseTwoFloat64
-input exponentialBaseTwoFloat64 inputValue CFloat64
-output exponentialBaseTwoFloat64 CFloat64
-memoryHeap exponentialBaseTwoFloat64 no
+input operation exponentialBaseTwoFloat64 inputValue Float64
+output operation exponentialBaseTwoFloat64 Float64
+memory exponentialBaseTwoFloat64 heap no
 async exponentialBaseTwoFloat64 no
-purpose exponentialBaseTwoFloat64 "2^x via pow(2.0, x)."
+purpose operation exponentialBaseTwoFloat64 "2^x via pow(2.0, x)."
 label startExponentialBaseTwoFloat64
-const twoE2 CFloat64 2.0
+storage module immutable twoE2 Float64 2.0
 call powCall powerFloat64
-arg powCall base twoE2
-arg powCall exponent inputValue
+argument powCall base Float64 twoE2
+argument powCall exponent Float64 inputValue
 run powCall
-bindOk twoToTheXResult CFloat64 powCall
-returnValue twoToTheXResult
+bind ok twoToTheXResult Float64 powCall
+return value twoToTheXResult

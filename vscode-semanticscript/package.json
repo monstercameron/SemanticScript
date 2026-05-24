@@ -2,7 +2,7 @@
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
   "description": "Syntax highlighting, navigation, completion, linting, and compiler integration for SemanticScript .sscript and .sem files.",
-  "version": "1.0.3",
+  "version": "0.0.1",
   "publisher": "semanticscript-local",
   "icon": "icons/semanticscript-extension.png",
   "galleryBanner": {
@@ -37,7 +37,7 @@
   "main": "./extension.js",
   "scripts": {
     "check": "node --check extension.js && npm run check:json",
-    "check:json": "node -e \"const fs = require('fs'); ['package.json', 'language-configuration.json', 'syntaxes/semanticscript.tmLanguage.json', 'icons/semanticscript-icon-theme.json'].forEach((file) => JSON.parse(fs.readFileSync(file, 'utf8')));\"",
+    "check:json": "node -e \"const fs = require('fs'); ['package.json', 'language-configuration.json', 'syntaxes/semanticscript.tm-language.json', 'icons/semanticscript-icon-theme.json'].forEach((file) => JSON.parse(fs.readFileSync(file, 'utf8')));\"",
     "package:vsix": "npm run check && npx --yes @vscode/vsce package",
     "vscode:prepublish": "npm run check"
   },
@@ -64,7 +64,7 @@
       {
         "language": "semanticscript",
         "scopeName": "source.semanticscript",
-        "path": "./syntaxes/semanticscript.tmLanguage.json"
+        "path": "./syntaxes/semanticscript.tm-language.json"
       }
     ],
     "iconThemes": [
@@ -209,6 +209,11 @@
           "default": false,
           "description": "Also pass --emit-ir while compiling from VS Code, writing LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
         },
+        "semanticScript.compiler.emitOptimizedLlvmIr": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also pass --emit-optimized-ir while compiling from VS Code, writing optimized LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
+        },
         "semanticScript.compiler.buildDir": {
           "type": "string",
           "default": "",
@@ -223,6 +228,16 @@
           "type": "string",
           "default": "",
           "description": "Optional semsc.py --build-folder-name override. Must be one folder name."
+        },
+        "semanticScript.compiler.keepResources": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass --keep-resources to retain intermediate Windows resource files during VS Code builds."
+        },
+        "semanticScript.compiler.resourceDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional semsc.py --resource-dir path for intermediate Windows resource files. Implies --keep-resources."
         },
         "semanticScript.compiler.cpuBaseline": {
           "type": "string",
@@ -497,6 +512,39 @@
             "scope": "string.quoted.double.semanticscript",
             "settings": {
               "foreground": "#CE9178"
+            }
+          },
+          {
+            "scope": "support.type.property-name.json.semanticscript",
+            "settings": {
+              "foreground": "#9CDCFE"
+            }
+          },
+          {
+            "scope": "string.quoted.double.json.semanticscript",
+            "settings": {
+              "foreground": "#CE9178"
+            }
+          },
+          {
+            "scope": "constant.numeric.json.semanticscript",
+            "settings": {
+              "foreground": "#B5CEA8"
+            }
+          },
+          {
+            "scope": "constant.language.json.semanticscript",
+            "settings": {
+              "foreground": "#569CD6"
+            }
+          },
+          {
+            "scope": [
+              "punctuation.separator.json.semanticscript",
+              "punctuation.definition.json.semanticscript"
+            ],
+            "settings": {
+              "foreground": "#8B949E"
             }
           },
           {

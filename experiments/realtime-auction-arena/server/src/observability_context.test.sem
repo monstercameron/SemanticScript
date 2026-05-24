@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.observability_context
+purpose module app.realtime_auction_arena.server.tests.observability_context "Unit coverage contract for server/src/observability_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.observability_context "Metrics counter ownership, audit-event insert helper coverage, request-log insert helper coverage, and observability redaction expectations."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.observability_context "Route handler flow, domain validation, auth decisions, or SQL statement text."
+invariant module app.realtime_auction_arena.server.tests.observability_context "The observability context test plan must cover both success and failure paths for durable audit/request-log helpers used by auth, auction, event, chat, and shell contexts."
+
+storage module immutable observabilityContextUnitTestPlanSummary String "server/src/observability_context.sem coverage: metrics mutable counters, accepted audit insert, observed audit insert with explicit outcome/error, rejected audit insert, request log event insert, request log row insert, redacted IP/user-agent bindings, runtime bind-index constants, sql_queries audit/request_log SQL dependencies, SQLite prepare/step failure returns, and cross-context caller behavior."
+
+operation getObservabilityContextUnitTestPlan
+output operation getObservabilityContextUnitTestPlan String
+memory getObservabilityContextUnitTestPlan heap no
+async getObservabilityContextUnitTestPlan no
+purpose operation getObservabilityContextUnitTestPlan "Return the observability-context unit coverage plan."
+return value observabilityContextUnitTestPlanSummary

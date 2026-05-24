@@ -5,77 +5,77 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation classifyFloat
-input classifyFloat left CFloat64
-input classifyFloat right CFloat64
-output classifyFloat Result CSignedInt32 Void
+input operation classifyFloat left Float64
+input operation classifyFloat right Float64
+output operation classifyFloat Result Int32 Void
 memory classifyFloat heap no
 async classifyFloat no
-purpose classifyFloat "Returns -1 when left < right, 0 when equal, +1 when greater. Uses math.lessThanF64 / math.greaterThanF64."
-invariant classifyFloat "Bool result is 0 or 1; map back to a sign by branching."
+purpose operation classifyFloat "Returns -1 when left < right, 0 when equal, +1 when greater. Uses math.lessThanFloat64 / math.greaterThanFloat64."
+invariant operation classifyFloat "Bool result is 0 or 1; map back to a sign by branching."
 label startClassifyFloat
-const ltResult CSignedInt32 -1
-const gtResult CSignedInt32 1
-const eqResult CSignedInt32 0
-call lessCheckCall math.lessThanF64
-arg lessCheckCall left left
-arg lessCheckCall right right
+storage module immutable ltResult Int32 -1
+storage module immutable gtResult Int32 1
+storage module immutable eqResult Int32 0
+call lessCheckCall math.lessThanFloat64
+argument lessCheckCall left Float64 left
+argument lessCheckCall right Float64 right
 run lessCheckCall
-bind isLess Bool lessCheckCall
-branchIf isLess emitLtResult
-call greaterCheckCall math.greaterThanF64
-arg greaterCheckCall left left
-arg greaterCheckCall right right
+bind value isLess Bool lessCheckCall
+branch if condition isLess target emitLtResult
+call greaterCheckCall math.greaterThanFloat64
+argument greaterCheckCall left Float64 left
+argument greaterCheckCall right Float64 right
 run greaterCheckCall
-bind isGreater Bool greaterCheckCall
-branchIf isGreater emitGtResult
-returnOk eqResult
+bind value isGreater Bool greaterCheckCall
+branch if condition isGreater target emitGtResult
+return ok eqResult
 label emitLtResult
-returnOk ltResult
+return ok ltResult
 label emitGtResult
-returnOk gtResult
+return ok gtResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Compare 1.5 < 2.5 and print 'less' for negative classification, 'equal' for zero, 'more' for positive."
-invariant main "Exercises math.lessThanF64 via classifyFloat user op."
+purpose operation main "Compare 1.5 < 2.5 and print 'less' for negative classification, 'equal' for zero, 'more' for positive."
+invariant operation main "Exercises math.lessThanFloat64 via classifyFloat user op."
 label startMain
-const oneAndHalf CFloat64 1.5
-const twoAndHalf CFloat64 2.5
+storage module immutable oneAndHalf Float64 1.5
+storage module immutable twoAndHalf Float64 2.5
 call classifyCall classifyFloat
-arg classifyCall left oneAndHalf
-arg classifyCall right twoAndHalf
+argument classifyCall left Float64 oneAndHalf
+argument classifyCall right Float64 twoAndHalf
 run classifyCall
-bindOk classification CSignedInt32 classifyCall
-var classificationStorage I64 0
-set classificationStorage classification
-const zeroValue I64 0
-call isNegativeCall math.lessThanI64
-arg isNegativeCall left classificationStorage
-arg isNegativeCall right zeroValue
+bind ok classification Int32 classifyCall
+memory main mutable classificationStorage Int64 0
+set memory classificationStorage classification
+storage module immutable zeroValue Int64 0
+call isNegativeCall math.lessThanInt64
+argument isNegativeCall left Int64 classificationStorage
+argument isNegativeCall right Int64 zeroValue
 run isNegativeCall
-bind isNegative Bool isNegativeCall
-branchIf isNegative printLess
-const greetingMore CNullTerminatedByteString "more\n"
+bind value isNegative Bool isNegativeCall
+branch if condition isNegative target printLess
+storage module immutable greetingMore String "more\n"
 call writeMoreCall console.writeLine
-arg writeMoreCall console console
-arg writeMoreCall text greetingMore
+argument writeMoreCall console Console console
+argument writeMoreCall text String greetingMore
 run writeMoreCall
-ignoreOk writeMoreCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeMoreCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 label printLess
-const greetingLess CNullTerminatedByteString "less"
+storage module immutable greetingLess String "less"
 call writeLessCall console.writeLine
-arg writeLessCall console console
-arg writeLessCall text greetingLess
+argument writeLessCall console Console console
+argument writeLessCall text String greetingLess
 run writeLessCall
-ignoreOk writeLessCall Void
-const lessExitCode ExitCode 0
-returnOk lessExitCode
+ignore void source writeLessCall
+storage module immutable lessExitCode ExitCode 0
+return ok lessExitCode

@@ -1,30 +1,41 @@
 # expect.stdout: "hello"\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet implement json.encode.String. Direct semsc.py compilation is correct: snprintf into a 256-byte stack buffer with the format `"%s"` produces a JSON-quoted ASCII string. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `"hello"`. Limitation: no escape handling for special characters yet — that requires a real codec runtime.
-project JsonEncodeStringPrimitive
+languageMode permissiveExecutable
+project JsonStringifyStringPrimitive
 target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError EncodeFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "json.encode.String wraps an ASCII string in JSON double-quotes."
-invariant main "Output is exactly the source string surrounded by quotes."
+purpose operation main "json.stringify.String wraps an ASCII string in JSON double-quotes."
+invariant operation main "Output is exactly the source string surrounded by quotes."
 label startMain
-const helloPayload CNullTerminatedByteString "hello"
-call encodeStringCall json.encode.String
-arg encodeStringCall value helloPayload
-run encodeStringCall
-bind encodedJsonString CNullTerminatedByteString encodeStringCall
+storage module immutable helloPayload String "hello"
+call stringifyStringCall json.stringify.String
+argument stringifyStringCall value String helloPayload
+run stringifyStringCall
+bind ok encodedJsonString JsonText stringifyStringCall
+bind error encodeError JsonEncodeError stringifyStringCall
+branch error source stringifyStringCall target encodeFailed
 call writeEncodedCall console.writeLine
-arg writeEncodedCall console console
-arg writeEncodedCall text encodedJsonString
+argument writeEncodedCall console Console console
+argument writeEncodedCall text JsonText encodedJsonString
 run writeEncodedCall
-ignoreOk writeEncodedCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeEncodedCall
+bind error writeError ConsoleWriteError writeEncodedCall
+branch error source writeEncodedCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+label encodeFailed
+makeError encodeFailure MainError.EncodeFailed encodeError
+return error encodeFailure
+label consoleWriteFailed
+makeError writeFailure MainError.ConsoleWriteFailed writeError
+return error writeFailure

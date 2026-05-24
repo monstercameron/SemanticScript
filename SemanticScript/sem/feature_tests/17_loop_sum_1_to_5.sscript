@@ -7,47 +7,47 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Accumulate sum 1+2+3+4+5 via var+add+branchIf loop."
-invariant main "Result is 15."
+purpose operation main "Accumulate sum 1+2+3+4+5 via var+add+branchIf loop."
+invariant operation main "Result is 15."
 label startMain
-const oneInitial I64 1
-const fiveBound I64 5
-const oneStep I64 1
-const zeroInitial I64 0
-var counter I64 oneInitial
-var accumulator I64 zeroInitial
+storage module immutable oneInitial Int64 1
+storage module immutable fiveBound Int64 5
+storage module immutable oneStep Int64 1
+storage module immutable zeroInitial Int64 0
+memory main mutable counter Int64 oneInitial
+memory main mutable accumulator Int64 zeroInitial
 label loopHead
-call checkCall math.lessThanOrEqualI64
-arg checkCall left counter
-arg checkCall right fiveBound
+call checkCall math.lessThanOrEqualInt64
+argument checkCall left Int64 counter
+argument checkCall right Int64 fiveBound
 run checkCall
-bind shouldContinue Bool checkCall
-branchIf shouldContinue loopBody
-branch loopExit
+bind value shouldContinue Bool checkCall
+branch if condition shouldContinue target loopBody
+branch else target loopExit
 label loopBody
-call addAccCall math.addI64
-arg addAccCall left accumulator
-arg addAccCall right counter
+call addAccCall math.addInt64
+argument addAccCall left Int64 accumulator
+argument addAccCall right Int64 counter
 run addAccCall
-bind nextAccumulator I64 addAccCall
-set accumulator nextAccumulator
-call incCall math.addI64
-arg incCall left counter
-arg incCall right oneStep
+bind value nextAccumulator Int64 addAccCall
+set memory accumulator nextAccumulator
+call incCall math.addInt64
+argument incCall left Int64 counter
+argument incCall right Int64 oneStep
 run incCall
-bind nextCounter I64 incCall
-set counter nextCounter
-branch loopHead
+bind value nextCounter Int64 incCall
+set memory counter nextCounter
+jump target loopHead
 label loopExit
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value accumulator
+argument writeCall console Console console
+argument writeCall value Int64 accumulator
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

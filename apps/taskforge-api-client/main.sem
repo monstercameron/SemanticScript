@@ -1,0 +1,199 @@
+project TaskForgeApiClient
+target console
+runtime AgentRuntime 1.0
+entry console main
+
+module app.taskforge_api_client
+purpose module app.taskforge_api_client "SemanticScript console client that calls the separately running TaskForge Web server through standard.net."
+moduleOwns app.taskforge_api_client "Outbound fetch request construction, async start/await/case/done ordering, response body cleanup, and console reporting for TaskForge API probes."
+moduleDoesNotOwn app.taskforge_api_client "TaskForge Web server behavior, authenticated session cookie flow, libuv/libcurl backend implementation, or native HTTP server routing."
+invariant module app.taskforge_api_client "The app must start every outbound fetch before awaiting any one response so the source demonstrates the intended async client shape."
+moduleWarning app.taskforge_api_client "The current standard.net prototype only exposes GET without custom request headers or POST bodies. /api/todos is probed unauthenticated and will report the server's 401 JSON until login/cookie support lands in standard.net."
+
+import net standard.net
+
+exportOperation app.taskforge_api_client main
+
+error MainError
+errorCase MainError ConsoleWriteFailed Int32
+
+capability outboundFetch network.http.client write
+purpose operation outboundFetch "Authority to perform outbound HTTP client work through standard.net."
+
+capability consoleStdoutWriteCapability console.stdout write
+purpose operation consoleStdoutWriteCapability "Authority to print probe progress and response bodies to stdout."
+
+capability fetchBodyHeapRelease heap free
+purpose operation fetchBodyHeapRelease "Authority to release HttpTextResponse.body copies returned by net.fetchText."
+
+storage module immutable taskForgeHealthUrl Url "http://127.0.0.1:18090/health"
+storage module immutable taskForgeVersionUrl Url "http://127.0.0.1:18090/api/version"
+storage module immutable taskForgeTodosUrl Url "http://127.0.0.1:18090/api/todos"
+storage module immutable timeoutMillis NetworkTimeoutMilliseconds 3000
+storage module immutable maxBodyBytes ResponseBodyLimitBytes 1048576
+storage module immutable redirectLimit HttpRedirectLimit 5
+storage module immutable requestCancellationToken OpaquePointer 0
+storage module immutable successfulExitCode ExitCode 0
+
+storage module immutable startedText String "started TaskForge fetches before awaiting"
+storage module immutable healthLabelText String "TaskForge /health response:"
+storage module immutable versionLabelText String "TaskForge /api/version response:"
+storage module immutable todosLabelText String "TaskForge /api/todos unauthenticated response:"
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write network.http.client
+effect main write console.stdout
+effect main free heap
+useCapability main outboundFetch
+useCapability main consoleStdoutWriteCapability
+useCapability main fetchBodyHeapRelease
+memory main heap yes
+async main yes
+purpose operation main "Start three outbound GET calls against the TaskForge Web server, perform local console work, then print responses in wait-set completion order."
+invariant operation main "All three fetch calls are started before the first wait-set await, which is the source-level async pattern this client is meant to demonstrate."
+warning main "With the current compiler/runtime prototype, real overlap depends on selecting the optional libuv/libcurl backend; the source shape is already the future continuation-friendly API."
+
+label startMain
+
+new healthRequest HttpGetRequest
+fieldSet healthRequest url taskForgeHealthUrl
+fieldSet healthRequest policy.timeoutMillis timeoutMillis
+fieldSet healthRequest policy.maxBodyBytes maxBodyBytes
+fieldSet healthRequest policy.redirectLimit redirectLimit
+
+call healthFetchCall net.fetchText
+argument healthFetchCall request HttpGetRequest healthRequest
+timeout healthFetchCall 3000ms
+cancelOn healthFetchCall requestCancellationToken
+start healthFetchCall
+
+new versionRequest HttpGetRequest
+fieldSet versionRequest url taskForgeVersionUrl
+fieldSet versionRequest policy.timeoutMillis timeoutMillis
+fieldSet versionRequest policy.maxBodyBytes maxBodyBytes
+fieldSet versionRequest policy.redirectLimit redirectLimit
+
+call versionFetchCall net.fetchText
+argument versionFetchCall request HttpGetRequest versionRequest
+timeout versionFetchCall 3000ms
+cancelOn versionFetchCall requestCancellationToken
+start versionFetchCall
+
+new todosRequest HttpGetRequest
+fieldSet todosRequest url taskForgeTodosUrl
+fieldSet todosRequest policy.timeoutMillis timeoutMillis
+fieldSet todosRequest policy.maxBodyBytes maxBodyBytes
+fieldSet todosRequest policy.redirectLimit redirectLimit
+
+call todosFetchCall net.fetchText
+argument todosFetchCall request HttpGetRequest todosRequest
+timeout todosFetchCall 3000ms
+cancelOn todosFetchCall requestCancellationToken
+start todosFetchCall
+
+call startedLineCall console.writeLine
+argument startedLineCall console Console console
+argument startedLineCall text String startedText
+run startedLineCall
+ignore void source startedLineCall
+bind error startedLineError Int32 startedLineCall
+branch error source startedLineCall target startedLineWriteFailed
+
+label waitNextFetch
+
+await nextTaskForgeFetch
+case healthFetchCall printHealthResponse
+case versionFetchCall printVersionResponse
+case todosFetchCall printTodosResponse
+done allFetchesPrinted
+
+label printHealthResponse
+
+bind ok healthResponse HttpTextResponse healthFetchCall
+ignore error source healthFetchCall
+fieldGet healthBody HttpClientBodyText healthResponse body
+
+call printHealthLabelCall console.writeLine
+argument printHealthLabelCall console Console console
+argument printHealthLabelCall text String healthLabelText
+run printHealthLabelCall
+ignore void source printHealthLabelCall
+ignore error source printHealthLabelCall
+
+call printHealthBodyCall console.writeLine
+argument printHealthBodyCall console Console console
+argument printHealthBodyCall text String healthBody
+run printHealthBodyCall
+ignore void source printHealthBodyCall
+ignore error source printHealthBodyCall
+
+call releaseHealthBodyCall net.freeTextBody
+argument releaseHealthBodyCall body HttpClientBodyText healthBody
+run releaseHealthBodyCall
+ignore void source releaseHealthBodyCall
+
+jump target waitNextFetch
+
+label printVersionResponse
+
+bind ok versionResponse HttpTextResponse versionFetchCall
+ignore error source versionFetchCall
+fieldGet versionBody HttpClientBodyText versionResponse body
+
+call printVersionLabelCall console.writeLine
+argument printVersionLabelCall console Console console
+argument printVersionLabelCall text String versionLabelText
+run printVersionLabelCall
+ignore void source printVersionLabelCall
+ignore error source printVersionLabelCall
+
+call printVersionBodyCall console.writeLine
+argument printVersionBodyCall console Console console
+argument printVersionBodyCall text String versionBody
+run printVersionBodyCall
+ignore void source printVersionBodyCall
+ignore error source printVersionBodyCall
+
+call releaseVersionBodyCall net.freeTextBody
+argument releaseVersionBodyCall body HttpClientBodyText versionBody
+run releaseVersionBodyCall
+ignore void source releaseVersionBodyCall
+
+jump target waitNextFetch
+
+label printTodosResponse
+
+bind ok todosResponse HttpTextResponse todosFetchCall
+ignore error source todosFetchCall
+fieldGet todosBody HttpClientBodyText todosResponse body
+
+call printTodosLabelCall console.writeLine
+argument printTodosLabelCall console Console console
+argument printTodosLabelCall text String todosLabelText
+run printTodosLabelCall
+ignore void source printTodosLabelCall
+ignore error source printTodosLabelCall
+
+call printTodosBodyCall console.writeLine
+argument printTodosBodyCall console Console console
+argument printTodosBodyCall text String todosBody
+run printTodosBodyCall
+ignore void source printTodosBodyCall
+ignore error source printTodosBodyCall
+
+call releaseTodosBodyCall net.freeTextBody
+argument releaseTodosBodyCall body HttpClientBodyText todosBody
+run releaseTodosBodyCall
+ignore void source releaseTodosBodyCall
+
+jump target waitNextFetch
+
+label allFetchesPrinted
+
+return ok successfulExitCode
+
+label startedLineWriteFailed
+makeError startedLineWriteFailure MainError.ConsoleWriteFailed startedLineError
+return error startedLineWriteFailure

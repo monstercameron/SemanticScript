@@ -23,6 +23,8 @@ import argparse
 import io
 import json
 import os
+import re
+import struct
 import sys
 
 if sys.platform == "win32":
@@ -40,15 +42,18 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 _SEMANTICSCRIPT_ROOT = Path(__file__).resolve().parents[1]
 if str(_SEMANTICSCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(_SEMANTICSCRIPT_ROOT))
-from call_contracts import (
+from shared.call_contracts import (
     EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS as SHARED_EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS,
     KNOWN_FALLIBLE_CALL_TARGETS as SHARED_KNOWN_FALLIBLE_CALL_TARGETS,
+    MIDDLEWARE_CONTROL_CASES as SHARED_MIDDLEWARE_CONTROL_CASES,
+    MIDDLEWARE_CONTROL_TYPE as SHARED_MIDDLEWARE_CONTROL_TYPE,
     RESULT_FALLIBLE_CALL_TARGETS as SHARED_RESULT_FALLIBLE_CALL_TARGETS,
     SUPPORTED_HTTP_ROUTE_METHODS as SHARED_SUPPORTED_HTTP_ROUTE_METHODS,
     is_supported_route_method,
 )
+from shared.repo_version import read_repo_version
 
-__version__ = "0.3.0"
+__version__ = read_repo_version()
 
 
 # ==========================================================================
@@ -107,6 +112,7 @@ class CallFact:
     line: SourceLine
     arg_lines: List[SourceLine] = field(default_factory=list)
     run_lines: List[SourceLine] = field(default_factory=list)
+    run_checked_lines: List[SourceLine] = field(default_factory=list)
     start_lines: List[SourceLine] = field(default_factory=list)
     await_lines: List[SourceLine] = field(default_factory=list)
     bind_lines: List[SourceLine] = field(default_factory=list)
@@ -114,6 +120,8 @@ class CallFact:
     bind_error_lines: List[SourceLine] = field(default_factory=list)
     ignore_ok_lines: List[SourceLine] = field(default_factory=list)
     ignore_value_lines: List[SourceLine] = field(default_factory=list)
+    ignore_error_lines: List[SourceLine] = field(default_factory=list)
+    ignore_void_lines: List[SourceLine] = field(default_factory=list)
     branch_error_lines: List[SourceLine] = field(default_factory=list)
     timeout_lines: List[SourceLine] = field(default_factory=list)
     cancel_lines: List[SourceLine] = field(default_factory=list)
@@ -161,12 +169,42 @@ class ImportModuleFact:
 
 
 @dataclass
+class ResultTypeFact:
+    name: str
+    ok_type: str
+    error_type: str
+    line: SourceLine
+
+
+@dataclass
 class SingularImportFact:
     kind: str
     local_name: str
     module_alias: str
     exported_name: str
     line: SourceLine
+
+
+@dataclass
+class JsonBodyFact:
+    name: str
+    line: SourceLine
+    body_lines: List[Tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass
+class SqlBodyFact:
+    name: str
+    line: SourceLine
+    body_lines: List[Tuple[str, int]] = field(default_factory=list)
+
+
+@dataclass
+class HtmlTemplateFact:
+    name: str
+    line: SourceLine
+    body_line: Optional[SourceLine] = None
+    body_lines: List[Tuple[str, int]] = field(default_factory=list)
 
 
 @dataclass
@@ -185,12 +223,17 @@ class ProgramFacts:
     routes: List[RouteFact] = field(default_factory=list)
     imports: Set[str] = field(default_factory=set)
     module_imports: List[ImportModuleFact] = field(default_factory=list)
+    result_types: Dict[str, ResultTypeFact] = field(default_factory=dict)
     singular_imports: List[SingularImportFact] = field(default_factory=list)
+    json_bodies: List[JsonBodyFact] = field(default_factory=list)
+    sql_bodies: List[SqlBodyFact] = field(default_factory=list)
+    html_templates: Dict[str, HtmlTemplateFact] = field(default_factory=dict)
+    records: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
+    record_json_names: Dict[Tuple[str, str], str] = field(default_factory=dict)
+    record_json_omit_when: Dict[Tuple[str, str], str] = field(default_factory=dict)
 
 
 BUILTIN_VALUE_TYPES: Dict[str, str] = {
-    "continueMiddlewareControl": "MiddlewareControl",
-    "shortCircuitMiddlewareControl": "MiddlewareControl",
     "readOnlySqliteOpenMode": "SqliteOpenMode",
     "readWriteSqliteOpenMode": "SqliteOpenMode",
     "readWriteCreateSqliteOpenMode": "SqliteOpenMode",
@@ -243,8 +286,6 @@ BUILTIN_VALUE_TYPES: Dict[str, str] = {
 }
 
 BUILTIN_VALUE_LITERALS: Dict[str, str] = {
-    "continueMiddlewareControl": "0",
-    "shortCircuitMiddlewareControl": "1",
     "readOnlySqliteOpenMode": "1",
     "readWriteSqliteOpenMode": "2",
     "readWriteCreateSqliteOpenMode": "6",
@@ -296,43 +337,52 @@ BUILTIN_VALUE_LITERALS: Dict[str, str] = {
     "threadGuiRuntimeStatus": "9",
 }
 
+for _middleware_case_name, _middleware_case_value in SHARED_MIDDLEWARE_CONTROL_CASES:
+    BUILTIN_VALUE_TYPES[_middleware_case_name] = SHARED_MIDDLEWARE_CONTROL_TYPE
+    BUILTIN_VALUE_LITERALS[_middleware_case_name] = str(_middleware_case_value)
+
 BUILTIN_TYPE_ALIASES: Dict[str, str] = {
-    "SqliteDatabase": "COpaqueMemoryAddress",
-    "SqliteStatement": "COpaqueMemoryAddress",
-    "SqliteRowId": "CSignedInt64",
-    "GuiApplication": "COpaqueMemoryAddress",
-    "GuiSession": "COpaqueMemoryAddress",
-    "GuiEvent": "COpaqueMemoryAddress",
-    "GuiWindow": "COpaqueMemoryAddress",
-    "GuiControl": "COpaqueMemoryAddress",
-    "GuiWindowId": "CUnsignedInt32",
-    "GuiControlId": "CUnsignedInt32",
-    "GuiText": "CNullTerminatedByteString",
+    "SqliteDatabase": "OpaquePointer",
+    "SqliteStatement": "OpaquePointer",
+    "SqliteRowId": "Int64",
+    "GuiApplication": "OpaquePointer",
+    "GuiSession": "OpaquePointer",
+    "GuiEvent": "OpaquePointer",
+    "GuiWindow": "OpaquePointer",
+    "GuiControl": "OpaquePointer",
+    "GuiWindowId": "UInt32",
+    "GuiControlId": "UInt32",
+    "GuiText": "String",
     "GuiApplicationTitle": "GuiText",
     "GuiWindowTitle": "GuiText",
     "GuiControlText": "GuiText",
     "GuiPlaceholderText": "GuiText",
     "GuiAccessibleName": "GuiText",
     "GuiListBoxItemText": "GuiText",
-    "GuiIconGroupName": "CNullTerminatedByteString",
-    "GuiPixels": "CSignedInt32",
+    "GuiIconGroupName": "String",
+    "GuiPixels": "Int32",
     "GuiMinimumPixels": "GuiPixels",
-    "GuiTabIndex": "CSignedInt32",
-    "GuiKeyCode": "CSignedInt32",
-    "GuiSelectedIndex": "CSignedInt32",
+    "GuiTabIndex": "Int32",
+    "GuiKeyCode": "Int32",
+    "GuiSelectedIndex": "Int32",
     "GuiEventDimensionPixels": "GuiPixels",
-    "GuiHandlerStatus": "CSignedInt32",
-    "GuiRuntimeStatusCode": "CSignedInt32",
-    "GuiKeywordToken": "CNullTerminatedByteString",
-    "GuiRuntimeTarget": "CNullTerminatedByteString",
-    "JsonText": "CNullTerminatedByteString",
-    "JsonBuilder": "COpaqueMemoryAddress",
-    "JsonDocument": "COpaqueMemoryAddress",
-    "JsonCursor": "CSignedInt64",
-    "JsonPath": "CNullTerminatedByteString",
-    "JsonScratchBuffer": "COpaqueMemoryAddress",
-    "JsonCapacityBytes": "CByteCount",
+    "GuiHandlerStatus": "Int32",
+    "GuiRuntimeStatusCode": "Int32",
+    "GuiKeywordToken": "String",
+    "GuiRuntimeTarget": "String",
+    "JsonText": "String",
+    "SqlText": "String",
+    "JsonBuilder": "OpaquePointer",
+    "JsonDocument": "OpaquePointer",
+    "JsonCursor": "Int64",
+    "JsonPath": "String",
+    "JsonScratchBuffer": "OpaquePointer",
+    "JsonCapacityBytes": "ByteCount",
 }
+
+REMOVED_PRIMITIVE_SPELLINGS: Dict[str, str] = {}
+
+REMOVED_CALL_TARGET_SPELLINGS: Dict[str, str] = {}
 
 BUILTIN_ABSTRACTIONS: Dict[str, str] = {
     "MiddlewareControl": "enum",
@@ -484,7 +534,7 @@ def _register_builtin_surface(program: ProgramFacts) -> None:
 # the currently-open operation. The closed sets here are intentionally
 # narrow; this module's checker passes interpret unknown verbs as SS0001.
 _PARSER_CONTEXT_VERBS: Set[str] = {
-    "input", "output", "effect", "memory", "async", "purpose", "invariant",
+    "input", "output", "effect", "memory", "async", "operationBody", "purpose", "invariant",
     "warning", "precondition",
     "guarantee", "failure", "security", "timing", "observability",
     "memoryHeap", "memoryArena", "memoryStackLimit",
@@ -492,25 +542,26 @@ _PARSER_CONTEXT_VERBS: Set[str] = {
     "pinsNullBodyFailurePath", "responseBodyForwarder", "rationale",
 }
 _PARSER_ACTION_VERBS: Set[str] = {
-    "set", "call", "arg", "timeout", "cancelOn", "run", "start", "await",
-    "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue", "makeError",
+    "set", "call", "arg", "argument", "timeout", "cancelOn", "run", "runChecked", "start", "await",
+    "case", "done",
+    "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError", "makeError",
     "taskGroup", "startInGroup", "awaitGroup", "bindGroupError", "defer",
     "deferLog", "deferAwaitLog", "deferWhenExitLog", "new", "fieldGet",
     "fieldSet", "send", "receive", "lock", "unlock", "select", "selectCase",
     "runSelect", "useRetry", "useCapability",
     "deferRunOn", "startInterval", "awaitIntervalTick",
-    "submitWork", "awaitWork",
+    "read", "workerPool", "work", "workArg", "submitWork", "awaitWork",
 }
 _PARSER_CONTROL_VERBS: Set[str] = {
     "label", "branch", "branchIf", "branchIfError", "branchIfGroupError",
     "branchIfChannelClosed", "branchSelected", "returnOk", "returnError",
-    "returnValue", "returnVoid",
+    "returnValue", "returnVoid", "return", "jump",
 }
 _PARSER_BODY_VERBS: Set[str] = (
     _PARSER_CONTEXT_VERBS
     | _PARSER_ACTION_VERBS
     | _PARSER_CONTROL_VERBS
-    | {"const", "var", "storage", "importModule"}
+    | {"const", "var", "let", "storage", "importModule", "import"}
 )
 _PARSER_CONTRACT_HEAVY_KINDS: Set[str] = {
     "record", "codec", "jsonCodec", "validator", "mapper", "adapter",
@@ -609,6 +660,13 @@ def parse_import_module_args(args: Sequence[str]) -> Tuple[str, Optional[str], s
     return args[0], None, "module-only"
 
 
+def parse_import_args(args: Sequence[str]) -> Tuple[str, Optional[str], str]:
+    """Return (module_path, alias, syntax_shape) for `import ALIAS MODULE`."""
+    if len(args) != 2:
+        return "", None, "malformed"
+    return args[1], args[0], "alias-module"
+
+
 SINGULAR_IMPORT_VERB_KINDS: Dict[str, str] = {
     "importOperation": "operation",
     "importType": "type",
@@ -618,21 +676,202 @@ SINGULAR_IMPORT_VERB_KINDS: Dict[str, str] = {
 }
 
 
+def input_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, str]]:
+    """Return (operation, input_name, type) for old or new input rows."""
+    if sourceLine.verb != "input":
+        return None
+    args = sourceLine.args
+    if len(args) >= 4 and args[0] == "operation":
+        return args[1], args[2], args[3]
+    if len(args) >= 3:
+        return args[0], args[1], args[2]
+    return None
+
+
+def output_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str]]:
+    """Return (operation, output_type) for old or new output rows."""
+    if sourceLine.verb != "output":
+        return None
+    args = sourceLine.args
+    if len(args) >= 3 and args[0] == "operation":
+        return args[1], args[2]
+    if len(args) >= 2:
+        return args[0], args[1]
+    return None
+
+
+def bind_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, str, str]]:
+    """Return (variant, name, type, call) for bind rows."""
+    args = sourceLine.args
+    if sourceLine.verb == "bind":
+        if len(args) >= 4 and args[0] in {"value", "ok", "error"}:
+            return args[0], args[1], args[2], args[3]
+        if len(args) >= 3:
+            return "value", args[0], args[1], args[2]
+    if sourceLine.verb == "bindOk" and len(args) >= 3:
+        return "ok", args[0], args[1], args[2]
+    if sourceLine.verb == "bindError" and len(args) >= 3:
+        return "error", args[0], args[1], args[2]
+    return None
+
+
+def argument_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Optional[str], str]]:
+    """Return (call, parameter, declared_type, value) for argument rows."""
+    args = sourceLine.args
+    if sourceLine.verb == "argument" and len(args) >= 4:
+        return args[0], args[1], args[2], args[3]
+    if sourceLine.verb == "arg" and len(args) >= 3:
+        return args[0], args[1], None, args[2]
+    return None
+
+
+def ignore_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Optional[str]]]:
+    """Return (variant, call, type) for ignore rows."""
+    args = sourceLine.args
+    if sourceLine.verb == "ignore":
+        if len(args) >= 5 and args[0] in {"value", "ok"} and args[1] == "source" and args[3] == "type":
+            return args[0], args[2], args[4]
+        if len(args) >= 3 and args[0] in {"error", "void"} and args[1] == "source":
+            return args[0], args[2], None
+    if sourceLine.verb == "ignoreValue" and len(args) >= 2:
+        variant = "void" if args[1] == "Void" else "value"
+        return variant, args[0], args[1]
+    if sourceLine.verb == "ignoreOk" and len(args) >= 2:
+        return "ok", args[0], args[1]
+    if sourceLine.verb == "ignoreError" and args:
+        return "error", args[0], None
+    return None
+
+
+def branch_target_names_from_row(sourceLine: SourceLine) -> List[str]:
+    args = sourceLine.args
+    if sourceLine.verb == "jump" and len(args) >= 2 and args[0] == "target":
+        return [args[1]]
+    if sourceLine.verb == "branch":
+        if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+            return [args[4]]
+        if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+            return [args[2]]
+        if args:
+            targets = [args[0]]
+            if len(args) >= 3 and sourceLine.verb == "branchIf":
+                targets.append(args[2])
+            return targets
+    if sourceLine.verb == "branchIf" and len(args) >= 2:
+        targets = [args[1]]
+        if len(args) >= 3:
+            targets.append(args[2])
+        return targets
+    if sourceLine.verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+        return [args[1]]
+    if sourceLine.verb == "branchSelected" and len(args) >= 3:
+        return [args[2]]
+    if sourceLine.verb == "runChecked" and len(args) >= 9:
+        return [args[8]]
+    if sourceLine.verb == "case" and len(args) >= 2:
+        return [args[1]]
+    if sourceLine.verb == "done" and args:
+        return [args[0]]
+    return []
+
+
+def branch_else_targets_by_line(lines: Sequence[SourceLine]) -> Dict[int, str]:
+    branchElseByLine: Dict[int, str] = {}
+    for index, sourceLine in enumerate(lines[:-1]):
+        if (sourceLine.verb == "branch" and sourceLine.args
+                and sourceLine.args[0] in {"if", "error"}):
+            nextLine = lines[index + 1]
+            if nextLine.verb == "branch" and nextLine.args[:2] == ["else", "target"]:
+                branchElseByLine[sourceLine.number] = nextLine.args[2]
+    return branchElseByLine
+
+
+def branch_target_names_with_attached_else(
+    sourceLine: SourceLine,
+    branchElseByLine: Dict[int, str],
+) -> List[str]:
+    targets = list(branch_target_names_from_row(sourceLine))
+    elseLabel = branchElseByLine.get(sourceLine.number)
+    if elseLabel is not None and elseLabel not in targets:
+        targets.append(elseLabel)
+    return targets
+
+
+def branch_error_source(sourceLine: SourceLine) -> Optional[str]:
+    args = sourceLine.args
+    if sourceLine.verb == "branch" and len(args) >= 5 and args[:2] == ["error", "source"] and args[3] == "target":
+        return args[2]
+    if sourceLine.verb == "branchIfError" and len(args) >= 2:
+        return args[0]
+    return None
+
+
+def return_parts(sourceLine: SourceLine) -> Optional[Tuple[str, Optional[str]]]:
+    args = sourceLine.args
+    if sourceLine.verb == "return":
+        if args and args[0] == "void":
+            return "void", None
+        if len(args) >= 2 and args[0] in {"value", "ok", "error"}:
+            return args[0], args[1]
+    legacy = {
+        "returnValue": "value",
+        "returnOk": "ok",
+        "returnError": "error",
+        "returnVoid": "void",
+    }.get(sourceLine.verb)
+    if legacy:
+        return legacy, args[0] if args else None
+    return None
+
+
+def memory_parts(sourceLine: SourceLine) -> Optional[Tuple[str, str, Sequence[str]]]:
+    args = sourceLine.args
+    if sourceLine.verb == "memory" and len(args) >= 2:
+        return args[0], args[1], args[2:]
+    if sourceLine.verb == "memoryHeap" and len(args) >= 2:
+        return args[0], "heap", args[1:]
+    if sourceLine.verb == "memoryArena" and len(args) >= 2:
+        return args[0], "arena", args[1:]
+    if sourceLine.verb == "memoryStackLimit" and len(args) >= 2:
+        return args[0], "stack", ("max", args[1])
+    return None
+
+
 def parse_file(path: Path) -> ProgramFacts:
     program = ProgramFacts(path=path)
     _register_builtin_surface(program)
     current_op: Optional[OperationFact] = None
-    active_html_body = False
+    active_html_body: Optional[HtmlTemplateFact] = None
+    active_json_body: Optional[JsonBodyFact] = None
+    active_sql_body: Optional[SqlBodyFact] = None
 
     with path.open("r", encoding="utf-8") as source_file:
         for line_number, raw_line in enumerate(source_file, start=1):
             raw = raw_line.rstrip("\n")
-            if active_html_body:
+            if active_json_body is not None:
                 if raw.strip() and raw[0].isspace():
+                    active_json_body.body_lines.append((raw, line_number))
                     continue
                 if not raw.strip():
+                    active_json_body.body_lines.append(("", line_number))
                     continue
-                active_html_body = False
+                active_json_body = None
+            if active_sql_body is not None:
+                if raw.strip() and raw[0].isspace():
+                    active_sql_body.body_lines.append((raw, line_number))
+                    continue
+                if not raw.strip():
+                    active_sql_body.body_lines.append(("", line_number))
+                    continue
+                active_sql_body = None
+            if active_html_body is not None:
+                if raw.strip() and raw[0].isspace():
+                    active_html_body.body_lines.append((raw, line_number))
+                    continue
+                if not raw.strip():
+                    active_html_body.body_lines.append(("", line_number))
+                    continue
+                active_html_body = None
             line = SourceLine(path=path, number=line_number, raw=raw,
                               tokens=tokenize_line(raw))
             program.lines.append(line)
@@ -651,6 +890,12 @@ def parse_file(path: Path) -> ProgramFacts:
             verb = line.verb
             args = line.args
 
+            if verb == "module" and args:
+                current_op = None
+                program.abstractions.setdefault(
+                    args[0], AbstractionFact("module", args[0], line))
+                continue
+
             if verb == "operation" and args:
                 current_op = OperationFact(name=args[0], line=line)
                 current_op.lines.append(line)
@@ -664,6 +909,12 @@ def parse_file(path: Path) -> ProgramFacts:
 
             if verb == "mode" and args:
                 program.modes.add(args[0])
+            elif verb == "import" and args:
+                moduleName, alias, syntax = parse_import_args(args)
+                if moduleName:
+                    program.imports.add(moduleName)
+                    program.module_imports.append(
+                        ImportModuleFact(moduleName, alias, line, syntax))
             elif verb == "importModule" and args:
                 moduleName, alias, syntax = parse_import_module_args(args)
                 if moduleName:
@@ -681,8 +932,24 @@ def parse_file(path: Path) -> ProgramFacts:
             elif verb == "const" and len(args) >= 3:
                 program.consts[args[0]] = ConstFact(
                     args[0], args[1], args[2], line)
+            elif (verb == "type" and len(args) >= 6
+                  and args[1] == "result" and args[2] == "ok"
+                  and args[4] == "error"):
+                program.result_types[args[0]] = ResultTypeFact(
+                    args[0], args[3], args[5], line)
+                program.type_aliases[args[0]] = args[1]
             elif verb == "type" and len(args) >= 2:
                 program.type_aliases[args[0]] = args[1]
+            elif verb == "record" and args:
+                program.records.setdefault(args[0], [])
+                program.abstractions.setdefault(
+                    args[0], AbstractionFact(verb, args[0], line))
+            elif verb == "field" and len(args) >= 3:
+                program.records.setdefault(args[0], []).append((args[1], args[2]))
+            elif verb == "recordFieldJsonName" and len(args) >= 3:
+                program.record_json_names[(args[0], args[1])] = args[2]
+            elif verb == "recordFieldJsonOmitWhen" and len(args) >= 3:
+                program.record_json_omit_when[(args[0], args[1])] = args[2]
             elif verb.startswith("type") and len(args) >= 1 and verb != "type":
                 program.type_metadata.setdefault(args[0], set()).add(verb)
             elif verb == "capability" and len(args) >= 3:
@@ -691,18 +958,46 @@ def parse_file(path: Path) -> ProgramFacts:
             elif verb == "route" and len(args) >= 4:
                 program.routes.append(
                     RouteFact(args[0], args[1], args[2], args[3], line))
+            elif verb == "html" and len(args) >= 2 and args[0] == "template":
+                program.html_templates.setdefault(
+                    args[1], HtmlTemplateFact(args[1], line))
+                program.abstractions.setdefault(
+                    args[1], AbstractionFact("htmlTemplate", args[1], line))
             elif verb == "htmlTemplate" and args:
+                program.html_templates.setdefault(
+                    args[0], HtmlTemplateFact(args[0], line))
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
+            elif (verb == "html" and len(args) >= 3
+                  and args[0] == "body" and args[1] == "template"):
+                template = program.html_templates.setdefault(
+                    args[2], HtmlTemplateFact(args[2], line))
+                template.body_line = line
+                active_html_body = template
             elif verb == "htmlBody" and args:
-                active_html_body = True
+                template = program.html_templates.setdefault(
+                    args[0], HtmlTemplateFact(args[0], line))
+                template.body_line = line
+                active_html_body = template
+            elif verb == "jsonBody":
+                json_body = JsonBodyFact(args[0] if args else "", line)
+                program.json_bodies.append(json_body)
+                active_json_body = json_body
+            elif verb == "sqlBody" or (verb == "sql" and args[:1] == ["body"]):
+                name = args[0] if verb == "sqlBody" and args else ""
+                if verb == "sql" and len(args) >= 2:
+                    name = args[1]
+                sql_body = SqlBodyFact(name, line)
+                program.sql_bodies.append(sql_body)
+                active_sql_body = sql_body
             elif verb in _PARSER_CONTRACT_HEAVY_KINDS and args:
                 program.abstractions.setdefault(
                     args[0], AbstractionFact(verb, args[0], line))
             elif (verb in {"purpose", "invariant", "warning", "guarantee",
                            "failure", "security", "timing", "observability"}
                   and args):
-                program.hard_metadata.setdefault(args[0], set()).add(verb)
+                owner = args[1] if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] in {"module", "operation"} else args[0]
+                program.hard_metadata.setdefault(owner, set()).add(verb)
 
     return program
 
@@ -839,16 +1134,17 @@ FIXED_ROW_COUNT_MUTATION_TARGETS: frozenset = frozenset({
 # under-counts.
 PRIMITIVE_TYPE_STACK_BYTES: Dict[str, int] = {
     "Bool": 1,
-    "CSignedByte": 1, "CUnsignedByte": 1, "I8": 1,
-    "CSignedInt16": 2, "CUnsignedInt16": 2, "I16": 2,
-    "I32": 4, "CSignedInt32": 4, "CUnsignedInt32": 4, "ExitCode": 4,
-    "CFloat32": 4,
-    "I64": 8, "CSignedInt64": 8, "CUnsignedInt64": 8,
-    "F64": 8, "CFloat64": 8,
+    "Int2": 1, "UInt2": 1,
+    "Int4": 1, "UInt4": 1,
+    "Int8": 1, "UInt8": 1,
+    "Int16": 2, "UInt16": 2,
+    "Int32": 4, "UInt32": 4, "ExitCode": 4, "Char": 4,
+    "Float16": 2, "Float32": 4, "Float64": 8,
+    "Int64": 8, "UInt64": 8,
+    "ByteCount": 8, "SignedByteCount": 8, "AddressOffset": 8,
+    "UnixSecondsSinceEpoch": 8, "CpuClockTicks": 8, "FileByteOffset": 8,
+    "String": 8, "OpaquePointer": 8, "FileHandle": 8,
     "DurationMilliseconds": 8, "MonotonicMilliseconds": 8, "UtcMilliseconds": 8,
-    "CByteCount": 8, "CSignedByteCount": 8, "CAddressOffset": 8,
-    "CUnixSecondsSinceEpoch": 8, "CCpuClockTicks": 8, "CFileByteOffset": 8,
-    "CNullTerminatedByteString": 8, "COpaqueMemoryAddress": 8, "CFileHandle": 8,
     "Void": 0,
 }
 
@@ -878,6 +1174,10 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     # Process lifecycle
     "c.exit":                    ("write", "process.lifecycle"),
     "c.abort":                   ("write", "process.lifecycle"),
+    # Outbound network client
+    "net.fetchText":             ("write", "network.http.client"),
+    "net.fetchBytes":            ("write", "network.http.client"),
+    "net.freeTextBody":          ("free", "heap"),
     # File I/O
     "c.fopen":                   ("open",  "file"),
     "c.fclose":                  ("close", "file"),
@@ -915,36 +1215,29 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
 }
 
 
-# Primitive types that are interchangeable at the SemanticScript surface — `I64` and
-# `CSignedInt64` are the same shape, `String` and `CNullTerminatedByteString`
-# are the same wire form, etc. Used by broad arg-type-mismatch checks to avoid
+# Primitive types that are interchangeable at the SemanticScript surface. Used
+# by broad arg-type-mismatch checks to avoid
 # false-positive complaints about role-equivalent aliases. Math calls get a
 # stricter width pass below because their lowering is intentionally exact.
 _PRIMITIVE_TYPE_EQUIVALENCE_GROUPS: Tuple[frozenset, ...] = (
     # All signed integer widths AND Bool are treated as interchangeable for
-    # legacy/user-op compatibility; strict math width diagnostics are handled
+    # user-op compatibility; strict math width diagnostics are handled
     # separately by SS4303.
-    frozenset({"I64", "CSignedInt64",
-               "I32", "CSignedInt32", "ExitCode",
-               "I16", "CSignedInt16",
-               "I8", "CSignedByte",
-               # 8-byte signed role types — interchangeable with I64 in
-               # math.*I64, pointer.* (for byte counts/offsets), and time
-               # APIs throughout the stdlib.
-               "CByteCount", "CSignedByteCount", "CAddressOffset",
-               "CUnixSecondsSinceEpoch", "CCpuClockTicks", "CFileByteOffset",
+    frozenset({"Int64", "Int32", "ExitCode", "Char",
+               "Int16", "Int8",
+               "ByteCount", "SignedByteCount", "AddressOffset",
+               "UnixSecondsSinceEpoch", "CpuClockTicks", "FileByteOffset",
                "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds",
                "Bool"}),
-    frozenset({"CUnsignedByte", "CUnsignedInt16",
-               "CUnsignedInt32", "CUnsignedInt64"}),
-    frozenset({"F64", "CFloat64", "F32", "CFloat32"}),
+    frozenset({"UInt2", "UInt4", "UInt8", "UInt16", "UInt32", "UInt64"}),
+    frozenset({"Float16", "Float32", "Float64"}),
     # All pointer-shaped types are interchangeable — pointer.* primitives
     # accept any of them and the compiler emits the necessary bitcasts.
-    # String / CNullTerminatedByteString are pointer-shaped byte sequences
+    # String and related text aliases are pointer-shaped byte sequences
     # so they live in the pointer family for SemanticScript arg-type purposes.
-    frozenset({"String", "CNullTerminatedByteString",
-               "COpaqueMemoryAddress", "CFileHandle",
-               "CDecomposedTimeAddress", "CSetjmpRegisterBuffer"}),
+    frozenset({"String", "JsonText", "SqlText", "GuiText", "JsonPath",
+               "OpaquePointer", "FileHandle",
+               "DecomposedTimeAddress", "SetjmpRegisterBuffer"}),
     frozenset({"Void"}),
 )
 
@@ -965,57 +1258,100 @@ PRIMITIVE_CANONICAL_BY_TYPE: Dict[str, str] = _build_primitive_canonical_map()
 # dotted target → ordered list of (argName, declaredType). Targets not in
 # this map fall through to user-op signature lookup; targets in neither
 # table are SKIPPED to avoid false positives on unknowns.
+# Width-preserving C-ABI spelling aliases: the LLVM-style name and the
+# C-ABI name for the same machine type. Used to compare an `argument` row's
+# declared type against a builtin signature without false-flagging `Float64`
+# vs `Float64` (same double) or `Int64` vs `Int64` (same 64-bit int). Width
+# is preserved on purpose — `Int32` is NOT folded into `Int64`.
+_C_ABI_WIDTH_ALIAS: Dict[str, str] = {
+    "Float64": "Float64",
+    "Float32": "Float32",
+    "Int64": "Int64",
+    "UInt64": "UInt64",
+    "Int32": "Int32",
+    "UInt32": "UInt32",
+    "Int16": "Int16",
+    "UInt16": "UInt16",
+    "Int8": "Int8",
+    "UInt8": "UInt8",
+    "ByteCount": "ByteCount",
+    "SignedByteCount": "SignedByteCount",
+    "AddressOffset": "AddressOffset",
+    "OpaquePointer": "OpaquePointer",
+    "FileHandle": "FileHandle",
+    "String": "String",
+}
+
+
 BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     # Console writes
-    "console.writeLine":          [("console", "Console"), ("text", "CNullTerminatedByteString")],
-    "console.writeIntegerLine":   [("console", "Console"), ("value", "I64")],
-    "console.writeInteger":       [("console", "Console"), ("value", "I64")],
-    "console.writeFloatLine":     [("console", "Console"), ("value", "F64")],
+    "console.writeLine":          [("console", "Console"), ("text", "String")],
+    "console.writeIntegerLine":   [("console", "Console"), ("value", "Int64")],
+    "console.writeInteger":       [("console", "Console"), ("value", "Int64")],
+    "console.writeFloatLine":     [("console", "Console"), ("value", "Float64")],
     # Integer arithmetic
-    "math.addI64":                [("left", "I64"), ("right", "I64")],
-    "math.subtractI64":           [("left", "I64"), ("right", "I64")],
-    "math.multiplyI64":           [("left", "I64"), ("right", "I64")],
-    "math.divideI64":             [("left", "I64"), ("right", "I64")],
-    "math.moduloI64":             [("left", "I64"), ("right", "I64")],
-    "math.equalI64":              [("left", "I64"), ("right", "I64")],
-    "math.notEqualI64":           [("left", "I64"), ("right", "I64")],
-    "math.lessThanI64":           [("left", "I64"), ("right", "I64")],
-    "math.lessThanOrEqualI64":    [("left", "I64"), ("right", "I64")],
-    "math.greaterThanI64":        [("left", "I64"), ("right", "I64")],
-    "math.greaterThanOrEqualI64": [("left", "I64"), ("right", "I64")],
-    "math.equalCSignedInt32":              [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.notEqualCSignedInt32":           [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.lessThanCSignedInt32":           [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.lessThanOrEqualCSignedInt32":    [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.greaterThanCSignedInt32":        [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.greaterThanOrEqualCSignedInt32": [("left", "CSignedInt32"), ("right", "CSignedInt32")],
-    "math.checkedMultiplyI64":    [("left", "I64"), ("right", "I64")],
-    "math.signExtendCSignedInt32ToCSignedInt64": [("inputValue", "CSignedInt32")],
-    "math.truncateCSignedInt64ToCSignedInt32":   [("inputValue", "I64")],
+    "math.addInt64":                [("left", "Int64"), ("right", "Int64")],
+    "math.subtractInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.multiplyInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.divideInt64":             [("left", "Int64"), ("right", "Int64")],
+    "math.moduloInt64":             [("left", "Int64"), ("right", "Int64")],
+    "math.equalInt64":              [("left", "Int64"), ("right", "Int64")],
+    "math.notEqualInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.lessThanInt64":           [("left", "Int64"), ("right", "Int64")],
+    "math.lessThanOrEqualInt64":    [("left", "Int64"), ("right", "Int64")],
+    "math.greaterThanInt64":        [("left", "Int64"), ("right", "Int64")],
+    "math.greaterThanOrEqualInt64": [("left", "Int64"), ("right", "Int64")],
+    "math.equalInt32":              [("left", "Int32"), ("right", "Int32")],
+    "math.notEqualInt32":           [("left", "Int32"), ("right", "Int32")],
+    "math.lessThanInt32":           [("left", "Int32"), ("right", "Int32")],
+    "math.lessThanOrEqualInt32":    [("left", "Int32"), ("right", "Int32")],
+    "math.greaterThanInt32":        [("left", "Int32"), ("right", "Int32")],
+    "math.greaterThanOrEqualInt32": [("left", "Int32"), ("right", "Int32")],
+    "math.checkedMultiplyInt64":    [("left", "Int64"), ("right", "Int64")],
+    # Bitwise / shift primitives (single-instruction LLVM lowerings).
+    "math.bitwiseAndInt64":         [("left", "Int64"), ("right", "Int64")],
+    "math.bitwiseOrInt64":          [("left", "Int64"), ("right", "Int64")],
+    "math.bitwiseXorInt64":         [("left", "Int64"), ("right", "Int64")],
+    "math.shiftLeftInt64":          [("left", "Int64"), ("right", "Int64")],
+    "math.shiftRightLogicalInt64":  [("left", "Int64"), ("right", "Int64")],
+    "math.shiftRightArithmeticInt64": [("left", "Int64"), ("right", "Int64")],
+    "math.bitwiseNotInt64":         [("value", "Int64")],
+    "math.signExtendInt32ToInt64": [("inputValue", "Int32")],
+    "math.truncateInt64ToInt32":   [("inputValue", "Int64")],
     # Float arithmetic
-    "math.addF64":                [("left", "F64"), ("right", "F64")],
-    "math.subtractF64":           [("left", "F64"), ("right", "F64")],
-    "math.multiplyF64":           [("left", "F64"), ("right", "F64")],
-    "math.divideF64":             [("left", "F64"), ("right", "F64")],
-    "math.equalF64":              [("left", "F64"), ("right", "F64")],
-    "math.lessThanF64":           [("left", "F64"), ("right", "F64")],
+    "math.addFloat64":                [("left", "Float64"), ("right", "Float64")],
+    "math.subtractFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.multiplyFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.divideFloat64":             [("left", "Float64"), ("right", "Float64")],
+    "math.equalFloat64":              [("left", "Float64"), ("right", "Float64")],
+    "math.notEqualFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.lessThanFloat64":           [("left", "Float64"), ("right", "Float64")],
+    "math.lessThanOrEqualFloat64":    [("left", "Float64"), ("right", "Float64")],
+    "math.greaterThanFloat64":        [("left", "Float64"), ("right", "Float64")],
+    "math.greaterThanOrEqualFloat64": [("left", "Float64"), ("right", "Float64")],
     # Numeric conversion
-    "math.intToFloat":            [("inputValue", "I64")],
-    "math.floatToInt":            [("inputValue", "F64")],
+    "math.intToFloat":            [("inputValue", "Int64")],
+    "math.floatToInt":            [("inputValue", "Float64")],
+    "math.convertInt64ToFloat64": [("inputValue", "Int64")],
+    "math.convertFloat64ToInt64": [("inputValue", "Float64")],
     # Pointer primitives
-    "pointer.loadByte":           [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount")],
-    "pointer.storeByte":          [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount"), ("value", "CSignedInt64")],
-    "pointer.offset":             [("buffer", "COpaqueMemoryAddress"), ("offset", "CByteCount")],
-    "pointer.difference":         [("left", "COpaqueMemoryAddress"), ("right", "COpaqueMemoryAddress")],
-    "pointer.isNull":             [("pointer", "COpaqueMemoryAddress")],
+    "pointer.loadByte":           [("buffer", "OpaquePointer"), ("offset", "ByteCount")],
+    "pointer.storeByte":          [("buffer", "OpaquePointer"), ("offset", "ByteCount"), ("value", "Int64")],
+    "pointer.offset":             [("buffer", "OpaquePointer"), ("offset", "ByteCount")],
+    "pointer.difference":         [("left", "OpaquePointer"), ("right", "OpaquePointer")],
+    "pointer.isNull":             [("pointer", "OpaquePointer")],
+    # Outbound network
+    "net.fetchText":              [("request", "HttpGetRequest")],
+    "net.fetchBytes":             [("url", "Url"), ("timeoutMillis", "NetworkTimeoutMilliseconds"), ("maxBodyBytes", "ResponseBodyLimitBytes")],
+    "net.freeTextBody":           [("body", "HttpClientBodyText")],
     # C lib
-    "c.malloc":                   [("size", "CByteCount")],
-    "c.calloc":                   [("count", "CByteCount"), ("size", "CByteCount")],
-    "c.realloc":                  [("ptr", "COpaqueMemoryAddress"), ("size", "CByteCount")],
-    "c.free":                     [("ptr", "COpaqueMemoryAddress")],
-    "c.exit":                     [("code", "CSignedInt32")],
+    "c.malloc":                   [("size", "ByteCount")],
+    "c.calloc":                   [("count", "ByteCount"), ("size", "ByteCount")],
+    "c.realloc":                  [("ptr", "OpaquePointer"), ("size", "ByteCount")],
+    "c.free":                     [("ptr", "OpaquePointer")],
+    "c.exit":                     [("code", "Int32")],
     "c.abort":                    [],
-    "c.putchar":                  [("c", "CSignedInt32")],
+    "c.putchar":                  [("c", "Int32")],
 }
 
 GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
@@ -1027,18 +1363,18 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
         ("width", "GuiPixels"),
         ("height", "GuiPixels"),
         ("layout", "GuiWindowLayout"),
-        ("resizable", "CSignedInt32"),
+        ("resizable", "Int32"),
     ],
     "gui.textLabelCreate": [
         ("text", "GuiText"),
     ],
     "gui.textBoxCreate": [
         ("placeholder", "GuiText"),
-        ("maxLength", "CSignedInt32"),
+        ("maxLength", "Int32"),
     ],
     "gui.buttonCreate": [
         ("text", "GuiText"),
-        ("isDefault", "CSignedInt32"),
+        ("isDefault", "Int32"),
     ],
     "gui.listBoxCreate": [
         ("selectionMode", "GuiListBoxSelectionMode"),
@@ -1065,7 +1401,7 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "gui.textBoxSetText": [
         ("session", "GuiSession"),
         ("textBox", "GuiTextBox"),
-        ("text", "CNullTerminatedByteString"),
+        ("text", "String"),
     ],
     "gui.listBoxSelectedIndex": [
         ("session", "GuiSession"),
@@ -1074,7 +1410,7 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "gui.listBoxAppendItem": [
         ("session", "GuiSession"),
         ("listBox", "GuiListBox"),
-        ("text", "CNullTerminatedByteString"),
+        ("text", "String"),
     ],
     "gui.listBoxClear": [
         ("session", "GuiSession"),
@@ -1110,25 +1446,25 @@ BUILTIN_TARGET_SIGNATURES.update(GUI_RUNTIME_TARGET_SIGNATURES)
 # with too few args can't be interpreted by any downstream pass. Ported
 # from semlint.py and extended for refined-syntax surfaces.
 SUPPORTED_JSON_PRIMITIVE_TARGETS: frozenset = frozenset({
-    "json.encode.I64", "json.encode.CSignedInt64",
-    "json.encode.CSignedInt32", "json.encode.CUnsignedInt32",
-    "json.encode.CSignedInt16", "json.encode.CUnsignedInt16",
-    "json.encode.CSignedByte", "json.encode.CUnsignedByte",
+    "json.encode.Int64", "json.encode.UInt64",
+    "json.encode.Int32", "json.encode.UInt32",
+    "json.encode.Int16", "json.encode.UInt16",
+    "json.encode.Int8", "json.encode.UInt8",
     "json.encode.DurationMilliseconds",
     "json.encode.MonotonicMilliseconds",
     "json.encode.UtcMilliseconds",
     "json.encode.Bool",
-    "json.encode.F64", "json.encode.CFloat64", "json.encode.CFloat32",
-    "json.encode.String", "json.encode.CNullTerminatedByteString",
-    "json.decode.I64", "json.decode.CSignedInt64",
-    "json.decode.CSignedInt32", "json.decode.CUnsignedInt32",
-    "json.decode.CSignedInt16", "json.decode.CUnsignedInt16",
-    "json.decode.CSignedByte", "json.decode.CUnsignedByte",
+    "json.encode.Float64", "json.encode.Float32",
+    "json.encode.String",
+    "json.decode.Int64", "json.decode.UInt64",
+    "json.decode.Int32", "json.decode.UInt32",
+    "json.decode.Int16", "json.decode.UInt16",
+    "json.decode.Int8", "json.decode.UInt8",
     "json.decode.DurationMilliseconds",
     "json.decode.MonotonicMilliseconds",
     "json.decode.UtcMilliseconds",
     "json.decode.Bool",
-    "json.decode.F64", "json.decode.CFloat64", "json.decode.CFloat32",
+    "json.decode.Float64", "json.decode.Float32",
 })
 
 SUPPORTED_JSON_RUNTIME_TARGETS: frozenset = frozenset({
@@ -1241,14 +1577,14 @@ COLLECTION_TYPE_SUFFIXES: Tuple[str, ...] = (
 VERB_MINIMUM_ARITY: Dict[str, int] = {
     # Project structure
     "project": 1, "target": 1, "runtime": 2, "entry": 2, "mode": 1,
-    "module": 1, "section": 1, "importModule": 1,
+    "module": 1, "section": 1, "import": 2, "importModule": 1,
     "importOperation": 3, "importType": 3, "importError": 3,
     "importCapability": 3, "importConstant": 3,
     "buildProject": 1, "modulePath": 2, "languageVersion": 2,
     "sourceRoot": 2, "mainFile": 2, "mainOperation": 2,
     "testPattern": 2, "dependencySource": 3, "dependencyFetch": 4,
     "dependencyCache": 2, "dependencyLock": 2, "dependencyIntegrity": 3,
-    "buildProfile": 2, "runtimeChecks": 2, "persistLlvmIr": 2,
+    "buildProfile": 2, "runtimeChecks": 2, "asyncRuntime": 2, "guiBackend": 2, "persistLlvmIr": 2,
     "nativeOutput": 2, "targetRuntime": 2, "comptimeOperation": 2,
     "projectVersion": 2, "projectLicense": 2, "testRoot": 2,
     "nativeHttpHost": 2, "nativeHttpPort": 2,
@@ -1264,6 +1600,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "moduleFolder": 2, "modulePurpose": 2, "moduleOwns": 2,
     "moduleDoesNotOwn": 2, "moduleDependency": 2, "moduleWarning": 2,
     "moduleInvariant": 2, "moduleSecurity": 2, "moduleObservability": 2,
+    "nativeRuntimeSource": 2, "nativeRuntimeLinkArg": 2,
     "exportType": 2, "exportError": 2, "exportOperation": 2,
     "exportCapability": 2, "exportConstant": 2,
     "iconRoleDefinition": 2, "icon": 1, "iconRole": 2, "iconPurpose": 2,
@@ -1276,14 +1613,16 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "typeMemory": 2, "typeLayout": 2, "typeLiteralEncoding": 2,
     "typeLiteralTerminator": 2,
     "record": 1, "field": 3, "recordLayout": 2, "recordAlign": 2,
+    "recordFieldJsonName": 3, "recordFieldJsonOmitWhen": 3,
     "new": 2, "fieldSet": 3, "fieldGet": 4,
     "error": 1, "errorCase": 2, "enum": 1, "enumCase": 2,
-    # HTML / SSX
-    "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
+    # HTML / SSX / JSON islands
+    "html": 2, "htmlTemplate": 1, "htmlArg": 3, "htmlBody": 1,
+    "jsonBody": 1, "sql": 2, "sqlBody": 1,
     # Operations + narrative
     "operation": 1, "operationBody": 2,
-    "input": 2, "output": 2, "effect": 3,
-    "memory": 2, "memoryHeap": 2, "memoryArena": 2, "memoryStackLimit": 2,
+    "input": 4, "output": 3, "effect": 3,
+    "memory": 3, "memoryHeap": 2, "memoryArena": 2, "memoryStackLimit": 2,
     "memoryAllocationSource": 2,
     "async": 2,
     "purpose": 2, "invariant": 2, "warning": 2, "guarantee": 2, "failure": 2,
@@ -1297,15 +1636,15 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "literal": 2, "literalBytes": 2, "literalDigest": 3,
     "literalPreview": 2, "literalSource": 2, "literalTrust": 2,
     # Calls
-    "call": 2, "arg": 3, "timeout": 2, "cancelOn": 2,
-    "run": 1, "start": 1, "await": 1,
-    "bind": 3, "bindOk": 3, "bindError": 3,
-    "ignoreOk": 2, "ignoreValue": 2,
+    "call": 2, "argument": 4, "arg": 3, "timeout": 2, "cancelOn": 2,
+    "run": 1, "runChecked": 9, "start": 1, "await": 1,
+    "bind": 4, "bindOk": 3, "bindError": 3,
+    "ignore": 3, "ignoreOk": 2, "ignoreValue": 2, "ignoreError": 1,
     "makeError": 2, "declareFailure": 2,
     # Control flow
-    "label": 1, "branch": 1, "branchIf": 2, "branchIfError": 2,
+    "label": 1, "branch": 3, "jump": 2, "branchIf": 2, "branchIfError": 2,
     "branchIfGroupError": 2, "branchIfChannelClosed": 2, "branchSelected": 3,
-    "returnOk": 1, "returnError": 1, "returnValue": 1,
+    "return": 1, "returnOk": 1, "returnError": 1, "returnValue": 1,
     # Capabilities + dependencies
     "capability": 3, "useCapability": 2, "authority": 3,
     "dependency": 1, "dependencyFunction": 1,
@@ -1328,6 +1667,7 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "bindGroupError": 3, "send": 2, "receive": 3,
     "lock": 1, "unlock": 1,
     "select": 1, "selectCase": 3, "runSelect": 1,
+    "case": 2, "done": 1,
     "interval": 1, "startInterval": 1, "awaitIntervalTick": 1,
     "workerPool": 1, "work": 1, "workArg": 3, "submitWork": 2, "awaitWork": 1,
     # Guard tokens
@@ -1338,16 +1678,17 @@ VERB_MINIMUM_ARITY: Dict[str, int] = {
     "smallListType": 2, "smallListInlineCapacity": 2, "smallListSpillAllocator": 2,
     "mapType": 1, "mapKey": 2, "mapValue": 2,
     # Runtime bindings
-    "runtimeBinding": 2, "intrinsicName": 2,
+    "runtimeBinding": 2, "runtimeBindingAsyncStart": 2,
+    "runtimeBindingAsyncAwait": 2, "intrinsicName": 2,
     # Constants
-    "const": 3, "var": 3,
+    "const": 3, "var": 3, "let": 3,
 }
 
 
 # Verbs that reference a `call NAME TARGET` declaration at args[0]. Used by
 # SS4101 reference-integrity checks.
 CALL_REFERENCE_VERBS_AT_ARG_ZERO: frozenset = frozenset({
-    "arg", "run", "start", "await",
+    "arg", "argument", "run", "runChecked", "start", "await",
     "ignoreOk", "ignoreValue", "branchIfError",
     "timeout", "cancelOn", "useRetry",
     "startInGroup",
@@ -1375,16 +1716,17 @@ OPERATION_ATTACHMENT_VERBS: frozenset = frozenset({
     "security", "timing", "observability",
     "memory", "memoryHeap", "memoryArena",
     "memoryAllocationSource", "memoryStackLimit",
-    "operationBody", "useCapability", "authority",
+    "operationBody", "runtimeBindingAsyncStart", "runtimeBindingAsyncAwait",
+    "useCapability", "authority",
     # SS36xx explicit contract verbs — args[0] is the owning operation.
     "pinsNullBodyFailurePath",
     "responseBodyForwarder",
 })
 
 
-# Comprehensive vocabulary built from SYNTAX.md. Verbs missing from this
+# Comprehensive vocabulary built from docs/reference/syntax-inventory.md. Verbs missing from this
 # set are reported as SS0001 unknownVerb at T0 (parse / grammar). Additive
-# refinements to SemanticScript land in SYNTAX.md first, then in this set — keeping
+# refinements to SemanticScript land in docs/reference/syntax-inventory.md first, then in this set — keeping
 # both in lockstep is the linter's job over time.
 KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Project structure
@@ -1392,7 +1734,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "buildProject", "modulePath", "languageVersion", "sourceRoot",
     "mainFile", "mainOperation", "testPattern", "dependency", "dependencySource",
     "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
-    "buildProfile", "runtimeChecks", "persistLlvmIr",
+    "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend", "persistLlvmIr",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
     "buildConstant",
     "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
@@ -1404,6 +1746,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "moduleFolder", "modulePurpose", "moduleOwns", "moduleDoesNotOwn",
     "moduleDependency", "moduleWarning", "moduleInvariant", "moduleSecurity",
     "moduleObservability",
+    "nativeRuntimeSource", "nativeRuntimeLinkArg",
     "exportType", "exportError", "exportOperation", "exportCapability",
     "exportConstant",
     "iconRoleDefinition", "icon", "iconRole", "iconPurpose",
@@ -1416,7 +1759,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "version", "publisher", "description", "copyright", "productName",
     "internalName", "originalFilename", "trademark", "comments", "metadata",
     # Imports & sections
-    "importModule", "importOperation", "importType", "importError",
+    "import", "importModule", "importOperation", "importType", "importError",
     "importCapability", "importConstant", "section",
     # Groups
     "group", "groupPurpose", "groupInput", "groupOutput", "groupError",
@@ -1425,7 +1768,8 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "type", "typeInvariant", "typeRepresentation", "typeTrust", "typeMemory",
     "typeLayout", "typeParameter", "typeLiteralEncoding", "typeLiteralTerminator",
     # Records
-    "record", "field", "recordLayout", "recordAlign", "recordConstructor",
+    "record", "field", "recordLayout", "recordAlign",
+    "recordFieldJsonName", "recordFieldJsonOmitWhen", "recordConstructor",
     "recordConstructorFailure", "recordBuilder", "recordSet", "recordBuild",
     "recordBuildFailure", "new", "fieldSet", "fieldGet",
     # Errors / enums
@@ -1445,12 +1789,14 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "literal", "literalBytes", "literalDigest", "literalPreview",
     "literalSource", "literalTrust",
     # Calls
-    "call", "arg", "timeout", "cancelOn", "run", "start", "await",
-    "bind", "bindOk", "bindError", "ignoreOk", "ignoreValue",
+    "call", "argument", "arg", "timeout", "cancelOn", "run", "runChecked",
+    "start", "await",
+    "case", "done",
+    "bind", "bindOk", "bindError", "ignore", "ignoreOk", "ignoreValue", "ignoreError",
     "makeError", "declareFailure",
     # Control flow
-    "label", "branch", "branchIf", "branchIfError",
-    "returnOk", "returnError", "returnValue", "returnVoid",
+    "label", "branch", "jump", "branchIf", "branchIfError",
+    "return", "returnOk", "returnError", "returnValue", "returnVoid",
     # Dependencies
     "dependency", "dependencyEffect", "dependencyExports",
     "dependencyFunction", "dependencyFunctionInput", "dependencyFunctionOutput",
@@ -1478,8 +1824,9 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "trustBoundaryOutput", "trustBoundaryValidator", "trustBoundarySource",
     # Web
     "webServer", "serverHost", "serverPort", "route",
+    "routeNotFound", "routeMethodNotAllowed",
     "routeTimeout", "routeMiddleware",
-    "htmlTemplate", "htmlArg", "htmlBody",
+    "html", "htmlTemplate", "htmlArg", "htmlBody", "jsonBody", "sql", "sqlBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
     # of the cross-cutting timeout / middleware contract.
     "routeTimeoutOptOut", "routeMiddlewareOptOut",
@@ -1521,9 +1868,9 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "listLiteralIndexPolicy", "listLiteralItem",
     # Runtime bindings
     "runtimeBinding", "runtimeBindingPrecondition", "runtimeBindingFailure",
-    "intrinsicName",
+    "runtimeBindingAsyncStart", "runtimeBindingAsyncAwait", "intrinsicName",
     # Token literals that may appear standalone
-    "const", "var", "testCovers",
+    "const", "var", "let", "testCovers",
 })
 
 
@@ -1819,7 +2166,11 @@ class ExtendedFacts:
     operationLockSites: Dict[str, List[Tuple[SourceLine, str]]] = field(default_factory=dict)
     operationUnlockedMutexes: Dict[str, Set[str]] = field(default_factory=dict)
     operationDeferUnlockedMutexes: Dict[str, Set[str]] = field(default_factory=dict)
-    operationSubmittedWork: Dict[str, List[Tuple[SourceLine, str]]] = field(default_factory=dict)
+    moduleWorkerPools: Dict[str, SourceLine] = field(default_factory=dict)
+    operationWorkerPools: Dict[str, Dict[str, SourceLine]] = field(default_factory=dict)
+    operationWorkTargets: Dict[str, Dict[str, List[Tuple[SourceLine, Optional[str]]]]] = field(default_factory=dict)
+    operationWorkArgs: Dict[str, Dict[str, Dict[str, List[SourceLine]]]] = field(default_factory=dict)
+    operationSubmittedWork: Dict[str, List[Tuple[SourceLine, str, str]]] = field(default_factory=dict)
     operationAwaitedWork: Dict[str, Set[str]] = field(default_factory=dict)
     # Module-scope select / case tracking
     selectDeclarations: Dict[str, SourceLine] = field(default_factory=dict)
@@ -1894,7 +2245,7 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             continue
 
         if verb in NARRATIVE_EDGES and args:
-            owner = args[0]
+            owner = args[1] if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] in {"module", "operation"} else args[0]
             facts.operationNarrative.setdefault(owner, {})[verb] = sourceLine
 
         if verb == "capability" and args:
@@ -1912,16 +2263,12 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             facts.operationAuthority.setdefault(args[0], []).append(sourceLine)
         elif verb == "label" and args and currentOperation:
             facts.labels[args[0]] = LabelFact(args[0], sourceLine, currentOperation)
-        elif verb == "branch" and args:
-            facts.labelReferences.add(args[0])
-        elif verb == "branchIf" and len(args) >= 2:
-            facts.labelReferences.add(args[1])
-            if len(args) >= 3:
-                facts.labelReferences.add(args[2])
-        elif verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
-            facts.labelReferences.add(args[1])
-        elif verb == "branchSelected" and len(args) >= 3:
-            facts.labelReferences.add(args[2])
+        elif verb in {
+            "branch", "jump", "branchIf", "branchIfError",
+            "branchIfGroupError", "branchIfChannelClosed",
+            "branchSelected", "runChecked", "case", "done",
+        }:
+            facts.labelReferences.update(branch_target_names_from_row(sourceLine))
         elif verb == "errorCase" and len(args) >= 2:
             facts.errorCases[(args[0], args[1])] = ErrorCaseFact(args[0], args[1], sourceLine)
         elif verb in {"makeError", "declareFailure"} and len(args) >= 2:
@@ -1965,6 +2312,12 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             # storage SCOPE MUTABILITY NAME TYPE INIT
             scope, mutability, name = args[0], args[1], args[2]
             facts.storageSlots[name] = StorageFact(name, sourceLine, scope, mutability)
+        elif verb == "memory":
+            memory = memory_parts(sourceLine)
+            if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 2:
+                operationName, mutability, rest = memory
+                facts.storageSlots[rest[0]] = StorageFact(
+                    rest[0], sourceLine, f"memory.{operationName}", mutability)
         elif verb == "sharedState" and len(args) >= 4:
             scope, mutability, name = args[0], args[1], args[2]
             facts.storageSlots[name] = StorageFact(name, sourceLine, f"sharedState.{scope}", mutability)
@@ -2012,9 +2365,20 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
                 literalFact.hasBytes = True
         elif verb == "effect" and len(args) >= 3:
             facts.operationEffects.setdefault(args[0], []).append(sourceLine)
-        elif verb == "memoryHeap" and len(args) >= 2:
-            heapAllowed = args[1].lower() in {"yes", "true"}
-            facts.operationMemoryHeapAllowed[args[0]] = (sourceLine, heapAllowed)
+        elif verb in {"memory", "memoryHeap", "memoryArena", "memoryStackLimit"}:
+            memory = memory_parts(sourceLine)
+            if memory is None:
+                continue
+            operationName, subkind, rest = memory
+            if subkind == "heap" and rest:
+                heapAllowed = rest[0].lower() in {"yes", "true"}
+                facts.operationMemoryHeapAllowed[operationName] = (sourceLine, heapAllowed)
+            elif subkind == "stack" and len(rest) >= 2 and rest[0] == "max":
+                try:
+                    stackLimitBytes = int(rest[1])
+                    facts.operationMemoryStackLimitBytes[operationName] = (sourceLine, stackLimitBytes)
+                except ValueError:
+                    pass
         elif verb == "memoryAllocationSource" and len(args) >= 2:
             facts.operationMemoryAllocationSource.setdefault(args[0], []).append(sourceLine)
         elif verb == "memoryStackLimit" and len(args) >= 2:
@@ -2068,10 +2432,29 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
             )
         elif verb == "unlock" and args and currentOperation:
             facts.operationUnlockedMutexes.setdefault(currentOperation, set()).add(args[0])
+        elif verb == "workerPool" and args:
+            if currentOperation:
+                facts.operationWorkerPools.setdefault(currentOperation, {})[args[0]] = sourceLine
+            else:
+                facts.moduleWorkerPools[args[0]] = sourceLine
+        elif verb == "work" and args and currentOperation:
+            targetOperation = args[2] if len(args) >= 3 and args[1] == "target" else None
+            facts.operationWorkTargets.setdefault(currentOperation, {}).setdefault(
+                args[0],
+                [],
+            ).append((
+                sourceLine,
+                targetOperation,
+            ))
+        elif verb == "workArg" and len(args) >= 3 and currentOperation:
+            facts.operationWorkArgs.setdefault(currentOperation, {}).setdefault(
+                args[0],
+                {},
+            ).setdefault(args[1], []).append(sourceLine)
         elif verb == "submitWork" and len(args) >= 2 and currentOperation:
             # `submitWork WORK POOL` — first arg is the work item name
             facts.operationSubmittedWork.setdefault(currentOperation, []).append(
-                (sourceLine, args[0])
+                (sourceLine, args[0], args[1])
             )
         elif verb == "awaitWork" and args and currentOperation:
             facts.operationAwaitedWork.setdefault(currentOperation, set()).add(args[0])
@@ -2134,7 +2517,10 @@ def narrative_citations_for_operation(facts: ExtendedFacts, operationName: str) 
         if not narrativeLine:
             continue
         # `purpose foo "the text"` → args = ["foo", "the text"]
-        text = narrativeLine.args[1] if len(narrativeLine.args) >= 2 else ""
+        if edgeKind in {"purpose", "invariant"} and len(narrativeLine.args) >= 3 and narrativeLine.args[0] in {"module", "operation"}:
+            text = narrativeLine.args[2]
+        else:
+            text = narrativeLine.args[1] if len(narrativeLine.args) >= 2 else ""
         citations.append(Citation(
             span=span_of_line(narrativeLine, f"narrative.{edgeKind}"),
             edgeKind=edgeKind,
@@ -2161,34 +2547,55 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
         if not args:
             continue
         target = None
+        bind = bind_parts(sourceLine)
+        argument = argument_parts(sourceLine)
+        ignore = ignore_parts(sourceLine)
+        branchErrorSource = branch_error_source(sourceLine)
         # Most call-attachment verbs use args[0] as the call name
-        if verb in {"arg", "run", "start", "await", "ignoreOk", "ignoreValue",
-                    "branchIfError", "startInGroup", "timeout", "cancelOn"}:
+        if argument is not None:
+            target = operationCalls.get(argument[0])
+        elif ignore is not None:
+            target = operationCalls.get(ignore[1])
+        elif branchErrorSource is not None:
+            target = operationCalls.get(branchErrorSource)
+        elif verb == "case" and len(args) >= 2:
             target = operationCalls.get(args[0])
-        # bind/bindOk/bindError name the call at args[2]
-        elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
-            target = operationCalls.get(args[2])
+        elif verb in {
+            "run", "runChecked", "start", "await", "startInGroup",
+            "timeout", "cancelOn",
+        }:
+            target = operationCalls.get(args[0])
+        elif bind is not None:
+            target = operationCalls.get(bind[3])
         if target is None:
             continue
-        if verb == "arg":
+        if argument is not None:
             target.arg_lines.append(sourceLine)
         elif verb == "run":
             target.run_lines.append(sourceLine)
+        elif verb == "runChecked":
+            target.run_checked_lines.append(sourceLine)
         elif verb == "start":
             target.start_lines.append(sourceLine)
         elif verb == "await":
             target.await_lines.append(sourceLine)
-        elif verb == "bind":
+        elif verb == "case":
+            target.await_lines.append(sourceLine)
+        elif bind is not None and bind[0] == "value":
             target.bind_lines.append(sourceLine)
-        elif verb == "bindOk":
+        elif bind is not None and bind[0] == "ok":
             target.bind_ok_lines.append(sourceLine)
-        elif verb == "bindError":
+        elif bind is not None and bind[0] == "error":
             target.bind_error_lines.append(sourceLine)
-        elif verb == "ignoreOk":
+        elif ignore is not None and ignore[0] == "ok":
             target.ignore_ok_lines.append(sourceLine)
-        elif verb == "ignoreValue":
+        elif ignore is not None and ignore[0] == "value":
             target.ignore_value_lines.append(sourceLine)
-        elif verb == "branchIfError":
+        elif ignore is not None and ignore[0] == "error":
+            target.ignore_error_lines.append(sourceLine)
+        elif ignore is not None and ignore[0] == "void":
+            target.ignore_void_lines.append(sourceLine)
+        elif branchErrorSource is not None:
             target.branch_error_lines.append(sourceLine)
         elif verb == "startInGroup":
             target.group_start_lines.append(sourceLine)
@@ -2199,21 +2606,230 @@ def collect_operation_calls(operation: OperationFact) -> Dict[str, CallFact]:
     return operationCalls
 
 
+def wait_set_await_line_numbers(operation: OperationFact) -> Set[int]:
+    """Return `await NAME` rows that introduce an await/case/done wait set.
+
+    In that shape NAME is a local wait-set label for diagnostics/tracing, not a
+    declared `call NAME TARGET`, so call-reference checks must not resolve it.
+    """
+    wait_set_lines: Set[int] = set()
+    lines = operation.lines
+    for index, sourceLine in enumerate(lines):
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "await" or not sourceLine.args):
+            continue
+        next_index = index + 1
+        while next_index < len(lines):
+            next_line = lines[next_index]
+            if is_comment(next_line) or not next_line.tokens:
+                next_index += 1
+                continue
+            if next_line.verb in {"case", "done"}:
+                wait_set_lines.add(sourceLine.number)
+            break
+    return wait_set_lines
+
+
+def operation_async_enabled(operation: OperationFact) -> bool:
+    for sourceLine in operation.lines:
+        if (sourceLine.verb == "async" and len(sourceLine.args) >= 2
+                and sourceLine.args[0] == operation.name
+                and sourceLine.args[1].lower() in {"yes", "true", "1", "on"}):
+            return True
+    return False
+
+
+def call_can_start_async_future(
+    facts: ExtendedFacts,
+    operation: OperationFact,
+    callFact: CallFact,
+) -> bool:
+    target = callFact.target
+    if target in {"net.fetchText", "fetchText", "standard.net.fetchText"}:
+        return True
+    if not operation_async_enabled(operation):
+        return False
+    if target in facts.base.operations:
+        return True
+    return False
+
+
+def source_row_terminates_before_next_label(sourceLine: SourceLine) -> bool:
+    if sourceLine.verb in {"jump", "return", "returnOk", "returnError", "returnVoid"}:
+        return True
+    if sourceLine.verb == "branch" and len(sourceLine.args) >= 3 and sourceLine.args[0] == "else":
+        return True
+    return False
+
+
+def source_line_reachable_numbers(operation: OperationFact) -> Set[int]:
+    lines = operation.lines
+    if not lines:
+        return set()
+    branchElseByLine = branch_else_targets_by_line(lines)
+    labelIndices = {
+        sourceLine.args[0]: index
+        for index, sourceLine in enumerate(lines)
+        if sourceLine.verb == "label" and sourceLine.args
+    }
+
+    def add_label_successor(successors: List[int], labelName: str) -> None:
+        targetIndex = labelIndices.get(labelName)
+        if targetIndex is not None:
+            successors.append(targetIndex)
+
+    def add_fallthrough_successor(successors: List[int], index: int) -> None:
+        nextIndex = index + 1
+        if nextIndex < len(lines):
+            successors.append(nextIndex)
+
+    def successor_indices(index: int) -> List[int]:
+        sourceLine = lines[index]
+        args = sourceLine.args
+        successors: List[int] = []
+        if sourceLine.verb == "await":
+            cursor = index + 1
+            foundWaitSetRows = False
+            while cursor < len(lines):
+                candidate = lines[cursor]
+                if is_comment(candidate) or not candidate.tokens:
+                    cursor += 1
+                    continue
+                if candidate.verb == "case":
+                    foundWaitSetRows = True
+                    if len(candidate.args) >= 2:
+                        add_label_successor(successors, candidate.args[1])
+                    cursor += 1
+                    continue
+                if candidate.verb == "done":
+                    foundWaitSetRows = True
+                    if candidate.args:
+                        add_label_successor(successors, candidate.args[0])
+                    break
+                break
+            if foundWaitSetRows:
+                return successors
+        if sourceLine.verb in {"return", "returnOk", "returnError", "returnVoid"}:
+            return successors
+        if sourceLine.verb == "jump" and len(args) >= 2 and args[0] == "target":
+            add_label_successor(successors, args[1])
+            return successors
+        if sourceLine.verb == "branch":
+            if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+                add_label_successor(successors, args[4])
+                elseLabel = branchElseByLine.get(sourceLine.number)
+                if elseLabel is None:
+                    add_fallthrough_successor(successors, index)
+                else:
+                    add_label_successor(successors, elseLabel)
+                return successors
+            if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+                add_label_successor(successors, args[2])
+                return successors
+            if args:
+                add_label_successor(successors, args[0])
+                add_fallthrough_successor(successors, index)
+                return successors
+        if sourceLine.verb == "branchIf" and len(args) >= 2:
+            add_label_successor(successors, args[1])
+            if len(args) >= 3:
+                add_label_successor(successors, args[2])
+            else:
+                add_fallthrough_successor(successors, index)
+            return successors
+        if sourceLine.verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+            add_label_successor(successors, args[1])
+            add_fallthrough_successor(successors, index)
+            return successors
+        if sourceLine.verb == "runChecked" and len(args) >= 9:
+            add_label_successor(successors, args[8])
+            add_fallthrough_successor(successors, index)
+            return successors
+        if sourceLine.verb == "branchSelected" and len(args) >= 3:
+            add_label_successor(successors, args[2])
+            add_fallthrough_successor(successors, index)
+            return successors
+        add_fallthrough_successor(successors, index)
+        return successors
+
+    reachableIndices: Set[int] = set()
+    stack = [0]
+    while stack:
+        currentIndex = stack.pop()
+        if currentIndex in reachableIndices:
+            continue
+        reachableIndices.add(currentIndex)
+        stack.extend(successor_indices(currentIndex))
+    return {lines[index].number for index in reachableIndices}
+
+
+def start_reaches_wait_set_entry(
+    operation: OperationFact,
+    callFact: CallFact,
+    awaitLine: SourceLine,
+) -> bool:
+    priorStartLines = [
+        startLine
+        for startLine in callFact.start_lines
+        if startLine.number < awaitLine.number
+    ]
+    branchElseByLine = branch_else_targets_by_line(operation.lines)
+    reachableLineNumbers = source_line_reachable_numbers(operation)
+    for startLine in reversed(priorStartLines):
+        if startLine.number not in reachableLineNumbers:
+            continue
+        blockedByTerminator = False
+        for sourceLine in operation.lines:
+            if sourceLine.number not in reachableLineNumbers:
+                continue
+            if sourceLine.number >= startLine.number:
+                break
+            if sourceLine.verb == "label":
+                blockedByTerminator = False
+                continue
+            if source_row_terminates_before_next_label(sourceLine):
+                blockedByTerminator = True
+        if blockedByTerminator:
+            continue
+        interveningLabelNames = {
+            sourceLine.args[0]
+            for sourceLine in operation.lines
+            if (sourceLine.verb == "label" and sourceLine.args
+                and startLine.number < sourceLine.number < awaitLine.number)
+        }
+        bypassesStart = False
+        for sourceLine in operation.lines:
+            if sourceLine.number not in reachableLineNumbers:
+                continue
+            if sourceLine.number >= startLine.number:
+                continue
+            if interveningLabelNames & set(branch_target_names_with_attached_else(
+                    sourceLine, branchElseByLine)):
+                bypassesStart = True
+                break
+        if not bypassesStart:
+            return True
+    return False
+
+
 def operation_input_types(operation: OperationFact) -> Dict[str, str]:
     inputs: Dict[str, str] = {}
     for sourceLine in operation.lines:
-        if (not is_comment(sourceLine) and sourceLine.tokens
-                and sourceLine.verb == "input" and len(sourceLine.args) >= 3
-                and sourceLine.args[0] == operation.name):
-            inputs[sourceLine.args[1]] = sourceLine.args[2]
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        parsed = input_parts(sourceLine)
+        if parsed is not None and parsed[0] == operation.name:
+            inputs[parsed[1]] = parsed[2]
     return inputs
 
 
 def call_arg_values(callFact: CallFact) -> Dict[str, List[str]]:
     values: Dict[str, List[str]] = {}
     for argLine in callFact.arg_lines:
-        if len(argLine.args) >= 3:
-            values.setdefault(argLine.args[1], []).append(argLine.args[2])
+        parsed = argument_parts(argLine)
+        if parsed is not None:
+            _callName, argumentName, _declaredType, suppliedValue = parsed
+            values.setdefault(argumentName, []).append(suppliedValue)
     return values
 
 
@@ -2228,16 +2844,18 @@ def call_success_value_names(callFact: CallFact) -> Set[str]:
     """Names that carry a call's successful return value in this operation."""
     names: Set[str] = set()
     for bindLine in callFact.bind_lines + callFact.bind_ok_lines:
-        if bindLine.args:
-            names.add(bindLine.args[0])
+        parsed = bind_parts(bindLine)
+        if parsed is not None:
+            names.add(parsed[1])
     return names
 
 
 def call_success_value_lines(callFact: CallFact) -> List[Tuple[str, SourceLine]]:
     values: List[Tuple[str, SourceLine]] = []
     for bindLine in callFact.bind_lines + callFact.bind_ok_lines:
-        if bindLine.args:
-            values.append((bindLine.args[0], bindLine))
+        parsed = bind_parts(bindLine)
+        if parsed is not None:
+            values.append((parsed[1], bindLine))
     return values
 
 
@@ -2246,16 +2864,24 @@ def call_has_value_disposition(callFact: CallFact) -> bool:
     return bool(
         callFact.bind_lines
         or callFact.bind_ok_lines
+        or callFact.run_checked_lines
         or callFact.ignore_value_lines
         or callFact.ignore_ok_lines
+        or callFact.ignore_void_lines
     )
+
+
+def call_result_success_disposition_lines(callFact: CallFact) -> List[SourceLine]:
+    """Rows that explicitly dispose the success side of a Result-shaped call."""
+    return callFact.bind_ok_lines + callFact.ignore_ok_lines + callFact.ignore_void_lines
 
 
 def call_consumes_any_value(callFact: CallFact, valueNames: Set[str]) -> bool:
     if not valueNames:
         return False
     for argLine in callFact.arg_lines:
-        if len(argLine.args) >= 3 and argLine.args[2] in valueNames:
+        parsed = argument_parts(argLine)
+        if parsed is not None and parsed[3] in valueNames:
             return True
     return False
 
@@ -2342,15 +2968,22 @@ def _line_declares_value(sourceLine: SourceLine, valueName: str) -> bool:
         return False
     verb = sourceLine.verb
     args = sourceLine.args
-    if verb in {"bind", "bindOk", "bindError", "const", "var", "literal",
+    bind = bind_parts(sourceLine)
+    if bind is not None:
+        return bind[1] == valueName
+    if verb in {"const", "var", "let", "literal",
                 "domainLiteral", "makeError", "declareFailure", "receive"}:
         return args[0] == valueName
     if verb == "storage" and len(args) >= 3:
         return args[2] == valueName
+    memory = memory_parts(sourceLine)
+    if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 2:
+        return memory[2][0] == valueName
     if verb == "sharedState" and len(args) >= 3:
         return args[2] == valueName
-    if verb == "input" and len(args) >= 2:
-        return args[1] == valueName
+    parsedInput = input_parts(sourceLine)
+    if parsedInput is not None:
+        return parsedInput[1] == valueName
     if verb == "read" and len(args) >= 2:
         return args[1] == valueName
     return False
@@ -2385,6 +3018,9 @@ def _literal_assignment(sourceLine: SourceLine) -> Optional[Tuple[str, str, str]
         return args[0], args[1], args[2]
     if sourceLine.verb == "storage" and len(args) >= 5:
         return args[2], args[3], args[4]
+    memory = memory_parts(sourceLine)
+    if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 3:
+        return memory[2][0], memory[2][1], memory[2][2]
     return None
 
 
@@ -2497,7 +3133,7 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3201 deadStore, SS3202 allocationInLoop,
 #            SS3203 stringAccumulatorAppendInLoop,
 #            SS3204 bindThenIgnore,
-#            SS3205 snprintfI32OffsetWithoutWidening,
+#            SS3205 snprintfInt32OffsetWithoutWidening,
 #            SS3206 selectedListAppendInHandler,
 #            SS3207 rowCountMutationUnchecked
 #   AS33xx — memory / resource discipline     (T3 refinement)
@@ -2548,7 +3184,7 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #                   native HTTP ABI's name-based-lookup contract),
 #            SS3610 middlewareReturnNotMiddlewareControl (every
 #                   `routeMiddleware`-bound op MUST declare `output OP
-#                   MiddlewareControl` not bare CSignedInt32; ERROR +
+#                   MiddlewareControl` not bare Int32; ERROR +
 #                   blocksCompile because the dispatcher's short-circuit
 #                   semantics depend on the typed enum),
 #            SS3612 voidReturnValueShouldBeReturnVoid (an op declared
@@ -2616,7 +3252,8 @@ def check_unused_calls(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCalls = collect_operation_calls(operation)
         for callFact in operationCalls.values():
             executedSomewhere = bool(
-                callFact.run_lines or callFact.start_lines or callFact.group_start_lines
+                callFact.run_lines or callFact.run_checked_lines
+                or callFact.start_lines or callFact.group_start_lines
             )
             referencedSomewhere = bool(
                 callFact.bind_lines or callFact.bind_ok_lines or callFact.bind_error_lines
@@ -2637,7 +3274,7 @@ def check_unused_calls(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(callFact.line, "callDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule="every declared call must be either executed or referenced",
-                specAnchor="SYNTAX.md#call",
+                specAnchor="docs/reference/syntax-inventory.md#call",
                 citations=narrative_citations_for_operation(facts, operation.name),
                 fixCandidates=[
                     FixCandidate(
@@ -2689,7 +3326,7 @@ def check_unused_labels(facts: ExtendedFacts) -> List[Diagnostic]:
             related=[span_of_line(facts.base.operations[labelFact.operationName].line, "enclosingOperation")]
                 if labelFact.operationName in facts.base.operations else [],
             invariantRule="every declared label must be reachable via branch / branchIf*",
-            specAnchor="SYNTAX.md#label",
+            specAnchor="docs/reference/syntax-inventory.md#label",
             citations=narrative_citations_for_operation(facts, labelFact.operationName),
             fixCandidates=[
                 FixCandidate(
@@ -2704,6 +3341,64 @@ def check_unused_labels(facts: ExtendedFacts) -> List[Diagnostic]:
             passProvenance="check_unused_labels",
             agentHint="if used as a readability anchor, convert to a `# group …` comment instead",
         ))
+    return diagnostics
+
+
+def _is_unreachable_operation_row_candidate(sourceLine: SourceLine) -> bool:
+    if is_comment(sourceLine) or not sourceLine.tokens:
+        return False
+    if sourceLine.verb in {"__typedComment__", "__groupAnchor__"}:
+        return False
+    return True
+
+
+def check_unreachable_operation_rows(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3630 - rows after terminal control-flow that are not reachable by
+    branch/jump edges are stale executable context. This catches old blocks
+    left behind after response fast paths or SQL flow rewrites.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        reachableLineNumbers = source_line_reachable_numbers(operation)
+        for sourceLine in operation.lines:
+            if sourceLine.number in reachableLineNumbers:
+                continue
+            if not _is_unreachable_operation_row_candidate(sourceLine):
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3630",
+                kind="controlFlow.unreachableRow",
+                severity=Severity.WARNING,
+                subjectName=(sourceLine.args[0] if sourceLine.args else sourceLine.verb),
+                subjectKind=sourceLine.verb,
+                gapEdge="controlReachability",
+                intentSlogan="unreachable operation row",
+                primary=span_of_line(sourceLine, "unreachableRow"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    "every executable operation row must be reachable from the "
+                    "operation entry through fallthrough, branch, jump, await, "
+                    "or runChecked edges"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#control-flow",
+                fixCandidates=[
+                    FixCandidate(
+                        name="removeUnreachableBlock",
+                        shape="# remove the stale rows, or add an explicit branch/jump if this block is intended",
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_unreachable_operation_rows",
+                agentHint=(
+                    "dead operation rows still consume compiler context and "
+                    "can hide obsolete resource or SQL paths"
+                ),
+            ))
+            break
     return diagnostics
 
 
@@ -2732,7 +3427,7 @@ def check_unused_capabilities(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="capability declared but unused",
             primary=span_of_line(capabilityFact.line, "capabilityDeclaration"),
             invariantRule="every declared capability must authorize at least one site",
-            specAnchor="SYNTAX.md#capability",
+            specAnchor="docs/reference/syntax-inventory.md#capability",
             fixCandidates=[
                 FixCandidate(
                     name="addUseCapabilityAtEffectSite",
@@ -2767,7 +3462,7 @@ def check_unused_error_cases(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="errorCase declared but never raised",
             primary=span_of_line(errorCaseFact.line, "errorCaseDeclaration"),
             invariantRule="every errorCase variant should have at least one construction site",
-            specAnchor="SYNTAX.md#errorCase",
+            specAnchor="docs/reference/syntax-inventory.md#errorCase",
             fixCandidates=[
                 FixCandidate(
                     # Suffix the suggested name with `Failure` so applying
@@ -2810,7 +3505,7 @@ def check_unused_mutable_storage(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="mutable storage never mutated",
             primary=span_of_line(storageFact.line, "storageDeclaration"),
             invariantRule="mutable storage slots should be written via `set` at least once",
-            specAnchor="SYNTAX.md#storage",
+            specAnchor="docs/reference/syntax-inventory.md#storage",
             fixCandidates=[
                 FixCandidate(
                     name="demoteToImmutable",
@@ -2880,7 +3575,7 @@ def check_partial_retry_policies(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="retryPolicy missing edges",
             primary=span_of_line(retryPolicyFact.line, "policyDeclaration"),
             invariantRule="retryPolicy should declare maxAttempts plus delay/jitter for predictable behavior",
-            specAnchor="SYNTAX.md#retryPolicy",
+            specAnchor="docs/reference/syntax-inventory.md#retryPolicy",
             fixCandidates=[
                 FixCandidate(
                     name=f"add{edgeName[0].upper()}{edgeName[1:]}",
@@ -2924,7 +3619,7 @@ def check_partial_trust_boundaries(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="trustBoundary triad incomplete",
             primary=span_of_line(trustBoundaryFact.line, "trustBoundaryDeclaration"),
             invariantRule="trustBoundary must declare input, output, and validator to prove the transition",
-            specAnchor="SYNTAX.md#trustBoundary",
+            specAnchor="docs/reference/syntax-inventory.md#trustBoundary",
             fixCandidates=[
                 FixCandidate(
                     name=f"add{edgeName[0].upper()}{edgeName[1:]}",
@@ -2960,7 +3655,7 @@ def check_literal_without_digest(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="external literal lacks integrity pin",
             primary=span_of_line(literalFact.line, "literalDeclaration"),
             invariantRule="literals with `literalSource` should pin bytes via `literalDigest`",
-            specAnchor="SYNTAX.md#literalDigest",
+            specAnchor="docs/reference/syntax-inventory.md#literalDigest",
             fixCandidates=[
                 FixCandidate(
                     name="addLiteralDigest",
@@ -3021,7 +3716,7 @@ def check_operation_metadata_gaps(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(operation.line, "operationDeclaration"),
                 related=[firstBodySpan],
                 invariantRule=f"every operation should declare `{edgeName}`",
-                specAnchor=f"SYNTAX.md#{edgeName}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{edgeName}",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -3058,7 +3753,7 @@ def check_shared_state_protection(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="sharedState access lacks guard token",
             primary=span_of_line(accessFact.line, f"sharedState{accessFact.accessKind.capitalize()}"),
             invariantRule="every sharedState set/read should declare protectedBy <guardToken>",
-            specAnchor="SYNTAX.md#sharedState",
+            specAnchor="docs/reference/syntax-inventory.md#sharedState",
             fixCandidates=[
                 FixCandidate(
                     name="addProtectedByClause",
@@ -3066,7 +3761,7 @@ def check_shared_state_protection(facts: ExtendedFacts) -> List[Diagnostic]:
                     evidence=[span_of_line(accessFact.line)],
                 ),
                 FixCandidate(
-                    # SYNTAX.md has no bare `guardToken NAME` declaration verb;
+                    # docs/reference/syntax-inventory.md has no bare `guardToken NAME` declaration verb;
                     # guard tokens are declared via their acquisition call
                     # plus protects/owner/release edges. Shape uses only
                     # registered verbs so the fix doesn't trip SS0001.
@@ -3120,7 +3815,7 @@ def check_supported_shared_state_scope(facts: ExtendedFacts) -> List[Diagnostic]
                 "module global visible within one process; cross-process or "
                 "cluster state requires an external runtime not wired today"
             ),
-            specAnchor="SYNTAX.md#sharedState",
+            specAnchor="docs/reference/syntax-inventory.md#sharedState",
             fixCandidates=[
                 FixCandidate(
                     name="useProcessScope",
@@ -3221,7 +3916,7 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
                     reusableCapabilityName = candidateCapability.name
                     reusableCapabilityIsAlreadyUsed = True
             diagnostics.append(Diagnostic(
-                # SYNTAX.md frames capability coverage as a LINTER rule, not a
+                # docs/reference/syntax-inventory.md frames capability coverage as a LINTER rule, not a
                 # compiler-blocking spec violation: "the linter checks that
                 # every effect site has an authorizing capability… enforcement
                 # at the runtime authority layer is a future runtime concern."
@@ -3236,7 +3931,7 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
                 intentSlogan="effect lacks capability proof",
                 primary=span_of_line(effectLine, "effectDeclaration"),
                 invariantRule="every declared effect should have an authorizing capability proof",
-                specAnchor="SYNTAX.md#useCapability",
+                specAnchor="docs/reference/syntax-inventory.md#useCapability",
                 citations=operationCitations,
                 fixCandidates=_build_capability_coverage_fix_candidates(
                     operationName=operationName,
@@ -3260,7 +3955,7 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
 
 def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
     """Verbs not in `KNOWN_AGENT_SCRIPT_VERBS` are grammar gaps — either a
-    typo, or a SYNTAX.md row landed without updating this set. Reported as
+    typo, or a docs/reference/syntax-inventory.md row landed without updating this set. Reported as
     T0 because nothing else downstream can interpret an unrecognised verb."""
     diagnostics: List[Diagnostic] = []
     seenUnknownAtLine: Set[Tuple[Path, int]] = set()
@@ -3284,12 +3979,12 @@ def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
             gapEdge="grammarRegistration",
             intentSlogan="verb not in language vocabulary",
             primary=span_of_line(sourceLine, "unknownVerbSite"),
-            invariantRule="every verb must be a row in SYNTAX.md and registered in KNOWN_AGENT_SCRIPT_VERBS",
-            specAnchor="SYNTAX.md",
+            invariantRule="every verb must be a row in docs/reference/syntax-inventory.md and registered in KNOWN_AGENT_SCRIPT_VERBS",
+            specAnchor="docs/reference/syntax-inventory.md",
             fixCandidates=[
                 FixCandidate(
                     name="correctTypo",
-                    shape=f"# verify spelling of `{verb}` against SYNTAX.md",
+                    shape=f"# verify spelling of `{verb}` against docs/reference/syntax-inventory.md",
                 ),
                 FixCandidate(
                     name="addToVocabulary",
@@ -3301,10 +3996,409 @@ def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
             effort=Effort.TRIVIAL,
             passProvenance="check_unknown_verbs",
             agentHint=(
-                "if a new SYNTAX.md row was added recently, this vocab is "
+                "if a new docs/reference/syntax-inventory.md row was added recently, this vocab is "
                 "out of date — sync the set"
             ),
         ))
+    return diagnostics
+
+
+_CUTOVER_ACTIONS: Set[str] = {
+    "read", "write", "append", "allocate", "free", "open", "close",
+    "execute", "delete", "create", "update", "network", "observe",
+    "log", "connect", "send", "receive", "configure",
+}
+
+_REPLACED_VERB_FIXES: Dict[str, str] = {
+    "importModule": "import <alias> <module.path>",
+    "arg": "argument <call> <parameter> <type> <value>",
+    "bindOk": "bind ok <name> <type> <call>",
+    "bindError": "bind error <name> <type> <call>",
+    "branchIf": "branch if condition <condition> target <label>",
+    "branchIfError": "branch error source <call> target <label>",
+    "returnValue": "return value <value>",
+    "returnOk": "return ok <value>",
+    "returnError": "return error <value>",
+    "returnVoid": "return void",
+    "ignoreValue": "ignore value source <call> type <type>",
+    "ignoreOk": "ignore ok source <call> type <type>",
+    "ignoreError": "ignore error source <call>",
+    "memoryHeap": "memory <operation> heap yes|no|auto",
+    "memoryArena": "memory <operation> arena <scope>",
+    "memoryStackLimit": "memory <operation> stack max <size>",
+    "const": "storage module immutable <name> <type> <value>",
+    "let": "memory <operation> mutable <name> <type> <value>",
+    "var": "memory <operation> mutable <name> <type> <value>",
+    "modulePurpose": "purpose module <module> \"...\"",
+    "moduleInvariant": "invariant module <module> \"...\"",
+    "htmlTemplate": "html template <name>",
+    "htmlArg": "# remove; html hydrate parameters are inferred from body holes",
+    "htmlBody": "html body template <template>",
+}
+
+
+def _syntax_cutover_diagnostic(
+    sourceLine: SourceLine,
+    subjectName: str,
+    intent: str,
+    rule: str,
+    shape: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T0_PARSE,
+        code="SS0003",
+        kind="grammar.syntaxCutover",
+        severity=Severity.ERROR,
+        subjectName=subjectName,
+        subjectKind="row",
+        gapEdge="newSyntax",
+        intentSlogan=intent,
+        primary=span_of_line(sourceLine, "syntaxCutoverSite"),
+        invariantRule=rule,
+        specAnchor="docs/reference/syntax-inventory.md#syntax-cutover",
+        fixCandidates=[
+            FixCandidate(
+                name="rewriteToNewSyntax",
+                shape=shape,
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.TRIVIAL,
+        passProvenance="check_syntax_cutover_rows",
+        agentHint="run the explicit syntax converter or rewrite this row; the linter no longer treats old syntax as source",
+    )
+
+
+def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if sourceLine.number == 0 or not sourceLine.tokens:
+            continue
+
+        stripped = sourceLine.raw.strip()
+        if stripped.startswith("#label"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "#label", "sigil-prefixed labels are rejected",
+                "labels must use `label NAME`, not `#label NAME`",
+                "label <name>",
+            ))
+            continue
+        if is_comment(sourceLine):
+            continue
+
+        verb = sourceLine.verb
+        args = sourceLine.args
+        if verb.startswith("@") or verb.startswith("#"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, "sigil-prefixed row verb is rejected",
+                "row verbs must be plain words; labels use `label NAME`",
+                "label <name>" if "label" in verb else "# remove the sigil prefix",
+            ))
+            continue
+        if "." in verb:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, "dotted fact-row verb is rejected",
+                "dotted path/value tokens are allowed, but row verbs cannot contain dots",
+                "# rewrite as a supported space-separated row",
+            ))
+            continue
+        if any("=" in token.text for token in sourceLine.tokens if not token.quoted):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, "equals-sign key/value rows are rejected",
+                "SemanticScript rows remain space-separated positional rows with role words",
+                "# rewrite without key=value fields",
+            ))
+            continue
+        if verb in _REPLACED_VERB_FIXES:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, verb, f"`{verb}` was replaced by the syntax cutover",
+                f"`{verb}` is converter input only, not valid SemanticScript source",
+                _REPLACED_VERB_FIXES[verb],
+            ))
+            continue
+
+        if verb == "type" and len(args) >= 2 and args[1] == "Result":
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "type Result", "old result type row is rejected",
+                "`type NAME Result OK ERROR` must become `type NAME result ok OK error ERROR`",
+                "type <name> result ok <okType> error <errorType>",
+            ))
+        elif verb == "input" and not (len(args) >= 4 and args[0] == "operation"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "input", "input rows must be subject-qualified",
+                "`input OP NAME TYPE` was replaced by `input operation OP NAME TYPE`",
+                "input operation <operation> <name> <type>",
+            ))
+        elif verb == "output" and not (len(args) >= 3 and args[0] == "operation"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "output", "output rows must be subject-qualified",
+                "`output OP TYPE` was replaced by `output operation OP TYPE`",
+                "output operation <operation> <type>",
+            ))
+        elif verb == "purpose" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "purpose", "purpose rows must name the subject kind",
+                "`purpose SUBJECT TEXT` was replaced by `purpose operation SUBJECT TEXT` or `purpose module SUBJECT TEXT`",
+                "purpose operation <operation> \"...\"",
+            ))
+        elif verb == "invariant" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "invariant", "invariant rows must name the subject kind",
+                "`invariant SUBJECT TEXT` was replaced by `invariant operation SUBJECT TEXT` or `invariant module SUBJECT TEXT`",
+                "invariant operation <operation> \"...\"",
+            ))
+        elif verb == "import" and len(args) != 2:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "import", "import rows require alias and module path",
+                "`import` must be `import ALIAS MODULE_PATH`",
+                "import <alias> <module.path>",
+            ))
+        elif verb == "bind" and not (len(args) >= 4 and args[0] in {"value", "ok", "error"}):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "bind", "bind rows require a variant word",
+                "`bind NAME TYPE CALL` was replaced by `bind value NAME TYPE CALL`",
+                "bind value <name> <type> <call>",
+            ))
+        elif verb == "branch":
+            validBranch = (
+                len(args) == 5 and args[0] == "if" and args[1] == "condition" and args[3] == "target"
+            ) or (
+                len(args) == 5 and args[0] == "error" and args[1] == "source" and args[3] == "target"
+            ) or (
+                len(args) == 3 and args[0] == "else" and args[1] == "target"
+            )
+            if not validBranch:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "branch", "branch rows require if/error/else role-word shape",
+                    "bare `branch TARGET` was replaced by `jump target TARGET`; conditional branches use role words",
+                    "branch if condition <condition> target <label>",
+                ))
+        elif verb == "jump" and not (len(args) == 2 and args[0] == "target"):
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "jump", "jump rows require `target` role word",
+                "`jump LABEL` is invalid; use `jump target LABEL`",
+                "jump target <label>",
+            ))
+        elif verb == "return":
+            validReturn = (
+                len(args) == 1 and args[0] == "void"
+            ) or (
+                len(args) == 2 and args[0] in {"value", "ok", "error"}
+            )
+            if not validReturn:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "return", "return rows require value/ok/error/void variant",
+                    "`return` must be `return value|ok|error VALUE` or `return void`",
+                    "return value <value>",
+                ))
+        elif verb == "ignore":
+            validIgnore = (
+                len(args) == 5 and args[0] in {"value", "ok"} and args[1] == "source" and args[3] == "type"
+            ) or (
+                len(args) == 3 and args[0] in {"error", "void"} and args[1] == "source"
+            )
+            if not validIgnore:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "ignore", "ignore rows require variant and role words",
+                    "`ignore` must use `source` and, for value/ok, `type` role words",
+                    "ignore value source <call> type <type>",
+                ))
+        elif verb == "argument" and len(args) != 4:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "argument", "argument rows require call, parameter, type, and value",
+                "`argument` must be `argument CALL PARAM TYPE VALUE`",
+                "argument <call> <parameter> <type> <value>",
+            ))
+        elif verb == "html":
+            validHtml = (
+                len(args) == 2 and args[0] == "template"
+            ) or (
+                len(args) == 3 and args[0] == "body" and args[1] == "template"
+            )
+            if not validHtml:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "html", "html rows require root-specific role words",
+                    "`html` rows must be `html template` or `html body template`; holes infer hydrate arguments",
+                    "html body template <template>",
+                ))
+        elif verb == "memory":
+            validMemory = False
+            if len(args) >= 3 and args[1] in {"mutable", "immutable"}:
+                validMemory = len(args) >= 5
+            elif len(args) >= 3 and args[1] == "heap":
+                validMemory = len(args) == 3 and args[2] in {"yes", "no", "true", "false", "auto"}
+            elif len(args) >= 3 and args[1] == "arena":
+                validMemory = len(args) == 3
+            elif len(args) >= 4 and args[1] == "stack":
+                validMemory = args[2] == "max"
+            if not validMemory:
+                diagnostics.append(_syntax_cutover_diagnostic(
+                    sourceLine, "memory", "memory rows require a known subkind",
+                    "`memory` subkind must be heap, arena, stack, mutable, or immutable",
+                    "memory <operation> heap yes|no|auto",
+                ))
+        elif verb == "set" and args and args[0] in {"local", "module"}:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "set", "`set local/module` was replaced",
+                "set targets must use declaration families: `memory` or `storage`",
+                "set memory <name> <value>",
+            ))
+        elif verb == "authority" and len(args) >= 3 and args[1] not in _CUTOVER_ACTIONS and args[2] in _CUTOVER_ACTIONS:
+            diagnostics.append(_syntax_cutover_diagnostic(
+                sourceLine, "authority", "authority action/path ordering is reversed",
+                "`authority OP PATH ACTION` was replaced by `authority OP ACTION PATH`",
+                f"authority {args[0]} {args[2]} {args[1]}",
+            ))
+
+    return diagnostics
+
+
+_HTML_HOLE_REFERENCE_RE = re.compile(
+    r"\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}")
+_HTML_BRACE_CONTENT_RE = re.compile(r"\{([^{}\n]*)\}")
+_HTML_RAW_TEXT_RE = re.compile(
+    r"<(style|script)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_RAW_HYDRATION_TYPES: frozenset = frozenset({
+    "HtmlFragment",
+    "HtmlTrustedFragment",
+    "HtmlDocument",
+})
+
+
+def _html_line_for(template: HtmlTemplateFact, line_number: int, raw: str) -> SourceLine:
+    return SourceLine(
+        path=template.line.path,
+        number=line_number,
+        raw=raw,
+        tokens=tokenize_line(raw),
+    )
+
+
+def _html_hole_diagnostic(
+    sourceLine: SourceLine,
+    *,
+    subjectName: str,
+    intent: str,
+    rule: str,
+    shape: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T2_LOWERING,
+        code="SS3520",
+        kind="html.implicitHoleContract",
+        severity=Severity.ERROR,
+        subjectName=subjectName,
+        subjectKind="htmlTemplate",
+        gapEdge="htmlHole",
+        intentSlogan=intent,
+        primary=span_of_line(sourceLine, "htmlHoleSite"),
+        invariantRule=rule,
+        specAnchor="docs/reference/syntax-inventory.md#html",
+        fixCandidates=[FixCandidate(name="rewriteHtmlHole", shape=shape)],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_html_implicit_holes",
+        agentHint="template holes are bare names or dotted record fields; hydrate calls must pass exactly those root names",
+    )
+
+
+def _html_body_text(template: HtmlTemplateFact) -> str:
+    if not template.body_lines:
+        return ""
+    return "\n".join(raw[1:] if raw[:1].isspace() else raw
+                     for raw, _line in template.body_lines) + "\n"
+
+
+def _html_hole_roots(template: HtmlTemplateFact) -> Tuple[Set[str], List[Diagnostic]]:
+    diagnostics: List[Diagnostic] = []
+    body = _html_body_text(template)
+    roots: Set[str] = set()
+    raw_spans = [(match.start(), match.end(), match.group(1).lower())
+                 for match in _HTML_RAW_TEXT_RE.finditer(body)]
+    for match in _HTML_HOLE_REFERENCE_RE.finditer(body):
+        raw_context = next(
+            (name for start, end, name in raw_spans
+             if start < match.start() < end),
+            None,
+        )
+        if raw_context is not None:
+            sourceLine = template.body_line or template.line
+            diagnostics.append(_html_hole_diagnostic(
+                sourceLine,
+                subjectName=template.name,
+                intent="raw text hole rejected",
+                rule=f"`{raw_context}` raw text cannot contain dynamic HTML holes",
+                shape=f"# move {{{match.group(1)}}} outside <{raw_context}>",
+            ))
+            continue
+        roots.add(match.group(1).split(".", 1)[0])
+
+    masked = list(body)
+    for start, end, _name in raw_spans:
+        for index in range(start, end):
+            masked[index] = " "
+    masked_body = "".join(masked)
+    hole_spans = {(match.start(), match.end())
+                  for match in _HTML_HOLE_REFERENCE_RE.finditer(masked_body)}
+    for match in _HTML_BRACE_CONTENT_RE.finditer(masked_body):
+        if (match.start(), match.end()) in hole_spans:
+            continue
+        content = match.group(1).strip()
+        if not content:
+            continue
+        sourceLine = template.body_line or template.line
+        diagnostics.append(_html_hole_diagnostic(
+            sourceLine,
+            subjectName=template.name,
+            intent="complex hole rejected",
+            rule="HTML dynamic holes must be a bare name or dotted record-field path",
+            shape="{name} or {record.field}",
+        ))
+    return roots, diagnostics
+
+
+def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    template_roots: Dict[str, Set[str]] = {}
+    for template in facts.base.html_templates.values():
+        roots, bodyDiagnostics = _html_hole_roots(template)
+        template_roots[template.name] = roots
+        diagnostics.extend(bodyDiagnostics)
+
+    for operation in facts.base.operations.values():
+        for callFact in collect_operation_calls(operation).values():
+            prefix = "html.hydrate."
+            if not callFact.target.startswith(prefix):
+                continue
+            templateName = callFact.target[len(prefix):]
+            if templateName not in template_roots:
+                continue
+            required = template_roots[templateName]
+            provided = {
+                parsed[1]
+                for parsed in (argument_parts(line) for line in callFact.arg_lines)
+                if parsed is not None
+            }
+            for missing in sorted(required - provided):
+                diagnostics.append(_html_hole_diagnostic(
+                    callFact.line,
+                    subjectName=templateName,
+                    intent="hydrate arg missing",
+                    rule=f"`html.hydrate.{templateName}` must pass hole root `{missing}`",
+                    shape=f"argument {callFact.name} {missing} String <value>",
+                ))
+            for extra in sorted(provided - required):
+                diagnostics.append(_html_hole_diagnostic(
+                    callFact.line,
+                    subjectName=templateName,
+                    intent="hydrate arg extra",
+                    rule=f"`html.hydrate.{templateName}` has no hole root `{extra}`",
+                    shape=f"# remove argument {callFact.name} {extra} ...",
+                ))
     return diagnostics
 
 
@@ -3356,8 +4450,9 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         fixShape=f"call <descriptiveNameCall> <target>",
                         agentHint="draft the new name from the call's target verb and the data it operates on",
                     ))
-            elif verb == "bindError" and len(args) >= 3:
-                errorBindingName = args[0]
+            bind = bind_parts(sourceLine)
+            if bind is not None and bind[0] == "error":
+                errorBindingName = bind[1]
                 if not errorBindingName.endswith("Error"):
                     diagnostics.append(_make_vague_name_diagnostic(
                         sourceLine=sourceLine,
@@ -3366,10 +4461,10 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         code="SS4002",
                         kind="namingDiscipline.bindErrorSuffix",
                         subjectName=errorBindingName,
-                        subjectKind="bindError",
+                        subjectKind="bind error",
                         intentSlogan="error binding lacks `Error` suffix",
-                        invariantRule="bindError values must end with `Error` so they read distinctly from success bindings",
-                        fixShape=f"bindError {errorBindingName}Error <type> <call>",
+                        invariantRule="`bind error` values must end with `Error` so they read distinctly from success bindings",
+                        fixShape=f"bind error {errorBindingName}Error <type> <call>",
                         agentHint="rename to `<context>Error` (e.g. `accountLookupError`)",
                     ))
             elif verb in {"makeError", "declareFailure"} and args:
@@ -3388,8 +4483,8 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         fixShape=f"{verb} {failureValueName}Failure <Error>.<Variant>",
                         agentHint="rename to `<context>Failure` (e.g. `accountLookupFailure`)",
                     ))
-            elif verb in {"bind", "bindOk"} and len(args) >= 3:
-                bindName = args[0]
+            elif bind is not None and bind[0] in {"value", "ok"}:
+                bindName = bind[1]
                 if bindName in VAGUE_NAME_BLACKLIST:
                     diagnostics.append(_make_vague_name_diagnostic(
                         sourceLine=sourceLine,
@@ -3398,10 +4493,10 @@ def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
                         code="SS4004",
                         kind="namingDiscipline.vagueName",
                         subjectName=bindName,
-                        subjectKind=verb,
-                        intentSlogan=f"{verb} name is in vague-name blacklist",
+                        subjectKind=f"bind {bind[0]}",
+                        intentSlogan=f"bind {bind[0]} name is in vague-name blacklist",
                         invariantRule="bound values should describe what they hold, not their position in the algorithm",
-                        fixShape=f"{verb} <descriptiveName> <type> <call>",
+                        fixShape=f"bind {bind[0]} <descriptiveName> <type> <call>",
                         agentHint="name after the meaning of the bound value, not its role as an intermediate",
                     ))
             elif verb == "const" and len(args) >= 1:
@@ -3473,9 +4568,10 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
         for lineIndex, sourceLine in enumerate(operation.lines):
             if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
-            if sourceLine.verb in {"bind", "bindOk", "bindError"} and len(sourceLine.args) >= 3:
+            bind = bind_parts(sourceLine)
+            if bind is not None:
                 bindDeclarations.append((
-                    sourceLine.args[0], sourceLine.verb, sourceLine, lineIndex,
+                    bind[1], f"bind {bind[0]}", sourceLine, lineIndex,
                 ))
 
         for bindName, bindVerb, declarationLine, declarationIndex in bindDeclarations:
@@ -3484,8 +4580,9 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
                 if is_comment(laterLine) or not laterLine.tokens:
                     continue
                 # Skip the bind declarations themselves to avoid self-match
-                if laterLine.verb in {"bind", "bindOk", "bindError"} and len(laterLine.args) >= 1:
-                    if laterLine.args[0] == bindName:
+                laterBind = bind_parts(laterLine)
+                if laterBind is not None:
+                    if laterBind[1] == bindName:
                         continue
                 for token in laterLine.tokens:
                     if token.text == bindName:
@@ -3507,7 +4604,7 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(declarationLine, "bindDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=f"every `{bindVerb}` value should be referenced on a subsequent line",
-                specAnchor=f"SYNTAX.md#{bindVerb}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{bindVerb}",
                 citations=narrative_citations_for_operation(facts, operation.name),
                 fixCandidates=[
                     FixCandidate(
@@ -3538,11 +4635,161 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         operationCalls = collect_operation_calls(operation)
+        lines = [
+            sourceLine
+            for sourceLine in operation.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ]
+        waitSetCaseCalls: Set[str] = set()
+        waitSetHandlerLabels: Set[str] = set()
+        labelBeforeLine: Dict[int, Optional[str]] = {}
+        currentLabel: Optional[str] = None
+        for sourceLine in lines:
+            labelBeforeLine[sourceLine.number] = currentLabel
+            if sourceLine.verb == "label" and sourceLine.args:
+                currentLabel = sourceLine.args[0]
+            if sourceLine.verb == "case" and len(sourceLine.args) >= 2:
+                waitSetCaseCalls.add(sourceLine.args[0])
+                waitSetHandlerLabels.add(sourceLine.args[1])
+
+        def in_wait_set_completion_context(callFact: CallFact) -> bool:
+            if callFact.name in waitSetCaseCalls:
+                return True
+            executionLines = (
+                callFact.run_lines
+                + callFact.run_checked_lines
+                + callFact.start_lines
+                + callFact.group_start_lines
+                + callFact.await_lines
+            )
+            return any(
+                labelBeforeLine.get(line.number) in waitSetHandlerLabels
+                for line in executionLines
+            )
+
+        def is_wait_set_handler_line(line: SourceLine) -> bool:
+            return labelBeforeLine.get(line.number) in waitSetHandlerLabels
+
+        def unchecked_execution_lines(callFact: CallFact) -> List[SourceLine]:
+            return (
+                callFact.run_lines
+                + callFact.start_lines
+                + callFact.group_start_lines
+                + callFact.await_lines
+            )
+
+        def after_last_execution(line: SourceLine, executionLines: List[SourceLine]) -> bool:
+            if not executionLines:
+                return True
+            return line.number > max(executionLine.number for executionLine in executionLines)
+
+        def has_ordered_result_success(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+            waitSetCompletionContext: bool,
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                and (
+                    not waitSetCompletionContext
+                    or is_wait_set_handler_line(line)
+                )
+                for line in call_result_success_disposition_lines(callFact)
+            )
+
+        def has_ordered_bind_error(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+            waitSetCompletionContext: bool,
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                and (
+                    not waitSetCompletionContext
+                    or is_wait_set_handler_line(line)
+                )
+                for line in callFact.bind_error_lines
+            )
+
+        def has_ordered_branch_error(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                for line in callFact.branch_error_lines
+            )
+
+        def has_ordered_value_disposition(
+            callFact: CallFact,
+            executionLines: List[SourceLine],
+        ) -> bool:
+            return any(
+                after_last_execution(line, executionLines)
+                for line in (
+                    callFact.bind_lines
+                    + callFact.bind_ok_lines
+                    + callFact.ignore_value_lines
+                    + callFact.ignore_ok_lines
+                    + callFact.ignore_void_lines
+                )
+            )
+
         for callFact in operationCalls.values():
             if callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
                 continue
+            uncheckedExecutionLines = unchecked_execution_lines(callFact)
+            if callFact.run_checked_lines and uncheckedExecutionLines:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3106",
+                    kind="errorPathCoverage.hiddenFailure",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="runOrRunChecked",
+                    intentSlogan="fallible call mixes checked and unchecked execution",
+                    primary=span_of_line(uncheckedExecutionLines[0], "uncheckedExecutionSite"),
+                    related=[
+                        span_of_line(callFact.line, "callDeclaration"),
+                        *[
+                            span_of_line(runCheckedLine, "checkedRunSite")
+                            for runCheckedLine in callFact.run_checked_lines
+                        ],
+                    ],
+                    invariantRule=(
+                        f"known-fallible target `{callFact.target}` must use either "
+                        "`runChecked` for every execution or the explicit unchecked "
+                        "execution + success/error/branch disposition shape; do not "
+                        "mix both on the same call name"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#runchecked",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useOneExecutionShape",
+                            shape=(
+                                f"runChecked {callFact.name} ok <okName> <OkType> "
+                                "error <errorName> <ErrorType> else <failureLabel>\n"
+                                "# or remove runChecked and add bind/ignore + branch "
+                                "disposition for the unchecked execution"
+                            ),
+                            evidence=[span_of_line(uncheckedExecutionLines[0])],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_hidden_failure",
+                    agentHint=(
+                        "`runChecked` only checks its own execution row; a sibling "
+                        "`run`/`start`/`await` path would still execute unchecked"
+                    ),
+                ))
+                continue
+            if callFact.run_checked_lines:
+                continue
             if callFact.target in C_SENTINEL_FALLIBLE_CALL_TARGETS:
-                if call_has_value_disposition(callFact):
+                if has_ordered_value_disposition(callFact, uncheckedExecutionLines):
                     continue
                 diagnostics.append(Diagnostic(
                     tier=Tier.T3_REFINEMENT,
@@ -3558,17 +4805,17 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                     invariantRule=(
                         f"C-style fallible target `{callFact.target}` returns a "
                         "sentinel/status value; bind it for checking or explicitly "
-                        "discard it with `ignoreValue`"
+                        "discard it with `ignore value`"
                     ),
-                    specAnchor="SYNTAX.md#ignoreValue",
+                    specAnchor="docs/reference/syntax-inventory.md#ignore",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
                             name="bindOrIgnoreStatus",
                             shape=(
-                                f"bind {callFact.name}Status <ReturnType> {callFact.name}\n"
+                                f"bind value {callFact.name}Status <ReturnType> {callFact.name}\n"
                                 f"# ...check status...\n"
-                                f"# or: ignoreValue {callFact.name} <ReturnType>"
+                                f"# or: ignore value source {callFact.name} type <ReturnType>"
                             ),
                             evidence=[span_of_line(callFact.line)],
                         ),
@@ -3578,17 +4825,70 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                     passProvenance="check_hidden_failure",
                     agentHint=(
                         f"`{callFact.target}` is not Result-shaped; use a bound "
-                        "sentinel/status check or an explicit ignoreValue"
+                        "sentinel/status check or an explicit ignore value"
                     ),
                 ))
                 continue
+            waitSetCompletionContext = in_wait_set_completion_context(callFact)
+            relevantIgnoreError = any(
+                after_last_execution(line, uncheckedExecutionLines)
+                and is_wait_set_handler_line(line)
+                for line in callFact.ignore_error_lines
+            ) if waitSetCompletionContext else False
+            hasBindError = has_ordered_bind_error(
+                callFact,
+                uncheckedExecutionLines,
+                waitSetCompletionContext,
+            )
             missingDisposition: List[str] = []
-            if not callFact.bind_error_lines:
-                missingDisposition.append("bindError")
-            if not callFact.branch_error_lines:
-                missingDisposition.append("branchIfError")
+            if not has_ordered_result_success(
+                callFact,
+                uncheckedExecutionLines,
+                waitSetCompletionContext,
+            ):
+                missingDisposition.append("bind/ignore ok")
+            if not hasBindError and not relevantIgnoreError:
+                missingDisposition.append("bind error")
+            if (
+                not waitSetCompletionContext
+                and not has_ordered_branch_error(callFact, uncheckedExecutionLines)
+            ):
+                missingDisposition.append("branch error")
             if not missingDisposition:
                 continue
+            if waitSetCompletionContext:
+                invariantRule = (
+                    f"calls to known-fallible target `{callFact.target}` inside "
+                    "an await wait-set completion path must bind or explicitly "
+                    "ignore both the success and error sides; branching from a "
+                    "case handler can abandon sibling futures"
+                )
+                fixShape = (
+                    f"ignore ok source {callFact.name} type <OkType>\n"
+                    f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
+                    f"# or: ignore error source {callFact.name}"
+                )
+                agentHint = (
+                    "wait-set case handlers must re-enter the wait set; stash "
+                    "the error for an after-done decision or explicitly ignore it"
+                )
+            else:
+                invariantRule = (
+                    f"calls to known-fallible target `{callFact.target}` must "
+                    f"have both `bind error` and `branch error`"
+                )
+                fixShape = (
+                    f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
+                    f"branch error source {callFact.name} target <handlerLabel>\n"
+                    f"# ...success continuation...\n"
+                    f"label <handlerLabel>\n"
+                    f"return error {callFact.name}Error"
+                )
+                agentHint = (
+                    f"`{callFact.target}` can fail at runtime; explicit error "
+                    f"disposition makes the failure path part of the operation's "
+                    f"contract"
+                )
             diagnostics.append(Diagnostic(
                 tier=Tier.T3_REFINEMENT,
                 code="SS3106",
@@ -3600,11 +4900,8 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 intentSlogan="fallible call without error disposition",
                 primary=span_of_line(callFact.line, "callDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
-                invariantRule=(
-                    f"calls to known-fallible target `{callFact.target}` must "
-                    f"have both `bindError` and `branchIfError`"
-                ),
-                specAnchor="SYNTAX.md#bindError",
+                invariantRule=invariantRule,
+                specAnchor="docs/reference/syntax-inventory.md#bind",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -3614,24 +4911,14 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                         # newly-introduced bindError slot — a true cycle.
                         # `bindError` values end in `Error` per SS4002.
                         name="addBindErrorAndBranchAndConsume",
-                        shape=(
-                            f"bindError {callFact.name}Error <ErrorType> {callFact.name}\n"
-                            f"branchIfError {callFact.name} <handlerLabel>\n"
-                            f"# ...success continuation...\n"
-                            f"label <handlerLabel>\n"
-                            f"returnError {callFact.name}Error"
-                        ),
+                        shape=fixShape,
                         evidence=[span_of_line(callFact.line)],
                     ),
                 ],
                 confidence=Confidence.HIGH,
                 effort=Effort.LOCAL,
                 passProvenance="check_hidden_failure",
-                agentHint=(
-                    f"`{callFact.target}` can fail at runtime; explicit error "
-                    f"disposition makes the failure path part of the operation's "
-                    f"contract"
-                ),
+                agentHint=agentHint,
             ))
     return diagnostics
 
@@ -3702,7 +4989,7 @@ def check_sibling_metadata_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"operations in the same file should consistently declare or "
                     f"omit `{edgeName}`; mixed declarations create ambiguity"
                 ),
-                specAnchor=f"SYNTAX.md#{edgeName}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{edgeName}",
                 citations=narrative_citations_for_operation(facts, operationName),
                 fixCandidates=[
                     FixCandidate(
@@ -3765,7 +5052,7 @@ def check_undeclared_body_effect(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`{impliedAction} {impliedPath}`; the operation must "
                     f"declare it via `effect OP ACTION PATH`"
                 ),
-                specAnchor="SYNTAX.md#effect",
+                specAnchor="docs/reference/syntax-inventory.md#effect",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -3839,7 +5126,7 @@ def check_make_error_unknown_variant(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"`{sourceLine.verb}` must reference a declared "
                 f"`errorCase {errorName} <variant>` row"
             ),
-            specAnchor="SYNTAX.md#errorCase",
+            specAnchor="docs/reference/syntax-inventory.md#errorCase",
             fixCandidates=[
                 FixCandidate(
                     name="declareMissingErrorCase",
@@ -3907,7 +5194,7 @@ def check_unused_const(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(declarationLine, "constDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule="every `const` declaration in an operation must be referenced on a later line",
-                specAnchor="SYNTAX.md#domainLiteral",
+                specAnchor="docs/reference/syntax-inventory.md#domainLiteral",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -3971,7 +5258,7 @@ def check_unused_input(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(declarationLine, "inputDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule="every declared input parameter must be referenced in the operation body",
-                specAnchor="SYNTAX.md#input",
+                specAnchor="docs/reference/syntax-inventory.md#input",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -4009,26 +5296,13 @@ def _normalize_set_target_name(setLine: SourceLine) -> Optional[str]:
     args = setLine.args
     if not args:
         return None
-    if args[0] in {"local", "module", "sharedState"}:
+    if args[0] in {"local", "module", "memory", "storage", "sharedState"}:
         return args[1] if len(args) >= 2 else None
     return args[0]
 
 
 def _branch_target_names(sourceLine: SourceLine) -> List[str]:
-    verb = sourceLine.verb
-    args = sourceLine.args
-    if verb == "branch" and args:
-        return [args[0]]
-    if verb == "branchIf" and len(args) >= 2:
-        targets = [args[1]]
-        if len(args) >= 3:
-            targets.append(args[2])
-        return targets
-    if verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
-        return [args[1]]
-    if verb == "branchSelected" and len(args) >= 3:
-        return [args[2]]
-    return []
+    return branch_target_names_from_row(sourceLine)
 
 
 def _label_block_reads_name(
@@ -4112,7 +5386,7 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
                                 span_of_line(operation.line, "enclosingOperation"),
                             ],
                             invariantRule="every `set` write should be observed before being overwritten",
-                            specAnchor="SYNTAX.md#set",
+                            specAnchor="docs/reference/syntax-inventory.md#set",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -4142,6 +5416,13 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 _DUPLICATE_LOCAL_IMMUTABLE_THRESHOLD = 3
+_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES = 512
+_LARGE_LOCAL_STATIC_LITERAL_TYPES = frozenset({
+    "String",
+    "String",
+    "JsonText",
+    "SqlText",
+})
 
 
 def _scan_op_local_immutables(
@@ -4278,8 +5559,84 @@ def check_duplicate_local_immutable_across_ops(facts: ExtendedFacts) -> List[Dia
     return diagnostics
 
 
+def _is_large_local_static_literal_type(
+    facts: ExtendedFacts,
+    typeName: str,
+) -> bool:
+    resolvedType = _resolve_type_alias_head(typeName, facts.base.type_aliases)
+    return resolvedType in _LARGE_LOCAL_STATIC_LITERAL_TYPES
+
+
+def check_large_local_static_literal(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3634 - large inline local string/blob literals in operations should be
+    hoisted to module storage. They are static data, not per-call context, and
+    they bloat hot handlers plus agent working context when left inline.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operationName, operation in facts.base.operations.items():
+        for sourceLine in operation.lines:
+            if (is_comment(sourceLine) or not sourceLine.tokens
+                    or sourceLine.verb != "storage"
+                    or len(sourceLine.args) < 5):
+                continue
+            scope, mutability = sourceLine.args[0], sourceLine.args[1]
+            if scope != "local" or mutability != "immutable":
+                continue
+            name = sourceLine.args[2]
+            typeName = sourceLine.args[3]
+            valueTokenIndex = 5
+            if valueTokenIndex >= len(sourceLine.tokens):
+                continue
+            valueToken = sourceLine.tokens[valueTokenIndex]
+            if not valueToken.quoted:
+                continue
+            if not _is_large_local_static_literal_type(facts, typeName):
+                continue
+            literalBytes = len(valueToken.text.encode("utf-8"))
+            if literalBytes < _LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3634",
+                kind="performance.largeLocalStaticLiteral",
+                severity=Severity.WARNING,
+                subjectName=name,
+                subjectKind="storageSlot",
+                gapEdge="storage module immutable",
+                intentSlogan="large static literal declared in operation body",
+                primary=span_of_line(sourceLine, "storageDeclaration"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{operationName}` declares `{name}` as a {literalBytes}-byte "
+                    "inline local immutable literal; static literals at or above "
+                    f"{_LARGE_LOCAL_STATIC_LITERAL_MIN_BYTES} bytes belong at "
+                    "module scope so handlers do not carry large per-call context."
+                ),
+                specAnchor="docs/optimization-guide.md#hoist-shared-immutables-to-module-scope",
+                fixCandidates=[
+                    FixCandidate(
+                        name="hoistToModuleImmutable",
+                        shape=(
+                            f"storage module immutable {name} {typeName} "
+                            '"<same literal>"'
+                        ),
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_large_local_static_literal",
+                agentHint=(
+                    "move the storage row above operations at module scope and "
+                    "keep operation references pointed at the same name"
+                ),
+            ))
+    return diagnostics
+
+
 def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
-    """``storage local immutable NAME CSignedInt32 V`` where ``V`` is a
+    """``storage local immutable NAME Int32 V`` where ``V`` is a
     printable-ASCII codepoint (32..126) but the preceding line is not a
     ``# rationale:`` comment naming the character. Either hoist to
     ``storage module immutable`` with a rationale, or add a rationale comment
@@ -4303,7 +5660,7 @@ def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
 
     for operation in facts.base.operations.values():
         for name, typeName, initValue, sourceLine in _scan_op_local_immutables(operation):
-            if typeName != "CSignedInt32":
+            if typeName not in {"Int32", "Int32"}:
                 continue
             try:
                 codepoint = int(initValue)
@@ -4341,7 +5698,7 @@ def check_magic_ascii_byte_literal(facts: ExtendedFacts) -> List[Diagnostic]:
                     ),
                     FixCandidate(
                         name="hoistToModuleImmutable",
-                        shape=f"storage module immutable ascii<Role> CSignedInt32 {codepoint}",
+                        shape=f"storage module immutable ascii<Role> Int32 {codepoint}",
                     ),
                 ],
                 confidence=Confidence.MEDIUM,
@@ -4547,18 +5904,18 @@ def _is_offset_storage_row(sourceLine: SourceLine) -> bool:
 
 
 _INT_COMPARISON_TARGET_TO_ENUM_METHOD: Dict[str, str] = {
-    "math.equalI64":                       "equal",
-    "math.notEqualI64":                    "notEqual",
-    "math.lessThanI64":                    "lessThan",
-    "math.lessThanOrEqualI64":             "lessThanOrEqual",
-    "math.greaterThanI64":                 "greaterThan",
-    "math.greaterThanOrEqualI64":          "greaterThanOrEqual",
-    "math.equalCSignedInt32":              "equal",
-    "math.notEqualCSignedInt32":           "notEqual",
-    "math.lessThanCSignedInt32":           "lessThan",
-    "math.lessThanOrEqualCSignedInt32":    "lessThanOrEqual",
-    "math.greaterThanCSignedInt32":        "greaterThan",
-    "math.greaterThanOrEqualCSignedInt32": "greaterThanOrEqual",
+    "math.equalInt64":                       "equal",
+    "math.notEqualInt64":                    "notEqual",
+    "math.lessThanInt64":                    "lessThan",
+    "math.lessThanOrEqualInt64":             "lessThanOrEqual",
+    "math.greaterThanInt64":                 "greaterThan",
+    "math.greaterThanOrEqualInt64":          "greaterThanOrEqual",
+    "math.equalInt32":              "equal",
+    "math.notEqualInt32":           "notEqual",
+    "math.lessThanInt32":           "lessThan",
+    "math.lessThanOrEqualInt32":    "lessThanOrEqual",
+    "math.greaterThanInt32":        "greaterThan",
+    "math.greaterThanOrEqualInt32": "greaterThanOrEqual",
 }
 
 
@@ -4590,12 +5947,16 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
             continue
         if insideOperation:
             continue
-        if verb == "storage" and len(args) >= 5:
+        if verb == "storage" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
-        elif verb == "sharedState" and len(args) >= 5:
+        elif verb == "sharedState" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
+        else:
+            parsedMemory = memory_parts(sourceLine)
+            if parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+                moduleScopeValueTypes[parsedMemory[2][0]] = parsedMemory[2][1]
 
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
@@ -4610,7 +5971,7 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
             args = sourceLine.args
             if verb == "input" and len(args) >= 3 and args[0] == operation.name:
                 valueTypesInScope[args[1]] = args[2]
-            elif verb == "storage" and len(args) >= 5:
+            elif verb == "storage" and len(args) >= 4:
                 valueTypesInScope[args[2]] = args[3]
             elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
                 valueTypesInScope[args[0]] = args[1]
@@ -4652,7 +6013,7 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"the call site; use `{suggestedTarget}` instead so the "
                     f"source compare expresses the enum, not the integer width."
                 ),
-                specAnchor="SYNTAX.md#enum-domain-methods",
+                specAnchor="docs/reference/syntax-inventory.md#enum-domain-methods",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -4758,8 +6119,8 @@ def check_paired_scalar_must_stay_equal(facts: ExtendedFacts) -> List[Diagnostic
     named scalars carry different literal init values. Catches drift like:
 
         invariant main "lineBufferBytes and lineBufferCapacity MUST stay equal"
-        storage local immutable lineBufferBytes CByteCount 384
-        storage local immutable lineBufferCapacity CSignedInt32 256   # drift
+        storage local immutable lineBufferBytes ByteCount 384
+        storage local immutable lineBufferCapacity Int32 256   # drift
 
     Suppression: rephrase the invariant so it no longer contains the
     `must stay equal` anchor, or resync the divergent init values."""
@@ -4915,7 +6276,7 @@ def check_sem_one_zero_legacy_forms(facts: ExtendedFacts) -> List[Diagnostic]:
                 "`storage local immutable`, `storage local mutable`, `set local`, "
                 "`memoryHeap`, and `memoryStackLimit`"
             ),
-            specAnchor="SYNTAX.md#storage",
+            specAnchor="docs/reference/syntax-inventory.md#storage",
             fixCandidates=[
                 FixCandidate(
                     name="convertToOneZeroForm",
@@ -4983,7 +6344,7 @@ def check_declaration_only_sample(facts: ExtendedFacts) -> List[Diagnostic]:
             "top-level `.sem` samples should include call/run/control-flow rows "
             "so they exercise the compiler rather than only storing constants"
         ),
-        specAnchor="SYNTAX.md#call",
+        specAnchor="docs/reference/syntax-inventory.md#call",
         fixCandidates=[
             FixCandidate(
                 name="addExecutableSourceTape",
@@ -5067,7 +6428,7 @@ def check_allocation_in_loop(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"iteration; hoist the allocation above the `label "
                         f"{loopLabel}` loop header"
                     ),
-                    specAnchor="SYNTAX.md#label",
+                    specAnchor="docs/reference/syntax-inventory.md#label",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -5173,7 +6534,7 @@ def check_string_accumulator_append_in_loop(facts: ExtendedFacts) -> List[Diagno
 
 
 def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Diagnostic]:
-    """A c.snprintf byte count is CSignedInt32; cursor offsets are i64."""
+    """A c.snprintf byte count is Int32; cursor offsets are Int64."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCalls = collect_operation_calls(operation)
@@ -5187,7 +6548,7 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
             continue
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         for callFact in operationCalls.values():
-            if callFact.target != "math.addI64":
+            if callFact.target not in {"math.addInt64", "math.addInt64"}:
                 continue
             for argLine in callFact.arg_lines:
                 if len(argLine.args) < 3:
@@ -5198,11 +6559,11 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
                 diagnostics.append(Diagnostic(
                     tier=Tier.T3_REFINEMENT,
                     code="SS3205",
-                    kind="performanceDiscipline.snprintfI32OffsetWithoutWidening",
+                    kind="performanceDiscipline.snprintfInt32OffsetWithoutWidening",
                     severity=Severity.WARNING,
                     subjectName=callFact.name,
                     subjectKind="call",
-                    gapEdge="signExtendCSignedInt32ToCSignedInt64",
+                    gapEdge="signExtendInt32ToInt64",
                     intentSlogan="snprintf count added to i64 cursor",
                     primary=span_of_line(argLine, "i64AddArgument"),
                     related=[
@@ -5210,9 +6571,9 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
                         span_of_line(operation.line, "enclosingOperation"),
                     ],
                     invariantRule=(
-                        "`c.snprintf` returns a CSignedInt32 byte count; "
-                        "cursor math using math.addI64 must first widen it "
-                        "with math.signExtendCSignedInt32ToCSignedInt64"
+                        "`c.snprintf` returns an Int32 byte count; "
+                        "cursor math using an Int64 add target must first widen it "
+                        "with math.signExtendInt32ToInt64"
                     ),
                     specAnchor="docs/optimization-guide.md#bounded-string-accumulators",
                     citations=operationCitations,
@@ -5220,11 +6581,11 @@ def check_snprintf_i32_offset_without_widening(facts: ExtendedFacts) -> List[Dia
                         FixCandidate(
                             name="widenSnprintfResultBeforeCursorMath",
                             shape=(
-                                f"call widen{argValue}Call math.signExtendCSignedInt32ToCSignedInt64\n"
+                                f"call widen{argValue}Call math.signExtendInt32ToInt64\n"
                                 f"arg widen{argValue}Call inputValue {argValue}\n"
                                 f"run widen{argValue}Call\n"
-                                f"bind {argValue}I64 CSignedInt64 widen{argValue}Call\n"
-                                f"# use `{argValue}I64` in `{callFact.name}`"
+                                f"bind {argValue}Int64 Int64 widen{argValue}Call\n"
+                                f"# use `{argValue}Int64` in `{callFact.name}`"
                             ),
                             evidence=[span_of_line(argLine)],
                         ),
@@ -5336,7 +6697,7 @@ def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]
             for compareCall in operationCalls.values():
                 if compareCall.line.number <= callFact.line.number:
                     continue
-                if compareCall.target not in {"math.equalI64", "math.equalCSignedInt64"}:
+                if compareCall.target != "math.equalInt64":
                     continue
                 leftValue = call_arg_value(compareCall, "left")
                 rightValue = call_arg_value(compareCall, "right")
@@ -5383,7 +6744,7 @@ def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]
                     FixCandidate(
                         name="branchOnUnchangedRowCount",
                         shape=(
-                            f"call {callFact.name}FailedCheckCall math.equalI64\n"
+                            f"call {callFact.name}FailedCheckCall math.equalInt64\n"
                             f"arg {callFact.name}FailedCheckCall left <rowsAfterMutation>\n"
                             f"arg {callFact.name}FailedCheckCall right {activeCountName}\n"
                             f"run {callFact.name}FailedCheckCall\n"
@@ -5436,7 +6797,7 @@ def check_bind_then_ignore(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(currentLine, "bindDeclaration"),
                 related=[span_of_line(nextLine, "ignoreValueSite")],
                 invariantRule="binding a value just to discard it is redundant; ignoreValue the call directly",
-                specAnchor="SYNTAX.md#ignoreValue",
+                specAnchor="docs/reference/syntax-inventory.md#ignoreValue",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5491,7 +6852,7 @@ def check_memory_heap_contradiction(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`memoryHeap {operation.name} no` forbids heap allocation but "
                     f"body calls `{sourceLine.args[1]}`"
                 ),
-                specAnchor="SYNTAX.md#memoryHeap",
+                specAnchor="docs/reference/syntax-inventory.md#memoryHeap",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5556,7 +6917,7 @@ def check_allocation_source_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"`memoryAllocationSource {operationName} <callName>` so the "
                 f"allocator contract is auditable"
             ),
-            specAnchor="SYNTAX.md#memoryAllocationSource",
+            specAnchor="docs/reference/syntax-inventory.md#memoryAllocationSource",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -5581,6 +6942,8 @@ def check_unchecked_heap_allocation(facts: ExtendedFacts) -> List[Diagnostic]:
         for callFact in operationCalls.values():
             if callFact.target not in HEAP_ALLOCATION_CALL_TARGETS:
                 continue
+            if callFact.run_checked_lines:
+                continue
             missingDisposition: List[str] = []
             if not callFact.bind_error_lines:
                 missingDisposition.append("bindError")
@@ -5604,7 +6967,7 @@ def check_unchecked_heap_allocation(facts: ExtendedFacts) -> List[Diagnostic]:
                     "allocation calls must have both `bindError` and "
                     "`branchIfError`"
                 ),
-                specAnchor="SYNTAX.md#bindError",
+                specAnchor="docs/reference/syntax-inventory.md#bindError",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5654,7 +7017,7 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             # Skip ops whose declared purpose IS to allocate-and-return (the
             # alloc moves ownership to the caller). Heuristic: op output type
-            # is a pointer (COpaqueMemoryAddress, CNullTerminatedByteString, …).
+            # is a pointer/handle surface that transfers ownership.
             outputLine = None
             for line in operation.lines:
                 if line.verb == "output" and line.args and line.args[0] == operation.name:
@@ -5662,11 +7025,13 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                     break
             if outputLine and len(outputLine.args) >= 2:
                 outputTypeName = outputLine.args[1]
-                if outputTypeName in {"COpaqueMemoryAddress", "CNullTerminatedByteString", "CFileHandle"}:
+                if outputTypeName in {"OpaquePointer", "String", "FileHandle",
+                                      "OpaquePointer", "String", "FileHandle"}:
                     # Likely an allocator wrapper — caller owns the lifetime.
                     continue
                 if outputTypeName == "Result" and len(outputLine.args) >= 3:
-                    if outputLine.args[2] in {"COpaqueMemoryAddress", "CNullTerminatedByteString", "CFileHandle"}:
+                    if outputLine.args[2] in {"OpaquePointer", "String", "FileHandle",
+                                              "OpaquePointer", "String", "FileHandle"}:
                         continue
             diagnostics.append(Diagnostic(
                 tier=Tier.T3_REFINEMENT,
@@ -5684,7 +7049,7 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`defer NAME c.free <pointerArg>` or explicit `c.free` "
                     "cleanup in the same operation"
                 ),
-                specAnchor="SYNTAX.md#defer",
+                specAnchor="docs/reference/syntax-inventory.md#defer",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5747,7 +7112,7 @@ def check_stack_limit_overrun(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"declared `memoryStackLimit {operationName} {declaredLimitBytes}` is "
                 f"smaller than the estimated alloca footprint ({estimatedBytes} bytes)"
             ),
-            specAnchor="SYNTAX.md#memoryStackLimit",
+            specAnchor="docs/reference/syntax-inventory.md#memoryStackLimit",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -5790,7 +7155,7 @@ def check_record_align_power_of_two(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="record alignment must be power of two",
             primary=span_of_line(alignLine, "recordAlignDeclaration"),
             invariantRule="recordAlign values must be in {1, 2, 4, 8, 16, 32, 64}",
-            specAnchor="SYNTAX.md#recordAlign",
+            specAnchor="docs/reference/syntax-inventory.md#recordAlign",
             fixCandidates=[
                 FixCandidate(
                     name="alignToNearestPowerOfTwo",
@@ -5823,7 +7188,7 @@ def check_array_length_zero(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="fixed array declared with length zero",
             primary=span_of_line(lengthLine, "arrayLengthDeclaration"),
             invariantRule="arrayLength should be > 0 (use sliceType / listType for variable-length sequences)",
-            specAnchor="SYNTAX.md#arrayLength",
+            specAnchor="docs/reference/syntax-inventory.md#arrayLength",
             fixCandidates=[
                 FixCandidate(
                     name="setNonZeroLength",
@@ -5865,7 +7230,7 @@ def check_inline_capacity_without_spill_allocator(facts: ExtendedFacts) -> List[
                 f"`smallListSpillAllocator {typeName} <allocator>` for the "
                 f"overflow path"
             ),
-            specAnchor="SYNTAX.md#smallListSpillAllocator",
+            specAnchor="docs/reference/syntax-inventory.md#smallListSpillAllocator",
             fixCandidates=[
                 FixCandidate(
                     name="addSpillAllocator",
@@ -5908,7 +7273,7 @@ def check_literal_encoding_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"literal `{literalName}` loads bytes from disk but its type "
                 f"`{literalFact.typeName}` has no `typeLiteralEncoding` row"
             ),
-            specAnchor="SYNTAX.md#typeLiteralEncoding",
+            specAnchor="docs/reference/syntax-inventory.md#typeLiteralEncoding",
             fixCandidates=[
                 FixCandidate(
                     name="declareTypeLiteralEncoding",
@@ -5960,7 +7325,7 @@ def check_unawaited_task_group(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"every `startInGroup` must be paired with an `awaitGroup "
                     f"{groupName}` in the same operation"
                 ),
-                specAnchor="SYNTAX.md#awaitGroup",
+                specAnchor="docs/reference/syntax-inventory.md#awaitGroup",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6013,7 +7378,7 @@ def check_lock_without_cleanup(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"{mutexName}` or `defer NAME unlock {mutexName}` "
                     f"for exit-path safety"
                 ),
-                specAnchor="SYNTAX.md#unlock",
+                specAnchor="docs/reference/syntax-inventory.md#unlock",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6048,7 +7413,7 @@ def check_unawaited_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
         submittedWork = facts.operationSubmittedWork.get(operation.name, [])
         awaitedWork = facts.operationAwaitedWork.get(operation.name, set())
         flaggedWork: Set[str] = set()
-        for submitLine, workName in submittedWork:
+        for submitLine, workName, _poolName in submittedWork:
             if workName in awaitedWork:
                 continue
             if workName in flaggedWork:
@@ -6069,7 +7434,7 @@ def check_unawaited_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"every `submitWork {workName}` must be paired with "
                     f"`awaitWork {workName}` in the same operation"
                 ),
-                specAnchor="SYNTAX.md#awaitWork",
+                specAnchor="docs/reference/syntax-inventory.md#awaitWork",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6086,6 +7451,185 @@ def check_unawaited_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                     "single-thread lowering loses it silently"
                 ),
             ))
+    return diagnostics
+
+
+def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
+    """`submitWork WORK POOL` must name a declared user-operation work item."""
+    diagnostics: List[Diagnostic] = []
+    userOperationNames = set(facts.base.operations.keys())
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        submittedWork = facts.operationSubmittedWork.get(operation.name, [])
+        workTargets = facts.operationWorkTargets.get(operation.name, {})
+        workArgs = facts.operationWorkArgs.get(operation.name, {})
+        workerPools = set(facts.moduleWorkerPools)
+        workerPools.update(facts.operationWorkerPools.get(operation.name, {}))
+        flaggedWork: Set[Tuple[str, str]] = set()
+
+        def add_invalid_submit_work_diagnostic(
+            submitLine: SourceLine,
+            workName: str,
+            gapEdge: str,
+            invariantRule: str,
+            workLine: Optional[SourceLine] = None,
+        ) -> None:
+            key = (workName, gapEdge)
+            if key in flaggedWork:
+                return
+            flaggedWork.add(key)
+            related = [span_of_line(operation.line, "enclosingOperation")]
+            if workLine is not None:
+                related.append(span_of_line(workLine, "workDeclaration"))
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3514",
+                kind="concurrencyDiscipline.invalidSubmitWork",
+                severity=Severity.ERROR,
+                subjectName=workName,
+                subjectKind="work",
+                gapEdge=gapEdge,
+                intentSlogan="submitWork references invalid work item",
+                primary=span_of_line(submitLine, "submitWorkSite"),
+                related=related,
+                invariantRule=invariantRule,
+                specAnchor="docs/reference/syntax-inventory.md#submitWork",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="declareWorkTarget",
+                        shape=(
+                            f"work {workName} target <userOperation>\n"
+                            f"submitWork {workName} <workerPool>"
+                        ),
+                        evidence=[span_of_line(submitLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_invalid_submit_work",
+                agentHint=(
+                    "worker-pool lowering dispatches through a user operation; "
+                    "unknown work would otherwise await a zero-value stub"
+                ),
+            ))
+
+        for submitLine, workName, poolName in submittedWork:
+            if poolName not in workerPools:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workerPool",
+                    (
+                        f"`submitWork {workName} {poolName}` requires a "
+                        f"declared `workerPool {poolName}` row"
+                    ),
+                )
+            workInfos = workTargets.get(workName, [])
+            if not workInfos:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workDeclaration",
+                    (
+                        f"`submitWork {workName}` requires a preceding "
+                        f"`work {workName} target <userOperation>` row in "
+                        f"operation `{operation.name}`"
+                    ),
+                )
+                continue
+            priorWorkInfos = [
+                workInfo
+                for workInfo in workInfos
+                if workInfo[0].number < submitLine.number
+            ]
+            if not priorWorkInfos:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workDeclaration",
+                    (
+                        f"`submitWork {workName}` requires `work {workName} "
+                        "target <userOperation>` to appear before the "
+                        "submit row"
+                    ),
+                    workInfos[0][0],
+                )
+                continue
+            priorTargetWorkInfos = [
+                workInfo
+                for workInfo in priorWorkInfos
+                if workInfo[1]
+            ]
+            if not priorTargetWorkInfos:
+                workLine, _targetOperation = max(
+                    priorWorkInfos,
+                    key=lambda workInfo: workInfo[0].number,
+                )
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workTarget",
+                    (
+                        f"`work {workName}` must name a target user operation "
+                        "before it can be submitted"
+                    ),
+                    workLine,
+                )
+                continue
+            workLine, targetOperation = max(
+                priorTargetWorkInfos,
+                key=lambda workInfo: workInfo[0].number,
+            )
+            if not targetOperation:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workTarget",
+                    (
+                        f"`work {workName}` must name a target user operation "
+                        "before it can be submitted"
+                    ),
+                    workLine,
+                )
+                continue
+            if targetOperation not in userOperationNames:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workTarget",
+                    (
+                        f"`work {workName} target {targetOperation}` must "
+                        "target a declared user operation"
+                    ),
+                    workLine,
+                )
+                continue
+            requiredInputs = {
+                parsedInput[1]
+                for inputLine in facts.base.operations[targetOperation].lines
+                for parsedInput in [input_parts(inputLine)]
+                if parsedInput is not None and parsedInput[0] == targetOperation
+            }
+            providedArgs = {
+                argName
+                for argName, argLines in workArgs.get(workName, {}).items()
+                if any(argLine.number < submitLine.number for argLine in argLines)
+            }
+            missingInputs = sorted(requiredInputs - providedArgs)
+            for missingInput in missingInputs:
+                add_invalid_submit_work_diagnostic(
+                    submitLine,
+                    workName,
+                    "workArg",
+                    (
+                        f"`work {workName} target {targetOperation}` is "
+                        f"submitted without required `workArg {workName} "
+                        f"{missingInput} <value>`"
+                    ),
+                    workLine,
+                )
     return diagnostics
 
 
@@ -6111,7 +7655,7 @@ def check_select_without_cases(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"{selectName} <token> <branch>` row; zero-case select "
                 f"deadlocks at runtime"
             ),
-            specAnchor="SYNTAX.md#selectCase",
+            specAnchor="docs/reference/syntax-inventory.md#selectCase",
             fixCandidates=[
                 FixCandidate(
                     name="addAtLeastOneSelectCase",
@@ -6154,7 +7698,7 @@ def check_select_case_references_unknown_select(facts: ExtendedFacts) -> List[Di
                     f"`selectCase {selectName} …` must reference a declared "
                     f"`select {selectName}` row"
                 ),
-                specAnchor="SYNTAX.md#select",
+                specAnchor="docs/reference/syntax-inventory.md#select",
                 fixCandidates=[
                     FixCandidate(
                         # Bundle the select + at least one case so applying
@@ -6181,6 +7725,1458 @@ def check_select_case_references_unknown_select(facts: ExtendedFacts) -> List[Di
                     "fix preserves at least one case"
                 ),
             ))
+    return diagnostics
+
+
+def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
+    """Validate the compact `await WAIT_SET` / `case` / `done` block shape.
+
+    The wait-set name is not a call reference; the cases are the call
+    references. This checker catches malformed blocks before the compiler has
+    to fail deeper in lowering.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        operationCalls = collect_operation_calls(operation)
+        lines = [
+            sourceLine
+            for sourceLine in operation.lines
+            if sourceLine.tokens and not is_comment(sourceLine)
+        ]
+        labelLineByName = {
+            sourceLine.args[0]: sourceLine
+            for sourceLine in lines
+            if sourceLine.verb == "label" and sourceLine.args
+        }
+        branchElseByLine = branch_else_targets_by_line(lines)
+
+        def branch_targets_for_wait_set(sourceLine: SourceLine) -> List[str]:
+            return branch_target_names_with_attached_else(
+                sourceLine, branchElseByLine)
+
+        def is_wait_set_gap_ignored(sourceLine: SourceLine) -> bool:
+            return sourceLine.verb in {
+                "input", "output", "effect", "async",
+                "purpose", "invariant", "warning",
+            }
+
+        def next_effective_line_after(lineNumber: int) -> Optional[SourceLine]:
+            for candidate in lines:
+                if candidate.number <= lineNumber:
+                    continue
+                if is_wait_set_gap_ignored(candidate):
+                    continue
+                return candidate
+            return None
+
+        def label_before_line(lineNumber: int) -> Optional[str]:
+            currentLabel: Optional[str] = None
+            for candidate in lines:
+                if candidate.number >= lineNumber:
+                    break
+                if candidate.verb == "label" and candidate.args:
+                    currentLabel = candidate.args[0]
+            return currentLabel
+
+        def call_result_reference(sourceLine: SourceLine) -> Optional[str]:
+            parsedBind = bind_parts(sourceLine)
+            if parsedBind is not None:
+                return parsedBind[3]
+            parsedIgnore = ignore_parts(sourceLine)
+            if parsedIgnore is not None:
+                return parsedIgnore[1]
+            parsedBranchErrorSource = branch_error_source(sourceLine)
+            if parsedBranchErrorSource is not None:
+                return parsedBranchErrorSource
+            if sourceLine.verb == "await" and len(sourceLine.args) == 1:
+                return sourceLine.args[0]
+            return None
+
+        def symbol_definition(sourceLine: SourceLine) -> Optional[str]:
+            parsedBind = bind_parts(sourceLine)
+            if parsedBind is not None:
+                return parsedBind[1]
+            if sourceLine.verb == "fieldGet" and sourceLine.args:
+                return sourceLine.args[0]
+            if sourceLine.verb in {"new", "call", "recordBuild", "receive"} and sourceLine.args:
+                return sourceLine.args[0]
+            if (sourceLine.verb == "read" and len(sourceLine.args) >= 4
+                    and sourceLine.args[0] in {"sharedState", "local", "module"}):
+                return sourceLine.args[1]
+            if sourceLine.verb in {"memory", "storage"} and len(sourceLine.args) >= 4:
+                return sourceLine.args[2]
+            return None
+
+        def call_result_definition(sourceLine: SourceLine) -> Optional[str]:
+            if sourceLine.verb in {"run", "await", "submitWork", "awaitWork"} and sourceLine.args:
+                return sourceLine.args[0]
+            return None
+
+        def symbol_references(sourceLine: SourceLine) -> Set[str]:
+            refs: Set[str] = set()
+            resultReference = call_result_reference(sourceLine)
+            if resultReference is not None:
+                refs.add(resultReference)
+            parsedArgument = argument_parts(sourceLine)
+            if parsedArgument is not None:
+                refs.add(parsedArgument[3])
+            elif sourceLine.verb == "cancelOn" and len(sourceLine.args) >= 2:
+                refs.add(sourceLine.args[1])
+            elif sourceLine.verb in {"run", "runChecked"} and sourceLine.args:
+                refs.add(sourceLine.args[0])
+            elif sourceLine.verb == "fieldSet" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[0])
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb == "fieldGet" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb in {"memory", "storage"} and len(sourceLine.args) >= 5:
+                refs.add(sourceLine.args[4])
+            elif (sourceLine.verb == "read" and len(sourceLine.args) >= 4
+                    and sourceLine.args[0] in {"sharedState", "local", "module"}):
+                refs.add(sourceLine.args[3])
+            elif sourceLine.verb == "receive" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb == "send" and len(sourceLine.args) >= 2:
+                refs.add(sourceLine.args[1])
+            elif sourceLine.verb == "workArg" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[2])
+            elif sourceLine.verb in {"defer", "deferLog", "deferAwaitLog"} and len(sourceLine.args) >= 3:
+                refs.update(sourceLine.args[2:])
+            elif sourceLine.verb == "deferWhenExitLog" and len(sourceLine.args) >= 4:
+                refs.update(sourceLine.args[3:])
+            elif sourceLine.verb == "set" and len(sourceLine.args) >= 3:
+                refs.add(sourceLine.args[1])
+                refs.add(sourceLine.args[2])
+            else:
+                parsedReturn = return_parts(sourceLine)
+                if parsedReturn is not None and parsedReturn[1] is not None:
+                    refs.add(parsedReturn[1])
+                elif (sourceLine.verb == "branch" and len(sourceLine.args) >= 5
+                        and sourceLine.args[0] == "if"):
+                    refs.add(sourceLine.args[2])
+                elif sourceLine.verb == "branchIf" and sourceLine.args:
+                    refs.add(sourceLine.args[0])
+                elif sourceLine.verb == "makeError" and len(sourceLine.args) >= 3:
+                    refs.add(sourceLine.args[2])
+            return refs
+
+        def label_reaches_line(labelName: str, targetLine: SourceLine) -> bool:
+            labelIndices = {
+                candidate.args[0]: index
+                for index, candidate in enumerate(lines)
+                if candidate.verb == "label" and candidate.args
+            }
+            lineIndices = {
+                candidate.number: index
+                for index, candidate in enumerate(lines)
+            }
+            branchElseByLine: Dict[int, str] = {}
+            for index, candidate in enumerate(lines[:-1]):
+                if (candidate.verb == "branch" and candidate.args
+                        and candidate.args[0] in {"if", "error"}):
+                    nextLine = lines[index + 1]
+                    if nextLine.verb == "branch" and nextLine.args[:2] == ["else", "target"]:
+                        branchElseByLine[candidate.number] = nextLine.args[2]
+
+            def add_label_successor(successors: List[int], targetLabel: str) -> None:
+                targetIndex = labelIndices.get(targetLabel)
+                if targetIndex is not None:
+                    successors.append(targetIndex)
+
+            def add_fallthrough_successor(successors: List[int], index: int) -> None:
+                nextIndex = index + 1
+                if nextIndex < len(lines):
+                    successors.append(nextIndex)
+
+            def successor_indices(index: int) -> List[int]:
+                sourceLine = lines[index]
+                args = sourceLine.args
+                successors: List[int] = []
+                if sourceLine.verb == "await":
+                    cursor = index + 1
+                    foundWaitSetRows = False
+                    while cursor < len(lines):
+                        candidate = lines[cursor]
+                        if candidate.verb == "case":
+                            foundWaitSetRows = True
+                            if len(candidate.args) >= 2:
+                                add_label_successor(successors, candidate.args[1])
+                            cursor += 1
+                            continue
+                        if candidate.verb == "done":
+                            foundWaitSetRows = True
+                            if candidate.args:
+                                add_label_successor(successors, candidate.args[0])
+                            break
+                        break
+                    if foundWaitSetRows:
+                        return successors
+                if sourceLine.verb in {"return", "returnOk", "returnError", "returnVoid"}:
+                    return successors
+                if sourceLine.verb == "jump" and len(args) >= 2 and args[0] == "target":
+                    add_label_successor(successors, args[1])
+                    return successors
+                if sourceLine.verb == "branch":
+                    if len(args) >= 5 and args[0] in {"if", "error"} and args[3] == "target":
+                        add_label_successor(successors, args[4])
+                        elseLabel = branchElseByLine.get(sourceLine.number)
+                        if elseLabel is None:
+                            add_fallthrough_successor(successors, index)
+                        else:
+                            add_label_successor(successors, elseLabel)
+                        return successors
+                    if len(args) >= 3 and args[0] == "else" and args[1] == "target":
+                        add_label_successor(successors, args[2])
+                        return successors
+                    if args:
+                        add_label_successor(successors, args[0])
+                        add_fallthrough_successor(successors, index)
+                        return successors
+                if sourceLine.verb == "branchIf" and len(args) >= 2:
+                    add_label_successor(successors, args[1])
+                    if len(args) >= 3:
+                        add_label_successor(successors, args[2])
+                    else:
+                        add_fallthrough_successor(successors, index)
+                    return successors
+                if sourceLine.verb in {"branchIfError", "branchIfGroupError", "branchIfChannelClosed"} and len(args) >= 2:
+                    add_label_successor(successors, args[1])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if sourceLine.verb == "runChecked" and len(args) >= 9:
+                    add_label_successor(successors, args[8])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                if sourceLine.verb == "branchSelected" and len(args) >= 3:
+                    add_label_successor(successors, args[2])
+                    add_fallthrough_successor(successors, index)
+                    return successors
+                add_fallthrough_successor(successors, index)
+                return successors
+
+            startIndex = labelIndices.get(labelName)
+            targetIndex = lineIndices.get(targetLine.number)
+            if startIndex is None or targetIndex is None:
+                return False
+            seen: Set[int] = set()
+            stack = [startIndex]
+            while stack:
+                currentIndex = stack.pop()
+                if currentIndex in seen:
+                    continue
+                if currentIndex == targetIndex:
+                    return True
+                seen.add(currentIndex)
+                stack.extend(successor_indices(currentIndex))
+            return False
+
+        def start_reentry_edge(startLine: SourceLine) -> Optional[Tuple[SourceLine, str]]:
+            reachableLineNumbers = source_line_reachable_numbers(operation)
+            labelsBeforeStart = {
+                labelName
+                for labelName, labelLine in labelLineByName.items()
+                if labelLine.number <= startLine.number
+            }
+            for candidate in lines:
+                if candidate.number <= startLine.number:
+                    continue
+                if candidate.number not in reachableLineNumbers:
+                    continue
+                for targetLabel in branch_targets_for_wait_set(candidate):
+                    if (targetLabel in labelsBeforeStart
+                            and label_reaches_line(targetLabel, startLine)):
+                        return candidate, targetLabel
+            return None
+
+        def add_case_result_ownership_diagnostic(
+            row: SourceLine,
+            callName: str,
+            waitSetName: str,
+            targetLabel: str,
+            caseLine: SourceLine,
+            *,
+            escapeTarget: Optional[str] = None,
+        ) -> None:
+            isEscape = escapeTarget is not None
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge=(
+                    "caseResultPrivateEscape" if isEscape
+                    else "caseResultPrivateEntry"
+                ),
+                intentSlogan=(
+                    "wait-set case result escapes its handler"
+                    if isEscape
+                    else "wait-set case result read outside its handler"
+                ),
+                primary=span_of_line(row, "callResultUse"),
+                related=[span_of_line(caseLine, "caseSite")],
+                invariantRule=(
+                    (
+                        f"`case {callName} {targetLabel}` materializes its "
+                        f"result only for handler `{targetLabel}`; "
+                        f"`{row.verb}` cannot write it into non-private "
+                        f"state `{escapeTarget}` where later code can "
+                        "observe it"
+                    )
+                    if isEscape
+                    else (
+                        f"`case {callName} {targetLabel}` materializes its "
+                        f"result only for handler `{targetLabel}`; "
+                        f"`{row.verb}` cannot read that call from another "
+                        "label"
+                    )
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#case",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name=(
+                            "keepResultHandlerLocal" if isEscape
+                            else "moveResultReadIntoCaseHandler"
+                        ),
+                        shape=(
+                            f"# keep `{callName}` in handler-local state"
+                            if isEscape
+                            else f"label {targetLabel}\n{row.raw}"
+                        ),
+                        evidence=[span_of_line(row)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="case result SSA values only dominate their selected handler block",
+            ))
+
+        def add_case_handler_reentry_diagnostic(
+            row: SourceLine,
+            callName: str,
+            waitSetName: str,
+            targetLabel: str,
+            waitEntryLabel: str,
+            gapEdge: str = "caseHandlerReentry",
+        ) -> None:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge=gapEdge,
+                intentSlogan="wait-set case handler does not re-enter wait set",
+                primary=span_of_line(row, "caseHandlerControl"),
+                invariantRule=(
+                    f"`case {callName} {targetLabel}` must finish by jumping "
+                    f"back to `{waitEntryLabel}` so remaining futures are "
+                    "consumed before the operation exits"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#case",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="jumpBackToWaitSet",
+                        shape=f"jump target {waitEntryLabel}",
+                        evidence=[span_of_line(row)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="wait-set handlers cannot abandon sibling futures without explicit cleanup semantics",
+            ))
+
+        def add_wait_set_arity_diagnostic(
+            row: SourceLine,
+            waitSetName: str,
+            expectedShape: str,
+            expectedCount: int,
+        ) -> None:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=waitSetName or row.verb,
+                subjectKind="awaitWaitSetRow",
+                gapEdge="argumentCount",
+                intentSlogan=f"`{row.verb}` has wrong argument count",
+                primary=span_of_line(row, f"{row.verb}Site"),
+                invariantRule=(
+                    f"`{row.verb}` rows in an await wait set must have exactly "
+                    f"{expectedCount} argument(s): `{expectedShape}`"
+                ),
+                specAnchor=f"docs/reference/syntax-inventory.md#{row.verb}",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useExactWaitSetRowShape",
+                        shape=expectedShape,
+                        evidence=[span_of_line(row)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="wait-set structural rows do not accept trailing metadata tokens",
+            ))
+
+        consumedLineNumbers: Set[int] = set()
+        waitSetAwaitLineNumbers: Set[int] = set()
+        caseCompletionLines: Dict[str, SourceLine] = {}
+        caseCompletionOwners: Dict[str, Tuple[str, str, SourceLine]] = {}
+        index = 0
+        while index < len(lines):
+            sourceLine = lines[index]
+            if sourceLine.verb != "await":
+                index += 1
+                continue
+            nextIndex = index + 1
+            if nextIndex >= len(lines) or lines[nextIndex].verb not in {"case", "done"}:
+                index += 1
+                continue
+            waitSetAwaitLineNumbers.add(sourceLine.number)
+            waitSetName = sourceLine.args[0] if sourceLine.args else ""
+            if len(sourceLine.args) != 1:
+                add_wait_set_arity_diagnostic(
+                    sourceLine, waitSetName, "await <waitSetName>", 1)
+            if waitSetName and waitSetName in operationCalls:
+                callFact = operationCalls[waitSetName]
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="waitSetNameCallCollision",
+                    intentSlogan="wait-set name collides with call name",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    related=[span_of_line(callFact.line, "callDeclaration")],
+                    invariantRule=(
+                        f"`await {waitSetName}` followed by `case` rows is "
+                        "a wait set, not a call; choose a wait-set name that "
+                        "does not match any declared call"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#await",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="renameWaitSet",
+                            shape="await <freshWaitSetName>",
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="wait-set names are local branch/select names, not call references",
+                ))
+            caseLines: List[SourceLine] = []
+            seenCaseCalls: Dict[str, SourceLine] = {}
+            seenCaseLabels: Dict[str, SourceLine] = {}
+            cursor = nextIndex
+            while cursor < len(lines) and lines[cursor].verb == "case":
+                caseLine = lines[cursor]
+                consumedLineNumbers.add(caseLine.number)
+                if len(caseLine.args) != 2:
+                    add_wait_set_arity_diagnostic(
+                        caseLine, waitSetName, "case <startedCall> <handlerLabel>", 2)
+                    caseLines.append(caseLine)
+                    cursor += 1
+                    continue
+                if len(caseLine.args) >= 1:
+                    callName = caseLine.args[0]
+                    targetLabel = caseLine.args[1]
+                    previousCase = seenCaseCalls.get(callName)
+                    previousCompletion = caseCompletionLines.get(callName)
+                    callFact = operationCalls.get(callName)
+                    priorStartLines = (
+                        [
+                            startLine
+                            for startLine in callFact.start_lines
+                            if startLine.number < sourceLine.number
+                        ]
+                        if callFact is not None
+                        else []
+                    )
+                    hasMultiplePriorStarts = len(priorStartLines) > 1
+                    hasStartBeforeWaitSet = (
+                        callFact is not None
+                        and not hasMultiplePriorStarts
+                        and start_reaches_wait_set_entry(
+                            operation, callFact, sourceLine)
+                    )
+                    if previousCase is not None:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=waitSetName,
+                            subjectKind="awaitWaitSet",
+                            gapEdge="uniqueCaseCall",
+                            intentSlogan="duplicate wait-set case",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(previousCase, "previousCase")],
+                            invariantRule=(
+                                f"`await {waitSetName}` may list each started "
+                                "call at most once"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="removeDuplicateCase",
+                                    shape=f"# remove duplicate `case {callName} ...`",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.TRIVIAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="duplicate cases would make consumed-state ambiguous",
+                        ))
+                    elif previousCompletion is not None:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="singleCompletionEdge",
+                            intentSlogan="call appears in multiple wait sets",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(previousCompletion, "previousCase")],
+                            invariantRule=(
+                                f"`case {callName} ...` awaits and consumes the "
+                                "call; the same call cannot be listed in a later "
+                                "wait set"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useFreshStartedCall",
+                                    shape=f"call <newCallName> <target>\nstart <newCallName>\ncase <newCallName> <handlerLabel>",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="wait-set cases are future ownership handoffs",
+                        ))
+                    elif callFact is not None and hasMultiplePriorStarts:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="singlePriorStart",
+                            intentSlogan="wait-set case has multiple prior starts",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[
+                                span_of_line(startLine, "priorStart")
+                                for startLine in priorStartLines
+                            ],
+                            invariantRule=(
+                                f"`case {callName} ...` must refer to exactly "
+                                "one prior `start`; repeated starts need fresh "
+                                "call names so each future has one owner"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="splitRepeatedStarts",
+                                    shape=(
+                                        f"call <freshCallName> {callFact.target}\n"
+                                        "start <freshCallName>\n"
+                                        f"case <freshCallName> {targetLabel}"
+                                    ),
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="the compiler stores one future slot per call name",
+                        ))
+                    elif callFact is not None and not hasStartBeforeWaitSet:
+                        relatedSpans = [span_of_line(callFact.line, "callDeclaration")]
+                        relatedSpans.extend(
+                            span_of_line(startLine, "lateStart")
+                            for startLine in callFact.start_lines
+                        )
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="startBeforeCase",
+                            intentSlogan="wait-set case lacks prior start",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=relatedSpans,
+                            invariantRule=(
+                                f"`case {callName} ...` may only appear in an "
+                                f"`await {waitSetName}` block after "
+                                f"`start {callName}` has created the future"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="moveStartBeforeWaitSet",
+                                    shape=f"start {callName}",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="wait-set polling needs an already-created future",
+                        ))
+                    elif (callFact is not None and priorStartLines
+                            and start_reentry_edge(priorStartLines[-1]) is not None):
+                        reentryEdge = start_reentry_edge(priorStartLines[-1])
+                        assert reentryEdge is not None
+                        edgeLine, edgeLabel = reentryEdge
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="singleStartExecution",
+                            intentSlogan="started future can be re-entered",
+                            primary=span_of_line(edgeLine, "reentryEdge"),
+                            related=[
+                                span_of_line(priorStartLines[-1], "startSite"),
+                                span_of_line(caseLine, "caseSite"),
+                            ],
+                            invariantRule=(
+                                f"`start {callName}` creates one future for "
+                                f"`case {callName} ...`; a later branch to "
+                                f"`{edgeLabel}` can execute the same start "
+                                "again. Use a fresh call name for each future."
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#start",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useFreshCallNameForRestart",
+                                    shape=(
+                                        f"call <freshCallName> {callFact.target}\n"
+                                        "start <freshCallName>"
+                                    ),
+                                    evidence=[span_of_line(edgeLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="future slots are one-shot ownership cells",
+                        ))
+                    elif (callFact is not None
+                            and not call_can_start_async_future(
+                                facts, operation, callFact)):
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=callName,
+                            subjectKind="call",
+                            gapEdge="asyncFutureCase",
+                            intentSlogan="wait-set case is not an async future",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(callFact.line, "callDeclaration")],
+                            invariantRule=(
+                                f"`case {callName} ...` requires a call target "
+                                "that `start` lowers to an async future"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useAsyncFutureCall",
+                                    shape=(
+                                        f"call {callName} <asyncOperationOrNetFetch>\n"
+                                        f"start {callName}\n"
+                                        f"case {callName} {targetLabel}"
+                                    ),
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="started synchronous calls do not create future slots for wait-set polling",
+                        ))
+                    else:
+                        seenCaseCalls[callName] = caseLine
+                        caseCompletionLines.setdefault(callName, caseLine)
+                        caseCompletionOwners.setdefault(
+                            callName, (waitSetName, targetLabel, caseLine))
+                    labelLine = labelLineByName.get(targetLabel)
+                    if labelLine is not None and labelLine.number <= caseLine.number:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="caseLabelDeclarationOrder",
+                            intentSlogan="wait-set case label appears too early",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(labelLine, "labelDeclaration")],
+                            invariantRule=(
+                                f"`case {callName} {targetLabel}` must branch "
+                                "to a handler label declared after the case row"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="moveCaseHandlerAfterWaitSet",
+                                    shape=f"label {targetLabel}",
+                                    evidence=[span_of_line(labelLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="case handlers are selected continuations, not ordinary entry labels",
+                        ))
+                    previousEffectiveLine = None
+                    if labelLine is not None:
+                        for candidate in lines:
+                            if candidate.number >= labelLine.number:
+                                break
+                            if candidate.verb in {
+                                "input", "output", "effect", "async",
+                                "purpose", "invariant", "warning",
+                            }:
+                                continue
+                            previousEffectiveLine = candidate
+                    if (labelLine is not None
+                            and previousEffectiveLine is not None
+                            and previousEffectiveLine.verb != "done"
+                            and not source_row_terminates_before_next_label(
+                                previousEffectiveLine)):
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="caseLabelPrivateEntry",
+                            intentSlogan="wait-set case label has fallthrough predecessor",
+                            primary=span_of_line(labelLine, "caseHandlerLabel"),
+                            related=[
+                                span_of_line(caseLine, "caseSite"),
+                                span_of_line(previousEffectiveLine, "fallthroughPredecessor"),
+                            ],
+                            invariantRule=(
+                                f"`case {callName} {targetLabel}` owns the "
+                                "entry edge into its handler; the preceding "
+                                "source row must terminate or be the wait-set "
+                                "`done` row"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="terminateBeforeCaseHandler",
+                                    shape="jump target <nonCaseHandlerLabel>",
+                                    evidence=[span_of_line(previousEffectiveLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="fallthrough predecessors can break dominance for materialized case results",
+                        ))
+                    for referenceLine in lines:
+                        if (referenceLine.number == caseLine.number
+                                and referenceLine.verb == "case"):
+                            continue
+                        if targetLabel not in branch_targets_for_wait_set(referenceLine):
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="caseLabelPrivateEntry",
+                            intentSlogan="wait-set case label has another predecessor",
+                            primary=span_of_line(referenceLine, "labelReference"),
+                            related=[span_of_line(caseLine, "caseSite")],
+                            invariantRule=(
+                                f"`case {callName} {targetLabel}` owns the "
+                                "entry edge into its handler; other source "
+                                "branches must not target that label"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="branchToSeparateLabel",
+                                    shape="jump target <nonCaseHandlerLabel>",
+                                    evidence=[span_of_line(referenceLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="extra predecessors can break dominance for materialized case results",
+                        ))
+                    previousLabel = seenCaseLabels.get(targetLabel)
+                    if previousLabel is not None:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=targetLabel,
+                            subjectKind="label",
+                            gapEdge="uniqueCaseLabel",
+                            intentSlogan="wait-set case label is reused",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(previousLabel, "previousCase")],
+                            invariantRule=(
+                                f"`await {waitSetName}` must branch each case "
+                                "to a distinct handler label so the selected "
+                                "call result dominates that handler"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#case",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="useDistinctCaseHandler",
+                                    shape=f"case {callName} <freshHandlerLabel>",
+                                    evidence=[span_of_line(caseLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="shared wait-set handler labels can break result dominance",
+                        ))
+                    else:
+                        seenCaseLabels[targetLabel] = caseLine
+                caseLines.append(caseLine)
+                cursor += 1
+            doneLine = lines[cursor] if cursor < len(lines) and lines[cursor].verb == "done" else None
+            if doneLine is not None:
+                consumedLineNumbers.add(doneLine.number)
+                if len(doneLine.args) != 1:
+                    add_wait_set_arity_diagnostic(
+                        doneLine, waitSetName, "done <allCasesConsumedLabel>", 1)
+                nextEffectiveLine = next_effective_line_after(doneLine.number)
+                if nextEffectiveLine is not None and nextEffectiveLine.verb != "label":
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS3509",
+                        kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                        severity=Severity.ERROR,
+                        subjectName=waitSetName,
+                        subjectKind="awaitWaitSet",
+                        gapEdge="doneStructuralGap",
+                        intentSlogan="wait-set done row is followed by executable source",
+                        primary=span_of_line(nextEffectiveLine, "postDoneExecutable"),
+                        related=[span_of_line(doneLine, "doneSite")],
+                        invariantRule=(
+                            f"`await {waitSetName}` must hand control to a "
+                            "`case` or `done` label after its structural rows; "
+                            f"`{nextEffectiveLine.verb}` cannot appear between "
+                            "the `done` row and the next label"
+                        ),
+                        specAnchor="docs/reference/syntax-inventory.md#done",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="moveExecutableAfterHandlerLabel",
+                                shape="label <handlerOrDoneLabel>",
+                                evidence=[span_of_line(nextEffectiveLine)],
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_await_wait_set_shape",
+                        agentHint="wait-set lowering leaves the sequential insertion point; executable rows must live under an explicit label",
+                    ))
+                if len(doneLine.args) == 1:
+                    doneLabel = doneLine.args[0]
+                    doneLabelLine = labelLineByName.get(doneLabel)
+                    if doneLabelLine is not None and doneLabelLine.number <= doneLine.number:
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="doneLabelDeclarationOrder",
+                            intentSlogan="wait-set done label appears too early",
+                            primary=span_of_line(doneLine, "doneSite"),
+                            related=[span_of_line(doneLabelLine, "labelDeclaration")],
+                            invariantRule=(
+                                f"`done {doneLabel}` must branch to a label "
+                                "declared after the wait-set `done` row"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="moveDoneLabelAfterWaitSet",
+                                    shape=f"label {doneLabel}",
+                                    evidence=[span_of_line(doneLabelLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="done labels are all-consumed continuations, not ordinary entry labels",
+                        ))
+                    previousEffectiveLine = None
+                    if doneLabelLine is not None:
+                        for candidate in lines:
+                            if candidate.number >= doneLabelLine.number:
+                                break
+                            if candidate.verb in {
+                                "input", "output", "effect", "async",
+                                "purpose", "invariant", "warning",
+                            }:
+                                continue
+                            previousEffectiveLine = candidate
+                    previousIsOwningDoneLine = (
+                        previousEffectiveLine is not None
+                        and previousEffectiveLine.verb == "done"
+                        and previousEffectiveLine.args
+                        and previousEffectiveLine.args[0] == doneLabel
+                        and previousEffectiveLine.number == doneLine.number
+                    )
+                    if (doneLabelLine is not None
+                            and previousEffectiveLine is not None
+                            and previousEffectiveLine.verb != "case"
+                            and not previousIsOwningDoneLine
+                            and not source_row_terminates_before_next_label(
+                                previousEffectiveLine)):
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="doneLabelPrivateEntry",
+                            intentSlogan="wait-set done label has fallthrough predecessor",
+                            primary=span_of_line(doneLabelLine, "doneLabel"),
+                            related=[
+                                span_of_line(doneLine, "doneSite"),
+                                span_of_line(previousEffectiveLine, "fallthroughPredecessor"),
+                            ],
+                            invariantRule=(
+                                f"`done {doneLabel}` owns the all-consumed "
+                                "entry edge; the preceding source row must "
+                                "terminate or be the wait-set `case` row"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="terminateBeforeDoneLabel",
+                                    shape="jump target <nonDoneLabel>",
+                                    evidence=[span_of_line(previousEffectiveLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="fallthrough into done can skip unconsumed wait-set cases",
+                        ))
+                    for referenceLine in lines:
+                        if (referenceLine.number == doneLine.number
+                                and referenceLine.verb == "done"):
+                            continue
+                        if doneLabel not in branch_targets_for_wait_set(referenceLine):
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="doneLabelPrivateEntry",
+                            intentSlogan="wait-set done label has another predecessor",
+                            primary=span_of_line(referenceLine, "labelReference"),
+                            related=[span_of_line(doneLine, "doneSite")],
+                            invariantRule=(
+                                f"`done {doneLabel}` owns the all-consumed "
+                                "entry edge into its continuation; other "
+                                "source branches must not target that label"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="branchToSeparateLabel",
+                                    shape="jump target <nonDoneLabel>",
+                                    evidence=[span_of_line(referenceLine)],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="direct entry into done can skip unconsumed wait-set cases",
+                        ))
+                    for caseLine in caseLines:
+                        if len(caseLine.args) != 2 or caseLine.args[1] != doneLabel:
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T1_SPEC,
+                            code="SS3509",
+                            kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                            severity=Severity.ERROR,
+                            subjectName=doneLabel,
+                            subjectKind="label",
+                            gapEdge="caseDoneLabelDisjoint",
+                            intentSlogan="wait-set case label matches done label",
+                            primary=span_of_line(caseLine, "caseSite"),
+                            related=[span_of_line(doneLine, "doneSite")],
+                            invariantRule=(
+                                f"`await {waitSetName}` case handlers must be "
+                                "disjoint from the `done` label; `done` is only "
+                                "entered after every case has been consumed"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#done",
+                            citations=operationCitations,
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="splitCaseAndDoneLabels",
+                                    shape=(
+                                        f"case {caseLine.args[0]} <freshHandlerLabel>\n"
+                                        f"done {doneLabel}"
+                                    ),
+                                    evidence=[
+                                        span_of_line(caseLine),
+                                        span_of_line(doneLine),
+                                    ],
+                                ),
+                            ],
+                            confidence=Confidence.HIGH,
+                            blocksCompile=True,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_await_wait_set_shape",
+                            agentHint="the all-consumed path must not enter a selected-case handler",
+                        ))
+            waitEntryLabel = label_before_line(sourceLine.number)
+            if caseLines and waitEntryLabel is None:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="waitSetEntryLabel",
+                    intentSlogan="wait set has no re-entry label",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    invariantRule=(
+                        f"`await {waitSetName}` must be preceded by a label "
+                        "so case handlers can jump back and consume remaining futures"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#await",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addWaitSetEntryLabel",
+                            shape=f"label wait{waitSetName}\nawait {waitSetName}",
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="wait-set case handlers re-enter through the await label",
+                ))
+            if waitEntryLabel is not None:
+                for caseLine in caseLines:
+                    if len(caseLine.args) != 2:
+                        continue
+                    callName, targetLabel = caseLine.args
+                    labelLine = labelLineByName.get(targetLabel)
+                    if labelLine is None:
+                        continue
+                    sawReentry = False
+                    for handlerLine in lines:
+                        if handlerLine.number <= labelLine.number:
+                            continue
+                        if handlerLine.verb == "label":
+                            break
+                        if is_wait_set_gap_ignored(handlerLine):
+                            continue
+                        if handlerLine.verb in {
+                            "defer", "deferLog", "deferAwaitLog",
+                            "deferWhenExitLog", "deferRunOn",
+                        }:
+                            add_case_handler_reentry_diagnostic(
+                                handlerLine, callName, waitSetName,
+                                targetLabel, waitEntryLabel,
+                                gapEdge="caseHandlerDefer")
+                            sawReentry = True
+                            break
+                        targets = branch_targets_for_wait_set(handlerLine)
+                        if handlerLine.verb == "jump" and targets == [waitEntryLabel]:
+                            sawReentry = True
+                            break
+                        if return_parts(handlerLine) is not None:
+                            add_case_handler_reentry_diagnostic(
+                                handlerLine, callName, waitSetName,
+                                targetLabel, waitEntryLabel)
+                            sawReentry = True
+                            break
+                        disallowedTargets = [
+                            target for target in targets
+                            if target != waitEntryLabel
+                        ]
+                        if disallowedTargets:
+                            add_case_handler_reentry_diagnostic(
+                                handlerLine, callName, waitSetName,
+                                targetLabel, waitEntryLabel)
+                            sawReentry = True
+                            break
+                    if not sawReentry:
+                        add_case_handler_reentry_diagnostic(
+                            caseLine, callName, waitSetName,
+                            targetLabel, waitEntryLabel)
+            if not caseLines:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="case",
+                    intentSlogan="wait set has no cases",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    invariantRule=(
+                        f"`await {waitSetName}` followed by `done` must include "
+                        "at least one `case CALL LABEL` row"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#case",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addCase",
+                            shape=f"case <startedCall> <handlerLabel>\ndone <doneLabel>",
+                            evidence=[span_of_line(sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="a wait set with no selectable futures cannot make progress",
+                ))
+            if doneLine is None:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=waitSetName,
+                    subjectKind="awaitWaitSet",
+                    gapEdge="done",
+                    intentSlogan="wait set missing done",
+                    primary=span_of_line(sourceLine, "awaitSite"),
+                    invariantRule=(
+                        f"`await {waitSetName}` with `case` rows must end with "
+                        "`done LABEL` so the all-consumed path is explicit"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#done",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="addDone",
+                            shape="done <allCasesConsumedLabel>",
+                            evidence=[span_of_line(caseLines[-1] if caseLines else sourceLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="the compiler refuses await wait sets without an all-consumed branch",
+                ))
+            index = (cursor + 1) if doneLine is not None else cursor
+
+        for sourceLine in lines:
+            if sourceLine.verb not in {"case", "done"}:
+                continue
+            if sourceLine.number in consumedLineNumbers:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=sourceLine.args[0] if sourceLine.args else sourceLine.verb,
+                subjectKind="awaitWaitSetRow",
+                gapEdge="await",
+                intentSlogan="wait-set row is orphaned",
+                primary=span_of_line(sourceLine, f"{sourceLine.verb}Site"),
+                invariantRule=(
+                    f"`{sourceLine.verb}` rows must immediately follow an "
+                    "`await WAIT_SET` block"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#await",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="moveUnderAwait",
+                        shape="await <waitSetName>\ncase <startedCall> <handlerLabel>\ndone <allCasesConsumedLabel>",
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="case/done are structural rows, not standalone control flow",
+            ))
+
+        privateCaseSymbols: Dict[str, Tuple[str, str, SourceLine, SourceLine]] = {}
+        for _callName, (waitSetName, targetLabel, caseLine) in caseCompletionOwners.items():
+            labelLine = labelLineByName.get(targetLabel)
+            if labelLine is None:
+                continue
+            for candidate in lines:
+                if candidate.number <= labelLine.number:
+                    continue
+                if candidate.verb == "label":
+                    break
+                definedSymbol = symbol_definition(candidate)
+                if definedSymbol is not None:
+                    privateCaseSymbols[definedSymbol] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+                definedCallResult = call_result_definition(candidate)
+                if definedCallResult is not None:
+                    privateCaseSymbols[definedCallResult] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+                if candidate.verb == "runChecked" and len(candidate.args) >= 6:
+                    privateCaseSymbols[candidate.args[2]] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+                    privateCaseSymbols[candidate.args[5]] = (
+                        waitSetName, targetLabel, caseLine, candidate)
+
+        callPrivateDependencies: Dict[str, List[Tuple[str, str, str, SourceLine, SourceLine]]] = {}
+
+        def private_owner_for_symbol(
+            symbolName: str,
+        ) -> Optional[Tuple[str, str, SourceLine, SourceLine]]:
+            privateOwner = privateCaseSymbols.get(symbolName)
+            if privateOwner is not None:
+                return privateOwner
+            directOwner = caseCompletionOwners.get(symbolName)
+            if directOwner is not None:
+                waitSetName, targetLabel, caseLine = directOwner
+                return waitSetName, targetLabel, caseLine, caseLine
+            return None
+
+        for sourceLine in lines:
+            parsedArgument = argument_parts(sourceLine)
+            if parsedArgument is None:
+                if sourceLine.verb == "workArg" and len(sourceLine.args) >= 3:
+                    callName = sourceLine.args[0]
+                    valueName = sourceLine.args[2]
+                else:
+                    continue
+            else:
+                callName, _parameterName, _declaredType, valueName = parsedArgument
+            privateOwner = private_owner_for_symbol(valueName)
+            if privateOwner is None:
+                continue
+            waitSetName, targetLabel, caseLine, definitionLine = privateOwner
+            callPrivateDependencies.setdefault(callName, []).append((
+                valueName, waitSetName, targetLabel, caseLine, definitionLine))
+
+        for sourceLine in lines:
+            if sourceLine.verb == "case":
+                continue
+            directCallReference = call_result_reference(sourceLine)
+            if directCallReference is not None:
+                owner = caseCompletionOwners.get(directCallReference)
+                if owner is not None:
+                    waitSetName, targetLabel, caseLine = owner
+                    if label_before_line(sourceLine.number) != targetLabel:
+                        add_case_result_ownership_diagnostic(
+                            sourceLine, directCallReference, waitSetName,
+                            targetLabel, caseLine)
+            if sourceLine.verb in {
+                "run", "runChecked", "start", "startInGroup", "submitWork"
+            } and sourceLine.args:
+                for dependency in callPrivateDependencies.get(sourceLine.args[0], []):
+                    referencedSymbol, waitSetName, targetLabel, caseLine, definitionLine = dependency
+                    if (sourceLine.number > definitionLine.number
+                            and label_before_line(sourceLine.number) != targetLabel):
+                        add_case_result_ownership_diagnostic(
+                            sourceLine, referencedSymbol, waitSetName,
+                            targetLabel, caseLine)
+            mutationEscape: Optional[Tuple[str, str]] = None
+            if (sourceLine.verb == "set" and len(sourceLine.args) >= 3
+                    and sourceLine.args[0] in {"memory", "storage"}):
+                mutationEscape = (sourceLine.args[2], sourceLine.args[1])
+            elif sourceLine.verb == "fieldSet" and len(sourceLine.args) >= 3:
+                mutationEscape = (sourceLine.args[2], sourceLine.args[0])
+            elif sourceLine.verb == "send" and len(sourceLine.args) >= 2:
+                mutationEscape = (sourceLine.args[1], sourceLine.args[0])
+            if mutationEscape is not None:
+                valueName, targetName = mutationEscape
+                privateOwner = private_owner_for_symbol(valueName)
+                if privateOwner is not None:
+                    waitSetName, targetLabel, caseLine, definitionLine = privateOwner
+                    targetOwner = private_owner_for_symbol(targetName)
+                    targetIsPrivateToSameHandler = (
+                        targetOwner is not None
+                        and targetOwner[1] == targetLabel
+                    )
+                    if (sourceLine.number > definitionLine.number
+                            and label_before_line(sourceLine.number) == targetLabel
+                            and not targetIsPrivateToSameHandler):
+                        add_case_result_ownership_diagnostic(
+                            sourceLine, valueName, waitSetName,
+                            targetLabel, caseLine, escapeTarget=targetName)
+            for referencedSymbol in symbol_references(sourceLine):
+                privateOwner = private_owner_for_symbol(referencedSymbol)
+                if privateOwner is None:
+                    continue
+                waitSetName, targetLabel, caseLine, _definitionLine = privateOwner
+                if label_before_line(sourceLine.number) != targetLabel:
+                    add_case_result_ownership_diagnostic(
+                        sourceLine, referencedSymbol, waitSetName,
+                        targetLabel, caseLine)
+
+        for sourceLine in lines:
+            if sourceLine.verb != "await" or not sourceLine.args:
+                continue
+            if sourceLine.number in waitSetAwaitLineNumbers:
+                continue
+            caseLine = caseCompletionLines.get(sourceLine.args[0])
+            if caseLine is None:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3509",
+                kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                severity=Severity.ERROR,
+                subjectName=sourceLine.args[0],
+                subjectKind="call",
+                gapEdge="singleCompletionEdge",
+                intentSlogan="call completed by both case and await",
+                primary=span_of_line(sourceLine, "awaitSite"),
+                related=[span_of_line(caseLine, "caseSite")],
+                invariantRule=(
+                    f"`case {sourceLine.args[0]} ...` inside an await wait set "
+                    "already awaits and materializes that call before branching; "
+                    f"do not also write `await {sourceLine.args[0]}`"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#await",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="removeDuplicateAwait",
+                        shape=f"# remove `await {sourceLine.args[0]}`",
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_await_wait_set_shape",
+                agentHint="await wait-set case rows own the future consumption",
+            ))
+        for callName, caseLine in caseCompletionLines.items():
+            callFact = operationCalls.get(callName)
+            if callFact is None:
+                continue
+            for startLine in callFact.start_lines:
+                if startLine.number <= caseLine.number:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS3509",
+                    kind="concurrencyDiscipline.awaitWaitSetMalformed",
+                    severity=Severity.ERROR,
+                    subjectName=callName,
+                    subjectKind="call",
+                    gapEdge="startAfterCaseCompletion",
+                    intentSlogan="call restarted after wait-set case",
+                    primary=span_of_line(startLine, "startSite"),
+                    related=[span_of_line(caseLine, "caseSite")],
+                    invariantRule=(
+                        f"`case {callName} ...` consumes that call future; "
+                        f"do not later write `start {callName}`. Use a fresh "
+                        "call name for a new future."
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#case",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useFreshCallName",
+                            shape=(
+                                f"call <freshCallName> {callFact.target}\n"
+                                "start <freshCallName>"
+                            ),
+                            evidence=[span_of_line(startLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_await_wait_set_shape",
+                    agentHint="wait-set cases are one-shot future ownership transfers",
+                ))
     return diagnostics
 
 
@@ -6221,7 +9217,7 @@ def check_async_call_missing_boundary(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"every awaited call must declare both `timeout` and "
                     f"`cancelOn` to bound the wait and allow cancellation"
                 ),
-                specAnchor="SYNTAX.md#timeout",
+                specAnchor="docs/reference/syntax-inventory.md#timeout",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6242,6 +9238,104 @@ def check_async_call_missing_boundary(facts: ExtendedFacts) -> List[Diagnostic]:
                     "single-thread lowering completes synchronously so the "
                     "boundary is trivially satisfied today, but declaring it "
                     "now is the contract for the future scheduler"
+                ),
+            ))
+    return diagnostics
+
+
+def check_await_without_start(facts: ExtendedFacts) -> List[Diagnostic]:
+    """`await CALL` only has scheduler meaning when the same operation starts
+    the call first. The 1.0 synchronous fallback can still execute in order, but
+    the libuv continuation backend needs this edge to allocate/register the
+    future before suspension."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in collect_operation_calls(operation).values():
+            if not callFact.await_lines or callFact.start_lines:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3511",
+                kind="concurrencyDiscipline.awaitWithoutStart",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge="start",
+                intentSlogan="await without matching start",
+                primary=span_of_line(callFact.await_lines[0], "awaitSite"),
+                related=[
+                    span_of_line(callFact.line, "callDeclaration"),
+                    span_of_line(operation.line, "enclosingOperation"),
+                ],
+                invariantRule=(
+                    f"`await {callFact.name}` must be paired with "
+                    f"`start {callFact.name}` in the same operation"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#await",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="addStartBeforeAwait",
+                        shape=f"start {callFact.name}",
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_await_without_start",
+                agentHint=(
+                    "the future libuv backend needs the start edge to create "
+                    "the future that await will suspend on"
+                ),
+            ))
+    return diagnostics
+
+
+def check_started_call_without_await(facts: ExtendedFacts) -> List[Diagnostic]:
+    """A started call should be awaited until SemanticScript grows an explicit
+    detach/cancel completion verb. `cancelOn` declares the cancellation token
+    for an await, but it is not itself a completion edge."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for callFact in collect_operation_calls(operation).values():
+            if not callFact.start_lines or callFact.await_lines:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3512",
+                kind="concurrencyDiscipline.startedCallWithoutAwait",
+                severity=Severity.WARNING,
+                subjectName=callFact.name,
+                subjectKind="call",
+                gapEdge="await",
+                intentSlogan="started call without completion edge",
+                primary=span_of_line(callFact.start_lines[0], "startSite"),
+                related=[
+                    span_of_line(callFact.line, "callDeclaration"),
+                    span_of_line(operation.line, "enclosingOperation"),
+                ],
+                invariantRule=(
+                    f"`start {callFact.name}` must be paired with "
+                    f"`await {callFact.name}` until an explicit detach/cancel "
+                    f"verb exists"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#start",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="addAwaitAfterStart",
+                        shape=f"await {callFact.name}",
+                        evidence=[span_of_line(callFact.line)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_started_call_without_await",
+                agentHint=(
+                    "without await or a future detach/cancel edge, generated "
+                    "async state would not have a defined ownership handoff"
                 ),
             ))
     return diagnostics
@@ -6270,16 +9364,20 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             if call_has_later_cleanup_call(callFact, operationCalls, fileCloseTargets):
                 continue
-            # Suppress when the op's output type IS CFileHandle — caller owns lifetime
+            # Suppress when the op's output type IS FileHandle — caller owns lifetime
             outputLine = None
             for opLine in operation.lines:
                 if opLine.verb == "output" and opLine.args and opLine.args[0] == operation.name:
                     outputLine = opLine
                     break
             if outputLine and len(outputLine.args) >= 2:
-                if outputLine.args[1] == "CFileHandle":
+                if outputLine.args[1] in {"FileHandle", "FileHandle"}:
                     continue
-                if outputLine.args[1] == "Result" and len(outputLine.args) >= 3 and outputLine.args[2] == "CFileHandle":
+                if (
+                    outputLine.args[1] == "Result"
+                    and len(outputLine.args) >= 3
+                    and outputLine.args[2] in {"FileHandle", "FileHandle"}
+                ):
                     continue
             closeTargetSuggestion = "c.fclose" if callTarget == "c.fopen" else "c.close"
             diagnostics.append(Diagnostic(
@@ -6298,7 +9396,7 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`defer NAME {closeTargetSuggestion} <handle>` or explicit "
                     f"`{closeTargetSuggestion}` cleanup in the same operation"
                 ),
-                specAnchor="SYNTAX.md#defer",
+                specAnchor="docs/reference/syntax-inventory.md#defer",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6315,7 +9413,7 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                 passProvenance="check_file_handle_not_closed",
                 agentHint=(
                     "if the op returns the handle to the caller, declare output "
-                    "type `CFileHandle` to suppress this check"
+                    "type `FileHandle` to suppress this check"
                 ),
             ))
     return diagnostics
@@ -6524,7 +9622,7 @@ def check_guard_token_source_without_release(facts: ExtendedFacts) -> List[Diagn
                 f"`guardTokenRelease {tokenName} <releaseOp>` so callers know "
                 f"the release path"
             ),
-            specAnchor="SYNTAX.md#guardTokenRelease",
+            specAnchor="docs/reference/syntax-inventory.md#guardTokenRelease",
             fixCandidates=[
                 FixCandidate(
                     name="declareGuardTokenRelease",
@@ -6565,7 +9663,7 @@ def check_guard_token_protects_shared_state_access(facts: ExtendedFacts) -> List
                 f"`protectedBy {tokenName}` on sharedState `{accessFact.slotName}` "
                 f"requires `guardTokenProtects {tokenName} {accessFact.slotName}`"
             ),
-            specAnchor="SYNTAX.md#guardTokenProtects",
+            specAnchor="docs/reference/syntax-inventory.md#guardTokenProtects",
             fixCandidates=[
                 FixCandidate(
                     name="declareGuardTokenProtectsResource",
@@ -6627,7 +9725,7 @@ def check_circular_type_alias(facts: ExtendedFacts) -> List[Diagnostic]:
                     intentSlogan="type alias chain contains a cycle",
                     primary=span_of_line(cycleStarterLine, "cycleStarter"),
                     invariantRule="type alias chains must terminate in a base type, not loop",
-                    specAnchor="SYNTAX.md#type",
+                    specAnchor="docs/reference/syntax-inventory.md#type",
                     fixCandidates=[
                         FixCandidate(
                             name="breakCycleAtConcreteBase",
@@ -6677,7 +9775,7 @@ def check_json_codec_incomplete(facts: ExtendedFacts) -> List[Diagnostic]:
                 "every jsonCodec must declare input, output, decodeTarget, "
                 "and encodeTarget for the codec to be wireable"
             ),
-            specAnchor="SYNTAX.md#jsonCodec",
+            specAnchor="docs/reference/syntax-inventory.md#jsonCodec",
             fixCandidates=[
                 FixCandidate(
                     name=f"add{edgeName[0].upper()}{edgeName[1:]}",
@@ -6758,7 +9856,7 @@ def check_runtime_backing_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                         ),
                         FixCandidate(
                             name="replaceWithPrimitiveCodec",
-                            shape="# use json.encode.I64/json.decode.I64/json.encode.Bool/etc. when the value is scalar",
+                            shape="# use json.encode.Int64/json.decode.Int64/json.encode.Bool/etc. when the value is scalar",
                         ),
                     ],
                     confidence=Confidence.HIGH,
@@ -6887,7 +9985,7 @@ def check_argument_arity(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"verb `{verb}` requires at least {requiredArity} argument(s); "
                 f"row supplied {actualArity}"
             ),
-            specAnchor=f"SYNTAX.md#{verb}",
+            specAnchor=f"docs/reference/syntax-inventory.md#{verb}",
             fixCandidates=[
                 FixCandidate(
                     name="supplyMissingArguments",
@@ -6899,7 +9997,7 @@ def check_argument_arity(facts: ExtendedFacts) -> List[Diagnostic]:
             effort=Effort.TRIVIAL,
             passProvenance="check_argument_arity",
             agentHint=(
-                f"check SYNTAX.md row for `{verb}` to see the exact argument shape"
+                f"check docs/reference/syntax-inventory.md row for `{verb}` to see the exact argument shape"
             ),
         ))
     return diagnostics
@@ -6951,8 +10049,12 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueNames.add(args[0])
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueNames.add(args[1])
-        elif verb in {"storage", "sharedState"} and len(args) >= 5:
+        elif verb in {"storage", "sharedState"} and len(args) >= 4:
             moduleScopeValueNames.add(args[2])
+        else:
+            memory = memory_parts(sourceLine)
+            if memory is not None and memory[1] in {"mutable", "immutable"} and len(memory[2]) >= 3:
+                moduleScopeValueNames.add(memory[2][0])
 
     for operation in facts.base.operations.values():
         operationCalls = collect_operation_calls(operation)
@@ -6977,19 +10079,28 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
         callTargetByCallName = operationCallTargetsByOperationName.get(operation.name, {})
         declaredLabelNames = operationLabelsByOperationName.get(operation.name, set())
         declaredValueNames: Set[str] = set(moduleScopeValueNames)
+        waitSetAwaitLines = wait_set_await_line_numbers(operation)
         for declarationLine in operation.lines:
             if not declarationLine.tokens or is_comment(declarationLine):
                 continue
             declarationVerb = declarationLine.verb
             declarationArgs = declarationLine.args
-            if (declarationVerb == "input" and len(declarationArgs) >= 3
-                    and declarationArgs[0] == operation.name):
-                declaredValueNames.add(declarationArgs[1])
-            elif declarationVerb in {"const", "var", "literal"} and declarationArgs:
+            parsedInput = input_parts(declarationLine)
+            parsedBind = bind_parts(declarationLine)
+            parsedMemory = memory_parts(declarationLine)
+            if parsedInput is not None and parsedInput[0] == operation.name:
+                declaredValueNames.add(parsedInput[1])
+            elif declarationVerb in {"const", "var", "let", "literal"} and declarationArgs:
                 declaredValueNames.add(declarationArgs[0])
-            elif declarationVerb == "storage" and len(declarationArgs) >= 5:
+            elif declarationVerb == "storage" and len(declarationArgs) >= 4:
                 declaredValueNames.add(declarationArgs[2])
-            elif declarationVerb in {"bind", "bindOk", "bindError"} and declarationArgs:
+            elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+                declaredValueNames.add(parsedMemory[2][0])
+            elif parsedBind is not None:
+                declaredValueNames.add(parsedBind[1])
+            elif declarationVerb == "new" and len(declarationArgs) >= 2:
+                declaredValueNames.add(declarationArgs[0])
+            elif declarationVerb == "fieldGet" and len(declarationArgs) >= 2:
                 declaredValueNames.add(declarationArgs[0])
             elif declarationVerb == "read" and len(declarationArgs) >= 2:
                 declaredValueNames.add(declarationArgs[1])
@@ -7005,8 +10116,24 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
 
             # Call references
             referencedCallName: Optional[str] = None
-            if verb in CALL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
+            parsedArgument = argument_parts(sourceLine)
+            parsedBind = bind_parts(sourceLine)
+            parsedIgnore = ignore_parts(sourceLine)
+            parsedBranchErrorSource = branch_error_source(sourceLine)
+            if parsedArgument is not None:
+                referencedCallName = parsedArgument[0]
+            elif parsedIgnore is not None:
+                referencedCallName = parsedIgnore[1]
+            elif parsedBranchErrorSource is not None:
+                referencedCallName = parsedBranchErrorSource
+            elif verb == "await" and sourceLine.number in waitSetAwaitLines:
+                referencedCallName = None
+            elif verb == "case" and sourceLine.args:
                 referencedCallName = sourceLine.args[0]
+            elif verb in CALL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
+                referencedCallName = sourceLine.args[0]
+            elif parsedBind is not None:
+                referencedCallName = parsedBind[3]
             elif verb in CALL_REFERENCE_VERBS_AT_ARG_TWO and len(sourceLine.args) >= 3:
                 referencedCallName = sourceLine.args[2]
             if referencedCallName and referencedCallName not in declaredCallNames:
@@ -7021,10 +10148,8 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     declarationShape=f"call {referencedCallName} <target>",
                 ))
 
-            if verb == "arg" and len(sourceLine.args) >= 3:
-                referencedValueName = sourceLine.args[2]
-                callReferenceName = sourceLine.args[0]
-                argumentName = sourceLine.args[1]
+            if parsedArgument is not None:
+                callReferenceName, argumentName, _argumentType, referencedValueName = parsedArgument
                 referencedOperationAsArgument = (
                     callTargetByCallName.get(callReferenceName) == "gui.controlOnEvent"
                     and argumentName == "handler"
@@ -7042,15 +10167,14 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                         referencedKind="value",
                         verbThatReferenced=verb,
                         code="SS4105",
-                        declarationShape=f"const {referencedValueName} <type> <value>",
+                        declarationShape=f"memory {operation.name} immutable {referencedValueName} <type> <value>",
                     ))
 
             # Label references
             referencedLabelName: Optional[str] = None
-            if verb in LABEL_REFERENCE_VERBS_AT_ARG_ZERO and sourceLine.args:
-                referencedLabelName = sourceLine.args[0]
-            elif verb in LABEL_REFERENCE_VERBS_AT_ARG_ONE and len(sourceLine.args) >= 2:
-                referencedLabelName = sourceLine.args[1]
+            targets = branch_target_names_from_row(sourceLine)
+            if targets:
+                referencedLabelName = targets[0]
             elif verb == "branchSelected" and len(sourceLine.args) >= 3:
                 referencedLabelName = sourceLine.args[2]
             elif verb == "branchIf" and len(sourceLine.args) >= 3:
@@ -7120,12 +10244,12 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     validAttachmentSubjects.update(facts.collectionTypeDeclarations.keys())
     validAttachmentSubjects.update(facts.collectionOperationDeclarations.keys())
     # Module-scope verbs not already tracked by ExtendedFacts but legal
-    # narrative-attachment subjects per SYNTAX.md.
+    # narrative-attachment subjects per docs/reference/syntax-inventory.md.
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine) or not sourceLine.args:
             continue
         if sourceLine.verb in {
-            "enum", "error", "domainLiteral", "policy", "errorPolicy",
+            "module", "enum", "error", "domainLiteral", "policy", "errorPolicy",
             "resource", "validator", "mapper", "adapter", "boundary",
         }:
             validAttachmentSubjects.add(sourceLine.args[0])
@@ -7145,7 +10269,19 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             continue
         if sourceLine.verb not in OPERATION_ATTACHMENT_VERBS:
             continue
-        referencedSubjectName = sourceLine.args[0]
+        parsedInput = input_parts(sourceLine)
+        parsedOutput = output_parts(sourceLine)
+        parsedMemory = memory_parts(sourceLine)
+        if parsedInput is not None:
+            referencedSubjectName = parsedInput[0]
+        elif parsedOutput is not None:
+            referencedSubjectName = parsedOutput[0]
+        elif parsedMemory is not None:
+            referencedSubjectName = parsedMemory[0]
+        elif sourceLine.verb in {"purpose", "invariant"} and len(sourceLine.args) >= 3 and sourceLine.args[0] in {"module", "operation"}:
+            referencedSubjectName = sourceLine.args[1]
+        else:
+            referencedSubjectName = sourceLine.args[0]
         # Subject doesn't exist anywhere — true unresolved-attachment.
         if referencedSubjectName not in validAttachmentSubjects:
             diagnostics.append(Diagnostic(
@@ -7166,7 +10302,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"boundary, policy, errorPolicy, resource, timeoutBudget, or "
                     f"collection declaration)"
                 ),
-                specAnchor="SYNTAX.md#operation",
+                specAnchor="docs/reference/syntax-inventory.md#operation",
                 fixCandidates=[
                     FixCandidate(
                         name="declareSubject",
@@ -7206,7 +10342,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"meaningful only for `operation` subjects, not for the kind "
                     f"of `{referencedSubjectName}` that is actually declared"
                 ),
-                specAnchor="SYNTAX.md#operation",
+                specAnchor="docs/reference/syntax-inventory.md#operation",
                 fixCandidates=[
                     FixCandidate(
                         name="renameSubjectToActualOperation",
@@ -7224,6 +10360,185 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                 agentHint="operation-body verbs like `input`/`effect` are not valid on webServer/capability/storage subjects",
             ))
 
+    return diagnostics
+
+
+def _operation_value_types(facts: ExtendedFacts, operation: OperationFact) -> Dict[str, str]:
+    valueTypes: Dict[str, str] = {
+        name: constFact.type_name
+        for name, constFact in facts.base.consts.items()
+    }
+    valueTypes.update({"true": "Bool", "false": "Bool"})
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        if sourceLine.verb == "operation":
+            break
+        if sourceLine.verb == "storage" and len(sourceLine.args) >= 5:
+            valueTypes[sourceLine.args[2]] = sourceLine.args[3]
+        elif sourceLine.verb == "literal" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "domainLiteral" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "enumCase" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[1]] = sourceLine.args[0]
+
+    for sourceLine in operation.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        parsedInput = input_parts(sourceLine)
+        parsedBind = bind_parts(sourceLine)
+        parsedMemory = memory_parts(sourceLine)
+        if parsedInput is not None and parsedInput[0] == operation.name:
+            valueTypes[parsedInput[1]] = parsedInput[2]
+        elif parsedBind is not None:
+            valueTypes[parsedBind[1]] = parsedBind[2]
+        elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+            valueTypes[parsedMemory[2][0]] = parsedMemory[2][1]
+        elif sourceLine.verb in {"const", "var", "let"} and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "storage" and len(sourceLine.args) >= 5:
+            valueTypes[sourceLine.args[2]] = sourceLine.args[3]
+        elif sourceLine.verb == "new" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+        elif sourceLine.verb == "fieldGet" and len(sourceLine.args) >= 2:
+            valueTypes[sourceLine.args[0]] = sourceLine.args[1]
+    return valueTypes
+
+
+def _is_branch_if_or_error(sourceLine: SourceLine) -> bool:
+    args = sourceLine.args
+    return (
+        sourceLine.verb == "branch"
+        and (
+            len(args) == 5 and args[0] == "if" and args[1] == "condition" and args[3] == "target"
+            or len(args) == 5 and args[0] == "error" and args[1] == "source" and args[3] == "target"
+        )
+    )
+
+
+def _is_branch_else(sourceLine: SourceLine) -> bool:
+    return (
+        sourceLine.verb == "branch"
+        and len(sourceLine.args) == 3
+        and sourceLine.args[0] == "else"
+        and sourceLine.args[1] == "target"
+    )
+
+
+def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    physicalByLine: Dict[int, SourceLine] = {
+        sourceLine.number: sourceLine for sourceLine in facts.base.lines
+    }
+    for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
+        valueTypes = _operation_value_types(facts, operation)
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            args = sourceLine.args
+            if sourceLine.verb == "branch" and len(args) == 5 and args[0] == "if":
+                conditionName = args[2]
+                conditionType = valueTypes.get(conditionName)
+                if conditionType is not None and conditionType != "Bool":
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4106",
+                        kind="controlFlow.branchConditionType",
+                        severity=Severity.ERROR,
+                        subjectName=conditionName,
+                        subjectKind="branchCondition",
+                        gapEdge="Bool",
+                        intentSlogan="branch if condition is not Bool",
+                        primary=span_of_line(sourceLine, "branchIfCondition"),
+                        related=[span_of_line(operation.line, "enclosingOperation")],
+                        invariantRule=(
+                            f"`branch if condition {conditionName} target {args[4]}` "
+                            f"requires `{conditionName}` to be Bool, got `{conditionType}`"
+                        ),
+                        specAnchor="docs/reference/syntax-inventory.md#branch",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="bindBoolCondition",
+                                shape=f"bind value {conditionName}IsTrue Bool <comparisonCall>",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.LOCAL,
+                        passProvenance="check_branch_semantics",
+                        agentHint="branch conditions must be explicit Bool values; compare or validate before branching",
+                    ))
+            if sourceLine.verb == "branch" and len(args) == 5 and args[0] == "error":
+                callName = args[2]
+                callFact = operationCalls.get(callName)
+                if callFact is not None and callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4107",
+                        kind="controlFlow.branchErrorSource",
+                        severity=Severity.ERROR,
+                        subjectName=callName,
+                        subjectKind="call",
+                        gapEdge="fallibleCall",
+                        intentSlogan="branch error source is not fallible",
+                        primary=span_of_line(sourceLine, "branchErrorSource"),
+                        related=[span_of_line(callFact.line, "callDeclaration")],
+                        invariantRule=(
+                            f"`branch error source {callName}` requires a result or fallible call; "
+                            f"`{callFact.target}` has no known error channel"
+                        ),
+                        specAnchor="docs/reference/syntax-inventory.md#branch",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="removeErrorBranch",
+                                shape=f"# remove `branch error source {callName} target {args[4]}` or call a fallible target",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_branch_semantics",
+                        agentHint="use `branch error` only for result/fallible calls; ordinary calls use value checks plus `branch if`",
+                    ))
+
+            if _is_branch_else(sourceLine):
+                previousPhysical = physicalByLine.get(sourceLine.number - 1)
+                if previousPhysical is None or not _is_branch_if_or_error(previousPhysical):
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4108",
+                        kind="controlFlow.branchElseAdjacency",
+                        severity=Severity.ERROR,
+                        subjectName=args[2],
+                        subjectKind="label",
+                        gapEdge="immediatePredecessor",
+                        intentSlogan="branch else is not adjacent to branch if/error",
+                        primary=span_of_line(sourceLine, "branchElse"),
+                        related=[span_of_line(operation.line, "enclosingOperation")],
+                        invariantRule="`branch else target LABEL` must be the very next physical row after `branch if` or `branch error`",
+                        specAnchor="docs/reference/syntax-inventory.md#branch",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="moveBranchElseAdjacent",
+                                shape="branch else target <alternateLabel>",
+                            ),
+                            FixCandidate(
+                                name="useJumpForUnconditionalTransfer",
+                                shape=f"jump target {args[2]}",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_branch_semantics",
+                        agentHint="a separated `branch else` is ambiguous; use `jump target` outside an adjacent branch chain",
+                    ))
     return diagnostics
 
 
@@ -7252,7 +10567,7 @@ def _unresolved_reference_diagnostic(
             f"every `{verbThatReferenced}` reference must resolve to a declared "
             f"{referencedKind} in scope"
         ),
-        specAnchor=f"SYNTAX.md#{referencedKind}",
+        specAnchor=f"docs/reference/syntax-inventory.md#{referencedKind}",
         citations=operationCitations,
         fixCandidates=[
             FixCandidate(
@@ -7300,6 +10615,21 @@ def _resolve_type_to_canonical(
     return PRIMITIVE_CANONICAL_BY_TYPE.get(currentName, currentName)
 
 
+def _resolve_type_alias_head(
+    typeName: Optional[str],
+    typeAliases: Dict[str, str],
+) -> Optional[str]:
+    """Chase declared type aliases without collapsing primitive families."""
+    if typeName is None:
+        return None
+    visited: Set[str] = set()
+    currentName = typeName
+    while currentName in typeAliases and currentName not in visited:
+        visited.add(currentName)
+        currentName = typeAliases[currentName]
+    return currentName
+
+
 def _resolve_type_head(
     typeName: Optional[str],
     typeAliases: Dict[str, str],
@@ -7325,23 +10655,32 @@ def _resolve_type_head(
 def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
     if typeName is None:
         return None
-    signed8 = {"I8", "CSignedByte", "CChar", "CSchar", "CByte"}
-    signed16 = {"I16", "CSignedInt16", "CShort"}
-    signed32 = {"I32", "CSignedInt32", "ExitCode"}
+    signed2 = {"Int2"}
+    signed4 = {"Int4"}
+    signed8 = {"Int8"}
+    signed16 = {"Int16"}
+    signed32 = {"Int32", "ExitCode", "Char"}
     signed64 = {
-        "I64", "CSignedInt64", "CByteCount", "CSignedByteCount",
-        "CAddressOffset", "CUnixSecondsSinceEpoch", "CCpuClockTicks",
-        "CFileByteOffset", "DurationMilliseconds", "MonotonicMilliseconds",
+        "Int64", "ByteCount", "SignedByteCount", "AddressOffset",
+        "UnixSecondsSinceEpoch", "CpuClockTicks", "FileByteOffset",
+        "DurationMilliseconds", "MonotonicMilliseconds",
         "UtcMilliseconds",
     }
-    unsigned8 = {"CUnsignedByte", "CUchar"}
-    unsigned16 = {"CUnsignedInt16", "CUshort"}
-    unsigned32 = {"CUnsignedInt32", "CUint"}
-    unsigned64 = {"CUnsignedInt64", "CMaxUnsignedInt", "CUintmax"}
-    float32 = {"F32", "CFloat32", "CFloat"}
-    float64 = {"F64", "CFloat64", "CDouble"}
+    unsigned2 = {"UInt2"}
+    unsigned4 = {"UInt4"}
+    unsigned8 = {"UInt8"}
+    unsigned16 = {"UInt16"}
+    unsigned32 = {"UInt32"}
+    unsigned64 = {"UInt64"}
+    float16 = {"Float16"}
+    float32 = {"Float32"}
+    float64 = {"Float64"}
     if typeName == "Bool":
         return "bool"
+    if typeName in signed2:
+        return "signed2"
+    if typeName in signed4:
+        return "signed4"
     if typeName in signed8:
         return "signed8"
     if typeName in signed16:
@@ -7350,6 +10689,10 @@ def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
         return "signed32"
     if typeName in signed64:
         return "signed64"
+    if typeName in unsigned2:
+        return "unsigned2"
+    if typeName in unsigned4:
+        return "unsigned4"
     if typeName in unsigned8:
         return "unsigned8"
     if typeName in unsigned16:
@@ -7358,6 +10701,8 @@ def _strict_numeric_shape(typeName: Optional[str]) -> Optional[str]:
         return "unsigned32"
     if typeName in unsigned64:
         return "unsigned64"
+    if typeName in float16:
+        return "float16"
     if typeName in float32:
         return "float32"
     if typeName in float64:
@@ -7380,17 +10725,17 @@ def _enum_arg_shape_mismatch(
     return _strict_numeric_shape(expectedHead) != _strict_numeric_shape(actualHead)
 
 
-I64_COMPARISON_TARGETS: Dict[str, str] = {
-    "math.equalI64": "math.equalCSignedInt32",
-    "math.notEqualI64": "math.notEqualCSignedInt32",
-    "math.lessThanI64": "math.lessThanCSignedInt32",
-    "math.lessThanOrEqualI64": "math.lessThanOrEqualCSignedInt32",
-    "math.greaterThanI64": "math.greaterThanCSignedInt32",
-    "math.greaterThanOrEqualI64": "math.greaterThanOrEqualCSignedInt32",
+Int64_COMPARISON_TARGETS: Dict[str, str] = {
+    "math.equalInt64": "math.equalInt32",
+    "math.notEqualInt64": "math.notEqualInt32",
+    "math.lessThanInt64": "math.lessThanInt32",
+    "math.lessThanOrEqualInt64": "math.lessThanOrEqualInt32",
+    "math.greaterThanInt64": "math.greaterThanInt32",
+    "math.greaterThanOrEqualInt64": "math.greaterThanOrEqualInt32",
 }
 
-I32_COMPARISON_TARGETS: Dict[str, str] = {
-    value: key for key, value in I64_COMPARISON_TARGETS.items()
+Int32_COMPARISON_TARGETS: Dict[str, str] = {
+    value: key for key, value in Int64_COMPARISON_TARGETS.items()
 }
 
 MATH_EXACT_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
@@ -7414,7 +10759,7 @@ def _enum_context(
             continue
         if sourceLine.verb == "enum" and sourceLine.args:
             enumName = sourceLine.args[0]
-            reprName = "CSignedInt32"
+            reprName = "Int32"
             if len(sourceLine.args) >= 3 and sourceLine.args[1] == "repr":
                 reprName = sourceLine.args[2]
             enumReprs[enumName] = reprName
@@ -7472,10 +10817,11 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
     for operation in facts.base.operations.values():
         signature: Dict[str, str] = {}
         for sourceLine in operation.lines:
-            if (sourceLine.tokens and not is_comment(sourceLine)
-                    and sourceLine.verb == "input" and len(sourceLine.args) >= 3
-                    and sourceLine.args[0] == operation.name):
-                signature[sourceLine.args[1]] = sourceLine.args[2]
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            parsedInput = input_parts(sourceLine)
+            if parsedInput is not None and parsedInput[0] == operation.name:
+                signature[parsedInput[1]] = parsedInput[2]
         userOperationSignatures[operation.name] = signature
     for importedSymbol in (
         list(importIndex.qualifiedSymbols.values())
@@ -7525,10 +10871,10 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueTypes[args[0]] = args[1]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
-        elif verb == "storage" and len(args) >= 5:
-            # `storage SCOPE MUTABILITY NAME TYPE INIT`
+        elif verb == "storage" and len(args) >= 4:
+            # `storage SCOPE MUTABILITY NAME TYPE [INIT]`
             moduleScopeValueTypes[args[2]] = args[3]
-        elif verb == "sharedState" and len(args) >= 5:
+        elif verb == "sharedState" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
 
     # Per-op: build local value-type map + call target map, then check args
@@ -7542,23 +10888,28 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 continue
             verb = sourceLine.verb
             args = sourceLine.args
-            if verb == "input" and len(args) >= 3 and args[0] == operation.name:
-                valueTypesInScope[args[1]] = args[2]
-            elif verb in {"const", "var"} and len(args) >= 2:
+            parsedInput = input_parts(sourceLine)
+            parsedBind = bind_parts(sourceLine)
+            parsedMemory = memory_parts(sourceLine)
+            if parsedInput is not None and parsedInput[0] == operation.name:
+                valueTypesInScope[parsedInput[1]] = parsedInput[2]
+            elif verb in {"const", "var", "let"} and len(args) >= 2:
                 valueTypesInScope[args[0]] = args[1]
-            elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
-                valueTypesInScope[args[0]] = args[1]
+            elif parsedMemory is not None and parsedMemory[1] in {"mutable", "immutable"} and len(parsedMemory[2]) >= 3:
+                valueTypesInScope[parsedMemory[2][0]] = parsedMemory[2][1]
+            elif parsedBind is not None:
+                valueTypesInScope[parsedBind[1]] = parsedBind[2]
             elif verb == "call" and len(args) >= 2:
                 callTargetByCallName[args[0]] = args[1]
 
-        # Second pass: every `arg CALL ARGNAME VALUE` against the target signature
+        # Second pass: every `argument CALL ARGNAME TYPE VALUE` against the target signature
         for sourceLine in operation.lines:
-            if (not sourceLine.tokens or is_comment(sourceLine)
-                    or sourceLine.verb != "arg" or len(sourceLine.args) < 3):
+            if not sourceLine.tokens or is_comment(sourceLine):
                 continue
-            callReferenceName, argumentName, suppliedValueName = (
-                sourceLine.args[0], sourceLine.args[1], sourceLine.args[2]
-            )
+            parsedArgument = argument_parts(sourceLine)
+            if parsedArgument is None:
+                continue
+            callReferenceName, argumentName, declaredArgumentType, suppliedValueName = parsedArgument
             targetName = callTargetByCallName.get(callReferenceName)
             if not targetName:
                 # Unresolved call — SS4101 already handles that.
@@ -7576,6 +10927,53 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
             if expectedType is None:
                 # Unknown signature → skip rather than guess.
                 continue
+
+            if declaredArgumentType is not None:
+                resolvedDeclaredArgument = _resolve_type_alias_head(
+                    declaredArgumentType, typeAliases)
+                resolvedExpectedArgument = _resolve_type_alias_head(
+                    expectedType, typeAliases)
+                # Fold the width-preserving C-ABI spellings so the LLVM-style
+                # name (`Int64`, `Float64`) and the C-ABI name (`Int64`,
+                # `Float64`) for the same type compare equal. This is
+                # intentionally narrow — it does NOT fold different widths
+                # (Int32 stays distinct from Int64), so a float builtin
+                # annotated with an integer type still mismatches.
+                resolvedDeclaredArgument = _C_ABI_WIDTH_ALIAS.get(
+                    resolvedDeclaredArgument, resolvedDeclaredArgument)
+                resolvedExpectedArgument = _C_ABI_WIDTH_ALIAS.get(
+                    resolvedExpectedArgument, resolvedExpectedArgument)
+                if resolvedDeclaredArgument != resolvedExpectedArgument:
+                    diagnostics.append(Diagnostic(
+                        tier=Tier.T1_SPEC,
+                        code="SS4301",
+                        kind="typeIntegrity.argumentTypeMismatch",
+                        severity=Severity.ERROR,
+                        subjectName=declaredArgumentType,
+                        subjectKind="argumentType",
+                        gapEdge="matchingParameterType",
+                        intentSlogan="argument row type does not match target signature",
+                        primary=span_of_line(sourceLine, "argumentTypeMismatchSite"),
+                        related=[span_of_line(operation.line, "enclosingOperation")],
+                        invariantRule=(
+                            f"`argument {callReferenceName} {argumentName} {declaredArgumentType} {suppliedValueName}` "
+                            f"declares `{declaredArgumentType}`, but `{targetName}` expects `{expectedType}`"
+                        ),
+                        specAnchor="docs/reference/syntax-inventory.md#argument",
+                        citations=operationCitations,
+                        fixCandidates=[
+                            FixCandidate(
+                                name="useExpectedArgumentType",
+                                shape=f"argument {callReferenceName} {argumentName} {expectedType} {suppliedValueName}",
+                            ),
+                        ],
+                        confidence=Confidence.HIGH,
+                        blocksCompile=True,
+                        effort=Effort.TRIVIAL,
+                        passProvenance="check_argument_type_mismatch",
+                        agentHint="the repeated type on `argument` must match the callee signature",
+                    ))
+                    continue
 
             actualType = valueTypesInScope.get(suppliedValueName)
             if actualType is None:
@@ -7598,23 +10996,23 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 kind="typeIntegrity.argumentTypeMismatch",
                 severity=Severity.ERROR,
                 subjectName=suppliedValueName,
-                subjectKind="argValue",
+                subjectKind="argumentValue",
                 gapEdge="matchingType",
                 intentSlogan="arg value type does not match target signature",
                 primary=span_of_line(sourceLine, "argTypeMismatchSite"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=(
-                    f"`arg {callReferenceName} {argumentName} {suppliedValueName}` "
+                    f"`argument {callReferenceName} {argumentName} {declaredArgumentType or expectedType} {suppliedValueName}` "
                     f"expects type `{expectedType}` (canonical `{resolvedExpected}`); "
                     f"`{suppliedValueName}` is declared `{actualType}` "
                     f"(canonical `{resolvedActual}`)"
                 ),
-                specAnchor="SYNTAX.md#arg",
+                specAnchor="docs/reference/syntax-inventory.md#argument",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
                         name="supplyValueOfExpectedType",
-                        shape=f"arg {callReferenceName} {argumentName} <valueOfType:{expectedType}>",
+                        shape=f"argument {callReferenceName} {argumentName} {expectedType} <valueOfType:{expectedType}>",
                     ),
                     FixCandidate(
                         name="declareAdapterCall",
@@ -7665,9 +11063,9 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
             moduleScopeValueTypes[args[0]] = args[1]
         elif verb == "enumCase" and len(args) >= 2:
             moduleScopeValueTypes[args[1]] = args[0]
-        elif verb == "storage" and len(args) >= 5:
+        elif verb == "storage" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
-        elif verb == "sharedState" and len(args) >= 5:
+        elif verb == "sharedState" and len(args) >= 4:
             moduleScopeValueTypes[args[2]] = args[3]
 
     for operation in facts.base.operations.values():
@@ -7685,7 +11083,7 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                 valueTypesInScope[args[1]] = args[2]
             elif verb in {"const", "var"} and len(args) >= 2:
                 valueTypesInScope[args[0]] = args[1]
-            elif verb == "storage" and len(args) >= 5:
+            elif verb == "storage" and len(args) >= 4:
                 valueTypesInScope[args[2]] = args[3]
             elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 3:
                 valueTypesInScope[args[0]] = args[1]
@@ -7739,10 +11137,10 @@ def check_math_operand_width_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                 argumentName,
             ) = mismatchedArgs[0]
             suggestedTarget: Optional[str] = None
-            if targetName in I64_COMPARISON_TARGETS and actualShape == "signed32":
-                suggestedTarget = I64_COMPARISON_TARGETS[targetName]
-            elif targetName in I32_COMPARISON_TARGETS and actualShape == "signed64":
-                suggestedTarget = I32_COMPARISON_TARGETS[targetName]
+            if targetName in Int64_COMPARISON_TARGETS and actualShape == "signed32":
+                suggestedTarget = Int64_COMPARISON_TARGETS[targetName]
+            elif targetName in Int32_COMPARISON_TARGETS and actualShape == "signed64":
+                suggestedTarget = Int32_COMPARISON_TARGETS[targetName]
             fixCandidates = [
                 FixCandidate(
                     name="makeConversionExplicit",
@@ -7796,18 +11194,133 @@ def _is_integer_literal(token: str) -> bool:
     return bool(stripped) and stripped.isdigit()
 
 
+INTEGER_LITERAL_RANGES: Dict[str, Tuple[int, int]] = {
+    "Int2": (-2, 1),
+    "UInt2": (0, 3),
+    "Int4": (-8, 7),
+    "UInt4": (0, 15),
+    "Int8": (-128, 127),
+    "UInt8": (0, 255),
+    "Int16": (-32768, 32767),
+    "UInt16": (0, 65535),
+    "Int32": (-2147483648, 2147483647),
+    "UInt32": (0, 4294967295),
+    "Int64": (-9223372036854775808, 9223372036854775807),
+    "UInt64": (0, 18446744073709551615),
+    "ByteCount": (-9223372036854775808, 9223372036854775807),
+    "SignedByteCount": (-9223372036854775808, 9223372036854775807),
+    "AddressOffset": (-9223372036854775808, 9223372036854775807),
+    "UnixSecondsSinceEpoch": (-9223372036854775808, 9223372036854775807),
+    "CpuClockTicks": (-9223372036854775808, 9223372036854775807),
+    "FileByteOffset": (-9223372036854775808, 9223372036854775807),
+}
+
+FLOAT_LITERAL_PACK_FORMAT: Dict[str, str] = {
+    "Float16": "e",
+    "Float32": "f",
+    "Float64": "d",
+}
+
+
+def _parse_char_literal(token: str) -> Optional[int]:
+    if len(token) < 3 or not (token.startswith("'") and token.endswith("'")):
+        return None
+    body = token[1:-1]
+    if body == "":
+        return None
+    if body.startswith("\\u{") and body.endswith("}"):
+        hex_body = body[3:-1]
+        if not hex_body:
+            return None
+        try:
+            value = int(hex_body, 16)
+        except ValueError:
+            return None
+    elif body.startswith("\\"):
+        escapes = {
+            "\\0": 0,
+            "\\n": 10,
+            "\\r": 13,
+            "\\t": 9,
+            "\\\\": 92,
+            "\\'": 39,
+            "\\\"": 34,
+        }
+        value = escapes.get(body)
+        if value is None:
+            return None
+    elif len(body) == 1:
+        value = ord(body)
+    else:
+        return None
+    if value < 0 or value > 0x10FFFF:
+        return None
+    if 0xD800 <= value <= 0xDFFF:
+        return None
+    return value
+
+
+def _validate_scalar_literal(typeName: str, token: str) -> Optional[str]:
+    resolvedType = PRIMITIVE_CANONICAL_BY_TYPE.get(typeName, typeName)
+    if resolvedType == "Bool":
+        if token.lower() in {"true", "false", "yes", "no", "1", "0"}:
+            return None
+        return "Bool literals must be one of true/false/yes/no/1/0"
+    if resolvedType == "Char":
+        charValue = _parse_char_literal(token)
+        if charValue is not None:
+            return None
+        if _is_integer_literal(token):
+            rawValue = int(token, 10)
+            if rawValue < 0 or rawValue > 0x10FFFF or 0xD800 <= rawValue <= 0xDFFF:
+                return "Char literals must be Unicode scalar values"
+            return None
+        return "Char literals must be a Unicode scalar integer or a single-quoted character literal"
+    integerRange = INTEGER_LITERAL_RANGES.get(resolvedType)
+    if integerRange is not None:
+        if not _is_integer_literal(token):
+            return None
+        rawValue = int(token, 10)
+        minimum, maximum = integerRange
+        if rawValue < minimum or rawValue > maximum:
+            return f"{resolvedType} literal out of range [{minimum}, {maximum}]"
+        return None
+    packFormat = FLOAT_LITERAL_PACK_FORMAT.get(resolvedType)
+    if packFormat is not None:
+        if not any(marker in token for marker in (".", "e", "E")) and not _is_integer_literal(token):
+            return None
+        try:
+            parsed = float(token)
+        except ValueError:
+            return f"{resolvedType} literal is not a valid floating-point token"
+        try:
+            struct.pack(packFormat, parsed)
+        except OverflowError:
+            return f"{resolvedType} literal overflows the target width"
+        except struct.error:
+            return f"{resolvedType} literal overflows the target width"
+        return None
+    return None
+
+
 def _operation_success_output_type(
+    facts: ExtendedFacts,
     operation: OperationFact,
 ) -> Tuple[Optional[str], Optional[str], Optional[SourceLine]]:
     for sourceLine in operation.lines:
-        if (sourceLine.tokens and not is_comment(sourceLine)
-                and sourceLine.verb == "output" and len(sourceLine.args) >= 2
-                and sourceLine.args[0] == operation.name):
-            if sourceLine.args[1] == "Result":
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        parsedOutput = output_parts(sourceLine)
+        if parsedOutput is not None and parsedOutput[0] == operation.name:
+            outputType = parsedOutput[1]
+            if outputType == "Result":
                 if len(sourceLine.args) >= 3:
-                    return sourceLine.args[2], "returnOk", sourceLine
+                    return sourceLine.args[2], "return ok", sourceLine
                 return None, None, sourceLine
-            return sourceLine.args[1], "returnValue", sourceLine
+            resultType = facts.base.result_types.get(outputType)
+            if resultType is not None:
+                return resultType.ok_type, "return ok", sourceLine
+            return outputType, "return value", sourceLine
     return None, None, None
 
 
@@ -7817,7 +11330,7 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
     _enumReprs, enumCasesByType, enumCaseValuesByType, enumTypeByCase = _enum_context(facts)
 
     for operation in facts.base.operations.values():
-        outputType, expectedReturnVerb, outputLine = _operation_success_output_type(operation)
+        outputType, expectedReturnVerb, outputLine = _operation_success_output_type(facts, operation)
         if outputType is None or expectedReturnVerb is None:
             continue
         enumType = _resolve_type_head(outputType, typeAliases, {})
@@ -7828,9 +11341,12 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         for sourceLine in operation.lines:
             if (not sourceLine.tokens or is_comment(sourceLine)
-                    or sourceLine.verb != expectedReturnVerb or not sourceLine.args):
+                    or return_parts(sourceLine) != (expectedReturnVerb.split()[1], sourceLine.args[1] if sourceLine.verb == "return" and len(sourceLine.args) > 1 else (sourceLine.args[0] if sourceLine.args else None))):
                 continue
-            returnedValue = sourceLine.args[0]
+            parsedReturn = return_parts(sourceLine)
+            if parsedReturn is None or parsedReturn[1] is None:
+                continue
+            returnedValue = parsedReturn[1]
             if returnedValue in validCases:
                 continue
 
@@ -7861,7 +11377,7 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"operation `{operation.name}` returns enum `{enumType}`; "
                     f"`{expectedReturnVerb}` must use one of its enum cases"
                 ),
-                specAnchor="SYNTAX.md#enumCase",
+                specAnchor="docs/reference/syntax-inventory.md#enumCase",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7880,6 +11396,139 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
                     "status domain the enum was created to expose"
                 ),
             ))
+
+    return diagnostics
+
+
+def check_removed_scalar_surface(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        for token in sourceLine.tokens:
+            if token.quoted:
+                continue
+            replacement = REMOVED_PRIMITIVE_SPELLINGS.get(token.text)
+            if replacement is None:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4303",
+                kind="typeSurface.removedPrimitiveSpelling",
+                severity=Severity.ERROR,
+                subjectName=token.text,
+                subjectKind="typeToken",
+                gapEdge="primitiveName",
+                intentSlogan="legacy primitive spelling removed",
+                primary=Span(
+                    path=sourceLine.path,
+                    line=sourceLine.number,
+                    column=token.start + 1,
+                    role="removedPrimitiveToken",
+                ),
+                invariantRule=(
+                    f"`{token.text}` is no longer part of the user-facing primitive surface; "
+                    f"use `{replacement}` instead"
+                ),
+                specAnchor="docs/language/types-values.md#primitive-lowering",
+                fixCandidates=[
+                    FixCandidate(
+                        name="replacePrimitiveSpelling",
+                        shape=f"# replace `{token.text}` with `{replacement}`",
+                        autoApplicable=True,
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_removed_scalar_surface",
+                agentHint=(
+                    "the primitive cutover removed legacy I*/F*/C* spellings from source; "
+                    "rewrite the declaration, argument row, or binding to the semantic scalar name"
+                ),
+            ))
+        if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+            targetName = sourceLine.args[1]
+            replacement = REMOVED_CALL_TARGET_SPELLINGS.get(targetName)
+            if replacement is None:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4304",
+                kind="callTarget.removedLegacySpelling",
+                severity=Severity.ERROR,
+                subjectName=targetName,
+                subjectKind="callTarget",
+                gapEdge="targetName",
+                intentSlogan="legacy call target removed",
+                primary=span_of_line(sourceLine, "callTarget"),
+                invariantRule=(
+                    f"`{targetName}` is no longer part of the source surface; "
+                    f"use `{replacement}` instead"
+                ),
+                specAnchor="docs/reference/call-targets.md#math-targets",
+                fixCandidates=[
+                    FixCandidate(
+                        name="replaceCallTarget",
+                        shape=f"call {sourceLine.args[0]} {replacement}",
+                        autoApplicable=True,
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_removed_scalar_surface",
+                agentHint=(
+                    "the primitive cutover also renamed width-specific math/json targets; "
+                    "update the call target instead of relying on an alias"
+                ),
+            ))
+    return diagnostics
+
+
+def check_scalar_literal_ranges(facts: ExtendedFacts) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
+    rowsToCheck: List[Tuple[str, str, SourceLine, str]] = []
+
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        args = sourceLine.args
+        verb = sourceLine.verb
+        if verb == "storage" and len(args) >= 5:
+            rowsToCheck.append((args[3], args[4], sourceLine, args[2]))
+        elif verb == "memory" and len(args) >= 5 and args[1] in {"mutable", "immutable"}:
+            rowsToCheck.append((args[3], args[4], sourceLine, args[2]))
+        elif verb in {"const", "let", "var", "domainLiteral"} and len(args) >= 3:
+            rowsToCheck.append((args[1], args[2], sourceLine, args[0]))
+        elif verb == "argument" and len(args) >= 4:
+            rowsToCheck.append((args[2], args[3], sourceLine, args[1]))
+
+    for typeName, valueToken, sourceLine, subjectName in rowsToCheck:
+        problem = _validate_scalar_literal(typeName, valueToken)
+        if problem is None:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS4305",
+            kind="typeIntegrity.scalarLiteralRange",
+            severity=Severity.ERROR,
+            subjectName=subjectName,
+            subjectKind="literalBinding",
+            gapEdge="literalRange",
+            intentSlogan="scalar literal out of range",
+            primary=span_of_line(sourceLine, "literalRangeSite"),
+            invariantRule=problem,
+            specAnchor="docs/language/types-values.md#primitive-lowering",
+            confidence=Confidence.HIGH,
+            blocksCompile=True,
+            effort=Effort.LOCAL,
+            passProvenance="check_scalar_literal_ranges",
+            agentHint=(
+                "literal values must fit the declared scalar width exactly; "
+                "widen the declaration or change the literal instead of relying on truncation"
+            ),
+        ))
 
     return diagnostics
 
@@ -7958,7 +11607,7 @@ def check_duplicate_declarations(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"each `{verb}` declaration name must be unique within its scope"
                 + scopeHint
             ),
-            specAnchor=f"SYNTAX.md#{verb}",
+            specAnchor=f"docs/reference/syntax-inventory.md#{verb}",
             fixCandidates=[
                 FixCandidate(
                     name="renameDuplicate",
@@ -8037,7 +11686,7 @@ def check_unguarded_json_access(facts: ExtendedFacts) -> List[Diagnostic]:
                         "JsonAccessError`; install `branchIfError` after `run` "
                         "and before the first use of the cursor"
                     ),
-                    specAnchor="SYNTAX.md#json-cursor-navigation",
+                    specAnchor="docs/reference/syntax-inventory.md#json-cursor-navigation",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8114,7 +11763,7 @@ def check_stale_json_cursor(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"`{mutatorCall.target}` ran on the same JsonDocument; "
                         "reacquire a cursor before reading it again"
                     ),
-                    specAnchor="SYNTAX.md#json-cursor-lifetime",
+                    specAnchor="docs/reference/syntax-inventory.md#json-cursor-lifetime",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8191,7 +11840,7 @@ def check_malformed_json_path(facts: ExtendedFacts) -> List[Diagnostic]:
                 "JsonPath literals accept only `.fieldName` object steps and "
                 "`[index]` array steps with non-negative decimal indices"
             ),
-            specAnchor="SYNTAX.md#JsonPath",
+            specAnchor="docs/reference/syntax-inventory.md#JsonPath",
             fixCandidates=[
                 FixCandidate(
                     name="rewriteJsonPathLiteral",
@@ -8251,7 +11900,7 @@ def check_unescaped_json_string_interpolation(facts: ExtendedFacts) -> List[Diag
                         f"`{formatName}` contains `%s` inside JSON string "
                         "content; interpolated bytes are not JSON-escaped"
                     ),
-                    specAnchor="SYNTAX.md#json.stringify",
+                    specAnchor="docs/reference/syntax-inventory.md#json.stringify",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8307,7 +11956,7 @@ def _deprecated_json_call_diagnostic(
             "json.stringify.<TypeName>, json.parse.<TypeName>, or the "
             "JsonDocument cursor/mutator API"
         ),
-        specAnchor="SYNTAX.md#json-crud-api",
+        specAnchor="docs/reference/syntax-inventory.md#json-crud-api",
         citations=narrative_citations_for_operation(facts, operation.name),
         fixCandidates=[
             FixCandidate(
@@ -8390,9 +12039,1760 @@ def check_deprecated_json_finder_calls(facts: ExtendedFacts) -> List[Diagnostic]
     return diagnostics
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant `{value}`")
+
+
+def _resolve_type_alias_for_json_body(facts: ExtendedFacts, type_name: str) -> str:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while name in aliases and name not in seen:
+        seen.add(name)
+        name = aliases[name]
+    return name
+
+
+def _is_json_text_type_for_json_body(facts: ExtendedFacts, type_name: str) -> bool:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while True:
+        if name in {"JsonText", "String"}:
+            return True
+        if name in seen or name not in aliases:
+            return False
+        seen.add(name)
+        name = aliases[name]
+
+
+def _record_type_for_json_body_lint(facts: ExtendedFacts, type_name: str) -> Optional[str]:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while True:
+        if name in facts.base.records:
+            return name
+        if name in seen or name not in aliases:
+            return None
+        seen.add(name)
+        name = aliases[name]
+
+
+def _json_body_lint_key(facts: ExtendedFacts, record_name: str, field_name: str) -> str:
+    return facts.base.record_json_names.get((record_name, field_name), field_name)
+
+
+def _json_body_lint_kind(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "double"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def _json_body_lint_default(
+    facts: ExtendedFacts,
+    field_type: str,
+    policy: Optional[str],
+) -> bool:
+    if not policy:
+        return False
+    resolved = _resolve_type_alias_for_json_body(facts, field_type)
+    if policy == "empty":
+        return resolved in {"String", "JsonText"}
+    if policy == "null":
+        return resolved in {"String", "JsonText"}
+    if policy == "false":
+        return resolved == "Bool"
+    if policy == "zero":
+        return resolved not in {"String", "JsonText", "Bool"}
+    return False
+
+
+def _validate_json_body_record_lint(
+    facts: ExtendedFacts,
+    json_body: JsonBodyFact,
+    record_name: str,
+    value,
+    path: str = "",
+) -> Optional[Tuple[str, str]]:
+    if not isinstance(value, dict):
+        return (
+            "jsonBodyWrongType",
+            f"`{path or record_name}` expected object for record `{record_name}`, "
+            f"got {_json_body_lint_kind(value)}",
+        )
+    fields = facts.base.records.get(record_name, [])
+    expected_keys = {
+        _json_body_lint_key(facts, record_name, field_name): (field_name, field_type)
+        for field_name, field_type in fields
+    }
+    unknown = sorted(set(value.keys()) - set(expected_keys.keys()))
+    if unknown:
+        return (
+            "jsonBodyUnknownField",
+            f"`{path or record_name}` contains unknown JSON key `{unknown[0]}`",
+        )
+    for field_name, field_type in fields:
+        json_key = _json_body_lint_key(facts, record_name, field_name)
+        field_path = f"{path}.{field_name}" if path else field_name
+        policy = facts.base.record_json_omit_when.get((record_name, field_name))
+        if json_key not in value:
+            if _json_body_lint_default(facts, field_type, policy):
+                continue
+            return (
+                "jsonBodyMissingRequired",
+                f"`{field_path}` is required for record `{record_name}`",
+            )
+        field_value = value[json_key]
+        nested_record = _record_type_for_json_body_lint(facts, field_type)
+        if nested_record is not None:
+            nested = _validate_json_body_record_lint(
+                facts, json_body, nested_record, field_value, field_path)
+            if nested is not None:
+                return nested
+            continue
+        resolved = _resolve_type_alias_for_json_body(facts, field_type)
+        if field_value is None and policy == "null":
+            continue
+        if resolved in {"String", "JsonText"}:
+            if not isinstance(field_value, str):
+                return (
+                    "jsonBodyWrongType",
+                    f"`{field_path}` expected string, got {_json_body_lint_kind(field_value)}",
+                )
+            continue
+        if resolved == "Bool":
+            if not isinstance(field_value, bool):
+                return (
+                    "jsonBodyWrongType",
+                    f"`{field_path}` expected boolean, got {_json_body_lint_kind(field_value)}",
+                )
+            continue
+        if resolved in {"Float64", "Float64", "Float64", "Float64", "Float32", "Float32", "Float32", "Float32", "Float16"}:
+            if isinstance(field_value, bool) or not isinstance(field_value, (int, float)):
+                return (
+                    "jsonBodyWrongType",
+                    f"`{field_path}` expected number, got {_json_body_lint_kind(field_value)}",
+                )
+            continue
+        if isinstance(field_value, bool) or not isinstance(field_value, int):
+            return (
+                "jsonBodyWrongType",
+                f"`{field_path}` expected integer, got {_json_body_lint_kind(field_value)}",
+            )
+    return None
+
+
+def _find_json_body_storage_line(
+    facts: ExtendedFacts,
+    json_body: JsonBodyFact,
+) -> Optional[SourceLine]:
+    for sourceLine in reversed(facts.base.lines):
+        if sourceLine.number >= json_body.line.number:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        if sourceLine.args[2] == json_body.name:
+            return sourceLine
+    return None
+
+
+def _json_body_diagnostic(
+    json_body: JsonBodyFact,
+    kind: str,
+    slogan: str,
+    rule: str,
+    related: Optional[List[Span]] = None,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T0_PARSE,
+        code="SS3626",
+        kind=f"json.{kind}",
+        severity=Severity.ERROR,
+        subjectName=json_body.name,
+        subjectKind="jsonBody",
+        gapEdge=kind,
+        intentSlogan=slogan,
+        primary=span_of_line(json_body.line, "jsonBodyDeclaration"),
+        related=related or [],
+        invariantRule=rule,
+        specAnchor="docs/reference/syntax-inventory.md#jsonBody",
+        fixCandidates=[
+            FixCandidate(
+                name="repairJsonBodyLiteral",
+                shape=(
+                    f"storage module immutable {json_body.name or '<name>'} "
+                    "JsonText\n"
+                    f"jsonBody {json_body.name or '<name>'}\n"
+                    "  {\"ok\":true}"
+                ),
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_json_body_literals",
+        agentHint=(
+            "jsonBody is indentation-sensitive; keep the JSON island indented "
+            "and bind it to a preceding immutable JsonText storage row"
+        ),
+    )
+
+
+def check_json_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3626: statically validate jsonBody islands the same way semsc does."""
+    diagnostics: List[Diagnostic] = []
+    seen_targets: Dict[str, JsonBodyFact] = {}
+
+    for json_body in facts.base.json_bodies:
+        if not json_body.name:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyMissingName",
+                "jsonBody missing name",
+                "`jsonBody` requires exactly one storage target name",
+            ))
+            continue
+
+        prior = seen_targets.get(json_body.name)
+        if prior is not None:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "duplicateJsonBody",
+                "duplicate jsonBody",
+                "a storage declaration may be bound by at most one jsonBody island",
+                [span_of_line(prior.line, "previousJsonBody")],
+            ))
+            continue
+        seen_targets[json_body.name] = json_body
+
+        storage_line = _find_json_body_storage_line(facts, json_body)
+        if storage_line is None:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "orphanJsonBody",
+                "jsonBody missing storage",
+                "`jsonBody NAME` requires a preceding `storage local|module immutable NAME TYPE` row",
+            ))
+            continue
+
+        storage_args = storage_line.args
+        scope, mutability = storage_args[0], storage_args[1]
+        storage_type = storage_args[3]
+        related = [span_of_line(storage_line, "jsonBodyStorageTarget")]
+        if scope not in {"local", "module"}:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyUnsupportedScope",
+                "unsupported jsonBody scope",
+                "jsonBody can only bind local or module storage",
+                related,
+            ))
+            continue
+        if mutability != "immutable":
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyMutableTarget",
+                "jsonBody target mutable",
+                "jsonBody can only bind immutable storage",
+                related,
+            ))
+            continue
+        if len(storage_args) > 4:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyTargetAlreadyValued",
+                "jsonBody target valued",
+                "jsonBody target storage must not already have an inline value",
+                related,
+            ))
+            continue
+
+        if not json_body.body_lines or not any(text.strip() for text, _ in json_body.body_lines):
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "emptyJsonBody",
+                "empty jsonBody",
+                "jsonBody requires at least one indented JSON line",
+                related,
+            ))
+            continue
+
+        body_text = "\n".join(text for text, _ in json_body.body_lines)
+        parsed_json = None
+        try:
+            parsed_json = json.loads(body_text, parse_constant=_reject_json_constant)
+        except json.JSONDecodeError as exc:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "invalidJsonBody",
+                "invalid JSON body",
+                (
+                    "jsonBody islands must be strict RFC 8259 JSON; "
+                    f"invalid token at island line {exc.lineno} column {exc.colno}: {exc.msg}"
+                ),
+                related,
+            ))
+        except ValueError as exc:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "invalidJsonBody",
+                "invalid JSON body",
+                f"jsonBody islands must be strict RFC 8259 JSON: {exc}",
+                related,
+            ))
+            continue
+
+        if _is_json_text_type_for_json_body(facts, storage_type):
+            continue
+
+        record_type = _record_type_for_json_body_lint(facts, storage_type)
+        if record_type is None:
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                "jsonBodyUnsupportedType",
+                "unsupported jsonBody type",
+                "jsonBody storage must be JsonText or a declared record type",
+                related,
+            ))
+            continue
+        record_problem = _validate_json_body_record_lint(
+            facts, json_body, record_type, parsed_json)
+        if record_problem is not None:
+            kind, rule = record_problem
+            diagnostics.append(_json_body_diagnostic(
+                json_body,
+                kind,
+                "record jsonBody mismatch",
+                rule,
+                related,
+            ))
+
+    return diagnostics
+
+
+def _is_sql_text_type_for_sql_body(facts: ExtendedFacts, type_name: str) -> bool:
+    name = type_name
+    seen: Set[str] = set()
+    aliases: Dict[str, str] = dict(BUILTIN_TYPE_ALIASES)
+    aliases.update(facts.base.type_aliases)
+    while True:
+        if name == "SqlText":
+            return True
+        if name in seen or name not in aliases:
+            return False
+        seen.add(name)
+        name = aliases[name]
+
+
+def _find_sql_body_storage_line(
+    facts: ExtendedFacts,
+    sql_body: SqlBodyFact,
+) -> Optional[SourceLine]:
+    for sourceLine in reversed(facts.base.lines):
+        if sourceLine.number >= sql_body.line.number:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        if sourceLine.args[2] == sql_body.name:
+            return sourceLine
+    return None
+
+
+def _sql_body_text(sql_body: SqlBodyFact) -> str:
+    raw_lines = [text for text, _line in sql_body.body_lines]
+    while raw_lines and not raw_lines[0].strip():
+        raw_lines.pop(0)
+    while raw_lines and not raw_lines[-1].strip():
+        raw_lines.pop()
+    return "\n".join(raw_lines).rstrip()
+
+
+def _sql_first_verb_lint(sql_text: str) -> Optional[str]:
+    index = 0
+    while index < len(sql_text):
+        if sql_text[index].isspace():
+            index += 1
+            continue
+        if sql_text.startswith("--", index):
+            newline = sql_text.find("\n", index + 2)
+            if newline == -1:
+                return None
+            index = newline + 1
+            continue
+        if sql_text.startswith("/*", index):
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return None
+            index = end + 2
+            continue
+        if sql_text[index].isalpha():
+            start = index
+            while index < len(sql_text) and (sql_text[index].isalpha() or sql_text[index] == "_"):
+                index += 1
+            return sql_text[start:index].upper()
+        return None
+    return None
+
+
+def _strip_sql_leading_comments_lint(sql_text: str) -> str:
+    index = 0
+    while index < len(sql_text):
+        if sql_text[index].isspace():
+            index += 1
+            continue
+        if sql_text.startswith("--", index):
+            newline = sql_text.find("\n", index + 2)
+            if newline == -1:
+                return ""
+            index = newline + 1
+            continue
+        if sql_text.startswith("/*", index):
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return ""
+            index = end + 2
+            continue
+        break
+    return sql_text[index:].lstrip()
+
+
+def _scan_sql_text_lint(sql_text: str) -> Tuple[int, int, Optional[str]]:
+    placeholder_count = 0
+    statement_count = 0
+    has_statement_content = False
+    index = 0
+    while index < len(sql_text):
+        ch = sql_text[index]
+        next_ch = sql_text[index + 1] if index + 1 < len(sql_text) else ""
+        if ch.isspace():
+            index += 1
+            continue
+        if ch == "-" and next_ch == "-":
+            index += 2
+            while index < len(sql_text) and sql_text[index] != "\n":
+                index += 1
+            continue
+        if ch == "/" and next_ch == "*":
+            end = sql_text.find("*/", index + 2)
+            if end == -1:
+                return placeholder_count, statement_count, "unterminated SQL block comment"
+            index = end + 2
+            continue
+        if ch == ";":
+            if has_statement_content:
+                statement_count += 1
+                has_statement_content = False
+            index += 1
+            continue
+        if ch == "?":
+            placeholder_count += 1
+            has_statement_content = True
+            index += 1
+            while index < len(sql_text) and sql_text[index].isdigit():
+                index += 1
+            continue
+        if ch in {"'", '"', "`"}:
+            quote = ch
+            has_statement_content = True
+            index += 1
+            while index < len(sql_text):
+                if sql_text[index] == quote:
+                    if quote in {"'", '"'} and index + 1 < len(sql_text) and sql_text[index + 1] == quote:
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            else:
+                return placeholder_count, statement_count, "unterminated SQL quoted text"
+            continue
+        if ch == "[":
+            has_statement_content = True
+            index += 1
+            while index < len(sql_text) and sql_text[index] != "]":
+                index += 1
+            if index >= len(sql_text):
+                return placeholder_count, statement_count, "unterminated SQL bracket identifier"
+            index += 1
+            continue
+        has_statement_content = True
+        index += 1
+    if has_statement_content:
+        statement_count += 1
+    return placeholder_count, statement_count, None
+
+
+SQL_STATEMENT_START_VERBS: frozenset = frozenset({
+    "ALTER", "BEGIN", "COMMIT", "CREATE", "DELETE", "DROP", "INSERT",
+    "PRAGMA", "REPLACE", "ROLLBACK", "SELECT", "UPDATE", "WITH",
+})
+
+_SQL_REDUNDANT_CASE_RE = re.compile(
+    r"\bCASE\s+WHEN\s+.+?\s+THEN\s+(?P<then>.*?)\s+ELSE\s+(?P<else>.*?)\s+END\b",
+    re.IGNORECASE,
+)
+
+_SQL_NARROW_EXISTENCE_RE = re.compile(
+    r"(?is)^SELECT\s+(?:1\b|EXISTS\s*\()"
+)
+
+_SQL_WRITE_TABLE_RE = re.compile(
+    r"(?is)^(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|"
+    r"UPDATE)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+_SQL_SELECT_TABLE_RE = re.compile(
+    r"(?is)^SELECT\b.+?\bFROM\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+_SQL_WRITE_STATEMENT_VERBS: frozenset = frozenset({
+    "DELETE",
+    "INSERT",
+    "REPLACE",
+    "UPDATE",
+})
+
+
+def _normalize_sql_expression_lint(expression: str) -> str:
+    return re.sub(r"\s+", " ", expression.strip()).lower()
+
+
+def _redundant_sql_cases_lint(sql_text: str) -> List[Tuple[str, str]]:
+    redundant_cases: List[Tuple[str, str]] = []
+    for match in _SQL_REDUNDANT_CASE_RE.finditer(sql_text):
+        then_expr = _normalize_sql_expression_lint(match.group("then"))
+        else_expr = _normalize_sql_expression_lint(match.group("else"))
+        if then_expr and then_expr == else_expr:
+            redundant_cases.append((match.group(0), then_expr))
+    return redundant_cases
+
+
+def _sql_select_is_narrow_existence_probe_lint(sql_text: str) -> bool:
+    return bool(_SQL_NARROW_EXISTENCE_RE.match(
+        _strip_sql_leading_comments_lint(sql_text)))
+
+
+def _sql_write_table_lint(sql_text: str) -> Optional[str]:
+    match = _SQL_WRITE_TABLE_RE.match(_strip_sql_leading_comments_lint(sql_text))
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _sql_select_table_lint(sql_text: str) -> Optional[str]:
+    match = _SQL_SELECT_TABLE_RE.match(_strip_sql_leading_comments_lint(sql_text))
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _sql_has_returning_lint(sql_text: str) -> bool:
+    return bool(re.search(r"(?is)\bRETURNING\b", sql_text))
+
+
+def _sql_uses_last_insert_rowid_lint(sql_text: str) -> bool:
+    return bool(re.search(r"(?is)\blast_insert_rowid\s*\(", sql_text))
+
+
+def _local_sql_body_texts(facts: ExtendedFacts) -> Dict[str, str]:
+    return {sql_body.name: _sql_body_text(sql_body)
+            for sql_body in facts.base.sql_bodies}
+
+
+def _sql_body_text_for_name_lint(
+    local_sql_bodies: Dict[str, str],
+    sql_name: str,
+) -> Optional[str]:
+    sql_text = local_sql_bodies.get(sql_name)
+    if sql_text is not None:
+        return sql_text
+    if "." in sql_name:
+        return local_sql_bodies.get(sql_name.rsplit(".", 1)[1])
+    return None
+
+
+def _sql_is_write_statement_lint(sql_text: str) -> bool:
+    return _sql_first_verb_lint(sql_text) in _SQL_WRITE_STATEMENT_VERBS
+
+
+def _sqlite_statement_has_column_reads(
+    operation_calls: Dict[str, CallFact],
+    statement_names: Set[str],
+) -> bool:
+    if not statement_names:
+        return False
+    for call_fact in operation_calls.values():
+        if not call_fact.target.startswith("sqlite.column"):
+            continue
+        if call_arg_value(call_fact, "statement") in statement_names:
+            return True
+    return False
+
+
+def _sqlite_statement_passed_to_helper(
+    operation_calls: Dict[str, CallFact],
+    statement_names: Set[str],
+) -> bool:
+    if not statement_names:
+        return False
+    ignored_targets = {
+        "sqlite.bindBlob",
+        "sqlite.bindDouble",
+        "sqlite.bindInt",
+        "sqlite.bindInt64",
+        "sqlite.bindNull",
+        "sqlite.bindText",
+        "sqlite.finalizeStatement",
+        "sqlite.resetStatement",
+        "sqlite.stepStatement",
+    }
+    for call_fact in operation_calls.values():
+        if (call_fact.target.startswith("sqlite.column")
+                or call_fact.target in ignored_targets):
+            continue
+        for values in call_arg_values(call_fact).values():
+            if any(value in statement_names for value in values):
+                return True
+    return False
+
+
+def _sql_body_diagnostic(
+    sql_body: SqlBodyFact,
+    kind: str,
+    slogan: str,
+    rule: str,
+    related: Optional[List[Span]] = None,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T0_PARSE,
+        code="SS3627",
+        kind=f"sql.{kind}",
+        severity=Severity.ERROR,
+        subjectName=sql_body.name,
+        subjectKind="sqlBody",
+        gapEdge=kind,
+        intentSlogan=slogan,
+        primary=span_of_line(sql_body.line, "sqlBodyDeclaration"),
+        related=related or [],
+        invariantRule=rule,
+        specAnchor="docs/reference/syntax-inventory.md#sqlBody",
+        fixCandidates=[
+            FixCandidate(
+                name="repairSqlBodyLiteral",
+                shape=(
+                    f"storage module immutable {sql_body.name or '<name>'} SqlText\n"
+                    f"sql body {sql_body.name or '<name>'}\n"
+                    "  SELECT 1"
+                ),
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=True,
+        effort=Effort.LOCAL,
+        passProvenance="check_sql_body_literals",
+        agentHint=(
+            "sql body is indentation-sensitive; dynamic values must use ? "
+            "placeholders plus sqlite.bind* rows, never interpolation holes"
+        ),
+    )
+
+
+def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3627: statically validate sql body islands the same way semsc does."""
+    diagnostics: List[Diagnostic] = []
+    seen_targets: Dict[str, SqlBodyFact] = {}
+
+    for sql_body in facts.base.sql_bodies:
+        if not sql_body.name:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyMissingName",
+                "sql body missing name",
+                "`sql body` requires exactly one storage target name",
+            ))
+            continue
+
+        prior = seen_targets.get(sql_body.name)
+        if prior is not None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "duplicateSqlBody",
+                "duplicate sql body",
+                "a storage declaration may be bound by at most one sql body island",
+                [span_of_line(prior.line, "previousSqlBody")],
+            ))
+            continue
+        seen_targets[sql_body.name] = sql_body
+
+        storage_line = _find_sql_body_storage_line(facts, sql_body)
+        if storage_line is None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "orphanSqlBody",
+                "sql body missing storage",
+                "`sql body NAME` requires a preceding `storage module immutable NAME SqlText` row",
+            ))
+            continue
+
+        storage_args = storage_line.args
+        scope, mutability = storage_args[0], storage_args[1]
+        storage_type = storage_args[3]
+        related = [span_of_line(storage_line, "sqlBodyStorageTarget")]
+        if scope != "module":
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyUnsupportedScope",
+                "unsupported sql body scope",
+                "sql body can only bind module-scope storage",
+                related,
+            ))
+            continue
+        if mutability != "immutable":
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyMutableTarget",
+                "sql body target mutable",
+                "sql body can only bind immutable storage",
+                related,
+            ))
+            continue
+        if len(storage_args) > 4:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyTargetAlreadyValued",
+                "sql body target valued",
+                "sql body target storage must not already have an inline value",
+                related,
+            ))
+            continue
+        if not _is_sql_text_type_for_sql_body(facts, storage_type):
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyUnsupportedType",
+                "unsupported sql body type",
+                "sql body storage must be SqlText",
+                related,
+            ))
+            continue
+
+        sql_text = _sql_body_text(sql_body)
+        if not sql_text.strip():
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "emptySqlBody",
+                "empty sql body",
+                "sql body requires at least one indented SQL line",
+                related,
+            ))
+            continue
+        if "\0" in sql_text:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "invalidSqlBody",
+                "invalid SQL body",
+                "sql body must not contain NUL bytes",
+                related,
+            ))
+            continue
+        dynamic_hole = re.search(r"\{[^{}\n]*\}", sql_text)
+        if dynamic_hole is not None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "sqlBodyDynamicHole",
+                "SQL interpolation rejected",
+                "sql body does not allow interpolation holes; use ? placeholders and sqlite.bind* rows",
+                related,
+            ))
+            continue
+        if _sql_first_verb_lint(sql_text) is None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "invalidSqlBody",
+                "invalid SQL body",
+                "sql body must start with a SQL statement verb after whitespace/comments",
+                related,
+            ))
+            continue
+        _placeholder_count, _statement_count, scan_problem = _scan_sql_text_lint(sql_text)
+        if scan_problem is not None:
+            diagnostics.append(_sql_body_diagnostic(
+                sql_body,
+                "invalidSqlBody",
+                "invalid SQL body",
+                f"sql body contains invalid SQL text: {scan_problem}",
+                related,
+            ))
+
+    return diagnostics
+
+
+def _inline_sql_literal_diagnostic(
+    source_line: SourceLine,
+    name: str,
+    type_name: str,
+    sql_text: str,
+) -> Diagnostic:
+    return Diagnostic(
+        tier=Tier.T3_REFINEMENT,
+        code="SS3628",
+        kind="sql.inlineLiteral",
+        severity=Severity.WARNING,
+        subjectName=name,
+        subjectKind="storage",
+        gapEdge="sqlBody",
+        intentSlogan="inline SQL literal",
+        primary=span_of_line(source_line, "sqlStorageLiteral"),
+        invariantRule=(
+            "executable SQL should use `SqlText` plus a `sql body` island "
+            "so tools can validate statement shape, placeholders, and SQL text "
+            "without string escaping"
+        ),
+        specAnchor="docs/reference/syntax-inventory.md#sqlBody",
+        fixCandidates=[
+            FixCandidate(
+                name="moveSqlToBodyIsland",
+                shape=(
+                    f"storage module immutable {name} SqlText\n"
+                    f"sql body {name}\n"
+                    f"  {sql_text}"
+                ),
+            ),
+        ],
+        confidence=Confidence.HIGH,
+        blocksCompile=False,
+        effort=Effort.LOCAL,
+        passProvenance="check_inline_sql_literals",
+        agentHint=(
+            f"`{type_name}` inline SQL still compiles in permissive code, "
+            "but strict executable code expects SqlText bound by sql body or "
+            "a trusted external literalSource asset"
+        ),
+    )
+
+
+def check_inline_sql_literals(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3628 — SQL written as an escaped string literal should migrate to
+    `SqlText` plus a `sql body` island. This is a tooling/perf rule: body
+    islands let the compiler and linter scan SQL once instead of treating
+    it as arbitrary bytes.
+    """
+    diagnostics: List[Diagnostic] = []
+    for source_line in facts.base.lines:
+        if source_line.verb != "storage" or len(source_line.args) < 5:
+            continue
+        scope, mutability, name, type_name, value = source_line.args[:5]
+        if mutability != "immutable":
+            continue
+        if type_name not in {"String", "SqlText"}:
+            continue
+        first_verb = _sql_first_verb_lint(value)
+        if first_verb not in SQL_STATEMENT_START_VERBS:
+            continue
+        diagnostics.append(_inline_sql_literal_diagnostic(
+            source_line, name, type_name, value))
+    return diagnostics
+
+
+def check_redundant_sql_case_branches(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3629 — `CASE WHEN ... THEN X ELSE X END` inside SQL is dead work.
+    It burns SQLite parse/VM cycles and often means obsolete bind parameters
+    stayed behind after a refactor.
+    """
+    diagnostics: List[Diagnostic] = []
+    for sql_body in facts.base.sql_bodies:
+        for body_line, line_number in sql_body.body_lines:
+            if "CASE" not in body_line.upper():
+                continue
+            redundant_cases = _redundant_sql_cases_lint(body_line)
+            if not redundant_cases:
+                continue
+            _case_text, expression = redundant_cases[0]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3629",
+                kind="sql.redundantCaseBranches",
+                severity=Severity.WARNING,
+                subjectName=sql_body.name,
+                subjectKind="sqlBody",
+                gapEdge="redundantCase",
+                intentSlogan="redundant SQL CASE",
+                primary=Span(
+                    facts.base.path,
+                    line_number,
+                    1,
+                    "sqlBodyLine",
+                ),
+                related=[span_of_line(sql_body.line, "sqlBodyDeclaration")],
+                invariantRule=(
+                    "`CASE WHEN ... THEN X ELSE X END` must be simplified to "
+                    "`X`; if both branches are the same, the condition and any "
+                    "bind parameters used only by it are dead work"
+                ),
+                specAnchor="docs/optimization-guide.md#sql-body",
+                fixCandidates=[
+                    FixCandidate(
+                        name="simplifyRedundantSqlCase",
+                        shape=f"# replace the redundant CASE expression with `{expression}`",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_redundant_sql_case_branches",
+                agentHint=(
+                    "After simplifying the SQL, re-check sqlite.bind* "
+                    "parameter indexes; numbered placeholders often need to "
+                    "be compacted."
+                ),
+            ))
+    return diagnostics
+
+
 # ==========================================================================
 # SS36xx — webserver discipline
 # ==========================================================================
+
+def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3639 - SQL bodies should not depend on last_insert_rowid().
+
+    The SQL function is connection-global mutable state. In generated handler
+    code it usually means a previous INSERT produced an id that should have
+    been returned directly with RETURNING and then passed as an explicit bind.
+    The native sqlite.lastInsertRowId call has the same hidden connection-state
+    dependency, so the rule catches both forms.
+    """
+    diagnostics: List[Diagnostic] = []
+    for sql_body in facts.base.sql_bodies:
+        sql_text = _sql_body_text(sql_body)
+        if not _sql_uses_last_insert_rowid_lint(sql_text):
+            continue
+        body_line = next((
+            line for line in sql_body.body_lines
+            if re.search(r"(?i)\blast_insert_rowid\s*\(", line[0])
+        ), None)
+        if body_line is None:
+            primary = span_of_line(sql_body.line, "sqlBodyDeclaration")
+        else:
+            _text, line_number = body_line
+            primary = Span(facts.base.path, line_number, 1, "lastInsertRowid")
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3639",
+            kind="sql.lastInsertRowidFunction",
+            severity=Severity.WARNING,
+            subjectName=sql_body.name,
+            subjectKind="sqlBody",
+            gapEdge="connectionGlobalGeneratedId",
+            intentSlogan="connection-global last_insert_rowid()",
+            primary=primary,
+            related=[span_of_line(sql_body.line, "sqlBodyDeclaration")],
+            invariantRule=(
+                "SQL bodies must not call `last_insert_rowid()` to recover "
+                "generated ids from a previous statement; use `RETURNING` on "
+                "the INSERT and bind the returned id explicitly into later "
+                "statements"
+            ),
+            specAnchor="docs/optimization-guide.md#sqlite-returning",
+            fixCandidates=[
+                FixCandidate(
+                    name="returnGeneratedId",
+                    shape=(
+                        "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
+                        "# read sqlite.column* from the INSERT statement and bind it explicitly"
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_sql_last_insert_rowid_function",
+            agentHint=(
+                "`last_insert_rowid()` hides a dependency on connection "
+                "state. Return the generated identifier from the write "
+                "statement and pass it through a named SemanticScript value."
+            ),
+        ))
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.lastInsertRowId":
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3639",
+                kind="sqlite.lastInsertRowIdCall",
+                severity=Severity.WARNING,
+                subjectName=call_fact.name,
+                subjectKind="call",
+                gapEdge="connectionGlobalGeneratedId",
+                intentSlogan="connection-global sqlite.lastInsertRowId",
+                primary=span_of_line(call_fact.line, "lastInsertRowIdCall"),
+                related=[],
+                invariantRule=(
+                    "Code must not call `sqlite.lastInsertRowId` to recover "
+                    "generated ids from a previous statement; use `RETURNING` "
+                    "on the INSERT and bind the returned id explicitly into "
+                    "later statements"
+                ),
+                specAnchor="docs/optimization-guide.md#sqlite-returning",
+                fixCandidates=[
+                    FixCandidate(
+                        name="returnGeneratedId",
+                        shape=(
+                            "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
+                            "# read sqlite.column* from the INSERT statement and bind it explicitly"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_sql_last_insert_rowid_function",
+                agentHint=(
+                    "`sqlite.lastInsertRowId` hides a dependency on connection "
+                    "state. Return the generated identifier from the write "
+                    "statement and pass it through a named SemanticScript value."
+                ),
+            ))
+    return diagnostics
+
+
+def check_wide_sql_existence_probe(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3631 - SQLite existence probes should select only existence.
+
+    When a statement is prepared, stepped, and never has any column read,
+    the caller is using it as a boolean row-exists probe. Selecting a full
+    row in that shape burns SQLite VM work and can keep obsolete column
+    dependencies alive after refactors.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = local_sql_bodies.get(sql_name)
+            if sql_text is None:
+                continue
+            if _sql_first_verb_lint(sql_text) != "SELECT":
+                continue
+            if _sql_select_is_narrow_existence_probe_lint(sql_text):
+                continue
+            statement_names = call_success_value_names(call_fact)
+            if _sqlite_statement_has_column_reads(operation_calls, statement_names):
+                continue
+            if _sqlite_statement_passed_to_helper(operation_calls, statement_names):
+                continue
+            sql_arg_line = next((
+                arg_line for arg_line in call_fact.arg_lines
+                if argument_parts(arg_line) is not None
+                and argument_parts(arg_line)[1] == "sql"
+            ), call_fact.line)
+            related = [span_of_line(call_fact.line, "prepareStatement")]
+            matching_body = next((
+                sql_body for sql_body in facts.base.sql_bodies
+                if sql_body.name == sql_name
+            ), None)
+            if matching_body is not None:
+                related.append(span_of_line(
+                    matching_body.line, "sqlBodyDeclaration"))
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3631",
+                kind="sql.wideExistenceProbe",
+                severity=Severity.WARNING,
+                subjectName=call_fact.name,
+                subjectKind="call",
+                gapEdge="unusedSqlProjection",
+                intentSlogan="wide SQL existence probe",
+                primary=Span(
+                    facts.base.path,
+                    sql_arg_line.number,
+                    sql_arg_line.column,
+                    "sqlArgument",
+                ),
+                related=related,
+                invariantRule=(
+                    "A prepared SELECT whose statement is only stepped and "
+                    "never read with sqlite.column* must use `SELECT 1` or "
+                    "`SELECT EXISTS(...)` so existence checks do not project "
+                    "unused row data"
+                ),
+                specAnchor="docs/optimization-guide.md#sql-existence-probes",
+                fixCandidates=[
+                    FixCandidate(
+                        name="selectOnlyExistence",
+                        shape=(
+                            "storage module immutable NAME SqlText\n"
+                            "sql body NAME\n"
+                            "  SELECT 1 FROM table_name WHERE key = ? LIMIT 1"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_wide_sql_existence_probe",
+                agentHint=(
+                    "If the handler only compares sqlite.stepStatement to "
+                    "the row status, replace the SQL projection with a "
+                    "narrow existence query. If a helper reads the columns, "
+                    "keep the full projection and make the data flow visible."
+                ),
+            ))
+    return diagnostics
+
+
+def check_sql_write_then_read_returning_opportunity(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3632 - SQLite writes followed by scalar reads should use RETURNING.
+
+    A write statement immediately followed by a select on the same table
+    usually means the handler paid for a second prepare/bind/step cycle to
+    retrieve data SQLite could have returned from the write.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        prior_writes: Dict[str, Tuple[CallFact, str]] = {}
+        for call_fact in sorted(
+            operation_calls.values(),
+            key=lambda candidate: candidate.line.number,
+        ):
+            if call_fact.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = local_sql_bodies.get(sql_name)
+            if sql_text is None:
+                continue
+            write_table = _sql_write_table_lint(sql_text)
+            if write_table is not None:
+                if not _sql_has_returning_lint(sql_text):
+                    prior_writes.setdefault(write_table, (call_fact, sql_name))
+                continue
+            select_table = _sql_select_table_lint(sql_text)
+            if select_table is None or select_table not in prior_writes:
+                continue
+            write_call, write_sql_name = prior_writes[select_table]
+            sql_arg_line = next((
+                arg_line for arg_line in call_fact.arg_lines
+                if argument_parts(arg_line) is not None
+                and argument_parts(arg_line)[1] == "sql"
+            ), call_fact.line)
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3632",
+                kind="sql.writeThenReadReturningOpportunity",
+                severity=Severity.WARNING,
+                subjectName=call_fact.name,
+                subjectKind="call",
+                gapEdge="avoidableSqlRoundTrip",
+                intentSlogan="write followed by read",
+                primary=Span(
+                    facts.base.path,
+                    sql_arg_line.number,
+                    sql_arg_line.column,
+                    "selectSqlArgument",
+                ),
+                related=[
+                    span_of_line(write_call.line, "writePrepareStatement"),
+                    span_of_line(call_fact.line, "selectPrepareStatement"),
+                ],
+                invariantRule=(
+                    "When SQLite code writes a row and then selects from the "
+                    "same table in the same operation, prefer a write SQL "
+                    "with `RETURNING` so the handler avoids an extra "
+                    "prepare/bind/step/finalize round trip"
+                ),
+                specAnchor="docs/optimization-guide.md#sqlite-returning",
+                fixCandidates=[
+                    FixCandidate(
+                        name="foldReadIntoWriteReturning",
+                        shape=(
+                            f"# add RETURNING columns to `{write_sql_name}` "
+                            f"and read them from `{write_call.name}`"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.MEDIUM,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_sql_write_then_read_returning_opportunity",
+                agentHint=(
+                    "Keep a separate SELECT only when the read intentionally "
+                    "observes state changed by triggers or other statements; "
+                    "otherwise bind sqlite.column* from the write statement's "
+                    "RETURNING row."
+                ),
+            ))
+    return diagnostics
+
+
+def check_sqlite_multiple_writes_have_transaction(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3635 - Multiple SQLite writes in one operation should be atomic.
+
+    A multi-write request path without an explicit BEGIN/COMMIT burns one
+    implicit transaction per write and can leave partial state committed when a
+    later step fails. The rule is intentionally local: if an operation owns two
+    or more prepared write steps, it must make the transaction boundary visible.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        write_steps: List[Tuple[CallFact, CallFact, str]] = []
+        for prepare_call in operation_calls.values():
+            if prepare_call.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None or not _sql_is_write_statement_lint(sql_text):
+                continue
+            statement_names = call_success_value_names(prepare_call)
+            if not statement_names:
+                continue
+            for step_call in operation_calls.values():
+                if step_call.target != "sqlite.stepStatement":
+                    continue
+                if call_arg_value(step_call, "statement") not in statement_names:
+                    continue
+                write_steps.append((prepare_call, step_call, sql_name))
+
+        if len(write_steps) < 2:
+            continue
+
+        has_begin = False
+        has_commit = False
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.exec":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None:
+                continue
+            verb = _sql_first_verb_lint(sql_text)
+            if verb in {"BEGIN", "SAVEPOINT"}:
+                has_begin = True
+            elif verb in {"COMMIT", "RELEASE"}:
+                has_commit = True
+
+        if has_begin and has_commit:
+            continue
+
+        first_prepare, first_step, first_sql_name = write_steps[0]
+        _second_prepare, second_step, second_sql_name = write_steps[1]
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3635",
+            kind="sqlite.multipleWritesWithoutTransaction",
+            severity=Severity.WARNING,
+            subjectName=operation.name,
+            subjectKind="operation",
+            gapEdge="transactionBoundary",
+            intentSlogan="multiple SQLite writes without transaction",
+            primary=span_of_line(second_step.line, "secondWriteStep"),
+            related=[
+                span_of_line(first_prepare.line, "firstWritePrepare"),
+                span_of_line(first_step.line, "firstWriteStep"),
+            ],
+            invariantRule=(
+                "An operation that steps two or more prepared INSERT/UPDATE/"
+                "DELETE/REPLACE statements must make a SQLite BEGIN and "
+                "COMMIT visible in the same operation so the writes execute "
+                "atomically and avoid per-statement implicit transactions"
+            ),
+            specAnchor="docs/optimization-guide.md#sqlite-transactions",
+            fixCandidates=[
+                FixCandidate(
+                    name="wrapWritesInTransaction",
+                    shape=(
+                        "call beginTxCall sqlite.exec\n"
+                        "argument beginTxCall sql SqlText sqlBeginTransaction\n"
+                        "# write statements\n"
+                        "call commitTxCall sqlite.exec\n"
+                        "argument commitTxCall sql SqlText sqlCommitTransaction"
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_sqlite_multiple_writes_have_transaction",
+            agentHint=(
+                f"`{first_sql_name}` and `{second_sql_name}` are both "
+                "stepped as writes. Add visible BEGIN/COMMIT rows, or split "
+                "the helper so a single caller-owned transaction is explicit."
+            ),
+        ))
+    return diagnostics
+
+
+_SQLITE_RETURNING_DRAIN_TARGETS: frozenset = frozenset({
+    "sqlite.finalizeStatement",
+    "sqlite.resetStatement",
+    "sqlite.stepStatement",
+})
+
+
+def check_sqlite_returning_statement_drained_before_commit(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3636 - RETURNING statements must be drained before COMMIT.
+
+    SQLite keeps a statement active while a RETURNING row is available. If a
+    handler reads columns from that row and immediately commits, COMMIT can
+    fail with a busy/active-statement error. A second step, reset, or explicit
+    finalize before COMMIT completes the statement and keeps the transaction
+    path deterministic.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        returning_statements: Dict[str, Tuple[CallFact, str]] = {}
+        for prepare_call in operation_calls.values():
+            if prepare_call.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None or not _sql_has_returning_lint(sql_text):
+                continue
+            for statement_name in call_success_value_names(prepare_call):
+                returning_statements[statement_name] = (prepare_call, sql_name)
+        if not returning_statements:
+            continue
+
+        commit_calls: List[CallFact] = []
+        for call_fact in operation_calls.values():
+            if call_fact.target != "sqlite.exec":
+                continue
+            sql_name = call_arg_value(call_fact, "sql")
+            if sql_name is None:
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None:
+                continue
+            if _sql_first_verb_lint(sql_text) in {"COMMIT", "RELEASE"}:
+                commit_calls.append(call_fact)
+        if not commit_calls:
+            continue
+
+        for statement_name, (prepare_call, sql_name) in returning_statements.items():
+            column_reads = sorted(
+                (
+                    call_fact for call_fact in operation_calls.values()
+                    if call_fact.target.startswith("sqlite.column")
+                    and call_arg_value(call_fact, "statement") == statement_name
+                ),
+                key=lambda call_fact: call_fact.line.number,
+            )
+            if not column_reads:
+                continue
+            last_read = column_reads[-1]
+            for commit_call in sorted(
+                commit_calls,
+                key=lambda call_fact: call_fact.line.number,
+            ):
+                if commit_call.line.number <= last_read.line.number:
+                    continue
+                drained = any(
+                    drain_call.target in _SQLITE_RETURNING_DRAIN_TARGETS
+                    and call_arg_value(drain_call, "statement") == statement_name
+                    and last_read.line.number < drain_call.line.number < commit_call.line.number
+                    for drain_call in operation_calls.values()
+                )
+                if drained:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3636",
+                    kind="sqlite.returningStatementNotDrainedBeforeCommit",
+                    severity=Severity.WARNING,
+                    subjectName=commit_call.name,
+                    subjectKind="call",
+                    gapEdge="returningStatementDrain",
+                    intentSlogan="RETURNING statement not drained",
+                    primary=span_of_line(commit_call.line, "commitBeforeDrain"),
+                    related=[
+                        span_of_line(prepare_call.line, "returningPrepare"),
+                        span_of_line(last_read.line, "lastReturningColumnRead"),
+                    ],
+                    invariantRule=(
+                        "After reading columns from a SQLite statement whose "
+                        "SQL contains RETURNING, step it once more to DONE, "
+                        "reset it, or explicitly finalize it before COMMIT/"
+                        "RELEASE so the transaction cannot fail on an active "
+                        "RETURNING row"
+                    ),
+                    specAnchor="docs/optimization-guide.md#sqlite-returning",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="drainReturningStatement",
+                            shape=(
+                                "call drainReturningCall sqlite.stepStatement\n"
+                                f"argument drainReturningCall statement SqliteStatement {statement_name}"
+                            ),
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_sqlite_returning_statement_drained_before_commit",
+                    agentHint=(
+                        f"`{sql_name}` has RETURNING and `{statement_name}` "
+                        "has column reads before this commit. Add a second "
+                        "sqlite.stepStatement after the column reads, or "
+                        "reset/finalize the statement before committing."
+                    ),
+                ))
+                break
+    return diagnostics
+
+
+PROCESS_ENVIRONMENT_READ_TARGETS: frozenset = frozenset({
+    "c.getenv",
+    "c.getenv_s",
+    "c.getenvSafe",
+})
+
+
+def _storage_name_looks_like_cache(name: str) -> bool:
+    lowered = name.lower()
+    return "cache" in lowered or "cached" in lowered
+
+
+def _operation_has_environment_cache_guard(
+    operation: OperationFact,
+    first_getenv_line: int,
+) -> bool:
+    has_cache_write = any(
+        line.verb == "set"
+        and len(line.args) >= 3
+        and line.args[0] == "storage"
+        and _storage_name_looks_like_cache(line.args[1])
+        for line in operation.lines
+    )
+    has_pre_getenv_guard = any(
+        line.number < first_getenv_line
+        and line.verb == "branch"
+        and len(line.args) >= 5
+        and line.args[0] == "if"
+        for line in operation.lines
+    )
+    return has_cache_write and has_pre_getenv_guard
+
+
+def check_process_environment_read_cached(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3633 - process environment reads in non-entry operations should be
+    cached. Environment variables are deployment configuration, not request
+    payload; repeatedly calling getenv on auth/config hot paths adds runtime
+    work and makes behavior depend on mutable process state.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        if operation.name == "main":
+            continue
+        operation_calls = collect_operation_calls(operation)
+        getenv_calls = [
+            call_fact for call_fact in operation_calls.values()
+            if call_fact.target in PROCESS_ENVIRONMENT_READ_TARGETS
+        ]
+        if not getenv_calls:
+            continue
+        first_getenv = min(getenv_calls, key=lambda call: call.line.number)
+        if _operation_has_environment_cache_guard(
+                operation, first_getenv.line.number):
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3633",
+            kind="process.getenvUncached",
+            severity=Severity.WARNING,
+            subjectName=first_getenv.name,
+            subjectKind="call",
+            gapEdge="repeatedConfigurationLookup",
+            intentSlogan="uncached environment read",
+            primary=span_of_line(first_getenv.line, "getenvCall"),
+            related=[],
+            invariantRule=(
+                "Non-entry operations that read process environment should "
+                "cache the resolved value behind module storage and guard "
+                "the getenv path with a cached-ready branch"
+            ),
+            specAnchor="docs/optimization-guide.md#process-environment-cache",
+            fixCandidates=[
+                FixCandidate(
+                    name="cacheEnvironmentValue",
+                    shape=(
+                        "storage module mutable cachedConfig String \"\"\n"
+                        "storage module mutable cachedConfigReady Int32 0\n"
+                        "# branch to cached return before c.getenv; set both storage rows after resolution"
+                    ),
+                ),
+            ],
+            confidence=Confidence.MEDIUM,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_process_environment_read_cached",
+            agentHint=(
+                "Keep direct getenv in CLI entry operations; for server "
+                "helpers, resolve once and return cached module storage."
+            ),
+        ))
+    return diagnostics
+
+
+REPEATED_REQUEST_TIME_READ_TARGETS: frozenset = frozenset({
+    "http.nowMillis",
+})
+
+
+def _operation_has_http_boundary(operation: OperationFact) -> bool:
+    input_types = set(operation_input_types(operation).values())
+    return bool(input_types & {"HttpRequest", "HttpResponse"})
+
+
+def check_repeated_request_time_reads(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3637 - request handlers should read wall-clock time once.
+
+    A single command or request path that asks the runtime for wall-clock time
+    more than once pays repeated native-call overhead and can persist subtly
+    different timestamps for rows that belong to the same logical operation.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        if not _operation_has_http_boundary(operation):
+            continue
+        operation_calls = collect_operation_calls(operation)
+        time_calls = sorted(
+            (
+                call_fact for call_fact in operation_calls.values()
+                if call_fact.target in REPEATED_REQUEST_TIME_READ_TARGETS
+            ),
+            key=lambda call_fact: call_fact.line.number,
+        )
+        if len(time_calls) < 2:
+            continue
+        first_time_call = time_calls[0]
+        second_time_call = time_calls[1]
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS3637",
+            kind="performance.repeatedRequestTimeRead",
+            severity=Severity.WARNING,
+            subjectName=second_time_call.name,
+            subjectKind="call",
+            gapEdge="repeatedWallClockRead",
+            intentSlogan="repeated request timestamp read",
+            primary=span_of_line(second_time_call.line, "secondTimeRead"),
+            related=[span_of_line(first_time_call.line, "firstTimeRead")],
+            invariantRule=(
+                "An operation should call `http.nowMillis` once, bind the "
+                "timestamp, and reuse that value for all rows and envelopes "
+                "created by the same logical request"
+            ),
+            specAnchor="docs/optimization-guide.md#request-timestamps",
+            fixCandidates=[
+                FixCandidate(
+                    name="reuseRequestTimestamp",
+                    shape=(
+                        "call requestNowCall http.nowMillis\n"
+                        "run requestNowCall\n"
+                        "bind value requestNow Int64 requestNowCall\n"
+                        "# pass requestNow to later SQL/JSON/log calls"
+                    ),
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_repeated_request_time_reads",
+            agentHint=(
+                f"`{first_time_call.name}` already reads the request time. "
+                f"Reuse its bound value instead of calling "
+                f"`{second_time_call.target}` again."
+            ),
+        ))
+    return diagnostics
+
+
+IDEMPOTENCY_SELECT_NAMES: frozenset = frozenset({
+    "sqlSelectIdempotency",
+})
+
+IDEMPOTENCY_RESPONSE_JSON_COLUMN_INDEXES: frozenset = frozenset({
+    "1",
+    "columnIndex1",
+    "runtime.columnIndex1",
+})
+
+
+def _sql_name_or_text_is_idempotency_select_lint(
+    local_sql_bodies: Dict[str, str],
+    sql_name: str,
+) -> bool:
+    unqualified_name = sql_name.rsplit(".", 1)[-1]
+    if unqualified_name in IDEMPOTENCY_SELECT_NAMES:
+        return True
+    sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+    if sql_text is None:
+        return False
+    folded = re.sub(r"\s+", " ", sql_text).lower()
+    return (
+        _sql_first_verb_lint(sql_text) == "SELECT"
+        and " from idempotency_keys" in folded
+        and "response_json" in folded
+        and "response_status" in folded
+    )
+
+
+def _call_uses_response_json_column_lint(call_fact: CallFact) -> bool:
+    column_index = call_arg_value(call_fact, "columnIndex")
+    return column_index in IDEMPOTENCY_RESPONSE_JSON_COLUMN_INDEXES
+
+
+def check_idempotency_replay_uses_response_status(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3638 - idempotency replay should use persisted response_status.
+
+    The idempotency table already stores both response_json and
+    response_status. Comparing replay JSON bodies with c.strcmp to recover the
+    HTTP status performs avoidable full-body scans and couples status routing
+    to exact envelope text.
+    """
+    diagnostics: List[Diagnostic] = []
+    local_sql_bodies = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operation_calls = collect_operation_calls(operation)
+        idempotency_statements: Dict[str, CallFact] = {}
+        for prepare_call in operation_calls.values():
+            if prepare_call.target != "sqlite.prepareStatement":
+                continue
+            sql_name = call_arg_value(prepare_call, "sql")
+            if sql_name is None:
+                continue
+            if not _sql_name_or_text_is_idempotency_select_lint(
+                local_sql_bodies, sql_name
+            ):
+                continue
+            for statement_name in call_success_value_names(prepare_call):
+                idempotency_statements[statement_name] = prepare_call
+        if not idempotency_statements:
+            continue
+
+        replay_body_reads: Dict[str, Tuple[CallFact, CallFact]] = {}
+        for read_call in operation_calls.values():
+            if read_call.target != "sqlite.columnText":
+                continue
+            statement_name = call_arg_value(read_call, "statement")
+            if statement_name not in idempotency_statements:
+                continue
+            if not _call_uses_response_json_column_lint(read_call):
+                continue
+            prepare_call = idempotency_statements[statement_name]
+            for body_name in call_success_value_names(read_call):
+                replay_body_reads[body_name] = (read_call, prepare_call)
+        if not replay_body_reads:
+            continue
+
+        for compare_call in sorted(
+            operation_calls.values(),
+            key=lambda call_fact: call_fact.line.number,
+        ):
+            if compare_call.target != "c.strcmp":
+                continue
+            compared_names = {
+                name for name in (
+                    call_arg_value(compare_call, "left"),
+                    call_arg_value(compare_call, "right"),
+                )
+                if name is not None
+            }
+            replay_body_name = next(
+                (
+                    name for name in compared_names
+                    if name in replay_body_reads
+                ),
+                None,
+            )
+            if replay_body_name is None:
+                continue
+            read_call, prepare_call = replay_body_reads[replay_body_name]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3638",
+                kind="performance.idempotencyReplayBodyClassification",
+                severity=Severity.WARNING,
+                subjectName=compare_call.name,
+                subjectKind="call",
+                gapEdge="replayStatusFromBody",
+                intentSlogan="idempotency replay body classified by strcmp",
+                primary=span_of_line(compare_call.line, "responseBodyCompare"),
+                related=[
+                    span_of_line(read_call.line, "responseJsonRead"),
+                    span_of_line(prepare_call.line, "idempotencySelect"),
+                ],
+                invariantRule=(
+                    "Idempotency replay code must read and branch on the "
+                    "stored `response_status` column instead of comparing "
+                    "stored `response_json` bodies to classify the response"
+                ),
+                specAnchor="docs/optimization-guide.md#idempotency-replay-status",
+                fixCandidates=[
+                    FixCandidate(
+                        name="usePersistedResponseStatus",
+                        shape=(
+                            "call readReplayStatusCall sqlite.columnInt64\n"
+                            "argument readReplayStatusCall columnIndex Int32 runtime.columnIndex2\n"
+                            "# branch on response_status instead of c.strcmp(response_json, ...)"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_idempotency_replay_uses_response_status",
+                agentHint=(
+                    f"`{replay_body_name}` comes from idempotency "
+                    "response_json. The same row includes response_status; "
+                    "read column 2 and branch on that scalar."
+                ),
+            ))
+    return diagnostics
+
 
 # --------------------------------------------------------------------------
 # SOURCE-OF-TRUTH note for native HTTP target sets
@@ -8403,7 +13803,7 @@ def check_deprecated_json_finder_calls(facts: ExtendedFacts) -> List[Diagnostic]
 #   1. semsc.py — the dispatch block (`if target == "http.responseText":`
 #      and friends). That block carries the same SOURCE-OF-TRUTH banner.
 #   2. semlint.py (here) — the constants below + ALL_NATIVE_HTTP_TARGETS.
-#   3. SYNTAX.md — the two `http.requestMethod, …` and
+#   3. docs/reference/syntax-inventory.md — the two `http.requestMethod, …` and
 #      `http.responseText, …` umbrella rows under the call-targets section.
 #
 # Adding or removing a target requires updating all three sites. The
@@ -8459,15 +13859,27 @@ NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
     "http.multipartPartContentType",
 })
 
+HTTP_REQUEST_READER_TARGETS: frozenset = (
+    NON_NULLABLE_HTTP_REQUEST_READS | NULLABLE_HTTP_REQUEST_READS
+)
+
 # Response writers that reject a null `body` argument at runtime. Passing
 # a nullable bind to any of these surfaces the adapter's null-body 500
 # unless the handler has guarded the pointer first OR explicitly opted
 # into the failure-path contract via a warning text marker.
 HTTP_RESPONSE_BODY_WRITERS: frozenset = frozenset({
+    "http.responseHtml",
     "http.responseText",
     "http.responseBytes",
     "http.responseSseEvent",
 })
+
+HTTP_RESPONSE_BODY_ARG_SLOTS: Dict[str, frozenset] = {
+    "http.responseHtml": frozenset({"body"}),
+    "http.responseText": frozenset({"body"}),
+    "http.responseBytes": frozenset({"body"}),
+    "http.responseSseEvent": frozenset({"event", "data"}),
+}
 
 # Non-body response writers (headers etc.). Together with the body
 # writers, these form the full response-side surface.
@@ -8502,13 +13914,33 @@ ALL_NATIVE_HTTP_TARGETS: frozenset = (
 # Legacy substring markers that, when present in an operation's `warning`
 # text, used to opt the operation out of the unguardedHttpInput lint. The
 # canonical opt-out is now the `pinsNullBodyFailurePath OP "rationale"`
-# verb (see SYNTAX.md); these substrings are still honored for one
+# verb (see docs/reference/syntax-inventory.md); these substrings are still honored for one
 # deprecation cycle, but their use trips SS3605 `legacyNullBodyMarker`
 # pointing the agent at the verb-based replacement.
 LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS: Tuple[str, ...] = (
     "null-body failure path",
     "null-body 500",
 )
+
+
+def _operation_has_runtime_binding_response_write(operationFact: OperationFact) -> bool:
+    hasRuntimeBindingBody = False
+    hasResponseWriteEffect = False
+    for sourceLine in operationFact.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        if (sourceLine.verb == "operationBody"
+                and len(sourceLine.args) >= 2
+                and sourceLine.args[0] == operationFact.name
+                and sourceLine.args[1] == "runtimeBinding"):
+            hasRuntimeBindingBody = True
+        elif (sourceLine.verb == "effect"
+                and len(sourceLine.args) >= 3
+                and sourceLine.args[0] == operationFact.name
+                and sourceLine.args[1] == "write"
+                and sourceLine.args[2].startswith("http.response")):
+            hasResponseWriteEffect = True
+    return hasRuntimeBindingBody and hasResponseWriteEffect
 
 
 def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
@@ -8536,6 +13968,13 @@ def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
                 or len(sourceLine.args) < 2):
             continue
         declaredForwarderArgNameByOp[sourceLine.args[0]] = sourceLine.args[1]
+    writerSlotsByTarget: Dict[str, frozenset] = dict(HTTP_RESPONSE_BODY_ARG_SLOTS)
+    for operationName, declaredBodyArgName in declaredForwarderArgNameByOp.items():
+        operationFact = facts.base.operations.get(operationName)
+        if (operationFact is not None
+                and _operation_has_runtime_binding_response_write(operationFact)):
+            writers.add(operationName)
+            writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
     if not declaredForwarderArgNameByOp:
         return writers
     changed = True
@@ -8558,16 +13997,24 @@ def _collect_transitive_response_body_writers(facts: ExtendedFacts) -> Set[str]:
             forwardsDeclaredArg = False
             for sourceLine in operationFact.lines:
                 if (is_comment(sourceLine) or not sourceLine.tokens
-                        or sourceLine.verb != "arg"
+                        or sourceLine.verb not in {"arg", "argument"}
                         or len(sourceLine.args) < 3):
                     continue
-                if (sourceLine.args[1] == "body"
-                        and sourceLine.args[2] == declaredBodyArgName
-                        and callTargetsByCallName.get(sourceLine.args[0]) in writers):
+                forwardedValue = (
+                    sourceLine.args[3]
+                    if sourceLine.verb == "argument" and len(sourceLine.args) >= 4
+                    else sourceLine.args[2]
+                )
+                target = callTargetsByCallName.get(sourceLine.args[0])
+                acceptedSlots = writerSlotsByTarget.get(target, frozenset({"body"}))
+                if (sourceLine.args[1] in acceptedSlots
+                        and forwardedValue == declaredBodyArgName
+                        and target in writers):
                     forwardsDeclaredArg = True
                     break
             if forwardsDeclaredArg:
                 writers.add(operationName)
+                writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
                 changed = True
     return writers
 
@@ -8586,6 +14033,7 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
     # other op whose declaration ALSO honors its claim (fixed point).
     runtimeWriters: Set[str] = set(HTTP_RESPONSE_BODY_WRITERS)
     declaredForwarderRows: List[Tuple[SourceLine, str, str]] = []  # (line, op, argName)
+    writerSlotsByTarget: Dict[str, frozenset] = dict(HTTP_RESPONSE_BODY_ARG_SLOTS)
     for sourceLine in facts.base.lines:
         if (is_comment(sourceLine) or not sourceLine.tokens
                 or sourceLine.verb != "responseBodyForwarder"
@@ -8595,6 +14043,12 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
             (sourceLine, sourceLine.args[0], sourceLine.args[1])
         )
     honoredForwarders: Set[str] = set()
+    for _sourceLine, operationName, declaredBodyArgName in declaredForwarderRows:
+        operationFact = facts.base.operations.get(operationName)
+        if (operationFact is not None
+                and _operation_has_runtime_binding_response_write(operationFact)):
+            honoredForwarders.add(operationName)
+            writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
     changed = True
     while changed:
         changed = False
@@ -8613,13 +14067,21 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
             acceptedWriters = runtimeWriters | honoredForwarders
             for innerLine in operationFact.lines:
                 if (is_comment(innerLine) or not innerLine.tokens
-                        or innerLine.verb != "arg"
+                        or innerLine.verb not in {"arg", "argument"}
                         or len(innerLine.args) < 3):
                     continue
-                if (innerLine.args[1] == "body"
-                        and innerLine.args[2] == declaredBodyArgName
-                        and callTargetsByCallName.get(innerLine.args[0]) in acceptedWriters):
+                forwardedValue = (
+                    innerLine.args[3]
+                    if innerLine.verb == "argument" and len(innerLine.args) >= 4
+                    else innerLine.args[2]
+                )
+                target = callTargetsByCallName.get(innerLine.args[0])
+                acceptedSlots = writerSlotsByTarget.get(target, frozenset({"body"}))
+                if (innerLine.args[1] in acceptedSlots
+                        and forwardedValue == declaredBodyArgName
+                        and target in acceptedWriters):
                     honoredForwarders.add(operationName)
+                    writerSlotsByTarget[operationName] = frozenset({declaredBodyArgName})
                     changed = True
                     break
     for sourceLine, operationName, declaredBodyArgName in declaredForwarderRows:
@@ -8642,7 +14104,7 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
                 f"op body must contain `arg <writerCall> body {declaredBodyArgName}` "
                 f"against a known writer for the claim to hold"
             ),
-            specAnchor="SYNTAX.md#responseBodyForwarder",
+            specAnchor="docs/reference/syntax-inventory.md#responseBodyForwarder",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -8724,7 +14186,7 @@ def check_response_body_forwarder_missing(facts: ExtendedFacts) -> List[Diagnost
                         "so nullable request-body/header values are checked "
                         "transitively through this wrapper"
                     ),
-                    specAnchor="SYNTAX.md#responseBodyForwarder",
+                    specAnchor="docs/reference/syntax-inventory.md#responseBodyForwarder",
                     citations=narrative_citations_for_operation(facts, operation.name),
                     fixCandidates=[
                         FixCandidate(
@@ -8768,7 +14230,7 @@ def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
                 "GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS; the native dispatcher "
                 "silently never matches anything else, leaving the handler dead"
             ),
-            specAnchor="SYNTAX.md#route",
+            specAnchor="docs/reference/syntax-inventory.md#route",
             fixCandidates=[
                 FixCandidate(
                     name="useWhitelistedMethod",
@@ -8841,7 +14303,7 @@ def check_middleware_missing_response_effect(facts: ExtendedFacts) -> List[Diagn
                 "invokes middleware specifically so it can write response "
                 "state before the handler runs"
             ),
-            specAnchor="SYNTAX.md#routeMiddleware",
+            specAnchor="docs/reference/syntax-inventory.md#routeMiddleware",
             citations=narrative_citations_for_operation(facts, middlewareName),
             fixCandidates=[
                 FixCandidate(
@@ -8982,7 +14444,7 @@ def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
                             "(or a wrapper that forwards body to one); the "
                             "adapter rejects a null body pointer with a 500"
                         ),
-                        specAnchor="SYNTAX.md#pointer.isNull",
+                        specAnchor="docs/reference/syntax-inventory.md#pointer.isNull",
                         citations=narrative_citations_for_operation(facts, operationName),
                         fixCandidates=[
                             FixCandidate(
@@ -9017,9 +14479,106 @@ def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_untrusted_http_html_hydration(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3616 — request-derived bytes may flow into html.hydrate only through
+    escaped string-like holes. Passing them as HtmlFragment / HtmlDocument
+    would opt into raw insertion and bypass the compiler's HTML escaping.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operationName, operationFact in facts.base.operations.items():
+        operationCalls = collect_operation_calls(operationFact)
+        if not operationCalls:
+            continue
+        untrustedBindLines: Dict[str, SourceLine] = {}
+        for callFact in operationCalls.values():
+            if callFact.target not in HTTP_REQUEST_READER_TARGETS:
+                continue
+            for bindLine in [*callFact.bind_lines, *callFact.bind_ok_lines]:
+                parsedBind = bind_parts(bindLine)
+                if parsedBind is None:
+                    continue
+                untrustedBindLines[parsedBind[1]] = bindLine
+        if not untrustedBindLines:
+            continue
+
+        valueTypes = _operation_value_types(facts, operationFact)
+        for callFact in operationCalls.values():
+            if not callFact.target.startswith("html.hydrate."):
+                continue
+            templateName = callFact.target[len("html.hydrate."):]
+            for argLine in callFact.arg_lines:
+                parsedArgument = argument_parts(argLine)
+                if parsedArgument is None:
+                    continue
+                _callName, parameterName, declaredType, valueName = parsedArgument
+                sourceLine = untrustedBindLines.get(valueName)
+                if sourceLine is None:
+                    continue
+                effectiveType = declaredType or valueTypes.get(valueName)
+                resolvedType = _resolve_type_alias_head(
+                    effectiveType, facts.base.type_aliases)
+                if resolvedType not in _HTML_RAW_HYDRATION_TYPES:
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T2_LOWERING,
+                    code="SS3616",
+                    kind="webserver.untrustedHtmlHydration",
+                    severity=Severity.ERROR,
+                    subjectName=valueName,
+                    subjectKind="htmlHydrateArgument",
+                    gapEdge="html.trustBoundary",
+                    intentSlogan=(
+                        f"request-derived `{valueName}` reaches raw HTML "
+                        f"hydrate arg `{parameterName}`"
+                    ),
+                    primary=span_of_line(argLine, "htmlHydrateArgument"),
+                    related=[
+                        span_of_line(sourceLine, "requestReadBind"),
+                        span_of_line(callFact.line, "htmlHydrateCall"),
+                    ],
+                    invariantRule=(
+                        "values bound from http.request* readers are untrusted; "
+                        "they may be passed to `html.hydrate.*` only as "
+                        "string-like arguments that the compiler escapes. Raw "
+                        "HTML types (`HtmlFragment`, `HtmlTrustedFragment`, "
+                        "`HtmlDocument`) require a separate reviewed escape or "
+                        "trust-conversion operation before hydration."
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#html",
+                    citations=narrative_citations_for_operation(facts, operationName),
+                    fixCandidates=[
+                        FixCandidate(
+                            name="passAsEscapedString",
+                            shape=(
+                                f"argument {callFact.name} {parameterName} "
+                                f"String {valueName}"
+                            ),
+                        ),
+                        FixCandidate(
+                            name="insertTrustConversion",
+                            shape=(
+                                f"# convert `{valueName}` through a reviewed "
+                                "HTML sanitizer/trust boundary before passing a "
+                                f"{resolvedType or 'raw HTML'} argument"
+                            ),
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=True,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_untrusted_http_html_hydration",
+                    agentHint=(
+                        "String hydrate holes are escaped by the compiler; raw "
+                        "fragment/document holes are not. Do not type request "
+                        "bytes as raw HTML without a visible sanitizer boundary."
+                    ),
+                ))
+    return diagnostics
+
+
 def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3610 — every operation bound via `routeMiddleware` MUST declare
-    `output OP MiddlewareControl` (NOT bare `CSignedInt32`).
+    `output OP MiddlewareControl` (NOT bare `Int32`).
 
     The native HTTP dispatcher at sem_http_runtime.c interprets the
     middleware return value as a `MiddlewareControl` enum:
@@ -9029,7 +14588,7 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
         the response middleware already wrote
       - Anything else                       → send `500 middleware failed`
 
-    A middleware op that declares bare `CSignedInt32` output silently
+    A middleware op that declares bare `Int32` output silently
     erases that contract: a future agent could return `1` thinking it
     means "failure" (the same value means "short-circuit" under the
     real contract), and the dispatcher would happily skip the handler
@@ -9067,20 +14626,23 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
         outputLine: Optional[SourceLine] = None
         declaredOutputType = ""
         for sourceLine in operationFact.lines:
-            if (is_comment(sourceLine) or not sourceLine.tokens
-                    or sourceLine.verb != "output"
-                    or len(sourceLine.args) < 2
-                    or sourceLine.args[0] != operationName):
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            parsedOutput = output_parts(sourceLine)
+            if parsedOutput is None or parsedOutput[0] != operationName:
                 continue
             outputLine = sourceLine
             # `output OP TYPE` or `output OP Result OK ERROR` — read
             # the OK type as the comparand. Middleware ops shouldn't
             # declare Result outputs (the dispatcher reads a raw i32),
             # but the rule still gets the right type either way.
-            if sourceLine.args[1] == "Result" and len(sourceLine.args) >= 3:
+            if parsedOutput[1] == "Result" and len(sourceLine.args) >= 3:
                 declaredOutputType = sourceLine.args[2]
             else:
-                declaredOutputType = sourceLine.args[1]
+                declaredOutputType = parsedOutput[1]
+                resultType = facts.base.result_types.get(declaredOutputType)
+                if resultType is not None:
+                    declaredOutputType = resultType.ok_type
             break
         if outputLine is None:
             # An op without an `output` line trips a different rule
@@ -9109,12 +14671,12 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
                 f"dispatcher's short-circuit semantics (0 → continue, "
                 f"1 → skip handler; see sem_http_runtime.c's "
                 f"SS_HTTP_MIDDLEWARE_* enum) are type-checked at the "
-                f"return-value site. A bare `CSignedInt32` output erases "
+                f"return-value site. A bare `Int32` output erases "
                 f"the named-case contract: a returnValue of `1` would "
                 f"silently short-circuit the route handler even when the "
                 f"author intended it as a failure sentinel."
             ),
-            specAnchor="SYNTAX.md#MiddlewareControl",
+            specAnchor="docs/reference/syntax-inventory.md#MiddlewareControl",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -9163,7 +14725,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
     slots by name in `arg <call> request <slot>` / `arg <call> response
     <slot>` lookups, and the dispatcher at semsc.py:2290 requires the
     handler signature to be exactly `[HttpRequest, HttpResponse,
-    CSignedInt32]` positionally. A handler with `req`/`resp`/`r`/`rsp`
+    Int32]` positionally. A handler with `req`/`resp`/`r`/`rsp`
     compiles (the dispatcher binds by position) but every downstream
     name-based lookup breaks silently — SS3603's transitive-body walk,
     `narrative_citations_for_operation`, and any future agent reading
@@ -9198,6 +14760,11 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
     for routeFact in facts.base.routes:
         bindingSitesByOp.setdefault(routeFact.handler, []).append(routeFact.line)
     for sourceLine in facts.base.lines:
+        if (not is_comment(sourceLine) and sourceLine.tokens
+                and sourceLine.verb in {"routeNotFound", "routeMethodNotAllowed"}
+                and len(sourceLine.args) >= 2):
+            bindingSitesByOp.setdefault(sourceLine.args[1], []).append(sourceLine)
+            continue
         if (is_comment(sourceLine) or not sourceLine.tokens
                 or sourceLine.verb != "routeMiddleware"
                 or len(sourceLine.args) < 3):
@@ -9250,12 +14817,12 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(sourceLine, "handlerInputDeclaration"),
                 related=relatedSpans,
                 invariantRule=(
-                    f"the native HTTP ABI defined at SYNTAX.md#route requires "
+                    f"the native HTTP ABI defined at docs/reference/syntax-inventory.md#route requires "
                     f"every route-bound or middleware-bound operation to "
                     f"declare its `{inputType}` input under the exact name "
                     f"`{canonicalName}`. The dispatcher at semsc.py:2290 "
                     f"matches handlers positionally (`[HttpRequest, "
-                    f"HttpResponse, CSignedInt32]`), but the linter and "
+                    f"HttpResponse, Int32]`), but the linter and "
                     f"every other agent reading the source uses the "
                     f"canonical input names to resolve which slot is the "
                     f"request vs the response. A mismatch compiles and "
@@ -9263,7 +14830,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"so the rule is graded ERROR and blocks compile under "
                     f"--strict so the contract cannot drift unnoticed."
                 ),
-                specAnchor="SYNTAX.md#route",
+                specAnchor="docs/reference/syntax-inventory.md#route",
                 citations=narrative_citations_for_operation(facts, operationName),
                 fixCandidates=[
                     FixCandidate(
@@ -9296,16 +14863,16 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
     directory when sourceRoot is absent).
 
     This catches the rename-rot scenario: when the module file gets
-    renamed (e.g. `http_api_gauntlet.sscript` → `main.sem`) and the
+    renamed (e.g. `http_runtime_gauntlet.sscript` → `main.sem`) and the
     `mainFile` row in `build.sem` isn't updated, semsc would silently
     fail later in the build OR — worse — `importModule` would resolve
     via the module registry and the `mainFile` row would become a
     decorative lie. The lint surfaces the mismatch BEFORE compile.
 
     Resolution rules (matching semsc.py's build-tape resolver):
-      1. `mainFile httpApiGauntlet "main.sem"` is resolved relative to
+      1. `mainFile httpRuntimeGauntlet "main.sem"` is resolved relative to
          the directory of the build tape file.
-      2. If `sourceRoot httpApiGauntlet "."` is declared, the file is
+      2. If `sourceRoot httpRuntimeGauntlet "."` is declared, the file is
          resolved relative to (build-tape-dir / sourceRoot-path).
       3. The path is required to exist; the file's content is NOT
          parsed (that's a separate concern handled by the importModule
@@ -9327,6 +14894,22 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
             sourceRootByProject[sourceLine.args[0]] = (sourceLine.args[1], sourceLine)
         elif sourceLine.verb == "mainFile" and len(sourceLine.args) >= 2:
             mainFileRows.append((sourceLine.args[0], sourceLine.args[1], sourceLine))
+
+    regular_plan = _regular_build_plan_payload(facts.base)
+    if regular_plan is not None:
+        payload, plan_line = regular_plan
+        project = _regular_build_plan_object(payload, "project") or {}
+        module = _regular_build_plan_main_module(payload) or {}
+        project_name = _regular_build_plan_text(project, "id") or "BuildPlan"
+        source_root = (
+            _regular_build_plan_text(project, "sourceRoot")
+            or _regular_build_plan_text(module, "sourceRoot")
+        )
+        main_file = _regular_build_plan_text(module, "mainFile")
+        if source_root:
+            sourceRootByProject[project_name] = (source_root, plan_line)
+        if main_file:
+            mainFileRows.append((project_name, main_file, plan_line))
 
     if not mainFileRows:
         # Not a build tape (or one that simply omits mainFile — semsc
@@ -9369,7 +14952,7 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"renamed and the build tape's mainFile row wasn't updated "
                 f"in lockstep."
             ),
-            specAnchor="SYNTAX.md#mainFile",
+            specAnchor="docs/reference/syntax-inventory.md#mainFile",
             fixCandidates=[
                 FixCandidate(
                     name="updateMainFileToActualName",
@@ -9468,7 +15051,7 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                         "\"rationale\"` so future preemptive-runtime coverage is "
                         "not a silent gap"
                     ),
-                    specAnchor="SYNTAX.md#routeTimeout",
+                    specAnchor="docs/reference/syntax-inventory.md#routeTimeout",
                     fixCandidates=[
                         FixCandidate(
                             name="addRouteTimeout",
@@ -9506,7 +15089,7 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                         "(tracing headers, auth checks, etc.) are not silently "
                         "skipped on the missed route"
                     ),
-                    specAnchor="SYNTAX.md#routeMiddleware",
+                    specAnchor="docs/reference/syntax-inventory.md#routeMiddleware",
                     fixCandidates=[
                         FixCandidate(
                             name="addRouteMiddleware",
@@ -9627,7 +15210,7 @@ def check_legacy_null_body_marker(facts: ExtendedFacts) -> List[Diagnostic]:
                 "is still honored for one deprecation cycle but should be "
                 "replaced with the explicit verb"
             ),
-            specAnchor="SYNTAX.md#pinsNullBodyFailurePath",
+            specAnchor="docs/reference/syntax-inventory.md#pinsNullBodyFailurePath",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -9681,7 +15264,7 @@ def check_pins_null_body_failure_path_missing_rationale(facts: ExtendedFacts) ->
                 "empty rationale string explaining WHY this route is "
                 "intentionally exercising the adapter's null-body 500 path"
             ),
-            specAnchor="SYNTAX.md#pinsNullBodyFailurePath",
+            specAnchor="docs/reference/syntax-inventory.md#pinsNullBodyFailurePath",
             fixCandidates=[
                 FixCandidate(
                     name="addRationaleString",
@@ -9740,7 +15323,7 @@ def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Dia
                     f"earlier in operation `{operationName}`; dangling "
                     f"rationale rots when the call is renamed or removed"
                 ),
-                specAnchor="SYNTAX.md#rationale",
+                specAnchor="docs/reference/syntax-inventory.md#rationale",
                 fixCandidates=[
                     FixCandidate(
                         name="correctCallName",
@@ -9780,7 +15363,7 @@ def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Dia
                     "proximity-based `# rationale:` comment it was meant to "
                     "replace"
                 ),
-                specAnchor="SYNTAX.md#rationale",
+                specAnchor="docs/reference/syntax-inventory.md#rationale",
                 fixCandidates=[
                     FixCandidate(
                         name="addRationaleText",
@@ -9797,11 +15380,11 @@ def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Dia
 
 def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3612 — an operation declared `output OP Void` (or `output OP
-    CVoid`) should terminate with `returnVoid`, not `returnValue NAME`.
+    Void`) should terminate with `returnVoid`, not `returnValue NAME`.
 
     The user-op ABI returns i32 even for Void outputs (see
-    `_operation_output_contract` and the `Void → I32` mapping), so a
-    `returnValue someI32Sentinel` form compiles — but the source is then
+    `_operation_output_contract` and the `Void → Int32` mapping), so a
+    `returnValue someInt32Sentinel` form compiles — but the source is then
     lying about its semantic contract: it says "no caller-actionable
     value" at the output line and "here's an integer sentinel" at the
     return site. A future agent reading either half in isolation has
@@ -9823,26 +15406,25 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
         outputLine: Optional[SourceLine] = None
         outputType = ""
         for sourceLine in operationFact.lines:
-            if (is_comment(sourceLine) or not sourceLine.tokens
-                    or sourceLine.verb != "output"
-                    or len(sourceLine.args) < 2
-                    or sourceLine.args[0] != operationName):
+            if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
-            outputLine = sourceLine
-            outputType = sourceLine.args[1]
-            break
-        if outputType not in ("Void", "CVoid"):
+            parsedOutput = output_parts(sourceLine)
+            if parsedOutput is not None and parsedOutput[0] == operationName:
+                outputLine = sourceLine
+                outputType = parsedOutput[1]
+                break
+        if outputType not in ("Void", "Void"):
             continue
         returnValueLine: Optional[SourceLine] = None
         returnValueName = ""
         for sourceLine in operationFact.lines:
-            if (is_comment(sourceLine) or not sourceLine.tokens
-                    or sourceLine.verb != "returnValue"
-                    or not sourceLine.args):
+            if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
-            returnValueLine = sourceLine
-            returnValueName = sourceLine.args[0]
-            break
+            parsedReturn = return_parts(sourceLine)
+            if parsedReturn is not None and parsedReturn[0] == "value" and parsedReturn[1] is not None:
+                returnValueLine = sourceLine
+                returnValueName = parsedReturn[1]
+                break
         if returnValueLine is None:
             continue
         diagnostics.append(Diagnostic(
@@ -9855,25 +15437,25 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
             gapEdge="returnVoid",
             intentSlogan=(
                 f"`output {operationName} {outputType}` should pair with "
-                f"`returnVoid`, not `returnValue {returnValueName}`"
+                f"`return void`, not `return value {returnValueName}`"
             ),
             primary=span_of_line(returnValueLine, "returnValueAtVoidOutput"),
             related=[span_of_line(outputLine, "voidOutputDeclaration")] if outputLine else [],
             invariantRule=(
-                f"operations declared `output OP {outputType}` must end with "
-                f"`returnVoid` so the source matches the semantic contract. "
-                f"`returnValue NAME` is the form for typed outputs; using it "
+                f"operations declared `output operation OP {outputType}` must end with "
+                f"`return void` so the source matches the semantic contract. "
+                f"`return value NAME` is the form for typed outputs; using it "
                 f"on a Void-output op leaks the user-op ABI's i32 zero "
                 f"sentinel into the source, which a future agent then has "
                 f"to recognise as a Void-ABI quirk instead of as a real "
                 f"value being returned."
             ),
-            specAnchor="SYNTAX.md#returnVoid",
+            specAnchor="docs/reference/syntax-inventory.md#return",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
                     name="replaceReturnValueWithReturnVoid",
-                    shape="returnVoid",
+                    shape="return void",
                     autoApplicable=True,
                     evidence=[span_of_line(returnValueLine, "currentReturnValue")],
                 ),
@@ -9882,7 +15464,7 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
                     shape=(
                         f"# if `{operationName}` actually produces a "
                         f"caller-actionable value, change the output declaration:\n"
-                        f"output {operationName} <ConcreteType>"
+                        f"output operation {operationName} <ConcreteType>"
                     ),
                 ),
             ],
@@ -9921,7 +15503,7 @@ def check_narrative_references_line_number(facts: ExtendedFacts) -> List[Diagnos
 
     This is the prevention rule for the external-review finding:
     several narrative lines in the gauntlet sscript referenced
-    `semsc.py:3674` and `test_http_api_gauntlet.py:273-279`, and both
+    `semsc.py:3674` and `test_http_runtime_gauntlet.py:273-279`, and both
     references would silently drift the moment those files got an
     insertion. Replacing the references with function names + rule
     IDs makes the citation stable.
@@ -9931,7 +15513,7 @@ def check_narrative_references_line_number(facts: ExtendedFacts) -> List[Diagnos
     fatal for projects that want narrative durability enforced.
     """
     diagnostics: List[Diagnostic] = []
-    # Track every narrative-bearing line. Per SYNTAX.md, the narrative
+    # Track every narrative-bearing line. Per docs/reference/syntax-inventory.md, the narrative
     # verbs are purpose / invariant / warning / guarantee / failure /
     # security / timing / observability + the `rationale CALL` verb +
     # `# rationale:` comments. The check looks at args[1:] joined
@@ -9968,7 +15550,7 @@ def check_narrative_references_line_number(facts: ExtendedFacts) -> List[Diagnos
                 f"`guarantee` / `failure` / `security` / `timing` / "
                 f"`observability` / `rationale`) should cite STABLE "
                 f"identifiers: function names, rule IDs (SS3603), spec "
-                f"anchors (SYNTAX.md#routeMiddleware), or grep-strings. "
+                f"anchors (docs/reference/syntax-inventory.md#routeMiddleware), or grep-strings. "
                 f"Line numbers drift the moment the referenced file gets "
                 f"an insertion — your narrative says `{offendingReference}` "
                 f"and a future agent will trust it to find the wrong line."
@@ -10025,8 +15607,8 @@ EXPORT_VERB_DECLARATION_KIND: Dict[str, str] = {
 BUILD_TAPE_PROJECT_VERBS: Set[str] = {
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "testPattern", "testRoot",
-    "targetRuntime", "buildProfile", "runtimeChecks", "persistLlvmIr",
-    "nativeOutput", "keepResources", "resourcesDir",
+    "targetRuntime", "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend",
+    "persistLlvmIr", "nativeOutput", "keepResources", "resourcesDir",
     "nativeHttpHost", "nativeHttpPort",
     "formatterSetting", "linterSetting", "docsOutput",
     "optLevel", "emitLlvmIr", "llvmIrOutput",
@@ -10043,7 +15625,7 @@ BUILD_TAPE_PROJECT_VERBS: Set[str] = {
 BUILD_TAPE_SINGLETON_VERBS: Set[str] = {
     "modulePath", "languageVersion", "projectVersion", "projectLicense",
     "sourceRoot", "mainFile", "mainOperation", "targetRuntime",
-    "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
+    "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend", "persistLlvmIr", "nativeOutput",
     "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
@@ -10062,6 +15644,8 @@ BUILD_TAPE_CHOICES: Dict[str, Set[str]] = {
     "targetRuntime": {"nativeExe", "webServer", "library", "windowsGui"},
     "buildProfile": {"dev", "prod"},
     "runtimeChecks": {"off", "traps", "panic"},
+    "asyncRuntime": {"none", "libuv"},
+    "guiBackend": {"win32", "winui3"},
     "persistLlvmIr": {"auto", "yes", "no"},
     "keepResources": {"yes", "no", "true", "false", "on", "off", "1", "0"},
     "emitLlvmIr": {"auto", "yes", "no"},
@@ -10099,7 +15683,8 @@ BUILD_TAPE_MIN_ARITY: Dict[str, int] = {
 }
 
 BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS: Set[str] = {
-    "buildProject", "project", "target", "runtime", "entry", "importModule",
+    "buildProject", "project", "target", "runtime", "entry", "import",
+    "importModule",
     "moduleFolder",
     "version", "publisher", "description", "copyright", "productName",
     "internalName", "originalFilename", "trademark", "comments", "metadata",
@@ -10310,9 +15895,27 @@ def build_export_contract_tape(
                     "invariant", "warning", "guarantee", "security",
                     "observability",
                 }:
+                    edgeArgs: Sequence[str] = args
+                    parsedInput = input_parts(opLine)
+                    parsedOutput = output_parts(opLine)
+                    if parsedInput is not None:
+                        edgeArgs = [parsedInput[0], parsedInput[1], parsedInput[2]]
+                    elif parsedOutput is not None:
+                        edgeArgs = [parsedOutput[0], parsedOutput[1]]
                     add_edge(moduleName, exportVerb, symbolName,
-                             f"operation.{verb}", args, opLine)
-                    if (verb == "output" and len(args) >= 4
+                             f"operation.{verb}", edgeArgs, opLine)
+                    resultOutputType = parsedOutput[1] if parsedOutput is not None else ""
+                    resultTypeFact = facts.base.result_types.get(resultOutputType)
+                    if resultTypeFact is not None:
+                        failureType = resultTypeFact.error_type
+                        add_edge(moduleName, exportVerb, symbolName,
+                                 "operation.failureType", [failureType], opLine)
+                        for (errorName, caseName), caseFact in facts.errorCases.items():
+                            if errorName == failureType:
+                                add_edge(moduleName, exportVerb, symbolName,
+                                         "operation.failureCase",
+                                         [errorName, caseName], caseFact.line)
+                    elif (verb == "output" and len(args) >= 4
                             and args[1] == "Result"):
                         failureType = args[3]
                         add_edge(moduleName, exportVerb, symbolName,
@@ -10423,7 +16026,89 @@ def _is_build_tape(facts: ExtendedFacts) -> bool:
         line.verb in {"buildProject", "registerModule"}
         for line in facts.base.lines
         if line.tokens and not is_comment(line)
-    )
+    ) or _regular_build_plan_payload(facts.base) is not None
+
+
+def _json_body_storage_line_in_base(
+    facts: ProgramFacts,
+    json_body: JsonBodyFact,
+) -> Optional[SourceLine]:
+    for sourceLine in reversed(facts.lines):
+        if sourceLine.number >= json_body.line.number:
+            continue
+        if sourceLine.verb != "storage" or len(sourceLine.args) < 4:
+            continue
+        if sourceLine.args[2] == json_body.name:
+            return sourceLine
+    return None
+
+
+def _regular_build_plan_payload(
+    facts: ProgramFacts,
+) -> Optional[Tuple[Dict[str, object], SourceLine]]:
+    if "BuildPlan" not in facts.records:
+        return None
+    for json_body in facts.json_bodies:
+        storage_line = _json_body_storage_line_in_base(facts, json_body)
+        if storage_line is None or len(storage_line.args) < 4:
+            continue
+        if storage_line.args[3] != "BuildPlan":
+            continue
+        body_text = "\n".join(text for text, _line in json_body.body_lines)
+        try:
+            payload = json.loads(body_text, parse_constant=_reject_json_constant)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if isinstance(payload, dict):
+            return payload, json_body.line
+    return None
+
+
+def _regular_build_plan_object(
+    payload: Dict[str, object],
+    key: str,
+) -> Optional[Dict[str, object]]:
+    value = payload.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def _regular_build_plan_text(
+    section: Dict[str, object],
+    key: str,
+) -> Optional[str]:
+    value = section.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _regular_build_plan_module_entries(
+    payload: Dict[str, object],
+) -> List[Tuple[str, Dict[str, object]]]:
+    modules = _regular_build_plan_object(payload, "modules")
+    if modules is not None:
+        entries: List[Tuple[str, Dict[str, object]]] = []
+        for module_key, module_spec in modules.items():
+            if isinstance(module_key, str) and isinstance(module_spec, dict):
+                entries.append((module_key, module_spec))
+        return entries
+    module = _regular_build_plan_object(payload, "module")
+    if module is not None:
+        return [("main", module)]
+    return []
+
+
+def _regular_build_plan_main_module(
+    payload: Dict[str, object],
+) -> Optional[Dict[str, object]]:
+    entries = _regular_build_plan_module_entries(payload)
+    if not entries:
+        return None
+    main_key = _regular_build_plan_text(payload, "mainModule")
+    if main_key:
+        for module_key, module_spec in entries:
+            if module_key == main_key:
+                return module_spec
+        return None
+    return entries[0][1]
 
 
 def _build_tape_diagnostic(
@@ -10776,6 +16461,210 @@ def check_project_build_tape_schema(facts: ExtendedFacts) -> List[Diagnostic]:
     if not _is_build_tape(facts):
         return diagnostics
 
+    regular_plan = _regular_build_plan_payload(facts.base)
+    if regular_plan is not None:
+        payload, plan_line = regular_plan
+        project = _regular_build_plan_object(payload, "project")
+        module_entries = _regular_build_plan_module_entries(payload)
+        main_module = _regular_build_plan_main_module(payload)
+        target = _regular_build_plan_object(payload, "target")
+        missing_sections = [
+            name for name, section in (
+                ("project", project),
+                ("modules", module_entries or None),
+                ("target", target),
+            )
+            if section is None
+        ]
+        if missing_sections:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2522",
+                "buildTape.missingRequiredRow",
+                "BuildPlan",
+                "BuildPlan",
+                "requiredBuildPlanSections",
+                "BuildPlan is missing required sections",
+                (
+                    "Regular-syntax build.sem must provide project, module, "
+                    "and target objects in its BuildPlan jsonBody."
+                ),
+                "jsonBody <plan>\n  {\"project\":{...},\"module\":{...},\"target\":{...}}",
+            ))
+            return diagnostics
+
+        required_text_fields = [
+            ("project", project, ("id", "name", "modulePath", "languageVersion", "projectVersion", "license")),
+            ("target", target, ("runtime", "profile", "runtimeChecks")),
+        ]
+        for section_name, section, keys in required_text_fields:
+            for key in keys:
+                if _regular_build_plan_text(section, key) is not None:
+                    continue
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2522",
+                    "buildTape.missingRequiredRow",
+                    "BuildPlan",
+                    "BuildPlan",
+                    f"{section_name}.{key}",
+                    f"BuildPlan `{section_name}.{key}` is required",
+                    (
+                        "The regular build plan replaces the legacy build "
+                        "rows, so each field that drives compiler metadata "
+                        "must be present and non-empty."
+                    ),
+                    f"\"{key}\": \"<value>\"",
+                ))
+
+        if _regular_build_plan_object(payload, "modules") is not None:
+            if _regular_build_plan_text(payload, "mainModule") is None:
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2522",
+                    "buildTape.missingRequiredRow",
+                    "BuildPlan",
+                    "BuildPlan",
+                    "mainModule",
+                    "BuildPlan `mainModule` is required when using `modules`",
+                    "A multi-module BuildPlan must name which module drives mainFile/mainOperation.",
+                    "\"mainModule\": \"main\"",
+                ))
+
+        for module_key, module_spec in module_entries:
+            for key in ("moduleName", "sourcePath", "mainFile"):
+                if _regular_build_plan_text(module_spec, key) is not None:
+                    continue
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2522",
+                    "buildTape.missingRequiredRow",
+                    "BuildPlan",
+                    "BuildPlan",
+                    f"modules.{module_key}.{key}",
+                    f"BuildPlan `modules.{module_key}.{key}` is required",
+                    "Each BuildPlan module entry must be resolvable to one source file.",
+                    f"\"{key}\": \"<value>\"",
+                ))
+        if main_module is None:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2522",
+                "buildTape.missingRequiredRow",
+                "BuildPlan",
+                "BuildPlan",
+                "mainModule",
+                "BuildPlan mainModule does not name a declared module",
+                "The mainModule field must match one key under modules.",
+                "\"mainModule\": \"main\"",
+            ))
+
+        target_runtime = _regular_build_plan_text(target, "runtime") or ""
+        main_operation = (
+            _regular_build_plan_text(payload, "mainOperation")
+            or _regular_build_plan_text(main_module or {}, "mainOperation")
+        )
+        if target_runtime in {"nativeExe", "windowsGui"} and main_operation is None:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2522",
+                "buildTape.missingRequiredRow",
+                "BuildPlan",
+                "BuildPlan",
+                "mainOperation",
+                "BuildPlan `mainOperation` is required for executable targets",
+                "Native executable BuildPlan targets must name the entry operation.",
+                "\"mainOperation\": \"main\"",
+            ))
+        if target_runtime and target_runtime not in BUILD_TAPE_CHOICES["targetRuntime"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                target_runtime,
+                "target.runtime",
+                "closedEnumValue",
+                f"`{target_runtime}` is not valid for BuildPlan target.runtime",
+                (
+                    "BuildPlan target.runtime lowers to targetRuntime and "
+                    f"accepts only {', '.join(sorted(BUILD_TAPE_CHOICES['targetRuntime']))}."
+                ),
+                "\"runtime\": \"nativeExe\"",
+            ))
+        profile = _regular_build_plan_text(target, "profile") or ""
+        if profile and profile not in BUILD_TAPE_CHOICES["buildProfile"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                profile,
+                "target.profile",
+                "closedEnumValue",
+                "`target.profile` must be dev or prod",
+                "BuildPlan target.profile lowers to buildProfile.",
+                "\"profile\": \"dev\"",
+            ))
+        gui_backend = _regular_build_plan_text(target, "guiBackend") or ""
+        if gui_backend and gui_backend not in BUILD_TAPE_CHOICES["guiBackend"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                gui_backend,
+                "target.guiBackend",
+                "closedEnumValue",
+                f"`{gui_backend}` is not valid for BuildPlan target.guiBackend",
+                (
+                    "BuildPlan target.guiBackend lowers to guiBackend and "
+                    f"accepts only {', '.join(sorted(BUILD_TAPE_CHOICES['guiBackend']))}."
+                ),
+                "\"guiBackend\": \"win32\"",
+            ))
+        runtime_checks = _regular_build_plan_text(target, "runtimeChecks") or ""
+        if runtime_checks and runtime_checks not in BUILD_TAPE_CHOICES["runtimeChecks"]:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                runtime_checks,
+                "target.runtimeChecks",
+                "closedEnumValue",
+                "`target.runtimeChecks` must be off, traps, or panic",
+                "BuildPlan target.runtimeChecks lowers to runtimeChecks.",
+                "\"runtimeChecks\": \"panic\"",
+            ))
+        opt_level = target.get("optLevel")
+        if isinstance(opt_level, bool) or not isinstance(opt_level, int) or opt_level < 0 or opt_level > 3:
+            diagnostics.append(_build_tape_diagnostic(
+                plan_line,
+                "SS2525",
+                "buildTape.invalidChoiceValue",
+                str(opt_level),
+                "target.optLevel",
+                "llvmOptLevel",
+                "`target.optLevel` must be an integer 0..3",
+                "LLVM optimization levels exposed by BuildPlan are integers 0, 1, 2, or 3.",
+                "\"optLevel\": 2",
+            ))
+        folder_name = _regular_build_plan_text(target, "buildFolderName")
+        if folder_name:
+            normalized = folder_name.replace("\\", os.sep).replace("/", os.sep)
+            if (os.path.isabs(normalized)
+                    or os.path.dirname(normalized)
+                    or normalized in {"", ".", ".."}):
+                diagnostics.append(_build_tape_diagnostic(
+                    plan_line,
+                    "SS2526",
+                    "buildTape.invalidPathValue",
+                    folder_name,
+                    "target.buildFolderName",
+                    "managedBuildFolderName",
+                    "`target.buildFolderName` must be one folder name",
+                    "BuildPlan buildFolderName renames the managed folder only.",
+                    "\"buildFolderName\": \"build\"",
+                ))
+        return diagnostics
+
     buildProjects: List[Tuple[str, SourceLine]] = []
     rowsByProject: Dict[str, Set[str]] = {}
     singletonSeen: Dict[Tuple[str, str], SourceLine] = {}
@@ -11070,6 +16959,20 @@ def _collect_registered_modules(
 ) -> Tuple[Dict[str, Tuple[SourceLine, str]], List[str]]:
     registered: Dict[str, Tuple[SourceLine, str]] = {}
     mainFiles: List[str] = []
+    regular_plan = _regular_build_plan_payload(buildFacts)
+    if regular_plan is not None:
+        payload, plan_line = regular_plan
+        for _module_key, module in _regular_build_plan_module_entries(payload):
+            module_name = _regular_build_plan_text(module, "moduleName")
+            source_path = (
+                _regular_build_plan_text(module, "sourcePath")
+                or _regular_build_plan_text(module, "sourceRoot")
+            )
+            main_file = _regular_build_plan_text(module, "mainFile")
+            if module_name and source_path:
+                registered[module_name] = (plan_line, source_path)
+            if main_file and main_file not in mainFiles:
+                mainFiles.append(main_file)
     for sourceLine in buildFacts.lines:
         if not sourceLine.tokens or is_comment(sourceLine):
             continue
@@ -11250,6 +17153,10 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
         and sourceLine.args
     }
     currentIsBuildTape = buildFacts.path.resolve() == facts.base.path.resolve()
+    currentIsRegularBuildPlan = (
+        currentIsBuildTape
+        and _regular_build_plan_payload(buildFacts) is not None
+    )
 
     if currentIsBuildTape:
         for moduleName, (registrationLine, rawPath) in registeredModules.items():
@@ -11271,7 +17178,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "(main.sem, index.sem, the leaf module file, or exactly "
                     "one non-test .sem/.sscript)."
                 ),
-                specAnchor="SYNTAX.md#registerModule",
+                specAnchor="docs/reference/syntax-inventory.md#registerModule",
                 fixCandidates=[
                     FixCandidate(
                         name="pointRegistrationAtSource",
@@ -11315,7 +17222,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "different export verbs, creates an ambiguous public "
                         "API edge for importers and documentation tools."
                     ),
-                    specAnchor="SYNTAX.md#exportOperation",
+                    specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                     fixCandidates=[
                         FixCandidate(
                             name="removeDuplicateExport",
@@ -11359,7 +17266,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "back, so cross-module mutation must go through "
                             "an exported operation with explicit effects."
                         ),
-                        specAnchor="SYNTAX.md#exportConstant",
+                        specAnchor="docs/reference/syntax-inventory.md#exportConstant",
                         fixCandidates=[
                             FixCandidate(
                                 name="exportMutationOperation",
@@ -11398,7 +17305,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "module immutable constant or an operation that "
                             "accesses the state with declared effects."
                         ),
-                        specAnchor="SYNTAX.md#exportConstant",
+                        specAnchor="docs/reference/syntax-inventory.md#exportConstant",
                         fixCandidates=[
                             FixCandidate(
                                 name="moveToImmutableModuleStorage",
@@ -11450,7 +17357,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "understand why the contract exists without reading "
                         "the body first."
                     ),
-                    specAnchor="SYNTAX.md#purpose",
+                    specAnchor="docs/reference/syntax-inventory.md#purpose",
                     fixCandidates=[
                         FixCandidate(
                             name="addPurpose",
@@ -11480,7 +17387,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "A generic name forces importers to recover intent "
                         "from context that is not present at the call site."
                     ),
-                    specAnchor="SYNTAX.md#naming",
+                    specAnchor="docs/reference/syntax-inventory.md#naming",
                     fixCandidates=[
                         FixCandidate(
                             name="renamePublicOperation",
@@ -11528,7 +17435,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"{impliedPath}`. Importers cannot reason about the "
                         "effect unless it is part of the exported contract."
                     ),
-                    specAnchor="SYNTAX.md#effect",
+                    specAnchor="docs/reference/syntax-inventory.md#effect",
                     fixCandidates=[
                         FixCandidate(
                             name="addPublicEffect",
@@ -11625,7 +17532,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "The current import bridge inlines files, but the "
                             "semantic contract is already export-only."
                         ),
-                        specAnchor="SYNTAX.md#exportOperation",
+                        specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                         fixCandidates=[
                             FixCandidate(
                                 name="exportProviderOperation",
@@ -11671,7 +17578,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "agents can reason about a folder without editing the "
                     "build entry point."
                 ),
-                specAnchor="SYNTAX.md#exportOperation",
+                specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                 fixCandidates=[
                     FixCandidate(
                         name="moveExportToModuleSource",
@@ -11689,7 +17596,9 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
             ))
             continue
 
-        if verb == "module" and args and registeredNames and args[0] not in registeredNames:
+        if (verb == "module" and args and registeredNames
+                and args[0] not in registeredNames
+                and not currentIsRegularBuildPlan):
             diagnostics.append(Diagnostic(
                 tier=Tier.T1_SPEC,
                 code="SS2503",
@@ -11705,7 +17614,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "build.sem before module source can import from it or "
                     "export a public contract."
                 ),
-                specAnchor="SYNTAX.md#registerModule",
+                specAnchor="docs/reference/syntax-inventory.md#registerModule",
                 related=[
                     span_of_line(line, "registeredModule")
                     for _module, (line, _path) in registeredModules.items()
@@ -11743,7 +17652,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "by build.sem; dependency modules should also be given a "
                         "build-time registration before module source imports them."
                     ),
-                    specAnchor="SYNTAX.md#importModule",
+                    specAnchor="docs/reference/syntax-inventory.md#importModule",
                     fixCandidates=[
                         FixCandidate(
                             name="registerImportedModule",
@@ -11785,7 +17694,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "name the module declared by this source file, and "
                         "that module must be registered by build.sem."
                     ),
-                    specAnchor="SYNTAX.md#exportOperation",
+                    specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                     fixCandidates=[
                         FixCandidate(
                             name="retargetExport",
@@ -11826,7 +17735,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "the exported type, error, operation, capability, "
                             "or constant."
                         ),
-                        specAnchor="SYNTAX.md#exportOperation",
+                        specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                         fixCandidates=[
                             FixCandidate(
                                 name="declareExportedSymbol",
@@ -11917,20 +17826,26 @@ def _line_qualified_references(sourceLine: SourceLine) -> List[Tuple[str, str]]:
     references: List[Tuple[str, str]] = []
     if verb == "call" and len(args) >= 2:
         references.append(("operation", args[1]))
-    elif verb == "input" and len(args) >= 3:
-        references.append(("type", args[2]))
-    elif verb == "output" and len(args) >= 2:
-        if args[1] == "Result":
+    elif verb == "input":
+        parsedInput = input_parts(sourceLine)
+        if parsedInput is not None:
+            references.append(("type", parsedInput[2]))
+    elif verb == "output":
+        parsedOutput = output_parts(sourceLine)
+        outputType = parsedOutput[1] if parsedOutput is not None else ""
+        if outputType == "Result":
             if len(args) >= 3:
                 references.append(("type", args[2]))
             if len(args) >= 4:
                 references.append(("error", args[3]))
-        else:
-            references.append(("type", args[1]))
-    elif verb in {"bind", "bindOk", "bindError"} and len(args) >= 2:
-        references.append(("type", args[1]))
-    elif verb in {"ignoreOk", "ignoreValue"} and len(args) >= 2:
-        references.append(("type", args[1]))
+        elif outputType:
+            references.append(("type", outputType))
+    elif bind_parts(sourceLine) is not None:
+        references.append(("type", bind_parts(sourceLine)[2]))  # type: ignore[index]
+    elif ignore_parts(sourceLine) is not None:
+        parsedIgnore = ignore_parts(sourceLine)
+        if parsedIgnore is not None and parsedIgnore[2] is not None:
+            references.append(("type", parsedIgnore[2]))
     elif verb == "useCapability" and len(args) >= 2:
         references.append(("capability", args[1]))
     elif verb == "makeError" and len(args) >= 2:
@@ -11938,8 +17853,10 @@ def _line_qualified_references(sourceLine: SourceLine) -> List[Tuple[str, str]]:
         parts = qualified.split(".")
         if len(parts) >= 3:
             references.append(("error", ".".join(parts[:2])))
-    elif verb == "arg" and len(args) >= 3:
-        references.append(("constant", args[2]))
+    elif argument_parts(sourceLine) is not None:
+        parsedArgument = argument_parts(sourceLine)
+        if parsedArgument is not None:
+            references.append(("constant", parsedArgument[3]))
     return references
 
 
@@ -12073,6 +17990,84 @@ def _find_import_cycle(
         return None
 
     return dfs(startModule, [])
+
+
+def check_stdlib_module_no_smoke_main(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS2515 - a `module standard.*` implementation file must not declare
+    `operation main`.
+
+    The standard library is always imported, never run directly, so a smoke
+    `main` does not belong in the implementation module. Worse, a stray `main`
+    in the imported module silently breaks the colocated `main.test.sem`: the
+    test declares `entry console main`, but entry resolution only sees
+    operations in the test compilation unit, not in the imported module, so
+    codegen fails with `entry references unknown operation: main`. The smoke
+    `main` (and its test-only MainError / capability scaffolding) belongs in
+    `main.test.sem` next to the module, matching the canonical std/errno
+    layout.
+    """
+    diagnostics: List[Diagnostic] = []
+    # Test files legitimately carry the smoke main — only guard the
+    # implementation module itself.
+    if facts.base.path.name.endswith(".test.sem"):
+        return diagnostics
+    declaresStandardModule = any(
+        sourceLine.verb == "module"
+        and sourceLine.args
+        and sourceLine.args[0].startswith("standard.")
+        for sourceLine in facts.base.lines
+        if sourceLine.tokens and not is_comment(sourceLine)
+    )
+    if not declaresStandardModule:
+        return diagnostics
+    for sourceLine in facts.base.lines:
+        if not sourceLine.tokens or is_comment(sourceLine):
+            continue
+        if sourceLine.verb != "operation":
+            continue
+        if not sourceLine.args or sourceLine.args[0] != "main":
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS2515",
+            kind="module.standardLibraryDefinesSmokeMain",
+            severity=Severity.ERROR,
+            subjectName="main",
+            subjectKind="operation",
+            gapEdge="moduleEntryPurity",
+            intentSlogan=(
+                "standard-library module declares `operation main`; the smoke "
+                "main belongs in the colocated main.test.sem"
+            ),
+            primary=span_of_line(sourceLine, "smokeMainInModule"),
+            invariantRule=(
+                "A `module standard.*` implementation file is imported, never "
+                "run, and must not declare `operation main`. The smoke `main` "
+                "(plus its test-only MainError and capability rows) lives in "
+                "the colocated `main.test.sem`, which imports the module."
+            ),
+            specAnchor="docs/reference/syntax-inventory.md#module",
+            fixCandidates=[
+                FixCandidate(
+                    name="moveSmokeMainToTest",
+                    shape=(
+                        "# move `operation main` and its MainError/capability "
+                        "rows into main.test.sem (which imports this module)"
+                    ),
+                    evidence=[span_of_line(sourceLine)],
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_stdlib_module_no_smoke_main",
+            agentHint=(
+                "a smoke main in the imported module silently fails the "
+                "colocated test's `entry console main` resolution"
+            ),
+        ))
+        break
+    return diagnostics
 
 
 def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
@@ -12408,18 +18403,25 @@ def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
 CHECKERS = [
     # Foundational basics — run first so reference / arity / duplicate
     # errors surface before any refinement-level diagnostic.
+    check_syntax_cutover_rows,
+    check_html_implicit_holes,
     check_argument_arity,
     check_unresolved_references,
+    check_branch_semantics,
     check_argument_type_mismatch,
+    check_removed_scalar_surface,
+    check_scalar_literal_ranges,
     check_enum_return_uses_case,
     check_math_operand_width_drift,
     check_duplicate_declarations,
     check_unknown_verbs,
     check_project_build_tape_schema,
     check_registered_module_contract,
+    check_stdlib_module_no_smoke_main,
     check_module_import_contracts,
     check_unused_calls,
     check_unused_labels,
+    check_unreachable_operation_rows,
     check_unused_capabilities,
     check_unused_error_cases,
     check_unused_mutable_storage,
@@ -12459,6 +18461,7 @@ CHECKERS = [
     check_literal_encoding_missing,
     # Style discipline (SS44xx) — info-severity hoist/rationale/dead-init signals
     check_duplicate_local_immutable_across_ops,
+    check_large_local_static_literal,
     check_magic_ascii_byte_literal,
     check_dead_storage_initializer,
     check_fixed_offset_parser_needs_rationale,
@@ -12468,10 +18471,14 @@ CHECKERS = [
     # Concurrency / type system / codec / resource (SS35xx, SS37xx, SS38xx, SS39xx)
     check_unawaited_task_group,
     check_lock_without_cleanup,
+    check_invalid_submit_work,
     check_unawaited_submit_work,
     check_select_without_cases,
     check_select_case_references_unknown_select,
+    check_await_wait_set_shape,
     check_async_call_missing_boundary,
+    check_await_without_start,
+    check_started_call_without_await,
     check_file_handle_not_closed,
     check_sqlite_database_failure_cleanup_missing,
     check_sqlite_statement_finalize_missing,
@@ -12490,9 +18497,22 @@ CHECKERS = [
     check_unescaped_json_string_interpolation,
     check_deprecated_json_builder_calls,
     check_deprecated_json_finder_calls,
+    check_json_body_literals,
+    check_sql_body_literals,
+    check_inline_sql_literals,
+    check_redundant_sql_case_branches,
+    check_sql_last_insert_rowid_function,
+    check_wide_sql_existence_probe,
+    check_sql_write_then_read_returning_opportunity,
+    check_sqlite_multiple_writes_have_transaction,
+    check_sqlite_returning_statement_drained_before_commit,
+    check_process_environment_read_cached,
+    check_repeated_request_time_reads,
+    check_idempotency_replay_uses_response_status,
     check_invalid_route_method,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
+    check_untrusted_http_html_hydration,
     check_route_coverage_drift,
     check_legacy_null_body_marker,
     check_pins_null_body_failure_path_missing_rationale,
@@ -12638,11 +18658,11 @@ def render_agent(diagnostics: Sequence[Diagnostic]) -> str:
 
 # Note for the sem-record format: the `diagnostic*` verbs emitted below are
 # DRAFT PROPOSALS for the diagnostic syntax surface — they are not yet rows
-# in SYNTAX.md, so the output will NOT pass `semsc --lint --parse-only`. We
+# in docs/reference/syntax-inventory.md, so the output will NOT pass `semsc --lint --parse-only`. We
 # emit the format here as a design demonstration; a real spec landing must
 # precede production use. See refined-diagnostic design notes for the proposed grammar.
 SEM_RECORD_HEADER = (
-    "# DRAFT: diagnostic* verbs below are PROPOSED, not yet in SYNTAX.md.\n"
+    "# DRAFT: diagnostic* verbs below are PROPOSED, not yet in docs/reference/syntax-inventory.md.\n"
     "# Output will not pass `semsc --lint --parse-only` until the diagnostic\n"
     "# syntax surface is landed. See refined-diagnostic design notes.\n"
 )

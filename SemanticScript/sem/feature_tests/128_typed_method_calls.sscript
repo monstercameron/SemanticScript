@@ -1,74 +1,73 @@
 # expect.stdout: ok\n
 # expect.exit: 0
-# Dotted typed-method call targets (TaskList.append, TaskMap.get, json.decode.X,
-# json.encode.X) compile cleanly but are not runtime-complete. semsc.py routes
-# non-primitive generated codecs and typed collection calls through the
-# external-module fallback in _emit_run; bootstrap_general.exe lowers them
-# through its runUnhandled dummy-SSA path. Both produce well-typed IR with
-# zero-shaped stub results. semlint flags this as an explicit runtime gap.
+# Dotted typed-method call targets (TaskList.append, TaskMap.get,
+# json.parse.X, json.stringify.X) compile cleanly but are not runtime-complete.
+# semsc.py routes non-primitive generated codecs and typed collection calls through the
+# external-module fallback in _emit_run, producing well-typed IR with zero-shaped
+# stub results. semlint flags this as an explicit runtime gap.
 project TypedMethodCallsCompile
 target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Smoke-test that dotted typed-method calls (TaskList.append, TaskMap.get, json.decode.X, json.encode.X) compile to valid IR via the external-module fallback, not that they have real runtime behavior."
-invariant main "Output is 'ok\\n'."
+purpose operation main "Smoke-test that dotted typed-method calls (TaskList.append, TaskMap.get, json.parse.X, json.stringify.X) compile to valid IR via the external-module fallback, not that they have real runtime behavior."
+invariant operation main "Output is 'ok\\n'."
 label startMain
 
 # These calls have no real implementation — they hit the external-module
 # fallback in _emit_run that emits zero results. We bind each so the emit path
 # exercises both call+arg+run+bind while the linter carries the runtime warning.
-const triggerSize CByteCount 1
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-arg walkerTriggerCall size triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 
-const fakeList I64 0
-const fakeItem I64 0
+storage module immutable fakeList Int64 0
+storage module immutable fakeItem Int64 0
 call listAppendCall TaskList.append
-arg listAppendCall list fakeList
-arg listAppendCall item fakeItem
+argument listAppendCall list Int64 fakeList
+argument listAppendCall item Int64 fakeItem
 run listAppendCall
-bindOk newList I64 listAppendCall
+bind ok newList Int64 listAppendCall
 
-const fakeMap I64 0
-const fakeKey I64 0
+storage module immutable fakeMap Int64 0
+storage module immutable fakeKey Int64 0
 call mapGetCall TaskMap.get
-arg mapGetCall map fakeMap
-arg mapGetCall key fakeKey
+argument mapGetCall map Int64 fakeMap
+argument mapGetCall key Int64 fakeKey
 run mapGetCall
-bindOk taskValue I64 mapGetCall
+bind ok taskValue Int64 mapGetCall
 
-const fakeJson I64 0
-call jsonDecodeCall json.decode.Task
-arg jsonDecodeCall bytes fakeJson
+storage module immutable fakeJson Int64 0
+call jsonDecodeCall json.parse.Task
+argument jsonDecodeCall bytes Int64 fakeJson
 run jsonDecodeCall
-bindOk decodedTask I64 jsonDecodeCall
+bind ok decodedTask Int64 jsonDecodeCall
 
-call jsonEncodeCall json.encode.Task
-arg jsonEncodeCall value decodedTask
+call jsonEncodeCall json.stringify.Task
+argument jsonEncodeCall value Int64 decodedTask
 run jsonEncodeCall
-bindOk encodedBytes I64 jsonEncodeCall
+bind ok encodedBytes Int64 jsonEncodeCall
 
 call freeCall c.free
-arg freeCall ptr triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
 
-const okText CNullTerminatedByteString "ok"
+storage module immutable okText String "ok"
 call writeCall console.writeLine
-arg writeCall console console
-arg writeCall text okText
+argument writeCall console Console console
+argument writeCall text String okText
 run writeCall
-ignoreOk writeCall Void
+ignore void source writeCall
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -5,49 +5,49 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 # Multi-level type alias chain. Distance is an alias of Metric, which
-# is an alias of CFloat64. The compiler must resolve through both
+# is an alias of Float64. The compiler must resolve through both
 # levels to detect that Distance values should be emitted as `double`.
-type Metric CFloat64
+type Metric Float64
 type Distance Metric
 type Velocity Distance
 
 operation tripleVelocity
-input tripleVelocity speed Velocity
-output tripleVelocity Result Velocity Void
+input operation tripleVelocity speed Velocity
+output operation tripleVelocity Result Velocity Void
 memory tripleVelocity heap no
 async tripleVelocity no
-purpose tripleVelocity "Multiply a Velocity (== Distance == Metric == CFloat64) by 3.0."
-invariant tripleVelocity "Verifies the alias chain resolves to double for both the param and the result."
+purpose operation tripleVelocity "Multiply a Velocity (== Distance == Metric == Float64) by 3.0."
+invariant operation tripleVelocity "Verifies the alias chain resolves to double for both the param and the result."
 label startTripleVelocity
-const threeFactor Velocity 3.0
-call multCall math.multiplyF64
-arg multCall left speed
-arg multCall right threeFactor
+storage module immutable threeFactor Velocity 3.0
+call multCall math.multiplyFloat64
+argument multCall left Velocity speed
+argument multCall right Velocity threeFactor
 run multCall
-bind tripled Velocity multCall
-returnOk tripled
+bind value tripled Velocity multCall
+return ok tripled
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "tripleVelocity(3.0) == 9.0. Exercises 3-level type-alias resolution to CFloat64."
-invariant main "Output is 9.000000."
+purpose operation main "tripleVelocity(3.0) == 9.0. Exercises 3-level type-alias resolution to Float64."
+invariant operation main "Output is 9.000000."
 label startMain
-const startSpeed Velocity 3.0
+storage module immutable startSpeed Velocity 3.0
 call computeCall tripleVelocity
-arg computeCall speed startSpeed
+argument computeCall speed Velocity startSpeed
 run computeCall
-bindOk finalSpeed Velocity computeCall
+bind ok finalSpeed Velocity computeCall
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value finalSpeed
+argument writeCall console Console console
+argument writeCall value Velocity finalSpeed
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

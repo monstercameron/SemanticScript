@@ -3,7 +3,7 @@
 # Refined-syntax sample for the proposed `standard.sqlite` standard module.
 # This file is the canonical reference for what SQLite usage looks like in
 # SemanticScript source: it pins the call surface, type universe, capability
-# grant, error domain, and effect taxonomy that semsc / semlint / SYNTAX.md
+# grant, error domain, and effect taxonomy that semsc / semlint / docs/reference/syntax-inventory.md
 # must agree on once the compiler wiring lands.
 #
 # Status: the lowering for `sqlite.*` targets is not in semsc.py yet. The
@@ -37,7 +37,7 @@ project SqliteSyntaxSample
 target console
 runtime AgentRuntime 0.1
 
-importModule standard.sqlite as sqlite
+import sqlite standard.sqlite
 
 dependency standard.sqlite version 0.1 source standard
 dependencyEffect standard.sqlite readWrite database
@@ -49,19 +49,19 @@ module app.sqlite_syntax_sample
 #
 # type SqliteDatabase    — opaque connection handle (lowers to i8*)
 # type SqliteStatement   — opaque prepared-statement handle (lowers to i8*)
-# type SqliteRowId       — CSignedInt64 alias for last-insert-rowid values
+# type SqliteRowId       — Int64 alias for last-insert-rowid values
 #
-# enum SqliteOpenMode repr CSignedInt32
+# enum SqliteOpenMode repr Int32
 #   readOnlySqliteOpenMode          1     # SS_SQLITE_OPEN_READONLY
 #   readWriteSqliteOpenMode         2     # SS_SQLITE_OPEN_READWRITE
 #   readWriteCreateSqliteOpenMode   6     # READWRITE | CREATE
 #   inMemorySqliteOpenMode         14     # READWRITE | CREATE | MEMORY
 #
-# enum SqliteStepResult repr CSignedInt32
+# enum SqliteStepResult repr Int32
 #   rowSqliteStepResult    100               # SS_SQLITE_STEP_ROW
 #   doneSqliteStepResult   101               # SS_SQLITE_STEP_DONE
 #
-# enum SqliteColumnType repr CSignedInt32
+# enum SqliteColumnType repr Int32
 #   integerSqliteColumnType  1
 #   floatSqliteColumnType    2
 #   textSqliteColumnType     3
@@ -99,29 +99,35 @@ errorCase SqliteError ConsoleWriteFailed ConsoleWriteFailure
 # truth for which authorities are even available.
 
 capability sqliteReadWrite database readWrite
-purpose sqliteReadWrite "Authority to open SQLite databases and execute reads and writes against them"
+purpose operation sqliteReadWrite "Authority to open SQLite databases and execute reads and writes against them"
 
 capability sqliteSampleStdoutWrite console.stdout write
-purpose sqliteSampleStdoutWrite "Authority to write the selected row body to standard output as a visible smoke marker"
+purpose operation sqliteSampleStdoutWrite "Authority to write the selected row body to standard output as a visible smoke marker"
 
 # ----- constants -----
 
-const sqliteSampleDatabasePath CNullTerminatedByteString ":memory:"
-const sqliteSampleCreateTableStatement CNullTerminatedByteString "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"
-const sqliteSampleInsertStatement CNullTerminatedByteString "INSERT INTO notes (body) VALUES (?)"
-const sqliteSampleSelectStatement CNullTerminatedByteString "SELECT id, body FROM notes WHERE id = ?"
-const sqliteSampleInsertBodyText CNullTerminatedByteString "hello from sqlite syntax sample"
-const sqliteSampleFirstBindParameterIndex CSignedInt32 1
-const sqliteSampleIdentifierColumnIndex CSignedInt32 0
-const sqliteSampleBodyColumnIndex CSignedInt32 1
+storage module immutable sqliteSampleDatabasePath String ":memory:"
+storage module immutable sqliteSampleCreateTableStatement SqlText
+sql body sqliteSampleCreateTableStatement
+  CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)
+storage module immutable sqliteSampleInsertStatement SqlText
+sql body sqliteSampleInsertStatement
+  INSERT INTO notes (body) VALUES (?)
+storage module immutable sqliteSampleSelectStatement SqlText
+sql body sqliteSampleSelectStatement
+  SELECT id, body FROM notes WHERE id = ?
+storage module immutable sqliteSampleInsertBodyText String "hello from sqlite syntax sample"
+storage module immutable sqliteSampleFirstBindParameterIndex Int32 1
+storage module immutable sqliteSampleIdentifierColumnIndex Int32 0
+storage module immutable sqliteSampleBodyColumnIndex Int32 1
 
 # ----- end-to-end operation -----
 
 entry console runSqliteSyntaxSample
 
 operation runSqliteSyntaxSample
-input runSqliteSyntaxSample console Console
-output runSqliteSyntaxSample Result CSignedInt32 SqliteError
+input operation runSqliteSyntaxSample console Console
+output operation runSqliteSyntaxSample Result Int32 SqliteError
 effect runSqliteSyntaxSample readWrite database
 effect runSqliteSyntaxSample write console.stdout
 memory runSqliteSyntaxSample arena request
@@ -130,8 +136,8 @@ async runSqliteSyntaxSample no
 useCapability runSqliteSyntaxSample sqliteReadWrite
 useCapability runSqliteSyntaxSample sqliteSampleStdoutWrite
 
-purpose runSqliteSyntaxSample "Demonstrate the full proposed sqlite.* surface: open, exec(CREATE), prepare(INSERT), bind, step, finalize, prepare(SELECT), bind, step, read columns, finalize, close — all on an in-memory database so the sample is hermetic"
-invariant runSqliteSyntaxSample "Every prepared statement is finalized before the database is closed; every successful open is paired with a close on every exit path via defer"
+purpose operation runSqliteSyntaxSample "Demonstrate the full proposed sqlite.* surface: open, exec(CREATE), prepare(INSERT), bind, step, finalize, prepare(SELECT), bind, step, read columns, finalize, close — all on an in-memory database so the sample is hermetic"
+invariant operation runSqliteSyntaxSample "Every prepared statement is finalized before the database is closed; every successful open is paired with a close on every exit path via defer"
 guarantee runSqliteSyntaxSample "On any failure the original SqliteError is propagated unchanged so callers can attribute the failure to a specific phase"
 warning runSqliteSyntaxSample "Text returned by sqlite.columnText points into SQLite-owned memory and is only valid until the next call on the same statement; copy if it must outlive the row"
 
@@ -140,12 +146,12 @@ label startRunSqliteSyntaxSample
 # rationale: Open an in-memory database in read-write-create mode. The
 # in-memory mode keeps the sample hermetic for tests and CI.
 call openDatabaseCall sqlite.openDatabase
-arg openDatabaseCall path sqliteSampleDatabasePath
-arg openDatabaseCall mode inMemorySqliteOpenMode
+argument openDatabaseCall path String sqliteSampleDatabasePath
+argument openDatabaseCall mode SqliteOpenMode inMemorySqliteOpenMode
 run openDatabaseCall
-bindOk sampleDatabase SqliteDatabase openDatabaseCall
-bindError sampleDatabaseOpenError SqliteDatabaseOpenFailure openDatabaseCall
-branchIfError openDatabaseCall sampleDatabaseOpenFailed
+bind ok sampleDatabase SqliteDatabase openDatabaseCall
+bind error sampleDatabaseOpenError SqliteDatabaseOpenFailure openDatabaseCall
+branch error source openDatabaseCall target sampleDatabaseOpenFailed
 
 # rationale: Pair every successful open with a guaranteed close on all
 # return paths via the defer cleanup verb.
@@ -154,143 +160,143 @@ defer sampleDatabaseCloseDefer sqlite.closeDatabase sampleDatabase
 # rationale: Create the schema with a one-shot exec — no parameters, no
 # result rows, so the prepare/step/finalize cycle is unnecessary.
 call createNotesTableCall sqlite.exec
-arg createNotesTableCall database sampleDatabase
-arg createNotesTableCall sql sqliteSampleCreateTableStatement
+argument createNotesTableCall database SqliteDatabase sampleDatabase
+argument createNotesTableCall sql SqlText sqliteSampleCreateTableStatement
 run createNotesTableCall
-ignoreOk createNotesTableCall Void
-bindError createNotesTableError SqliteDatabaseExecFailure createNotesTableCall
-branchIfError createNotesTableCall sampleCreateTableFailed
+ignore void source createNotesTableCall
+bind error createNotesTableError SqliteDatabaseExecFailure createNotesTableCall
+branch error source createNotesTableCall target sampleCreateTableFailed
 
 # rationale: Prepare the parameterized INSERT once so it can be reused
 # (here it's only stepped once, but the cycle illustrates the shape).
 call prepareInsertCall sqlite.prepareStatement
-arg prepareInsertCall database sampleDatabase
-arg prepareInsertCall sql sqliteSampleInsertStatement
+argument prepareInsertCall database SqliteDatabase sampleDatabase
+argument prepareInsertCall sql SqlText sqliteSampleInsertStatement
 run prepareInsertCall
-bindOk insertStatement SqliteStatement prepareInsertCall
-bindError insertPrepareError SqliteStatementPrepareFailure prepareInsertCall
-branchIfError prepareInsertCall sampleInsertPrepareFailed
+bind ok insertStatement SqliteStatement prepareInsertCall
+bind error insertPrepareError SqliteStatementPrepareFailure prepareInsertCall
+branch error source prepareInsertCall target sampleInsertPrepareFailed
 
 defer insertStatementFinalizeDefer sqlite.finalizeStatement insertStatement
 
 call bindInsertBodyCall sqlite.bindText
-arg bindInsertBodyCall statement insertStatement
-arg bindInsertBodyCall parameterIndex sqliteSampleFirstBindParameterIndex
-arg bindInsertBodyCall value sqliteSampleInsertBodyText
+argument bindInsertBodyCall statement SqliteStatement insertStatement
+argument bindInsertBodyCall parameterIndex Int32 sqliteSampleFirstBindParameterIndex
+argument bindInsertBodyCall value String sqliteSampleInsertBodyText
 run bindInsertBodyCall
-ignoreOk bindInsertBodyCall Void
-bindError bindInsertBodyError SqliteStatementBindFailure bindInsertBodyCall
-branchIfError bindInsertBodyCall sampleInsertBindFailed
+ignore void source bindInsertBodyCall
+bind error bindInsertBodyError SqliteStatementBindFailure bindInsertBodyCall
+branch error source bindInsertBodyCall target sampleInsertBindFailed
 
 # rationale: An INSERT step is expected to return SqliteStepResult.done
 # (no result rows). Stepping past the boundary is a runtime error.
 call stepInsertCall sqlite.stepStatement
-arg stepInsertCall statement insertStatement
+argument stepInsertCall statement SqliteStatement insertStatement
 run stepInsertCall
-ignoreOk stepInsertCall SqliteStepResult
-bindError insertStepError SqliteStatementStepFailure stepInsertCall
-branchIfError stepInsertCall sampleInsertStepFailed
+ignore ok source stepInsertCall type SqliteStepResult
+bind error insertStepError SqliteStatementStepFailure stepInsertCall
+branch error source stepInsertCall target sampleInsertStepFailed
 
 # rationale: Capture the rowid before preparing the SELECT so the SELECT
 # can bind against the inserted row even after the insert statement is
 # finalized.
 call lastInsertRowIdCall sqlite.lastInsertRowId
-arg lastInsertRowIdCall database sampleDatabase
+argument lastInsertRowIdCall database SqliteDatabase sampleDatabase
 run lastInsertRowIdCall
-bind insertedRowId CSignedInt64 lastInsertRowIdCall
+bind value insertedRowId Int64 lastInsertRowIdCall
 
 call prepareSelectCall sqlite.prepareStatement
-arg prepareSelectCall database sampleDatabase
-arg prepareSelectCall sql sqliteSampleSelectStatement
+argument prepareSelectCall database SqliteDatabase sampleDatabase
+argument prepareSelectCall sql SqlText sqliteSampleSelectStatement
 run prepareSelectCall
-bindOk selectStatement SqliteStatement prepareSelectCall
-bindError selectPrepareError SqliteStatementPrepareFailure prepareSelectCall
-branchIfError prepareSelectCall sampleSelectPrepareFailed
+bind ok selectStatement SqliteStatement prepareSelectCall
+bind error selectPrepareError SqliteStatementPrepareFailure prepareSelectCall
+branch error source prepareSelectCall target sampleSelectPrepareFailed
 
 defer selectStatementFinalizeDefer sqlite.finalizeStatement selectStatement
 
 call bindSelectRowIdCall sqlite.bindInt64
-arg bindSelectRowIdCall statement selectStatement
-arg bindSelectRowIdCall parameterIndex sqliteSampleFirstBindParameterIndex
-arg bindSelectRowIdCall value insertedRowId
+argument bindSelectRowIdCall statement SqliteStatement selectStatement
+argument bindSelectRowIdCall parameterIndex Int32 sqliteSampleFirstBindParameterIndex
+argument bindSelectRowIdCall value Int64 insertedRowId
 run bindSelectRowIdCall
-ignoreOk bindSelectRowIdCall Void
-bindError bindSelectRowIdError SqliteStatementBindFailure bindSelectRowIdCall
-branchIfError bindSelectRowIdCall sampleSelectBindFailed
+ignore void source bindSelectRowIdCall
+bind error bindSelectRowIdError SqliteStatementBindFailure bindSelectRowIdCall
+branch error source bindSelectRowIdCall target sampleSelectBindFailed
 
 call stepSelectCall sqlite.stepStatement
-arg stepSelectCall statement selectStatement
+argument stepSelectCall statement SqliteStatement selectStatement
 run stepSelectCall
-ignoreOk stepSelectCall SqliteStepResult
-bindError selectStepError SqliteStatementStepFailure stepSelectCall
-branchIfError stepSelectCall sampleSelectStepFailed
+ignore ok source stepSelectCall type SqliteStepResult
+bind error selectStepError SqliteStatementStepFailure stepSelectCall
+branch error source stepSelectCall target sampleSelectStepFailed
 
 # rationale: Read the columns by index. The text pointer is borrowed
 # from SQLite-owned memory; the warning attached to this operation
 # documents that callers must copy if they need it past the next step.
 call readSelectRowIdCall sqlite.columnInt64
-arg readSelectRowIdCall statement selectStatement
-arg readSelectRowIdCall columnIndex sqliteSampleIdentifierColumnIndex
+argument readSelectRowIdCall statement SqliteStatement selectStatement
+argument readSelectRowIdCall columnIndex Int32 sqliteSampleIdentifierColumnIndex
 run readSelectRowIdCall
-bind selectedRowId CSignedInt64 readSelectRowIdCall
+bind value selectedRowId Int64 readSelectRowIdCall
 
 call readSelectBodyCall sqlite.columnText
-arg readSelectBodyCall statement selectStatement
-arg readSelectBodyCall columnIndex sqliteSampleBodyColumnIndex
+argument readSelectBodyCall statement SqliteStatement selectStatement
+argument readSelectBodyCall columnIndex Int32 sqliteSampleBodyColumnIndex
 run readSelectBodyCall
-bind selectedBodyText CNullTerminatedByteString readSelectBodyCall
+bind value selectedBodyText String readSelectBodyCall
 
 # rationale: Surface the result to stdout so the sample doubles as a
 # visible smoke. Real apps would marshal these into a record/codec.
 call writeSelectedBodyCall console.writeLine
-arg writeSelectedBodyCall console console
-arg writeSelectedBodyCall text selectedBodyText
+argument writeSelectedBodyCall console Console console
+argument writeSelectedBodyCall text String selectedBodyText
 run writeSelectedBodyCall
-ignoreOk writeSelectedBodyCall Void
-bindError writeSelectedBodyError ConsoleWriteFailure writeSelectedBodyCall
-branchIfError writeSelectedBodyCall sampleConsoleWriteFailed
+ignore void source writeSelectedBodyCall
+bind error writeSelectedBodyError ConsoleWriteFailure writeSelectedBodyCall
+branch error source writeSelectedBodyCall target sampleConsoleWriteFailed
 
-const sqliteSampleSuccessExitCode CSignedInt32 0
-returnValue sqliteSampleSuccessExitCode
+storage module immutable sqliteSampleSuccessExitCode Int32 0
+return value sqliteSampleSuccessExitCode
 
 # ----- failure labels: every branch returns the original error so the
 # caller can attribute the failure to a specific phase. -----
 
 label sampleDatabaseOpenFailed
 makeError sampleDatabaseOpenUmbrellaFailure SqliteError.DatabaseOpenFailed sampleDatabaseOpenError
-returnError sampleDatabaseOpenUmbrellaFailure
+return error sampleDatabaseOpenUmbrellaFailure
 
 label sampleCreateTableFailed
 makeError sampleCreateTableUmbrellaFailure SqliteError.DatabaseExecFailed createNotesTableError
-returnError sampleCreateTableUmbrellaFailure
+return error sampleCreateTableUmbrellaFailure
 
 label sampleInsertPrepareFailed
 makeError sampleInsertPrepareUmbrellaFailure SqliteError.StatementPrepareFailed insertPrepareError
-returnError sampleInsertPrepareUmbrellaFailure
+return error sampleInsertPrepareUmbrellaFailure
 
 label sampleInsertBindFailed
 makeError sampleInsertBindUmbrellaFailure SqliteError.StatementBindFailed bindInsertBodyError
-returnError sampleInsertBindUmbrellaFailure
+return error sampleInsertBindUmbrellaFailure
 
 label sampleInsertStepFailed
 makeError sampleInsertStepUmbrellaFailure SqliteError.StatementStepFailed insertStepError
-returnError sampleInsertStepUmbrellaFailure
+return error sampleInsertStepUmbrellaFailure
 
 label sampleSelectPrepareFailed
 makeError sampleSelectPrepareUmbrellaFailure SqliteError.StatementPrepareFailed selectPrepareError
-returnError sampleSelectPrepareUmbrellaFailure
+return error sampleSelectPrepareUmbrellaFailure
 
 label sampleSelectBindFailed
 makeError sampleSelectBindUmbrellaFailure SqliteError.StatementBindFailed bindSelectRowIdError
-returnError sampleSelectBindUmbrellaFailure
+return error sampleSelectBindUmbrellaFailure
 
 label sampleSelectStepFailed
 makeError sampleSelectStepUmbrellaFailure SqliteError.StatementStepFailed selectStepError
-returnError sampleSelectStepUmbrellaFailure
+return error sampleSelectStepUmbrellaFailure
 
 label sampleConsoleWriteFailed
 makeError sampleConsoleWriteUmbrellaFailure SqliteError.ConsoleWriteFailed writeSelectedBodyError
-returnError sampleConsoleWriteUmbrellaFailure
+return error sampleConsoleWriteUmbrellaFailure
 
 # ----- tests cross-link the operation by name -----
 

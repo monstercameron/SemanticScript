@@ -1,0 +1,721 @@
+module app.realtime_auction_arena.server.audit_context
+purpose module app.realtime_auction_arena.server.audit_context "Executable authenticated audit-query context for Realtime Auction Arena."
+moduleOwns app.realtime_auction_arena.server.audit_context "Bounded audit_events replay handler, audit cursor parsing, and audit query response shape."
+moduleDoesNotOwn app.realtime_auction_arena.server.audit_context "Route registration, command audit insertion, request-log insertion, mutable auth/session state, database lifecycle, or long-lived stream fanout."
+invariant module app.realtime_auction_arena.server.audit_context "Audit reads are authenticated, bounded, ordered by durable created_at plus audit_event_id, and redact no additional data beyond what insert helpers already persisted."
+
+import http standard.http
+import sqlite_std standard.sqlite
+import json standard.json
+import jwt standard.jwt
+import stdlib standard.stdlib
+import string standard.string
+import runtime app.realtime_auction_arena.server.runtime_constants
+import sql app.realtime_auction_arena.server.sql_queries
+import helpers app.realtime_auction_arena.server.http_helpers
+import auth_context app.realtime_auction_arena.server.auth_context
+import server_context app.realtime_auction_arena.server.server_context
+
+importOperation requestHasValidBearerToken auth_context requestHasValidBearerToken
+importOperation requestHasAdminBearerToken auth_context requestHasAdminBearerToken
+importOperation openOrReuseArenaDatabase server_context openOrReuseArenaDatabase
+importOperation parseDecimalCStringToSignedInt64 stdlib parseDecimalCStringToSignedInt64
+importOperation findFirstCharacterInCString string findFirstCharacterInCString
+importOperation countInitialCStringBytesInAcceptSet string countInitialCStringBytesInAcceptSet
+
+exportOperation app.realtime_auction_arena.server.audit_context auctionAuditHandler
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to inspect incoming audit query path, query parameters, and headers."
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write native HTTP audit query responses."
+capability heapAllocCapability heap allocate
+purpose operation heapAllocCapability "Authority to allocate per-request audit JSON scratch buffers."
+capability heapFreeCapability heap free
+purpose operation heapFreeCapability "Authority to release per-request audit JSON scratch buffers."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to read parsed cursor text buffers."
+capability jsonDocumentWriteCapability json.document.tree write
+purpose operation jsonDocumentWriteCapability "Authority to create and serialize bounded audit JSON documents."
+capability sqliteDatabaseReader database read
+purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite audit statements."
+capability jwtTokenSigner jwt.hs256 signVerify
+purpose operation jwtTokenSigner "Authority to verify HS256 bearer tokens through the server auth context."
+
+storage module immutable auditDefaultLimit Int64 100
+storage module immutable auditMaxLimit Int64 100
+storage module immutable fieldAuditEvents String "auditEvents"
+storage module immutable fieldAuditEventId String "auditEventId"
+storage module immutable fieldActorUserId String "actorUserId"
+storage module immutable fieldActorRole String "actorRole"
+storage module immutable fieldIdempotencyKey String "idempotencyKey"
+storage module immutable fieldAction String "action"
+storage module immutable fieldCommandKind String "commandKind"
+storage module immutable fieldOutcome String "outcome"
+storage module immutable fieldErrorCode String "errorCode"
+storage module immutable fieldPayloadJson String "payloadJson"
+storage module immutable auditCursorQueryParamName String "cursor"
+storage module immutable fieldCursor String "cursor"
+storage module immutable fieldNextCursor String "nextCursor"
+storage module immutable auditCursorFormat String "%lld:%s"
+storage module immutable auditCursorBufferCapacity ByteCount 128
+storage module immutable auditCursorBufferCapacityArg Int64 128
+storage module immutable auditCursorDelimiterCode Int32 58
+storage module immutable auditCursorDigitCharacters String "0123456789"
+storage module immutable auditEmptyCursorId String ""
+storage module immutable auditAfterCursorTiebreak String "~"
+
+operation auctionAuditHandler
+input operation auctionAuditHandler request HttpRequest
+input operation auctionAuditHandler response HttpResponse
+output operation auctionAuditHandler Int32
+effect auctionAuditHandler read http.request.header
+effect auctionAuditHandler read http.request.query
+effect auctionAuditHandler read http.request.path
+effect auctionAuditHandler read database
+effect auctionAuditHandler write http.response
+effect auctionAuditHandler allocate heap
+effect auctionAuditHandler free heap
+effect auctionAuditHandler write json.document.tree
+effect auctionAuditHandler read memory.buffer
+memory auctionAuditHandler heap yes
+async auctionAuditHandler no
+useCapability auctionAuditHandler httpRequestReader
+useCapability auctionAuditHandler httpResponseWriter
+useCapability auctionAuditHandler sqliteDatabaseReader
+useCapability auctionAuditHandler heapAllocCapability
+useCapability auctionAuditHandler heapFreeCapability
+useCapability auctionAuditHandler jsonDocumentWriteCapability
+useCapability auctionAuditHandler memoryBufferReadWriteCapability
+useCapability auctionAuditHandler jwtTokenSigner
+purpose operation auctionAuditHandler "Return committed audit rows for one auction as a bounded authenticated JSON page."
+invariant operation auctionAuditHandler "Audit reads require a valid bearer token and the seeded admin role/scope policy; wrong-role authenticated callers receive 403."
+label startAuctionAuditHandler
+call auditBearerCall requestHasValidBearerToken
+argument auditBearerCall request HttpRequest request
+run auditBearerCall
+bind value auditBearerValid Bool auditBearerCall
+branch if condition auditBearerValid target auditBearerPresent
+branch else target auditUnauthorized
+label auditBearerPresent
+call auditAuthCall requestHasAdminBearerToken
+argument auditAuthCall request HttpRequest request
+run auditAuthCall
+bind value auditAuthenticated Bool auditAuthCall
+branch if condition auditAuthenticated target auditBearerAccepted
+branch else target auditForbidden
+
+label auditBearerAccepted
+call auditAuctionIdParamCall http.requestPathParam
+argument auditAuctionIdParamCall request HttpRequest request
+argument auditAuctionIdParamCall name String runtime.auctionIdParamName
+run auditAuctionIdParamCall
+bind value auditAuctionId String auditAuctionIdParamCall
+call auditAuctionIdMissingCall pointer.isNull
+argument auditAuctionIdMissingCall ptr OpaquePointer auditAuctionId
+run auditAuctionIdMissingCall
+bind value auditAuctionIdMissing Bool auditAuctionIdMissingCall
+branch if condition auditAuctionIdMissing target auditValidationFailed
+
+storage local mutable auditReplayCursor Int64 runtime.zeroEventReplayCursor
+storage local mutable auditReplayCursorId String auditEmptyCursorId
+storage local mutable auditReplayLimit Int64 auditDefaultLimit
+
+call auditCursorQueryCall http.requestQueryParam
+argument auditCursorQueryCall request HttpRequest request
+argument auditCursorQueryCall name String auditCursorQueryParamName
+run auditCursorQueryCall
+bind value auditCursorQuery String auditCursorQueryCall
+call auditCursorQueryMissingCall pointer.isNull
+argument auditCursorQueryMissingCall ptr OpaquePointer auditCursorQuery
+run auditCursorQueryMissingCall
+bind value auditCursorQueryMissing Bool auditCursorQueryMissingCall
+branch if condition auditCursorQueryMissing target auditLegacyAfterQuery
+call parseAuditCursorCreatedCall parseDecimalCStringToSignedInt64
+argument parseAuditCursorCreatedCall inputText String auditCursorQuery
+run parseAuditCursorCreatedCall
+bind value parsedAuditCursorCreated Int64 parseAuditCursorCreatedCall
+set memory auditReplayCursor parsedAuditCursorCreated
+call auditCursorDelimiterCall findFirstCharacterInCString
+argument auditCursorDelimiterCall inputText String auditCursorQuery
+argument auditCursorDelimiterCall characterCode Int32 auditCursorDelimiterCode
+run auditCursorDelimiterCall
+bind value auditCursorDelimiterOffset Int64 auditCursorDelimiterCall
+call auditCursorDelimiterMissingCall math.lessThanInt64
+argument auditCursorDelimiterMissingCall left Int64 auditCursorDelimiterOffset
+argument auditCursorDelimiterMissingCall right Int64 runtime.zeroEventReplayCursor
+run auditCursorDelimiterMissingCall
+bind value auditCursorDelimiterMissing Bool auditCursorDelimiterMissingCall
+branch if condition auditCursorDelimiterMissing target auditValidationFailed
+call auditCursorDelimiterZeroCall math.equalInt64
+argument auditCursorDelimiterZeroCall left Int64 auditCursorDelimiterOffset
+argument auditCursorDelimiterZeroCall right Int64 runtime.zeroEventReplayCursor
+run auditCursorDelimiterZeroCall
+bind value auditCursorDelimiterZero Bool auditCursorDelimiterZeroCall
+branch if condition auditCursorDelimiterZero target auditValidationFailed
+call auditCursorDigitPrefixCall countInitialCStringBytesInAcceptSet
+argument auditCursorDigitPrefixCall inputText String auditCursorQuery
+argument auditCursorDigitPrefixCall acceptedCharacters String auditCursorDigitCharacters
+run auditCursorDigitPrefixCall
+bind value auditCursorDigitPrefixLength ByteCount auditCursorDigitPrefixCall
+call auditCursorDigitsMatchCall math.equalInt64
+argument auditCursorDigitsMatchCall left Int64 auditCursorDigitPrefixLength
+argument auditCursorDigitsMatchCall right Int64 auditCursorDelimiterOffset
+run auditCursorDigitsMatchCall
+bind value auditCursorDigitsMatch Bool auditCursorDigitsMatchCall
+branch if condition auditCursorDigitsMatch target auditCursorDigitsAccepted
+branch else target auditValidationFailed
+label auditCursorDigitsAccepted
+call auditCursorIdOffsetCall math.addInt64
+argument auditCursorIdOffsetCall left Int64 auditCursorDelimiterOffset
+argument auditCursorIdOffsetCall right Int64 1
+run auditCursorIdOffsetCall
+bind value auditCursorIdOffset ByteCount auditCursorIdOffsetCall
+call auditCursorIdPointerCall pointer.offset
+argument auditCursorIdPointerCall base OpaquePointer auditCursorQuery
+argument auditCursorIdPointerCall offset ByteCount auditCursorIdOffset
+run auditCursorIdPointerCall
+bind value parsedAuditCursorId String auditCursorIdPointerCall
+call auditCursorIdHeadCall pointer.loadByte
+argument auditCursorIdHeadCall buffer OpaquePointer parsedAuditCursorId
+argument auditCursorIdHeadCall offset ByteCount runtime.zeroEventReplayCursor
+run auditCursorIdHeadCall
+bind value auditCursorIdHead Int8 auditCursorIdHeadCall
+call auditCursorTimestampPositiveCall math.greaterThanInt64
+argument auditCursorTimestampPositiveCall left Int64 auditReplayCursor
+argument auditCursorTimestampPositiveCall right Int64 runtime.zeroEventReplayCursor
+run auditCursorTimestampPositiveCall
+bind value auditCursorTimestampPositive Bool auditCursorTimestampPositiveCall
+branch if condition auditCursorTimestampPositive target auditCursorRequiresId
+set memory auditReplayCursorId parsedAuditCursorId
+jump target auditLimitQuery
+label auditCursorRequiresId
+call auditCursorIdEmptyCall math.equalInt64
+argument auditCursorIdEmptyCall left Int64 auditCursorIdHead
+argument auditCursorIdEmptyCall right Int64 runtime.zeroEventReplayCursor
+run auditCursorIdEmptyCall
+bind value auditCursorIdEmpty Bool auditCursorIdEmptyCall
+branch if condition auditCursorIdEmpty target auditValidationFailed
+set memory auditReplayCursorId parsedAuditCursorId
+jump target auditLimitQuery
+
+label auditLegacyAfterQuery
+call auditAfterQueryCall http.requestQueryParam
+argument auditAfterQueryCall request HttpRequest request
+argument auditAfterQueryCall name String runtime.afterQueryParamName
+run auditAfterQueryCall
+bind value auditAfterQuery String auditAfterQueryCall
+call auditAfterQueryMissingCall pointer.isNull
+argument auditAfterQueryMissingCall ptr OpaquePointer auditAfterQuery
+run auditAfterQueryMissingCall
+bind value auditAfterQueryMissing Bool auditAfterQueryMissingCall
+branch if condition auditAfterQueryMissing target auditLimitQuery
+call parseAuditAfterQueryCall parseDecimalCStringToSignedInt64
+argument parseAuditAfterQueryCall inputText String auditAfterQuery
+run parseAuditAfterQueryCall
+bind value parsedAuditAfterQuery Int64 parseAuditAfterQueryCall
+set memory auditReplayCursor parsedAuditAfterQuery
+set memory auditReplayCursorId auditAfterCursorTiebreak
+
+label auditLimitQuery
+call auditCursorNegativeCall math.lessThanInt64
+argument auditCursorNegativeCall left Int64 auditReplayCursor
+argument auditCursorNegativeCall right Int64 runtime.zeroEventReplayCursor
+run auditCursorNegativeCall
+bind value auditCursorNegative Bool auditCursorNegativeCall
+branch if condition auditCursorNegative target auditValidationFailed
+
+call auditLimitQueryCall http.requestQueryParam
+argument auditLimitQueryCall request HttpRequest request
+argument auditLimitQueryCall name String runtime.limitQueryParamName
+run auditLimitQueryCall
+bind value auditLimitQuery String auditLimitQueryCall
+call auditLimitQueryMissingCall pointer.isNull
+argument auditLimitQueryMissingCall ptr OpaquePointer auditLimitQuery
+run auditLimitQueryMissingCall
+bind value auditLimitQueryMissing Bool auditLimitQueryMissingCall
+branch if condition auditLimitQueryMissing target auditLimitValidate
+call parseAuditLimitQueryCall parseDecimalCStringToSignedInt64
+argument parseAuditLimitQueryCall inputText String auditLimitQuery
+run parseAuditLimitQueryCall
+bind value parsedAuditLimitQuery Int64 parseAuditLimitQueryCall
+set memory auditReplayLimit parsedAuditLimitQuery
+
+label auditLimitValidate
+call auditLimitTooLowCall math.lessThanOrEqualInt64
+argument auditLimitTooLowCall left Int64 auditReplayLimit
+argument auditLimitTooLowCall right Int64 runtime.zeroEventReplayCursor
+run auditLimitTooLowCall
+bind value auditLimitTooLow Bool auditLimitTooLowCall
+branch if condition auditLimitTooLow target auditValidationFailed
+call auditLimitTooHighCall math.greaterThanInt64
+argument auditLimitTooHighCall left Int64 auditReplayLimit
+argument auditLimitTooHighCall right Int64 auditMaxLimit
+run auditLimitTooHighCall
+bind value auditLimitTooHigh Bool auditLimitTooHighCall
+branch if condition auditLimitTooHigh target auditValidationFailed
+
+call auditOpenDatabaseCall openOrReuseArenaDatabase
+run auditOpenDatabaseCall
+bind value auditDatabase SqliteDatabase auditOpenDatabaseCall
+call auditDatabaseMissingCall pointer.isNull
+argument auditDatabaseMissingCall ptr OpaquePointer auditDatabase
+run auditDatabaseMissingCall
+bind value auditDatabaseMissing Bool auditDatabaseMissingCall
+branch if condition auditDatabaseMissing target auditDatabaseUnavailableFailed
+
+call prepareAuditAuctionCall sqlite.prepareStatement
+argument prepareAuditAuctionCall database SqliteDatabase auditDatabase
+argument prepareAuditAuctionCall sql SqlText sql.sqlSelectAuctionExists
+run prepareAuditAuctionCall
+bind ok auditAuctionStatement SqliteStatement prepareAuditAuctionCall
+bind error prepareAuditAuctionError SqliteStatementPrepareFailure prepareAuditAuctionCall
+branch error source prepareAuditAuctionCall target auditDatabaseUnavailableFailed
+defer finalizeAuditAuctionDefer sqlite.finalizeStatement auditAuctionStatement
+call bindAuditAuctionCheckCall sqlite.bindText
+argument bindAuditAuctionCheckCall statement SqliteStatement auditAuctionStatement
+argument bindAuditAuctionCheckCall parameterIndex Int32 runtime.bindIndex1
+argument bindAuditAuctionCheckCall value String auditAuctionId
+run bindAuditAuctionCheckCall
+ignore void source bindAuditAuctionCheckCall
+bind error bindAuditAuctionCheckError SqliteStatementBindFailure bindAuditAuctionCheckCall
+branch error source bindAuditAuctionCheckCall target auditDatabaseUnavailableFailed
+call stepAuditAuctionCheckCall sqlite.stepStatement
+argument stepAuditAuctionCheckCall statement SqliteStatement auditAuctionStatement
+run stepAuditAuctionCheckCall
+bind ok auditAuctionCheckStepResult Int32 stepAuditAuctionCheckCall
+bind error stepAuditAuctionCheckError SqliteStatementStepFailure stepAuditAuctionCheckCall
+branch error source stepAuditAuctionCheckCall target auditDatabaseUnavailableFailed
+call auditAuctionExistsCall math.equalInt32
+argument auditAuctionExistsCall left Int32 auditAuctionCheckStepResult
+argument auditAuctionExistsCall right Int32 runtime.sqliteRowStepStatus
+run auditAuctionExistsCall
+bind value auditAuctionExists Bool auditAuctionExistsCall
+branch if condition auditAuctionExists target auditAuctionExistsAccepted
+branch else target auditNotFound
+
+label auditAuctionExistsAccepted
+call prepareAuditRowsCall sqlite.prepareStatement
+argument prepareAuditRowsCall database SqliteDatabase auditDatabase
+argument prepareAuditRowsCall sql SqlText sql.sqlSelectAuctionAuditEventsAfter
+run prepareAuditRowsCall
+bind ok auditRowsStatement SqliteStatement prepareAuditRowsCall
+bind error prepareAuditRowsError SqliteStatementPrepareFailure prepareAuditRowsCall
+branch error source prepareAuditRowsCall target auditDatabaseUnavailableFailed
+defer finalizeAuditRowsDefer sqlite.finalizeStatement auditRowsStatement
+call bindAuditRowsAuctionCall sqlite.bindText
+argument bindAuditRowsAuctionCall statement SqliteStatement auditRowsStatement
+argument bindAuditRowsAuctionCall parameterIndex Int32 runtime.bindIndex1
+argument bindAuditRowsAuctionCall value String auditAuctionId
+run bindAuditRowsAuctionCall
+ignore void source bindAuditRowsAuctionCall
+bind error bindAuditRowsAuctionError SqliteStatementBindFailure bindAuditRowsAuctionCall
+branch error source bindAuditRowsAuctionCall target auditDatabaseUnavailableFailed
+call bindAuditRowsCursorCall sqlite.bindInt64
+argument bindAuditRowsCursorCall statement SqliteStatement auditRowsStatement
+argument bindAuditRowsCursorCall parameterIndex Int32 runtime.bindIndex2
+argument bindAuditRowsCursorCall value Int64 auditReplayCursor
+run bindAuditRowsCursorCall
+ignore void source bindAuditRowsCursorCall
+bind error bindAuditRowsCursorError SqliteStatementBindFailure bindAuditRowsCursorCall
+branch error source bindAuditRowsCursorCall target auditDatabaseUnavailableFailed
+call bindAuditRowsEqualCursorCall sqlite.bindInt64
+argument bindAuditRowsEqualCursorCall statement SqliteStatement auditRowsStatement
+argument bindAuditRowsEqualCursorCall parameterIndex Int32 runtime.bindIndex3
+argument bindAuditRowsEqualCursorCall value Int64 auditReplayCursor
+run bindAuditRowsEqualCursorCall
+ignore void source bindAuditRowsEqualCursorCall
+bind error bindAuditRowsEqualCursorError SqliteStatementBindFailure bindAuditRowsEqualCursorCall
+branch error source bindAuditRowsEqualCursorCall target auditDatabaseUnavailableFailed
+call bindAuditRowsCursorIdCall sqlite.bindText
+argument bindAuditRowsCursorIdCall statement SqliteStatement auditRowsStatement
+argument bindAuditRowsCursorIdCall parameterIndex Int32 runtime.bindIndex4
+argument bindAuditRowsCursorIdCall value String auditReplayCursorId
+run bindAuditRowsCursorIdCall
+ignore void source bindAuditRowsCursorIdCall
+bind error bindAuditRowsCursorIdError SqliteStatementBindFailure bindAuditRowsCursorIdCall
+branch error source bindAuditRowsCursorIdCall target auditDatabaseUnavailableFailed
+call bindAuditRowsLimitCall sqlite.bindInt64
+argument bindAuditRowsLimitCall statement SqliteStatement auditRowsStatement
+argument bindAuditRowsLimitCall parameterIndex Int32 runtime.bindIndex5
+argument bindAuditRowsLimitCall value Int64 auditReplayLimit
+run bindAuditRowsLimitCall
+ignore void source bindAuditRowsLimitCall
+bind error bindAuditRowsLimitError SqliteStatementBindFailure bindAuditRowsLimitCall
+branch error source bindAuditRowsLimitCall target auditDatabaseUnavailableFailed
+
+call allocateAuditBufferCall c.malloc
+argument allocateAuditBufferCall size ByteCount runtime.arenaResponseBufferCapacity
+run allocateAuditBufferCall
+bind ok auditResponseBuffer OpaquePointer allocateAuditBufferCall
+bind error auditBufferError OpaquePointer allocateAuditBufferCall
+branch error source allocateAuditBufferCall target auditDatabaseUnavailableFailed
+defer releaseAuditBufferDefer c.free auditResponseBuffer
+call allocateAuditCursorBufferCall c.malloc
+argument allocateAuditCursorBufferCall size ByteCount auditCursorBufferCapacity
+run allocateAuditCursorBufferCall
+bind ok auditCursorBuffer OpaquePointer allocateAuditCursorBufferCall
+bind error auditCursorBufferError OpaquePointer allocateAuditCursorBufferCall
+branch error source allocateAuditCursorBufferCall target auditDatabaseUnavailableFailed
+defer releaseAuditCursorBufferDefer c.free auditCursorBuffer
+call formatAuditCursorCall c.snprintf
+argument formatAuditCursorCall buffer OpaquePointer auditCursorBuffer
+argument formatAuditCursorCall size Int64 auditCursorBufferCapacityArg
+argument formatAuditCursorCall format String auditCursorFormat
+argument formatAuditCursorCall first Int64 auditReplayCursor
+argument formatAuditCursorCall second String auditReplayCursorId
+run formatAuditCursorCall
+ignore ok source formatAuditCursorCall type Int32
+bind value auditCursorText String allocateAuditCursorBufferCall
+call allocateAuditNextCursorBufferCall c.malloc
+argument allocateAuditNextCursorBufferCall size ByteCount auditCursorBufferCapacity
+run allocateAuditNextCursorBufferCall
+bind ok auditNextCursorBuffer OpaquePointer allocateAuditNextCursorBufferCall
+bind error auditNextCursorBufferError OpaquePointer allocateAuditNextCursorBufferCall
+branch error source allocateAuditNextCursorBufferCall target auditDatabaseUnavailableFailed
+defer releaseAuditNextCursorBufferDefer c.free auditNextCursorBuffer
+bind value auditNextCursorText String allocateAuditNextCursorBufferCall
+call formatInitialAuditNextCursorCall c.snprintf
+argument formatInitialAuditNextCursorCall buffer OpaquePointer auditNextCursorBuffer
+argument formatInitialAuditNextCursorCall size Int64 auditCursorBufferCapacityArg
+argument formatInitialAuditNextCursorCall format String auditCursorFormat
+argument formatInitialAuditNextCursorCall first Int64 auditReplayCursor
+argument formatInitialAuditNextCursorCall second String auditReplayCursorId
+run formatInitialAuditNextCursorCall
+ignore ok source formatInitialAuditNextCursorCall type Int32
+call createAuditDocumentCall json.createEmptyDocument
+argument createAuditDocumentCall capacityBytes JsonCapacityBytes runtime.arenaResponseJsonCapacity
+argument createAuditDocumentCall rootKind JsonValueKind runtime.jsonObjectRootKind
+run createAuditDocumentCall
+bind ok auditDocument JsonDocument createAuditDocumentCall
+bind error auditDocumentError JsonAccessError createAuditDocumentCall
+branch error source createAuditDocumentCall target auditDatabaseUnavailableFailed
+defer releaseAuditDocumentDefer json.destroyDocument auditDocument
+call auditRootCall json.documentRoot
+argument auditRootCall document JsonDocument auditDocument
+run auditRootCall
+bind value auditRoot JsonCursor auditRootCall
+call seedAuditEnvelopeCall helpers.seedSuccessEnvelope
+argument seedAuditEnvelopeCall document JsonDocument auditDocument
+argument seedAuditEnvelopeCall cursor JsonCursor auditRoot
+run seedAuditEnvelopeCall
+ignore void source seedAuditEnvelopeCall
+call createAuditDataCall json.setObjectFieldObject
+argument createAuditDataCall document JsonDocument auditDocument
+argument createAuditDataCall cursor JsonCursor auditRoot
+argument createAuditDataCall fieldName String runtime.fieldData
+run createAuditDataCall
+bind ok auditData JsonCursor createAuditDataCall
+bind error createAuditDataError JsonAccessError createAuditDataCall
+branch error source createAuditDataCall target auditDatabaseUnavailableFailed
+call setAuditAuctionIdCall json.setObjectFieldString
+argument setAuditAuctionIdCall document JsonDocument auditDocument
+argument setAuditAuctionIdCall cursor JsonCursor auditData
+argument setAuditAuctionIdCall fieldName String runtime.fieldAuctionId
+argument setAuditAuctionIdCall value String auditAuctionId
+run setAuditAuctionIdCall
+ignore ok source setAuditAuctionIdCall type Int32
+call setAuditAfterCall json.setObjectFieldInt64
+argument setAuditAfterCall document JsonDocument auditDocument
+argument setAuditAfterCall cursor JsonCursor auditData
+argument setAuditAfterCall fieldName String runtime.fieldAfter
+argument setAuditAfterCall value Int64 auditReplayCursor
+run setAuditAfterCall
+ignore ok source setAuditAfterCall type Int32
+call setAuditCursorCall json.setObjectFieldString
+argument setAuditCursorCall document JsonDocument auditDocument
+argument setAuditCursorCall cursor JsonCursor auditData
+argument setAuditCursorCall fieldName String fieldCursor
+argument setAuditCursorCall value String auditCursorText
+run setAuditCursorCall
+ignore ok source setAuditCursorCall type Int32
+call setAuditLimitCall json.setObjectFieldInt64
+argument setAuditLimitCall document JsonDocument auditDocument
+argument setAuditLimitCall cursor JsonCursor auditData
+argument setAuditLimitCall fieldName String runtime.fieldLimit
+argument setAuditLimitCall value Int64 auditReplayLimit
+run setAuditLimitCall
+ignore ok source setAuditLimitCall type Int32
+call createAuditArrayCall json.setObjectFieldArray
+argument createAuditArrayCall document JsonDocument auditDocument
+argument createAuditArrayCall cursor JsonCursor auditData
+argument createAuditArrayCall fieldName String fieldAuditEvents
+run createAuditArrayCall
+bind ok auditArray JsonCursor createAuditArrayCall
+bind error createAuditArrayError JsonAccessError createAuditArrayCall
+branch error source createAuditArrayCall target auditDatabaseUnavailableFailed
+
+storage local mutable auditCount Int64 0
+storage local mutable auditNextAfter Int64 auditReplayCursor
+storage local immutable auditIncrement Int64 1
+
+label auditRowsLoop
+call stepAuditRowsCall sqlite.stepStatement
+argument stepAuditRowsCall statement SqliteStatement auditRowsStatement
+run stepAuditRowsCall
+bind ok auditRowsStepResult Int32 stepAuditRowsCall
+bind error auditRowsStepError SqliteStatementStepFailure stepAuditRowsCall
+branch error source stepAuditRowsCall target auditDatabaseUnavailableFailed
+call auditRowAvailableCall math.equalInt32
+argument auditRowAvailableCall left Int32 auditRowsStepResult
+argument auditRowAvailableCall right Int32 runtime.sqliteRowStepStatus
+run auditRowAvailableCall
+bind value auditRowAvailable Bool auditRowAvailableCall
+branch if condition auditRowAvailable target appendAuditRow
+branch else target auditRowsDone
+
+label appendAuditRow
+call readAuditEventIdCall sqlite.columnText
+argument readAuditEventIdCall statement SqliteStatement auditRowsStatement
+argument readAuditEventIdCall columnIndex Int32 runtime.columnIndex0
+run readAuditEventIdCall
+bind value auditEventId String readAuditEventIdCall
+call readAuditActorCall sqlite.columnText
+argument readAuditActorCall statement SqliteStatement auditRowsStatement
+argument readAuditActorCall columnIndex Int32 runtime.columnIndex1
+run readAuditActorCall
+bind value auditActorUserId String readAuditActorCall
+call readAuditActorRoleCall sqlite.columnInt64
+argument readAuditActorRoleCall statement SqliteStatement auditRowsStatement
+argument readAuditActorRoleCall columnIndex Int32 runtime.columnIndex2
+run readAuditActorRoleCall
+bind value auditActorRole Int64 readAuditActorRoleCall
+call readAuditRequestIdCall sqlite.columnText
+argument readAuditRequestIdCall statement SqliteStatement auditRowsStatement
+argument readAuditRequestIdCall columnIndex Int32 runtime.columnIndex3
+run readAuditRequestIdCall
+bind value auditRequestId String readAuditRequestIdCall
+call readAuditIdempotencyCall sqlite.columnText
+argument readAuditIdempotencyCall statement SqliteStatement auditRowsStatement
+argument readAuditIdempotencyCall columnIndex Int32 runtime.columnIndex4
+run readAuditIdempotencyCall
+bind value auditIdempotencyKey String readAuditIdempotencyCall
+call readAuditActionCall sqlite.columnText
+argument readAuditActionCall statement SqliteStatement auditRowsStatement
+argument readAuditActionCall columnIndex Int32 runtime.columnIndex5
+run readAuditActionCall
+bind value auditAction String readAuditActionCall
+call readAuditCommandKindCall sqlite.columnInt64
+argument readAuditCommandKindCall statement SqliteStatement auditRowsStatement
+argument readAuditCommandKindCall columnIndex Int32 runtime.columnIndex6
+run readAuditCommandKindCall
+bind value auditCommandKind Int64 readAuditCommandKindCall
+call readAuditAuctionIdCall sqlite.columnText
+argument readAuditAuctionIdCall statement SqliteStatement auditRowsStatement
+argument readAuditAuctionIdCall columnIndex Int32 runtime.columnIndex7
+run readAuditAuctionIdCall
+bind value auditRowAuctionId String readAuditAuctionIdCall
+call readAuditBidIdCall sqlite.columnText
+argument readAuditBidIdCall statement SqliteStatement auditRowsStatement
+argument readAuditBidIdCall columnIndex Int32 runtime.columnIndex8
+run readAuditBidIdCall
+bind value auditBidId String readAuditBidIdCall
+call readAuditOutcomeCall sqlite.columnInt64
+argument readAuditOutcomeCall statement SqliteStatement auditRowsStatement
+argument readAuditOutcomeCall columnIndex Int32 runtime.columnIndex9
+run readAuditOutcomeCall
+bind value auditOutcome Int64 readAuditOutcomeCall
+call readAuditErrorCall sqlite.columnText
+argument readAuditErrorCall statement SqliteStatement auditRowsStatement
+argument readAuditErrorCall columnIndex Int32 runtime.columnIndex10
+run readAuditErrorCall
+bind value auditErrorCode String readAuditErrorCall
+call readAuditPayloadCall sqlite.columnText
+argument readAuditPayloadCall statement SqliteStatement auditRowsStatement
+argument readAuditPayloadCall columnIndex Int32 runtime.columnIndex11
+run readAuditPayloadCall
+bind value auditPayloadJson String readAuditPayloadCall
+call readAuditCreatedCall sqlite.columnInt64
+argument readAuditCreatedCall statement SqliteStatement auditRowsStatement
+argument readAuditCreatedCall columnIndex Int32 runtime.columnIndex12
+run readAuditCreatedCall
+bind value auditCreatedAt Int64 readAuditCreatedCall
+call appendAuditObjectCall json.appendArrayElementObject
+argument appendAuditObjectCall document JsonDocument auditDocument
+argument appendAuditObjectCall cursor JsonCursor auditArray
+run appendAuditObjectCall
+bind ok auditObject JsonCursor appendAuditObjectCall
+bind error appendAuditObjectError JsonAccessError appendAuditObjectCall
+branch error source appendAuditObjectCall target auditDatabaseUnavailableFailed
+call setAuditEventIdCall json.setObjectFieldString
+argument setAuditEventIdCall document JsonDocument auditDocument
+argument setAuditEventIdCall cursor JsonCursor auditObject
+argument setAuditEventIdCall fieldName String fieldAuditEventId
+argument setAuditEventIdCall value String auditEventId
+run setAuditEventIdCall
+ignore ok source setAuditEventIdCall type Int32
+call setAuditActorCall json.setObjectFieldString
+argument setAuditActorCall document JsonDocument auditDocument
+argument setAuditActorCall cursor JsonCursor auditObject
+argument setAuditActorCall fieldName String fieldActorUserId
+argument setAuditActorCall value String auditActorUserId
+run setAuditActorCall
+ignore ok source setAuditActorCall type Int32
+call setAuditActorRoleCall json.setObjectFieldInt64
+argument setAuditActorRoleCall document JsonDocument auditDocument
+argument setAuditActorRoleCall cursor JsonCursor auditObject
+argument setAuditActorRoleCall fieldName String fieldActorRole
+argument setAuditActorRoleCall value Int64 auditActorRole
+run setAuditActorRoleCall
+ignore ok source setAuditActorRoleCall type Int32
+call setAuditRequestIdCall json.setObjectFieldString
+argument setAuditRequestIdCall document JsonDocument auditDocument
+argument setAuditRequestIdCall cursor JsonCursor auditObject
+argument setAuditRequestIdCall fieldName String runtime.fieldRequestId
+argument setAuditRequestIdCall value String auditRequestId
+run setAuditRequestIdCall
+ignore ok source setAuditRequestIdCall type Int32
+call setAuditIdempotencyCall json.setObjectFieldString
+argument setAuditIdempotencyCall document JsonDocument auditDocument
+argument setAuditIdempotencyCall cursor JsonCursor auditObject
+argument setAuditIdempotencyCall fieldName String fieldIdempotencyKey
+argument setAuditIdempotencyCall value String auditIdempotencyKey
+run setAuditIdempotencyCall
+ignore ok source setAuditIdempotencyCall type Int32
+call setAuditActionCall json.setObjectFieldString
+argument setAuditActionCall document JsonDocument auditDocument
+argument setAuditActionCall cursor JsonCursor auditObject
+argument setAuditActionCall fieldName String fieldAction
+argument setAuditActionCall value String auditAction
+run setAuditActionCall
+ignore ok source setAuditActionCall type Int32
+call setAuditCommandKindCall json.setObjectFieldInt64
+argument setAuditCommandKindCall document JsonDocument auditDocument
+argument setAuditCommandKindCall cursor JsonCursor auditObject
+argument setAuditCommandKindCall fieldName String fieldCommandKind
+argument setAuditCommandKindCall value Int64 auditCommandKind
+run setAuditCommandKindCall
+ignore ok source setAuditCommandKindCall type Int32
+call setAuditAuctionFieldCall json.setObjectFieldString
+argument setAuditAuctionFieldCall document JsonDocument auditDocument
+argument setAuditAuctionFieldCall cursor JsonCursor auditObject
+argument setAuditAuctionFieldCall fieldName String runtime.fieldAuctionId
+argument setAuditAuctionFieldCall value String auditRowAuctionId
+run setAuditAuctionFieldCall
+ignore ok source setAuditAuctionFieldCall type Int32
+call setAuditBidFieldCall json.setObjectFieldString
+argument setAuditBidFieldCall document JsonDocument auditDocument
+argument setAuditBidFieldCall cursor JsonCursor auditObject
+argument setAuditBidFieldCall fieldName String runtime.fieldBidId
+argument setAuditBidFieldCall value String auditBidId
+run setAuditBidFieldCall
+ignore ok source setAuditBidFieldCall type Int32
+call setAuditOutcomeCall json.setObjectFieldInt64
+argument setAuditOutcomeCall document JsonDocument auditDocument
+argument setAuditOutcomeCall cursor JsonCursor auditObject
+argument setAuditOutcomeCall fieldName String fieldOutcome
+argument setAuditOutcomeCall value Int64 auditOutcome
+run setAuditOutcomeCall
+ignore ok source setAuditOutcomeCall type Int32
+call setAuditErrorCall json.setObjectFieldString
+argument setAuditErrorCall document JsonDocument auditDocument
+argument setAuditErrorCall cursor JsonCursor auditObject
+argument setAuditErrorCall fieldName String fieldErrorCode
+argument setAuditErrorCall value String auditErrorCode
+run setAuditErrorCall
+ignore ok source setAuditErrorCall type Int32
+call setAuditPayloadCall json.setObjectFieldString
+argument setAuditPayloadCall document JsonDocument auditDocument
+argument setAuditPayloadCall cursor JsonCursor auditObject
+argument setAuditPayloadCall fieldName String fieldPayloadJson
+argument setAuditPayloadCall value String auditPayloadJson
+run setAuditPayloadCall
+ignore ok source setAuditPayloadCall type Int32
+call setAuditCreatedCall json.setObjectFieldInt64
+argument setAuditCreatedCall document JsonDocument auditDocument
+argument setAuditCreatedCall cursor JsonCursor auditObject
+argument setAuditCreatedCall fieldName String runtime.fieldCreatedAtUtcMillis
+argument setAuditCreatedCall value Int64 auditCreatedAt
+run setAuditCreatedCall
+ignore ok source setAuditCreatedCall type Int32
+set memory auditNextAfter auditCreatedAt
+call formatRowAuditNextCursorCall c.snprintf
+argument formatRowAuditNextCursorCall buffer OpaquePointer auditNextCursorBuffer
+argument formatRowAuditNextCursorCall size Int64 auditCursorBufferCapacityArg
+argument formatRowAuditNextCursorCall format String auditCursorFormat
+argument formatRowAuditNextCursorCall first Int64 auditCreatedAt
+argument formatRowAuditNextCursorCall second String auditEventId
+run formatRowAuditNextCursorCall
+ignore ok source formatRowAuditNextCursorCall type Int32
+call incrementAuditCountCall math.addInt64
+argument incrementAuditCountCall left Int64 auditCount
+argument incrementAuditCountCall right Int64 auditIncrement
+run incrementAuditCountCall
+bind value incrementedAuditCount Int64 incrementAuditCountCall
+set memory auditCount incrementedAuditCount
+jump target auditRowsLoop
+
+label auditRowsDone
+call setAuditCountCall json.setObjectFieldInt64
+argument setAuditCountCall document JsonDocument auditDocument
+argument setAuditCountCall cursor JsonCursor auditData
+argument setAuditCountCall fieldName String runtime.fieldCount
+argument setAuditCountCall value Int64 auditCount
+run setAuditCountCall
+ignore ok source setAuditCountCall type Int32
+call setAuditNextAfterCall json.setObjectFieldInt64
+argument setAuditNextAfterCall document JsonDocument auditDocument
+argument setAuditNextAfterCall cursor JsonCursor auditData
+argument setAuditNextAfterCall fieldName String runtime.fieldNextAfter
+argument setAuditNextAfterCall value Int64 auditNextAfter
+run setAuditNextAfterCall
+ignore ok source setAuditNextAfterCall type Int32
+call setAuditNextCursorCall json.setObjectFieldString
+argument setAuditNextCursorCall document JsonDocument auditDocument
+argument setAuditNextCursorCall cursor JsonCursor auditData
+argument setAuditNextCursorCall fieldName String fieldNextCursor
+argument setAuditNextCursorCall value String auditNextCursorText
+run setAuditNextCursorCall
+ignore ok source setAuditNextCursorCall type Int32
+call setAuditErrorNullCall json.setObjectFieldNull
+argument setAuditErrorNullCall document JsonDocument auditDocument
+argument setAuditErrorNullCall cursor JsonCursor auditRoot
+argument setAuditErrorNullCall fieldName String runtime.fieldError
+run setAuditErrorNullCall
+ignore ok source setAuditErrorNullCall type Int32
+call serializeAuditCall json.serializeDocument
+argument serializeAuditCall document JsonDocument auditDocument
+argument serializeAuditCall scratch OpaquePointer auditResponseBuffer
+argument serializeAuditCall scratchCapacity Int64 runtime.arenaResponseBufferCapacity
+run serializeAuditCall
+bind ok auditResponseBody JsonText serializeAuditCall
+bind error serializeAuditError JsonAccessError serializeAuditCall
+branch error source serializeAuditCall target auditDatabaseUnavailableFailed
+call auditWriteCall helpers.writeJsonEnvelope
+argument auditWriteCall response HttpResponse response
+argument auditWriteCall status Int32 runtime.okStatus
+argument auditWriteCall responseBody String auditResponseBody
+run auditWriteCall
+bind value auditWriteStatus Int32 auditWriteCall
+return value auditWriteStatus
+
+label auditUnauthorized
+call auditUnauthorizedWriteCall helpers.writeUnauthorizedEnvelope
+argument auditUnauthorizedWriteCall response HttpResponse response
+run auditUnauthorizedWriteCall
+bind value auditUnauthorizedWriteStatus Int32 auditUnauthorizedWriteCall
+return value auditUnauthorizedWriteStatus
+label auditForbidden
+call auditForbiddenWriteCall helpers.writeInsufficientRoleEnvelope
+argument auditForbiddenWriteCall response HttpResponse response
+run auditForbiddenWriteCall
+bind value auditForbiddenWriteStatus Int32 auditForbiddenWriteCall
+return value auditForbiddenWriteStatus
+label auditValidationFailed
+call auditValidationWriteCall helpers.writeValidationFailedEnvelope
+argument auditValidationWriteCall response HttpResponse response
+run auditValidationWriteCall
+bind value auditValidationWriteStatus Int32 auditValidationWriteCall
+return value auditValidationWriteStatus
+label auditNotFound
+call auditNotFoundWriteCall helpers.writeAuctionNotFoundEnvelope
+argument auditNotFoundWriteCall response HttpResponse response
+run auditNotFoundWriteCall
+bind value auditNotFoundWriteStatus Int32 auditNotFoundWriteCall
+return value auditNotFoundWriteStatus
+label auditDatabaseUnavailableFailed
+call auditDatabaseWriteCall helpers.writeDatabaseUnavailableEnvelope
+argument auditDatabaseWriteCall response HttpResponse response
+run auditDatabaseWriteCall
+bind value auditDatabaseWriteStatus Int32 auditDatabaseWriteCall
+return value auditDatabaseWriteStatus

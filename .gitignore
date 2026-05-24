@@ -3,17 +3,21 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.env
 .env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 
 *.exe
 *.dll
 *.obj
 *.pdb
+*.res
+*.rc
 *.o
 *.ll
 *.bc
@@ -28,10 +32,12 @@ htmlcov/
 
 *.vsix
 node_modules/
+**/node_modules/
 .vscode-test/
 out/
 dist/
 coverage/
+**/.coverage.*
 
 # SemanticScript compiler-managed artifact directories (.exe, .ll, resources).
 build/
@@ -44,15 +50,18 @@ CMakeCache.txt
 build.ninja
 cmake_install.cmake
 
-SemanticScript/tests/sem_compiler_build/
-SemanticScript/tests/feature_coverage/
-SemanticScript/bootstrap/bootstrap_general.ll
+SemanticScript/bench/baselines.local/
+SemanticScript/bench/results/
 
 .claude/
 
-app/todo/todos.json
-app/Kilo_port/kilo.txt
-app/Kilo_port/upstream-kilo/
+apps/taskforge-tui/todos.json
+apps/taskforge-web/logs/
+apps/taskforge-web/*.db
+apps/taskforge-web/*.db-shm
+apps/taskforge-web/*.db-wal
+experiments/kilo-port/kilo.txt
+experiments/kilo-port/upstream-kilo/
 
 .DS_Store
 Thumbs.db
@@ -61,3 +70,24 @@ Thumbs.db
 # Subagent probe / scratch files
 .tmp_*.sscript
 .tmp_*.sem
+
+# Disposable experiment scratch data. Durable findings live in research/.
+experiments/*
+!experiments/syntax-baseline.sem
+!experiments/syntax-hybrid.sem
+!experiments/syntax-refinement.sem
+!experiments/kilo-port/
+!experiments/kilo-port/**
+experiments/kilo-port/build/
+experiments/kilo-port/**/build/
+!experiments/realtime-auction-arena/
+!experiments/realtime-auction-arena/**
+experiments/realtime-auction-arena/**/__pycache__/
+experiments/realtime-auction-arena/**/*.pyc
+experiments/realtime-auction-arena/build/
+experiments/realtime-auction-arena/**/build/
+experiments/realtime-auction-arena/server/*.sqlite3
+experiments/realtime-auction-arena/server/*.sqlite3-shm
+experiments/realtime-auction-arena/server/*.sqlite3-wal
+experiments/realtime-auction-arena/**/node_modules/
+experiments/realtime-auction-arena/**/.coverage.*

@@ -1,6 +1,6 @@
 # Verb Index
 
-This is a grouped index, not the exhaustive status table. Use `SYNTAX.md` for
+This is a grouped index, not the exhaustive status table. Use `syntax-inventory.md` for
 the row-by-row implementation inventory. Keep this file stable and readable:
 add verbs to the family that owns their semantics.
 
@@ -35,7 +35,9 @@ partial       mixed behavior; see owning language doc
 | `testRoot` | `testRoot PROJECT "PATH"` | metadata |
 | `testPattern` | `testPattern PROJECT "GLOB"` | metadata |
 | `targetRuntime` | `targetRuntime PROJECT nativeExe\|webServer\|windowsGui\|library` | partial |
+| `guiBackend` | `guiBackend PROJECT win32\|winui3` | partial |
 | `buildProfile` | `buildProfile PROJECT dev|prod` | partial |
+| `asyncRuntime` | `asyncRuntime PROJECT none|libuv` | partial |
 | `runtimeChecks` | `runtimeChecks PROJECT off|traps|panic` | partial |
 | `optLevel` | `optLevel PROJECT 0|1|2|3` | partial |
 | `persistLlvmIr` | `persistLlvmIr PROJECT auto|yes|no` | partial |
@@ -62,7 +64,10 @@ partial       mixed behavior; see owning language doc
 | `formatterSetting` | `formatterSetting PROJECT KEY VALUE` | metadata |
 | `linterSetting` | `linterSetting PROJECT KEY VALUE` | metadata |
 | `docsOutput` | `docsOutput PROJECT "PATH"` | metadata |
-| `importModule` | `importModule ALIAS DOTTED.PATH` or `importModule DOTTED.PATH [as ALIAS]` | lowered pre-parse |
+| `buildConstant` | `buildConstant PROJECT NAME TYPE VALUE` | lowered |
+| `nativeRuntimeSource` | `nativeRuntimeSource MODULE "PATH"` | lowered |
+| `nativeRuntimeLinkArg` | `nativeRuntimeLinkArg MODULE [any\|windows\|posix] "ARG"` | lowered |
+| `import` | `import ALIAS DOTTED.PATH` | lowered pre-parse |
 | `importOperation` | `importOperation LOCAL_NAME MODULE_ALIAS EXPORTED_OPERATION` | partial |
 | `importType` | `importType LOCAL_NAME MODULE_ALIAS EXPORTED_TYPE` | partial |
 | `importError` | `importError LOCAL_NAME MODULE_ALIAS EXPORTED_ERROR` | partial |
@@ -107,14 +112,12 @@ Module export rows are module-local metadata: `exportType`, `exportError`,
 
 | Verb | Schema | Status |
 |---|---|---|
-| `const` | `const NAME TYPE VALUE` | lowered |
-| `var` | `var NAME TYPE VALUE` | lowered |
 | `storage` | `storage SCOPE MUTABILITY NAME TYPE [VALUE]` | lowered |
 | `sharedState` | `sharedState SCOPE MUTABILITY NAME TYPE [INITIAL]` | lowered |
 | `set` | `set SCOPE NAME VALUE ...` | lowered |
 | `read` | `read sharedState OUT TYPE BACKING ...` | lowered |
-| `domainLiteral` | `domainLiteral NAME TYPE VALUE` | lowered as const |
-| `literal` | `literal NAME TYPE` | lowered as external const stub |
+| `domainLiteral` | `domainLiteral NAME TYPE VALUE` | lowered as immutable domain value |
+| `literal` | `literal NAME TYPE` | lowered as external immutable literal stub |
 
 Metadata families:
 
@@ -128,11 +131,11 @@ literalBytes literalDigest literalPreview literalSource literalTrust
 
 | Family | Verbs |
 |---|---|
-| Calls | `call`, `arg`, `timeout`, `cancelOn`, `run`, `start`, `await` |
-| Binding | `bind`, `bindOk`, `bindError`, `ignoreOk`, `ignoreValue` |
+| Calls | `call`, `argument`, `timeout`, `cancelOn`, `run`, `runChecked`, `start`, `await`, `case`, `done` |
+| Binding | `bind value`, `bind ok`, `bind error`, `ignore ok`, `ignore value`, `ignore void` |
 | Errors | `makeError`, `declareFailure`, `error`, `errorCase` |
-| Labels | `label`, `branch`, `branchIf`, `branchIfError` |
-| Returns | `returnOk`, `returnError`, `returnValue` |
+| Labels | `label`, `jump`, `branch if`, `branch error`, `branch else` |
+| Returns | `return ok`, `return error`, `return value`, `return void` |
 
 ## Effects, Capabilities, Resources
 
@@ -168,13 +171,13 @@ Import `standard.json` with the canonical `json` alias before using the public
 JSON surface:
 
 ```text
-importModule json standard.json
+import json standard.json
 ```
 
 Implemented builder/finder calls remain available while the document CRUD API
 lands. Rows marked `proposed` are the public contract shape but do not have
 current parser/runtime lowering; rows marked `partial` have some parser or
-primitive-alias behavior but not the full intended surface. See `SYNTAX.md` for
+primitive-alias behavior but not the full intended surface. See `syntax-inventory.md` for
 the row-level implementation status before relying on them in executable code.
 
 | Verb | Schema | Status |
@@ -196,6 +199,19 @@ the row-level implementation status before relying on them in executable code.
 | `json.stringify.<TypeName>`, `json.parse.<TypeName>` | Typed high-level JSON entry points for primitives and generated record codecs | partial |
 | `jsonBody` | `jsonBody NAME` followed by an indented JSON island bound to matching storage | partial |
 
+## SQL
+
+SQL surface:
+
+| Verb | Purpose | Status |
+|---|---|---|
+| `sql body` / `sqlBody` | `sql body NAME` followed by an indented SQL island bound to `storage module immutable NAME SqlText` | lowered |
+
+`sql body` preserves SQL as source text while keeping dynamic values out of the
+literal. Use `?` placeholders and explicit `sqlite.bind*` rows; strict checks
+reject multi-statement `sqlite.prepareStatement` inputs and placeholder-bearing
+`sqlite.exec` inputs.
+
 ## HTML Templates
 
 Standard-library modules are imported through the `standard.*` namespace. The
@@ -206,42 +222,44 @@ Import `standard.html` with the canonical `html` alias before using this
 surface in app modules:
 
 ```text
-importModule html standard.html
+import html standard.html
 ```
 
 | Verb | Schema | Status |
 |---|---|---|
-| `htmlTemplate` | `htmlTemplate NAME` | lowered |
-| `htmlArg` | `htmlArg TEMPLATE ARG_NAME TYPE` | lowered |
-| `htmlBody` | `htmlBody TEMPLATE` followed by indented HTML/SSX lines | lowered |
+| `html template` | `html template NAME` | lowered |
+| `html body template` | `html body template TEMPLATE` followed by indented HTML/SSX lines | lowered |
 
 `html.hydrate.TemplateName` is a generated call target, not a standalone verb.
 It is exposed through the imported `standard.html` namespace and assembles the
-template body with explicit `arg` rows whose names match declared `htmlArg`
-inputs. Dynamic holes must be declared `htmlArg` references, written as
-`{htmlArg.name}` or the same reference with surrounding whitespace. Other brace
-holes are rejected outside raw `<style>` and `<script>` text.
-Hydration escapes `HtmlText` in text and quoted attribute sinks. `class`
-attributes require `HtmlClass`, URL attributes such as `href` / `src` require
-`SafeUrl`, and `HtmlFragment` / `HtmlTrustedFragment` / `HtmlDocument` values
-can only hydrate text-content positions where raw markup is intentional.
+template body with `argument` rows whose names match inferred hole roots.
+Dynamic holes are bare names or dotted record-field paths, written as
+`{name}` or `{record.field}`. Other brace holes are rejected outside raw
+`<style>` and `<script>` text, and bare-name holes inside raw text are rejected.
+Hydration escapes `String` in text and quoted attribute sinks. URL-bearing
+attributes such as `href` / `src` currently require static values. `HtmlFragment`
+/ `HtmlTrustedFragment` / `HtmlDocument` values can only hydrate text-content
+positions where raw markup is intentional.
 
 ## Native Windows GUI
 
 `target windowsGui` and `targetRuntime PROJECT windowsGui` are the
-compiler/build bridge. GUI source uses normal `entry console OPERATION`,
-`operation`, `call`, `arg`, and `run` rows. The larger GUI vocabulary belongs
+compiler/build bridge. `guiBackend PROJECT win32|winui3` selects the native
+adapter; `win32` is the default and `winui3` is currently a recognized-but-blocked
+Windows App SDK scaffold. GUI source uses normal `entry console OPERATION`,
+`operation`, `call`, `argument`, and `run` rows. The larger GUI vocabulary belongs
 to `standard.gui` as function targets, contracts, capabilities, and validation
 rules. The compiler should only lower explicit `gui.*` calls and link/start the
-native GUI runtime. There is no `entry windowsGui` row. The preferred
+selected native GUI runtime. Do not use C# / XAML sidecar apps as a substitute
+for `guiBackend winui3`. There is no `entry windowsGui` row. The preferred
 standard-library import is:
 
 ```text
-importModule gui standard.gui
+import gui standard.gui
 ```
 
-The legacy `importModule standard.gui as gui` shape remains accepted during the
-compatibility window, but new GUI code should use the alias-first form above.
+Legacy `importModule` rows are rejected by the compiler; use the alias-first
+`import` form above.
 Top-level row-centric GUI declarations such as `guiApplication`, `guiWindow`,
 and `guiButton` are historical design notes, not committed executable verbs.
 
@@ -263,7 +281,7 @@ GUI handler operations use:
 ```text
 input HANDLER session GuiSession
 input HANDLER event GuiEvent
-output HANDLER CSignedInt32
+output HANDLER Int32
 ```
 
 Reserved GUI opaque types are `GuiApplication`, `GuiSession`, `GuiEvent`,
@@ -310,10 +328,11 @@ a kind-specific handle such as `textBox GuiTextBox`, `listBox GuiListBox`, or
 | Cleanup | `defer`, `deferLog`, `deferAwaitLog`, `deferWhenExitLog` | partial |
 | Cleanup metadata | `deferLogSink`, `deferRunOn`, `deferOrder`, `deferFailurePolicy`, `deferConsumes`, `deferAwaitLogSink`, `deferAwaitTimeout`, `deferWhenExitLogSink` | metadata |
 | Guard tokens | `guardTokenSource`, `guardTokenOwner`, `guardTokenProtects`, `guardTokenRelease` | metadata |
-| Task groups | `taskGroup`, `startInGroup`, `awaitGroup`, `bindGroupError`, `branchIfGroupError` | sync-fallback |
-| Channels | `send`, `receive`, `branchIfChannelClosed` | sync-fallback |
+| Task groups | `taskGroup`, `startInGroup`, `awaitGroup`, `bindGroupError`, `branchIfGroupError` compatibility rows | sync-fallback |
+| Channels | `send`, `receive`, `branchIfChannelClosed` compatibility row | sync-fallback |
 | Locks | `mutex`, `lock`, `unlock` | sync-fallback |
-| Select | `select`, `selectCase`, `runSelect`, `branchSelected` | sync-fallback |
+| Await wait sets | `await WAIT_SET`, `case CALL LABEL`, `done LABEL` | lowered for libuv console async |
+| Legacy select rows | `select`, `selectCase`, `runSelect`, `branchSelected` | sync-fallback |
 | Intervals | `interval`, `startInterval`, `awaitIntervalTick` | sync-fallback |
 | Worker pools | `workerPool`, `work`, `workArg`, `submitWork`, `awaitWork` | sync-fallback |
 
@@ -347,9 +366,14 @@ fallback.
 runtimeBinding NAME TARGET
 runtimeBindingPrecondition NAME "text"
 runtimeBindingFailure NAME ERROR.VARIANT
-intrinsicName NAME arithmetic.addI64
+runtimeBindingAsyncStart NAME native.SYMBOL
+runtimeBindingAsyncAwait NAME native.SYMBOL
+nativeRuntimeSource MODULE "PATH"
+nativeRuntimeLinkArg MODULE [any|windows|posix] "ARG"
+intrinsicName NAME arithmetic.addInt64
 ```
 
-The compiler has direct lowering for selected runtime bindings and arithmetic
-intrinsics. Unknown runtime binding names fall back to normal operation body
-compilation.
+The compiler has direct lowering for selected runtime bindings, generic async
+runtimeBinding start/await pairs, module-declared native adapter sources/link
+args, and arithmetic intrinsics. Unknown runtime binding names fall back to
+normal operation body compilation.

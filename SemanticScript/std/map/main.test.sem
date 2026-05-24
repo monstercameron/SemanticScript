@@ -1,0 +1,130 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: map
+# ============================================================
+
+project StdMapTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import map standard.map
+
+error MainError
+errorCase MainError MapSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Smoke-test the structural map.* helper surface."
+
+label startMain
+
+storage module immutable entryCountThree Int64 3
+storage module immutable entryCapacityFour Int64 4
+storage module immutable entryCountZero Int64 0
+storage module immutable expectedFour Int64 4
+storage module immutable expectedTwo Int64 2
+storage module immutable expectedFailure Int64 -1
+storage module immutable keyPresent Bool true
+storage module immutable keyAbsent Bool false
+
+call mapIsEmptyCall map.isEmpty
+argument mapIsEmptyCall entryCount Int64 entryCountZero
+run mapIsEmptyCall
+bind value mapIsEmptyResult Bool mapIsEmptyCall
+branch if condition mapIsEmptyResult target mapIsEmptyHolds
+branch else target smokeAssertionFailed
+label mapIsEmptyHolds
+
+call mapHasCapacityCall map.hasCapacityForNewEntry
+argument mapHasCapacityCall entryCount Int64 entryCountThree
+argument mapHasCapacityCall entryCapacity Int64 entryCapacityFour
+run mapHasCapacityCall
+bind value mapHasCapacityResult Bool mapHasCapacityCall
+branch if condition mapHasCapacityResult target mapHasCapacityHolds
+branch else target smokeAssertionFailed
+label mapHasCapacityHolds
+
+call mapSizeAfterInsertGrowCall map.sizeAfterInsert
+argument mapSizeAfterInsertGrowCall entryCount Int64 entryCountThree
+argument mapSizeAfterInsertGrowCall entryCapacity Int64 entryCapacityFour
+argument mapSizeAfterInsertGrowCall keyPresent Bool keyAbsent
+run mapSizeAfterInsertGrowCall
+bind value mapSizeAfterInsertGrowResult Int64 mapSizeAfterInsertGrowCall
+call mapSizeAfterInsertGrowOkCall math.equalInt64
+argument mapSizeAfterInsertGrowOkCall left Int64 mapSizeAfterInsertGrowResult
+argument mapSizeAfterInsertGrowOkCall right Int64 expectedFour
+run mapSizeAfterInsertGrowOkCall
+bind value mapSizeAfterInsertGrowOk Bool mapSizeAfterInsertGrowOkCall
+branch if condition mapSizeAfterInsertGrowOk target mapSizeAfterInsertGrowHolds
+branch else target smokeAssertionFailed
+label mapSizeAfterInsertGrowHolds
+
+call mapSizeAfterInsertSameCall map.sizeAfterInsert
+argument mapSizeAfterInsertSameCall entryCount Int64 entryCountThree
+argument mapSizeAfterInsertSameCall entryCapacity Int64 entryCapacityFour
+argument mapSizeAfterInsertSameCall keyPresent Bool keyPresent
+run mapSizeAfterInsertSameCall
+bind value mapSizeAfterInsertSameResult Int64 mapSizeAfterInsertSameCall
+call mapSizeAfterInsertSameOkCall math.equalInt64
+argument mapSizeAfterInsertSameOkCall left Int64 mapSizeAfterInsertSameResult
+argument mapSizeAfterInsertSameOkCall right Int64 entryCountThree
+run mapSizeAfterInsertSameOkCall
+bind value mapSizeAfterInsertSameOk Bool mapSizeAfterInsertSameOkCall
+branch if condition mapSizeAfterInsertSameOk target mapSizeAfterInsertSameHolds
+branch else target smokeAssertionFailed
+label mapSizeAfterInsertSameHolds
+
+call mapSizeAfterRemoveCall map.sizeAfterRemove
+argument mapSizeAfterRemoveCall entryCount Int64 entryCountThree
+argument mapSizeAfterRemoveCall keyPresent Bool keyPresent
+run mapSizeAfterRemoveCall
+bind value mapSizeAfterRemoveResult Int64 mapSizeAfterRemoveCall
+call mapSizeAfterRemoveOkCall math.equalInt64
+argument mapSizeAfterRemoveOkCall left Int64 mapSizeAfterRemoveResult
+argument mapSizeAfterRemoveOkCall right Int64 expectedTwo
+run mapSizeAfterRemoveOkCall
+bind value mapSizeAfterRemoveOk Bool mapSizeAfterRemoveOkCall
+branch if condition mapSizeAfterRemoveOk target mapSizeAfterRemoveHolds
+branch else target smokeAssertionFailed
+label mapSizeAfterRemoveHolds
+
+call mapSizeAfterRemoveMissingCall map.sizeAfterRemove
+argument mapSizeAfterRemoveMissingCall entryCount Int64 entryCountZero
+argument mapSizeAfterRemoveMissingCall keyPresent Bool keyAbsent
+run mapSizeAfterRemoveMissingCall
+bind value mapSizeAfterRemoveMissingResult Int64 mapSizeAfterRemoveMissingCall
+call mapSizeAfterRemoveMissingOkCall math.equalInt64
+argument mapSizeAfterRemoveMissingOkCall left Int64 mapSizeAfterRemoveMissingResult
+argument mapSizeAfterRemoveMissingOkCall right Int64 expectedFailure
+run mapSizeAfterRemoveMissingOkCall
+bind value mapSizeAfterRemoveMissingOk Bool mapSizeAfterRemoveMissingOkCall
+branch if condition mapSizeAfterRemoveMissingOk target mapSizeAfterRemoveMissingHolds
+branch else target smokeAssertionFailed
+label mapSizeAfterRemoveMissingHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
+label smokeAssertionFailed
+makeError mapSmokeFailure MainError.MapSmokeAssertionFailed
+return error mapSmokeFailure

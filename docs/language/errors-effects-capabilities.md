@@ -8,7 +8,7 @@ touches the outside world should declare its effects.
 
 ```semanticscript
 error ConsoleWriteError
-errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+errorCase ConsoleWriteError ConsoleWriteFailed Int32
 ```
 
 `error NAME` creates a typed error domain. `errorCase ERROR VARIANT [CAUSE]`
@@ -34,34 +34,44 @@ source.
 
 ```semanticscript
 call writeLineCall console.writeLine
-arg writeLineCall text outputText
+argument writeLineCall text String outputText
 run writeLineCall
-ignoreOk writeLineCall Void
-bindError writeLineError ConsoleWriteError writeLineCall
-branchIfError writeLineCall writeLineFailed
+ignore ok source writeLineCall type Void
+bind error writeLineError ConsoleWriteError writeLineCall
+branch error source writeLineCall target writeLineFailed
 
-const successExitCode ExitCode 0
-returnOk successExitCode
+storage local immutable successExitCode ExitCode 0
+return ok successExitCode
 
 label writeLineFailed
-returnError writeLineError
+return error writeLineError
 ```
 
 The call name is the bridge between execution, error binding, and branch:
 
 ```text
-bindError ERROR_VALUE ERROR_TYPE CALL
-branchIfError CALL LABEL
+bind error ERROR_VALUE ERROR_TYPE CALL
+branch error source CALL target LABEL
 ```
 
 `semlint.py` checks hidden-failure patterns for known fallible targets such as
 `console.writeLine`, heap allocation calls, and selected libc calls.
 
+Strict compiler checking is intentionally incremental. Source-level
+`languageMode strictExecutable` rejects misspelled executable rows; compiler
+`--strict` promotes the current fallible-call disposition checks to fatal
+diagnostics for known Result-shaped and explicit-disposition targets.
+`runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL` is implemented as
+the compact checked-call form for one prepared fallible call. Use it when the
+success/error binds and failure branch are local to that call; use explicit
+`run` plus `bind ok` / `bind error` / `branch error` when retry policy or more
+complex control flow is involved.
+
 ## Constructing Domain Failures
 
 ```semanticscript
 makeError validationFailure RequestError.InvalidJson rawDecodeError
-returnError validationFailure
+return error validationFailure
 ```
 
 Schemas:
@@ -117,6 +127,12 @@ Capability paths are hierarchical. A capability declared at `http.request read`
 authorizes narrower reads such as `http.request.method`, `http.request.path`,
 and `http.request.cancellationToken`. Use a narrower capability when the
 operation should only inspect one request edge.
+
+For the scoped 1.0 runtime, capabilities and inline `authority` rows are
+compile-time and linter contracts only. Codegen does not emit capability token
+values into binaries, and missing authority is reported as a compiler or linter
+diagnostic rather than a runtime trap or typed runtime error. Runtime authority
+tokens remain a future runtime feature.
 
 ## Dependency Contracts
 

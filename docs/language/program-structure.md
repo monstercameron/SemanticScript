@@ -41,25 +41,25 @@ diagnostics.
 ## Import Resolution
 
 ```semanticscript
-importModule standard.string as string
+import string standard.string
 ```
 
 For project builds, `build.sem` registers modules and the module source files
 own their own imports/exports:
 
 ```semanticscript
-buildProject todoTui
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
-mainOperation todoTui main
+buildProject taskForgeTui
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.taskforge_tui "."
+mainFile taskForgeTui "main.sem"
+mainOperation taskForgeTui main
 
-importModule app.todo
+import todo app.todo
 ```
 
 ```semanticscript
 module app.todo
-importModule app.persistence
+import persistence app.persistence
 exportOperation app.todo main
 ```
 
@@ -67,8 +67,7 @@ Exports are explicit only. The compiler and linter must not infer a public API
 from reachable operations, entry points, or call sites; each `export*` row has
 to name a symbol declared by that same module source.
 
-`semsc.py` resolves `importModule ALIAS DOTTED.PATH` and the compatibility
-form `importModule DOTTED.PATH [as ALIAS]` before parsing:
+`semsc.py` resolves `import ALIAS DOTTED.PATH` before parsing:
 
 1. If the root source has `registerModule` rows, resolve matching module paths
    from that registry first.
@@ -88,6 +87,9 @@ form `importModule DOTTED.PATH [as ALIAS]` before parsing:
 8. Inline imported content with cycle detection while preserving the import row
    for alias and singular-import resolution.
 
+Legacy `importModule` rows are rejected by the compiler. Run
+`SemanticScript/tools/syntax_migration.py` on older source before compiling.
+
 Aliased project imports are namespace edges. A call like
 `persistence.loadTodos` resolves only if the provider module exports
 `loadTodos`. For local facade names, use `importOperation`, `importType`,
@@ -95,6 +97,24 @@ Aliased project imports are namespace edges. A call like
 also select only from the provider export tape. New project modules should
 import registered module paths with aliases; the filesystem/std-lib fallback is
 kept for single-file sources and older samples.
+
+## Project Layout Rules
+
+`build.sem` owns the project-wide layout contract. It selects source roots,
+registered modules, the executable source file, the executable operation, test
+patterns, target runtime, and build artifact locations. `main.sem` is the
+default executable source by convention when the build tape selects an
+executable target.
+
+`*.test.sem` files are colocated with the module they validate. Project test
+discovery reads `testPattern PROJECT "*.test.sem"` from `build.sem` when the
+project is using build-tape mode; standard-library smoke tests use the sibling
+`main.test.sem` convention described below.
+
+Generated files stay outside source control. Native executables, LLVM IR,
+object files, packaged VSIX files, app-local data, and compiler caches belong in
+ignored output folders such as `build/` or `.semcache/`, or in explicit release
+artifact storage outside the source tree.
 
 ## Library, Web Server, and Windows GUI Mode
 
@@ -105,7 +125,7 @@ library-like and declarative files can still compile and link.
 Routed `target webServer` programs are the exception. When `webServer` and
 `route` metadata are present, `semsc.py` emits a native HTTP/1.1 entrypoint and
 exact method/path dispatcher. Route handlers must use the native HTTP ABI:
-`HttpRequest`, `HttpResponse`, and `CSignedInt32`.
+`HttpRequest`, `HttpResponse`, and `Int32`.
 
 `target windowsGui` uses the normal entry shape: `entry console OPERATION`.
 The compiler role should stay narrow: select the Windows GUI bridge, link the
@@ -114,7 +134,7 @@ Application shape, controls, events, accessibility, effects, and capabilities
 belong in `standard.gui`, the GUI runtime, and lint/tooling where possible.
 Do not use top-level GUI declaration rows such as `guiApplication`,
 `guiWindow`, or `guiButton` in executable source; the committed shape is
-ordinary operation/call/arg/run syntax.
+ordinary operation/call/argument/run syntax.
 
 A renderable Windows GUI source imports `standard.gui`, creates an application,
 creates a window and controls, attaches controls to the window, marks the main
@@ -123,18 +143,18 @@ enter the native Windows message loop and exit that loop when the main window
 closes.
 
 ```semanticscript
-project HelloGui
+project DesktopWindowSmoke
 target windowsGui
 runtime native 1
 entry console main
-module examples.helloGui
+module examples.desktopWindowSmoke
 
-importModule gui standard.gui
+import gui standard.gui
 
-storage module immutable title GuiText "Hello GUI"
+storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
 storage module immutable height GuiPixels 480
-storage module immutable resizable CSignedInt32 1
+storage module immutable resizable Int32 1
 
 operation main
 output main ExitCode
@@ -145,31 +165,31 @@ authority main gui.application allocate
 authority main gui.window allocate
 authority main gui.window write
 call createApp gui.applicationCreate
-arg createApp title title
+argument createApp title GuiText title
 run createApp
-bind app GuiApplication createApp
+bind value app GuiApplication createApp
 call createWindow gui.windowCreate
-arg createWindow title title
-arg createWindow width width
-arg createWindow height height
-arg createWindow layout verticalStackGuiWindowLayout
-arg createWindow resizable resizable
+argument createWindow title GuiText title
+argument createWindow width GuiPixels width
+argument createWindow height GuiPixels height
+argument createWindow layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindow resizable Bool resizable
 run createWindow
-bind window GuiWindow createWindow
+bind value window GuiWindow createWindow
 call setMainWindow gui.applicationSetMainWindow
-arg setMainWindow application app
-arg setMainWindow window window
+argument setMainWindow application GuiApplication app
+argument setMainWindow window GuiWindow window
 run setMainWindow
-ignoreValue setMainWindow CSignedInt32
+ignore value source setMainWindow type Int32
 call runApp gui.applicationRun
-arg runApp application app
+argument runApp application GuiApplication app
 run runApp
-bind status ExitCode runApp
-returnValue status
+bind value status ExitCode runApp
+return value status
 ```
 
-`importModule standard.gui as gui` remains accepted for compatibility, but new
-GUI source should use the alias-first `importModule gui standard.gui` form.
+Legacy `importModule` rows are rejected; GUI source should use the alias-first
+`import gui standard.gui` form.
 
 Do not write `entry windowsGui OPERATION`; that form is intentionally outside
 the committed surface. GUI event handlers are ordinary operations whose
@@ -180,7 +200,7 @@ GUI ABI when a handler is wired into the runtime:
 operation closeRequested
 input closeRequested session GuiSession
 input closeRequested event GuiEvent
-output closeRequested CSignedInt32
+output closeRequested Int32
 ```
 
 Handler return `0` means success. Non-zero handler returns are reserved as
@@ -231,7 +251,7 @@ crowded by smoke / unit-test prose.
 
 ```text
 std/bit/main.sem       # module standard.bit, exports, implementation
-std/bit/main.test.sem  # tests: importModule standard.bit + operation main
+std/bit/main.test.sem  # tests: import bit standard.bit + operation main
 ```
 
 `main.sem` (module entry):
@@ -253,7 +273,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.bit
+import bit standard.bit
 
 error MainError
 errorCase MainError BitSmokeAssertionFailed
@@ -265,24 +285,34 @@ operation main
 input main console Console
 output main Result ExitCode MainError
 ...
-returnOk exitOkCode
+return ok exitOkCode
 ```
 
 Rules:
 
 - `main.test.sem` lives in the same directory as `main.sem`.
 - It has its own `project` block (`StdFooTest` by convention), `entry console
-  main`, and `importModule standard.foo` directive. The imported file's header
+  main`, and `import foo standard.foo` directive. The imported file's header
   lines are stripped by the import resolver, so the test owns the executable.
+- Test files consume sibling modules through normal imports and public exports
+  by default. Same-folder private symbols are not implicitly visible to tests;
+  export a deliberate test helper or keep the helper inside the test file.
+- Test files may also import dependency modules declared in the owning
+  `build.sem`; the same alias and export-contract rules apply.
+- A test file that repeats `module MODULE_PATH` must match the sibling folder
+  module exactly. A different module path is a test-discovery diagnostic.
+- Test files may declare local helper operations, local constants, and local
+  error domains for the test executable. Those declarations belong only to the
+  test project and are not exported into the production contract tape.
 - Move every smoke-only declaration to the test: the `error MainError`
   domain, `errorCase` variants, and the `capability` declarations the smoke
   uses (`stdoutWriteCapability`, `heapAllocationCapability`, etc.).
 - Capabilities used by implementation operations stay in `main.sem`.
 - Module-level `error` domains referenced in operation signatures stay in
   `main.sem`.
-- The `bind X Ordering ...` form, or any type alias declared in `main.sem`, is
+- The `bind value X Ordering ...` form, or any type alias declared in `main.sem`, is
   not resolvable through the linter's per-file view of the test. Bind the
-  underlying primitive instead, for example `bind X CSignedInt32 ...`, when a
+  underlying primitive instead, for example `bind value X Int32 ...`, when a
   test file consumes a typed alias from its imported module.
 
 The harness `tests/test_stdlib.py` runs `std/<module>/main.test.sem` for every

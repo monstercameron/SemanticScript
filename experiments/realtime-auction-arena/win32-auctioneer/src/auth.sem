@@ -1,0 +1,133 @@
+module experiment.realtime_auction_arena.win32_auctioneer.auth
+purpose module experiment.realtime_auction_arena.win32_auctioneer.auth "In-memory authentication state and request records for the auctioneer console."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.auth "Login request shape, bearer token memory policy, explicit re-login flow, and auth runtime-gap notes."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.auth "Server password verification, JWT signing, refresh-token persistence, or secure platform credential storage."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.auth "Access JWTs are represented as process memory only; the scaffold does not write tokens to disk, registry, logs, or resource files."
+moduleWarning experiment.realtime_auction_arena.win32_auctioneer.auth "standard.net currently lacks JSON POST bodies and custom Authorization headers, so login and refresh are contract-shaped placeholders until the HTTP client surface expands."
+
+type AccessJwt String
+type RefreshToken String
+type UserName String
+type PasswordText String
+type OperatorRole String
+type AuthStatusText String
+
+record LoginRequest
+field LoginRequest username UserName
+field LoginRequest password PasswordText
+
+record LoginResponse
+field LoginResponse accessToken AccessJwt
+field LoginResponse refreshToken RefreshToken
+field LoginResponse role OperatorRole
+field LoginResponse expiresAtMillis Int64
+
+record AuthSession
+field AuthSession isAuthenticated Bool
+field AuthSession accessToken AccessJwt
+field AuthSession refreshToken RefreshToken
+field AuthSession username UserName
+field AuthSession role OperatorRole
+field AuthSession expiresAtMillis Int64
+field AuthSession status AuthStatusText
+
+storage module immutable emptyAccessJwt AccessJwt ""
+storage module immutable emptyRefreshToken RefreshToken ""
+storage module immutable emptyUserName UserName ""
+storage module immutable emptyOperatorRole OperatorRole ""
+storage module immutable unauthenticatedStatus AuthStatusText "Not authenticated"
+storage module immutable loginPendingStatus AuthStatusText "Login pending runtime HTTP POST support"
+storage module immutable authenticatedStatus AuthStatusText "Authenticated"
+storage module immutable tokenClearedStatus AuthStatusText "Token cleared from memory"
+
+storage module mutable currentAccessToken AccessJwt ""
+storage module mutable currentRefreshToken RefreshToken ""
+storage module mutable currentUsername UserName ""
+storage module mutable currentRole OperatorRole ""
+storage module mutable currentTokenExpiresAtMillis Int64 0
+
+operation rememberLoginResponse
+input operation rememberLoginResponse response LoginResponse
+output operation rememberLoginResponse AuthSession
+effect rememberLoginResponse write auth.memory
+authority rememberLoginResponse write auth.memory
+memory rememberLoginResponse heap no
+async rememberLoginResponse no
+purpose operation rememberLoginResponse "Copy the successful login response into process memory for later authenticated commands."
+invariant operation rememberLoginResponse "The access token stays in mutable module storage only and is never persisted."
+
+fieldGet responseAccessToken AccessJwt response accessToken
+fieldGet responseRefreshToken RefreshToken response refreshToken
+fieldGet responseRole OperatorRole response role
+fieldGet responseExpiresAtMillis Int64 response expiresAtMillis
+set storage currentAccessToken responseAccessToken
+set storage currentRefreshToken responseRefreshToken
+set storage currentRole responseRole
+set storage currentTokenExpiresAtMillis responseExpiresAtMillis
+new session AuthSession
+fieldSet session isAuthenticated true
+fieldSet session accessToken responseAccessToken
+fieldSet session refreshToken responseRefreshToken
+fieldSet session username currentUsername
+fieldSet session role responseRole
+fieldSet session expiresAtMillis responseExpiresAtMillis
+fieldSet session status authenticatedStatus
+return value session
+
+operation forgetAuthSession
+output operation forgetAuthSession AuthSession
+effect forgetAuthSession write auth.memory
+authority forgetAuthSession write auth.memory
+memory forgetAuthSession heap no
+async forgetAuthSession no
+purpose operation forgetAuthSession "Clear the in-memory JWT and refresh token without calling server logout."
+invariant operation forgetAuthSession "Every token-bearing storage slot is replaced with an empty string before the unauthenticated session record is returned."
+
+set storage currentAccessToken emptyAccessJwt
+set storage currentRefreshToken emptyRefreshToken
+set storage currentUsername emptyUserName
+set storage currentRole emptyOperatorRole
+set storage currentTokenExpiresAtMillis 0
+new session AuthSession
+fieldSet session isAuthenticated false
+fieldSet session accessToken emptyAccessJwt
+fieldSet session refreshToken emptyRefreshToken
+fieldSet session username emptyUserName
+fieldSet session role emptyOperatorRole
+fieldSet session expiresAtMillis 0
+fieldSet session status tokenClearedStatus
+return value session
+
+operation currentAuthSession
+output operation currentAuthSession AuthSession
+effect currentAuthSession read auth.memory
+authority currentAuthSession read auth.memory
+memory currentAuthSession heap no
+async currentAuthSession no
+purpose operation currentAuthSession "Expose the current auth memory snapshot to GUI handlers and API command builders."
+invariant operation currentAuthSession "The returned session mirrors token storage without modifying any auth slot."
+
+new session AuthSession
+fieldSet session isAuthenticated false
+fieldSet session accessToken currentAccessToken
+fieldSet session refreshToken currentRefreshToken
+fieldSet session username currentUsername
+fieldSet session role currentRole
+fieldSet session expiresAtMillis currentTokenExpiresAtMillis
+fieldSet session status unauthenticatedStatus
+return value session
+
+operation planLogin
+input operation planLogin username UserName
+input operation planLogin password PasswordText
+output operation planLogin LoginRequest
+memory planLogin heap no
+async planLogin no
+purpose operation planLogin "Build the typed login request that will be posted to /api/v1/auth/login when POST JSON support lands."
+invariant operation planLogin "Only the username is staged in module memory; the password remains inside the request record and is not persisted separately."
+
+set storage currentUsername username
+new request LoginRequest
+fieldSet request username username
+fieldSet request password password
+return value request

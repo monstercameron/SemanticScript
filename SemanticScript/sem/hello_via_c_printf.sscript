@@ -5,35 +5,35 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Smoke-test the c.printf call target end-to-end through the SemanticScript LLVM backend"
-invariant main "A single c.printf call writes the greeting plus a newline and returns the byte count"
+purpose operation main "Smoke-test the c.printf call target end-to-end through the SemanticScript LLVM backend"
+invariant operation main "A single c.printf call writes the greeting plus a newline and returns the byte count"
 
 label startMain
 
-const helloFormatText CNullTerminatedByteString "Hello from c.printf! arg=%d\n"
-const greetingArgument CSignedInt32 42
+storage module immutable helloFormatText String "Hello from c.printf! arg=%d\n"
+storage module immutable greetingArgument Int32 42
 
 call helloPrintfCall c.printf
-arg helloPrintfCall format helloFormatText
-arg helloPrintfCall value greetingArgument
+argument helloPrintfCall format String helloFormatText
+argument helloPrintfCall value Int32 greetingArgument
 run helloPrintfCall
-bindOk bytesWrittenByPrintf CSignedInt32 helloPrintfCall
-bindError helloPrintfError CSignedInt32 helloPrintfCall
-branchIfError helloPrintfCall helloPrintfFailed
+bind ok bytesWrittenByPrintf Int32 helloPrintfCall
+bind error helloPrintfError Int32 helloPrintfCall
+branch error source helloPrintfCall target helloPrintfFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label helloPrintfFailed
 makeError helloPrintfFailure MainError.ConsoleWriteFailed helloPrintfError
-returnError helloPrintfFailure
+return error helloPrintfFailure

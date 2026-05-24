@@ -1,0 +1,33 @@
+module app.realtime_auction_arena.server.tests.auction_supervisor
+purpose module app.realtime_auction_arena.server.tests.auction_supervisor "Unit coverage contract for server/src/auction_supervisor.sem."
+moduleOwns app.realtime_auction_arena.server.tests.auction_supervisor "Supervisor command loop, fake-time, ordering, cancellation, channel, and backpressure coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auction_supervisor "The async runtime primitives themselves."
+invariant module app.realtime_auction_arena.server.tests.auction_supervisor "standard.event queue-backed supervisor smoke operations must remain present until route handlers move behind the actor loop."
+
+record AuctionSupervisorTestPlan
+field AuctionSupervisorTestPlan parseableNow String
+field AuctionSupervisorTestPlan commandQueueBackpressure String
+field AuctionSupervisorTestPlan subscriberQueueBackpressure String
+field AuctionSupervisorTestPlan deterministicOrdering String
+field AuctionSupervisorTestPlan timerCancellation String
+field AuctionSupervisorTestPlan shutdownDrain String
+field AuctionSupervisorTestPlan requiredRuntimeApis String
+
+storage module immutable auctionSupervisorUnitTestPlan AuctionSupervisorTestPlan
+jsonBody auctionSupervisorUnitTestPlan
+  {
+      "parseableNow": "contract constants and this test plan parse without async runtime support",
+      "commandQueueBackpressure": "auctionSupervisorQueueBackpressureSmoke opens a capacity-two standard.event process queue and verifies the third submit returns queue_full",
+      "subscriberQueueBackpressure": "when a 256 item subscriber queue is full, only that subscriber is closed and the auction command loop continues",
+      "deterministicOrdering": "auctionSupervisorAsyncOrderingSmoke queues create/start/bid/extend/close/timerExpired/shutdown and receives event ids 1..7 in monotonic order",
+      "timerCancellation": "auction extension cancels the previous close timer and enqueues only the replacement timerExpired command",
+      "shutdownDrain": "shutdown rejects new commands, drains already accepted commands, resolves replies, and closes subscriber queues",
+      "requiredRuntimeApis": "remaining executable assertions require route async integration, fake clock, cancelable production timers, and task cancellation"
+  }
+
+operation getAuctionSupervisorUnitTestPlan
+output operation getAuctionSupervisorUnitTestPlan AuctionSupervisorTestPlan
+memory getAuctionSupervisorUnitTestPlan heap no
+async getAuctionSupervisorUnitTestPlan no
+purpose operation getAuctionSupervisorUnitTestPlan "Return the auction-supervisor unit coverage plan."
+return value auctionSupervisorUnitTestPlan

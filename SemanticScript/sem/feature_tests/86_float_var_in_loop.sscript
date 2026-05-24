@@ -5,48 +5,48 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Loop that doubles a CFloat64 var four times: 1.0 -> 2 -> 4 -> 8 -> 16. Exercises a CFloat64 var modified inside a branchIf-driven loop alongside an i64 counter."
-invariant main "Uses both float and int math.* primitives in the same operation."
+purpose operation main "Loop that doubles a Float64 var four times: 1.0 -> 2 -> 4 -> 8 -> 16. Exercises a Float64 var modified inside a branchIf-driven loop alongside an i64 counter."
+invariant operation main "Uses both float and int math.* primitives in the same operation."
 label startMain
-const oneFloat CFloat64 1.0
-const twoFloat CFloat64 2.0
-const oneStep CSignedInt64 1
-const zeroInitial CSignedInt64 0
-const fourTimes CSignedInt64 4
-var accumulator CFloat64 oneFloat
-var iterationIndex CSignedInt64 zeroInitial
+storage module immutable oneFloat Float64 1.0
+storage module immutable twoFloat Float64 2.0
+storage module immutable oneStep Int64 1
+storage module immutable zeroInitial Int64 0
+storage module immutable fourTimes Int64 4
+memory main mutable accumulator Float64 oneFloat
+memory main mutable iterationIndex Int64 zeroInitial
 label loopHead
-call doneCheckCall math.greaterThanOrEqualI64
-arg doneCheckCall left iterationIndex
-arg doneCheckCall right fourTimes
+call doneCheckCall math.greaterThanOrEqualInt64
+argument doneCheckCall left Int64 iterationIndex
+argument doneCheckCall right Int64 fourTimes
 run doneCheckCall
-bind isDone Bool doneCheckCall
-branchIf isDone loopExit
-call doubleCall math.multiplyF64
-arg doubleCall left accumulator
-arg doubleCall right twoFloat
+bind value isDone Bool doneCheckCall
+branch if condition isDone target loopExit
+call doubleCall math.multiplyFloat64
+argument doubleCall left Float64 accumulator
+argument doubleCall right Float64 twoFloat
 run doubleCall
-bind doubledValue CFloat64 doubleCall
-set accumulator doubledValue
-call incCall math.addI64
-arg incCall left iterationIndex
-arg incCall right oneStep
+bind value doubledValue Float64 doubleCall
+set memory accumulator doubledValue
+call incCall math.addInt64
+argument incCall left Int64 iterationIndex
+argument incCall right Int64 oneStep
 run incCall
-bind nextIterationIndex CSignedInt64 incCall
-set iterationIndex nextIterationIndex
-branch loopHead
+bind value nextIterationIndex Int64 incCall
+set memory iterationIndex nextIterationIndex
+jump target loopHead
 label loopExit
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value accumulator
+argument writeCall console Console console
+argument writeCall value Float64 accumulator
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

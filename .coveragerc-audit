@@ -1,0 +1,11 @@
+[run]
+parallel = true
+source =
+    SemanticScript/compiler
+    SemanticScript/tools
+    SemanticScript/linter
+    SemanticScript/formatter
+    SemanticScript/shared
+omit =
+    */test_*.py
+    */tests/*

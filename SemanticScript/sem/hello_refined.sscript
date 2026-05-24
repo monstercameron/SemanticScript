@@ -27,16 +27,16 @@ storage module immutable successfulExitCode ExitCode 0
 section program.helloRefined.operations
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 operationBody main sourceTape
 
-purpose main "Write the canonical greeting Hello, World! to standard output as a single line"
-invariant main "The success path is taken only when the console write call reports a non-negative return value"
+purpose operation main "Write the canonical greeting Hello, World! to standard output as a single line"
+invariant operation main "The success path is taken only when the console write call reports a non-negative return value"
 warning main "Never expose raw console-write driver errors in the operation output; map them through MainError"
 
 label startMain
@@ -44,17 +44,17 @@ label startMain
 # rationale: Build the console write as a named call so the success and failure
 # legs are inspectable, and pass the console dependency explicitly.
 call writeHelloGreetingCall console.writeLine
-arg writeHelloGreetingCall console console
-arg writeHelloGreetingCall text helloGreetingText
+argument writeHelloGreetingCall console Console console
+argument writeHelloGreetingCall text String helloGreetingText
 run writeHelloGreetingCall
-ignoreOk writeHelloGreetingCall Void
-bindError writeHelloGreetingError ConsoleWriteError writeHelloGreetingCall
-branchIfError writeHelloGreetingCall consoleWriteFailed
+ignore void source writeHelloGreetingCall
+bind error writeHelloGreetingError ConsoleWriteError writeHelloGreetingCall
+branch error source writeHelloGreetingCall target consoleWriteFailed
 
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label consoleWriteFailed
 # failure: Convert the raw ConsoleWriteError into a typed MainError variant so the
 # operation output contract Result ExitCode MainError is satisfied.
 makeError consoleWriteFailure MainError.ConsoleWriteFailed writeHelloGreetingError
-returnError consoleWriteFailure
+return error consoleWriteFailure

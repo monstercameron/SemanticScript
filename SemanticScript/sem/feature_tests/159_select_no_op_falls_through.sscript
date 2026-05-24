@@ -1,20 +1,19 @@
 # expect.stdout: selectCompleted\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet recognize all select/selectCase/runSelect/branchSelected verb shapes. Direct semsc.py compilation is correct: under single-thread no-op lowering each select verb falls through; control reaches the success label. `python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `selectCompleted`.
 project SelectNoOpFallsThrough
 target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "select + selectCase + runSelect + branchSelected must fall through to success continuation."
-invariant main "Execution reaches the success label; no select branch is taken; output is `selectCompleted`."
+purpose operation main "select + selectCase + runSelect + branchSelected must fall through to success continuation."
+invariant operation main "Execution reaches the success label; no select branch is taken; output is `selectCompleted`."
 label startMain
 select raceController
 selectCase raceController firstChannelToken firstBranchLabel
@@ -22,29 +21,29 @@ selectCase raceController secondChannelToken secondBranchLabel
 runSelect raceController
 branchSelected raceController firstChannelToken firstBranchLabel
 branchSelected raceController secondChannelToken secondBranchLabel
-branch successContinuation
+jump target successContinuation
 label firstBranchLabel
-const firstBranchErrorMessage CNullTerminatedByteString "firstBranchTaken"
+storage module immutable firstBranchErrorMessage String "firstBranchTaken"
 call writeFirstCall console.writeLine
-arg writeFirstCall console console
-arg writeFirstCall text firstBranchErrorMessage
+argument writeFirstCall console Console console
+argument writeFirstCall text String firstBranchErrorMessage
 run writeFirstCall
-ignoreOk writeFirstCall Void
-branch successContinuation
+ignore void source writeFirstCall
+jump target successContinuation
 label secondBranchLabel
-const secondBranchErrorMessage CNullTerminatedByteString "secondBranchTaken"
+storage module immutable secondBranchErrorMessage String "secondBranchTaken"
 call writeSecondCall console.writeLine
-arg writeSecondCall console console
-arg writeSecondCall text secondBranchErrorMessage
+argument writeSecondCall console Console console
+argument writeSecondCall text String secondBranchErrorMessage
 run writeSecondCall
-ignoreOk writeSecondCall Void
-branch successContinuation
+ignore void source writeSecondCall
+jump target successContinuation
 label successContinuation
-const selectCompletedMessage CNullTerminatedByteString "selectCompleted"
+storage module immutable selectCompletedMessage String "selectCompleted"
 call writeCompletedCall console.writeLine
-arg writeCompletedCall console console
-arg writeCompletedCall text selectCompletedMessage
+argument writeCompletedCall console Console console
+argument writeCompletedCall text String selectCompletedMessage
 run writeCompletedCall
-ignoreOk writeCompletedCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCompletedCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

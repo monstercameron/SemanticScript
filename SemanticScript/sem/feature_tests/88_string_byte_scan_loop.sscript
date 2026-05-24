@@ -5,76 +5,76 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation findChar
-input findChar haystack CNullTerminatedByteString
-input findChar needleByte CSignedInt32
-output findChar Result CSignedInt64 Void
+input operation findChar haystack String
+input operation findChar needleByte Int32
+output operation findChar Result Int64 Void
 effect findChar read memory.buffer
 memory findChar heap no
 async findChar no
-purpose findChar "Walk haystack byte-by-byte; return the zero-based offset of the first match or -1 when not found. Exercises pointer.loadByte in a recursion-free loop with multiple branchIf branches sharing a single counter var."
-invariant findChar "Stops at the first NUL terminator if no match."
+purpose operation findChar "Walk haystack byte-by-byte; return the zero-based offset of the first match or -1 when not found. Exercises pointer.loadByte in a recursion-free loop with multiple branchIf branches sharing a single counter var."
+invariant operation findChar "Stops at the first NUL terminator if no match."
 label startFindChar
-const zeroPos CSignedInt64 0
-const oneStep CSignedInt64 1
-const negOneInitial CSignedInt64 -1
-const nullByte CSignedInt64 0
-var cursor CSignedInt64 zeroPos
+storage module immutable zeroPos Int64 0
+storage module immutable oneStep Int64 1
+storage module immutable negOneInitial Int64 -1
+storage module immutable nullByte Int64 0
+memory findChar mutable cursor Int64 zeroPos
 label scanLoopFc
 call probeByteCall pointer.loadByte
-arg probeByteCall buffer haystack
-arg probeByteCall offset cursor
+argument probeByteCall buffer String haystack
+argument probeByteCall offset Int64 cursor
 run probeByteCall
-bind probedByte I8 probeByteCall
-call hitNulCall math.equalI64
-arg hitNulCall left probedByte
-arg hitNulCall right nullByte
+bind value probedByte Int8 probeByteCall
+call hitNulCall math.equalInt64
+argument hitNulCall left Int8 probedByte
+argument hitNulCall right Int64 nullByte
 run hitNulCall
-bind hitNul Bool hitNulCall
-branchIf hitNul fcReportNotFound
-call matchCheckCall math.equalI64
-arg matchCheckCall left probedByte
-arg matchCheckCall right needleByte
+bind value hitNul Bool hitNulCall
+branch if condition hitNul target fcReportNotFound
+call matchCheckCall math.equalInt64
+argument matchCheckCall left Int8 probedByte
+argument matchCheckCall right Int64 needleByte
 run matchCheckCall
-bind matched Bool matchCheckCall
-branchIf matched fcReportFound
-call advanceCall math.addI64
-arg advanceCall left cursor
-arg advanceCall right oneStep
+bind value matched Bool matchCheckCall
+branch if condition matched target fcReportFound
+call advanceCall math.addInt64
+argument advanceCall left Int64 cursor
+argument advanceCall right Int64 oneStep
 run advanceCall
-bind nextCursor CSignedInt64 advanceCall
-set cursor nextCursor
-branch scanLoopFc
+bind value nextCursor Int64 advanceCall
+set memory cursor nextCursor
+jump target scanLoopFc
 label fcReportFound
-returnOk cursor
+return ok cursor
 label fcReportNotFound
-returnOk negOneInitial
+return ok negOneInitial
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Search 'hello, semanticscript' for the letter 'r' starting at position 0. The 'r' lives at offset 17."
-invariant main "Output is 17 (offset of 'r')."
+purpose operation main "Search 'hello, semanticscript' for the letter 'r' starting at position 0. The 'r' lives at offset 17."
+invariant operation main "Output is 17 (offset of 'r')."
 label startMain
-const phrase CNullTerminatedByteString "hello, semanticscript"
-const letterR CSignedInt32 114
+storage module immutable phrase String "hello, semanticscript"
+storage module immutable letterR Int32 114
 call locateCall findChar
-arg locateCall haystack phrase
-arg locateCall needleByte letterR
+argument locateCall haystack String phrase
+argument locateCall needleByte Int32 letterR
 run locateCall
-bindOk locatedOffset CSignedInt64 locateCall
-var offsetStorage I64 0
-set offsetStorage locatedOffset
+bind ok locatedOffset Int64 locateCall
+memory main mutable offsetStorage Int64 0
+set memory offsetStorage locatedOffset
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value offsetStorage
+argument writeCall console Console console
+argument writeCall value Int64 offsetStorage
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

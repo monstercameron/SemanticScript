@@ -5,41 +5,41 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Format an integer into a heap buffer via c.snprintf, then print the buffer via c.puts. Exercises 4-arg snprintf with all const args."
-invariant main "Output is 'val=42\\n'."
+purpose operation main "Format an integer into a heap buffer via c.snprintf, then print the buffer via c.puts. Exercises 4-arg snprintf with all const args."
+invariant operation main "Output is 'val=42\\n'."
 label startMain
-const bufferCap CByteCount 32
-const fmtString CNullTerminatedByteString "val=%lld"
-const fortyTwo CSignedInt64 42
+storage module immutable bufferCap ByteCount 32
+storage module immutable fmtString String "val=%lld"
+storage module immutable fortyTwo Int64 42
 call mallocCall c.malloc
-arg mallocCall size bufferCap
+argument mallocCall size ByteCount bufferCap
 run mallocCall
-bind targetBuffer COpaqueMemoryAddress mallocCall
+bind value targetBuffer OpaquePointer mallocCall
 
 call snprCall c.snprintf
-arg snprCall buffer targetBuffer
-arg snprCall size bufferCap
-arg snprCall format fmtString
-arg snprCall value fortyTwo
+argument snprCall buffer OpaquePointer targetBuffer
+argument snprCall size ByteCount bufferCap
+argument snprCall format String fmtString
+argument snprCall value Int64 fortyTwo
 run snprCall
-ignoreOk snprCall CSignedInt32
+ignore ok source snprCall type Int32
 
 call putsCall c.puts
-arg putsCall text targetBuffer
+argument putsCall text OpaquePointer targetBuffer
 run putsCall
-ignoreOk putsCall CSignedInt32
+ignore ok source putsCall type Int32
 
 call freeCall c.free
-arg freeCall ptr targetBuffer
+argument freeCall ptr OpaquePointer targetBuffer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

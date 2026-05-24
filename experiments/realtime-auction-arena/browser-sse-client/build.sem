@@ -1,0 +1,170 @@
+# Realtime Auction Arena - browser client (SemanticScript SSR) build plan.
+#
+# This is a SEPARATE webServer app from experiments/realtime-auction-arena/server.
+# It server-renders the bidder Lobby + Floor by reading the API server's shared
+# SQLite database (the native runtime exposes no outbound HTTP client), and
+# serves a thin assets/floor.js for live updates. Build configuration is ordinary
+# typed record data; semsc lowers BuildPlan internally.
+
+module app.realtime_auction_arena.client.build
+purpose module app.realtime_auction_arena.client.build "Describe the Realtime Auction Arena SSR browser client build as typed SemanticScript data."
+moduleOwns app.realtime_auction_arena.client.build "Build project metadata, module registration, target options, version metadata, and build constants."
+moduleDoesNotOwn app.realtime_auction_arena.client.build "Runtime application behavior; registered app modules own routes, page handlers, components, and SQLite reads."
+invariant module app.realtime_auction_arena.client.build "Build configuration is data first: records hold settings and the configure operation returns the selected BuildPlan."
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+
+record BuildModules
+field BuildModules main BuildModule
+field BuildModules components BuildModule
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion Int64
+field BuildTarget profile String
+field BuildTarget optLevel Int64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget nativeHttpHost String
+field BuildTarget nativeHttpPort Int64
+field BuildTarget formatterLineWidth Int64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+
+record BuildMetadata
+field BuildMetadata buildSource String
+field BuildMetadata runtimeContract String
+field BuildMetadata dispatcherPort String
+field BuildMetadata apiServerPort String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstant
+field BuildConstant type String
+field BuildConstant value String
+
+record BuildConstants
+field BuildConstants serverHostText BuildConstant
+field BuildConstants serverPortNumber BuildConstant
+field BuildConstants apiBaseUrlText BuildConstant
+field BuildConstants sharedDatabasePath BuildConstant
+field BuildConstants assetsDirectoryPath BuildConstant
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable realtimeAuctionArenaClientBuildPlan BuildPlan
+jsonBody realtimeAuctionArenaClientBuildPlan
+  {
+      "project": {
+          "name": "RealtimeAuctionArenaClient",
+          "id": "realtimeAuctionArenaClient",
+          "modulePath": "github.com/monstercameron/SemanticScript/experiments/realtime-auction-arena/browser-sse-client",
+          "languageVersion": "1.0",
+          "projectVersion": "0.1.0",
+          "license": "MIT",
+          "sourceRoot": ".",
+          "testPattern": "*.test.sem",
+          "testRoot": "."
+      },
+      "modules": {
+          "main": {
+              "moduleName": "app.realtime_auction_arena.client",
+              "sourcePath": ".",
+              "mainFile": "main.sem"
+          },
+          "components": {
+              "moduleName": "app.realtime_auction_arena.client.components",
+              "sourcePath": "components",
+              "mainFile": "main.sem"
+          }
+      },
+      "mainModule": "main",
+      "target": {
+          "runtime": "webServer",
+          "nativeRuntime": "native",
+          "nativeRuntimeVersion": 1,
+          "profile": "dev",
+          "optLevel": 2,
+          "runtimeChecks": "panic",
+          "persistLlvmIr": "yes",
+          "emitLlvmIr": "auto",
+          "emitOptimizedLlvmIr": false,
+          "buildFolderName": "build",
+          "cpuBaseline": "generic",
+          "cpuTune": "generic",
+          "cpuFeatureCheck": "auto",
+          "nativeHttpHost": "127.0.0.1",
+          "nativeHttpPort": 18090,
+          "formatterLineWidth": 100,
+          "linterMaxTier": "T4",
+          "docsOutput": "docs",
+          "nativeOutput": "realtime_auction_arena_client.exe"
+      },
+      "versionInfo": {
+          "version": "0.1.0.0",
+          "publisher": "Earl Cameron",
+          "description": "Realtime Auction Arena SSR browser client - server-rendered Lobby/Floor from the shared SQLite database, with a thin live-update JS layer.",
+          "copyright": "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE.",
+          "productName": "Realtime Auction Arena Client",
+          "internalName": "realtime_auction_arena_client",
+          "originalFilename": "realtime_auction_arena_client.exe",
+          "comments": "Built from experiments/realtime-auction-arena/browser-sse-client/main.sem by the SemanticScript reference compiler. Stack: standard.http + standard.sqlite + standard.html.",
+          "metadata": {
+              "buildSource": "experiments/realtime-auction-arena/browser-sse-client/main.sem",
+              "runtimeContract": "native 1",
+              "dispatcherPort": "18090",
+              "apiServerPort": "18083"
+          }
+      },
+      "constants": {
+          "serverHostText": { "type": "String", "value": "127.0.0.1" },
+          "serverPortNumber": { "type": "Int32", "value": "18090" },
+          "apiBaseUrlText": { "type": "String", "value": "http://127.0.0.1:18083" },
+          "sharedDatabasePath": { "type": "String", "value": "server/auction_arena.sqlite3" },
+          "assetsDirectoryPath": { "type": "String", "value": "assets" }
+      }
+  }
+
+operation configureRealtimeAuctionArenaClientBuild
+output operation configureRealtimeAuctionArenaClientBuild BuildPlan
+memory configureRealtimeAuctionArenaClientBuild heap no
+async configureRealtimeAuctionArenaClientBuild no
+purpose operation configureRealtimeAuctionArenaClientBuild "Return the typed build plan for the Realtime Auction Arena SSR client."
+return value realtimeAuctionArenaClientBuildPlan

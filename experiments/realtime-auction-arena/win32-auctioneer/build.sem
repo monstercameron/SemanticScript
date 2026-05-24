@@ -1,0 +1,155 @@
+module experiment.realtime_auction_arena.win32_auctioneer.build
+purpose module experiment.realtime_auction_arena.win32_auctioneer.build "Typed build-plan placeholder for the Win32 auctioneer console."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.build "Project metadata and target intent for the future windowsGui executable build."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.build "Compiler support for multi-file GUI modules, HTTP client integration, manifest embedding, or icon resources."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.build "The build plan points at src/main.sem and records current runtime gaps rather than hiding them."
+
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.main "src/main.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.controls "src/controls.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.auth "src/auth.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.auction_api "src/auction_api.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.view_model "src/view_model.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.event_polling "src/event_polling.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.build "build.test.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.main "src/main.test.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.controls "src/controls.test.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.auth "src/auth.test.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.auction_api "src/auction_api.test.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.view_model "src/view_model.test.sem"
+registerModule realtimeAuctionArenaWin32Auctioneer experiment.realtime_auction_arena.win32_auctioneer.tests.event_polling "src/event_polling.test.sem"
+
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+field BuildProject sourceRoot String
+field BuildProject testPattern String
+field BuildProject testRoot String
+
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourceRoot String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+field BuildModule mainOperation String
+
+record BuildModules
+field BuildModules main BuildModule
+
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget nativeRuntime String
+field BuildTarget nativeRuntimeVersion Int64
+field BuildTarget profile String
+field BuildTarget optLevel Int64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr String
+field BuildTarget emitLlvmIr String
+field BuildTarget emitOptimizedLlvmIr Bool
+field BuildTarget buildFolderName String
+field BuildTarget cpuBaseline String
+field BuildTarget cpuTune String
+field BuildTarget cpuFeatureCheck String
+field BuildTarget formatterLineWidth Int64
+field BuildTarget linterMaxTier String
+field BuildTarget docsOutput String
+field BuildTarget nativeOutput String
+
+record BuildMetadata
+field BuildMetadata buildSource String
+field BuildMetadata runtimeContract String
+field BuildMetadata scaffoldScope String
+
+record BuildVersionInfo
+field BuildVersionInfo version String
+field BuildVersionInfo publisher String
+field BuildVersionInfo description String
+field BuildVersionInfo copyright String
+field BuildVersionInfo productName String
+field BuildVersionInfo internalName String
+field BuildVersionInfo originalFilename String
+field BuildVersionInfo comments String
+field BuildVersionInfo metadata BuildMetadata
+
+record BuildConstants
+
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan modules BuildModules
+field BuildPlan mainModule String
+field BuildPlan mainOperation String
+field BuildPlan target BuildTarget
+field BuildPlan versionInfo BuildVersionInfo
+field BuildPlan constants BuildConstants
+
+storage module immutable win32AuctioneerBuildPlan BuildPlan
+jsonBody win32AuctioneerBuildPlan
+  {
+    "project": {
+      "id": "realtimeAuctionArenaWin32Auctioneer",
+      "name": "Realtime Auction Arena Win32 Auctioneer",
+      "modulePath": "experiments/realtime-auction-arena/win32-auctioneer",
+      "languageVersion": "1.0",
+      "projectVersion": "0.1.0",
+      "license": "MIT",
+      "sourceRoot": "src",
+      "testPattern": "*.test.sem",
+      "testRoot": "."
+    },
+    "modules": {
+      "main": {
+        "moduleName": "experiment.realtime_auction_arena.win32_auctioneer.main",
+        "sourceRoot": "src",
+        "sourcePath": "src",
+        "mainFile": "main.sem",
+        "mainOperation": "main"
+      }
+    },
+    "mainModule": "main",
+    "mainOperation": "main",
+    "target": {
+      "runtime": "windowsGui",
+      "nativeRuntime": "native",
+      "nativeRuntimeVersion": 1,
+      "profile": "dev",
+      "optLevel": 2,
+      "runtimeChecks": "panic",
+      "persistLlvmIr": "yes",
+      "emitLlvmIr": "auto",
+      "emitOptimizedLlvmIr": false,
+      "buildFolderName": "build",
+      "cpuBaseline": "generic",
+      "cpuTune": "generic",
+      "cpuFeatureCheck": "auto",
+      "formatterLineWidth": 100,
+      "linterMaxTier": "T4",
+      "docsOutput": "docs",
+      "nativeOutput": "win32_auctioneer.exe"
+    },
+    "versionInfo": {
+      "version": "0.1.0.0",
+      "publisher": "Earl Cameron",
+      "description": "Realtime Auction Arena Win32 auctioneer console scaffold.",
+      "copyright": "Copyright (c) 2026 Earl Cameron. Licensed under the project LICENSE.",
+      "productName": "Realtime Auction Arena Auctioneer",
+      "internalName": "win32_auctioneer",
+      "originalFilename": "win32_auctioneer.exe",
+      "comments": "Scaffold only: POST JSON, bearer headers, async GUI polling, SSE, manifest, and icons are blocked by current runtime gaps.",
+      "metadata": {
+        "buildSource": "experiments/realtime-auction-arena/win32-auctioneer/src/main.sem",
+        "runtimeContract": "windowsGui native 1",
+        "scaffoldScope": "login|commands|status|events|rejected-bids|chat-moderation|polling-plan"
+      }
+    },
+    "constants": {}
+  }
+
+operation configureWin32AuctioneerBuild
+output operation configureWin32AuctioneerBuild BuildPlan
+memory configureWin32AuctioneerBuild heap no
+async configureWin32AuctioneerBuild no
+purpose operation configureWin32AuctioneerBuild "Return the typed build-plan placeholder for the Win32 auctioneer console."
+return value win32AuctioneerBuildPlan

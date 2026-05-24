@@ -11,7 +11,7 @@ Numbered SemanticScript feature corpus for compiler and runtime behavior.
 
 Active regression corpus. Tests cover arithmetic, branching, calls, recursion,
 pointers, strings, floats, records, imports, storage, concurrency-shaped verbs,
-JSON primitives, literal sources, and low-level `c.*` bootstrap behavior.
+JSON primitives, literal sources, and low-level `c.*` backend behavior.
 
 ## Maintenance
 

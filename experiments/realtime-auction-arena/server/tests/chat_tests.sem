@@ -1,0 +1,150 @@
+module app.realtime_auction_arena.server.tests.chat
+purpose module app.realtime_auction_arena.server.tests.chat "Parse-oriented chat contract test markers for runtime gaps."
+moduleOwns app.realtime_auction_arena.server.tests.chat "Chat test plan cases that become executable once dynamic routes, persistence, and SSE replay are wired."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.chat "Chat implementation."
+
+import chat app.realtime_auction_arena.server.chat
+
+record ChatTestPlan
+field ChatTestPlan postRequiresBidder String
+field ChatTestPlan reportRequiresBidder String
+field ChatTestPlan moderationRequiresAuctioneer String
+field ChatTestPlan messageLengthLimit String
+field ChatTestPlan deleteIdempotency String
+field ChatTestPlan reportIdempotency String
+field ChatTestPlan auditCoverage String
+field ChatTestPlan replayOrdering String
+field ChatTestPlan sseReplayCursor String
+field ChatTestPlan subscriberBackpressure String
+field ChatTestPlan revisionInvariant String
+field ChatTestPlan executableNow String
+field ChatTestPlan requiredRuntimeApis String
+
+storage module immutable chatTestPlan ChatTestPlan
+jsonBody chatTestPlan
+  {
+      "postRequiresBidder": "POST chat message without bidder role returns forbidden",
+      "reportRequiresBidder": "POST chat report without bidder role returns forbidden",
+      "moderationRequiresAuctioneer": "DELETE chat message without admin_or_auctioneer returns forbidden",
+      "messageLengthLimit": "message body over 1000 bytes returns validation_error",
+      "deleteIdempotency": "DELETE chat message emits chat.message.deleted once and repeated delete returns existing deleted status",
+      "reportIdempotency": "same reporter can report a message once; repeated report does not duplicate chat.message.reported",
+      "auditCoverage": "delete and report persist audit_events before broadcast with actor, requestId, outcome, and messageId",
+      "replayOrdering": "created/deleted/reported chat events consume auction event sequence numbers",
+      "sseReplayCursor": "Last-Event-ID or ?after replays chat events after the cursor before live subscription",
+      "subscriberBackpressure": "full subscriber queue closes that subscriber without blocking chat persistence or other subscribers",
+      "revisionInvariant": "chat events do not increment AuctionState.revision",
+      "executableNow": "this file is parseable contract coverage only",
+      "requiredRuntimeApis": "executable tests require dynamic routes, JSON body parsing, persistence transactions, audit inserts, long-lived SSE, bounded queues, and disconnect detection"
+  }
+
+operation getChatTestPlan
+output operation getChatTestPlan ChatTestPlan
+memory getChatTestPlan heap no
+async getChatTestPlan no
+purpose operation getChatTestPlan "Return chat test cases as a parseable contract."
+return value chatTestPlan
+
+operation chatPolicySmoke
+output operation chatPolicySmoke Bool
+memory chatPolicySmoke heap no
+async chatPolicySmoke no
+purpose operation chatPolicySmoke "Exercise executable chat policy helpers for role, length, rate-limit, revision, and event-sequence contracts."
+label startChatPolicySmoke
+call bidderCanPostCall chat.chatActorCanPost
+argument bidderCanPostCall actorRole Int64 10
+run bidderCanPostCall
+bind value bidderCanPost Bool bidderCanPostCall
+branch if condition bidderCanPost target bidderPostAccepted
+return value false
+label bidderPostAccepted
+
+call auctioneerCanPostCall chat.chatActorCanPost
+argument auctioneerCanPostCall actorRole Int64 20
+run auctioneerCanPostCall
+bind value auctioneerCanPost Bool auctioneerCanPostCall
+branch if condition auctioneerCanPost target chatPolicyFailed
+
+call bidderCanReportCall chat.chatActorCanReport
+argument bidderCanReportCall actorRole Int64 10
+run bidderCanReportCall
+bind value bidderCanReport Bool bidderCanReportCall
+branch if condition bidderCanReport target bidderReportAccepted
+return value false
+label bidderReportAccepted
+
+call auctioneerCanModerateCall chat.chatActorCanModerate
+argument auctioneerCanModerateCall actorRole Int64 20
+run auctioneerCanModerateCall
+bind value auctioneerCanModerate Bool auctioneerCanModerateCall
+branch if condition auctioneerCanModerate target auctioneerModerationAccepted
+return value false
+label auctioneerModerationAccepted
+
+call adminCanModerateCall chat.chatActorCanModerate
+argument adminCanModerateCall actorRole Int64 30
+run adminCanModerateCall
+bind value adminCanModerate Bool adminCanModerateCall
+branch if condition adminCanModerate target adminModerationAccepted
+return value false
+label adminModerationAccepted
+
+call bidderCanModerateCall chat.chatActorCanModerate
+argument bidderCanModerateCall actorRole Int64 10
+run bidderCanModerateCall
+bind value bidderCanModerate Bool bidderCanModerateCall
+branch if condition bidderCanModerate target chatPolicyFailed
+
+call maxLengthAcceptedCall chat.chatMessageByteLengthAccepted
+argument maxLengthAcceptedCall byteLength Int64 1000
+run maxLengthAcceptedCall
+bind value maxLengthAccepted Bool maxLengthAcceptedCall
+branch if condition maxLengthAccepted target maxLengthAcceptedLabel
+return value false
+label maxLengthAcceptedLabel
+
+call tooLongRejectedCall chat.chatMessageByteLengthAccepted
+argument tooLongRejectedCall byteLength Int64 1001
+run tooLongRejectedCall
+bind value tooLongAccepted Bool tooLongRejectedCall
+branch if condition tooLongAccepted target chatPolicyFailed
+
+call rateLimitAvailableCall chat.chatRateLimitAllowsNextMessage
+argument rateLimitAvailableCall currentWindowCount Int64 4
+run rateLimitAvailableCall
+bind value rateLimitAvailable Bool rateLimitAvailableCall
+branch if condition rateLimitAvailable target rateLimitAvailableLabel
+return value false
+label rateLimitAvailableLabel
+
+call rateLimitFullCall chat.chatRateLimitAllowsNextMessage
+argument rateLimitFullCall currentWindowCount Int64 5
+run rateLimitFullCall
+bind value rateLimitFullAccepted Bool rateLimitFullCall
+branch if condition rateLimitFullAccepted target chatPolicyFailed
+
+call revisionUnchangedCall chat.chatRevisionUnchanged
+argument revisionUnchangedCall beforeRevision Int64 7
+argument revisionUnchangedCall afterRevision Int64 7
+run revisionUnchangedCall
+bind value revisionUnchanged Bool revisionUnchangedCall
+branch if condition revisionUnchanged target revisionUnchangedLabel
+return value false
+label revisionUnchangedLabel
+
+call nextSequenceCall chat.chatNextEventSequence
+argument nextSequenceCall currentSequence Int64 9
+run nextSequenceCall
+bind value nextSequence Int64 nextSequenceCall
+call nextSequenceMatchesCall math.equalInt64
+argument nextSequenceMatchesCall left Int64 nextSequence
+argument nextSequenceMatchesCall right Int64 10
+run nextSequenceMatchesCall
+bind value nextSequenceMatches Bool nextSequenceMatchesCall
+branch if condition nextSequenceMatches target chatPolicyPassed
+return value false
+
+label chatPolicyFailed
+return value false
+label chatPolicyPassed
+return value true

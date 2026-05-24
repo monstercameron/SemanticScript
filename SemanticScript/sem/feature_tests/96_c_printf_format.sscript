@@ -5,37 +5,37 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Exercise c.printf with an integer arg (const + bind paths) and a string arg. Uses %lld for i64 and %s for i8*. Triggers walker mode via a no-op c.malloc since c.printf alone isn't a walker trigger (existing SemanticScript programs use c.printf alongside unsupported math libcs)."
-invariant main "Output is 'value = 42\\nname = hello\\n'."
+purpose operation main "Exercise c.printf with an integer arg (const + bind paths) and a string arg. Uses %lld for i64 and %s for i8*. Triggers walker mode via a no-op c.malloc since c.printf alone isn't a walker trigger (existing SemanticScript programs use c.printf alongside unsupported math libcs)."
+invariant operation main "Output is 'value = 42\\nname = hello\\n'."
 label startMain
-const intFormat CNullTerminatedByteString "value = %lld\n"
-const stringFormat CNullTerminatedByteString "name = %s\n"
-const fortyTwo CSignedInt64 42
-const helloLabel CNullTerminatedByteString "hello"
-const oneByteForTrigger CByteCount 1
+storage module immutable intFormat String "value = %lld\n"
+storage module immutable stringFormat String "name = %s\n"
+storage module immutable fortyTwo Int64 42
+storage module immutable helloLabel String "hello"
+storage module immutable oneByteForTrigger ByteCount 1
 call walkerTriggerCall c.malloc
-arg walkerTriggerCall size oneByteForTrigger
+argument walkerTriggerCall size ByteCount oneByteForTrigger
 run walkerTriggerCall
-bind walkerTriggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value walkerTriggerBuffer OpaquePointer walkerTriggerCall
 call walkerTriggerFreeCall c.free
-arg walkerTriggerFreeCall ptr walkerTriggerBuffer
+argument walkerTriggerFreeCall ptr OpaquePointer walkerTriggerBuffer
 run walkerTriggerFreeCall
 call printIntCall c.printf
-arg printIntCall format intFormat
-arg printIntCall value fortyTwo
+argument printIntCall format String intFormat
+argument printIntCall value Int64 fortyTwo
 run printIntCall
-ignoreOk printIntCall CSignedInt32
+ignore ok source printIntCall type Int32
 call printStringCall c.printf
-arg printStringCall format stringFormat
-arg printStringCall value helloLabel
+argument printStringCall format String stringFormat
+argument printStringCall value String helloLabel
 run printStringCall
-ignoreOk printStringCall CSignedInt32
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore ok source printStringCall type Int32
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -5,115 +5,115 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation pickGreeting
-input pickGreeting useFirst CSignedInt64
-output pickGreeting Result CNullTerminatedByteString Void
+input operation pickGreeting useFirst Int64
+output operation pickGreeting Result String Void
 memory pickGreeting heap no
 async pickGreeting no
-purpose pickGreeting "Return one of two compile-time string constants based on the flag. Used to verify that console.writeLine can consume an i8* bind (rather than a direct const reference) when written via c.putchar bytes for now (string-replay path doesn't survive walker mode)."
-invariant pickGreeting "Returns 'hello' or 'world' as a pointer."
+purpose operation pickGreeting "Return one of two compile-time string constants based on the flag. Used to verify that console.writeLine can consume an i8* bind (rather than a direct const reference) when written via c.putchar bytes for now (string-replay path doesn't survive walker mode)."
+invariant operation pickGreeting "Returns 'hello' or 'world' as a pointer."
 label startPickGreeting
-const helloMessage CNullTerminatedByteString "hello"
-const worldMessage CNullTerminatedByteString "world"
-const zeroPivot CSignedInt64 0
-call useFirstBoolCall math.greaterThanI64
-arg useFirstBoolCall left useFirst
-arg useFirstBoolCall right zeroPivot
+storage module immutable helloMessage String "hello"
+storage module immutable worldMessage String "world"
+storage module immutable zeroPivot Int64 0
+call useFirstBoolCall math.greaterThanInt64
+argument useFirstBoolCall left Int64 useFirst
+argument useFirstBoolCall right Int64 zeroPivot
 run useFirstBoolCall
-bind chooseFirst Bool useFirstBoolCall
-branchIf chooseFirst pickHello
-returnOk worldMessage
+bind value chooseFirst Bool useFirstBoolCall
+branch if condition chooseFirst target pickHello
+return ok worldMessage
 label pickHello
-returnOk helloMessage
+return ok helloMessage
 
 operation putString
-input putString message CNullTerminatedByteString
-output putString Result CByteCount Void
+input operation putString message String
+output operation putString Result ByteCount Void
 effect putString read memory.buffer
 effect putString write console.stdout
 memory putString heap no
 async putString no
-purpose putString "Walk the message byte by byte writing each via c.putchar until the NUL terminator. Returns the byte count."
-invariant putString "Stops at the first zero byte."
+purpose operation putString "Walk the message byte by byte writing each via c.putchar until the NUL terminator. Returns the byte count."
+invariant operation putString "Stops at the first zero byte."
 label startPutString
-const zeroIndex CSignedInt64 0
-const oneIncrement CSignedInt64 1
-const nullByte CSignedInt64 0
-var positionIndex CSignedInt64 zeroIndex
+storage module immutable zeroIndex Int64 0
+storage module immutable oneIncrement Int64 1
+storage module immutable nullByte Int64 0
+memory putString mutable positionIndex Int64 zeroIndex
 label loopTop
 call byteLoadCall pointer.loadByte
-arg byteLoadCall buffer message
-arg byteLoadCall offset positionIndex
+argument byteLoadCall buffer String message
+argument byteLoadCall offset Int64 positionIndex
 run byteLoadCall
-bind currentByte I8 byteLoadCall
-call isTerminatorCall math.equalI64
-arg isTerminatorCall left currentByte
-arg isTerminatorCall right nullByte
+bind value currentByte Int8 byteLoadCall
+call isTerminatorCall math.equalInt64
+argument isTerminatorCall left Int8 currentByte
+argument isTerminatorCall right Int64 nullByte
 run isTerminatorCall
-bind isTerminator Bool isTerminatorCall
-branchIf isTerminator finishWriting
+bind value isTerminator Bool isTerminatorCall
+branch if condition isTerminator target finishWriting
 call writeByteCall c.putchar
-arg writeByteCall c currentByte
+argument writeByteCall c Int8 currentByte
 run writeByteCall
-call advanceCall math.addI64
-arg advanceCall left positionIndex
-arg advanceCall right oneIncrement
+call advanceCall math.addInt64
+argument advanceCall left Int64 positionIndex
+argument advanceCall right Int64 oneIncrement
 run advanceCall
-bind nextPosition CSignedInt64 advanceCall
-set positionIndex nextPosition
-branch loopTop
+bind value nextPosition Int64 advanceCall
+set memory positionIndex nextPosition
+jump target loopTop
 label finishWriting
-returnOk positionIndex
+return ok positionIndex
 
 operation putLine
-input putLine message CNullTerminatedByteString
-output putLine Result CByteCount Void
+input operation putLine message String
+output operation putLine Result ByteCount Void
 effect putLine read memory.buffer
 effect putLine write console.stdout
 memory putLine heap no
 async putLine no
-purpose putLine "Write message via putString then emit a trailing newline."
-invariant putLine "Returns the byte count of message (not including the newline)."
+purpose operation putLine "Write message via putString then emit a trailing newline."
+invariant operation putLine "Returns the byte count of message (not including the newline)."
 label startPutLine
 call bodyCall putString
-arg bodyCall message message
+argument bodyCall message String message
 run bodyCall
-bindOk byteCount CByteCount bodyCall
-const newlineByte CSignedInt32 10
+bind ok byteCount ByteCount bodyCall
+storage module immutable newlineByte Int32 10
 call newlineCall c.putchar
-arg newlineCall c newlineByte
+argument newlineCall c Int32 newlineByte
 run newlineCall
-returnOk byteCount
+return ok byteCount
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Pick and emit two greetings: pickGreeting(1) -> 'hello\n', pickGreeting(0) -> 'world\n'. Exercises pointer-returning user op, pointer-typed arg to a sibling user op, and putString loop using pointer.loadByte/c.putchar."
-invariant main "Output is 'hello\nworld\n'."
+purpose operation main "Pick and emit two greetings: pickGreeting(1) -> 'hello\n', pickGreeting(0) -> 'world\n'. Exercises pointer-returning user op, pointer-typed arg to a sibling user op, and putString loop using pointer.loadByte/c.putchar."
+invariant operation main "Output is 'hello\nworld\n'."
 label startMain
-const oneSelector CSignedInt64 1
-const zeroSelector CSignedInt64 0
+storage module immutable oneSelector Int64 1
+storage module immutable zeroSelector Int64 0
 call pickHelloCall pickGreeting
-arg pickHelloCall useFirst oneSelector
+argument pickHelloCall useFirst Int64 oneSelector
 run pickHelloCall
-bindOk helloPointer CNullTerminatedByteString pickHelloCall
+bind ok helloPointer String pickHelloCall
 call writeHelloCall putLine
-arg writeHelloCall message helloPointer
+argument writeHelloCall message String helloPointer
 run writeHelloCall
-ignoreOk writeHelloCall CByteCount
+ignore ok source writeHelloCall type ByteCount
 call pickWorldCall pickGreeting
-arg pickWorldCall useFirst zeroSelector
+argument pickWorldCall useFirst Int64 zeroSelector
 run pickWorldCall
-bindOk worldPointer CNullTerminatedByteString pickWorldCall
+bind ok worldPointer String pickWorldCall
 call writeWorldCall putLine
-arg writeWorldCall message worldPointer
+argument writeWorldCall message String worldPointer
 run writeWorldCall
-ignoreOk writeWorldCall CByteCount
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore ok source writeWorldCall type ByteCount
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -1,0 +1,41 @@
+# expect.stdout: 12345\n
+# expect.exit: 0
+languageMode permissiveExecutable
+project JsonParseInt64Primitive
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError DecodeFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "json.parse.Int64 parses a JSON integer string into an i64."
+invariant operation main "Input 12345 decodes to integer 12345."
+label startMain
+storage module immutable integerTextLiteral String "12345"
+call parseIntCall json.parse.Int64
+argument parseIntCall jsonText String integerTextLiteral
+run parseIntCall
+bind ok decodedInteger Int64 parseIntCall
+bind error decodeError JsonDecodeError parseIntCall
+branch error source parseIntCall target decodeFailed
+call writeDecodedCall console.writeIntegerLine
+argument writeDecodedCall console Console console
+argument writeDecodedCall value Int64 decodedInteger
+run writeDecodedCall
+ignore void source writeDecodedCall
+bind error writeError ConsoleWriteError writeDecodedCall
+branch error source writeDecodedCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+label decodeFailed
+makeError decodeFailure MainError.DecodeFailed decodeError
+return error decodeFailure
+label consoleWriteFailed
+makeError writeFailure MainError.ConsoleWriteFailed writeError
+return error writeFailure

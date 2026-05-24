@@ -1,0 +1,154 @@
+module app.realtime_auction_arena.server
+purpose module app.realtime_auction_arena.server "Versioned native HTTP API for the Realtime Auction Arena server demo."
+moduleOwns app.realtime_auction_arena.server "Native webServer declaration, route middleware binding, timeout metadata, exported route ABI names, and imports for executable context modules."
+moduleDoesNotOwn app.realtime_auction_arena.server "Context-owned auth/session state, database bootstrap, observability counters, auction/chat/event handlers, static wire envelope bodies, shared HTTP response helpers, production secret management, browser client assets, Win32 auctioneer UI, or native runtime business behavior."
+invariant module app.realtime_auction_arena.server "Every JSON route response includes apiVersion and requestId in the envelope body shape; auction business behavior remains in SemanticScript app code and standard-library primitive calls."
+
+import http standard.http
+import sqlite_std standard.sqlite
+import json standard.json
+import jwt standard.jwt
+import stdlib standard.stdlib
+import runtime app.realtime_auction_arena.server.runtime_constants
+import sql app.realtime_auction_arena.server.sql_queries
+import tx app.realtime_auction_arena.server.persistence_tx
+import helpers app.realtime_auction_arena.server.http_helpers
+import domain app.realtime_auction_arena.server.auction_domain
+import wire app.realtime_auction_arena.server.wire_envelopes
+import chat app.realtime_auction_arena.server.chat
+import server_context app.realtime_auction_arena.server.server_context
+import auth_context app.realtime_auction_arena.server.auth_context
+import observability_context app.realtime_auction_arena.server.observability_context
+import auction_context app.realtime_auction_arena.server.auction_context
+import event_context app.realtime_auction_arena.server.event_context
+import chat_context app.realtime_auction_arena.server.chat_context
+import audit_context app.realtime_auction_arena.server.audit_context
+
+importOperation healthHandler server_context healthHandler
+importOperation authReadyHandler auth_context authReadyHandler
+importOperation protectedMetricsHandler auth_context protectedMetricsHandler
+importOperation apiIndexHandler server_context apiIndexHandler
+importOperation methodNotAllowedHandler server_context methodNotAllowedHandler
+importOperation apiNotFoundHandler server_context apiNotFoundHandler
+importOperation requestContextMiddleware server_context requestContextMiddleware
+importOperation authLoginHandler auth_context authLoginHandler
+importOperation authRefreshHandler auth_context authRefreshHandler
+importOperation authLogoutHandler auth_context authLogoutHandler
+importOperation sessionHandler auth_context sessionHandler
+importOperation auctionsListHandler auction_context auctionsListHandler
+importOperation auctionsCreateHandler auction_context auctionsCreateHandler
+importOperation auctionSnapshotHandler auction_context auctionSnapshotHandler
+importOperation auctionStartHandler auction_context auctionStartHandler
+importOperation auctionExtendHandler auction_context auctionExtendHandler
+importOperation auctionCloseHandler auction_context auctionCloseHandler
+importOperation auctionBidHandler auction_context auctionBidHandler
+importOperation auctionEventsHandler event_context auctionEventsHandler
+importOperation auctionAuditHandler audit_context auctionAuditHandler
+importOperation chatCreateHandler chat_context chatCreateHandler
+importOperation chatDeleteHandler chat_context chatDeleteHandler
+importOperation chatReportHandler chat_context chatReportHandler
+
+exportCapability app.realtime_auction_arena.server httpRequestReader
+exportCapability app.realtime_auction_arena.server httpResponseWriter
+webServer realtimeAuctionArenaServer
+purpose operation realtimeAuctionArenaServer "Serve the Realtime Auction Arena HTTP API skeleton through the current native HTTP/1.1 adapter."
+serverHost realtimeAuctionArenaServer "127.0.0.1"
+serverPort realtimeAuctionArenaServer 18083
+route realtimeAuctionArenaServer GET "/healthz" healthHandler
+route realtimeAuctionArenaServer GET "/readyz" authReadyHandler
+route realtimeAuctionArenaServer GET "/metrics" protectedMetricsHandler
+route realtimeAuctionArenaServer GET "/api/v1" apiIndexHandler
+route realtimeAuctionArenaServer POST "/api/v1/auth/login" authLoginHandler
+route realtimeAuctionArenaServer POST "/api/v1/auth/refresh" authRefreshHandler
+route realtimeAuctionArenaServer POST "/api/v1/auth/logout" authLogoutHandler
+route realtimeAuctionArenaServer GET "/api/v1/session" sessionHandler
+route realtimeAuctionArenaServer GET "/api/v1/auctions" auctionsListHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions" auctionsCreateHandler
+route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId" auctionSnapshotHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/start" auctionStartHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/extend" auctionExtendHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/close" auctionCloseHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/bids" auctionBidHandler
+route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/events" auctionEventsHandler
+route realtimeAuctionArenaServer GET "/api/v1/auctions/:auctionId/audit" auctionAuditHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages" chatCreateHandler
+route realtimeAuctionArenaServer DELETE "/api/v1/auctions/:auctionId/chat/messages/:messageId" chatDeleteHandler
+route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" chatReportHandler
+routeNotFound realtimeAuctionArenaServer apiNotFoundHandler
+routeMethodNotAllowed realtimeAuctionArenaServer methodNotAllowedHandler
+
+timeoutBudget requestTimeoutBudget DurationMilliseconds 2000
+purpose operation requestTimeoutBudget "Document the desired per-route timeout; the current blocking adapter parses this as metadata only."
+routeTimeout realtimeAuctionArenaServer "/healthz" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/readyz" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/metrics" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auth/login" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auth/refresh" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auth/logout" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/session" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/start" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/extend" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/close" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/bids" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/events" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestTimeoutBudget
+routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestTimeoutBudget
+
+routeMiddleware realtimeAuctionArenaServer "/healthz" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/readyz" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/metrics" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auth/login" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auth/refresh" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auth/logout" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/session" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/start" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/extend" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/close" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/bids" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/events" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestContextMiddleware
+routeMiddleware realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestContextMiddleware
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to inspect incoming request path, method, headers, and bounded bodies."
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write native HTTP response headers and bodies."
+capability heapAllocCapability heap allocate
+purpose operation heapAllocCapability "Authority to allocate per-request JSON scratch buffers."
+capability heapFreeCapability heap free
+purpose operation heapFreeCapability "Authority to release per-request JSON scratch buffers."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to read parsed text buffers, compare token strings, and wipe password scratch memory."
+capability jsonDocumentReadCapability json.document.tree read
+purpose operation jsonDocumentReadCapability "Authority to read parsed JSON document cursors."
+capability jsonDocumentWriteCapability json.document.tree write
+purpose operation jsonDocumentWriteCapability "Authority to create and destroy per-request JSON documents."
+capability bcryptHashCompute bcrypt.hash compute
+purpose operation bcryptHashCompute "Authority to verify login passwords and hash/verify refresh tokens through the native bcrypt runtime."
+capability jwtTokenSigner jwt.hs256 signVerify
+purpose operation jwtTokenSigner "Authority to issue and verify HS256 access tokens through the native JWT runtime."
+capability sqliteDatabaseReader database read
+purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite statements through standard.sqlite."
+capability sqliteDatabaseReadWriter database readWrite
+purpose operation sqliteDatabaseReadWriter "Authority to execute SQLite schema, transaction, and command statements through standard.sqlite."
+capability processEnvironmentReader process.environment read
+purpose operation processEnvironmentReader "Authority to read deployment configuration from process environment variables."
+
+# Executable behavior is split by context module:
+# - server_context.sem owns database bootstrap, health/readiness/metrics, and common shell handlers.
+# - auth_context.sem owns demo auth state and auth/session handlers.
+# - observability_context.sem owns metrics, audit, and request-log state/helpers.
+# - auction_context.sem owns auction read/command handlers.
+# - event_context.sem owns event type naming and bounded replay.
+# - chat_context.sem owns chat command handlers.
+# - audit_context.sem owns authenticated bounded audit replay.

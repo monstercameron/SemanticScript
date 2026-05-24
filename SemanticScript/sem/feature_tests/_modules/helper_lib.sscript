@@ -8,17 +8,17 @@ runtime AgentRuntime 0.1
 entry console addSeven
 
 operation addSeven
-input addSeven base I64
-input addSeven addend I64
-output addSeven Result I64 Void
+input operation addSeven base Int64
+input operation addSeven addend Int64
+output operation addSeven Result Int64 Void
 memory addSeven heap no
 async addSeven no
-purpose addSeven "Return base + addend. Demonstrates a callable defined in an imported module."
-invariant addSeven "Returns the sum of its two inputs."
+purpose operation addSeven "Return base + addend. Demonstrates a callable defined in an imported module."
+invariant operation addSeven "Returns the sum of its two inputs."
 label startAddSeven
-call sumCall math.addI64
-arg sumCall left base
-arg sumCall right addend
+call sumCall math.addInt64
+argument sumCall left Int64 base
+argument sumCall right Int64 addend
 run sumCall
-bind sumResult I64 sumCall
-returnOk sumResult
+bind value sumResult Int64 sumCall
+return ok sumResult

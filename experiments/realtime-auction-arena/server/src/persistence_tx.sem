@@ -1,0 +1,106 @@
+module app.realtime_auction_arena.server.persistence_tx
+purpose module app.realtime_auction_arena.server.persistence_tx "Executable SQLite transaction helpers for Realtime Auction Arena command handlers."
+moduleOwns app.realtime_auction_arena.server.persistence_tx "BEGIN IMMEDIATE, COMMIT, and ROLLBACK helper operations used by executable auth, auction, and chat command handlers."
+moduleDoesNotOwn app.realtime_auction_arena.server.persistence_tx "Durable schema contracts, SQL domain statements, route policy, or caller-owned statement finalization."
+invariant module app.realtime_auction_arena.server.persistence_tx "Handlers call begin/commit helpers and install rollbackSqliteCommandTransaction as a user-operation defer immediately after a transaction opens."
+
+import sqlite standard.sqlite
+
+exportOperation app.realtime_auction_arena.server.persistence_tx beginSqliteCommandTransaction
+exportOperation app.realtime_auction_arena.server.persistence_tx commitSqliteCommandTransaction
+exportOperation app.realtime_auction_arena.server.persistence_tx rollbackSqliteCommandTransaction
+
+capability sqliteDatabaseReadWriter database readWrite
+purpose operation sqliteDatabaseReadWriter "Authority to execute command transaction control statements through standard.sqlite."
+
+storage module immutable sqlBeginImmediateCommandTransaction SqlText
+sql body sqlBeginImmediateCommandTransaction
+  BEGIN IMMEDIATE
+storage module immutable sqlCommitCommandTransaction SqlText
+sql body sqlCommitCommandTransaction
+  COMMIT
+storage module immutable sqlRollbackCommandTransaction SqlText
+sql body sqlRollbackCommandTransaction
+  ROLLBACK
+
+storage module immutable transactionSucceeded Bool true
+storage module immutable transactionFailed Bool false
+storage module immutable transactionExecStatusOk Int32 0
+
+operation beginSqliteCommandTransaction
+input operation beginSqliteCommandTransaction database SqliteDatabase
+output operation beginSqliteCommandTransaction Bool
+effect beginSqliteCommandTransaction readWrite database
+memory beginSqliteCommandTransaction heap no
+async beginSqliteCommandTransaction no
+useCapability beginSqliteCommandTransaction sqliteDatabaseReadWriter
+purpose operation beginSqliteCommandTransaction "Open the server command transaction using BEGIN IMMEDIATE."
+label startBeginSqliteCommandTransaction
+call beginTransactionCall sqlite.execStatus
+argument beginTransactionCall database SqliteDatabase database
+argument beginTransactionCall sql SqlText sqlBeginImmediateCommandTransaction
+run beginTransactionCall
+bind value beginTransactionStatus Int32 beginTransactionCall
+call beginTransactionOkCall math.equalInt32
+argument beginTransactionOkCall left Int32 beginTransactionStatus
+argument beginTransactionOkCall right Int32 transactionExecStatusOk
+run beginTransactionOkCall
+bind value beginTransactionOk Bool beginTransactionOkCall
+branch if condition beginTransactionOk target beginSqliteCommandTransactionSucceeded
+branch else target beginSqliteCommandTransactionFailed
+label beginSqliteCommandTransactionSucceeded
+return value transactionSucceeded
+label beginSqliteCommandTransactionFailed
+return value transactionFailed
+
+operation commitSqliteCommandTransaction
+input operation commitSqliteCommandTransaction database SqliteDatabase
+output operation commitSqliteCommandTransaction Bool
+effect commitSqliteCommandTransaction readWrite database
+memory commitSqliteCommandTransaction heap no
+async commitSqliteCommandTransaction no
+useCapability commitSqliteCommandTransaction sqliteDatabaseReadWriter
+purpose operation commitSqliteCommandTransaction "Commit the active server command transaction."
+label startCommitSqliteCommandTransaction
+call commitTransactionCall sqlite.execStatus
+argument commitTransactionCall database SqliteDatabase database
+argument commitTransactionCall sql SqlText sqlCommitCommandTransaction
+run commitTransactionCall
+bind value commitTransactionStatus Int32 commitTransactionCall
+call commitTransactionOkCall math.equalInt32
+argument commitTransactionOkCall left Int32 commitTransactionStatus
+argument commitTransactionOkCall right Int32 transactionExecStatusOk
+run commitTransactionOkCall
+bind value commitTransactionOk Bool commitTransactionOkCall
+branch if condition commitTransactionOk target commitSqliteCommandTransactionSucceeded
+branch else target commitSqliteCommandTransactionFailed
+label commitSqliteCommandTransactionSucceeded
+return value transactionSucceeded
+label commitSqliteCommandTransactionFailed
+return value transactionFailed
+
+operation rollbackSqliteCommandTransaction
+input operation rollbackSqliteCommandTransaction database SqliteDatabase
+output operation rollbackSqliteCommandTransaction Bool
+effect rollbackSqliteCommandTransaction readWrite database
+memory rollbackSqliteCommandTransaction heap no
+async rollbackSqliteCommandTransaction no
+useCapability rollbackSqliteCommandTransaction sqliteDatabaseReadWriter
+purpose operation rollbackSqliteCommandTransaction "Best-effort rollback helper suitable for caller-owned defer cleanup after BEGIN IMMEDIATE succeeds."
+label startRollbackSqliteCommandTransaction
+call rollbackTransactionCall sqlite.execStatus
+argument rollbackTransactionCall database SqliteDatabase database
+argument rollbackTransactionCall sql SqlText sqlRollbackCommandTransaction
+run rollbackTransactionCall
+bind value rollbackTransactionStatus Int32 rollbackTransactionCall
+call rollbackTransactionOkCall math.equalInt32
+argument rollbackTransactionOkCall left Int32 rollbackTransactionStatus
+argument rollbackTransactionOkCall right Int32 transactionExecStatusOk
+run rollbackTransactionOkCall
+bind value rollbackTransactionOk Bool rollbackTransactionOkCall
+branch if condition rollbackTransactionOk target rollbackSqliteCommandTransactionSucceeded
+branch else target rollbackSqliteCommandTransactionFailed
+label rollbackSqliteCommandTransactionSucceeded
+return value transactionSucceeded
+label rollbackSqliteCommandTransactionFailed
+return value transactionFailed

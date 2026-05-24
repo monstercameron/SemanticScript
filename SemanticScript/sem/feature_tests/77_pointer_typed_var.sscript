@@ -5,75 +5,75 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation putString
-input putString s CNullTerminatedByteString
-output putString Result CByteCount Void
+input operation putString s String
+output operation putString Result ByteCount Void
 effect putString read memory.buffer
 effect putString write console.stdout
 memory putString heap no
 async putString no
-purpose putString "Write every byte of s to stdout via c.putchar until a NUL terminator."
-invariant putString "Stops at the first zero byte."
+purpose operation putString "Write every byte of s to stdout via c.putchar until a NUL terminator."
+invariant operation putString "Stops at the first zero byte."
 label startPutString
-const zeroIndex CSignedInt64 0
-const oneStep CSignedInt64 1
-const nullByte CSignedInt64 0
-var positionIndex CSignedInt64 zeroIndex
+storage module immutable zeroIndex Int64 0
+storage module immutable oneStep Int64 1
+storage module immutable nullByte Int64 0
+memory putString mutable positionIndex Int64 zeroIndex
 label loopTop
 call byteLoadCall pointer.loadByte
-arg byteLoadCall buffer s
-arg byteLoadCall offset positionIndex
+argument byteLoadCall buffer String s
+argument byteLoadCall offset Int64 positionIndex
 run byteLoadCall
-bind currentByte I8 byteLoadCall
-call isTerminatorCall math.equalI64
-arg isTerminatorCall left currentByte
-arg isTerminatorCall right nullByte
+bind value currentByte Int8 byteLoadCall
+call isTerminatorCall math.equalInt64
+argument isTerminatorCall left Int8 currentByte
+argument isTerminatorCall right Int64 nullByte
 run isTerminatorCall
-bind isTerminator Bool isTerminatorCall
-branchIf isTerminator finishWriting
+bind value isTerminator Bool isTerminatorCall
+branch if condition isTerminator target finishWriting
 call writeByteCall c.putchar
-arg writeByteCall c currentByte
+argument writeByteCall c Int8 currentByte
 run writeByteCall
-call advanceCall math.addI64
-arg advanceCall left positionIndex
-arg advanceCall right oneStep
+call advanceCall math.addInt64
+argument advanceCall left Int64 positionIndex
+argument advanceCall right Int64 oneStep
 run advanceCall
-bind nextPosition CSignedInt64 advanceCall
-set positionIndex nextPosition
-branch loopTop
+bind value nextPosition Int64 advanceCall
+set memory positionIndex nextPosition
+jump target loopTop
 label finishWriting
-returnOk positionIndex
+return ok positionIndex
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Initialize a CNullTerminatedByteString var to 'hi', print it via putString + newline, then SET it to 'bye' and print again. Exercises pointer-typed var alloca + init + set + load + arg passing."
-invariant main "Output is 'hi\nbye\n'."
+purpose operation main "Initialize a String var to 'hi', print it via putString + newline, then SET it to 'bye' and print again. Exercises pointer-typed var alloca + init + set + load + arg passing."
+invariant operation main "Output is 'hi\nbye\n'."
 label startMain
-const helloMsg CNullTerminatedByteString "hi"
-const byeMsg CNullTerminatedByteString "bye"
-const newlineByte CSignedInt32 10
-var greeting CNullTerminatedByteString helloMsg
+storage module immutable helloMsg String "hi"
+storage module immutable byeMsg String "bye"
+storage module immutable newlineByte Int32 10
+memory main mutable greeting String helloMsg
 call putGreetingCall putString
-arg putGreetingCall s greeting
+argument putGreetingCall s String greeting
 run putGreetingCall
-ignoreOk putGreetingCall CByteCount
+ignore ok source putGreetingCall type ByteCount
 call newlineCall1 c.putchar
-arg newlineCall1 c newlineByte
+argument newlineCall1 c Int32 newlineByte
 run newlineCall1
-set greeting byeMsg
+set memory greeting byeMsg
 call putByeCall putString
-arg putByeCall s greeting
+argument putByeCall s String greeting
 run putByeCall
-ignoreOk putByeCall CByteCount
+ignore ok source putByeCall type ByteCount
 call newlineCall2 c.putchar
-arg newlineCall2 c newlineByte
+argument newlineCall2 c Int32 newlineByte
 run newlineCall2
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

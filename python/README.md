@@ -1,7 +1,6 @@
-# Python Standard Library Examples
+# Python Comparison Examples
 
 Standard-library-only Python examples for benchmarking against SemanticScript.
-This top-level folder is a 1.0 compatibility mirror of `samples/python/`.
 
 ## Contents
 
@@ -11,9 +10,7 @@ Python `math` API coverage.
 
 ## Current Status
 
-Reference examples only. These scripts are not SemanticScript runtime code. For
-new Python comparison samples, prefer `samples/python/`; keep this mirror aligned
-when existing mirrored files change.
+Reference examples only. These scripts are not SemanticScript runtime code.
 
 Run everything:
 

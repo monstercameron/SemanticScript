@@ -1,42 +1,41 @@
 # SemanticScript standard-library canonical module: standard.random.
 
 module standard.random
-modulePurpose standard.random "Canonical standard-library module for pseudo-random helper operations."
+purpose module standard.random "Canonical standard-library module for pseudo-random helper operations."
 moduleOwns standard.random "The official import path `standard.random` and this module's implementation body."
 moduleDoesNotOwn standard.random "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.random "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.random "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.random randomModuleVersionText
-storage module immutable randomModuleVersionText CNullTerminatedByteString "standard.random 0.1"
+storage module immutable randomModuleVersionText String "standard.random 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: deterministic pseudo-random sequence
 # ============================================================
 #
-# # rationale: implements the MINSTD Linear Congruential Generator
+# rationale: implements the MINSTD Linear Congruential Generator
 #   (Park-Miller) entirely in SemanticScript Ã¢â‚¬â€ no libc rand() / srand(). State
 #   is held in a caller-passed 8-byte heap slot (rand_r-style
 #   reentrant pattern) because SemanticScript user-operations cannot yet share
 #   module-level mutable state portably.
 #
-# # invariant: LCG parameters are multiplier 48271 over modulus
+# invariant: LCG parameters are multiplier 48271 over modulus
 #   2147483647 (=2^31 - 1). Period is 2^31 - 2 ~= 2.1 billion.
 #   Output is in [1, 2147483646] under a non-zero seed. Two zero
 #   inputs (zero or negative seeds) are normalized to 1 Ã¢â‚¬â€ the LCG
 #   has a fixed point at zero.
 #
-# # security: deterministic and short-period; NOT suitable for any
+# security: deterministic and short-period; NOT suitable for any
 #   security use. The whole point is reproducibility (test fixtures,
 #   game-mechanic determinism). Cryptographic callers must use a
 #   different source.
 #
-# # timing: nextDeterministicRandomSignedInt64 is O(1) Ã¢â‚¬â€ one
+# timing: nextDeterministicRandomSignedInt64 is O(1) Ã¢â‚¬â€ one
 #   load-state, one multiply-mod, one store-state.
 #
-# # observability: state mutation happens entirely in the
+# observability: state mutation happens entirely in the
 #   caller-owned slot; no module-global state to log.
-
 
 # This is a pure-module (library) file: it exports operations
 # consumed by other programs (notably std/random/main.test.sem which
@@ -58,552 +57,552 @@ capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
 # section random.constants
-domainLiteral randomStateSlotByteSize CByteCount 8
+domainLiteral randomStateSlotByteSize ByteCount 8
 domainLiteralTrust randomStateSlotByteSize trustedStaticLiteral
-domainLiteral minstdMultiplierValue CSignedInt64 48271
+domainLiteral minstdMultiplierValue Int64 48271
 domainLiteralTrust minstdMultiplierValue trustedStaticLiteral
 domainLiteralSource minstdMultiplierValue parkMiller.minstd
-domainLiteral minstdModulusValue CSignedInt64 2147483647
+domainLiteral minstdModulusValue Int64 2147483647
 domainLiteralTrust minstdModulusValue trustedStaticLiteral
 domainLiteralSource minstdModulusValue parkMiller.minstd
-domainLiteral fallbackSeedValue CSignedInt64 1
+domainLiteral fallbackSeedValue Int64 1
 domainLiteralTrust fallbackSeedValue trustedStaticLiteral
-domainLiteral byteRoleAdjustmentValue CSignedInt64 256
+domainLiteral byteRoleAdjustmentValue Int64 256
 domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
-domainLiteral integerOneStepValue CSignedInt64 1
+domainLiteral integerOneStepValue Int64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
 
 # Power-of-256 multipliers used when composing 8 bytes into an i64.
-domainLiteral powerOfTwoFiftySixToOne CSignedInt64 256
+domainLiteral powerOfTwoFiftySixToOne Int64 256
 domainLiteralTrust powerOfTwoFiftySixToOne trustedStaticLiteral
-domainLiteral powerOfTwoFiftySixToTwo CSignedInt64 65536
+domainLiteral powerOfTwoFiftySixToTwo Int64 65536
 domainLiteralTrust powerOfTwoFiftySixToTwo trustedStaticLiteral
-domainLiteral powerOfTwoFiftySixToThree CSignedInt64 16777216
+domainLiteral powerOfTwoFiftySixToThree Int64 16777216
 domainLiteralTrust powerOfTwoFiftySixToThree trustedStaticLiteral
-domainLiteral powerOfTwoFiftySixToFour CSignedInt64 4294967296
+domainLiteral powerOfTwoFiftySixToFour Int64 4294967296
 domainLiteralTrust powerOfTwoFiftySixToFour trustedStaticLiteral
-domainLiteral powerOfTwoFiftySixToFive CSignedInt64 1099511627776
+domainLiteral powerOfTwoFiftySixToFive Int64 1099511627776
 domainLiteralTrust powerOfTwoFiftySixToFive trustedStaticLiteral
-domainLiteral powerOfTwoFiftySixToSix CSignedInt64 281474976710656
+domainLiteral powerOfTwoFiftySixToSix Int64 281474976710656
 domainLiteralTrust powerOfTwoFiftySixToSix trustedStaticLiteral
-domainLiteral powerOfTwoFiftySixToSeven CSignedInt64 72057594037927936
+domainLiteral powerOfTwoFiftySixToSeven Int64 72057594037927936
 domainLiteralTrust powerOfTwoFiftySixToSeven trustedStaticLiteral
 
 # Byte offsets used by the byte<->state codec.
-domainLiteral randomStateByteOffsetZero CByteCount 0
+domainLiteral randomStateByteOffsetZero ByteCount 0
 domainLiteralTrust randomStateByteOffsetZero trustedStaticLiteral
-domainLiteral randomStateByteOffsetOne CByteCount 1
+domainLiteral randomStateByteOffsetOne ByteCount 1
 domainLiteralTrust randomStateByteOffsetOne trustedStaticLiteral
-domainLiteral randomStateByteOffsetTwo CByteCount 2
+domainLiteral randomStateByteOffsetTwo ByteCount 2
 domainLiteralTrust randomStateByteOffsetTwo trustedStaticLiteral
-domainLiteral randomStateByteOffsetThree CByteCount 3
+domainLiteral randomStateByteOffsetThree ByteCount 3
 domainLiteralTrust randomStateByteOffsetThree trustedStaticLiteral
-domainLiteral randomStateByteOffsetFour CByteCount 4
+domainLiteral randomStateByteOffsetFour ByteCount 4
 domainLiteralTrust randomStateByteOffsetFour trustedStaticLiteral
-domainLiteral randomStateByteOffsetFive CByteCount 5
+domainLiteral randomStateByteOffsetFive ByteCount 5
 domainLiteralTrust randomStateByteOffsetFive trustedStaticLiteral
-domainLiteral randomStateByteOffsetSix CByteCount 6
+domainLiteral randomStateByteOffsetSix ByteCount 6
 domainLiteralTrust randomStateByteOffsetSix trustedStaticLiteral
-domainLiteral randomStateByteOffsetSeven CByteCount 7
+domainLiteral randomStateByteOffsetSeven ByteCount 7
 domainLiteralTrust randomStateByteOffsetSeven trustedStaticLiteral
 
 # section random.byteHelper
 
 operation loadUnsignedByteFromBufferOffset
-input loadUnsignedByteFromBufferOffset byteBuffer COpaqueMemoryAddress
-input loadUnsignedByteFromBufferOffset byteOffset CByteCount
-output loadUnsignedByteFromBufferOffset CSignedInt64
-memoryHeap loadUnsignedByteFromBufferOffset no
+input operation loadUnsignedByteFromBufferOffset byteBuffer OpaquePointer
+input operation loadUnsignedByteFromBufferOffset byteOffset ByteCount
+output operation loadUnsignedByteFromBufferOffset Int64
+memory loadUnsignedByteFromBufferOffset heap no
 async loadUnsignedByteFromBufferOffset no
-purpose loadUnsignedByteFromBufferOffset "Loads one byte at byteOffset and normalizes it to the unsigned 0..255 interpretation via (raw + 256) % 256 to undo i8 sign-extension."
-invariant loadUnsignedByteFromBufferOffset "Result is in [0, 255]."
+purpose operation loadUnsignedByteFromBufferOffset "Loads one byte at byteOffset and normalizes it to the unsigned 0..255 interpretation via (raw + 256) % 256 to undo i8 sign-extension."
+invariant operation loadUnsignedByteFromBufferOffset "Result is in [0, 255]."
 guarantee loadUnsignedByteFromBufferOffset "Total."
 label startLoadUnsignedByteFromBufferOffset
 call rawByteLoadCall pointer.loadByte
-arg rawByteLoadCall buffer byteBuffer
-arg rawByteLoadCall offset byteOffset
+argument rawByteLoadCall buffer OpaquePointer byteBuffer
+argument rawByteLoadCall offset ByteCount byteOffset
 run rawByteLoadCall
-bind rawSignExtendedByte I8 rawByteLoadCall
-call shiftByteUpForNormalizeCall math.addI64
-arg shiftByteUpForNormalizeCall left rawSignExtendedByte
-arg shiftByteUpForNormalizeCall right byteRoleAdjustmentValue
+bind value rawSignExtendedByte Int8 rawByteLoadCall
+call shiftByteUpForNormalizeCall math.addInt64
+argument shiftByteUpForNormalizeCall left Int64 rawSignExtendedByte
+argument shiftByteUpForNormalizeCall right Int64 byteRoleAdjustmentValue
 run shiftByteUpForNormalizeCall
-bind shiftedByteForNormalize I64 shiftByteUpForNormalizeCall
-call moduloByteForNormalizeCall math.moduloI64
-arg moduloByteForNormalizeCall left shiftedByteForNormalize
-arg moduloByteForNormalizeCall right byteRoleAdjustmentValue
+bind value shiftedByteForNormalize Int64 shiftByteUpForNormalizeCall
+call moduloByteForNormalizeCall math.moduloInt64
+argument moduloByteForNormalizeCall left Int64 shiftedByteForNormalize
+argument moduloByteForNormalizeCall right Int64 byteRoleAdjustmentValue
 run moduloByteForNormalizeCall
-bind unsignedByteValue CSignedInt64 moduloByteForNormalizeCall
-returnValue unsignedByteValue
+bind value unsignedByteValue Int64 moduloByteForNormalizeCall
+return value unsignedByteValue
 
 # section random.state
 
 operation createDeterministicRandomState
-input createDeterministicRandomState randomSeed CSignedInt64
-output createDeterministicRandomState Result COpaqueMemoryAddress RandomStateError
+input operation createDeterministicRandomState randomSeed Int64
+output operation createDeterministicRandomState Result OpaquePointer RandomStateError
 useCapability createDeterministicRandomState heapAllocationCapability
 effect createDeterministicRandomState allocate heap
-memoryHeap createDeterministicRandomState yes
+memory createDeterministicRandomState heap yes
 memoryAllocationSource createDeterministicRandomState allocateRandomStateSlotCall
 async createDeterministicRandomState no
-purpose createDeterministicRandomState "Allocate an 8-byte LCG state slot, store the seed (or 1 when seed <= 0), return the slot pointer."
-invariant createDeterministicRandomState "Stored seed is always > 0; the MINSTD LCG has a zero fixed point that we explicitly avoid by normalizing."
+purpose operation createDeterministicRandomState "Allocate an 8-byte LCG state slot, store the seed (or 1 when seed <= 0), return the slot pointer."
+invariant operation createDeterministicRandomState "Stored seed is always > 0; the MINSTD LCG has a zero fixed point that we explicitly avoid by normalizing."
 failure createDeterministicRandomState MemoryAllocationFailed "Returned when c.malloc returns NULL Ã¢â‚¬â€ caller should treat as fatal."
 guarantee createDeterministicRandomState "Returns OK with a non-null slot, or Err with MemoryAllocationFailed."
 label startCreateDeterministicRandomState
 call allocateRandomStateSlotCall c.malloc
-arg allocateRandomStateSlotCall size randomStateSlotByteSize
+argument allocateRandomStateSlotCall size ByteCount randomStateSlotByteSize
 run allocateRandomStateSlotCall
-bind allocatedRandomStateSlot COpaqueMemoryAddress allocateRandomStateSlotCall
-bindError randomStateAllocationError CSignedInt32 allocateRandomStateSlotCall
-branchIfError allocateRandomStateSlotCall randomStateAllocationFailedHandler
+bind value allocatedRandomStateSlot OpaquePointer allocateRandomStateSlotCall
+bind error randomStateAllocationError Int32 allocateRandomStateSlotCall
+branch error source allocateRandomStateSlotCall target randomStateAllocationFailedHandler
 
 # Normalize seed: 0 / negative -> 1 (MINSTD zero fixed point).
-call detectSeedNeedsNormalizationCall math.lessThanOrEqualI64
-arg detectSeedNeedsNormalizationCall left randomSeed
-arg detectSeedNeedsNormalizationCall right fallbackSeedValue
+call detectSeedNeedsNormalizationCall math.lessThanOrEqualInt64
+argument detectSeedNeedsNormalizationCall left Int64 randomSeed
+argument detectSeedNeedsNormalizationCall right Int64 fallbackSeedValue
 run detectSeedNeedsNormalizationCall
-bind seedNeedsNormalization Bool detectSeedNeedsNormalizationCall
+bind value seedNeedsNormalization Bool detectSeedNeedsNormalizationCall
 # Initialize the working seed to the fallback (1), then overwrite
 # with the caller's seed when normalization is NOT required. This
 # yields a single set on each path and matches fallbackSeedValue
 # without a separate label.
-var normalizedRandomSeed I64 1
-branchIf seedNeedsNormalization encodeRandomStateBytes
-set normalizedRandomSeed randomSeed
+memory createDeterministicRandomState mutable normalizedRandomSeed Int64 1
+branch if condition seedNeedsNormalization target encodeRandomStateBytes
+set memory normalizedRandomSeed randomSeed
 label encodeRandomStateBytes
 
 # Encode the seed as 8 little-endian bytes into the slot.
-var byteEncoderWorkingValue I64 0
-set byteEncoderWorkingValue normalizedRandomSeed
+memory createDeterministicRandomState mutable byteEncoderWorkingValue Int64 0
+set memory byteEncoderWorkingValue normalizedRandomSeed
 
-call extractByteZeroCall math.moduloI64
-arg extractByteZeroCall left byteEncoderWorkingValue
-arg extractByteZeroCall right byteRoleAdjustmentValue
+call extractByteZeroCall math.moduloInt64
+argument extractByteZeroCall left Int64 byteEncoderWorkingValue
+argument extractByteZeroCall right Int64 byteRoleAdjustmentValue
 run extractByteZeroCall
-bind encodedByteZero I64 extractByteZeroCall
+bind value encodedByteZero Int64 extractByteZeroCall
 call storeByteZeroForSeedCall pointer.storeByte
-arg storeByteZeroForSeedCall buffer allocatedRandomStateSlot
-arg storeByteZeroForSeedCall offset randomStateByteOffsetZero
-arg storeByteZeroForSeedCall value encodedByteZero
+argument storeByteZeroForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteZeroForSeedCall offset ByteCount randomStateByteOffsetZero
+argument storeByteZeroForSeedCall value Int64 encodedByteZero
 run storeByteZeroForSeedCall
-call shiftEncoderRightZeroCall math.divideI64
-arg shiftEncoderRightZeroCall left byteEncoderWorkingValue
-arg shiftEncoderRightZeroCall right byteRoleAdjustmentValue
+call shiftEncoderRightZeroCall math.divideInt64
+argument shiftEncoderRightZeroCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightZeroCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightZeroCall
-bind encoderAfterByteZero I64 shiftEncoderRightZeroCall
-set byteEncoderWorkingValue encoderAfterByteZero
+bind value encoderAfterByteZero Int64 shiftEncoderRightZeroCall
+set memory byteEncoderWorkingValue encoderAfterByteZero
 
-call extractByteOneCall math.moduloI64
-arg extractByteOneCall left byteEncoderWorkingValue
-arg extractByteOneCall right byteRoleAdjustmentValue
+call extractByteOneCall math.moduloInt64
+argument extractByteOneCall left Int64 byteEncoderWorkingValue
+argument extractByteOneCall right Int64 byteRoleAdjustmentValue
 run extractByteOneCall
-bind encodedByteOne I64 extractByteOneCall
+bind value encodedByteOne Int64 extractByteOneCall
 call storeByteOneForSeedCall pointer.storeByte
-arg storeByteOneForSeedCall buffer allocatedRandomStateSlot
-arg storeByteOneForSeedCall offset randomStateByteOffsetOne
-arg storeByteOneForSeedCall value encodedByteOne
+argument storeByteOneForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteOneForSeedCall offset ByteCount randomStateByteOffsetOne
+argument storeByteOneForSeedCall value Int64 encodedByteOne
 run storeByteOneForSeedCall
-call shiftEncoderRightOneCall math.divideI64
-arg shiftEncoderRightOneCall left byteEncoderWorkingValue
-arg shiftEncoderRightOneCall right byteRoleAdjustmentValue
+call shiftEncoderRightOneCall math.divideInt64
+argument shiftEncoderRightOneCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightOneCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightOneCall
-bind encoderAfterByteOne I64 shiftEncoderRightOneCall
-set byteEncoderWorkingValue encoderAfterByteOne
+bind value encoderAfterByteOne Int64 shiftEncoderRightOneCall
+set memory byteEncoderWorkingValue encoderAfterByteOne
 
-call extractByteTwoCall math.moduloI64
-arg extractByteTwoCall left byteEncoderWorkingValue
-arg extractByteTwoCall right byteRoleAdjustmentValue
+call extractByteTwoCall math.moduloInt64
+argument extractByteTwoCall left Int64 byteEncoderWorkingValue
+argument extractByteTwoCall right Int64 byteRoleAdjustmentValue
 run extractByteTwoCall
-bind encodedByteTwo I64 extractByteTwoCall
+bind value encodedByteTwo Int64 extractByteTwoCall
 call storeByteTwoForSeedCall pointer.storeByte
-arg storeByteTwoForSeedCall buffer allocatedRandomStateSlot
-arg storeByteTwoForSeedCall offset randomStateByteOffsetTwo
-arg storeByteTwoForSeedCall value encodedByteTwo
+argument storeByteTwoForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteTwoForSeedCall offset ByteCount randomStateByteOffsetTwo
+argument storeByteTwoForSeedCall value Int64 encodedByteTwo
 run storeByteTwoForSeedCall
-call shiftEncoderRightTwoCall math.divideI64
-arg shiftEncoderRightTwoCall left byteEncoderWorkingValue
-arg shiftEncoderRightTwoCall right byteRoleAdjustmentValue
+call shiftEncoderRightTwoCall math.divideInt64
+argument shiftEncoderRightTwoCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightTwoCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightTwoCall
-bind encoderAfterByteTwo I64 shiftEncoderRightTwoCall
-set byteEncoderWorkingValue encoderAfterByteTwo
+bind value encoderAfterByteTwo Int64 shiftEncoderRightTwoCall
+set memory byteEncoderWorkingValue encoderAfterByteTwo
 
-call extractByteThreeCall math.moduloI64
-arg extractByteThreeCall left byteEncoderWorkingValue
-arg extractByteThreeCall right byteRoleAdjustmentValue
+call extractByteThreeCall math.moduloInt64
+argument extractByteThreeCall left Int64 byteEncoderWorkingValue
+argument extractByteThreeCall right Int64 byteRoleAdjustmentValue
 run extractByteThreeCall
-bind encodedByteThree I64 extractByteThreeCall
+bind value encodedByteThree Int64 extractByteThreeCall
 call storeByteThreeForSeedCall pointer.storeByte
-arg storeByteThreeForSeedCall buffer allocatedRandomStateSlot
-arg storeByteThreeForSeedCall offset randomStateByteOffsetThree
-arg storeByteThreeForSeedCall value encodedByteThree
+argument storeByteThreeForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteThreeForSeedCall offset ByteCount randomStateByteOffsetThree
+argument storeByteThreeForSeedCall value Int64 encodedByteThree
 run storeByteThreeForSeedCall
-call shiftEncoderRightThreeCall math.divideI64
-arg shiftEncoderRightThreeCall left byteEncoderWorkingValue
-arg shiftEncoderRightThreeCall right byteRoleAdjustmentValue
+call shiftEncoderRightThreeCall math.divideInt64
+argument shiftEncoderRightThreeCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightThreeCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightThreeCall
-bind encoderAfterByteThree I64 shiftEncoderRightThreeCall
-set byteEncoderWorkingValue encoderAfterByteThree
+bind value encoderAfterByteThree Int64 shiftEncoderRightThreeCall
+set memory byteEncoderWorkingValue encoderAfterByteThree
 
-call extractByteFourCall math.moduloI64
-arg extractByteFourCall left byteEncoderWorkingValue
-arg extractByteFourCall right byteRoleAdjustmentValue
+call extractByteFourCall math.moduloInt64
+argument extractByteFourCall left Int64 byteEncoderWorkingValue
+argument extractByteFourCall right Int64 byteRoleAdjustmentValue
 run extractByteFourCall
-bind encodedByteFour I64 extractByteFourCall
+bind value encodedByteFour Int64 extractByteFourCall
 call storeByteFourForSeedCall pointer.storeByte
-arg storeByteFourForSeedCall buffer allocatedRandomStateSlot
-arg storeByteFourForSeedCall offset randomStateByteOffsetFour
-arg storeByteFourForSeedCall value encodedByteFour
+argument storeByteFourForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteFourForSeedCall offset ByteCount randomStateByteOffsetFour
+argument storeByteFourForSeedCall value Int64 encodedByteFour
 run storeByteFourForSeedCall
-call shiftEncoderRightFourCall math.divideI64
-arg shiftEncoderRightFourCall left byteEncoderWorkingValue
-arg shiftEncoderRightFourCall right byteRoleAdjustmentValue
+call shiftEncoderRightFourCall math.divideInt64
+argument shiftEncoderRightFourCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightFourCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightFourCall
-bind encoderAfterByteFour I64 shiftEncoderRightFourCall
-set byteEncoderWorkingValue encoderAfterByteFour
+bind value encoderAfterByteFour Int64 shiftEncoderRightFourCall
+set memory byteEncoderWorkingValue encoderAfterByteFour
 
-call extractByteFiveCall math.moduloI64
-arg extractByteFiveCall left byteEncoderWorkingValue
-arg extractByteFiveCall right byteRoleAdjustmentValue
+call extractByteFiveCall math.moduloInt64
+argument extractByteFiveCall left Int64 byteEncoderWorkingValue
+argument extractByteFiveCall right Int64 byteRoleAdjustmentValue
 run extractByteFiveCall
-bind encodedByteFive I64 extractByteFiveCall
+bind value encodedByteFive Int64 extractByteFiveCall
 call storeByteFiveForSeedCall pointer.storeByte
-arg storeByteFiveForSeedCall buffer allocatedRandomStateSlot
-arg storeByteFiveForSeedCall offset randomStateByteOffsetFive
-arg storeByteFiveForSeedCall value encodedByteFive
+argument storeByteFiveForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteFiveForSeedCall offset ByteCount randomStateByteOffsetFive
+argument storeByteFiveForSeedCall value Int64 encodedByteFive
 run storeByteFiveForSeedCall
-call shiftEncoderRightFiveCall math.divideI64
-arg shiftEncoderRightFiveCall left byteEncoderWorkingValue
-arg shiftEncoderRightFiveCall right byteRoleAdjustmentValue
+call shiftEncoderRightFiveCall math.divideInt64
+argument shiftEncoderRightFiveCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightFiveCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightFiveCall
-bind encoderAfterByteFive I64 shiftEncoderRightFiveCall
-set byteEncoderWorkingValue encoderAfterByteFive
+bind value encoderAfterByteFive Int64 shiftEncoderRightFiveCall
+set memory byteEncoderWorkingValue encoderAfterByteFive
 
-call extractByteSixCall math.moduloI64
-arg extractByteSixCall left byteEncoderWorkingValue
-arg extractByteSixCall right byteRoleAdjustmentValue
+call extractByteSixCall math.moduloInt64
+argument extractByteSixCall left Int64 byteEncoderWorkingValue
+argument extractByteSixCall right Int64 byteRoleAdjustmentValue
 run extractByteSixCall
-bind encodedByteSix I64 extractByteSixCall
+bind value encodedByteSix Int64 extractByteSixCall
 call storeByteSixForSeedCall pointer.storeByte
-arg storeByteSixForSeedCall buffer allocatedRandomStateSlot
-arg storeByteSixForSeedCall offset randomStateByteOffsetSix
-arg storeByteSixForSeedCall value encodedByteSix
+argument storeByteSixForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteSixForSeedCall offset ByteCount randomStateByteOffsetSix
+argument storeByteSixForSeedCall value Int64 encodedByteSix
 run storeByteSixForSeedCall
-call shiftEncoderRightSixCall math.divideI64
-arg shiftEncoderRightSixCall left byteEncoderWorkingValue
-arg shiftEncoderRightSixCall right byteRoleAdjustmentValue
+call shiftEncoderRightSixCall math.divideInt64
+argument shiftEncoderRightSixCall left Int64 byteEncoderWorkingValue
+argument shiftEncoderRightSixCall right Int64 byteRoleAdjustmentValue
 run shiftEncoderRightSixCall
-bind encoderAfterByteSix I64 shiftEncoderRightSixCall
-set byteEncoderWorkingValue encoderAfterByteSix
+bind value encoderAfterByteSix Int64 shiftEncoderRightSixCall
+set memory byteEncoderWorkingValue encoderAfterByteSix
 
 call storeByteSevenForSeedCall pointer.storeByte
-arg storeByteSevenForSeedCall buffer allocatedRandomStateSlot
-arg storeByteSevenForSeedCall offset randomStateByteOffsetSeven
-arg storeByteSevenForSeedCall value byteEncoderWorkingValue
+argument storeByteSevenForSeedCall buffer OpaquePointer allocatedRandomStateSlot
+argument storeByteSevenForSeedCall offset ByteCount randomStateByteOffsetSeven
+argument storeByteSevenForSeedCall value Int64 byteEncoderWorkingValue
 run storeByteSevenForSeedCall
 
-returnOk allocatedRandomStateSlot
+return ok allocatedRandomStateSlot
 
 # Failure leg: c.malloc returned NULL. Surface the raw negative
 # status as the cause attached to the typed MemoryAllocationFailed
 # variant the caller will branch on.
 label randomStateAllocationFailedHandler
 makeError randomStateAllocationFailure RandomStateError.MemoryAllocationFailed randomStateAllocationError
-returnError randomStateAllocationFailure
+return error randomStateAllocationFailure
 
 operation releaseDeterministicRandomState
-input releaseDeterministicRandomState randomState COpaqueMemoryAddress
-output releaseDeterministicRandomState CSignedInt32
+input operation releaseDeterministicRandomState randomState OpaquePointer
+output operation releaseDeterministicRandomState Int32
 useCapability releaseDeterministicRandomState heapFreeCapability
 effect releaseDeterministicRandomState free heap
-memoryHeap releaseDeterministicRandomState yes
+memory releaseDeterministicRandomState heap yes
 memoryAllocationSource releaseDeterministicRandomState releaseSlotCall
 async releaseDeterministicRandomState no
-purpose releaseDeterministicRandomState "Releases the slot returned by createDeterministicRandomState back to the libc allocator."
-invariant releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it Ã¢â‚¬â€ caller should track ownership."
+purpose operation releaseDeterministicRandomState "Releases the slot returned by createDeterministicRandomState back to the libc allocator."
+invariant operation releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it Ã¢â‚¬â€ caller should track ownership."
 guarantee releaseDeterministicRandomState "Always returns 0."
 label startReleaseDeterministicRandomState
 call releaseSlotCall c.free
-arg releaseSlotCall ptr randomState
+argument releaseSlotCall ptr OpaquePointer randomState
 run releaseSlotCall
-const releaseSuccessReturnCode CSignedInt32 0
-returnValue releaseSuccessReturnCode
+storage module immutable releaseSuccessReturnCode Int32 0
+return value releaseSuccessReturnCode
 
 operation readDeterministicRandomState
-input readDeterministicRandomState randomState COpaqueMemoryAddress
-output readDeterministicRandomState CSignedInt64
-memoryHeap readDeterministicRandomState no
+input operation readDeterministicRandomState randomState OpaquePointer
+output operation readDeterministicRandomState Int64
+memory readDeterministicRandomState heap no
 async readDeterministicRandomState no
-purpose readDeterministicRandomState "Loads the i64 value from an 8-byte little-endian state slot using loadUnsignedByteFromBufferOffset so high-bit bytes don't sign-extend."
-invariant readDeterministicRandomState "Returns exactly the value most recently stored by createDeterministicRandomState or nextDeterministicRandomSignedInt64."
+purpose operation readDeterministicRandomState "Loads the i64 value from an 8-byte little-endian state slot using loadUnsignedByteFromBufferOffset so high-bit bytes don't sign-extend."
+invariant operation readDeterministicRandomState "Returns exactly the value most recently stored by createDeterministicRandomState or nextDeterministicRandomSignedInt64."
 guarantee readDeterministicRandomState "Total."
 label startReadDeterministicRandomState
 call loadStateByteZeroCall loadUnsignedByteFromBufferOffset
-arg loadStateByteZeroCall byteBuffer randomState
-arg loadStateByteZeroCall byteOffset randomStateByteOffsetZero
+argument loadStateByteZeroCall byteBuffer OpaquePointer randomState
+argument loadStateByteZeroCall byteOffset ByteCount randomStateByteOffsetZero
 run loadStateByteZeroCall
-bind stateByteZero CSignedInt64 loadStateByteZeroCall
+bind value stateByteZero Int64 loadStateByteZeroCall
 call loadStateByteOneCall loadUnsignedByteFromBufferOffset
-arg loadStateByteOneCall byteBuffer randomState
-arg loadStateByteOneCall byteOffset randomStateByteOffsetOne
+argument loadStateByteOneCall byteBuffer OpaquePointer randomState
+argument loadStateByteOneCall byteOffset ByteCount randomStateByteOffsetOne
 run loadStateByteOneCall
-bind stateByteOne CSignedInt64 loadStateByteOneCall
+bind value stateByteOne Int64 loadStateByteOneCall
 call loadStateByteTwoCall loadUnsignedByteFromBufferOffset
-arg loadStateByteTwoCall byteBuffer randomState
-arg loadStateByteTwoCall byteOffset randomStateByteOffsetTwo
+argument loadStateByteTwoCall byteBuffer OpaquePointer randomState
+argument loadStateByteTwoCall byteOffset ByteCount randomStateByteOffsetTwo
 run loadStateByteTwoCall
-bind stateByteTwo CSignedInt64 loadStateByteTwoCall
+bind value stateByteTwo Int64 loadStateByteTwoCall
 call loadStateByteThreeCall loadUnsignedByteFromBufferOffset
-arg loadStateByteThreeCall byteBuffer randomState
-arg loadStateByteThreeCall byteOffset randomStateByteOffsetThree
+argument loadStateByteThreeCall byteBuffer OpaquePointer randomState
+argument loadStateByteThreeCall byteOffset ByteCount randomStateByteOffsetThree
 run loadStateByteThreeCall
-bind stateByteThree CSignedInt64 loadStateByteThreeCall
+bind value stateByteThree Int64 loadStateByteThreeCall
 call loadStateByteFourCall loadUnsignedByteFromBufferOffset
-arg loadStateByteFourCall byteBuffer randomState
-arg loadStateByteFourCall byteOffset randomStateByteOffsetFour
+argument loadStateByteFourCall byteBuffer OpaquePointer randomState
+argument loadStateByteFourCall byteOffset ByteCount randomStateByteOffsetFour
 run loadStateByteFourCall
-bind stateByteFour CSignedInt64 loadStateByteFourCall
+bind value stateByteFour Int64 loadStateByteFourCall
 call loadStateByteFiveCall loadUnsignedByteFromBufferOffset
-arg loadStateByteFiveCall byteBuffer randomState
-arg loadStateByteFiveCall byteOffset randomStateByteOffsetFive
+argument loadStateByteFiveCall byteBuffer OpaquePointer randomState
+argument loadStateByteFiveCall byteOffset ByteCount randomStateByteOffsetFive
 run loadStateByteFiveCall
-bind stateByteFive CSignedInt64 loadStateByteFiveCall
+bind value stateByteFive Int64 loadStateByteFiveCall
 call loadStateByteSixCall loadUnsignedByteFromBufferOffset
-arg loadStateByteSixCall byteBuffer randomState
-arg loadStateByteSixCall byteOffset randomStateByteOffsetSix
+argument loadStateByteSixCall byteBuffer OpaquePointer randomState
+argument loadStateByteSixCall byteOffset ByteCount randomStateByteOffsetSix
 run loadStateByteSixCall
-bind stateByteSix CSignedInt64 loadStateByteSixCall
+bind value stateByteSix Int64 loadStateByteSixCall
 call loadStateByteSevenCall loadUnsignedByteFromBufferOffset
-arg loadStateByteSevenCall byteBuffer randomState
-arg loadStateByteSevenCall byteOffset randomStateByteOffsetSeven
+argument loadStateByteSevenCall byteBuffer OpaquePointer randomState
+argument loadStateByteSevenCall byteOffset ByteCount randomStateByteOffsetSeven
 run loadStateByteSevenCall
-bind stateByteSeven CSignedInt64 loadStateByteSevenCall
+bind value stateByteSeven Int64 loadStateByteSevenCall
 
-call composeByteOneShiftedCall math.multiplyI64
-arg composeByteOneShiftedCall left stateByteOne
-arg composeByteOneShiftedCall right powerOfTwoFiftySixToOne
+call composeByteOneShiftedCall math.multiplyInt64
+argument composeByteOneShiftedCall left Int64 stateByteOne
+argument composeByteOneShiftedCall right Int64 powerOfTwoFiftySixToOne
 run composeByteOneShiftedCall
-bind composedByteOneShifted I64 composeByteOneShiftedCall
-call composeByteTwoShiftedCall math.multiplyI64
-arg composeByteTwoShiftedCall left stateByteTwo
-arg composeByteTwoShiftedCall right powerOfTwoFiftySixToTwo
+bind value composedByteOneShifted Int64 composeByteOneShiftedCall
+call composeByteTwoShiftedCall math.multiplyInt64
+argument composeByteTwoShiftedCall left Int64 stateByteTwo
+argument composeByteTwoShiftedCall right Int64 powerOfTwoFiftySixToTwo
 run composeByteTwoShiftedCall
-bind composedByteTwoShifted I64 composeByteTwoShiftedCall
-call composeByteThreeShiftedCall math.multiplyI64
-arg composeByteThreeShiftedCall left stateByteThree
-arg composeByteThreeShiftedCall right powerOfTwoFiftySixToThree
+bind value composedByteTwoShifted Int64 composeByteTwoShiftedCall
+call composeByteThreeShiftedCall math.multiplyInt64
+argument composeByteThreeShiftedCall left Int64 stateByteThree
+argument composeByteThreeShiftedCall right Int64 powerOfTwoFiftySixToThree
 run composeByteThreeShiftedCall
-bind composedByteThreeShifted I64 composeByteThreeShiftedCall
-call composeByteFourShiftedCall math.multiplyI64
-arg composeByteFourShiftedCall left stateByteFour
-arg composeByteFourShiftedCall right powerOfTwoFiftySixToFour
+bind value composedByteThreeShifted Int64 composeByteThreeShiftedCall
+call composeByteFourShiftedCall math.multiplyInt64
+argument composeByteFourShiftedCall left Int64 stateByteFour
+argument composeByteFourShiftedCall right Int64 powerOfTwoFiftySixToFour
 run composeByteFourShiftedCall
-bind composedByteFourShifted I64 composeByteFourShiftedCall
-call composeByteFiveShiftedCall math.multiplyI64
-arg composeByteFiveShiftedCall left stateByteFive
-arg composeByteFiveShiftedCall right powerOfTwoFiftySixToFive
+bind value composedByteFourShifted Int64 composeByteFourShiftedCall
+call composeByteFiveShiftedCall math.multiplyInt64
+argument composeByteFiveShiftedCall left Int64 stateByteFive
+argument composeByteFiveShiftedCall right Int64 powerOfTwoFiftySixToFive
 run composeByteFiveShiftedCall
-bind composedByteFiveShifted I64 composeByteFiveShiftedCall
-call composeByteSixShiftedCall math.multiplyI64
-arg composeByteSixShiftedCall left stateByteSix
-arg composeByteSixShiftedCall right powerOfTwoFiftySixToSix
+bind value composedByteFiveShifted Int64 composeByteFiveShiftedCall
+call composeByteSixShiftedCall math.multiplyInt64
+argument composeByteSixShiftedCall left Int64 stateByteSix
+argument composeByteSixShiftedCall right Int64 powerOfTwoFiftySixToSix
 run composeByteSixShiftedCall
-bind composedByteSixShifted I64 composeByteSixShiftedCall
-call composeByteSevenShiftedCall math.multiplyI64
-arg composeByteSevenShiftedCall left stateByteSeven
-arg composeByteSevenShiftedCall right powerOfTwoFiftySixToSeven
+bind value composedByteSixShifted Int64 composeByteSixShiftedCall
+call composeByteSevenShiftedCall math.multiplyInt64
+argument composeByteSevenShiftedCall left Int64 stateByteSeven
+argument composeByteSevenShiftedCall right Int64 powerOfTwoFiftySixToSeven
 run composeByteSevenShiftedCall
-bind composedByteSevenShifted I64 composeByteSevenShiftedCall
+bind value composedByteSevenShifted Int64 composeByteSevenShiftedCall
 
-call addZeroAndOneCall math.addI64
-arg addZeroAndOneCall left stateByteZero
-arg addZeroAndOneCall right composedByteOneShifted
+call addZeroAndOneCall math.addInt64
+argument addZeroAndOneCall left Int64 stateByteZero
+argument addZeroAndOneCall right Int64 composedByteOneShifted
 run addZeroAndOneCall
-bind composedAfterOne I64 addZeroAndOneCall
-call addTwoCall math.addI64
-arg addTwoCall left composedAfterOne
-arg addTwoCall right composedByteTwoShifted
+bind value composedAfterOne Int64 addZeroAndOneCall
+call addTwoCall math.addInt64
+argument addTwoCall left Int64 composedAfterOne
+argument addTwoCall right Int64 composedByteTwoShifted
 run addTwoCall
-bind composedAfterTwo I64 addTwoCall
-call addThreeCall math.addI64
-arg addThreeCall left composedAfterTwo
-arg addThreeCall right composedByteThreeShifted
+bind value composedAfterTwo Int64 addTwoCall
+call addThreeCall math.addInt64
+argument addThreeCall left Int64 composedAfterTwo
+argument addThreeCall right Int64 composedByteThreeShifted
 run addThreeCall
-bind composedAfterThree I64 addThreeCall
-call addFourCall math.addI64
-arg addFourCall left composedAfterThree
-arg addFourCall right composedByteFourShifted
+bind value composedAfterThree Int64 addThreeCall
+call addFourCall math.addInt64
+argument addFourCall left Int64 composedAfterThree
+argument addFourCall right Int64 composedByteFourShifted
 run addFourCall
-bind composedAfterFour I64 addFourCall
-call addFiveCall math.addI64
-arg addFiveCall left composedAfterFour
-arg addFiveCall right composedByteFiveShifted
+bind value composedAfterFour Int64 addFourCall
+call addFiveCall math.addInt64
+argument addFiveCall left Int64 composedAfterFour
+argument addFiveCall right Int64 composedByteFiveShifted
 run addFiveCall
-bind composedAfterFive I64 addFiveCall
-call addSixCall math.addI64
-arg addSixCall left composedAfterFive
-arg addSixCall right composedByteSixShifted
+bind value composedAfterFive Int64 addFiveCall
+call addSixCall math.addInt64
+argument addSixCall left Int64 composedAfterFive
+argument addSixCall right Int64 composedByteSixShifted
 run addSixCall
-bind composedAfterSix I64 addSixCall
-call addSevenCall math.addI64
-arg addSevenCall left composedAfterSix
-arg addSevenCall right composedByteSevenShifted
+bind value composedAfterSix Int64 addSixCall
+call addSevenCall math.addInt64
+argument addSevenCall left Int64 composedAfterSix
+argument addSevenCall right Int64 composedByteSevenShifted
 run addSevenCall
-bind fullyComposedStateValue I64 addSevenCall
-returnValue fullyComposedStateValue
+bind value fullyComposedStateValue Int64 addSevenCall
+return value fullyComposedStateValue
 
 operation nextDeterministicRandomSignedInt64
-input nextDeterministicRandomSignedInt64 randomState COpaqueMemoryAddress
-output nextDeterministicRandomSignedInt64 CSignedInt64
-memoryHeap nextDeterministicRandomSignedInt64 no
+input operation nextDeterministicRandomSignedInt64 randomState OpaquePointer
+output operation nextDeterministicRandomSignedInt64 Int64
+memory nextDeterministicRandomSignedInt64 heap no
 async nextDeterministicRandomSignedInt64 no
-purpose nextDeterministicRandomSignedInt64 "Advance the MINSTD LCG and return the next state value: state = (state * 48271) mod (2^31 - 1)."
-invariant nextDeterministicRandomSignedInt64 "Output is in [1, 2147483646]; the state slot is mutated in place."
+purpose operation nextDeterministicRandomSignedInt64 "Advance the MINSTD LCG and return the next state value: state = (state * 48271) mod (2^31 - 1)."
+invariant operation nextDeterministicRandomSignedInt64 "Output is in [1, 2147483646]; the state slot is mutated in place."
 guarantee nextDeterministicRandomSignedInt64 "Total."
 label startNextDeterministicRandomSignedInt64
 call readCurrentStateCall readDeterministicRandomState
-arg readCurrentStateCall randomState randomState
+argument readCurrentStateCall randomState OpaquePointer randomState
 run readCurrentStateCall
-bind currentStateValue CSignedInt64 readCurrentStateCall
+bind value currentStateValue Int64 readCurrentStateCall
 
-call applyMinstdMultiplierCall math.multiplyI64
-arg applyMinstdMultiplierCall left currentStateValue
-arg applyMinstdMultiplierCall right minstdMultiplierValue
+call applyMinstdMultiplierCall math.multiplyInt64
+argument applyMinstdMultiplierCall left Int64 currentStateValue
+argument applyMinstdMultiplierCall right Int64 minstdMultiplierValue
 run applyMinstdMultiplierCall
-bind multipliedStateValue I64 applyMinstdMultiplierCall
-call reduceUnderMinstdModulusCall math.moduloI64
-arg reduceUnderMinstdModulusCall left multipliedStateValue
-arg reduceUnderMinstdModulusCall right minstdModulusValue
+bind value multipliedStateValue Int64 applyMinstdMultiplierCall
+call reduceUnderMinstdModulusCall math.moduloInt64
+argument reduceUnderMinstdModulusCall left Int64 multipliedStateValue
+argument reduceUnderMinstdModulusCall right Int64 minstdModulusValue
 run reduceUnderMinstdModulusCall
-bind nextStateValue I64 reduceUnderMinstdModulusCall
+bind value nextStateValue Int64 reduceUnderMinstdModulusCall
 
 # Re-encode nextStateValue as 8 little-endian bytes back into the slot.
-var stateEncoderWorkingValue I64 0
-set stateEncoderWorkingValue nextStateValue
+memory nextDeterministicRandomSignedInt64 mutable stateEncoderWorkingValue Int64 0
+set memory stateEncoderWorkingValue nextStateValue
 
-call extractStateByteZeroCall math.moduloI64
-arg extractStateByteZeroCall left stateEncoderWorkingValue
-arg extractStateByteZeroCall right byteRoleAdjustmentValue
+call extractStateByteZeroCall math.moduloInt64
+argument extractStateByteZeroCall left Int64 stateEncoderWorkingValue
+argument extractStateByteZeroCall right Int64 byteRoleAdjustmentValue
 run extractStateByteZeroCall
-bind nextStateByteZero I64 extractStateByteZeroCall
+bind value nextStateByteZero Int64 extractStateByteZeroCall
 call storeNextStateByteZeroCall pointer.storeByte
-arg storeNextStateByteZeroCall buffer randomState
-arg storeNextStateByteZeroCall offset randomStateByteOffsetZero
-arg storeNextStateByteZeroCall value nextStateByteZero
+argument storeNextStateByteZeroCall buffer OpaquePointer randomState
+argument storeNextStateByteZeroCall offset ByteCount randomStateByteOffsetZero
+argument storeNextStateByteZeroCall value Int64 nextStateByteZero
 run storeNextStateByteZeroCall
-call shiftStateEncoderRightZeroCall math.divideI64
-arg shiftStateEncoderRightZeroCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightZeroCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightZeroCall math.divideInt64
+argument shiftStateEncoderRightZeroCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightZeroCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightZeroCall
-bind stateEncoderAfterByteZero I64 shiftStateEncoderRightZeroCall
-set stateEncoderWorkingValue stateEncoderAfterByteZero
+bind value stateEncoderAfterByteZero Int64 shiftStateEncoderRightZeroCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteZero
 
-call extractStateByteOneCall math.moduloI64
-arg extractStateByteOneCall left stateEncoderWorkingValue
-arg extractStateByteOneCall right byteRoleAdjustmentValue
+call extractStateByteOneCall math.moduloInt64
+argument extractStateByteOneCall left Int64 stateEncoderWorkingValue
+argument extractStateByteOneCall right Int64 byteRoleAdjustmentValue
 run extractStateByteOneCall
-bind nextStateByteOne I64 extractStateByteOneCall
+bind value nextStateByteOne Int64 extractStateByteOneCall
 call storeNextStateByteOneCall pointer.storeByte
-arg storeNextStateByteOneCall buffer randomState
-arg storeNextStateByteOneCall offset randomStateByteOffsetOne
-arg storeNextStateByteOneCall value nextStateByteOne
+argument storeNextStateByteOneCall buffer OpaquePointer randomState
+argument storeNextStateByteOneCall offset ByteCount randomStateByteOffsetOne
+argument storeNextStateByteOneCall value Int64 nextStateByteOne
 run storeNextStateByteOneCall
-call shiftStateEncoderRightOneCall math.divideI64
-arg shiftStateEncoderRightOneCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightOneCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightOneCall math.divideInt64
+argument shiftStateEncoderRightOneCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightOneCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightOneCall
-bind stateEncoderAfterByteOne I64 shiftStateEncoderRightOneCall
-set stateEncoderWorkingValue stateEncoderAfterByteOne
+bind value stateEncoderAfterByteOne Int64 shiftStateEncoderRightOneCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteOne
 
-call extractStateByteTwoCall math.moduloI64
-arg extractStateByteTwoCall left stateEncoderWorkingValue
-arg extractStateByteTwoCall right byteRoleAdjustmentValue
+call extractStateByteTwoCall math.moduloInt64
+argument extractStateByteTwoCall left Int64 stateEncoderWorkingValue
+argument extractStateByteTwoCall right Int64 byteRoleAdjustmentValue
 run extractStateByteTwoCall
-bind nextStateByteTwo I64 extractStateByteTwoCall
+bind value nextStateByteTwo Int64 extractStateByteTwoCall
 call storeNextStateByteTwoCall pointer.storeByte
-arg storeNextStateByteTwoCall buffer randomState
-arg storeNextStateByteTwoCall offset randomStateByteOffsetTwo
-arg storeNextStateByteTwoCall value nextStateByteTwo
+argument storeNextStateByteTwoCall buffer OpaquePointer randomState
+argument storeNextStateByteTwoCall offset ByteCount randomStateByteOffsetTwo
+argument storeNextStateByteTwoCall value Int64 nextStateByteTwo
 run storeNextStateByteTwoCall
-call shiftStateEncoderRightTwoCall math.divideI64
-arg shiftStateEncoderRightTwoCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightTwoCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightTwoCall math.divideInt64
+argument shiftStateEncoderRightTwoCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightTwoCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightTwoCall
-bind stateEncoderAfterByteTwo I64 shiftStateEncoderRightTwoCall
-set stateEncoderWorkingValue stateEncoderAfterByteTwo
+bind value stateEncoderAfterByteTwo Int64 shiftStateEncoderRightTwoCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteTwo
 
-call extractStateByteThreeCall math.moduloI64
-arg extractStateByteThreeCall left stateEncoderWorkingValue
-arg extractStateByteThreeCall right byteRoleAdjustmentValue
+call extractStateByteThreeCall math.moduloInt64
+argument extractStateByteThreeCall left Int64 stateEncoderWorkingValue
+argument extractStateByteThreeCall right Int64 byteRoleAdjustmentValue
 run extractStateByteThreeCall
-bind nextStateByteThree I64 extractStateByteThreeCall
+bind value nextStateByteThree Int64 extractStateByteThreeCall
 call storeNextStateByteThreeCall pointer.storeByte
-arg storeNextStateByteThreeCall buffer randomState
-arg storeNextStateByteThreeCall offset randomStateByteOffsetThree
-arg storeNextStateByteThreeCall value nextStateByteThree
+argument storeNextStateByteThreeCall buffer OpaquePointer randomState
+argument storeNextStateByteThreeCall offset ByteCount randomStateByteOffsetThree
+argument storeNextStateByteThreeCall value Int64 nextStateByteThree
 run storeNextStateByteThreeCall
-call shiftStateEncoderRightThreeCall math.divideI64
-arg shiftStateEncoderRightThreeCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightThreeCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightThreeCall math.divideInt64
+argument shiftStateEncoderRightThreeCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightThreeCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightThreeCall
-bind stateEncoderAfterByteThree I64 shiftStateEncoderRightThreeCall
-set stateEncoderWorkingValue stateEncoderAfterByteThree
+bind value stateEncoderAfterByteThree Int64 shiftStateEncoderRightThreeCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteThree
 
-call extractStateByteFourCall math.moduloI64
-arg extractStateByteFourCall left stateEncoderWorkingValue
-arg extractStateByteFourCall right byteRoleAdjustmentValue
+call extractStateByteFourCall math.moduloInt64
+argument extractStateByteFourCall left Int64 stateEncoderWorkingValue
+argument extractStateByteFourCall right Int64 byteRoleAdjustmentValue
 run extractStateByteFourCall
-bind nextStateByteFour I64 extractStateByteFourCall
+bind value nextStateByteFour Int64 extractStateByteFourCall
 call storeNextStateByteFourCall pointer.storeByte
-arg storeNextStateByteFourCall buffer randomState
-arg storeNextStateByteFourCall offset randomStateByteOffsetFour
-arg storeNextStateByteFourCall value nextStateByteFour
+argument storeNextStateByteFourCall buffer OpaquePointer randomState
+argument storeNextStateByteFourCall offset ByteCount randomStateByteOffsetFour
+argument storeNextStateByteFourCall value Int64 nextStateByteFour
 run storeNextStateByteFourCall
-call shiftStateEncoderRightFourCall math.divideI64
-arg shiftStateEncoderRightFourCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightFourCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightFourCall math.divideInt64
+argument shiftStateEncoderRightFourCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightFourCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightFourCall
-bind stateEncoderAfterByteFour I64 shiftStateEncoderRightFourCall
-set stateEncoderWorkingValue stateEncoderAfterByteFour
+bind value stateEncoderAfterByteFour Int64 shiftStateEncoderRightFourCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteFour
 
-call extractStateByteFiveCall math.moduloI64
-arg extractStateByteFiveCall left stateEncoderWorkingValue
-arg extractStateByteFiveCall right byteRoleAdjustmentValue
+call extractStateByteFiveCall math.moduloInt64
+argument extractStateByteFiveCall left Int64 stateEncoderWorkingValue
+argument extractStateByteFiveCall right Int64 byteRoleAdjustmentValue
 run extractStateByteFiveCall
-bind nextStateByteFive I64 extractStateByteFiveCall
+bind value nextStateByteFive Int64 extractStateByteFiveCall
 call storeNextStateByteFiveCall pointer.storeByte
-arg storeNextStateByteFiveCall buffer randomState
-arg storeNextStateByteFiveCall offset randomStateByteOffsetFive
-arg storeNextStateByteFiveCall value nextStateByteFive
+argument storeNextStateByteFiveCall buffer OpaquePointer randomState
+argument storeNextStateByteFiveCall offset ByteCount randomStateByteOffsetFive
+argument storeNextStateByteFiveCall value Int64 nextStateByteFive
 run storeNextStateByteFiveCall
-call shiftStateEncoderRightFiveCall math.divideI64
-arg shiftStateEncoderRightFiveCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightFiveCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightFiveCall math.divideInt64
+argument shiftStateEncoderRightFiveCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightFiveCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightFiveCall
-bind stateEncoderAfterByteFive I64 shiftStateEncoderRightFiveCall
-set stateEncoderWorkingValue stateEncoderAfterByteFive
+bind value stateEncoderAfterByteFive Int64 shiftStateEncoderRightFiveCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteFive
 
-call extractStateByteSixCall math.moduloI64
-arg extractStateByteSixCall left stateEncoderWorkingValue
-arg extractStateByteSixCall right byteRoleAdjustmentValue
+call extractStateByteSixCall math.moduloInt64
+argument extractStateByteSixCall left Int64 stateEncoderWorkingValue
+argument extractStateByteSixCall right Int64 byteRoleAdjustmentValue
 run extractStateByteSixCall
-bind nextStateByteSix I64 extractStateByteSixCall
+bind value nextStateByteSix Int64 extractStateByteSixCall
 call storeNextStateByteSixCall pointer.storeByte
-arg storeNextStateByteSixCall buffer randomState
-arg storeNextStateByteSixCall offset randomStateByteOffsetSix
-arg storeNextStateByteSixCall value nextStateByteSix
+argument storeNextStateByteSixCall buffer OpaquePointer randomState
+argument storeNextStateByteSixCall offset ByteCount randomStateByteOffsetSix
+argument storeNextStateByteSixCall value Int64 nextStateByteSix
 run storeNextStateByteSixCall
-call shiftStateEncoderRightSixCall math.divideI64
-arg shiftStateEncoderRightSixCall left stateEncoderWorkingValue
-arg shiftStateEncoderRightSixCall right byteRoleAdjustmentValue
+call shiftStateEncoderRightSixCall math.divideInt64
+argument shiftStateEncoderRightSixCall left Int64 stateEncoderWorkingValue
+argument shiftStateEncoderRightSixCall right Int64 byteRoleAdjustmentValue
 run shiftStateEncoderRightSixCall
-bind stateEncoderAfterByteSix I64 shiftStateEncoderRightSixCall
-set stateEncoderWorkingValue stateEncoderAfterByteSix
+bind value stateEncoderAfterByteSix Int64 shiftStateEncoderRightSixCall
+set memory stateEncoderWorkingValue stateEncoderAfterByteSix
 
 call storeNextStateByteSevenCall pointer.storeByte
-arg storeNextStateByteSevenCall buffer randomState
-arg storeNextStateByteSevenCall offset randomStateByteOffsetSeven
-arg storeNextStateByteSevenCall value stateEncoderWorkingValue
+argument storeNextStateByteSevenCall buffer OpaquePointer randomState
+argument storeNextStateByteSevenCall offset ByteCount randomStateByteOffsetSeven
+argument storeNextStateByteSevenCall value Int64 stateEncoderWorkingValue
 run storeNextStateByteSevenCall
 
-returnValue nextStateValue
+return value nextStateValue

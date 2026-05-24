@@ -1,0 +1,12 @@
+module app.realtime_auction_arena.server.tests.audit_context
+purpose module app.realtime_auction_arena.server.tests.audit_context "Parse-oriented contract markers for executable audit replay."
+moduleOwns app.realtime_auction_arena.server.tests.audit_context "Audit replay handler invariants, response shape markers, and runtime gap boundaries."
+invariant module app.realtime_auction_arena.server.tests.audit_context "The audit handler must stay bounded, authenticated, SQLite-backed, and separate from command audit insertion."
+
+operation auditContextContractMarkers
+output operation auditContextContractMarkers Bool
+memory auditContextContractMarkers heap no
+async auditContextContractMarkers no
+purpose operation auditContextContractMarkers "Name the executable audit replay behavior covered by Python API smoke tests."
+invariant operation auditContextContractMarkers "The route returns auditEvents, after, cursor, limit, count, nextAfter, and nextCursor from persisted audit_events rows ordered by created_at plus audit_event_id."
+return value true

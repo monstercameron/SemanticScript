@@ -76,17 +76,19 @@ sem_sqlite_health_demo: inserted_rowid=1 changed_rows=1 row_id=1 row_body="hello
 sem_sqlite_health_demo: ok
 ```
 
-## What still needs to happen
+## Compiler and Stdlib Integration
 
-This adapter is the C-level foundation. The next layers (out of scope for
-this initial drop):
+This adapter is now wired through the SemanticScript toolchain:
 
-1. SemanticScript-side type bindings — a `sqlite` standard module exposing
-   `Database`, `Statement`, and friends and lowering to these ss_sqlite_*
-   entry points.
-2. Compiler integration so `import { Database } from sqlite` causes the
-   build tape to link `sem_sqlite_runtime` automatically (mirroring how
-   the HTTP server target wires `sem_http_runtime`).
-3. Feature tests under `SemanticScript/sem/feature_tests/` covering the
-   round-trip behaviors here in AgentScript itself, so the integration is
-   protected by the existing deep-audit suite.
+1. `SemanticScript/std/sqlite/main.sem` exposes the public `standard.sqlite`
+   import surface for `SqliteDatabase`, `SqliteStatement`, open modes, step
+   results, column types, and `sqlite.*` targets.
+2. Apps import it with `import sqlite standard.sqlite`; the compiler
+   links `sem_sqlite_runtime` for lowered SQLite calls.
+3. Feature and app coverage exercise the open / schema / prepare / bind /
+   step / column / finalize / close path through generated SemanticScript
+   programs, including the curated TaskForge Web application.
+
+Remaining work is product surface, not initial plumbing: richer typed query
+helpers, statement-cache abstractions, transaction helpers, and broader
+diagnostics around SQL ownership and lifecycle policy.

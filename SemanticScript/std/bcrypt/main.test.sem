@@ -1,0 +1,131 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: standard.bcrypt round-trip
+# ============================================================
+#
+# rationale: smoke for the bcrypt native ABI adapter. Hashes a plaintext
+#   at the minimum cost (4 — fast enough for a smoke), then confirms the
+#   produced hash verifies against the correct password and rejects a
+#   wrong one. Exercises bcrypt.hashPassword + bcrypt.verifyPassword end
+#   to end.
+#
+# harness note: bcrypt.* are compiler-lowered native ABI calls backed by
+#   the vendored bcrypt runtime, so this smoke is BUILT AND RUN AS A
+#   NATIVE EXE (it cannot run under the JIT --run path):
+#     python SemanticScript/compiler/semsc.py \
+#       SemanticScript/std/bcrypt/main.test.sem --emit-exe bcrypt_smoke.exe
+#     ./bcrypt_smoke.exe   # prints "OK", exit 0
+#
+# invariant: hashPassword returns 0 (ok); verifyPassword returns 1 for the
+#   correct password and a non-1 status for a wrong one.
+
+project StdBcryptTest
+target console
+runtime native 1
+entry console main
+
+import bcrypt standard.bcrypt
+error MainError
+errorCase MainError BcryptSmokeAssertionFailed
+errorCase MainError MemoryAllocationFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+memory main heap auto
+async main no
+purpose operation main "Hash a password and verify the correct and a wrong password against it."
+invariant operation main "hash status == 0; verify(correct) == 1; verify(wrong) != 1."
+
+label startMain
+
+storage module immutable hashBufferCapacity ByteCount 61
+call allocateHashBufferCall c.malloc
+argument allocateHashBufferCall size ByteCount hashBufferCapacity
+run allocateHashBufferCall
+bind value hashBuffer OpaquePointer allocateHashBufferCall
+bind error hashBufferAllocError Int32 allocateHashBufferCall
+branch error source allocateHashBufferCall target heapAllocationFailedHandler
+defer releaseHashBufferDefer c.free hashBuffer
+
+storage module immutable smokePassword String "correct-horse-battery-staple"
+storage module immutable wrongPassword String "Tr0ub4dor&3"
+storage module immutable smokeBcryptCost Int32 4
+storage module immutable hashBufferCapacityInt Int32 61
+storage module immutable bcryptStatusOk Int32 0
+storage module immutable bcryptMatchSentinel Int32 1
+
+call hashPasswordCall bcrypt.hashPassword
+argument hashPasswordCall plaintext String smokePassword
+argument hashPasswordCall cost Int32 smokeBcryptCost
+argument hashPasswordCall outBuffer OpaquePointer hashBuffer
+argument hashPasswordCall outCapacity Int32 hashBufferCapacityInt
+run hashPasswordCall
+bind value hashStatus Int32 hashPasswordCall
+call checkHashStatusCall math.equalInt32
+argument checkHashStatusCall left Int32 hashStatus
+argument checkHashStatusCall right Int32 bcryptStatusOk
+run checkHashStatusCall
+bind value hashStatusOk Bool checkHashStatusCall
+branch if condition hashStatusOk target hashStatusHolds
+branch else target smokeAssertionFailed
+label hashStatusHolds
+
+# Correct password must verify (status == 1).
+call verifyCorrectCall bcrypt.verifyPassword
+argument verifyCorrectCall plaintext String smokePassword
+argument verifyCorrectCall expectedHash String hashBuffer
+run verifyCorrectCall
+bind value verifyCorrectResult Int32 verifyCorrectCall
+call checkVerifyCorrectCall math.equalInt32
+argument checkVerifyCorrectCall left Int32 verifyCorrectResult
+argument checkVerifyCorrectCall right Int32 bcryptMatchSentinel
+run checkVerifyCorrectCall
+bind value verifyCorrectMatched Bool checkVerifyCorrectCall
+branch if condition verifyCorrectMatched target verifyCorrectHolds
+branch else target smokeAssertionFailed
+label verifyCorrectHolds
+
+# Wrong password must NOT verify (status != 1).
+call verifyWrongCall bcrypt.verifyPassword
+argument verifyWrongCall plaintext String wrongPassword
+argument verifyWrongCall expectedHash String hashBuffer
+run verifyWrongCall
+bind value verifyWrongResult Int32 verifyWrongCall
+call checkVerifyWrongCall math.notEqualInt32
+argument checkVerifyWrongCall left Int32 verifyWrongResult
+argument checkVerifyWrongCall right Int32 bcryptMatchSentinel
+run checkVerifyWrongCall
+bind value verifyWrongRejected Bool checkVerifyWrongCall
+branch if condition verifyWrongRejected target verifyWrongHolds
+branch else target smokeAssertionFailed
+label verifyWrongHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+return error consoleWriteFailedFailure
+label heapAllocationFailedHandler
+makeError heapAllocationFailure MainError.MemoryAllocationFailed hashBufferAllocError
+return error heapAllocationFailure
+label smokeAssertionFailed
+makeError bcryptSmokeFailure MainError.BcryptSmokeAssertionFailed
+return error bcryptSmokeFailure

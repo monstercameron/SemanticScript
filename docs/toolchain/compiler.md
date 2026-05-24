@@ -21,9 +21,27 @@ python compiler/semsc.py sem/fizzbuzz.sscript --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-ir
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-optimized-ir fizzbuzz.opt.ll --run
 python compiler/semsc.py sem/fizzbuzz.sscript --emit-exe
-python tools/sem.py build ../app/todo --parse-only --quiet
-python tools/sem.py check ../app/todo --quiet
+python tools/sem.py build ../apps/taskforge-tui --parse-only --quiet
+python tools/sem.py check ../apps/taskforge-tui --quiet
+python tools/sem.py emit-ir ../apps/taskforge-tui --quiet
+python tools/sem.py clean
+python tools/sem.py lint ../apps/taskforge-tui -- --summary
+python tools/sem.py fmt --check ../apps/taskforge-tui
+python tools/sem.py doctor
+python tools/sem.py context --json ../apps/taskforge-tui
+python tools/sem.py symbols --json ../apps/taskforge-tui
 ```
+
+The `sem` driver also exposes `run`, `inspect-ir`, `compare-profiles`, and
+`bench`. `context --json` reports project roots, entrypoints, tool versions,
+runtime feature flags, syntax support counts, and known deferred feature counts.
+`symbols --json` reports source files, modules, imports, operations, calls,
+inputs, outputs, effects, routes, source locations, and unresolved references.
+`clean` previews ignored generated artifacts by default and only deletes them
+with `--force`. `lint` currently supports the canonical `--engine semlint`
+backend; `fmt` delegates to `SemanticScript/formatter/semfmt.py`; `doctor`
+checks Python, llvmlite, clang, Node.js, and native HTTP runtime build
+prerequisites.
 
 CLI flags:
 
@@ -48,7 +66,7 @@ CLI flags:
 | `--opt-level N` | LLVM optimization level `0..3`, default `2` unless `build.sem` provides `optLevel PROJECT N`. |
 | `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
 | `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
-| `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that use `importModule` directly. |
+| `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that import their registered main module directly. |
 | `--std-path PATH` | Add an explicit standard-library root. May be repeated. Accepts a `std` root containing `module.sem`, a `SemanticScript` root containing `std/`, or a repo root containing `SemanticScript/std`. |
 | `--keep-resources` | Retain the intermediate Windows resource files (`.rc` / `.res` / `.ico`) next to the executable for debugging. Default behavior writes them to a tempdir and deletes after linking — the bytes survive only inside the `.exe`'s PE resource section. Overrides `keepResources PROJECT no` in the build tape. |
 | `--resource-dir PATH` | Explicit directory for intermediate resource files. Implies `--keep-resources`. Path resolves relative to the source file's directory unless absolute. Overrides `resourcesDir PROJECT "path"` in the build tape. |
@@ -66,8 +84,8 @@ The current compiler has three strictness layers:
 
 - Always-on compiler checks. These are part of parsing or codegen and do not
   require `--lint`: build-tape schema validation, unsupported hard runtime
-  verbs refusing codegen, exact math operand widths, `returnVoid` only on
-  Void/CVoid outputs, and routed webserver handler ABI validation.
+  verbs refusing codegen, exact math operand widths, `return void` only on
+  Void/Void outputs, and routed webserver handler ABI validation.
 - Source-level `languageMode strictExecutable`. This opt-in row closes the
   executable grammar from that point in the resolved source stream: unknown
   lowercase top-level and operation-body verbs become parse errors without
@@ -77,9 +95,9 @@ The current compiler has three strictness layers:
 - The `--strict` flag. This runs the compiler's built-in lint pass and promotes
   its diagnostics to fatal exit code `2`. It also activates the current
   strict fallible-call disposition checks. Result-shaped targets such as
-  `sqlite.prepareStatement` must use the legacy checked pattern (`run`,
-  `bindOk` or `ignoreOk`, `bindError`, and `branchIfError`) until
-  `runChecked` syntax exists. Explicit-disposition targets such as heap
+  `sqlite.prepareStatement` must use the checked pattern (`run`,
+  `bind ok` or `ignore ok`, `bind error`, and `branch error`) until
+  a compact checked-run syntax exists. Explicit-disposition targets such as heap
   allocation and native HTTP response writers are still tracked as hardening
   work unless the local compiler tests prove otherwise.
 
@@ -89,9 +107,13 @@ The source-level strict row is:
 languageMode strictExecutable
 ```
 
-`runChecked`, `bindOwned`, `bindOkOwned`, and `requireNonNull` remain research
-syntax only. Do not document them as current syntax until parser/compiler tests
-exist for them.
+Strictness is source-stream scoped, not package-version scoped. Imported modules
+should declare their own `languageMode` when they need a stable strict or refined
+parse contract; `languageVersion PROJECT "1.0"` does not imply strict mode.
+
+Compact checked-run rows, owned binding rows, and `requireNonNull` remain
+research syntax only. Do not document them as current syntax until
+parser/compiler tests exist for them.
 
 Use these commands when checking whether a rule is compiler-enforced or still a
 linter migration rule:
@@ -124,28 +146,28 @@ python C:\tools\SemanticScript\compiler\semsc.py C:\apps\demo\main.sem --std-pat
 
 Generated `.exe`, `.ll`, linker resource files, and temporary link inputs live
 under the managed build directory by default. A basename such as
-`--emit-exe todo.exe` also resolves into that directory; pass a path with a
+`--emit-exe taskforge_tui.exe` also resolves into that directory; pass a path with a
 directory component to opt into a different output file location.
 
 Use `--build-root` when the build folder should live somewhere else but still
 be a managed folder:
 
 ```powershell
-python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-root ..\artifacts
-# writes into app/artifacts/build/
+python compiler/semsc.py ..\apps\taskforge-tui\build.sem --emit-exe --build-root ..\artifacts
+# writes into apps/artifacts/build/
 
-python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-root ..\artifacts --build-folder-name semantic-build
-# writes into app/artifacts/semantic-build/
+python compiler/semsc.py ..\apps\taskforge-tui\build.sem --emit-exe --build-root ..\artifacts --build-folder-name semantic-build
+# writes into apps/artifacts/semantic-build/
 ```
 
 Use `--build-dir` only when you want to name the exact artifact directory:
 
 ```powershell
-python compiler/semsc.py ..\app\todo\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
+python compiler/semsc.py ..\apps\taskforge-tui\build.sem --emit-exe --build-dir C:\sem-artifacts\todo-dev
 ```
 
 The repository ignores `build/` folders, so app-local artifacts such as
-`app/todo/build/todo.exe` stay out of source control.
+`apps/taskforge-tui/build/taskforge_tui.exe` stay out of source control.
 
 `build.sem` can carry the same artifact and LLVM defaults so project builds are
 repeatable without TOML/YAML sidecars:
@@ -165,6 +187,7 @@ repeatable without TOML/YAML sidecars:
 | `cpuTune PROJECT VALUE` | `--cpu-tune VALUE` |
 | `cpuFeature PROJECT FEATURE on\|off` | `--cpu-feature FEATURE=on\|off` |
 | `cpuFeatureCheck PROJECT auto\|off\|warn\|require` | `--cpu-feature-check auto\|off\|warn\|require` |
+| `guiBackend PROJECT win32\|winui3` | No CLI flag; native GUI backend selector. `win32` is active/default, `winui3` is recognized but currently rejected with a toolchain diagnostic. |
 
 CLI flags win over build-tape defaults for one-off invocations.
 
@@ -172,7 +195,7 @@ CLI flags win over build-tape defaults for one-off invocations.
 
 On Windows, the compiler bakes project metadata and icon assets into the
 executable's PE resource section via `llvm-rc`. Source-level verbs
-(documented in `SYNTAX.md`) declare the resources:
+(documented in `docs/reference/syntax-inventory.md`) declare the resources:
 
 - Project metadata: `version`, `publisher`, `description`, `copyright`,
   `productName`, `internalName`, `originalFilename`, `trademark`,
@@ -190,13 +213,13 @@ resulting `.res` is linked into the PE alongside the LLVM IR object.
 
 **Default behavior is residue-free:** the intermediate `.rc`, `.res`, and
 `.ico` live in a system tempdir and are deleted after linking. The
-resource bytes survive only inside `todo.exe`. After a clean build the
+resource bytes survive only inside `taskforge_tui.exe`. After a clean build the
 output directory contains only the executable (and `.ll` if IR
 persistence is on):
 
 ```text
 build/
-  todo.exe
+  taskforge_tui.exe
   todo.ll
 ```
 
@@ -222,20 +245,42 @@ embedded.
 
 | Area | 1.0 status | Supported in 1.0 | Not a 1.0 guarantee |
 |---|---|---|---|
-| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host and it is not replaced by the SemanticScript-written bootstrap compiler. |
-| Bootstrap and self-hosting | Preview, release-tested | `bootstrap/run_bootstrap_chain.py` and `tests/sem_compiler_parity.py` are valid release verification commands. The staged SemanticScript-written compilers demonstrate input-dependent IR generation for documented subsets. | Self-hosting is not complete. `bootstrap_general.sscript` is not the 1.0 production compiler and does not compile the whole language. |
-| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
+| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `import ALIAS MODULE_PATH`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host, and the repository no longer includes a maintained SemanticScript-written compiler path. |
+| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `docs/reference/syntax-inventory.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
-| Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output CSignedInt32`. The native adapter supports request method/path/header/query/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header writes, and one path-scoped middleware callback. | HTTP/2/H2O, path params, route timeout enforcement, static-file serving, graceful shutdown hooks, structured body decoders, long-lived streaming bodies, method-scoped middleware, and persistent state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
-| Windows GUI runtime | Reserved / partial | The committed compiler-owned surface should stay to `target windowsGui`, `targetRuntime PROJECT windowsGui`, native runtime linking, handler ABI preservation for `GuiSession` / `GuiEvent`, and a small metadata hook for the normalized `standard.gui` application/main-window descriptor. | `standard.gui` owns the GUI vocabulary, declaration contracts, capabilities, and validation semantics. There is no `entry windowsGui` row, and the current reference compiler does not yet provide a complete GUI bridge/runtime path. |
-| Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
+| Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch and `:name` path-parameter matching. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output Int32`. The native adapter supports request method/path/path-param/header/query/cookie/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header/file writes, one path-scoped middleware callback, blocking SSE primitives including id-bearing event frames, and `standard.http.serverIsShuttingDown` for handler-visible drain state. | HTTP/2/H2O, route timeout enforcement, structured body decoders, async long-lived fanout, request cancellation tokens, method-scoped middleware, and persistent server state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
+| Outbound `standard.net` client | Experimental prototype | `import net standard.net`, role types, `HttpGetRequest`, `HttpTextResponse`, `networkHttpClient`, and `net.fetchText` / `net.fetchBytes` call tapes are accepted. Canonical `net.fetchText` source passes a request record and receives a response record, while lowering still targets the native HTTP client ABI. The runtime link registry pulls in `native_http_client` plus `native_async` sources when these targets are used. Real network behavior requires building the optional libcurl/libuv runtime path. | The prototype is not a 1.0 guarantee. Continuation-frame `await` lowering, production async handler integration, and libcurl `multi_socket` support remain future work. |
+| Windows GUI runtime | Preview / partial | The committed compiler-owned surface is `target windowsGui`, `targetRuntime PROJECT windowsGui`, optional `guiBackend PROJECT win32\|winui3`, normal `entry console main`, explicit `standard.gui` `gui.*` calls, native runtime linking, and handler ABI preservation for `GuiSession` / `GuiEvent`. The active/default executable backend is the classic Win32 adapter in `native_win32_gui`; `guiBackend winui3` is recognized but rejected until the Windows App SDK backend is buildable. | `standard.gui` owns the GUI vocabulary, declaration contracts, capabilities, and validation semantics. There is no `entry windowsGui` row, and WinUI must not be implemented as a C# / XAML app sidecar. WinUI 3 is not link-ready until Windows App SDK / C++/WinRT build integration lands. |
+| Partial syntax rows | Explicitly partial | Rows marked partial in `docs/reference/syntax-inventory.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
 | Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
+
+Native runtime ownership: `semsc.py` collects executable adapter sources through
+`_NATIVE_RUNTIME_LINK_REGISTRY`. Each registry row must name the owning stdlib
+module or compiler runtime surface. Reserved parse-only rows belong in docs and
+tests, not in link inputs, until a branch also lands lowering and runtime ABI
+coverage.
+
+Compiler-owned call-target boundary:
+
+| target family | owning layer | compiler responsibility |
+| --- | --- | --- |
+| `c.*` | temporary backend interop / libc registry | Validate signatures and lower ABI calls while stdlib replacements mature. No app policy belongs here. |
+| `console.*` | compiler runtime surface | Lower process stdout/stderr helpers and keep effects explicit. |
+| `math.*` / `pointer.*` | compiler primitive operations | Emit arithmetic, conversion, and pointer IR only. Domain rules should call these from `.sem` bodies. |
+| `html.hydrate.*` / `jsonBody` | compiler syntax island plus `standard.html` / `standard.json` contracts | Generate structural glue and enforce source syntax; escaping/parsing belongs to the HTML/JSON helpers. |
+| `http.*` | `standard.http` plus native HTTP runtime | Lower compiler-owned request/response ABI calls and route dispatch; stdlib-owned SSE and shutdown helpers lower through generic native `runtimeBinding`. App response wrappers must declare `responseBodyForwarder`. |
+| `json.*` | `standard.json` plus native JSON runtime | Generate record field walking only; string escaping, primitive formatting, strict parsing, capacity, and status mapping live in `native_json`. |
+| `sql body` / `sqlite.*` | `standard.sqlite` plus native SQLite runtime | Bind `SqlText` syntax islands to constants, enforce no interpolation, and lower adapter calls/resource lifetimes. Schemas, migrations, and query policy stay in `.sem` source. |
+| `bcrypt.*` | `standard.bcrypt` plus native bcrypt runtime | Lower hashing/random/base64 adapter calls and link vendored sources only when used. |
+| `gui.*` | `standard.gui` plus native GUI runtime | Preserve GUI handler ABI and link platform runtime; UI vocabulary and validation stay in the std module. |
+| `net.fetch*` | `standard.net` plus `native_http_client` / `native_async` | Experimental prototype lowering and link selection. Request/response records, retry, caching, auth, and scheduling policy stay in `.sem` source and stdlib contracts; backend handles stay out of source. |
 
 ## Parse Pipeline
 
 1. Read source as UTF-8.
-2. Resolve `importModule` lines and inline imported files. For build tapes,
-   registered modules are resolved before legacy filesystem fallbacks.
+2. Resolve `import ALIAS MODULE_PATH` lines and inline imported files. For
+   build tapes, registered modules are resolved before filesystem/stdlib
+   fallbacks.
 3. Tokenize line by line.
 4. Build the `Program` object and current-operation body tapes.
 5. Load external literals from `literalSource` metadata.
@@ -244,12 +289,11 @@ embedded.
 
 ## Import Resolution
 
-`importModule ALIAS DOTTED.PATH` and the compatibility form
-`importModule DOTTED.PATH [as ALIAS]` are resolved before parsing. If the root
-source declares modules with `registerModule PROJECT MODULE_PATH "PATH"`, the
-compiler resolves those registered module paths first. A registered path may
-point at a source file or a folder with `main.sem`, `index.sem`, the leaf module
-file, or exactly one non-test `.sem` / `.sscript`.
+`import ALIAS DOTTED.PATH` rows are resolved before parsing. If the root source
+declares modules with `registerModule PROJECT MODULE_PATH "PATH"`, the compiler
+resolves those registered module paths first. A registered path may point at a
+source file or a folder with `main.sem`, `index.sem`, the leaf module file, or
+exactly one non-test `.sem` / `.sscript`.
 
 If no project-registered module matches, canonical standard-library module
 paths resolve through the std search path. `standard` maps to `std/module.sem`
@@ -269,7 +313,7 @@ the provider exports that operation. Singular import rows such as
 `importOperation localName provider publicOperation` bind an exported provider
 symbol to a local facade name. New project code should keep `registerModule`
 rows in `build.sem`; module files should keep their own `module`,
-`importModule`, singular import, and `export*` rows.
+`import`, singular import, and `export*` rows.
 
 ## Entry and Library Modes
 
@@ -291,7 +335,23 @@ normalized application/main-window descriptor produced from `standard.gui`
 metadata. The GUI row vocabulary and most validation belong in `standard.gui`
 and lint/tooling, not in a large compiler-owned grammar. The form
 `entry windowsGui OPERATION` is rejected; `targetRuntime PROJECT windowsGui`
-build tapes should not declare `entry console`.
+build tapes should use `entry console main` and run the GUI through
+`gui.applicationRun`.
+
+### Windows GUI Smoke Test
+
+Run the committed GUI smoke app from a Windows shell with LLVM/clang available:
+
+```powershell
+python SemanticScript\tools\sem.py check apps\desktop-window-smoke --quiet
+python SemanticScript\tools\sem.py build apps\desktop-window-smoke --quiet
+apps\desktop-window-smoke\build\desktop_window_smoke.exe
+```
+
+Expected behavior: a top-level window titled `Desktop Window Smoke` appears. Closing the
+window exits the process with status `0`. The source should keep using ordinary
+`operation` / `call` / `argument` / `run` rows with `import gui standard.gui`;
+do not add `entry windowsGui`.
 
 The stub mode supports stdlib files and refined syntax showcases that need
 parse/codegen inspection without a runtime host.
@@ -354,10 +414,8 @@ Primary compiler test commands:
 
 ```powershell
 python tests/compare.py
-python tests/sem_compiler_parity.py
 python tests/test_compiler.py
 python tests/test_stdlib.py
-python bootstrap/run_bootstrap_chain.py
 ```
 
 Feature programs live in:

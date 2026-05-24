@@ -1,0 +1,27 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.auth
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.auth "Unit coverage contract for win32-auctioneer/src/auth.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.auth "Operator login request, auth session, remember/forget/current session, and memory-only token coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.auth "Server-side JWT issuance."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.auth "Access tokens must remain memory-only and be clearable through explicit forget-token coverage."
+
+record Win32AuthUnitTestPlan
+field Win32AuthUnitTestPlan sourceFile String
+field Win32AuthUnitTestPlan sessionCoverage String
+field Win32AuthUnitTestPlan securityCoverage String
+field Win32AuthUnitTestPlan blockedRuntimeCases String
+
+storage module immutable win32AuthUnitTestPlan Win32AuthUnitTestPlan
+jsonBody win32AuthUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/src/auth.sem",
+      "sessionCoverage": "plan login, remember login response, current auth session, forget auth session",
+      "securityCoverage": "access JWT is memory-only and explicit re-login is the fallback when refresh is unavailable",
+      "blockedRuntimeCases": "POST JSON and bearer header support in standard.net"
+  }
+
+operation getWin32AuthUnitTestPlan
+output operation getWin32AuthUnitTestPlan Win32AuthUnitTestPlan
+memory getWin32AuthUnitTestPlan heap no
+async getWin32AuthUnitTestPlan no
+purpose operation getWin32AuthUnitTestPlan "Return the Win32 auth unit coverage plan."
+return value win32AuthUnitTestPlan

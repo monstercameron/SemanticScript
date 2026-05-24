@@ -5,48 +5,48 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation scaleByInt
-input scaleByInt baseValue CFloat64
-input scaleByInt multiplier CSignedInt64
-output scaleByInt Result CFloat64 Void
+input operation scaleByInt baseValue Float64
+input operation scaleByInt multiplier Int64
+output operation scaleByInt Result Float64 Void
 memory scaleByInt heap no
 async scaleByInt no
-purpose scaleByInt "Convert the i64 multiplier to a CFloat64 and multiply baseValue by it. Exercises a user op whose first param is float, second is int, and which mixes math.intToFloat with math.multiplyF64."
-invariant scaleByInt "Returns baseValue * (CFloat64) multiplier."
+purpose operation scaleByInt "Convert the i64 multiplier to a Float64 and multiply baseValue by it. Exercises a user op whose first param is float, second is int, and which mixes math.convertInt64ToFloat64 with math.multiplyFloat64."
+invariant operation scaleByInt "Returns baseValue * (Float64) multiplier."
 label startScaleByInt
-call multiplierAsFloatCall math.intToFloat
-arg multiplierAsFloatCall value multiplier
+call multiplierAsFloatCall math.convertInt64ToFloat64
+argument multiplierAsFloatCall value Int64 multiplier
 run multiplierAsFloatCall
-bind multiplierAsFloat CFloat64 multiplierAsFloatCall
-call productCall math.multiplyF64
-arg productCall left baseValue
-arg productCall right multiplierAsFloat
+bind value multiplierAsFloat Float64 multiplierAsFloatCall
+call productCall math.multiplyFloat64
+argument productCall left Float64 baseValue
+argument productCall right Float64 multiplierAsFloat
 run productCall
-bind scaledResult CFloat64 productCall
-returnOk scaledResult
+bind value scaledResult Float64 productCall
+return ok scaledResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "scaleByInt(3.25, 2) == 6.5. Mixed-typed user-op signature."
-invariant main "Output is 6.500000."
+purpose operation main "scaleByInt(3.25, 2) == 6.5. Mixed-typed user-op signature."
+invariant operation main "Output is 6.500000."
 label startMain
-const baseValue CFloat64 3.25
-const multiplierValue CSignedInt64 2
+storage module immutable baseValue Float64 3.25
+storage module immutable multiplierValue Int64 2
 call scaleCall scaleByInt
-arg scaleCall baseValue baseValue
-arg scaleCall multiplier multiplierValue
+argument scaleCall baseValue Float64 baseValue
+argument scaleCall multiplier Int64 multiplierValue
 run scaleCall
-bindOk scaledOutcome CFloat64 scaleCall
+bind ok scaledOutcome Float64 scaleCall
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value scaledOutcome
+argument writeCall console Console console
+argument writeCall value Float64 scaledOutcome
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

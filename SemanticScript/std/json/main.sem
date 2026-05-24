@@ -4,30 +4,30 @@
 #
 # Import this module with:
 #
-#   importModule json standard.json
+#   import json standard.json
 #
 # The `json.*` call targets are compiler/runtime-owned intrinsics. This module
 # owns the official standard-library import path and semantic type contracts for
 # that intrinsic namespace.
 
 module standard.json
-modulePurpose standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, finder, document CRUD, and typed stringify/parse intrinsics."
+purpose module standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, finder, document CRUD, and typed stringify/parse intrinsics."
 moduleOwns standard.json "The official import path `standard.json`, semantic JSON type aliases, enum tokens, error domains, default constants, and the compiler-owned `json.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.json "Application codecs, record-specific generated codecs, native JSON runtime memory internals, or caller-owned scratch-buffer allocation."
-moduleInvariant standard.json "The standard module entry is this file; new modules may import it as alias `json` before using compiler-owned targets in the `json.*` namespace."
-moduleInvariant standard.json "Document CRUD handles are capacity-bounded, cursor-addressed native runtime values; source code must use Result-aware access paths and defer cleanup for owned documents."
+invariant module standard.json "The standard module entry is this file; new modules may import it as alias `json` before using compiler-owned targets in the `json.*` namespace."
+invariant module standard.json "Document CRUD handles are capacity-bounded, cursor-addressed native runtime values; source code must use Result-aware access paths and defer cleanup for owned documents."
 
-type JsonBuilder COpaqueMemoryAddress
-type JsonDocument COpaqueMemoryAddress
-type JsonCursor CSignedInt64
-type JsonText CNullTerminatedByteString
-type JsonFieldName CNullTerminatedByteString
-type JsonPath CNullTerminatedByteString
-type JsonStringValue CNullTerminatedByteString
-type JsonScratchBuffer COpaqueMemoryAddress
-type JsonCapacityBytes CByteCount
+type JsonBuilder OpaquePointer
+type JsonDocument OpaquePointer
+type JsonCursor Int64
+type JsonText String
+type JsonFieldName String
+type JsonPath String
+type JsonStringValue String
+type JsonScratchBuffer OpaquePointer
+type JsonCapacityBytes ByteCount
 
-enum JsonValueKind repr CSignedInt32
+enum JsonValueKind repr Int32
 enumCase JsonValueKind objectJsonValueKind 0
 enumCase JsonValueKind arrayJsonValueKind 1
 enumCase JsonValueKind stringJsonValueKind 2
@@ -37,27 +37,27 @@ enumCase JsonValueKind booleanJsonValueKind 5
 enumCase JsonValueKind nullJsonValueKind 6
 
 error JsonAccessError
-errorCase JsonAccessError PathNotFound CSignedInt32
-errorCase JsonAccessError WrongType CSignedInt32
-errorCase JsonAccessError IndexOutOfRange CSignedInt32
-errorCase JsonAccessError FieldNameTooLong CSignedInt32
-errorCase JsonAccessError DocumentNotMutable CSignedInt32
-errorCase JsonAccessError CapacityExceeded CSignedInt32
-errorCase JsonAccessError MalformedPath CSignedInt32
-errorCase JsonAccessError ScratchTooSmall CSignedInt32
+errorCase JsonAccessError PathNotFound Int32
+errorCase JsonAccessError WrongType Int32
+errorCase JsonAccessError IndexOutOfRange Int32
+errorCase JsonAccessError FieldNameTooLong Int32
+errorCase JsonAccessError DocumentNotMutable Int32
+errorCase JsonAccessError CapacityExceeded Int32
+errorCase JsonAccessError MalformedPath Int32
+errorCase JsonAccessError ScratchTooSmall Int32
 
 error JsonEncodeError
-errorCase JsonEncodeError CapacityExceeded CSignedInt32
-errorCase JsonEncodeError WrongType CSignedInt32
-errorCase JsonEncodeError OutputBufferTooSmall CSignedInt32
+errorCase JsonEncodeError CapacityExceeded Int32
+errorCase JsonEncodeError WrongType Int32
+errorCase JsonEncodeError OutputBufferTooSmall Int32
 
 error JsonDecodeError
-errorCase JsonDecodeError UnexpectedToken CSignedInt32
-errorCase JsonDecodeError MissingRequired CSignedInt32
-errorCase JsonDecodeError WrongType CSignedInt32
-errorCase JsonDecodeError Oversize CSignedInt32
-errorCase JsonDecodeError Truncated CSignedInt32
-errorCase JsonDecodeError EscapeMalformed CSignedInt32
+errorCase JsonDecodeError UnexpectedToken Int32
+errorCase JsonDecodeError MissingRequired Int32
+errorCase JsonDecodeError WrongType Int32
+errorCase JsonDecodeError Oversize Int32
+errorCase JsonDecodeError Truncated Int32
+errorCase JsonDecodeError EscapeMalformed Int32
 
 exportType standard.json JsonBuilder
 exportType standard.json JsonDocument
@@ -92,6 +92,7 @@ typeInvariant JsonPath "Null-terminated path parsed as zero or more .fieldName o
 typeInvariant JsonStringValue "String value written by json.fieldString or json.elementString."
 typeInvariant JsonScratchBuffer "Caller-owned byte buffer used by json.findString, json.cursorString, json.cursorObjectFieldNameAt, and json.serializeDocument for unescaped or serialized output."
 typeInvariant JsonCapacityBytes "Capacity argument for JSON builder or scratch-buffer operations."
+invariant module standard.json "High-level json.stringify.String uses native JSON escaping with bounded caller scratch; high-level primitive json.parse targets reject malformed tokens and trailing junk with JsonDecodeError.UnexpectedToken."
 
 storage module immutable jsonModuleVersionText JsonText "standard.json 0.1"
 storage module immutable defaultJsonBuilderCapacityBytes JsonCapacityBytes 4096

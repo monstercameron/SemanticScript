@@ -1,0 +1,230 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: buffer
+# ============================================================
+
+project StdBufferTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import buffer standard.buffer
+import bytes standard.bytes
+
+error MainError
+errorCase MainError BufferSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+errorCase MainError MemoryAllocationFailed
+
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+memory main heap yes
+memoryAllocationSource main allocBufferCall
+async main no
+purpose operation main "Smoke-test the mutable buffer.* helper surface."
+
+label startMain
+
+storage module immutable bufferByteCount ByteCount 5
+storage module immutable reverseExpectedFirst Int64 111
+storage module immutable reverseExpectedLast Int64 104
+storage module immutable lowercaseXValue Int32 120
+storage module immutable helloLiteral String "hello"
+storage module immutable expectedMoveText String "hhell"
+
+call allocBufferCall c.malloc
+argument allocBufferCall size ByteCount bufferByteCount
+run allocBufferCall
+bind value workingBuffer OpaquePointer allocBufferCall
+bind error allocBufferError Int32 allocBufferCall
+branch error source allocBufferCall target heapAllocationFailedHandler
+defer releaseWorkingBufferCall c.free workingBuffer
+
+call bufferCopyCall buffer.copy
+argument bufferCopyCall destinationBuffer OpaquePointer workingBuffer
+argument bufferCopyCall sourceBuffer OpaquePointer helloLiteral
+argument bufferCopyCall byteCount ByteCount bufferByteCount
+run bufferCopyCall
+ignore value source bufferCopyCall type ByteCount
+
+call bufferCopyEqualCall bytes.equal
+argument bufferCopyEqualCall leftBuffer OpaquePointer workingBuffer
+argument bufferCopyEqualCall rightBuffer OpaquePointer helloLiteral
+argument bufferCopyEqualCall byteCount ByteCount bufferByteCount
+run bufferCopyEqualCall
+bind value bufferCopyEqualResult Bool bufferCopyEqualCall
+branch if condition bufferCopyEqualResult target bufferCopyHolds
+jump target smokeAssertionFailed
+label bufferCopyHolds
+
+call bufferFillCall buffer.fill
+argument bufferFillCall byteBuffer OpaquePointer workingBuffer
+argument bufferFillCall targetValue Int32 lowercaseXValue
+argument bufferFillCall byteCount ByteCount bufferByteCount
+run bufferFillCall
+ignore value source bufferFillCall type ByteCount
+
+call bufferFillCountCall bytes.count
+argument bufferFillCountCall byteBuffer OpaquePointer workingBuffer
+argument bufferFillCountCall byteCount ByteCount bufferByteCount
+argument bufferFillCountCall targetValue Int32 lowercaseXValue
+run bufferFillCountCall
+bind value bufferFillCountResult Int64 bufferFillCountCall
+call bufferFillCountOkCall math.equalInt64
+argument bufferFillCountOkCall left Int64 bufferFillCountResult
+argument bufferFillCountOkCall right Int64 bufferByteCount
+run bufferFillCountOkCall
+bind value bufferFillCountOk Bool bufferFillCountOkCall
+branch if condition bufferFillCountOk target bufferFillHolds
+jump target smokeAssertionFailed
+label bufferFillHolds
+
+call bufferClearCall buffer.clear
+argument bufferClearCall byteBuffer OpaquePointer workingBuffer
+argument bufferClearCall byteCount ByteCount bufferByteCount
+run bufferClearCall
+ignore value source bufferClearCall type ByteCount
+
+storage module immutable zeroByteValue Int32 0
+call bufferClearCountCall bytes.count
+argument bufferClearCountCall byteBuffer OpaquePointer workingBuffer
+argument bufferClearCountCall byteCount ByteCount bufferByteCount
+argument bufferClearCountCall targetValue Int32 zeroByteValue
+run bufferClearCountCall
+bind value bufferClearCountResult Int64 bufferClearCountCall
+call bufferClearCountOkCall math.equalInt64
+argument bufferClearCountOkCall left Int64 bufferClearCountResult
+argument bufferClearCountOkCall right Int64 bufferByteCount
+run bufferClearCountOkCall
+bind value bufferClearCountOk Bool bufferClearCountOkCall
+branch if condition bufferClearCountOk target bufferClearHolds
+jump target smokeAssertionFailed
+label bufferClearHolds
+
+call bufferCopyBackCall buffer.copy
+argument bufferCopyBackCall destinationBuffer OpaquePointer workingBuffer
+argument bufferCopyBackCall sourceBuffer OpaquePointer helloLiteral
+argument bufferCopyBackCall byteCount ByteCount bufferByteCount
+run bufferCopyBackCall
+ignore value source bufferCopyBackCall type ByteCount
+
+call bufferReverseCall buffer.reverseInPlace
+argument bufferReverseCall byteBuffer OpaquePointer workingBuffer
+argument bufferReverseCall byteCount ByteCount bufferByteCount
+run bufferReverseCall
+ignore value source bufferReverseCall type ByteCount
+
+storage module immutable offsetZero ByteCount 0
+storage module immutable offsetFour ByteCount 4
+storage module immutable twoFiveSixCount Int64 256
+call bufferReverseFirstLoadCall pointer.loadByte
+argument bufferReverseFirstLoadCall buffer OpaquePointer workingBuffer
+argument bufferReverseFirstLoadCall offset ByteCount offsetZero
+run bufferReverseFirstLoadCall
+bind value reverseFirstRaw Int8 bufferReverseFirstLoadCall
+call reverseFirstShiftCall math.addInt64
+argument reverseFirstShiftCall left Int64 reverseFirstRaw
+argument reverseFirstShiftCall right Int64 twoFiveSixCount
+run reverseFirstShiftCall
+bind value reverseFirstShifted Int64 reverseFirstShiftCall
+call reverseFirstModuloCall math.moduloInt64
+argument reverseFirstModuloCall left Int64 reverseFirstShifted
+argument reverseFirstModuloCall right Int64 twoFiveSixCount
+run reverseFirstModuloCall
+bind value reverseFirstValue Int64 reverseFirstModuloCall
+call reverseFirstOkCall math.equalInt64
+argument reverseFirstOkCall left Int64 reverseFirstValue
+argument reverseFirstOkCall right Int64 reverseExpectedFirst
+run reverseFirstOkCall
+bind value reverseFirstOk Bool reverseFirstOkCall
+branch if condition reverseFirstOk target reverseFirstHolds
+jump target smokeAssertionFailed
+label reverseFirstHolds
+
+call bufferReverseLastLoadCall pointer.loadByte
+argument bufferReverseLastLoadCall buffer OpaquePointer workingBuffer
+argument bufferReverseLastLoadCall offset ByteCount offsetFour
+run bufferReverseLastLoadCall
+bind value reverseLastRaw Int8 bufferReverseLastLoadCall
+call reverseLastShiftCall math.addInt64
+argument reverseLastShiftCall left Int64 reverseLastRaw
+argument reverseLastShiftCall right Int64 twoFiveSixCount
+run reverseLastShiftCall
+bind value reverseLastShifted Int64 reverseLastShiftCall
+call reverseLastModuloCall math.moduloInt64
+argument reverseLastModuloCall left Int64 reverseLastShifted
+argument reverseLastModuloCall right Int64 twoFiveSixCount
+run reverseLastModuloCall
+bind value reverseLastValue Int64 reverseLastModuloCall
+call reverseLastOkCall math.equalInt64
+argument reverseLastOkCall left Int64 reverseLastValue
+argument reverseLastOkCall right Int64 reverseExpectedLast
+run reverseLastOkCall
+bind value reverseLastOk Bool reverseLastOkCall
+branch if condition reverseLastOk target reverseLastHolds
+jump target smokeAssertionFailed
+label reverseLastHolds
+
+call bufferCopyResetCall buffer.copy
+argument bufferCopyResetCall destinationBuffer OpaquePointer workingBuffer
+argument bufferCopyResetCall sourceBuffer OpaquePointer helloLiteral
+argument bufferCopyResetCall byteCount ByteCount bufferByteCount
+run bufferCopyResetCall
+ignore value source bufferCopyResetCall type ByteCount
+
+call moveDestinationOffsetCall pointer.offset
+argument moveDestinationOffsetCall base OpaquePointer workingBuffer
+argument moveDestinationOffsetCall offset ByteCount 1
+run moveDestinationOffsetCall
+bind value moveDestination OpaquePointer moveDestinationOffsetCall
+
+storage module immutable moveByteCount ByteCount 4
+call bufferMoveCall buffer.move
+argument bufferMoveCall destinationBuffer OpaquePointer moveDestination
+argument bufferMoveCall sourceBuffer OpaquePointer workingBuffer
+argument bufferMoveCall byteCount ByteCount moveByteCount
+run bufferMoveCall
+ignore value source bufferMoveCall type ByteCount
+
+call bufferMoveEqualCall bytes.equal
+argument bufferMoveEqualCall leftBuffer OpaquePointer workingBuffer
+argument bufferMoveEqualCall rightBuffer OpaquePointer expectedMoveText
+argument bufferMoveEqualCall byteCount ByteCount bufferByteCount
+run bufferMoveEqualCall
+bind value bufferMoveEqualResult Bool bufferMoveEqualCall
+branch if condition bufferMoveEqualResult target bufferMoveHolds
+jump target smokeAssertionFailed
+label bufferMoveHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
+label heapAllocationFailedHandler
+makeError heapAllocationFailure MainError.MemoryAllocationFailed allocBufferError
+return error heapAllocationFailure
+
+label smokeAssertionFailed
+makeError bufferSmokeFailure MainError.BufferSmokeAssertionFailed
+return error bufferSmokeFailure

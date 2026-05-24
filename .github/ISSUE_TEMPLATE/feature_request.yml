@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a focused improvement for SemanticScript.
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow, language gap, or tooling limitation should this solve?
+      placeholder: When writing SemanticScript programs, it is hard to...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the behavior, syntax, API, or editor support you want.
+      placeholder: Add support for...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention workarounds, rejected designs, or compatibility concerns.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Language design
+        - Compiler
+        - Linter
+        - Runtime
+        - VS Code extension
+        - Documentation
+        - Experiment or sample app
+    validations:
+      required: true

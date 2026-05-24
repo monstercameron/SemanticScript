@@ -8,31 +8,31 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Three writeLine calls with three distinct string consts."
-invariant main "Order matches source."
+purpose operation main "Three writeLine calls with three distinct string consts."
+invariant operation main "Order matches source."
 label startMain
-const firstText CNullTerminatedByteString "first"
-const secondText CNullTerminatedByteString "second"
-const thirdText CNullTerminatedByteString "third"
+storage module immutable firstText String "first"
+storage module immutable secondText String "second"
+storage module immutable thirdText String "third"
 call writeFirstCall console.writeLine
-arg writeFirstCall console console
-arg writeFirstCall text firstText
+argument writeFirstCall console Console console
+argument writeFirstCall text String firstText
 run writeFirstCall
-ignoreOk writeFirstCall Void
+ignore void source writeFirstCall
 call writeSecondCall console.writeLine
-arg writeSecondCall console console
-arg writeSecondCall text secondText
+argument writeSecondCall console Console console
+argument writeSecondCall text String secondText
 run writeSecondCall
-ignoreOk writeSecondCall Void
+ignore void source writeSecondCall
 call writeThirdCall console.writeLine
-arg writeThirdCall console console
-arg writeThirdCall text thirdText
+argument writeThirdCall console Console console
+argument writeThirdCall text String thirdText
 run writeThirdCall
-ignoreOk writeThirdCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeThirdCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

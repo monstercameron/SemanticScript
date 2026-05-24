@@ -1,6 +1,87 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: mathematical constants
+# ============================================================
+#
+# rationale: companion test file for std/constants/main.sem.
+#   Imports the constants module and verifies the headline
+#   constants round-trip to their expected double-precision
+#   literals.
+#
+# invariant: success prints "OK\n" and exits 0; any failed
+#   assertion surfaces MainError.ConstantsSmokeAssertionFailed.
+#
+# pattern: canonical main.test.sem form — same directory as
+#   main.sem, import the module, project block local to the test,
+#   entry console main. The implementation file
+#   std/constants/main.sem carries no smoke main itself.
+
 project StdConstantsTest
 target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.constants
+import constants standard.constants
+error MainError
+errorCase MainError ConstantsSmokeAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+# section capability
+# rationale: smoke-test main writes a single OK line to stdout.
+capability stdoutWriteCapability console.stdout write
+
+# ============================================================
+# Smoke test
+# ============================================================
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Verify the headline constants round-trip to expected literals."
+invariant operation main "Pi resolves to 3.141592653589793; Euler's number to 2.718281828459045."
+
+label startMain
+
+storage module immutable piExpectedValue Float64 3.141592653589793
+call checkPiCall math.equalFloat64
+argument checkPiCall left Float64 mathematicalPiFloat64
+argument checkPiCall right Float64 piExpectedValue
+run checkPiCall
+bind value piOk Bool checkPiCall
+branch if condition piOk target piHolds
+branch else target smokeAssertionFailed
+label piHolds
+
+storage module immutable eulerExpectedValue Float64 2.718281828459045
+call checkEulerCall math.equalFloat64
+argument checkEulerCall left Float64 mathematicalEulerNumberFloat64
+argument checkEulerCall right Float64 eulerExpectedValue
+run checkEulerCall
+bind value eulerOk Bool checkEulerCall
+branch if condition eulerOk target eulerHolds
+branch else target smokeAssertionFailed
+label eulerHolds
+
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+# Failure leg: surface the raw negative Int32 from
+# console.writeLine as the cause attached to the typed
+# MainError.ConsoleWriteFailed variant.
+label consoleWriteFailedHandler
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
+return error consoleWriteFailedFailure
+label smokeAssertionFailed
+makeError constantsSmokeFailure MainError.ConstantsSmokeAssertionFailed
+return error constantsSmokeFailure

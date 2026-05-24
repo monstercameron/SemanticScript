@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.persistence_tx
+purpose module app.realtime_auction_arena.server.tests.persistence_tx "Unit coverage contract for server/src/persistence_tx.sem."
+moduleOwns app.realtime_auction_arena.server.tests.persistence_tx "Executable begin/commit/rollback transaction helper coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.persistence_tx "SQLite runtime internals, schema DDL, or command handler domain writes."
+invariant module app.realtime_auction_arena.server.tests.persistence_tx "Command handlers must use persistence_tx helpers instead of raw sqlite.exec transaction-control rows."
+
+storage module immutable persistenceTxUnitTestPlanSummary String "server/src/persistence_tx.sem coverage: beginSqliteCommandTransaction opens BEGIN IMMEDIATE, commitSqliteCommandTransaction commits, rollbackSqliteCommandTransaction rolls back through a user-operation defer target, and auth/auction/chat handlers no longer defer raw sqlite.exec rollback rows."
+
+operation getPersistenceTxUnitTestPlan
+output operation getPersistenceTxUnitTestPlan String
+memory getPersistenceTxUnitTestPlan heap no
+async getPersistenceTxUnitTestPlan no
+purpose operation getPersistenceTxUnitTestPlan "Return the persistence transaction helper coverage summary."
+return value persistenceTxUnitTestPlanSummary

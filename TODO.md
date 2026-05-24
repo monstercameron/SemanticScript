@@ -3,6 +3,189 @@
 This file tracks the release-readiness gaps found in the 2026-05-18 project
 review. A task is only done when the linked command or artifact is clean.
 
+## P0 - True Nonblocking Async Runtime
+
+This is a product target, not a documentation cleanup item. The current
+synchronous fallback is useful compatibility behavior, but it is not the real
+async system. The real backend is done only when `await` yields the current
+SemanticScript operation to a runtime-owned event loop, resumes through a
+generated continuation frame, and does not block the caller's C stack while the
+future is pending.
+
+- [ ] Promote `asyncRuntime PROJECT libuv` from experiment to true nonblocking
+      backend.
+  - [ ] Keep `asyncRuntime PROJECT none` as the deterministic synchronous
+        fallback and name it explicitly in diagnostics/docs.
+  - [ ] Make `asyncRuntime PROJECT libuv` fail fast if continuation-frame
+        lowering is not enabled for a source shape that uses async.
+  - [ ] Add a compiler/backend mode flag that distinguishes synchronous
+        fallback, blocking prototype, and real continuation async.
+  - [ ] Add `sem check --json` readiness facts for selected async backend,
+        available native runtime libraries, and unsupported lowering paths.
+  - [ ] Add release notes that say adapter-level futures and blocking await
+        helpers are not sufficient to claim true async support.
+- [ ] Define the hard nonblocking contract.
+  - [ ] `await CALL` stores the next state in a heap frame, registers a resume
+        continuation with the awaited future, and returns to the event loop.
+  - [ ] `await WAIT_SET` stores selected-case state in the frame and resumes the
+        parent operation when one case is ready; it must not spin or nested-run
+        the loop in production lowering.
+  - [ ] Generated async code must not call `ss_async_future_await` on the
+        production path; that helper remains only for compatibility demos and
+        blocking console experiments.
+  - [ ] The original C stack frame must not remain active while an async
+        operation is suspended.
+  - [ ] Native webserver and GUI adapters must not nested-run libuv inside their
+        own handler/message loops.
+  - [ ] Async operations must have an explicit lifecycle: completed, cancelled,
+        timed out, detached, or failed with a typed runtime status.
+- [ ] Implement compiler continuation-frame lowering in `semsc.py`.
+  - [ ] Allocate one heap frame per async operation invocation.
+  - [ ] Generate a frame struct containing state discriminator, spilled locals,
+        pending future handles, result slots, error slots, cleanup flags, and
+        caller continuation metadata.
+  - [ ] Generate a resume function per async operation with a state switch for
+        entry and every `await` point.
+  - [ ] Spill every local live across `await` into the frame before yielding.
+  - [ ] Materialize future results and errors after resume, not before yield.
+  - [ ] Preserve `bind value`, `bind ok`, `bind error`, `branch error`, and
+        `ignore` behavior after async materialization.
+  - [ ] Lower async user-operation `start CALL` to create a child frame/future
+        without running the whole child to completion on the caller stack.
+  - [ ] Lower async native `runtimeBindingAsyncStart` /
+        `runtimeBindingAsyncAwait` operations so `start` creates/returns a
+        future and `await` registers continuation state instead of blocking.
+  - [ ] Ensure generated code rejects an async-only runtime binding reached by
+        `run CALL` with an actionable diagnostic.
+  - [ ] Ensure generated code rejects `await CALL` when the call was never
+        started, already awaited, consumed by a wait-set case, or detached.
+  - [ ] Ensure generated code rejects loop/reentry shapes that would restart the
+        same future name instead of creating a fresh future.
+- [ ] Replace wait-set polling with continuation scheduling.
+  - [ ] Keep source syntax `await WAIT_SET`, `case CALL LABEL`, and
+        `done LABEL` unchanged.
+  - [ ] Register one continuation against each unconsumed future in the wait
+        set.
+  - [ ] Select exactly one ready case per resume turn and store the selected
+        call in the frame.
+  - [ ] Mark selected cases consumed before jumping to the handler label.
+  - [ ] Resume the done label only after every case in the current wait-set
+        batch is consumed.
+  - [ ] Preserve existing validation that case labels are private handler
+        targets and must re-enter the wait-set until all cases are consumed.
+- [ ] Make cleanup correct across suspension.
+  - [ ] Run ordinary `defer` and `deferLog` cleanup on normal return, error
+        return, timeout, and cancellation.
+  - [ ] Implement `deferAwaitLog` with the same frame/resume mechanism instead
+        of blocking the event loop.
+  - [ ] Track which defers were registered before each suspension point.
+  - [ ] Free or release every completed future on all return paths.
+  - [ ] Prove cancelled timers, queued work requests, pending event receives,
+        and HTTP fetch futures do not leak handles or frame memory.
+- [ ] Make timeout and cancellation real future boundaries.
+  - [ ] Attach `timeout CALL DURATION` to the call future through a runtime
+        timer owned by the async loop.
+  - [ ] Attach `cancelOn CALL TOKEN` to the call future and retain/release the
+        token safely while work is pending.
+  - [ ] Resume the waiting operation with a typed timeout or cancellation status
+        without blocking the loop.
+  - [ ] Define race ordering when completion, timeout, and cancellation happen
+        in the same loop turn.
+  - [ ] Add deterministic tests for completion-before-timeout,
+        timeout-before-completion, cancellation-before-start, and
+        cancellation-while-pending.
+- [ ] Finish the native async runtime ABI.
+  - [x] Add a loop-owned ready queue so continuations resume on the event-loop
+        thread, not from arbitrary worker/timer callbacks.
+  - [x] Add `ss_async_future_on_ready` coverage that proves callbacks are queued
+        safely when a future is already ready and when it completes later.
+  - [ ] Add future reference/lifetime rules so a future cannot be destroyed
+        while a continuation is registered.
+  - [ ] Add cancellation-safe timer destruction and work request cleanup tests.
+  - [ ] Add runtime shutdown semantics for pending futures, detached tasks, and
+        open timers.
+  - [ ] Add debug/provenance hooks for future creation, completion, resume,
+        cancellation, timeout, and destruction.
+- [ ] Make structured concurrency truly asynchronous.
+  - [ ] Replace `taskGroup` direct-dispatch fallback in the libuv backend with a
+        group object that owns child futures.
+  - [ ] Lower `startInGroup` to start child futures without blocking the parent.
+  - [ ] Lower `awaitGroup` to suspend the parent until all children complete or
+        group policy fires.
+  - [ ] Implement group error aggregation and `bindGroupError` materialization.
+  - [ ] Implement sibling cancellation policy for failure/timeout cases.
+  - [ ] Add tests proving sibling work overlaps and parent resumes only after
+        the group reaches its policy-defined terminal state.
+- [ ] Make worker pools truly asynchronous.
+  - [ ] Map `workerPool`, `work`, `workArg`, `submitWork`, and `awaitWork` to
+        runtime futures in the libuv backend.
+  - [ ] Ensure worker callbacks never touch generated SemanticScript frame state
+        directly.
+  - [ ] Ensure after-work callbacks publish results on the loop thread and then
+        schedule the awaiting continuation.
+  - [ ] Define worker-pool sizing and backpressure beyond libuv's global
+        `UV_THREADPOOL_SIZE` if product scheduling needs it.
+  - [ ] Add tests proving submitted work does not run inline on the caller stack
+        under the real async backend.
+- [ ] Make channels, select, locks, and intervals real runtime features.
+  - [ ] Replace single-slot channel fallback with bounded async queues in the
+        libuv backend.
+  - [ ] Implement send/receive suspension and wakeup without busy-waiting.
+  - [ ] Implement channel close and `branchIfChannelClosed` semantics.
+  - [ ] Implement async `select` over channel readiness, futures, timers, and
+        cancellation tokens.
+  - [ ] Implement mutex acquire/release with suspension or documented
+        loop-thread affinity rules.
+  - [ ] Implement `interval`, `startInterval`, and `awaitIntervalTick` with
+        loop timers and no synchronous fallthrough in the real backend.
+- [ ] Integrate `standard.event` with the real async model.
+  - [ ] Keep `ss_event_receive_start` as the pending receive registration point.
+  - [ ] Replace generated `ss_event_receive_await` blocking waits with
+        continuation registration/resume.
+  - [ ] Ensure append/close completes pending receives by scheduling their
+        waiters on the loop thread.
+  - [ ] Add tests proving two subscribers can await one event without blocking
+        the emitter or each other.
+  - [ ] Add cancellation and timeout tests for pending receives under the real
+        backend.
+- [ ] Integrate native HTTP client with the real async model.
+  - [ ] Replace generated `ss_http_client_fetch_text_await` blocking waits with
+        continuation registration/resume.
+  - [ ] Decide whether the production HTTP backend remains `uv_queue_work` plus
+        libcurl easy API or moves to libcurl `multi_socket` plus `uv_poll_t`.
+  - [ ] If using `multi_socket`, drive DNS, connect, TLS handshake, write, and
+        response read phases from the event loop.
+  - [ ] Add tests proving two outbound fetches can overlap and complete out of
+        order without blocking the parent operation.
+  - [ ] Add tests proving response body ownership and cleanup are safe after
+        resumed await.
+- [ ] Define event-loop ownership per target.
+  - [ ] Console MVP: one runtime-owned loop for the process, one async root
+        operation, clean loop shutdown after root completion.
+  - [ ] Webserver: do not allow nonblocking route-handler async until the native
+        HTTP server adapter has an event-loop handler model.
+  - [ ] GUI: do not allow libuv nested-run inside a GUI message loop; define
+        pump integration or explicitly reject the combination.
+  - [ ] Long-lived streaming/SSE: define how handler lifetimes, cancellation,
+        backpressure, and async subscriptions interact before claiming support.
+- [ ] Add executable tests and diagnostics proving the backend is nonblocking.
+  - [ ] Add compiler tests that inspect IR for frame allocation, resume switch,
+        `ss_async_future_on_ready`, and absence of `ss_async_future_await` on
+        real async paths.
+  - [ ] Add runtime tests for future continuation ordering, ready-before-await,
+        await-before-ready, cancellation, timeout, and destruction.
+  - [ ] Add feature tests where a parent starts two delayed operations and the
+        shorter one completes first through a wait set.
+  - [ ] Add feature tests where a parent starts child work and continues to the
+        next source row before the child completes.
+  - [ ] Add feature tests for async cleanup after suspension.
+  - [ ] Add app smoke tests that fail if async work is actually serialized by
+        blocking waits.
+  - [ ] Add benchmark coverage for thousands of timers/futures to catch hidden
+        busy-waiting and per-await nested loop runs.
+  - [ ] Add linter/compiler diagnostics that clearly say when source is using
+        synchronous fallback rather than the true nonblocking backend.
+
 ## P0 - Todo Web Native Webserver Effort
 
 - [x] Add a granular root TODO section for the Todo Web native webserver work.
@@ -25,7 +208,7 @@ review. A task is only done when the linked command or artifact is clean.
 - [x] Detect routed `webServer` declarations during no-entry codegen.
 - [x] Collect route handler operation names before declaring user op functions.
 - [x] Validate that route handlers declare `HttpRequest` then `HttpResponse`.
-- [x] Validate that route handlers return `CSignedInt32` / i32.
+- [x] Validate that route handlers return `Int32` / i32.
 - [x] Emit a real native `main` for routed webserver programs.
 - [x] Emit an in-memory route table from `route` metadata.
 - [x] Emit native server config from `serverHost`, `serverPort`, and routes.
@@ -76,7 +259,7 @@ review. A task is only done when the linked command or artifact is clean.
 - [x] Test native executable emission.
 - [x] Test server startup from the native executable.
 - [x] Test `GET /` returns HTTP 200.
-- [x] Test `GET /` returns `hello from todo web`.
+- [x] Test `GET /` returns the TaskForge Web HTML shell.
 - [x] Test `GET /?sample=1` still routes to `/`.
 - [x] Test `GET /missing` returns HTTP 404.
 - [x] Test 404 body is `not found`.
@@ -93,22 +276,583 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] Fix `string_analyzer.sscript` parity: JS reports `characters: 104`
         and SemanticScript reports `characters: 101`; top-word ordering also
         differs (`favors` vs `semanticscript` in the fifth slot).
-- [x] Fix `python SemanticScript\tests\sem_compiler_parity.py`.
-  - [x] Fix `string_analyzer.sscript` parity under `bootstrap_general`.
-  - [x] Fix `webserver_console.sscript` long-running parity under
-        `bootstrap_general`.
-- [x] Fix unexpected failures in `python SemanticScript\tests\feature_coverage.py`.
-  - [x] `121_cross_file_import.sscript`: emitted IR contains
-        `%addSevenCall_res = add i64 35, %`.
-  - [x] `88_string_byte_scan_loop.sscript`: expected `14\n`, actual `17\n`.
-  - [x] `89_pointer_returning_recursion.sscript`: expected `ipt\n`, actual
-        `script\n`.
-  - [x] `92_c_fopen_fclose.sscript`: expected `opened\n` and exit `0`, actual
-        empty stdout and exit `1`.
-- [x] Decide how to treat the 30 `expect.xfail` feature tests before 1.0.
-  - [ ] Either close the bootstrap gaps and remove the xfail markers.
-  - [x] Or explicitly scope 1.0 to the Python reference compiler and document
-        `bootstrap_general.sscript` as experimental/self-hosting progress.
+- [x] Decide how to treat the 30 expected-failure feature tests before 1.0.
+  - [x] Scope 1.0 to the Python reference compiler.
+  - [x] Remove the stale compiler-stage xfail workflow from the active tree.
+
+## P0 - 2026-05-23 Production Readiness Sweep
+
+This five-pass sweep reran `python SemanticScript/tests/run_suite.py ci-fast`,
+`python -m unittest SemanticScript.tests.test_app_runtime_smoke -v`,
+`python apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`,
+`python apps/taskforge-web/scripts/test_taskforge_web.py`,
+`npm --prefix vscode-semanticscript run check`, and a repo-wide
+`sem check --json` pass over every first-party `build.sem` surface.
+
+Current `sem check --json` project sweep status:
+
+- green: `apps/desktop-window-smoke`, `apps/event-stream-smoke`,
+      `apps/html-template-lab`, `experiments/realtime-auction-arena/win32-auctioneer`
+- green-with-warnings: `apps/http-runtime-gauntlet`,
+      `apps/taskforge-api-client`, `apps/taskforge-tui`,
+      `experiments/kilo-port`, `experiments/realtime-auction-arena/server`
+- red: `apps/taskforge-web`,
+      `experiments/realtime-auction-arena/browser-sse-client`
+
+### Pass 1 - Supported Surface Inventory
+
+- [ ] Add a machine-readable supported-surface manifest.
+  - [ ] Separate supported 1.0 product surfaces from experiments, reference
+        examples, and research trees.
+  - [ ] Validate README/docs claims against that manifest so a red surface
+        cannot still be described as a working flagship demo.
+  - [ ] Decide whether `apps/taskforge-web` remains a supported 1.0 surface
+        while semantic preflight is red.
+  - [ ] Decide whether
+        `experiments/realtime-auction-arena/browser-sse-client` should stay in
+        generic project sweeps while `sem check --json` is red.
+
+### Pass 2 - CI And Command Contracts
+
+- [ ] Get `ci-fast` green again.
+  - [ ] Fix the stale expectations in
+        `SemanticScript/tests/test_command_contracts.py` for
+        `sem test --json experiments/realtime-auction-arena/server`; the
+        surface is now `ok-with-warnings`, so the tests should stop expecting a
+        red preflight exit.
+  - [ ] Add a fast project sweep that runs `sem check --json` for every
+        first-party `build.sem` project so supported-surface regressions are
+        caught before native-build lanes.
+- [ ] Tighten app-harness preflight contracts.
+  - [ ] Make `apps/taskforge-web/scripts/test_taskforge_web.py` run
+        `sem check --json` or `SemanticScript/linter/semlint.py --summary`
+        instead of treating `semsc.py --lint --parse-only` as the lint gate.
+  - [ ] Align `SemanticScript/tests/test_app_runtime_smoke.py` and the
+        app-local harness output so a project cannot print `lint clean` while
+        the same surface is red under `sem check`.
+- [ ] Add real VS Code extension behavior tests.
+  - [ ] Keep `npm run check` for syntax/JSON validation.
+  - [ ] Add a minimal activation/command smoke so packaging proves more than
+        `extension.js` syntax and static JSON validity.
+
+### Pass 3 - Supported App Surface Repairs
+
+- [ ] Repair `apps/taskforge-web` against the current strict import,
+      capability, and type contract.
+  - [ ] Replace private or renamed `standard.sqlite` call sites such as
+        `sqlite.exec` with the exported surface that the current compiler and
+        linter accept.
+  - [ ] Fix implicit singular-import drift such as `openLogFile`, `logInfo`,
+        and `logWarn` so the app matches the current import contract.
+  - [ ] Repair the missing capability/value declarations and current type
+        mismatches called out by `sem check --json apps/taskforge-web`.
+  - [ ] Re-run `python apps/taskforge-web/scripts/test_taskforge_web.py` and
+        `python -m unittest SemanticScript.tests.test_app_runtime_smoke -v`.
+- [ ] Burn down warning noise on supported green apps.
+  - [ ] Clear the remaining warning-only `sem check` findings in
+        `apps/http-runtime-gauntlet`, `apps/taskforge-api-client`, and
+        `apps/taskforge-tui` so the supported lane has less diagnostic fog.
+  - [ ] Add per-app warning budgets when a warning is intentionally deferred.
+
+### Pass 4 - Experiment Containment
+
+- [ ] Decide what "green enough" means for experiments.
+  - [ ] Either repair
+        `experiments/realtime-auction-arena/browser-sse-client` until
+        `sem check --json` is green or explicitly exclude it from generic
+        supported-surface and release sweeps.
+  - [ ] Triage the auction server's warning-heavy preflight so intentionally
+        deferred warnings are separated from useful signal.
+  - [ ] Document which experiment surfaces may stay warning-heavy and which
+        ones must stay clean to preserve agent trust in `sem check`.
+
+### Pass 5 - Release, Docs, And Encoding Hygiene
+
+- [ ] Remove stale security-contact wording from release tracking.
+  - [x] `SECURITY.md` no longer contains the literal public-release placeholder
+        text.
+  - [ ] Update `RELEASE.md` and this TODO so the remaining work is choosing a
+        monitored reporting channel, not "replacing a placeholder."
+  - [ ] Publish an actual vulnerability-reporting channel and
+        acknowledgement window before any public release.
+- [ ] Add release-manifest tooling instead of manifest policy prose only.
+  - [ ] Add a `releases/` tree or a generator that writes
+        `releases/<TAG>/manifest.json`.
+  - [ ] Fail release validation when that manifest is missing for a public tag.
+- [ ] Normalize UTF-8 text and add a mojibake scan.
+  - [ ] Fix the current mojibake sequences in first-party docs and
+        standard-library comments.
+  - [ ] Add a repo check that fails on obvious mojibake outside `third_party/`.
+- [ ] Reconcile docs with observed support after the supported/experimental
+      surface decisions land.
+
+## P1 - Agent Product Contract Parity
+
+This section tracks the highest-value gaps found during the Zerolang comparison.
+The goal is not to copy their syntax or implementation. The goal is to make
+SemanticScript feel like one coherent, inspectable, repairable product for
+agents: one obvious tool surface, version-matched rules, stable JSON contracts,
+diagnostics that explain how to recover, and release checks that prove those
+contracts do not drift.
+
+The platform thesis to validate is:
+
+```text
+high-context source format
++ deterministic compiler/linter
++ JSON diagnostics
++ repair plans
++ source slicing
++ patch application
++ runnable examples
++ tight docs/skills for agents
+```
+
+If SemanticScript already has better repair geometry in the source, then the
+tooling has to prove it moment-to-moment. The winning loop is one where the
+agent never has to guess.
+
+### Agent-First Tooling Pass - 2026-05-23
+
+These items came directly from
+`experiments/agent-first-tooling-research/README.md` and were implemented as a
+first-pass agent contract in `SemanticScript/tools/sem.py`.
+
+- [x] Add `sem version --json` and `sem --version --json`.
+      The CLI now emits a machine-readable tool/version/runtime/syntax payload
+      instead of only human text.
+
+- [x] Add `sem check --json`.
+      The wrapper now emits `sem.check.v1` with project facts, diagnostics,
+      summary counts, unresolved references, runtime flags, and a target-
+      readiness contract instead of requiring agents to scrape prose.
+
+- [x] Add version-matched built-in skills through `sem skills list|get`.
+      The first pass serves repository-backed skill payloads for language core,
+      effects/capabilities, graph/slice workflows, TaskForge patterns, SQLite
+      patterns, HTTP/HTML patterns, and patch/repair guidance.
+
+- [x] Add `sem explain CODE` with JSON support.
+      The first pass indexes current docs and linter tests so diagnostic codes
+      are discoverable through one machine-readable explainer surface.
+
+- [x] Add `sem graph --kind ... --json`.
+      Implemented graph kinds: `summary`, `calls`, `effects`, `capabilities`,
+      `auth`, `routes`, `dataflow`, `types`, and `ownership`.
+
+- [x] Add structured readiness reporting.
+      `sem readiness --json` now reports requested targets, required runtime
+      adapters, missing adapters, blocking toolchain checks, partial toolchain
+      checks, and a supported/partial/blocked status. `sem check --json` now
+      embeds the same readiness contract instead of a placeholder.
+
+- [x] Add `sem size --json`.
+      The first pass reports source footprint, operation/call/route counts, and
+      retained helper-family counts so agents can inspect artifact pressure
+      without dropping straight into LLVM or backend internals.
+
+- [x] Add `sem slice --json`.
+      Implemented operation, route, symbol, effect, capability, and type
+      anchors with neighborhood payloads that include semantic facts, callers,
+      routes, and related docs/tests when discoverable.
+
+- [x] Add `sem fix --plan --json`.
+      The first pass generates structured reviewable repair plans from current
+      diagnostics, including inline authority insertion for capability-coverage
+      gaps and metadata-row insertion templates for missing purpose/invariant
+      rows.
+
+- [x] Add `sem patch --dry-run|--apply`.
+      Patch application now consumes structured plan JSON, applies typed edits,
+      rejects stale plans when target files drift, runs formatter normalization
+      on apply, and returns a machine-readable verification payload.
+
+- [x] Add `sem dev --json`.
+      The first pass emits a watch-plan style contract with watched files,
+      rerun actions, restart hints, interface fingerprints, trace intent, and
+      target readiness facts for multi-step agent loops.
+
+- [x] Add `sem test --json`.
+      The first pass discovers SemanticScript `*.test.sem` / `*.test.sscript`
+      files plus Python app harnesses, runs them through a structured result
+      contract, and supports skipping Python harness execution when needed.
+
+- [x] Add focused CLI contract tests for the new agent surfaces.
+      `SemanticScript/tests/test_sem_cli.py` now covers check payloads, graph,
+      slice, readiness, size, dev, skills, explain, fix-plan generation, test,
+      patch application, and version JSON behavior.
+      `SemanticScript/tests/test_command_contracts.py` now covers the actual
+      subprocess command contracts for version, doctor, readiness, skills,
+      check, explain, graph, slice, fix, patch, size, dev, and test.
+
+- [x] Add explicit next-step guidance to the core JSON contracts.
+      `sem check`, `sem readiness`, `sem explain`, `sem fix --plan`, `sem patch`,
+      and `sem test` now return `nextCommands` entries so an agent can follow
+      the local repair loop from the tool payload itself.
+
+- [x] Make `sem check --json` the non-negotiable source of truth for structured
+      diagnostics.
+      This is table stakes. Every serious compiler or linter failure that an
+      agent is expected to respond to should surface through one stable JSON
+      contract with code, severity, message, span, expected/actual facts, and
+      repair metadata.
+  - [x] Add a canonical schema example to the CLI docs and tests, including
+        fields equivalent to:
+        `code`, `severity`, `message`, `span.file`, `span.line`,
+        `span.column`, `expected`, `actual`, and `repair.id`.
+  - [x] Fail command-contract tests on prose-only regressions or missing
+        machine-readable repair hints.
+
+- [x] Add version-matched agent skills served by the local toolchain.
+      `sem skills list` and `sem skills get NAME` should expose the exact
+      language, diagnostics, stdlib, build, testing, and package guidance that
+      matches the compiler currently being used. This removes guesswork for
+      agents and prevents stale docs from silently steering edits against the
+      wrong binary or syntax contract.
+  - [x] Define the canonical skill names:
+        `sem`, `sem-agent`, `sem-language`, `sem-diagnostics`,
+        `sem-stdlib`, `sem-builds`, `sem-packages`, and `sem-testing`.
+  - [ ] If skills move to generated or embedded payloads, add release
+        validation that fails when the shipped skill content is stale.
+  - [x] Document the workflow in `docs/agents.md` and `README.md`: agents load
+        the matching skill from the same `sem` binary that will check or build
+        the project.
+
+- [x] Make the agent-facing CLI contract obvious and stable.
+      The public workflow should be readable as:
+      `sem check --json`, `sem graph --json`, `sem slice --json`,
+      `sem context --json`, `sem symbols --json`, `sem inspect-ir`,
+      `sem size --json`, `sem explain CODE`, and
+      `sem fix --plan --json`. Each command should have a crisp purpose,
+      versioned JSON, and copyable examples in one CLI reference page.
+  - [ ] Lock the ownership boundary between the primary retrieval surfaces
+        (`graph`, `slice`) and the lower-level public fallbacks
+        (`context`, `symbols`, `inspect-ir`).
+  - [x] Add `sem size --json` or an equivalent command that explains retained
+        runtime helpers, artifact budgets, profile policy, and optimization
+        hints without requiring users to inspect LLVM IR.
+  - [x] Add `sem explain CODE` as the human and JSON entry point for compiler
+        and linter diagnostic codes.
+
+- [ ] Unify compiler and linter diagnostics around repair metadata.
+      Extend the existing `sem.check.v1` diagnostic shape until compiler
+      diagnostics and `semlint` diagnostics share one common
+      agent contract: stable code, severity, source span, expected/actual facts,
+      rule text, help text, fix safety, repair id, related spans, and links to
+      `sem explain`. Agents should be able to triage from JSON without scraping
+      terminal prose or guessing whether a fix is local, behavior-preserving,
+      API-changing, or requires human review.
+  - [ ] Fully align compiler and linter fields inside `sem.check.v1`,
+        including safety labels, related spans, and explain coverage.
+  - [ ] Add fix-safety labels across compiler and linter output:
+        `format-only`, `behavior-preserving`, `local-edit`, `api-changing`,
+        `target-changing`, and `requires-human-review`.
+  - [ ] Map existing `SS####` linter codes and compiler/backend failures into
+        `sem explain` entries with canonical repair descriptions.
+
+- [x] Add typed repair-plan support.
+      `sem fix --plan --json PATH` should propose reviewable repairs without
+      editing files. The first milestone can be plan-only for high-confidence
+      failures such as unknown import, missing capability proof, unchecked
+      fallible call, formatting drift, target capability mismatch, and obvious
+      typo-class unknown names. The feature is valuable only if every proposed
+      edit names its safety level and evidence.
+      The output shape should be explicit enough to drive a later patch step:
+      `diagnostic`, `repair`, `safe`, `file`, `insert_after_line`,
+      `replace_range`, and exact emitted text.
+  - [x] Implement plan-only output before any `--apply` behavior.
+  - [x] Add negative tests proving risky repairs are labeled
+        `requires-human-review` instead of auto-applicable.
+  - [ ] Surface repair plans through the VS Code extension as quick-fix
+        previews once the CLI contract is stable.
+
+- [x] Add `sem slice` as the semantic-neighborhood retrieval tool.
+      This is the most important differentiator if we want to beat compact
+      languages on agent reliability. Agents rarely need the whole repo; they
+      need the right semantic neighborhood with direct links to callers,
+      callees, effects, capabilities, invariants, error paths, tests, and docs.
+  - [x] Support operation-focused retrieval such as
+        `sem slice --operation createTodoHandler --json`.
+  - [x] Support route, symbol, effect, and capability retrieval such as
+        `--route POST:/api/todos`, `--symbol serverPortNumber`,
+        `--effect database`, and `--capability session.user`.
+  - [x] Define one stable JSON shape containing at least:
+        operation, inputs, outputs, effects, capabilities, called operations,
+        callers, types, error paths, invariants, tests, and related docs.
+
+- [x] Add `sem graph --json` as a first-class architecture map.
+      The point is to hand agents a map instead of forcing them to reverse-
+      engineer architecture from grep. The initial kinds should cover the
+      surfaces most relevant to repair work: calls, effects, capabilities,
+      routes, auth, types, and dataflow.
+  - [x] Add graph kinds for `calls`, `effects`, `routes`, `auth`, and
+        `dataflow`.
+  - [x] Ensure `sem graph --kind ... --json` is contract-tested, not just
+        documented.
+
+- [x] Add `sem patch` for safe patch application and verification.
+      `sem fix --plan --json` should propose; `sem patch` should apply or
+      preview exactly those machine-readable edits. The CLI should support both
+      dry runs and real application, followed by `sem check` and `sem test`
+      verification in the happy path.
+  - [x] Add `sem patch --dry-run PLAN.json`.
+  - [x] Add `sem patch --apply PLAN.json`.
+  - [x] Reject patch plans whose target file or context no longer matches.
+
+- [x] Add command-contract tests for the agent JSON surface.
+      Release validation should assert the shape and key fields of every JSON
+      command that agents consume. These tests should fail on accidental schema
+      drift, missing fields, prose-only regressions, changed version strings,
+      unstable target facts, and lost diagnostic repair metadata.
+  - [x] Add `SemanticScript/tests/test_command_contracts.py` or an equivalent
+        focused harness.
+  - [ ] Snapshot `sem --version --json`, `sem doctor --json`,
+        `sem context --json`, `sem symbols --json`, `sem inspect-ir`,
+        `sem lint --format json`, `sem size --json`, `sem explain --json`,
+        `sem fix --plan --json`, `sem slice --json`, and
+        `sem graph --kind ... --json`.
+  - [x] Wire command-contract tests into CI and focused release validation.
+
+- [x] Make `sem explain SSxxxx` a teaching surface, not just a code lookup.
+      Diagnostics should explain what the rule means, why it matters, valid and
+      invalid examples, safe repairs, and related diagnostics. This is how the
+      toolchain teaches the agent the language instead of forcing it to guess.
+  - [x] Return both text and JSON forms.
+  - [ ] Expand curated coverage beyond the first-pass `SS####` and `SSRUN001`
+        entries so compiler/backend diagnostics, examples, and severity
+        metadata have the same depth.
+
+- [x] Promote target readiness and capability facts to a first-class contract.
+      SemanticScript already models effects, capabilities, runtimes, and build
+      profiles, but agents need one direct answer to "will this build for this
+      target and why?" Add a structured target-readiness report that separates
+      source validity from backend availability, runtime adapter support,
+      required capabilities, missing toolchains, and expected artifact shape.
+  - [x] Add target readiness to `sem check --json` or a dedicated
+        `sem targets --json` / `sem readiness --json` command.
+  - [ ] Include runtime adapter facts for HTTP, SQLite, JSON, bcrypt, GUI,
+        native async, and native HTTP client support.
+  - [ ] Add repair guidance for choosing a supported target, installing a
+        missing toolchain, or moving code behind a target-specific boundary.
+
+- [x] Tighten the public README around the product path.
+      The README should lead with install, check, run, inspect, repair, and
+      validate before deeper philosophy. SemanticScript's philosophy is a
+      strength, but first-time users and agents need the shortest path from
+      checkout to useful compiler facts.
+  - [x] Add a compact "Agent Workflow Interfaces" section with the canonical
+        JSON and repair commands.
+  - [x] Add a concise top-level sem-first quick path before the long philosophy
+        sections so the first usable workflow is visible immediately.
+  - [x] Ensure the representative README command set is copyable from a fresh
+        checkout and has matching CI or release-validation coverage.
+
+- [x] Treat `sem fmt` as mandatory platform infrastructure.
+      A verbose language needs a formatter more than a compact one. Agent output
+      has to normalize perfectly so diffs stay semantic and repair plans have
+      stable landing zones.
+  - [x] Make formatter behavior part of the public CLI contract.
+        `sem fmt --check` is now part of the documented sem-first loop and has
+        subprocess contract coverage.
+  - [ ] Add formatter drift checks to the same command-contract discipline as
+        the JSON tools.
+
+- [x] Move the stable `sem` command-contract validation path into CI.
+      The current release process documents several app, native runtime, and
+      packaging checks as manual. Convert the stable checks into automated jobs
+      so the repository proves its public contract continuously, not only during
+      release preparation.
+  - [x] Add CI coverage for `sem.py` command contracts and keep VS Code
+        extension behavior in the same focused validation path.
+  - [ ] Keep genuinely environment-specific checks documented as manual, but
+        require each skipped check to print a reason in release validation.
+  - [ ] Add a small benchmark smoke that records build time, run time, artifact
+        size, and output-match facts without making noisy performance claims.
+
+- [ ] Define a concrete release artifact story.
+      Users should not have to infer whether SemanticScript is a source checkout,
+      a Python tool, a release archive, or a future version manager. The first
+      artifact can remain conservative, but it should be named, checksummed,
+      documented, and validated with the same commands agents will use after
+      installation.
+  - [ ] Add a release manifest generator that records tool versions, commit,
+        artifacts, checksums, validation commands, skipped checks, and known
+        limitations.
+  - [ ] Add a smoke test for installing or unpacking the release archive and
+        running `sem --version`, `sem skills list`, `sem check`, and
+        `sem doctor --json` outside the source checkout.
+  - [ ] Decide when a Python package wrapper or native launcher becomes part of
+        the public contract instead of a future note.
+
+- [ ] Reduce visible compatibility and experiment sprawl in the public surface.
+      The repo can keep experiments, but the default path should describe one
+      current syntax, one formatter style, one package layout, and one agent
+      workflow. Legacy aliases, partial rows, and research surfaces should be
+      discoverable without looking like equal choices for new production code.
+  - [ ] Mark legacy syntax paths as transitional in the CLI and docs.
+  - [ ] Move experiment-only guidance out of first-read public docs.
+  - [ ] Add a release-hygiene check for tracked local app data, stale generated
+        files, and public docs that advertise unsupported syntax as executable.
+
+## P1 - Weakness Research From External Review
+
+This section turns the external platform review into concrete research work.
+The goal is to improve SemanticScript's weak spots without throwing away the
+source-level advantages that make it strong for long-session agent maintenance.
+The key question is not "how do we look more like zerolang?" It is "which
+parts of our current design are pulling real weight, which parts are ceremony,
+and which platform gaps are making the language feel weaker than it is?"
+
+- [ ] Research where SemanticScript's explicitness is genuinely reducing
+      hallucination risk versus where it is only increasing row count.
+      The current design may overfit to context-maximizing source shape. We
+      need evidence for which rows are paying for themselves in real editing
+      sessions and which rows mostly create consistency burden.
+  - [ ] Build a measurement pass over real app code that reports rows per
+        operation, rows per call, metadata density, and repeated declaration
+        patterns across `apps/` and serious `experiments/`.
+  - [ ] Identify the top 20 repeated row clusters that appear together often
+        enough to justify research into a more compact but still explicit form.
+  - [ ] Compare edit traces on representative tasks: one pass using the current
+        full tape, another using hand-compressed equivalent source, and record
+        which semantic mistakes become easier or harder.
+
+- [ ] Research stale-metadata risk in the semantic tape.
+      SemanticScript's biggest theoretical failure mode is authoritative-looking
+      purpose, invariant, security, timing, or capability rows that drift away
+      from executable behavior. If we cannot detect that drift, explicit source
+      context becomes a trust hazard instead of a safety feature.
+  - [ ] Inventory which metadata rows are compiler-enforced, strict-lint
+        enforced, standalone-linter-only, or completely narrative today.
+  - [ ] Add a "metadata drift" audit checklist for operations whose comments
+        claim auth scope, cleanup, route guarantees, trust boundaries, or user
+        isolation without a matching executable proof edge.
+  - [ ] Research whether some narrative rows should become structured contracts
+        with machine-checkable predicates rather than free-text annotations.
+  - [ ] Add candidate lint families for metadata drift, with examples such as:
+        invariant mentions session user but there is no session input; purpose
+        says create todo but the operation calls update paths; moduleDoesNotOwn
+        says no SQL but the operation declares database effects.
+
+- [ ] Research compact forms for high-frequency safe patterns.
+      The review is right that SemanticScript can feel ceremonious in the small.
+      We should study where compact syntax would improve flow without collapsing
+      back into opaque expression soup.
+  - [ ] Evaluate compact forms for the most common checked-call pattern:
+        `call` + `argument*` + `run` + `bind` + `branch error`.
+  - [ ] Evaluate compact forms for common local-storage boilerplate, especially
+        typed literals and single-use temporaries.
+  - [ ] Reject any compact form that hides side effects, failure paths,
+        ownership, or capability boundaries. The point is less ceremony, not
+        fewer semantics.
+  - [ ] In parallel, research command-driven canonical code generation as an
+        alternative to syntax compression:
+        `sem new operation ... --template ...`,
+        `sem add call ...`, and `sem add error-path ...`.
+
+- [ ] Research the executable-vs-refined surface split as a platform weakness.
+      The review called out a real risk: users need `SYNTAX.md` to know whether
+      a row is executable, partial, metadata-only, sync fallback, or future
+      design. That weakens trust in the language and makes the product feel
+      less coherent than it should.
+  - [ ] Design a first-class support-status report that answers, for any row or
+        target family, whether it is implemented, partial, parse-only,
+        metadata-only, or proposed.
+  - [ ] Add a CLI path for surfacing that answer directly from the toolchain
+        instead of forcing users into docs archaeology.
+  - [ ] Research whether the public language surface should narrow to one
+        smaller "current executable SemanticScript" profile for 1.x.
+  - [ ] Evaluate whether the public status taxonomy should be:
+        `implemented`, `lint-only`, `metadata-only`, `planned`, and
+        `deprecated`, with machine-readable output.
+
+- [ ] Research small-program ergonomics and first-time readability.
+      The review is also right that humans still matter. If tiny examples feel
+      bloated or alien, we lose contributors before they experience the large-
+      app auditability advantages.
+  - [ ] Build a first-30-minutes onboarding script and measure how many steps a
+        new contributor needs to install, check, run, lint, inspect, and modify
+        a minimal program.
+  - [ ] Compare `tiny.sem`, `hello.sem`, `taskforge-tui`, and one TaskForge Web
+        route against equivalent zerolang examples for line count, concept
+        count, and repair-loop steps.
+  - [ ] Add a "minimum pleasant program" target and treat regressions in that
+        experience as product bugs, not just documentation issues.
+
+- [ ] Research whether business invariants should have stronger source shape.
+      SemanticScript is strongest when the code makes auth scope, SQL scoping,
+      resource cleanup, cookie policy, and user-isolation rules impossible to
+      miss. We should push on that advantage rather than assume the current
+      free-text rows are enough.
+  - [ ] Identify the TaskForge and auction-arena invariants we most want agents
+        to preserve: session-derived user IDs, auth gates, row ownership, route
+        cleanup, and response/body guarantees.
+  - [ ] Research dedicated invariant verbs or typed contract rows for the
+        highest-value app rules that currently live only in prose.
+  - [ ] Compare whether those rules are easier to preserve than in a compact
+        static language with only diagnostics and tests.
+
+- [ ] Research platform cohesion gaps that make the language underperform.
+      Some of the score gap is not about syntax at all. It is about install
+      path, command coherence, packaging, stdlib discoverability, target story,
+      and how complete the day-to-day loop feels.
+  - [ ] Audit every public command and doc page for whether it helps the user
+        complete the loop: install, learn, write, inspect, repair, test, build,
+        ship.
+  - [ ] Inventory where the current workflow requires knowing internal file
+        names like `semsc.py`, `semlint.py`, or specific docs instead of using
+        one obvious `sem` surface.
+  - [ ] Research whether some existing product gaps are better fixed by
+        de-emphasizing subsurfaces rather than adding more commands.
+
+- [ ] Research package, stdlib, and target-story trustworthiness.
+      The review judged SemanticScript weaker on package workflow, install
+      polish, target readiness, and stdlib breadth. Some of that is feature
+      gap, but some of it is presentation and contract clarity.
+  - [ ] Measure how far a user can get building a non-trivial app using only
+        documented `standard.*` modules and `sem` commands, without reading
+        compiler internals.
+  - [ ] Identify which stdlib modules are truly app-ready, which are preview,
+        and which only exist as declared surface area.
+  - [ ] Research whether target/runtime readiness should be framed as a
+        capability matrix, a support tier matrix, or both.
+
+- [ ] Research reliability posture as part of product feel.
+      The external review scored us behind on testing and CI because some of
+      our best validation lives in app harnesses, manual notes, or broad test
+      files rather than one crisp reliability surface.
+  - [ ] Inventory which important guarantees are tested only indirectly through
+        giant integration scripts or ad hoc manual steps.
+  - [ ] Carve out smaller named reliability contracts: command contracts,
+        runtime smoke, app smoke, target smoke, metadata drift, and benchmark
+        smoke.
+  - [ ] Research how much of the current broad `test_compiler.py` surface should
+        become more searchable contract suites with narrower failure meaning.
+  - [ ] Build an agent benchmark suite around a broken TaskForge app with
+        seeded bugs: auth bug, SQL user-scope bug, missing error branch, wrong
+        HTML escaping, wrong JSON field, missing capability, wrong effect,
+        missing cleanup, bad route contract, and type mismatch.
+  - [ ] Decide the scoreboard for that benchmark:
+        pass rate, tokens used, repair attempts, semantic regressions, and
+        time to green, with zerolang and a compact-language baseline.
+
+- [ ] Produce a written design memo on the "platform vs source format" split.
+      The review's core claim is plausible: SemanticScript may already be the
+      better anti-hallucination source format while still being the weaker full
+      platform. We should document that split cleanly, decide which side we are
+      optimizing next, and avoid mixing research goals.
+  - [ ] Write one memo that names SemanticScript's protected strengths:
+        local semantic context, edit locality, effect/capability visibility,
+        auditability, and explicit failure paths.
+  - [ ] Write one memo that names the platform weaknesses to remove:
+        ceremony budget, stale metadata risk, public workflow fragmentation,
+        install/package friction, and support-surface ambiguity.
+  - [ ] Use those memos to gate future syntax work: no new surface should land
+        unless it either strengthens the protected source advantages or closes a
+        measured platform weakness.
+  - [ ] Record the working priority explicitly: pause novel syntax refinement
+        until the tool loop is strong enough to test whether the current syntax
+        already beats compact languages on agent reliability.
 
 ## P1 - Runtime And Syntax Scope
 
@@ -122,27 +866,175 @@ review. A task is only done when the linked command or artifact is clean.
   - [x] `TaskList.append` / `TaskMap.get`.
 - [x] Make the 1.0 support matrix explicit:
   - [x] Python reference compiler support.
-  - [x] Self-hosting/bootstrap support.
+  - [x] SemanticScript-written compiler excluded from 1.0.
   - [x] VS Code extension support.
   - [x] Refined syntax support.
   - [x] Web/HTTP runtime support.
 
+## P1 - Compiler / Stdlib Boundary Hardening
+
+This section tracks the 2026-05-22 review concern that too much semantic,
+business, or library behavior has moved into `SemanticScript/compiler/semsc.py`
+instead of living in `SemanticScript/std/**` or `SemanticScript/runtime/**`.
+The compiler may parse, validate, lower documented primitives, and select link
+inputs. Public API contracts, domain policy, and reusable behavior should live
+in standard-library modules or native runtime adapters.
+
+- [x] Classify every compiler-owned intrinsic surface by ownership.
+  - [x] Inventory all dotted call-target branches in `semsc.py`:
+        `json.*`, `html.hydrate.*`, `http.*`, `sqlite.*`, `gui.*`,
+        `bcrypt.*`, `pointer.*`, `math.*`, `console.*`, and `c.*`.
+  - [x] For each target family, mark the owning layer:
+        compiler syntax, standard-library contract, native runtime ABI,
+        app-level helper, or temporary bootstrap shim.
+  - [x] Add the ownership table to `docs/toolchain/compiler.md`.
+  - [x] Add a short "do not add business logic here" note to
+        `SemanticScript/compiler/README.md`.
+  - [x] Confirm `SemanticScript/std/README.md` matches the ownership table.
+  - [x] Add a review checklist item requiring new compiler target branches to
+        name their stdlib/runtime owner and tests.
+
+- [x] Move high-level JSON codec behavior out of ad hoc compiler lowering.
+  - [x] Treat `json.stringify.<TypeName>` and `json.parse.<TypeName>` as
+        `standard.json` / native JSON runtime behavior, not Python-side codec
+        logic in `semsc.py`.
+  - [x] Replace the current `json.encode.String` lowering that emits
+        `snprintf("\"%s\"")`; it does not escape quotes, backslashes,
+        newlines, tabs, carriage returns, or control bytes.
+  - [x] Replace the current primitive parse lowerings that use `atoll`,
+        `atof`, and `strcmp("true")`; malformed JSON must produce a
+        `JsonDecodeError`, not a successful `0`, `0.0`, or `false`.
+  - [x] Remove or quarantine `mark_high_level_json_success()` for parse paths
+        until the lowering has a real runtime status value.
+  - [x] Route primitive stringification through the native JSON builder or a
+        dedicated runtime function with byte-exact escaping.
+  - [x] Route primitive parsing through the native JSON document parser or a
+        dedicated runtime function with strict token validation and trailing
+        junk rejection.
+  - [x] Keep record stringify/parse as generated glue only: field walking may
+        be compiler-generated, but escaping, parsing, capacity enforcement, and
+        status mapping must come from the JSON runtime.
+  - [x] Add negative compiler/runtime tests for `json.stringify.String` with
+        `"`, `\`, `\n`, `\r`, `\t`, and byte `0x01`.
+  - [x] Add negative tests for `json.parse.Int64` on `""`, `"abc"`, `"1x"`,
+        `"1.5"`, `true`, `null`, and overflow-sized integers.
+  - [x] Add negative tests for `json.parse.Bool` on `"falsex"`, `"0"`,
+        `"TRUE"`, `null`, and empty input.
+  - [x] Add negative tests for `json.parse.Float64` on malformed and trailing-junk
+        numbers.
+  - [x] Keep the native JSON health demo as the byte-for-byte escaping oracle,
+        and add a SemanticScript executable smoke that reaches the same paths
+        through `json.stringify.<TypeName>`.
+  - [x] Update `docs/language/json-crud.md`, `SYNTAX.md`, and
+        `docs/reference/compatibility.md` after the runtime-backed behavior is
+        in place.
+
+- [x] Remove app-specific response-helper names from compiler strictness.
+  - [x] Delete `writeJsonOkResponse`, `writeErrorJsonResponse`, and
+        `writeJsonResponse` from `_STRICT_RESPONSE_WRITER_TARGETS`.
+  - [x] Make `http.responseText`, `http.responseBytes`,
+        `http.responseSseEvent`, `http.responseFile`, and declared
+        `responseBodyForwarder` rows the only recognized response-body writer
+        sources.
+  - [x] Confirm `apps/taskforge-web/main.sem` keeps explicit
+        `responseBodyForwarder` rows for its JSON response wrappers.
+  - [x] Add a strict negative test proving an operation named
+        `writeJsonOkResponse` is not trusted unless it actually forwards the
+        declared body argument.
+  - [x] Add a strict positive test proving a differently named wrapper works
+        when it declares and honors `responseBodyForwarder`.
+  - [x] Update SS3614 / SS3603 diagnostics so examples mention declared
+        forwarders instead of app-specific helper names.
+
+- [x] Split runtime-binding ABI shims from domain behavior.
+  - [x] Audit `_RUNTIME_BINDING_MAP` and separate pure ABI bindings
+        (`runtime.cstring.compare`, `runtime.cstring.byteLength`,
+        `runtime.memory.copyBytes`) from policy-bearing behaviors.
+  - [x] Move `retryPolicy.delayForAttempt` behavior out of `semsc.py`; the
+        fixed `50 * (attempt + 1)` rule belongs in a standard retry module or
+        runtime adapter that can read policy fields.
+  - [x] Move `metrics.computeIncrementInt64` out of compiler special cases unless
+        it is just a normal `math.addInt64` stdlib wrapper.
+  - [x] Replace `metricsLock.acquire` / `metricsLock.release` sentinel returns
+        with real stdlib/runtime behavior, or reject executable lowering until
+        a lock runtime exists.
+  - [x] Replace `scheduler.sleep` returning zero with a real runtime sleep
+        path, or reject executable lowering and keep the row parse-only.
+  - [x] Decide whether `runtime.calendar.isLeapYear*` is a stdlib operation
+        implemented in SemanticScript, a native runtime function, or a true
+        compiler intrinsic; document the decision.
+  - [x] Add tests that refined-syntax demo behavior does not depend on hidden
+        compiler constants after the move.
+  - [x] Update `docs/optimization-guide.md` so synchronous fallbacks are
+        described as temporary compatibility behavior, not hidden semantics.
+
+- [x] Stop duplicating stdlib type/enum surfaces in parser startup.
+  - [x] Remove unconditional `_register_builtin_sqlite_surface(prog)` from
+        `parse()` once callers import `standard.sqlite` explicitly.
+  - [x] Remove unconditional `_register_builtin_json_surface(prog)` from
+        `parse()` once callers import `standard.json` explicitly.
+  - [x] Decide whether `MiddlewareControl` is a language/runtime ABI enum or a
+        `standard.http` export, then place its source of truth accordingly.
+  - [x] Update standalone compiler smoke tests so they import the needed
+        standard modules rather than relying on hidden parser preloads.
+  - [x] Add drift tests that compare `std/json/main.sem` enum/type constants
+        against native JSON ABI constants.
+  - [x] Add drift tests that compare `std/sqlite/main.sem` enum/type constants
+        against `sem_sqlite_runtime.h`.
+  - [x] If a small built-in bootstrap surface remains, generate it from the
+        standard module files or a shared contract table rather than duplicating
+        literals by hand in `semsc.py`.
+
+- [x] Make native runtime link policy data-driven.
+  - [x] Remove the duplicate `_program_uses_bcrypt_runtime` and
+        `_native_bcrypt_link_inputs` definitions from `semsc.py`.
+  - [x] Create one native-runtime registry table for target family, call-target
+        set or predicate, source files, include paths, libraries, and platform
+        flags.
+  - [x] Make `_native_runtime_link_inputs()` consume the registry instead of a
+        hand-maintained list of collector functions.
+  - [x] Include `native_http`, `native_sqlite`, `native_json`,
+        `native_terminal`, `native_bcrypt`, `native_gui`, and the
+        `standard.net` native HTTP client entry that links `native_async`.
+  - [x] Add a regression test that fails on duplicate runtime collector
+        definitions.
+  - [x] Add a regression test that every `standard.<module>` advertising a
+        compiler/runtime-owned intrinsic namespace has either executable
+        lowering, explicit parse-only status, or an unsupported-target
+        diagnostic.
+
+- [x] Align the new `standard.net` / `native_async` surface with compiler
+      support before advertising it as executable.
+  - [x] Decide whether `net.fetch*` is proposed, parse-only, partial, or
+        lowered in the current release scope.
+  - [x] If parse-only, change `std/net/main.sem`, `std/README.md`, and
+        `SYNTAX.md` wording so it does not imply executable compiler support.
+        Not selected: the current branch has prototype lowering.
+  - [x] If lowered, add `net.fetch*` call-target dispatch in `semsc.py` and
+        link `SemanticScript/runtime/native_async/sem_async_runtime.c`.
+  - [x] Add feature tests for unsupported `net.fetch*` targets so failures are
+        intentional diagnostics, not generic `unsupported call target`.
+        Not applicable while `net.fetch*` is lowered; current coverage checks
+        IR lowering and runtime link inputs instead.
+  - [x] Add native async runtime CMake / health-demo coverage to release
+        validation if the runtime enters the release scope.
+
 ## P1 - Strict Syntax Hardening
 
-This section turns the strict-syntax research in
-`docs/language/strict-syntax-research.md` into implementation-sized tasks. The
+This section turns the syntax research summarized under `research/` into
+implementation-sized tasks. The
 goal is to make recurring bug classes fail in the compiler itself, without
 requiring a separate linter invocation.
 
 ### Strict Executable Mode
 
-- [ ] Decide the source row for strict mode.
+- [x] Decide the source row for strict mode.
   - [x] Prefer `languageMode strictExecutable` unless a better existing
         versioning row should own the setting.
   - [x] Decide whether strict mode belongs in source files, `build.sem`, or
         both.
-  - [ ] Decide whether strict mode is inherited by imported modules.
-  - [ ] Decide whether `languageVersion PROJECT "1.0"` implies strict mode in
+  - [x] Decide whether strict mode is inherited by imported modules.
+  - [x] Decide whether `languageVersion PROJECT "1.0"` implies strict mode in
         the future.
   - [x] Document the initial rollout as opt-in, not default.
 - [x] Add parser support for `languageMode NAME`.
@@ -154,11 +1046,11 @@ requiring a separate linter invocation.
   - [x] Reject unknown language-mode values with a parse diagnostic.
   - [x] Add syntax inventory rows for `languageMode strictExecutable`.
   - [x] Add syntax inventory rows for `languageMode refinedSyntax`.
-- [ ] Close the executable grammar when strict mode is active.
+- [x] Close the executable grammar when strict mode is active.
   - [x] Reject unknown lowercase top-level verbs in strict mode.
   - [x] Reject unknown lowercase operation-body verbs in strict mode.
-  - [ ] Keep typed comments and group anchors parseable in strict mode.
-  - [ ] Keep explicitly documented metadata-only rows parseable in strict
+  - [x] Keep typed comments and group anchors parseable in strict mode.
+  - [x] Keep explicitly documented metadata-only rows parseable in strict
         mode only when they are in the allowed strict metadata set.
   - [x] Keep permissive parsing for non-strict refined examples.
   - [x] Add a clear diagnostic that tells users to add
@@ -193,7 +1085,7 @@ requiring a separate linter invocation.
   - [ ] Mark checked arithmetic calls as fallible.
   - [ ] Mark infallible math calls as infallible.
   - [ ] Mark explicit status-return calls whose failures are status values,
-        not `Result`, so they can require `bind` or `ignoreValue`.
+        not `Result`, so they can require `bind value` or `ignore value`.
 - [ ] Add a shared ownership table.
   - [ ] Mark `c.malloc`, `c.calloc`, and successful `c.realloc` outputs as
         owned heap buffers.
@@ -209,34 +1101,41 @@ requiring a separate linter invocation.
 
 ### Checked Fallible Calls
 
-- [ ] Design the checked call syntax.
-  - [ ] Confirm `runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL`
+- [x] Design the checked call syntax.
+  - [x] Confirm `runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL`
         is the preferred shape.
-  - [ ] Decide whether `runChecked` should create the ok/error binds itself.
-  - [ ] Decide whether `runChecked` replaces or coexists with `run`,
-        `bindOk`, `bindError`, and `branchIfError`.
-  - [ ] Decide whether `runChecked` may target calls with no success value.
-  - [ ] Decide whether `runChecked` may target status-return calls.
-  - [ ] Decide whether `ignoreOk` is still legal for checked calls.
+  - [x] Decide whether `runChecked` should create the ok/error binds itself.
+        Current lowering creates both bindings from the call result/error value.
+  - [x] Decide whether `runChecked` replaces or coexists with `run`,
+        `bind ok`, `bind error`, and `branch error`.
+        Decision: it coexists with the explicit checked pattern.
+  - [x] Decide whether `runChecked` may target calls with no success value.
+        Decision for this shape: use the explicit checked pattern with
+        `ignore void`; a compact void-success form remains future syntax.
+  - [x] Decide whether `runChecked` may target status-return calls.
+        Current compiler accepts it for explicit-disposition fallible targets;
+        response-writer coverage is tracked below.
+  - [x] Decide whether `ignore ok` is still legal for checked calls.
+        Decision: yes, for the explicit checked pattern.
 - [x] Add parser support for `runChecked`.
   - [x] Add `runChecked` to body verb tables.
   - [x] Validate minimum arity.
   - [x] Validate keyword positions such as `ok`, `error`, and `else`.
   - [x] Preserve source line information for generated diagnostics.
 - [ ] Add compiler validation for fallible targets in strict mode.
-  - [ ] Reject plain `run` for known fallible targets in strict mode.
+  - [x] Reject plain `run` for known fallible targets in strict mode.
   - [x] Reject plain `run` for Result-shaped SQLite prepare in strict mode.
-  - [ ] Require `runChecked` or an explicitly accepted legacy checked pattern
+  - [x] Require `runChecked` or an explicitly accepted checked pattern
         for every known fallible target.
-  - [x] Accept the legacy checked pattern for Result-shaped fallible calls.
-  - [ ] Reject unchecked explicit-disposition targets such as heap allocation
+  - [x] Accept the checked pattern for Result-shaped fallible calls.
+  - [x] Reject unchecked explicit-disposition targets such as heap allocation
         and native HTTP response writers.
-  - [ ] Reject `bindError` without a corresponding branch in strict mode.
-  - [ ] Reject `branchIfError` on targets that the shared table marks
+  - [ ] Reject `bind error` without a corresponding branch in strict mode.
+  - [ ] Reject `branch error` on targets that the shared table marks
         infallible.
   - [ ] Reject fallible calls whose success value is used before the error
         branch is established.
-  - [ ] Ensure diagnostics point at the `run` line and the original `call`
+  - [x] Ensure diagnostics point at the `run` line and the original `call`
         line.
 - [x] Lower `runChecked`.
   - [x] Emit the same call lowering as `run`.
@@ -245,15 +1144,15 @@ requiring a separate linter invocation.
   - [x] Emit the branch to the declared failure label.
   - [x] Preserve existing `defer` behavior on both paths.
 - [ ] Migrate app examples after the syntax exists.
-  - [ ] Convert `app/todo-web-pro` heap allocations to `runChecked`.
-  - [ ] Convert `app/todo-web-pro` SQLite bootstrap calls to `runChecked`.
+  - [ ] Convert `apps/taskforge-web` heap allocations to `runChecked`.
+  - [ ] Convert `apps/taskforge-web` SQLite bootstrap calls to `runChecked`.
   - [ ] Convert native HTTP response writes in sample apps to `runChecked`
         where appropriate.
   - [ ] Keep legacy examples only where they deliberately document old syntax.
 - [ ] Add compiler tests for checked calls.
   - [x] Negative test: `c.malloc` with plain `run` fails in strict mode.
   - [x] Negative test: SQLite prepare with plain `run` fails in strict mode.
-  - [ ] Negative test: HTTP response write with ignored status fails in strict
+  - [x] Negative test: HTTP response write with ignored status fails in strict
         mode.
   - [x] Positive test: `runChecked` heap allocation compiles.
   - [ ] Positive test: `runChecked` SQLite prepare compiles.
@@ -262,9 +1161,9 @@ requiring a separate linter invocation.
 ### Owned Resources And Cleanup
 
 - [ ] Design owned binding syntax.
-  - [ ] Confirm `bindOwned VALUE TYPE CALL cleanup TARGET` for infallible
+  - [ ] Confirm `bind owned VALUE TYPE CALL cleanup TARGET` for infallible
         owned producers.
-  - [ ] Confirm `bindOkOwned VALUE TYPE CALL cleanup TARGET` for fallible
+  - [ ] Confirm `bind ok owned VALUE TYPE CALL cleanup TARGET` for fallible
         owned producers.
   - [ ] Decide whether cleanup args are implicit from the owned value or
         explicitly listed.
@@ -272,8 +1171,8 @@ requiring a separate linter invocation.
   - [ ] Decide whether `returnOwned` or `transferOwned` is needed.
   - [ ] Decide how owned values interact with `defer`.
 - [ ] Add parser support for owned binding rows.
-  - [ ] Add `bindOwned`.
-  - [ ] Add `bindOkOwned`.
+  - [ ] Add `bind owned`.
+  - [ ] Add `bind ok owned`.
   - [ ] Validate `cleanup TARGET` arity.
   - [ ] Validate that the call target is in the ownership table.
   - [ ] Validate that the cleanup target matches the owned resource kind.
@@ -313,19 +1212,19 @@ requiring a separate linter invocation.
 ### Nullable And Non-Null Values
 
 - [ ] Add nullable ABI aliases.
-  - [ ] Add `NullableCNullTerminatedByteString`.
-  - [ ] Add `NullableCOpaqueMemoryAddress`.
+  - [ ] Add `NullableString`.
+  - [ ] Add `NullableOpaquePointer`.
   - [ ] Decide whether nullable aliases are first-class type constructors or
         named aliases only.
-  - [ ] Document which built-in call targets can return nullable values.
-- [ ] Update native HTTP request-reader contracts.
-  - [ ] Mark `http.requestHeader` as returning nullable text.
-  - [ ] Mark `http.requestQueryParam` as returning nullable text.
-  - [ ] Mark `http.requestBodyText` as nullable if absent body remains a
+  - [x] Document which built-in call targets can return nullable values.
+- [x] Update native HTTP request-reader contracts.
+  - [x] Mark `http.requestHeader` as returning nullable text.
+  - [x] Mark `http.requestQueryParam` as returning nullable text.
+  - [x] Mark `http.requestBodyText` as nullable if absent body remains a
         possible runtime result.
-  - [ ] Mark multipart part text readers as nullable.
-  - [ ] Mark multipart part bytes readers as nullable.
-  - [ ] Keep `http.requestMethod` and `http.requestPath` non-null.
+  - [x] Mark multipart part text readers as nullable.
+  - [x] Mark multipart part bytes readers as nullable.
+  - [x] Keep `http.requestMethod` and `http.requestPath` non-null.
 - [ ] Add non-null refinement syntax.
   - [ ] Add `requireNonNull OUT TYPE INPUT else LABEL`.
   - [ ] Decide whether the syntax should include an error binding.
@@ -362,7 +1261,7 @@ requiring a separate linter invocation.
 - [ ] Add parser support for the final forwarding contract.
   - [ ] Validate that the owning operation exists.
   - [ ] Validate that the input exists.
-  - [ ] Validate that the target call arg is a known response-body slot.
+  - [ ] Validate that the target call argument is a known response-body slot.
   - [ ] Store forwarding facts on the operation contract.
 - [ ] Add compiler validation for response wrappers.
   - [ ] Detect operations that pass an input directly to `http.responseText`
@@ -398,7 +1297,7 @@ requiring a separate linter invocation.
         cursor movement.
   - [ ] Require dirty-state mutation only on the applied branch.
   - [ ] Require cursor movement only on the applied branch.
-- [ ] Migrate `app/Kilo_port`.
+- [ ] Migrate `experiments/kilo-port`.
   - [ ] Convert `insertEmptyRowAt` to the selected strict result shape.
   - [ ] Convert `splitRowAt` to the selected strict result shape.
   - [ ] Update caller branches to use the new result/status.
@@ -450,8 +1349,8 @@ requiring a separate linter invocation.
   - [ ] Decide whether return-position coercions are rejected or only warned
         during migration.
 - [ ] Remove implicit conversions in strict mode.
-  - [ ] Reject `CSignedInt32` passed to `math.addI64`.
-  - [ ] Reject `CSignedInt32` passed to C varargs expecting a 64-bit format
+  - [ ] Reject `Int32` passed to `math.addInt64`.
+  - [ ] Reject `Int32` passed to C varargs expecting a 64-bit format
         unless explicitly widened.
   - [ ] Reject GUI i64 values passed to i32 GUI args unless explicitly
         narrowed.
@@ -469,7 +1368,7 @@ requiring a separate linter invocation.
   - [ ] Negative test: `snprintf` byte count added to i64 cursor without
         widening fails.
   - [ ] Positive test: widened `snprintf` byte count compiles.
-  - [ ] Negative test: GUI i64 dimension passed to i32 arg fails in strict
+  - [ ] Negative test: GUI i64 dimension passed to i32 argument fails in strict
         mode.
   - [ ] Positive test: explicit narrowing compiles when allowed.
   - [ ] Negative test: pointer/int crossing fails without explicit conversion.
@@ -485,7 +1384,7 @@ requiring a separate linter invocation.
   - [x] Add diagnostics that point to the `route` row.
 - [ ] Move middleware ABI validation into the compiler.
   - [x] Require middleware output `MiddlewareControl`.
-  - [x] Reject bare `CSignedInt32` middleware output in strict mode.
+  - [x] Reject bare `Int32` middleware output in strict mode.
   - [x] Require middleware handler input names and types to match the native
         ABI.
   - [ ] Validate short-circuit response expectations where possible.
@@ -493,7 +1392,7 @@ requiring a separate linter invocation.
   - [x] Require route handler input names `request` and `response` in strict
         mode.
   - [x] Require route handler input types `HttpRequest` and `HttpResponse`.
-  - [ ] Require route handler output `CSignedInt32` or the future strict HTTP
+  - [ ] Require route handler output `Int32` or the future strict HTTP
         result type if introduced.
   - [ ] Point diagnostics to both the `route` row and handler operation
         header.
@@ -506,7 +1405,7 @@ requiring a separate linter invocation.
         or always active when `webServer` rows exist.
 - [ ] Add web schema tests.
   - [x] Negative test: invalid method fails without `--lint`.
-  - [x] Negative test: middleware returns bare `CSignedInt32`.
+  - [x] Negative test: middleware returns bare `Int32`.
   - [x] Negative test: route handler has wrong input names.
   - [ ] Negative test: route missing timeout without opt-out.
   - [x] Positive test: valid middleware and handler shape compiles.
@@ -514,12 +1413,12 @@ requiring a separate linter invocation.
 
 ### Documentation And Tooling Follow-through
 
-- [ ] Update language docs after each strict syntax change.
+- [x] Update language docs after each strict syntax change.
   - [x] Update `SYNTAX.md`.
-  - [ ] Update `docs/language/lexical-model.md`.
+  - [x] Update `docs/language/lexical-model.md`.
   - [x] Update `docs/language/operations-dataflow.md`.
-  - [ ] Update `docs/language/errors-effects-capabilities.md`.
-  - [ ] Update `docs/language/memory-state.md`.
+  - [x] Update `docs/language/errors-effects-capabilities.md`.
+  - [x] Update `docs/language/memory-state.md`.
   - [x] Update `docs/language/native-http-api.md`.
   - [x] Update `docs/optimization-guide.md`.
 - [x] Update toolchain docs.
@@ -536,11 +1435,11 @@ requiring a separate linter invocation.
   - [ ] Keep aggressive targeted rules for app review and editor feedback.
 - [ ] Update VS Code tooling.
   - [x] Add highlighting for `languageMode`.
-  - [ ] Add highlighting for `runChecked`.
-  - [ ] Add highlighting for `bindOwned` and `bindOkOwned`.
-  - [ ] Add highlighting for `requireNonNull`.
+  - [x] Add highlighting for `runChecked`.
+  - [x] Add highlighting for owned-binding candidate rows.
+  - [x] Add highlighting for `requireNonNull`.
   - [ ] Add highlighting for the final response-forwarding syntax.
-  - [ ] Add hover docs for each new strict syntax row.
+  - [x] Add hover docs for each new strict syntax row.
 - [ ] Add migration coverage.
   - [ ] Add strict-mode parse/build coverage for at least one console app.
   - [ ] Add strict-mode parse/build coverage for one webserver app.
@@ -576,8 +1475,8 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [x] Added `targetRuntime PROJECT windowsGui` to semlint build-tape
       validation.
 - [x] Kept `entry windowsGui` out of the first committed executable surface.
-- [x] Converted `app/hello-gui` to `entry console main` plus standard
-      `operation` / `call` / `arg` / `run` syntax.
+- [x] Converted `apps/desktop-window-smoke` to `entry console main` plus standard
+      `operation` / `call` / `argument` / `run` syntax.
 - [x] Added `standard.gui` as the canonical contract module.
 - [x] Added GUI type aliases, enums, capabilities, token constants, and runtime
       target constants to `std/gui/main.sem`.
@@ -585,10 +1484,10 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [x] Added a native Win32 GUI runtime adapter with a backend-neutral
       `ss_gui_*` ABI.
 - [x] Added the compiler link hook for the native GUI adapter.
-- [x] Added a minimal `app/hello-gui` sample.
-- [x] Built `app/hello-gui/build/hello_gui.exe`.
+- [x] Added a minimal `apps/desktop-window-smoke` sample.
+- [x] Built `apps/desktop-window-smoke/build/desktop_window_smoke.exe`.
 - [x] Verified the executable renders a Windows top-level window titled
-      `Hello GUI` and exits `0` after the window is closed.
+      `Desktop Window Smoke` and exits `0` after the window is closed.
 
 ### GUI Target And Entry Model
 
@@ -600,7 +1499,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
       while source still declares a normal entry operation.
 - [x] Reject no-entry `target windowsGui` codegen with guidance to use
       `entry console main` and `gui.*` calls.
-- [ ] Reject `entry windowsGui ...` with a diagnostic that points users to
+- [x] Reject `entry windowsGui ...` with a diagnostic that points users to
       `entry console main` and `gui.applicationRun`.
 - [x] Allow `targetRuntime windowsGui` build tapes that declare
       `entry console`.
@@ -612,7 +1511,7 @@ surface is now `entry console main` plus `standard.gui` function calls.
 - [ ] Define whether `guiApplicationOnExit` may cancel process exit or is
       cleanup-only.
 - [x] Define default exit status when the main window closes cleanly.
-- [ ] Define exit status behavior when a GUI event handler returns non-zero.
+- [x] Define exit status behavior when a GUI event handler returns non-zero.
 - [x] Add `windowsGui` support to compiler build-tape validation.
 - [x] Add `windowsGui` support to standalone linter build-tape validation.
 
@@ -623,13 +1522,13 @@ surface is now `entry console main` plus `standard.gui` function calls.
       `gui.textLabelCreate`, `gui.textBoxCreate`, `gui.buttonCreate`,
       `gui.listBoxCreate`, `gui.windowAddControl`,
       `gui.applicationSetMainWindow`, and `gui.applicationRun`.
-- [x] Keep GUI source on normal `operation` / `call` / `arg` / `run` syntax.
+- [x] Keep GUI source on normal `operation` / `call` / `argument` / `run` syntax.
 - [x] Remove compiler code that discovers and lowers `guiApplication` /
       `guiWindow` metadata graphs.
 - [x] Treat GUI keyword rows as non-standard in semlint.
 - [ ] Add standard-library wrappers for platform-neutral layout policies before
       adding Linux/macOS backends.
-- [ ] Add event registration functions in `standard.gui` before adding handler
+- [x] Add event registration functions in `standard.gui` before adding handler
       dispatch.
 - [ ] Add accessibility and sizing helper functions in `standard.gui` instead
       of adding new parser verbs.
@@ -797,30 +1696,30 @@ is the preferred source shape.
 
 ### Event Model
 
-- [ ] Add a built-in `GuiEventKind` enum, or equivalent closed token set, for
+- [x] Add a built-in `GuiEventKind` enum, or equivalent closed token set, for
       GUI event rows.
-- [ ] Include `click` in the committed event set.
-- [ ] Include `valueChanged` in the committed event set.
-- [ ] Include `selectionChanged` in the committed event set.
-- [ ] Include `enterPressed` in the committed event set.
-- [ ] Include `keyPressed` in the committed event set.
-- [ ] Include `focusGained` in the committed event set.
-- [ ] Include `focusLost` in the committed event set.
-- [ ] Include `closeRequested` in the committed event set.
-- [ ] Include `resized` in the committed event set.
-- [ ] Include `shown` in the committed event set.
-- [ ] Include `hidden` in the committed event set.
+- [x] Include `click` in the committed event set.
+- [x] Include `valueChanged` in the committed event set.
+- [x] Include `selectionChanged` in the committed event set.
+- [x] Include `enterPressed` in the committed event set.
+- [x] Include `keyPressed` in the committed event set.
+- [x] Include `focusGained` in the committed event set.
+- [x] Include `focusLost` in the committed event set.
+- [x] Include `closeRequested` in the committed event set.
+- [x] Include `resized` in the committed event set.
+- [x] Include `shown` in the committed event set.
+- [x] Include `hidden` in the committed event set.
 - [ ] Validate allowed control events by control kind.
 - [ ] Validate allowed window events by window kind.
-- [ ] Allow `guiButton` to handle `click`.
-- [ ] Allow `guiButton` to handle `focusGained` and `focusLost`.
-- [ ] Allow `guiTextBox` to handle `valueChanged`, `enterPressed`,
+- [x] Allow `guiButton` to handle `click`.
+- [x] Allow `guiButton` to handle `focusGained` and `focusLost`.
+- [x] Allow `guiTextBox` to handle `valueChanged`, `enterPressed`,
       `keyPressed`, `focusGained`, and `focusLost`.
-- [ ] Allow `guiListBox` to handle `selectionChanged`, `focusGained`, and
+- [x] Allow `guiListBox` to handle `selectionChanged`, `focusGained`, and
       `focusLost`.
-- [ ] Allow `guiCheckBox` to handle `valueChanged`, `click`, `focusGained`,
+- [x] Allow `guiCheckBox` to handle `valueChanged`, `click`, `focusGained`,
       and `focusLost`.
-- [ ] Allow `guiWindow` to handle `closeRequested`, `resized`, `shown`, and
+- [x] Allow `guiWindow` to handle `closeRequested`, `resized`, `shown`, and
       `hidden`.
 - [ ] Reject `selectionChanged` on buttons.
 - [ ] Reject `click` on list boxes unless a future design explicitly supports
@@ -835,83 +1734,83 @@ is the preferred source shape.
 
 ### Handler ABI
 
-- [ ] Auto-register `GuiSession` as an opaque handler input type.
-- [ ] Auto-register `GuiEvent` as an opaque handler input type.
-- [ ] Auto-register `GuiWindow` as an opaque declarative handle type.
-- [ ] Auto-register `GuiControl` as an opaque common control handle type if a
+- [x] Auto-register `GuiSession` as an opaque handler input type.
+- [x] Auto-register `GuiEvent` as an opaque handler input type.
+- [x] Auto-register `GuiWindow` as an opaque declarative handle type.
+- [x] Auto-register `GuiControl` as an opaque common control handle type if a
       common supertype is adopted.
-- [ ] Auto-register `GuiButton`.
-- [ ] Auto-register `GuiTextBox`.
-- [ ] Auto-register `GuiListBox`.
-- [ ] Auto-register `GuiCheckBox`.
-- [ ] Auto-register `GuiMenuItem`.
-- [ ] Auto-register `GuiStatusBar`.
-- [ ] Auto-register `GuiTextLabel`.
-- [ ] Define GUI handler operations as
+- [x] Auto-register `GuiButton`.
+- [x] Auto-register `GuiTextBox`.
+- [x] Auto-register `GuiListBox`.
+- [x] Auto-register `GuiCheckBox`.
+- [x] Auto-register `GuiMenuItem`.
+- [x] Auto-register `GuiStatusBar`.
+- [x] Auto-register `GuiTextLabel`.
+- [x] Define GUI handler operations as
       `input HANDLER session GuiSession`,
       `input HANDLER event GuiEvent`,
-      and `output HANDLER CSignedInt32`.
+      and `output HANDLER Int32`.
 - [ ] Reject GUI event handlers with missing `GuiSession` input.
 - [ ] Reject GUI event handlers with missing `GuiEvent` input.
 - [ ] Reject GUI event handlers with extra native ABI inputs.
-- [ ] Reject GUI event handlers whose output is not `CSignedInt32`.
-- [ ] Define that handler return `0` means handled successfully.
-- [ ] Define non-zero handler returns as runtime-level event failure.
+- [ ] Reject GUI event handlers whose output is not `Int32`.
+- [x] Define that handler return `0` means handled successfully.
+- [x] Define non-zero handler returns as runtime-level event failure.
 - [ ] Decide whether non-zero handler returns close the window, log and
       continue, or trap in dev builds.
-- [ ] Preserve `GuiSession` and `GuiEvent` as ABI parameters for GUI handlers,
+- [x] Preserve `GuiSession` and `GuiEvent` as ABI parameters for GUI handlers,
       like `HttpRequest` and `HttpResponse` are preserved for route handlers.
-- [ ] Continue dropping ordinary opaque dependency inputs outside the GUI and
+- [x] Continue dropping ordinary opaque dependency inputs outside the GUI and
       HTTP ABIs.
 
 ### Runtime Call Surface
 
-- [ ] Add `gui.textBoxText`.
-- [ ] Add `gui.textBoxSetText`.
-- [ ] Add `gui.listBoxSelectedIndex`.
-- [ ] Add `gui.listBoxAppendItem`.
-- [ ] Add `gui.listBoxClear`.
-- [ ] Add `gui.windowClose`.
+- [x] Add `gui.textBoxText`.
+- [x] Add `gui.textBoxSetText`.
+- [x] Add `gui.listBoxSelectedIndex`.
+- [x] Add `gui.listBoxAppendItem`.
+- [x] Add `gui.listBoxClear`.
+- [x] Add `gui.windowClose`.
 - [ ] Add `gui.eventKeyCode`.
 - [ ] Add `gui.eventSelectedIndex`.
 - [ ] Add `gui.eventWindowWidth`.
 - [ ] Add `gui.eventWindowHeight`.
 - [ ] Add `gui.eventCancelClose` or explicitly defer cancellable close events.
-- [ ] Define required args for every `gui.*` runtime call.
-- [ ] Require `session GuiSession` on every GUI runtime call that touches
+- [x] Define required args for every `gui.*` runtime call.
+- [x] Require `session GuiSession` on every GUI runtime call that touches
       live GUI state.
-- [ ] Define whether declarative handles are passed as `control`, `button`,
-      `textBox`, `listBox`, or kind-specific arg names.
-- [ ] Reject passing a `GuiButton` handle to `gui.textBoxText`.
-- [ ] Reject passing a `GuiTextBox` handle to `gui.listBoxAppendItem`.
-- [ ] Lower declarative GUI handle symbols to runtime control IDs or handles.
-- [ ] Define the lifetime of strings returned by `gui.textBoxText`.
-- [ ] Define whether returned GUI strings are copied, borrowed, or valid only
+- [x] Define whether declarative handles are passed as `control`, `button`,
+      `textBox`, `listBox`, or kind-specific argument names.
+- [x] Reject passing a `GuiButton` handle to `gui.textBoxText`.
+- [x] Reject passing a `GuiTextBox` handle to `gui.listBoxAppendItem`.
+- [x] Lower declarative GUI handle symbols to runtime control IDs or handles.
+- [x] Define the lifetime of strings returned by `gui.textBoxText`.
+- [x] Define whether returned GUI strings are copied, borrowed, or valid only
       until the next GUI runtime call.
-- [ ] Define list-box item encoding as null-terminated UTF-8 or a future
+- [x] Define list-box item encoding as null-terminated UTF-8 or a future
       UTF-16 aware string type.
-- [ ] Decide whether the MVP runtime stores UTF-8 internally and converts to
+- [x] Decide whether the MVP runtime stores UTF-8 internally and converts to
       UTF-16 at the Win32 boundary.
-- [ ] Add source-of-truth comments so `semsc.py`, `semlint.py`, `SYNTAX.md`,
+- [x] Add source-of-truth comments so `semsc.py`, `semlint.py`, `SYNTAX.md`,
       and `standard.gui` stay aligned on `gui.*` target names.
 
 ### Effects And Capabilities
 
-- [ ] Define `gui.control.textBox.text read`.
-- [ ] Define `gui.control.textBox.text write`.
-- [ ] Define `gui.control.listBox.items read`.
-- [ ] Define `gui.control.listBox.items write`.
-- [ ] Define `gui.control.listBox.selection read`.
-- [ ] Define `gui.control.checkBox.checked read`.
-- [ ] Define `gui.control.checkBox.checked write`.
-- [ ] Define `gui.window write`.
-- [ ] Define `gui.event read`.
-- [ ] Define `gui.event.close write` if close cancellation is supported.
-- [ ] Add reusable `standard.gui` capability declarations such as
+- [x] Define `gui.control.textBox.text read`.
+- [x] Define `gui.control.textBox.text write`.
+- [x] Define `gui.control.listBox.items read`.
+- [x] Define `gui.control.listBox.items write`.
+- [x] Define `gui.control.listBox.selection read`.
+- [x] Define `gui.control.checkBox.checked read`.
+- [x] Define `gui.control.checkBox.checked write`.
+- [x] Define `gui.window write`.
+- [x] Define `gui.event read`.
+- [x] Define `gui.event.close write` if close cancellation is supported.
+- [x] Add reusable `standard.gui` capability declarations such as
       `guiTextBoxReader`, `guiTextBoxWriter`, and `guiListBoxWriter`.
-- [ ] Ensure existing effect/capability coverage checks work unchanged for
+- [x] Ensure existing effect/capability coverage checks work unchanged for
       hierarchical GUI paths.
-- [ ] Add lint tests proving `gui.control.textBox.text read` is covered by
+- [x] Add lint tests proving `gui.control.textBox.text read` is covered by
       `capability guiTextBoxReader gui.control.textBox.text read`.
 - [ ] Add lint tests proving a coarse capability such as
       `gui.control read` covers narrower read paths only if hierarchical
@@ -943,113 +1842,178 @@ is the preferred source shape.
       no-entry codegen.
 - [ ] Collect GUI event handler operation names before declaring user op
       functions.
-- [ ] Preserve `GuiSession` and `GuiEvent` handler inputs in the ABI.
+- [x] Preserve `GuiSession` and `GuiEvent` handler inputs in the ABI.
 - [ ] Declare all GUI event handler functions before emitting the GUI entry.
-- [ ] Compile non-handler helper operations as normal user ops.
+- [x] Compile non-handler helper operations as normal user ops.
 - [ ] Emit a native GUI application config table.
 - [ ] Emit one config record for the application title and icon.
 - [ ] Emit one config record for each window.
 - [ ] Emit one config record for each control.
 - [ ] Emit one config record for each event edge.
-- [ ] Encode control kind in a stable runtime enum.
-- [ ] Encode event kind in a stable runtime enum.
+- [x] Encode control kind in a stable runtime enum.
+- [x] Encode event kind in a stable runtime enum.
 - [ ] Emit handler function pointers in the event-edge table.
 - [ ] Declare `ss_gui_application_run` in generated LLVM.
 - [ ] Emit `main` or `WinMain` bridge code that calls
       `ss_gui_application_run`.
-- [ ] Decide whether the LLVM entry symbol remains `main` with `-mwindows`, or
+- [x] Decide whether the LLVM entry symbol remains `main` with `-mwindows`, or
       whether codegen emits a dedicated `WinMain` wrapper.
-- [ ] Add Windows subsystem linker support for GUI executables.
+- [x] Add Windows subsystem linker support for GUI executables.
 - [ ] Pass `-mwindows` through clang for Windows GUI builds when using the GNU
       driver mode.
 - [ ] Pass the MSVC-linker equivalent `/SUBSYSTEM:WINDOWS` when clang is in
       MSVC driver mode if `-mwindows` is not sufficient.
-- [ ] Ensure console executables do not accidentally inherit GUI subsystem
+- [x] Ensure console executables do not accidentally inherit GUI subsystem
       flags.
-- [ ] Link the GUI runtime source automatically for `target windowsGui`.
-- [ ] Link `user32` automatically on Windows GUI builds.
-- [ ] Link `gdi32` automatically on Windows GUI builds.
-- [ ] Link `comctl32` automatically if common controls are used.
+- [x] Link the GUI runtime source automatically for `target windowsGui`.
+- [x] Link `user32` automatically on Windows GUI builds.
+- [x] Link `gdi32` automatically on Windows GUI builds.
+- [x] Link `comctl32` automatically if common controls are used.
 - [ ] Link `shell32` only if shell icon or file-dialog helpers are added.
 - [ ] Keep Linux/macOS builds parse-only or fail with a clear unsupported
       target diagnostic until non-Windows GUI backends exist.
 
 ### Native Win32 Runtime Adapter
 
-- [ ] Add `SemanticScript/runtime/native_win32_gui/`.
-- [ ] Add `sem_win32_gui_runtime.h`.
-- [ ] Add `sem_win32_gui_runtime.c`.
-- [ ] Add `CMakeLists.txt` for the native GUI runtime.
-- [ ] Define stable C ABI structs for application config.
-- [ ] Define stable C ABI structs for window config.
-- [ ] Define stable C ABI structs for control config.
-- [ ] Define stable C ABI structs for event-edge config.
-- [ ] Define a stable handler function pointer type:
+- [x] Add `SemanticScript/runtime/native_win32_gui/`.
+- [x] Add `sem_win32_gui_runtime.h`.
+- [x] Add `sem_win32_gui_runtime.c`.
+- [x] Add `CMakeLists.txt` for the native GUI runtime.
+- [x] Define stable C ABI structs for application config.
+- [x] Define stable C ABI structs for window config.
+- [x] Define stable C ABI structs for control config.
+- [x] Define stable C ABI structs for event-edge config.
+- [x] Define a stable handler function pointer type:
       `int32_t (*)(SSGuiSession *, SSGuiEvent *)`.
-- [ ] Implement `ss_gui_application_run`.
-- [ ] Register a Win32 window class.
-- [ ] Create the main window from generated config.
-- [ ] Create child controls from generated config.
-- [ ] Implement `verticalStack` layout.
-- [ ] Implement `horizontalStack` layout.
-- [ ] Stub or explicitly reject `grid` layout until implemented.
-- [ ] Stub or explicitly reject `absolute` layout until implemented.
-- [ ] Handle `WM_COMMAND` for button clicks.
-- [ ] Handle text-box enter key dispatch.
-- [ ] Handle list-box selection changes.
-- [ ] Handle `WM_CLOSE` as `closeRequested`.
-- [ ] Handle `WM_SIZE` as `resized`.
-- [ ] Dispatch events to generated SemanticScript handler function pointers.
-- [ ] Create and pass a runtime-owned `SSGuiSession` token.
-- [ ] Create and pass a runtime-owned `SSGuiEvent` token.
-- [ ] Map declarative control IDs to `HWND` values in the session.
-- [ ] Implement `ss_gui_text_box_text`.
-- [ ] Implement `ss_gui_text_box_set_text`.
-- [ ] Implement `ss_gui_list_box_selected_index`.
-- [ ] Implement `ss_gui_list_box_append_item`.
-- [ ] Implement `ss_gui_list_box_clear`.
-- [ ] Implement `ss_gui_window_close`.
-- [ ] Implement `ss_gui_event_key_code`.
-- [ ] Implement `ss_gui_event_selected_index`.
-- [ ] Implement `ss_gui_event_window_width`.
-- [ ] Implement `ss_gui_event_window_height`.
-- [ ] Implement or defer `ss_gui_event_cancel_close`.
-- [ ] Define thread affinity: all GUI runtime calls must happen on the GUI
+- [x] Implement `ss_gui_application_run`.
+- [x] Register a Win32 window class.
+- [x] Create the main window from generated config.
+- [x] Create child controls from generated config.
+- [x] Implement `verticalStack` layout.
+- [x] Implement `horizontalStack` layout.
+- [x] Stub or explicitly reject `grid` layout until implemented.
+- [x] Stub or explicitly reject `absolute` layout until implemented.
+- [x] Handle `WM_COMMAND` for button clicks.
+- [x] Handle text-box enter key dispatch.
+- [x] Handle list-box selection changes.
+- [x] Handle `WM_CLOSE` as `closeRequested`.
+- [x] Handle `WM_SIZE` as `resized`.
+- [x] Dispatch events to generated SemanticScript handler function pointers.
+- [x] Create and pass a runtime-owned `SSGuiSession` token.
+- [x] Create and pass a runtime-owned `SSGuiEvent` token.
+- [x] Map declarative control IDs to `HWND` values in the session.
+- [x] Implement `ss_gui_text_box_text`.
+- [x] Implement `ss_gui_text_box_set_text`.
+- [x] Implement `ss_gui_list_box_selected_index`.
+- [x] Implement `ss_gui_list_box_append_item`.
+- [x] Implement `ss_gui_list_box_clear`.
+- [x] Implement `ss_gui_window_close`.
+- [x] Implement `ss_gui_event_key_code`.
+- [x] Implement `ss_gui_event_selected_index`.
+- [x] Implement `ss_gui_event_window_width`.
+- [x] Implement `ss_gui_event_window_height`.
+- [x] Implement or defer `ss_gui_event_cancel_close`.
+- [x] Define thread affinity: all GUI runtime calls must happen on the GUI
       thread unless future dispatch helpers are added.
-- [ ] Define memory ownership for strings returned from the runtime.
-- [ ] Define error codes for missing controls, wrong control kinds, allocation
+- [x] Define memory ownership for strings returned from the runtime.
+- [x] Define error codes for missing controls, wrong control kinds, allocation
       failures, and Win32 API failures.
-- [ ] Add runtime health demo that opens a window and exits cleanly.
+- [x] Add runtime health demo that opens a window and exits cleanly.
+
+### Native Win32 Modernization Pass
+
+- [x] Keep the committed GUI surface as `entry console main` plus
+      `standard.gui` `gui.*` calls; do not revive historical top-level
+      `guiApplication` / `guiWindow` / `guiButton` rows for this pass.
+- [x] Add a Windows GUI application manifest that requests Common Controls v6
+      for compiler-generated `windowsGui` executables.
+- [x] Initialize Common Controls before the Win32 GUI runtime registers or
+      creates windows and controls.
+- [x] Link `comctl32` automatically for `windowsGui` compiler builds and the
+      native GUI runtime CMake target.
+- [x] Apply the system message font to runtime-created controls instead of
+      leaving them on the raw Win32 default font.
+- [x] Scale default GUI padding, gaps, and control heights by the owning
+      window DPI.
+- [x] Apply best-effort DWM frame attributes for rounded corners and
+      Mica-capable Windows 11 chrome when the host OS supports them.
+- [x] Verify the Win32 GUI runtime build after modernization changes.
+- [x] Verify `apps/desktop-window-smoke` still parses/checks after
+      modernization changes.
+
+### Native WinUI 3 Backend
+
+- [x] Research WinUI 3 / Windows App SDK requirements from primary Microsoft
+      documentation.
+- [x] Record that WinUI 3 is delivered through Windows App SDK, not as a small
+      plain-C GUI library.
+- [x] Record that the native SemanticScript backend should be a C++/WinRT
+      adapter exporting the existing `ss_gui_*` C ABI.
+- [x] Record that unpackaged WinUI 3 apps require Windows App SDK runtime
+      initialization through bootstrapper support such as
+      `MddBootstrapInitialize2` / `MddBootstrapShutdown` unless package/project
+      auto-initialization is used.
+- [x] Record deployment prerequisites: Windows App SDK runtime deployment,
+      Visual C++ Redistributable, WinUI/C++ tooling, and `.winmd` metadata.
+- [x] Add `SemanticScript/runtime/native_winui3_gui/` as the backend scaffold.
+- [x] Add a WinUI 3 backend contract header that reuses the existing shared
+      GUI C ABI.
+- [x] Add a WinUI 3 backend CMake scaffold that is intentionally disabled until
+      Windows App SDK / C++/WinRT package integration exists.
+- [x] Add build-tape support for selecting `guiBackend PROJECT win32|winui3`,
+      defaulting to `win32` for compatibility.
+- [x] Add compiler diagnostics that reject `guiBackend winui3` until the
+      Windows App SDK build toolchain is available.
+- [x] Reject C# / XAML app sidecars as the WinUI path; app UI source must stay
+      in SemanticScript, and WinUI belongs behind the native backend adapter.
+- [ ] Add a C++/WinRT implementation of `ss_gui_application_create`,
+      `ss_gui_window_create`, control builders, event registration, and
+      `ss_gui_application_run_builder`.
+- [ ] Map `verticalStack` and `horizontalStack` to WinUI `StackPanel` layouts.
+- [ ] Map labels, text boxes, buttons, check boxes, and list boxes to real
+      WinUI controls instead of classic Win32 child windows.
+- [ ] Implement WinUI event dispatch to `SSGuiHandler` callbacks on the UI
+      thread.
+- [ ] Implement text-box, list-box, label, event, and window runtime calls
+      against WinUI objects.
+- [ ] Decide packaged, packaged-with-external-location, or unpackaged deployment
+      for SemanticScript WinUI executables.
+- [ ] Teach `--emit-exe` or a companion build path to compile/link C++/WinRT
+      with Windows App SDK packages.
+- [ ] Make the existing Hello GUI smoke app run through `guiBackend winui3`
+      using the unchanged `standard.gui` `gui.*` source API.
+- [ ] Add CI-safe checks that can validate the WinUI backend is present without
+      requiring an interactive desktop session.
 
 ### Standard Library Module
 
-- [ ] Add `SemanticScript/std/gui/main.sem`.
-- [ ] Relay `standard.gui` from `SemanticScript/std/module.sem`.
-- [ ] Add module metadata for `standard.gui`.
-- [ ] Add type aliases for `GuiSession`.
-- [ ] Add type aliases for `GuiEvent`.
-- [ ] Add type aliases for `GuiWindow`.
-- [ ] Add type aliases for `GuiControl` if adopted.
-- [ ] Add type aliases for every committed control handle type.
-- [ ] Add capability declarations for the committed GUI effect paths.
-- [ ] Add constants for GUI module version metadata.
-- [ ] Add documentation comments explaining that `gui.*` targets are
+- [x] Add `SemanticScript/std/gui/main.sem`.
+- [x] Relay `standard.gui` from `SemanticScript/std/module.sem`.
+- [x] Add module metadata for `standard.gui`.
+- [x] Add type aliases for `GuiSession`.
+- [x] Add type aliases for `GuiEvent`.
+- [x] Add type aliases for `GuiWindow`.
+- [x] Add type aliases for `GuiControl` if adopted.
+- [x] Add type aliases for every committed control handle type.
+- [x] Add capability declarations for the committed GUI effect paths.
+- [x] Add constants for GUI module version metadata.
+- [x] Add documentation comments explaining that `gui.*` targets are
       compiler/runtime-owned intrinsics.
-- [ ] Add import example using `importModule gui standard.gui`.
+- [x] Add import example using `importModule gui standard.gui`.
 
 ### Linter And Editor Tooling
 
 - [ ] Add GUI verbs to standalone linter arity tables.
-- [ ] Add GUI closed enum values to linter validation.
+- [x] Add GUI closed enum values to linter validation.
 - [ ] Add diagnostics for missing `guiApplicationMainWindow`.
 - [ ] Add diagnostics for controls missing `guiControlWindow`.
 - [ ] Add diagnostics for invalid control-kind-specific rows.
 - [ ] Add diagnostics for invalid event-kind/control-kind combinations.
 - [ ] Add diagnostics for missing or malformed GUI handler ABI inputs.
 - [ ] Add diagnostics for missing GUI handler output contract.
-- [ ] Add diagnostics for GUI runtime calls missing required `session` args.
-- [ ] Add `gui.*` runtime call signatures to semlint's built-in call table.
-- [ ] Add `gui.*` effect requirements to semlint's effect table.
+- [x] Add diagnostics for GUI runtime calls missing required `session` args.
+- [x] Add `gui.*` runtime call signatures to semlint's built-in call table.
+- [x] Add `gui.*` effect requirements to semlint's effect table.
 - [ ] Add VS Code grammar highlighting for GUI declaration verbs.
 - [ ] Add VS Code hover descriptions for GUI declaration verbs.
 - [ ] Add VS Code document symbol grouping for GUI applications, windows,
@@ -1075,14 +2039,14 @@ is the preferred source shape.
 - [ ] Add compiler IR tests proving GUI config tables are emitted.
 - [ ] Add linker tests proving Windows GUI builds include subsystem flags.
 - [ ] Add linker tests proving `user32` and `gdi32` link args are added.
-- [ ] Add a smoke sample under `app/hello-gui`.
-- [ ] Add a Todo GUI sample under `app/todo-gui` only after the hello sample
+- [x] Add a smoke sample under `apps/desktop-window-smoke`.
+- [ ] Add a future TaskForge GUI sample only after the hello sample
       proves the base runtime.
 - [ ] Add a runtime health test that opens and closes a window on Windows CI
       if the runner supports desktop interaction.
 - [ ] Add a headless compile-only fallback test for CI environments that
       cannot open desktop windows.
-- [ ] Add docs explaining how to run GUI smoke tests locally on Windows.
+- [x] Add docs explaining how to run GUI smoke tests locally on Windows.
 
 ### Documentation And Release Scope
 
@@ -1109,18 +2073,17 @@ product".
 
 ### Compiler And Language Strictness
 
-- [x] Decide whether self-hosting is a 1.0 requirement.
-  - [ ] If yes, make the SemanticScript-written bootstrap compiler compile the
-        full documented language.
-  - [x] If no, keep documenting `semsc.py` as the production 1.0 compiler and
-        bootstrap as preview.
+- [x] Decide whether a SemanticScript-written compiler is a 1.0 requirement.
+  - [x] Keep documenting `semsc.py` as the production 1.0 compiler.
+  - [x] Remove the unmaintained SemanticScript-written compiler path from the
+        active tree.
 - [x] Replace unknown/missing operation output fallback-to-`i32` with a stricter
       diagnostic for release-mode builds, or document the fallback as a scoped
       compiler compatibility behavior.
-- [ ] Add module namespace enforcement beyond import inlining and metadata.
+- [x] Add module namespace enforcement beyond import inlining and metadata.
   - [x] Validate `module NAME` as a dotted namespace.
   - [x] Reject conflicting module declarations in one resolved source.
-  - [ ] Detect duplicate operation names across imported modules.
+  - [x] Detect duplicate operation names across imported modules.
   - [x] Detect ambiguous unqualified references when imports expose the same
         symbol.
   - [x] Define whether `importModule X as Y` creates a real namespace boundary.
@@ -1129,20 +2092,16 @@ product".
   - [x] Add strict lint/compiler diagnostics for missing capability or inline
         authority coverage.
   - [x] Document runtime authority enforcement as out of scope for scoped 1.0.
-  - [ ] Decide how capability tokens are represented in generated binaries.
-  - [ ] Decide whether authority failures are compile-time errors, runtime
+  - [x] Decide how capability tokens are represented in generated binaries.
+  - [x] Decide whether authority failures are compile-time errors, runtime
         traps, or typed runtime errors.
-  - [ ] Add tests proving unauthorized runtime effects cannot execute if runtime
+  - [x] Add tests proving unauthorized runtime effects cannot execute if runtime
         enforcement is in scope.
 - [ ] Audit refined syntax rows that are parser/linter-only and ensure each one
       is marked metadata, synchronous fallback, partial, or implemented.
 
 ### Native HTTP / Webserver Completeness
 
-- [ ] Wire the H2O / HTTP2 backend behind an explicit backend flag.
-  - [ ] Build H2O reproducibly on Windows or document the supported toolchain.
-  - [ ] Link H2O outputs from `semsc.py --emit-exe`.
-  - [ ] Add HTTP/2 smoke coverage once TLS/ALPN setup exists.
 - [x] Add request body APIs.
   - [x] Add source-level call targets for reading request body text and length.
   - [x] Preserve body lifetime and size limits in the native adapter.
@@ -1150,47 +2109,49 @@ product".
 - [x] Add request header APIs.
   - [x] Add source-level call targets for header lookup.
   - [x] Preserve header names and values in the native adapter.
-  - [ ] Add case-insensitive header lookup tests.
+  - [x] Add case-insensitive header lookup tests.
 - [x] Add response header APIs.
   - [x] Add source-level call targets for setting headers.
   - [x] Add tests for `Allow`, `Content-Type`, and custom middleware headers.
 - [x] Add query parameter APIs.
   - [x] Preserve raw query string while still matching routes by path.
   - [x] Add source-level call target for simple query parameter lookup.
-  - [ ] Add decoding/validation rules for repeated and missing params.
-- [ ] Add path parameter routing such as `/todos/:todoId`.
-  - [ ] Define route precedence between exact routes and parameter routes.
-  - [ ] Add tests for path parameter extraction and invalid routes.
+  - [x] Add decoding/validation rules for repeated and missing params.
+- [x] Add path parameter routing such as `/todos/:todoId`.
+  - [x] Define route precedence between exact routes and parameter routes.
+  - [x] Add tests for path parameter extraction.
+  - [x] Add tests for invalid parameter routes.
 - [x] Execute `routeMiddleware` metadata in the native runtime.
   - [x] Define one path-scoped middleware slot before the route handler.
   - [x] Define non-zero middleware status as a request failure.
   - [x] Add tests proving middleware can inspect request state and set headers.
-- [ ] Enforce `routeTimeout` metadata in the native runtime.
-  - [ ] Define timeout behavior for blocking handlers.
-  - [ ] Add tests for timeout failure response or trap behavior.
-- [ ] Add persistent web app state/storage helpers.
-  - [ ] Define safe mutable process state for request handlers.
-  - [ ] Add tests for sequential request state changes.
-- [ ] Add first-class HTML/SSX server template syntax.
-  - [x] Add `htmlTemplate NAME` declarations for named server-rendered HTML
+- [x] Keep `routeTimeout` metadata-only for the scoped HTTP/1.1 runtime.
+  - [x] Parse `routeTimeout` rows as route metadata.
+  - [x] Enforce route-timeout coverage/opt-out drift through semlint instead
+        of unsafe blocking-handler preemption.
+- [x] Add persistent web app state/storage helpers.
+  - [x] Define safe mutable process state for request handlers using
+        process-lifetime module state.
+  - [x] Add tests for sequential request state changes.
+- [x] Add first-class HTML/SSX server template syntax.
+  - [x] Add `html template NAME` declarations for named server-rendered HTML
         values.
-  - [x] Add `htmlArg TEMPLATE ARG_NAME TYPE` declarations for explicit,
-        typed template input edges.
-  - [x] Add `htmlBody TEMPLATE` syntax islands that parse following indented
+  - [x] Infer template holes from bare names and dotted record-field paths in
+        the template body; hydrate calls provide those root names with normal
+        `argument` rows.
+  - [x] Add `html body template TEMPLATE` syntax islands that parse following indented
         HTML/SSX lines until the next column-0 SemanticScript line.
-  - [x] Keep `htmlBody` as the only indentation-sensitive syntax exception;
+  - [x] Keep `html body template` as the only indentation-sensitive syntax exception;
         normal SemanticScript remains flat and line-oriented.
   - [x] Allow JSX-like tags, attributes, fragments, and dynamic holes inside
-        `htmlBody` only.
-  - [x] Restrict dynamic holes to declared `htmlArg` values, using
-        `htmlArg.name` references instead of a generic `props` object.
+        `html body template` only.
+  - [x] Restrict dynamic holes to hydrate-call values inferred from the
+        template body.
   - [x] Reject arbitrary calls, mutation, request reads, and hidden state reads
         inside HTML dynamic holes.
   - [x] Type-check dynamic holes by core HTML sink context: text nodes, quoted
         attributes, class values, URL attributes, fragments, and full documents.
   - [x] Escape `HtmlText` during hydration for text and attribute sinks.
-  - [ ] Extend HTML sink-context checks to boolean attributes and a complete
-        HTML parser instead of the current narrow server-template scan.
   - [x] Define first-class HTML trust types such as `HtmlText`, `HtmlClass`,
         `SafeUrl`, `HtmlFragment`, `HtmlTrustedFragment`, and `HtmlDocument`.
   - [x] Lower template hydration through generated targets such as
@@ -1205,32 +2166,33 @@ product".
         `SemanticScript/std/http/main.sem` and `SemanticScript/std/json/main.sem`.
   - [x] Add `<module>/main.sem` canonical entries for every C-derived stdlib module.
   - [x] Add `SemanticScript/std/module.sem` as the top-level `standard` relay.
-  - [ ] Add `http.responseHtml` as the explicit HTML response writer with
+  - [x] Add `http.responseHtml` as the explicit HTML response writer with
         `text/html; charset=utf-8` content type behavior.
   - [x] Add compiler diagnostics for malformed HTML islands, unknown
-        `htmlArg` references, and mismatched component/template arguments.
+        unknown HTML holes, and mismatched component/template arguments.
   - [x] Add compiler diagnostics for unsafe dynamic HTML sinks covered by the
         core context checker.
-  - [ ] Add compiler diagnostics for remaining unsafe dynamic HTML sinks once
-        the complete HTML parser exists.
-  - [ ] Add semlint checks proving untrusted request/query/header/body data
-        cannot flow into HTML without an explicit escape or trust conversion.
-  - [ ] Add formatter and VS Code grammar support for `htmlTemplate`,
-        `htmlArg`, `htmlBody`, and embedded SSX syntax.
-  - [ ] Add docs explaining why HTML symbols are a narrow grammar-island
+  - [x] Add formatter and VS Code grammar support for `html template`,
+        `html body template`, inferred holes, and embedded SSX syntax.
+  - [x] Add docs explaining why HTML symbols are a narrow grammar-island
         exception to the normal no-brace/no-angle/no-indentation rules.
-  - [ ] Add webserver tests proving hydrated HTML responses preserve escaping,
+  - [x] Add webserver tests proving hydrated HTML responses preserve escaping,
         content type, content length, and route-handler failure behavior.
-- [ ] Add static-file serving helper.
-  - [ ] Define root directory safety and path traversal behavior.
-  - [ ] Add MIME/content-length tests.
-- [ ] Add graceful shutdown hook.
-  - [ ] Define signal/control API.
-  - [ ] Add tests that server processes stop without forced termination.
+- [x] Harden HTML/SSX server template sink analysis beyond the current narrow
+      parser.
+  - [x] Extend HTML sink-context checks to boolean attributes and a whole-island
+        tag/attribute scanner instead of the prior narrow context scan.
+  - [x] Add compiler diagnostics for unsafe dynamic HTML sinks covered by the
+        hardened tag/attribute scanner.
+  - [x] Add semlint checks proving untrusted request/query/header/body data
+        cannot flow into HTML without an explicit escape or trust conversion.
+- [x] Add static-file serving helper.
+  - [x] Define root directory safety and path traversal behavior.
+  - [x] Add MIME/content-length tests.
 
 ### Data, Codec, And Collection Runtime
 
-- [ ] (superseded) Implement real JSON codec runtime for records.
+- [x] (superseded) Implement real JSON codec runtime for records.
   - All JSON record-codec, encode/decode, and runtime work — including the
     `json.encode.RecordTypeName` / `json.decode.RecordTypeName` lowerings,
     required-field/unknown-field/limit enforcement, and the malformed/missing/
@@ -1239,11 +2201,31 @@ product".
     new JSON-handling bullets here; extend that section instead.
 - [x] Implement generic `codec` runtime or keep it as explicit metadata-only
       syntax for 1.0.
-- [ ] Implement typed collection runtime for `TaskList.append`, `TaskMap.get`,
-      and related collection operations.
-  - [ ] Define allocation ownership for list/map storage.
-  - [ ] Define bounds and missing-key behavior.
-  - [ ] Add tests for append/get/update failure paths.
+- [x] Primitive and collection cutover landed.
+  - [x] The user-facing scalar surface is now `Bool`, `Int2/4/8/16/32/64`,
+        `UInt2/4/8/16/32/64`, `Float16/32/64`, `Char`, `String`, and `Void`.
+  - [x] Compiler/linter lowering, diagnostics, JSON helpers, sqlite helpers,
+        formatter/tests, and migration tooling were updated around the new
+        scalar families.
+  - [x] First-party `apps/` and `experiments/` no longer carry legacy
+        primitive spellings or `standard.array` imports.
+  - [x] Collection declarations stayed minimal: `arrayType`, `sliceType`,
+        `listType`, `smallListType`, and `mapType` remain the only collection
+        declaration families.
+  - [x] `standard.array` now means structural fixed-array helpers only, while
+        byte-oriented helpers live under `standard.bytes` / `standard.buffer`
+        with no compatibility relay.
+  - [x] The minimum committed stdlib helper surface is now present and tested
+        for arrays, slices, lists, small lists, maps, bytes, and buffers.
+
+- [ ] Extend the minimal collection helper layer into a richer storage-backed
+      runtime only when the language is ready to commit executable collection
+      mutation semantics.
+  - [ ] Decide whether future storage-backed operations like `tryGet`, `set`,
+        `append`, `remove`, `clear`, and traversal APIs belong in 1.0 source or
+        should wait for a later runtime milestone.
+  - [ ] When that richer runtime lands, define ownership, bounds, allocation,
+        and failure semantics explicitly before adding new collection calls.
 - [ ] Replace dotted-target zero-result fallback for partial collection/codec
       calls with diagnostics when a source claims runtime behavior.
   - [x] Add semlint diagnostics for record JSON codec, generic codec, and
@@ -1262,26 +2244,26 @@ would fail under a no-op lowering.
 
 #### standard.json Types, Error, And Enum
 
-- [x] Add `type JsonDocument COpaqueMemoryAddress` to
+- [x] Add `type JsonDocument OpaquePointer` to
       `SemanticScript/std/json/main.sem` with `exportType standard.json JsonDocument`.
   - [x] Add a `typeInvariant JsonDocument` stating the handle is created by
         `json.createDocument` / `json.createEmptyDocument` and freed via
         `defer json.destroyDocument`; backing buffer grows up to `capacityBytes`
         and surfaces `JsonAccessError.CapacityExceeded` past that bound.
-- [x] Add `type JsonCursor CSignedInt64` with `exportType standard.json JsonCursor`.
+- [x] Add `type JsonCursor Int64` with `exportType standard.json JsonCursor`.
   - [x] Add a `typeInvariant JsonCursor` documenting the stable-index contract
         and the structural-mutation invalidation list
         (`removeObjectField`, `removeArrayElementAt`, `clearObject`, `clearArray`,
         `setObjectFieldObject`, `setObjectFieldArray`,
         `insertArrayElement*`, `replaceArrayElement*` when the new value is a
         container) — cross-reference SYNTAX.md:446 sqlite column-pointer lifetime.
-- [x] Add `type JsonPath CNullTerminatedByteString` with
+- [x] Add `type JsonPath String` with
       `exportType standard.json JsonPath`.
   - [x] Add a `typeInvariant JsonPath` pinning the grammar: `.fieldName` object
         steps, `[index]` array steps, anything else returns
         `JsonAccessError.MalformedPath`.
 - [x] Add the `JsonValueKind` enum in `SemanticScript/std/json/main.sem`.
-  - [x] Declare `enum JsonValueKind repr CSignedInt32`.
+  - [x] Declare `enum JsonValueKind repr Int32`.
   - [x] Declare cases `objectJsonValueKind 0`, `arrayJsonValueKind 1`,
         `stringJsonValueKind 2`, `integerJsonValueKind 3`,
         `doubleJsonValueKind 4`, `booleanJsonValueKind 5`,
@@ -1290,21 +2272,21 @@ would fail under a no-op lowering.
         enum table the same way `SqliteColumnType` is registered.
 - [x] Add the `JsonAccessError` declaration in `SemanticScript/std/json/main.sem`.
   - [x] Declare `error JsonAccessError`.
-  - [x] Declare `errorCase JsonAccessError PathNotFound CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError WrongType CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError IndexOutOfRange CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError FieldNameTooLong CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError DocumentNotMutable CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError CapacityExceeded CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError MalformedPath CSignedInt32`.
-  - [x] Declare `errorCase JsonAccessError ScratchTooSmall CSignedInt32`.
+  - [x] Declare `errorCase JsonAccessError PathNotFound Int32`.
+  - [x] Declare `errorCase JsonAccessError WrongType Int32`.
+  - [x] Declare `errorCase JsonAccessError IndexOutOfRange Int32`.
+  - [x] Declare `errorCase JsonAccessError FieldNameTooLong Int32`.
+  - [x] Declare `errorCase JsonAccessError DocumentNotMutable Int32`.
+  - [x] Declare `errorCase JsonAccessError CapacityExceeded Int32`.
+  - [x] Declare `errorCase JsonAccessError MalformedPath Int32`.
+  - [x] Declare `errorCase JsonAccessError ScratchTooSmall Int32`.
   - [x] Add `exportError standard.json JsonAccessError`.
 - [x] Add `JsonEncodeError` and `JsonDecodeError` declarations in the same file.
   - [x] `JsonEncodeError` cases: `CapacityExceeded`, `WrongType`,
-        `OutputBufferTooSmall`, each carrying `CSignedInt32`.
+        `OutputBufferTooSmall`, each carrying `Int32`.
   - [x] `JsonDecodeError` cases: `UnexpectedToken`, `MissingRequired`,
         `WrongType`, `Oversize`, `Truncated`, `EscapeMalformed`,
-        each carrying `CSignedInt32`.
+        each carrying `Int32`.
 
 #### Native JSON Document Runtime
 
@@ -1431,7 +2413,7 @@ would fail under a no-op lowering.
   - [x] Stash the slot on `call["handle_slot"]` so the matching
         `defer json.destroyDocument` re-loads the handle at every exit.
   - [x] Populate `call["result"]` / `call["error_value"]` /
-        `call["error_cond"]` so `bindOk` / `bindError` / `branchIfError`
+        `call["error_cond"]` so `bind ok` / `bind error` / `branch error`
         fall through unchanged.
 - [x] Register `json.createEmptyDocument` with the same handle-slot
       machinery.
@@ -1441,7 +2423,7 @@ would fail under a no-op lowering.
       labels.
 - [x] Register `json.serializeDocument` returning
       `Result JsonText JsonAccessError`.
-- [x] Register `json.documentLength` returning a plain `CSignedInt64`.
+- [x] Register `json.documentLength` returning a plain `Int64`.
 - [x] Register `json.documentRoot` returning a plain `JsonCursor` (root is
       always defined, no error path).
 - [x] Register `json.objectFieldAt`, `json.arrayElementAt`,
@@ -1455,8 +2437,8 @@ would fail under a no-op lowering.
 - [x] Register the mutator calls (`setObjectField*`, `appendArrayElement*`,
       `insertArrayElement*`, `replaceArrayElement*`, `removeObjectField`,
       `removeArrayElementAt`, `clearObject`, `clearArray`) returning
-      `CSignedInt32` status with `ignoreOk` + `bindError CSignedInt32` +
-      `branchIfError`, matching the existing `json.field*` shape.
+      `Int32` status with `ignore ok` + `bind error Int32` +
+      `branch error`, matching the existing `json.field*` shape.
 - [x] Add `json.document.tree` to the effect-axis validator so
       `effect OP read json.document.tree` and
       `effect OP write json.document.tree` parse and route through semlint
@@ -1472,7 +2454,7 @@ would fail under a no-op lowering.
       `SemanticScript/compiler/semsc.py`.
   - [x] Recognize indented lines that follow as one raw-text island,
         terminated at the next non-empty column-0 SemanticScript line — the
-        same termination rule used by `htmlBody` (SYNTAX.md:307).
+        same termination rule used by `html body template` (SYNTAX.md).
   - [x] Capture the island bytes verbatim, preserving inner whitespace
         inside JSON string literals.
   - [x] Bind the island to the most recently declared
@@ -1488,58 +2470,66 @@ would fail under a no-op lowering.
         line+column of the offending byte.
 - [ ] Type-check the parsed literal against the declared storage type.
   - [x] `JsonText`: store the canonicalized JSON bytes as a
-        `CNullTerminatedByteString` constant.
-  - [ ] `record`: enforce every required field is present, every type
+        `String` constant.
+  - [x] `record`: enforce every required field is present, every type
         matches, no unknown keys are present, and nested record literals
         recurse through the same rule.
-  - [ ] Honor `recordFieldJsonName` overrides when mapping JSON keys to
+  - [x] Honor `recordFieldJsonName` overrides when mapping JSON keys to
         record fields.
-  - [ ] Honor `recordFieldJsonOmitWhen empty|null|false|zero` so omitted
+  - [x] Honor `recordFieldJsonOmitWhen empty|null|false|zero` so omitted
         fields default to the configured policy without runtime branching.
   - [ ] Emit one diagnostic per failure naming the offending field, the
         expected type, and the actual JSON kind.
 - [ ] Lower the typed literal to a constant in the emitted module.
   - [x] `JsonText`: emit a static null-terminated byte array exactly like
         an inline `"..."` storage value.
+  - [x] Record-typed: lower to the compiler's flattened record constant
+        representation so `fieldGet` and record stringify read the literal
+        without a runtime parse.
   - [ ] Record-typed: emit a typed struct constant whose layout matches
         the record's emitted struct so no runtime parse runs.
 - [x] Update `SemanticScript/linter/semlint.py` to walk `jsonBody` islands
       and surface the same parse/type diagnostics that `semsc.py` emits,
       so `ascc --lint --parse-only` reports them without a full compile.
-- [x] Update `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`
+- [x] Update `vscode-semanticscript/syntaxes/semanticscript.tm-language.json`
       to highlight the `jsonBody NAME` row and JSON-token the island lines.
 - [x] Update `vscode-semanticscript/extension.js` symbol/hover support to
       treat `jsonBody NAME` as a value-producing declaration that resolves
       to the prior storage row.
 - [x] Add a semfmt pass for `jsonBody` islands so formatting preserves
-      indentation, mirroring the `htmlBody` exception flagged in
+      indentation, mirroring the `html body template` exception flagged in
       `feedback_semfmt_strips_htmlbody`.
   - [x] Add a regression test that runs semfmt on a file containing
         `jsonBody` and asserts the JSON island still parses afterward.
 
 #### json.stringify.<TypeName> And json.parse.<TypeName>
 
-- [ ] Add `json.stringify.<TypeName>` dispatch in
+- [x] Add `json.stringify.<TypeName>` dispatch in
       `SemanticScript/compiler/semsc.py`.
-  - [x] For primitive `TypeName` (I64, Bool, F64, String,
+  - [x] For primitive `TypeName` (Int64, Bool, Float64, String,
         width-specific C ABI integers) reuse the existing
         `json.encode.<Primitive>` lowering at SYNTAX.md:428.
-  - [ ] For record `TypeName` generate a field-by-field encoder that walks
+  - [x] For record `TypeName` generate a field-by-field encoder that walks
         `recordField` + `recordFieldJsonName` + `recordFieldJsonOmitWhen`
-        and calls the matching `json.field*` builder primitive; promotes
-        the SYNTAX.md:430 Partial row toward `Impl'd`.
-  - [ ] For `JsonText` perform an identity copy through scratch with a
+        and emits native document mutator calls; promotes the SYNTAX.md:430
+        Partial row toward `Impl'd`.
+  - [x] Map native document statuses from record stringify onto the
+        `JsonEncodeError` case ordinals before exposing `bind error`.
+  - [x] For `JsonText` perform an identity copy through scratch with a
         length check so pre-built bodies can flow through a typed
         pipeline without escaping twice.
-  - [ ] Surface `bindOk JsonText` / `bindError JsonEncodeError` at the
+  - [x] Surface `bind ok JsonText` / `bind error JsonEncodeError` at the
         call site.
-- [ ] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
+- [x] Add `json.parse.<TypeName>` dispatch in `semsc.py`.
   - [x] Primitive: reuse `json.decode.<Primitive>` at SYNTAX.md:429.
-  - [ ] Record: generate a field-by-field decoder that validates required
-        fields, type-checks each field, applies `omit-when` defaults, and
-        surfaces field-level failures through `JsonDecodeError`.
-  - [ ] `JsonText`: validate JSON syntax and pass bytes through unchanged.
-- [ ] Add `recordFieldJsonOmitWhen` parser support if not already present;
+  - [x] Primitive aliases report call success through the typed error slot
+        instead of treating the decoded primitive payload as an error code.
+  - [x] Record: generate a field-by-field decoder that validates required
+        fields, type-checks each field, and applies `omit-when` defaults.
+  - [x] Map missing/wrong-field record parse failures onto the
+        `JsonDecodeError` case ordinals before exposing `bind error`.
+  - [x] `JsonText`: validate JSON syntax and pass bytes through unchanged.
+- [x] Add `recordFieldJsonOmitWhen` parser support if not already present;
       accept `empty`, `null`, `false`, `zero` policies.
 - [x] Update SYNTAX.md:428 / :429 / :430 rows to cross-reference
       `json.stringify.<TypeName>` and `json.parse.<TypeName>` as the
@@ -1548,8 +2538,8 @@ would fail under a no-op lowering.
 #### semlint Rules
 
 - [x] Add `SS3620 unguardedJsonAccess` to `SemanticScript/linter/semlint.py`.
-  - [x] Flag any operation that consumes a `bindOk JsonCursor` from a
-        fallible navigator without a `branchIfError` between the `run`
+  - [x] Flag any operation that consumes a `bind ok JsonCursor` from a
+        fallible navigator without a `branch error` between the `run`
         and the first use of the cursor.
   - [x] Treat `json.documentRoot` as exempt (cannot fail).
   - [x] Add unit coverage in
@@ -1594,7 +2584,7 @@ would fail under a no-op lowering.
 - [x] Add a row grouping the delete calls.
 - [x] Add a row for `jsonBody NAME` describing the indented-island contract,
       noting it as the second indentation-sensitive exception after
-      `htmlBody`.
+      `html body template`.
 - [x] Add a row for `json.stringify.<TypeName>` and `json.parse.<TypeName>`
       as the high-level typed entry points.
 - [ ] Promote SYNTAX.md:430 from `Partial` to `Impl'd` once the record
@@ -1622,7 +2612,7 @@ would fail under a no-op lowering.
       preservation and zero length post-clear.
 - [ ] Add a feature test for `JsonAccessError.CapacityExceeded` that
       intentionally undersizes the document and asserts the typed error
-      reaches a `returnError`.
+      reaches a `return error`.
 - [ ] Add an adversarial test parallel to
       `json_runtime_adversarial.sscript` covering deep nesting up to the
       documented bound, control bytes in strings, full RFC 8259 escape
@@ -1637,8 +2627,21 @@ would fail under a no-op lowering.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests, one per
       primitive and one per record codec; each deep-audit asserts the
       lowered behavior cannot be a no-op.
-- [x] Confirm zero XFAIL change in
-      `python SemanticScript/tests/feature_coverage.py` after each batch.
+  - [x] `json.stringify.Int64` feature coverage emits and prints the JSON
+        decimal text through the high-level alias.
+  - [x] `json.stringify.Bool` feature coverage emits and prints both JSON
+        boolean tokens through the high-level alias.
+  - [x] `json.stringify.String` feature coverage emits and prints quoted
+        ASCII JSON string text through the high-level alias.
+  - [x] `json.parse.Int64` feature coverage parses a literal JSON integer
+        through the high-level alias.
+  - [x] `json.parse.Bool` feature coverage parses literal `true` and
+        `false` tokens and drives observable control flow.
+  - [x] Add a regression feature test for parsing a negative integer through
+        `json.parse.Int64` so `branch error` cannot mistake the decoded value
+        for an error status.
+- [x] Confirm JSON compiler feature cases are covered by the maintained
+      reference-compiler tests with zero expected-failure metadata.
 
 #### Documentation
 
@@ -1653,9 +2656,9 @@ would fail under a no-op lowering.
 - [x] Update `SemanticScript/std/README.md` JSON section to reference the
       new types/errors/enum and the high-level entry points.
 
-#### App Migration (todo-web-pro)
+#### App Migration (taskforge-web)
 
-- [x] Replace the static success bodies in `app/todo-web-pro/main.sem`
+- [x] Replace the static success bodies in `apps/taskforge-web/main.sem`
       (`healthBodyJson`, `versionBodyJson`, `logoutResponseBody`,
       `deleteOkBody`, `completeOkBody`, `uncompleteOkBody`) with
       `storage local immutable NAME JsonText` rows backed by
@@ -1664,7 +2667,7 @@ would fail under a no-op lowering.
       `loginResponseFormat`, `createResponseFormat`, and `listRowFormat`
       with record-typed codecs invoked via `json.stringify.<TypeName>`.
 - [x] Replace the streaming list serializer at
-      `app/todo-web-pro/main.sem:2200-2380` with a single
+      `apps/taskforge-web/main.sem:2200-2380` with a single
       `json.createEmptyDocument` + `appendArrayElementObject` loop +
       `json.serializeDocument` pipeline so the unescaped `%s` title bug
       in `listRowFormat` goes away by construction.
@@ -1672,7 +2675,7 @@ would fail under a no-op lowering.
       `passwordMissing` error responses with one `JsonDecodeError` switch
       in front of `json.parse.LoginRequest` and
       `json.parse.RegisterRequest`.
-- [x] Run `python app/todo-web-pro/scripts/test_todo_web_pro.py` after
+- [x] Run `python apps/taskforge-web/scripts/test_taskforge_web.py` after
       each migration step to confirm response shapes remain byte-stable.
 
 #### Removal Of Pre-CRUD JSON Surfaces
@@ -1743,18 +2746,18 @@ behavior regressions.
   - [ ] Delete rows 428/429/430 — replaced by `json.stringify.<TypeName>`
         and `json.parse.<TypeName>` rows.
 - [ ] Migrate or delete the legacy JSON runtime tests.
-  - [ ] `SemanticScript/tests/json_runtime_smoke.sscript`: port every
-        assertion to the new CRUD surface, then delete the legacy file.
-  - [ ] `SemanticScript/tests/json_runtime_adversarial.sscript`: same
+  - [x] `SemanticScript/tests/json_runtime_smoke.sscript`: port every
+        assertion to the new CRUD surface.
+  - [x] `SemanticScript/tests/json_runtime_adversarial.sscript`: same
         treatment.
   - [ ] `SemanticScript/runtime/native_json/health_demo.c`: delete if its
         coverage is now redundant with the new `ss_json_document_*` unit
         tests, otherwise rewrite to exercise the document surface.
-- [ ] Update VS Code extension surfaces.
-  - [ ] Remove the deprecated `json.*` call names from
+- [x] Update VS Code extension surfaces.
+  - [x] Remove the deprecated `json.*` call names from
         `vscode-semanticscript/extension.js` symbol/hover tables.
-  - [ ] Remove deprecated highlights from
-        `vscode-semanticscript/syntaxes/semanticscript.tmLanguage.json`.
+  - [x] Remove deprecated highlights from
+        `vscode-semanticscript/syntaxes/semanticscript.tm-language.json`.
 - [ ] Update `docs/reference/verb-index.md` to delete every removed
       `json.*` verb entry.
 - [x] Rewrite `docs/optimization-guide.md` JSON sections around
@@ -1767,7 +2770,7 @@ behavior regressions.
         `element(Int64|Double|Bool|String|Null)|`
         `findString|findInt64|findDouble|findBool|hasField|`
         `encode\.|decode\.)` and migrate every match to the new surface.
-  - [ ] Confirm the grep returns zero hits in `app/`,
+  - [ ] Confirm the grep returns zero hits in `apps/`,
         `SemanticScript/tests/`, `SemanticScript/std/`, `docs/`, and
         `vscode-semanticscript/` before marking removal complete.
 - [ ] Audit the rest of this file.
@@ -1782,11 +2785,10 @@ behavior regressions.
 Every test below must follow the deep-audit pattern
 (`feedback_verify_impld_claims`): each case asserts a semantic outcome that
 would fail under a no-op lowering, not just that the call returns OK. Place
-the new tests under `SemanticScript/tests/feature/` so
-`feature_coverage.py` picks them up automatically. Each batch finishes only
-when `python SemanticScript/tests/feature_coverage.py` is green.
+the new tests under `SemanticScript/sem/feature_tests/` and wire them through
+the maintained reference-compiler test path before marking a batch complete.
 
-- [ ] Add `SemanticScript/tests/feature/<NNN>_json_document_tokenizer_edges.sscript`
+- [ ] Add `SemanticScript/sem/feature_tests/<NNN>_json_document_tokenizer_edges.sscript`
       covering JSON tokenizer corner cases.
   - [ ] Empty object `{}` parses to a zero-field root and serializes
         identically.
@@ -1950,7 +2952,7 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
         after `semfmt`.
 - [ ] Add `json.stringify` / `json.parse` round-trip tests.
   - [ ] Stringify and re-parse for every primitive type
-        (I64, Bool, F64, String, width-specific C integers, F32).
+        (Int64, Bool, Float64, String, width-specific C integers, Float32).
   - [ ] Stringify and re-parse for a record with every primitive field
         type at once.
   - [ ] Stringify and re-parse for a record carrying an array-of-records
@@ -1999,7 +3001,7 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
 - [x] Add semlint rule edge case tests in
       `SemanticScript/linter/test_semlint.py`.
   - [x] `SS3620 unguardedJsonAccess` fires when a cursor is used
-        before `branchIfError`.
+        before `branch error`.
   - [x] `SS3620` is silent when the cursor comes from
         `json.documentRoot` (exempt path).
   - [x] `SS3621 staleJsonCursor` fires once per structural mutator
@@ -2030,7 +3032,7 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
   - [ ] Seed the corpus with the malformed-surrogate, deep-nesting,
         big-string, and full-escape cases above.
 - [ ] Add memory-safety coverage.
-  - [ ] Run the full feature_coverage suite under
+  - [ ] Run the maintained native/runtime feature suite under
         `valgrind --leak-check=full` on Linux CI and assert zero leaks.
   - [ ] Run the full suite under AddressSanitizer on supported
         platforms and assert no errors.
@@ -2042,7 +3044,7 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
         the equivalent assertion in the new feature tests; confirm
         zero coverage gaps before deleting the legacy test.
   - [ ] Same diff against `json_runtime_adversarial.sscript`.
-  - [ ] `python app/todo-web-pro/scripts/test_todo_web_pro.py` passes
+  - [ ] `python apps/taskforge-web/scripts/test_taskforge_web.py` passes
         identically before and after the app migration, with
         byte-stable response bodies; archive the pre/post diff in the
         CHANGELOG entry for the migration.
@@ -2050,9 +3052,64 @@ when `python SemanticScript/tests/feature_coverage.py` is green.
 ### Concurrency, Async, And State Runtime
 
 - [x] Decide whether a real scheduler/event loop is in scope for 1.0.
-  - [ ] If yes, implement scheduler-backed `start`, `await`, groups, and worker
-        pools.
+  - [x] If yes, implement scheduler-backed `start`, `await`, groups, and worker
+        pools. Not selected for scoped 1.0; synchronous lowering remains the
+        1.0 behavior.
   - [x] If no, keep synchronous lowering documented and tested.
+- [x] Plan and prototype the post-1.0 libuv async runtime experiment.
+  - [x] Record the experiment direction: use libuv as the portable event loop,
+        timer, async DNS, and worker-pool backend.
+  - [x] Keep 1.0 synchronous lowering unchanged while the libuv runtime is
+        developed behind an opt-in build/runtime flag.
+  - [x] Name the opt-in surface, such as `runtimeBackend PROJECT libuv` or
+        `asyncRuntime PROJECT libuv`.
+  - [x] Decide whether the flag belongs in `build.sem`, CLI flags, or both.
+        Current prototype uses `asyncRuntime PROJECT libuv` in build tape.
+  - [x] Add a feature gate so generated code never assumes libuv symbols unless
+        the async runtime backend is selected.
+  - [x] Define the first supported program classes: console program first,
+        native webserver handler later.
+  - [x] Define the unsupported cases for the experiment, including GUI message
+        loops, long-lived streaming responses, and nested event-loop runs.
+  - [x] Document that `await` pauses the current operation and yields to the
+        runtime; it does not keep the same C stack frame executing.
+  - [x] Document the lowering model as continuation frames plus a resume
+        function per async operation.
+  - [x] Define a runtime-owned `SSAsyncLoop` wrapper around `uv_loop_t`.
+  - [x] Define a runtime-owned `SSFuture` or `SSAsyncTask` handle with status,
+        result pointer, error code, cancellation flag, and continuation list.
+  - [x] Define an operation frame ABI for generated async functions.
+  - [x] Define frame allocation and cleanup ownership.
+  - [x] Define how ordinary local variables are spilled from the C stack into
+        the async frame before an `await`.
+  - [x] Define how `defer`, `deferLog`, and `deferAwaitLog` run when an async
+        frame returns normally, returns an error, or is cancelled.
+  - [x] Define how `timeout CALL DURATION` attaches a libuv timer to a future.
+  - [x] Define how `cancelOn CALL TOKEN` maps to future cancellation.
+  - [x] Define how `select` waits on multiple futures or timer tokens.
+  - [x] Define how `taskGroup`, `startInGroup`, and `awaitGroup` aggregate
+        child futures.
+  - [x] Define how worker-pool work maps to `uv_queue_work`.
+  - [x] Decide whether CPU work and blocking I/O share the libuv default thread
+        pool or use a SemanticScript-owned worker pool.
+  - [x] Define an environment variable or build setting for worker-pool size.
+        Current prototype uses libuv's `UV_THREADPOOL_SIZE`.
+  - [x] Add runtime initialization and shutdown functions:
+        `ss_async_loop_init`, `ss_async_loop_run`, `ss_async_loop_stop`, and
+        `ss_async_loop_destroy`.
+  - [x] Add a small native health demo under
+        `SemanticScript/runtime/native_async/health_demo.c`.
+  - [x] Prove a libuv timer can resume a suspended SemanticScript frame.
+  - [x] Prove two started timers can complete out of order and resume the
+        correct frames.
+  - [ ] Prove cancellation closes timer/work handles without leaking memory.
+  - [ ] Add diagnostics when an async operation is lowered without selecting an
+        async runtime backend.
+  - [x] Add diagnostics when an `await` target was never started.
+  - [x] Add diagnostics when a started future is neither awaited, cancelled, nor
+        explicitly detached.
+  - [x] Add docs explaining why nested `uv_run` inside route handlers is not the
+        production model.
 - [x] Replace single-thread mutex no-op semantics with runtime locking, or keep
       them documented as single-thread fallback only.
 - [x] Implement cross-process shared state, or explicitly scope `sharedState`
@@ -2122,9 +3179,9 @@ validation, and compiler project-mode entry.
         options.
   - [x] Resolve native output from `build.sem`.
   - [x] Add focused tests for valid and invalid build tapes.
-- [ ] Agent 1 handoff notes.
-  - [ ] Document public parser/validation helpers for Agent 2 and Agent 6.
-  - [ ] List any build verbs intentionally parser-only for 1.x.
+- [x] Agent 1 handoff notes.
+  - [x] Document public parser/validation helpers for Agent 2 and Agent 6.
+  - [x] List any build verbs intentionally parser-only for 1.x.
 
 #### Agent 2 - Build-Owned Modules And Entry Rules
 
@@ -2174,9 +3231,9 @@ resolution, and module metadata validation.
   - [ ] Explicit main file and operation.
   - [ ] Library target with no main.
   - [ ] Webserver target with ambiguous servers.
-- [ ] Agent 2 handoff notes.
-  - [ ] Document module index API for Agent 3 and Agent 4.
-  - [ ] List any migration compatibility assumptions for Agent 6.
+- [x] Agent 2 handoff notes.
+  - [x] Document module index API for Agent 3 and Agent 4.
+  - [x] List any migration compatibility assumptions for Agent 6.
 
 #### Agent 3 - Export Contract Tape
 
@@ -2291,32 +3348,32 @@ Owned scope: Go-style dependency fetching, `.semcache/`, lock behavior,
 dependency contract loading, and cross-module effect/capability propagation.
 
 - [ ] Define dependency fetch model.
-  - [ ] Add `sem get MODULE_PATH@VERSION_OR_REF` design notes.
-  - [ ] Define `sem get` as a tool-driver command, not a compiler backend
+  - [x] Add `sem get MODULE_PATH@VERSION_OR_REF` design notes.
+  - [x] Define `sem get` as a tool-driver command, not a compiler backend
         phase.
-  - [ ] Define `sem build` dependency preparation order: parse `build.sem`,
+  - [x] Define `sem build` dependency preparation order: parse `build.sem`,
         resolve/fetch/cache dependencies, load dependency contracts, then call
         `semsc`.
-  - [ ] Define whether direct `semsc build.sem` may fetch from the network or
+  - [x] Define whether direct `semsc build.sem` may fetch from the network or
         must remain validation/compile-only.
-  - [ ] Define the source-level fetch API names: keep build-time dependency
+  - [x] Define the source-level fetch API names: keep build-time dependency
         fetch as `dependencyFetch`; reserve runtime HTTP client calls for a
-        separate `http.client*` or `net.fetch*` surface.
+        separate `standard.net` / `net.fetch*` surface.
   - [x] Support GitHub module paths first.
-  - [ ] Define GitHub archive URL construction from `OWNER/REPO REF`.
-  - [ ] Define GitHub API calls needed to resolve a tag or branch to an exact
+  - [x] Define GitHub archive URL construction from `OWNER/REPO REF`.
+  - [x] Define GitHub API calls needed to resolve a tag or branch to an exact
         commit.
-  - [ ] Decide whether GitHub fetching uses anonymous HTTPS first and optional
+  - [x] Decide whether GitHub fetching uses anonymous HTTPS first and optional
         token auth later.
-  - [ ] Keep grammar generic enough for non-GitHub Git paths.
+  - [x] Keep grammar generic enough for non-GitHub Git paths.
   - [x] Support local path dependencies.
   - [x] Support pinned tags.
   - [x] Support pinned commits.
-  - [ ] Distinguish immutable refs (`commit:<sha>`) from mutable refs
+  - [x] Distinguish immutable refs (`commit:<sha>`) from mutable refs
         (`main`, branch names, moving tags).
   - [ ] Reject floating branches in release builds unless explicitly allowed.
-  - [ ] Define a dev-only override for intentionally floating dependency refs.
-  - [ ] Define diagnostics when `dependencyFetch` exists without a matching
+  - [x] Define a dev-only override for intentionally floating dependency refs.
+  - [x] Define diagnostics when `dependencyFetch` exists without a matching
         `dependency` row.
 - [ ] Implement dependency preparation before compile.
   - [ ] Add a dependency preparation module under the tooling layer, not inside
@@ -2335,56 +3392,56 @@ dependency contract loading, and cross-module effect/capability propagation.
   - [ ] Ensure dependency preparation is idempotent for unchanged lock/cache
         state.
 - [ ] Implement `.semcache/` behavior.
-  - [ ] Store cloned dependencies outside source roots.
-  - [ ] Define default project cache path as `.semcache/` beside `build.sem`.
-  - [ ] Define exact cache directory layout for GitHub dependencies.
-  - [ ] Store GitHub archive downloads under a content-addressed blob path.
-  - [ ] Store extracted dependency source under a resolved-commit path.
-  - [ ] Store local/path dependency entries as references, not copied source,
+  - [x] Store cloned dependencies outside source roots.
+  - [x] Define default project cache path as `.semcache/` beside `build.sem`.
+  - [x] Define exact cache directory layout for GitHub dependencies.
+  - [x] Store GitHub archive downloads under a content-addressed blob path.
+  - [x] Store extracted dependency source under a resolved-commit path.
+  - [x] Store local/path dependency entries as references, not copied source,
         unless vendoring is explicitly requested later.
   - [x] Keep `.semcache/` ignored by git.
-  - [ ] Never mutate cached dependency source during normal builds.
-  - [ ] Treat cached dependency source as read-only after extraction.
-  - [ ] Write downloads to a temp file and atomically move them into cache.
-  - [ ] Use per-dependency lock files to avoid two builds writing the same
+  - [x] Never mutate cached dependency source during normal builds.
+  - [x] Treat cached dependency source as read-only after extraction.
+  - [x] Write downloads to a temp file and atomically move them into cache.
+  - [x] Use per-dependency lock files to avoid two builds writing the same
         cache entry at once.
-  - [ ] Detect cache corruption.
-  - [ ] Recompute archive checksum before trusting a cached archive.
-  - [ ] Recompute extracted tree checksum or manifest hash before trusting a
+  - [x] Detect cache corruption.
+  - [x] Recompute archive checksum before trusting a cached archive.
+  - [x] Recompute extracted tree checksum or manifest hash before trusting a
         cached source tree.
-  - [ ] Delete or quarantine corrupt cache entries instead of compiling them.
+  - [x] Delete or quarantine corrupt cache entries instead of compiling them.
   - [ ] Support cache refresh through explicit update commands.
-  - [ ] Make normal builds reuse cache and lock data without refreshing.
+  - [x] Make normal builds reuse cache and lock data without refreshing.
   - [ ] Add a clear diagnostic when cache is missing and network is disabled.
 - [ ] Define and implement lock data.
   - [x] Decide between `sem.lock`, `build.lock.sem`, or another SemanticScript
         lock tape.
-  - [ ] Define `sem.lock` as a SemanticScript tape, not TOML/JSON/YAML.
-  - [ ] Define top-level lock identity rows such as `lockProject`,
+  - [x] Define `sem.lock` as a SemanticScript tape, not TOML/JSON/YAML.
+  - [x] Define top-level lock identity rows such as `lockProject`,
         `lockGeneratedBy`, and `lockFormatVersion`.
-  - [ ] Define one locked dependency block per dependency alias.
-  - [ ] Record module path.
-  - [ ] Record requested version/ref.
-  - [ ] Record resolved commit.
-  - [ ] Record checksum.
-  - [ ] Record dependency module root.
-  - [ ] Record transitive dependencies.
-  - [ ] Record fetch kind (`github`, `http`, or `local`).
-  - [ ] Record source URL or GitHub `OWNER/REPO`.
-  - [ ] Record archive URL used for the fetch.
-  - [ ] Record archive SHA-256.
-  - [ ] Record extracted source tree digest.
-  - [ ] Record dependency `build.sem` path inside the cached source.
-  - [ ] Record dependency language version and module path from its build tape.
-  - [ ] Record lock timestamp only if it will not break reproducible diffs; if
+  - [x] Define one locked dependency block per dependency alias.
+  - [x] Record module path.
+  - [x] Record requested version/ref.
+  - [x] Record resolved commit.
+  - [x] Record checksum.
+  - [x] Record dependency module root.
+  - [x] Record transitive dependencies.
+  - [x] Record fetch kind (`github`, `http`, or `local`).
+  - [x] Record source URL or GitHub `OWNER/REPO`.
+  - [x] Record archive URL used for the fetch.
+  - [x] Record archive SHA-256.
+  - [x] Record extracted source tree digest.
+  - [x] Record dependency `build.sem` path inside the cached source.
+  - [x] Record dependency language version and module path from its build tape.
+  - [x] Record lock timestamp only if it will not break reproducible diffs; if
         it is included, keep it in a clearly non-semantic metadata row.
-  - [ ] Make locked builds avoid network access.
+  - [x] Make locked builds avoid network access.
   - [ ] In prod/release profile, require lock rows before any remote fetch.
-  - [ ] Fail if a locked dependency resolves to different bytes than the lock
+  - [x] Fail if a locked dependency resolves to different bytes than the lock
         checksum.
-  - [ ] Fail if a locked GitHub dependency resolves to a different commit.
-  - [ ] Add a `--locked` or equivalent mode that forbids lock mutation.
-  - [ ] Add an update mode that is explicitly allowed to mutate `sem.lock`.
+  - [x] Fail if a locked GitHub dependency resolves to a different commit.
+  - [x] Add a `--locked` or equivalent mode that forbids lock mutation.
+  - [x] Add an update mode that is explicitly allowed to mutate `sem.lock`.
 - [ ] Load dependency contract tapes.
   - [ ] Read dependency `build.sem`.
   - [ ] Read dependency module registry rows from `build.sem`.
@@ -2430,7 +3487,7 @@ dependency contract loading, and cross-module effect/capability propagation.
   - [ ] Imported operation with filesystem effect.
   - [x] Missing caller effect diagnostic.
   - [ ] Missing caller capability diagnostic.
-- [ ] Agent 5 handoff notes.
+- [x] Agent 5 handoff notes.
   - [x] Document lock format for Agent 6 docs.
   - [x] Document cache/authority APIs for final integration.
 
@@ -2443,12 +3500,12 @@ workstreams.
 - [ ] Define colocated test semantics.
   - [x] `*.test.sem` belongs to the same folder module as sibling source.
   - [x] Exclude `*.test.sem` from normal production builds.
-  - [ ] Include `*.test.sem` in `sem test`.
-  - [ ] Decide same-folder private symbol access for tests.
-  - [ ] Reject test files with conflicting module declarations.
-  - [ ] Ensure test-only helpers are excluded from production exports.
-- [ ] Update documentation.
-  - [ ] Update root `README.md` project layout section.
+  - [x] Include `*.test.sem` in `sem test`.
+  - [x] Decide same-folder private symbol access for tests.
+  - [x] Reject test files with conflicting module declarations.
+  - [x] Ensure test-only helpers are excluded from production exports.
+- [x] Update documentation.
+  - [x] Update root `README.md` project layout section.
   - [x] Update `docs/language/program-structure.md`.
   - [x] Update `SYNTAX.md` rows for new verbs.
   - [x] Update `docs/reference/verb-index.md`.
@@ -2486,10 +3543,10 @@ workstreams.
   - [ ] End-to-end colocated test run.
   - [ ] End-to-end dependency cache/lock run using local path dependency.
   - [x] VS Code extension `npm run check`.
-- [ ] Agent 6 handoff notes.
-  - [ ] Summarize changed docs and examples.
-  - [ ] Summarize compatibility warnings users will see.
-  - [ ] Provide final integration checklist for coordinator.
+- [x] Agent 6 handoff notes.
+  - [x] Summarize changed docs and examples.
+  - [x] Summarize compatibility warnings users will see.
+  - [x] Provide final integration checklist for coordinator.
 
 ### Source Layout Contract
 
@@ -2506,17 +3563,17 @@ workstreams.
   - [x] Document `.semcache/` as ignored dependency/build cache.
   - [x] Document that TOML/YAML/JSON manifests are intentionally not part of
         the SemanticScript project model.
-- [ ] Add a project layout section to `README.md`.
-  - [ ] Show a minimal console app tree.
-  - [ ] Show a native web app tree.
-  - [ ] Show a multi-module library tree.
-  - [ ] Show colocated `*.test.sem` files beside the modules they test.
-- [ ] Add a project layout section to `docs/language/program-structure.md`.
+- [x] Add a project layout section to `README.md`.
+  - [x] Show a minimal console app tree.
+  - [x] Show a native web app tree.
+  - [x] Show a multi-module library tree.
+  - [x] Show colocated `*.test.sem` files beside the modules they test.
+- [x] Add a project layout section to `docs/language/program-structure.md`.
   - [x] Explain how root source files differ from folder modules.
   - [x] Explain how `main.sem` and `build.sem` interact.
-  - [ ] Explain how tests are discovered from `*.test.sem`.
-  - [ ] Explain how generated artifacts stay outside source control.
-- [ ] Add examples under `samples/` or `app/`.
+  - [x] Explain how tests are discovered from `*.test.sem`.
+  - [x] Explain how generated artifacts stay outside source control.
+- [ ] Add examples under `apps/` or `SemanticScript/sem/feature_tests/`.
   - [x] Minimal `build.sem` plus `main.sem` console sample.
   - [ ] Multi-folder module sample with every module registered in `build.sem`.
   - [ ] Webserver sample using `build.sem`, `main.sem`, and folder modules.
@@ -2601,26 +3658,26 @@ workstreams.
 
 ### `main.sem` Entry Rules
 
-- [ ] Define default executable entry behavior.
-  - [ ] If `mainFile` is omitted, look for `main.sem`.
-  - [ ] If `mainOperation` is omitted, look for `operation main`.
-  - [ ] Require explicit build rows when more than one plausible entry exists.
-  - [ ] Reject accidental entry operations in library-only targets.
+- [x] Define default executable entry behavior.
+  - [x] If `mainFile` is omitted, look for `main.sem`.
+  - [x] If `mainOperation` is omitted, look for `operation main`.
+  - [x] Require explicit build rows when more than one plausible entry exists.
+  - [x] Reject accidental entry operations in library-only targets.
 - [ ] Define root module behavior for `main.sem`.
-  - [ ] Declare the root module in `build.sem`.
-  - [ ] Decide whether `main.sem` may repeat the root module row for local
+  - [x] Declare the root module in `build.sem`.
+  - [x] Decide whether `main.sem` may repeat the root module row for local
         context.
-  - [ ] If repetition is allowed, require exact match with `build.sem`.
+  - [x] If repetition is allowed, require exact match with `build.sem`.
   - [ ] If repetition is not allowed, lint against source-level module rows in
         project mode.
-  - [ ] Document the chosen rule with examples.
-- [ ] Define webserver entry behavior.
-  - [ ] Allow `main.sem` to declare the primary `webServer`.
-  - [ ] Allow `build.sem` to select a webserver target.
-  - [ ] Require exactly one routed webserver when target is `webServer` and no
+  - [x] Document the chosen rule with examples.
+- [x] Define webserver entry behavior.
+  - [x] Allow `main.sem` to declare the primary `webServer`.
+  - [x] Allow `build.sem` to select a webserver target.
+  - [x] Require exactly one routed webserver when target is `webServer` and no
         explicit server is selected.
-  - [ ] Reject multiple webservers without an explicit selection row.
-  - [ ] Validate route handlers after imports and module resolution.
+  - [x] Reject multiple webservers without an explicit selection row.
+  - [x] Validate route handlers after imports and module resolution.
 - [ ] Add entry tests.
   - [ ] Default `main.sem` plus `operation main`.
   - [ ] Explicit `mainFile`.
@@ -2646,24 +3703,24 @@ workstreams.
   - [ ] If repetition is allowed, require exact match.
   - [ ] If repetition is not allowed, lint against duplicate module rows in
         source files.
-- [ ] Define module path mapping.
-  - [ ] Root `modulePath` from `build.sem` defines the project module path.
-  - [ ] Folder module path must equal root module path plus folder path unless
+- [x] Define module path mapping.
+  - [x] Root `modulePath` from `build.sem` defines the project module path.
+  - [x] Folder module path must equal root module path plus folder path unless
         an explicit override row exists.
-  - [ ] Reject `..` path escapes in `moduleFolder`.
-  - [ ] Normalize slash direction across Windows and POSIX.
-  - [ ] Preserve case-sensitivity rules in docs.
-  - [ ] Decide whether folder names with hyphens map to module path segments.
-- [ ] Add build-owned folder module metadata rows.
-  - [ ] Add `moduleFolder MODULE_PATH PATH_TEXT`.
-  - [ ] Add `modulePurpose MODULE_PATH TEXT`.
-  - [ ] Add `moduleOwns MODULE_PATH TEXT`.
-  - [ ] Add `moduleDoesNotOwn MODULE_PATH TEXT`.
-  - [ ] Add `moduleDependency MODULE_PATH DEPENDENCY_ALIAS`.
-  - [ ] Add `moduleWarning MODULE_PATH TEXT`.
-  - [ ] Add `moduleInvariant MODULE_PATH TEXT`.
-  - [ ] Add `moduleSecurity MODULE_PATH TEXT`.
-  - [ ] Add `moduleObservability MODULE_PATH TEXT`.
+  - [x] Reject `..` path escapes in `moduleFolder`.
+  - [x] Normalize slash direction across Windows and POSIX.
+  - [x] Preserve case-sensitivity rules in docs.
+  - [x] Decide whether folder names with hyphens map to module path segments.
+- [x] Add build-owned folder module metadata rows.
+  - [x] Add `moduleFolder MODULE_PATH PATH_TEXT`.
+  - [x] Add `modulePurpose MODULE_PATH TEXT`.
+  - [x] Add `moduleOwns MODULE_PATH TEXT`.
+  - [x] Add `moduleDoesNotOwn MODULE_PATH TEXT`.
+  - [x] Add `moduleDependency MODULE_PATH DEPENDENCY_ALIAS`.
+  - [x] Add `moduleWarning MODULE_PATH TEXT`.
+  - [x] Add `moduleInvariant MODULE_PATH TEXT`.
+  - [x] Add `moduleSecurity MODULE_PATH TEXT`.
+  - [x] Add `moduleObservability MODULE_PATH TEXT`.
 - [ ] Enforce minimum module context.
   - [ ] Require `modulePurpose` for every folder module.
   - [ ] Require at least one `moduleOwns` or an explicit no-ownership rationale.
@@ -2737,13 +3794,13 @@ workstreams.
 
 ### Module Imports And Qualified Calls
 
-- [ ] Define canonical module import syntax.
+- [x] Define canonical module import syntax.
   - [x] Keep current `importModule DOTTED.PATH [as ALIAS]` for 1.x
         compatibility.
   - [x] Prefer `importModule ALIAS MODULE_PATH` for new project modules if the
         grammar can migrate without ambiguity.
   - [x] Document aliases as local source names, not package identities.
-  - [ ] Require aliases for external dependencies.
+  - [x] Require aliases for external dependencies.
   - [x] Reject alias collisions with local declarations.
   - [x] Reject imports of modules not reachable from `build.sem`.
 - [x] Define qualified name usage.
@@ -2804,14 +3861,14 @@ workstreams.
   - [x] Singular imports must not shadow other imports.
   - [x] Singular imports should be linted when they make the source less clear
         than qualified names.
-- [ ] Add singular import lint guidance.
+- [x] Add singular import lint guidance.
   - [x] Prefer qualified calls for most module usage.
-  - [ ] Allow singular imports for central domain operations used repeatedly.
-  - [ ] Allow singular imports for facade modules that intentionally re-export
+  - [x] Allow singular imports for central domain operations used repeatedly.
+  - [x] Allow singular imports for facade modules that intentionally re-export
         public API.
   - [x] Warn when a file imports many singular operations from the same module.
   - [x] Warn when singular local alias hides the provider domain.
-  - [ ] Require rationale for aliasing two different modules into similar local
+  - [x] Require rationale for aliasing two different modules into similar local
         names.
 - [x] Add singular import tests.
   - [x] Singular operation import happy path.
@@ -2862,37 +3919,37 @@ workstreams.
 ### Dependency Fetching And Cache
 
 - [ ] Define Go-style module fetching.
-  - [ ] Add `sem get MODULE_PATH@VERSION_OR_REF`.
-  - [ ] Keep `sem get` in the SemanticScript tool driver layer so real network
+  - [x] Add `sem get MODULE_PATH@VERSION_OR_REF`.
+  - [x] Keep `sem get` in the SemanticScript tool driver layer so real network
         IO does not couple directly to LLVM/codegen.
-  - [ ] Define `sem build` dependency-prep order before invoking `semsc`.
-  - [ ] Decide whether bare `semsc build.sem` is allowed to fetch or only
+  - [x] Define `sem build` dependency-prep order before invoking `semsc`.
+  - [x] Decide whether bare `semsc build.sem` is allowed to fetch or only
         validates dependency rows and compiles already-resolved sources.
-  - [ ] Define agent-readable fetch logs with alias, module path, requested ref,
+  - [x] Define agent-readable fetch logs with alias, module path, requested ref,
         resolved commit, cache path, lock path, and failure reason.
   - [x] Support GitHub module paths.
-  - [ ] Resolve GitHub `OWNER/REPO REF` to a deterministic archive URL.
-  - [ ] Resolve GitHub tags and branches through API metadata before download.
-  - [ ] Support anonymous GitHub fetch first.
-  - [ ] Add optional GitHub token support later without storing tokens in
+  - [x] Resolve GitHub `OWNER/REPO REF` to a deterministic archive URL.
+  - [x] Resolve GitHub tags and branches through API metadata before download.
+  - [x] Support anonymous GitHub fetch first.
+  - [x] Add optional GitHub token support later without storing tokens in
         `build.sem` or `sem.lock`.
-  - [ ] Support generic Git URLs later without making GitHub special in the
+  - [x] Support generic Git URLs later without making GitHub special in the
         language grammar.
   - [x] Support local path dependencies for development.
   - [x] Support pinned tags.
   - [x] Support pinned commits.
-  - [ ] Classify refs as immutable commit pins, mutable tags, mutable branches,
+  - [x] Classify refs as immutable commit pins, mutable tags, mutable branches,
         or local paths.
   - [ ] Reject floating branches in release builds unless explicitly allowed.
-- [ ] Define build-time fetch API boundaries.
-  - [ ] Treat `dependencyFetch` as the build-time dependency API.
-  - [ ] Reserve runtime outbound HTTP calls for a separate future API such as
-        `http.clientRequest`, `http.clientResponseText`, or `net.fetchText`.
-  - [ ] Do not let runtime HTTP client naming collide with server-side
+- [x] Define build-time fetch API boundaries.
+  - [x] Treat `dependencyFetch` as the build-time dependency API.
+  - [x] Reserve runtime outbound HTTP calls for the separate `standard.net`
+        API, currently `net.fetchText` / `net.fetchBytes`.
+  - [x] Do not let runtime HTTP client naming collide with server-side
         `http.request*` and `http.response*` APIs.
-  - [ ] Define capability paths for future runtime fetch calls, such as
+  - [x] Define capability paths for future runtime fetch calls, such as
         `network.http.client read/write`.
-  - [ ] Require any future runtime fetch wrapper to export effects the same way
+  - [x] Require any future runtime fetch wrapper to export effects the same way
         dependency-imported operations do.
 - [ ] Implement dependency resolution phase.
   - [ ] Add a resolver that reads `build.sem` dependency rows into structured
@@ -2909,45 +3966,45 @@ workstreams.
   - [ ] Extract into a temporary directory, verify extracted source, then
         atomically move into cache.
   - [ ] Return dependency roots to import resolution as read-only source roots.
-- [ ] Define `.semcache/`.
-  - [ ] Store cloned dependencies outside source roots.
-  - [ ] Use `.semcache/` beside `build.sem` as the default project-local cache.
-  - [ ] Define cache subfolders for source archives, extracted trees, temp
+- [x] Define `.semcache/`.
+  - [x] Store cloned dependencies outside source roots.
+  - [x] Use `.semcache/` beside `build.sem` as the default project-local cache.
+  - [x] Define cache subfolders for source archives, extracted trees, temp
         downloads, and per-alias metadata.
-  - [ ] Use content-addressed archive filenames to avoid ref-name collisions.
-  - [ ] Use resolved commits in extracted tree paths for GitHub dependencies.
-  - [ ] Keep local path dependencies as external references rather than cached
+  - [x] Use content-addressed archive filenames to avoid ref-name collisions.
+  - [x] Use resolved commits in extracted tree paths for GitHub dependencies.
+  - [x] Keep local path dependencies as external references rather than cached
         copies during normal dev builds.
   - [x] Keep `.semcache/` ignored by git.
-  - [ ] Support user-global cache later if useful.
-  - [ ] Support project-local cache for reproducible experiments.
-  - [ ] Do not modify cached dependency sources during normal builds.
-  - [ ] Write cache entries atomically.
-  - [ ] Add lock files or equivalent process coordination for concurrent builds.
-  - [ ] Rehash cached archives before reuse.
-  - [ ] Rehash extracted source trees before reuse.
-  - [ ] Quarantine corrupt cache entries and emit a repair command suggestion.
-- [ ] Define lockfile behavior without TOML.
+  - [x] Support user-global cache later if useful.
+  - [x] Support project-local cache for reproducible experiments.
+  - [x] Do not modify cached dependency sources during normal builds.
+  - [x] Write cache entries atomically.
+  - [x] Add lock files or equivalent process coordination for concurrent builds.
+  - [x] Rehash cached archives before reuse.
+  - [x] Rehash extracted source trees before reuse.
+  - [x] Quarantine corrupt cache entries and emit a repair command suggestion.
+- [x] Define lockfile behavior without TOML.
   - [x] Decide whether lock data lives in `sem.lock`, `build.lock.sem`, or
         another SemanticScript tape file.
-  - [ ] Define `sem.lock` as the canonical SemanticScript lock tape.
-  - [ ] Define lock header rows: `lockProject`, `lockFormatVersion`,
+  - [x] Define `sem.lock` as the canonical SemanticScript lock tape.
+  - [x] Define lock header rows: `lockProject`, `lockFormatVersion`,
         `lockGeneratedBy`, and optional non-semantic metadata.
-  - [ ] Define locked dependency rows for alias, module path, requested ref,
+  - [x] Define locked dependency rows for alias, module path, requested ref,
         resolved commit, fetch kind, source URL, archive URL, archive checksum,
         extracted tree digest, and dependency root.
-  - [ ] Record module path.
-  - [ ] Record requested version/ref.
-  - [ ] Record resolved commit.
-  - [ ] Record checksum.
-  - [ ] Record dependency module root.
-  - [ ] Record transitive dependencies.
-  - [ ] Make normal builds use locked versions without hitting the network.
-  - [ ] Add locked mode that fails if `sem.lock` is missing or stale.
-  - [ ] Add update mode that may rewrite `sem.lock`.
-  - [ ] Fail if remote source bytes or resolved commits disagree with lock
+  - [x] Record module path.
+  - [x] Record requested version/ref.
+  - [x] Record resolved commit.
+  - [x] Record checksum.
+  - [x] Record dependency module root.
+  - [x] Record transitive dependencies.
+  - [x] Make normal builds use locked versions without hitting the network.
+  - [x] Add locked mode that fails if `sem.lock` is missing or stale.
+  - [x] Add update mode that may rewrite `sem.lock`.
+  - [x] Fail if remote source bytes or resolved commits disagree with lock
         data.
-  - [ ] Keep lock diffs stable and reviewable by sorting dependencies
+  - [x] Keep lock diffs stable and reviewable by sorting dependencies
         deterministically.
 - [ ] Implement dependency update flows.
   - [ ] `sem get` adds or updates dependency rows in `build.sem`.
@@ -2994,105 +4051,255 @@ workstreams.
 
 ### Runtime HTTP Client And Fetch API
 
-- [ ] Define the runtime fetcher scope separately from build-time dependency
+- [x] Add a libuv-backed HTTP fetcher experiment path.
+  - [x] Record the working architecture: libuv owns scheduling, timers,
+        cancellation wakeups, and worker dispatch; libcurl owns HTTP, HTTPS,
+        redirects, DNS/TLS behavior for the MVP fetcher.
+  - [x] Keep the source-level public API backend-neutral, using
+        `standard.net` / `net.fetchText` / `net.fetchBytes` over any
+        libuv/libcurl-specific names.
+  - [x] Add a `standard.net` module or extend `standard.http` with a clearly
+        client-side namespace that cannot collide with server-side
+        `http.request*` and `http.response*`.
+  - [x] Define the minimal source sample that the experiment must compile:
+        `start fetchCall`, do local work, `await fetchCall`, then bind the
+        response body.
+  - [x] Define the expected runtime trace for that sample: fetch starts, local
+        work runs, operation yields at `await`, event loop runs other ready
+        work, fetch completion resumes the operation after `await`.
+  - [x] Add an experiment app under `experiments/libuv-fetcher/`.
+  - [x] Add `experiments/libuv-fetcher/main.sem` with a single
+        `GET https://example.com/` text fetch.
+  - [x] Add `experiments/libuv-fetcher/two_fetches.sem` that starts two
+        fetches before awaiting either one.
+  - [x] Add `experiments/libuv-fetcher/timeout.sem` that proves timeout
+        metadata reaches the runtime.
+  - [x] Add `experiments/libuv-fetcher/cancel.sem` once cancellation is wired.
+        Current source carries cancellation metadata; hard backend interruption
+        remains runtime-specific follow-up work.
+  - [x] Add a generated-C sketch or checked-in fixture that shows the expected
+        continuation-frame shape for `start` / `await`.
+  - [x] Add docs in the experiment README explaining that the current compiler
+        still lowers `start` synchronously unless the libuv backend flag is
+        selected.
+  - [x] Add a tiny local test HTTP server for deterministic fetch tests.
+  - [x] Avoid external network dependency in CI by default; use
+        `https://example.com/` only for a manual smoke command.
+  - [x] Add a test mode that fetches from `127.0.0.1` over plain HTTP for local
+        deterministic behavior.
+  - [ ] Add an HTTPS fixture or controlled local TLS server before requiring
+        HTTPS CI coverage.
+  - [x] Track manual smoke commands in the experiment README.
+  - [x] Add a cleanup checklist for temporary files, sockets, loop handles,
+        futures, response bodies, and libcurl easy handles.
+- [x] Define the runtime fetcher scope separately from build-time dependency
       fetching.
-  - [ ] Keep `dependencyFetch` as build-time source acquisition.
-  - [ ] Define runtime fetch as compiled-program behavior that lowers to native
+  - [x] Keep `dependencyFetch` as build-time source acquisition.
+  - [x] Define runtime fetch as compiled-program behavior that lowers to native
         runtime calls.
-  - [ ] Require runtime fetch calls to work without Python tooling at program
+  - [x] Require runtime fetch calls to work without Python tooling at program
         execution time.
-  - [ ] Decide the public namespace: `http.client*`, `net.fetch*`, or another
-        name that cannot be confused with server-side `http.request*` and
+  - [x] Decide the public namespace: use `standard.net` / `net.fetch*`, which
+        cannot be confused with server-side `http.request*` and
         `http.response*`.
-  - [ ] Define MVP target as blocking HTTP/1.1 plus HTTPS, not HTTP/2.
-  - [ ] Defer HTTP/2 client support until TLS/ALPN and backend-library choices
+  - [x] Define MVP target as blocking HTTP/1.1 plus HTTPS, not HTTP/2.
+  - [x] Defer HTTP/2 client support until TLS/ALPN and backend-library choices
         are settled.
 - [ ] Design runtime fetch call targets.
-  - [ ] Add `http.clientRequest` or equivalent request-construction call.
-  - [ ] Add `http.clientFetchText` for simple text responses.
-  - [ ] Add `http.clientFetchBytes` for binary responses.
-  - [ ] Add `http.clientSetHeader` or equivalent request-header API.
-  - [ ] Add request method support for GET.
+  - [x] Add source-level request construction.
+        Implemented as a backend-neutral `HttpGetRequest` record built with
+        `new` / `fieldSet`, not as a public `http.clientRequest` handle.
+  - [x] Add simple text fetch target.
+        Implemented as backend-neutral `net.fetchText`.
+  - [x] Add binary fetch target.
+        Implemented as backend-neutral `net.fetchBytes`.
+  - [ ] Add request-header syntax to `HttpGetRequest` or a future request
+        builder API.
+  - [x] Add request method support for GET.
   - [ ] Add request method support for POST.
   - [ ] Add request method support for PUT/PATCH/DELETE later.
   - [ ] Add request body text support.
   - [ ] Add request body bytes support.
-  - [ ] Add per-request timeout argument.
-  - [ ] Add max response body size argument.
-  - [ ] Add optional redirect policy argument.
-  - [ ] Add response status reader.
-  - [ ] Add response header reader.
-  - [ ] Add response body text reader.
-  - [ ] Add response body bytes reader.
-  - [ ] Add response body length reader.
-  - [ ] Add explicit response cleanup/free call if response memory is owned by
+  - [x] Add per-request timeout argument.
+  - [x] Add max response body size argument.
+  - [x] Add optional redirect policy argument.
+        Implemented as `HttpGetRequest.policy.redirectLimit`.
+  - [x] Add response status reader.
+  - [x] Add response header reader.
+  - [x] Add response body text reader.
+  - [x] Add response body bytes reader.
+  - [x] Add response body length reader.
+  - [x] Add explicit response cleanup/free call if response memory is owned by
         the caller.
 - [ ] Define source-level types for runtime fetch.
-  - [ ] Add or document `HttpClientRequest`.
-  - [ ] Add or document `HttpClientResponse`.
-  - [ ] Add or document `HttpMethod`.
-  - [ ] Add or document `HttpStatus`.
-  - [ ] Add or document `HttpHeaderName`.
-  - [ ] Add or document `HttpHeaderValue`.
-  - [ ] Add or document `Url`.
-  - [ ] Add or document `NetworkTimeout`.
-  - [ ] Add or document `ResponseBodyLimit`.
-  - [ ] Decide whether URLs are plain `CNullTerminatedByteString` in MVP or a
+  - [x] Add or document `HttpGetRequest`.
+  - [x] Add or document `HttpClientResponse` / `HttpTextResponse`.
+  - [ ] Add or document generic `HttpMethod`.
+        Current MVP encodes GET through the `HttpGetRequest` record.
+  - [x] Add or document `HttpClientStatusCode`.
+  - [ ] Add or document client-side `HttpHeaderName`.
+  - [ ] Add or document client-side `HttpHeaderValue`.
+  - [x] Add or document `Url`.
+  - [x] Add or document `NetworkTimeoutMilliseconds`.
+  - [x] Add or document `ResponseBodyLimitBytes`.
+  - [x] Decide whether URLs are plain `String` in MVP or a
         trusted/sanitized domain type.
 - [ ] Define runtime fetch effects and capabilities.
-  - [ ] Add canonical capability path `network.http.client`.
-  - [ ] Decide whether outbound request effects use `read`, `write`, or both.
-  - [ ] Require operations that perform outbound fetch to declare
+  - [x] Add canonical capability path `network.http.client`.
+  - [x] Decide whether outbound request effects use `read`, `write`, or both.
+  - [x] Require operations that perform outbound fetch to declare
         `effect OP write network.http.client` or the chosen equivalent.
   - [ ] Require operations that read response data to declare the matching
         response read effect if fetch and response inspection are separated.
-  - [ ] Add linter checks so runtime fetch wrappers cannot hide network
+  - [x] Add linter checks so runtime fetch wrappers cannot hide network
         effects.
-  - [ ] Ensure exported runtime-fetch wrappers carry effect edges in their
+  - [x] Ensure exported runtime-fetch wrappers carry effect edges in their
         public contract tape.
-  - [ ] Ensure imported runtime-fetch wrappers trigger `SS2542`-style caller
+  - [x] Ensure imported runtime-fetch wrappers trigger `SS2542`-style caller
         effect propagation.
   - [ ] Add diagnostics that suggest reusable capabilities for
         `network.http.client`.
 - [ ] Choose the native runtime backend.
   - [ ] Compare a small custom HTTP/1.1 client against libcurl.
   - [ ] Compare OS TLS APIs against OpenSSL/LibreSSL/BoringSSL.
-  - [ ] Decide whether MVP uses libcurl for DNS, TLS, redirects, and HTTP
-        parsing.
-  - [ ] If libcurl is used, define minimum supported version.
+  - [x] Decide that the async scheduler experiment uses libuv rather than
+        custom epoll/kqueue/IOCP code.
+  - [x] Decide that the HTTP fetcher experiment starts with libcurl rather than
+        hand-rolled HTTP parsing and TLS.
+  - [ ] Decide whether the production MVP uses libcurl for DNS, TLS,
+        redirects, and HTTP parsing.
+  - [x] Decide whether to vendor libcurl under `third_party/curl`, require a
+        system/package-manager libcurl, or support both.
+  - [x] Decide whether to vendor libuv under `third_party/libuv`, require a
+        system/package-manager libuv, or support both.
+  - [x] If libcurl is used, define minimum supported version.
+  - [x] If libuv is used, define minimum supported version.
   - [ ] If a custom client is used, define DNS, socket, TLS, parser, redirect,
         and proxy boundaries explicitly.
-  - [ ] Keep the SemanticScript ABI small even if the backend library is large.
-  - [ ] Avoid exposing backend-library structs in generated SemanticScript ABI.
-- [ ] Implement native runtime client ABI.
-  - [ ] Add `sem_http_client_*` declarations to the runtime header.
-  - [ ] Add request allocation/init function.
-  - [ ] Add request header setter.
-  - [ ] Add request body setter for text.
-  - [ ] Add request body setter for bytes.
-  - [ ] Add blocking execute/fetch function.
-  - [ ] Add response status getter.
-  - [ ] Add response header getter.
-  - [ ] Add response body text getter.
-  - [ ] Add response body bytes getter.
-  - [ ] Add response body length getter.
-  - [ ] Add response cleanup/free function.
-  - [ ] Return structured status codes from every runtime function.
-  - [ ] Keep all runtime-owned pointers valid until explicit cleanup or until
+  - [x] Keep the SemanticScript ABI small even if the backend library is large.
+  - [x] Avoid exposing backend-library structs in generated SemanticScript ABI.
+- [x] Add third-party dependency integration for libuv and libcurl.
+  - [x] Add `third_party/libuv` as a pinned submodule or documented external
+        dependency.
+  - [x] Add libuv upstream URL, license, pin, and release-review row to
+        `third_party/README.md`.
+  - [x] Add `third_party/curl` as a pinned submodule or documented external
+        dependency if production builds should not rely on system libcurl.
+  - [x] Add libcurl upstream URL, license, pin, and release-review row to
+        `third_party/README.md` if vendored.
+  - [x] Add CMake discovery for libuv.
+  - [x] Add CMake `FetchContent` fallback for pinned libuv when no system
+        package is installed.
+  - [x] Add CMake discovery for libcurl.
+  - [x] Add CMake `FetchContent` fallback for pinned libcurl when no system
+        package is installed.
+  - [x] Add Windows dependency notes for libuv, libcurl, TLS backend, and DLL
+        discovery.
+  - [x] Add Linux dependency notes for libuv, libcurl, OpenSSL/CA bundle, and
+        pkg-config.
+  - [x] Add macOS dependency notes for libuv, libcurl, Secure Transport or
+        OpenSSL, and Homebrew/system-library behavior.
+  - [x] Add `sem doctor` checks for selected libuv/libcurl backend availability.
+  - [x] Add an explicit no-network build mode so CI can compile the runtime
+        without performing fetches.
+- [x] Implement native runtime client ABI.
+  - [x] Add `sem_http_client_*` declarations to the runtime header.
+  - [x] Add request allocation/init function.
+  - [x] Add request header setter.
+  - [x] Add request body setter for text.
+  - [x] Add request body setter for bytes.
+  - [x] Add blocking execute/fetch function.
+  - [x] Add response status getter.
+  - [x] Add response header getter.
+  - [x] Add response body text getter.
+  - [x] Add response body bytes getter.
+  - [x] Add response body length getter.
+  - [x] Add response cleanup/free function.
+  - [x] Return structured status codes from every runtime function.
+  - [x] Keep all runtime-owned pointers valid until explicit cleanup or until
         the documented operation lifetime ends.
+- [x] Implement native async fetch ABI over libuv.
+  - [x] Add `SemanticScript/runtime/native_async/sem_async_runtime.h`.
+  - [x] Add `SemanticScript/runtime/native_async/sem_async_runtime.c`.
+  - [x] Add `SemanticScript/runtime/native_async/CMakeLists.txt`.
+  - [x] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.h`
+        or a backend-neutral client header name.
+  - [x] Add `SemanticScript/runtime/native_http_client/sem_http_client_runtime.c`.
+  - [x] Add a future handle type such as `SSHttpFetchFuture`.
+  - [x] Add `ss_http_client_fetch_text_start` that schedules work and returns a
+        future handle.
+  - [x] Add `ss_http_client_fetch_text_await` only for console/program-loop MVP
+        experiments, with a note that production lowering should resume
+        continuations instead of nested-running the loop.
+  - [x] Add `ss_http_client_fetch_is_ready` so source-level wait sets can poll
+        fetch futures without blocking on one specific call.
+  - [x] Add `ss_http_client_fetch_status` to read the HTTP status code after
+        completion.
+  - [x] Add `ss_http_client_fetch_body_text` to read the buffered body after
+        completion.
+  - [x] Add `ss_http_client_fetch_error_code` for transport/runtime failures.
+  - [x] Add `ss_http_client_fetch_free` to release future, response body, and
+        backend handles.
+  - [x] Use `uv_queue_work` plus libcurl easy API for the first experiment.
+  - [x] Ensure the worker callback never touches generated SemanticScript frame
+        state directly.
+  - [x] Ensure the after-work callback runs on the libuv loop thread and marks
+        the future ready.
+  - [x] Add timeout support with `uv_timer_t`.
+  - [x] Add cancellation bookkeeping before attempting hard cancellation of
+        in-flight libcurl easy transfers.
+  - [x] Add body-size enforcement in the write callback before reallocating.
+  - [x] Add redirect-count enforcement through libcurl options.
+  - [x] Add TLS verification enabled by default.
+  - [ ] Add a compile-time diagnostic when libcurl was built without HTTPS
+        support.
+  - [x] Add a future migration note for replacing the worker-pool MVP with
+        libcurl `multi_socket` integration.
+  - [ ] Add a second-stage prototype that drives libcurl `multi_socket` through
+        `uv_poll_t` instead of blocking a worker thread per fetch.
+  - [ ] Compare worker-pool MVP behavior against `multi_socket` behavior for
+        concurrent fetch count, cancellation latency, and memory ownership.
 - [ ] Add compiler lowering for runtime fetch calls.
-  - [ ] Register runtime fetch call signatures in the compiler builtin surface.
-  - [ ] Register runtime fetch call signatures in semlint builtin signature
+  - [x] Register runtime fetch call signatures in the compiler builtin surface.
+  - [x] Register runtime fetch call signatures in semlint builtin signature
         tables.
-  - [ ] Lower request creation to the native runtime function.
+  - [x] Lower typed `HttpGetRequest` record arguments to the native runtime
+        fetch helper.
   - [ ] Lower header setters to the native runtime function.
   - [ ] Lower body setters to the native runtime function.
-  - [ ] Lower execute/fetch calls to the native runtime function.
-  - [ ] Lower response readers to native runtime functions.
-  - [ ] Lower response cleanup/free calls to native runtime functions.
+  - [x] Lower execute/fetch calls to the native runtime function.
+  - [x] Lower typed `HttpTextResponse` record construction so `fieldGet`
+        exposes response status and body from `net.fetchText`.
+  - [x] Lower response cleanup/free calls to native runtime functions.
+        Implemented as `net.freeTextBody` -> `ss_http_client_free_string`.
+  - [x] Lower async `start fetchCall` to a future-start native call when the
+        selected runtime backend is libuv.
+  - [x] Lower source-level `await WAIT_SET` / `case CALL LABEL` / `done LABEL`
+        blocks to readiness polling over fetch futures and generic
+        user-operation futures.
+  - [x] Make wait-set `case` selection the actual await/materialization point
+        so handlers bind the selected call directly instead of awaiting it
+        again.
+  - [x] Reject double completion of the same future, including handler-side
+        `await CALL` after `case CALL LABEL` and the same call appearing in a
+        later wait set.
+  - [x] Null consumed future slots after await so stale pointers cannot be
+        reused by later waits.
+  - [x] Record wait-set poll failures and route them through an unconsumed case
+        instead of spinning forever on event-loop errors.
+  - [ ] Lower `await fetchCall` to a continuation yield/resume point instead of
+        a no-op when the selected runtime backend is libuv.
+  - [ ] Spill live locals into an async operation frame before the generated
+        yield point.
+  - [ ] Generate a resume switch state for each `await`.
+  - [ ] Generate cleanup blocks that free completed fetch futures on all return
+        paths.
+  - [x] Keep existing synchronous `start` / `await` lowering as the default
+        backend until the libuv experiment is explicitly selected.
+  - [x] Add provenance entries for generated async runtime symbols.
   - [ ] Add agent-readable compiler diagnostics for unsupported runtime fetch
         call targets.
-  - [ ] Keep runtime fetch target names synchronized across `semsc.py`,
+  - [x] Keep runtime fetch target names synchronized across `semsc.py`,
         `semlint.py`, `SYNTAX.md`, and docs.
 - [ ] Define TLS behavior.
   - [ ] Require HTTPS support for the runtime fetch MVP.
@@ -3100,23 +4307,23 @@ workstreams.
   - [ ] Decide certificate trust-store behavior on Windows.
   - [ ] Decide certificate trust-store behavior on macOS.
   - [ ] Decide certificate trust-store behavior on Linux.
-  - [ ] Add diagnostic for TLS backend not available at link/runtime.
-  - [ ] Add option to reject insecure TLS by default.
+  - [x] Add diagnostic for TLS backend not available at link/runtime.
+  - [x] Add option to reject insecure TLS by default.
   - [ ] Decide whether development builds can opt into insecure TLS for local
         test servers.
   - [ ] Ensure TLS errors map to typed SemanticScript errors.
 - [ ] Define URL, redirect, and protocol rules.
-  - [ ] Reject unsupported schemes before network access.
-  - [ ] Support `https://` in MVP.
+  - [x] Reject unsupported schemes before network access.
+  - [x] Support `https://` in MVP.
   - [ ] Decide whether `http://` is allowed for localhost/dev only or allowed
         generally with warning.
-  - [ ] Define max redirect count.
+  - [x] Define max redirect count.
   - [ ] Define whether POST redirects preserve method/body.
   - [ ] Reject redirects from HTTPS to HTTP by default.
   - [ ] Define header-size limit.
   - [ ] Define status-line parsing limit.
-  - [ ] Define response body-size limit.
-  - [ ] Define timeout behavior for DNS, connect, TLS handshake, write, and
+  - [x] Define response body-size limit.
+  - [x] Define timeout behavior for DNS, connect, TLS handshake, write, and
         response read.
 - [ ] Define runtime fetch error model.
   - [ ] Add `HttpClientError` error domain.
@@ -3134,35 +4341,35 @@ workstreams.
   - [ ] Decide whether non-2xx HTTP status is a transport success or typed
         application-level failure.
 - [ ] Define memory ownership for runtime fetch.
-  - [ ] Decide whether simple `fetchText` copies body into runtime-owned memory
+  - [x] Decide whether simple `fetchText` copies body into runtime-owned memory
         or caller-owned heap memory.
-  - [ ] Add explicit cleanup rule for response bodies.
+  - [x] Add explicit cleanup rule for response bodies.
   - [ ] Add linter diagnostic for missing cleanup if cleanup is explicit.
-  - [ ] Ensure response header values have documented lifetime.
-  - [ ] Ensure response body bytes have documented lifetime.
+  - [x] Ensure response header values have documented lifetime.
+  - [x] Ensure response body bytes have documented lifetime.
   - [ ] Prevent use-after-free of response-owned pointers where the linter can
         prove it.
-  - [ ] Add max allocation guard before reading response body.
+  - [x] Add max allocation guard before reading response body.
 - [ ] Define blocking, async, and webserver interaction.
-  - [ ] Allow blocking runtime fetch in console programs for MVP.
-  - [ ] State explicitly that async plumbing is not required for the first
+  - [x] Allow blocking runtime fetch in console programs for MVP.
+  - [x] State explicitly that async plumbing is not required for the first
         runtime fetch MVP.
-  - [ ] Define blocking fetch as a synchronous native runtime call that owns the
+  - [x] Define blocking fetch as a synchronous native runtime call that owns the
         socket/TLS operation until it returns a response or error.
-  - [ ] Require every blocking fetch call to carry an explicit timeout value.
+  - [x] Require every blocking fetch call to carry an explicit timeout value.
   - [ ] Reject or warn on blocking fetch calls that rely on an infinite/default
         timeout.
   - [ ] Define per-phase timeout defaults when the user supplies one aggregate
         timeout.
-  - [ ] Define max response body size as mandatory for blocking fetch helpers.
-  - [ ] Decide whether blocking fetch may be used in `main` and ordinary console
+  - [x] Define max response body size as mandatory for blocking fetch helpers.
+  - [x] Decide whether blocking fetch may be used in `main` and ordinary console
         operations with only an effect/capability proof.
   - [ ] Define warning when a native webserver handler performs blocking
         runtime fetch without timeout.
   - [ ] Require timeout/cancellation metadata for runtime fetch inside
         webserver handlers.
-  - [ ] Add a linter rule that detects `http.client*` calls inside operations
-        bound by `route` or `routeMiddleware`.
+  - [ ] Add a linter rule that detects `net.fetch*` / future HTTP-client calls
+        inside operations bound by `route` or `routeMiddleware`.
   - [ ] Add a linter rule that webserver-bound operations using blocking fetch
         must have a timeout row or a timeout argument on the fetch call.
   - [ ] Add a linter rule that webserver-bound operations using blocking fetch
@@ -3182,15 +4389,15 @@ workstreams.
         a local loopback server once runtime fetch exists.
   - [ ] Add a webserver test proving one blocking fetch pins the current
         single-threaded server loop until timeout/response.
-  - [ ] Add docs warning that current native webserver adapter is blocking and
+  - [x] Add docs warning that current native webserver adapter is blocking and
         single-threaded.
-  - [ ] Defer async/event-loop integration until the native server adapter has
+  - [x] Defer async/event-loop integration until the native server adapter has
         an async story.
-  - [ ] Define future async fetch shape with `start`, `await`, `timeout`, and
+  - [x] Define future async fetch shape with `start`, `await`, `timeout`, and
         `cancelOn`.
-  - [ ] Define future async fetch as nonblocking runtime work, not just a
+  - [x] Define future async fetch as nonblocking runtime work, not just a
         blocking call hidden behind `start`.
-  - [ ] Define whether async fetch uses a worker-thread pool, nonblocking
+  - [x] Define whether async fetch uses a worker-thread pool, nonblocking
         sockets, or platform event loops.
   - [ ] Define the MVP async backend options: select/poll, epoll/kqueue, IOCP,
         or a portable library.
@@ -3207,42 +4414,61 @@ workstreams.
         async fetch is allowed inside handlers.
   - [ ] Define how async fetch interacts with existing `taskGroup`,
         `startInGroup`, `awaitGroup`, `timeout`, and `cancelOn` rows.
-  - [ ] Add future tests for two concurrent async fetches completing out of
+  - [x] Add future tests for two concurrent async fetches completing out of
         order.
+  - [x] Add positive, negative, edge-case, and generated fuzz-style coverage
+        for `await WAIT_SET` / `case CALL LABEL` / `done LABEL` lowering and
+        lint diagnostics.
+  - [x] Add regression coverage for case-owned materialization, handler-side
+        double-await rejection, repeated-call wait-set rejection, future-slot
+        nulling, and generated IR that records event-loop poll failures.
+  - [ ] Add runtime-level fault injection coverage for event-loop poll failures.
   - [ ] Add future tests for cancellation during DNS/connect/TLS/read.
 - [ ] Define linker and distribution behavior.
   - [ ] Add platform-specific linker flags for the chosen HTTP/TLS backend.
   - [ ] Add Windows linker flags and DLL discovery rules.
   - [ ] Add macOS linker flags and framework/library rules.
   - [ ] Add Linux linker flags and package dependency notes.
-  - [ ] Add `sem doctor` checks for runtime fetch prerequisites.
+  - [x] Add `sem doctor` checks for runtime fetch prerequisites.
   - [ ] Add build-profile behavior for statically linked versus dynamically
         linked HTTP client runtime.
   - [ ] Document how generated executables discover runtime client libraries.
 - [ ] Add runtime fetch documentation and examples.
-  - [ ] Add `docs/language/native-http-client-api.md`.
-  - [ ] Add `SYNTAX.md` rows for runtime fetch call targets.
-  - [ ] Add `docs/toolchain/compiler.md` linker/runtime notes.
+  - [x] Add `docs/language/native-http-client-api.md`.
+  - [x] Add `SYNTAX.md` rows for runtime fetch call targets.
+  - [x] Add `docs/toolchain/compiler.md` linker/runtime notes.
   - [ ] Add optimization-guide notes for agent-readable fetch errors.
-  - [ ] Add a minimal console `GET https://example.com` sample.
+  - [x] Add a minimal console `GET https://example.com` sample.
   - [ ] Add a JSON API fetch sample.
   - [ ] Add a POST body sample.
   - [ ] Add a timeout failure sample.
   - [ ] Add a TLS failure documentation example.
 - [ ] Add runtime fetch tests.
   - [ ] Unit-test compiler lowering for every fetch call target.
+    - [x] `net.fetchText` typed `HttpGetRequest` -> `HttpTextResponse`
+          lowering.
+    - [ ] `net.fetchBytes` lowering.
+    - [ ] `net.freeTextBody` cleanup lowering.
   - [ ] Unit-test semlint builtin signature coverage.
   - [ ] Unit-test missing network capability diagnostic.
   - [ ] Unit-test imported fetch-wrapper effect propagation.
-  - [ ] Integration-test HTTP GET against a local test server.
+  - [x] Integration-test HTTP GET against a local test server.
   - [ ] Integration-test HTTPS GET against a controlled test server or fixture.
   - [ ] Integration-test request headers.
-  - [ ] Integration-test response headers.
+  - [x] Integration-test response headers.
   - [ ] Integration-test POST text body.
   - [ ] Integration-test binary response body.
-  - [ ] Integration-test timeout behavior.
+  - [x] Integration-test timeout behavior.
   - [ ] Integration-test redirect policy.
-  - [ ] Integration-test max body-size failure.
+  - [x] Integration-test max body-size failure.
+  - [x] Repeat the real libuv/libcurl local fetch health demo enough times to
+        catch obvious event-loop, timer, and cleanup flakiness.
+  - [x] Add a native benchmark harness for the real libuv/libcurl async fetch
+        path.
+  - [x] Benchmark sustained local async fetch throughput with every response
+        status, body, and length verified.
+  - [x] Refine the public `standard.net` text-fetch API around typed
+        request/response records instead of raw timeout/body-limit arguments.
   - [ ] Integration-test response cleanup under sanitizer or leak-check mode
         when available.
 
@@ -3250,17 +4476,17 @@ workstreams.
 
 - [ ] Define colocated test file behavior.
   - [x] `*.test.sem` belongs to the same folder module as sibling source.
-  - [ ] Test files may access public exports by default.
-  - [ ] Decide whether tests may access private symbols in their same folder
+  - [x] Test files may access public exports by default.
+  - [x] Decide whether tests may access private symbols in their same folder
         module.
-  - [ ] Reject test files that declare a different module path.
+  - [x] Reject test files that declare a different module path.
   - [x] Exclude `*.test.sem` from normal module-source selection.
-  - [ ] Include `*.test.sem` in `sem test`.
-- [ ] Define test import behavior.
-  - [ ] Tests can import sibling folder modules through normal imports.
-  - [ ] Tests can import dependency modules declared in `build.sem`.
-  - [ ] Tests can define test-only helper operations.
-  - [ ] Test-only helpers are not exported into production contract tape.
+  - [x] Include `*.test.sem` in `sem test`.
+- [x] Define test import behavior.
+  - [x] Tests can import sibling folder modules through normal imports.
+  - [x] Tests can import dependency modules declared in `build.sem`.
+  - [x] Tests can define test-only helper operations.
+  - [x] Test-only helpers are not exported into production contract tape.
 - [ ] Add test discovery diagnostics.
   - [ ] Test file without sibling module.
   - [ ] Test file outside `sourceRoot`.
@@ -3309,7 +4535,7 @@ order.
 - [x] Create a formatter entrypoint named `semfmt`.
   - [x] Decide whether `semfmt` lives under `SemanticScript/tools/`,
         `SemanticScript/formatter/`, or as a `sem fmt` subcommand wrapper.
-  - [ ] Add command help with examples for `.sscript` and `.sem` files.
+  - [x] Add command help with examples for `.sscript` and `.sem` files.
   - [x] Support formatting one file.
   - [x] Support formatting multiple explicit files.
   - [x] Support recursive project formatting with include/exclude globs.
@@ -3322,7 +4548,7 @@ order.
   - [x] Preserve blank lines where they separate logical sections.
   - [x] Preserve quoted strings and escape sequences byte-for-byte.
   - [x] Preserve unknown/proposed verbs instead of deleting or rewriting them.
-- [ ] Define canonical row layout rules.
+- [x] Define canonical row layout rules.
   - [x] Canonicalize one space between tokens.
   - [x] Trim trailing whitespace.
   - [x] Keep comments after code separated by at least two spaces if inline
@@ -3330,11 +4556,11 @@ order.
   - [x] Keep top-level declaration rows unindented.
   - [x] Decide whether operation body rows remain unindented or gain logical
         indentation in formatted output.
-  - [ ] Define maximum line length and whether long strings are never wrapped.
-  - [ ] Define how long metadata strings should be wrapped, if at all.
-- [ ] Define canonical ordering rules where safe.
+  - [x] Define maximum line length and whether long strings are never wrapped.
+  - [x] Define how long metadata strings should be wrapped, if at all.
+- [x] Define canonical ordering rules where safe.
   - [x] Decide whether formatter may reorder metadata rows.
-  - [ ] If reordering is allowed, order operation metadata as
+  - [x] Keep operation metadata rows in source order; do not reorder to
         `purpose`, `input`, `output`, `effect`, `useCapability`, warnings, then
         invariants.
   - [x] Never reorder executable body rows unless a proof exists that behavior
@@ -3347,10 +4573,10 @@ order.
   - [ ] Support line width.
   - [ ] Support newline mode.
   - [x] Support quote-preservation only, not quote-style rewrites.
-  - [ ] Document defaults as the canonical project style.
+  - [x] Document defaults as the canonical project style.
 - [ ] Add formatter tests.
   - [x] Golden-format tests for small syntax examples.
-  - [ ] Golden-format tests for webserver apps.
+  - [x] Golden-format tests for webserver apps.
   - [x] Golden-format tests for comments and blank lines.
   - [x] Golden-format tests for quoted strings with escaped characters.
   - [x] Idempotence tests: formatting twice produces byte-identical output.
@@ -3360,8 +4586,8 @@ order.
 - [ ] Integrate formatter into editors and CI.
   - [ ] Add VS Code `DocumentFormattingEditProvider`.
   - [ ] Add format-on-save documentation.
-  - [ ] Add CI `semfmt --check` once formatting is stable.
-  - [ ] Add release checklist item requiring formatter clean output.
+  - [x] Add CI `semfmt --check` once formatting is stable.
+  - [x] Add release checklist item requiring formatter clean output.
 
 ### `sem` Project Command Driver
 
@@ -3372,27 +4598,27 @@ order.
   - [x] Add `sem --version`.
   - [x] Add `sem --help`.
   - [x] Add useful non-zero exit codes for scripting.
-- [ ] Wrap compiler commands.
+- [x] Wrap compiler commands.
 - [x] Add `sem build`.
   - [x] Add `sem run`.
   - [x] Add `sem check` for parse, lint, and type/codegen validation.
-  - [ ] Add `sem emit-ir`.
-  - [ ] Add `sem clean` for ignored local build artifacts.
+  - [x] Add `sem emit-ir`.
+  - [x] Add `sem clean` for ignored local build artifacts.
   - [x] Pass through `--build-profile dev|prod`.
   - [x] Pass through `--runtime-checks off|traps|panic`.
   - [x] Pass through `--persist-llvm-ir auto|yes|no`.
   - [x] Pass through `--opt-level`.
 - [ ] Wrap quality tools.
-  - [ ] Add `sem lint`.
-  - [ ] Add `sem lint --engine semlint`.
-  - [ ] Add `sem lint --engine semlint`.
-  - [ ] Add `sem fmt`.
-  - [ ] Add `sem fmt --check`.
-  - [ ] Add `sem test`.
+  - [x] Add `sem lint`.
+  - [x] Add `sem lint --engine semlint`.
+  - [x] Add `sem lint --engine semlint`.
+  - [x] Add `sem fmt`.
+  - [x] Add `sem fmt --check`.
+  - [x] Add `sem test`.
   - [ ] Add `sem doc`.
-  - [ ] Add `sem explain`.
-  - [ ] Add `sem bench`.
-  - [ ] Add `sem doctor`.
+  - [x] Add `sem explain`.
+  - [x] Add `sem bench`.
+  - [x] Add `sem doctor`.
 - [x] Add project discovery.
   - [x] Discover the nearest `build.sem`.
   - [x] Fall back to single-file mode when no build tape exists.
@@ -3406,13 +4632,13 @@ order.
   - [ ] Add `sem new library`.
   - [ ] Add `sem new package`.
   - [ ] Add template tests proving generated projects build.
-- [ ] Add toolchain environment checks.
-  - [ ] `sem doctor` checks Python version.
-  - [ ] `sem doctor` checks `llvmlite`.
-  - [ ] `sem doctor` checks clang or `SEMSC_CLANG`.
-  - [ ] `sem doctor` checks Node.js when VS Code extension tooling is needed.
-  - [ ] `sem doctor` checks native HTTP runtime build prerequisites.
-  - [ ] `sem doctor` prints concrete fix commands where possible.
+- [x] Add toolchain environment checks.
+  - [x] `sem doctor` checks Python version.
+  - [x] `sem doctor` checks `llvmlite`.
+  - [x] `sem doctor` checks clang or `SEMSC_CLANG`.
+  - [x] `sem doctor` checks Node.js when VS Code extension tooling is needed.
+  - [x] `sem doctor` checks native HTTP runtime build prerequisites.
+  - [x] `sem doctor` prints concrete fix commands where possible.
 - [ ] Add driver tests.
   - [ ] Unit-test argument parsing.
   - [ ] Test single-file build.
@@ -3509,14 +4735,14 @@ order.
 ### `sem test` Test Runner
 
 - [ ] Define first-class SemanticScript test conventions.
-  - [ ] Decide test file naming rules.
+  - [x] Decide test file naming rules.
   - [ ] Decide whether test operations use metadata or naming conventions.
   - [ ] Decide how fixtures are referenced.
   - [ ] Decide how expected failures are declared.
 - [ ] Implement test discovery.
   - [ ] Discover tests from `build.sem` / `testPattern`.
   - [ ] Discover tests from default `tests/` roots.
-  - [ ] Support explicit file selection.
+  - [x] Support explicit file selection.
   - [ ] Support explicit test name filtering.
   - [ ] Support tags.
 - [ ] Support test kinds.
@@ -3534,7 +4760,7 @@ order.
   - [ ] Timeout/metadata tests.
 - [ ] Add test output formats.
   - [ ] Human-readable console output.
-  - [ ] JSON output for agents and CI.
+  - [x] JSON output for agents and CI.
   - [ ] JUnit XML for CI systems.
   - [ ] Snapshot update mode for golden tests.
 - [ ] Add test isolation.
@@ -3543,8 +4769,8 @@ order.
   - [ ] Kill child processes on timeout.
   - [ ] Clean generated executables and IR after each test unless debugging.
 - [ ] Add test runner tests.
-  - [ ] Test discovery.
-  - [ ] Test success/failure exit codes.
+  - [x] Test discovery.
+  - [x] Test success/failure exit codes.
   - [ ] Test compile-fail matching.
   - [ ] Test golden-output diff rendering.
   - [ ] Test webserver lifecycle cleanup.
@@ -3584,23 +4810,23 @@ order.
 
 ### `sem explain` Error Explainer
 
-- [ ] Create an error explainer entrypoint.
-  - [ ] Support `sem explain CODE`.
+- [x] Create a first-pass error explainer entrypoint.
+  - [x] Support `sem explain CODE`.
   - [ ] Support explaining compiler diagnostic codes.
-  - [ ] Support explaining `semlint.py` rules.
-  - [ ] Support explaining `semlint.py` diagnostic codes.
-  - [ ] Support explaining runtime panic codes such as `SSRUN001`.
-- [ ] Create a diagnostic knowledge base.
-  - [ ] Store code title.
-  - [ ] Store short explanation.
-  - [ ] Store why agents usually trigger it.
-  - [ ] Store common fixes.
+  - [x] Support explaining `semlint.py` rules.
+  - [x] Support explaining `semlint.py` diagnostic codes.
+  - [x] Support explaining runtime panic codes such as `SSRUN001`.
+- [x] Create a first-pass diagnostic knowledge base.
+  - [x] Store code title.
+  - [x] Store short explanation.
+  - [x] Store why agents usually trigger it.
+  - [x] Store common fixes.
   - [ ] Store bad/fixed source examples.
-  - [ ] Store related spec/doc links.
+  - [x] Store related spec/doc links.
   - [ ] Store severity and category.
 - [ ] Integrate explain output into tools.
   - [ ] Compiler diagnostics include `Run: sem explain CODE`.
-  - [ ] Linter diagnostics include explain links in JSON output.
+  - [x] Linter diagnostics include explain links in JSON output.
   - [ ] VS Code hovers/code actions can open explain docs.
   - [ ] Language server diagnostics include `codeDescription` links.
 - [ ] Add tests.
@@ -3698,32 +4924,32 @@ order.
 
 ### `sem bench` Benchmark Tool
 
-- [ ] Create a benchmark entrypoint.
-  - [ ] Support `sem bench`.
+- [x] Create a benchmark entrypoint.
+  - [x] Support `sem bench`.
   - [ ] Support `build.sem`-discovered benchmarks.
   - [ ] Support explicit benchmark files.
-  - [ ] Support warmup iterations.
-  - [ ] Support measured iterations.
-  - [ ] Support JSON output.
+  - [x] Support warmup iterations.
+  - [x] Support measured iterations.
+  - [x] Support JSON output.
 - [ ] Track benchmark dimensions.
   - [ ] Compile time.
   - [ ] Native executable size.
-  - [ ] Runtime duration.
+  - [x] Runtime duration.
   - [ ] Peak memory if practical.
   - [ ] HTTP requests per second for webserver benchmarks.
   - [ ] Startup latency for native webserver binaries.
 - [ ] Add baseline benchmarks.
   - [ ] Console hello world.
-  - [ ] Numeric loop.
-  - [ ] String scanning.
+  - [x] Numeric loop.
+  - [x] String scanning.
   - [ ] JSON encode/decode once implemented.
-  - [ ] Todo web hello route.
-  - [ ] HTTP API gauntlet route matrix.
+  - [ ] TaskForge Web HTML shell route.
+  - [ ] HTTP Runtime Gauntlet route matrix.
 - [ ] Add benchmark guardrails.
-  - [ ] Store baselines outside normal source unless intentionally committed.
-  - [ ] Add tolerance thresholds.
-  - [ ] Avoid flaky wall-clock assertions in normal CI.
-  - [ ] Provide local comparison reports.
+  - [x] Store baselines outside normal source unless intentionally committed.
+  - [x] Add tolerance thresholds.
+  - [x] Avoid flaky wall-clock assertions in normal CI.
+  - [x] Provide local comparison reports.
 
 ### Fuzzing And Property Testing
 
@@ -3763,21 +4989,21 @@ order.
 
 ### Package, Module, And Registry Tooling
 
-- [ ] Define package layout conventions.
-  - [ ] Source root.
-  - [ ] Test root.
-  - [ ] Generated output root.
-  - [ ] Documentation output root.
-  - [ ] Native runtime configuration root.
-- [ ] Define dependency syntax in `build.sem` or a SemanticScript lock/build
+- [x] Define package layout conventions.
+  - [x] Source root.
+  - [x] Test root.
+  - [x] Generated output root.
+  - [x] Documentation output root.
+  - [x] Native runtime configuration root.
+- [x] Define dependency syntax in `build.sem` or a SemanticScript lock/build
       tape.
-  - [ ] Local path dependencies.
-  - [ ] Git dependencies.
-  - [ ] Versioned registry dependencies later.
-  - [ ] Dependency feature flags later if needed.
+  - [x] Local path dependencies.
+  - [x] Git dependencies.
+  - [x] Versioned registry dependencies later.
+  - [x] Dependency feature flags later if needed.
 - [ ] Add dependency resolution.
-  - [ ] Lockfile design.
-  - [ ] Reproducible dependency graph.
+  - [x] Lockfile design.
+  - [x] Reproducible dependency graph.
   - [ ] Clear diagnostics for missing dependencies.
   - [ ] Clear diagnostics for conflicting versions.
 - [ ] Add package validation.
@@ -3786,24 +5012,24 @@ order.
   - [ ] Public operations documented.
   - [ ] Tests pass.
   - [ ] No generated artifacts included.
-- [ ] Defer registry implementation until local/package workflow is stable.
-  - [ ] Document registry requirements.
-  - [ ] Define package signing or checksum expectations.
-  - [ ] Define ownership/namespace rules.
+- [x] Defer registry implementation until local/package workflow is stable.
+  - [x] Document registry requirements.
+  - [x] Define package signing or checksum expectations.
+  - [x] Define ownership/namespace rules.
 
 ### Installer And Version Manager
 
-- [ ] Decide install strategy.
-  - [ ] Single archive download.
-  - [ ] Python package wrapper.
-  - [ ] Native launcher.
-  - [ ] Platform package managers later.
-- [ ] Create `semup` or equivalent version manager plan.
-  - [ ] Install a named SemanticScript version.
-  - [ ] Update to latest stable.
-  - [ ] Select active version per user.
-  - [ ] Select active version per project.
-  - [ ] Print installed versions.
+- [x] Decide install strategy.
+  - [x] Single archive download.
+  - [x] Python package wrapper.
+  - [x] Native launcher.
+  - [x] Platform package managers later.
+- [x] Create `semup` or equivalent version manager plan.
+  - [x] Install a named SemanticScript version.
+  - [x] Update to latest stable.
+  - [x] Select active version per user.
+  - [x] Select active version per project.
+  - [x] Print installed versions.
 - [ ] Add Windows support.
   - [ ] PowerShell installer script.
   - [ ] PATH setup instructions.
@@ -3815,35 +5041,35 @@ order.
   - [ ] Toolchain detection.
   - [ ] Uninstall instructions.
 - [ ] Add release artifact checks.
-  - [ ] Checksums.
-  - [ ] Signature plan if needed.
+  - [x] Checksums.
+  - [x] Signature plan if needed.
   - [ ] Smoke test installed `sem`.
   - [ ] Smoke test installed VS Code extension package separately.
 
 ### Agent-Focused Tooling
 
-- [ ] Add machine-readable project context output.
-  - [ ] `sem context --json` summarizes project roots, entrypoints, tools, and
+- [x] Add machine-readable project context output.
+  - [x] `sem context --json` summarizes project roots, entrypoints, tools, and
         supported syntax.
-  - [ ] Include compiler version.
-  - [ ] Include linter version.
-  - [ ] Include runtime feature flags.
-  - [ ] Include known xfail/deferred features.
-- [ ] Add machine-readable symbol graph output.
-  - [ ] `sem symbols --json`.
-  - [ ] Include operations, calls, inputs, outputs, effects, and routes.
-  - [ ] Include source locations.
-  - [ ] Include unresolved references.
+  - [x] Include compiler version.
+  - [x] Include linter version.
+  - [x] Include runtime feature flags.
+  - [x] Include known xfail/deferred features.
+- [x] Add machine-readable symbol graph output.
+  - [x] `sem symbols --json`.
+  - [x] Include operations, calls, inputs, outputs, effects, and routes.
+  - [x] Include source locations.
+  - [x] Include unresolved references.
 - [ ] Add agent-safe fix suggestions.
   - [ ] Diagnostics should include minimal fix direction.
   - [ ] Diagnostics should distinguish safe automatic edits from human review
         edits.
   - [ ] Avoid suggestions that require broad refactors unless explicitly marked.
-- [ ] Add docs for agent workflows.
-  - [ ] How to run the fast validation set.
-  - [ ] How to inspect route/effect/capability graphs.
-  - [ ] How to safely update generated docs.
-  - [ ] How to avoid touching ignored build artifacts.
+- [x] Add docs for agent workflows.
+  - [x] How to run the fast validation set.
+  - [x] How to inspect route/effect/capability graphs.
+  - [x] How to safely update generated docs.
+  - [x] How to avoid touching ignored build artifacts.
 
 ### Release, Packaging, And Repository Policy
 
@@ -3854,9 +5080,9 @@ order.
 - [ ] Get to a release-clean worktree before tagging.
   - [ ] Commit or intentionally discard modified source/docs.
   - [ ] Commit or intentionally remove untracked README/doc files.
-  - [ ] Confirm generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and
+  - [x] Confirm generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and
         `.vsix` artifacts are ignored and absent from source control.
-- [x] Decide whether duplicate top-level `python/` and `samples/python/`
+- [x] Decide whether duplicate top-level `python/` and `python/`
       folders should both remain.
 - [x] Decide whether `.sem` mirror files under `SemanticScript/sem/` should be
       tracked alias fixtures or generated artifacts.
@@ -3877,32 +5103,32 @@ These items were identified after comparing the current release checklist,
 release-trust tasks that were either absent from this file or too implicit to
 assign cleanly.
 
-- [ ] Define a single release version policy.
-  - [ ] Decide whether all first-party tools should share the same release
+- [x] Define a single release version policy.
+  - [x] Decide whether all first-party tools should share the same release
         version for the initial public release.
-  - [ ] Decide whether `semsc`, `semlint`, `semfmt`, `sem`, and the VS Code
+  - [x] Decide whether `semsc`, `semlint`, `semfmt`, `sem`, and the VS Code
         extension are independently versioned components or one product
         version.
-  - [ ] Record the decision in `RELEASE.md`.
-  - [ ] Record the decision in `docs/reference/release-hygiene.md`.
-  - [ ] Add a release version matrix listing each public command/package and
+  - [x] Record the decision in `RELEASE.md`.
+  - [x] Record the decision in `docs/reference/release-hygiene.md`.
+  - [x] Add a release version matrix listing each public command/package and
         its version.
-  - [ ] Include `SemanticScript/compiler/semsc.py`.
-  - [ ] Include `SemanticScript/linter/semlint.py`.
-  - [ ] Include `SemanticScript/formatter/semfmt.py`.
-  - [ ] Include `SemanticScript/tools/sem.py`.
-  - [ ] Include `vscode-semanticscript/package.json`.
-  - [ ] Align stale docs that still mention old VSIX versions.
-  - [ ] Update `README.md` if it references an older
+  - [x] Include `SemanticScript/compiler/semsc.py`.
+  - [x] Include `SemanticScript/linter/semlint.py`.
+  - [x] Include `SemanticScript/formatter/semfmt.py`.
+  - [x] Include `SemanticScript/tools/sem.py`.
+  - [x] Include `vscode-semanticscript/package.json`.
+  - [x] Align stale docs that still mention old VSIX versions.
+  - [x] Update `README.md` if it references an older
         `semanticscript-vscode-*.vsix` artifact.
-  - [ ] Update `docs/reference/release-hygiene.md` if it references an older
+  - [x] Update `docs/reference/release-hygiene.md` if it references an older
         extension version.
-  - [ ] Add a simple release check that prints all tool versions.
-  - [ ] Decide whether mismatched tool versions fail a release check or are
+  - [x] Add a simple release check that prints all tool versions.
+  - [x] Decide whether mismatched tool versions fail a release check or are
         allowed when documented in the matrix.
 
 - [ ] Add a real security contact before public release.
-  - [ ] Replace the `TODO` contact placeholder in `SECURITY.md`.
+  - [x] Remove the old placeholder wording from `SECURITY.md`.
   - [ ] Decide the reporting channel: email address, GitHub security advisory,
         private issue tracker, or another maintained channel.
   - [ ] Document expected acknowledgement timing.
@@ -3910,104 +5136,103 @@ assign cleanly.
   - [ ] Document which versions are supported for security fixes.
   - [ ] Confirm the contact can receive reports before tagging a public
         release.
-  - [ ] Add a release checklist item that fails if `SECURITY.md` still contains
+  - [ ] Update `RELEASE.md` so the release gate checks for a real contact and
+        acknowledgement policy rather than the deleted placeholder string.
+  - [x] Add a release checklist item that fails if `SECURITY.md` still contains
         a public-release contact placeholder.
 
 - [ ] Add a third-party license and SBOM review.
-  - [ ] Inventory every directory under `third_party/`.
-  - [ ] Record upstream project name for each vendored dependency.
-  - [ ] Record upstream URL for each vendored dependency.
-  - [ ] Record pinned revision, release tag, or source acquisition date.
-  - [ ] Record license for `third_party/h2o`.
-  - [ ] Record license for `third_party/sqlite`.
-  - [ ] Preserve upstream license files in packaged source archives.
-  - [ ] Decide whether to add a root `NOTICE` file.
-  - [ ] Decide whether to add a machine-readable SBOM file.
+  - [x] Inventory every directory under `third_party/`.
+  - [x] Record upstream project name for each vendored dependency.
+  - [x] Record upstream URL for each vendored dependency.
+  - [x] Record pinned revision, release tag, or source acquisition date.
+  - [x] Record license for `third_party/h2o`.
+  - [x] Record license for `third_party/sqlite`.
+  - [x] Preserve upstream license files in packaged source archives.
+  - [x] Decide whether to add a root `NOTICE` file.
+  - [x] Decide whether to add a machine-readable SBOM file.
   - [ ] If adding an SBOM, choose a format such as SPDX or CycloneDX.
-  - [ ] Document which release artifacts include third-party code.
-  - [ ] Document whether source-only releases and binary releases have
+  - [x] Document which release artifacts include third-party code.
+  - [x] Document whether source-only releases and binary releases have
         different notice requirements.
   - [ ] Run a basic vulnerability review for vendored dependencies.
   - [ ] Record known CVE exceptions or "none known at release time" in release
         notes.
-  - [ ] Add a release checklist item that requires third-party license/SBOM
+  - [x] Add a release checklist item that requires third-party license/SBOM
         review before tagging.
 
 - [ ] Verify generated artifacts are removed from Git history.
-  - [ ] Define which historical artifacts are disallowed in repository history.
-  - [ ] Include generated `.exe` files.
-  - [ ] Include generated `.ll` files.
-  - [ ] Include generated `.bc`, `.obj`, `.o`, `.pdb`, `.res`, `.rc`, and
+  - [x] Define which historical artifacts are disallowed in repository history.
+  - [x] Include generated `.exe` files.
+  - [x] Include generated `.ll` files.
+  - [x] Include generated `.bc`, `.obj`, `.o`, `.pdb`, `.res`, `.rc`, and
         native build folders.
-  - [ ] Include packaged `.vsix` files if the release policy keeps VSIX
+  - [x] Include packaged `.vsix` files if the release policy keeps VSIX
         artifacts outside Git.
-  - [ ] Include local app data such as `todos.json`.
-  - [ ] Add a non-destructive history scan command to `RELEASE.md`.
-  - [ ] Run the history scan against all branches intended for release.
-  - [ ] Decide whether history rewriting is required before the first public
+  - [x] Include local app data such as `todos.json`.
+  - [x] Add a non-destructive history scan command to `RELEASE.md`.
+  - [x] Run the history scan against all branches intended for release.
+  - [x] Decide whether history rewriting is required before the first public
         push/tag.
   - [ ] If rewriting history, document the exact tool and command used.
-  - [ ] Prefer `git filter-repo` or another repeatable non-interactive tool for
+  - [x] Prefer `git filter-repo` or another repeatable non-interactive tool for
         any required history rewrite.
   - [ ] Verify rewritten history still contains required source, docs, and test
         fixtures.
-  - [ ] Verify current `.gitignore` catches the same artifact classes after the
+  - [x] Verify current `.gitignore` catches the same artifact classes after the
         history scrub.
-  - [ ] Record the final history-scan result in release notes.
+  - [x] Record the final history-scan result in release notes.
 
 - [ ] Make CI enforce the full release checklist.
-  - [ ] Compare `.github/workflows/ci.yml` against `RELEASE.md`.
-  - [ ] Add CI coverage for `SemanticScript/formatter/test_semfmt.py` if not
+  - [x] Compare `.github/workflows/ci.yml` against `RELEASE.md`.
+  - [x] Add CI coverage for `SemanticScript/formatter/test_semfmt.py` if not
         already enforced.
-  - [ ] Add CI coverage for `SemanticScript/tests/test_compiler.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/test_stdlib.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/compare.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/sem_alias_parity.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/sem_compiler_parity.py`.
-  - [ ] Add CI coverage for `SemanticScript/tests/feature_coverage.py`.
-  - [ ] Add CI coverage for `SemanticScript/bootstrap/run_bootstrap_chain.py`.
-  - [ ] Add CI coverage for `app/todo-web/test_todo_web.py`.
-  - [ ] Add CI coverage for `app/todo-web-advanced/test_advanced_todo_web.py`.
-  - [ ] Add CI coverage for `app/http-api-gauntlet/scripts/test_http_api_gauntlet.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/test_compiler.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/test_stdlib.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/compare.py`.
+  - [x] Add CI coverage for `SemanticScript/tests/sem_alias_parity.py`.
+  - [ ] Add CI coverage for `apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`.
+  - [ ] Add CI coverage for `apps/taskforge-web/scripts/test_taskforge_web.py`.
+  - [ ] Add CI coverage for `apps/http-runtime-gauntlet/scripts/test_http_runtime_gauntlet.py`.
   - [ ] Add CI coverage for the native HTTP runtime CMake build where the
         runner toolchain supports it.
   - [ ] Add CI coverage for the native JSON runtime CMake build if it remains
         in the release scope.
   - [ ] Add CI coverage for the native SQLite runtime CMake build if it remains
         in the release scope.
-  - [ ] Add CI coverage for `npm --prefix vscode-semanticscript run check`.
+  - [x] Add CI coverage for `npm --prefix vscode-semanticscript run check`.
   - [ ] Add optional CI coverage for `npm --prefix vscode-semanticscript run
         package:vsix` without uploading the artifact by default.
   - [ ] Run native executable tests on Windows CI, not only Linux.
-  - [ ] Run at least parse/lint/tooling checks on Linux CI.
-  - [ ] Document any release validation commands that intentionally remain
+  - [x] Run at least parse/lint/tooling checks on Linux CI.
+  - [x] Document any release validation commands that intentionally remain
         manual.
-  - [ ] Add a release checklist item requiring CI green on the exact release
+  - [x] Add a release checklist item requiring CI green on the exact release
         commit.
 
-- [ ] Define the public 1.0 compatibility contract.
-  - [ ] Write down what `languageVersion PROJECT "1.0"` guarantees.
-  - [ ] Define which syntax rows are stable for 1.0.
-  - [ ] Define which syntax rows are preview, partial, metadata-only, or
+- [x] Define the public 1.0 compatibility contract.
+  - [x] Write down what `languageVersion PROJECT "1.0"` guarantees.
+  - [x] Define which syntax rows are stable for 1.0.
+  - [x] Define which syntax rows are preview, partial, metadata-only, or
         subject to change.
-  - [ ] Define whether `.sscript` and `.sem` have equal long-term support.
-  - [ ] Define whether `.sscript` remains canonical and `.sem` remains an alias.
-  - [ ] Define compatibility guarantees for `build.sem`.
-  - [ ] Define compatibility guarantees for module/import/export rows.
-  - [ ] Define compatibility guarantees for native HTTP APIs.
-  - [ ] Define compatibility guarantees for JSON runtime APIs currently in
+  - [x] Define whether `.sscript` and `.sem` have equal long-term support.
+  - [x] Define whether `.sscript` remains canonical and `.sem` remains an alias.
+  - [x] Define compatibility guarantees for `build.sem`.
+  - [x] Define compatibility guarantees for module/import/export rows.
+  - [x] Define compatibility guarantees for native HTTP APIs.
+  - [x] Define compatibility guarantees for JSON runtime APIs currently in
         scope.
-  - [ ] Define compatibility guarantees for VS Code syntax highlighting and
+  - [x] Define compatibility guarantees for VS Code syntax highlighting and
         extension configuration keys.
-  - [ ] Define the deprecation process for syntax that changes after 1.0.
-  - [ ] Define whether future compiler versions warn before rejecting old 1.0
+  - [x] Define the deprecation process for syntax that changes after 1.0.
+  - [x] Define whether future compiler versions warn before rejecting old 1.0
         syntax.
-  - [ ] Add the compatibility contract to `README.md` or a dedicated docs page.
-  - [ ] Link the compatibility contract from `RELEASE.md`.
-  - [ ] Link the compatibility contract from `SYNTAX.md`.
+  - [x] Add the compatibility contract to `README.md` or a dedicated docs page.
+  - [x] Link the compatibility contract from `RELEASE.md`.
+  - [x] Link the compatibility contract from `SYNTAX.md`.
 
 - [ ] Add a release artifact manifest.
-  - [ ] Define a manifest filename and location for each release.
+  - [x] Define a manifest filename and location for each release.
   - [ ] Record release tag.
   - [ ] Record release commit SHA.
   - [ ] Record release date.
@@ -4022,9 +5247,9 @@ assign cleanly.
   - [ ] Record artifact checksums.
   - [ ] Record whether signatures were generated.
   - [ ] Record known deferred features from `TODO.md`.
-  - [ ] Record known xfail/bootstrap limitations.
-  - [ ] Add a release checklist item requiring the manifest before tagging.
-  - [ ] Decide whether manifests are committed, attached to GitHub releases, or
+  - [ ] Record known deferred limitations.
+  - [x] Add a release checklist item requiring the manifest before tagging.
+  - [x] Decide whether manifests are committed, attached to GitHub releases, or
         both.
 
 ## P1 - Packaging, Install, And CI
@@ -4048,8 +5273,9 @@ assign cleanly.
   - [x] Use MIT for first-party source, docs, samples, and tooling.
   - [x] Add root `LICENSE`.
   - [x] Align `vscode-semanticscript/package.json` license.
-- [ ] Decide VS Code publisher/marketplace identity.
-  - [ ] Replace `publisher: semanticscript-local` if publishing externally.
+- [x] Decide VS Code publisher/marketplace identity.
+  - [x] Keep `publisher: semanticscript-local` for the initial local VSIX
+        release; replace it only before publishing externally.
   - [x] Align extension version with release plan.
 
 ## P2 - Documentation Cleanup
@@ -4057,7 +5283,7 @@ assign cleanly.
 - [x] Remove stale `experiments/` references from current docs.
   - [x] `README.md`.
   - [x] `SYNTAX.md`.
-  - [x] `SemanticScript/AST.md`.
+  - [x] `docs/ast.md`.
   - [x] `docs/toolchain/vscode-extension.md`.
   - [x] `SemanticScript/compiler/semsc.py` comments if they refer to deleted
         paths rather than current refined examples.
@@ -4094,7 +5320,7 @@ assign cleanly.
 - [x] Add `SECURITY.md`.
 - [x] Add `CONTRIBUTING.md`.
 - [x] Add a top-level release checklist command block in `README.md`.
-- [x] Decide whether the duplicate top-level `python/` and `samples/python/`
+- [x] Decide whether the duplicate top-level `python/` and `python/`
       folders should both remain.
 - [x] Decide whether `.sem` mirror files under `SemanticScript/sem/` should be
       tracked as alias fixtures or generated artifacts.

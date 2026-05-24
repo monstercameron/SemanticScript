@@ -7,10 +7,6 @@ Covers the smaller, language-level invariants that the parity suite
   - tokenizer escape handling
   - parser line-number tracking
   - simple end-to-end compile-and-JIT for a few canonical programs
-  - the bootstrap chain stages 3, 4, 5: each one should compile,
-    emit deterministic IR, and (when fed through clang) produce an
-    executable whose stdout and exit code match the values declared
-    in its input .sscript file.
 
 Run:
     python tests/test_compiler.py
@@ -19,19 +15,21 @@ Exits non-zero on first failure, prints a summary otherwise.
 """
 
 import os
+import http.client
 import json
 import re
+import socket
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 COMPILER_DIR = ROOT / "compiler"
-BOOTSTRAP_DIR = ROOT / "bootstrap"
-APP_DIR = ROOT.parent / "app"
-HELLO_GUI_DIR = APP_DIR / "hello-gui"
+APP_DIR = ROOT.parent / "apps"
+HELLO_GUI_DIR = APP_DIR / "desktop-window-smoke"
 
 sys.path.insert(0, str(COMPILER_DIR))
 import semsc  # noqa: E402
@@ -48,6 +46,10 @@ def check(label, predicate, message=""):
         print(f"[FAIL] {label}: {message}")
 
 
+def canonical_path_text(value: str | Path) -> str:
+    return os.path.normcase(os.path.realpath(str(value)))
+
+
 def run_semsc_source(source, *args, suffix=".sscript"):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / f"sample{suffix}"
@@ -57,6 +59,38 @@ def run_semsc_source(source, *args, suffix=".sscript"):
              str(src_path), *args],
             capture_output=True, text=True,
         )
+
+
+def compile_and_run_semsc_source(source, *, timeout=300, run_timeout=30, suffix=".sscript"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / f"sample{suffix}"
+        exe_path = Path(tmpdir) / ("sample.exe" if os.name == "nt" else "sample")
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(Path(tmpdir) / "build"), "--quiet"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return compile_proc, None
+        run_proc = subprocess.run(
+            [str(exe_path)], capture_output=True, text=True, timeout=run_timeout)
+        return compile_proc, run_proc
+
+
+def parse_semsc_source_with_imports(source, *, suffix=".sscript"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / f"sample{suffix}"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        resolved = semsc._resolve_imports(source, str(src_path))
+        return semsc.parse(resolved)
+
+
+def parse_semsc_file_with_imports(path):
+    source = path.read_text(encoding="utf-8")
+    resolved = semsc._resolve_imports(source, str(path))
+    return semsc.parse(resolved)
 
 
 def _gui_support_pending_message(message):
@@ -89,7 +123,7 @@ def _gui_support_pending_message(message):
 # ============================================================
 
 def test_tokenizer():
-    toks = semsc.tokenize_line('const greeting CNullTerminatedByteString "Hi \\"world\\""')
+    toks = semsc.tokenize_line('const greeting String "Hi \\"world\\""')
     check("tokenizer: 4 tokens",
           len(toks) == 4,
           f"got {len(toks)} tokens: {toks!r}")
@@ -119,14 +153,13 @@ def test_parser_minimal():
         "runtime AgentRuntime 0.1",
         "entry console main",
         "operation main",
-        "output main Result ExitCode MainError",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose main \"minimal program\"",
+        "purpose operation main \"minimal program\"",
         "label startMain",
-        "const exitCodeValue ExitCode 0",
-        "returnOk exitCodeValue",
-        "",
+        "storage module immutable exitCodeValue ExitCode 0",
+        "return value exitCodeValue",
     ])
     prog = semsc.parse(src)
     check("parser: project recorded",
@@ -137,6 +170,275 @@ def test_parser_minimal():
           f"got operations: {list(prog.operations)}")
 
 
+def test_parser_syntax_cutover_rows():
+    src = "\n".join([
+        "project SyntaxCutover",
+        "import math standard.math",
+        "type SearchResult result ok ExitCode error MainError",
+        "error MainError",
+        "errorCase MainError NotFound Int32",
+        "storage module mutable searchAttempts Int64 0",
+        "operation main",
+        "input operation main needle Int64",
+        "output operation main Result Int64 MainError",
+        "memory main heap no",
+        "memory main arena request",
+        "memory main stack max 4KiB",
+        "memory main mutable low Int64 0",
+        "async main no",
+        "effect main write storage.searchAttempts",
+        "effect main configure console.terminal",
+        "authority main write storage.searchAttempts",
+        "authority main configure console.terminal",
+        "purpose operation main \"exercise new rows\"",
+        "call addCall math.addInt64",
+        "argument addCall left Int64 low",
+        "argument addCall right Int64 needle",
+        "run addCall",
+        "bind value nextLow Int64 addCall",
+        "set memory low nextLow",
+        "branch if condition nextLow target found",
+        "branch else target failed",
+        "label found",
+        "return ok nextLow",
+        "label failed",
+        "makeError notFoundFailure MainError.NotFound",
+        "return error notFoundFailure",
+    ])
+    prog = semsc.parse(src)
+    main_lines = prog.operations["main"].lines
+    check("parser cutover: result type canonicalized",
+          prog.type_aliases.get("SearchResult") == ["Result", "ExitCode", "MainError"],
+          f"type aliases = {prog.type_aliases!r}")
+    check("parser cutover: typed argument row recorded",
+          any(verb == "argument" and args == ["addCall", "left", "Int64", "low"]
+              for verb, args, _line in main_lines),
+          f"lines = {main_lines!r}")
+    check("parser cutover: branch variant rows recorded",
+          any(verb == "branch" and args[:2] == ["if", "condition"]
+              for verb, args, _line in main_lines)
+          and any(verb == "branch" and args[:2] == ["else", "target"]
+                  for verb, args, _line in main_lines),
+          f"lines = {main_lines!r}")
+    check("parser cutover: authority stored action before path",
+          prog.hard_metadata.get("main", {}).get("authority") == [
+              "write storage.searchAttempts",
+              "configure console.terminal",
+          ],
+          f"metadata = {prog.hard_metadata!r}")
+
+    old_rows = [
+        "importModule math standard.math",
+        "type SearchResult Result Int64 SearchError",
+        "input main needle Int64",
+        "output main Result ExitCode MainError",
+        "memoryHeap main no",
+        "htmlTemplate CardTemplate",
+        "htmlArg CardTemplate titleText String",
+        "htmlBody CardTemplate",
+        "authority main storage.searchAttempts write",
+        "const target Int64 42",
+        "let low Int64 0",
+        "var high Int64 0",
+        "set local high newHigh",
+        "bind lengthValue Int64 lengthCall",
+        "bindOk foundIndex Int64 searchCall",
+        "bindError searchError SearchError searchCall",
+        "arg elementCall index mid",
+        "branchIf isMatch found",
+        "branchIfError searchCall reportFailure",
+        "branch searchLoop",
+        "returnValue mid",
+        "returnOk mid",
+        "returnError parseError",
+        "returnVoid",
+        "ignoreValue printCall Int32",
+        "ignoreOk writeCall Int32",
+        "ignoreError stopServerCall",
+    ]
+    rejected = []
+    for row in old_rows:
+        try:
+            semsc.parse("operation main\n" + row + "\n")
+        except SyntaxError:
+            rejected.append(row)
+    check("parser cutover: old replacement rows rejected",
+          len(rejected) == len(old_rows),
+          f"accepted = {sorted(set(old_rows) - set(rejected))!r}")
+
+    forbidden_rows = [
+        "call.fn elementCall array.tryGet",
+        "argument call=elementCall name=index type=Int64 value=mid",
+        "@operation main",
+        "jump searchLoop",
+        "ignore void source flushCall type Void",
+    ]
+    rejected = []
+    for row in forbidden_rows:
+        try:
+            semsc.parse("operation main\n" + row + "\n")
+        except SyntaxError:
+            rejected.append(row)
+    check("parser cutover: forbidden punctuation/role shapes rejected",
+          len(rejected) == len(forbidden_rows),
+          f"accepted = {sorted(set(forbidden_rows) - set(rejected))!r}")
+
+
+def test_parser_stdlib_surfaces_require_explicit_imports():
+    bare = semsc.parse("project BareStdlibSurface\n")
+    hidden_names = (
+        "JsonText",
+        "JsonValueKind",
+        "objectJsonValueKind",
+        "SqliteOpenMode",
+        "inMemorySqliteOpenMode",
+    )
+    leaked = [
+        name for name in hidden_names
+        if name in bare.type_aliases or name in bare.enums or name in bare.consts
+    ]
+    check("parser: json/sqlite surfaces are not hidden preloads",
+          not leaked,
+          f"leaked={leaked!r}")
+
+    imported = parse_semsc_source_with_imports("\n".join([
+        "project ImportedStdlibSurface",
+        "import json standard.json",
+        "import sqlite standard.sqlite",
+    ]))
+    check("parser: explicit standard imports expose json/sqlite surfaces",
+          imported.type_aliases.get("JsonText") == ["String"]
+          and imported.type_aliases.get("SqlText") == ["String"]
+          and "JsonValueKind" in imported.enums
+          and ("objectJsonValueKind", "0") in imported.enums["JsonValueKind"].cases
+          and "SqliteOpenMode" in imported.enums
+          and ("inMemorySqliteOpenMode", "14") in imported.enums["SqliteOpenMode"].cases,
+          f"aliases={imported.type_aliases!r} enums={list(imported.enums)} consts={imported.consts!r}")
+
+
+def _enum_cases_as_ints(enum_obj):
+    return {name: int(str(value), 0) for name, value in enum_obj.cases}
+
+
+def _const_value_as_int(prog, name):
+    _type_name, value = prog.consts[name]
+    return int(str(value), 0)
+
+
+def _c_integer_symbol(header_text, symbol):
+    match = re.search(
+        rf"(?:\b{re.escape(symbol)}\s*=\s*|#define\s+{re.escape(symbol)}\s+)"
+        rf"(0x[0-9A-Fa-f]+|[0-9]+)",
+        header_text)
+    if not match:
+        raise AssertionError(f"missing C integer symbol {symbol}")
+    return int(match.group(1), 0)
+
+
+def test_stdlib_json_contract_matches_native_runtime_constants():
+    prog = parse_semsc_file_with_imports(ROOT / "std" / "json" / "main.sem")
+    header = (ROOT / "runtime" / "native_json" / "sem_json_runtime.h").read_text(
+        encoding="utf-8")
+    cases = _enum_cases_as_ints(prog.enums["JsonValueKind"])
+    expected_cases = {
+        "objectJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_OBJECT"),
+        "arrayJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_ARRAY"),
+        "stringJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_STRING"),
+        "integerJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_INTEGER"),
+        "doubleJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_DOUBLE"),
+        "booleanJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_BOOLEAN"),
+        "nullJsonValueKind": _c_integer_symbol(header, "SS_JSON_NODE_NULL"),
+    }
+    check("stdlib/native_json drift: JsonValueKind values match",
+          all(cases.get(name) == value for name, value in expected_cases.items()),
+          f"cases={cases!r} expected={expected_cases!r}")
+    check("stdlib/native_json drift: default builder capacity matches",
+          _const_value_as_int(prog, "defaultJsonBuilderCapacityBytes")
+          == _c_integer_symbol(header, "SS_JSON_DEFAULT_BUILDER_CAPACITY"),
+          f"consts={prog.consts!r}")
+
+
+def test_stdlib_sqlite_contract_matches_native_runtime_constants():
+    prog = parse_semsc_file_with_imports(ROOT / "std" / "sqlite" / "main.sem")
+    header = (ROOT / "runtime" / "native_sqlite" / "sem_sqlite_runtime.h").read_text(
+        encoding="utf-8")
+    open_cases = _enum_cases_as_ints(prog.enums["SqliteOpenMode"])
+    step_cases = _enum_cases_as_ints(prog.enums["SqliteStepResult"])
+    column_cases = _enum_cases_as_ints(prog.enums["SqliteColumnType"])
+    read_only = _c_integer_symbol(header, "SS_SQLITE_OPEN_READONLY")
+    read_write = _c_integer_symbol(header, "SS_SQLITE_OPEN_READWRITE")
+    create = _c_integer_symbol(header, "SS_SQLITE_OPEN_CREATE")
+    memory = _c_integer_symbol(header, "SS_SQLITE_OPEN_MEMORY")
+    check("stdlib/native_sqlite drift: open modes match",
+          open_cases.get("readOnlySqliteOpenMode") == read_only
+          and open_cases.get("readWriteSqliteOpenMode") == read_write
+          and open_cases.get("readWriteCreateSqliteOpenMode") == (read_write | create)
+          and open_cases.get("inMemorySqliteOpenMode") == (read_write | create | memory),
+          f"open_cases={open_cases!r}")
+    check("stdlib/native_sqlite drift: step result values match",
+          step_cases.get("rowSqliteStepResult")
+          == _c_integer_symbol(header, "SS_SQLITE_STEP_ROW")
+          and step_cases.get("doneSqliteStepResult")
+          == _c_integer_symbol(header, "SS_SQLITE_STEP_DONE"),
+          f"step_cases={step_cases!r}")
+    check("stdlib/native_sqlite drift: column type values match",
+          column_cases.get("integerSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_INTEGER")
+          and column_cases.get("floatSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_FLOAT")
+          and column_cases.get("textSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_TEXT")
+          and column_cases.get("blobSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_BLOB")
+          and column_cases.get("nullSqliteColumnType")
+          == _c_integer_symbol(header, "SS_SQLITE_COLUMN_NULL"),
+          f"column_cases={column_cases!r}")
+
+
+def test_compile_new_syntax_rows_to_ir():
+    src = "\n".join([
+        "project NewSyntaxLowering",
+        "entry console main",
+        "type MainResult result ok ExitCode error MainError",
+        "error MainError",
+        "errorCase MainError Failed Int32",
+        "storage module mutable searchAttempts Int64 0",
+        "operation helper",
+        "input operation helper value ExitCode",
+        "output operation helper ExitCode",
+        "purpose operation helper \"return input\"",
+        "return value value",
+        "operation main",
+        "output operation main MainResult",
+        "memory main heap no",
+        "memory main mutable low ExitCode 0",
+        "async main no",
+        "purpose operation main \"lower new syntax\"",
+        "call helperCall helper",
+        "argument helperCall value ExitCode low",
+        "run helperCall",
+        "bind value answer ExitCode helperCall",
+        "set storage searchAttempts answer",
+        "branch if condition answer target found",
+        "branch else target missing",
+        "label missing",
+        "jump target failed",
+        "label failed",
+        "makeError failure MainError.Failed",
+        "return error failure",
+        "label found",
+        "return ok answer",
+    ])
+    prog = semsc.parse(src)
+    ir_text = str(semsc.Codegen(prog).compile())
+    check("compiler cutover: new syntax lowers to main",
+          'define i32 @"main"()' in ir_text,
+          ir_text)
+    check("compiler cutover: typed argument calls helper",
+          'call i32 @"helper"' in ir_text,
+          ir_text)
+
+
 def test_parser_syntax_error_has_line():
     bad = "\n".join([
         "project Bad",
@@ -145,11 +447,7 @@ def test_parser_syntax_error_has_line():
         "entry console main",
         "operation main",
         "label startMain",
-        # This `returnOk` references something never declared. The parser
-        # itself accepts that; codegen later raises. So instead use a verb
-        # that the parser rejects.
         "CompletelyUnknownVerbThatShouldFail x y",
-        "",
     ])
     raised = False
     msg = ""
@@ -170,7 +468,6 @@ def test_parser_module_namespace_contract():
     prog = semsc.parse("\n".join([
         "project ModuleOk",
         "module examples.valid_module",
-        "",
     ]))
     check("parser: module namespace recorded",
           prog.module_name == "examples.valid_module",
@@ -183,7 +480,6 @@ def test_parser_module_namespace_contract():
             "project ModuleBad",
             "module examples.one",
             "module examples.two",
-            "",
         ]))
     except SyntaxError as e:
         raised = True
@@ -198,12 +494,11 @@ def test_parser_language_mode_strict_executable():
         "languageMode strictExecutable",
         "project StrictMode",
         "operation main",
-        "output main Result ExitCode MainError",
+        "output operation main Result ExitCode MainError",
         "precondition main \"caller validates inputs\"",
         "label startMain",
-        "const exitCodeValue ExitCode 0",
-        "returnOk exitCodeValue",
-        "",
+        "storage local immutable exitCodeValue ExitCode 0",
+        "return ok exitCodeValue",
     ])
     prog = semsc.parse(strict_source)
     check("parser: strictExecutable language mode recorded",
@@ -220,7 +515,6 @@ def test_parser_language_mode_strict_executable():
         "misspelledTopLevel Row",
         "operation main",
         "misspelledBody row",
-        "",
     ])
     prog = semsc.parse(permissive_source)
     main_op = prog.operations.get("main")
@@ -239,7 +533,6 @@ def test_parser_language_mode_strict_executable():
         "researchTop Row \"metadata\"",
         "operation main",
         "researchBody row",
-        "",
     ])
     prog = semsc.parse(refined_source)
     main_op = prog.operations.get("main")
@@ -281,7 +574,6 @@ def test_parser_language_mode_strict_executable():
         "languageMode strictExecutable",
         "project BadTop",
         "misspelledTopLevel Row",
-        "",
     ])
     proc = run_semsc_source(bad_top, "--parse-only", "--quiet")
     check("parser: strictExecutable rejects unknown lowercase top-level verb without lint",
@@ -296,7 +588,6 @@ def test_parser_language_mode_strict_executable():
         "operation main",
         "label startMain",
         "misspelledBody row",
-        "",
     ])
     proc = run_semsc_source(bad_body, "--parse-only", "--quiet")
     check("parser: strictExecutable rejects unknown lowercase body verb without lint",
@@ -330,19 +621,17 @@ def test_build_registry_imports_registered_module():
             "registerModule registrySmoke app.todo \".\"",
             "mainFile registrySmoke \"main.sem\"",
             "mainOperation registrySmoke main",
-            "importModule app.todo",
-            "",
+            "import todo app.todo",
         ]), encoding="utf-8", newline="\n")
         module_path.write_text("\n".join([
             "module app.todo",
             "exportOperation app.todo main",
             "operation main",
-            "output main ExitCode",
+            "output operation main ExitCode",
             "memory main heap no",
             "async main no",
-            "purpose main \"registry import smoke\"",
-            "returnValue 0",
-            "",
+            "purpose operation main \"registry import smoke\"",
+            "return value 0",
         ]), encoding="utf-8", newline="\n")
         proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
@@ -352,6 +641,82 @@ def test_build_registry_imports_registered_module():
     check("build registry: importModule resolves registered module",
           proc.returncode == 0,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_imported_module_external_literal_uses_origin_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        asset_dir = root / "assets"
+        asset_dir.mkdir()
+        (asset_dir / "message.txt").write_text(
+            "schema from imported module\n", encoding="utf-8", newline="\n")
+        build_path = root / "build.sem"
+        consumer_path = root / "consumer.sem"
+        provider_path = root / "provider.sem"
+        build_path.write_text("\n".join([
+            "buildProject importedLiteral",
+            "project ImportedLiteral",
+            "modulePath importedLiteral github.com/example/imported-literal",
+            "languageVersion importedLiteral \"1.0\"",
+            "projectVersion importedLiteral \"1.0.0\"",
+            "projectLicense importedLiteral MIT",
+            "sourceRoot importedLiteral \".\"",
+            "targetRuntime importedLiteral nativeExe",
+            "buildProfile importedLiteral dev",
+            "optLevel importedLiteral 2",
+            "runtimeChecks importedLiteral panic",
+            "persistLlvmIr importedLiteral auto",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule importedLiteral app.consumer \"consumer.sem\"",
+            "registerModule importedLiteral app.provider \"provider.sem\"",
+            "mainFile importedLiteral \"consumer.sem\"",
+            "mainOperation importedLiteral main",
+            "import consumer app.consumer",
+        ]), encoding="utf-8", newline="\n")
+        provider_path.write_text("\n".join([
+            "module app.provider",
+            "operation warmup",
+            "output operation warmup ExitCode",
+            "purpose operation warmup \"keeps current_op non-empty before literal metadata\"",
+            "return value 0",
+            "literal providerAsset String",
+            "literalSource providerAsset \"assets/message.txt\"",
+            "literalBytes providerAsset 28",
+            "literalDigest providerAsset sha256 unused",
+            "literalTrust providerAsset trustedStaticAsset",
+            "exportOperation app.provider consumeProviderAsset",
+            "operation consumeProviderAsset",
+            "output operation consumeProviderAsset ExitCode",
+            "purpose operation consumeProviderAsset \"reference imported external literal\"",
+            "call lenCall c.strlen",
+            "argument lenCall s String providerAsset",
+            "run lenCall",
+            "ignore value source lenCall type Int64",
+            "return value 0",
+        ]), encoding="utf-8", newline="\n")
+        consumer_path.write_text("\n".join([
+            "module app.consumer",
+            "import provider app.provider",
+            "operation main",
+            "output operation main ExitCode",
+            "purpose operation main \"consumer\"",
+            "call consumeCall provider.consumeProviderAsset",
+            "run consumeCall",
+            "bind value status ExitCode consumeCall",
+            "return value status",
+        ]), encoding="utf-8", newline="\n")
+        ir_path = root / "imported_literal.ll"
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--emit-ir", str(ir_path), "--quiet"],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("build registry: imported literalSource resolves from origin path",
+          proc.returncode == 0 and "schema from imported module" in ir_text,
+          f"rc={proc.returncode} stderr={proc.stderr!r} ir={ir_text!r}")
 
 
 def test_build_registry_qualified_import_call_lowers():
@@ -380,29 +745,26 @@ def test_build_registry_qualified_import_call_lowers():
             "registerModule importQualified app.provider \"provider.sem\"",
             "mainFile importQualified \"main.sem\"",
             "mainOperation importQualified main",
-            "importModule app.consumer",
-            "",
+            "import consumer app.consumer",
         ]), encoding="utf-8", newline="\n")
         provider_path.write_text("\n".join([
             "module app.provider",
             "exportOperation app.provider providerAnswer",
             "operation providerAnswer",
-            "output providerAnswer ExitCode",
-            "purpose providerAnswer \"answer\"",
-            "returnValue 42",
-            "",
+            "output operation providerAnswer ExitCode",
+            "purpose operation providerAnswer \"answer\"",
+            "return value 42",
         ]), encoding="utf-8", newline="\n")
         module_path.write_text("\n".join([
             "module app.consumer",
-            "importModule provider app.provider",
+            "import provider app.provider",
             "operation main",
-            "output main ExitCode",
-            "purpose main \"consumer\"",
+            "output operation main ExitCode",
+            "purpose operation main \"consumer\"",
             "call answerCall provider.providerAnswer",
             "run answerCall",
-            "bind answer ExitCode answerCall",
-            "returnValue answer",
-            "",
+            "bind value answer ExitCode answerCall",
+            "return value answer",
         ]), encoding="utf-8", newline="\n")
         ir_path = root / "qualified.ll"
         proc = subprocess.run(
@@ -442,30 +804,27 @@ def test_build_registry_singular_import_call_lowers():
             "registerModule importSingular app.provider \"provider.sem\"",
             "mainFile importSingular \"main.sem\"",
             "mainOperation importSingular main",
-            "importModule app.consumer",
-            "",
+            "import consumer app.consumer",
         ]), encoding="utf-8", newline="\n")
         provider_path.write_text("\n".join([
             "module app.provider",
             "exportOperation app.provider providerAnswer",
             "operation providerAnswer",
-            "output providerAnswer ExitCode",
-            "purpose providerAnswer \"answer\"",
-            "returnValue 42",
-            "",
+            "output operation providerAnswer ExitCode",
+            "purpose operation providerAnswer \"answer\"",
+            "return value 42",
         ]), encoding="utf-8", newline="\n")
         module_path.write_text("\n".join([
             "module app.consumer",
-            "importModule provider app.provider",
+            "import provider app.provider",
             "importOperation answer provider providerAnswer",
             "operation main",
-            "output main ExitCode",
-            "purpose main \"consumer\"",
+            "output operation main ExitCode",
+            "purpose operation main \"consumer\"",
             "call answerCall answer",
             "run answerCall",
-            "bind answerValue ExitCode answerCall",
-            "returnValue answerValue",
-            "",
+            "bind value answerValue ExitCode answerCall",
+            "return value answerValue",
         ]), encoding="utf-8", newline="\n")
         ir_path = root / "singular.ll"
         proc = subprocess.run(
@@ -502,8 +861,7 @@ def test_build_registry_missing_source_is_error():
             "registerModule registryBad app.missing \"missing\"",
             "mainFile registryBad \"main.sem\"",
             "mainOperation registryBad main",
-            "importModule app.missing",
-            "",
+            "import missing app.missing",
         ]), encoding="utf-8", newline="\n")
         proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
@@ -515,17 +873,74 @@ def test_build_registry_missing_source_is_error():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_build_registry_rejects_duplicate_imported_operation_names():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        consumer_path = root / "main.sem"
+        provider_path = root / "provider.sem"
+        build_path.write_text("\n".join([
+            "buildProject duplicateOps",
+            "project DuplicateOps",
+            "modulePath duplicateOps github.com/example/duplicate-ops",
+            "languageVersion duplicateOps \"1.0\"",
+            "projectVersion duplicateOps \"1.0.0\"",
+            "projectLicense duplicateOps MIT",
+            "sourceRoot duplicateOps \".\"",
+            "targetRuntime duplicateOps nativeExe",
+            "buildProfile duplicateOps dev",
+            "optLevel duplicateOps 2",
+            "runtimeChecks duplicateOps panic",
+            "persistLlvmIr duplicateOps auto",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule duplicateOps app.consumer \"main.sem\"",
+            "registerModule duplicateOps app.provider \"provider.sem\"",
+            "mainFile duplicateOps \"main.sem\"",
+            "mainOperation duplicateOps main",
+            "import consumer app.consumer",
+        ]), encoding="utf-8", newline="\n")
+        provider_path.write_text("\n".join([
+            "module app.provider",
+            "exportOperation app.provider duplicateHelper",
+            "operation duplicateHelper",
+            "output operation duplicateHelper ExitCode",
+            "purpose operation duplicateHelper \"provider helper\"",
+            "return value 1",
+        ]), encoding="utf-8", newline="\n")
+        consumer_path.write_text("\n".join([
+            "module app.consumer",
+            "import provider app.provider",
+            "operation duplicateHelper",
+            "output operation duplicateHelper ExitCode",
+            "purpose operation duplicateHelper \"consumer helper\"",
+            "return value 2",
+            "operation main",
+            "output operation main ExitCode",
+            "purpose operation main \"entry\"",
+            "return value 0",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--parse-only", "--quiet"],
+            capture_output=True, text=True,
+        )
+    check("build registry: duplicate imported operation names fail parse",
+          proc.returncode == 2 and "duplicate operation `duplicateHelper`" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_rejects_missing_output_contract():
     src = "\n".join([
         "project MissingOutput",
         "entry console main",
         "operation main",
-        "purpose main \"exercise missing output diagnostics\"",
+        "purpose operation main \"exercise missing output diagnostics\"",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
     check("strict lint: missing output is fatal",
@@ -538,13 +953,12 @@ def test_strict_rejects_unknown_output_contract_type():
         "project UnknownOutput",
         "entry console main",
         "operation main",
-        "output main MysteryReturnType",
-        "purpose main \"exercise unknown output diagnostics\"",
+        "output operation main MysteryReturnType",
+        "purpose operation main \"exercise unknown output diagnostics\"",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
     check("strict lint: unknown output type is fatal",
@@ -557,15 +971,14 @@ def test_strict_requires_effect_capability_or_authority():
         "project MissingAuthority",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "purpose main \"exercise capability diagnostics\"",
-        "invariant main \"Effect is intentionally declared for lint coverage.\"",
+        "purpose operation main \"exercise capability diagnostics\"",
+        "invariant operation main \"Effect is intentionally declared for lint coverage.\"",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
     check("strict lint: effect without authority is fatal",
@@ -575,17 +988,16 @@ def test_strict_requires_effect_capability_or_authority():
     authorized_src = "\n".join([
         "project InlineAuthority",
         "entry console main",
-        "authority main console.stdout write",
+        "authority main write console.stdout",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "purpose main \"exercise inline authority coverage\"",
-        "invariant main \"Inline authority covers the declared effect.\"",
+        "purpose operation main \"exercise inline authority coverage\"",
+        "invariant operation main \"Inline authority covers the declared effect.\"",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     authorized = run_semsc_source(
         authorized_src, "--parse-only", "--strict", "--quiet")
@@ -603,20 +1015,20 @@ def _strict_http_route_source(
         handler_body=None):
     if handler_inputs is None:
         handler_inputs = [
-            "input healthHandler request HttpRequest",
-            "input healthHandler response HttpResponse",
+            "input operation healthHandler request HttpRequest",
+            "input operation healthHandler response HttpResponse",
         ]
     if handler_body is None:
         handler_body = [
-            "const okStatus CSignedInt32 200",
-            "const okBody CNullTerminatedByteString \"ok\\n\"",
+            "storage module immutable okStatus Int32 200",
+            "storage module immutable okBody String \"ok\\n\"",
             "call wrapperCall writeTextResponse",
-            "arg wrapperCall response response",
-            "arg wrapperCall status okStatus",
-            "arg wrapperCall body okBody",
+            "argument wrapperCall response HttpResponse response",
+            "argument wrapperCall status Int32 okStatus",
+            "argument wrapperCall body String okBody",
             "run wrapperCall",
-            "bind responseStatus CSignedInt32 wrapperCall",
-            "returnValue responseStatus",
+            "bind value responseStatus Int32 wrapperCall",
+            "return value responseStatus",
         ]
     wrapper_forwarder_lines = (
         [wrapper_forwarder_line] if wrapper_forwarder_line else []
@@ -627,59 +1039,59 @@ def _strict_http_route_source(
         "target webServer",
         "runtime native 1",
         "webServer strictServer",
-        "purpose strictServer \"strict HTTP fixture server\"",
+        "purpose module strictServer \"strict HTTP fixture server\"",
         "serverHost strictServer \"127.0.0.1\"",
         "serverPort strictServer 18083",
         f"route strictServer {route_method} \"/health\" healthHandler",
         "routeMiddleware strictServer \"/health\" auditMiddleware",
-        "authority auditMiddleware http.response write",
-        "authority writeTextResponse http.response write",
-        "authority healthHandler http.response write",
-        "authority healthHandler http.request read",
+        "authority auditMiddleware write http.response",
+        "authority writeTextResponse write http.response",
+        "authority healthHandler write http.response",
+        "authority healthHandler read http.request",
         "",
         "operation auditMiddleware",
-        "input auditMiddleware request HttpRequest",
-        "input auditMiddleware response HttpResponse",
-        f"output auditMiddleware {middleware_output}",
+        "input operation auditMiddleware request HttpRequest",
+        "input operation auditMiddleware response HttpResponse",
+        f"output operation auditMiddleware {middleware_output}",
         "effect auditMiddleware write http.response",
-        "purpose auditMiddleware \"strict middleware ABI fixture\"",
-        "invariant auditMiddleware \"middleware output shape is explicit\"",
+        "purpose operation auditMiddleware \"strict middleware ABI fixture\"",
+        "invariant operation auditMiddleware \"middleware output shape is explicit\"",
         "memory auditMiddleware arena request",
         "async auditMiddleware no",
         "label startAuditMiddleware",
-        f"returnValue {middleware_return}",
+        f"return value {middleware_return}",
         "",
         "operation writeTextResponse",
-        "input writeTextResponse response HttpResponse",
-        "input writeTextResponse status CSignedInt32",
-        "input writeTextResponse body CNullTerminatedByteString",
-        "output writeTextResponse CSignedInt32",
+        "input operation writeTextResponse response HttpResponse",
+        "input operation writeTextResponse status Int32",
+        "input operation writeTextResponse body String",
+        "output operation writeTextResponse Int32",
         "effect writeTextResponse write http.response",
-        "purpose writeTextResponse \"strict response wrapper fixture\"",
-        "invariant writeTextResponse \"wrapper forwards body explicitly\"",
+        "purpose operation writeTextResponse \"strict response wrapper fixture\"",
+        "invariant operation writeTextResponse \"wrapper forwards body explicitly\"",
         "memory writeTextResponse arena request",
         "async writeTextResponse no",
         *wrapper_forwarder_lines,
         "label startWriteTextResponse",
         "call writeCall http.responseText",
-        "arg writeCall response response",
-        "arg writeCall status status",
-        "arg writeCall body body",
+        "argument writeCall response HttpResponse response",
+        "argument writeCall status Int32 status",
+        "argument writeCall body String body",
         "run writeCall",
-        "bindOk writeStatus CSignedInt32 writeCall",
-        "bindError writeCallError CSignedInt32 writeCall",
-        "branchIfError writeCall writeFailed",
-        "returnValue writeStatus",
+        "bind ok writeStatus Int32 writeCall",
+        "bind error writeCallError Int32 writeCall",
+        "branch error source writeCall target writeFailed",
+        "return value writeStatus",
         "label writeFailed",
-        "returnValue writeCallError",
+        "return value writeCallError",
         "",
         "operation healthHandler",
         *handler_inputs,
-        "output healthHandler CSignedInt32",
+        "output operation healthHandler Int32",
         "effect healthHandler read http.request",
         "effect healthHandler write http.response",
-        "purpose healthHandler \"strict route handler ABI fixture\"",
-        "invariant healthHandler \"route handler writes exactly one response\"",
+        "purpose operation healthHandler \"strict route handler ABI fixture\"",
+        "invariant operation healthHandler \"route handler writes exactly one response\"",
         "memory healthHandler arena request",
         "async healthHandler no",
         "label startHealthHandler",
@@ -704,6 +1116,57 @@ def test_strict_web_contracts_accept_lowercase_route_method():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_web_contracts_accept_route_fallback_handlers():
+    src = _strict_http_route_source().replace(
+        'route strictServer GET "/health" healthHandler',
+        "\n".join([
+            'route strictServer GET "/health" healthHandler',
+            "routeNotFound strictServer healthHandler",
+            "routeMethodNotAllowed strictServer healthHandler",
+        ]),
+    )
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict HTTP: route fallback handlers use the native HTTP ABI",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_native_http_rejects_invalid_parameter_route_patterns_at_startup():
+    invalid_paths = [
+        "/echo/:",
+        "/echo//:slug",
+        "/echo/:slug/:",
+        "echo/:slug",
+    ]
+    for index, route_path in enumerate(invalid_paths, start=1):
+        src = "\n".join([
+            f"project InvalidPathParamRoute{index}",
+            "target webServer",
+            "runtime native 1",
+            "webServer invalidRouteServer",
+            "serverHost invalidRouteServer \"127.0.0.1\"",
+            f"serverPort invalidRouteServer {18190 + index}",
+            f"route invalidRouteServer GET \"{route_path}\" invalidHandler",
+            "operation invalidHandler",
+            "input operation invalidHandler request HttpRequest",
+            "input operation invalidHandler response HttpResponse",
+            "output operation invalidHandler Int32",
+            "memory invalidHandler arena request",
+            "async invalidHandler no",
+            "label startInvalidHandler",
+            "return value 0",
+        ])
+        compile_proc, run_proc = compile_and_run_semsc_source(src, run_timeout=5)
+        check(f"native HTTP: invalid route pattern {route_path!r} compiles",
+              compile_proc.returncode == 0 and run_proc is not None,
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if run_proc is None:
+            continue
+        check(f"native HTTP: invalid route pattern {route_path!r} fails config startup",
+              run_proc.returncode == 1,
+              f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
 def test_strict_executable_mode_rejects_http_contracts_without_lint_flag():
     src = _strict_http_route_source(route_method="CONNECT")
     proc = run_semsc_source(src, "--parse-only", "--quiet")
@@ -716,7 +1179,7 @@ def test_strict_executable_mode_rejects_http_contracts_without_lint_flag():
 
 def test_strict_web_contracts_reject_middleware_i32_output():
     src = _strict_http_route_source(
-        middleware_output="CSignedInt32",
+        middleware_output="Int32",
         middleware_return="0",
     )
     proc = run_semsc_source(src, "--parse-only", "--quiet")
@@ -727,8 +1190,8 @@ def test_strict_web_contracts_reject_middleware_i32_output():
 
 def test_strict_web_contracts_reject_handler_input_name_mismatch():
     src = _strict_http_route_source(handler_inputs=[
-        "input healthHandler req HttpRequest",
-        "input healthHandler res HttpResponse",
+        "input operation healthHandler req HttpRequest",
+        "input operation healthHandler res HttpResponse",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strict HTTP: route handler names are compile-blocking without lint",
@@ -753,22 +1216,72 @@ def test_strict_web_contracts_reject_wrong_response_forwarder():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_web_contracts_reject_app_specific_response_helper_without_forwarder():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictHttpAppHelperBoundary",
+        "target webServer",
+        "runtime native 1",
+        "webServer strictServer",
+        "purpose module strictServer \"strict HTTP fixture server\"",
+        "serverHost strictServer \"127.0.0.1\"",
+        "serverPort strictServer 18083",
+        "route strictServer GET \"/health\" healthHandler",
+        "authority healthHandler write http.response",
+        "",
+        "operation writeJsonOkResponse",
+        "input operation writeJsonOkResponse response HttpResponse",
+        "input operation writeJsonOkResponse status Int32",
+        "input operation writeJsonOkResponse jsonBody String",
+        "output operation writeJsonOkResponse Int32",
+        "effect writeJsonOkResponse write http.response",
+        "purpose operation writeJsonOkResponse \"app helper name fixture\"",
+        "memory writeJsonOkResponse arena request",
+        "async writeJsonOkResponse no",
+        "label startWriteJsonOkResponse",
+        "return value status",
+        "",
+        "operation healthHandler",
+        "input operation healthHandler request HttpRequest",
+        "input operation healthHandler response HttpResponse",
+        "output operation healthHandler Int32",
+        "effect healthHandler write http.response",
+        "purpose operation healthHandler \"route handler fixture\"",
+        "memory healthHandler arena request",
+        "async healthHandler no",
+        "label startHealthHandler",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable okBody String \"ok\\n\"",
+        "call helperCall writeJsonOkResponse",
+        "argument helperCall response HttpResponse response",
+        "argument helperCall status Int32 okStatus",
+        "argument helperCall jsonBody String okBody",
+        "run helperCall",
+        "bind value helperStatus Int32 helperCall",
+        "return value helperStatus",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strict HTTP: app-specific helper name is not an implicit writer",
+          proc.returncode == 3 and "SS3614" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_web_contracts_reject_nullable_header_response_body():
     handler_body = [
-        "const okStatus CSignedInt32 200",
-        "const tokenHeaderName CNullTerminatedByteString \"X-Token\"",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable tokenHeaderName String \"X-Token\"",
         "call headerReadCall http.requestHeader",
-        "arg headerReadCall request request",
-        "arg headerReadCall name tokenHeaderName",
+        "argument headerReadCall request HttpRequest request",
+        "argument headerReadCall name String tokenHeaderName",
         "run headerReadCall",
-        "bind maybeToken CNullTerminatedByteString headerReadCall",
+        "bind value maybeToken String headerReadCall",
         "call writeCall http.responseText",
-        "arg writeCall response response",
-        "arg writeCall status okStatus",
-        "arg writeCall body maybeToken",
+        "argument writeCall response HttpResponse response",
+        "argument writeCall status Int32 okStatus",
+        "argument writeCall body String maybeToken",
         "run writeCall",
-        "bind responseStatus CSignedInt32 writeCall",
-        "returnValue responseStatus",
+        "bind value responseStatus Int32 writeCall",
+        "return value responseStatus",
     ]
     src = _strict_http_route_source(handler_body=handler_body)
     proc = run_semsc_source(src, "--parse-only", "--quiet")
@@ -791,28 +1304,27 @@ def test_strict_rejects_plain_run_for_fallible_heap_allocation():
         "entry console main",
         "error MainError",
         "errorCase MainError OutOfMemory",
-        "authority main heap allocate",
+        "authority main allocate heap",
         "operation main",
-        "output main Result Void MainError",
+        "output operation main Result Void MainError",
         "effect main allocate heap",
-        "purpose main \"exercise strict fallible call diagnostics\"",
-        "invariant main \"heap allocation failure must be explicit\"",
+        "purpose operation main \"exercise strict fallible call diagnostics\"",
+        "invariant operation main \"heap allocation failure must be explicit\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call mallocCall c.malloc",
-        "arg mallocCall size allocationSize",
+        "argument mallocCall size ByteCount allocationSize",
         "run mallocCall",
-        "returnOk noResult",
-        "",
+        "return ok noResult",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
     check("strict checked calls: c.malloc plain run is fatal",
           proc.returncode == 3
           and "uncheckedFallibleCall" in proc.stderr
           and "c.malloc" in proc.stderr
-          and "bind|ignoreValue" in proc.stderr,
+          and "bind value|ignore value" in proc.stderr,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
@@ -822,34 +1334,33 @@ def test_strict_accepts_complete_legacy_checked_fallible_call_pattern():
         "entry console main",
         "error MainError",
         "errorCase MainError OutOfMemory",
-        "authority main heap allocate",
-        "authority main heap free",
+        "authority main allocate heap",
+        "authority main free heap",
         "operation main",
-        "output main Result Void MainError",
+        "output operation main Result Void MainError",
         "effect main allocate heap",
         "effect main free heap",
-        "purpose main \"exercise accepted legacy checked call pattern\"",
-        "invariant main \"heap allocation failure branches before use\"",
+        "purpose operation main \"exercise accepted legacy checked call pattern\"",
+        "invariant operation main \"heap allocation failure branches before use\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call mallocCall c.malloc",
-        "arg mallocCall size allocationSize",
+        "argument mallocCall size ByteCount allocationSize",
         "run mallocCall",
-        "bindOk heapBuffer COpaqueMemoryAddress mallocCall",
-        "bindError mallocCallError MainError mallocCall",
-        "branchIfError mallocCall allocationFailed",
+        "bind ok heapBuffer OpaquePointer mallocCall",
+        "bind error mallocCallError MainError mallocCall",
+        "branch error source mallocCall target allocationFailed",
         "call freeCall c.free",
-        "arg freeCall ptr heapBuffer",
+        "argument freeCall ptr OpaquePointer heapBuffer",
         "run freeCall",
-        "returnOk noResult",
+        "return ok noResult",
         "label allocationFailed",
-        "returnError mallocCallError",
-        "",
+        "return error mallocCallError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
-    check("strict checked calls: complete legacy pattern is accepted",
+    check("strict checked calls: complete explicit pattern is accepted",
           proc.returncode == 0,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
@@ -863,28 +1374,28 @@ def test_strict_executable_run_checked_heap_allocation_lowers():
         "entry console main",
         "error MainError",
         "errorCase MainError OutOfMemory",
-        "authority main heap allocate",
-        "authority main heap free",
+        "authority main allocate heap",
+        "authority main free heap",
         "operation main",
-        "output main Result Void MainError",
+        "output operation main Result Void MainError",
         "effect main allocate heap",
         "effect main free heap",
-        "purpose main \"exercise source-level checked heap allocation\"",
-        "invariant main \"allocation failure and cleanup are executable\"",
+        "purpose operation main \"exercise source-level checked heap allocation\"",
+        "invariant operation main \"allocation failure and cleanup are executable\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call mallocCall c.malloc",
-        "arg mallocCall size allocationSize",
-        "runChecked mallocCall ok heapBuffer COpaqueMemoryAddress error mallocStatus MainError else allocationFailed",
+        "argument mallocCall size ByteCount allocationSize",
+        "runChecked mallocCall ok heapBuffer OpaquePointer error mallocStatus MainError else allocationFailed",
         "call freeCall c.free",
-        "arg freeCall ptr heapBuffer",
+        "argument freeCall ptr OpaquePointer heapBuffer",
         "run freeCall",
-        "returnVoid",
+        "return void",
         "label allocationFailed",
         "makeError allocationFailure MainError.OutOfMemory",
-        "returnError allocationFailure",
+        "return error allocationFailure",
         "",
     ])
     proc = run_semsc_source(src, "--emit-ir", "--quiet")
@@ -896,24 +1407,26 @@ def test_strict_executable_run_checked_heap_allocation_lowers():
 def test_strict_rejects_plain_run_for_fallible_sqlite_prepare():
     src = "\n".join([
         "project StrictUncheckedSqlitePrepare",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"exercise strict sqlite fallible call diagnostics\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"exercise strict sqlite fallible call diagnostics\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const database SqliteDatabase 0",
-        "const sqlText CNullTerminatedByteString \"select 1\"",
+        "storage module immutable database SqliteDatabase 0",
+        "storage module immutable sqlText SqlText",
+        "sql body sqlText",
+        "  select 1",
         "call prepareStatementCall sqlite.prepareStatement",
-        "arg prepareStatementCall database database",
-        "arg prepareStatementCall sql sqlText",
+        "argument prepareStatementCall database SqliteDatabase database",
+        "argument prepareStatementCall sql SqlText sqlText",
         "run prepareStatementCall",
-        "bindOk statement SqliteStatement prepareStatementCall",
-        "returnOk noResult",
-        "",
+        "bind ok statement SqliteStatement prepareStatementCall",
+        "return ok noResult",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
     check("strict checked calls: sqlite.prepareStatement plain run is fatal",
@@ -929,34 +1442,33 @@ def test_strict_rejects_missing_status_for_fallible_http_response_write():
         "entry console main",
         "error MainError",
         "errorCase MainError ResponseWriteFailed",
-        "authority main http.response write",
+        "authority main write http.response",
         "operation main",
-        "input main response HttpResponse",
-        "output main Result Void MainError",
+        "input operation main response HttpResponse",
+        "output operation main Result Void MainError",
         "effect main write http.response",
-        "purpose main \"exercise strict HTTP response status diagnostics\"",
-        "invariant main \"response write failure must branch explicitly\"",
+        "purpose operation main \"exercise strict HTTP response status diagnostics\"",
+        "invariant operation main \"response write failure must branch explicitly\"",
         "memory main heap no",
         "async main no",
         "label start",
-        "const okStatus CSignedInt32 200",
-        "const bodyText CNullTerminatedByteString \"ok\"",
-        "const plainType CNullTerminatedByteString \"text/plain\"",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable bodyText String \"ok\"",
+        "storage module immutable plainType String \"text/plain\"",
         "call writeResponseCall http.responseText",
-        "arg writeResponseCall response response",
-        "arg writeResponseCall status okStatus",
-        "arg writeResponseCall body bodyText",
-        "arg writeResponseCall contentType plainType",
+        "argument writeResponseCall response HttpResponse response",
+        "argument writeResponseCall status Int32 okStatus",
+        "argument writeResponseCall body String bodyText",
+        "argument writeResponseCall contentType HttpContentType plainType",
         "run writeResponseCall",
-        "returnOk noResult",
-        "",
+        "return ok noResult",
     ])
     proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
     check("strict checked calls: missing HTTP response status disposition is fatal",
           proc.returncode == 3
           and "uncheckedFallibleCall" in proc.stderr
           and "http.responseText" in proc.stderr
-          and "bind|ignoreValue" in proc.stderr,
+          and "bind value|ignore value" in proc.stderr,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
@@ -968,18 +1480,17 @@ def test_strict_executable_rejects_heap_allocation_without_oom_branch():
         "error MainError",
         "errorCase MainError OutOfMemory",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"strict heap allocation must branch on OOM\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict heap allocation must branch on OOM\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call allocationCall c.malloc",
-        "arg allocationCall size allocationSize",
+        "argument allocationCall size ByteCount allocationSize",
         "run allocationCall",
-        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
-        "returnOk noResult",
-        "",
+        "bind ok heapBuffer OpaquePointer allocationCall",
+        "return ok noResult",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: unchecked heap allocation fails",
@@ -997,22 +1508,21 @@ def test_strict_executable_rejects_heap_allocation_without_free():
         "error MainError",
         "errorCase MainError OutOfMemory",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"strict heap allocation must have executable free\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict heap allocation must have executable free\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call allocationCall c.malloc",
-        "arg allocationCall size allocationSize",
+        "argument allocationCall size ByteCount allocationSize",
         "run allocationCall",
-        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
-        "bindError allocationError MainError allocationCall",
-        "branchIfError allocationCall allocationFailed",
-        "returnOk noResult",
+        "bind ok heapBuffer OpaquePointer allocationCall",
+        "bind error allocationError MainError allocationCall",
+        "branch error source allocationCall target allocationFailed",
+        "return ok noResult",
         "label allocationFailed",
-        "returnError allocationError",
-        "",
+        "return error allocationError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: missing heap free fails",
@@ -1030,28 +1540,27 @@ def test_strict_executable_rejects_double_heap_free():
         "error MainError",
         "errorCase MainError OutOfMemory",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"strict heap cleanup must not double free\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict heap cleanup must not double free\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call allocationCall c.malloc",
-        "arg allocationCall size allocationSize",
+        "argument allocationCall size ByteCount allocationSize",
         "run allocationCall",
-        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
-        "bindError allocationError MainError allocationCall",
-        "branchIfError allocationCall allocationFailed",
+        "bind ok heapBuffer OpaquePointer allocationCall",
+        "bind error allocationError MainError allocationCall",
+        "branch error source allocationCall target allocationFailed",
         "call firstFreeCall c.free",
-        "arg firstFreeCall ptr heapBuffer",
+        "argument firstFreeCall ptr OpaquePointer heapBuffer",
         "run firstFreeCall",
         "call secondFreeCall c.free",
-        "arg secondFreeCall ptr heapBuffer",
+        "argument secondFreeCall ptr OpaquePointer heapBuffer",
         "run secondFreeCall",
-        "returnOk noResult",
+        "return ok noResult",
         "label allocationFailed",
-        "returnError allocationError",
-        "",
+        "return error allocationError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: double heap free fails",
@@ -1069,25 +1578,24 @@ def test_strict_executable_accepts_explicit_heap_free():
         "error MainError",
         "errorCase MainError OutOfMemory",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"strict heap cleanup is executable\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict heap cleanup is executable\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const allocationSize CByteCount 8",
+        "storage module immutable allocationSize ByteCount 8",
         "call allocationCall c.malloc",
-        "arg allocationCall size allocationSize",
+        "argument allocationCall size ByteCount allocationSize",
         "run allocationCall",
-        "bindOk heapBuffer COpaqueMemoryAddress allocationCall",
-        "bindError allocationError MainError allocationCall",
-        "branchIfError allocationCall allocationFailed",
+        "bind ok heapBuffer OpaquePointer allocationCall",
+        "bind error allocationError MainError allocationCall",
+        "branch error source allocationCall target allocationFailed",
         "call freeCall c.free",
-        "arg freeCall ptr heapBuffer",
+        "argument freeCall ptr OpaquePointer heapBuffer",
         "run freeCall",
-        "returnOk noResult",
+        "return ok noResult",
         "label allocationFailed",
-        "returnError allocationError",
-        "",
+        "return error allocationError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: explicit heap free passes",
@@ -1099,38 +1607,40 @@ def test_strict_executable_rejects_sqlite_open_setup_failure_without_close():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqliteOpenCleanupMissing",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError OpenFailed",
         "errorCase MainError SchemaFailed",
-        "storage module immutable schemaSql CNullTerminatedByteString \"create table t(id integer)\"",
+        "storage module immutable schemaSql SqlText",
+        "sql body schemaSql",
+        "  create table t(id integer)",
         "operation main",
-        "output main Result SqliteDatabase MainError",
-        "purpose main \"SQLite setup failure must close fresh handle\"",
+        "output operation main Result SqliteDatabase MainError",
+        "purpose operation main \"SQLite setup failure must close fresh handle\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const databasePath CNullTerminatedByteString \":memory:\"",
+        "storage module immutable databasePath String \":memory:\"",
         "call openCall sqlite.openDatabase",
-        "arg openCall path databasePath",
-        "arg openCall mode inMemorySqliteOpenMode",
+        "argument openCall path String databasePath",
+        "argument openCall mode SqliteOpenMode inMemorySqliteOpenMode",
         "run openCall",
-        "bindOk database SqliteDatabase openCall",
-        "bindError openError MainError openCall",
-        "branchIfError openCall openFailed",
+        "bind ok database SqliteDatabase openCall",
+        "bind error openError MainError openCall",
+        "branch error source openCall target openFailed",
         "call schemaCall sqlite.exec",
-        "arg schemaCall database database",
-        "arg schemaCall sql schemaSql",
+        "argument schemaCall database SqliteDatabase database",
+        "argument schemaCall sql SqlText schemaSql",
         "run schemaCall",
-        "ignoreOk schemaCall Void",
-        "bindError schemaError MainError schemaCall",
-        "branchIfError schemaCall schemaFailed",
-        "returnOk database",
+        "ignore void source schemaCall",
+        "bind error schemaError MainError schemaCall",
+        "branch error source schemaCall target schemaFailed",
+        "return ok database",
         "label openFailed",
-        "returnError openError",
+        "return error openError",
         "label schemaFailed",
-        "returnError schemaError",
-        "",
+        "return error schemaError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: sqlite setup failure without close fails",
@@ -1144,46 +1654,48 @@ def test_strict_executable_accepts_sqlite_open_setup_failure_close():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqliteOpenCleanup",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError OpenFailed",
         "errorCase MainError SchemaFailed",
-        "storage module immutable schemaSql CNullTerminatedByteString \"create table t(id integer)\"",
+        "storage module immutable schemaSql SqlText",
+        "sql body schemaSql",
+        "  create table t(id integer)",
         "operation main",
-        "output main Result SqliteDatabase MainError",
-        "purpose main \"SQLite setup failure closes fresh handle\"",
+        "output operation main Result SqliteDatabase MainError",
+        "purpose operation main \"SQLite setup failure closes fresh handle\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const databasePath CNullTerminatedByteString \":memory:\"",
+        "storage module immutable databasePath String \":memory:\"",
         "call openCall sqlite.openDatabase",
-        "arg openCall path databasePath",
-        "arg openCall mode inMemorySqliteOpenMode",
+        "argument openCall path String databasePath",
+        "argument openCall mode SqliteOpenMode inMemorySqliteOpenMode",
         "run openCall",
-        "bindOk database SqliteDatabase openCall",
-        "bindError openError MainError openCall",
-        "branchIfError openCall openFailed",
+        "bind ok database SqliteDatabase openCall",
+        "bind error openError MainError openCall",
+        "branch error source openCall target openFailed",
         "call schemaCall sqlite.exec",
-        "arg schemaCall database database",
-        "arg schemaCall sql schemaSql",
+        "argument schemaCall database SqliteDatabase database",
+        "argument schemaCall sql SqlText schemaSql",
         "run schemaCall",
-        "ignoreOk schemaCall Void",
-        "bindError schemaError MainError schemaCall",
-        "branchIfError schemaCall schemaFailed",
-        "returnOk database",
+        "ignore void source schemaCall",
+        "bind error schemaError MainError schemaCall",
+        "branch error source schemaCall target schemaFailed",
+        "return ok database",
         "label openFailed",
-        "returnError openError",
+        "return error openError",
         "label schemaFailed",
         "call closeAfterSchemaFailureCall sqlite.closeDatabase",
-        "arg closeAfterSchemaFailureCall database database",
+        "argument closeAfterSchemaFailureCall database SqliteDatabase database",
         "run closeAfterSchemaFailureCall",
-        "ignoreOk closeAfterSchemaFailureCall Void",
-        "bindError closeError MainError closeAfterSchemaFailureCall",
-        "branchIfError closeAfterSchemaFailureCall closeFailed",
-        "returnError schemaError",
+        "ignore void source closeAfterSchemaFailureCall",
+        "bind error closeError MainError closeAfterSchemaFailureCall",
+        "branch error source closeAfterSchemaFailureCall target closeFailed",
+        "return error schemaError",
         "label closeFailed",
-        "returnError closeError",
-        "",
+        "return error closeError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: sqlite setup failure close passes",
@@ -1195,28 +1707,30 @@ def test_strict_executable_rejects_sqlite_prepare_without_finalize():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqlitePrepareMissingFinalize",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
-        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  select 1",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"SQLite statements must be finalized\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"SQLite statements must be finalized\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const database SqliteDatabase 0",
+        "storage module immutable database SqliteDatabase 0",
         "call prepareCall sqlite.prepareStatement",
-        "arg prepareCall database database",
-        "arg prepareCall sql selectSql",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
         "run prepareCall",
-        "bindOk statement SqliteStatement prepareCall",
-        "bindError prepareError MainError prepareCall",
-        "branchIfError prepareCall prepareFailed",
-        "returnOk noResult",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "return ok noResult",
         "label prepareFailed",
-        "returnError prepareError",
-        "",
+        "return error prepareError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: sqlite prepare without finalize fails",
@@ -1230,33 +1744,828 @@ def test_strict_executable_accepts_sqlite_prepare_finalize_defer():
     src = "\n".join([
         "languageMode strictExecutable",
         "project StrictSqlitePrepareFinalize",
+        "import sqlite standard.sqlite",
         "entry console main",
         "error MainError",
         "errorCase MainError PrepareFailed",
-        "storage module immutable selectSql CNullTerminatedByteString \"select 1\"",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  select 1",
         "operation main",
-        "output main Result Void MainError",
-        "purpose main \"SQLite statement finalize defer is lowered\"",
+        "output operation main Result Void MainError",
+        "purpose operation main \"SQLite statement finalize defer is lowered\"",
         "memory main heap yes",
         "async main no",
         "label start",
-        "const database SqliteDatabase 0",
+        "storage module immutable database SqliteDatabase 0",
         "call prepareCall sqlite.prepareStatement",
-        "arg prepareCall database database",
-        "arg prepareCall sql selectSql",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
         "run prepareCall",
-        "bindOk statement SqliteStatement prepareCall",
-        "bindError prepareError MainError prepareCall",
-        "branchIfError prepareCall prepareFailed",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
         "defer finalizeStatementDefer sqlite.finalizeStatement statement",
-        "returnOk noResult",
+        "return ok noResult",
         "label prepareFailed",
-        "returnError prepareError",
-        "",
+        "return error prepareError",
     ])
     proc = run_semsc_source(src, "--parse-only", "--quiet")
     check("strictExecutable owned resources: sqlite finalize defer passes",
           proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_legacy_sql_string_literal():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictLegacySqlString",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql String \"select 1\"",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL must use SqlText\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql String selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects String SQL",
+          proc.returncode == 3
+          and "SS3911" in proc.stderr
+          and "sqlMustBeSqlText" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_inline_sql_text_literal():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictInlineSqlText",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql SqlText \"select 1\"",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL must use sql body\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects inline SqlText SQL",
+          proc.returncode == 3
+          and "SS3916" in proc.stderr
+          and "sqlMustUseBodyOrLiteralSource" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_redundant_sql_case_branches():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictRedundantSqlCase",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  SELECT CASE WHEN ?1 IS NULL THEN body ELSE body END FROM notes WHERE body = ?1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects dead CASE work\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects redundant CASE branches",
+          proc.returncode == 3
+          and "SS3915" in proc.stderr
+          and "redundantSqlCase" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_wide_sql_existence_probe():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictWideSqlExistenceProbe",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects wide existence probes\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "storage module immutable auctionId String \"auc_test\"",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText selectSql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "call bindAuctionCall sqlite.bindText",
+        "argument bindAuctionCall statement SqliteStatement statement",
+        "argument bindAuctionCall parameterIndex Int32 1",
+        "argument bindAuctionCall value String auctionId",
+        "run bindAuctionCall",
+        "ignore void source bindAuctionCall",
+        "bind error bindAuctionError MainError bindAuctionCall",
+        "branch error source bindAuctionCall target prepareFailed",
+        "call stepCall sqlite.stepStatement",
+        "argument stepCall statement SqliteStatement statement",
+        "run stepCall",
+        "bind ok stepStatus Int32 stepCall",
+        "bind error stepError MainError stepCall",
+        "branch error source stepCall target stepFailed",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareError",
+        "label stepFailed",
+        "return error stepError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects wide existence probes",
+          proc.returncode == 3
+          and "SS3917" in proc.stderr
+          and "wideSqlExistenceProbe" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_sql_write_then_read_round_trip():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningOpportunity",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable upsertSql SqlText",
+        "sql body upsertSql",
+        "  INSERT INTO counters(name, count) VALUES ('login', 1) ON CONFLICT(name) DO UPDATE SET count = count + 1",
+        "storage module immutable selectSql SqlText",
+        "sql body selectSql",
+        "  SELECT count FROM counters WHERE name = 'login' LIMIT 1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects write/read round trips\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareUpsertCall sqlite.prepareStatement",
+        "argument prepareUpsertCall database SqliteDatabase database",
+        "argument prepareUpsertCall sql SqlText upsertSql",
+        "run prepareUpsertCall",
+        "bind ok upsertStatement SqliteStatement prepareUpsertCall",
+        "bind error prepareUpsertError MainError prepareUpsertCall",
+        "branch error source prepareUpsertCall target prepareUpsertFailed",
+        "defer finalizeUpsertDefer sqlite.finalizeStatement upsertStatement",
+        "call stepUpsertCall sqlite.stepStatement",
+        "argument stepUpsertCall statement SqliteStatement upsertStatement",
+        "run stepUpsertCall",
+        "ignore ok source stepUpsertCall type Int32",
+        "bind error stepUpsertError MainError stepUpsertCall",
+        "branch error source stepUpsertCall target stepUpsertFailed",
+        "call prepareSelectCall sqlite.prepareStatement",
+        "argument prepareSelectCall database SqliteDatabase database",
+        "argument prepareSelectCall sql SqlText selectSql",
+        "run prepareSelectCall",
+        "bind ok selectStatement SqliteStatement prepareSelectCall",
+        "bind error prepareSelectError MainError prepareSelectCall",
+        "branch error source prepareSelectCall target prepareSelectFailed",
+        "defer finalizeSelectDefer sqlite.finalizeStatement selectStatement",
+        "call stepSelectCall sqlite.stepStatement",
+        "argument stepSelectCall statement SqliteStatement selectStatement",
+        "run stepSelectCall",
+        "bind ok selectStatus Int32 stepSelectCall",
+        "bind error stepSelectError MainError stepSelectCall",
+        "branch error source stepSelectCall target stepSelectFailed",
+        "call readCountCall sqlite.columnInt64",
+        "argument readCountCall statement SqliteStatement selectStatement",
+        "argument readCountCall columnIndex Int32 0",
+        "run readCountCall",
+        "bind value count Int64 readCountCall",
+        "return ok noResult",
+        "label prepareUpsertFailed",
+        "return error prepareUpsertError",
+        "label stepUpsertFailed",
+        "return error stepUpsertError",
+        "label prepareSelectFailed",
+        "return error prepareSelectError",
+        "label stepSelectFailed",
+        "return error stepSelectError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects write/read round trips",
+          proc.returncode == 3
+          and "SS3918" in proc.stderr
+          and "sqliteWriteThenReadShouldUseReturning" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_multiple_sql_writes_without_transaction():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlTransaction",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable insertAuditSql SqlText",
+        "sql body insertAuditSql",
+        "  INSERT INTO audit_events(actor_id, action) VALUES ('user_1', 'login')",
+        "storage module immutable insertLogSql SqlText",
+        "sql body insertLogSql",
+        "  INSERT INTO request_log(route, status) VALUES ('/login', 200)",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL rejects multi-write non-transactions\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareAuditCall sqlite.prepareStatement",
+        "argument prepareAuditCall database SqliteDatabase database",
+        "argument prepareAuditCall sql SqlText insertAuditSql",
+        "run prepareAuditCall",
+        "bind ok auditStatement SqliteStatement prepareAuditCall",
+        "bind error prepareAuditError MainError prepareAuditCall",
+        "branch error source prepareAuditCall target prepareAuditFailed",
+        "defer finalizeAuditDefer sqlite.finalizeStatement auditStatement",
+        "call stepAuditCall sqlite.stepStatement",
+        "argument stepAuditCall statement SqliteStatement auditStatement",
+        "run stepAuditCall",
+        "ignore ok source stepAuditCall type Int32",
+        "bind error stepAuditError MainError stepAuditCall",
+        "branch error source stepAuditCall target stepAuditFailed",
+        "call prepareLogCall sqlite.prepareStatement",
+        "argument prepareLogCall database SqliteDatabase database",
+        "argument prepareLogCall sql SqlText insertLogSql",
+        "run prepareLogCall",
+        "bind ok logStatement SqliteStatement prepareLogCall",
+        "bind error prepareLogError MainError prepareLogCall",
+        "branch error source prepareLogCall target prepareLogFailed",
+        "defer finalizeLogDefer sqlite.finalizeStatement logStatement",
+        "call stepLogCall sqlite.stepStatement",
+        "argument stepLogCall statement SqliteStatement logStatement",
+        "run stepLogCall",
+        "ignore ok source stepLogCall type Int32",
+        "bind error stepLogError MainError stepLogCall",
+        "branch error source stepLogCall target stepLogFailed",
+        "return ok noResult",
+        "label prepareAuditFailed",
+        "return error prepareAuditError",
+        "label stepAuditFailed",
+        "return error stepAuditError",
+        "label prepareLogFailed",
+        "return error prepareLogError",
+        "label stepLogFailed",
+        "return error stepLogError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects multi-write non-transactions",
+          proc.returncode == 3
+          and "SS3922" in proc.stderr
+          and "sqliteMultipleWritesRequireTransaction" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_returning_commit_without_drain():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningDrain",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError ExecFailed",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable beginSql SqlText",
+        "sql body beginSql",
+        "  BEGIN IMMEDIATE",
+        "storage module immutable commitSql SqlText",
+        "sql body commitSql",
+        "  COMMIT",
+        "storage module immutable upsertSql SqlText",
+        "sql body upsertSql",
+        "  INSERT INTO counters(name, count) VALUES ('login', 1) ON CONFLICT(name) DO UPDATE SET count = count + 1 RETURNING count",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL drains RETURNING before commit\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call beginCall sqlite.exec",
+        "argument beginCall database SqliteDatabase database",
+        "argument beginCall sql SqlText beginSql",
+        "run beginCall",
+        "ignore void source beginCall",
+        "bind error beginError MainError beginCall",
+        "branch error source beginCall target beginFailed",
+        "call prepareUpsertCall sqlite.prepareStatement",
+        "argument prepareUpsertCall database SqliteDatabase database",
+        "argument prepareUpsertCall sql SqlText upsertSql",
+        "run prepareUpsertCall",
+        "bind ok upsertStatement SqliteStatement prepareUpsertCall",
+        "bind error prepareUpsertError MainError prepareUpsertCall",
+        "branch error source prepareUpsertCall target prepareUpsertFailed",
+        "defer finalizeUpsertDefer sqlite.finalizeStatement upsertStatement",
+        "call stepUpsertCall sqlite.stepStatement",
+        "argument stepUpsertCall statement SqliteStatement upsertStatement",
+        "run stepUpsertCall",
+        "bind ok upsertStatus Int32 stepUpsertCall",
+        "bind error stepUpsertError MainError stepUpsertCall",
+        "branch error source stepUpsertCall target stepUpsertFailed",
+        "call readCountCall sqlite.columnInt64",
+        "argument readCountCall statement SqliteStatement upsertStatement",
+        "argument readCountCall columnIndex Int32 0",
+        "run readCountCall",
+        "bind value count Int64 readCountCall",
+        "call commitCall sqlite.exec",
+        "argument commitCall database SqliteDatabase database",
+        "argument commitCall sql SqlText commitSql",
+        "run commitCall",
+        "ignore void source commitCall",
+        "bind error commitError MainError commitCall",
+        "branch error source commitCall target commitFailed",
+        "return ok noResult",
+        "label beginFailed",
+        "return error beginError",
+        "label prepareUpsertFailed",
+        "return error prepareUpsertError",
+        "label stepUpsertFailed",
+        "return error stepUpsertError",
+        "label commitFailed",
+        "return error commitError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects RETURNING commit without drain",
+          proc.returncode == 3
+          and "SS3923" in proc.stderr
+          and "sqliteReturningStatementMustBeDrained" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_returning_commit_after_drain():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningDrainAccepted",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError ExecFailed",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable beginSql SqlText",
+        "sql body beginSql",
+        "  BEGIN IMMEDIATE",
+        "storage module immutable commitSql SqlText",
+        "sql body commitSql",
+        "  COMMIT",
+        "storage module immutable upsertSql SqlText",
+        "sql body upsertSql",
+        "  INSERT INTO counters(name, count) VALUES ('login', 1) ON CONFLICT(name) DO UPDATE SET count = count + 1 RETURNING count",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL accepts drained RETURNING before commit\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call beginCall sqlite.exec",
+        "argument beginCall database SqliteDatabase database",
+        "argument beginCall sql SqlText beginSql",
+        "run beginCall",
+        "ignore void source beginCall",
+        "bind error beginError MainError beginCall",
+        "branch error source beginCall target beginFailed",
+        "call prepareUpsertCall sqlite.prepareStatement",
+        "argument prepareUpsertCall database SqliteDatabase database",
+        "argument prepareUpsertCall sql SqlText upsertSql",
+        "run prepareUpsertCall",
+        "bind ok upsertStatement SqliteStatement prepareUpsertCall",
+        "bind error prepareUpsertError MainError prepareUpsertCall",
+        "branch error source prepareUpsertCall target prepareUpsertFailed",
+        "defer finalizeUpsertDefer sqlite.finalizeStatement upsertStatement",
+        "call stepUpsertCall sqlite.stepStatement",
+        "argument stepUpsertCall statement SqliteStatement upsertStatement",
+        "run stepUpsertCall",
+        "bind ok upsertStatus Int32 stepUpsertCall",
+        "bind error stepUpsertError MainError stepUpsertCall",
+        "branch error source stepUpsertCall target stepUpsertFailed",
+        "call readCountCall sqlite.columnInt64",
+        "argument readCountCall statement SqliteStatement upsertStatement",
+        "argument readCountCall columnIndex Int32 0",
+        "run readCountCall",
+        "bind value count Int64 readCountCall",
+        "call drainUpsertCall sqlite.stepStatement",
+        "argument drainUpsertCall statement SqliteStatement upsertStatement",
+        "run drainUpsertCall",
+        "bind ok drainStatus Int32 drainUpsertCall",
+        "bind error drainUpsertError MainError drainUpsertCall",
+        "branch error source drainUpsertCall target drainFailed",
+        "call commitCall sqlite.exec",
+        "argument commitCall database SqliteDatabase database",
+        "argument commitCall sql SqlText commitSql",
+        "run commitCall",
+        "ignore void source commitCall",
+        "bind error commitError MainError commitCall",
+        "branch error source commitCall target commitFailed",
+        "return ok noResult",
+        "label beginFailed",
+        "return error beginError",
+        "label prepareUpsertFailed",
+        "return error prepareUpsertError",
+        "label stepUpsertFailed",
+        "return error stepUpsertError",
+        "label drainFailed",
+        "return error drainUpsertError",
+        "label commitFailed",
+        "return error commitError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: accepts RETURNING commit after drain",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_sql_last_insert_rowid():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlLastInsertRowid",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable insertEventSql SqlText",
+        "sql body insertEventSql",
+        "  INSERT INTO events(message_id) SELECT message_id FROM messages WHERE rowid = last_insert_rowid()",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQL rejects connection-global generated id lookup\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareEventCall sqlite.prepareStatement",
+        "argument prepareEventCall database SqliteDatabase database",
+        "argument prepareEventCall sql SqlText insertEventSql",
+        "run prepareEventCall",
+        "bind ok eventStatement SqliteStatement prepareEventCall",
+        "bind error prepareEventError MainError prepareEventCall",
+        "branch error source prepareEventCall target prepareFailed",
+        "defer finalizeEventDefer sqlite.finalizeStatement eventStatement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareEventError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects last_insert_rowid",
+          proc.returncode == 3
+          and "SS3926" in proc.stderr
+          and "sqliteLastInsertRowidShouldUseReturning" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_native_last_insert_rowid():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictNativeLastInsertRowid",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"strict SQL rejects native connection-global generated id lookup\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call rowidCall sqlite.lastInsertRowId",
+        "argument rowidCall database SqliteDatabase database",
+        "run rowidCall",
+        "bind value insertedRowId SqliteRowId rowidCall",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: rejects native lastInsertRowId",
+          proc.returncode == 3
+          and "SS3926" in proc.stderr
+          and "sqliteLastInsertRowidShouldUseReturning" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_returning_generated_id():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlReturningGeneratedId",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable insertMessageSql SqlText",
+        "sql body insertMessageSql",
+        "  INSERT INTO messages(message_id) VALUES ('msg_' || lower(hex(randomblob(8)))) RETURNING message_id",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQL accepts returning generated id\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareMessageCall sqlite.prepareStatement",
+        "argument prepareMessageCall database SqliteDatabase database",
+        "argument prepareMessageCall sql SqlText insertMessageSql",
+        "run prepareMessageCall",
+        "bind ok messageStatement SqliteStatement prepareMessageCall",
+        "bind error prepareMessageError MainError prepareMessageCall",
+        "branch error source prepareMessageCall target prepareFailed",
+        "defer finalizeMessageDefer sqlite.finalizeStatement messageStatement",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareMessageError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: accepts RETURNING generated id",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_uncached_getenv_in_helper():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictUncachedGetenv",
+        "entry console resolveSecret",
+        "capability processEnvironmentReader process.environment read",
+        "storage module immutable secretEnvName String \"APP_SECRET\"",
+        "operation resolveSecret",
+        "output operation resolveSecret String",
+        "effect resolveSecret read process.environment",
+        "memory resolveSecret heap no",
+        "async resolveSecret no",
+        "useCapability resolveSecret processEnvironmentReader",
+        "purpose operation resolveSecret \"strict helpers cache environment configuration\"",
+        "label start",
+        "call getenvSecretCall c.getenv",
+        "argument getenvSecretCall name String secretEnvName",
+        "run getenvSecretCall",
+        "bind value secret String getenvSecretCall",
+        "return value secret",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable process env: rejects uncached getenv",
+          proc.returncode == 3
+          and "SS3920" in proc.stderr
+          and "getenvShouldBeCached" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_repeated_request_time_read():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictRepeatedRequestTime",
+        "import http standard.http",
+        "entry console main",
+        "operation main",
+        "input operation main request HttpRequest",
+        "output operation main Void",
+        "purpose operation main \"strict handlers reuse request timestamps\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "call requestNowCall http.nowMillis",
+        "run requestNowCall",
+        "bind value requestNow Int64 requestNowCall",
+        "call laterNowCall http.nowMillis",
+        "run laterNowCall",
+        "bind value laterNow Int64 laterNowCall",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: rejects repeated request time reads",
+          proc.returncode == 3
+          and "SS3924" in proc.stderr
+          and "repeatedRequestTimeRead" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_single_request_time_read():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSingleRequestTime",
+        "import http standard.http",
+        "entry console main",
+        "operation main",
+        "input operation main request HttpRequest",
+        "output operation main Void",
+        "purpose operation main \"strict handlers read request time once\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "call requestNowCall http.nowMillis",
+        "run requestNowCall",
+        "bind value requestNow Int64 requestNowCall",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: accepts single request time read",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_idempotency_replay_body_classification():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictIdempotencyReplayBodyCompare",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectIdem SqlText",
+        "sql body selectIdem",
+        "  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = 'auction.bid' LIMIT 1",
+        "storage module immutable conflictBody String \"{}\"",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict idempotency replay uses response status\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareIdemCall sqlite.prepareStatement",
+        "argument prepareIdemCall database SqliteDatabase database",
+        "argument prepareIdemCall sql SqlText selectIdem",
+        "run prepareIdemCall",
+        "bind ok idemStatement SqliteStatement prepareIdemCall",
+        "bind error prepareIdemError MainError prepareIdemCall",
+        "branch error source prepareIdemCall target prepareFailed",
+        "defer finalizeIdemDefer sqlite.finalizeStatement idemStatement",
+        "call readReplayBodyCall sqlite.columnText",
+        "argument readReplayBodyCall statement SqliteStatement idemStatement",
+        "argument readReplayBodyCall columnIndex Int32 1",
+        "run readReplayBodyCall",
+        "bind value replayBody String readReplayBodyCall",
+        "call compareReplayBodyCall c.strcmp",
+        "argument compareReplayBodyCall left String replayBody",
+        "argument compareReplayBodyCall right String conflictBody",
+        "run compareReplayBodyCall",
+        "bind value compareResult Int32 compareReplayBodyCall",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareIdemError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: rejects idempotency replay body classification",
+          proc.returncode == 3
+          and "SS3925" in proc.stderr
+          and "idempotencyReplayShouldUseResponseStatus" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_idempotency_replay_status_branch():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictIdempotencyReplayStatus",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "storage module immutable selectIdem SqlText",
+        "sql body selectIdem",
+        "  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = 'auction.bid' LIMIT 1",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict idempotency replay branches on response status\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call prepareIdemCall sqlite.prepareStatement",
+        "argument prepareIdemCall database SqliteDatabase database",
+        "argument prepareIdemCall sql SqlText selectIdem",
+        "run prepareIdemCall",
+        "bind ok idemStatement SqliteStatement prepareIdemCall",
+        "bind error prepareIdemError MainError prepareIdemCall",
+        "branch error source prepareIdemCall target prepareFailed",
+        "defer finalizeIdemDefer sqlite.finalizeStatement idemStatement",
+        "call readReplayStatusCall sqlite.columnInt64",
+        "argument readReplayStatusCall statement SqliteStatement idemStatement",
+        "argument readReplayStatusCall columnIndex Int32 2",
+        "run readReplayStatusCall",
+        "bind value replayStatus Int64 readReplayStatusCall",
+        "call replayConflictCall math.equalInt64",
+        "argument replayConflictCall left Int64 replayStatus",
+        "argument replayConflictCall right Int64 409",
+        "run replayConflictCall",
+        "bind value replayConflict Bool replayConflictCall",
+        "return ok noResult",
+        "label prepareFailed",
+        "return error prepareIdemError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: accepts idempotency replay status branch",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_large_local_static_literal():
+    large_body = "x" * 520
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictLargeLocalStaticLiteral",
+        "entry console main",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"strict handlers hoist large static literals\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        f"storage local immutable metricsFormat String \"{large_body}\"",
+        "return void",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable perf: rejects large local static literals",
+          proc.returncode == 3
+          and "SS3921" in proc.stderr
+          and "localStaticLiteralShouldBeModuleImmutable" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_rejects_unreachable_operation_rows():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictUnreachableRows",
+        "entry console main",
+        "storage module immutable success ExitCode 0",
+        "storage module immutable failure ExitCode 1",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"strict mode rejects stale dead blocks\"",
+        "memory main heap no",
+        "async main no",
+        "label start",
+        "return value success",
+        "label stalePath",
+        "return value failure",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable control flow: rejects unreachable rows",
+          proc.returncode == 3
+          and "SS3410" in proc.stderr
+          and "unreachableOperationRow" in proc.stderr,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
@@ -1281,38 +2590,37 @@ def test_compile_hello_world_to_ir():
 
 def test_compile_i32_comparison_to_i32_ir():
     source = "\n".join([
-        "project I32Compare",
+        "project Int32Compare",
         "target console",
         "runtime AgentRuntime 0.1",
         "entry console main",
-        "enum StatusCode repr CSignedInt32",
+        "enum StatusCode repr Int32",
         "enumCase StatusCode NegativeStatus -1",
         "enumCase StatusCode ZeroStatus 0",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose main \"exercise width-specific i32 comparison lowering\"",
-        "invariant main \"math.lessThanCSignedInt32 lowers to an i32 signed compare\"",
+        "purpose operation main \"exercise width-specific i32 comparison lowering\"",
+        "invariant operation main \"math.lessThanInt32 lowers to an i32 signed compare\"",
         "label startMain",
-        "const successExit ExitCode 0",
-        "const failureExit ExitCode 1",
-        "call negativeCheckCall math.lessThanCSignedInt32",
-        "arg negativeCheckCall left NegativeStatus",
-        "arg negativeCheckCall right ZeroStatus",
+        "storage module immutable successExit ExitCode 0",
+        "storage module immutable failureExit ExitCode 1",
+        "call negativeCheckCall math.lessThanInt32",
+        "argument negativeCheckCall left StatusCode NegativeStatus",
+        "argument negativeCheckCall right StatusCode ZeroStatus",
         "run negativeCheckCall",
-        "bind statusIsNegative Bool negativeCheckCall",
-        "branchIf statusIsNegative returnSuccess",
-        "returnValue failureExit",
+        "bind value statusIsNegative Bool negativeCheckCall",
+        "branch if condition statusIsNegative target returnSuccess",
+        "return value failureExit",
         "label returnSuccess",
-        "returnValue successExit",
-        "",
+        "return value successExit",
     ])
     prog = semsc.parse(source)
     cg = semsc.Codegen(prog)
     mod = cg.compile()
     ir_text = str(mod)
-    check("compile: math.lessThanCSignedInt32 uses i32 compare",
+    check("compile: math.lessThanInt32 uses i32 compare",
           "icmp slt i32" in ir_text,
           f"IR was:\n{ir_text}")
 
@@ -1324,31 +2632,30 @@ def test_compile_rejects_implicit_i32_to_i64_math():
         "runtime AgentRuntime 0.1",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose main \"reject implicit math widening\"",
-        "const successExit ExitCode 0",
-        "const leftStatus CSignedInt32 1",
-        "const rightStatus CSignedInt32 1",
-        "call statusCheckCall math.equalI64",
-        "arg statusCheckCall left leftStatus",
-        "arg statusCheckCall right rightStatus",
+        "purpose operation main \"reject implicit math widening\"",
+        "storage module immutable successExit ExitCode 0",
+        "storage module immutable leftStatus Int32 1",
+        "storage module immutable rightStatus Int32 1",
+        "call statusCheckCall math.equalInt64",
+        "argument statusCheckCall left Int32 leftStatus",
+        "argument statusCheckCall right Int64 rightStatus",
         "run statusCheckCall",
-        "returnValue successExit",
-        "",
+        "return value successExit",
     ])
     try:
         prog = semsc.parse(source)
         semsc.Codegen(prog).compile()
     except (ValueError, semsc.CompilerDiagnosticError) as exc:
         message = str(exc)
-        check("compile: math.equalI64 rejects implicit i32 widening",
-              "expects I64 exactly" in message
+        check("compile: math.equalInt64 rejects implicit i32 widening",
+              "expects Int64 exactly" in message
               and "explicit conversion operation" in message,
               message)
         return
-    check("compile: math.equalI64 rejects implicit i32 widening",
+    check("compile: math.equalInt64 rejects implicit i32 widening",
           False,
           "compile unexpectedly succeeded")
 
@@ -1360,18 +2667,17 @@ def test_compile_explicit_i32_to_i64_conversion_lowers_to_sext():
         "runtime AgentRuntime 0.1",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose main \"explicit conversion is visible in IR\"",
-        "const successExit ExitCode 0",
-        "const sourceValue CSignedInt32 -1",
-        "call widenCall math.signExtendCSignedInt32ToCSignedInt64",
-        "arg widenCall inputValue sourceValue",
+        "purpose operation main \"explicit conversion is visible in IR\"",
+        "storage module immutable successExit ExitCode 0",
+        "storage module immutable sourceValue Int32 -1",
+        "call widenCall math.signExtendInt32ToInt64",
+        "argument widenCall inputValue Int32 sourceValue",
         "run widenCall",
-        "bind widenedValue CSignedInt64 widenCall",
-        "returnValue successExit",
-        "",
+        "bind value widenedValue Int64 widenCall",
+        "return value successExit",
     ])
     prog = semsc.parse(source)
     cg = semsc.Codegen(prog)
@@ -1389,20 +2695,19 @@ def test_compile_pointer_load_byte_sign_extends_to_i32():
         "runtime AgentRuntime 0.1",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose main \"pointer.loadByte returns a signed CSignedInt32 byte value\"",
-        "const successExit ExitCode 0",
-        "const text CNullTerminatedByteString \"A\"",
-        "const zeroOffset CByteCount 0",
+        "purpose operation main \"pointer.loadByte returns a signed Int32 byte value\"",
+        "storage module immutable successExit ExitCode 0",
+        "storage module immutable text String \"A\"",
+        "storage module immutable zeroOffset ByteCount 0",
         "call loadByteCall pointer.loadByte",
-        "arg loadByteCall buffer text",
-        "arg loadByteCall offset zeroOffset",
+        "argument loadByteCall buffer String text",
+        "argument loadByteCall offset ByteCount zeroOffset",
         "run loadByteCall",
-        "bind loadedByte CSignedInt32 loadByteCall",
-        "returnValue successExit",
-        "",
+        "bind value loadedByte Int32 loadByteCall",
+        "return value successExit",
     ])
     prog = semsc.parse(source)
     cg = semsc.Codegen(prog)
@@ -1422,65 +2727,53 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate CardTemplate",
-        "htmlArg CardTemplate titleText HtmlText",
-        "htmlBody CardTemplate",
+        "html template CardTemplate",
+        "html body template CardTemplate",
         "  <article class=\"card\">",
-        "    <h1>{htmlArg.titleText}</h1>",
+        "    <h1>{titleText}</h1>",
         "  </article>",
         "operation main",
-        "output main ExitCode",
-        "purpose main \"parser-only HTML island smoke\"",
-        "returnValue 0",
-        "",
+        "output operation main ExitCode",
+        "purpose operation main \"parser-only HTML island smoke\"",
+        "return value 0",
     ])
     prog = semsc.parse(source)
     template = prog.html_templates.get("CardTemplate")
     check("html parser: template recorded",
           template is not None,
           f"templates={list(prog.html_templates)}")
-    check("html parser: arg recorded",
+    check("html parser: args inferred from body, not parameter rows",
           template is not None
-          and template.args == [("titleText", "HtmlText", 6)],
+          and template.args == [],
           f"args={getattr(template, 'args', None)!r}")
     check("html parser: indented body preserved until next column-0 verb",
           template is not None
           and template.body_lines == [
-              ("<article class=\"card\">", 8),
-              ("  <h1>{htmlArg.titleText}</h1>", 9),
-              ("</article>", 10),
+              ("<article class=\"card\">", 7),
+              ("  <h1>{titleText}</h1>", 8),
+              ("</article>", 9),
           ]
           and "main" in prog.operations,
           f"body={getattr(template, 'body_lines', None)!r} ops={list(prog.operations)}")
 
     bad_cases = [
-        ("unknown htmlArg template",
-         "project Bad\nhtmlArg MissingTemplate titleText HtmlText\n",
-         "htmlArg references unknown htmlTemplate"),
+        ("explicit html parameter row",
+         "project Bad\nhtml parameter template MissingTemplate titleText String\n",
+         "html requires: html template NAME"),
         ("duplicate htmlTemplate",
-         "project Bad\nhtmlTemplate Card\nhtmlTemplate Card\n",
+         "project Bad\nhtml template Card\nhtml template Card\n",
          "already declared"),
-        ("duplicate htmlArg",
-         "\n".join([
-             "project Bad",
-             "htmlTemplate Card",
-             "htmlArg Card titleText HtmlText",
-             "htmlArg Card titleText HtmlText",
-             "",
-         ]),
-         "already declares"),
         ("unknown htmlBody template",
-         "project Bad\nhtmlBody MissingTemplate\n  <p>bad</p>\n",
+         "project Bad\nhtml body template MissingTemplate\n  <p>bad</p>\n",
          "htmlBody references unknown htmlTemplate"),
         ("duplicate htmlBody",
          "\n".join([
              "project Bad",
-             "htmlTemplate Card",
-             "htmlBody Card",
+             "html template Card",
+             "html body template Card",
              "  <p>first</p>",
-             "htmlBody Card",
+             "html body template Card",
              "  <p>second</p>",
-             "",
          ]),
          "already declares a body"),
     ]
@@ -1497,35 +2790,240 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
               f"raised={raised} msg={msg!r}")
 
 
+def test_json_body_parser_records_text_and_record_metadata():
+    source = "\n".join([
+        "project JsonBodyParser",
+        "import json standard.json",
+        "record Payload",
+        "field Payload title JsonText",
+        "field Payload count Int64",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "recordFieldJsonOmitWhen Payload title empty",
+        "storage module immutable payload JsonText",
+        "jsonBody payload",
+        "  {\"display_title\":\"ok\",\"count\":1}",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"parser-only JSON island smoke\"",
+        "return value 0",
+    ])
+    prog = parse_semsc_source_with_imports(source)
+    check("jsonBody parser: JsonText literal recorded",
+          len(prog.json_bodies) == 1
+          and prog.json_bodies[0].canonical_text == "{\"display_title\":\"ok\",\"count\":1}",
+          f"json_bodies={[(body.name, body.canonical_text) for body in prog.json_bodies]!r}")
+    payload = prog.records.get("Payload")
+    check("jsonBody parser: recordFieldJsonName recorded",
+          payload is not None
+          and payload.field_json_names.get("title") == "display_title",
+          f"json_names={getattr(payload, 'field_json_names', None)!r}")
+    check("jsonBody parser: recordFieldJsonOmitWhen recorded",
+          payload is not None
+          and payload.field_json_omit_when.get("title") == "empty",
+          f"omit={getattr(payload, 'field_json_omit_when', None)!r}")
+
+    bad_source = "\n".join([
+        "project BadJsonBody",
+        "import json standard.json",
+        "storage module immutable payload JsonText",
+        "jsonBody payload",
+        "  {\"title\":}",
+    ])
+    raised = False
+    msg = ""
+    try:
+        parse_semsc_source_with_imports(bad_source)
+    except SyntaxError as exc:
+        raised = True
+        msg = str(exc)
+    check("jsonBody parser: rejects invalid JSON",
+          raised and "invalidJsonBody" in msg,
+          f"raised={raised} msg={msg!r}")
+
+
+def test_json_body_record_literal_type_checks_and_records_constant():
+    source = "\n".join([
+        "project JsonBodyRecordParser",
+        "import json standard.json",
+        "record Address",
+        "field Address zip Int64",
+        "record Payload",
+        "field Payload title JsonText",
+        "field Payload count Int64",
+        "field Payload done Bool",
+        "field Payload address Address",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "recordFieldJsonOmitWhen Payload done false",
+        "storage module immutable payload Payload",
+        "jsonBody payload",
+        "  {\"display_title\":\"ok\",\"count\":1,\"address\":{\"zip\":90210}}",
+    ])
+    prog = parse_semsc_source_with_imports(source)
+    record_const = prog.record_json_constants.get("payload")
+    fields = record_const["fields"] if record_const else {}
+    check("jsonBody record: typed constant recorded",
+          record_const is not None
+          and record_const["recordType"] == "Payload"
+          and fields.get("title") == "ok"
+          and fields.get("count") == 1
+          and fields.get("done") is False
+          and fields.get("address", {}).get("zip") == 90210,
+          f"record_const={record_const!r}")
+
+    bad_cases = [
+        (
+            "unknown key",
+            "{\"display_title\":\"ok\",\"count\":1,\"address\":{\"zip\":1},\"extra\":1}",
+            "jsonBodyUnknownField",
+        ),
+        (
+            "missing required field",
+            "{\"display_title\":\"ok\",\"address\":{\"zip\":1}}",
+            "jsonBodyMissingRequired",
+        ),
+        (
+            "wrong field type",
+            "{\"display_title\":\"ok\",\"count\":\"1\",\"address\":{\"zip\":1}}",
+            "jsonBodyWrongType",
+        ),
+    ]
+    for label, body, expected in bad_cases:
+        bad_source = "\n".join([
+            "project BadJsonBodyRecord",
+            "import json standard.json",
+            "record Address",
+            "field Address zip Int64",
+            "record Payload",
+            "field Payload title JsonText",
+            "field Payload count Int64",
+            "field Payload address Address",
+            "recordFieldJsonName Payload title \"display_title\"",
+            "storage module immutable payload Payload",
+            "jsonBody payload",
+            f"  {body}",
+            "",
+        ])
+        raised = False
+        msg = ""
+        try:
+            parse_semsc_source_with_imports(bad_source)
+        except SyntaxError as exc:
+            raised = True
+            msg = str(exc)
+        check(f"jsonBody record: rejects {label}",
+              raised and expected in msg,
+              f"raised={raised} msg={msg!r}")
+
+
+def test_sql_body_parser_records_metadata_and_rejects_dynamic_holes():
+    source = "\n".join([
+        "project SqlBodyParser",
+        "import sqlite standard.sqlite",
+        "storage module immutable selectTodoSql SqlText",
+        "sql body selectTodoSql",
+        "  -- lookup by owner",
+        "  SELECT id, title",
+        "  FROM todos",
+        "  WHERE user_id = ?1 AND title <> '?'",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"parser-only SQL island smoke\"",
+        "return value 0",
+    ])
+    prog = parse_semsc_source_with_imports(source)
+    sql_body = prog.sql_bodies[0] if prog.sql_bodies else None
+    check("sql body parser: SqlText literal recorded",
+          sql_body is not None
+          and sql_body.name == "selectTodoSql"
+          and sql_body.statement_kind == "SELECT"
+          and sql_body.placeholder_count == 1
+          and sql_body.statement_count == 1
+          and prog.consts.get("selectTodoSql") == (
+              "SqlText",
+              "-- lookup by owner\nSELECT id, title\nFROM todos\nWHERE user_id = ?1 AND title <> '?'",
+          ),
+          f"sql_bodies={[(body.name, body.sql_text) for body in prog.sql_bodies]!r}")
+
+    bad_source = "\n".join([
+        "project BadSqlBody",
+        "import sqlite standard.sqlite",
+        "storage module immutable selectTodoSql SqlText",
+        "sql body selectTodoSql",
+        "  SELECT id FROM todos WHERE user_id = {userId}",
+    ])
+    raised = False
+    msg = ""
+    try:
+        parse_semsc_source_with_imports(bad_source)
+    except SyntaxError as exc:
+        raised = True
+        msg = str(exc)
+    check("sql body parser: rejects dynamic holes",
+          raised and "sqlBodyDynamicHole" in msg,
+          f"raised={raised} msg={msg!r}")
+
+
+def test_sql_body_usage_checks_prepare_and_exec_shapes():
+    source = "\n".join([
+        "project SqlBodyUsage",
+        "import sqlite standard.sqlite",
+        "storage module immutable databasePath String \":memory:\"",
+        "storage module immutable multiStatementSql SqlText",
+        "sql body multiStatementSql",
+        "  SELECT 1; SELECT 2",
+        "storage module immutable execWithPlaceholderSql SqlText",
+        "sql body execWithPlaceholderSql",
+        "  INSERT INTO notes (body) VALUES (?)",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"exercise SQL body usage diagnostics\"",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase databaseHandle",
+        "argument prepareCall sql SqlText multiStatementSql",
+        "call execCall sqlite.exec",
+        "argument execCall database SqliteDatabase databaseHandle",
+        "argument execCall sql SqlText execWithPlaceholderSql",
+        "return value 0",
+    ])
+    prog = parse_semsc_source_with_imports(source)
+    diags = []
+    semsc._check_sqlite_sql_body_usage(prog, diags)
+    messages = [message for _line, message in diags]
+    check("sql body usage: prepare rejects multi-statement SQL",
+          any("SS3913" in message and "multiStatementSql" in message for message in messages),
+          f"diags={messages!r}")
+    check("sql body usage: exec rejects placeholders",
+          any("SS3914" in message and "execWithPlaceholderSql" in message for message in messages),
+          f"diags={messages!r}")
+
+
 def test_html_template_simple_jit_output():
     source = "\n".join([
         "project HtmlSimple",
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate GreetingTemplate",
-        "htmlArg GreetingTemplate titleText HtmlText",
-        "htmlBody GreetingTemplate",
-        "  <h1>{htmlArg.titleText}</h1>",
+        "html template GreetingTemplate",
+        "html body template GreetingTemplate",
+        "  <h1>{titleText}</h1>",
         "storage module immutable successCode ExitCode 0",
-        "storage module immutable greetingTitle HtmlText \"Hello HTML\"",
+        "storage module immutable greetingTitle String \"Hello HTML\"",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"hydrate a tiny HTML template and print it\"",
+        "purpose operation main \"hydrate a tiny HTML template and print it\"",
         "call hydrateGreetingCall html.hydrate.GreetingTemplate",
-        "arg hydrateGreetingCall titleText greetingTitle",
+        "argument hydrateGreetingCall titleText String greetingTitle",
         "run hydrateGreetingCall",
-        "bind greetingHtml HtmlDocument hydrateGreetingCall",
+        "bind value greetingHtml HtmlDocument hydrateGreetingCall",
         "call writeGreetingCall console.writeLine",
-        "arg writeGreetingCall text greetingHtml",
+        "argument writeGreetingCall text HtmlDocument greetingHtml",
         "run writeGreetingCall",
-        "ignoreValue writeGreetingCall CSignedInt32",
-        "returnValue successCode",
-        "",
+        "ignore value source writeGreetingCall type Int32",
+        "return value successCode",
     ])
     proc = run_semsc_source(source, "--run", "--quiet", suffix=".sem")
     check("html simple: JIT run succeeds",
@@ -1542,34 +3040,31 @@ def test_html_template_edge_output_repeated_adjacent_and_blank_lines():
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate EdgeTemplate",
-        "htmlArg EdgeTemplate title_text HtmlText",
-        "htmlArg EdgeTemplate className HtmlClass",
-        "htmlBody EdgeTemplate",
-        "  <section class=\"{ htmlArg.className }\">{htmlArg.title_text}{htmlArg.title_text}</section>",
+        "html template EdgeTemplate",
+        "html body template EdgeTemplate",
+        "  <section class=\"{className}\">{title_text}{title_text}</section>",
         "",
-        "  <footer>{ htmlArg.title_text }</footer>",
+        "  <footer>{title_text}</footer>",
         "storage module immutable successCode ExitCode 0",
-        "storage module immutable edgeTitle HtmlText \"Echo\"",
-        "storage module immutable edgeClass HtmlClass \"edge-card\"",
+        "storage module immutable edgeTitle String \"Echo\"",
+        "storage module immutable edgeClass String \"edge-card\"",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"hydrate edge-case HTML spacing\"",
+        "purpose operation main \"hydrate edge-case HTML spacing\"",
         "call hydrateEdgeCall html.hydrate.EdgeTemplate",
-        "arg hydrateEdgeCall title_text edgeTitle",
-        "arg hydrateEdgeCall className edgeClass",
+        "argument hydrateEdgeCall title_text String edgeTitle",
+        "argument hydrateEdgeCall className String edgeClass",
         "run hydrateEdgeCall",
-        "bind edgeHtml HtmlDocument hydrateEdgeCall",
+        "bind value edgeHtml HtmlDocument hydrateEdgeCall",
         "call writeEdgeCall console.writeLine",
-        "arg writeEdgeCall text edgeHtml",
+        "argument writeEdgeCall text HtmlDocument edgeHtml",
         "run writeEdgeCall",
-        "ignoreValue writeEdgeCall CSignedInt32",
-        "returnValue successCode",
-        "",
+        "ignore value source writeEdgeCall type Int32",
+        "return value successCode",
     ])
     proc = run_semsc_source(source, "--run", "--quiet", suffix=".sem")
     expected = (
@@ -1592,44 +3087,42 @@ def test_html_template_raw_style_and_script_do_not_hydrate_braces():
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate RawTemplate",
-        "htmlArg RawTemplate titleText HtmlText",
-        "htmlBody RawTemplate",
+        "html template RawTemplate",
+        "html body template RawTemplate",
         "  <style>",
-        "    .card::before { content: \"{htmlArg.titleText}\"; }",
+        "    .card::before { content: \"{title-text-static}\"; }",
         "  </style>",
         "  <script>",
-        "    const template = \"{htmlArg.titleText}\";",
+        "    const template = \"{title-text-static}\";",
         "    const object = { value: \"raw\" };",
         "  </script>",
-        "  <h1>{htmlArg.titleText}</h1>",
+        "  <h1>{titleText}</h1>",
         "storage module immutable successCode ExitCode 0",
-        "storage module immutable rawTitle HtmlText \"Hydrated Title\"",
+        "storage module immutable rawTitle String \"Hydrated Title\"",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"hydrate HTML while preserving raw text element braces\"",
+        "purpose operation main \"hydrate HTML while preserving raw text element braces\"",
         "call hydrateRawCall html.hydrate.RawTemplate",
-        "arg hydrateRawCall titleText rawTitle",
+        "argument hydrateRawCall titleText String rawTitle",
         "run hydrateRawCall",
-        "bind rawHtml HtmlDocument hydrateRawCall",
+        "bind value rawHtml HtmlDocument hydrateRawCall",
         "call writeRawCall console.writeLine",
-        "arg writeRawCall text rawHtml",
+        "argument writeRawCall text HtmlDocument rawHtml",
         "run writeRawCall",
-        "ignoreValue writeRawCall CSignedInt32",
-        "returnValue successCode",
-        "",
+        "ignore value source writeRawCall type Int32",
+        "return value successCode",
     ])
     proc = run_semsc_source(source, "--run", "--quiet", suffix=".sem")
     expected = (
         "<style>\n"
-        "  .card::before { content: \"{htmlArg.titleText}\"; }\n"
+        "  .card::before { content: \"{title-text-static}\"; }\n"
         "</style>\n"
         "<script>\n"
-        "  const template = \"{htmlArg.titleText}\";\n"
+        "  const template = \"{title-text-static}\";\n"
         "  const object = { value: \"raw\" };\n"
         "</script>\n"
         "<h1>Hydrated Title</h1>\n"
@@ -1649,29 +3142,27 @@ def test_html_template_escapes_html_text_by_sink_context():
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate EscapeTemplate",
-        "htmlArg EscapeTemplate labelText HtmlText",
-        "htmlBody EscapeTemplate",
-        "  <p data-label=\"{htmlArg.labelText}\">{htmlArg.labelText}</p>",
+        "html template EscapeTemplate",
+        "html body template EscapeTemplate",
+        "  <p data-label=\"{labelText}\">{labelText}</p>",
         "storage module immutable successCode ExitCode 0",
-        "storage module immutable labelText HtmlText \"A < B & \\\"C\\\"\"",
+        "storage module immutable labelText String \"A < B & \\\"C\\\"\"",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"hydrate escaped HTML text\"",
+        "purpose operation main \"hydrate escaped HTML text\"",
         "call hydrateEscapeCall html.hydrate.EscapeTemplate",
-        "arg hydrateEscapeCall labelText labelText",
+        "argument hydrateEscapeCall labelText String labelText",
         "run hydrateEscapeCall",
-        "bind escapedHtml HtmlDocument hydrateEscapeCall",
+        "bind value escapedHtml HtmlDocument hydrateEscapeCall",
         "call writeEscapedCall console.writeLine",
-        "arg writeEscapedCall text escapedHtml",
+        "argument writeEscapedCall text HtmlDocument escapedHtml",
         "run writeEscapedCall",
-        "ignoreValue writeEscapedCall CSignedInt32",
-        "returnValue successCode",
-        "",
+        "ignore value source writeEscapedCall type Int32",
+        "return value successCode",
     ])
     proc = run_semsc_source(source, "--run", "--quiet", suffix=".sem")
     expected = (
@@ -1686,40 +3177,84 @@ def test_html_template_escapes_html_text_by_sink_context():
           f"stdout={proc.stdout!r} expected={expected!r}")
 
 
+def test_html_template_record_field_holes_infer_root_argument():
+    source = "\n".join([
+        "project HtmlRecordHoles",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Profile",
+        "field Profile title String",
+        "field Profile badge String",
+        "storage module immutable profile Profile",
+        "jsonBody profile",
+        "  {\"title\":\"Agent <One>\",\"badge\":\"ready\"}",
+        "html template ProfileTemplate",
+        "html body template ProfileTemplate",
+        "  <section class=\"{profile.badge}\"><h1>{profile.title}</h1></section>",
+        "storage module immutable successCode ExitCode 0",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"hydrate record-field HTML holes\"",
+        "call hydrateProfileCall html.hydrate.ProfileTemplate",
+        "argument hydrateProfileCall profile Profile profile",
+        "run hydrateProfileCall",
+        "bind value profileHtml HtmlDocument hydrateProfileCall",
+        "call writeProfileCall console.writeLine",
+        "argument writeProfileCall text HtmlDocument profileHtml",
+        "run writeProfileCall",
+        "ignore value source writeProfileCall type Int32",
+        "return value successCode",
+    ])
+    proc = run_semsc_source(source, "--run", "--quiet", suffix=".sem")
+    expected = (
+        "<section class=\"ready\"><h1>Agent &lt;One&gt;</h1></section>\n\n"
+    )
+    check("html record holes: JIT run succeeds",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("html record holes: field values are read and escaped by sink",
+          proc.stdout == expected,
+          f"stdout={proc.stdout!r} expected={expected!r}")
+
+
 def test_html_standard_module_import_exposes_hydrate_namespace_and_exports():
     source = "\n".join([
         "project HtmlStandardImport",
         "target console",
         "runtime native 1",
         "entry console main",
-        "importModule html standard.html",
+        "import html standard.html",
         "importConstant importedHtmlModuleVersionText html htmlModuleVersionText",
-        "htmlTemplate StandardTemplate",
-        "htmlArg StandardTemplate titleText HtmlText",
-        "htmlBody StandardTemplate",
-        "  <h1>{htmlArg.titleText}</h1>",
+        "html template StandardTemplate",
+        "html body template StandardTemplate",
+        "  <h1>{titleText}</h1>",
         "storage module immutable successCode ExitCode 0",
-        "storage module immutable titleText HtmlText \"Imported HTML\"",
+        "storage module immutable titleText String \"Imported HTML\"",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"hydrate HTML after importing the standard.html module\"",
+        "purpose operation main \"hydrate HTML after importing the standard.html module\"",
         "call hydrateStandardCall html.hydrate.StandardTemplate",
-        "arg hydrateStandardCall titleText titleText",
+        "argument hydrateStandardCall titleText String titleText",
         "run hydrateStandardCall",
-        "bind documentHtml HtmlDocument hydrateStandardCall",
+        "bind value documentHtml HtmlDocument hydrateStandardCall",
         "call writeDocumentCall console.writeLine",
-        "arg writeDocumentCall text documentHtml",
+        "argument writeDocumentCall text HtmlDocument documentHtml",
         "run writeDocumentCall",
-        "ignoreValue writeDocumentCall CSignedInt32",
+        "ignore value source writeDocumentCall type Int32",
         "call writeVersionCall console.writeLine",
-        "arg writeVersionCall text importedHtmlModuleVersionText",
+        "argument writeVersionCall text String importedHtmlModuleVersionText",
         "run writeVersionCall",
-        "ignoreValue writeVersionCall CSignedInt32",
-        "returnValue successCode",
+        "ignore value source writeVersionCall type Int32",
+        "return value successCode",
         "",
     ])
     with tempfile.TemporaryDirectory(dir=ROOT) as tmpdir:
@@ -1752,14 +3287,14 @@ def test_standard_library_module_relay_exposes_standard_modules():
     relay_text = relay_path.read_text(encoding="utf-8")
     canonical_modules = (
         "array", "assert", "bit", "bool", "char", "compare", "constants",
-        "convert", "ctype", "errno", "errno_more", "gui", "html", "http",
+        "convert", "ctype", "errno", "errno_more", "event", "gui", "html", "http",
         "inttypes", "iso646", "json", "limits", "math", "math_float",
         "memory", "numeric", "process", "random", "signal", "signal_more",
         "sqlite", "sort", "stddef", "stdio", "stdlib", "string", "time",
     )
     for module_name in canonical_modules:
         check(f"stdlib relay module: standard.{module_name} is explicitly imported",
-              f"importModule standard.{module_name}" in relay_text,
+              f"import {module_name} standard.{module_name}" in relay_text,
               f"missing standard.{module_name} relay import")
         check(f"stdlib module tree: standard.{module_name} uses main.sem entry",
               (ROOT / "std" / module_name / "main.sem").is_file(),
@@ -1775,21 +3310,21 @@ def _external_standard_import_source():
         "target console",
         "runtime native 1",
         "entry console main",
-        "importModule html standard.html",
+        "import html standard.html",
         "importConstant importedHtmlModuleVersionText html htmlModuleVersionText",
         "storage module immutable successCode ExitCode 0",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"print the imported standard.html version\"",
+        "purpose operation main \"print the imported standard.html version\"",
         "call writeVersionCall console.writeLine",
-        "arg writeVersionCall text importedHtmlModuleVersionText",
+        "argument writeVersionCall text String importedHtmlModuleVersionText",
         "run writeVersionCall",
-        "ignoreValue writeVersionCall CSignedInt32",
-        "returnValue successCode",
+        "ignore value source writeVersionCall type Int32",
+        "return value successCode",
         "",
     ])
 
@@ -1797,21 +3332,19 @@ def _external_standard_import_source():
 def _write_minimal_std_html(std_root: Path, version_text: str) -> None:
     (std_root / "html").mkdir(parents=True)
     (std_root / "module.sem").write_text("""module standard
-modulePurpose standard "Custom test standard-library relay."
+purpose module standard "Custom test standard-library relay."
 moduleOwns standard "Relay import coverage for tests."
 moduleDoesNotOwn standard "Bundled std modules."
-moduleInvariant standard "Child modules resolve from this temporary std root."
-importModule standard.html
+invariant module standard "Child modules resolve from this temporary std root."
+import html standard.html
 """, encoding="utf-8", newline="\n")
     (std_root / "html" / "main.sem").write_text(f"""module standard.html
-modulePurpose standard.html "Custom test HTML standard module."
+purpose module standard.html "Custom test HTML standard module."
 moduleOwns standard.html "The htmlModuleVersionText export."
 moduleDoesNotOwn standard.html "Compiler-owned HTML hydration."
-moduleInvariant standard.html "This fixture proves --std-path overrides the bundled std."
-type HtmlText CNullTerminatedByteString
-exportType standard.html HtmlText
+invariant module standard.html "This fixture proves --std-path overrides the bundled std."
 exportConstant standard.html htmlModuleVersionText
-storage module immutable htmlModuleVersionText HtmlText "{version_text}"
+storage module immutable htmlModuleVersionText String "{version_text}"
 """, encoding="utf-8", newline="\n")
 
 
@@ -1862,28 +3395,27 @@ def test_html_template_long_dynamic_arg_is_bounded_and_terminated():
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate LongTemplate",
-        "htmlArg LongTemplate bodyText HtmlText",
-        "htmlBody LongTemplate",
-        "  <p>{htmlArg.bodyText}</p>",
+        "html template LongTemplate",
+        "html body template LongTemplate",
+        "  <p>{bodyText}</p>",
         "storage module immutable successCode ExitCode 0",
-        f"storage module immutable longBodyText HtmlText \"{long_text}\"",
+        f"storage module immutable longBodyText String \"{long_text}\"",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"hydrate long dynamic HTML without overflowing the buffer\"",
+        "purpose operation main \"hydrate long dynamic HTML without overflowing the buffer\"",
         "call hydrateLongCall html.hydrate.LongTemplate",
-        "arg hydrateLongCall bodyText longBodyText",
+        "argument hydrateLongCall bodyText String longBodyText",
         "run hydrateLongCall",
-        "bind longHtml HtmlDocument hydrateLongCall",
+        "bind value longHtml HtmlDocument hydrateLongCall",
         "call writeLongCall console.writeLine",
-        "arg writeLongCall text longHtml",
+        "argument writeLongCall text HtmlDocument longHtml",
         "run writeLongCall",
-        "ignoreValue writeLongCall CSignedInt32",
-        "returnValue successCode",
+        "ignore value source writeLongCall type Int32",
+        "return value successCode",
         "",
     ])
     proc = run_semsc_source(source, "--run", "--quiet", suffix=".sem")
@@ -1920,8 +3452,7 @@ def _write_complex_html_project(root: Path) -> Path:
         "target console",
         "runtime native 1",
         "entry console main",
-        "importModule app.html_aggressive",
-        "",
+        "import html_aggressive app.html_aggressive",
     ]), encoding="utf-8", newline="\n")
 
     (root / "shared").mkdir()
@@ -1931,80 +3462,73 @@ def _write_complex_html_project(root: Path) -> Path:
         "exportConstant app.html_aggressive.shared bodyText",
         "exportConstant app.html_aggressive.shared cardClassName",
         "exportConstant app.html_aggressive.shared stateClassName",
-        "storage module immutable pageTitleText HtmlText \"Aggressive HTML\"",
-        "storage module immutable bodyText HtmlText \"Nested modules preserve copy.\"",
-        "storage module immutable cardClassName HtmlClass \"card card-active\"",
-        "storage module immutable stateClassName HtmlClass \"ready\"",
-        "",
+        "storage module immutable pageTitleText String \"Aggressive HTML\"",
+        "storage module immutable bodyText String \"Nested modules preserve copy.\"",
+        "storage module immutable cardClassName String \"card card-active\"",
+        "storage module immutable stateClassName String \"ready\"",
     ]), encoding="utf-8", newline="\n")
 
     (root / "components").mkdir()
     (root / "components" / "main.sem").write_text("\n".join([
         "module app.html_aggressive.components",
-        "importModule app.html_aggressive.shared",
+        "import shared app.html_aggressive.shared",
         "exportOperation app.html_aggressive.components renderDocument",
-        "htmlTemplate ComplexDocumentTemplate",
-        "htmlArg ComplexDocumentTemplate pageTitleText HtmlText",
-        "htmlArg ComplexDocumentTemplate bodyText HtmlText",
-        "htmlArg ComplexDocumentTemplate cardClassName HtmlClass",
-        "htmlArg ComplexDocumentTemplate stateClassName HtmlClass",
-        "htmlBody ComplexDocumentTemplate",
+        "html template ComplexDocumentTemplate",
+        "html body template ComplexDocumentTemplate",
         "  <!doctype html>",
         "  <html lang=\"en\">",
         "    <head>",
-        "      <title>{htmlArg.pageTitleText}</title>",
+        "      <title>{pageTitleText}</title>",
         "      <style>",
         "        .meter { width: 100%; content: \"{literal-braces-stay-static}\"; }",
         "        .card[data-state=\"ready\"] { border: 1px solid #ccd4e0; }",
         "      </style>",
         "      <script>const boot = { ready: true, label: \"{literal-script-brace}\" };</script>",
         "    </head>",
-        "    <body data-state=\"{htmlArg.stateClassName}\">",
+        "    <body data-state=\"{stateClassName}\">",
         "      <>",
-        "        <section class=\"{htmlArg.cardClassName}\">",
-        "          <h1>{htmlArg.pageTitleText}</h1>",
-        "          <p>{htmlArg.bodyText}</p>",
+        "        <section class=\"{cardClassName}\">",
+        "          <h1>{pageTitleText}</h1>",
+        "          <p>{bodyText}</p>",
         "        </section>",
         "      </>",
         "    </body>",
         "  </html>",
         "operation renderDocument",
-        "output renderDocument HtmlDocument",
-        "memoryHeap renderDocument no",
+        "output operation renderDocument HtmlDocument",
+        "memory renderDocument heap no",
         "async renderDocument no",
-        "purpose renderDocument \"hydrate a complex full-document template\"",
+        "purpose operation renderDocument \"hydrate a complex full-document template\"",
         "call hydrateDocumentCall html.hydrate.ComplexDocumentTemplate",
-        "arg hydrateDocumentCall pageTitleText pageTitleText",
-        "arg hydrateDocumentCall bodyText bodyText",
-        "arg hydrateDocumentCall cardClassName cardClassName",
-        "arg hydrateDocumentCall stateClassName stateClassName",
+        "argument hydrateDocumentCall pageTitleText String pageTitleText",
+        "argument hydrateDocumentCall bodyText String bodyText",
+        "argument hydrateDocumentCall cardClassName String cardClassName",
+        "argument hydrateDocumentCall stateClassName String stateClassName",
         "run hydrateDocumentCall",
-        "bind documentHtml HtmlDocument hydrateDocumentCall",
-        "returnValue documentHtml",
-        "",
+        "bind value documentHtml HtmlDocument hydrateDocumentCall",
+        "return value documentHtml",
     ]), encoding="utf-8", newline="\n")
 
     (root / "main.sem").write_text("\n".join([
         "module app.html_aggressive",
-        "importModule app.html_aggressive.components",
+        "import components app.html_aggressive.components",
         "exportOperation app.html_aggressive main",
         "storage module immutable successCode ExitCode 0",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "effect main write console.stdout",
-        "authority main console.stdout write",
-        "memoryHeap main no",
+        "authority main write console.stdout",
+        "memory main heap no",
         "async main no",
-        "purpose main \"print the complex hydrated HTML document\"",
+        "purpose operation main \"print the complex hydrated HTML document\"",
         "call renderDocumentCall renderDocument",
         "run renderDocumentCall",
-        "bind documentHtml HtmlDocument renderDocumentCall",
+        "bind value documentHtml HtmlDocument renderDocumentCall",
         "call writeDocumentCall console.writeLine",
-        "arg writeDocumentCall text documentHtml",
+        "argument writeDocumentCall text HtmlDocument documentHtml",
         "run writeDocumentCall",
-        "ignoreValue writeDocumentCall CSignedInt32",
-        "returnValue successCode",
-        "",
+        "ignore value source writeDocumentCall type Int32",
+        "return value successCode",
     ]), encoding="utf-8", newline="\n")
     return build_path
 
@@ -2058,8 +3582,8 @@ def test_html_template_complex_modules_jit_and_aot_output():
                   f"jit={jit_proc.stdout!r} aot={run_proc.stdout!r}")
 
 
-def test_html_console_demo_runs_from_registered_modules():
-    build_path = ROOT.parent / "app" / "html-console-demo" / "build.sem"
+def test_html_template_lab_runs_from_registered_modules():
+    build_path = APP_DIR / "html-template-lab" / "build.sem"
     proc = subprocess.run(
         [sys.executable, str(COMPILER_DIR / "semsc.py"),
          str(build_path), "--run", "--quiet"],
@@ -2069,7 +3593,7 @@ def test_html_console_demo_runs_from_registered_modules():
           proc.returncode == 0,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
     check("html demo: stdout contains hydrated todo page",
-          "<title>Todo TUI HTML Console Demo</title>" in proc.stdout
+          "<title>TaskForge TUI HTML Template Lab</title>" in proc.stdout
           and "Split HTML rendering into modules" in proc.stdout
           and "<main class=\"todo-shell\">" in proc.stdout,
           f"stdout={proc.stdout!r}")
@@ -2083,38 +3607,34 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "target console",
              "runtime native 1",
              "entry console main",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <h1>{htmlArg.missingText}</h1>",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <h1>{missingText}</h1>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
+             "argument hydrateBadCall titleText String titleText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "unknown htmlArg `missingText`"),
+         "missing required arg `missingText`"),
         ("missing call arg",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable titleText HtmlText \"Missing arg\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <h1>{htmlArg.titleText}</h1>",
+             "storage module immutable titleText String \"Missing arg\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <h1>{titleText}</h1>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
          "missing required arg `titleText`"),
         ("unsupported arg type",
@@ -2123,85 +3643,38 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable countValue I64 42",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate countValue I64",
-             "htmlBody BadTemplate",
-             "  <span>{htmlArg.countValue}</span>",
+             "storage module immutable countValue Int64 42",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <span>{countValue}</span>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall countValue countValue",
+             "argument hydrateBadCall countValue Int64 countValue",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "requires a string-shaped HTML value type"),
-        ("missing unused declared call arg",
-         "\n".join([
-             "project BadHtml",
-             "target console",
-             "runtime native 1",
-             "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlArg BadTemplate unusedText HtmlText",
-             "htmlBody BadTemplate",
-             "  <h1>{htmlArg.titleText}</h1>",
-             "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
-             "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
-             "run hydrateBadCall",
-             "returnValue 0",
-             "",
-         ]),
-         "missing required arg `unusedText`"),
-        ("text value in class attribute",
-         "\n".join([
-             "project BadHtml",
-             "target console",
-             "runtime native 1",
-             "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <div class=\"{htmlArg.titleText}\"></div>",
-             "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
-             "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
-             "run hydrateBadCall",
-             "returnValue 0",
-             "",
-         ]),
-         "requires HtmlClass"),
+         "text holes require String"),
         ("text value in url attribute",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <a href=\"{htmlArg.titleText}\">link</a>",
+             "storage module immutable titleText String \"Title\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <a href=\"{titleText}\">link</a>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
+             "argument hydrateBadCall titleText String titleText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "requires SafeUrl"),
+         "dynamic `href` attribute hole"),
         ("fragment value in attribute",
          "\n".join([
              "project BadHtml",
@@ -2209,60 +3682,154 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "runtime native 1",
              "entry console main",
              "storage module immutable fragment HtmlFragment \"<b>bad</b>\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate fragment HtmlFragment",
-             "htmlBody BadTemplate",
-             "  <div data-fragment=\"{htmlArg.fragment}\"></div>",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <div data-fragment=\"{fragment}\"></div>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall fragment fragment",
+             "argument hydrateBadCall fragment HtmlFragment fragment",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
-         ]),
-         "cannot hydrate attribute"),
-        ("class value in text content",
+             "return value 0",
+          ]),
+          "cannot hydrate attribute"),
+        ("boolean attribute dynamic hole",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable className HtmlClass \"todo-row\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate className HtmlClass",
-             "htmlBody BadTemplate",
-             "  <p>{htmlArg.className}</p>",
+             "storage module immutable checkedText String \"checked\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <input checked=\"{checkedText}\">",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall className className",
+             "argument hydrateBadCall checkedText String checkedText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "cannot hydrate text content"),
+         "dynamic boolean attribute `checked`"),
+        ("unquoted attribute dynamic hole",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable className String \"card\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <div class={className}></div>",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall className String className",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "must be inside a quoted attribute value"),
+        ("unterminated html tag",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable className String \"card\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <div class=\"{className}\"",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall className String className",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "unterminated HTML tag"),
+        ("record field wrong type",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "record Profile",
+             "field Profile title String",
+             "field Profile count Int64",
+             "storage module immutable profile Profile",
+             "jsonBody profile",
+             "  {\"title\":\"ok\",\"count\":7}",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <p>{profile.count}</p>",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall profile Profile profile",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "text holes require String"),
+        ("raw text element dynamic hole",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable titleText String \"Title\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <script>const title = \"{titleText}\";</script>",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall titleText String titleText",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "cannot hydrate raw `script` text"),
+        ("comment dynamic hole",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable titleText String \"Title\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <!-- {titleText} -->",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall titleText String titleText",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "cannot hydrate HTML comments"),
         ("dynamic tag syntax",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable tagName HtmlText \"section\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate tagName HtmlText",
-             "htmlBody BadTemplate",
-             "  <{htmlArg.tagName}>bad</{htmlArg.tagName}>",
+             "storage module immutable tagName String \"section\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <{tagName}>bad</{tagName}>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall tagName tagName",
+             "argument hydrateBadCall tagName String tagName",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
          "cannot hydrate HTML tag syntax"),
         ("unknown hydrate target",
@@ -2272,119 +3839,89 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "runtime native 1",
              "entry console main",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.MissingTemplate",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
          "unknown htmlTemplate `MissingTemplate`"),
-        ("unqualified dynamic hole",
-         "\n".join([
-             "project BadHtml",
-             "target console",
-             "runtime native 1",
-             "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <h1>{titleText}</h1>",
-             "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
-             "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
-             "run hydrateBadCall",
-             "returnValue 0",
-             "",
-         ]),
-         "must reference declared htmlArg.NAME"),
         ("props dynamic hole",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
+             "storage module immutable titleText String \"Title\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
              "  <h1>{props.titleText}</h1>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
+             "argument hydrateBadCall titleText String titleText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "must reference declared htmlArg.NAME"),
+         "missing required arg `props`"),
         ("arbitrary expression dynamic hole",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
+             "storage module immutable titleText String \"Title\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
              "  <h1>{titleText + otherText}</h1>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
+             "argument hydrateBadCall titleText String titleText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "must reference declared htmlArg.NAME"),
-        ("malformed htmlArg dynamic hole",
+         "must be a bare name or dotted field path"),
+        ("malformed html parameter dynamic hole",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <h1>{htmlArg.}</h1>",
+             "storage module immutable titleText String \"Title\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <h1>{parameter.}</h1>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
+             "argument hydrateBadCall titleText String titleText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
-         "must reference declared htmlArg.NAME"),
+         "must be a bare name or dotted field path"),
         ("extra hydrate arg",
          "\n".join([
              "project BadHtml",
              "target console",
              "runtime native 1",
              "entry console main",
-             "storage module immutable titleText HtmlText \"Title\"",
-             "storage module immutable extraText HtmlText \"Extra\"",
-             "htmlTemplate BadTemplate",
-             "htmlArg BadTemplate titleText HtmlText",
-             "htmlBody BadTemplate",
-             "  <h1>{htmlArg.titleText}</h1>",
+             "storage module immutable titleText String \"Title\"",
+             "storage module immutable extraText String \"Extra\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <h1>{titleText}</h1>",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
-             "arg hydrateBadCall titleText titleText",
-             "arg hydrateBadCall extraText extraText",
+             "argument hydrateBadCall titleText String titleText",
+             "argument hydrateBadCall extraText String extraText",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
          "is not declared by htmlTemplate"),
         ("empty html body",
@@ -2393,15 +3930,14 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "target console",
              "runtime native 1",
              "entry console main",
-             "htmlTemplate BadTemplate",
-             "htmlBody BadTemplate",
+             "html template BadTemplate",
+             "html body template BadTemplate",
              "operation main",
-             "output main ExitCode",
-             "purpose main \"bad html\"",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
              "call hydrateBadCall html.hydrate.BadTemplate",
              "run hydrateBadCall",
-             "returnValue 0",
-             "",
+             "return value 0",
          ]),
          "template has no body lines"),
     ]
@@ -2410,15 +3946,15 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
         "target console",
         "runtime native 1",
         "entry console main",
-        "htmlTemplate BadTemplate",
-        "htmlBody BadTemplate",
+        "html template BadTemplate",
+        "html body template BadTemplate",
         "  <pre>" + ("x" * 66000) + "</pre>",
         "operation main",
-        "output main ExitCode",
-        "purpose main \"bad html\"",
+        "output operation main ExitCode",
+        "purpose operation main \"bad html\"",
         "call hydrateBadCall html.hydrate.BadTemplate",
         "run hydrateBadCall",
-        "returnValue 0",
+        "return value 0",
         "",
     ])
     cases.append((
@@ -2543,12 +4079,11 @@ def test_cli_persist_llvm_ir_flag():
         "project PersistIr",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "persist_ir.sscript"
@@ -2587,12 +4122,11 @@ def test_cli_emit_ir_without_path_uses_build_dir():
         "project EmitIrBuildDir",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "emit_ir_build_dir.sem"
@@ -2614,21 +4148,20 @@ def test_cli_inspect_ir_outputs_agent_json():
         "target console",
         "entry console main",
         "error MainError",
-        "errorCase MainError Placeholder CSignedInt32",
+        "errorCase MainError Placeholder Int32",
         "operation main",
-        "input main console Console",
-        "output main Result ExitCode MainError",
+        "input operation main console Console",
+        "output operation main Result ExitCode MainError",
         "effect main write console.stdout",
         "memory main heap no",
         "async main no",
         "label start",
-        "const greeting String \"hello\"",
-        "const ok ExitCode 0",
+        "storage module immutable greeting String \"hello\"",
+        "storage module immutable ok ExitCode 0",
         "call writeGreeting console.writeLine",
-        "arg writeGreeting text greeting",
+        "argument writeGreeting text String greeting",
         "run writeGreeting",
-        "returnOk ok",
-        "",
+        "return ok ok",
     ])
     proc = run_semsc_source(src, "--inspect-ir")
     try:
@@ -2672,12 +4205,11 @@ def test_cli_emit_trace_map_sidecar():
         "project TraceMapSidecar",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "trace_map_sidecar.sem"
@@ -2706,12 +4238,11 @@ def test_sem_inspect_ir_command():
         "project SemInspectIrCommand",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "sem_inspect_ir.sem"
@@ -2783,25 +4314,23 @@ def test_inspect_ir_preserves_imported_source_origins():
             "module app.lib",
             "exportOperation app.lib helper",
             "operation helper",
-            "output helper ExitCode",
+            "output operation helper ExitCode",
             "memory helper heap no",
             "async helper no",
             "label start",
-            "returnValue 0",
-            "",
+            "return value 0",
         ]), encoding="utf-8", newline="\n")
         src_path = root / "main.sem"
         src_path.write_text("\n".join([
             "project ImportOrigin",
             "entry console main",
-            "importModule app.lib",
+            "import lib app.lib",
             "operation main",
-            "output main ExitCode",
+            "output operation main ExitCode",
             "memory main heap no",
             "async main no",
             "label start",
-            "returnValue 0",
-            "",
+            "return value 0",
         ]), encoding="utf-8", newline="\n")
         proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
@@ -2813,12 +4342,13 @@ def test_inspect_ir_preserves_imported_source_origins():
         helper = next((op for op in payload.get("operations", [])
                        if op.get("name") == "helper"), {})
         origin = helper.get("sourceSpan", {}).get("origin", {})
+        imported_path_text = canonical_path_text(imported_path)
         check("inspect-ir: source model preserves imported file origins",
               proc.returncode == 0
               and payload.get("source", {}).get("sourceModel") == "flattenedResolvedStreamWithOrigins"
-              and any(item.get("path") == str(imported_path.resolve())
+              and any(canonical_path_text(item.get("path", "")) == imported_path_text
                       for item in imported_sources)
-              and origin.get("path") == str(imported_path.resolve())
+              and canonical_path_text(origin.get("path", "")) == imported_path_text
               and origin.get("line") == 3
               and origin.get("imported") is True,
               f"rc={proc.returncode} stderr={proc.stderr!r} payload={payload}")
@@ -2829,23 +4359,22 @@ def test_sem_run_trace_emits_agent_jsonl_events():
         "project TraceRunJsonl",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "const leftValue CSignedInt32 -1",
-        "const rightValue CSignedInt32 0",
-        "const successExit ExitCode 0",
-        "call negativeCheckCall math.lessThanCSignedInt32",
-        "arg negativeCheckCall left leftValue",
-        "arg negativeCheckCall right rightValue",
+        "storage module immutable leftValue Int32 -1",
+        "storage module immutable rightValue Int32 0",
+        "storage module immutable successExit ExitCode 0",
+        "call negativeCheckCall math.lessThanInt32",
+        "argument negativeCheckCall left Int32 leftValue",
+        "argument negativeCheckCall right Int32 rightValue",
         "run negativeCheckCall",
-        "bind statusIsNegative Bool negativeCheckCall",
-        "branchIf statusIsNegative returnSuccess",
-        "returnValue rightValue",
+        "bind value statusIsNegative Bool negativeCheckCall",
+        "branch if condition statusIsNegative target returnSuccess",
+        "return value rightValue",
         "label returnSuccess",
-        "returnValue successExit",
-        "",
+        "return value successExit",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "trace_run.sem"
@@ -2887,12 +4416,11 @@ def test_sem_profile_json_writes_agent_artifacts_and_deltas():
         "project ProfileJson",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "profile.sem"
@@ -2945,12 +4473,11 @@ def test_sem_profile_compile_failure_uses_failure_schema():
         "project ProfileCompileFailure",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "profile_failure.sem"
@@ -2993,19 +4520,18 @@ def test_sem_explain_crash_reports_runtime_panic_context():
         "project RuntimePanicDiagnostic",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "const numeratorValue CSignedInt64 7",
-        "const zeroDivisor CSignedInt64 0",
-        "call divideByZeroCall math.divideI64",
-        "arg divideByZeroCall left numeratorValue",
-        "arg divideByZeroCall right zeroDivisor",
+        "storage module immutable numeratorValue Int64 7",
+        "storage module immutable zeroDivisor Int64 0",
+        "call divideByZeroCall math.divideInt64",
+        "argument divideByZeroCall left Int64 numeratorValue",
+        "argument divideByZeroCall right Int64 zeroDivisor",
         "run divideByZeroCall",
-        "bind quotientValue CSignedInt64 divideByZeroCall",
-        "returnValue quotientValue",
-        "",
+        "bind value quotientValue Int64 divideByZeroCall",
+        "return value quotientValue",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "runtime_panic.sem"
@@ -3033,7 +4559,7 @@ def test_sem_explain_crash_reports_runtime_panic_context():
               and payload.get("panic", {}).get("code") == "SSRUN001"
               and payload.get("panic", {}).get("operation") == "main"
               and payload.get("semanticContext", {}).get("operation") == "main"
-              and "divideByZeroCall -> math.divideI64" in payload.get("panic", {}).get("call", "")
+              and "divideByZeroCall -> math.divideInt64" in payload.get("panic", {}).get("call", "")
               and event_names == ["op.enter", "call.start"]
               and Path(artifacts.get("artifactIndexPath", "")).exists()
               and Path(artifacts.get("traceEventsPath", "")).exists(),
@@ -3070,7 +4596,7 @@ def test_sem_bench_json_reports_stable_deltas():
           and payload.get("schemaVersion") == "sem.benchmark.v0"
           and payload.get("summary", {}).get("benchmarkCount") == 1
           and "semanticToCRatio" in bench.get("delta", {})
-          and "semanticMinusCClockTicks" in bench.get("delta", {})
+          and "semanticMinusCpuClockTicksTicks" in bench.get("delta", {})
           and Path(bench.get("artifacts", {}).get("semanticExecutablePath", "")).exists(),
           f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
 
@@ -3080,12 +4606,11 @@ def test_cli_build_root_and_folder_name():
         "project EmitIrBuildRoot",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "emit_ir_build_root.sem"
@@ -3131,18 +4656,16 @@ def test_cli_build_dir_overrides_build_tape_folder_metadata():
             "target console",
             "runtime native 1",
             "entry console main",
-            "importModule app.build_dir_override",
-            "",
+            "import build_dir_override app.build_dir_override",
         ]), encoding="utf-8", newline="\n")
         module_path.write_text("\n".join([
             "module app.build_dir_override",
             "exportOperation app.build_dir_override main",
             "operation main",
-            "output main ExitCode",
+            "output operation main ExitCode",
             "memory main heap no",
             "async main no",
-            "returnValue 0",
-            "",
+            "return value 0",
         ]), encoding="utf-8", newline="\n")
         proc = subprocess.run(
             [sys.executable, str(ROOT / "tools" / "sem.py"),
@@ -3173,10 +4696,10 @@ def test_build_tape_path_normalization():
         absolute_path = semsc._normalize_build_tape_path(
             str(build_path), str(absolute_target), "src")
         check("build tape: relative path normalizes beside sourceRoot",
-              relative_path == str((root / "main.sem").resolve()),
+              canonical_path_text(relative_path) == canonical_path_text(root / "main.sem"),
               relative_path)
         check("build tape: absolute path remains absolute",
-              absolute_path == str(absolute_target.resolve()),
+              canonical_path_text(absolute_path) == canonical_path_text(absolute_target),
               absolute_path)
 
 
@@ -3258,7 +4781,6 @@ def test_build_tape_validation_rejects_insecure_dependency_fetch():
             "optLevel depFetch 2",
             "dependency depFetch api github.com/example/api v2.0.0",
             "dependencyFetch depFetch api http \"http://example.com/api.tar.gz\"",
-            "",
         ])
         raised = False
         msg = ""
@@ -3272,7 +4794,7 @@ def test_build_tape_validation_rejects_insecure_dependency_fetch():
               f"raised={raised} msg={msg!r}")
 
 
-def test_hello_gui_sample_uses_refined_gui_surface():
+def test_desktop_window_smoke_sample_uses_refined_gui_surface():
     build_path = HELLO_GUI_DIR / "build.sem"
     main_path = HELLO_GUI_DIR / "main.sem"
     check("hello gui sample: build.sem exists",
@@ -3286,17 +4808,19 @@ def test_hello_gui_sample_uses_refined_gui_surface():
 
     build_text = build_path.read_text(encoding="utf-8")
     main_text = main_path.read_text(encoding="utf-8")
-    check("hello gui sample: build tape selects windowsGui with standard entry syntax",
-          "target windowsGui" in build_text
-          and "targetRuntime helloGui windowsGui" in build_text
-          and re.search(r"(?m)^entry\s+console\s+main\b", build_text)
-          and re.search(r"(?m)^mainOperation\s+helloGui\s+main\b", build_text)
-          and not re.search(r"(?m)^entry\s+windowsGui\b", build_text)
-          and "GuiSurface\" \"standard.gui|gui.* functions" in build_text,
+    check("hello gui sample: regular BuildPlan selects windowsGui",
+          "record BuildPlan" in build_text
+          and "storage module immutable desktopWindowSmokeBuildPlan BuildPlan" in build_text
+          and '"runtime": "windowsGui"' in build_text
+          and '"guiBackend": "win32"' in build_text
+          and '"mainOperation": "main"' in build_text
+          and '"guiSurface": "standard.gui|gui.* functions"' in build_text
+          and "buildProject desktopWindowSmoke" not in build_text
+          and not re.search(r"(?m)^entry\s+windowsGui\b", build_text),
           build_text)
 
     required_rows = [
-        "importModule gui standard.gui",
+        "import gui standard.gui",
         "operation main",
         "call createApplicationCall gui.applicationCreate",
         "call createWindowCall gui.windowCreate",
@@ -3319,12 +4843,12 @@ def test_hello_gui_sample_uses_refined_gui_surface():
           heavy_gui_decl.group(0) if heavy_gui_decl else main_text)
     check("hello gui sample: keeps construction explicit in operation bodies",
           "gui." in main_text
-          and "input addTaskFromInput session GuiSession" in main_text
-          and "input addTaskFromInput event GuiEvent" in main_text,
+          and "input operation appendGreetingFromInput session GuiSession" in main_text
+          and "input operation appendGreetingFromInput event GuiEvent" in main_text,
           main_text)
 
 
-def test_hello_gui_parser_contract_when_supported():
+def test_desktop_window_smoke_parser_contract_when_supported():
     main_path = HELLO_GUI_DIR / "main.sem"
     source = main_path.read_text(encoding="utf-8")
     try:
@@ -3363,7 +4887,7 @@ def test_hello_gui_parser_contract_when_supported():
           repr(sorted(call_targets)))
 
 
-def test_hello_gui_build_tape_contract_when_supported():
+def test_desktop_window_smoke_build_tape_contract_when_supported():
     build_path = HELLO_GUI_DIR / "build.sem"
     source = build_path.read_text(encoding="utf-8")
     try:
@@ -3390,17 +4914,60 @@ def test_hello_gui_build_tape_contract_when_supported():
     check("gui build tape: target windowsGui is recorded",
           "windowsGui" in prog.targets,
           repr(prog.targets))
-    check("gui build tape: windowsGui uses the standard entry/mainOperation rows",
+    check("gui build tape: guiBackend win32 is recorded",
+          semsc._build_metadata_value(prog, "guiBackend") == "win32",
+          repr(semsc._build_metadata_rows(prog, "guiBackend")))
+    check("gui build plan: windowsGui lowers to the standard entry/mainOperation metadata",
           prog.entry == ("console", "main")
-          and re.search(r"(?m)^entry\s+console\s+main\b", source)
           and semsc._build_metadata_value(prog, "mainOperation") == "main",
           f"entry={prog.entry!r} mainOperation={semsc._build_metadata_value(prog, 'mainOperation')!r}")
 
 
-def test_hello_gui_codegen_contract_when_supported():
+def test_gui_backend_selection_contract():
+    source_lines = [
+        "project GuiBackendSmoke",
+        "target windowsGui",
+        "runtime native 1",
+        "buildProject guiBackendSmoke",
+        "guiBackend guiBackendSmoke win32",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"exercise gui backend selection\"",
+        "storage local immutable successExitCode ExitCode 0",
+        "return value successExitCode",
+    ]
+    prog = semsc.parse("\n".join(source_lines))
+    sources, link_args = semsc._native_gui_link_inputs(prog)
+    check("gui backend: explicit win32 selects active runtime",
+          any("native_win32_gui" in source for source in sources)
+          and (os.name != "nt" or "-lcomctl32" in link_args),
+          f"sources={sources!r} link_args={link_args!r}")
+
+    winui3_source = "\n".join(
+        line.replace("guiBackend guiBackendSmoke win32", "guiBackend guiBackendSmoke winui3")
+        for line in source_lines
+    )
+    winui3_prog = semsc.parse(winui3_source)
+    try:
+        semsc._native_gui_link_inputs(winui3_prog)
+    except semsc.CompilerDiagnosticError as e:
+        diagnostic = e.diagnostic
+        check("gui backend: winui3 emits structured unavailable diagnostic",
+              diagnostic.code == "SSCG003"
+              and diagnostic.phase == "native-runtime-selection"
+              and "not buildable yet" in diagnostic.message,
+              diagnostic.render("agent"))
+    else:
+        check("gui backend: winui3 emits structured unavailable diagnostic", False)
+
+
+def test_desktop_window_smoke_codegen_contract_when_supported():
     build_path = HELLO_GUI_DIR / "build.sem"
     with tempfile.TemporaryDirectory() as tmpdir:
-        ir_path = Path(tmpdir) / "hello_gui.ll"
+        ir_path = Path(tmpdir) / "desktop_window_smoke.ll"
         proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
              str(build_path), "--emit-ir", str(ir_path), "--quiet"],
@@ -3454,19 +5021,17 @@ def test_build_tape_llvm_flags_drive_outputs():
             "target console",
             "runtime native 1",
             "entry console main",
-            "importModule app.llvm_flags",
-            "",
+            "import llvm_flags app.llvm_flags",
         ]), encoding="utf-8", newline="\n")
         module_path.write_text("\n".join([
             "module app.llvm_flags",
             "exportOperation app.llvm_flags main",
             "operation main",
-            "output main ExitCode",
+            "output operation main ExitCode",
             "memory main heap no",
             "async main no",
-            "purpose main \"build tape llvm flag smoke\"",
-            "returnValue 0",
-            "",
+            "purpose operation main \"build tape llvm flag smoke\"",
+            "return value 0",
         ]), encoding="utf-8", newline="\n")
         proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
@@ -3504,7 +5069,6 @@ def test_cpu_build_config_collects_feature_overrides():
         "cpuBaseline cpuSmoke generic",
         "cpuFeature cpuSmoke avx2 off",
         "cpuFeatureCheck cpuSmoke off",
-        "",
     ]))
     config = semsc._resolve_cpu_build_config(prog)
     check("cpu flags: build tape feature disables lower to LLVM feature string",
@@ -3517,7 +5081,6 @@ def test_cpu_feature_check_rejects_missing_required_feature():
         "project CpuMissingFeature",
         "cpuFeatureCheck cpuMissing require",
         "cpuFeature cpuMissing madeup-feature-for-test on",
-        "",
     ]))
     raised = False
     msg = ""
@@ -3555,19 +5118,17 @@ def test_sem_build_driver_discovers_build_tape():
             "target console",
             "runtime native 1",
             "entry console main",
-            "importModule app.sem_driver",
-            "",
+            "import sem_driver app.sem_driver",
         ]), encoding="utf-8", newline="\n")
         module_path.write_text("\n".join([
             "module app.sem_driver",
             "exportOperation app.sem_driver main",
             "operation main",
-            "output main ExitCode",
+            "output operation main ExitCode",
             "memory main heap no",
             "async main no",
-            "purpose main \"sem build discovery smoke\"",
-            "returnValue 0",
-            "",
+            "purpose operation main \"sem build discovery smoke\"",
+            "return value 0",
         ]), encoding="utf-8", newline="\n")
         proc = subprocess.run(
             [sys.executable, str(ROOT / "tools" / "sem.py"),
@@ -3584,16 +5145,16 @@ def test_codegen_diagnostic_is_agent_readable():
         "project BadDiagnostic",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "call badCall math.addI64",
-        "arg badCall left missingValue",
-        "arg badCall right 1",
+        "call badCall math.addInt64",
+        "argument badCall left Int64 missingValue",
+        "argument badCall right Int64 1",
         "run badCall",
-        "bind resultValue CSignedInt64 badCall",
-        "returnValue resultValue",
+        "bind value resultValue Int64 badCall",
+        "return value resultValue",
         "",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -3613,8 +5174,8 @@ def test_codegen_diagnostic_is_agent_readable():
               "error SSCG002" in stderr and "phase: codegen.call-lowering" in stderr,
               stderr)
         check("diagnostics: SemanticScript stack points to call",
-              "call badCall math.addI64" in stderr
-              and "source: call badCall math.addI64" in stderr,
+              "call badCall math.addInt64" in stderr
+              and "source: call badCall math.addInt64" in stderr,
               stderr)
         json_proc = subprocess.run(
             [sys.executable, str(COMPILER_DIR / "semsc.py"),
@@ -3644,25 +5205,24 @@ def test_web_codegen_rejects_unsupported_http_target():
         "route fixtureServer GET \"/json\" jsonHandler",
         "capability httpResponseWriter http.response write",
         "operation jsonHandler",
-        "input jsonHandler request HttpRequest",
-        "input jsonHandler response HttpResponse",
-        "output jsonHandler CSignedInt32",
+        "input operation jsonHandler request HttpRequest",
+        "input operation jsonHandler response HttpResponse",
+        "output operation jsonHandler Int32",
         "effect jsonHandler write http.response",
         "memory jsonHandler arena request",
         "async jsonHandler no",
         "useCapability jsonHandler httpResponseWriter",
-        "purpose jsonHandler \"Exercise unsupported HTTP target diagnostics\"",
+        "purpose operation jsonHandler \"Exercise unsupported HTTP target diagnostics\"",
         "label startJsonHandler",
-        "const okStatus CSignedInt32 200",
-        "const jsonBody CNullTerminatedByteString \"{}\"",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable jsonBody String \"{}\"",
         "call jsonWriteCall http.responseJson",
-        "arg jsonWriteCall response response",
-        "arg jsonWriteCall status okStatus",
-        "arg jsonWriteCall body jsonBody",
+        "argument jsonWriteCall response HttpResponse response",
+        "argument jsonWriteCall status Int32 okStatus",
+        "argument jsonWriteCall body String jsonBody",
         "run jsonWriteCall",
-        "bind responseStatus CSignedInt32 jsonWriteCall",
-        "returnValue responseStatus",
-        "",
+        "bind value responseStatus Int32 jsonWriteCall",
+        "return value responseStatus",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "unsupported_http.sscript"
@@ -3683,17 +5243,459 @@ def test_web_codegen_rejects_unsupported_http_target():
           proc.stderr)
 
 
+def test_web_codegen_response_html_sets_fixed_content_type():
+    src = "\n".join([
+        "project ResponseHtmlTarget",
+        "target webServer",
+        "runtime native 1",
+        "module fixture",
+        "webServer fixtureServer",
+        "serverHost fixtureServer \"127.0.0.1\"",
+        "serverPort fixtureServer 18081",
+        "route fixtureServer GET \"/\" htmlHandler",
+        "capability httpResponseWriter http.response write",
+        "operation htmlHandler",
+        "input operation htmlHandler request HttpRequest",
+        "input operation htmlHandler response HttpResponse",
+        "output operation htmlHandler Int32",
+        "effect htmlHandler write http.response",
+        "memory htmlHandler arena request",
+        "async htmlHandler no",
+        "useCapability htmlHandler httpResponseWriter",
+        "purpose operation htmlHandler \"Exercise http.responseHtml lowering\"",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable htmlBody String \"<h1>ok</h1>\"",
+        "call htmlWriteCall http.responseHtml",
+        "argument htmlWriteCall response HttpResponse response",
+        "argument htmlWriteCall status Int32 okStatus",
+        "argument htmlWriteCall body String htmlBody",
+        "run htmlWriteCall",
+        "bind value responseStatus Int32 htmlWriteCall",
+        "return value responseStatus",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "response_html.sscript"
+        ir_path = Path(tmpdir) / "response_html.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("web codegen: responseHtml emits IR", proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("web codegen: responseHtml reuses text runtime",
+          "ss_http_response_text" in ir_text, ir_text)
+    check("web codegen: responseHtml fixes text/html content type",
+          "text/html; charset=utf-8" in ir_text, ir_text)
+
+
+def test_webserver_hydrated_html_response_headers_escaping_and_failure():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project HtmlWebserverResponse",
+        "target webServer",
+        "runtime native 1",
+        "webServer htmlServer",
+        "serverHost htmlServer \"127.0.0.1\"",
+        f"serverPort htmlServer {port}",
+        "route htmlServer GET \"/html\" htmlHandler",
+        "route htmlServer GET \"/fail\" failHandler",
+        "html template EscapeTemplate",
+        "html body template EscapeTemplate",
+        "  <p data-label=\"{labelText}\">{labelText}</p>",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable failureStatus Int32 7",
+        "storage module immutable labelText String \"A < B & \\\"C\\\"\"",
+        "operation htmlHandler",
+        "input operation htmlHandler request HttpRequest",
+        "input operation htmlHandler response HttpResponse",
+        "output operation htmlHandler Int32",
+        "effect htmlHandler write http.response",
+        "memory htmlHandler arena request",
+        "async htmlHandler no",
+        "call hydrateEscapeCall html.hydrate.EscapeTemplate",
+        "argument hydrateEscapeCall labelText String labelText",
+        "run hydrateEscapeCall",
+        "bind value escapedHtml HtmlDocument hydrateEscapeCall",
+        "call htmlWriteCall http.responseHtml",
+        "argument htmlWriteCall response HttpResponse response",
+        "argument htmlWriteCall status Int32 okStatus",
+        "argument htmlWriteCall body HtmlDocument escapedHtml",
+        "run htmlWriteCall",
+        "bind value responseStatus Int32 htmlWriteCall",
+        "return value responseStatus",
+        "operation failHandler",
+        "input operation failHandler request HttpRequest",
+        "input operation failHandler response HttpResponse",
+        "output operation failHandler Int32",
+        "memory failHandler arena request",
+        "async failHandler no",
+        "return value failureStatus",
+    ])
+
+    def request(path):
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            headers = {key.lower(): value for key, value in response.getheaders()}
+            return response.status, body, headers
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "html_webserver.sem"
+        exe_path = Path(tmpdir) / ("html_webserver.exe" if os.name == "nt" else "html_webserver")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver HTML: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            last_error = None
+            html_response = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    html_response = request("/html")
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if html_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver HTML: fixture starts",
+                      False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+
+            status, body, headers = html_response
+            expected_body = (
+                "<p data-label=\"A &lt; B &amp; &quot;C&quot;\">"
+                "A &lt; B &amp; \"C\"</p>\n"
+            )
+            check("webserver HTML: hydrated response escapes text and attributes",
+                  status == 200 and body == expected_body,
+                  f"status={status} body={body!r}")
+            check("webserver HTML: responseHtml sends HTML content type",
+                  headers.get("content-type") == "text/html; charset=utf-8",
+                  headers)
+            check("webserver HTML: hydrated response content length is exact",
+                  headers.get("content-length") == str(len(body.encode("utf-8"))),
+                  headers)
+
+            fail_status, fail_body, fail_headers = request("/fail")
+            check("webserver HTML: failing route handler returns dispatcher 500",
+                  fail_status == 500 and fail_body == "handler failed\n",
+                  f"status={fail_status} body={fail_body!r}")
+            check("webserver HTML: failing handler content length is exact",
+                  fail_headers.get("content-length") == str(len(fail_body.encode("utf-8"))),
+                  fail_headers)
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
+
+
+def test_webserver_standard_http_sse_stream_wrappers():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project StandardHttpSseStream",
+        "target webServer",
+        "runtime native 1",
+        "import http standard.http",
+        "webServer sseServer",
+        "serverHost sseServer \"127.0.0.1\"",
+        f"serverPort sseServer {port}",
+        "route sseServer GET \"/events\" eventsHandler",
+        "storage module immutable okStatus HttpStatusCode 200",
+        "storage module immutable eventName SseEventName \"auction.tick\"",
+        "storage module immutable eventData SseEventData \"{\\\"ok\\\":true}\"",
+        "storage module immutable heartbeatComment SseHeartbeatComment \"heartbeat\"",
+        "operation eventsHandler",
+        "input operation eventsHandler request HttpRequest",
+        "input operation eventsHandler response HttpResponse",
+        "output operation eventsHandler Int32",
+        "effect eventsHandler write http.response",
+        "memory eventsHandler arena request",
+        "async eventsHandler no",
+        "purpose operation eventsHandler \"Exercise standard.http SSE stream wrappers\"",
+        "label startEventsHandler",
+        "call openCall http.openSseStream",
+        "argument openCall response HttpResponse response",
+        "argument openCall status HttpStatusCode okStatus",
+        "run openCall",
+        "ignore value source openCall type Int32",
+        "call heartbeatCall http.writeSseHeartbeat",
+        "argument heartbeatCall response HttpResponse response",
+        "argument heartbeatCall comment SseHeartbeatComment heartbeatComment",
+        "run heartbeatCall",
+        "ignore value source heartbeatCall type Int32",
+        "call eventCall http.writeSseEvent",
+        "argument eventCall response HttpResponse response",
+        "argument eventCall event SseEventName eventName",
+        "argument eventCall data SseEventData eventData",
+        "run eventCall",
+        "ignore value source eventCall type Int32",
+        "call closeCall http.closeSseStream",
+        "argument closeCall response HttpResponse response",
+        "run closeCall",
+        "bind value closeStatus Int32 closeCall",
+        "return value closeStatus",
+    ])
+
+    def request_events():
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", "/events")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            headers = {key.lower(): value for key, value in response.getheaders()}
+            return response.status, body, headers
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "sse_webserver.sem"
+        exe_path = Path(tmpdir) / ("sse_webserver.exe" if os.name == "nt" else "sse_webserver")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver SSE: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            last_error = None
+            stream_response = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    stream_response = request_events()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if stream_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver SSE: fixture starts",
+                      False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+
+            status, body, headers = stream_response
+            check("webserver SSE: status and content-type",
+                  status == 200
+                  and headers.get("content-type") == "text/event-stream; charset=utf-8",
+                  f"status={status} headers={headers}")
+            check("webserver SSE: stream has no content-length",
+                  "content-length" not in headers,
+                  headers)
+            check("webserver SSE: std wrapper owns cache/proxy headers",
+                  headers.get("cache-control") == "no-cache, no-transform"
+                  and headers.get("x-accel-buffering") == "no",
+                  headers)
+            check("webserver SSE: std wrapper emits heartbeat and event",
+                  body == ": heartbeat\n\nevent: auction.tick\ndata: {\"ok\":true}\n\n",
+                  body)
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
+
+
+def test_webserver_module_state_persists_across_sequential_requests():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project HttpSharedStateCounter",
+        "target webServer",
+        "runtime native 1",
+        "webServer stateServer",
+        "serverHost stateServer \"127.0.0.1\"",
+        f"serverPort stateServer {port}",
+        "route stateServer GET \"/counter\" counterHandler",
+        "storage module immutable zeroCount Int64 0",
+        "storage module immutable oneCount Int64 1",
+        "storage module immutable twoCount Int64 2",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable firstBody String \"1\\n\"",
+        "storage module immutable secondBody String \"2\\n\"",
+        "storage module immutable fallbackBody String \"other\\n\"",
+        "storage module mutable requestCounter Int64 zeroCount",
+        "operation counterHandler",
+        "input operation counterHandler request HttpRequest",
+        "input operation counterHandler response HttpResponse",
+        "output operation counterHandler Int32",
+        "effect counterHandler write http.response",
+        "memory counterHandler arena request",
+        "async counterHandler no",
+        "call incrementCall math.addInt64",
+        "argument incrementCall left Int64 requestCounter",
+        "argument incrementCall right Int64 oneCount",
+        "run incrementCall",
+        "bind value nextCounter Int64 incrementCall",
+        "set storage requestCounter nextCounter",
+        "call isFirstCall math.equalInt64",
+        "argument isFirstCall left Int64 nextCounter",
+        "argument isFirstCall right Int64 oneCount",
+        "run isFirstCall",
+        "bind value isFirst Bool isFirstCall",
+        "branch if condition isFirst target firstResponse",
+        "call isSecondCall math.equalInt64",
+        "argument isSecondCall left Int64 nextCounter",
+        "argument isSecondCall right Int64 twoCount",
+        "run isSecondCall",
+        "bind value isSecond Bool isSecondCall",
+        "branch if condition isSecond target secondResponse",
+        "call fallbackWriteCall http.responseText",
+        "argument fallbackWriteCall response HttpResponse response",
+        "argument fallbackWriteCall status Int32 okStatus",
+        "argument fallbackWriteCall body String fallbackBody",
+        "run fallbackWriteCall",
+        "bind value fallbackStatus Int32 fallbackWriteCall",
+        "return value fallbackStatus",
+        "label firstResponse",
+        "call firstWriteCall http.responseText",
+        "argument firstWriteCall response HttpResponse response",
+        "argument firstWriteCall status Int32 okStatus",
+        "argument firstWriteCall body String firstBody",
+        "run firstWriteCall",
+        "bind value firstStatus Int32 firstWriteCall",
+        "return value firstStatus",
+        "label secondResponse",
+        "call secondWriteCall http.responseText",
+        "argument secondWriteCall response HttpResponse response",
+        "argument secondWriteCall status Int32 okStatus",
+        "argument secondWriteCall body String secondBody",
+        "run secondWriteCall",
+        "bind value secondStatus Int32 secondWriteCall",
+        "return value secondStatus",
+    ])
+
+    def request_counter():
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", "/counter")
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status, body
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_module_state.sem"
+        exe_path = Path(tmpdir) / ("http_module_state.exe" if os.name == "nt" else "http_module_state")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver module state: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            first_response = None
+            last_error = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    first_response = request_counter()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if first_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver module state: fixture starts",
+                      False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+            second_response = request_counter()
+            check("webserver module state: first request observes initial increment",
+                  first_response == (200, "1\n"),
+                  repr(first_response))
+            check("webserver module state: second request observes persisted state",
+                  second_response == (200, "2\n"),
+                  repr(second_response))
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
+
+
 def test_sqlite_codegen_emits_runtime_externs_and_calls():
     """Deep-audit smoke for the standard.sqlite lowering. Parses the
     canonical syntax sample, runs codegen, and asserts the IR actually
     declares each ss_sqlite_* extern and calls into it. Without these
     asserts a regression that quietly dropped the dispatch block (or
-    no-op'd it to ir.Constant(I32, 0)) would still produce IR that
+    no-op'd it to ir.Constant(Int32, 0)) would still produce IR that
     compiles — see the project memory `feedback_verify_impld_claims`
     for why we require failure under no-op lowering."""
     sample_path = ROOT / "sem" / "syntax_sample_sqlite.sscript"
-    source = sample_path.read_text(encoding="utf-8")
-    prog = semsc.parse(source)
+    prog = parse_semsc_file_with_imports(sample_path)
     cg = semsc.Codegen(prog)
     mod = cg.compile()
     ir_text = str(mod)
@@ -3745,18 +5747,17 @@ def test_sqlite_codegen_rejects_unsupported_target():
         "project UnsupportedSqliteTarget",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose main \"exercise the sqlite unsupported-target diagnostic\"",
+        "purpose operation main \"exercise the sqlite unsupported-target diagnostic\"",
         "label start",
-        "const dbPath CNullTerminatedByteString \":memory:\"",
+        "storage module immutable dbPath String \":memory:\"",
         "call unsupportedSqliteCall sqlite.notARealEntryPoint",
-        "arg unsupportedSqliteCall path dbPath",
+        "argument unsupportedSqliteCall path String dbPath",
         "run unsupportedSqliteCall",
-        "bind unsupportedSqliteResult CSignedInt32 unsupportedSqliteCall",
-        "returnValue unsupportedSqliteResult",
-        "",
+        "bind value unsupportedSqliteResult Int32 unsupportedSqliteCall",
+        "return value unsupportedSqliteResult",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "unsupported_sqlite.sscript"
@@ -3774,6 +5775,452 @@ def test_sqlite_codegen_rejects_unsupported_target():
           "unsupported native sqlite call target" in proc.stderr
           and "sqlite.notARealEntryPoint" in proc.stderr,
           proc.stderr)
+
+
+def test_standard_net_fetch_lowers_and_reports_runtime_link_inputs():
+    src = "\n".join([
+        "project StandardNetFetchRuntime",
+        "import net standard.net",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write network.http.client",
+        "memory main heap no",
+        "async main yes",
+        "useCapability main networkHttpClient",
+        "purpose operation main \"exercise prototype standard.net fetch lowering\"",
+        "label start",
+        "storage module immutable exampleUrl Url \"https://example.invalid/\"",
+        "storage module immutable timeoutMillis NetworkTimeoutMilliseconds 3000",
+        "storage module immutable maxBodyBytes ResponseBodyLimitBytes 4096",
+        "storage module immutable redirectLimit HttpRedirectLimit 5",
+        "new fetchRequest HttpGetRequest",
+        "fieldSet fetchRequest url exampleUrl",
+        "fieldSet fetchRequest policy.timeoutMillis timeoutMillis",
+        "fieldSet fetchRequest policy.maxBodyBytes maxBodyBytes",
+        "fieldSet fetchRequest policy.redirectLimit redirectLimit",
+        "call fetchCall net.fetchText",
+        "argument fetchCall request HttpGetRequest fetchRequest",
+        "run fetchCall",
+        "bind ok fetchResponse HttpTextResponse fetchCall",
+        "bind error fetchError HttpClientErrorCode fetchCall",
+        "branch error source fetchCall target fetchFailed",
+        "fieldGet fetchStatus HttpClientStatusCode fetchResponse status",
+        "return value fetchStatus",
+        "label fetchFailed",
+        "return value fetchError",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "net_fetch_runtime.sscript"
+        ir_path = Path(tmpdir) / "net_fetch_runtime.ll"
+        inspect_path = Path(tmpdir) / "net_fetch_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    http_client = components.get("native_http_client", {})
+    source_names = {Path(source).name for source in http_client.get("sources", [])}
+    check("standard.net: fetchText codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("standard.net: fetchText lowers to native HTTP client ABI",
+          "ss_http_client_fetch_text_request_copy" in ir_text,
+          ir_text[:1000])
+    check("standard.net: fetchText reports native_async/http_client link inputs",
+          source_names == {"sem_async_runtime.c", "sem_http_client_runtime.c"}
+          and http_client.get("owner") == "standard.net/runtime",
+          f"component={http_client!r}")
+
+
+def test_standard_event_lowers_through_generic_runtime_bindings():
+    src = "\n".join([
+        "project StandardEventRuntime",
+        "import event standard.event",
+        "entry console main",
+        "storage module immutable streamName EventStreamName \"compiler.test.events\"",
+        "storage module immutable eventName EventTypeName \"compiler.test.created\"",
+        "storage module immutable eventKey EventKey \"test\"",
+        "storage module immutable eventPayload EventPayloadJson \"{}\"",
+        "storage module immutable queueCapacity EventQueueCapacity 8",
+        "storage module immutable queueStreamName EventStreamName \"compiler.test.queue\"",
+        "storage module immutable afterEventId EventId 0",
+        "storage module immutable nullBuffer EventOutputBuffer 0",
+        "storage module immutable nullCapacity EventBufferCapacity 0",
+        "storage module immutable cancellationToken OpaquePointer 0",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main open event.stream",
+        "effect main read event.stream",
+        "effect main write event.stream",
+        "effect main close event.stream",
+        "effect main open event.subscription",
+        "effect main read event.subscription",
+        "effect main write event.subscription",
+        "effect main close event.subscription",
+        "effect main allocate heap",
+        "effect main free heap",
+        "effect main write memory.buffer",
+        "effect main read filesystem",
+        "effect main write filesystem",
+        "memory main heap yes",
+        "async main yes",
+        "authority main open event.stream",
+        "authority main read event.stream",
+        "authority main write event.stream",
+        "authority main close event.stream",
+        "authority main open event.subscription",
+        "authority main read event.subscription",
+        "authority main write event.subscription",
+        "authority main close event.subscription",
+        "authority main allocate heap",
+        "authority main free heap",
+        "authority main write memory.buffer",
+        "authority main read filesystem",
+        "authority main write filesystem",
+        "purpose operation main \"exercise standard.event generic runtimeBinding lowering\"",
+        "label start",
+        "call openCall event.openProcessStream",
+        "argument openCall streamName EventStreamName streamName",
+        "argument openCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout openCall 1000ms",
+        "cancelOn openCall cancellationToken",
+        "start openCall",
+        "await openCall",
+        "bind value stream EventStreamHandle openCall",
+        "call subscribeCall event.subscribeStream",
+        "argument subscribeCall stream EventStreamHandle stream",
+        "argument subscribeCall eventType EventTypeName eventName",
+        "argument subscribeCall eventKey EventKey eventKey",
+        "argument subscribeCall afterEventId EventId afterEventId",
+        "argument subscribeCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout subscribeCall 1000ms",
+        "cancelOn subscribeCall cancellationToken",
+        "start subscribeCall",
+        "await subscribeCall",
+        "bind value subscription EventSubscriptionHandle subscribeCall",
+        "call receiveCall event.receiveEvent",
+        "argument receiveCall subscription EventSubscriptionHandle subscription",
+        "argument receiveCall outEventType EventOutputBuffer nullBuffer",
+        "argument receiveCall outEventTypeCapacity EventBufferCapacity nullCapacity",
+        "argument receiveCall outEventKey EventOutputBuffer nullBuffer",
+        "argument receiveCall outEventKeyCapacity EventBufferCapacity nullCapacity",
+        "argument receiveCall outPayloadJson EventOutputBuffer nullBuffer",
+        "argument receiveCall outPayloadCapacity EventBufferCapacity nullCapacity",
+        "timeout receiveCall 1000ms",
+        "cancelOn receiveCall cancellationToken",
+        "start receiveCall",
+        "call appendCall event.appendEvent",
+        "argument appendCall stream EventStreamHandle stream",
+        "argument appendCall eventType EventTypeName eventName",
+        "argument appendCall eventKey EventKey eventKey",
+        "argument appendCall payloadJson EventPayloadJson eventPayload",
+        "timeout appendCall 1000ms",
+        "cancelOn appendCall cancellationToken",
+        "start appendCall",
+        "await appendCall",
+        "bind value appendedEvent EventId appendCall",
+        "await receiveCall",
+        "bind value receivedEvent EventId receiveCall",
+        "call closeSubscriptionCall event.closeSubscription",
+        "argument closeSubscriptionCall subscription EventSubscriptionHandle subscription",
+        "timeout closeSubscriptionCall 1000ms",
+        "cancelOn closeSubscriptionCall cancellationToken",
+        "start closeSubscriptionCall",
+        "await closeSubscriptionCall",
+        "bind value closeSubscriptionStatus EventStatusCode closeSubscriptionCall",
+        "call closeStreamCall event.closeStream",
+        "argument closeStreamCall stream EventStreamHandle stream",
+        "timeout closeStreamCall 1000ms",
+        "cancelOn closeStreamCall cancellationToken",
+        "start closeStreamCall",
+        "await closeStreamCall",
+        "bind value closeStreamStatus EventStatusCode closeStreamCall",
+        "call openQueueCall event.openProcessQueue",
+        "argument openQueueCall streamName EventStreamName queueStreamName",
+        "argument openQueueCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout openQueueCall 1000ms",
+        "cancelOn openQueueCall cancellationToken",
+        "start openQueueCall",
+        "await openQueueCall",
+        "bind value queueStream EventStreamHandle openQueueCall",
+        "call closeQueueCall event.closeStream",
+        "argument closeQueueCall stream EventStreamHandle queueStream",
+        "timeout closeQueueCall 1000ms",
+        "cancelOn closeQueueCall cancellationToken",
+        "start closeQueueCall",
+        "await closeQueueCall",
+        "bind value closeQueueStatus EventStatusCode closeQueueCall",
+        "call openDurableCall event.openDurableStream",
+        "argument openDurableCall streamName EventStreamName streamName",
+        "argument openDurableCall queueCapacity EventQueueCapacity queueCapacity",
+        "timeout openDurableCall 1000ms",
+        "cancelOn openDurableCall cancellationToken",
+        "start openDurableCall",
+        "await openDurableCall",
+        "bind value durableStream EventStreamHandle openDurableCall",
+        "call closeDurableStreamCall event.closeStream",
+        "argument closeDurableStreamCall stream EventStreamHandle durableStream",
+        "timeout closeDurableStreamCall 1000ms",
+        "cancelOn closeDurableStreamCall cancellationToken",
+        "start closeDurableStreamCall",
+        "await closeDurableStreamCall",
+        "bind value closeDurableStreamStatus EventStatusCode closeDurableStreamCall",
+        "return value receivedEvent",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "event_runtime.sem"
+        ir_path = Path(tmpdir) / "event_runtime.ll"
+        inspect_path = Path(tmpdir) / "event_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    declared_native = components.get("declared_native", {})
+    async_component = components.get("native_async", {})
+    declared_sources = {Path(source).name for source in declared_native.get("sources", [])}
+    check("standard.event: generic runtimeBinding codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    for symbol in (
+        "ss_event_open_process_stream",
+        "ss_event_open_process_stream_start",
+        "ss_event_open_process_stream_await",
+        "ss_event_open_process_queue",
+        "ss_event_open_process_queue_start",
+        "ss_event_open_process_queue_await",
+        "ss_event_open_durable_stream",
+        "ss_event_open_durable_stream_start",
+        "ss_event_open_durable_stream_await",
+        "ss_event_subscribe",
+        "ss_event_subscribe_start",
+        "ss_event_subscribe_await",
+        "ss_event_append",
+        "ss_event_append_start",
+        "ss_event_append_await",
+        "ss_event_receive",
+        "ss_event_receive_start",
+        "ss_event_receive_await",
+        "ss_event_close_subscription",
+        "ss_event_close_subscription_start",
+        "ss_event_close_subscription_await",
+        "ss_event_close_stream",
+        "ss_event_close_stream_start",
+        "ss_event_close_stream_await",
+    ):
+        check(f"standard.event: IR calls {symbol}",
+              symbol in ir_text,
+              f"missing {symbol}")
+    check("standard.event: async start/await uses generic async runtimeBinding ABI",
+          "ss_event_receive_start" in ir_text
+          and "ss_event_receive_await" in ir_text
+          and async_component.get("component") == "native_async",
+          f"async_component={async_component!r}")
+    check("standard.event: native adapter is linked by declared metadata",
+          "sem_event_runtime.c" in declared_sources
+          and declared_native.get("owner") == "standard-library/runtimeBinding",
+          f"declared_native={declared_native!r}")
+
+
+def test_standard_event_runtime_bindings_reject_run_rows():
+    src = "\n".join([
+        "project StandardEventRunRejected",
+        "import event standard.event",
+        "entry console main",
+        "storage module immutable streamName EventStreamName \"compiler.test.events.run\"",
+        "storage module immutable queueCapacity EventQueueCapacity 8",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main open event.stream",
+        "effect main write event.stream",
+        "effect main allocate heap",
+        "memory main heap yes",
+        "async main yes",
+        "authority main open event.stream",
+        "authority main write event.stream",
+        "authority main allocate heap",
+        "purpose operation main \"prove event runtimeBinding operations are async-only from source\"",
+        "call openCall event.openProcessStream",
+        "argument openCall streamName EventStreamName streamName",
+        "argument openCall queueCapacity EventQueueCapacity queueCapacity",
+        "run openCall",
+        "bind value stream EventStreamHandle openCall",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "event_run_rejected.sem"
+        ir_path = Path(tmpdir) / "event_run_rejected.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"), str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+    check("standard.event: run rows are rejected for async-only runtimeBinding ops",
+          proc.returncode != 0 and "async-only runtimeBinding" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_standard_http_shutdown_lowers_through_generic_runtime_binding():
+    src = "\n".join([
+        "project StandardHttpShutdownRuntime",
+        "import http standard.http",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main read http.server",
+        "memory main arena request",
+        "async main no",
+        "authority main read http.server",
+        "purpose operation main \"exercise standard.http shutdown generic runtimeBinding lowering\"",
+        "label start",
+        "call shutdownCall http.serverIsShuttingDown",
+        "run shutdownCall",
+        "bind value shuttingDown Bool shutdownCall",
+        "branch if condition shuttingDown target draining",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+        "label draining",
+        "storage local immutable drainingExit ExitCode 1",
+        "return value drainingExit",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_shutdown_runtime.sem"
+        ir_path = Path(tmpdir) / "http_shutdown_runtime.ll"
+        inspect_path = Path(tmpdir) / "http_shutdown_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    declared_native = components.get("declared_native", {})
+    declared_sources = {Path(source).name for source in declared_native.get("sources", [])}
+    check("standard.http shutdown: generic runtimeBinding codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("standard.http shutdown: IR calls native drain-state ABI",
+          "ss_http_server_is_shutting_down" in ir_text,
+          "missing ss_http_server_is_shutting_down")
+    check("standard.http shutdown: native adapter is linked by declared metadata",
+          "sem_http_runtime.c" in declared_sources
+          and declared_native.get("owner") == "standard-library/runtimeBinding",
+          f"declared_native={declared_native!r}")
+
+
+def test_native_runtime_link_registry_is_unique_and_owned():
+    registry = getattr(semsc, "_NATIVE_RUNTIME_LINK_REGISTRY", ())
+    components = [entry.get("component") for entry in registry]
+    expected = {
+        "native_http",
+        "native_sqlite",
+        "native_json",
+        "native_terminal",
+        "native_bcrypt",
+        "native_gui",
+        "native_http_client",
+    }
+    check("native runtime registry: components are unique",
+          len(components) == len(set(components)),
+          f"components={components!r}")
+    check("native runtime registry: expected components are registered",
+          expected.issubset(set(components)),
+          f"components={components!r}")
+    check("native runtime registry: every executable entry has owner and collector",
+          all(entry.get("owner") and callable(entry.get("collector"))
+              for entry in registry),
+          f"registry={registry!r}")
+
+    source = (COMPILER_DIR / "semsc.py").read_text(encoding="utf-8")
+    duplicate_sensitive_defs = (
+        "_program_uses_bcrypt_runtime",
+        "_native_bcrypt_link_inputs",
+        "_native_runtime_link_inputs",
+    )
+    def_counts = {
+        name: len(re.findall(rf"^def {name}\(", source, re.MULTILINE))
+        for name in duplicate_sensitive_defs
+    }
+    check("native runtime registry: collector definitions are not duplicated",
+          all(count == 1 for count in def_counts.values()),
+          f"duplicate-sensitive defs are {def_counts!r}")
+
+
+def test_stdlib_intrinsic_contracts_have_runtime_status_coverage():
+    registry_components = {
+        entry.get("component")
+        for entry in getattr(semsc, "_NATIVE_RUNTIME_LINK_REGISTRY", ())
+    }
+    expected = {
+        "bcrypt": ("bcrypt.*", "native_bcrypt"),
+        "gui": ("gui.*", "native_gui"),
+        "html": ("html.hydrate.*", None),
+        "http": ("http.*", "native_http"),
+        "json": ("json.*", "native_json"),
+        "net": ("net.fetch*", "native_http_client"),
+        "sqlite": ("sqlite.*", "native_sqlite"),
+    }
+    advertised = set()
+    for main_file in (ROOT / "std").glob("*/main.sem"):
+        text = main_file.read_text(encoding="utf-8")
+        if "compiler-owned" in text or "compiler/runtime-owned" in text:
+            advertised.add(main_file.parent.name)
+    check("stdlib intrinsic status: advertised modules are expected",
+          advertised.issubset(set(expected)),
+          f"advertised={advertised!r}")
+    missing = [
+        module_name for module_name, (_target_family, component) in expected.items()
+        if module_name in advertised
+        and component is not None
+        and component not in registry_components
+    ]
+    check("stdlib intrinsic status: advertised modules have runtime registry rows",
+          not missing,
+          f"missing={missing!r} registry={registry_components!r}")
+    target_mentions = []
+    for module_name, (target_family, _component) in expected.items():
+        if module_name not in advertised:
+            continue
+        text = (ROOT / "std" / module_name / "main.sem").read_text(
+            encoding="utf-8")
+        if target_family not in text:
+            target_mentions.append((module_name, target_family))
+    check("stdlib intrinsic status: modules name their target family",
+          not target_mentions,
+          f"missing target family mentions={target_mentions!r}")
 
 
 def test_sqlite_syntax_sample_runs_end_to_end():
@@ -3879,25 +6326,24 @@ def test_json_codegen_emits_runtime_externs_and_calls():
     would still produce IR that compiles (returning zero everywhere)
     and the AS smoke would silently start asserting against junk."""
     fixture = ROOT / "tests" / "json_runtime_smoke.sscript"
-    source = fixture.read_text(encoding="utf-8")
-    prog = semsc.parse(source)
+    prog = parse_semsc_file_with_imports(fixture)
     cg = semsc.Codegen(prog)
     mod = cg.compile()
     ir_text = str(mod)
     expected_externs = (
-        "ss_json_builder_create",
-        "ss_json_builder_destroy",
-        "ss_json_builder_object_open",
-        "ss_json_builder_object_close",
-        "ss_json_builder_field_int64",
-        "ss_json_builder_field_string",
-        "ss_json_builder_field_bool",
-        "ss_json_builder_field_null",
-        "ss_json_builder_finish",
-        "ss_json_find_int64",
-        "ss_json_find_bool",
-        "ss_json_find_string",
-        "ss_json_has_field",
+        "ss_json_document_create_empty",
+        "ss_json_document_destroy",
+        "ss_json_document_root",
+        "ss_json_set_object_field_int64",
+        "ss_json_set_object_field_string",
+        "ss_json_set_object_field_bool",
+        "ss_json_set_object_field_null",
+        "ss_json_navigate_object_field",
+        "ss_json_cursor_int64",
+        "ss_json_cursor_bool",
+        "ss_json_cursor_is_null",
+        "ss_json_cursor_string",
+        "ss_json_document_serialize",
     )
     for symbol in expected_externs:
         check(f"json lowering: IR declares @{symbol}",
@@ -3910,7 +6356,7 @@ def test_json_codegen_emits_runtime_externs_and_calls():
 
 def test_json_runtime_smoke_runs_end_to_end():
     """End-to-end smoke for the standard.json AS-side surface. Compiles
-    the primary fixture (object + 4 primitive field types + finder
+    the primary fixture (object + 4 primitive field types + cursor
     round-trips) via --emit-exe, runs it, asserts exit 0 and the
     success marker on stdout. Failure here typically means the linker
     didn't pull in sem_json_runtime.c or one of the dispatchers got
@@ -3970,18 +6416,464 @@ def test_json_adversarial_smoke_runs_end_to_end():
               f"stdout={run_proc.stdout!r}")
 
 
+def test_json_body_record_literal_runs_from_constant():
+    source = "\n".join([
+        "project JsonBodyRecordConstant",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title String",
+        "field Payload count Int64",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "storage module immutable payload Payload",
+        "jsonBody payload",
+        "  {\"display_title\":\"ok\",\"count\":7}",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "fieldGet countValue Int64 payload count",
+        "call writeCount console.writeIntegerLine",
+        "argument writeCount value Int64 countValue",
+        "run writeCount",
+        "ignore value source writeCount type Int32",
+        "return value 0",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("jsonBody record e2e: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("jsonBody record e2e: exe exits 0",
+          run_proc.returncode == 0,
+          f"rc={run_proc.returncode} stderr={run_proc.stderr!r}")
+    check("jsonBody record e2e: fieldGet reads typed literal",
+          run_proc.stdout.strip() == "7",
+          f"stdout={run_proc.stdout!r}")
+
+
+def test_json_record_stringify_parse_round_trip_runs_end_to_end():
+    source = "\n".join([
+        "project JsonRecordCodecRoundTrip",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title String",
+        "field Payload count Int64",
+        "field Payload done Bool",
+        "field Payload ratio Float64",
+        "recordFieldJsonName Payload title \"display_title\"",
+        "recordFieldJsonOmitWhen Payload done false",
+        "storage module immutable zero ExitCode 0",
+        "storage module immutable title String \"ok\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap yes",
+        "async main no",
+        "new payload Payload",
+        "fieldSet payload title title",
+        "fieldSet payload count 7",
+        "fieldSet payload done 0",
+        "fieldSet payload ratio 2.5",
+        "call stringifyCall json.stringify.Payload",
+        "argument stringifyCall value Payload payload",
+        "run stringifyCall",
+        "bind ok encoded JsonText stringifyCall",
+        "call writeEncoded console.writeLine",
+        "argument writeEncoded text JsonText encoded",
+        "run writeEncoded",
+        "ignore value source writeEncoded type Int32",
+        "call parseCall json.parse.Payload",
+        "argument parseCall jsonText JsonText encoded",
+        "run parseCall",
+        "bind ok parsed Payload parseCall",
+        "fieldGet parsedTitle String parsed title",
+        "call writeTitle console.writeLine",
+        "argument writeTitle text String parsedTitle",
+        "run writeTitle",
+        "ignore value source writeTitle type Int32",
+        "fieldGet parsedCount Int64 parsed count",
+        "call writeCount console.writeIntegerLine",
+        "argument writeCount value Int64 parsedCount",
+        "run writeCount",
+        "ignore value source writeCount type Int32",
+        "return value zero",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json record codec e2e: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json record codec e2e: exe exits 0",
+          run_proc.returncode == 0,
+          f"rc={run_proc.returncode} stderr={run_proc.stderr!r}")
+    lines = run_proc.stdout.replace("\r\n", "\n").splitlines()
+    encoded = lines[0] if lines else ""
+    check("json record codec e2e: stringify honors JSON names and omit policy",
+          "\"display_title\":\"ok\"" in encoded
+          and "\"count\":7" in encoded
+          and "\"ratio\":2.5" in encoded
+          and "\"done\"" not in encoded,
+          f"stdout={run_proc.stdout!r}")
+    check("json record codec e2e: parse restores fields",
+          len(lines) >= 3 and lines[1] == "ok" and lines[2] == "7",
+          f"stdout={run_proc.stdout!r}")
+
+
+def test_json_record_parse_errors_on_wrong_field_type():
+    source = "\n".join([
+        "project JsonRecordParseWrongType",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title String",
+        "field Payload count Int64",
+        "storage module immutable badJson JsonText \"{\\\"title\\\":\\\"ok\\\",\\\"count\\\":\\\"7\\\"}\"",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap yes",
+        "async main no",
+        "call parseCall json.parse.Payload",
+        "argument parseCall jsonText JsonText badJson",
+        "run parseCall",
+        "bind error parseError JsonDecodeError parseCall",
+        "branch error source parseCall target failed",
+        "return value 0",
+        "label failed",
+        "return value parseError",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json record parse wrong-type: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json record parse wrong-type: bindError is WrongType",
+          run_proc.returncode == 3,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_record_parse_missing_required_maps_error_domain():
+    source = "\n".join([
+        "project JsonRecordParseMissingRequired",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "record Payload",
+        "field Payload title String",
+        "field Payload count Int64",
+        "storage module immutable badJson JsonText \"{\\\"title\\\":\\\"ok\\\"}\"",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap yes",
+        "async main no",
+        "call parseCall json.parse.Payload",
+        "argument parseCall jsonText JsonText badJson",
+        "run parseCall",
+        "bind error parseError JsonDecodeError parseCall",
+        "branch error source parseCall target failed",
+        "return value 0",
+        "label failed",
+        "return value parseError",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json record parse missing-required: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json record parse missing-required: bindError is MissingRequired",
+          run_proc.returncode == 2,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_text_parse_validates_syntax():
+    source = "\n".join([
+        "project JsonTextParseValidation",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable badJson JsonText \"{\\\"x\\\":}\"",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap yes",
+        "async main no",
+        "call parseCall json.parse.JsonText",
+        "argument parseCall jsonText JsonText badJson",
+        "run parseCall",
+        "bind error parseError JsonDecodeError parseCall",
+        "branch error source parseCall target failed",
+        "return value 0",
+        "label failed",
+        "return value parseError",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json text parse validation: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json text parse validation: invalid JSON is UnexpectedToken",
+          run_proc.returncode == 1,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_text_stringify_oversize_maps_encode_error_domain():
+    oversized_json_text = "a" * 70000
+    source = "\n".join([
+        "project JsonTextStringifyOversize",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        f"storage module immutable huge JsonText \"{oversized_json_text}\"",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap yes",
+        "async main no",
+        "call stringifyCall json.stringify.JsonText",
+        "argument stringifyCall value JsonText huge",
+        "run stringifyCall",
+        "bind error encodeError JsonEncodeError stringifyCall",
+        "branch error source stringifyCall target failed",
+        "return value 0",
+        "label failed",
+        "return value encodeError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json text stringify oversize: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json text stringify oversize: bindError is OutputBufferTooSmall",
+          run_proc.returncode == 3,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_string_stringify_escapes_in_native_runtime():
+    source = "\n".join([
+        "project JsonStringStringifyEscapes",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable payload String \"quote\\\"slash\\\\tab\\t\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "call stringifyCall json.stringify.String",
+        "argument stringifyCall value String payload",
+        "run stringifyCall",
+        "bind ok encoded JsonText stringifyCall",
+        "call writeEncoded console.writeLine",
+        "argument writeEncoded text JsonText encoded",
+        "run writeEncoded",
+        "ignore value source writeEncoded type Int32",
+        "return value 0",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json stringify string escapes: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json stringify string escapes: runtime emits escaped JSON string",
+          run_proc.returncode == 0
+          and run_proc.stdout == "\"quote\\\"slash\\\\tab\\t\"\n",
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_numeric_bool_stringify_uses_native_runtime_helpers():
+    source = "\n".join([
+        "project JsonPrimitiveStringifyRuntime",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable answer Int64 42",
+        "storage module immutable enabled Bool 1",
+        "storage module immutable ratio Float64 1.25",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "call stringifyIntCall json.stringify.Int64",
+        "argument stringifyIntCall value Int64 answer",
+        "run stringifyIntCall",
+        "bind ok encodedInt JsonText stringifyIntCall",
+        "call writeInt console.writeLine",
+        "argument writeInt text JsonText encodedInt",
+        "run writeInt",
+        "ignore value source writeInt type Int32",
+        "call stringifyBoolCall json.stringify.Bool",
+        "argument stringifyBoolCall value Bool enabled",
+        "run stringifyBoolCall",
+        "bind ok encodedBool JsonText stringifyBoolCall",
+        "call writeBool console.writeLine",
+        "argument writeBool text JsonText encodedBool",
+        "run writeBool",
+        "ignore value source writeBool type Int32",
+        "call stringifyFloatCall json.stringify.Float64",
+        "argument stringifyFloatCall value Float64 ratio",
+        "run stringifyFloatCall",
+        "bind ok encodedFloat JsonText stringifyFloatCall",
+        "call writeFloat console.writeLine",
+        "argument writeFloat text JsonText encodedFloat",
+        "run writeFloat",
+        "ignore value source writeFloat type Int32",
+        "return value 0",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json primitive stringify runtime helpers: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json primitive stringify runtime helpers: runtime output is JSON",
+          run_proc.returncode == 0
+          and run_proc.stdout == "42\ntrue\n1.25\n",
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_parse_primitive_rejects_malformed_and_trailing_junk():
+    source = "\n".join([
+        "project JsonPrimitiveParseRejectsMalformed",
+        "import json standard.json",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable badInt String \"12x\"",
+        "storage module immutable badBool String \"true false\"",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "call parseIntCall json.parse.Int64",
+        "argument parseIntCall jsonText String badInt",
+        "run parseIntCall",
+        "bind error intError JsonDecodeError parseIntCall",
+        "branch error source parseIntCall target intFailed",
+        "return value 90",
+        "label intFailed",
+        "call parseBoolCall json.parse.Bool",
+        "argument parseBoolCall jsonText String badBool",
+        "run parseBoolCall",
+        "bind error boolError JsonDecodeError parseBoolCall",
+        "branch error source parseBoolCall target boolFailed",
+        "return value 91",
+        "label boolFailed",
+        "return value boolError",
+        "",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(source)
+    check("json parse primitive rejects malformed: compile-and-link succeeds",
+          compile_proc.returncode == 0,
+          f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+    if run_proc is None:
+        return
+    check("json parse primitive rejects malformed: bindError is UnexpectedToken",
+          run_proc.returncode == 1,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_json_parse_primitive_rejects_documented_negative_cases():
+    def _quoted_sem_string(text):
+        return (text
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t"))
+
+    cases = [
+        ("Int64", ""),
+        ("Int64", "abc"),
+        ("Int64", "1x"),
+        ("Int64", "1.5"),
+        ("Int64", "true"),
+        ("Int64", "null"),
+        ("Int64", "92233720368547758070"),
+        ("Bool", "falsex"),
+        ("Bool", "0"),
+        ("Bool", "TRUE"),
+        ("Bool", "null"),
+        ("Bool", ""),
+        ("Float64", ""),
+        ("Float64", "abc"),
+        ("Float64", "1x"),
+        ("Float64", "1.2.3"),
+        ("Float64", "null"),
+    ]
+    for type_name, json_text in cases:
+        safe_name = re.sub(r"[^A-Za-z0-9]", "_", json_text) or "empty"
+        source = "\n".join([
+            f"project JsonParseRejects_{type_name}_{safe_name}",
+            "import json standard.json",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            f"storage module immutable sample String \"{_quoted_sem_string(json_text)}\"",
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap no",
+            "async main no",
+            f"call parseCall json.parse.{type_name}",
+            "argument parseCall jsonText String sample",
+            "run parseCall",
+            "bind error parseError JsonDecodeError parseCall",
+            "branch error source parseCall target failed",
+            "return value 90",
+            "label failed",
+            "return value parseError",
+            "",
+        ])
+        compile_proc, run_proc = compile_and_run_semsc_source(source)
+        check(f"json parse {type_name} rejects {json_text!r}: compile-and-link succeeds",
+              compile_proc.returncode == 0,
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if run_proc is None:
+            continue
+        check(f"json parse {type_name} rejects {json_text!r}: UnexpectedToken",
+              run_proc.returncode == 1,
+              f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
 def test_backend_diagnostic_maps_symbol_to_source_call():
     src = "\n".join([
         "project BackendDiagnostic",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
         "call loadJsonCall c.fscanf",
-        "returnValue 0",
-        "",
+        "return value 0",
     ])
     prog = semsc.parse(src)
     prog.source_path = "backend_bad.sscript"
@@ -4003,6 +6895,33 @@ def test_backend_diagnostic_maps_symbol_to_source_call():
           and diag.primary.line == 8
           and "call loadJsonCall c.fscanf" in rendered,
           rendered)
+
+
+def test_policy_runtime_binding_is_compile_blocking():
+    src = "\n".join([
+        "project RuntimeBindingPolicyBoundary",
+        "entry console main",
+        "operation delayForAttempt",
+        "input operation delayForAttempt policy RetryPolicy",
+        "input operation delayForAttempt attemptIndex Int64",
+        "output operation delayForAttempt Result DurationMilliseconds Void",
+        "memory delayForAttempt heap no",
+        "async delayForAttempt no",
+        "operationBody delayForAttempt runtimeBinding",
+        "runtimeBinding delayForAttempt retryPolicy.delayForAttempt",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    proc = run_semsc_source(src, "--emit-ir")
+    output = proc.stdout + proc.stderr
+    check("runtimeBinding policy target is compile-blocking",
+          proc.returncode != 0
+          and "unsupported non-ABI runtimeBinding `retryPolicy.delayForAttempt`" in output
+          and "operation `delayForAttempt`" in output,
+          output)
 
 
 def test_runtime_check_resolution_profiles():
@@ -4028,19 +6947,18 @@ def test_runtime_profiles_control_panic_context():
         "project RuntimePanicDiagnostic",
         "entry console main",
         "operation main",
-        "output main ExitCode",
+        "output operation main ExitCode",
         "memory main heap no",
         "async main no",
         "label start",
-        "const numeratorValue CSignedInt64 7",
-        "const zeroDivisor CSignedInt64 0",
-        "call divideByZeroCall math.divideI64",
-        "arg divideByZeroCall left numeratorValue",
-        "arg divideByZeroCall right zeroDivisor",
+        "storage module immutable numeratorValue Int64 7",
+        "storage module immutable zeroDivisor Int64 0",
+        "call divideByZeroCall math.divideInt64",
+        "argument divideByZeroCall left Int64 numeratorValue",
+        "argument divideByZeroCall right Int64 zeroDivisor",
         "run divideByZeroCall",
-        "bind quotientValue CSignedInt64 divideByZeroCall",
-        "returnValue quotientValue",
-        "",
+        "bind value quotientValue Int64 divideByZeroCall",
+        "return value quotientValue",
     ])
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / "runtime_panic.sscript"
@@ -4070,9 +6988,9 @@ def test_runtime_profiles_control_panic_context():
               f"rc={dev_run.returncode} output={dev_output!r}")
         check("runtime profile: dev output names source row by default",
               "error SSRUN001: SemanticScript runtime panic" in dev_output
-              and "call: divideByZeroCall -> math.divideI64" in dev_output
-              and "10 | call divideByZeroCall math.divideI64" in dev_output
-              and "reason: zero divisor before math.divideI64" in dev_output
+              and "call: divideByZeroCall -> math.divideInt64" in dev_output
+              and "10 | call divideByZeroCall math.divideInt64" in dev_output
+              and "reason: zero divisor before math.divideInt64" in dev_output
               and "--build-profile prod" not in dev_output
               and "--runtime-checks off" not in dev_output,
               dev_output)
@@ -4103,167 +7021,6 @@ def test_runtime_profiles_control_panic_context():
 
 
 # ============================================================
-# Bootstrap chain validation
-# ============================================================
-
-def _ensure_built(stage_basename):
-    src = BOOTSTRAP_DIR / f"{stage_basename}.sscript"
-    exe = BOOTSTRAP_DIR / f"{stage_basename}.exe"
-    if exe.exists() and exe.stat().st_mtime >= src.stat().st_mtime:
-        return exe
-    proc = subprocess.run(
-        [sys.executable, str(COMPILER_DIR / "semsc.py"),
-         str(src), "--emit-exe", str(exe), "--quiet"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"failed to build {stage_basename}.exe\nSTDERR:\n{proc.stderr}")
-    return exe
-
-
-def _emit_ir(stage_exe):
-    proc = subprocess.run([str(stage_exe)], capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"{stage_exe.name} exited {proc.returncode}\nSTDERR:\n{proc.stderr}")
-    return proc.stdout
-
-
-def test_bootstrap3_emits_constant_return_ir():
-    exe = _ensure_built("bootstrap3")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input3.sscript").read_text(encoding="utf-8")
-    expected = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap3: IR contains 'define i32 @main()'",
-          "define i32 @main()" in ir_text,
-          f"IR was:\n{ir_text}")
-    check("bootstrap3: IR returns the parsed ExitCode literal",
-          f"ret i32 {expected}" in ir_text,
-          f"expected ret i32 {expected}, IR:\n{ir_text}")
-
-
-def test_bootstrap4_emits_greeting_and_exit():
-    exe = _ensure_built("bootstrap4")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input4.sscript").read_text(encoding="utf-8")
-    marker = 'CNullTerminatedByteString "'
-    idx = input_text.find(marker)
-    g_start = idx + len(marker)
-    g_end = input_text.index('"', g_start)
-    expected_greeting = input_text[g_start:g_end]
-    expected_exit = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap4: IR contains greeting bytes",
-          expected_greeting in ir_text,
-          f"greeting {expected_greeting!r} not in IR")
-    check("bootstrap4: IR returns parsed ExitCode",
-          f"ret i32 {expected_exit}" in ir_text,
-          f"expected ret i32 {expected_exit}")
-    check("bootstrap4: IR declares puts",
-          "declare i32 @puts(i8*)" in ir_text,
-          "no puts declaration in IR")
-
-
-def test_bootstrap_general_real_dispatch():
-    """bootstrap_general.sscript compiles a wide subset of sem/ via REAL
-    per-line verb dispatch + escape-aware byte walker. We don't pattern-
-    match the IR text (it uses `\\XX` hex escapes now); instead we link
-    the IR with clang and diff the exe's stdout against the JS oracle."""
-    import shutil
-    exe = _ensure_built("bootstrap_general")
-    clang = (os.environ.get("SEMSC_CLANG")
-             or shutil.which("clang")
-             or r"C:/Program Files/LLVM/bin/clang.exe")
-    if not Path(clang).exists():
-        check("bootstrap_general: clang available", False,
-              f"clang not found at {clang}")
-        return
-    import tempfile
-    work = Path(tempfile.gettempdir()) / "semsc_general_tests"
-    work.mkdir(exist_ok=True)
-    PROJECT_ROOT = BOOTSTRAP_DIR.parent.parent
-    pairs = [
-        ("hello.sscript", "hello.js"),
-        ("hello_world.sscript", "hello-world.js"),
-        ("hello_via_helper.sscript", "hello.js"),
-        ("inventory_manager.sscript", "inventory-manager.js"),
-        ("counterintuitive_closure_capture.sscript", "counterintuitive-closure-capture.js"),
-        ("file_inventory.sscript", "file-inventory.js"),
-        ("json_order_summary.sscript", "json-order-summary.js"),
-    ]
-    for sem_basename, js_basename in pairs:
-        env = dict(os.environ)
-        sem_path = BOOTSTRAP_DIR.parent / "sem" / sem_basename
-        env["SEMANTIC_SCRIPT_INPUT"] = str(sem_path)
-        proc = subprocess.run([str(exe)], env=env,
-                              capture_output=True, text=True, timeout=15)
-        ll = work / (sem_basename.replace(".sscript", ".ll"))
-        ll.write_text(proc.stdout, encoding="utf-8", newline="\n")
-        out_exe = work / (sem_basename.replace(".sscript", ".exe"))
-        link = subprocess.run([clang, "-O2", "-o", str(out_exe), str(ll)],
-                              capture_output=True, text=True)
-        check(f"bootstrap_general: {sem_basename} produces linkable IR",
-              link.returncode == 0,
-              f"clang failure: {link.stderr.strip()[:200]}")
-        if link.returncode != 0:
-            continue
-        run = subprocess.run([str(out_exe)],
-                             capture_output=True, text=True, timeout=15)
-        oracle = subprocess.run(
-            ["node", str(PROJECT_ROOT / "samples" / "javascript" / js_basename)],
-            capture_output=True, text=True, timeout=15)
-        sem_out = run.stdout.replace("\r\n", "\n").rstrip("\n")
-        js_out = oracle.stdout.replace("\r\n", "\n").rstrip("\n")
-        check(f"bootstrap_general: {sem_basename} stdout matches JS oracle",
-              sem_out == js_out,
-              f"SEM={sem_out[:80]!r}  JS={js_out[:80]!r}")
-
-
-def test_bootstrap6_scales_with_input():
-    exe = _ensure_built("bootstrap6")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input6.sscript").read_text(encoding="utf-8")
-    greetings = re.findall(r'CNullTerminatedByteString "([^"]*)"', input_text)
-    n = len(greetings)
-    check("bootstrap6: emits one @.s<i> constant per input greeting",
-          all(f"@.s{i}" in ir_text for i in range(n)),
-          f"missing @.s<i> for some i in 0..{n-1}")
-    check("bootstrap6: emits one @print<i> helper per input greeting",
-          all(f"@print{i}()" in ir_text for i in range(n)),
-          f"missing @print<i> for some i in 0..{n-1}")
-    check("bootstrap6: main calls every helper in order",
-          all(f"call void @print{i}()" in ir_text for i in range(n)),
-          "main is missing one or more @print<i> calls")
-    expected_exit = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap6: ret i32 matches parsed ExitCode",
-          f"ret i32 {expected_exit}" in ir_text,
-          "ret i32 doesn't match parsed ExitCode")
-
-
-def test_bootstrap5_emits_countdown_loop():
-    exe = _ensure_built("bootstrap5")
-    ir_text = _emit_ir(exe)
-    input_text = (BOOTSTRAP_DIR / "input5.sscript").read_text(encoding="utf-8")
-    expected_start = int(re.search(r"CountdownValue (\d+)", input_text).group(1))
-    expected_exit = int(re.search(r"ExitCode (\d+)", input_text).group(1))
-    check("bootstrap5: IR contains loopHead label",
-          "loopHead:" in ir_text,
-          "no loopHead label")
-    check("bootstrap5: IR contains loopBody label",
-          "loopBody:" in ir_text,
-          "no loopBody label")
-    check("bootstrap5: IR contains loopExit label",
-          "loopExit:" in ir_text,
-          "no loopExit label")
-    check("bootstrap5: IR stores parsed start value",
-          f"store i64 {expected_start}, i64* %counter" in ir_text,
-          f"no store of {expected_start}")
-    check("bootstrap5: IR returns parsed ExitCode",
-          f"ret i32 {expected_exit}" in ir_text,
-          f"no ret i32 {expected_exit}")
-
-
-# ============================================================
 # Driver
 # ============================================================
 
@@ -4272,23 +7029,33 @@ def main():
     print("=" * 60)
     test_tokenizer()
     test_parser_minimal()
+    test_parser_syntax_cutover_rows()
+    test_parser_stdlib_surfaces_require_explicit_imports()
+    test_stdlib_json_contract_matches_native_runtime_constants()
+    test_stdlib_sqlite_contract_matches_native_runtime_constants()
+    test_compile_new_syntax_rows_to_ir()
     test_parser_syntax_error_has_line()
     test_parser_module_namespace_contract()
     test_parser_language_mode_strict_executable()
     test_build_registry_imports_registered_module()
+    test_imported_module_external_literal_uses_origin_path()
     test_build_registry_qualified_import_call_lowers()
     test_build_registry_singular_import_call_lowers()
     test_build_registry_missing_source_is_error()
+    test_build_registry_rejects_duplicate_imported_operation_names()
     test_strict_rejects_missing_output_contract()
     test_strict_rejects_unknown_output_contract_type()
     test_strict_requires_effect_capability_or_authority()
     test_strict_web_contracts_reject_invalid_route_method()
     test_strict_web_contracts_accept_lowercase_route_method()
+    test_strict_web_contracts_accept_route_fallback_handlers()
+    test_native_http_rejects_invalid_parameter_route_patterns_at_startup()
     test_strict_executable_mode_rejects_http_contracts_without_lint_flag()
     test_strict_web_contracts_reject_middleware_i32_output()
     test_strict_web_contracts_reject_handler_input_name_mismatch()
     test_strict_web_contracts_reject_missing_response_forwarder()
     test_strict_web_contracts_reject_wrong_response_forwarder()
+    test_strict_web_contracts_reject_app_specific_response_helper_without_forwarder()
     test_strict_web_contracts_reject_nullable_header_response_body()
     test_strict_web_contracts_accept_valid_route_middleware_and_forwarder()
     test_strict_rejects_plain_run_for_fallible_heap_allocation()
@@ -4304,12 +7071,34 @@ def main():
     test_strict_executable_accepts_sqlite_open_setup_failure_close()
     test_strict_executable_rejects_sqlite_prepare_without_finalize()
     test_strict_executable_accepts_sqlite_prepare_finalize_defer()
+    test_strict_executable_rejects_legacy_sql_string_literal()
+    test_strict_executable_rejects_inline_sql_text_literal()
+    test_strict_executable_rejects_redundant_sql_case_branches()
+    test_strict_executable_rejects_wide_sql_existence_probe()
+    test_strict_executable_rejects_sql_write_then_read_round_trip()
+    test_strict_executable_rejects_multiple_sql_writes_without_transaction()
+    test_strict_executable_rejects_returning_commit_without_drain()
+    test_strict_executable_accepts_returning_commit_after_drain()
+    test_strict_executable_rejects_sql_last_insert_rowid()
+    test_strict_executable_rejects_native_last_insert_rowid()
+    test_strict_executable_accepts_returning_generated_id()
+    test_strict_executable_rejects_uncached_getenv_in_helper()
+    test_strict_executable_rejects_repeated_request_time_read()
+    test_strict_executable_accepts_single_request_time_read()
+    test_strict_executable_rejects_idempotency_replay_body_classification()
+    test_strict_executable_accepts_idempotency_replay_status_branch()
+    test_strict_executable_rejects_large_local_static_literal()
+    test_strict_executable_rejects_unreachable_operation_rows()
     test_compile_hello_world_to_ir()
     test_compile_i32_comparison_to_i32_ir()
     test_compile_rejects_implicit_i32_to_i64_math()
     test_compile_explicit_i32_to_i64_conversion_lowers_to_sext()
     test_compile_pointer_load_byte_sign_extends_to_i32()
     test_html_template_parser_records_body_and_rejects_bad_edges()
+    test_json_body_parser_records_text_and_record_metadata()
+    test_json_body_record_literal_type_checks_and_records_constant()
+    test_sql_body_parser_records_metadata_and_rejects_dynamic_holes()
+    test_sql_body_usage_checks_prepare_and_exec_shapes()
     test_html_template_simple_jit_output()
     test_html_template_edge_output_repeated_adjacent_and_blank_lines()
     test_html_template_raw_style_and_script_do_not_hydrate_braces()
@@ -4320,7 +7109,7 @@ def main():
     test_standard_import_std_path_override_wins_outside_repo()
     test_html_template_long_dynamic_arg_is_bounded_and_terminated()
     test_html_template_complex_modules_jit_and_aot_output()
-    test_html_console_demo_runs_from_registered_modules()
+    test_html_template_lab_runs_from_registered_modules()
     test_html_template_codegen_rejects_bad_hydration_edges()
     test_cli_accepts_sem_alias()
     test_success_message_renderer()
@@ -4344,10 +7133,10 @@ def main():
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_validation_accepts_dependency_fetch_rows()
     test_build_tape_validation_rejects_insecure_dependency_fetch()
-    test_hello_gui_sample_uses_refined_gui_surface()
-    test_hello_gui_parser_contract_when_supported()
-    test_hello_gui_build_tape_contract_when_supported()
-    test_hello_gui_codegen_contract_when_supported()
+    test_desktop_window_smoke_sample_uses_refined_gui_surface()
+    test_desktop_window_smoke_parser_contract_when_supported()
+    test_desktop_window_smoke_build_tape_contract_when_supported()
+    test_desktop_window_smoke_codegen_contract_when_supported()
     test_build_tape_llvm_flags_drive_outputs()
     test_cpu_build_config_defaults_to_portable_generic()
     test_cpu_build_config_collects_feature_overrides()
@@ -4355,21 +7144,36 @@ def main():
     test_sem_build_driver_discovers_build_tape()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
+    test_web_codegen_response_html_sets_fixed_content_type()
+    test_webserver_hydrated_html_response_headers_escaping_and_failure()
+    test_webserver_standard_http_sse_stream_wrappers()
+    test_webserver_module_state_persists_across_sequential_requests()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
     test_sqlite_codegen_rejects_unsupported_target()
+    test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()
+    test_standard_event_lowers_through_generic_runtime_bindings()
+    test_standard_http_shutdown_lowers_through_generic_runtime_binding()
+    test_native_runtime_link_registry_is_unique_and_owned()
+    test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
     test_sqlite_syntax_sample_runs_end_to_end()
     test_json_runtime_health_demo_runs_clean()
     test_json_codegen_emits_runtime_externs_and_calls()
     test_json_runtime_smoke_runs_end_to_end()
     test_json_adversarial_smoke_runs_end_to_end()
+    test_json_body_record_literal_runs_from_constant()
+    test_json_record_stringify_parse_round_trip_runs_end_to_end()
+    test_json_record_parse_errors_on_wrong_field_type()
+    test_json_record_parse_missing_required_maps_error_domain()
+    test_json_text_parse_validates_syntax()
+    test_json_text_stringify_oversize_maps_encode_error_domain()
+    test_json_string_stringify_escapes_in_native_runtime()
+    test_json_numeric_bool_stringify_uses_native_runtime_helpers()
+    test_json_parse_primitive_rejects_malformed_and_trailing_junk()
+    test_json_parse_primitive_rejects_documented_negative_cases()
     test_backend_diagnostic_maps_symbol_to_source_call()
+    test_policy_runtime_binding_is_compile_blocking()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
-    test_bootstrap3_emits_constant_return_ir()
-    test_bootstrap4_emits_greeting_and_exit()
-    test_bootstrap5_emits_countdown_loop()
-    test_bootstrap6_scales_with_input()
-    test_bootstrap_general_real_dispatch()
 
     print("=" * 60)
     if FAILURES:

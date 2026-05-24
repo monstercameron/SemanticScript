@@ -1,0 +1,135 @@
+module experiment.realtime_auction_arena.win32_auctioneer.view_model
+purpose module experiment.realtime_auction_arena.win32_auctioneer.view_model "Operator-console view state, display rows, and formatting records for auction snapshots, audit events, rejected bids, and chat moderation."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.view_model "Client-side UI state shape and placeholder rows rendered by the Win32 scaffold."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.view_model "Server event ordering, JSON parsing implementation, or native GUI list virtualization."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.view_model "The view model keeps server-derived display text separate from control creation so polling/SSE can update the same lists later."
+
+type AuctionId String
+type AuctionStatus String
+type ItemName String
+type UserId String
+type DisplayText String
+type EventKind String
+type RejectedBidReason String
+type ChatMessageId String
+type AccessJwt String
+type ApiBaseUrl String
+
+record AuctionSnapshotView
+field AuctionSnapshotView auctionId AuctionId
+field AuctionSnapshotView status AuctionStatus
+field AuctionSnapshotView itemName ItemName
+field AuctionSnapshotView currentBidMinor Int64
+field AuctionSnapshotView minimumIncrementMinor Int64
+field AuctionSnapshotView connectedClients Int64
+field AuctionSnapshotView currentWinnerUserId UserId
+field AuctionSnapshotView endsAtMillis Int64
+field AuctionSnapshotView revision Int64
+field AuctionSnapshotView summary DisplayText
+
+record AuditEventRow
+field AuditEventRow eventId String
+field AuditEventRow sequence Int64
+field AuditEventRow kind EventKind
+field AuditEventRow actorUserId UserId
+field AuditEventRow summary DisplayText
+
+record RejectedBidRow
+field RejectedBidRow bidId String
+field RejectedBidRow bidderUserId UserId
+field RejectedBidRow amountMinor Int64
+field RejectedBidRow reason RejectedBidReason
+field RejectedBidRow summary DisplayText
+
+record ChatModerationRow
+field ChatModerationRow messageId ChatMessageId
+field ChatModerationRow senderUserId UserId
+field ChatModerationRow messageText DisplayText
+field ChatModerationRow reportCount Int64
+field ChatModerationRow summary DisplayText
+
+record AuctioneerViewModel
+field AuctioneerViewModel baseUrl ApiBaseUrl
+field AuctioneerViewModel auctionId AuctionId
+field AuctioneerViewModel accessToken AccessJwt
+field AuctioneerViewModel statusLine DisplayText
+field AuctioneerViewModel snapshot AuctionSnapshotView
+field AuctioneerViewModel selectedChatMessageId ChatMessageId
+field AuctioneerViewModel lastError DisplayText
+field AuctioneerViewModel pollingEnabled Bool
+
+storage module immutable emptyDisplayText DisplayText ""
+storage module immutable emptyAuctionId AuctionId ""
+storage module immutable emptyStatus AuctionStatus "unknown"
+storage module immutable emptyItemName ItemName ""
+storage module immutable emptyUserId UserId ""
+storage module immutable emptyChatMessageId ChatMessageId ""
+storage module immutable emptyAccessJwt AccessJwt ""
+storage module immutable defaultBaseUrl ApiBaseUrl "http://127.0.0.1:18090"
+storage module immutable initialStatusLine DisplayText "Not connected"
+storage module immutable runtimeGapLine DisplayText "Runtime gap: authenticated POST, bearer headers, background polling, and SSE are not available from the current Win32 GUI surface."
+storage module immutable initialEventRowText DisplayText "Audit events will appear here after polling is wired."
+storage module immutable initialRejectedBidRowText DisplayText "Rejected bids will appear here after snapshot/event parsing is wired."
+storage module immutable initialChatRowText DisplayText "Reported chat messages will appear here after moderation routes are wired."
+
+operation emptySnapshotView
+output operation emptySnapshotView AuctionSnapshotView
+memory emptySnapshotView heap no
+async emptySnapshotView no
+purpose operation emptySnapshotView "Return the initial empty auction snapshot shown before the first successful poll."
+
+new snapshot AuctionSnapshotView
+fieldSet snapshot auctionId emptyAuctionId
+fieldSet snapshot status emptyStatus
+fieldSet snapshot itemName emptyItemName
+fieldSet snapshot currentBidMinor 0
+fieldSet snapshot minimumIncrementMinor 0
+fieldSet snapshot connectedClients 0
+fieldSet snapshot currentWinnerUserId emptyUserId
+fieldSet snapshot endsAtMillis 0
+fieldSet snapshot revision 0
+fieldSet snapshot summary initialStatusLine
+return value snapshot
+
+operation initialViewModel
+output operation initialViewModel AuctioneerViewModel
+memory initialViewModel heap yes
+async initialViewModel no
+purpose operation initialViewModel "Build the initial view model for the Win32 console."
+
+call snapshotCall emptySnapshotView
+run snapshotCall
+bind value snapshot AuctionSnapshotView snapshotCall
+new model AuctioneerViewModel
+fieldSet model baseUrl defaultBaseUrl
+fieldSet model auctionId emptyAuctionId
+fieldSet model accessToken emptyAccessJwt
+fieldSet model statusLine initialStatusLine
+fieldSet model snapshot snapshot
+fieldSet model selectedChatMessageId emptyChatMessageId
+fieldSet model lastError emptyDisplayText
+fieldSet model pollingEnabled false
+return value model
+
+operation runtimeGapViewModel
+input operation runtimeGapViewModel current AuctioneerViewModel
+output operation runtimeGapViewModel AuctioneerViewModel
+memory runtimeGapViewModel heap no
+async runtimeGapViewModel no
+purpose operation runtimeGapViewModel "Return a copy-shaped model carrying the current runtime-gap status line."
+
+fieldGet baseUrl ApiBaseUrl current baseUrl
+fieldGet auctionId AuctionId current auctionId
+fieldGet accessToken AccessJwt current accessToken
+fieldGet snapshot AuctionSnapshotView current snapshot
+fieldGet selectedChatMessageId ChatMessageId current selectedChatMessageId
+new model AuctioneerViewModel
+fieldSet model baseUrl baseUrl
+fieldSet model auctionId auctionId
+fieldSet model accessToken accessToken
+fieldSet model statusLine runtimeGapLine
+fieldSet model snapshot snapshot
+fieldSet model selectedChatMessageId selectedChatMessageId
+fieldSet model lastError runtimeGapLine
+fieldSet model pollingEnabled false
+return value model

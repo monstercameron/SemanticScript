@@ -1,784 +1,795 @@
 # SemanticScript standard-library canonical module: standard.math.
 
 module standard.math
-modulePurpose standard.math "Canonical standard-library module for integer math helpers."
+purpose module standard.math "Canonical standard-library module for integer math helpers."
 moduleOwns standard.math "The official import path `standard.math` and this module's implementation body."
 moduleDoesNotOwn standard.math "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.math "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.math "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.math mathModuleVersionText
-storage module immutable mathModuleVersionText CNullTerminatedByteString "standard.math 0.1"
+storage module immutable mathModuleVersionText String "standard.math 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: integer math helpers
 # ============================================================
 #
-# # rationale: pure-SemanticScript integer math â€” sqrt, factorial, primality,
+# rationale: pure-SemanticScript integer math â€” sqrt, factorial, primality,
 #   power-of-two tests, bit counts. Every operation lowers to math.*
 #   primitives plus branching; no libc math.h dependency.
 #
-# # invariant: every operation is total over its declared CSignedInt64
+# invariant: every operation is total over its declared Int64
 #   domain. Predicates (isSignedInt64Prime / IsPowerOfTwo / IsEven /
 #   IsOdd / IsWithinInclusiveRange) return Bool directly â€” no more
-#   round-trips through "0 or 1 in a CSignedInt32".
+#   round-trips through "0 or 1 in a Int32".
 #
-# # security: pure value-level computation. No I/O. No allocation.
+# security: pure value-level computation. No I/O. No allocation.
 #
-# # timing: integerSquareRoot is O(log n) (Newton iterations);
+# timing: integerSquareRoot is O(log n) (Newton iterations);
 #   factorial is O(n); isSignedInt64Prime is O(sqrt(n)); bit counts
 #   are O(64) â€” acceptable for tooling, not for hot loops.
 #
-# # observability: no logs; consumers wrap when needed.
-
+# observability: no logs; consumers wrap when needed.
 
 # Pure-module file: smoke + extended tests live in
 # std/math/main.test.sem.
 
-
-
 operation integerSquareRootSignedInt64
-input integerSquareRootSignedInt64 inputValue CSignedInt64
-output integerSquareRootSignedInt64 CSignedInt64
-memoryHeap integerSquareRootSignedInt64 no
-memoryStackLimit integerSquareRootSignedInt64 1024
+input operation integerSquareRootSignedInt64 inputValue Int64
+output operation integerSquareRootSignedInt64 Int64
+memory integerSquareRootSignedInt64 heap no
+memory integerSquareRootSignedInt64 stack max 1024
 async integerSquareRootSignedInt64 no
-purpose integerSquareRootSignedInt64 "Returns floor(sqrt(inputValue)) for inputValue >= 0 via Newton iteration; returns 0 for inputValue <= 0."
-invariant integerSquareRootSignedInt64 "For n >= 0, result*result <= n < (result+1)*(result+1)."
+purpose operation integerSquareRootSignedInt64 "Returns floor(sqrt(inputValue)) for inputValue >= 0 via Newton iteration; returns 0 for inputValue <= 0."
+invariant operation integerSquareRootSignedInt64 "For n >= 0, result*result <= n < (result+1)*(result+1)."
 guarantee integerSquareRootSignedInt64 "Total."
 
 label startIntegerSquareRootSignedInt64
-const zeroI64 I64 0
-const twoI64 I64 2
+storage module immutable zeroInt64 Int64 0
+storage module immutable twoInt64 Int64 2
 
 # n <= 0 -> 0
-call leZeroCall math.lessThanOrEqualI64
-arg leZeroCall left inputValue
-arg leZeroCall right zeroI64
+call leZeroCall math.lessThanOrEqualInt64
+argument leZeroCall left Int64 inputValue
+argument leZeroCall right Int64 zeroInt64
 run leZeroCall
-bind leZero Bool leZeroCall
-branchIf leZero intSqrtZero
+bind value leZero Bool leZeroCall
+branch if condition leZero target intSqrtZero
 
 # Initial guess: n itself.
-var guess I64 0
-set guess inputValue
+memory integerSquareRootSignedInt64 mutable guess Int64 0
+set memory guess inputValue
 
 label sqrtLoop
 # next = (guess + n/guess) / 2
-call divCall math.divideI64
-arg divCall left inputValue
-arg divCall right guess
+call divCall math.divideInt64
+argument divCall left Int64 inputValue
+argument divCall right Int64 guess
 run divCall
-bind quot I64 divCall
+bind value quot Int64 divCall
 
-call sumCall math.addI64
-arg sumCall left guess
-arg sumCall right quot
+call sumCall math.addInt64
+argument sumCall left Int64 guess
+argument sumCall right Int64 quot
 run sumCall
-bind sumGuess I64 sumCall
+bind value sumGuess Int64 sumCall
 
-call halveCall math.divideI64
-arg halveCall left sumGuess
-arg halveCall right twoI64
+call halveCall math.divideInt64
+argument halveCall left Int64 sumGuess
+argument halveCall right Int64 twoInt64
 run halveCall
-bind nextGuess I64 halveCall
+bind value nextGuess Int64 halveCall
 
 # Stop when next >= guess (no further improvement).
-call notImprovingCall math.greaterThanOrEqualI64
-arg notImprovingCall left nextGuess
-arg notImprovingCall right guess
+call notImprovingCall math.greaterThanOrEqualInt64
+argument notImprovingCall left Int64 nextGuess
+argument notImprovingCall right Int64 guess
 run notImprovingCall
-bind notImproving Bool notImprovingCall
-branchIf notImproving intSqrtDone
+bind value notImproving Bool notImprovingCall
+branch if condition notImproving target intSqrtDone
 
-set guess nextGuess
-branch sqrtLoop
+set memory guess nextGuess
+jump target sqrtLoop
 
 label intSqrtDone
-returnValue guess
+return value guess
 
 label intSqrtZero
-returnValue zeroI64
-
+return value zeroInt64
 
 operation factorialSignedInt64
-input factorialSignedInt64 inputValue CSignedInt64
-output factorialSignedInt64 CSignedInt64
-memoryHeap factorialSignedInt64 no
-memoryStackLimit factorialSignedInt64 1024
+input operation factorialSignedInt64 inputValue Int64
+output operation factorialSignedInt64 Int64
+memory factorialSignedInt64 heap no
+memory factorialSignedInt64 stack max 1024
 async factorialSignedInt64 no
-purpose factorialSignedInt64 "Returns inputValue! by repeated multiplication. Defined for inputValue in [0, 20]; n > 20 overflows CSignedInt64 silently."
-invariant factorialSignedInt64 "factorialSignedInt64(0) == 1 (convention)."
+purpose operation factorialSignedInt64 "Returns inputValue! by repeated multiplication. Defined for inputValue in [0, 20]; n > 20 overflows Int64 silently."
+invariant operation factorialSignedInt64 "factorialSignedInt64(0) == 1 (convention)."
 warning factorialSignedInt64 "Wraps silently above 20! â€” no overflow error surfaced."
-guarantee factorialSignedInt64 "Total over the CSignedInt64 domain (with overflow wrap)."
+guarantee factorialSignedInt64 "Total over the Int64 domain (with overflow wrap)."
 
 label startFactorialSignedInt64
-const zeroFac I64 0
-const oneFac I64 1
+storage module immutable zeroFac Int64 0
+storage module immutable oneFac Int64 1
 
-call nLeZeroCall math.lessThanOrEqualI64
-arg nLeZeroCall left inputValue
-arg nLeZeroCall right zeroFac
+call nLeZeroCall math.lessThanOrEqualInt64
+argument nLeZeroCall left Int64 inputValue
+argument nLeZeroCall right Int64 zeroFac
 run nLeZeroCall
-bind nLeZero Bool nLeZeroCall
-branchIf nLeZero factorialOne
+bind value nLeZero Bool nLeZeroCall
+branch if condition nLeZero target factorialOne
 
-var product I64 1
-var i I64 1
+memory factorialSignedInt64 mutable product Int64 1
+memory factorialSignedInt64 mutable i Int64 1
 label factorialLoop
-call doneCall math.greaterThanI64
-arg doneCall left i
-arg doneCall right inputValue
+call doneCall math.greaterThanInt64
+argument doneCall left Int64 i
+argument doneCall right Int64 inputValue
 run doneCall
-bind done Bool doneCall
-branchIf done factorialReturn
-call mulCall math.multiplyI64
-arg mulCall left product
-arg mulCall right i
+bind value done Bool doneCall
+branch if condition done target factorialReturn
+call mulCall math.multiplyInt64
+argument mulCall left Int64 product
+argument mulCall right Int64 i
 run mulCall
-bind nextProd I64 mulCall
-set product nextProd
-call incCall math.addI64
-arg incCall left i
-arg incCall right oneFac
+bind value nextProd Int64 mulCall
+set memory product nextProd
+call incCall math.addInt64
+argument incCall left Int64 i
+argument incCall right Int64 oneFac
 run incCall
-bind nextI I64 incCall
-set i nextI
-branch factorialLoop
+bind value nextI Int64 incCall
+set memory i nextI
+jump target factorialLoop
 label factorialReturn
-returnValue product
+return value product
 label factorialOne
-returnValue oneFac
-
+return value oneFac
 
 operation isSignedInt64Prime
-input isSignedInt64Prime inputValue CSignedInt64
-output isSignedInt64Prime Bool
-memoryHeap isSignedInt64Prime no
-memoryStackLimit isSignedInt64Prime 1024
+input operation isSignedInt64Prime inputValue Int64
+output operation isSignedInt64Prime Bool
+memory isSignedInt64Prime heap no
+memory isSignedInt64Prime stack max 1024
 async isSignedInt64Prime no
-purpose isSignedInt64Prime "Returns true when inputValue is prime; n <= 1 returns false. Tests divisibility by 2 then odd numbers up to floor(sqrt(n))."
-invariant isSignedInt64Prime "Exact for inputValue in [2, INT64_MAX/2]; uses integerSquareRootSignedInt64 to bound the trial-division loop."
+purpose operation isSignedInt64Prime "Returns true when inputValue is prime; n <= 1 returns false. Tests divisibility by 2 then odd numbers up to floor(sqrt(n))."
+invariant operation isSignedInt64Prime "Exact for inputValue in [2, INT64_MAX/2]; uses integerSquareRootSignedInt64 to bound the trial-division loop."
 guarantee isSignedInt64Prime "Total."
 
 label startIsSignedInt64Prime
-const zeroP I64 0
-const oneP I64 1
-const twoP I64 2
-const truePr Bool true
-const falsePr Bool false
+storage module immutable zeroP Int64 0
+storage module immutable oneP Int64 1
+storage module immutable twoP Int64 2
+storage module immutable truePr Bool true
+storage module immutable falsePr Bool false
 
-call leOneCall math.lessThanOrEqualI64
-arg leOneCall left inputValue
-arg leOneCall right oneP
+call leOneCall math.lessThanOrEqualInt64
+argument leOneCall left Int64 inputValue
+argument leOneCall right Int64 oneP
 run leOneCall
-bind leOne Bool leOneCall
-branchIf leOne isPrimeFalse
+bind value leOne Bool leOneCall
+branch if condition leOne target isPrimeFalse
 
-call eqTwoCall math.equalI64
-arg eqTwoCall left inputValue
-arg eqTwoCall right twoP
+call eqTwoCall math.equalInt64
+argument eqTwoCall left Int64 inputValue
+argument eqTwoCall right Int64 twoP
 run eqTwoCall
-bind eqTwo Bool eqTwoCall
-branchIf eqTwo isPrimeTrue
+bind value eqTwo Bool eqTwoCall
+branch if condition eqTwo target isPrimeTrue
 
 # Even (other than 2) -> composite.
-call modTwoCall math.moduloI64
-arg modTwoCall left inputValue
-arg modTwoCall right twoP
+call modTwoCall math.moduloInt64
+argument modTwoCall left Int64 inputValue
+argument modTwoCall right Int64 twoP
 run modTwoCall
-bind nMod2 I64 modTwoCall
-call isEvenCall math.equalI64
-arg isEvenCall left nMod2
-arg isEvenCall right zeroP
+bind value nMod2 Int64 modTwoCall
+call isEvenCall math.equalInt64
+argument isEvenCall left Int64 nMod2
+argument isEvenCall right Int64 zeroP
 run isEvenCall
-bind isSignedInt64Even Bool isEvenCall
-branchIf isSignedInt64Even isPrimeFalse
+bind value isSignedInt64Even Bool isEvenCall
+branch if condition isSignedInt64Even target isPrimeFalse
 
 # Trial divide by odd i from 3 up to floor(sqrt(n)).
 call limitCall integerSquareRootSignedInt64
-arg limitCall inputValue inputValue
+argument limitCall inputValue Int64 inputValue
 run limitCall
-bind limit CSignedInt64 limitCall
+bind value limit Int64 limitCall
 
-var i I64 3
+memory isSignedInt64Prime mutable i Int64 3
 label trialLoop
-call beyondCall math.greaterThanI64
-arg beyondCall left i
-arg beyondCall right limit
+call beyondCall math.greaterThanInt64
+argument beyondCall left Int64 i
+argument beyondCall right Int64 limit
 run beyondCall
-bind beyond Bool beyondCall
-branchIf beyond isPrimeTrue
-call primeRemainderCall math.moduloI64
-arg primeRemainderCall left inputValue
-arg primeRemainderCall right i
+bind value beyond Bool beyondCall
+branch if condition beyond target isPrimeTrue
+call primeRemainderCall math.moduloInt64
+argument primeRemainderCall left Int64 inputValue
+argument primeRemainderCall right Int64 i
 run primeRemainderCall
-bind trialDivisionRemainder I64 primeRemainderCall
-call divCheckCall math.equalI64
-arg divCheckCall left trialDivisionRemainder
-arg divCheckCall right zeroP
+bind value trialDivisionRemainder Int64 primeRemainderCall
+call divCheckCall math.equalInt64
+argument divCheckCall left Int64 trialDivisionRemainder
+argument divCheckCall right Int64 zeroP
 run divCheckCall
-bind divides Bool divCheckCall
-branchIf divides isPrimeFalse
-call iIncCall math.addI64
-arg iIncCall left i
-arg iIncCall right twoP
+bind value divides Bool divCheckCall
+branch if condition divides target isPrimeFalse
+call iIncCall math.addInt64
+argument iIncCall left Int64 i
+argument iIncCall right Int64 twoP
 run iIncCall
-bind nextI I64 iIncCall
-set i nextI
-branch trialLoop
+bind value nextI Int64 iIncCall
+set memory i nextI
+jump target trialLoop
 
 label isPrimeFalse
-returnValue falsePr
+return value falsePr
 label isPrimeTrue
-returnValue truePr
-
+return value truePr
 
 operation isSignedInt64PowerOfTwo
-input isSignedInt64PowerOfTwo inputValue CSignedInt64
-output isSignedInt64PowerOfTwo Bool
-memoryHeap isSignedInt64PowerOfTwo no
+input operation isSignedInt64PowerOfTwo inputValue Int64
+output operation isSignedInt64PowerOfTwo Bool
+memory isSignedInt64PowerOfTwo heap no
 async isSignedInt64PowerOfTwo no
-purpose isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...)."
-invariant isSignedInt64PowerOfTwo "Halves inputValue until 1 (power-of-two) or an odd intermediate (not). Zero / negative inputs return false."
-guarantee isSignedInt64PowerOfTwo "Total."
+purpose operation isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...), computed in O(1) as inputValue > 0 AND (inputValue AND (inputValue - 1)) == 0."
+invariant operation isSignedInt64PowerOfTwo "A positive power of two has exactly one set bit, so clearing the lowest set bit via (n & (n-1)) yields 0. Zero / negative inputs return false."
+guarantee isSignedInt64PowerOfTwo "Total. O(1) â€” one subtract, one and, two compares."
 
 label startIsSignedInt64PowerOfTwo
-const zeroPt I64 0
-const oneCount I64 1
-const twoPt I64 2
-const truePt Bool true
-const falsePt Bool false
+storage module immutable zeroPt Int64 0
+storage module immutable oneCount Int64 1
+storage module immutable truePt Bool true
+storage module immutable falsePt Bool false
 
-call leZeroPtCall math.lessThanOrEqualI64
-arg leZeroPtCall left inputValue
-arg leZeroPtCall right zeroPt
+call leZeroPtCall math.lessThanOrEqualInt64
+argument leZeroPtCall left Int64 inputValue
+argument leZeroPtCall right Int64 zeroPt
 run leZeroPtCall
-bind leZeroPt Bool leZeroPtCall
-branchIf leZeroPt isPowerOfTwoFalse
+bind value leZeroPt Bool leZeroPtCall
+branch if condition leZeroPt target isPowerOfTwoFalse
 
-var x I64 0
-set x inputValue
-
-label halveLoop
-call eqOneCall math.equalI64
-arg eqOneCall left x
-arg eqOneCall right oneCount
-run eqOneCall
-bind eqOne Bool eqOneCall
-branchIf eqOne isPowerOfTwoTrue
-call ptMod2Call math.moduloI64
-arg ptMod2Call left x
-arg ptMod2Call right twoPt
-run ptMod2Call
-bind ptMod2 I64 ptMod2Call
-call ptIsOddCall math.notEqualI64
-arg ptIsOddCall left ptMod2
-arg ptIsOddCall right zeroPt
-run ptIsOddCall
-bind ptIsOdd Bool ptIsOddCall
-branchIf ptIsOdd isPowerOfTwoFalse
-call halveXCall math.divideI64
-arg halveXCall left x
-arg halveXCall right twoPt
-run halveXCall
-bind xHalved I64 halveXCall
-set x xHalved
-branch halveLoop
+# Clear the lowest set bit: for a power of two (exactly one set bit) the
+# result is 0; for anything else at least one other bit survives.
+call decrementForMaskCall math.subtractInt64
+argument decrementForMaskCall left Int64 inputValue
+argument decrementForMaskCall right Int64 oneCount
+run decrementForMaskCall
+bind value inputMinusOne Int64 decrementForMaskCall
+call clearLowestSetBitCall math.bitwiseAndInt64
+argument clearLowestSetBitCall left Int64 inputValue
+argument clearLowestSetBitCall right Int64 inputMinusOne
+run clearLowestSetBitCall
+bind value lowestSetBitCleared Int64 clearLowestSetBitCall
+call detectNoRemainingBitsCall math.equalInt64
+argument detectNoRemainingBitsCall left Int64 lowestSetBitCleared
+argument detectNoRemainingBitsCall right Int64 zeroPt
+run detectNoRemainingBitsCall
+bind value noRemainingBits Bool detectNoRemainingBitsCall
+branch if condition noRemainingBits target isPowerOfTwoTrue
+branch else target isPowerOfTwoFalse
 
 label isPowerOfTwoFalse
-returnValue falsePt
+return value falsePt
 label isPowerOfTwoTrue
-returnValue truePt
-
+return value truePt
 
 operation nextPowerOfTwoForSignedInt64
-input nextPowerOfTwoForSignedInt64 inputValue CSignedInt64
-output nextPowerOfTwoForSignedInt64 CSignedInt64
-memoryHeap nextPowerOfTwoForSignedInt64 no
+input operation nextPowerOfTwoForSignedInt64 inputValue Int64
+output operation nextPowerOfTwoForSignedInt64 Int64
+memory nextPowerOfTwoForSignedInt64 heap no
 async nextPowerOfTwoForSignedInt64 no
-purpose nextPowerOfTwoForSignedInt64 "Returns the smallest power of 2 >= inputValue (1 for inputValue <= 1)."
-invariant nextPowerOfTwoForSignedInt64 "Doubles a 1-seeded accumulator until it reaches or exceeds inputValue; inputs <= 1 short-circuit to 1."
+purpose operation nextPowerOfTwoForSignedInt64 "Returns the smallest power of 2 >= inputValue (1 for inputValue <= 1)."
+invariant operation nextPowerOfTwoForSignedInt64 "Doubles a 1-seeded accumulator until it reaches or exceeds inputValue; inputs <= 1 short-circuit to 1."
 guarantee nextPowerOfTwoForSignedInt64 "Total."
 
 label startNextPowerOfTwoForSignedInt64
-const oneNp I64 1
-const twoNp I64 2
+storage module immutable oneNp Int64 1
+storage module immutable twoNp Int64 2
 
-call leOneNpCall math.lessThanOrEqualI64
-arg leOneNpCall left inputValue
-arg leOneNpCall right oneNp
+call leOneNpCall math.lessThanOrEqualInt64
+argument leOneNpCall left Int64 inputValue
+argument leOneNpCall right Int64 oneNp
 run leOneNpCall
-bind leOneNp Bool leOneNpCall
-branchIf leOneNp nextPowOne
+bind value leOneNp Bool leOneNpCall
+branch if condition leOneNp target nextPowOne
 
-var p I64 1
+memory nextPowerOfTwoForSignedInt64 mutable p Int64 1
 label doubleLoop
-call gePCall math.greaterThanOrEqualI64
-arg gePCall left p
-arg gePCall right inputValue
+call gePCall math.greaterThanOrEqualInt64
+argument gePCall left Int64 p
+argument gePCall right Int64 inputValue
 run gePCall
-bind gep Bool gePCall
-branchIf gep nextPowDone
-call doubleCall math.multiplyI64
-arg doubleCall left p
-arg doubleCall right twoNp
+bind value gep Bool gePCall
+branch if condition gep target nextPowDone
+call doubleCall math.multiplyInt64
+argument doubleCall left Int64 p
+argument doubleCall right Int64 twoNp
 run doubleCall
-bind nextP I64 doubleCall
-set p nextP
-branch doubleLoop
+bind value nextP Int64 doubleCall
+set memory p nextP
+jump target doubleLoop
 
 label nextPowDone
-returnValue p
+return value p
 label nextPowOne
-returnValue oneNp
-
+return value oneNp
 
 operation countDecimalDigitsInSignedInt64
-input countDecimalDigitsInSignedInt64 inputValue CSignedInt64
-output countDecimalDigitsInSignedInt64 CSignedInt64
-memoryHeap countDecimalDigitsInSignedInt64 no
+input operation countDecimalDigitsInSignedInt64 inputValue Int64
+output operation countDecimalDigitsInSignedInt64 Int64
+memory countDecimalDigitsInSignedInt64 heap no
 async countDecimalDigitsInSignedInt64 no
-purpose countDecimalDigitsInSignedInt64 "Returns the count of decimal digits in |inputValue|. Returns 1 for inputValue == 0."
-invariant countDecimalDigitsInSignedInt64 "Divides the absolute value by 10 until the quotient is zero, counting iterations. Negative inputs are absolute-valued via multiplication by -1 first."
+purpose operation countDecimalDigitsInSignedInt64 "Returns the count of decimal digits in |inputValue|. Returns 1 for inputValue == 0."
+invariant operation countDecimalDigitsInSignedInt64 "Divides the absolute value by 10 until the quotient is zero, counting iterations. Negative inputs are absolute-valued via multiplication by -1 first."
 guarantee countDecimalDigitsInSignedInt64 "Total."
 
 label startCountDecimalDigitsInSignedInt64
-const zeroCd I64 0
-const oneCd I64 1
-const tenCd I64 10
-const negOneCd I64 -1
+storage module immutable zeroCd Int64 0
+storage module immutable oneCd Int64 1
+storage module immutable tenCd Int64 10
+storage module immutable negOneCd Int64 -1
 
-call eqZeroCdCall math.equalI64
-arg eqZeroCdCall left inputValue
-arg eqZeroCdCall right zeroCd
+call eqZeroCdCall math.equalInt64
+argument eqZeroCdCall left Int64 inputValue
+argument eqZeroCdCall right Int64 zeroCd
 run eqZeroCdCall
-bind eqZeroCd Bool eqZeroCdCall
-branchIf eqZeroCd countDigitsOne
+bind value eqZeroCd Bool eqZeroCdCall
+branch if condition eqZeroCd target countDigitsOne
 
-var v I64 0
-set v inputValue
-call negCdCall math.lessThanI64
-arg negCdCall left v
-arg negCdCall right zeroCd
+memory countDecimalDigitsInSignedInt64 mutable v Int64 0
+set memory v inputValue
+call negCdCall math.lessThanInt64
+argument negCdCall left Int64 v
+argument negCdCall right Int64 zeroCd
 run negCdCall
-bind isNegCd Bool negCdCall
-branchIf isNegCd flipCd
-branch countDigitsLoop
+bind value isNegCd Bool negCdCall
+branch if condition isNegCd target flipCd
+branch else target countDigitsLoop
 
 label flipCd
-call flipCdCall math.multiplyI64
-arg flipCdCall left v
-arg flipCdCall right negOneCd
+call flipCdCall math.multiplyInt64
+argument flipCdCall left Int64 v
+argument flipCdCall right Int64 negOneCd
 run flipCdCall
-bind vFlipped I64 flipCdCall
-set v vFlipped
-branch countDigitsLoop
+bind value vFlipped Int64 flipCdCall
+set memory v vFlipped
+jump target countDigitsLoop
 
 label countDigitsLoop
-var count I64 0
+memory countDecimalDigitsInSignedInt64 mutable count Int64 0
 label cdStep
-call doneCdCall math.equalI64
-arg doneCdCall left v
-arg doneCdCall right zeroCd
+call doneCdCall math.equalInt64
+argument doneCdCall left Int64 v
+argument doneCdCall right Int64 zeroCd
 run doneCdCall
-bind doneCd Bool doneCdCall
-branchIf doneCd countDigitsReturn
-call cdDivCall math.divideI64
-arg cdDivCall left v
-arg cdDivCall right tenCd
+bind value doneCd Bool doneCdCall
+branch if condition doneCd target countDigitsReturn
+call cdDivCall math.divideInt64
+argument cdDivCall left Int64 v
+argument cdDivCall right Int64 tenCd
 run cdDivCall
-bind vNext I64 cdDivCall
-set v vNext
-call cdIncCall math.addI64
-arg cdIncCall left count
-arg cdIncCall right oneCd
+bind value vNext Int64 cdDivCall
+set memory v vNext
+call cdIncCall math.addInt64
+argument cdIncCall left Int64 count
+argument cdIncCall right Int64 oneCd
 run cdIncCall
-bind nextCount I64 cdIncCall
-set count nextCount
-branch cdStep
+bind value nextCount Int64 cdIncCall
+set memory count nextCount
+jump target cdStep
 
 label countDigitsReturn
-returnValue count
+return value count
 
 label countDigitsOne
-returnValue oneCd
-
+return value oneCd
 
 operation isSignedInt64Even
-input isSignedInt64Even inputValue CSignedInt64
-output isSignedInt64Even Bool
-memoryHeap isSignedInt64Even no
+input operation isSignedInt64Even inputValue Int64
+output operation isSignedInt64Even Bool
+memory isSignedInt64Even heap no
 async isSignedInt64Even no
-purpose isSignedInt64Even "Returns true when inputValue % 2 == 0."
+purpose operation isSignedInt64Even "Returns true when inputValue % 2 == 0."
 guarantee isSignedInt64Even "Total."
 label startIsSignedInt64Even
-const zeroE I64 0
-const twoE I64 2
-const trueE Bool true
-const falseE Bool false
-call modECall math.moduloI64
-arg modECall left inputValue
-arg modECall right twoE
+storage module immutable zeroE Int64 0
+storage module immutable twoE Int64 2
+storage module immutable trueE Bool true
+storage module immutable falseE Bool false
+call modECall math.moduloInt64
+argument modECall left Int64 inputValue
+argument modECall right Int64 twoE
 run modECall
-bind modE I64 modECall
-call eqZeroECall math.equalI64
-arg eqZeroECall left modE
-arg eqZeroECall right zeroE
+bind value modE Int64 modECall
+call eqZeroECall math.equalInt64
+argument eqZeroECall left Int64 modE
+argument eqZeroECall right Int64 zeroE
 run eqZeroECall
-bind eqZeroE Bool eqZeroECall
-branchIf eqZeroE isEvenTrue
-returnValue falseE
+bind value eqZeroE Bool eqZeroECall
+branch if condition eqZeroE target isEvenTrue
+return value falseE
 label isEvenTrue
-returnValue trueE
-
+return value trueE
 
 operation isSignedInt64Odd
-input isSignedInt64Odd inputValue CSignedInt64
-output isSignedInt64Odd Bool
-memoryHeap isSignedInt64Odd no
+input operation isSignedInt64Odd inputValue Int64
+output operation isSignedInt64Odd Bool
+memory isSignedInt64Odd heap no
 async isSignedInt64Odd no
-purpose isSignedInt64Odd "Returns true when inputValue % 2 != 0."
+purpose operation isSignedInt64Odd "Returns true when inputValue % 2 != 0."
 guarantee isSignedInt64Odd "Total."
 label startIsSignedInt64Odd
-const zeroO I64 0
-const twoO I64 2
-const trueO Bool true
-const falseO Bool false
-call modOCall math.moduloI64
-arg modOCall left inputValue
-arg modOCall right twoO
+storage module immutable zeroO Int64 0
+storage module immutable twoO Int64 2
+storage module immutable trueO Bool true
+storage module immutable falseO Bool false
+call modOCall math.moduloInt64
+argument modOCall left Int64 inputValue
+argument modOCall right Int64 twoO
 run modOCall
-bind modO I64 modOCall
-call neZeroOCall math.notEqualI64
-arg neZeroOCall left modO
-arg neZeroOCall right zeroO
+bind value modO Int64 modOCall
+call neZeroOCall math.notEqualInt64
+argument neZeroOCall left Int64 modO
+argument neZeroOCall right Int64 zeroO
 run neZeroOCall
-bind neZeroO Bool neZeroOCall
-branchIf neZeroO isOddTrue
-returnValue falseO
+bind value neZeroO Bool neZeroOCall
+branch if condition neZeroO target isOddTrue
+return value falseO
 label isOddTrue
-returnValue trueO
-
+return value trueO
 
 operation countSetBitsInSignedInt64
-input countSetBitsInSignedInt64 inputValue CSignedInt64
-output countSetBitsInSignedInt64 CSignedInt64
-memoryHeap countSetBitsInSignedInt64 no
+input operation countSetBitsInSignedInt64 inputValue Int64
+output operation countSetBitsInSignedInt64 Int64
+memory countSetBitsInSignedInt64 heap no
 async countSetBitsInSignedInt64 no
-purpose countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its 64-bit representation)."
-invariant countSetBitsInSignedInt64 "Inspects each of the 64 bits via modulo-2 on a halving working value; increments the counter for every odd remainder."
+purpose operation countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its full 64-bit two's-complement representation). Correct for negative inputs: countSetBitsInSignedInt64(-1) == 64."
+invariant operation countSetBitsInSignedInt64 "For inputValue >= 0, inspects each bit via modulo-2 on a halving working value. For inputValue < 0, applies popcount(n) == 64 - popcount(-n - 1) so the sign-extension bits are counted (arithmetic divide-by-two toward zero would otherwise drop them)."
 guarantee countSetBitsInSignedInt64 "Total â€” in [0, 64]."
 label startCountSetBitsInSignedInt64
-const zeroPc I64 0
-const onePc I64 1
-const twoPc I64 2
-const limitPc I64 64
-var pcVal I64 0
-set pcVal inputValue
-var pcCount I64 0
-var pcIter I64 0
+storage module immutable zeroPc Int64 0
+storage module immutable onePc Int64 1
+storage module immutable twoPc Int64 2
+storage module immutable limitPc Int64 64
+storage module immutable negOnePc Int64 -1
+memory countSetBitsInSignedInt64 mutable pcVal Int64 0
+set memory pcVal inputValue
+memory countSetBitsInSignedInt64 mutable pcWasNegativeFlag Int64 0
+memory countSetBitsInSignedInt64 mutable pcCount Int64 0
+memory countSetBitsInSignedInt64 mutable pcIter Int64 0
+# Negative inputs: arithmetic divide-by-two (toward zero) collapses a
+# negative value's sign-extension bits, so the raw loop would undercount.
+# Use popcount(n) == 64 - popcount(-n - 1) for n < 0: `-n - 1` is
+# non-negative for every negative n (and wraps to INT64_MAX for INT64_MIN,
+# which is still correct), so the unsigned loop below counts it exactly.
+call pcDetectNegativeCall math.lessThanInt64
+argument pcDetectNegativeCall left Int64 inputValue
+argument pcDetectNegativeCall right Int64 zeroPc
+run pcDetectNegativeCall
+bind value pcInputIsNegative Bool pcDetectNegativeCall
+branch if condition pcInputIsNegative target pcPrepareNegative
+branch else target pcLoop
+label pcPrepareNegative
+set memory pcWasNegativeFlag onePc
+call pcNegateInputCall math.multiplyInt64
+argument pcNegateInputCall left Int64 inputValue
+argument pcNegateInputCall right Int64 negOnePc
+run pcNegateInputCall
+bind value pcNegatedInput Int64 pcNegateInputCall
+call pcComplementSourceCall math.subtractInt64
+argument pcComplementSourceCall left Int64 pcNegatedInput
+argument pcComplementSourceCall right Int64 onePc
+run pcComplementSourceCall
+bind value pcComplementSource Int64 pcComplementSourceCall
+set memory pcVal pcComplementSource
+jump target pcLoop
 label pcLoop
-call popcountDoneCall math.greaterThanOrEqualI64
-arg popcountDoneCall left pcIter
-arg popcountDoneCall right limitPc
+call popcountDoneCall math.greaterThanOrEqualInt64
+argument popcountDoneCall left Int64 pcIter
+argument popcountDoneCall right Int64 limitPc
 run popcountDoneCall
-bind popcountDoneCallB Bool popcountDoneCall
-branchIf popcountDoneCallB pcReturn
-call popcountModCall math.moduloI64
-arg popcountModCall left pcVal
-arg popcountModCall right twoPc
+bind value popcountDoneCallB Bool popcountDoneCall
+branch if condition popcountDoneCallB target pcReturn
+call popcountModCall math.moduloInt64
+argument popcountModCall left Int64 pcVal
+argument popcountModCall right Int64 twoPc
 run popcountModCall
-bind pcBit I64 popcountModCall
-call popcountBitNonzeroCall math.notEqualI64
-arg popcountBitNonzeroCall left pcBit
-arg popcountBitNonzeroCall right zeroPc
+bind value pcBit Int64 popcountModCall
+call popcountBitNonzeroCall math.notEqualInt64
+argument popcountBitNonzeroCall left Int64 pcBit
+argument popcountBitNonzeroCall right Int64 zeroPc
 run popcountBitNonzeroCall
-bind pcSet Bool popcountBitNonzeroCall
-branchIf pcSet popcountIncrementBranch
-branch pcAdvance
+bind value pcSet Bool popcountBitNonzeroCall
+branch if condition pcSet target popcountIncrementBranch
+branch else target pcAdvance
 label popcountIncrementBranch
-call popcountIncrementCall math.addI64
-arg popcountIncrementCall left pcCount
-arg popcountIncrementCall right onePc
+call popcountIncrementCall math.addInt64
+argument popcountIncrementCall left Int64 pcCount
+argument popcountIncrementCall right Int64 onePc
 run popcountIncrementCall
-bind pcNext I64 popcountIncrementCall
-set pcCount pcNext
-branch pcAdvance
+bind value pcNext Int64 popcountIncrementCall
+set memory pcCount pcNext
+jump target pcAdvance
 label pcAdvance
-call popcountDivideCall math.divideI64
-arg popcountDivideCall left pcVal
-arg popcountDivideCall right twoPc
+call popcountDivideCall math.divideInt64
+argument popcountDivideCall left Int64 pcVal
+argument popcountDivideCall right Int64 twoPc
 run popcountDivideCall
-bind pcHalved I64 popcountDivideCall
-set pcVal pcHalved
-call popcountIterIncrementCall math.addI64
-arg popcountIterIncrementCall left pcIter
-arg popcountIterIncrementCall right onePc
+bind value pcHalved Int64 popcountDivideCall
+set memory pcVal pcHalved
+call popcountIterIncrementCall math.addInt64
+argument popcountIterIncrementCall left Int64 pcIter
+argument popcountIterIncrementCall right Int64 onePc
 run popcountIterIncrementCall
-bind pcIterNext I64 popcountIterIncrementCall
-set pcIter pcIterNext
-branch pcLoop
+bind value pcIterNext Int64 popcountIterIncrementCall
+set memory pcIter pcIterNext
+jump target pcLoop
 label pcReturn
-returnValue pcCount
-
+call pcWasNegativeCheckCall math.equalInt64
+argument pcWasNegativeCheckCall left Int64 pcWasNegativeFlag
+argument pcWasNegativeCheckCall right Int64 onePc
+run pcWasNegativeCheckCall
+bind value pcWasNegativeResult Bool pcWasNegativeCheckCall
+branch if condition pcWasNegativeResult target pcReturnComplement
+return value pcCount
+label pcReturnComplement
+call pcFinalComplementCall math.subtractInt64
+argument pcFinalComplementCall left Int64 limitPc
+argument pcFinalComplementCall right Int64 pcCount
+run pcFinalComplementCall
+bind value pcComplementedCount Int64 pcFinalComplementCall
+return value pcComplementedCount
 
 operation countTrailingZeroBitsInSignedInt64
-input countTrailingZeroBitsInSignedInt64 inputValue CSignedInt64
-output countTrailingZeroBitsInSignedInt64 CSignedInt64
-memoryHeap countTrailingZeroBitsInSignedInt64 no
+input operation countTrailingZeroBitsInSignedInt64 inputValue Int64
+output operation countTrailingZeroBitsInSignedInt64 Int64
+memory countTrailingZeroBitsInSignedInt64 heap no
 async countTrailingZeroBitsInSignedInt64 no
-purpose countTrailingZeroBitsInSignedInt64 "Returns the count of trailing zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0 (matching GCC __builtin_ctzll)."
-invariant countTrailingZeroBitsInSignedInt64 "Halves the value while the low bit is zero, counting iterations. Zero input short-circuits to 64."
+purpose operation countTrailingZeroBitsInSignedInt64 "Returns the count of trailing zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0 (matching GCC __builtin_ctzll)."
+invariant operation countTrailingZeroBitsInSignedInt64 "Halves the value while the low bit is zero, counting iterations. Zero input short-circuits to 64."
 guarantee countTrailingZeroBitsInSignedInt64 "Total."
 label startCountTrailingZeroBitsInSignedInt64
-const zeroTz I64 0
-const oneTz I64 1
-const twoTz I64 2
-const sixtyFourTz I64 64
+storage module immutable zeroTz Int64 0
+storage module immutable oneTz Int64 1
+storage module immutable twoTz Int64 2
+storage module immutable sixtyFourTz Int64 64
 # Special case n == 0
-call ctzEqualZeroCall math.equalI64
-arg ctzEqualZeroCall left inputValue
-arg ctzEqualZeroCall right zeroTz
+call ctzEqualZeroCall math.equalInt64
+argument ctzEqualZeroCall left Int64 inputValue
+argument ctzEqualZeroCall right Int64 zeroTz
 run ctzEqualZeroCall
-bind nIsZero Bool ctzEqualZeroCall
-branchIf nIsZero tzReturn64
-var tzVal I64 0
-set tzVal inputValue
-var tzCount I64 0
+bind value nIsZero Bool ctzEqualZeroCall
+branch if condition nIsZero target tzReturn64
+memory countTrailingZeroBitsInSignedInt64 mutable tzVal Int64 0
+set memory tzVal inputValue
+memory countTrailingZeroBitsInSignedInt64 mutable tzCount Int64 0
 label tzLoop
-call tzModCall math.moduloI64
-arg tzModCall left tzVal
-arg tzModCall right twoTz
+call tzModCall math.moduloInt64
+argument tzModCall left Int64 tzVal
+argument tzModCall right Int64 twoTz
 run tzModCall
-bind tzMod I64 tzModCall
-call ctzBitSetCall math.notEqualI64
-arg ctzBitSetCall left tzMod
-arg ctzBitSetCall right zeroTz
+bind value tzMod Int64 tzModCall
+call ctzBitSetCall math.notEqualInt64
+argument ctzBitSetCall left Int64 tzMod
+argument ctzBitSetCall right Int64 zeroTz
 run ctzBitSetCall
-bind tzSet Bool ctzBitSetCall
-branchIf tzSet tzReturn
-call tzDivCall math.divideI64
-arg tzDivCall left tzVal
-arg tzDivCall right twoTz
+bind value tzSet Bool ctzBitSetCall
+branch if condition tzSet target tzReturn
+call tzDivCall math.divideInt64
+argument tzDivCall left Int64 tzVal
+argument tzDivCall right Int64 twoTz
 run tzDivCall
-bind tzNext I64 tzDivCall
-set tzVal tzNext
-call tzIncCall math.addI64
-arg tzIncCall left tzCount
-arg tzIncCall right oneTz
+bind value tzNext Int64 tzDivCall
+set memory tzVal tzNext
+call tzIncCall math.addInt64
+argument tzIncCall left Int64 tzCount
+argument tzIncCall right Int64 oneTz
 run tzIncCall
-bind tzCountNext I64 tzIncCall
-set tzCount tzCountNext
-branch tzLoop
+bind value tzCountNext Int64 tzIncCall
+set memory tzCount tzCountNext
+jump target tzLoop
 label tzReturn
-returnValue tzCount
+return value tzCount
 label tzReturn64
-returnValue sixtyFourTz
-
+return value sixtyFourTz
 
 operation signOfSignedInt64
-input signOfSignedInt64 inputValue CSignedInt64
-output signOfSignedInt64 CSignedInt64
-memoryHeap signOfSignedInt64 no
+input operation signOfSignedInt64 inputValue Int64
+output operation signOfSignedInt64 Int64
+memory signOfSignedInt64 heap no
 async signOfSignedInt64 no
-purpose signOfSignedInt64 "Returns -1 when inputValue is negative, 1 when positive, 0 when zero."
+purpose operation signOfSignedInt64 "Returns -1 when inputValue is negative, 1 when positive, 0 when zero."
 guarantee signOfSignedInt64 "Total â€” result is always exactly -1, 0, or 1."
 label startSignOfSignedInt64
-const zeroSi I64 0
-const oneSi I64 1
-const negOneSi I64 -1
-call absDiffLessThanCall math.lessThanI64
-arg absDiffLessThanCall left inputValue
-arg absDiffLessThanCall right zeroSi
+storage module immutable zeroSi Int64 0
+storage module immutable oneSi Int64 1
+storage module immutable negOneSi Int64 -1
+call absDiffLessThanCall math.lessThanInt64
+argument absDiffLessThanCall left Int64 inputValue
+argument absDiffLessThanCall right Int64 zeroSi
 run absDiffLessThanCall
-bind isNg Bool absDiffLessThanCall
-branchIf isNg siNeg
-call absDiffGreaterThanCall math.greaterThanI64
-arg absDiffGreaterThanCall left inputValue
-arg absDiffGreaterThanCall right zeroSi
+bind value isNg Bool absDiffLessThanCall
+branch if condition isNg target siNeg
+call absDiffGreaterThanCall math.greaterThanInt64
+argument absDiffGreaterThanCall left Int64 inputValue
+argument absDiffGreaterThanCall right Int64 zeroSi
 run absDiffGreaterThanCall
-bind isPs Bool absDiffGreaterThanCall
-branchIf isPs siPos
-returnValue zeroSi
+bind value isPs Bool absDiffGreaterThanCall
+branch if condition isPs target siPos
+return value zeroSi
 label siNeg
-returnValue negOneSi
+return value negOneSi
 label siPos
-returnValue oneSi
-
+return value oneSi
 
 operation absoluteDifferenceBetweenSignedInt64Values
-input absoluteDifferenceBetweenSignedInt64Values leftValue CSignedInt64
-input absoluteDifferenceBetweenSignedInt64Values rightValue CSignedInt64
-output absoluteDifferenceBetweenSignedInt64Values CSignedInt64
-memoryHeap absoluteDifferenceBetweenSignedInt64Values no
+input operation absoluteDifferenceBetweenSignedInt64Values leftValue Int64
+input operation absoluteDifferenceBetweenSignedInt64Values rightValue Int64
+output operation absoluteDifferenceBetweenSignedInt64Values Int64
+memory absoluteDifferenceBetweenSignedInt64Values heap no
 async absoluteDifferenceBetweenSignedInt64Values no
-purpose absoluteDifferenceBetweenSignedInt64Values "Returns |leftValue - rightValue|."
-invariant absoluteDifferenceBetweenSignedInt64Values "Symmetric and non-negative."
+purpose operation absoluteDifferenceBetweenSignedInt64Values "Returns |leftValue - rightValue|."
+invariant operation absoluteDifferenceBetweenSignedInt64Values "Symmetric and non-negative."
 guarantee absoluteDifferenceBetweenSignedInt64Values "Total (modulo two's-complement INT64_MIN wraparound)."
 label startAbsoluteDifferenceBetweenSignedInt64Values
-const zeroAdi I64 0
-const negOneAdi I64 -1
-call diffCall math.subtractI64
-arg diffCall left leftValue
-arg diffCall right rightValue
+storage module immutable zeroAdi Int64 0
+storage module immutable negOneAdi Int64 -1
+call diffCall math.subtractInt64
+argument diffCall left Int64 leftValue
+argument diffCall right Int64 rightValue
 run diffCall
-bind diff I64 diffCall
-call absDiffLessThanZeroCall math.lessThanI64
-arg absDiffLessThanZeroCall left diff
-arg absDiffLessThanZeroCall right zeroAdi
+bind value diff Int64 diffCall
+call absDiffLessThanZeroCall math.lessThanInt64
+argument absDiffLessThanZeroCall left Int64 diff
+argument absDiffLessThanZeroCall right Int64 zeroAdi
 run absDiffLessThanZeroCall
-bind diffNeg Bool absDiffLessThanZeroCall
-branchIf diffNeg flipDiff
-returnValue diff
+bind value diffNeg Bool absDiffLessThanZeroCall
+branch if condition diffNeg target flipDiff
+return value diff
 label flipDiff
-call absDiffFlipSignCall math.multiplyI64
-arg absDiffFlipSignCall left diff
-arg absDiffFlipSignCall right negOneAdi
+call absDiffFlipSignCall math.multiplyInt64
+argument absDiffFlipSignCall left Int64 diff
+argument absDiffFlipSignCall right Int64 negOneAdi
 run absDiffFlipSignCall
-bind absDiff CSignedInt64 absDiffFlipSignCall
-returnValue absDiff
-
+bind value absDiff Int64 absDiffFlipSignCall
+return value absDiff
 
 operation countLeadingZeroBitsInSignedInt64
-input countLeadingZeroBitsInSignedInt64 inputValue CSignedInt64
-output countLeadingZeroBitsInSignedInt64 CSignedInt64
-memoryHeap countLeadingZeroBitsInSignedInt64 no
+input operation countLeadingZeroBitsInSignedInt64 inputValue Int64
+output operation countLeadingZeroBitsInSignedInt64 Int64
+memory countLeadingZeroBitsInSignedInt64 heap no
 async countLeadingZeroBitsInSignedInt64 no
-purpose countLeadingZeroBitsInSignedInt64 "Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0; returns 0 for negative values (sign bit 63 is set)."
-invariant countLeadingZeroBitsInSignedInt64 "Probe descends from 2^62 (the largest power of two representable as a positive CSignedInt64). For positive inputs we add 1 to account for the unrepresentable sign bit 63 above the probe range."
+purpose operation countLeadingZeroBitsInSignedInt64 "Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0; returns 0 for negative values (sign bit 63 is set)."
+invariant operation countLeadingZeroBitsInSignedInt64 "Probe descends from 2^62 (the largest power of two representable as a positive Int64). For positive inputs we add 1 to account for the unrepresentable sign bit 63 above the probe range."
 guarantee countLeadingZeroBitsInSignedInt64 "Total â€” in [0, 64]."
 label startCountLeadingZeroBitsInSignedInt64
-const zeroClz I64 0
-const oneClz I64 1
-const twoClz I64 2
-const sixtyFourClz I64 64
+storage module immutable zeroClz Int64 0
+storage module immutable oneClz Int64 1
+storage module immutable twoClz Int64 2
+storage module immutable sixtyFourClz Int64 64
 # Negative inputs have bit 63 set, so zero leading zeros.
-call clzIsNegativeCall math.lessThanI64
-arg clzIsNegativeCall left inputValue
-arg clzIsNegativeCall right zeroClz
+call clzIsNegativeCall math.lessThanInt64
+argument clzIsNegativeCall left Int64 inputValue
+argument clzIsNegativeCall right Int64 zeroClz
 run clzIsNegativeCall
-bind clzIsNegativeResult Bool clzIsNegativeCall
-branchIf clzIsNegativeResult clzReturnZero
-call eqZeroClzCall math.equalI64
-arg eqZeroClzCall left inputValue
-arg eqZeroClzCall right zeroClz
+bind value clzIsNegativeResult Bool clzIsNegativeCall
+branch if condition clzIsNegativeResult target clzReturnZero
+call eqZeroClzCall math.equalInt64
+argument eqZeroClzCall left Int64 inputValue
+argument eqZeroClzCall right Int64 zeroClz
 run eqZeroClzCall
-bind nIsZero Bool eqZeroClzCall
-branchIf nIsZero clzReturn64
+bind value nIsZero Bool eqZeroClzCall
+branch if condition nIsZero target clzReturn64
 # Probe = high bit shift down until we find the topmost set bit.
 # Start with highest power of two we can represent without overflow.
-const probeStart I64 4611686018427387904
-var probe I64 0
-set probe probeStart
-var clzCount I64 0
+storage module immutable probeStart Int64 4611686018427387904
+memory countLeadingZeroBitsInSignedInt64 mutable probe Int64 0
+set memory probe probeStart
+memory countLeadingZeroBitsInSignedInt64 mutable clzCount Int64 0
 label clzLoop
-call clzProbeLessEqualCall math.lessThanOrEqualI64
-arg clzProbeLessEqualCall left probe
-arg clzProbeLessEqualCall right inputValue
+call clzProbeLessEqualCall math.lessThanOrEqualInt64
+argument clzProbeLessEqualCall left Int64 probe
+argument clzProbeLessEqualCall right Int64 inputValue
 run clzProbeLessEqualCall
-bind clzProbeLessEqualCallN Bool clzProbeLessEqualCall
-branchIf clzProbeLessEqualCallN clzDone
-call clzIncrementCall math.addI64
-arg clzIncrementCall left clzCount
-arg clzIncrementCall right oneClz
+bind value clzProbeLessEqualCallN Bool clzProbeLessEqualCall
+branch if condition clzProbeLessEqualCallN target clzDone
+call clzIncrementCall math.addInt64
+argument clzIncrementCall left Int64 clzCount
+argument clzIncrementCall right Int64 oneClz
 run clzIncrementCall
-bind clzNext I64 clzIncrementCall
-set clzCount clzNext
-call clzProbeHalfCall math.divideI64
-arg clzProbeHalfCall left probe
-arg clzProbeHalfCall right twoClz
+bind value clzNext Int64 clzIncrementCall
+set memory clzCount clzNext
+call clzProbeHalfCall math.divideInt64
+argument clzProbeHalfCall left Int64 probe
+argument clzProbeHalfCall right Int64 twoClz
 run clzProbeHalfCall
-bind probeNext I64 clzProbeHalfCall
-set probe probeNext
-call clzProbeZeroCall math.equalI64
-arg clzProbeZeroCall left probe
-arg clzProbeZeroCall right zeroClz
+bind value probeNext Int64 clzProbeHalfCall
+set memory probe probeNext
+call clzProbeZeroCall math.equalInt64
+argument clzProbeZeroCall left Int64 probe
+argument clzProbeZeroCall right Int64 zeroClz
 run clzProbeZeroCall
-bind probeIsZero Bool clzProbeZeroCall
-branchIf probeIsZero clzReturn64
-branch clzLoop
+bind value probeIsZero Bool clzProbeZeroCall
+branch if condition probeIsZero target clzReturn64
+branch else target clzLoop
 label clzDone
 # Add 1 to count for the unrepresentable bit 63 above probeStart's bit 62.
-call clzAdjustCall math.addI64
-arg clzAdjustCall left clzCount
-arg clzAdjustCall right oneClz
+call clzAdjustCall math.addInt64
+argument clzAdjustCall left Int64 clzCount
+argument clzAdjustCall right Int64 oneClz
 run clzAdjustCall
-bind clzCountAdjusted I64 clzAdjustCall
-returnValue clzCountAdjusted
+bind value clzCountAdjusted Int64 clzAdjustCall
+return value clzCountAdjusted
 label clzReturn64
-returnValue sixtyFourClz
+return value sixtyFourClz
 label clzReturnZero
-returnValue zeroClz
-
+return value zeroClz
 
 operation squareSignedInt64
-input squareSignedInt64 inputValue CSignedInt64
-output squareSignedInt64 CSignedInt64
-memoryHeap squareSignedInt64 no
+input operation squareSignedInt64 inputValue Int64
+output operation squareSignedInt64 Int64
+memory squareSignedInt64 heap no
 async squareSignedInt64 no
-purpose squareSignedInt64 "Returns inputValue * inputValue."
+purpose operation squareSignedInt64 "Returns inputValue * inputValue."
 warning squareSignedInt64 "Wraps modulo 2^64 on overflow."
 guarantee squareSignedInt64 "Total."
 label startSquareSignedInt64
-call sqCall math.multiplyI64
-arg sqCall left inputValue
-arg sqCall right inputValue
+call sqCall math.multiplyInt64
+argument sqCall left Int64 inputValue
+argument sqCall right Int64 inputValue
 run sqCall
-bind squareResult CSignedInt64 sqCall
-returnValue squareResult
-
+bind value squareResult Int64 sqCall
+return value squareResult
 
 operation cubeSignedInt64
-input cubeSignedInt64 inputValue CSignedInt64
-output cubeSignedInt64 CSignedInt64
-memoryHeap cubeSignedInt64 no
+input operation cubeSignedInt64 inputValue Int64
+output operation cubeSignedInt64 Int64
+memory cubeSignedInt64 heap no
 async cubeSignedInt64 no
-purpose cubeSignedInt64 "Returns inputValue * inputValue * inputValue."
+purpose operation cubeSignedInt64 "Returns inputValue * inputValue * inputValue."
 warning cubeSignedInt64 "Wraps modulo 2^64 on overflow."
 guarantee cubeSignedInt64 "Total."
 label startCubeSignedInt64
-call cubeSquareStepCall math.multiplyI64
-arg cubeSquareStepCall left inputValue
-arg cubeSquareStepCall right inputValue
+call cubeSquareStepCall math.multiplyInt64
+argument cubeSquareStepCall left Int64 inputValue
+argument cubeSquareStepCall right Int64 inputValue
 run cubeSquareStepCall
-bind squareIntermediate CSignedInt64 cubeSquareStepCall
-call cubeMultiplyStepCall math.multiplyI64
-arg cubeMultiplyStepCall left squareIntermediate
-arg cubeMultiplyStepCall right inputValue
+bind value squareIntermediate Int64 cubeSquareStepCall
+call cubeMultiplyStepCall math.multiplyInt64
+argument cubeMultiplyStepCall left Int64 squareIntermediate
+argument cubeMultiplyStepCall right Int64 inputValue
 run cubeMultiplyStepCall
-bind cubeResult CSignedInt64 cubeMultiplyStepCall
-returnValue cubeResult
-
+bind value cubeResult Int64 cubeMultiplyStepCall
+return value cubeResult
 
 operation isSignedInt64WithinInclusiveRange
-input isSignedInt64WithinInclusiveRange inputValue CSignedInt64
-input isSignedInt64WithinInclusiveRange lowerBound CSignedInt64
-input isSignedInt64WithinInclusiveRange upperBound CSignedInt64
-output isSignedInt64WithinInclusiveRange Bool
-memoryHeap isSignedInt64WithinInclusiveRange no
+input operation isSignedInt64WithinInclusiveRange inputValue Int64
+input operation isSignedInt64WithinInclusiveRange lowerBound Int64
+input operation isSignedInt64WithinInclusiveRange upperBound Int64
+output operation isSignedInt64WithinInclusiveRange Bool
+memory isSignedInt64WithinInclusiveRange heap no
 async isSignedInt64WithinInclusiveRange no
-purpose isSignedInt64WithinInclusiveRange "Returns true when lowerBound <= inputValue <= upperBound."
+purpose operation isSignedInt64WithinInclusiveRange "Returns true when lowerBound <= inputValue <= upperBound."
 guarantee isSignedInt64WithinInclusiveRange "Total."
 label startIsSignedInt64WithinInclusiveRange
-const trueIR Bool true
-const falseIR Bool false
-call clampBelowLowerCall math.lessThanI64
-arg clampBelowLowerCall left inputValue
-arg clampBelowLowerCall right lowerBound
+storage module immutable trueIR Bool true
+storage module immutable falseIR Bool false
+call clampBelowLowerCall math.lessThanInt64
+argument clampBelowLowerCall left Int64 inputValue
+argument clampBelowLowerCall right Int64 lowerBound
 run clampBelowLowerCall
-bind belowLowerBound Bool clampBelowLowerCall
-branchIf belowLowerBound irFalse
-call clampAboveUpperCall math.greaterThanI64
-arg clampAboveUpperCall left inputValue
-arg clampAboveUpperCall right upperBound
+bind value belowLowerBound Bool clampBelowLowerCall
+branch if condition belowLowerBound target irFalse
+call clampAboveUpperCall math.greaterThanInt64
+argument clampAboveUpperCall left Int64 inputValue
+argument clampAboveUpperCall right Int64 upperBound
 run clampAboveUpperCall
-bind aboveUpperBound Bool clampAboveUpperCall
-branchIf aboveUpperBound irFalse
-returnValue trueIR
+bind value aboveUpperBound Bool clampAboveUpperCall
+branch if condition aboveUpperBound target irFalse
+return value trueIR
 label irFalse
-returnValue falseIR
-
+return value falseIR
 
 # ============================================================
-

@@ -5,86 +5,86 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation sumSeven
-input sumSeven a CSignedInt64
-input sumSeven b CSignedInt64
-input sumSeven c CSignedInt64
-input sumSeven d CSignedInt64
-input sumSeven e CSignedInt64
-input sumSeven f CSignedInt64
-input sumSeven g CSignedInt64
-output sumSeven Result CSignedInt64 Void
+input operation sumSeven a Int64
+input operation sumSeven b Int64
+input operation sumSeven c Int64
+input operation sumSeven d Int64
+input operation sumSeven e Int64
+input operation sumSeven f Int64
+input operation sumSeven g Int64
+output operation sumSeven Result Int64 Void
 memory sumSeven heap no
 async sumSeven no
-purpose sumSeven "Add seven CSignedInt64 inputs. Exercises the 7-arg user-op call site emission path."
-invariant sumSeven "All seven params are i64."
+purpose operation sumSeven "Add seven Int64 inputs. Exercises the 7-arg user-op call site emission path."
+invariant operation sumSeven "All seven params are i64."
 label startSumSeven
-call s1Call math.addI64
-arg s1Call left a
-arg s1Call right b
+call s1Call math.addInt64
+argument s1Call left Int64 a
+argument s1Call right Int64 b
 run s1Call
-bind s1 CSignedInt64 s1Call
-call s2Call math.addI64
-arg s2Call left s1
-arg s2Call right c
+bind value s1 Int64 s1Call
+call s2Call math.addInt64
+argument s2Call left Int64 s1
+argument s2Call right Int64 c
 run s2Call
-bind s2 CSignedInt64 s2Call
-call s3Call math.addI64
-arg s3Call left s2
-arg s3Call right d
+bind value s2 Int64 s2Call
+call s3Call math.addInt64
+argument s3Call left Int64 s2
+argument s3Call right Int64 d
 run s3Call
-bind s3 CSignedInt64 s3Call
-call s4Call math.addI64
-arg s4Call left s3
-arg s4Call right e
+bind value s3 Int64 s3Call
+call s4Call math.addInt64
+argument s4Call left Int64 s3
+argument s4Call right Int64 e
 run s4Call
-bind s4 CSignedInt64 s4Call
-call s5Call math.addI64
-arg s5Call left s4
-arg s5Call right f
+bind value s4 Int64 s4Call
+call s5Call math.addInt64
+argument s5Call left Int64 s4
+argument s5Call right Int64 f
 run s5Call
-bind s5 CSignedInt64 s5Call
-call s6Call math.addI64
-arg s6Call left s5
-arg s6Call right g
+bind value s5 Int64 s5Call
+call s6Call math.addInt64
+argument s6Call left Int64 s5
+argument s6Call right Int64 g
 run s6Call
-bind total CSignedInt64 s6Call
-returnOk total
+bind value total Int64 s6Call
+return ok total
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "sumSeven(1..7) == 28."
-invariant main "Exercises 7-arg user-op call from main."
+purpose operation main "sumSeven(1..7) == 28."
+invariant operation main "Exercises 7-arg user-op call from main."
 label startMain
-const v1 CSignedInt64 1
-const v2 CSignedInt64 2
-const v3 CSignedInt64 3
-const v4 CSignedInt64 4
-const v5 CSignedInt64 5
-const v6 CSignedInt64 6
-const v7 CSignedInt64 7
+storage module immutable v1 Int64 1
+storage module immutable v2 Int64 2
+storage module immutable v3 Int64 3
+storage module immutable v4 Int64 4
+storage module immutable v5 Int64 5
+storage module immutable v6 Int64 6
+storage module immutable v7 Int64 7
 call sumCall sumSeven
-arg sumCall a v1
-arg sumCall b v2
-arg sumCall c v3
-arg sumCall d v4
-arg sumCall e v5
-arg sumCall f v6
-arg sumCall g v7
+argument sumCall a Int64 v1
+argument sumCall b Int64 v2
+argument sumCall c Int64 v3
+argument sumCall d Int64 v4
+argument sumCall e Int64 v5
+argument sumCall f Int64 v6
+argument sumCall g Int64 v7
 run sumCall
-bindOk total CSignedInt64 sumCall
-var totalStorage I64 0
-set totalStorage total
+bind ok total Int64 sumCall
+memory main mutable totalStorage Int64 0
+set memory totalStorage total
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value totalStorage
+argument writeCall console Console console
+argument writeCall value Int64 totalStorage
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

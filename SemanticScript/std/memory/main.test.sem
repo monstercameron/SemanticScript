@@ -2,17 +2,17 @@
 # SEMANTICSCRIPT STANDARD LIBRARY TESTS: bulk memory operations
 # ============================================================
 #
-# # rationale: companion test file for std/memory/main.sem. Imports
+# rationale: companion test file for std/memory/main.sem. Imports
 #   the memory module and exercises every operation it exports â€”
 #   copy / move / fill / zero / compare / find / hash â€” including
 #   boundary cases (empty buffer, not-found, overlap, determinism).
 #
-# # invariant: success prints "OK\n" and exits 0; assertion failures
+# invariant: success prints "OK\n" and exits 0; assertion failures
 #   surface MainError.MemorySmokeAssertionFailed; heap allocation
 #   failure surfaces MainError.MemoryAllocationFailed.
 #
 # # pattern: this is the canonical main.test.sem form â€” same directory
-#   as main.sem, importModule foo, project block local to the test,
+#   as main.sem, import foo standard.foo, project block local to the test,
 #   entry console main. The implementation file std/memory/main.sem
 #   carries no smoke main itself.
 
@@ -21,7 +21,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.memory
+import memory standard.memory
 error MainError
 errorCase MainError MemorySmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -39,97 +39,97 @@ capability heapFreeCapability heap free
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 useCapability main heapAllocationCapability
 useCapability main heapFreeCapability
 effect main allocate heap
 effect main free heap
 effect main write console.stdout
-memoryHeap main yes
+memory main heap yes
 memoryStackLimit main 4096
 memoryAllocationSource main allocateBufferCall
 async main no
-purpose main "Smoke-test copy / fill / compare / find on a heap-allocated buffer."
-invariant main "Smoke fails closed: malloc failure surfaces MemoryAllocationFailed; any assertion failure surfaces MemorySmokeAssertionFailed."
+purpose operation main "Smoke-test copy / fill / compare / find on a heap-allocated buffer."
+invariant operation main "Smoke fails closed: malloc failure surfaces MemoryAllocationFailed; any assertion failure surfaces MemorySmokeAssertionFailed."
 
 label startMain
-const allocSize CByteCount 16
+storage module immutable allocSize ByteCount 16
 call allocateBufferCall c.malloc
-arg allocateBufferCall size allocSize
+argument allocateBufferCall size ByteCount allocSize
 run allocateBufferCall
-bind workBuffer COpaqueMemoryAddress allocateBufferCall
-bindError heapAllocationError CSignedInt32 allocateBufferCall
-branchIfError allocateBufferCall heapAllocationFailedHandler
+bind value workBuffer OpaquePointer allocateBufferCall
+bind error heapAllocationError Int32 allocateBufferCall
+branch error source allocateBufferCall target heapAllocationFailedHandler
 defer releaseAllocateBufferCall c.free workBuffer
 
-const upperALetterCode CSignedInt32 65
-const fiveByteCount CByteCount 5
-const fiveAsAscii CNullTerminatedByteString "AAAAA"
-const helloLiteralForMemory CNullTerminatedByteString "hello"
-const integerZeroBoundaryForMemoryLocal CSignedInt64 0
+storage module immutable upperALetterCode Int32 65
+storage module immutable fiveByteCount ByteCount 5
+storage module immutable fiveAsAscii String "AAAAA"
+storage module immutable helloLiteralForMemory String "hello"
+storage module immutable integerZeroBoundaryForMemoryLocal Int64 0
 
 call runFillCall fillMemoryBytesWithValue
-arg runFillCall byteBuffer workBuffer
-arg runFillCall targetValue upperALetterCode
-arg runFillCall byteCount fiveByteCount
+argument runFillCall byteBuffer OpaquePointer workBuffer
+argument runFillCall targetValue Int32 upperALetterCode
+argument runFillCall byteCount ByteCount fiveByteCount
 run runFillCall
-ignoreValue runFillCall CByteCount
+ignore value source runFillCall type ByteCount
 
 call assertFillCompareCall compareMemoryByteRanges
-arg assertFillCompareCall leftBuffer workBuffer
-arg assertFillCompareCall rightBuffer fiveAsAscii
-arg assertFillCompareCall byteCount fiveByteCount
+argument assertFillCompareCall leftBuffer String workBuffer
+argument assertFillCompareCall rightBuffer String fiveAsAscii
+argument assertFillCompareCall byteCount ByteCount fiveByteCount
 run assertFillCompareCall
-bind fillCompareResult CSignedInt64 assertFillCompareCall
-call checkFillCompareCall math.equalI64
-arg checkFillCompareCall left fillCompareResult
-arg checkFillCompareCall right integerZeroBoundaryForMemoryLocal
+bind value fillCompareResult Int64 assertFillCompareCall
+call checkFillCompareCall math.equalInt64
+argument checkFillCompareCall left Int64 fillCompareResult
+argument checkFillCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkFillCompareCall
-bind fillCompareOk Bool checkFillCompareCall
-branchIf fillCompareOk fillCompareHolds
-branch smokeAssertionFailed
+bind value fillCompareOk Bool checkFillCompareCall
+branch if condition fillCompareOk target fillCompareHolds
+branch else target smokeAssertionFailed
 label fillCompareHolds
 
 call runCopyCall copyMemoryBytes
-arg runCopyCall destinationBuffer workBuffer
-arg runCopyCall sourceBuffer helloLiteralForMemory
-arg runCopyCall byteCount fiveByteCount
+argument runCopyCall destinationBuffer OpaquePointer workBuffer
+argument runCopyCall sourceBuffer String helloLiteralForMemory
+argument runCopyCall byteCount ByteCount fiveByteCount
 run runCopyCall
-ignoreValue runCopyCall CByteCount
+ignore value source runCopyCall type ByteCount
 
 call assertCopyCompareCall compareMemoryByteRanges
-arg assertCopyCompareCall leftBuffer workBuffer
-arg assertCopyCompareCall rightBuffer helloLiteralForMemory
-arg assertCopyCompareCall byteCount fiveByteCount
+argument assertCopyCompareCall leftBuffer String workBuffer
+argument assertCopyCompareCall rightBuffer String helloLiteralForMemory
+argument assertCopyCompareCall byteCount ByteCount fiveByteCount
 run assertCopyCompareCall
-bind copyCompareResult CSignedInt64 assertCopyCompareCall
-call checkCopyCompareCall math.equalI64
-arg checkCopyCompareCall left copyCompareResult
-arg checkCopyCompareCall right integerZeroBoundaryForMemoryLocal
+bind value copyCompareResult Int64 assertCopyCompareCall
+call checkCopyCompareCall math.equalInt64
+argument checkCopyCompareCall left Int64 copyCompareResult
+argument checkCopyCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkCopyCompareCall
-bind copyCompareOk Bool checkCopyCompareCall
-branchIf copyCompareOk copyCompareHolds
-branch smokeAssertionFailed
+bind value copyCompareOk Bool checkCopyCompareCall
+branch if condition copyCompareOk target copyCompareHolds
+branch else target smokeAssertionFailed
 label copyCompareHolds
 
 # findByteValueInMemoryRange: 'l' in "hello" at offset 2
-const lowercaseLForMemory CSignedInt32 108
-const expectedFindOffset CSignedInt64 2
+storage module immutable lowercaseLForMemory Int32 108
+storage module immutable expectedFindOffset Int64 2
 call assertFindCall findByteValueInMemoryRange
-arg assertFindCall byteBuffer workBuffer
-arg assertFindCall targetValue lowercaseLForMemory
-arg assertFindCall byteCount fiveByteCount
+argument assertFindCall byteBuffer String workBuffer
+argument assertFindCall targetValue Int32 lowercaseLForMemory
+argument assertFindCall byteCount ByteCount fiveByteCount
 run assertFindCall
-bind findResult CSignedInt64 assertFindCall
-call checkFindCall math.equalI64
-arg checkFindCall left findResult
-arg checkFindCall right expectedFindOffset
+bind value findResult Int64 assertFindCall
+call checkFindCall math.equalInt64
+argument checkFindCall left Int64 findResult
+argument checkFindCall right Int64 expectedFindOffset
 run checkFindCall
-bind findOk Bool checkFindCall
-branchIf findOk findHolds
-branch smokeAssertionFailed
+bind value findOk Bool checkFindCall
+branch if condition findOk target findHolds
+branch else target smokeAssertionFailed
 label findHolds
 
 # ============================================================
@@ -138,181 +138,208 @@ label findHolds
 # hashMemoryBytesWithFnv1a) plus boundary / property cases.
 # ============================================================
 
-const zeroByteCountMem CByteCount 0
-const helloAgainLiteral CNullTerminatedByteString "hello"
-const lowercaseZForMem CSignedInt32 122
+storage module immutable zeroByteCountMem ByteCount 0
+storage module immutable helloAgainLiteral String "hello"
+storage module immutable lowercaseZForMem Int32 122
 
 # zeroMemoryBytes: zero out the first 5 bytes of the buffer, then
 # verify byte at offset 0 is 0 via findByteValueInMemoryRange.
 call runZeroCall zeroMemoryBytes
-arg runZeroCall byteBuffer workBuffer
-arg runZeroCall byteCount fiveByteCount
+argument runZeroCall byteBuffer OpaquePointer workBuffer
+argument runZeroCall byteCount ByteCount fiveByteCount
 run runZeroCall
-ignoreValue runZeroCall CByteCount
+ignore value source runZeroCall type ByteCount
 
-const nullByteCodeMem CSignedInt32 0
-const zeroOffset CSignedInt64 0
+storage module immutable nullByteCodeMem Int32 0
+storage module immutable zeroOffset Int64 0
 call findZeroCall findByteValueInMemoryRange
-arg findZeroCall byteBuffer workBuffer
-arg findZeroCall targetValue nullByteCodeMem
-arg findZeroCall byteCount fiveByteCount
+argument findZeroCall byteBuffer String workBuffer
+argument findZeroCall targetValue Int32 nullByteCodeMem
+argument findZeroCall byteCount ByteCount fiveByteCount
 run findZeroCall
-bind findZeroResult CSignedInt64 findZeroCall
-call checkFindZeroCall math.equalI64
-arg checkFindZeroCall left findZeroResult
-arg checkFindZeroCall right zeroOffset
+bind value findZeroResult Int64 findZeroCall
+call checkFindZeroCall math.equalInt64
+argument checkFindZeroCall left Int64 findZeroResult
+argument checkFindZeroCall right Int64 zeroOffset
 run checkFindZeroCall
-bind findZeroOk Bool checkFindZeroCall
-branchIf findZeroOk findZeroHolds
-branch smokeAssertionFailed
+bind value findZeroOk Bool checkFindZeroCall
+branch if condition findZeroOk target findZeroHolds
+branch else target smokeAssertionFailed
 label findZeroHolds
 
 # Re-copy "hello" into the buffer, then test moveMemoryBytesAllowOverlap.
 # After move from buffer[0..5] to buffer[2..7] (overlapping right), the
 # 5-byte content at offset 2 should be "hello".
 call refillCopyCall copyMemoryBytes
-arg refillCopyCall destinationBuffer workBuffer
-arg refillCopyCall sourceBuffer helloAgainLiteral
-arg refillCopyCall byteCount fiveByteCount
+argument refillCopyCall destinationBuffer OpaquePointer workBuffer
+argument refillCopyCall sourceBuffer String helloAgainLiteral
+argument refillCopyCall byteCount ByteCount fiveByteCount
 run refillCopyCall
-ignoreValue refillCopyCall CByteCount
+ignore value source refillCopyCall type ByteCount
 
 # Compute destination = workBuffer + 2 via pointer arithmetic.
-const twoByteOffset CByteCount 2
+storage module immutable twoByteOffset ByteCount 2
 call advanceForMoveCall pointer.offset
-arg advanceForMoveCall base workBuffer
-arg advanceForMoveCall offset twoByteOffset
+argument advanceForMoveCall base OpaquePointer workBuffer
+argument advanceForMoveCall offset ByteCount twoByteOffset
 run advanceForMoveCall
-bind moveDestPtr COpaqueMemoryAddress advanceForMoveCall
+bind value moveDestPtr OpaquePointer advanceForMoveCall
 
 call runMoveCall moveMemoryBytesAllowOverlap
-arg runMoveCall destinationBuffer moveDestPtr
-arg runMoveCall sourceBuffer workBuffer
-arg runMoveCall byteCount fiveByteCount
+argument runMoveCall destinationBuffer OpaquePointer moveDestPtr
+argument runMoveCall sourceBuffer String workBuffer
+argument runMoveCall byteCount ByteCount fiveByteCount
 run runMoveCall
-ignoreValue runMoveCall CByteCount
+ignore value source runMoveCall type ByteCount
 
 # After overlapping move, bytes at offset 2..7 should be "hello".
 call moveCompareCall compareMemoryByteRanges
-arg moveCompareCall leftBuffer moveDestPtr
-arg moveCompareCall rightBuffer helloAgainLiteral
-arg moveCompareCall byteCount fiveByteCount
+argument moveCompareCall leftBuffer String moveDestPtr
+argument moveCompareCall rightBuffer String helloAgainLiteral
+argument moveCompareCall byteCount ByteCount fiveByteCount
 run moveCompareCall
-bind moveCompareResult CSignedInt64 moveCompareCall
-call checkMoveCompareCall math.equalI64
-arg checkMoveCompareCall left moveCompareResult
-arg checkMoveCompareCall right integerZeroBoundaryForMemoryLocal
+bind value moveCompareResult Int64 moveCompareCall
+call checkMoveCompareCall math.equalInt64
+argument checkMoveCompareCall left Int64 moveCompareResult
+argument checkMoveCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkMoveCompareCall
-bind moveCompareOk Bool checkMoveCompareCall
-branchIf moveCompareOk moveCompareHolds
-branch smokeAssertionFailed
+bind value moveCompareOk Bool checkMoveCompareCall
+branch if condition moveCompareOk target moveCompareHolds
+branch else target smokeAssertionFailed
 label moveCompareHolds
 
 # hashMemoryBytesWithFnv1a: hash of zero-length buffer == initial offset basis.
-const expectedZeroHashBasis CSignedInt64 -3750763034362895579
+storage module immutable expectedZeroHashBasis Int64 -3750763034362895579
 call hashZeroCall hashMemoryBytesWithFnv1a
-arg hashZeroCall byteBuffer helloAgainLiteral
-arg hashZeroCall byteCount zeroByteCountMem
+argument hashZeroCall byteBuffer String helloAgainLiteral
+argument hashZeroCall byteCount ByteCount zeroByteCountMem
 run hashZeroCall
-bind hashZeroResult CSignedInt64 hashZeroCall
-call hashZeroCheckCall math.equalI64
-arg hashZeroCheckCall left hashZeroResult
-arg hashZeroCheckCall right expectedZeroHashBasis
+bind value hashZeroResult Int64 hashZeroCall
+call hashZeroCheckCall math.equalInt64
+argument hashZeroCheckCall left Int64 hashZeroResult
+argument hashZeroCheckCall right Int64 expectedZeroHashBasis
 run hashZeroCheckCall
-bind hashZeroOk Bool hashZeroCheckCall
-branchIf hashZeroOk hashZeroHolds
-branch smokeAssertionFailed
+bind value hashZeroOk Bool hashZeroCheckCall
+branch if condition hashZeroOk target hashZeroHolds
+branch else target smokeAssertionFailed
 label hashZeroHolds
 
 # Property: hash is deterministic â€” same input always produces same output.
 call hashFirstCall hashMemoryBytesWithFnv1a
-arg hashFirstCall byteBuffer helloAgainLiteral
-arg hashFirstCall byteCount fiveByteCount
+argument hashFirstCall byteBuffer String helloAgainLiteral
+argument hashFirstCall byteCount ByteCount fiveByteCount
 run hashFirstCall
-bind hashFirstResult CSignedInt64 hashFirstCall
+bind value hashFirstResult Int64 hashFirstCall
 call hashSecondCall hashMemoryBytesWithFnv1a
-arg hashSecondCall byteBuffer helloAgainLiteral
-arg hashSecondCall byteCount fiveByteCount
+argument hashSecondCall byteBuffer String helloAgainLiteral
+argument hashSecondCall byteCount ByteCount fiveByteCount
 run hashSecondCall
-bind hashSecondResult CSignedInt64 hashSecondCall
-call hashDeterministicCheckCall math.equalI64
-arg hashDeterministicCheckCall left hashFirstResult
-arg hashDeterministicCheckCall right hashSecondResult
+bind value hashSecondResult Int64 hashSecondCall
+call hashDeterministicCheckCall math.equalInt64
+argument hashDeterministicCheckCall left Int64 hashFirstResult
+argument hashDeterministicCheckCall right Int64 hashSecondResult
 run hashDeterministicCheckCall
-bind hashDeterministicOk Bool hashDeterministicCheckCall
-branchIf hashDeterministicOk hashDeterministicHolds
-branch smokeAssertionFailed
+bind value hashDeterministicOk Bool hashDeterministicCheckCall
+branch if condition hashDeterministicOk target hashDeterministicHolds
+branch else target smokeAssertionFailed
 label hashDeterministicHolds
 
 # Property: distinct inputs produce distinct hashes â€” hash("hello") != hash("world").
-const worldLiteralMem CNullTerminatedByteString "world"
+storage module immutable worldLiteralMem String "world"
 call hashWorldCall hashMemoryBytesWithFnv1a
-arg hashWorldCall byteBuffer worldLiteralMem
-arg hashWorldCall byteCount fiveByteCount
+argument hashWorldCall byteBuffer String worldLiteralMem
+argument hashWorldCall byteCount ByteCount fiveByteCount
 run hashWorldCall
-bind hashWorldResult CSignedInt64 hashWorldCall
-call hashDistinctCheckCall math.notEqualI64
-arg hashDistinctCheckCall left hashFirstResult
-arg hashDistinctCheckCall right hashWorldResult
+bind value hashWorldResult Int64 hashWorldCall
+call hashDistinctCheckCall math.notEqualInt64
+argument hashDistinctCheckCall left Int64 hashFirstResult
+argument hashDistinctCheckCall right Int64 hashWorldResult
 run hashDistinctCheckCall
-bind hashDistinctOk Bool hashDistinctCheckCall
-branchIf hashDistinctOk hashDistinctHolds
-branch smokeAssertionFailed
+bind value hashDistinctOk Bool hashDistinctCheckCall
+branch if condition hashDistinctOk target hashDistinctHolds
+branch else target smokeAssertionFailed
 label hashDistinctHolds
 
 # findByteValueInMemoryRange: 'z' not in "hello" -> -1
-const negativeOneFindResult CSignedInt64 -1
+storage module immutable negativeOneFindResult Int64 -1
 call findNotFoundCall findByteValueInMemoryRange
-arg findNotFoundCall byteBuffer helloAgainLiteral
-arg findNotFoundCall targetValue lowercaseZForMem
-arg findNotFoundCall byteCount fiveByteCount
+argument findNotFoundCall byteBuffer String helloAgainLiteral
+argument findNotFoundCall targetValue Int32 lowercaseZForMem
+argument findNotFoundCall byteCount ByteCount fiveByteCount
 run findNotFoundCall
-bind findNotFoundResult CSignedInt64 findNotFoundCall
-call checkFindNotFoundCall math.equalI64
-arg checkFindNotFoundCall left findNotFoundResult
-arg checkFindNotFoundCall right negativeOneFindResult
+bind value findNotFoundResult Int64 findNotFoundCall
+call checkFindNotFoundCall math.equalInt64
+argument checkFindNotFoundCall left Int64 findNotFoundResult
+argument checkFindNotFoundCall right Int64 negativeOneFindResult
 run checkFindNotFoundCall
-bind findNotFoundOk Bool checkFindNotFoundCall
-branchIf findNotFoundOk findNotFoundHolds
-branch smokeAssertionFailed
+bind value findNotFoundOk Bool checkFindNotFoundCall
+branch if condition findNotFoundOk target findNotFoundHolds
+branch else target smokeAssertionFailed
 label findNotFoundHolds
 
 # Property: comparing buffer to itself returns 0
 call selfCompareCall compareMemoryByteRanges
-arg selfCompareCall leftBuffer helloAgainLiteral
-arg selfCompareCall rightBuffer helloAgainLiteral
-arg selfCompareCall byteCount fiveByteCount
+argument selfCompareCall leftBuffer String helloAgainLiteral
+argument selfCompareCall rightBuffer String helloAgainLiteral
+argument selfCompareCall byteCount ByteCount fiveByteCount
 run selfCompareCall
-bind selfCompareResult CSignedInt64 selfCompareCall
-call checkSelfCompareCall math.equalI64
-arg checkSelfCompareCall left selfCompareResult
-arg checkSelfCompareCall right integerZeroBoundaryForMemoryLocal
+bind value selfCompareResult Int64 selfCompareCall
+call checkSelfCompareCall math.equalInt64
+argument checkSelfCompareCall left Int64 selfCompareResult
+argument checkSelfCompareCall right Int64 integerZeroBoundaryForMemoryLocal
 run checkSelfCompareCall
-bind selfCompareOk Bool checkSelfCompareCall
-branchIf selfCompareOk selfCompareHolds
-branch smokeAssertionFailed
+bind value selfCompareOk Bool checkSelfCompareCall
+branch if condition selfCompareOk target selfCompareHolds
+branch else target smokeAssertionFailed
 label selfCompareHolds
 
-const successMessageText CNullTerminatedByteString "OK"
-call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
-run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+# Regression (high byte >= 128): fill the buffer with unsigned 200 (0xC8)
+# and confirm findByteValueInMemoryRange locates it at offset 0. Before the
+# fix, the loaded byte sign-extended to -56 and never matched targetValue
+# 200, so find wrongly returned -1 even though fill had just written it.
+storage module immutable highByteFillValue Int32 200
+storage module immutable oneByteFillCount ByteCount 1
+call fillHighByteCall fillMemoryBytesWithValue
+argument fillHighByteCall byteBuffer OpaquePointer workBuffer
+argument fillHighByteCall targetValue Int32 highByteFillValue
+argument fillHighByteCall byteCount ByteCount oneByteFillCount
+run fillHighByteCall
+ignore value source fillHighByteCall type ByteCount
+call findHighByteCall findByteValueInMemoryRange
+argument findHighByteCall byteBuffer String workBuffer
+argument findHighByteCall targetValue Int32 highByteFillValue
+argument findHighByteCall byteCount ByteCount oneByteFillCount
+run findHighByteCall
+bind value findHighByteResult Int64 findHighByteCall
+call checkFindHighByteCall math.equalInt64
+argument checkFindHighByteCall left Int64 findHighByteResult
+argument checkFindHighByteCall right Int64 integerZeroBoundaryForMemoryLocal
+run checkFindHighByteCall
+bind value findHighByteOk Bool checkFindHighByteCall
+branch if condition findHighByteOk target findHighByteHolds
+branch else target smokeAssertionFailed
+label findHighByteHolds
 
-# Failure leg: surface the raw negative CSignedInt32 from
+storage module immutable successMessageText String "OK"
+call writeSuccessLineCall console.writeLine
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
+run writeSuccessLineCall
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
+
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError memorySmokeFailure MainError.MemorySmokeAssertionFailed
-returnError memorySmokeFailure
+return error memorySmokeFailure
 
 # Heap-allocation failure leg: c.malloc returned NULL. Surface the
 # typed MemoryAllocationFailed variant with the raw negative status
@@ -320,4 +347,4 @@ returnError memorySmokeFailure
 # defer was registered AFTER this branch's branchIfError.
 label heapAllocationFailedHandler
 makeError heapAllocationFailure MainError.MemoryAllocationFailed heapAllocationError
-returnError heapAllocationFailure
+return error heapAllocationFailure

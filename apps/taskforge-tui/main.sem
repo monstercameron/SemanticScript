@@ -1,0 +1,2157 @@
+# Heap-array terminal todo app for the current SemanticScript compiler.
+# build.sem owns project identity, runtime target, executable metadata, and
+# the module registry. This file owns the app module contract, imports,
+# exports, and executable source. Run from apps/taskforge-tui/build so todos.json lives
+# beside taskforge_tui.exe.
+module app.taskforge_tui
+purpose module app.taskforge_tui "Keyboard-driven console todo app with heap-backed todo storage and JSON persistence."
+moduleOwns app.taskforge_tui "Terminal TUI lifecycle, keyboard handling, in-memory todo arrays, todos.json load/save, and process-local app state."
+moduleDoesNotOwn app.taskforge_tui "Reusable standard library abstractions, native console primitive implementation, or cross-project package management."
+moduleWarning app.taskforge_tui "This module is intentionally monolithic while the project-layout model is being prototyped; future refactors can split TUI, persistence, and domain operations into folder modules."
+invariant module app.taskforge_tui "main.sem is the default executable entry selected by build.sem, and taskforge_tui.exe must be run from apps/taskforge-tui/build so todos.json resolves beside the executable."
+
+# Explicit public surface carried from the module contract. Exports are not
+# inferred; every symbol below is declared in this module source.
+exportType app.taskforge_tui CAllocationError
+exportType app.taskforge_tui TuiKeyCode
+exportType app.taskforge_tui SaveTodosStatus
+exportType app.taskforge_tui ScreenMode
+exportError app.taskforge_tui MainError
+
+exportOperation app.taskforge_tui main
+exportOperation app.taskforge_tui readTuiKey
+exportOperation app.taskforge_tui renderScreen
+exportOperation app.taskforge_tui loadTodosFromJson
+exportOperation app.taskforge_tui saveTodosToJson
+
+exportConstant app.taskforge_tui tuiKeyArrowUp
+exportConstant app.taskforge_tui tuiKeyArrowDown
+exportConstant app.taskforge_tui tuiKeyArrowLeft
+exportConstant app.taskforge_tui tuiKeyArrowRight
+
+type CAllocationError Int32
+type TuiKeyCode Int32
+typeInvariant TuiKeyCode "Raw console bytes returned by c.consoleGetch occupy values 0..255; readTuiKey-normalized SemanticScript TUI keys (arrow keys, future special keys) occupy values strictly greater than 255 so the two domains never collide. See tuiKeyArrow{Up,Down,Left,Right} for the current normalized assignments."
+
+enum SaveTodosStatus repr Int32
+enumCase SaveTodosStatus SaveSucceeded 0
+enumCase SaveTodosStatus SaveOpenFailed 1
+enumCase SaveTodosStatus SaveWriteFailed 2
+enumCase SaveTodosStatus SaveCloseFailed 3
+
+enum ScreenMode repr Int64
+enumCase ScreenMode ListMode 0
+enumCase ScreenMode EditMode 1
+
+# rationale: Operation bodies compare these enum values via the compiler's
+# built-in `EnumName.equal` domain method (e.g. `SaveTodosStatus.equal`,
+# `ScreenMode.equal`). The compiler resolves each call to the matching
+# math.equal* primitive based on the enum's declared `repr`, so the source
+# expresses the enum identity, not the underlying integer width. Changing
+# an enum's `repr` only requires re-running the compiler — no call site
+# rewrite needed.
+
+error MainError
+errorCase MainError StartupAllocationFailed CAllocationError
+
+# rationale: TUI key codes live above 0xFF (256) so a normalized key never
+# collides with a raw byte returned by c.consoleGetch. readTuiKey produces
+# these codes; main consumes them. Declaring them once here removes the
+# producer/consumer drift hazard that two parallel local declarations carry.
+storage module immutable tuiKeyArrowUp TuiKeyCode 1001
+storage module immutable tuiKeyArrowDown TuiKeyCode 1002
+storage module immutable tuiKeyArrowLeft TuiKeyCode 1003
+storage module immutable tuiKeyArrowRight TuiKeyCode 1004
+
+# rationale: ASCII byte sentinels used by the bounded JSON tokenizer
+# (copyFixedTodoJsonTitleAtOffset, parseJsonFlagAtOffset, writeJsonEscapedStringBuffer)
+# and by the C-string buffer helpers. Codepoints map to characters as:
+#   0  = NUL (C-string terminator)
+#   27 = ESC (ANSI control sequence introducer used by clearScreen/hideCursor/showCursor)
+#   34 = double-quote (JSON string delimiter)
+#   49 = digit '1' (parseJsonFlagAtOffset uses this as the truthy flag)
+#   92 = backslash (JSON escape lead)
+#   93 = `]` (closing bracket of the JSON array, end-of-data sentinel)
+#   10 = LF (newline; line-terminator in todos.json and reader stop byte)
+#   13 = CR (carriage return; reader stop byte on CRLF line endings)
+storage module immutable nulByte Int32 0
+storage module immutable escapeByte Int32 27
+storage module immutable quoteByte Int32 34
+storage module immutable oneAsciiByte Int32 49
+storage module immutable backslashByte Int32 92
+storage module immutable closeBracketByte Int32 93
+storage module immutable newlineByte Int32 10
+storage module immutable carriageReturnByte Int32 13
+
+# rationale: Console-op scalar conventions shared by clearScreen, hideCursor,
+# showCursor, renderTodoRow, and renderScreen. successCode 0 is the
+# documented "handler returned cleanly" status (see optimization-guide
+# Return Contracts). flushAllStreams 0 is the libc `c.fflush(NULL)` sentinel
+# that flushes every open stream; passed as Int64 because c.fflush's
+# stream argument lowers as a pointer-width integer.
+storage module immutable successCode Int32 0
+storage module immutable flushAllStreams Int64 0
+
+operation readTuiKey
+output operation readTuiKey TuiKeyCode
+effect readTuiKey read console.stdin
+authority readTuiKey read console.stdin
+memory readTuiKey heap no
+async readTuiKey no
+purpose operation readTuiKey "Read one no-echo console key through the shared terminal adapter and normalize arrow keys to this app's local key codes."
+invariant operation readTuiKey "Arrow keys return stable app-local key codes; ordinary keys return their raw byte. Unhandled terminal soft keys return zero so the caller treats them as ignored input."
+label startReadTuiKey
+# rationale: c.terminalReadKey wraps the old Windows _getch path and also
+# honors SEM_TERMINAL_TEST_KEYS, which lets app smoke tests drive the TUI
+# without a visible interactive console. The adapter has its own soft-key
+# codes, so this operation maps only the arrows this app understands.
+storage local immutable terminalKeyLeft Int32 1000
+storage local immutable terminalKeyRight Int32 1001
+storage local immutable terminalKeyUp Int32 1002
+storage local immutable terminalKeyDown Int32 1003
+storage local immutable terminalKeyDelete Int32 1004
+storage local immutable ignoredSoftKey TuiKeyCode 0
+call keyCall c.terminalReadKey
+run keyCall
+bind value keyCode Int32 keyCall
+call upArrowCheckCall math.equalInt32
+argument upArrowCheckCall left Int32 keyCode
+argument upArrowCheckCall right Int32 terminalKeyUp
+run upArrowCheckCall
+bind value isUpArrow Bool upArrowCheckCall
+branch if condition isUpArrow target returnArrowUpKey
+call downArrowCheckCall math.equalInt32
+argument downArrowCheckCall left Int32 keyCode
+argument downArrowCheckCall right Int32 terminalKeyDown
+run downArrowCheckCall
+bind value isDownArrow Bool downArrowCheckCall
+branch if condition isDownArrow target returnArrowDownKey
+call leftArrowCheckCall math.equalInt32
+argument leftArrowCheckCall left Int32 keyCode
+argument leftArrowCheckCall right Int32 terminalKeyLeft
+run leftArrowCheckCall
+bind value isLeftArrow Bool leftArrowCheckCall
+branch if condition isLeftArrow target returnArrowLeftKey
+call rightArrowCheckCall math.equalInt32
+argument rightArrowCheckCall left Int32 keyCode
+argument rightArrowCheckCall right Int32 terminalKeyRight
+run rightArrowCheckCall
+bind value isRightArrow Bool rightArrowCheckCall
+branch if condition isRightArrow target returnArrowRightKey
+call deleteSoftKeyCheckCall math.equalInt32
+argument deleteSoftKeyCheckCall left Int32 keyCode
+argument deleteSoftKeyCheckCall right Int32 terminalKeyDelete
+run deleteSoftKeyCheckCall
+bind value isDeleteSoftKey Bool deleteSoftKeyCheckCall
+branch if condition isDeleteSoftKey target returnIgnoredSoftKey
+return value keyCode
+label returnArrowUpKey
+return value tuiKeyArrowUp
+label returnArrowDownKey
+return value tuiKeyArrowDown
+label returnArrowLeftKey
+return value tuiKeyArrowLeft
+label returnArrowRightKey
+return value tuiKeyArrowRight
+label returnIgnoredSoftKey
+return value ignoredSoftKey
+
+operation clearScreen
+output operation clearScreen Int32
+effect clearScreen write console.stdout
+authority clearScreen write console.stdout
+memory clearScreen heap no
+async clearScreen no
+purpose operation clearScreen "Clear the terminal and move the cursor home while the TUI owns the screen."
+invariant operation clearScreen "Only ANSI terminal state is changed; todo storage is untouched."
+label startClearScreen
+storage local immutable clearCode String "[2J"
+storage local immutable homeCode String "[H"
+call clearEscapeCall c.putchar
+argument clearEscapeCall character Int32 escapeByte
+run clearEscapeCall
+ignore value source clearEscapeCall type Int32
+call clearCodeCall c.printf
+argument clearCodeCall format String clearCode
+run clearCodeCall
+ignore value source clearCodeCall type Int32
+call homeEscapeCall c.putchar
+argument homeEscapeCall character Int32 escapeByte
+run homeEscapeCall
+ignore value source homeEscapeCall type Int32
+call homeCodeCall c.printf
+argument homeCodeCall format String homeCode
+run homeCodeCall
+ignore value source homeCodeCall type Int32
+call flushCall c.fflush
+argument flushCall stream Int64 flushAllStreams
+run flushCall
+ignore value source flushCall type Int32
+return value successCode
+
+operation hideCursor
+output operation hideCursor Int32
+effect hideCursor write console.stdout
+authority hideCursor write console.stdout
+memory hideCursor heap no
+async hideCursor no
+purpose operation hideCursor "Hide the native terminal caret while the TUI is active."
+invariant operation hideCursor "Only ANSI cursor visibility is changed; todo storage is untouched."
+label startHideCursor
+storage local immutable hideCursorCode String "[?25l"
+call hideEscapeCall c.putchar
+argument hideEscapeCall character Int32 escapeByte
+run hideEscapeCall
+ignore value source hideEscapeCall type Int32
+call hideCodeCall c.printf
+argument hideCodeCall format String hideCursorCode
+run hideCodeCall
+ignore value source hideCodeCall type Int32
+call flushCall c.fflush
+argument flushCall stream Int64 flushAllStreams
+run flushCall
+ignore value source flushCall type Int32
+return value successCode
+
+operation showCursor
+output operation showCursor Int32
+effect showCursor write console.stdout
+authority showCursor write console.stdout
+memory showCursor heap no
+async showCursor no
+purpose operation showCursor "Restore the native terminal caret before returning to the shell."
+invariant operation showCursor "Only ANSI cursor visibility is changed; todo storage is untouched."
+label startShowCursor
+storage local immutable showCursorCode String "[?25h"
+call showEscapeCall c.putchar
+argument showEscapeCall character Int32 escapeByte
+run showEscapeCall
+ignore value source showEscapeCall type Int32
+call showCodeCall c.printf
+argument showCodeCall format String showCursorCode
+run showCodeCall
+ignore value source showCodeCall type Int32
+call flushCall c.fflush
+argument flushCall stream Int64 flushAllStreams
+run flushCall
+ignore value source flushCall type Int32
+return value successCode
+
+operation getTitlePointerAt
+input operation getTitlePointerAt titlesBuffer OpaquePointer
+input operation getTitlePointerAt todoIndex Int64
+input operation getTitlePointerAt titleCapacity Int64
+output operation getTitlePointerAt OpaquePointer
+memory getTitlePointerAt heap no
+async getTitlePointerAt no
+purpose operation getTitlePointerAt "Return the start pointer for one title slot in the contiguous title array."
+invariant operation getTitlePointerAt "The returned pointer is titlesBuffer plus todoIndex multiplied by titleCapacity."
+invariant operation getTitlePointerAt "This operation is the *title-stride* half of the implicit `TodoEntry` record. The corresponding done flag for the same todoIndex lives at byte offset todoIndex in the sibling doneArray (stride 1). A future refactor that introduces `record TodoEntry { field done Bool, field title String }` plus `recordLayout TodoEntry column` would replace this pointer arithmetic with declarative field access; until that exists, every reader/writer of the two arrays must obey the same-index rule documented in `invariant main` (todo data shape)."
+label startGetTitlePointerAt
+call offsetCall math.multiplyInt64
+argument offsetCall left Int64 todoIndex
+argument offsetCall right Int64 titleCapacity
+run offsetCall
+bind value titleOffset Int64 offsetCall
+call pointerCall pointer.offset
+argument pointerCall base OpaquePointer titlesBuffer
+argument pointerCall offset ByteCount titleOffset
+run pointerCall
+bind value titlePointer OpaquePointer pointerCall
+return value titlePointer
+
+operation writeEmptyBuffer
+input operation writeEmptyBuffer targetBuffer OpaquePointer
+output operation writeEmptyBuffer Int64
+effect writeEmptyBuffer write memory.buffer
+authority writeEmptyBuffer write memory.buffer
+memory writeEmptyBuffer heap no
+async writeEmptyBuffer no
+purpose operation writeEmptyBuffer "Store a leading NUL so a title-edit buffer starts empty."
+invariant operation writeEmptyBuffer "After success targetBuffer contains an empty C string."
+label startWriteEmptyBuffer
+storage local immutable zeroOffset Int64 0
+call storeNulCall pointer.storeByte
+argument storeNulCall buffer OpaquePointer targetBuffer
+argument storeNulCall offset ByteCount zeroOffset
+argument storeNulCall value Int64 nulByte
+run storeNulCall
+return value zeroOffset
+
+operation copyStringBuffer
+input operation copyStringBuffer sourceBuffer OpaquePointer
+input operation copyStringBuffer targetBuffer OpaquePointer
+input operation copyStringBuffer targetBufferCapacity Int64
+output operation copyStringBuffer Int64
+effect copyStringBuffer read memory.buffer
+effect copyStringBuffer write memory.buffer
+authority copyStringBuffer read memory.buffer
+authority copyStringBuffer write memory.buffer
+memory copyStringBuffer heap no
+async copyStringBuffer no
+purpose operation copyStringBuffer "Copy a bounded null-terminated title string into another buffer."
+invariant operation copyStringBuffer "The target buffer is always null-terminated and the returned value is its copied length."
+label startCopyStringBuffer
+storage local immutable zeroIndex Int64 0
+storage local immutable oneStep Int64 1
+storage local mutable readIndex Int64 zeroIndex
+storage local mutable writeIndex Int64 zeroIndex
+call maxWritableIndexCall math.subtractInt64
+argument maxWritableIndexCall left Int64 targetBufferCapacity
+argument maxWritableIndexCall right Int64 oneStep
+run maxWritableIndexCall
+bind value maxWritableIndex Int64 maxWritableIndexCall
+label copyStringBufferLoop
+call loadSourceByteCall pointer.loadByte
+argument loadSourceByteCall buffer OpaquePointer sourceBuffer
+argument loadSourceByteCall offset ByteCount readIndex
+run loadSourceByteCall
+bind value sourceByte Int32 loadSourceByteCall
+call nulCheckCall math.equalInt32
+argument nulCheckCall left Int32 sourceByte
+argument nulCheckCall right Int32 nulByte
+run nulCheckCall
+bind value sourceByteIsNul Bool nulCheckCall
+branch if condition sourceByteIsNul target finishCopyStringBuffer
+call capacityCheckCall math.greaterThanOrEqualInt64
+argument capacityCheckCall left Int64 writeIndex
+argument capacityCheckCall right Int64 maxWritableIndex
+run capacityCheckCall
+bind value targetBufferFull Bool capacityCheckCall
+branch if condition targetBufferFull target finishCopyStringBuffer
+call storeTargetByteCall pointer.storeByte
+argument storeTargetByteCall buffer OpaquePointer targetBuffer
+argument storeTargetByteCall offset ByteCount writeIndex
+argument storeTargetByteCall value Int64 sourceByte
+run storeTargetByteCall
+call incrementReadIndexCall math.addInt64
+argument incrementReadIndexCall left Int64 readIndex
+argument incrementReadIndexCall right Int64 oneStep
+run incrementReadIndexCall
+bind value nextReadIndex Int64 incrementReadIndexCall
+set memory readIndex nextReadIndex
+call incrementWriteIndexCall math.addInt64
+argument incrementWriteIndexCall left Int64 writeIndex
+argument incrementWriteIndexCall right Int64 oneStep
+run incrementWriteIndexCall
+bind value nextWriteIndex Int64 incrementWriteIndexCall
+set memory writeIndex nextWriteIndex
+jump target copyStringBufferLoop
+label finishCopyStringBuffer
+call terminateTargetCall pointer.storeByte
+argument terminateTargetCall buffer OpaquePointer targetBuffer
+argument terminateTargetCall offset ByteCount writeIndex
+argument terminateTargetCall value Int64 nulByte
+run terminateTargetCall
+return value writeIndex
+
+operation appendPrintableKeyToBuffer
+input operation appendPrintableKeyToBuffer targetBuffer OpaquePointer
+input operation appendPrintableKeyToBuffer currentLength Int64
+input operation appendPrintableKeyToBuffer bufferCapacity Int64
+input operation appendPrintableKeyToBuffer keyCode TuiKeyCode
+output operation appendPrintableKeyToBuffer Int64
+effect appendPrintableKeyToBuffer write memory.buffer
+authority appendPrintableKeyToBuffer write memory.buffer
+memory appendPrintableKeyToBuffer heap no
+async appendPrintableKeyToBuffer no
+purpose operation appendPrintableKeyToBuffer "Append one printable key to the edit buffer when there is room."
+invariant operation appendPrintableKeyToBuffer "The target buffer remains null-terminated and currentLength never grows past capacity minus one."
+warning appendPrintableKeyToBuffer "Only single-byte printable ASCII input (codepoints 32..126) is accepted. Multi-byte UTF-8 input, terminal paste blocks, control characters, and IME composition sequences are silently dropped here; supporting them requires a UTF-8 decoder and a separate paste-mode reader, neither of which exists yet."
+label startAppendPrintableKeyToBuffer
+storage local immutable oneStep Int64 1
+# rationale: The inclusive ASCII printable range. 32 = ' ' (space, the lowest
+# printable character) and 126 = '~' (tilde, the highest before DEL at 127).
+# Bytes outside [32..126] are dropped — see the warning on this operation.
+storage local immutable minPrintableKey Int32 32
+storage local immutable maxPrintableKey Int32 126
+call belowPrintableCheckCall math.lessThanInt32
+argument belowPrintableCheckCall left Int32 keyCode
+argument belowPrintableCheckCall right Int32 minPrintableKey
+run belowPrintableCheckCall
+bind value belowPrintable Bool belowPrintableCheckCall
+branch if condition belowPrintable target skipAppendPrintableKey
+call abovePrintableCheckCall math.greaterThanInt32
+argument abovePrintableCheckCall left Int32 keyCode
+argument abovePrintableCheckCall right Int32 maxPrintableKey
+run abovePrintableCheckCall
+bind value abovePrintable Bool abovePrintableCheckCall
+branch if condition abovePrintable target skipAppendPrintableKey
+call maxWritableIndexCall math.subtractInt64
+argument maxWritableIndexCall left Int64 bufferCapacity
+argument maxWritableIndexCall right Int64 oneStep
+run maxWritableIndexCall
+bind value maxWritableIndex Int64 maxWritableIndexCall
+call capacityCheckCall math.greaterThanOrEqualInt64
+argument capacityCheckCall left Int64 currentLength
+argument capacityCheckCall right Int64 maxWritableIndex
+run capacityCheckCall
+bind value bufferFull Bool capacityCheckCall
+branch if condition bufferFull target skipAppendPrintableKey
+call storeKeyCall pointer.storeByte
+argument storeKeyCall buffer OpaquePointer targetBuffer
+argument storeKeyCall offset ByteCount currentLength
+argument storeKeyCall value Int64 keyCode
+run storeKeyCall
+call incrementLengthCall math.addInt64
+argument incrementLengthCall left Int64 currentLength
+argument incrementLengthCall right Int64 oneStep
+run incrementLengthCall
+bind value nextLength Int64 incrementLengthCall
+call terminateBufferCall pointer.storeByte
+argument terminateBufferCall buffer OpaquePointer targetBuffer
+argument terminateBufferCall offset ByteCount nextLength
+argument terminateBufferCall value Int64 nulByte
+run terminateBufferCall
+return value nextLength
+label skipAppendPrintableKey
+return value currentLength
+
+operation deleteLastBufferByte
+input operation deleteLastBufferByte targetBuffer OpaquePointer
+input operation deleteLastBufferByte currentLength Int64
+output operation deleteLastBufferByte Int64
+effect deleteLastBufferByte write memory.buffer
+authority deleteLastBufferByte write memory.buffer
+memory deleteLastBufferByte heap no
+async deleteLastBufferByte no
+purpose operation deleteLastBufferByte "Remove the last edit-buffer byte for backspace handling."
+invariant operation deleteLastBufferByte "The target buffer remains null-terminated and length never goes below zero."
+label startDeleteLastBufferByte
+storage local immutable zeroLength Int64 0
+storage local immutable oneStep Int64 1
+call emptyCheckCall math.equalInt64
+argument emptyCheckCall left Int64 currentLength
+argument emptyCheckCall right Int64 zeroLength
+run emptyCheckCall
+bind value bufferIsEmpty Bool emptyCheckCall
+branch if condition bufferIsEmpty target skipDeleteLastBufferByte
+call decrementLengthCall math.subtractInt64
+argument decrementLengthCall left Int64 currentLength
+argument decrementLengthCall right Int64 oneStep
+run decrementLengthCall
+bind value nextLength Int64 decrementLengthCall
+call terminateBufferCall pointer.storeByte
+argument terminateBufferCall buffer OpaquePointer targetBuffer
+argument terminateBufferCall offset ByteCount nextLength
+argument terminateBufferCall value Int64 nulByte
+run terminateBufferCall
+return value nextLength
+label skipDeleteLastBufferByte
+return value currentLength
+
+operation copyFixedTodoJsonTitleAtOffset
+input operation copyFixedTodoJsonTitleAtOffset sourceLine OpaquePointer
+input operation copyFixedTodoJsonTitleAtOffset titleBuffer OpaquePointer
+input operation copyFixedTodoJsonTitleAtOffset valueOffset Int64
+input operation copyFixedTodoJsonTitleAtOffset titleBufferCapacity Int64
+output operation copyFixedTodoJsonTitleAtOffset Int64
+effect copyFixedTodoJsonTitleAtOffset read memory.buffer
+effect copyFixedTodoJsonTitleAtOffset write memory.buffer
+authority copyFixedTodoJsonTitleAtOffset read memory.buffer
+authority copyFixedTodoJsonTitleAtOffset write memory.buffer
+memory copyFixedTodoJsonTitleAtOffset heap no
+async copyFixedTodoJsonTitleAtOffset no
+purpose operation copyFixedTodoJsonTitleAtOffset "Copy a fixed todo JSON title value into a caller-owned C string buffer."
+invariant operation copyFixedTodoJsonTitleAtOffset "Only the exact object shape emitted by saveTodosToJson is supported; only quote and backslash escapes emitted by saveTodosToJson are decoded."
+label startCopyFixedTodoJsonTitleAtOffset
+storage local immutable zeroIndex Int64 0
+storage local immutable oneStep Int64 1
+# rationale: readIndex is seeded directly from valueOffset so the loop starts
+# at the first character after `"title":"`. The earlier zeroIndex initializer
+# was dead because `set local readIndex valueOffset` immediately overwrote it.
+storage local mutable readIndex Int64 valueOffset
+storage local mutable writeIndex Int64 zeroIndex
+call maxWritableIndexCall math.subtractInt64
+argument maxWritableIndexCall left Int64 titleBufferCapacity
+argument maxWritableIndexCall right Int64 oneStep
+run maxWritableIndexCall
+bind value maxWritableIndex Int64 maxWritableIndexCall
+label copyTitleLoop
+call loadTitleByteCall pointer.loadByte
+argument loadTitleByteCall buffer OpaquePointer sourceLine
+argument loadTitleByteCall offset ByteCount readIndex
+run loadTitleByteCall
+bind value titleByte Int32 loadTitleByteCall
+call quoteCheckCall math.equalInt32
+argument quoteCheckCall left Int32 titleByte
+argument quoteCheckCall right Int32 quoteByte
+run quoteCheckCall
+bind value titleByteIsQuote Bool quoteCheckCall
+branch if condition titleByteIsQuote target finishCopyTitle
+call newlineCheckCall math.equalInt32
+argument newlineCheckCall left Int32 titleByte
+argument newlineCheckCall right Int32 newlineByte
+run newlineCheckCall
+bind value titleByteIsNewline Bool newlineCheckCall
+branch if condition titleByteIsNewline target finishCopyTitle
+call carriageReturnCheckCall math.equalInt32
+argument carriageReturnCheckCall left Int32 titleByte
+argument carriageReturnCheckCall right Int32 carriageReturnByte
+run carriageReturnCheckCall
+bind value titleByteIsCarriageReturn Bool carriageReturnCheckCall
+branch if condition titleByteIsCarriageReturn target finishCopyTitle
+call nulCheckCall math.equalInt32
+argument nulCheckCall left Int32 titleByte
+argument nulCheckCall right Int32 nulByte
+run nulCheckCall
+bind value titleByteIsNul Bool nulCheckCall
+branch if condition titleByteIsNul target finishCopyTitle
+call backslashCheckCall math.equalInt32
+argument backslashCheckCall left Int32 titleByte
+argument backslashCheckCall right Int32 backslashByte
+run backslashCheckCall
+bind value titleByteIsBackslash Bool backslashCheckCall
+branch if condition titleByteIsBackslash target copyEscapedTitleByte
+call capacityCheckCall math.greaterThanOrEqualInt64
+argument capacityCheckCall left Int64 writeIndex
+argument capacityCheckCall right Int64 maxWritableIndex
+run capacityCheckCall
+bind value titleBufferFull Bool capacityCheckCall
+branch if condition titleBufferFull target finishCopyTitle
+call storeTitleByteCall pointer.storeByte
+argument storeTitleByteCall buffer OpaquePointer titleBuffer
+argument storeTitleByteCall offset ByteCount writeIndex
+argument storeTitleByteCall value Int64 titleByte
+run storeTitleByteCall
+call incrementReadIndexCall math.addInt64
+argument incrementReadIndexCall left Int64 readIndex
+argument incrementReadIndexCall right Int64 oneStep
+run incrementReadIndexCall
+bind value nextReadIndex Int64 incrementReadIndexCall
+set memory readIndex nextReadIndex
+call incrementWriteIndexCall math.addInt64
+argument incrementWriteIndexCall left Int64 writeIndex
+argument incrementWriteIndexCall right Int64 oneStep
+run incrementWriteIndexCall
+bind value nextWriteIndex Int64 incrementWriteIndexCall
+set memory writeIndex nextWriteIndex
+jump target copyTitleLoop
+label copyEscapedTitleByte
+call escapedReadIndexCall math.addInt64
+argument escapedReadIndexCall left Int64 readIndex
+argument escapedReadIndexCall right Int64 oneStep
+run escapedReadIndexCall
+bind value escapedReadIndex Int64 escapedReadIndexCall
+call loadEscapedByteCall pointer.loadByte
+argument loadEscapedByteCall buffer OpaquePointer sourceLine
+argument loadEscapedByteCall offset ByteCount escapedReadIndex
+run loadEscapedByteCall
+bind value escapedTitleByte Int32 loadEscapedByteCall
+call escapedNewlineCheckCall math.equalInt32
+argument escapedNewlineCheckCall left Int32 escapedTitleByte
+argument escapedNewlineCheckCall right Int32 newlineByte
+run escapedNewlineCheckCall
+bind value escapedByteIsNewline Bool escapedNewlineCheckCall
+branch if condition escapedByteIsNewline target finishCopyTitle
+call escapedCarriageReturnCheckCall math.equalInt32
+argument escapedCarriageReturnCheckCall left Int32 escapedTitleByte
+argument escapedCarriageReturnCheckCall right Int32 carriageReturnByte
+run escapedCarriageReturnCheckCall
+bind value escapedByteIsCarriageReturn Bool escapedCarriageReturnCheckCall
+branch if condition escapedByteIsCarriageReturn target finishCopyTitle
+call escapedNulCheckCall math.equalInt32
+argument escapedNulCheckCall left Int32 escapedTitleByte
+argument escapedNulCheckCall right Int32 nulByte
+run escapedNulCheckCall
+bind value escapedByteIsNul Bool escapedNulCheckCall
+branch if condition escapedByteIsNul target finishCopyTitle
+call escapedCapacityCheckCall math.greaterThanOrEqualInt64
+argument escapedCapacityCheckCall left Int64 writeIndex
+argument escapedCapacityCheckCall right Int64 maxWritableIndex
+run escapedCapacityCheckCall
+bind value escapedTitleBufferFull Bool escapedCapacityCheckCall
+branch if condition escapedTitleBufferFull target finishCopyTitle
+call storeEscapedTitleByteCall pointer.storeByte
+argument storeEscapedTitleByteCall buffer OpaquePointer titleBuffer
+argument storeEscapedTitleByteCall offset ByteCount writeIndex
+argument storeEscapedTitleByteCall value Int64 escapedTitleByte
+run storeEscapedTitleByteCall
+call advancePastEscapedByteCall math.addInt64
+argument advancePastEscapedByteCall left Int64 escapedReadIndex
+argument advancePastEscapedByteCall right Int64 oneStep
+run advancePastEscapedByteCall
+bind value nextEscapedReadIndex Int64 advancePastEscapedByteCall
+set memory readIndex nextEscapedReadIndex
+call incrementEscapedWriteIndexCall math.addInt64
+argument incrementEscapedWriteIndexCall left Int64 writeIndex
+argument incrementEscapedWriteIndexCall right Int64 oneStep
+run incrementEscapedWriteIndexCall
+bind value nextEscapedWriteIndex Int64 incrementEscapedWriteIndexCall
+set memory writeIndex nextEscapedWriteIndex
+jump target copyTitleLoop
+label finishCopyTitle
+call terminateTitleCall pointer.storeByte
+argument terminateTitleCall buffer OpaquePointer titleBuffer
+argument terminateTitleCall offset ByteCount writeIndex
+argument terminateTitleCall value Int64 nulByte
+run terminateTitleCall
+return value writeIndex
+
+operation parseJsonFlagAtOffset
+input operation parseJsonFlagAtOffset sourceLine OpaquePointer
+input operation parseJsonFlagAtOffset valueOffset Int64
+output operation parseJsonFlagAtOffset Int32
+effect parseJsonFlagAtOffset read memory.buffer
+authority parseJsonFlagAtOffset read memory.buffer
+memory parseJsonFlagAtOffset heap no
+async parseJsonFlagAtOffset no
+purpose operation parseJsonFlagAtOffset "Parse a zero-or-one flag from a fixed todo JSON field offset."
+invariant operation parseJsonFlagAtOffset "Only ASCII one maps to one; every other byte maps to zero."
+label startParseJsonFlagAtOffset
+storage local immutable zeroFlag Int32 0
+storage local immutable oneFlag Int32 1
+call loadFlagByteCall pointer.loadByte
+argument loadFlagByteCall buffer OpaquePointer sourceLine
+argument loadFlagByteCall offset ByteCount valueOffset
+run loadFlagByteCall
+bind value flagByte Int32 loadFlagByteCall
+call flagOneCheckCall math.equalInt32
+argument flagOneCheckCall left Int32 flagByte
+argument flagOneCheckCall right Int32 oneAsciiByte
+run flagOneCheckCall
+bind value flagIsOne Bool flagOneCheckCall
+branch if condition flagIsOne target parsedOneFlag
+return value zeroFlag
+label parsedOneFlag
+return value oneFlag
+
+operation renderTodoRow
+input operation renderTodoRow doneArray OpaquePointer
+input operation renderTodoRow titlesBuffer OpaquePointer
+input operation renderTodoRow actualIndex Int64
+input operation renderTodoRow selectedIndex Int64
+input operation renderTodoRow todoCount Int64
+input operation renderTodoRow titleCapacity Int64
+output operation renderTodoRow Int32
+effect renderTodoRow read memory.buffer
+effect renderTodoRow write console.stdout
+authority renderTodoRow read memory.buffer
+authority renderTodoRow write console.stdout
+memory renderTodoRow heap no
+async renderTodoRow no
+purpose operation renderTodoRow "Render one visible table row from the heap-backed todo arrays."
+invariant operation renderTodoRow "Rendering reads todo arrays but does not mutate todo state."
+invariant operation renderTodoRow "todoRowFormatText's `%3lld` index column reserves three digits, which assumes todoCapacity <= 999. If todoCapacity grows past 999, the column will widen and the table borders in topFrameText/bottomFrameText/blankRowText will misalign. Update all four format constants in lockstep when bumping todoCapacity."
+warning renderTodoRow "todoRowFormatText's `%-40.40s` title column silently truncates titles longer than 40 bytes to 40 bytes on screen. The underlying titlesArray slot is still titleCapacity bytes (currently 128); only the rendered display is clipped. Editing a truncated row in the modal shows the full underlying title, not the truncated form."
+label startRenderTodoRow
+storage local immutable oneValue Int64 1
+storage local immutable doneFlagValue Int32 1
+storage local immutable normalMarkerText String " "
+storage local immutable selectedMarkerText String ">"
+storage local immutable openStatusText String "[ ]"
+storage local immutable doneStatusText String "[x]"
+storage local immutable addRowText String "(new note)"
+storage local immutable blankRowText String "  |       |      |                                          |\n"
+storage local immutable todoRowFormatText String "  | %s %3lld | %s  | %-40.40s |\n"
+storage local immutable addRowFormatText String "  | %s   + |      | %-40.40s |\n"
+storage local mutable markerText String normalMarkerText
+storage local mutable statusText String openStatusText
+call selectedCheckCall math.equalInt64
+argument selectedCheckCall left Int64 actualIndex
+argument selectedCheckCall right Int64 selectedIndex
+run selectedCheckCall
+bind value rowIsSelected Bool selectedCheckCall
+branch if condition rowIsSelected target markSelectedRow
+branch else target chooseRowKind
+label markSelectedRow
+set memory markerText selectedMarkerText
+jump target chooseRowKind
+label chooseRowKind
+call existingRowCheckCall math.lessThanInt64
+argument existingRowCheckCall left Int64 actualIndex
+argument existingRowCheckCall right Int64 todoCount
+run existingRowCheckCall
+bind value rowIsExistingTodo Bool existingRowCheckCall
+branch if condition rowIsExistingTodo target renderExistingTodoRow
+call addRowCheckCall math.equalInt64
+argument addRowCheckCall left Int64 actualIndex
+argument addRowCheckCall right Int64 todoCount
+run addRowCheckCall
+bind value rowIsAddTodo Bool addRowCheckCall
+branch if condition rowIsAddTodo target renderAddTodoRow
+call blankRowCall c.printf
+argument blankRowCall format String blankRowText
+run blankRowCall
+ignore value source blankRowCall type Int32
+return value successCode
+label renderAddTodoRow
+call addRowCall c.printf
+argument addRowCall format String addRowFormatText
+argument addRowCall marker String markerText
+argument addRowCall title String addRowText
+run addRowCall
+ignore value source addRowCall type Int32
+return value successCode
+label renderExistingTodoRow
+call doneLoadCall pointer.loadByte
+argument doneLoadCall buffer OpaquePointer doneArray
+argument doneLoadCall offset ByteCount actualIndex
+run doneLoadCall
+bind value doneValue Int32 doneLoadCall
+call doneCheckCall math.equalInt32
+argument doneCheckCall left Int32 doneValue
+argument doneCheckCall right Int32 doneFlagValue
+run doneCheckCall
+bind value rowIsDone Bool doneCheckCall
+branch if condition rowIsDone target markDoneRow
+branch else target renderExistingTodoLine
+label markDoneRow
+set memory statusText doneStatusText
+jump target renderExistingTodoLine
+label renderExistingTodoLine
+call titlePointerCall getTitlePointerAt
+argument titlePointerCall titlesBuffer OpaquePointer titlesBuffer
+argument titlePointerCall todoIndex Int64 actualIndex
+argument titlePointerCall titleCapacity Int64 titleCapacity
+run titlePointerCall
+bind value titlePointer OpaquePointer titlePointerCall
+call displayNumberCall math.addInt64
+argument displayNumberCall left Int64 actualIndex
+argument displayNumberCall right Int64 oneValue
+run displayNumberCall
+bind value displayNumber Int64 displayNumberCall
+call rowCall c.printf
+argument rowCall format String todoRowFormatText
+argument rowCall marker String markerText
+argument rowCall number Int64 displayNumber
+argument rowCall status String statusText
+argument rowCall title OpaquePointer titlePointer
+run rowCall
+ignore value source rowCall type Int32
+return value successCode
+
+operation renderScreen
+input operation renderScreen doneArray OpaquePointer
+input operation renderScreen titlesBuffer OpaquePointer
+input operation renderScreen todoCount Int64
+input operation renderScreen selectedIndex Int64
+input operation renderScreen topIndex Int64
+input operation renderScreen screenMode ScreenMode
+input operation renderScreen editBuffer OpaquePointer
+input operation renderScreen editLength Int64
+input operation renderScreen titleCapacity Int64
+input operation renderScreen visibleRows Int64
+input operation renderScreen statusText String
+output operation renderScreen Int32
+effect renderScreen read memory.buffer
+effect renderScreen write console.stdout
+authority renderScreen read memory.buffer
+authority renderScreen write console.stdout
+memory renderScreen heap no
+async renderScreen no
+purpose operation renderScreen "Render the todo TUI from heap-backed arrays with a fixed-width edit modal."
+invariant operation renderScreen "The visible row loop emits at most visibleRows rows and does not mutate todo state."
+invariant operation renderScreen "editBuffer is an opaque memory pointer that callers guarantee holds a null-terminated byte sequence: writeEmptyBuffer seeds the first byte with NUL on allocation, and appendPrintableKeyToBuffer / deleteLastBufferByte maintain the terminator at every length change. renderScreen passes editBuffer to c.printf as a %s argument, which relies on that invariant."
+warning renderScreen "modalValueFormatText's `%-47.47s` edit-modal title column silently truncates titles longer than 47 bytes on screen. The full editBuffer (up to titleCapacity-1 = 127 bytes) is still in memory; only the modal view is clipped. The character-count line below (modalMetaFormatText) shows the true length so an editor of a long title knows the visible region is partial."
+label startRenderScreen
+storage local immutable zeroValue Int64 0
+storage local immutable oneValue Int64 1
+storage local immutable topFrameText String "  TODO TUI                                              todos.json\n  +-------+------+------------------------------------------+\n  | Sel   | Done | Note                                     |\n  +-------+------+------------------------------------------+"
+storage local immutable bottomFrameText String "  +-------+------+------------------------------------------+"
+storage local immutable statusFormatText String "\n  Status: %s\n"
+storage local immutable navigationText String "  Up/Down select | Right edit/new | Enter/Space done | D delete | Esc quit"
+storage local immutable modalTopText String "\n  +----------------------------------------------------+\n  | Edit note                                          |"
+storage local immutable modalValueFormatText String "  | > %-47.47s |\n"
+storage local immutable modalMetaFormatText String "  |   characters: %-3lld                                |\n"
+storage local immutable modalHelpText String "  | Enter save | Esc cancel | Backspace delete         |\n  +----------------------------------------------------+"
+storage local mutable visibleRowCursor Int64 zeroValue
+call clearCall clearScreen
+run clearCall
+ignore value source clearCall type Int32
+call topCall c.puts
+argument topCall text String topFrameText
+run topCall
+ignore value source topCall type Int32
+label renderRowsLoop
+call rowsDoneCheckCall math.greaterThanOrEqualInt64
+argument rowsDoneCheckCall left Int64 visibleRowCursor
+argument rowsDoneCheckCall right Int64 visibleRows
+run rowsDoneCheckCall
+bind value rowsDone Bool rowsDoneCheckCall
+branch if condition rowsDone target finishRows
+call actualIndexCall math.addInt64
+argument actualIndexCall left Int64 topIndex
+argument actualIndexCall right Int64 visibleRowCursor
+run actualIndexCall
+bind value actualIndex Int64 actualIndexCall
+call renderRowCall renderTodoRow
+argument renderRowCall doneArray OpaquePointer doneArray
+argument renderRowCall titlesBuffer OpaquePointer titlesBuffer
+argument renderRowCall actualIndex Int64 actualIndex
+argument renderRowCall selectedIndex Int64 selectedIndex
+argument renderRowCall todoCount Int64 todoCount
+argument renderRowCall titleCapacity Int64 titleCapacity
+run renderRowCall
+ignore value source renderRowCall type Int32
+call advanceVisibleRowCall math.addInt64
+argument advanceVisibleRowCall left Int64 visibleRowCursor
+argument advanceVisibleRowCall right Int64 oneValue
+run advanceVisibleRowCall
+bind value nextVisibleRowCursor Int64 advanceVisibleRowCall
+set memory visibleRowCursor nextVisibleRowCursor
+jump target renderRowsLoop
+label finishRows
+call bottomCall c.puts
+argument bottomCall text String bottomFrameText
+run bottomCall
+ignore value source bottomCall type Int32
+call statusCall c.printf
+argument statusCall format String statusFormatText
+argument statusCall status String statusText
+run statusCall
+ignore value source statusCall type Int32
+call editModeCheckCall ScreenMode.equal
+argument editModeCheckCall left ScreenMode screenMode
+argument editModeCheckCall right ScreenMode EditMode
+run editModeCheckCall
+bind value isEditMode Bool editModeCheckCall
+branch if condition isEditMode target renderModal
+call navigationCall c.puts
+argument navigationCall text String navigationText
+run navigationCall
+ignore value source navigationCall type Int32
+return value successCode
+label renderModal
+call modalTopCall c.puts
+argument modalTopCall text String modalTopText
+run modalTopCall
+ignore value source modalTopCall type Int32
+call modalValueCall c.printf
+argument modalValueCall format String modalValueFormatText
+argument modalValueCall title OpaquePointer editBuffer
+run modalValueCall
+ignore value source modalValueCall type Int32
+call modalMetaCall c.printf
+argument modalMetaCall format String modalMetaFormatText
+argument modalMetaCall length Int64 editLength
+run modalMetaCall
+ignore value source modalMetaCall type Int32
+call modalHelpCall c.puts
+argument modalHelpCall text String modalHelpText
+run modalHelpCall
+ignore value source modalHelpCall type Int32
+return value successCode
+
+operation clampTopIndex
+input operation clampTopIndex selectedIndex Int64
+input operation clampTopIndex topIndex Int64
+input operation clampTopIndex visibleRows Int64
+output operation clampTopIndex Int64
+memory clampTopIndex heap no
+async clampTopIndex no
+purpose operation clampTopIndex "Keep the selected row inside the visible scroll window."
+label startClampTopIndex
+storage local immutable oneValue Int64 1
+call selectedBeforeTopCall math.lessThanInt64
+argument selectedBeforeTopCall left Int64 selectedIndex
+argument selectedBeforeTopCall right Int64 topIndex
+run selectedBeforeTopCall
+bind value selectedBeforeTop Bool selectedBeforeTopCall
+branch if condition selectedBeforeTop target returnSelectedAsTop
+call visibleLimitCall math.addInt64
+argument visibleLimitCall left Int64 topIndex
+argument visibleLimitCall right Int64 visibleRows
+run visibleLimitCall
+bind value visibleLimit Int64 visibleLimitCall
+call selectedPastVisibleCall math.greaterThanOrEqualInt64
+argument selectedPastVisibleCall left Int64 selectedIndex
+argument selectedPastVisibleCall right Int64 visibleLimit
+run selectedPastVisibleCall
+bind value selectedPastVisible Bool selectedPastVisibleCall
+branch if condition selectedPastVisible target computeScrolledTop
+return value topIndex
+label returnSelectedAsTop
+return value selectedIndex
+label computeScrolledTop
+call subtractRowsCall math.subtractInt64
+argument subtractRowsCall left Int64 selectedIndex
+argument subtractRowsCall right Int64 visibleRows
+run subtractRowsCall
+bind value selectedMinusVisibleRows Int64 subtractRowsCall
+call addOneCall math.addInt64
+argument addOneCall left Int64 selectedMinusVisibleRows
+argument addOneCall right Int64 oneValue
+run addOneCall
+bind value scrolledTop Int64 addOneCall
+return value scrolledTop
+
+operation computeMaxSelectable
+input operation computeMaxSelectable todoCount Int64
+input operation computeMaxSelectable todoCapacity Int64
+output operation computeMaxSelectable Int64
+memory computeMaxSelectable heap no
+async computeMaxSelectable no
+purpose operation computeMaxSelectable "Return the last selectable row, including the new-note row when capacity remains."
+invariant operation computeMaxSelectable "Requires todoCapacity greater than zero; zero capacity falls back to zero only as a defensive sentinel."
+label startComputeMaxSelectable
+storage local immutable oneValue Int64 1
+storage local immutable zeroValue Int64 0
+call hasAddRowCall math.lessThanInt64
+argument hasAddRowCall left Int64 todoCount
+argument hasAddRowCall right Int64 todoCapacity
+run hasAddRowCall
+bind value hasAddRow Bool hasAddRowCall
+branch if condition hasAddRow target returnCountAsMax
+call emptyCapacityCheckCall math.equalInt64
+argument emptyCapacityCheckCall left Int64 todoCapacity
+argument emptyCapacityCheckCall right Int64 zeroValue
+run emptyCapacityCheckCall
+bind value capacityIsZero Bool emptyCapacityCheckCall
+branch if condition capacityIsZero target returnZeroMax
+call lastExistingCall math.subtractInt64
+argument lastExistingCall left Int64 todoCount
+argument lastExistingCall right Int64 oneValue
+run lastExistingCall
+bind value lastExistingIndex Int64 lastExistingCall
+return value lastExistingIndex
+label returnCountAsMax
+return value todoCount
+label returnZeroMax
+return value zeroValue
+
+operation isNegativeStatus
+input operation isNegativeStatus statusCode Int32
+output operation isNegativeStatus Bool
+memory isNegativeStatus heap no
+async isNegativeStatus no
+purpose operation isNegativeStatus "Return true when a C status code is negative."
+invariant operation isNegativeStatus "Used for libc write/close calls whose negative result indicates failure."
+label startIsNegativeStatus
+storage local immutable zeroStatus Int32 0
+call negativeCheckCall math.lessThanInt32
+argument negativeCheckCall left Int32 statusCode
+argument negativeCheckCall right Int32 zeroStatus
+run negativeCheckCall
+bind value statusIsNegative Bool negativeCheckCall
+return value statusIsNegative
+
+operation writeJsonEscapedStringBuffer
+input operation writeJsonEscapedStringBuffer fileHandle FileHandle
+input operation writeJsonEscapedStringBuffer titleBuffer OpaquePointer
+output operation writeJsonEscapedStringBuffer SaveTodosStatus
+effect writeJsonEscapedStringBuffer read memory.buffer
+effect writeJsonEscapedStringBuffer write filesystem
+authority writeJsonEscapedStringBuffer read memory.buffer
+authority writeJsonEscapedStringBuffer write filesystem
+memory writeJsonEscapedStringBuffer heap no
+async writeJsonEscapedStringBuffer no
+purpose operation writeJsonEscapedStringBuffer "Write a title buffer as JSON string content with quote and backslash escaped."
+invariant operation writeJsonEscapedStringBuffer "The loop reads until NUL and writes each source byte once, escaping quote and backslash before the byte reaches JSON."
+label startWriteJsonEscapedStringBuffer
+storage local immutable zeroIndex Int64 0
+storage local immutable oneStep Int64 1
+storage local immutable rawCharacterFormatText String "%c"
+storage local immutable escapedQuoteText String "\\\""
+storage local immutable escapedBackslashText String "\\\\"
+storage local mutable readIndex Int64 zeroIndex
+label writeJsonEscapedLoop
+call loadTitleByteCall pointer.loadByte
+argument loadTitleByteCall buffer OpaquePointer titleBuffer
+argument loadTitleByteCall offset ByteCount readIndex
+run loadTitleByteCall
+bind value titleByte Int32 loadTitleByteCall
+call nulCheckCall math.equalInt32
+argument nulCheckCall left Int32 titleByte
+argument nulCheckCall right Int32 nulByte
+run nulCheckCall
+bind value titleByteIsNul Bool nulCheckCall
+branch if condition titleByteIsNul target finishWriteJsonEscaped
+call quoteCheckCall math.equalInt32
+argument quoteCheckCall left Int32 titleByte
+argument quoteCheckCall right Int32 quoteByte
+run quoteCheckCall
+bind value titleByteIsQuote Bool quoteCheckCall
+branch if condition titleByteIsQuote target writeEscapedQuote
+call backslashCheckCall math.equalInt32
+argument backslashCheckCall left Int32 titleByte
+argument backslashCheckCall right Int32 backslashByte
+run backslashCheckCall
+bind value titleByteIsBackslash Bool backslashCheckCall
+branch if condition titleByteIsBackslash target writeEscapedBackslash
+call writeRawCharacterCall c.fprintf
+argument writeRawCharacterCall stream FileHandle fileHandle
+argument writeRawCharacterCall format String rawCharacterFormatText
+argument writeRawCharacterCall character Int32 titleByte
+run writeRawCharacterCall
+bind value rawCharacterWriteResult Int32 writeRawCharacterCall
+call rawCharacterWriteFailedCall isNegativeStatus
+argument rawCharacterWriteFailedCall statusCode Int32 rawCharacterWriteResult
+run rawCharacterWriteFailedCall
+bind value rawCharacterWriteFailed Bool rawCharacterWriteFailedCall
+branch if condition rawCharacterWriteFailed target returnJsonWriteFailed
+branch else target advanceJsonEscapedLoop
+label writeEscapedQuote
+call writeEscapedQuoteCall c.fprintf
+argument writeEscapedQuoteCall stream FileHandle fileHandle
+argument writeEscapedQuoteCall format String escapedQuoteText
+run writeEscapedQuoteCall
+bind value escapedQuoteWriteResult Int32 writeEscapedQuoteCall
+call escapedQuoteWriteFailedCall isNegativeStatus
+argument escapedQuoteWriteFailedCall statusCode Int32 escapedQuoteWriteResult
+run escapedQuoteWriteFailedCall
+bind value escapedQuoteWriteFailed Bool escapedQuoteWriteFailedCall
+branch if condition escapedQuoteWriteFailed target returnJsonWriteFailed
+branch else target advanceJsonEscapedLoop
+label writeEscapedBackslash
+call writeEscapedBackslashCall c.fprintf
+argument writeEscapedBackslashCall stream FileHandle fileHandle
+argument writeEscapedBackslashCall format String escapedBackslashText
+run writeEscapedBackslashCall
+bind value escapedBackslashWriteResult Int32 writeEscapedBackslashCall
+call escapedBackslashWriteFailedCall isNegativeStatus
+argument escapedBackslashWriteFailedCall statusCode Int32 escapedBackslashWriteResult
+run escapedBackslashWriteFailedCall
+bind value escapedBackslashWriteFailed Bool escapedBackslashWriteFailedCall
+branch if condition escapedBackslashWriteFailed target returnJsonWriteFailed
+branch else target advanceJsonEscapedLoop
+label advanceJsonEscapedLoop
+call advanceReadIndexCall math.addInt64
+argument advanceReadIndexCall left Int64 readIndex
+argument advanceReadIndexCall right Int64 oneStep
+run advanceReadIndexCall
+bind value nextReadIndex Int64 advanceReadIndexCall
+set memory readIndex nextReadIndex
+jump target writeJsonEscapedLoop
+label finishWriteJsonEscaped
+return value SaveSucceeded
+label returnJsonWriteFailed
+return value SaveWriteFailed
+
+operation saveTodosToJson
+input operation saveTodosToJson doneArray OpaquePointer
+input operation saveTodosToJson titlesBuffer OpaquePointer
+input operation saveTodosToJson todoCount Int64
+input operation saveTodosToJson titleCapacity Int64
+output operation saveTodosToJson SaveTodosStatus
+effect saveTodosToJson read memory.buffer
+effect saveTodosToJson write filesystem
+effect saveTodosToJson open file
+effect saveTodosToJson close file
+authority saveTodosToJson read memory.buffer
+authority saveTodosToJson write filesystem
+authority saveTodosToJson open file
+authority saveTodosToJson close file
+memory saveTodosToJson heap no
+async saveTodosToJson no
+purpose operation saveTodosToJson "Persist the active todo array as a JSON array."
+invariant operation saveTodosToJson "The save loop writes each active todo index once from zero up to todoCount, title bytes pass through JSON escaping, and write failure takes precedence if close also fails."
+label startSaveTodosToJson
+storage local immutable zeroValue Int64 0
+storage local immutable oneValue Int64 1
+storage local immutable dataFilePath String "todos.json"
+storage local immutable writeMode String "w"
+storage local immutable openArrayText String "[\n"
+storage local immutable closeArrayText String "]\n"
+storage local immutable itemPrefixFormatText String "{\"active\":1,\"done\":%d,\"title\":\""
+storage local immutable itemSuffixText String "\"}\n"
+storage local immutable itemCommaSuffixText String "\"},\n"
+storage local mutable saveIndex Int64 zeroValue
+call openCall c.fopen
+argument openCall filename String dataFilePath
+argument openCall mode String writeMode
+run openCall
+bind value fileHandle FileHandle openCall
+call fileNullCheckCall pointer.isNull
+argument fileNullCheckCall pointer OpaquePointer fileHandle
+run fileNullCheckCall
+bind value fileIsNull Bool fileNullCheckCall
+branch if condition fileIsNull target saveSkipped
+call openArrayCall c.fprintf
+argument openArrayCall stream FileHandle fileHandle
+argument openArrayCall format String openArrayText
+run openArrayCall
+bind value openArrayResult Int32 openArrayCall
+call openArrayFailedCall isNegativeStatus
+argument openArrayFailedCall statusCode Int32 openArrayResult
+run openArrayFailedCall
+bind value openArrayFailed Bool openArrayFailedCall
+branch if condition openArrayFailed target closeAfterWriteFailed
+label saveLoop
+call saveDoneCheckCall math.greaterThanOrEqualInt64
+argument saveDoneCheckCall left Int64 saveIndex
+argument saveDoneCheckCall right Int64 todoCount
+run saveDoneCheckCall
+bind value saveDone Bool saveDoneCheckCall
+branch if condition saveDone target finishSave
+call doneLoadCall pointer.loadByte
+argument doneLoadCall buffer OpaquePointer doneArray
+argument doneLoadCall offset ByteCount saveIndex
+run doneLoadCall
+bind value doneValue Int32 doneLoadCall
+call titlePointerCall getTitlePointerAt
+argument titlePointerCall titlesBuffer OpaquePointer titlesBuffer
+argument titlePointerCall todoIndex Int64 saveIndex
+argument titlePointerCall titleCapacity Int64 titleCapacity
+run titlePointerCall
+bind value titlePointer OpaquePointer titlePointerCall
+call nextIndexCall math.addInt64
+argument nextIndexCall left Int64 saveIndex
+argument nextIndexCall right Int64 oneValue
+run nextIndexCall
+bind value nextSaveIndex Int64 nextIndexCall
+call lastItemCheckCall math.equalInt64
+argument lastItemCheckCall left Int64 nextSaveIndex
+argument lastItemCheckCall right Int64 todoCount
+run lastItemCheckCall
+bind value isLastItem Bool lastItemCheckCall
+call writeItemPrefixCall c.fprintf
+argument writeItemPrefixCall stream FileHandle fileHandle
+argument writeItemPrefixCall format String itemPrefixFormatText
+argument writeItemPrefixCall done Int32 doneValue
+run writeItemPrefixCall
+bind value itemPrefixWriteResult Int32 writeItemPrefixCall
+call itemPrefixWriteFailedCall isNegativeStatus
+argument itemPrefixWriteFailedCall statusCode Int32 itemPrefixWriteResult
+run itemPrefixWriteFailedCall
+bind value itemPrefixWriteFailed Bool itemPrefixWriteFailedCall
+branch if condition itemPrefixWriteFailed target closeAfterWriteFailed
+call writeTitleCall writeJsonEscapedStringBuffer
+argument writeTitleCall fileHandle FileHandle fileHandle
+argument writeTitleCall titleBuffer OpaquePointer titlePointer
+run writeTitleCall
+bind value titleWriteStatus SaveTodosStatus writeTitleCall
+call titleWriteSuccessCall SaveTodosStatus.equal
+argument titleWriteSuccessCall left SaveTodosStatus titleWriteStatus
+argument titleWriteSuccessCall right SaveTodosStatus SaveSucceeded
+run titleWriteSuccessCall
+bind value titleWriteSucceeded Bool titleWriteSuccessCall
+branch if condition titleWriteSucceeded target continueAfterTitleWrite
+branch else target closeAfterWriteFailed
+label continueAfterTitleWrite
+branch if condition isLastItem target writeLastItemSuffix
+call writeItemCommaSuffixCall c.fprintf
+argument writeItemCommaSuffixCall stream FileHandle fileHandle
+argument writeItemCommaSuffixCall format String itemCommaSuffixText
+run writeItemCommaSuffixCall
+bind value commaSuffixWriteResult Int32 writeItemCommaSuffixCall
+call commaSuffixWriteFailedCall isNegativeStatus
+argument commaSuffixWriteFailedCall statusCode Int32 commaSuffixWriteResult
+run commaSuffixWriteFailedCall
+bind value commaSuffixWriteFailed Bool commaSuffixWriteFailedCall
+branch if condition commaSuffixWriteFailed target closeAfterWriteFailed
+set memory saveIndex nextSaveIndex
+jump target saveLoop
+label writeLastItemSuffix
+call writeItemSuffixCall c.fprintf
+argument writeItemSuffixCall stream FileHandle fileHandle
+argument writeItemSuffixCall format String itemSuffixText
+run writeItemSuffixCall
+bind value itemSuffixWriteResult Int32 writeItemSuffixCall
+call itemSuffixWriteFailedCall isNegativeStatus
+argument itemSuffixWriteFailedCall statusCode Int32 itemSuffixWriteResult
+run itemSuffixWriteFailedCall
+bind value itemSuffixWriteFailed Bool itemSuffixWriteFailedCall
+branch if condition itemSuffixWriteFailed target closeAfterWriteFailed
+set memory saveIndex nextSaveIndex
+jump target saveLoop
+label finishSave
+call closeArrayCall c.fprintf
+argument closeArrayCall stream FileHandle fileHandle
+argument closeArrayCall format String closeArrayText
+run closeArrayCall
+bind value closeArrayWriteResult Int32 closeArrayCall
+call closeArrayWriteFailedCall isNegativeStatus
+argument closeArrayWriteFailedCall statusCode Int32 closeArrayWriteResult
+run closeArrayWriteFailedCall
+bind value closeArrayWriteFailed Bool closeArrayWriteFailedCall
+branch if condition closeArrayWriteFailed target closeAfterWriteFailed
+call closeCall c.fclose
+argument closeCall stream FileHandle fileHandle
+run closeCall
+bind value closeResult Int32 closeCall
+call closeFailedCall isNegativeStatus
+argument closeFailedCall statusCode Int32 closeResult
+run closeFailedCall
+bind value closeFailed Bool closeFailedCall
+branch if condition closeFailed target returnSaveCloseFailed
+return value SaveSucceeded
+label closeAfterWriteFailed
+call closeAfterWriteFailedCall c.fclose
+argument closeAfterWriteFailedCall stream FileHandle fileHandle
+run closeAfterWriteFailedCall
+ignore value source closeAfterWriteFailedCall type Int32
+return value SaveWriteFailed
+label returnSaveCloseFailed
+return value SaveCloseFailed
+label saveSkipped
+return value SaveOpenFailed
+
+operation loadTodosFromJson
+input operation loadTodosFromJson doneArray OpaquePointer
+input operation loadTodosFromJson titlesBuffer OpaquePointer
+input operation loadTodosFromJson todoCapacity Int64
+input operation loadTodosFromJson titleCapacity Int64
+input operation loadTodosFromJson lineBuffer OpaquePointer
+input operation loadTodosFromJson lineBufferCapacity Int32
+output operation loadTodosFromJson Int64
+effect loadTodosFromJson read filesystem
+effect loadTodosFromJson open file
+effect loadTodosFromJson close file
+effect loadTodosFromJson read memory.buffer
+effect loadTodosFromJson write memory.buffer
+authority loadTodosFromJson read filesystem
+authority loadTodosFromJson open file
+authority loadTodosFromJson close file
+authority loadTodosFromJson read memory.buffer
+authority loadTodosFromJson write memory.buffer
+memory loadTodosFromJson heap no
+async loadTodosFromJson no
+purpose operation loadTodosFromJson "Load active todo objects from todos.json into the heap-backed arrays."
+invariant operation loadTodosFromJson "The load loop never appends more than todoCapacity active todos and accepts only the exact object key order emitted by saveTodosToJson."
+invariant operation loadTodosFromJson "activeValueOffset, doneValueOffset, and titleValueOffset are coupled to saveTodosToJson's itemPrefixFormatText. Any edit to that format string must update all three offsets in lockstep or this loader will silently parse the wrong byte positions."
+warning loadTodosFromJson "Malformed lines are skipped or truncated by fixed-offset parsing; this is not a general JSON decoder."
+label startLoadTodosFromJson
+storage local immutable zeroValue Int64 0
+storage local immutable oneValue Int64 1
+storage local immutable oneFlag Int32 1
+storage local immutable dataFilePath String "todos.json"
+storage local immutable readMode String "r"
+# rationale: Offsets count bytes into the line written by saveTodosToJson's
+# itemPrefixFormatText `{"active":1,"done":%d,"title":"`.
+#   {"active":   = 10 bytes → activeValueOffset points at the active digit
+#   ,"done":     = 9 bytes  → doneValueOffset = 10 + 9 = 19
+#   ,"title":"   = 11 bytes → titleValueOffset = 19 + 11 = 30
+# Any edit to itemPrefixFormatText must update these three offsets in lockstep.
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
+storage local immutable titleValueOffset Int64 30
+storage local mutable loadedCount Int64 zeroValue
+call openCall c.fopen
+argument openCall filename String dataFilePath
+argument openCall mode String readMode
+run openCall
+bind value fileHandle FileHandle openCall
+call fileNullCheckCall pointer.isNull
+argument fileNullCheckCall pointer OpaquePointer fileHandle
+run fileNullCheckCall
+bind value fileIsNull Bool fileNullCheckCall
+branch if condition fileIsNull target loadSkipped
+# rationale: Consume and discard the opening `[\n` line emitted by
+# saveTodosToJson's openArrayText. The result is intentionally ignored:
+# an empty or malformed file makes the next c.fgets in loadLoop return
+# NULL, which the readReturnedNull check below detects and branches to
+# finishLoad. There is no separate diagnostic for a missing `[` because
+# the loader is best-effort by design (see warning on loadTodosFromJson).
+call readOpenArrayCall c.fgets
+argument readOpenArrayCall string OpaquePointer lineBuffer
+argument readOpenArrayCall count Int32 lineBufferCapacity
+argument readOpenArrayCall stream FileHandle fileHandle
+run readOpenArrayCall
+ignore value source readOpenArrayCall type String
+label loadLoop
+call capacityCheckCall math.greaterThanOrEqualInt64
+argument capacityCheckCall left Int64 loadedCount
+argument capacityCheckCall right Int64 todoCapacity
+run capacityCheckCall
+bind value capacityReached Bool capacityCheckCall
+branch if condition capacityReached target finishLoad
+call readLineCall c.fgets
+argument readLineCall string OpaquePointer lineBuffer
+argument readLineCall count Int32 lineBufferCapacity
+argument readLineCall stream FileHandle fileHandle
+run readLineCall
+bind value lineReadResult String readLineCall
+call readNullCheckCall pointer.isNull
+argument readNullCheckCall pointer OpaquePointer lineReadResult
+run readNullCheckCall
+bind value readReturnedNull Bool readNullCheckCall
+branch if condition readReturnedNull target finishLoad
+call firstByteCall pointer.loadByte
+argument firstByteCall buffer OpaquePointer lineBuffer
+argument firstByteCall offset ByteCount zeroValue
+run firstByteCall
+bind value firstByte Int32 firstByteCall
+call closeBracketCheckCall math.equalInt32
+argument closeBracketCheckCall left Int32 firstByte
+argument closeBracketCheckCall right Int32 closeBracketByte
+run closeBracketCheckCall
+bind value lineIsCloseBracket Bool closeBracketCheckCall
+branch if condition lineIsCloseBracket target finishLoad
+call activeParseCall parseJsonFlagAtOffset
+argument activeParseCall sourceLine OpaquePointer lineBuffer
+argument activeParseCall valueOffset Int64 activeValueOffset
+run activeParseCall
+bind value activeValue Int32 activeParseCall
+call activeCheckCall math.equalInt32
+argument activeCheckCall left Int32 activeValue
+argument activeCheckCall right Int32 oneFlag
+run activeCheckCall
+bind value lineIsActive Bool activeCheckCall
+branch if condition lineIsActive target appendLoadedTodo
+branch else target loadLoop
+label appendLoadedTodo
+call doneParseCall parseJsonFlagAtOffset
+argument doneParseCall sourceLine OpaquePointer lineBuffer
+argument doneParseCall valueOffset Int64 doneValueOffset
+run doneParseCall
+bind value doneValue Int32 doneParseCall
+call storeDoneCall pointer.storeByte
+argument storeDoneCall buffer OpaquePointer doneArray
+argument storeDoneCall offset ByteCount loadedCount
+argument storeDoneCall value Int64 doneValue
+run storeDoneCall
+call titlePointerCall getTitlePointerAt
+argument titlePointerCall titlesBuffer OpaquePointer titlesBuffer
+argument titlePointerCall todoIndex Int64 loadedCount
+argument titlePointerCall titleCapacity Int64 titleCapacity
+run titlePointerCall
+bind value titlePointer OpaquePointer titlePointerCall
+call copyTitleCall copyFixedTodoJsonTitleAtOffset
+argument copyTitleCall sourceLine OpaquePointer lineBuffer
+argument copyTitleCall titleBuffer OpaquePointer titlePointer
+argument copyTitleCall valueOffset Int64 titleValueOffset
+argument copyTitleCall titleBufferCapacity Int64 titleCapacity
+run copyTitleCall
+ignore value source copyTitleCall type Int64
+call incrementLoadedCall math.addInt64
+argument incrementLoadedCall left Int64 loadedCount
+argument incrementLoadedCall right Int64 oneValue
+run incrementLoadedCall
+bind value nextLoadedCount Int64 incrementLoadedCall
+set memory loadedCount nextLoadedCount
+jump target loadLoop
+label finishLoad
+call closeCall c.fclose
+argument closeCall stream FileHandle fileHandle
+run closeCall
+ignore value source closeCall type Int32
+return value loadedCount
+label loadSkipped
+return value zeroValue
+
+operation appendTodoFromEditBuffer
+input operation appendTodoFromEditBuffer doneArray OpaquePointer
+input operation appendTodoFromEditBuffer titlesBuffer OpaquePointer
+input operation appendTodoFromEditBuffer editBuffer OpaquePointer
+input operation appendTodoFromEditBuffer todoCount Int64
+input operation appendTodoFromEditBuffer titleCapacity Int64
+output operation appendTodoFromEditBuffer Int64
+effect appendTodoFromEditBuffer read memory.buffer
+effect appendTodoFromEditBuffer write memory.buffer
+authority appendTodoFromEditBuffer read memory.buffer
+authority appendTodoFromEditBuffer write memory.buffer
+memory appendTodoFromEditBuffer heap no
+async appendTodoFromEditBuffer no
+purpose operation appendTodoFromEditBuffer "Append the edit buffer as a new unfinished todo."
+precondition appendTodoFromEditBuffer "todoCount < todoCapacity (caller must have verified the active todo array has room before calling)."
+invariant operation appendTodoFromEditBuffer "This operation writes exactly one title slot and one done byte, then returns todoCount plus one."
+label startAppendTodoFromEditBuffer
+storage local immutable zeroValue Int64 0
+storage local immutable oneValue Int64 1
+call appendTitlePointerCall getTitlePointerAt
+argument appendTitlePointerCall titlesBuffer OpaquePointer titlesBuffer
+argument appendTitlePointerCall todoIndex Int64 todoCount
+argument appendTitlePointerCall titleCapacity Int64 titleCapacity
+run appendTitlePointerCall
+bind value appendTitlePointer OpaquePointer appendTitlePointerCall
+call copyNewTitleCall copyStringBuffer
+argument copyNewTitleCall sourceBuffer OpaquePointer editBuffer
+argument copyNewTitleCall targetBuffer OpaquePointer appendTitlePointer
+argument copyNewTitleCall targetBufferCapacity Int64 titleCapacity
+run copyNewTitleCall
+ignore value source copyNewTitleCall type Int64
+call storeNewDoneCall pointer.storeByte
+argument storeNewDoneCall buffer OpaquePointer doneArray
+argument storeNewDoneCall offset ByteCount todoCount
+argument storeNewDoneCall value Int64 zeroValue
+run storeNewDoneCall
+call incrementTodoCountCall math.addInt64
+argument incrementTodoCountCall left Int64 todoCount
+argument incrementTodoCountCall right Int64 oneValue
+run incrementTodoCountCall
+bind value incrementedTodoCount Int64 incrementTodoCountCall
+return value incrementedTodoCount
+
+operation commitEditToSelectedTodo
+input operation commitEditToSelectedTodo titlesBuffer OpaquePointer
+input operation commitEditToSelectedTodo editBuffer OpaquePointer
+input operation commitEditToSelectedTodo selectedIndex Int64
+input operation commitEditToSelectedTodo titleCapacity Int64
+output operation commitEditToSelectedTodo Int64
+effect commitEditToSelectedTodo read memory.buffer
+effect commitEditToSelectedTodo write memory.buffer
+authority commitEditToSelectedTodo read memory.buffer
+authority commitEditToSelectedTodo write memory.buffer
+memory commitEditToSelectedTodo heap no
+async commitEditToSelectedTodo no
+purpose operation commitEditToSelectedTodo "Replace the selected todo title with the edit buffer."
+precondition commitEditToSelectedTodo "selectedIndex < todoCount (caller must have verified the index addresses an existing todo, not the (new note) row)."
+invariant operation commitEditToSelectedTodo "Only the selectedIndex title buffer is rewritten; doneArray and todoCount are unchanged."
+label startCommitEditToSelectedTodo
+call existingTitlePointerCall getTitlePointerAt
+argument existingTitlePointerCall titlesBuffer OpaquePointer titlesBuffer
+argument existingTitlePointerCall todoIndex Int64 selectedIndex
+argument existingTitlePointerCall titleCapacity Int64 titleCapacity
+run existingTitlePointerCall
+bind value existingTitlePointer OpaquePointer existingTitlePointerCall
+call copyExistingTitleCall copyStringBuffer
+argument copyExistingTitleCall sourceBuffer OpaquePointer editBuffer
+argument copyExistingTitleCall targetBuffer OpaquePointer existingTitlePointer
+argument copyExistingTitleCall targetBufferCapacity Int64 titleCapacity
+run copyExistingTitleCall
+bind value copiedTitleLength Int64 copyExistingTitleCall
+return value copiedTitleLength
+
+operation toggleTodoAtSelectedIndex
+input operation toggleTodoAtSelectedIndex doneArray OpaquePointer
+input operation toggleTodoAtSelectedIndex selectedIndex Int64
+output operation toggleTodoAtSelectedIndex Int32
+effect toggleTodoAtSelectedIndex read memory.buffer
+effect toggleTodoAtSelectedIndex write memory.buffer
+authority toggleTodoAtSelectedIndex read memory.buffer
+authority toggleTodoAtSelectedIndex write memory.buffer
+memory toggleTodoAtSelectedIndex heap no
+async toggleTodoAtSelectedIndex no
+purpose operation toggleTodoAtSelectedIndex "Toggle the done flag for an existing selected todo and return the new done value."
+precondition toggleTodoAtSelectedIndex "selectedIndex < todoCount (caller must have verified the index addresses an existing todo)."
+invariant operation toggleTodoAtSelectedIndex "The selected done byte is changed to zero or one and that new byte is returned; titlesArray and todoCount are unchanged."
+label startToggleTodoAtSelectedIndex
+storage local immutable zeroValue Int32 0
+storage local immutable oneValue Int32 1
+call loadDoneForToggleCall pointer.loadByte
+argument loadDoneForToggleCall buffer OpaquePointer doneArray
+argument loadDoneForToggleCall offset ByteCount selectedIndex
+run loadDoneForToggleCall
+bind value currentDoneValue Int32 loadDoneForToggleCall
+call doneIsZeroCall math.equalInt32
+argument doneIsZeroCall left Int32 currentDoneValue
+argument doneIsZeroCall right Int32 zeroValue
+run doneIsZeroCall
+bind value doneIsZero Bool doneIsZeroCall
+branch if condition doneIsZero target setDoneTrue
+call storeDoneFalseCall pointer.storeByte
+argument storeDoneFalseCall buffer OpaquePointer doneArray
+argument storeDoneFalseCall offset ByteCount selectedIndex
+argument storeDoneFalseCall value Int64 zeroValue
+run storeDoneFalseCall
+return value zeroValue
+label setDoneTrue
+call storeDoneTrueCall pointer.storeByte
+argument storeDoneTrueCall buffer OpaquePointer doneArray
+argument storeDoneTrueCall offset ByteCount selectedIndex
+argument storeDoneTrueCall value Int64 oneValue
+run storeDoneTrueCall
+return value oneValue
+
+operation deleteTodoAtSelectedIndex
+input operation deleteTodoAtSelectedIndex doneArray OpaquePointer
+input operation deleteTodoAtSelectedIndex titlesBuffer OpaquePointer
+input operation deleteTodoAtSelectedIndex todoCount Int64
+input operation deleteTodoAtSelectedIndex deletedIndex Int64
+input operation deleteTodoAtSelectedIndex titleCapacity Int64
+output operation deleteTodoAtSelectedIndex Int64
+effect deleteTodoAtSelectedIndex read memory.buffer
+effect deleteTodoAtSelectedIndex write memory.buffer
+authority deleteTodoAtSelectedIndex read memory.buffer
+authority deleteTodoAtSelectedIndex write memory.buffer
+memory deleteTodoAtSelectedIndex heap no
+async deleteTodoAtSelectedIndex no
+purpose operation deleteTodoAtSelectedIndex "Delete the selected todo and shift later todo storage left."
+precondition deleteTodoAtSelectedIndex "deletedIndex < todoCount (caller must have verified the index addresses an existing todo)."
+invariant operation deleteTodoAtSelectedIndex "All later todos shift left by one slot in both doneArray and titlesArray; todoCount is decremented exactly once; the returned value is the new todoCount."
+label startDeleteTodoAtSelectedIndex
+storage local immutable zeroValue Int64 0
+storage local immutable oneValue Int64 1
+call remainingAfterDeleteCall math.subtractInt64
+argument remainingAfterDeleteCall left Int64 todoCount
+argument remainingAfterDeleteCall right Int64 deletedIndex
+run remainingAfterDeleteCall
+bind value includingDeletedCount Int64 remainingAfterDeleteCall
+call subtractDeletedCall math.subtractInt64
+argument subtractDeletedCall left Int64 includingDeletedCount
+argument subtractDeletedCall right Int64 oneValue
+run subtractDeletedCall
+bind value remainingToShift Int64 subtractDeletedCall
+call shiftNeededCheckCall math.greaterThanInt64
+argument shiftNeededCheckCall left Int64 remainingToShift
+argument shiftNeededCheckCall right Int64 zeroValue
+run shiftNeededCheckCall
+bind value shiftNeeded Bool shiftNeededCheckCall
+branch if condition shiftNeeded target shiftDeletedGap
+branch else target finishDelete
+label shiftDeletedGap
+call nextIndexForShiftCall math.addInt64
+argument nextIndexForShiftCall left Int64 deletedIndex
+argument nextIndexForShiftCall right Int64 oneValue
+run nextIndexForShiftCall
+bind value nextIndexForShift Int64 nextIndexForShiftCall
+call doneDestinationCall pointer.offset
+argument doneDestinationCall base OpaquePointer doneArray
+argument doneDestinationCall offset ByteCount deletedIndex
+run doneDestinationCall
+bind value doneDestination OpaquePointer doneDestinationCall
+call doneSourceCall pointer.offset
+argument doneSourceCall base OpaquePointer doneArray
+argument doneSourceCall offset ByteCount nextIndexForShift
+run doneSourceCall
+bind value doneSource OpaquePointer doneSourceCall
+call moveDoneCall c.memmove
+argument moveDoneCall dest OpaquePointer doneDestination
+argument moveDoneCall src OpaquePointer doneSource
+argument moveDoneCall count Int64 remainingToShift
+run moveDoneCall
+ignore value source moveDoneCall type OpaquePointer
+call titleDestinationCall getTitlePointerAt
+argument titleDestinationCall titlesBuffer OpaquePointer titlesBuffer
+argument titleDestinationCall todoIndex Int64 deletedIndex
+argument titleDestinationCall titleCapacity Int64 titleCapacity
+run titleDestinationCall
+bind value titleDestination OpaquePointer titleDestinationCall
+call titleSourceCall getTitlePointerAt
+argument titleSourceCall titlesBuffer OpaquePointer titlesBuffer
+argument titleSourceCall todoIndex Int64 nextIndexForShift
+argument titleSourceCall titleCapacity Int64 titleCapacity
+run titleSourceCall
+bind value titleSource OpaquePointer titleSourceCall
+call titleBytesToMoveCall math.multiplyInt64
+argument titleBytesToMoveCall left Int64 remainingToShift
+argument titleBytesToMoveCall right Int64 titleCapacity
+run titleBytesToMoveCall
+bind value titleBytesToMove ByteCount titleBytesToMoveCall
+call moveTitlesCall c.memmove
+argument moveTitlesCall dest OpaquePointer titleDestination
+argument moveTitlesCall src OpaquePointer titleSource
+argument moveTitlesCall count ByteCount titleBytesToMove
+run moveTitlesCall
+ignore value source moveTitlesCall type OpaquePointer
+jump target finishDelete
+label finishDelete
+call decrementCountCall math.subtractInt64
+argument decrementCountCall left Int64 todoCount
+argument decrementCountCall right Int64 oneValue
+run decrementCountCall
+bind value decrementedTodoCount Int64 decrementCountCall
+return value decrementedTodoCount
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main read console.stdin
+effect main write console.stdout
+effect main read filesystem
+effect main write filesystem
+effect main open file
+effect main close file
+effect main allocate heap
+effect main free heap
+effect main read memory.buffer
+effect main write memory.buffer
+authority main read console.stdin
+authority main write console.stdout
+authority main read filesystem
+authority main write filesystem
+authority main open file
+authority main close file
+authority main allocate heap
+authority main free heap
+authority main read memory.buffer
+authority main write memory.buffer
+memory main heap yes
+memoryAllocationSource main allocateDoneArrayCall
+memoryAllocationSource main allocateTitlesArrayCall
+memoryAllocationSource main allocateEditBufferCall
+memoryAllocationSource main allocateLineBufferCall
+async main no
+purpose operation main "Run a heap-array backed keyboard todo TUI with JSON persistence."
+invariant operation main "todo data shape: the active todos for indices [0, todoCount) are stored as two parallel heap arrays — doneArray (stride 1 byte; each cell holds byte value 0=open or 1=done, passed through Int32 only because that is the value type pointer.storeByte / pointer.loadByte accepts; the on-disk and in-memory storage is a single byte per todo) and titlesArray (stride titleCapacity bytes; each cell holds a String of at most titleCapacity-1 bytes plus NUL). Both arrays are allocated to length todoCapacity; the i-th todo's done flag is at pointer.offset(doneArray, i) and its title is at getTitlePointerAt(titlesArray, i, titleCapacity). Every reader/writer of `a todo` (renderTodoRow, saveTodosToJson, loadTodosFromJson, appendTodoFromEditBuffer, commitEditToSelectedTodo, toggleTodoAtSelectedIndex, deleteTodoAtSelectedIndex) obeys this same-index rule. Migrating to `record TodoEntry { field done Bool, field title String }` with `recordLayout TodoEntry column` would make the layout declarative."
+invariant operation main "The selected index stays within the active todo range plus the add row while capacity remains."
+invariant operation main "restoreCursorOnExit owns cursor visibility cleanup on every exit path; showCursor is idempotent and safe before hideCursor."
+invariant operation main "After startup, every interactive mutation path (toggle, append, commit, delete) exits through persistTodosThenLoop; if saveTodosToJson succeeds, todos.json reflects the new todo state before the next render. Startup load mutates the arrays through loadTodosFromJson and does not route through persistTodosThenLoop because it is restoring already-persisted state."
+invariant operation main "lineBufferBytes = 384 is the worst-case-safe bound for a JSON line emitted by saveTodosToJson at titleCapacity = 128: 2 * (titleCapacity - 1) escaped bytes (254) + 30-byte itemPrefixFormatText prefix + 4-byte item suffix + 1-byte c.fgets NUL = 289 bytes, rounded up to 384 for headroom. If titleCapacity grows, lineBufferBytes must grow with it or c.fgets will truncate an all-quote/all-backslash adversarial title on reload."
+invariant operation main "lineBufferBytes (ByteCount) and lineBufferCapacity (Int32) are deliberately parallel scalars holding the same numeric value — lineBufferBytes is the malloc size and lineBufferCapacity is the c.fgets `count` argument. They MUST stay equal: a future edit that bumps one without the other will desync allocation and read length, silently truncating or over-reading. If SemanticScript later supports an explicit narrowing call from ByteCount to Int32, derive lineBufferCapacity from lineBufferBytes rather than carrying two constants."
+invariant operation main "lineBuffer lifetime: allocated by allocateLineBufferCall before loadTodosFromJson and freed by freeLineBufferCall immediately after load completion. Unlike doneArray, titlesArray, and editBuffer (which live until quitProgram), lineBuffer is intentionally a short-lived scratch buffer for one-shot JSON parsing. The asymmetry is deliberate: quitProgram MUST NOT free lineBuffer again because it has already been freed; a use of lineBuffer after the loadTodosCall return is a use-after-free."
+defer restoreCursorOnExit showCursor
+deferRunOn restoreCursorOnExit all
+label startMain
+storage local immutable zeroValue Int64 0
+storage local immutable oneValue Int64 1
+storage local immutable todoCapacity Int64 128
+storage local immutable titleCapacity Int64 128
+storage local immutable doneFlagByteWidth Int64 1
+storage local immutable titleByteWidth Int64 1
+# rationale: visibleRows is 8 because the framed table plus status + help
+# fits an 80x24 terminal with header room. todoCapacity 128 caps heap use
+# under (128 * (1 + titleCapacity)) bytes ≈ 16 KiB.
+storage local immutable visibleRows Int64 8
+# rationale: lineBufferBytes is sized for the worst-case JSON-escaped line so
+# reload never truncates a title the saver wrote. The bound is:
+#   2 * (titleCapacity - 1)             max escaped title bytes
+#   + len("{\"active\":1,\"done\":N,\"title\":\"") = 30 bytes prefix
+#   + len("\"},\n") = 4 bytes suffix (the all-but-last item form is the longest)
+#   + 1 byte NUL terminator written by c.fgets
+# At titleCapacity = 128 the strict worst case is 2*127 + 30 + 4 + 1 = 289
+# bytes; we round up to 384 to leave headroom for any future framing tweak
+# in saveTodosToJson's itemPrefixFormatText. If titleCapacity grows, this
+# value MUST grow with it — see the matching invariant on main.
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 384
+# rationale: list-mode key bindings — these are the raw bytes c.consoleGetch
+# returns for non-extended keys, matching ASCII values:
+#   13 = CR/Enter, 8 = Backspace, 32 = Space, 27 = ESC, 68 = 'D', 100 = 'd'.
+# Arrow keys come through readTuiKey as normalized TuiKeyCodes >255 (see
+# tuiKeyArrow* at module scope). Capital-D and lowercase-d both bind to the
+# delete action so it works regardless of caps-lock / shift state.
+storage local immutable keyEnter TuiKeyCode 13
+storage local immutable keyBackspace TuiKeyCode 8
+storage local immutable keySpace TuiKeyCode 32
+storage local immutable keyDeleteUpper TuiKeyCode 68
+storage local immutable keyDeleteLower TuiKeyCode 100
+storage local immutable keyEscape TuiKeyCode 27
+storage local immutable readyStatusText String "Ready."
+storage local immutable loadedStatusText String "Loaded todos.json."
+storage local immutable editStatusText String "Editing note."
+storage local immutable savedText String "Saved."
+storage local immutable saveFailedText String "Save failed; todos.json may be stale."
+storage local immutable toggledText String "Toggled."
+storage local immutable deletedText String "Deleted."
+storage local immutable emptyIgnoredText String "Empty note not saved."
+storage local immutable listFullText String "Todo array is full."
+storage local immutable noTodoText String "No todo selected."
+storage local immutable canceledText String "Edit canceled."
+storage local immutable ignoredKeyText String "No action for that key."
+storage local immutable goodbyeText String "\n  TaskForge TUI session saved.\n\n  todos.json is up to date.\n  Run taskforge_tui.exe from apps/taskforge-tui/build to reopen.\n"
+storage local immutable quitSaveFailedText String "\n  TaskForge TUI session ended.\n\n  Save failed; todos.json may be stale.\n  Check file permissions and disk state before relying on it.\n"
+storage local immutable allocationFailedText String "Could not allocate todo arrays."
+storage local mutable todoCount Int64 zeroValue
+storage local mutable selectedIndex Int64 zeroValue
+storage local mutable topIndex Int64 zeroValue
+storage local mutable screenMode ScreenMode ListMode
+storage local mutable editLength Int64 zeroValue
+storage local mutable statusMessage String readyStatusText
+storage local mutable exitMessage String goodbyeText
+
+call todoArrayBytesCall math.multiplyInt64
+argument todoArrayBytesCall left Int64 todoCapacity
+argument todoArrayBytesCall right Int64 doneFlagByteWidth
+run todoArrayBytesCall
+bind value todoArrayBytes ByteCount todoArrayBytesCall
+call titleBufferBytesCall math.multiplyInt64
+argument titleBufferBytesCall left Int64 titleCapacity
+argument titleBufferBytesCall right Int64 titleByteWidth
+run titleBufferBytesCall
+bind value titleBufferBytes ByteCount titleBufferBytesCall
+call titleSlotsCall math.multiplyInt64
+argument titleSlotsCall left Int64 todoCapacity
+argument titleSlotsCall right Int64 titleCapacity
+run titleSlotsCall
+bind value titleSlots Int64 titleSlotsCall
+call titleArrayBytesCall math.multiplyInt64
+argument titleArrayBytesCall left Int64 titleSlots
+argument titleArrayBytesCall right Int64 titleByteWidth
+run titleArrayBytesCall
+bind value titleArrayBytes ByteCount titleArrayBytesCall
+call allocateDoneArrayCall c.malloc
+argument allocateDoneArrayCall size ByteCount todoArrayBytes
+run allocateDoneArrayCall
+bind ok doneArray OpaquePointer allocateDoneArrayCall
+bind error allocateDoneArrayError CAllocationError allocateDoneArrayCall
+branch error source allocateDoneArrayCall target doneArrayAllocationFailed
+call zeroDoneArrayCall c.memset
+argument zeroDoneArrayCall ptr OpaquePointer doneArray
+argument zeroDoneArrayCall value Int64 zeroValue
+argument zeroDoneArrayCall num ByteCount todoArrayBytes
+run zeroDoneArrayCall
+ignore value source zeroDoneArrayCall type OpaquePointer
+call allocateTitlesArrayCall c.malloc
+argument allocateTitlesArrayCall size ByteCount titleArrayBytes
+run allocateTitlesArrayCall
+bind ok titlesArray OpaquePointer allocateTitlesArrayCall
+bind error allocateTitlesArrayError CAllocationError allocateTitlesArrayCall
+branch error source allocateTitlesArrayCall target titlesArrayAllocationFailed
+call zeroTitlesArrayCall c.memset
+argument zeroTitlesArrayCall ptr OpaquePointer titlesArray
+argument zeroTitlesArrayCall value Int64 zeroValue
+argument zeroTitlesArrayCall num ByteCount titleArrayBytes
+run zeroTitlesArrayCall
+ignore value source zeroTitlesArrayCall type OpaquePointer
+call allocateEditBufferCall c.malloc
+argument allocateEditBufferCall size ByteCount titleBufferBytes
+run allocateEditBufferCall
+bind ok editBuffer OpaquePointer allocateEditBufferCall
+bind error allocateEditBufferError CAllocationError allocateEditBufferCall
+branch error source allocateEditBufferCall target editBufferAllocationFailed
+call initEditBufferCall writeEmptyBuffer
+argument initEditBufferCall targetBuffer OpaquePointer editBuffer
+run initEditBufferCall
+ignore value source initEditBufferCall type Int64
+call allocateLineBufferCall c.malloc
+argument allocateLineBufferCall size ByteCount lineBufferBytes
+run allocateLineBufferCall
+bind ok lineBuffer OpaquePointer allocateLineBufferCall
+bind error allocateLineBufferError CAllocationError allocateLineBufferCall
+branch error source allocateLineBufferCall target lineBufferAllocationFailed
+call loadTodosCall loadTodosFromJson
+argument loadTodosCall doneArray OpaquePointer doneArray
+argument loadTodosCall titlesBuffer OpaquePointer titlesArray
+argument loadTodosCall todoCapacity Int64 todoCapacity
+argument loadTodosCall titleCapacity Int64 titleCapacity
+argument loadTodosCall lineBuffer OpaquePointer lineBuffer
+argument loadTodosCall lineBufferCapacity Int32 lineBufferCapacity
+run loadTodosCall
+bind value loadedTodoCount Int64 loadTodosCall
+set memory todoCount loadedTodoCount
+call freeLineBufferCall c.free
+argument freeLineBufferCall ptr OpaquePointer lineBuffer
+run freeLineBufferCall
+ignore void source freeLineBufferCall
+set memory statusMessage loadedStatusText
+call hideCursorOnStartCall hideCursor
+run hideCursorOnStartCall
+ignore value source hideCursorOnStartCall type Int32
+jump target replLoop
+
+label replLoop
+call renderScreenCall renderScreen
+argument renderScreenCall doneArray OpaquePointer doneArray
+argument renderScreenCall titlesBuffer OpaquePointer titlesArray
+argument renderScreenCall todoCount Int64 todoCount
+argument renderScreenCall selectedIndex Int64 selectedIndex
+argument renderScreenCall topIndex Int64 topIndex
+argument renderScreenCall screenMode ScreenMode screenMode
+argument renderScreenCall editBuffer OpaquePointer editBuffer
+argument renderScreenCall editLength Int64 editLength
+argument renderScreenCall titleCapacity Int64 titleCapacity
+argument renderScreenCall visibleRows Int64 visibleRows
+argument renderScreenCall statusText String statusMessage
+run renderScreenCall
+ignore value source renderScreenCall type Int32
+call readKeyCall readTuiKey
+run readKeyCall
+bind value pressedKey TuiKeyCode readKeyCall
+call listModeCheckCall ScreenMode.equal
+argument listModeCheckCall left ScreenMode screenMode
+argument listModeCheckCall right ScreenMode ListMode
+run listModeCheckCall
+bind value inListMode Bool listModeCheckCall
+branch if condition inListMode target handleListKey
+branch else target handleEditKey
+
+label handleListKey
+call listUpKeyCheckCall math.equalInt32
+argument listUpKeyCheckCall left Int32 pressedKey
+argument listUpKeyCheckCall right Int32 tuiKeyArrowUp
+run listUpKeyCheckCall
+bind value listUpPressed Bool listUpKeyCheckCall
+branch if condition listUpPressed target moveSelectionUp
+call listDownKeyCheckCall math.equalInt32
+argument listDownKeyCheckCall left Int32 pressedKey
+argument listDownKeyCheckCall right Int32 tuiKeyArrowDown
+run listDownKeyCheckCall
+bind value listDownPressed Bool listDownKeyCheckCall
+branch if condition listDownPressed target moveSelectionDown
+call listRightKeyCheckCall math.equalInt32
+argument listRightKeyCheckCall left Int32 pressedKey
+argument listRightKeyCheckCall right Int32 tuiKeyArrowRight
+run listRightKeyCheckCall
+bind value listRightPressed Bool listRightKeyCheckCall
+branch if condition listRightPressed target openEditor
+call listEnterKeyCheckCall math.equalInt32
+argument listEnterKeyCheckCall left Int32 pressedKey
+argument listEnterKeyCheckCall right Int32 keyEnter
+run listEnterKeyCheckCall
+bind value listEnterPressed Bool listEnterKeyCheckCall
+branch if condition listEnterPressed target toggleSelectedTodo
+call listSpaceKeyCheckCall math.equalInt32
+argument listSpaceKeyCheckCall left Int32 pressedKey
+argument listSpaceKeyCheckCall right Int32 keySpace
+run listSpaceKeyCheckCall
+bind value listSpacePressed Bool listSpaceKeyCheckCall
+branch if condition listSpacePressed target toggleSelectedTodo
+call listDeleteLowerKeyCheckCall math.equalInt32
+argument listDeleteLowerKeyCheckCall left Int32 pressedKey
+argument listDeleteLowerKeyCheckCall right Int32 keyDeleteLower
+run listDeleteLowerKeyCheckCall
+bind value listDeleteLowerPressed Bool listDeleteLowerKeyCheckCall
+branch if condition listDeleteLowerPressed target deleteSelectedTodo
+call listDeleteUpperKeyCheckCall math.equalInt32
+argument listDeleteUpperKeyCheckCall left Int32 pressedKey
+argument listDeleteUpperKeyCheckCall right Int32 keyDeleteUpper
+run listDeleteUpperKeyCheckCall
+bind value listDeleteUpperPressed Bool listDeleteUpperKeyCheckCall
+branch if condition listDeleteUpperPressed target deleteSelectedTodo
+call listEscapeKeyCheckCall math.equalInt32
+argument listEscapeKeyCheckCall left Int32 pressedKey
+argument listEscapeKeyCheckCall right Int32 keyEscape
+run listEscapeKeyCheckCall
+bind value listEscapePressed Bool listEscapeKeyCheckCall
+branch if condition listEscapePressed target quitProgram
+set memory statusMessage ignoredKeyText
+jump target replLoop
+
+label moveSelectionUp
+call maxSelectableForUpCall computeMaxSelectable
+argument maxSelectableForUpCall todoCount Int64 todoCount
+argument maxSelectableForUpCall todoCapacity Int64 todoCapacity
+run maxSelectableForUpCall
+bind value maxSelectableIndexForUp Int64 maxSelectableForUpCall
+call selectedAtTopCall math.equalInt64
+argument selectedAtTopCall left Int64 selectedIndex
+argument selectedAtTopCall right Int64 zeroValue
+run selectedAtTopCall
+bind value selectedAtTop Bool selectedAtTopCall
+branch if condition selectedAtTop target wrapSelectionToBottom
+call decrementSelectedCall math.subtractInt64
+argument decrementSelectedCall left Int64 selectedIndex
+argument decrementSelectedCall right Int64 oneValue
+run decrementSelectedCall
+bind value previousSelectedIndex Int64 decrementSelectedCall
+set memory selectedIndex previousSelectedIndex
+jump target clampSelectionWindow
+label wrapSelectionToBottom
+set memory selectedIndex maxSelectableIndexForUp
+jump target clampSelectionWindow
+
+label moveSelectionDown
+call maxSelectableForDownCall computeMaxSelectable
+argument maxSelectableForDownCall todoCount Int64 todoCount
+argument maxSelectableForDownCall todoCapacity Int64 todoCapacity
+run maxSelectableForDownCall
+bind value maxSelectableIndexForDown Int64 maxSelectableForDownCall
+call selectedAtBottomCall math.equalInt64
+argument selectedAtBottomCall left Int64 selectedIndex
+argument selectedAtBottomCall right Int64 maxSelectableIndexForDown
+run selectedAtBottomCall
+bind value selectedAtBottom Bool selectedAtBottomCall
+branch if condition selectedAtBottom target wrapSelectionToTop
+call incrementSelectedCall math.addInt64
+argument incrementSelectedCall left Int64 selectedIndex
+argument incrementSelectedCall right Int64 oneValue
+run incrementSelectedCall
+bind value nextSelectedIndex Int64 incrementSelectedCall
+set memory selectedIndex nextSelectedIndex
+jump target clampSelectionWindow
+label wrapSelectionToTop
+set memory selectedIndex zeroValue
+jump target clampSelectionWindow
+
+label clampSelectionWindow
+call clampTopCall clampTopIndex
+argument clampTopCall selectedIndex Int64 selectedIndex
+argument clampTopCall topIndex Int64 topIndex
+argument clampTopCall visibleRows Int64 visibleRows
+run clampTopCall
+bind value clampedTopIndex Int64 clampTopCall
+set memory topIndex clampedTopIndex
+set memory statusMessage readyStatusText
+jump target replLoop
+
+label openEditor
+call selectedExistingForOpenCall math.lessThanInt64
+argument selectedExistingForOpenCall left Int64 selectedIndex
+argument selectedExistingForOpenCall right Int64 todoCount
+run selectedExistingForOpenCall
+bind value selectedExistingForOpen Bool selectedExistingForOpenCall
+branch if condition selectedExistingForOpen target openExistingEditor
+call clearEditForNewCall writeEmptyBuffer
+argument clearEditForNewCall targetBuffer OpaquePointer editBuffer
+run clearEditForNewCall
+bind value newEditLength Int64 clearEditForNewCall
+set memory editLength newEditLength
+set memory screenMode EditMode
+set memory statusMessage editStatusText
+jump target replLoop
+label openExistingEditor
+call selectedTitlePointerCall getTitlePointerAt
+argument selectedTitlePointerCall titlesBuffer OpaquePointer titlesArray
+argument selectedTitlePointerCall todoIndex Int64 selectedIndex
+argument selectedTitlePointerCall titleCapacity Int64 titleCapacity
+run selectedTitlePointerCall
+bind value selectedTitlePointer OpaquePointer selectedTitlePointerCall
+call copySelectedTitleCall copyStringBuffer
+argument copySelectedTitleCall sourceBuffer OpaquePointer selectedTitlePointer
+argument copySelectedTitleCall targetBuffer OpaquePointer editBuffer
+argument copySelectedTitleCall targetBufferCapacity Int64 titleCapacity
+run copySelectedTitleCall
+bind value copiedEditLength Int64 copySelectedTitleCall
+set memory editLength copiedEditLength
+set memory screenMode EditMode
+set memory statusMessage editStatusText
+jump target replLoop
+
+label handleEditKey
+call editEscapeKeyCheckCall math.equalInt32
+argument editEscapeKeyCheckCall left Int32 pressedKey
+argument editEscapeKeyCheckCall right Int32 keyEscape
+run editEscapeKeyCheckCall
+bind value editEscapePressed Bool editEscapeKeyCheckCall
+branch if condition editEscapePressed target cancelEdit
+call editLeftKeyCheckCall math.equalInt32
+argument editLeftKeyCheckCall left Int32 pressedKey
+argument editLeftKeyCheckCall right Int32 tuiKeyArrowLeft
+run editLeftKeyCheckCall
+bind value editLeftPressed Bool editLeftKeyCheckCall
+branch if condition editLeftPressed target cancelEdit
+call editEnterKeyCheckCall math.equalInt32
+argument editEnterKeyCheckCall left Int32 pressedKey
+argument editEnterKeyCheckCall right Int32 keyEnter
+run editEnterKeyCheckCall
+bind value editEnterPressed Bool editEnterKeyCheckCall
+branch if condition editEnterPressed target commitEdit
+call editBackspaceKeyCheckCall math.equalInt32
+argument editBackspaceKeyCheckCall left Int32 pressedKey
+argument editBackspaceKeyCheckCall right Int32 keyBackspace
+run editBackspaceKeyCheckCall
+bind value editBackspacePressed Bool editBackspaceKeyCheckCall
+branch if condition editBackspacePressed target backspaceEditBuffer
+call appendEditBufferCall appendPrintableKeyToBuffer
+argument appendEditBufferCall targetBuffer OpaquePointer editBuffer
+argument appendEditBufferCall currentLength Int64 editLength
+argument appendEditBufferCall bufferCapacity Int64 titleCapacity
+argument appendEditBufferCall keyCode TuiKeyCode pressedKey
+run appendEditBufferCall
+bind value appendedEditLength Int64 appendEditBufferCall
+set memory editLength appendedEditLength
+set memory statusMessage editStatusText
+jump target replLoop
+label backspaceEditBuffer
+call backspaceEditBufferCall deleteLastBufferByte
+argument backspaceEditBufferCall targetBuffer OpaquePointer editBuffer
+argument backspaceEditBufferCall currentLength Int64 editLength
+run backspaceEditBufferCall
+bind value shortenedEditLength Int64 backspaceEditBufferCall
+set memory editLength shortenedEditLength
+set memory statusMessage editStatusText
+jump target replLoop
+label cancelEdit
+set memory screenMode ListMode
+set memory editLength zeroValue
+set memory statusMessage canceledText
+jump target replLoop
+
+label commitEdit
+call editEmptyCheckCall math.equalInt64
+argument editEmptyCheckCall left Int64 editLength
+argument editEmptyCheckCall right Int64 zeroValue
+run editEmptyCheckCall
+bind value editIsEmpty Bool editEmptyCheckCall
+branch if condition editIsEmpty target ignoreEmptyEdit
+call selectedExistingForCommitCall math.lessThanInt64
+argument selectedExistingForCommitCall left Int64 selectedIndex
+argument selectedExistingForCommitCall right Int64 todoCount
+run selectedExistingForCommitCall
+bind value selectedExistingForCommit Bool selectedExistingForCommitCall
+branch if condition selectedExistingForCommit target commitExistingEdit
+call capacityForAppendCheckCall math.greaterThanOrEqualInt64
+argument capacityForAppendCheckCall left Int64 todoCount
+argument capacityForAppendCheckCall right Int64 todoCapacity
+run capacityForAppendCheckCall
+bind value appendWouldOverflow Bool capacityForAppendCheckCall
+branch if condition appendWouldOverflow target listFullOnCommit
+call appendTodoCall appendTodoFromEditBuffer
+argument appendTodoCall doneArray OpaquePointer doneArray
+argument appendTodoCall titlesBuffer OpaquePointer titlesArray
+argument appendTodoCall editBuffer OpaquePointer editBuffer
+argument appendTodoCall todoCount Int64 todoCount
+argument appendTodoCall titleCapacity Int64 titleCapacity
+run appendTodoCall
+bind value incrementedTodoCount Int64 appendTodoCall
+set memory todoCount incrementedTodoCount
+set memory statusMessage savedText
+jump target persistTodosThenLoop
+label commitExistingEdit
+call commitExistingEditCall commitEditToSelectedTodo
+argument commitExistingEditCall titlesBuffer OpaquePointer titlesArray
+argument commitExistingEditCall editBuffer OpaquePointer editBuffer
+argument commitExistingEditCall selectedIndex Int64 selectedIndex
+argument commitExistingEditCall titleCapacity Int64 titleCapacity
+run commitExistingEditCall
+ignore value source commitExistingEditCall type Int64
+set memory statusMessage savedText
+jump target persistTodosThenLoop
+label ignoreEmptyEdit
+set memory screenMode ListMode
+set memory editLength zeroValue
+set memory statusMessage emptyIgnoredText
+jump target replLoop
+label listFullOnCommit
+set memory screenMode ListMode
+set memory editLength zeroValue
+set memory statusMessage listFullText
+jump target replLoop
+
+label toggleSelectedTodo
+call selectedExistingForToggleCall math.lessThanInt64
+argument selectedExistingForToggleCall left Int64 selectedIndex
+argument selectedExistingForToggleCall right Int64 todoCount
+run selectedExistingForToggleCall
+bind value selectedExistingForToggle Bool selectedExistingForToggleCall
+branch if condition selectedExistingForToggle target toggleExistingTodo
+set memory statusMessage noTodoText
+jump target replLoop
+label toggleExistingTodo
+call toggleSelectedTodoCall toggleTodoAtSelectedIndex
+argument toggleSelectedTodoCall doneArray OpaquePointer doneArray
+argument toggleSelectedTodoCall selectedIndex Int64 selectedIndex
+run toggleSelectedTodoCall
+ignore value source toggleSelectedTodoCall type Int32
+set memory statusMessage toggledText
+jump target persistTodosThenLoop
+
+label deleteSelectedTodo
+call selectedExistingForDeleteCall math.lessThanInt64
+argument selectedExistingForDeleteCall left Int64 selectedIndex
+argument selectedExistingForDeleteCall right Int64 todoCount
+run selectedExistingForDeleteCall
+bind value selectedExistingForDelete Bool selectedExistingForDeleteCall
+branch if condition selectedExistingForDelete target deleteExistingTodo
+set memory statusMessage noTodoText
+jump target replLoop
+label deleteExistingTodo
+call deleteSelectedTodoCall deleteTodoAtSelectedIndex
+argument deleteSelectedTodoCall doneArray OpaquePointer doneArray
+argument deleteSelectedTodoCall titlesBuffer OpaquePointer titlesArray
+argument deleteSelectedTodoCall todoCount Int64 todoCount
+argument deleteSelectedTodoCall deletedIndex Int64 selectedIndex
+argument deleteSelectedTodoCall titleCapacity Int64 titleCapacity
+run deleteSelectedTodoCall
+bind value decrementedTodoCount Int64 deleteSelectedTodoCall
+set memory todoCount decrementedTodoCount
+call selectionPastCountCheckCall math.greaterThanOrEqualInt64
+argument selectionPastCountCheckCall left Int64 selectedIndex
+argument selectionPastCountCheckCall right Int64 todoCount
+run selectionPastCountCheckCall
+bind value selectionPastCount Bool selectionPastCountCheckCall
+branch if condition selectionPastCount target clampSelectionAfterDelete
+branch else target deleteStatusAndPersist
+label clampSelectionAfterDelete
+call countIsZeroCheckCall math.equalInt64
+argument countIsZeroCheckCall left Int64 todoCount
+argument countIsZeroCheckCall right Int64 zeroValue
+run countIsZeroCheckCall
+bind value countIsZero Bool countIsZeroCheckCall
+branch if condition countIsZero target setSelectionZeroAfterDelete
+call lastIndexAfterDeleteCall math.subtractInt64
+argument lastIndexAfterDeleteCall left Int64 todoCount
+argument lastIndexAfterDeleteCall right Int64 oneValue
+run lastIndexAfterDeleteCall
+bind value lastIndexAfterDelete Int64 lastIndexAfterDeleteCall
+set memory selectedIndex lastIndexAfterDelete
+jump target deleteStatusAndPersist
+label setSelectionZeroAfterDelete
+set memory selectedIndex zeroValue
+jump target deleteStatusAndPersist
+label deleteStatusAndPersist
+call clampTopAfterDeleteCall clampTopIndex
+argument clampTopAfterDeleteCall selectedIndex Int64 selectedIndex
+argument clampTopAfterDeleteCall topIndex Int64 topIndex
+argument clampTopAfterDeleteCall visibleRows Int64 visibleRows
+run clampTopAfterDeleteCall
+bind value clampedTopAfterDelete Int64 clampTopAfterDeleteCall
+set memory topIndex clampedTopAfterDelete
+set memory statusMessage deletedText
+jump target persistTodosThenLoop
+
+label persistTodosThenLoop
+set memory screenMode ListMode
+set memory editLength zeroValue
+call saveTodosAfterChangeCall saveTodosToJson
+argument saveTodosAfterChangeCall doneArray OpaquePointer doneArray
+argument saveTodosAfterChangeCall titlesBuffer OpaquePointer titlesArray
+argument saveTodosAfterChangeCall todoCount Int64 todoCount
+argument saveTodosAfterChangeCall titleCapacity Int64 titleCapacity
+run saveTodosAfterChangeCall
+bind value saveAfterChangeStatus SaveTodosStatus saveTodosAfterChangeCall
+call saveAfterChangeSucceededCall SaveTodosStatus.equal
+argument saveAfterChangeSucceededCall left SaveTodosStatus saveAfterChangeStatus
+argument saveAfterChangeSucceededCall right SaveTodosStatus SaveSucceeded
+run saveAfterChangeSucceededCall
+bind value saveAfterChangeSucceeded Bool saveAfterChangeSucceededCall
+branch if condition saveAfterChangeSucceeded target replLoop
+set memory statusMessage saveFailedText
+jump target replLoop
+
+label doneArrayAllocationFailed
+call allocationFailedDoneCall c.puts
+argument allocationFailedDoneCall text String allocationFailedText
+run allocationFailedDoneCall
+ignore value source allocationFailedDoneCall type Int32
+makeError doneArrayAllocationFailure MainError.StartupAllocationFailed allocateDoneArrayError
+return error doneArrayAllocationFailure
+label titlesArrayAllocationFailed
+call allocationFailedTitlesCall c.puts
+argument allocationFailedTitlesCall text String allocationFailedText
+run allocationFailedTitlesCall
+ignore value source allocationFailedTitlesCall type Int32
+call freeDoneAfterTitlesFailureCall c.free
+argument freeDoneAfterTitlesFailureCall ptr OpaquePointer doneArray
+run freeDoneAfterTitlesFailureCall
+ignore void source freeDoneAfterTitlesFailureCall
+makeError titlesArrayAllocationFailure MainError.StartupAllocationFailed allocateTitlesArrayError
+return error titlesArrayAllocationFailure
+label editBufferAllocationFailed
+call allocationFailedEditCall c.puts
+argument allocationFailedEditCall text String allocationFailedText
+run allocationFailedEditCall
+ignore value source allocationFailedEditCall type Int32
+call freeDoneAfterEditFailureCall c.free
+argument freeDoneAfterEditFailureCall ptr OpaquePointer doneArray
+run freeDoneAfterEditFailureCall
+ignore void source freeDoneAfterEditFailureCall
+call freeTitlesAfterEditFailureCall c.free
+argument freeTitlesAfterEditFailureCall ptr OpaquePointer titlesArray
+run freeTitlesAfterEditFailureCall
+ignore void source freeTitlesAfterEditFailureCall
+makeError editBufferAllocationFailure MainError.StartupAllocationFailed allocateEditBufferError
+return error editBufferAllocationFailure
+label lineBufferAllocationFailed
+call allocationFailedLineCall c.puts
+argument allocationFailedLineCall text String allocationFailedText
+run allocationFailedLineCall
+ignore value source allocationFailedLineCall type Int32
+call freeDoneAfterLineFailureCall c.free
+argument freeDoneAfterLineFailureCall ptr OpaquePointer doneArray
+run freeDoneAfterLineFailureCall
+ignore void source freeDoneAfterLineFailureCall
+call freeTitlesAfterLineFailureCall c.free
+argument freeTitlesAfterLineFailureCall ptr OpaquePointer titlesArray
+run freeTitlesAfterLineFailureCall
+ignore void source freeTitlesAfterLineFailureCall
+call freeEditAfterLineFailureCall c.free
+argument freeEditAfterLineFailureCall ptr OpaquePointer editBuffer
+run freeEditAfterLineFailureCall
+ignore void source freeEditAfterLineFailureCall
+makeError lineBufferAllocationFailure MainError.StartupAllocationFailed allocateLineBufferError
+return error lineBufferAllocationFailure
+
+label quitProgram
+call saveTodosOnQuitCall saveTodosToJson
+argument saveTodosOnQuitCall doneArray OpaquePointer doneArray
+argument saveTodosOnQuitCall titlesBuffer OpaquePointer titlesArray
+argument saveTodosOnQuitCall todoCount Int64 todoCount
+argument saveTodosOnQuitCall titleCapacity Int64 titleCapacity
+run saveTodosOnQuitCall
+bind value saveOnQuitStatus SaveTodosStatus saveTodosOnQuitCall
+call saveOnQuitSucceededCall SaveTodosStatus.equal
+argument saveOnQuitSucceededCall left SaveTodosStatus saveOnQuitStatus
+argument saveOnQuitSucceededCall right SaveTodosStatus SaveSucceeded
+run saveOnQuitSucceededCall
+bind value saveOnQuitSucceeded Bool saveOnQuitSucceededCall
+branch if condition saveOnQuitSucceeded target useSavedExitMessage
+set memory exitMessage quitSaveFailedText
+jump target clearAndExitProgram
+label useSavedExitMessage
+set memory exitMessage goodbyeText
+jump target clearAndExitProgram
+label clearAndExitProgram
+call clearScreenOnQuitCall clearScreen
+run clearScreenOnQuitCall
+ignore value source clearScreenOnQuitCall type Int32
+call goodbyeCall c.puts
+argument goodbyeCall text String exitMessage
+run goodbyeCall
+ignore value source goodbyeCall type Int32
+call freeDoneCall c.free
+argument freeDoneCall ptr OpaquePointer doneArray
+run freeDoneCall
+ignore void source freeDoneCall
+call freeTitlesCall c.free
+argument freeTitlesCall ptr OpaquePointer titlesArray
+run freeTitlesCall
+ignore void source freeTitlesCall
+call freeEditCall c.free
+argument freeEditCall ptr OpaquePointer editBuffer
+run freeEditCall
+ignore void source freeEditCall
+storage local immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

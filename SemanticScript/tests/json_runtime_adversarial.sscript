@@ -1,214 +1,221 @@
-# Adversarial JSON smoke — covers cases the primary fixture skips:
-#   - arrays containing mixed primitive elements
-#   - float values rendered + parsed at full %.17g precision
-#   - negative integers
-#   - empty strings as field values
-#   - large positive integers near INT64_MAX
-#   - the "hasField returns 1 for null fields" / "findInt64 returns
-#     missing_default for null fields" split
+# Adversarial JSON smoke for the document CRUD surface.
 #
-# Writes 'jsonAdversarialOk' on success; non-zero exit on any mismatch.
+# Covers negative integers, a large positive integer, empty string values, and
+# serialization through the mutable document runtime.
 
 project JsonAdversarial
 target console
 runtime native 1
 module fixture.json_adversarial
 
-importModule standard.json as json
+import json standard.json
 dependency standard.json version 0.1 source standard
 
 entry console main
 
 error MainError
-errorCase MainError BuilderMutationFailed CSignedInt32
-errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError JsonAccessFailed JsonAccessError
+errorCase MainError RoundTripMismatch Int32
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability adversarialStdoutWrite console.stdout write
-purpose adversarialStdoutWrite "Authority to write the adversarial smoke result marker"
+purpose operation adversarialStdoutWrite "Authority to write the adversarial smoke result marker"
+capability adversarialHeapAllocate heap allocate
+purpose operation adversarialHeapAllocate "Authority to allocate JSON scratch storage"
+capability adversarialHeapFree heap free
+purpose operation adversarialHeapFree "Authority to free JSON scratch storage"
 
-storage module immutable adversarialBuilderCapacity CSignedInt64 4096
+storage module immutable documentCapacity JsonCapacityBytes 4096
+storage module immutable scratchCapacity JsonCapacityBytes 512
+storage module immutable objectRootKind Int32 0
 storage module immutable successExit ExitCode 0
-storage module immutable expectedNegative CSignedInt64 -98765
-storage module immutable expectedLarge CSignedInt64 9223372036854775000
-storage module immutable missingDefault CSignedInt64 0
-storage module immutable trueValue CSignedInt32 1
-storage module immutable falseValue CSignedInt32 0
+storage module immutable expectedNegative Int64 -98765
+storage module immutable expectedLarge Int64 9223372036854775000
+storage module immutable missingDefault Int64 0
+storage module immutable mismatchCode Int32 1
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main read json.document.tree
+effect main write json.document.tree
 memory main heap auto
 async main no
 useCapability main adversarialStdoutWrite
-purpose main "Build an object containing a nested array of mixed primitives and a large-magnitude integer, then verify round-trips on the extreme-value cases that primary smoke skips."
-invariant main "Negative and near-INT64_MAX values must round-trip exactly via the int64 path."
+useCapability main adversarialHeapAllocate
+useCapability main adversarialHeapFree
+purpose operation main "Build a document with extreme integer and empty-string cases, then verify the values through cursor readers."
+invariant operation main "Negative and near-INT64_MAX values must round-trip exactly via the int64 cursor path."
 
 label startMain
 
-call createCall json.createBuilder
-arg createCall capacity adversarialBuilderCapacity
-run createCall
-bind adversarialBuilder JsonBuilder createCall
-defer destroyDefer json.destroyBuilder adversarialBuilder
+call createDocumentCall json.createEmptyDocument
+argument createDocumentCall capacityBytes JsonCapacityBytes documentCapacity
+argument createDocumentCall rootKind Int32 objectRootKind
+run createDocumentCall
+bind ok adversarialDocument JsonDocument createDocumentCall
+bind error createDocumentError JsonAccessError createDocumentCall
+branch error source createDocumentCall target jsonAccessFailed
 
-call openCall json.objectOpen
-arg openCall builder adversarialBuilder
-run openCall
-ignoreOk openCall CSignedInt32
-bindError openErr CSignedInt32 openCall
-branchIfError openCall openFailed
+call rootCursorCall json.documentRoot
+argument rootCursorCall document JsonDocument adversarialDocument
+run rootCursorCall
+bind value rootCursor JsonCursor rootCursorCall
 
-# Negative integer round-trip.
-storage local immutable negFieldName CNullTerminatedByteString "negative"
-call writeNegCall json.fieldInt64
-arg writeNegCall builder adversarialBuilder
-arg writeNegCall fieldName negFieldName
-arg writeNegCall value expectedNegative
+storage local immutable negFieldName String "negative"
+call writeNegCall json.setObjectFieldInt64
+argument writeNegCall document JsonDocument adversarialDocument
+argument writeNegCall cursor JsonCursor rootCursor
+argument writeNegCall fieldName String negFieldName
+argument writeNegCall value Int64 expectedNegative
 run writeNegCall
-ignoreOk writeNegCall CSignedInt32
-bindError negWriteErr CSignedInt32 writeNegCall
-branchIfError writeNegCall negWriteFailed
+ignore ok source writeNegCall type Int32
+bind error negWriteError JsonAccessError writeNegCall
+branch error source writeNegCall target jsonAccessFailed
 
-# Large-magnitude int64 round-trip.
-storage local immutable bigFieldName CNullTerminatedByteString "big"
-call writeBigCall json.fieldInt64
-arg writeBigCall builder adversarialBuilder
-arg writeBigCall fieldName bigFieldName
-arg writeBigCall value expectedLarge
+storage local immutable bigFieldName String "big"
+call writeBigCall json.setObjectFieldInt64
+argument writeBigCall document JsonDocument adversarialDocument
+argument writeBigCall cursor JsonCursor rootCursor
+argument writeBigCall fieldName String bigFieldName
+argument writeBigCall value Int64 expectedLarge
 run writeBigCall
-ignoreOk writeBigCall CSignedInt32
-bindError bigWriteErr CSignedInt32 writeBigCall
-branchIfError writeBigCall bigWriteFailed
+ignore ok source writeBigCall type Int32
+bind error bigWriteError JsonAccessError writeBigCall
+branch error source writeBigCall target jsonAccessFailed
 
-# Empty-string round-trip — must produce `"empty":""` not malformed JSON.
-storage local immutable emptyFieldName CNullTerminatedByteString "empty"
-storage local immutable emptyValue CNullTerminatedByteString ""
-call writeEmptyCall json.fieldString
-arg writeEmptyCall builder adversarialBuilder
-arg writeEmptyCall fieldName emptyFieldName
-arg writeEmptyCall value emptyValue
+storage local immutable emptyFieldName String "empty"
+storage local immutable emptyValue String ""
+call writeEmptyCall json.setObjectFieldString
+argument writeEmptyCall document JsonDocument adversarialDocument
+argument writeEmptyCall cursor JsonCursor rootCursor
+argument writeEmptyCall fieldName String emptyFieldName
+argument writeEmptyCall value String emptyValue
 run writeEmptyCall
-ignoreOk writeEmptyCall CSignedInt32
-bindError emptyWriteErr CSignedInt32 writeEmptyCall
-branchIfError writeEmptyCall emptyWriteFailed
+ignore ok source writeEmptyCall type Int32
+bind error emptyWriteError JsonAccessError writeEmptyCall
+branch error source writeEmptyCall target jsonAccessFailed
 
-# Nested array containing three primitives.
-storage local immutable tagsFieldName CNullTerminatedByteString "tags"
-storage local immutable tagsArrayBuilderName CNullTerminatedByteString "tagsArrayBuilderName_unused"
-call openTagsFieldCall json.fieldString
-arg openTagsFieldCall builder adversarialBuilder
-arg openTagsFieldCall fieldName tagsFieldName
-arg openTagsFieldCall value tagsArrayBuilderName
-run openTagsFieldCall
-ignoreOk openTagsFieldCall CSignedInt32
-bindError openTagsFieldErr CSignedInt32 openTagsFieldCall
-branchIfError openTagsFieldCall openTagsFieldFailed
+call negCursorCall json.objectFieldAt
+argument negCursorCall document JsonDocument adversarialDocument
+argument negCursorCall cursor JsonCursor rootCursor
+argument negCursorCall fieldName String negFieldName
+run negCursorCall
+bind ok negCursor JsonCursor negCursorCall
+bind error negCursorError JsonAccessError negCursorCall
+branch error source negCursorCall target jsonAccessFailed
 
-call closeAdversarialCall json.objectClose
-arg closeAdversarialCall builder adversarialBuilder
-run closeAdversarialCall
-ignoreOk closeAdversarialCall CSignedInt32
-bindError closeAdversarialErr CSignedInt32 closeAdversarialCall
-branchIfError closeAdversarialCall closeAdversarialFailed
-
-call finishCall json.finishBuilder
-arg finishCall builder adversarialBuilder
-run finishCall
-bind responseBody CNullTerminatedByteString finishCall
-
-# Round-trip the negative integer.
-call readNegCall json.findInt64
-arg readNegCall jsonText responseBody
-arg readNegCall fieldName negFieldName
-arg readNegCall missingDefault missingDefault
+call readNegCall json.cursorInt64
+argument readNegCall document JsonDocument adversarialDocument
+argument readNegCall cursor JsonCursor negCursor
+argument readNegCall missingDefault Int64 missingDefault
 run readNegCall
-bind recoveredNegative CSignedInt64 readNegCall
+bind value recoveredNegative Int64 readNegCall
 
-call negMatchCall math.equalI64
-arg negMatchCall left recoveredNegative
-arg negMatchCall right expectedNegative
+call negMatchCall math.equalInt64
+argument negMatchCall left Int64 recoveredNegative
+argument negMatchCall right Int64 expectedNegative
 run negMatchCall
-bind negMatched Bool negMatchCall
-branchIf negMatched negMatchOk
-branch roundTripMismatch
+bind value negMatched Bool negMatchCall
+branch if condition negMatched target negMatchOk
+branch else target roundTripMismatch
 label negMatchOk
 
-# Round-trip the large-magnitude integer.
-call readBigCall json.findInt64
-arg readBigCall jsonText responseBody
-arg readBigCall fieldName bigFieldName
-arg readBigCall missingDefault missingDefault
-run readBigCall
-bind recoveredBig CSignedInt64 readBigCall
+call bigCursorCall json.objectFieldAt
+argument bigCursorCall document JsonDocument adversarialDocument
+argument bigCursorCall cursor JsonCursor rootCursor
+argument bigCursorCall fieldName String bigFieldName
+run bigCursorCall
+bind ok bigCursor JsonCursor bigCursorCall
+bind error bigCursorError JsonAccessError bigCursorCall
+branch error source bigCursorCall target jsonAccessFailed
 
-call bigMatchCall math.equalI64
-arg bigMatchCall left recoveredBig
-arg bigMatchCall right expectedLarge
+call readBigCall json.cursorInt64
+argument readBigCall document JsonDocument adversarialDocument
+argument readBigCall cursor JsonCursor bigCursor
+argument readBigCall missingDefault Int64 missingDefault
+run readBigCall
+bind value recoveredBig Int64 readBigCall
+
+call bigMatchCall math.equalInt64
+argument bigMatchCall left Int64 recoveredBig
+argument bigMatchCall right Int64 expectedLarge
 run bigMatchCall
-bind bigMatched Bool bigMatchCall
-branchIf bigMatched bigMatchOk
-branch roundTripMismatch
+bind value bigMatched Bool bigMatchCall
+branch if condition bigMatched target bigMatchOk
+branch else target roundTripMismatch
 label bigMatchOk
 
-# Presence of empty string field — has_field must report 1, but the
-# string finder should produce an empty (non-null) string.
-call hasEmptyCall json.hasField
-arg hasEmptyCall jsonText responseBody
-arg hasEmptyCall fieldName emptyFieldName
-run hasEmptyCall
-bind emptyPresent CSignedInt32 hasEmptyCall
+call allocateScratchCall c.malloc
+argument allocateScratchCall size JsonCapacityBytes scratchCapacity
+run allocateScratchCall
+bind value scratchBuffer OpaquePointer allocateScratchCall
 
-call emptyPresentMatchCall math.equalCSignedInt32
-arg emptyPresentMatchCall left emptyPresent
-arg emptyPresentMatchCall right trueValue
-run emptyPresentMatchCall
-bind emptyPresentOk Bool emptyPresentMatchCall
-branchIf emptyPresentOk emptyPresentOkLabel
-branch roundTripMismatch
-label emptyPresentOkLabel
+call emptyCursorCall json.objectFieldAt
+argument emptyCursorCall document JsonDocument adversarialDocument
+argument emptyCursorCall cursor JsonCursor rootCursor
+argument emptyCursorCall fieldName String emptyFieldName
+run emptyCursorCall
+bind ok emptyCursor JsonCursor emptyCursorCall
+bind error emptyCursorError JsonAccessError emptyCursorCall
+branch error source emptyCursorCall target jsonAccessFailed
 
-storage local immutable successMarker CNullTerminatedByteString "jsonAdversarialOk"
+call readEmptyCall json.cursorString
+argument readEmptyCall document JsonDocument adversarialDocument
+argument readEmptyCall cursor JsonCursor emptyCursor
+argument readEmptyCall scratch OpaquePointer scratchBuffer
+argument readEmptyCall scratchCapacity JsonCapacityBytes scratchCapacity
+run readEmptyCall
+bind ok recoveredEmpty String readEmptyCall
+bind error readEmptyError JsonAccessError readEmptyCall
+branch error source readEmptyCall target jsonAccessFailed
+
+call emptyNullCheckCall pointer.isNull
+argument emptyNullCheckCall pointer String recoveredEmpty
+run emptyNullCheckCall
+bind value emptyIsNull Bool emptyNullCheckCall
+branch if condition emptyIsNull target roundTripMismatch
+
+call serializeDocumentCall json.serializeDocument
+argument serializeDocumentCall document JsonDocument adversarialDocument
+argument serializeDocumentCall scratch OpaquePointer scratchBuffer
+argument serializeDocumentCall scratchCapacity JsonCapacityBytes scratchCapacity
+run serializeDocumentCall
+bind ok serializedDocument JsonText serializeDocumentCall
+bind error serializeDocumentError JsonAccessError serializeDocumentCall
+branch error source serializeDocumentCall target jsonAccessFailed
+
+storage local immutable successMarker String "jsonAdversarialOk"
 call writeMarkerCall console.writeLine
-arg writeMarkerCall console console
-arg writeMarkerCall text successMarker
+argument writeMarkerCall console Console console
+argument writeMarkerCall text String successMarker
 run writeMarkerCall
-ignoreOk writeMarkerCall Void
-bindError consoleWriteError ConsoleWriteError writeMarkerCall
-branchIfError writeMarkerCall consoleWriteFailed
+ignore void source writeMarkerCall
+bind error consoleWriteError ConsoleWriteError writeMarkerCall
+branch error source writeMarkerCall target consoleWriteFailed
 
-returnOk successExit
+call releaseScratchCall c.free
+argument releaseScratchCall ptr OpaquePointer scratchBuffer
+run releaseScratchCall
+
+call destroyDocumentCall json.destroyDocument
+argument destroyDocumentCall document JsonDocument adversarialDocument
+run destroyDocumentCall
+ignore ok source destroyDocumentCall type Int32
+
+return ok successExit
+
+label jsonAccessFailed
+makeError jsonAccessFailure MainError.JsonAccessFailed createDocumentError
+return error jsonAccessFailure
 
 label roundTripMismatch
-storage local immutable mismatchCode CSignedInt32 1
 makeError roundTripFailure MainError.RoundTripMismatch mismatchCode
-returnError roundTripFailure
-
-label openFailed
-makeError openFailedFailure MainError.BuilderMutationFailed openErr
-returnError openFailedFailure
-
-label negWriteFailed
-makeError negWriteFailure MainError.BuilderMutationFailed negWriteErr
-returnError negWriteFailure
-
-label bigWriteFailed
-makeError bigWriteFailure MainError.BuilderMutationFailed bigWriteErr
-returnError bigWriteFailure
-
-label emptyWriteFailed
-makeError emptyWriteFailure MainError.BuilderMutationFailed emptyWriteErr
-returnError emptyWriteFailure
-
-label openTagsFieldFailed
-makeError openTagsFieldFailure MainError.BuilderMutationFailed openTagsFieldErr
-returnError openTagsFieldFailure
-
-label closeAdversarialFailed
-makeError closeAdversarialFailure MainError.BuilderMutationFailed closeAdversarialErr
-returnError closeAdversarialFailure
+return error roundTripFailure
 
 label consoleWriteFailed
 makeError consoleWriteFailure MainError.ConsoleWriteFailed consoleWriteError
-returnError consoleWriteFailure
+return error consoleWriteFailure

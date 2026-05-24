@@ -7,20 +7,20 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "console.writeIntegerLine of a var initialized to a const 7."
-invariant main "Emits the integer 7 followed by newline."
+purpose operation main "console.writeIntegerLine of a var initialized to a const 7."
+invariant operation main "Emits the integer 7 followed by newline."
 label startMain
-const sevenInitialValue I64 7
-var sevenValue I64 sevenInitialValue
+storage module immutable sevenInitialValue Int64 7
+memory main mutable sevenValue Int64 sevenInitialValue
 call writeSevenCall console.writeIntegerLine
-arg writeSevenCall console console
-arg writeSevenCall value sevenValue
+argument writeSevenCall console Console console
+argument writeSevenCall value Int64 sevenValue
 run writeSevenCall
-ignoreOk writeSevenCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeSevenCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

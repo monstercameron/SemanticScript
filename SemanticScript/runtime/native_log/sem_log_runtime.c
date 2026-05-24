@@ -20,7 +20,7 @@
 #endif
 
 /* Default path: writes to logs/log.log under whatever cwd the process
- * was launched from. For the todo-web-pro app launched from build/ this
+ * was launched from. For the taskforge-web app launched from build/ this
  * means build/logs/log.log. Apps can override via ss_log_set_path
  * BEFORE the first write lands. */
 static char  g_log_path[1024] = "logs/log.log";

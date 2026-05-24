@@ -4,8 +4,8 @@
 #
 # Companion smoke + extended unit tests for std/bool/main.sem.
 # Imports the bool module and asserts every exported combinator
-# (negate / and / or / xor / equivalent / convertToCInt /
-# convertFromCInt) plus involution / commutativity / de Morgan /
+# (negate / and / or / xor / equivalent / convertToInt32 /
+# convertFromInt32) plus involution / commutativity / de Morgan /
 # round-trip property tests.
 #
 # Pattern: std/main.sem ships pure-module operations only;
@@ -16,7 +16,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.bool
+import bool standard.bool
 # Typed error domain used only by this smoke test. The library
 # operations themselves are total and declare no errors.
 error MainError
@@ -32,14 +32,14 @@ capability stdoutWriteCapability console.stdout write
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 async main no
-purpose main "Smoke-test refined Bool combinators end-to-end. Prints OK then exits 0."
-invariant main "Exit 0 when every assertion holds; returnError with BooleanSmokeAssertionFailed otherwise."
+purpose operation main "Smoke-test refined Bool combinators end-to-end. Prints OK then exits 0."
+invariant operation main "Exit 0 when every assertion holds; returnError with BooleanSmokeAssertionFailed otherwise."
 # observability: the success path writes the literal "OK\n" so a CI
 #   diff can pin the expected output; the failure path is observable
 #   through the non-zero exit code only.
@@ -48,91 +48,91 @@ label startMain
 
 # Verify negateBoolean(false) == true.
 call assertNegateFalseCall negateBoolean
-arg assertNegateFalseCall valueToNegate canonicalBooleanFalse
+argument assertNegateFalseCall valueToNegate Bool canonicalBooleanFalse
 run assertNegateFalseCall
-bind negateFalseResult Bool assertNegateFalseCall
-branchIf negateFalseResult negateFalseHolds
-branch smokeAssertionFailed
+bind value negateFalseResult Bool assertNegateFalseCall
+branch if condition negateFalseResult target negateFalseHolds
+branch else target smokeAssertionFailed
 label negateFalseHolds
 
 # Verify andBooleans(true, true) == true.
 call assertAndTrueTrueCall andBooleans
-arg assertAndTrueTrueCall firstOperand canonicalBooleanTrue
-arg assertAndTrueTrueCall secondOperand canonicalBooleanTrue
+argument assertAndTrueTrueCall firstOperand Bool canonicalBooleanTrue
+argument assertAndTrueTrueCall secondOperand Bool canonicalBooleanTrue
 run assertAndTrueTrueCall
-bind andTrueTrueResult Bool assertAndTrueTrueCall
-branchIf andTrueTrueResult andTrueTrueHolds
-branch smokeAssertionFailed
+bind value andTrueTrueResult Bool assertAndTrueTrueCall
+branch if condition andTrueTrueResult target andTrueTrueHolds
+branch else target smokeAssertionFailed
 label andTrueTrueHolds
 
 # Verify andBooleans(true, false) == false.
 call assertAndTrueFalseCall andBooleans
-arg assertAndTrueFalseCall firstOperand canonicalBooleanTrue
-arg assertAndTrueFalseCall secondOperand canonicalBooleanFalse
+argument assertAndTrueFalseCall firstOperand Bool canonicalBooleanTrue
+argument assertAndTrueFalseCall secondOperand Bool canonicalBooleanFalse
 run assertAndTrueFalseCall
-bind andTrueFalseResult Bool assertAndTrueFalseCall
-branchIf andTrueFalseResult smokeAssertionFailed
+bind value andTrueFalseResult Bool assertAndTrueFalseCall
+branch if condition andTrueFalseResult target smokeAssertionFailed
 
 # Verify orBooleans(false, true) == true.
 call assertOrFalseTrueCall orBooleans
-arg assertOrFalseTrueCall firstOperand canonicalBooleanFalse
-arg assertOrFalseTrueCall secondOperand canonicalBooleanTrue
+argument assertOrFalseTrueCall firstOperand Bool canonicalBooleanFalse
+argument assertOrFalseTrueCall secondOperand Bool canonicalBooleanTrue
 run assertOrFalseTrueCall
-bind orFalseTrueResult Bool assertOrFalseTrueCall
-branchIf orFalseTrueResult orFalseTrueHolds
-branch smokeAssertionFailed
+bind value orFalseTrueResult Bool assertOrFalseTrueCall
+branch if condition orFalseTrueResult target orFalseTrueHolds
+branch else target smokeAssertionFailed
 label orFalseTrueHolds
 
 # Verify exclusiveOrBooleans(true, false) == true.
 call assertXorTrueFalseCall exclusiveOrBooleans
-arg assertXorTrueFalseCall firstOperand canonicalBooleanTrue
-arg assertXorTrueFalseCall secondOperand canonicalBooleanFalse
+argument assertXorTrueFalseCall firstOperand Bool canonicalBooleanTrue
+argument assertXorTrueFalseCall secondOperand Bool canonicalBooleanFalse
 run assertXorTrueFalseCall
-bind xorTrueFalseResult Bool assertXorTrueFalseCall
-branchIf xorTrueFalseResult xorTrueFalseHolds
-branch smokeAssertionFailed
+bind value xorTrueFalseResult Bool assertXorTrueFalseCall
+branch if condition xorTrueFalseResult target xorTrueFalseHolds
+branch else target smokeAssertionFailed
 label xorTrueFalseHolds
 
 # Verify exclusiveOrBooleans(true, true) == false.
 call assertXorTrueTrueCall exclusiveOrBooleans
-arg assertXorTrueTrueCall firstOperand canonicalBooleanTrue
-arg assertXorTrueTrueCall secondOperand canonicalBooleanTrue
+argument assertXorTrueTrueCall firstOperand Bool canonicalBooleanTrue
+argument assertXorTrueTrueCall secondOperand Bool canonicalBooleanTrue
 run assertXorTrueTrueCall
-bind xorTrueTrueResult Bool assertXorTrueTrueCall
-branchIf xorTrueTrueResult smokeAssertionFailed
+bind value xorTrueTrueResult Bool assertXorTrueTrueCall
+branch if condition xorTrueTrueResult target smokeAssertionFailed
 
 # Verify areBooleansEquivalent(true, true) == true.
 call assertEquivTrueTrueCall areBooleansEquivalent
-arg assertEquivTrueTrueCall firstOperand canonicalBooleanTrue
-arg assertEquivTrueTrueCall secondOperand canonicalBooleanTrue
+argument assertEquivTrueTrueCall firstOperand Bool canonicalBooleanTrue
+argument assertEquivTrueTrueCall secondOperand Bool canonicalBooleanTrue
 run assertEquivTrueTrueCall
-bind equivTrueTrueResult Bool assertEquivTrueTrueCall
-branchIf equivTrueTrueResult equivTrueTrueHolds
-branch smokeAssertionFailed
+bind value equivTrueTrueResult Bool assertEquivTrueTrueCall
+branch if condition equivTrueTrueResult target equivTrueTrueHolds
+branch else target smokeAssertionFailed
 label equivTrueTrueHolds
 
-# Verify convertBooleanToCSignedInt32(true) == 1.
-call convertTrueToIntCall convertBooleanToCSignedInt32
-arg convertTrueToIntCall sourceBoolean canonicalBooleanTrue
+# Verify convertBooleanToInt32(true) == 1.
+call convertTrueToIntCall convertBooleanToInt32
+argument convertTrueToIntCall sourceBoolean Bool canonicalBooleanTrue
 run convertTrueToIntCall
-bind trueAsCInt CSignedInt32 convertTrueToIntCall
-const oneI32Expected CSignedInt32 1
-call checkConvertTrueCall math.equalI64
-arg checkConvertTrueCall left trueAsCInt
-arg checkConvertTrueCall right oneI32Expected
+bind value trueAsInt32 Int32 convertTrueToIntCall
+storage module immutable oneInt32Expected Int32 1
+call checkConvertTrueCall math.equalInt64
+argument checkConvertTrueCall left Int64 trueAsInt32
+argument checkConvertTrueCall right Int64 oneInt32Expected
 run checkConvertTrueCall
-bind convertTrueOk Bool checkConvertTrueCall
-branchIf convertTrueOk convertTrueHolds
-branch smokeAssertionFailed
+bind value convertTrueOk Bool checkConvertTrueCall
+branch if condition convertTrueOk target convertTrueHolds
+branch else target smokeAssertionFailed
 label convertTrueHolds
 
-# Verify convertCSignedInt32ToBoolean(0) == false.
-const zeroI32Input CSignedInt32 0
-call convertZeroToBoolCall convertCSignedInt32ToBoolean
-arg convertZeroToBoolCall sourceCSignedInt32Value zeroI32Input
+# Verify convertInt32ToBoolean(0) == false.
+storage module immutable zeroInt32Input Int32 0
+call convertZeroToBoolCall convertInt32ToBoolean
+argument convertZeroToBoolCall sourceInt32Value Int32 zeroInt32Input
 run convertZeroToBoolCall
-bind zeroAsBool Bool convertZeroToBoolCall
-branchIf zeroAsBool smokeAssertionFailed
+bind value zeroAsBool Bool convertZeroToBoolCall
+branch if condition zeroAsBool target smokeAssertionFailed
 
 # ============================================================
 # Extended unit tests: missing cases (negate(true), and(false,false),
@@ -142,164 +142,164 @@ branchIf zeroAsBool smokeAssertionFailed
 
 # negate(true) == false
 call negateTrueCall negateBoolean
-arg negateTrueCall valueToNegate canonicalBooleanTrue
+argument negateTrueCall valueToNegate Bool canonicalBooleanTrue
 run negateTrueCall
-bind negateTrueResult Bool negateTrueCall
-branchIf negateTrueResult smokeAssertionFailed
-branch negateTrueHolds
+bind value negateTrueResult Bool negateTrueCall
+branch if condition negateTrueResult target smokeAssertionFailed
+branch else target negateTrueHolds
 label negateTrueHolds
 
 # Involution: negate(negate(true)) == true
 call invStep1Call negateBoolean
-arg invStep1Call valueToNegate canonicalBooleanTrue
+argument invStep1Call valueToNegate Bool canonicalBooleanTrue
 run invStep1Call
-bind invStep1Result Bool invStep1Call
+bind value invStep1Result Bool invStep1Call
 call invStep2Call negateBoolean
-arg invStep2Call valueToNegate invStep1Result
+argument invStep2Call valueToNegate Bool invStep1Result
 run invStep2Call
-bind invStep2Result Bool invStep2Call
-branchIf invStep2Result invHolds
-branch smokeAssertionFailed
+bind value invStep2Result Bool invStep2Call
+branch if condition invStep2Result target invHolds
+branch else target smokeAssertionFailed
 label invHolds
 
 # and(false, false) == false
 call andFalseFalseCall andBooleans
-arg andFalseFalseCall firstOperand canonicalBooleanFalse
-arg andFalseFalseCall secondOperand canonicalBooleanFalse
+argument andFalseFalseCall firstOperand Bool canonicalBooleanFalse
+argument andFalseFalseCall secondOperand Bool canonicalBooleanFalse
 run andFalseFalseCall
-bind andFalseFalseResult Bool andFalseFalseCall
-branchIf andFalseFalseResult smokeAssertionFailed
-branch andFalseFalseHolds
+bind value andFalseFalseResult Bool andFalseFalseCall
+branch if condition andFalseFalseResult target smokeAssertionFailed
+branch else target andFalseFalseHolds
 label andFalseFalseHolds
 
 # or(false, false) == false
 call orFalseFalseCall orBooleans
-arg orFalseFalseCall firstOperand canonicalBooleanFalse
-arg orFalseFalseCall secondOperand canonicalBooleanFalse
+argument orFalseFalseCall firstOperand Bool canonicalBooleanFalse
+argument orFalseFalseCall secondOperand Bool canonicalBooleanFalse
 run orFalseFalseCall
-bind orFalseFalseResult Bool orFalseFalseCall
-branchIf orFalseFalseResult smokeAssertionFailed
-branch orFalseFalseHolds
+bind value orFalseFalseResult Bool orFalseFalseCall
+branch if condition orFalseFalseResult target smokeAssertionFailed
+branch else target orFalseFalseHolds
 label orFalseFalseHolds
 
 # or(true, true) == true
 call orTrueTrueCall orBooleans
-arg orTrueTrueCall firstOperand canonicalBooleanTrue
-arg orTrueTrueCall secondOperand canonicalBooleanTrue
+argument orTrueTrueCall firstOperand Bool canonicalBooleanTrue
+argument orTrueTrueCall secondOperand Bool canonicalBooleanTrue
 run orTrueTrueCall
-bind orTrueTrueResult Bool orTrueTrueCall
-branchIf orTrueTrueResult orTrueTrueHolds
-branch smokeAssertionFailed
+bind value orTrueTrueResult Bool orTrueTrueCall
+branch if condition orTrueTrueResult target orTrueTrueHolds
+branch else target smokeAssertionFailed
 label orTrueTrueHolds
 
 # Commutativity: xor(true, false) == xor(false, true)
 call xorTFCall exclusiveOrBooleans
-arg xorTFCall firstOperand canonicalBooleanTrue
-arg xorTFCall secondOperand canonicalBooleanFalse
+argument xorTFCall firstOperand Bool canonicalBooleanTrue
+argument xorTFCall secondOperand Bool canonicalBooleanFalse
 run xorTFCall
-bind xorTFResult Bool xorTFCall
+bind value xorTFResult Bool xorTFCall
 call xorFTCall exclusiveOrBooleans
-arg xorFTCall firstOperand canonicalBooleanFalse
-arg xorFTCall secondOperand canonicalBooleanTrue
+argument xorFTCall firstOperand Bool canonicalBooleanFalse
+argument xorFTCall secondOperand Bool canonicalBooleanTrue
 run xorFTCall
-bind xorFTResult Bool xorFTCall
+bind value xorFTResult Bool xorFTCall
 call xorCommutativeCall areBooleansEquivalent
-arg xorCommutativeCall firstOperand xorTFResult
-arg xorCommutativeCall secondOperand xorFTResult
+argument xorCommutativeCall firstOperand Bool xorTFResult
+argument xorCommutativeCall secondOperand Bool xorFTResult
 run xorCommutativeCall
-bind xorCommutativeResult Bool xorCommutativeCall
-branchIf xorCommutativeResult xorCommHolds
-branch smokeAssertionFailed
+bind value xorCommutativeResult Bool xorCommutativeCall
+branch if condition xorCommutativeResult target xorCommHolds
+branch else target smokeAssertionFailed
 label xorCommHolds
 
 # De Morgan: negate(and(true, false)) == or(negate(true), negate(false))
 # = negate(false) == or(false, true)
 # = true == true
 call deMorganAndCall andBooleans
-arg deMorganAndCall firstOperand canonicalBooleanTrue
-arg deMorganAndCall secondOperand canonicalBooleanFalse
+argument deMorganAndCall firstOperand Bool canonicalBooleanTrue
+argument deMorganAndCall secondOperand Bool canonicalBooleanFalse
 run deMorganAndCall
-bind deMorganAndResult Bool deMorganAndCall
+bind value deMorganAndResult Bool deMorganAndCall
 call deMorganLhsCall negateBoolean
-arg deMorganLhsCall valueToNegate deMorganAndResult
+argument deMorganLhsCall valueToNegate Bool deMorganAndResult
 run deMorganLhsCall
-bind deMorganLhsResult Bool deMorganLhsCall
+bind value deMorganLhsResult Bool deMorganLhsCall
 call deMorganNegFirstCall negateBoolean
-arg deMorganNegFirstCall valueToNegate canonicalBooleanTrue
+argument deMorganNegFirstCall valueToNegate Bool canonicalBooleanTrue
 run deMorganNegFirstCall
-bind deMorganNegFirstResult Bool deMorganNegFirstCall
+bind value deMorganNegFirstResult Bool deMorganNegFirstCall
 call deMorganNegSecondCall negateBoolean
-arg deMorganNegSecondCall valueToNegate canonicalBooleanFalse
+argument deMorganNegSecondCall valueToNegate Bool canonicalBooleanFalse
 run deMorganNegSecondCall
-bind deMorganNegSecondResult Bool deMorganNegSecondCall
+bind value deMorganNegSecondResult Bool deMorganNegSecondCall
 call deMorganRhsCall orBooleans
-arg deMorganRhsCall firstOperand deMorganNegFirstResult
-arg deMorganRhsCall secondOperand deMorganNegSecondResult
+argument deMorganRhsCall firstOperand Bool deMorganNegFirstResult
+argument deMorganRhsCall secondOperand Bool deMorganNegSecondResult
 run deMorganRhsCall
-bind deMorganRhsResult Bool deMorganRhsCall
+bind value deMorganRhsResult Bool deMorganRhsCall
 call deMorganEquivCall areBooleansEquivalent
-arg deMorganEquivCall firstOperand deMorganLhsResult
-arg deMorganEquivCall secondOperand deMorganRhsResult
+argument deMorganEquivCall firstOperand Bool deMorganLhsResult
+argument deMorganEquivCall secondOperand Bool deMorganRhsResult
 run deMorganEquivCall
-bind deMorganEquivResult Bool deMorganEquivCall
-branchIf deMorganEquivResult deMorganHolds
-branch smokeAssertionFailed
+bind value deMorganEquivResult Bool deMorganEquivCall
+branch if condition deMorganEquivResult target deMorganHolds
+branch else target smokeAssertionFailed
 label deMorganHolds
 
-# convertBooleanToCSignedInt32(false) == 0
-call convertFalseToIntCall convertBooleanToCSignedInt32
-arg convertFalseToIntCall sourceBoolean canonicalBooleanFalse
+# convertBooleanToInt32(false) == 0
+call convertFalseToIntCall convertBooleanToInt32
+argument convertFalseToIntCall sourceBoolean Bool canonicalBooleanFalse
 run convertFalseToIntCall
-bind falseAsCInt CSignedInt32 convertFalseToIntCall
-call checkConvertFalseCall math.equalI64
-arg checkConvertFalseCall left falseAsCInt
-arg checkConvertFalseCall right zeroI32Input
+bind value falseAsInt32 Int32 convertFalseToIntCall
+call checkConvertFalseCall math.equalInt64
+argument checkConvertFalseCall left Int64 falseAsInt32
+argument checkConvertFalseCall right Int64 zeroInt32Input
 run checkConvertFalseCall
-bind convertFalseOk Bool checkConvertFalseCall
-branchIf convertFalseOk convertFalseHolds
-branch smokeAssertionFailed
+bind value convertFalseOk Bool checkConvertFalseCall
+branch if condition convertFalseOk target convertFalseHolds
+branch else target smokeAssertionFailed
 label convertFalseHolds
 
-# convertCSignedInt32ToBoolean(1) == true
-call convertOneToBoolCall convertCSignedInt32ToBoolean
-arg convertOneToBoolCall sourceCSignedInt32Value oneI32Expected
+# convertInt32ToBoolean(1) == true
+call convertOneToBoolCall convertInt32ToBoolean
+argument convertOneToBoolCall sourceInt32Value Int32 oneInt32Expected
 run convertOneToBoolCall
-bind oneAsBool Bool convertOneToBoolCall
-branchIf oneAsBool oneAsBoolHolds
-branch smokeAssertionFailed
+bind value oneAsBool Bool convertOneToBoolCall
+branch if condition oneAsBool target oneAsBoolHolds
+branch else target smokeAssertionFailed
 label oneAsBoolHolds
 
-# Round trip: convertCSignedInt32ToBoolean(convertBooleanToCSignedInt32(true)) == true
-call roundTripBoolToIntCall convertBooleanToCSignedInt32
-arg roundTripBoolToIntCall sourceBoolean canonicalBooleanTrue
+# Round trip: convertInt32ToBoolean(convertBooleanToInt32(true)) == true
+call roundTripBoolToIntCall convertBooleanToInt32
+argument roundTripBoolToIntCall sourceBoolean Bool canonicalBooleanTrue
 run roundTripBoolToIntCall
-bind roundTripIntValue CSignedInt32 roundTripBoolToIntCall
-call roundTripIntToBoolCall convertCSignedInt32ToBoolean
-arg roundTripIntToBoolCall sourceCSignedInt32Value roundTripIntValue
+bind value roundTripIntValue Int32 roundTripBoolToIntCall
+call roundTripIntToBoolCall convertInt32ToBoolean
+argument roundTripIntToBoolCall sourceInt32Value Int32 roundTripIntValue
 run roundTripIntToBoolCall
-bind roundTripBoolResult Bool roundTripIntToBoolCall
-branchIf roundTripBoolResult roundTripBoolHolds
-branch smokeAssertionFailed
+bind value roundTripBoolResult Bool roundTripIntToBoolCall
+branch if condition roundTripBoolResult target roundTripBoolHolds
+branch else target smokeAssertionFailed
 label roundTripBoolHolds
 
 # All assertions hold. Emit OK\n and exit 0.
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError booleanSmokeFailure MainError.BooleanSmokeAssertionFailed
-returnError booleanSmokeFailure
+return error booleanSmokeFailure

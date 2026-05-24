@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.auth_contract
+purpose module app.realtime_auction_arena.server.tests.auth_contract "Unit coverage contract for server/src/auth.sem."
+moduleOwns app.realtime_auction_arena.server.tests.auth_contract "JWT, bcrypt, refresh-token, session, rate-limit, and role authorization contract coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auth_contract "Cryptographic primitive implementations or durable session storage."
+invariant module app.realtime_auction_arena.server.tests.auth_contract "Auth tests must distinguish executable demo auth from production storage and typed-claim hardening."
+
+storage module immutable authContractUnitTestPlanSummary String "server/src/auth.sem coverage: HS256 plan, production auth config env keys, exact JWT claim model iss/aud/sub/role/scopes/exp/iat/nbf/jti, bcrypt cost and 72-byte pre-verify limit, executable active-process refresh_tokens row insert/rotation/revocation references, executable revoked_jwts jti extraction/lookup/cleanup contract, login, refresh, logout, session, disabled-user, expired-token, wrong-audience, role policy registry, scope registry, admin_or_auctioneer, bidder, admin audit, viewer helper, operator, service helper, and role/scope failure contracts."
+
+operation getAuthContractUnitTestPlan
+output operation getAuthContractUnitTestPlan String
+memory getAuthContractUnitTestPlan heap no
+async getAuthContractUnitTestPlan no
+purpose operation getAuthContractUnitTestPlan "Return the auth contract unit coverage plan."
+return value authContractUnitTestPlanSummary

@@ -1,0 +1,86 @@
+module experiment.realtime_auction_arena.win32_auctioneer.controls
+purpose module experiment.realtime_auction_arena.win32_auctioneer.controls "Control identity, labels, and layout constants for the native auctioneer operator console."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.controls "Stable GUI text, control-id constants, list labels, and default window sizing for the Win32 auctioneer scaffold."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.controls "Native control creation, runtime handle storage, server route behavior, or auction state transitions."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.controls "All visible labels are centralized so main.sem can compose the current standard.gui surface without scattering operator-console copy."
+
+type AuctioneerControlId UInt32
+
+enum AuctioneerPanelKind repr Int32
+enumCase AuctioneerPanelKind loginAuctioneerPanelKind 1
+enumCase AuctioneerPanelKind itemConfigAuctioneerPanelKind 2
+enumCase AuctioneerPanelKind commandAuctioneerPanelKind 3
+enumCase AuctioneerPanelKind statusAuctioneerPanelKind 4
+enumCase AuctioneerPanelKind eventFeedAuctioneerPanelKind 5
+enumCase AuctioneerPanelKind rejectedBidAuctioneerPanelKind 6
+enumCase AuctioneerPanelKind chatModerationAuctioneerPanelKind 7
+
+storage module immutable appTitle String "Realtime Auction Arena - Auctioneer Console"
+storage module immutable headingText String "Auctioneer Console"
+storage module immutable loginSectionText String "Login"
+storage module immutable serverUrlPlaceholder String "Server URL, for example http://127.0.0.1:18090"
+storage module immutable usernamePlaceholder String "Username"
+storage module immutable passwordPlaceholder String "Password"
+storage module immutable loginButtonText String "Log in"
+storage module immutable logoutButtonText String "Forget token"
+storage module immutable itemSectionText String "Item configuration"
+storage module immutable auctionIdPlaceholder String "Auction ID"
+storage module immutable itemNamePlaceholder String "Item name"
+storage module immutable startingBidPlaceholder String "Starting bid minor units"
+storage module immutable minimumIncrementPlaceholder String "Minimum increment minor units"
+storage module immutable durationPlaceholder String "Duration seconds"
+storage module immutable commandSectionText String "Commands"
+storage module immutable startAuctionButtonText String "Start auction"
+storage module immutable extendSecondsPlaceholder String "Extend seconds"
+storage module immutable extendAuctionButtonText String "Extend"
+storage module immutable closeAuctionButtonText String "Close"
+storage module immutable refreshButtonText String "Poll now"
+storage module immutable statusSectionText String "Status"
+storage module immutable initialStatusText String "Not connected"
+storage module immutable eventsSectionText String "Audit and events"
+storage module immutable rejectedBidsSectionText String "Rejected bids"
+storage module immutable chatSectionText String "Chat moderation"
+storage module immutable chatMessageIdPlaceholder String "Chat message ID"
+storage module immutable hideChatButtonText String "Hide chat message"
+storage module immutable reportChatButtonText String "Mark reviewed"
+storage module immutable httpGapStatusText String "HTTP POST, bearer headers, and async UI polling are runtime gaps in this scaffold."
+storage module immutable loginRequestedStatusText String "Login requested; waiting for HTTP POST support."
+storage module immutable tokenForgottenStatusText String "In-memory token cleared."
+storage module immutable startRequestedStatusText String "Start requested; waiting for authenticated POST support."
+storage module immutable extendRequestedStatusText String "Extend requested; waiting for authenticated POST support."
+storage module immutable closeRequestedStatusText String "Close requested; waiting for authenticated POST support."
+storage module immutable pollRequestedStatusText String "Poll requested; waiting for UI-safe async fetch support."
+storage module immutable moderationRequestedStatusText String "Moderation requested; waiting for authenticated moderation route support."
+storage module immutable appWindowWidth Int32 1024
+storage module immutable appWindowHeight Int32 760
+storage module immutable maxServerUrlLength Int32 256
+storage module immutable maxUsernameLength Int32 128
+storage module immutable maxPasswordLength Int32 256
+storage module immutable maxAuctionIdLength Int32 96
+storage module immutable maxItemNameLength Int32 160
+storage module immutable maxMoneyLength Int32 24
+storage module immutable maxDurationLength Int32 16
+storage module immutable maxChatMessageIdLength Int32 96
+storage module immutable yesGuiFlag Int32 1
+storage module immutable noGuiFlag Int32 0
+
+storage module immutable serverUrlControlId AuctioneerControlId 1001
+storage module immutable usernameControlId AuctioneerControlId 1002
+storage module immutable passwordControlId AuctioneerControlId 1003
+storage module immutable loginButtonControlId AuctioneerControlId 1004
+storage module immutable auctionIdControlId AuctioneerControlId 1101
+storage module immutable itemNameControlId AuctioneerControlId 1102
+storage module immutable startingBidControlId AuctioneerControlId 1103
+storage module immutable minimumIncrementControlId AuctioneerControlId 1104
+storage module immutable durationControlId AuctioneerControlId 1105
+storage module immutable startButtonControlId AuctioneerControlId 1201
+storage module immutable extendSecondsControlId AuctioneerControlId 1202
+storage module immutable extendButtonControlId AuctioneerControlId 1203
+storage module immutable closeButtonControlId AuctioneerControlId 1204
+storage module immutable refreshButtonControlId AuctioneerControlId 1205
+storage module immutable statusLabelControlId AuctioneerControlId 1301
+storage module immutable auditListControlId AuctioneerControlId 1401
+storage module immutable rejectedBidListControlId AuctioneerControlId 1501
+storage module immutable chatMessageIdControlId AuctioneerControlId 1601
+storage module immutable hideChatButtonControlId AuctioneerControlId 1602
+storage module immutable reportChatButtonControlId AuctioneerControlId 1603

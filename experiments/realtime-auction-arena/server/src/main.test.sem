@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.main
+purpose module app.realtime_auction_arena.server.tests.main "Unit coverage contract for server/src/main.sem."
+moduleOwns app.realtime_auction_arena.server.tests.main "Route shell registration, timeout and middleware binding, exported route ABI names, context imports, and executable API smoke expectations."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.main "Context-owned auth/session state, database bootstrap, observability counters, auction/chat/event handlers, auction business rules, or durable persistence."
+invariant module app.realtime_auction_arena.server.tests.main "Every executable JSON route must be covered by the Python API smoke harness and a static unit-plan row."
+
+storage module immutable serverMainUnitTestPlanSummary String "server/src/main.sem coverage: webServer route registration, route timeout metadata, request middleware wiring, exported handler ABI names, imported runtime constants, imported SQL text, imported HTTP helpers, and imported server/auth/observability/auction/event/chat context modules. Executable behavior is covered by the focused context test plans plus Python API smoke harnesses."
+
+operation getServerMainUnitTestPlan
+output operation getServerMainUnitTestPlan String
+memory getServerMainUnitTestPlan heap no
+async getServerMainUnitTestPlan no
+purpose operation getServerMainUnitTestPlan "Return the server main unit coverage plan."
+return value serverMainUnitTestPlanSummary

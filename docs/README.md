@@ -9,12 +9,15 @@ The docs here should not replace source-of-truth implementation files. They
 organize them:
 
 ```text
-SYNTAX.md                         complete syntax inventory and status table
+docs/reference/syntax-inventory.md                         complete syntax inventory and status table
+docs/ast.md                       language and AST design notes
 SemanticScript/compiler/semsc.py       reference parser, AST, lowering, CLI
 SemanticScript/linter/semlint.py       canonical standalone structured linter
 SemanticScript/compiler/libc_registry.py
                                   c.* ABI registry
-STDLIB.md                         stdlib module inventory
+SemanticScript/shared/call_contracts.py
+                                  shared call and route contract facts
+SemanticScript/std/README.md      stdlib module inventory
 vscode-semanticscript/                editor syntax, hovers, semantic tokens
 ```
 
@@ -24,6 +27,7 @@ doc file that owns that behavior. Avoid giant catch-all edits.
 ## Contents
 
 - `agents.md` is the compact agent-facing guide.
+- `ast.md` records the language and AST design notes.
 - `optimization-guide.md` records optimization and app-boundary rules.
 - `language/` explains the language model and schemas.
 - `reference/` contains target, verb, and maintenance references.
@@ -42,10 +46,11 @@ matrix. The release-level boundary is:
 | Surface | 1.0 support level | Source of truth |
 |---|---|---|
 | Python reference compiler | Supported release compiler for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. | `SemanticScript/compiler/semsc.py`, [toolchain/compiler.md](toolchain/compiler.md) |
-| Bootstrap / self-hosting | Preview and release-tested, but not the production compiler. | `SemanticScript/bootstrap/README.md`, `tests/sem_compiler_parity.py` |
 | VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
-| Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `SYNTAX.md`, [toolchain/compiler.md](toolchain/compiler.md) |
-| Web / HTTP runtime | Preview native HTTP/1.1 listener for exact routed `target webServer` programs; HTTP/2/H2O and richer request/response APIs remain future work. | [toolchain/compiler.md](toolchain/compiler.md) |
+| Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `docs/reference/syntax-inventory.md`, [toolchain/compiler.md](toolchain/compiler.md) |
+| Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, response writers, blocking SSE primitives, and handler-visible shutdown drain state; HTTP/2/H2O remains future work. | [toolchain/compiler.md](toolchain/compiler.md) |
+| Native async and event streams | Experimental adapter and stdlib surface for futures, timers, cancel tokens, queued work, `standard.event` process queues, and durable local event streams. | [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) |
+| Outbound `standard.net` client | Experimental prototype for `net.fetchText` / `net.fetchBytes`; real network behavior needs the optional libcurl/libuv runtime path. | [language/native-http-client-api.md](language/native-http-client-api.md), [toolchain/compiler.md](toolchain/compiler.md) |
 | Runtime flags | Supported compiler interface for build profile, runtime checks, diagnostics format, IR persistence, and optimization level. | [toolchain/compiler.md](toolchain/compiler.md) |
 
 ## Reading Order
@@ -59,18 +64,21 @@ matrix. The release-level boundary is:
 | [language/program-structure.md](language/program-structure.md) | Project headers, imports, entries, operations, ownership. |
 | [language/project-layout-build-sem.md](language/project-layout-build-sem.md) | Folder layout, `build.sem` rules, module registry, explicit exports. |
 | [language/types-values.md](language/types-values.md) | Primitive types, aliases, constants, literals, records, enums. |
-| [language/operations-dataflow.md](language/operations-dataflow.md) | Operation contracts, calls, bindings, variables, control flow. |
+| [language/operations-dataflow.md](language/operations-dataflow.md) | Operation contracts, calls, bindings, storage mutation, control flow. |
 | [language/errors-effects-capabilities.md](language/errors-effects-capabilities.md) | Result flow, typed errors, effects, capabilities, authority. |
 | [language/memory-state.md](language/memory-state.md) | Storage, shared state, mutation, guard tokens, pointer primitives. |
 | [language/records-codecs-boundaries.md](language/records-codecs-boundaries.md) | Records, builders, JSON codecs, trust boundaries. |
 | [language/concurrency-time-cleanup.md](language/concurrency-time-cleanup.md) | Cleanup, retry, async, groups, channels, locks, worker pools. |
-| [language/native-http-api.md](language/native-http-api.md) | Planned native HTTP server API and route-handler ABI. |
-| [language/strict-syntax-research.md](language/strict-syntax-research.md) | Candidate stricter syntax and compile-blocking rules for recurring bug classes. |
+| [language/native-http-api.md](language/native-http-api.md) | Current native HTTP server API, route metadata, request readers, response writers, and route-handler ABI. |
+| [language/native-http-client-api.md](language/native-http-client-api.md) | Prototype outbound HTTP client API, `standard.net`, `net.fetch*`, effects, and libuv/libcurl runtime shape. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
+| [reference/install-policy.md](reference/install-policy.md) | Initial archive install shape and future version-manager plan. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
 | [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |
+| [reference/package-management.md](reference/package-management.md) | Package layout, dependency syntax, and registry deferral policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
 | [toolchain/linter.md](toolchain/linter.md) | semlint.py commands, diagnostics, tiers. |
+| [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) | Optional libuv async runtime experiment, build flags, timer/work/future ABI, and await model. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |
 | [reference/maintenance.md](reference/maintenance.md) | How to keep language, compiler, linter, docs, and extension in sync. |
 
@@ -81,5 +89,5 @@ matrix. The release-level boundary is:
 - Mark runtime behavior explicitly: parsed metadata, lowered synchronously,
   lowered to real LLVM, or future runtime work.
 - Prefer examples from `SemanticScript/sem/feature_tests/` when possible.
-- Keep `SYNTAX.md` as the broad inventory; keep these docs as the explanation
+- Keep `docs/reference/syntax-inventory.md` as the broad inventory; keep these docs as the explanation
   layer developers actually read while implementing.

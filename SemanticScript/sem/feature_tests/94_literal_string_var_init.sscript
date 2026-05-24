@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Declare a var with a literal-string init `var greeting CNullTerminatedByteString \"hi\"` and print it via c.puts. Exercises pass1 string-const slot allocation for var literal inits."
-invariant main "Output is 'hi\\n'. No supporting const declaration is needed."
+purpose operation main "Declare a var with a literal-string init `var greeting String \"hi\"` and print it via c.puts. Exercises pass1 string-const slot allocation for var literal inits."
+invariant operation main "Output is 'hi\\n'. No supporting const declaration is needed."
 label startMain
-var greeting CNullTerminatedByteString "hi"
+memory main mutable greeting String "hi"
 call putsCall c.puts
-arg putsCall text greeting
+argument putsCall text String greeting
 run putsCall
-ignoreOk putsCall CSignedInt32
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore ok source putsCall type Int32
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

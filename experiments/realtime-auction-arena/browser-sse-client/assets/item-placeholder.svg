@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-labelledby="title desc">
+  <title id="title">Auction item placeholder</title>
+  <desc id="desc">A stylized display pedestal for an auction item.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#50c8a8"/>
+      <stop offset="0.55" stop-color="#f3bc5b"/>
+      <stop offset="1" stop-color="#f07272"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" rx="44" fill="#101319"/>
+  <circle cx="320" cy="274" r="162" fill="url(#g)" opacity=".18"/>
+  <path d="M203 429h234l42 77H161l42-77Z" fill="#20242b" stroke="#303741" stroke-width="8"/>
+  <path d="M231 205h178v165H231z" fill="#171a1f" stroke="#f4f0e8" stroke-opacity=".24" stroke-width="10"/>
+  <path d="M261 236h118v103H261z" fill="#50c8a8" opacity=".18"/>
+  <path d="M196 397h248" stroke="#f3bc5b" stroke-width="12" stroke-linecap="round"/>
+  <path d="M243 537h154" stroke="#f4f0e8" stroke-opacity=".55" stroke-width="10" stroke-linecap="round"/>
+</svg>

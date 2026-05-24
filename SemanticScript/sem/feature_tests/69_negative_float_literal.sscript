@@ -5,21 +5,21 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Initialize a CFloat64 var directly from a negative literal (-2.5) and print it."
-invariant main "Exercises the literal-init detection path that accepts the minus sign as first character."
+purpose operation main "Initialize a Float64 var directly from a negative literal (-2.5) and print it."
+invariant operation main "Exercises the literal-init detection path that accepts the minus sign as first character."
 label startMain
-var negativeHalfPlusTwo CFloat64 -2.5
+memory main mutable negativeHalfPlusTwo Float64 -2.5
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value negativeHalfPlusTwo
+argument writeCall console Console console
+argument writeCall value Float64 negativeHalfPlusTwo
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

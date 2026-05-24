@@ -5,65 +5,65 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation advanceBy
-input advanceBy buffer CNullTerminatedByteString
-input advanceBy steps CSignedInt64
-output advanceBy Result CNullTerminatedByteString Void
+input operation advanceBy buffer String
+input operation advanceBy steps Int64
+output operation advanceBy Result String Void
 memory advanceBy heap no
 async advanceBy no
-purpose advanceBy "Recursively return a pointer offset `steps` bytes past `buffer`. Exercises a recursive user op that returns a pointer (CNullTerminatedByteString)."
-invariant advanceBy "Each level peels off one step; base case (steps == 0) returns the buffer unchanged."
+purpose operation advanceBy "Recursively return a pointer offset `steps` bytes past `buffer`. Exercises a recursive user op that returns a pointer (String)."
+invariant operation advanceBy "Each level peels off one step; base case (steps == 0) returns the buffer unchanged."
 label startAdvanceBy
-const zeroSteps CSignedInt64 0
-const oneStep CSignedInt64 1
-call doneCheckCall math.equalI64
-arg doneCheckCall left steps
-arg doneCheckCall right zeroSteps
+storage module immutable zeroSteps Int64 0
+storage module immutable oneStep Int64 1
+call doneCheckCall math.equalInt64
+argument doneCheckCall left Int64 steps
+argument doneCheckCall right Int64 zeroSteps
 run doneCheckCall
-bind isDone Bool doneCheckCall
-branchIf isDone abReturnAsIs
+bind value isDone Bool doneCheckCall
+branch if condition isDone target abReturnAsIs
 call shiftCall pointer.offset
-arg shiftCall base buffer
-arg shiftCall offset oneStep
+argument shiftCall base String buffer
+argument shiftCall offset Int64 oneStep
 run shiftCall
-bind shiftedBuffer COpaqueMemoryAddress shiftCall
-call decStepsCall math.subtractI64
-arg decStepsCall left steps
-arg decStepsCall right oneStep
+bind value shiftedBuffer OpaquePointer shiftCall
+call decStepsCall math.subtractInt64
+argument decStepsCall left Int64 steps
+argument decStepsCall right Int64 oneStep
 run decStepsCall
-bind nextSteps CSignedInt64 decStepsCall
+bind value nextSteps Int64 decStepsCall
 call recurseCall advanceBy
-arg recurseCall buffer shiftedBuffer
-arg recurseCall steps nextSteps
+argument recurseCall buffer String shiftedBuffer
+argument recurseCall steps Int64 nextSteps
 run recurseCall
-bindOk recursiveResult CNullTerminatedByteString recurseCall
-returnOk recursiveResult
+bind ok recursiveResult String recurseCall
+return ok recursiveResult
 label abReturnAsIs
-returnOk buffer
+return ok buffer
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "advanceBy('semanticscript', 11) should return a pointer to 'ipt' (offset 11 is 'i'). Then writeLine prints 'ipt'."
-invariant main "Verifies pointer-returning recursive user op + bind of its result + console.writeLine over a bind pointer."
+purpose operation main "advanceBy('semanticscript', 11) should return a pointer to 'ipt' (offset 11 is 'i'). Then writeLine prints 'ipt'."
+invariant operation main "Verifies pointer-returning recursive user op + bind of its result + console.writeLine over a bind pointer."
 label startMain
-const phrase CNullTerminatedByteString "semanticscript"
-const skipCount CSignedInt64 11
+storage module immutable phrase String "semanticscript"
+storage module immutable skipCount Int64 11
 call advanceCall advanceBy
-arg advanceCall buffer phrase
-arg advanceCall steps skipCount
+argument advanceCall buffer String phrase
+argument advanceCall steps Int64 skipCount
 run advanceCall
-bindOk shiftedPointer CNullTerminatedByteString advanceCall
+bind ok shiftedPointer String advanceCall
 call writeCall console.writeLine
-arg writeCall console console
-arg writeCall text shiftedPointer
+argument writeCall console Console console
+argument writeCall text String shiftedPointer
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

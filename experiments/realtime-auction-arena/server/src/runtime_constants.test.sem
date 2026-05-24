@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.runtime_constants
+purpose module app.realtime_auction_arena.server.tests.runtime_constants "Unit coverage contract for server/src/runtime_constants.sem."
+moduleOwns app.realtime_auction_arena.server.tests.runtime_constants "Runtime constant grouping coverage for status codes, headers, field names, demo principals, buffer sizes, and event codes."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.runtime_constants "Executable route handler behavior or mutable auth state."
+invariant module app.realtime_auction_arena.server.tests.runtime_constants "Every runtime constant group moved out of the route shell must remain imported by executable context modules and mirrored by project-level build constants where appropriate."
+
+storage module immutable runtimeConstantsUnitTestPlanSummary String "server/src/runtime_constants.sem coverage: HTTP statuses, content headers, auth limits, demo principals, replay cursor/query names, event replay limits, SQLite bind/column indexes, JSON field names, auction status text, event names/codes, role codes, command kind codes, and idempotency TTL are grouped outside the route shell and verified by server lint/build/E2E."
+
+operation getRuntimeConstantsUnitTestPlan
+output operation getRuntimeConstantsUnitTestPlan String
+memory getRuntimeConstantsUnitTestPlan heap no
+async getRuntimeConstantsUnitTestPlan no
+purpose operation getRuntimeConstantsUnitTestPlan "Return the runtime constants coverage plan."
+return value runtimeConstantsUnitTestPlanSummary

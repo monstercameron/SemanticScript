@@ -5,64 +5,64 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation factorialOf
-input factorialOf n CSignedInt64
-output factorialOf Result CSignedInt64 Void
+input operation factorialOf n Int64
+output operation factorialOf Result Int64 Void
 memory factorialOf heap no
 async factorialOf no
-purpose factorialOf "Recursive factorial: 1 if n <= 1, else n * factorialOf(n-1)."
-invariant factorialOf "Standard recursion base case at 1."
+purpose operation factorialOf "Recursive factorial: 1 if n <= 1, else n * factorialOf(n-1)."
+invariant operation factorialOf "Standard recursion base case at 1."
 label startFactorialOf
-const oneLit I64 1
-call atBaseCall math.lessThanOrEqualI64
-arg atBaseCall left n
-arg atBaseCall right oneLit
+storage module immutable oneLit Int64 1
+call atBaseCall math.lessThanOrEqualInt64
+argument atBaseCall left Int64 n
+argument atBaseCall right Int64 oneLit
 run atBaseCall
-bind atBase Bool atBaseCall
-branchIf atBase baseCase
-branch recursiveCase
+bind value atBase Bool atBaseCall
+branch if condition atBase target baseCase
+branch else target recursiveCase
 label baseCase
-returnOk oneLit
+return ok oneLit
 label recursiveCase
-call decCall math.subtractI64
-arg decCall left n
-arg decCall right oneLit
+call decCall math.subtractInt64
+argument decCall left Int64 n
+argument decCall right Int64 oneLit
 run decCall
-bind decremented I64 decCall
+bind value decremented Int64 decCall
 call recCall factorialOf
-arg recCall n decremented
+argument recCall n Int64 decremented
 run recCall
-bindOk recResult I64 recCall
-call mulCall math.multiplyI64
-arg mulCall left n
-arg mulCall right recResult
+bind ok recResult Int64 recCall
+call mulCall math.multiplyInt64
+argument mulCall left Int64 n
+argument mulCall right Int64 recResult
 run mulCall
-bind multiplied I64 mulCall
-returnOk multiplied
+bind value multiplied Int64 mulCall
+return ok multiplied
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Compute factorialOf(5) = 120 via recursion."
-invariant main "Outputs 120."
+purpose operation main "Compute factorialOf(5) = 120 via recursion."
+invariant operation main "Outputs 120."
 label startMain
-const fiveInitial I64 5
-var input I64 fiveInitial
+storage module immutable fiveInitial Int64 5
+memory main mutable input Int64 fiveInitial
 call factCall factorialOf
-arg factCall n input
+argument factCall n Int64 input
 run factCall
-bindOk factResult I64 factCall
-var outputVar I64 fiveInitial
-set outputVar factResult
+bind ok factResult Int64 factCall
+memory main mutable outputVar Int64 fiveInitial
+set memory outputVar factResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value outputVar
+argument writeCall console Console console
+argument writeCall value Int64 outputVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.sse_context
+purpose module app.realtime_auction_arena.server.tests.sse_context "Unit coverage contract for server/src/sse_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.sse_context "SSE content negotiation, stream frame replay, heartbeat, disconnect, and metrics coverage markers."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.sse_context "Native socket internals, compiler lowering, JSON replay fallback, or auction command persistence."
+invariant module app.realtime_auction_arena.server.tests.sse_context "Executable SSE coverage is validated by the Python API smoke harness; this file keeps source-level coverage discoverable by the *.test.sem parser."
+
+storage module immutable sseContextUnitTestPlanSummary String "server/src/sse_context.sem coverage: requestAcceptsSse requires Accept prefix text/event-stream; streamAuctionEventsSse reads committed auction_events rows after the validated cursor; emits id/event/data SSE frames through standard.http.writeSseEventWithId; writes a heartbeat through standard.http.writeSseHeartbeat; checks standard.http.clientDisconnected after each frame; decrements active_sse_clients on every stream exit; increments auction_server_sse_slow_client_drops_total when a stream write fails; and never moves auction-specific transport behavior into compiler lowering."
+
+operation getSseContextUnitTestPlan
+output operation getSseContextUnitTestPlan String
+memory getSseContextUnitTestPlan heap no
+async getSseContextUnitTestPlan no
+purpose operation getSseContextUnitTestPlan "Return the SSE-context unit coverage plan."
+return value sseContextUnitTestPlanSummary

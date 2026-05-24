@@ -1,319 +1,116 @@
 # ============================================================
-# SEMANTICSCRIPT STANDARD LIBRARY TESTS: byte-buffer array helpers
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: array
 # ============================================================
-#
-# # rationale: companion test file for std/array/main.sem. Imports
-#   the array module and exercises every operation it exports â€”
-#   sum / min / max / contains / count / reverse â€” with boundary
-#   cases (empty buffer, not-found) and a reverse round-trip that
-#   walks a heap copy of "hello".
-#
-# # invariant: success prints "OK\n" and exits 0; assertion failures
-#   surface MainError.ArraySmokeAssertionFailed; heap allocation
-#   failure surfaces MainError.MemoryAllocationFailed.
-#
-# # pattern: this is the canonical main.test.sem form â€” same directory
-#   as main.sem, importModule foo, project block local to the test,
-#   entry console main. The implementation file std/array/main.sem
-#   carries no smoke main itself.
 
 project StdArrayTest
 target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.array
+import array standard.array
+
 error MainError
 errorCase MainError ArraySmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
-errorCase MainError MemoryAllocationFailed
 
-# section capability
-# rationale: smoke-test main writes a single OK line to stdout.
 capability stdoutWriteCapability console.stdout write
-capability heapAllocationCapability heap allocate
-capability heapFreeCapability heap free
-
-# ============================================================
-# Smoke test
-# ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
-useCapability main heapAllocationCapability
-useCapability main heapFreeCapability
 effect main write console.stdout
-effect main allocate heap
-effect main free heap
-memoryHeap main yes
-memoryAllocationSource main reverseAllocCall
+memory main heap no
 async main no
-purpose main "Smoke-test every byte-buffer array helper on the static literal 'hello'; reverseBytesInBufferInPlace is exercised against a fresh heap copy."
+purpose operation main "Smoke-test the structural array.* helper surface."
 
 label startMain
 
-const fiveByteCount CByteCount 5
-const helloLiteral CNullTerminatedByteString "hello"
+storage module immutable arrayLengthFive Int64 5
+storage module immutable arrayLengthZero Int64 0
+storage module immutable indexFour Int64 4
+storage module immutable indexFive Int64 5
+storage module immutable expectedLastIndex Int64 4
+storage module immutable expectedMissingIndex Int64 -1
 
-# sumSignedByteValuesInBuffer("hello", 5) == 532  ('h'+'e'+'l'+'l'+'o')
-call assertSumCall sumSignedByteValuesInBuffer
-arg assertSumCall byteBuffer helloLiteral
-arg assertSumCall byteCount fiveByteCount
-run assertSumCall
-bind sumResult CSignedInt64 assertSumCall
-const expectedSumValue CSignedInt64 532
-call checkSumCall math.equalI64
-arg checkSumCall left sumResult
-arg checkSumCall right expectedSumValue
-run checkSumCall
-bind sumOk Bool checkSumCall
-branchIf sumOk sumHolds
-branch smokeAssertionFailed
-label sumHolds
+call arrayLengthCall array.length
+argument arrayLengthCall arrayLength Int64 arrayLengthFive
+run arrayLengthCall
+bind value arrayLengthResult Int64 arrayLengthCall
+call arrayLengthOkCall math.equalInt64
+argument arrayLengthOkCall left Int64 arrayLengthResult
+argument arrayLengthOkCall right Int64 arrayLengthFive
+run arrayLengthOkCall
+bind value arrayLengthOk Bool arrayLengthOkCall
+branch if condition arrayLengthOk target arrayLengthHolds
+branch else target smokeAssertionFailed
+label arrayLengthHolds
 
-# bufferContainsSignedByteValue("hello", 5, 'l') == true
-const lowercaseLCode CSignedInt32 108
-call assertContainsCall bufferContainsSignedByteValue
-arg assertContainsCall byteBuffer helloLiteral
-arg assertContainsCall byteCount fiveByteCount
-arg assertContainsCall targetValue lowercaseLCode
-run assertContainsCall
-bind containsResult Bool assertContainsCall
-branchIf containsResult containsHolds
-branch smokeAssertionFailed
-label containsHolds
+call arrayIsEmptyCall array.isEmpty
+argument arrayIsEmptyCall arrayLength Int64 arrayLengthZero
+run arrayIsEmptyCall
+bind value arrayIsEmptyResult Bool arrayIsEmptyCall
+branch if condition arrayIsEmptyResult target arrayEmptyHolds
+branch else target smokeAssertionFailed
+label arrayEmptyHolds
 
-# countSignedByteValueInBuffer("hello", 5, 'l') == 2
-call assertCountCall countSignedByteValueInBuffer
-arg assertCountCall byteBuffer helloLiteral
-arg assertCountCall byteCount fiveByteCount
-arg assertCountCall targetValue lowercaseLCode
-run assertCountCall
-bind countResult CSignedInt64 assertCountCall
-const expectedTwoMatches CSignedInt64 2
-call checkCountCall math.equalI64
-arg checkCountCall left countResult
-arg checkCountCall right expectedTwoMatches
-run checkCountCall
-bind countOk Bool checkCountCall
-branchIf countOk countHolds
-branch smokeAssertionFailed
-label countHolds
+call arrayContainsTrueCall array.containsIndex
+argument arrayContainsTrueCall arrayLength Int64 arrayLengthFive
+argument arrayContainsTrueCall index Int64 indexFour
+run arrayContainsTrueCall
+bind value arrayContainsTrueResult Bool arrayContainsTrueCall
+branch if condition arrayContainsTrueResult target arrayContainsTrueHolds
+branch else target smokeAssertionFailed
+label arrayContainsTrueHolds
 
-# ============================================================
-# Extended unit tests: coverage for find-min, find-max, reverse;
-# plus boundary cases for sum / count / contains (empty buffer
-# and not-found scenarios).
-# ============================================================
+call arrayContainsFalseCall array.containsIndex
+argument arrayContainsFalseCall arrayLength Int64 arrayLengthFive
+argument arrayContainsFalseCall index Int64 indexFive
+run arrayContainsFalseCall
+bind value arrayContainsFalseResult Bool arrayContainsFalseCall
+branch if condition arrayContainsFalseResult target smokeAssertionFailed
 
-const zeroByteCount CByteCount 0
-const zeroSigned CSignedInt64 0
-const lowercaseHCode CSignedInt32 104
-const lowercaseECode CSignedInt32 101
-const lowercaseOCode CSignedInt32 111
-const lowercaseZCode CSignedInt32 122
+call arrayFirstIndexCall array.firstIndex
+argument arrayFirstIndexCall arrayLength Int64 arrayLengthZero
+run arrayFirstIndexCall
+bind value arrayFirstIndexResult Int64 arrayFirstIndexCall
+call arrayFirstIndexOkCall math.equalInt64
+argument arrayFirstIndexOkCall left Int64 arrayFirstIndexResult
+argument arrayFirstIndexOkCall right Int64 expectedMissingIndex
+run arrayFirstIndexOkCall
+bind value arrayFirstIndexOk Bool arrayFirstIndexOkCall
+branch if condition arrayFirstIndexOk target arrayFirstIndexHolds
+branch else target smokeAssertionFailed
+label arrayFirstIndexHolds
 
-# findMinimumSignedByteInBuffer("hello", 5) == 'e' (101)
-const expectedMinValue CSignedInt64 101
-call findMinCall findMinimumSignedByteInBuffer
-arg findMinCall byteBuffer helloLiteral
-arg findMinCall byteCount fiveByteCount
-run findMinCall
-bind findMinResult CSignedInt64 findMinCall
-call checkMinCall math.equalI64
-arg checkMinCall left findMinResult
-arg checkMinCall right expectedMinValue
-run checkMinCall
-bind findMinOk Bool checkMinCall
-branchIf findMinOk findMinHolds
-branch smokeAssertionFailed
-label findMinHolds
+call arrayLastIndexCall array.lastIndex
+argument arrayLastIndexCall arrayLength Int64 arrayLengthFive
+run arrayLastIndexCall
+bind value arrayLastIndexResult Int64 arrayLastIndexCall
+call arrayLastIndexOkCall math.equalInt64
+argument arrayLastIndexOkCall left Int64 arrayLastIndexResult
+argument arrayLastIndexOkCall right Int64 expectedLastIndex
+run arrayLastIndexOkCall
+bind value arrayLastIndexOk Bool arrayLastIndexOkCall
+branch if condition arrayLastIndexOk target arrayLastIndexHolds
+branch else target smokeAssertionFailed
+label arrayLastIndexHolds
 
-# findMaximumSignedByteInBuffer("hello", 5) == 'o' (111)
-const expectedMaxValue CSignedInt64 111
-call findMaxCall findMaximumSignedByteInBuffer
-arg findMaxCall byteBuffer helloLiteral
-arg findMaxCall byteCount fiveByteCount
-run findMaxCall
-bind findMaxResult CSignedInt64 findMaxCall
-call checkMaxCall math.equalI64
-arg checkMaxCall left findMaxResult
-arg checkMaxCall right expectedMaxValue
-run checkMaxCall
-bind findMaxOk Bool checkMaxCall
-branchIf findMaxOk findMaxHolds
-branch smokeAssertionFailed
-label findMaxHolds
-
-# bufferContainsSignedByteValue("hello", 5, 'z') == false (not present)
-call notContainsCall bufferContainsSignedByteValue
-arg notContainsCall byteBuffer helloLiteral
-arg notContainsCall byteCount fiveByteCount
-arg notContainsCall targetValue lowercaseZCode
-run notContainsCall
-bind notContainsResult Bool notContainsCall
-branchIf notContainsResult smokeAssertionFailed
-# fell through: false as expected, continue
-branch notContainsHolds
-label notContainsHolds
-
-# countSignedByteValueInBuffer("hello", 5, 'z') == 0 (zero matches)
-call zeroCountCall countSignedByteValueInBuffer
-arg zeroCountCall byteBuffer helloLiteral
-arg zeroCountCall byteCount fiveByteCount
-arg zeroCountCall targetValue lowercaseZCode
-run zeroCountCall
-bind zeroCountResult CSignedInt64 zeroCountCall
-call checkZeroCountCall math.equalI64
-arg checkZeroCountCall left zeroCountResult
-arg checkZeroCountCall right zeroSigned
-run checkZeroCountCall
-bind zeroCountOk Bool checkZeroCountCall
-branchIf zeroCountOk zeroCountHolds
-branch smokeAssertionFailed
-label zeroCountHolds
-
-# sumSignedByteValuesInBuffer("hello", 0) == 0 (empty buffer)
-call emptySumCall sumSignedByteValuesInBuffer
-arg emptySumCall byteBuffer helloLiteral
-arg emptySumCall byteCount zeroByteCount
-run emptySumCall
-bind emptySumResult CSignedInt64 emptySumCall
-call checkEmptySumCall math.equalI64
-arg checkEmptySumCall left emptySumResult
-arg checkEmptySumCall right zeroSigned
-run checkEmptySumCall
-bind emptySumOk Bool checkEmptySumCall
-branchIf emptySumOk emptySumHolds
-branch smokeAssertionFailed
-label emptySumHolds
-
-# reverseBytesInBufferInPlace: copy "hello" to a heap buffer, reverse,
-# then verify by reading individual bytes (first should be 'o', last 'h').
-const reverseAllocByteSize CByteCount 5
-call reverseAllocCall c.malloc
-arg reverseAllocCall size reverseAllocByteSize
-run reverseAllocCall
-bind reverseBuffer COpaqueMemoryAddress reverseAllocCall
-bindError reverseAllocError CSignedInt32 reverseAllocCall
-branchIfError reverseAllocCall heapAllocationFailedHandler
-defer releaseReverseAllocCall c.free reverseBuffer
-
-# Copy 'h','e','l','l','o' into the heap buffer at offsets 0..4.
-const offsetZero CByteCount 0
-const offsetOne CByteCount 1
-const offsetTwo CByteCount 2
-const offsetThree CByteCount 3
-const offsetFour CByteCount 4
-call storeHCall pointer.storeByte
-arg storeHCall buffer reverseBuffer
-arg storeHCall offset offsetZero
-arg storeHCall value lowercaseHCode
-run storeHCall
-call storeECall pointer.storeByte
-arg storeECall buffer reverseBuffer
-arg storeECall offset offsetOne
-arg storeECall value lowercaseECode
-run storeECall
-call storeL1Call pointer.storeByte
-arg storeL1Call buffer reverseBuffer
-arg storeL1Call offset offsetTwo
-arg storeL1Call value lowercaseLCode
-run storeL1Call
-call storeL2Call pointer.storeByte
-arg storeL2Call buffer reverseBuffer
-arg storeL2Call offset offsetThree
-arg storeL2Call value lowercaseLCode
-run storeL2Call
-call storeOCall pointer.storeByte
-arg storeOCall buffer reverseBuffer
-arg storeOCall offset offsetFour
-arg storeOCall value lowercaseOCode
-run storeOCall
-
-# Reverse the 5 bytes in place.
-call runReverseCall reverseBytesInBufferInPlace
-arg runReverseCall byteBuffer reverseBuffer
-arg runReverseCall byteCount reverseAllocByteSize
-run runReverseCall
-ignoreValue runReverseCall CByteCount
-
-# After reverse, byte at offset 0 should be 'o' (111).
-call loadFirstAfterReverseCall pointer.loadByte
-arg loadFirstAfterReverseCall buffer reverseBuffer
-arg loadFirstAfterReverseCall offset offsetZero
-run loadFirstAfterReverseCall
-bind firstByteAfterReverse I8 loadFirstAfterReverseCall
-# normalize to unsigned for comparison
-const twoFiveSixCount CSignedInt64 256
-call shiftFirstByteCall math.addI64
-arg shiftFirstByteCall left firstByteAfterReverse
-arg shiftFirstByteCall right twoFiveSixCount
-run shiftFirstByteCall
-bind shiftedFirstByte CSignedInt64 shiftFirstByteCall
-call moduloFirstByteCall math.moduloI64
-arg moduloFirstByteCall left shiftedFirstByte
-arg moduloFirstByteCall right twoFiveSixCount
-run moduloFirstByteCall
-bind firstByteUnsigned CSignedInt64 moduloFirstByteCall
-call checkFirstByteCall math.equalI64
-arg checkFirstByteCall left firstByteUnsigned
-arg checkFirstByteCall right expectedMaxValue
-run checkFirstByteCall
-bind firstByteOk Bool checkFirstByteCall
-branchIf firstByteOk reversedFirstHolds
-branch smokeAssertionFailed
-label reversedFirstHolds
-
-# After reverse, byte at offset 4 should be 'h' (104).
-call loadLastAfterReverseCall pointer.loadByte
-arg loadLastAfterReverseCall buffer reverseBuffer
-arg loadLastAfterReverseCall offset offsetFour
-run loadLastAfterReverseCall
-bind lastByteAfterReverse I8 loadLastAfterReverseCall
-call shiftLastByteCall math.addI64
-arg shiftLastByteCall left lastByteAfterReverse
-arg shiftLastByteCall right twoFiveSixCount
-run shiftLastByteCall
-bind shiftedLastByte CSignedInt64 shiftLastByteCall
-call moduloLastByteCall math.moduloI64
-arg moduloLastByteCall left shiftedLastByte
-arg moduloLastByteCall right twoFiveSixCount
-run moduloLastByteCall
-bind lastByteUnsigned CSignedInt64 moduloLastByteCall
-const expectedHValue CSignedInt64 104
-call checkLastByteCall math.equalI64
-arg checkLastByteCall left lastByteUnsigned
-arg checkLastByteCall right expectedHValue
-run checkLastByteCall
-bind lastByteOk Bool checkLastByteCall
-branchIf lastByteOk reversedLastHolds
-branch smokeAssertionFailed
-label reversedLastHolds
-
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
-# console.writeLine as the cause attached to the typed
-# MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
-makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailedFailure
+
 label smokeAssertionFailed
 makeError arraySmokeFailure MainError.ArraySmokeAssertionFailed
-returnError arraySmokeFailure
-
-label heapAllocationFailedHandler
-makeError reverseAllocFailure MainError.MemoryAllocationFailed reverseAllocError
-returnError reverseAllocFailure
+return error arraySmokeFailure

@@ -1,0 +1,604 @@
+module app.realtime_auction_arena.server.event_context
+purpose module app.realtime_auction_arena.server.event_context "Executable event replay context for Realtime Auction Arena."
+moduleOwns app.realtime_auction_arena.server.event_context "Auction event type name mapping, authenticated bounded JSON replay, and delegation to the SSE transport helper when clients opt in."
+moduleDoesNotOwn app.realtime_auction_arena.server.event_context "Route registration, mutable auth/session state, database handle lifecycle, command persistence, SSE socket primitives, or shared HTTP envelope helpers."
+invariant module app.realtime_auction_arena.server.event_context "Replay returns committed auction_events rows ordered by per-auction sequence and maps persisted event type codes to stable event type names before JSON or SSE transport formatting."
+
+import http standard.http
+import sqlite_std standard.sqlite
+import json standard.json
+import jwt standard.jwt
+import stdlib standard.stdlib
+import runtime app.realtime_auction_arena.server.runtime_constants
+import sql app.realtime_auction_arena.server.sql_queries
+import helpers app.realtime_auction_arena.server.http_helpers
+import sse app.realtime_auction_arena.server.sse_context
+import auth_context app.realtime_auction_arena.server.auth_context
+import server_context app.realtime_auction_arena.server.server_context
+
+importOperation requestHasValidBearerToken auth_context requestHasValidBearerToken
+importOperation openOrReuseArenaDatabase server_context openOrReuseArenaDatabase
+importOperation parseDecimalCStringToSignedInt64 stdlib parseDecimalCStringToSignedInt64
+importOperation currentAuthRoleCodeValue auth_context currentAuthRoleCodeValue
+importOperation currentAuthScopesJsonValue auth_context currentAuthScopesJsonValue
+
+exportOperation app.realtime_auction_arena.server.event_context auctionEventTypeNameFromCode
+exportOperation app.realtime_auction_arena.server.event_context auctionEventsHandler
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to inspect incoming request path, query parameters, and headers."
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write native HTTP response headers and bodies."
+capability heapAllocCapability heap allocate
+purpose operation heapAllocCapability "Authority to allocate per-request JSON scratch buffers."
+capability heapFreeCapability heap free
+purpose operation heapFreeCapability "Authority to release per-request JSON scratch buffers."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to read parsed text buffers and compare token strings."
+capability jsonDocumentWriteCapability json.document.tree write
+purpose operation jsonDocumentWriteCapability "Authority to create and destroy per-request JSON documents."
+capability sqliteDatabaseReader database read
+purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite statements through standard.sqlite."
+capability jwtTokenSigner jwt.hs256 signVerify
+purpose operation jwtTokenSigner "Authority to verify HS256 access tokens through the server auth context."
+
+operation auctionEventTypeNameFromCode
+input operation auctionEventTypeNameFromCode eventTypeCode Int64
+output operation auctionEventTypeNameFromCode String
+memory auctionEventTypeNameFromCode heap no
+async auctionEventTypeNameFromCode no
+purpose operation auctionEventTypeNameFromCode "Map persisted numeric event type codes to stable replay/SSE event names."
+label startAuctionEventTypeNameFromCode
+call eventTypeCreatedMatchesCall math.equalInt64
+argument eventTypeCreatedMatchesCall left Int64 eventTypeCode
+argument eventTypeCreatedMatchesCall right Int64 runtime.eventTypeAuctionCreatedCode
+run eventTypeCreatedMatchesCall
+bind value eventTypeCreatedMatches Bool eventTypeCreatedMatchesCall
+branch if condition eventTypeCreatedMatches target returnAuctionCreatedEventType
+call eventTypeStartedMatchesCall math.equalInt64
+argument eventTypeStartedMatchesCall left Int64 eventTypeCode
+argument eventTypeStartedMatchesCall right Int64 runtime.eventTypeAuctionStartedCode
+run eventTypeStartedMatchesCall
+bind value eventTypeStartedMatches Bool eventTypeStartedMatchesCall
+branch if condition eventTypeStartedMatches target returnAuctionStartedEventType
+call eventTypeExtendedMatchesCall math.equalInt64
+argument eventTypeExtendedMatchesCall left Int64 eventTypeCode
+argument eventTypeExtendedMatchesCall right Int64 runtime.eventTypeAuctionExtendedCode
+run eventTypeExtendedMatchesCall
+bind value eventTypeExtendedMatches Bool eventTypeExtendedMatchesCall
+branch if condition eventTypeExtendedMatches target returnAuctionExtendedEventType
+call eventTypeClosedMatchesCall math.equalInt64
+argument eventTypeClosedMatchesCall left Int64 eventTypeCode
+argument eventTypeClosedMatchesCall right Int64 runtime.eventTypeAuctionClosedCode
+run eventTypeClosedMatchesCall
+bind value eventTypeClosedMatches Bool eventTypeClosedMatchesCall
+branch if condition eventTypeClosedMatches target returnAuctionClosedEventType
+call eventTypeBidAcceptedMatchesCall math.equalInt64
+argument eventTypeBidAcceptedMatchesCall left Int64 eventTypeCode
+argument eventTypeBidAcceptedMatchesCall right Int64 runtime.eventTypeBidAcceptedCode
+run eventTypeBidAcceptedMatchesCall
+bind value eventTypeBidAcceptedMatches Bool eventTypeBidAcceptedMatchesCall
+branch if condition eventTypeBidAcceptedMatches target returnBidAcceptedEventType
+call eventTypeChatCreatedMatchesCall math.equalInt64
+argument eventTypeChatCreatedMatchesCall left Int64 eventTypeCode
+argument eventTypeChatCreatedMatchesCall right Int64 runtime.eventTypeChatMessageCreatedCode
+run eventTypeChatCreatedMatchesCall
+bind value eventTypeChatCreatedMatches Bool eventTypeChatCreatedMatchesCall
+branch if condition eventTypeChatCreatedMatches target returnChatCreatedEventType
+call eventTypeChatDeletedMatchesCall math.equalInt64
+argument eventTypeChatDeletedMatchesCall left Int64 eventTypeCode
+argument eventTypeChatDeletedMatchesCall right Int64 runtime.eventTypeChatMessageDeletedCode
+run eventTypeChatDeletedMatchesCall
+bind value eventTypeChatDeletedMatches Bool eventTypeChatDeletedMatchesCall
+branch if condition eventTypeChatDeletedMatches target returnChatDeletedEventType
+call eventTypeChatReportedMatchesCall math.equalInt64
+argument eventTypeChatReportedMatchesCall left Int64 eventTypeCode
+argument eventTypeChatReportedMatchesCall right Int64 runtime.eventTypeChatMessageReportedCode
+run eventTypeChatReportedMatchesCall
+bind value eventTypeChatReportedMatches Bool eventTypeChatReportedMatchesCall
+branch if condition eventTypeChatReportedMatches target returnChatReportedEventType
+return value runtime.emptyAuctionId
+label returnAuctionCreatedEventType
+return value runtime.eventTypeAuctionCreated
+label returnAuctionStartedEventType
+return value runtime.eventTypeAuctionStarted
+label returnAuctionExtendedEventType
+return value runtime.eventTypeAuctionExtended
+label returnAuctionClosedEventType
+return value runtime.eventTypeAuctionClosed
+label returnBidAcceptedEventType
+return value runtime.eventTypeBidAccepted
+label returnChatCreatedEventType
+return value runtime.eventTypeChatMessageCreated
+label returnChatDeletedEventType
+return value runtime.eventTypeChatMessageDeleted
+label returnChatReportedEventType
+return value runtime.eventTypeChatMessageReported
+
+operation auctionEventsHandler
+input operation auctionEventsHandler request HttpRequest
+input operation auctionEventsHandler response HttpResponse
+output operation auctionEventsHandler Int32
+effect auctionEventsHandler read http.request.header
+effect auctionEventsHandler read http.request.query
+effect auctionEventsHandler read http.request.path
+effect auctionEventsHandler read database
+effect auctionEventsHandler write http.response
+effect auctionEventsHandler allocate heap
+effect auctionEventsHandler free heap
+effect auctionEventsHandler write json.document.tree
+effect auctionEventsHandler read memory.buffer
+memory auctionEventsHandler heap yes
+async auctionEventsHandler no
+useCapability auctionEventsHandler httpRequestReader
+useCapability auctionEventsHandler httpResponseWriter
+useCapability auctionEventsHandler sqliteDatabaseReader
+useCapability auctionEventsHandler heapAllocCapability
+useCapability auctionEventsHandler heapFreeCapability
+useCapability auctionEventsHandler jsonDocumentWriteCapability
+useCapability auctionEventsHandler memoryBufferReadWriteCapability
+useCapability auctionEventsHandler jwtTokenSigner
+purpose operation auctionEventsHandler "Return committed auction events from SQLite as JSON replay or explicit SSE stream replay."
+invariant operation auctionEventsHandler "JSON remains the default v1 response shape; SSE is selected only by Accept: text/event-stream."
+label startAuctionEventsHandler
+call eventsAuthCall requestHasValidBearerToken
+argument eventsAuthCall request HttpRequest request
+run eventsAuthCall
+bind value eventsAuthenticated Bool eventsAuthCall
+branch if condition eventsAuthenticated target eventsBearerAccepted
+branch else target eventsUnauthorized
+
+label eventsBearerAccepted
+call eventsAuthRoleCodeCall currentAuthRoleCodeValue
+run eventsAuthRoleCodeCall
+bind value currentAuthRoleCode Int64 eventsAuthRoleCodeCall
+call eventsAuthScopesCall currentAuthScopesJsonValue
+run eventsAuthScopesCall
+bind value currentAuthScopesJson String eventsAuthScopesCall
+call eventsAuctioneerRoleMatchesCall math.equalInt64
+argument eventsAuctioneerRoleMatchesCall left Int64 currentAuthRoleCode
+argument eventsAuctioneerRoleMatchesCall right Int64 runtime.auctioneerRoleCode
+run eventsAuctioneerRoleMatchesCall
+bind value eventsAuctioneerRoleMatches Bool eventsAuctioneerRoleMatchesCall
+branch if condition eventsAuctioneerRoleMatches target eventsAuctioneerRoleAccepted
+branch else target eventsCheckBidderRole
+label eventsAuctioneerRoleAccepted
+call eventsAuctioneerScopesCompareCall c.strcmp
+argument eventsAuctioneerScopesCompareCall left String currentAuthScopesJson
+argument eventsAuctioneerScopesCompareCall right String runtime.demoScopesJson
+run eventsAuctioneerScopesCompareCall
+bind value eventsAuctioneerScopesCompareResult Int32 eventsAuctioneerScopesCompareCall
+call eventsAuctioneerScopesMatchCall math.equalInt32
+argument eventsAuctioneerScopesMatchCall left Int32 eventsAuctioneerScopesCompareResult
+argument eventsAuctioneerScopesMatchCall right Int32 runtime.authSuccessCode
+run eventsAuctioneerScopesMatchCall
+bind value eventsAuctioneerScopesMatch Bool eventsAuctioneerScopesMatchCall
+branch if condition eventsAuctioneerScopesMatch target eventsAuthenticatedAccepted
+branch else target eventsUnauthorized
+label eventsCheckBidderRole
+call eventsBidderRoleMatchesCall math.equalInt64
+argument eventsBidderRoleMatchesCall left Int64 currentAuthRoleCode
+argument eventsBidderRoleMatchesCall right Int64 runtime.bidderRoleCode
+run eventsBidderRoleMatchesCall
+bind value eventsBidderRoleMatches Bool eventsBidderRoleMatchesCall
+branch if condition eventsBidderRoleMatches target eventsBidderRoleAccepted
+branch else target eventsUnauthorized
+label eventsBidderRoleAccepted
+call eventsBidderScopesCompareCall c.strcmp
+argument eventsBidderScopesCompareCall left String currentAuthScopesJson
+argument eventsBidderScopesCompareCall right String runtime.demoBidderScopesJson
+run eventsBidderScopesCompareCall
+bind value eventsBidderScopesCompareResult Int32 eventsBidderScopesCompareCall
+call eventsBidderScopesMatchCall math.equalInt32
+argument eventsBidderScopesMatchCall left Int32 eventsBidderScopesCompareResult
+argument eventsBidderScopesMatchCall right Int32 runtime.authSuccessCode
+run eventsBidderScopesMatchCall
+bind value eventsBidderScopesMatch Bool eventsBidderScopesMatchCall
+branch if condition eventsBidderScopesMatch target eventsAuthenticatedAccepted
+branch else target eventsUnauthorized
+
+label eventsAuthenticatedAccepted
+call eventsAuctionIdParamCall http.requestPathParam
+argument eventsAuctionIdParamCall request HttpRequest request
+argument eventsAuctionIdParamCall name String runtime.auctionIdParamName
+run eventsAuctionIdParamCall
+bind value eventsAuctionId String eventsAuctionIdParamCall
+call eventsAuctionIdMissingCall pointer.isNull
+argument eventsAuctionIdMissingCall ptr OpaquePointer eventsAuctionId
+run eventsAuctionIdMissingCall
+bind value eventsAuctionIdMissing Bool eventsAuctionIdMissingCall
+branch if condition eventsAuctionIdMissing target eventsValidationFailed
+
+storage local mutable eventsReplayCursor Int64 runtime.zeroEventReplayCursor
+storage local mutable eventsReplayLimit Int64 runtime.defaultEventReplayLimit
+
+call eventsAfterQueryCall http.requestQueryParam
+argument eventsAfterQueryCall request HttpRequest request
+argument eventsAfterQueryCall name String runtime.afterQueryParamName
+run eventsAfterQueryCall
+bind value eventsAfterQuery String eventsAfterQueryCall
+call eventsAfterQueryMissingCall pointer.isNull
+argument eventsAfterQueryMissingCall ptr OpaquePointer eventsAfterQuery
+run eventsAfterQueryMissingCall
+bind value eventsAfterQueryMissing Bool eventsAfterQueryMissingCall
+branch if condition eventsAfterQueryMissing target eventsCheckLastEventId
+call parseEventsAfterQueryCall parseDecimalCStringToSignedInt64
+argument parseEventsAfterQueryCall inputText String eventsAfterQuery
+run parseEventsAfterQueryCall
+bind value parsedEventsAfterQuery Int64 parseEventsAfterQueryCall
+set memory eventsReplayCursor parsedEventsAfterQuery
+
+label eventsCheckLastEventId
+call eventsLastEventIdHeaderCall http.requestHeader
+argument eventsLastEventIdHeaderCall request HttpRequest request
+argument eventsLastEventIdHeaderCall name String runtime.lastEventIdHeaderName
+run eventsLastEventIdHeaderCall
+bind value eventsLastEventId String eventsLastEventIdHeaderCall
+call eventsLastEventIdMissingCall pointer.isNull
+argument eventsLastEventIdMissingCall ptr OpaquePointer eventsLastEventId
+run eventsLastEventIdMissingCall
+bind value eventsLastEventIdMissing Bool eventsLastEventIdMissingCall
+branch if condition eventsLastEventIdMissing target eventsCursorValidate
+call parseEventsLastEventIdCall parseDecimalCStringToSignedInt64
+argument parseEventsLastEventIdCall inputText String eventsLastEventId
+run parseEventsLastEventIdCall
+bind value parsedEventsLastEventId Int64 parseEventsLastEventIdCall
+set memory eventsReplayCursor parsedEventsLastEventId
+
+label eventsCursorValidate
+call eventsCursorNegativeCall math.lessThanInt64
+argument eventsCursorNegativeCall left Int64 eventsReplayCursor
+argument eventsCursorNegativeCall right Int64 runtime.zeroEventReplayCursor
+run eventsCursorNegativeCall
+bind value eventsCursorNegative Bool eventsCursorNegativeCall
+branch if condition eventsCursorNegative target eventsValidationFailed
+
+call eventsLimitQueryCall http.requestQueryParam
+argument eventsLimitQueryCall request HttpRequest request
+argument eventsLimitQueryCall name String runtime.limitQueryParamName
+run eventsLimitQueryCall
+bind value eventsLimitQuery String eventsLimitQueryCall
+call eventsLimitQueryMissingCall pointer.isNull
+argument eventsLimitQueryMissingCall ptr OpaquePointer eventsLimitQuery
+run eventsLimitQueryMissingCall
+bind value eventsLimitQueryMissing Bool eventsLimitQueryMissingCall
+branch if condition eventsLimitQueryMissing target eventsLimitValidate
+call parseEventsLimitQueryCall parseDecimalCStringToSignedInt64
+argument parseEventsLimitQueryCall inputText String eventsLimitQuery
+run parseEventsLimitQueryCall
+bind value parsedEventsLimitQuery Int64 parseEventsLimitQueryCall
+set memory eventsReplayLimit parsedEventsLimitQuery
+
+label eventsLimitValidate
+call eventsLimitTooLowCall math.lessThanOrEqualInt64
+argument eventsLimitTooLowCall left Int64 eventsReplayLimit
+argument eventsLimitTooLowCall right Int64 runtime.zeroEventReplayCursor
+run eventsLimitTooLowCall
+bind value eventsLimitTooLow Bool eventsLimitTooLowCall
+branch if condition eventsLimitTooLow target eventsValidationFailed
+call eventsLimitTooHighCall math.greaterThanInt64
+argument eventsLimitTooHighCall left Int64 eventsReplayLimit
+argument eventsLimitTooHighCall right Int64 runtime.maxEventReplayLimit
+run eventsLimitTooHighCall
+bind value eventsLimitTooHigh Bool eventsLimitTooHighCall
+branch if condition eventsLimitTooHigh target eventsValidationFailed
+
+call eventsOpenDatabaseCall openOrReuseArenaDatabase
+run eventsOpenDatabaseCall
+bind value eventsDatabase SqliteDatabase eventsOpenDatabaseCall
+call eventsDatabaseMissingCall pointer.isNull
+argument eventsDatabaseMissingCall ptr OpaquePointer eventsDatabase
+run eventsDatabaseMissingCall
+bind value eventsDatabaseMissing Bool eventsDatabaseMissingCall
+branch if condition eventsDatabaseMissing target eventsDatabaseUnavailable
+
+call prepareEventsAuctionCall sqlite.prepareStatement
+argument prepareEventsAuctionCall database SqliteDatabase eventsDatabase
+argument prepareEventsAuctionCall sql SqlText sql.sqlSelectAuctionExists
+run prepareEventsAuctionCall
+bind ok eventsAuctionStatement SqliteStatement prepareEventsAuctionCall
+bind error prepareEventsAuctionError SqliteStatementPrepareFailure prepareEventsAuctionCall
+branch error source prepareEventsAuctionCall target eventsDatabaseUnavailable
+defer finalizeEventsAuctionDefer sqlite.finalizeStatement eventsAuctionStatement
+call bindEventsAuctionCheckCall sqlite.bindText
+argument bindEventsAuctionCheckCall statement SqliteStatement eventsAuctionStatement
+argument bindEventsAuctionCheckCall parameterIndex Int32 runtime.bindIndex1
+argument bindEventsAuctionCheckCall value String eventsAuctionId
+run bindEventsAuctionCheckCall
+ignore void source bindEventsAuctionCheckCall
+bind error bindEventsAuctionCheckError SqliteStatementBindFailure bindEventsAuctionCheckCall
+branch error source bindEventsAuctionCheckCall target eventsDatabaseUnavailable
+call stepEventsAuctionCheckCall sqlite.stepStatement
+argument stepEventsAuctionCheckCall statement SqliteStatement eventsAuctionStatement
+run stepEventsAuctionCheckCall
+bind ok eventsAuctionCheckStepResult Int32 stepEventsAuctionCheckCall
+bind error stepEventsAuctionCheckError SqliteStatementStepFailure stepEventsAuctionCheckCall
+branch error source stepEventsAuctionCheckCall target eventsDatabaseUnavailable
+call eventsAuctionExistsCall math.equalInt32
+argument eventsAuctionExistsCall left Int32 eventsAuctionCheckStepResult
+argument eventsAuctionExistsCall right Int32 runtime.sqliteRowStepStatus
+run eventsAuctionExistsCall
+bind value eventsAuctionExists Bool eventsAuctionExistsCall
+branch if condition eventsAuctionExists target eventsAuctionExistsAccepted
+branch else target eventsNotFound
+
+label eventsAuctionExistsAccepted
+call eventsAcceptsSseCall sse.requestAcceptsSse
+argument eventsAcceptsSseCall request HttpRequest request
+run eventsAcceptsSseCall
+bind value eventsAcceptsSse Bool eventsAcceptsSseCall
+branch if condition eventsAcceptsSse target eventsStreamSse
+call prepareEventsCall sqlite.prepareStatement
+argument prepareEventsCall database SqliteDatabase eventsDatabase
+argument prepareEventsCall sql SqlText sql.sqlSelectAuctionEventsAfter
+run prepareEventsCall
+bind ok eventsStatement SqliteStatement prepareEventsCall
+bind error prepareEventsError SqliteStatementPrepareFailure prepareEventsCall
+branch error source prepareEventsCall target eventsDatabaseUnavailable
+defer finalizeEventsDefer sqlite.finalizeStatement eventsStatement
+call bindEventsAuctionIdCall sqlite.bindText
+argument bindEventsAuctionIdCall statement SqliteStatement eventsStatement
+argument bindEventsAuctionIdCall parameterIndex Int32 runtime.bindIndex1
+argument bindEventsAuctionIdCall value String eventsAuctionId
+run bindEventsAuctionIdCall
+ignore void source bindEventsAuctionIdCall
+bind error bindEventsAuctionIdError SqliteStatementBindFailure bindEventsAuctionIdCall
+branch error source bindEventsAuctionIdCall target eventsDatabaseUnavailable
+call bindEventsCursorCall sqlite.bindInt64
+argument bindEventsCursorCall statement SqliteStatement eventsStatement
+argument bindEventsCursorCall parameterIndex Int32 runtime.bindIndex2
+argument bindEventsCursorCall value Int64 eventsReplayCursor
+run bindEventsCursorCall
+ignore void source bindEventsCursorCall
+bind error bindEventsCursorError SqliteStatementBindFailure bindEventsCursorCall
+branch error source bindEventsCursorCall target eventsDatabaseUnavailable
+call bindEventsLimitCall sqlite.bindInt64
+argument bindEventsLimitCall statement SqliteStatement eventsStatement
+argument bindEventsLimitCall parameterIndex Int32 runtime.bindIndex3
+argument bindEventsLimitCall value Int64 eventsReplayLimit
+run bindEventsLimitCall
+ignore void source bindEventsLimitCall
+bind error bindEventsLimitError SqliteStatementBindFailure bindEventsLimitCall
+branch error source bindEventsLimitCall target eventsDatabaseUnavailable
+
+call allocateEventsBufferCall c.malloc
+argument allocateEventsBufferCall size ByteCount runtime.arenaResponseBufferCapacity
+run allocateEventsBufferCall
+bind ok eventsResponseBuffer OpaquePointer allocateEventsBufferCall
+bind error eventsBufferError OpaquePointer allocateEventsBufferCall
+branch error source allocateEventsBufferCall target eventsDatabaseUnavailable
+defer releaseEventsBufferDefer c.free eventsResponseBuffer
+call createEventsDocumentCall json.createEmptyDocument
+argument createEventsDocumentCall capacityBytes JsonCapacityBytes runtime.arenaResponseJsonCapacity
+argument createEventsDocumentCall rootKind JsonValueKind runtime.jsonObjectRootKind
+run createEventsDocumentCall
+bind ok eventsDocument JsonDocument createEventsDocumentCall
+bind error eventsDocumentError JsonAccessError createEventsDocumentCall
+branch error source createEventsDocumentCall target eventsDatabaseUnavailable
+defer releaseEventsDocumentDefer json.destroyDocument eventsDocument
+call eventsRootCall json.documentRoot
+argument eventsRootCall document JsonDocument eventsDocument
+run eventsRootCall
+bind value eventsRoot JsonCursor eventsRootCall
+call seedEventsEnvelopeCall helpers.seedSuccessEnvelope
+argument seedEventsEnvelopeCall document JsonDocument eventsDocument
+argument seedEventsEnvelopeCall cursor JsonCursor eventsRoot
+run seedEventsEnvelopeCall
+ignore void source seedEventsEnvelopeCall
+call createEventsDataCall json.setObjectFieldObject
+argument createEventsDataCall document JsonDocument eventsDocument
+argument createEventsDataCall cursor JsonCursor eventsRoot
+argument createEventsDataCall fieldName String runtime.fieldData
+run createEventsDataCall
+bind ok eventsData JsonCursor createEventsDataCall
+bind error createEventsDataError JsonAccessError createEventsDataCall
+branch error source createEventsDataCall target eventsDatabaseUnavailable
+call setEventsAuctionIdCall json.setObjectFieldString
+argument setEventsAuctionIdCall document JsonDocument eventsDocument
+argument setEventsAuctionIdCall cursor JsonCursor eventsData
+argument setEventsAuctionIdCall fieldName String runtime.fieldAuctionId
+argument setEventsAuctionIdCall value String eventsAuctionId
+run setEventsAuctionIdCall
+ignore ok source setEventsAuctionIdCall type Int32
+call setEventsAfterCall json.setObjectFieldInt64
+argument setEventsAfterCall document JsonDocument eventsDocument
+argument setEventsAfterCall cursor JsonCursor eventsData
+argument setEventsAfterCall fieldName String runtime.fieldAfter
+argument setEventsAfterCall value Int64 eventsReplayCursor
+run setEventsAfterCall
+ignore ok source setEventsAfterCall type Int32
+call setEventsLimitCall json.setObjectFieldInt64
+argument setEventsLimitCall document JsonDocument eventsDocument
+argument setEventsLimitCall cursor JsonCursor eventsData
+argument setEventsLimitCall fieldName String runtime.fieldLimit
+argument setEventsLimitCall value Int64 eventsReplayLimit
+run setEventsLimitCall
+ignore ok source setEventsLimitCall type Int32
+call createEventsArrayCall json.setObjectFieldArray
+argument createEventsArrayCall document JsonDocument eventsDocument
+argument createEventsArrayCall cursor JsonCursor eventsData
+argument createEventsArrayCall fieldName String runtime.fieldEvents
+run createEventsArrayCall
+bind ok eventsArray JsonCursor createEventsArrayCall
+bind error createEventsArrayError JsonAccessError createEventsArrayCall
+branch error source createEventsArrayCall target eventsDatabaseUnavailable
+
+storage local mutable eventsCount Int64 0
+storage local mutable eventsNextAfter Int64 eventsReplayCursor
+storage local immutable eventsIncrement Int64 1
+
+label eventsLoop
+call stepEventsCall sqlite.stepStatement
+argument stepEventsCall statement SqliteStatement eventsStatement
+run stepEventsCall
+bind ok eventsStepResult Int32 stepEventsCall
+bind error eventsStepError SqliteStatementStepFailure stepEventsCall
+branch error source stepEventsCall target eventsDatabaseUnavailable
+call eventsRowAvailableCall math.equalInt32
+argument eventsRowAvailableCall left Int32 eventsStepResult
+argument eventsRowAvailableCall right Int32 runtime.sqliteRowStepStatus
+run eventsRowAvailableCall
+bind value eventsRowAvailable Bool eventsRowAvailableCall
+branch if condition eventsRowAvailable target appendEventRow
+branch else target eventsRowsDone
+
+label appendEventRow
+call readEventSequenceCall sqlite.columnInt64
+argument readEventSequenceCall statement SqliteStatement eventsStatement
+argument readEventSequenceCall columnIndex Int32 runtime.columnIndex0
+run readEventSequenceCall
+bind value eventSequence Int64 readEventSequenceCall
+call readEventRevisionCall sqlite.columnInt64
+argument readEventRevisionCall statement SqliteStatement eventsStatement
+argument readEventRevisionCall columnIndex Int32 runtime.columnIndex1
+run readEventRevisionCall
+bind value eventRevision Int64 readEventRevisionCall
+call readEventTypeCall sqlite.columnInt64
+argument readEventTypeCall statement SqliteStatement eventsStatement
+argument readEventTypeCall columnIndex Int32 runtime.columnIndex2
+run readEventTypeCall
+bind value eventTypeCode Int64 readEventTypeCall
+call eventTypeNameCall auctionEventTypeNameFromCode
+argument eventTypeNameCall eventTypeCode Int64 eventTypeCode
+run eventTypeNameCall
+bind value eventTypeName String eventTypeNameCall
+call readEventPayloadCall sqlite.columnText
+argument readEventPayloadCall statement SqliteStatement eventsStatement
+argument readEventPayloadCall columnIndex Int32 runtime.columnIndex3
+run readEventPayloadCall
+bind value eventPayload String readEventPayloadCall
+call readEventCreatedAtCall sqlite.columnInt64
+argument readEventCreatedAtCall statement SqliteStatement eventsStatement
+argument readEventCreatedAtCall columnIndex Int32 runtime.columnIndex4
+run readEventCreatedAtCall
+bind value eventCreatedAt Int64 readEventCreatedAtCall
+call appendEventObjectCall json.appendArrayElementObject
+argument appendEventObjectCall document JsonDocument eventsDocument
+argument appendEventObjectCall cursor JsonCursor eventsArray
+run appendEventObjectCall
+bind ok eventObject JsonCursor appendEventObjectCall
+bind error appendEventObjectError JsonAccessError appendEventObjectCall
+branch error source appendEventObjectCall target eventsDatabaseUnavailable
+call setEventSequenceCall json.setObjectFieldInt64
+argument setEventSequenceCall document JsonDocument eventsDocument
+argument setEventSequenceCall cursor JsonCursor eventObject
+argument setEventSequenceCall fieldName String runtime.fieldSequence
+argument setEventSequenceCall value Int64 eventSequence
+run setEventSequenceCall
+ignore ok source setEventSequenceCall type Int32
+call setEventRevisionCall json.setObjectFieldInt64
+argument setEventRevisionCall document JsonDocument eventsDocument
+argument setEventRevisionCall cursor JsonCursor eventObject
+argument setEventRevisionCall fieldName String runtime.fieldAuctionRevision
+argument setEventRevisionCall value Int64 eventRevision
+run setEventRevisionCall
+ignore ok source setEventRevisionCall type Int32
+call setEventTypeCall json.setObjectFieldString
+argument setEventTypeCall document JsonDocument eventsDocument
+argument setEventTypeCall cursor JsonCursor eventObject
+argument setEventTypeCall fieldName String runtime.fieldEventType
+argument setEventTypeCall value String eventTypeName
+run setEventTypeCall
+ignore ok source setEventTypeCall type Int32
+call setEventTypeCodeCall json.setObjectFieldInt64
+argument setEventTypeCodeCall document JsonDocument eventsDocument
+argument setEventTypeCodeCall cursor JsonCursor eventObject
+argument setEventTypeCodeCall fieldName String runtime.fieldEventTypeCode
+argument setEventTypeCodeCall value Int64 eventTypeCode
+run setEventTypeCodeCall
+ignore ok source setEventTypeCodeCall type Int32
+call setEventPayloadCall json.setObjectFieldJsonText
+argument setEventPayloadCall document JsonDocument eventsDocument
+argument setEventPayloadCall cursor JsonCursor eventObject
+argument setEventPayloadCall fieldName String runtime.fieldPayload
+argument setEventPayloadCall value JsonText eventPayload
+run setEventPayloadCall
+ignore ok source setEventPayloadCall type Int32
+call setEventCreatedCall json.setObjectFieldInt64
+argument setEventCreatedCall document JsonDocument eventsDocument
+argument setEventCreatedCall cursor JsonCursor eventObject
+argument setEventCreatedCall fieldName String runtime.fieldCreatedAtUtcMillis
+argument setEventCreatedCall value Int64 eventCreatedAt
+run setEventCreatedCall
+ignore ok source setEventCreatedCall type Int32
+set memory eventsNextAfter eventSequence
+call incrementEventsCountCall math.addInt64
+argument incrementEventsCountCall left Int64 eventsCount
+argument incrementEventsCountCall right Int64 eventsIncrement
+run incrementEventsCountCall
+bind value incrementedEventsCount Int64 incrementEventsCountCall
+set memory eventsCount incrementedEventsCount
+jump target eventsLoop
+
+label eventsRowsDone
+call setEventsCountCall json.setObjectFieldInt64
+argument setEventsCountCall document JsonDocument eventsDocument
+argument setEventsCountCall cursor JsonCursor eventsData
+argument setEventsCountCall fieldName String runtime.fieldCount
+argument setEventsCountCall value Int64 eventsCount
+run setEventsCountCall
+ignore ok source setEventsCountCall type Int32
+call setEventsNextAfterCall json.setObjectFieldInt64
+argument setEventsNextAfterCall document JsonDocument eventsDocument
+argument setEventsNextAfterCall cursor JsonCursor eventsData
+argument setEventsNextAfterCall fieldName String runtime.fieldNextAfter
+argument setEventsNextAfterCall value Int64 eventsNextAfter
+run setEventsNextAfterCall
+ignore ok source setEventsNextAfterCall type Int32
+call setEventsErrorNullCall json.setObjectFieldNull
+argument setEventsErrorNullCall document JsonDocument eventsDocument
+argument setEventsErrorNullCall cursor JsonCursor eventsRoot
+argument setEventsErrorNullCall fieldName String runtime.fieldError
+run setEventsErrorNullCall
+ignore ok source setEventsErrorNullCall type Int32
+call serializeEventsCall json.serializeDocument
+argument serializeEventsCall document JsonDocument eventsDocument
+argument serializeEventsCall scratch OpaquePointer eventsResponseBuffer
+argument serializeEventsCall scratchCapacity Int64 runtime.arenaResponseBufferCapacity
+run serializeEventsCall
+bind ok eventsResponseBody JsonText serializeEventsCall
+bind error serializeEventsError JsonAccessError serializeEventsCall
+branch error source serializeEventsCall target eventsDatabaseUnavailable
+call eventsWriteCall helpers.writeJsonEnvelope
+argument eventsWriteCall response HttpResponse response
+argument eventsWriteCall status Int32 runtime.okStatus
+argument eventsWriteCall responseBody String eventsResponseBody
+run eventsWriteCall
+bind value eventsWriteStatus Int32 eventsWriteCall
+return value eventsWriteStatus
+
+label eventsStreamSse
+call streamEventsSseCall sse.streamAuctionEventsSse
+argument streamEventsSseCall response HttpResponse response
+argument streamEventsSseCall database SqliteDatabase eventsDatabase
+argument streamEventsSseCall auctionId String eventsAuctionId
+argument streamEventsSseCall replayCursor Int64 eventsReplayCursor
+argument streamEventsSseCall replayLimit Int64 eventsReplayLimit
+run streamEventsSseCall
+bind value streamEventsSseStatus Int32 streamEventsSseCall
+return value streamEventsSseStatus
+
+label eventsUnauthorized
+call eventsUnauthorizedWriteCall helpers.writeUnauthorizedEnvelope
+argument eventsUnauthorizedWriteCall response HttpResponse response
+run eventsUnauthorizedWriteCall
+bind value eventsUnauthorizedWriteStatus Int32 eventsUnauthorizedWriteCall
+return value eventsUnauthorizedWriteStatus
+label eventsValidationFailed
+call eventsValidationWriteCall helpers.writeValidationFailedEnvelope
+argument eventsValidationWriteCall response HttpResponse response
+run eventsValidationWriteCall
+bind value eventsValidationWriteStatus Int32 eventsValidationWriteCall
+return value eventsValidationWriteStatus
+label eventsNotFound
+call eventsNotFoundWriteCall helpers.writeAuctionNotFoundEnvelope
+argument eventsNotFoundWriteCall response HttpResponse response
+run eventsNotFoundWriteCall
+bind value eventsNotFoundWriteStatus Int32 eventsNotFoundWriteCall
+return value eventsNotFoundWriteStatus
+label eventsDatabaseUnavailable
+call eventsDatabaseWriteCall helpers.writeDatabaseUnavailableEnvelope
+argument eventsDatabaseWriteCall response HttpResponse response
+run eventsDatabaseWriteCall
+bind value eventsDatabaseWriteStatus Int32 eventsDatabaseWriteCall
+return value eventsDatabaseWriteStatus

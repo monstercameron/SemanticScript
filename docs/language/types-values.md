@@ -8,8 +8,8 @@ declarations.
 ## Type Aliases
 
 ```semanticscript
-type ExitCode I32
-type AccountId CNullTerminatedByteString
+type ExitCode Int32
+type AccountId String
 type AccountLookupResult Result AccountBalance AccountLookupError
 ```
 
@@ -22,34 +22,35 @@ parameters for tools.
 | SemanticScript type names | LLVM shape |
 |---|---|
 | `Bool` | `i1` |
-| `I8`, `CSignedByte`, `CUnsignedByte` | `i8` |
-| `I16`, `CSignedInt16`, `CUnsignedInt16` | `i16` |
-| `I32`, `ExitCode`, `CSignedInt32`, `CUnsignedInt32` | `i32` |
-| `I64`, `CSignedInt64`, `CUnsignedInt64` | `i64` |
-| `F32`, `CFloat32` | `float` |
-| `F64`, `CFloat64` | `double` |
-| `String`, `CNullTerminatedByteString` | `i8*` |
-| `COpaqueMemoryAddress`, `CFileHandle`, `VoidPtr` | `i8*` |
-| `Void`, `CVoid` | `void` where accepted |
+| `Int8`, `UInt8` | `i8` |
+| `Int16`, `UInt16` | `i16` |
+| `Int32`, `ExitCode`, `UInt32` | `i32` |
+| `Int64`, `UInt64` | `i64` |
+| `Float32` | `float` |
+| `Float64` | `double` |
+| `String` | `i8*` |
+| `OpaquePointer`, `FileHandle` | `i8*` |
+| `Void` | `void` where accepted |
 
 C role types keep ABI intent visible at the call site:
 
 ```semanticscript
-const bufferByteCount CByteCount 4096
-const fileOffset CFileByteOffset 0
-const monotonicDelay DurationMilliseconds 50
+storage local immutable bufferByteCount ByteCount 4096
+storage local immutable fileOffset FileByteOffset 0
+storage local immutable monotonicDelay DurationMilliseconds 50
 ```
 
-## Constants
+## Immutable Storage Values
 
 ```semanticscript
-const retryLimit I64 3
-const newlineText String "\n"
-const useStrictJson Bool true
+storage module immutable retryLimit Int64 3
+storage local immutable newlineText String "\n"
+storage local immutable useStrictJson Bool true
 ```
 
-`const` can appear at top level or inside an operation. Operation-local consts
-take precedence over module consts in that operation.
+`storage module immutable` declares a module-level value. `storage local
+immutable` declares an operation-local value. Local values take precedence over
+module values in that operation.
 
 Boolean tokens accepted for `Bool` values:
 
@@ -62,20 +63,20 @@ true false yes no 1 0
 Domain literals are typed constants with additional metadata edges.
 
 ```semanticscript
-domainLiteral signalKillNumber CSignedInt32 9
+domainLiteral signalKillNumber Int32 9
 domainLiteralSource signalKillNumber posix.SIGKILL
 domainLiteralTrust signalKillNumber trustedStaticLiteral
 ```
 
-The compiler registers `domainLiteral NAME TYPE VALUE` as a module-scope const.
-The metadata lines are preserved for tooling.
+The compiler registers `domainLiteral NAME TYPE VALUE` as an immutable
+module-scope value. The metadata lines are preserved for tooling.
 
 ## External Literals
 
 Large literals can be declared separately from their bytes:
 
 ```semanticscript
-literal greetingTemplate CNullTerminatedByteString
+literal greetingTemplate String
 literalSource greetingTemplate "fixtures/greeting.txt"
 literalBytes greetingTemplate 128
 literalDigest greetingTemplate sha256 e3b0c44298fc1c149afbf4c8996fb924
@@ -91,7 +92,7 @@ still compile.
 ## Enums
 
 ```semanticscript
-enum TaskPriority repr I32
+enum TaskPriority repr Int32
 enumCase TaskPriority TaskPriorityLow 0
 enumCase TaskPriority TaskPriorityNormal 1
 enumCase TaskPriority TaskPriorityHigh 2
@@ -108,7 +109,7 @@ record AccountBalanceResponse
 recordLayout AccountBalanceResponse packed
 recordAlign AccountBalanceResponse 8
 field AccountBalanceResponse accountId AccountId
-field AccountBalanceResponse balanceCents I64
+field AccountBalanceResponse balanceCents Int64
 field AccountBalanceResponse currencyCode String
 ```
 
@@ -123,7 +124,7 @@ Type metadata is source-level context for checkers and future runtimes:
 
 ```semanticscript
 typeInvariant AccountId "Non-empty stable account identifier"
-typeRepresentation AccountId CNullTerminatedByteString utf8 nullByte
+typeRepresentation AccountId String utf8 nullByte
 typeTrust AccountId trustedInternal
 typeMemory AccountId inline
 typeLayout AccountId packed
@@ -134,4 +135,3 @@ typeLiteralTerminator AccountId nullByte
 
 Only some of this metadata affects current codegen. It should still be kept
 accurate because linters, hovers, and downstream tooling use it as hard context.
-

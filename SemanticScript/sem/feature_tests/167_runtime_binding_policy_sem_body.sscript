@@ -1,0 +1,84 @@
+# expect.stdout: 150\n15\n
+# expect.exit: 0
+project RuntimeBindingPolicySemanticBody
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+error RetryPolicyError
+errorCase RetryPolicyError DelayComputeFailed
+error MetricsWriteError
+errorCase MetricsWriteError IncrementFailed
+
+operation delayForAttempt
+input operation delayForAttempt policy RetryPolicy
+input operation delayForAttempt attemptIndex Int64
+output operation delayForAttempt Result DurationMilliseconds RetryPolicyError
+memory delayForAttempt heap no
+async delayForAttempt no
+label startDelayForAttempt
+storage module immutable oneAttempt Int64 1
+storage module immutable fiftyMilliseconds Int64 50
+call ordinalCall math.addInt64
+argument ordinalCall left Int64 attemptIndex
+argument ordinalCall right Int64 oneAttempt
+run ordinalCall
+bind value attemptOrdinal Int64 ordinalCall
+call delayCall math.multiplyInt64
+argument delayCall left Int64 attemptOrdinal
+argument delayCall right Int64 fiftyMilliseconds
+run delayCall
+bind value computedDelay DurationMilliseconds delayCall
+return ok computedDelay
+
+operation computeIncrementInt64
+input operation computeIncrementInt64 runtime MetricsRuntime
+input operation computeIncrementInt64 current Int64
+input operation computeIncrementInt64 step Int64
+output operation computeIncrementInt64 Result Int64 MetricsWriteError
+memory computeIncrementInt64 heap no
+async computeIncrementInt64 no
+label startComputeIncrement
+call incrementCall math.addInt64
+argument incrementCall left Int64 current
+argument incrementCall right Int64 step
+run incrementCall
+bind value computedIncrement Int64 incrementCall
+return ok computedIncrement
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+label startMain
+storage module immutable policyHandle RetryPolicy 0
+storage module immutable attemptTwo Int64 2
+call demoDelayCall delayForAttempt
+argument demoDelayCall policy RetryPolicy policyHandle
+argument demoDelayCall attemptIndex Int64 attemptTwo
+run demoDelayCall
+bind ok delayResult DurationMilliseconds demoDelayCall
+call printDelayCall console.writeIntegerLine
+argument printDelayCall console Console console
+argument printDelayCall value Int64 delayResult
+run printDelayCall
+ignore void source printDelayCall
+storage module immutable runtimeHandle MetricsRuntime 0
+storage module immutable tenValue Int64 10
+storage module immutable fiveValue Int64 5
+call demoIncrementCall computeIncrementInt64
+argument demoIncrementCall runtime MetricsRuntime runtimeHandle
+argument demoIncrementCall current Int64 tenValue
+argument demoIncrementCall step Int64 fiveValue
+run demoIncrementCall
+bind ok incrementResult Int64 demoIncrementCall
+call printIncrementCall console.writeIntegerLine
+argument printIncrementCall console Console console
+argument printIncrementCall value Int64 incrementResult
+run printIncrementCall
+ignore void source printIncrementCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

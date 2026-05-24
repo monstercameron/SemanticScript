@@ -3,32 +3,32 @@
 project TypeAliasFloat
 target console
 runtime AgentRuntime 0.1
-type Distance CFloat64
-type DistanceDelta CFloat64
+type Distance Float64
+type DistanceDelta Float64
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Type alias to CFloat64 should be treated as double."
-invariant main "Aliased float types print correctly."
+purpose operation main "Type alias to Float64 should be treated as double."
+invariant operation main "Aliased float types print correctly."
 label startMain
-const fiveFloat Distance 5.0
-const twoHalfFloat DistanceDelta 2.5
-var current Distance fiveFloat
-call addCall math.addF64
-arg addCall left current
-arg addCall right twoHalfFloat
+storage module immutable fiveFloat Distance 5.0
+storage module immutable twoHalfFloat DistanceDelta 2.5
+memory main mutable current Distance fiveFloat
+call addCall math.addFloat64
+argument addCall left Distance current
+argument addCall right DistanceDelta twoHalfFloat
 run addCall
-bind sumResult Distance addCall
+bind value sumResult Distance addCall
 call writeCall console.writeFloatLine
-arg writeCall console console
-arg writeCall value sumResult
+argument writeCall console Console console
+argument writeCall value Distance sumResult
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

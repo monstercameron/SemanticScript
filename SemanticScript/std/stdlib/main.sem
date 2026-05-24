@@ -1,35 +1,36 @@
 # SemanticScript standard-library canonical module: standard.stdlib.
 
 module standard.stdlib
-modulePurpose standard.stdlib "Canonical standard-library module for stdlib-style helpers."
+purpose module standard.stdlib "Canonical standard-library module for stdlib-style helpers."
 moduleOwns standard.stdlib "The official import path `standard.stdlib` and this module's implementation body."
 moduleDoesNotOwn standard.stdlib "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.stdlib "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.stdlib "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.stdlib stdlibModuleVersionText
-storage module immutable stdlibModuleVersionText CNullTerminatedByteString "standard.stdlib 0.1"
+storage module immutable stdlibModuleVersionText String "standard.stdlib 0.1"
+
+exportOperation standard.stdlib parseDecimalCStringToSignedInt64
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: <stdlib.h>-style numeric utilities
 # ============================================================
 #
-# # rationale: small numeric helpers (parsing, abs, min/max, integer
+# rationale: small numeric helpers (parsing, abs, min/max, integer
 #   power, gcd, clamp). The refined surface returns natural values
-#   (CSignedInt64 / Bool) and reserves a `NumericParseError` /
+#   (Int64 / Bool) and reserves a `NumericParseError` /
 #   `NumericArithmeticError` domain for the operations that actually
 #   have failure cases â€” negative exponents on integer power, and
 #   degenerate-input gcd. Most ops are total.
 #
-# # invariant: parsers walk the input byte-by-byte and stop at the
+# invariant: parsers walk the input byte-by-byte and stop at the
 #   first non-matching byte; empty / junk inputs return 0 from the
 #   parsers. abs / min / max / clamp are total.
 #
-# # security: pure value-level computation; no allocation; no I/O.
+# security: pure value-level computation; no allocation; no I/O.
 #
-# # timing: parsers are O(byteLength); abs / min / max / clamp are
+# timing: parsers are O(byteLength); abs / min / max / clamp are
 #   O(1); power is O(exponent); gcd is O(log min(|a|, |b|)).
-
 
 # Pure-module file: smoke + extended tests live in
 # std/stdlib/main.test.sem.
@@ -40,585 +41,578 @@ storage module immutable stdlibModuleVersionText CNullTerminatedByteString "stan
 error NumericArithmeticError
 errorCase NumericArithmeticError NegativeExponentNotSupported
 
-
 # section stdlib.parseConstants
-domainLiteral asciiZeroByteCode CSignedInt64 48
+domainLiteral asciiZeroByteCode Int64 48
 domainLiteralTrust asciiZeroByteCode trustedStaticLiteral
-domainLiteral asciiNineByteCode CSignedInt64 57
+domainLiteral asciiNineByteCode Int64 57
 domainLiteralTrust asciiNineByteCode trustedStaticLiteral
-domainLiteral asciiSpaceByteCode CSignedInt64 32
+domainLiteral asciiSpaceByteCode Int64 32
 domainLiteralTrust asciiSpaceByteCode trustedStaticLiteral
-domainLiteral asciiTabByteCode CSignedInt64 9
+domainLiteral asciiTabByteCode Int64 9
 domainLiteralTrust asciiTabByteCode trustedStaticLiteral
-domainLiteral asciiPlusByteCode CSignedInt64 43
+domainLiteral asciiPlusByteCode Int64 43
 domainLiteralTrust asciiPlusByteCode trustedStaticLiteral
-domainLiteral asciiMinusByteCode CSignedInt64 45
+domainLiteral asciiMinusByteCode Int64 45
 domainLiteralTrust asciiMinusByteCode trustedStaticLiteral
-domainLiteral asciiUppercaseAByteCode CSignedInt64 65
+domainLiteral asciiUppercaseAByteCode Int64 65
 domainLiteralTrust asciiUppercaseAByteCode trustedStaticLiteral
-domainLiteral asciiUppercaseFByteCode CSignedInt64 70
+domainLiteral asciiUppercaseFByteCode Int64 70
 domainLiteralTrust asciiUppercaseFByteCode trustedStaticLiteral
-domainLiteral asciiLowercaseAByteCode CSignedInt64 97
+domainLiteral asciiLowercaseAByteCode Int64 97
 domainLiteralTrust asciiLowercaseAByteCode trustedStaticLiteral
-domainLiteral asciiLowercaseFByteCode CSignedInt64 102
+domainLiteral asciiLowercaseFByteCode Int64 102
 domainLiteralTrust asciiLowercaseFByteCode trustedStaticLiteral
-domainLiteral asciiLowercaseXByteCode CSignedInt64 120
+domainLiteral asciiLowercaseXByteCode Int64 120
 domainLiteralTrust asciiLowercaseXByteCode trustedStaticLiteral
-domainLiteral asciiUppercaseXByteCode CSignedInt64 88
+domainLiteral asciiUppercaseXByteCode Int64 88
 domainLiteralTrust asciiUppercaseXByteCode trustedStaticLiteral
-domainLiteral hexLowercaseOffsetForLetters CSignedInt64 87
+domainLiteral hexLowercaseOffsetForLetters Int64 87
 domainLiteralTrust hexLowercaseOffsetForLetters trustedStaticLiteral
-domainLiteral hexUppercaseOffsetForLetters CSignedInt64 55
+domainLiteral hexUppercaseOffsetForLetters Int64 55
 domainLiteralTrust hexUppercaseOffsetForLetters trustedStaticLiteral
-domainLiteral decimalBase CSignedInt64 10
+domainLiteral decimalBase Int64 10
 domainLiteralTrust decimalBase trustedStaticLiteral
-domainLiteral hexadecimalBase CSignedInt64 16
+domainLiteral hexadecimalBase Int64 16
 domainLiteralTrust hexadecimalBase trustedStaticLiteral
-domainLiteral integerOneStepValue CSignedInt64 1
+domainLiteral integerOneStepValue Int64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
-domainLiteral integerNegativeOneMultiplier CSignedInt64 -1
+domainLiteral integerNegativeOneMultiplier Int64 -1
 domainLiteralTrust integerNegativeOneMultiplier trustedStaticLiteral
-domainLiteral integerZeroBoundary CSignedInt64 0
+domainLiteral integerZeroBoundary Int64 0
 domainLiteralTrust integerZeroBoundary trustedStaticLiteral
 
 # section stdlib.parsers
 
 operation parseDecimalCStringToSignedInt64
-input parseDecimalCStringToSignedInt64 inputText CNullTerminatedByteString
-output parseDecimalCStringToSignedInt64 CSignedInt64
-memoryHeap parseDecimalCStringToSignedInt64 no
-memoryStackLimit parseDecimalCStringToSignedInt64 1024
+input operation parseDecimalCStringToSignedInt64 inputText String
+output operation parseDecimalCStringToSignedInt64 Int64
+memory parseDecimalCStringToSignedInt64 heap no
+memory parseDecimalCStringToSignedInt64 stack max 1024
 async parseDecimalCStringToSignedInt64 no
-purpose parseDecimalCStringToSignedInt64 "Parse a NUL-terminated decimal numeric string into an i64 (atoi/atol shape). Skips ASCII whitespace, accepts optional sign, accumulates digits until a non-digit byte."
-invariant parseDecimalCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-digit text is silently discarded."
-warning parseDecimalCStringToSignedInt64 "No overflow detection â€” inputs longer than 18 decimal digits silently wrap CSignedInt64."
+purpose operation parseDecimalCStringToSignedInt64 "Parse a NUL-terminated decimal numeric string into an i64 (atoi/atol shape). Skips ASCII whitespace, accepts optional sign, accumulates digits until a non-digit byte."
+invariant operation parseDecimalCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-digit text is silently discarded."
+warning parseDecimalCStringToSignedInt64 "No overflow detection â€” inputs longer than 18 decimal digits silently wrap Int64."
 guarantee parseDecimalCStringToSignedInt64 "Total."
 label startParseDecimalCStringToSignedInt64
-var decimalParseCursor I64 0
+memory parseDecimalCStringToSignedInt64 mutable decimalParseCursor Int64 0
 label decimalSkipWhitespace
 call loadByteForDecimalWsCall pointer.loadByte
-arg loadByteForDecimalWsCall buffer inputText
-arg loadByteForDecimalWsCall offset decimalParseCursor
+argument loadByteForDecimalWsCall buffer OpaquePointer inputText
+argument loadByteForDecimalWsCall offset ByteCount decimalParseCursor
 run loadByteForDecimalWsCall
-bind currentDecimalWsByte I8 loadByteForDecimalWsCall
-call detectDecimalWsSpaceCall math.equalI64
-arg detectDecimalWsSpaceCall left currentDecimalWsByte
-arg detectDecimalWsSpaceCall right asciiSpaceByteCode
+bind value currentDecimalWsByte Int8 loadByteForDecimalWsCall
+call detectDecimalWsSpaceCall math.equalInt64
+argument detectDecimalWsSpaceCall left Int64 currentDecimalWsByte
+argument detectDecimalWsSpaceCall right Int64 asciiSpaceByteCode
 run detectDecimalWsSpaceCall
-bind decimalWsIsSpace Bool detectDecimalWsSpaceCall
-branchIf decimalWsIsSpace consumeDecimalWhitespaceByte
-call detectDecimalWsTabCall math.equalI64
-arg detectDecimalWsTabCall left currentDecimalWsByte
-arg detectDecimalWsTabCall right asciiTabByteCode
+bind value decimalWsIsSpace Bool detectDecimalWsSpaceCall
+branch if condition decimalWsIsSpace target consumeDecimalWhitespaceByte
+call detectDecimalWsTabCall math.equalInt64
+argument detectDecimalWsTabCall left Int64 currentDecimalWsByte
+argument detectDecimalWsTabCall right Int64 asciiTabByteCode
 run detectDecimalWsTabCall
-bind decimalWsIsTab Bool detectDecimalWsTabCall
-branchIf decimalWsIsTab consumeDecimalWhitespaceByte
-branch decimalCheckSign
+bind value decimalWsIsTab Bool detectDecimalWsTabCall
+branch if condition decimalWsIsTab target consumeDecimalWhitespaceByte
+branch else target decimalCheckSign
 label consumeDecimalWhitespaceByte
-call advanceDecimalWsCursorCall math.addI64
-arg advanceDecimalWsCursorCall left decimalParseCursor
-arg advanceDecimalWsCursorCall right integerOneStepValue
+call advanceDecimalWsCursorCall math.addInt64
+argument advanceDecimalWsCursorCall left Int64 decimalParseCursor
+argument advanceDecimalWsCursorCall right Int64 integerOneStepValue
 run advanceDecimalWsCursorCall
-bind nextDecimalWsCursor I64 advanceDecimalWsCursorCall
-set decimalParseCursor nextDecimalWsCursor
-branch decimalSkipWhitespace
+bind value nextDecimalWsCursor Int64 advanceDecimalWsCursorCall
+set memory decimalParseCursor nextDecimalWsCursor
+jump target decimalSkipWhitespace
 label decimalCheckSign
-var decimalSignMultiplier I64 1
+memory parseDecimalCStringToSignedInt64 mutable decimalSignMultiplier Int64 1
 call loadByteForDecimalSignCall pointer.loadByte
-arg loadByteForDecimalSignCall buffer inputText
-arg loadByteForDecimalSignCall offset decimalParseCursor
+argument loadByteForDecimalSignCall buffer OpaquePointer inputText
+argument loadByteForDecimalSignCall offset ByteCount decimalParseCursor
 run loadByteForDecimalSignCall
-bind currentDecimalSignByte I8 loadByteForDecimalSignCall
-call detectDecimalPlusSignCall math.equalI64
-arg detectDecimalPlusSignCall left currentDecimalSignByte
-arg detectDecimalPlusSignCall right asciiPlusByteCode
+bind value currentDecimalSignByte Int8 loadByteForDecimalSignCall
+call detectDecimalPlusSignCall math.equalInt64
+argument detectDecimalPlusSignCall left Int64 currentDecimalSignByte
+argument detectDecimalPlusSignCall right Int64 asciiPlusByteCode
 run detectDecimalPlusSignCall
-bind decimalSignIsPlus Bool detectDecimalPlusSignCall
-branchIf decimalSignIsPlus consumeDecimalPlusSign
-call detectDecimalMinusSignCall math.equalI64
-arg detectDecimalMinusSignCall left currentDecimalSignByte
-arg detectDecimalMinusSignCall right asciiMinusByteCode
+bind value decimalSignIsPlus Bool detectDecimalPlusSignCall
+branch if condition decimalSignIsPlus target consumeDecimalPlusSign
+call detectDecimalMinusSignCall math.equalInt64
+argument detectDecimalMinusSignCall left Int64 currentDecimalSignByte
+argument detectDecimalMinusSignCall right Int64 asciiMinusByteCode
 run detectDecimalMinusSignCall
-bind decimalSignIsMinus Bool detectDecimalMinusSignCall
-branchIf decimalSignIsMinus consumeDecimalMinusSign
-branch parseDecimalDigits
+bind value decimalSignIsMinus Bool detectDecimalMinusSignCall
+branch if condition decimalSignIsMinus target consumeDecimalMinusSign
+branch else target parseDecimalDigits
 label consumeDecimalPlusSign
-call advanceDecimalPlusCursorCall math.addI64
-arg advanceDecimalPlusCursorCall left decimalParseCursor
-arg advanceDecimalPlusCursorCall right integerOneStepValue
+call advanceDecimalPlusCursorCall math.addInt64
+argument advanceDecimalPlusCursorCall left Int64 decimalParseCursor
+argument advanceDecimalPlusCursorCall right Int64 integerOneStepValue
 run advanceDecimalPlusCursorCall
-bind nextDecimalPlusCursor I64 advanceDecimalPlusCursorCall
-set decimalParseCursor nextDecimalPlusCursor
-branch parseDecimalDigits
+bind value nextDecimalPlusCursor Int64 advanceDecimalPlusCursorCall
+set memory decimalParseCursor nextDecimalPlusCursor
+jump target parseDecimalDigits
 label consumeDecimalMinusSign
-set decimalSignMultiplier integerNegativeOneMultiplier
-call advanceDecimalMinusCursorCall math.addI64
-arg advanceDecimalMinusCursorCall left decimalParseCursor
-arg advanceDecimalMinusCursorCall right integerOneStepValue
+set memory decimalSignMultiplier integerNegativeOneMultiplier
+call advanceDecimalMinusCursorCall math.addInt64
+argument advanceDecimalMinusCursorCall left Int64 decimalParseCursor
+argument advanceDecimalMinusCursorCall right Int64 integerOneStepValue
 run advanceDecimalMinusCursorCall
-bind nextDecimalMinusCursor I64 advanceDecimalMinusCursorCall
-set decimalParseCursor nextDecimalMinusCursor
-branch parseDecimalDigits
+bind value nextDecimalMinusCursor Int64 advanceDecimalMinusCursorCall
+set memory decimalParseCursor nextDecimalMinusCursor
+jump target parseDecimalDigits
 label parseDecimalDigits
-var decimalAccumulator I64 0
+memory parseDecimalCStringToSignedInt64 mutable decimalAccumulator Int64 0
 label decimalDigitStep
 call loadDecimalDigitByteCall pointer.loadByte
-arg loadDecimalDigitByteCall buffer inputText
-arg loadDecimalDigitByteCall offset decimalParseCursor
+argument loadDecimalDigitByteCall buffer OpaquePointer inputText
+argument loadDecimalDigitByteCall offset ByteCount decimalParseCursor
 run loadDecimalDigitByteCall
-bind currentDecimalDigitByte I8 loadDecimalDigitByteCall
-call detectDecimalDigitBelowZeroCall math.lessThanI64
-arg detectDecimalDigitBelowZeroCall left currentDecimalDigitByte
-arg detectDecimalDigitBelowZeroCall right asciiZeroByteCode
+bind value currentDecimalDigitByte Int8 loadDecimalDigitByteCall
+call detectDecimalDigitBelowZeroCall math.lessThanInt64
+argument detectDecimalDigitBelowZeroCall left Int64 currentDecimalDigitByte
+argument detectDecimalDigitBelowZeroCall right Int64 asciiZeroByteCode
 run detectDecimalDigitBelowZeroCall
-bind decimalDigitBelowZero Bool detectDecimalDigitBelowZeroCall
-branchIf decimalDigitBelowZero decimalParseComplete
-call detectDecimalDigitAboveNineCall math.greaterThanI64
-arg detectDecimalDigitAboveNineCall left currentDecimalDigitByte
-arg detectDecimalDigitAboveNineCall right asciiNineByteCode
+bind value decimalDigitBelowZero Bool detectDecimalDigitBelowZeroCall
+branch if condition decimalDigitBelowZero target decimalParseComplete
+call detectDecimalDigitAboveNineCall math.greaterThanInt64
+argument detectDecimalDigitAboveNineCall left Int64 currentDecimalDigitByte
+argument detectDecimalDigitAboveNineCall right Int64 asciiNineByteCode
 run detectDecimalDigitAboveNineCall
-bind decimalDigitAboveNine Bool detectDecimalDigitAboveNineCall
-branchIf decimalDigitAboveNine decimalParseComplete
-call computeDecimalDigitValueCall math.subtractI64
-arg computeDecimalDigitValueCall left currentDecimalDigitByte
-arg computeDecimalDigitValueCall right asciiZeroByteCode
+bind value decimalDigitAboveNine Bool detectDecimalDigitAboveNineCall
+branch if condition decimalDigitAboveNine target decimalParseComplete
+call computeDecimalDigitValueCall math.subtractInt64
+argument computeDecimalDigitValueCall left Int64 currentDecimalDigitByte
+argument computeDecimalDigitValueCall right Int64 asciiZeroByteCode
 run computeDecimalDigitValueCall
-bind currentDecimalDigitValue I64 computeDecimalDigitValueCall
-call shiftDecimalAccumulatorCall math.multiplyI64
-arg shiftDecimalAccumulatorCall left decimalAccumulator
-arg shiftDecimalAccumulatorCall right decimalBase
+bind value currentDecimalDigitValue Int64 computeDecimalDigitValueCall
+call shiftDecimalAccumulatorCall math.multiplyInt64
+argument shiftDecimalAccumulatorCall left Int64 decimalAccumulator
+argument shiftDecimalAccumulatorCall right Int64 decimalBase
 run shiftDecimalAccumulatorCall
-bind shiftedDecimalAccumulator I64 shiftDecimalAccumulatorCall
-call addDecimalDigitCall math.addI64
-arg addDecimalDigitCall left shiftedDecimalAccumulator
-arg addDecimalDigitCall right currentDecimalDigitValue
+bind value shiftedDecimalAccumulator Int64 shiftDecimalAccumulatorCall
+call addDecimalDigitCall math.addInt64
+argument addDecimalDigitCall left Int64 shiftedDecimalAccumulator
+argument addDecimalDigitCall right Int64 currentDecimalDigitValue
 run addDecimalDigitCall
-bind decimalAccumulatorAfterDigit I64 addDecimalDigitCall
-set decimalAccumulator decimalAccumulatorAfterDigit
-call advanceDecimalDigitCursorCall math.addI64
-arg advanceDecimalDigitCursorCall left decimalParseCursor
-arg advanceDecimalDigitCursorCall right integerOneStepValue
+bind value decimalAccumulatorAfterDigit Int64 addDecimalDigitCall
+set memory decimalAccumulator decimalAccumulatorAfterDigit
+call advanceDecimalDigitCursorCall math.addInt64
+argument advanceDecimalDigitCursorCall left Int64 decimalParseCursor
+argument advanceDecimalDigitCursorCall right Int64 integerOneStepValue
 run advanceDecimalDigitCursorCall
-bind nextDecimalDigitCursor I64 advanceDecimalDigitCursorCall
-set decimalParseCursor nextDecimalDigitCursor
-branch decimalDigitStep
+bind value nextDecimalDigitCursor Int64 advanceDecimalDigitCursorCall
+set memory decimalParseCursor nextDecimalDigitCursor
+jump target decimalDigitStep
 label decimalParseComplete
-call applyDecimalSignCall math.multiplyI64
-arg applyDecimalSignCall left decimalAccumulator
-arg applyDecimalSignCall right decimalSignMultiplier
+call applyDecimalSignCall math.multiplyInt64
+argument applyDecimalSignCall left Int64 decimalAccumulator
+argument applyDecimalSignCall right Int64 decimalSignMultiplier
 run applyDecimalSignCall
-bind signedDecimalResult CSignedInt64 applyDecimalSignCall
-returnValue signedDecimalResult
+bind value signedDecimalResult Int64 applyDecimalSignCall
+return value signedDecimalResult
 
 operation parseHexCStringToSignedInt64
-input parseHexCStringToSignedInt64 inputText CNullTerminatedByteString
-output parseHexCStringToSignedInt64 CSignedInt64
-memoryHeap parseHexCStringToSignedInt64 no
-memoryStackLimit parseHexCStringToSignedInt64 1024
+input operation parseHexCStringToSignedInt64 inputText String
+output operation parseHexCStringToSignedInt64 Int64
+memory parseHexCStringToSignedInt64 heap no
+memory parseHexCStringToSignedInt64 stack max 1024
 async parseHexCStringToSignedInt64 no
-purpose parseHexCStringToSignedInt64 "Parse a NUL-terminated hex numeric string into an i64 (strtol(s, NULL, 16) shape). Skips whitespace, accepts optional sign, accepts optional 0x / 0X prefix, accumulates hex digits."
-invariant parseHexCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-hex text is silently discarded."
-warning parseHexCStringToSignedInt64 "No overflow detection â€” inputs longer than 15 hex digits silently wrap CSignedInt64."
+purpose operation parseHexCStringToSignedInt64 "Parse a NUL-terminated hex numeric string into an i64 (strtol(s, NULL, 16) shape). Skips whitespace, accepts optional sign, accepts optional 0x / 0X prefix, accumulates hex digits."
+invariant operation parseHexCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-hex text is silently discarded."
+warning parseHexCStringToSignedInt64 "No overflow detection â€” inputs longer than 15 hex digits silently wrap Int64."
 guarantee parseHexCStringToSignedInt64 "Total."
 label startParseHexCStringToSignedInt64
-var hexParseCursor I64 0
+memory parseHexCStringToSignedInt64 mutable hexParseCursor Int64 0
 label hexSkipWhitespace
 call loadByteForHexWsCall pointer.loadByte
-arg loadByteForHexWsCall buffer inputText
-arg loadByteForHexWsCall offset hexParseCursor
+argument loadByteForHexWsCall buffer OpaquePointer inputText
+argument loadByteForHexWsCall offset ByteCount hexParseCursor
 run loadByteForHexWsCall
-bind currentHexWsByte I8 loadByteForHexWsCall
-call detectHexWsSpaceCall math.equalI64
-arg detectHexWsSpaceCall left currentHexWsByte
-arg detectHexWsSpaceCall right asciiSpaceByteCode
+bind value currentHexWsByte Int8 loadByteForHexWsCall
+call detectHexWsSpaceCall math.equalInt64
+argument detectHexWsSpaceCall left Int64 currentHexWsByte
+argument detectHexWsSpaceCall right Int64 asciiSpaceByteCode
 run detectHexWsSpaceCall
-bind hexWsIsSpace Bool detectHexWsSpaceCall
-branchIf hexWsIsSpace consumeHexWhitespaceByte
-call detectHexWsTabCall math.equalI64
-arg detectHexWsTabCall left currentHexWsByte
-arg detectHexWsTabCall right asciiTabByteCode
+bind value hexWsIsSpace Bool detectHexWsSpaceCall
+branch if condition hexWsIsSpace target consumeHexWhitespaceByte
+call detectHexWsTabCall math.equalInt64
+argument detectHexWsTabCall left Int64 currentHexWsByte
+argument detectHexWsTabCall right Int64 asciiTabByteCode
 run detectHexWsTabCall
-bind hexWsIsTab Bool detectHexWsTabCall
-branchIf hexWsIsTab consumeHexWhitespaceByte
-branch hexCheckSign
+bind value hexWsIsTab Bool detectHexWsTabCall
+branch if condition hexWsIsTab target consumeHexWhitespaceByte
+branch else target hexCheckSign
 label consumeHexWhitespaceByte
-call advanceHexWsCursorCall math.addI64
-arg advanceHexWsCursorCall left hexParseCursor
-arg advanceHexWsCursorCall right integerOneStepValue
+call advanceHexWsCursorCall math.addInt64
+argument advanceHexWsCursorCall left Int64 hexParseCursor
+argument advanceHexWsCursorCall right Int64 integerOneStepValue
 run advanceHexWsCursorCall
-bind nextHexWsCursor I64 advanceHexWsCursorCall
-set hexParseCursor nextHexWsCursor
-branch hexSkipWhitespace
+bind value nextHexWsCursor Int64 advanceHexWsCursorCall
+set memory hexParseCursor nextHexWsCursor
+jump target hexSkipWhitespace
 label hexCheckSign
-var hexSignMultiplier I64 1
+memory parseHexCStringToSignedInt64 mutable hexSignMultiplier Int64 1
 call loadByteForHexSignCall pointer.loadByte
-arg loadByteForHexSignCall buffer inputText
-arg loadByteForHexSignCall offset hexParseCursor
+argument loadByteForHexSignCall buffer OpaquePointer inputText
+argument loadByteForHexSignCall offset ByteCount hexParseCursor
 run loadByteForHexSignCall
-bind currentHexSignByte I8 loadByteForHexSignCall
-call detectHexPlusSignCall math.equalI64
-arg detectHexPlusSignCall left currentHexSignByte
-arg detectHexPlusSignCall right asciiPlusByteCode
+bind value currentHexSignByte Int8 loadByteForHexSignCall
+call detectHexPlusSignCall math.equalInt64
+argument detectHexPlusSignCall left Int64 currentHexSignByte
+argument detectHexPlusSignCall right Int64 asciiPlusByteCode
 run detectHexPlusSignCall
-bind hexSignIsPlus Bool detectHexPlusSignCall
-branchIf hexSignIsPlus consumeHexPlusSign
-call detectHexMinusSignCall math.equalI64
-arg detectHexMinusSignCall left currentHexSignByte
-arg detectHexMinusSignCall right asciiMinusByteCode
+bind value hexSignIsPlus Bool detectHexPlusSignCall
+branch if condition hexSignIsPlus target consumeHexPlusSign
+call detectHexMinusSignCall math.equalInt64
+argument detectHexMinusSignCall left Int64 currentHexSignByte
+argument detectHexMinusSignCall right Int64 asciiMinusByteCode
 run detectHexMinusSignCall
-bind hexSignIsMinus Bool detectHexMinusSignCall
-branchIf hexSignIsMinus consumeHexMinusSign
-branch hexCheckPrefix
+bind value hexSignIsMinus Bool detectHexMinusSignCall
+branch if condition hexSignIsMinus target consumeHexMinusSign
+branch else target hexCheckPrefix
 label consumeHexPlusSign
-call advanceHexPlusCursorCall math.addI64
-arg advanceHexPlusCursorCall left hexParseCursor
-arg advanceHexPlusCursorCall right integerOneStepValue
+call advanceHexPlusCursorCall math.addInt64
+argument advanceHexPlusCursorCall left Int64 hexParseCursor
+argument advanceHexPlusCursorCall right Int64 integerOneStepValue
 run advanceHexPlusCursorCall
-bind nextHexPlusCursor I64 advanceHexPlusCursorCall
-set hexParseCursor nextHexPlusCursor
-branch hexCheckPrefix
+bind value nextHexPlusCursor Int64 advanceHexPlusCursorCall
+set memory hexParseCursor nextHexPlusCursor
+jump target hexCheckPrefix
 label consumeHexMinusSign
-set hexSignMultiplier integerNegativeOneMultiplier
-call advanceHexMinusCursorCall math.addI64
-arg advanceHexMinusCursorCall left hexParseCursor
-arg advanceHexMinusCursorCall right integerOneStepValue
+set memory hexSignMultiplier integerNegativeOneMultiplier
+call advanceHexMinusCursorCall math.addInt64
+argument advanceHexMinusCursorCall left Int64 hexParseCursor
+argument advanceHexMinusCursorCall right Int64 integerOneStepValue
 run advanceHexMinusCursorCall
-bind nextHexMinusCursor I64 advanceHexMinusCursorCall
-set hexParseCursor nextHexMinusCursor
-branch hexCheckPrefix
+bind value nextHexMinusCursor Int64 advanceHexMinusCursorCall
+set memory hexParseCursor nextHexMinusCursor
+jump target hexCheckPrefix
 label hexCheckPrefix
 call loadHexPrefixZeroCall pointer.loadByte
-arg loadHexPrefixZeroCall buffer inputText
-arg loadHexPrefixZeroCall offset hexParseCursor
+argument loadHexPrefixZeroCall buffer OpaquePointer inputText
+argument loadHexPrefixZeroCall offset ByteCount hexParseCursor
 run loadHexPrefixZeroCall
-bind hexPrefixZeroByte I8 loadHexPrefixZeroCall
-call detectHexPrefixZeroCall math.equalI64
-arg detectHexPrefixZeroCall left hexPrefixZeroByte
-arg detectHexPrefixZeroCall right asciiZeroByteCode
+bind value hexPrefixZeroByte Int8 loadHexPrefixZeroCall
+call detectHexPrefixZeroCall math.equalInt64
+argument detectHexPrefixZeroCall left Int64 hexPrefixZeroByte
+argument detectHexPrefixZeroCall right Int64 asciiZeroByteCode
 run detectHexPrefixZeroCall
-bind hexPrefixStartsWithZero Bool detectHexPrefixZeroCall
-branchIf hexPrefixStartsWithZero hexInspectPrefixX
-branch parseHexDigits
+bind value hexPrefixStartsWithZero Bool detectHexPrefixZeroCall
+branch if condition hexPrefixStartsWithZero target hexInspectPrefixX
+branch else target parseHexDigits
 label hexInspectPrefixX
-call computeHexPrefixXOffsetCall math.addI64
-arg computeHexPrefixXOffsetCall left hexParseCursor
-arg computeHexPrefixXOffsetCall right integerOneStepValue
+call computeHexPrefixXOffsetCall math.addInt64
+argument computeHexPrefixXOffsetCall left Int64 hexParseCursor
+argument computeHexPrefixXOffsetCall right Int64 integerOneStepValue
 run computeHexPrefixXOffsetCall
-bind hexPrefixXCursor I64 computeHexPrefixXOffsetCall
+bind value hexPrefixXCursor Int64 computeHexPrefixXOffsetCall
 call loadHexPrefixXCall pointer.loadByte
-arg loadHexPrefixXCall buffer inputText
-arg loadHexPrefixXCall offset hexPrefixXCursor
+argument loadHexPrefixXCall buffer OpaquePointer inputText
+argument loadHexPrefixXCall offset ByteCount hexPrefixXCursor
 run loadHexPrefixXCall
-bind hexPrefixXByte I8 loadHexPrefixXCall
-call detectHexPrefixLowerXCall math.equalI64
-arg detectHexPrefixLowerXCall left hexPrefixXByte
-arg detectHexPrefixLowerXCall right asciiLowercaseXByteCode
+bind value hexPrefixXByte Int8 loadHexPrefixXCall
+call detectHexPrefixLowerXCall math.equalInt64
+argument detectHexPrefixLowerXCall left Int64 hexPrefixXByte
+argument detectHexPrefixLowerXCall right Int64 asciiLowercaseXByteCode
 run detectHexPrefixLowerXCall
-bind hexPrefixIsLowerX Bool detectHexPrefixLowerXCall
-branchIf hexPrefixIsLowerX consumeHexPrefix
-call detectHexPrefixUpperXCall math.equalI64
-arg detectHexPrefixUpperXCall left hexPrefixXByte
-arg detectHexPrefixUpperXCall right asciiUppercaseXByteCode
+bind value hexPrefixIsLowerX Bool detectHexPrefixLowerXCall
+branch if condition hexPrefixIsLowerX target consumeHexPrefix
+call detectHexPrefixUpperXCall math.equalInt64
+argument detectHexPrefixUpperXCall left Int64 hexPrefixXByte
+argument detectHexPrefixUpperXCall right Int64 asciiUppercaseXByteCode
 run detectHexPrefixUpperXCall
-bind hexPrefixIsUpperX Bool detectHexPrefixUpperXCall
-branchIf hexPrefixIsUpperX consumeHexPrefix
-branch parseHexDigits
+bind value hexPrefixIsUpperX Bool detectHexPrefixUpperXCall
+branch if condition hexPrefixIsUpperX target consumeHexPrefix
+branch else target parseHexDigits
 label consumeHexPrefix
-call consumePrefixStepOneCall math.addI64
-arg consumePrefixStepOneCall left hexParseCursor
-arg consumePrefixStepOneCall right integerOneStepValue
+call consumePrefixStepOneCall math.addInt64
+argument consumePrefixStepOneCall left Int64 hexParseCursor
+argument consumePrefixStepOneCall right Int64 integerOneStepValue
 run consumePrefixStepOneCall
-bind hexCursorAfterPrefixStepOne I64 consumePrefixStepOneCall
-call consumePrefixStepTwoCall math.addI64
-arg consumePrefixStepTwoCall left hexCursorAfterPrefixStepOne
-arg consumePrefixStepTwoCall right integerOneStepValue
+bind value hexCursorAfterPrefixStepOne Int64 consumePrefixStepOneCall
+call consumePrefixStepTwoCall math.addInt64
+argument consumePrefixStepTwoCall left Int64 hexCursorAfterPrefixStepOne
+argument consumePrefixStepTwoCall right Int64 integerOneStepValue
 run consumePrefixStepTwoCall
-bind hexCursorAfterPrefixStepTwo I64 consumePrefixStepTwoCall
-set hexParseCursor hexCursorAfterPrefixStepTwo
-branch parseHexDigits
+bind value hexCursorAfterPrefixStepTwo Int64 consumePrefixStepTwoCall
+set memory hexParseCursor hexCursorAfterPrefixStepTwo
+jump target parseHexDigits
 label parseHexDigits
-var hexAccumulator I64 0
-var currentHexDigitValue I64 0
+memory parseHexCStringToSignedInt64 mutable hexAccumulator Int64 0
+memory parseHexCStringToSignedInt64 mutable currentHexDigitValue Int64 0
 label hexDigitStep
 call loadHexDigitByteCall pointer.loadByte
-arg loadHexDigitByteCall buffer inputText
-arg loadHexDigitByteCall offset hexParseCursor
+argument loadHexDigitByteCall buffer OpaquePointer inputText
+argument loadHexDigitByteCall offset ByteCount hexParseCursor
 run loadHexDigitByteCall
-bind currentHexDigitByte I8 loadHexDigitByteCall
-call detectHexDecBelowZeroCall math.lessThanI64
-arg detectHexDecBelowZeroCall left currentHexDigitByte
-arg detectHexDecBelowZeroCall right asciiZeroByteCode
+bind value currentHexDigitByte Int8 loadHexDigitByteCall
+call detectHexDecBelowZeroCall math.lessThanInt64
+argument detectHexDecBelowZeroCall left Int64 currentHexDigitByte
+argument detectHexDecBelowZeroCall right Int64 asciiZeroByteCode
 run detectHexDecBelowZeroCall
-bind hexDigitBelowDecZero Bool detectHexDecBelowZeroCall
-branchIf hexDigitBelowDecZero hexInspectUppercaseRange
-call detectHexDecAboveNineCall math.greaterThanI64
-arg detectHexDecAboveNineCall left currentHexDigitByte
-arg detectHexDecAboveNineCall right asciiNineByteCode
+bind value hexDigitBelowDecZero Bool detectHexDecBelowZeroCall
+branch if condition hexDigitBelowDecZero target hexInspectUppercaseRange
+call detectHexDecAboveNineCall math.greaterThanInt64
+argument detectHexDecAboveNineCall left Int64 currentHexDigitByte
+argument detectHexDecAboveNineCall right Int64 asciiNineByteCode
 run detectHexDecAboveNineCall
-bind hexDigitAboveDecNine Bool detectHexDecAboveNineCall
-branchIf hexDigitAboveDecNine hexInspectUppercaseRange
-call computeHexDecValueCall math.subtractI64
-arg computeHexDecValueCall left currentHexDigitByte
-arg computeHexDecValueCall right asciiZeroByteCode
+bind value hexDigitAboveDecNine Bool detectHexDecAboveNineCall
+branch if condition hexDigitAboveDecNine target hexInspectUppercaseRange
+call computeHexDecValueCall math.subtractInt64
+argument computeHexDecValueCall left Int64 currentHexDigitByte
+argument computeHexDecValueCall right Int64 asciiZeroByteCode
 run computeHexDecValueCall
-bind hexDigitDecValue I64 computeHexDecValueCall
-set currentHexDigitValue hexDigitDecValue
-# Read the just-set value to satisfy the dead-store check across
-# the parallel branches below (path A: digit, path B: upper hex,
-# path C: lower hex). The branchIf condition is always true on
-# this path because hex digit values 0..9 are non-zero except for
-# digit '0'; both outcomes go to hexAccumulateDigit anyway.
-branchIf currentHexDigitValue hexAccumulateDigit
-branch hexAccumulateDigit
+bind value hexDigitDecValue Int64 computeHexDecValueCall
+set memory currentHexDigitValue hexDigitDecValue
+# Decimal-digit path resolved: the value is in currentHexDigitValue, so
+# fall through to the shared accumulator via an unconditional jump.
+jump target hexAccumulateDigit
 label hexInspectUppercaseRange
-call detectHexUpperABelowCall math.lessThanI64
-arg detectHexUpperABelowCall left currentHexDigitByte
-arg detectHexUpperABelowCall right asciiUppercaseAByteCode
+call detectHexUpperABelowCall math.lessThanInt64
+argument detectHexUpperABelowCall left Int64 currentHexDigitByte
+argument detectHexUpperABelowCall right Int64 asciiUppercaseAByteCode
 run detectHexUpperABelowCall
-bind hexDigitBelowUpperA Bool detectHexUpperABelowCall
-branchIf hexDigitBelowUpperA hexInspectLowercaseRange
-call detectHexUpperFAboveCall math.greaterThanI64
-arg detectHexUpperFAboveCall left currentHexDigitByte
-arg detectHexUpperFAboveCall right asciiUppercaseFByteCode
+bind value hexDigitBelowUpperA Bool detectHexUpperABelowCall
+branch if condition hexDigitBelowUpperA target hexInspectLowercaseRange
+call detectHexUpperFAboveCall math.greaterThanInt64
+argument detectHexUpperFAboveCall left Int64 currentHexDigitByte
+argument detectHexUpperFAboveCall right Int64 asciiUppercaseFByteCode
 run detectHexUpperFAboveCall
-bind hexDigitAboveUpperF Bool detectHexUpperFAboveCall
-branchIf hexDigitAboveUpperF hexInspectLowercaseRange
-call computeHexUpperValueCall math.subtractI64
-arg computeHexUpperValueCall left currentHexDigitByte
-arg computeHexUpperValueCall right hexUppercaseOffsetForLetters
+bind value hexDigitAboveUpperF Bool detectHexUpperFAboveCall
+branch if condition hexDigitAboveUpperF target hexInspectLowercaseRange
+call computeHexUpperValueCall math.subtractInt64
+argument computeHexUpperValueCall left Int64 currentHexDigitByte
+argument computeHexUpperValueCall right Int64 hexUppercaseOffsetForLetters
 run computeHexUpperValueCall
-bind hexDigitUpperValue I64 computeHexUpperValueCall
-set currentHexDigitValue hexDigitUpperValue
-branchIf currentHexDigitValue hexAccumulateDigit
-branch hexAccumulateDigit
+bind value hexDigitUpperValue Int64 computeHexUpperValueCall
+set memory currentHexDigitValue hexDigitUpperValue
+jump target hexAccumulateDigit
 label hexInspectLowercaseRange
-call detectHexLowerABelowCall math.lessThanI64
-arg detectHexLowerABelowCall left currentHexDigitByte
-arg detectHexLowerABelowCall right asciiLowercaseAByteCode
+call detectHexLowerABelowCall math.lessThanInt64
+argument detectHexLowerABelowCall left Int64 currentHexDigitByte
+argument detectHexLowerABelowCall right Int64 asciiLowercaseAByteCode
 run detectHexLowerABelowCall
-bind hexDigitBelowLowerA Bool detectHexLowerABelowCall
-branchIf hexDigitBelowLowerA hexParseComplete
-call detectHexLowerFAboveCall math.greaterThanI64
-arg detectHexLowerFAboveCall left currentHexDigitByte
-arg detectHexLowerFAboveCall right asciiLowercaseFByteCode
+bind value hexDigitBelowLowerA Bool detectHexLowerABelowCall
+branch if condition hexDigitBelowLowerA target hexParseComplete
+call detectHexLowerFAboveCall math.greaterThanInt64
+argument detectHexLowerFAboveCall left Int64 currentHexDigitByte
+argument detectHexLowerFAboveCall right Int64 asciiLowercaseFByteCode
 run detectHexLowerFAboveCall
-bind hexDigitAboveLowerF Bool detectHexLowerFAboveCall
-branchIf hexDigitAboveLowerF hexParseComplete
-call computeHexLowerValueCall math.subtractI64
-arg computeHexLowerValueCall left currentHexDigitByte
-arg computeHexLowerValueCall right hexLowercaseOffsetForLetters
+bind value hexDigitAboveLowerF Bool detectHexLowerFAboveCall
+branch if condition hexDigitAboveLowerF target hexParseComplete
+call computeHexLowerValueCall math.subtractInt64
+argument computeHexLowerValueCall left Int64 currentHexDigitByte
+argument computeHexLowerValueCall right Int64 hexLowercaseOffsetForLetters
 run computeHexLowerValueCall
-bind hexDigitLowerValue I64 computeHexLowerValueCall
-set currentHexDigitValue hexDigitLowerValue
-branch hexAccumulateDigit
+bind value hexDigitLowerValue Int64 computeHexLowerValueCall
+set memory currentHexDigitValue hexDigitLowerValue
+jump target hexAccumulateDigit
 label hexAccumulateDigit
-call shiftHexAccumulatorCall math.multiplyI64
-arg shiftHexAccumulatorCall left hexAccumulator
-arg shiftHexAccumulatorCall right hexadecimalBase
+call shiftHexAccumulatorCall math.multiplyInt64
+argument shiftHexAccumulatorCall left Int64 hexAccumulator
+argument shiftHexAccumulatorCall right Int64 hexadecimalBase
 run shiftHexAccumulatorCall
-bind shiftedHexAccumulator I64 shiftHexAccumulatorCall
-call addHexDigitCall math.addI64
-arg addHexDigitCall left shiftedHexAccumulator
-arg addHexDigitCall right currentHexDigitValue
+bind value shiftedHexAccumulator Int64 shiftHexAccumulatorCall
+call addHexDigitCall math.addInt64
+argument addHexDigitCall left Int64 shiftedHexAccumulator
+argument addHexDigitCall right Int64 currentHexDigitValue
 run addHexDigitCall
-bind hexAccumulatorAfterDigit I64 addHexDigitCall
-set hexAccumulator hexAccumulatorAfterDigit
-call advanceHexDigitCursorCall math.addI64
-arg advanceHexDigitCursorCall left hexParseCursor
-arg advanceHexDigitCursorCall right integerOneStepValue
+bind value hexAccumulatorAfterDigit Int64 addHexDigitCall
+set memory hexAccumulator hexAccumulatorAfterDigit
+call advanceHexDigitCursorCall math.addInt64
+argument advanceHexDigitCursorCall left Int64 hexParseCursor
+argument advanceHexDigitCursorCall right Int64 integerOneStepValue
 run advanceHexDigitCursorCall
-bind nextHexDigitCursor I64 advanceHexDigitCursorCall
-set hexParseCursor nextHexDigitCursor
-branch hexDigitStep
+bind value nextHexDigitCursor Int64 advanceHexDigitCursorCall
+set memory hexParseCursor nextHexDigitCursor
+jump target hexDigitStep
 label hexParseComplete
-call applyHexSignCall math.multiplyI64
-arg applyHexSignCall left hexAccumulator
-arg applyHexSignCall right hexSignMultiplier
+call applyHexSignCall math.multiplyInt64
+argument applyHexSignCall left Int64 hexAccumulator
+argument applyHexSignCall right Int64 hexSignMultiplier
 run applyHexSignCall
-bind signedHexResult CSignedInt64 applyHexSignCall
-returnValue signedHexResult
+bind value signedHexResult Int64 applyHexSignCall
+return value signedHexResult
 
 # section stdlib.totalIntegerHelpers
 
 operation absoluteSignedInt64
-input absoluteSignedInt64 inputValue CSignedInt64
-output absoluteSignedInt64 CSignedInt64
-memoryHeap absoluteSignedInt64 no
+input operation absoluteSignedInt64 inputValue Int64
+output operation absoluteSignedInt64 Int64
+memory absoluteSignedInt64 heap no
 async absoluteSignedInt64 no
-purpose absoluteSignedInt64 "Returns |inputValue|."
+purpose operation absoluteSignedInt64 "Returns |inputValue|."
 warning absoluteSignedInt64 "INT64_MIN negation overflows back to INT64_MIN (two's-complement)."
 guarantee absoluteSignedInt64 "Total."
 label startAbsoluteSignedInt64
-call detectAbsoluteInputNegativeCall math.lessThanI64
-arg detectAbsoluteInputNegativeCall left inputValue
-arg detectAbsoluteInputNegativeCall right integerZeroBoundary
+call detectAbsoluteInputNegativeCall math.lessThanInt64
+argument detectAbsoluteInputNegativeCall left Int64 inputValue
+argument detectAbsoluteInputNegativeCall right Int64 integerZeroBoundary
 run detectAbsoluteInputNegativeCall
-bind absoluteInputIsNegative Bool detectAbsoluteInputNegativeCall
-branchIf absoluteInputIsNegative negateAbsoluteInput
-returnValue inputValue
+bind value absoluteInputIsNegative Bool detectAbsoluteInputNegativeCall
+branch if condition absoluteInputIsNegative target negateAbsoluteInput
+return value inputValue
 label negateAbsoluteInput
-call negateAbsoluteInputCall math.multiplyI64
-arg negateAbsoluteInputCall left inputValue
-arg negateAbsoluteInputCall right integerNegativeOneMultiplier
+call negateAbsoluteInputCall math.multiplyInt64
+argument negateAbsoluteInputCall left Int64 inputValue
+argument negateAbsoluteInputCall right Int64 integerNegativeOneMultiplier
 run negateAbsoluteInputCall
-bind negatedAbsoluteValue CSignedInt64 negateAbsoluteInputCall
-returnValue negatedAbsoluteValue
+bind value negatedAbsoluteValue Int64 negateAbsoluteInputCall
+return value negatedAbsoluteValue
 
 operation minimumSignedInt64
-input minimumSignedInt64 leftValue CSignedInt64
-input minimumSignedInt64 rightValue CSignedInt64
-output minimumSignedInt64 CSignedInt64
-memoryHeap minimumSignedInt64 no
+input operation minimumSignedInt64 leftValue Int64
+input operation minimumSignedInt64 rightValue Int64
+output operation minimumSignedInt64 Int64
+memory minimumSignedInt64 heap no
 async minimumSignedInt64 no
-purpose minimumSignedInt64 "Returns the smaller of leftValue and rightValue."
-invariant minimumSignedInt64 "Commutative."
+purpose operation minimumSignedInt64 "Returns the smaller of leftValue and rightValue."
+invariant operation minimumSignedInt64 "Commutative."
 guarantee minimumSignedInt64 "Total."
 label startMinimumSignedInt64
-call detectLeftLessForMinCall math.lessThanI64
-arg detectLeftLessForMinCall left leftValue
-arg detectLeftLessForMinCall right rightValue
+call detectLeftLessForMinCall math.lessThanInt64
+argument detectLeftLessForMinCall left Int64 leftValue
+argument detectLeftLessForMinCall right Int64 rightValue
 run detectLeftLessForMinCall
-bind leftLessThanRightForMin Bool detectLeftLessForMinCall
-branchIf leftLessThanRightForMin returnMinLeft
-returnValue rightValue
+bind value leftLessThanRightForMin Bool detectLeftLessForMinCall
+branch if condition leftLessThanRightForMin target returnMinLeft
+return value rightValue
 label returnMinLeft
-returnValue leftValue
+return value leftValue
 
 operation maximumSignedInt64
-input maximumSignedInt64 leftValue CSignedInt64
-input maximumSignedInt64 rightValue CSignedInt64
-output maximumSignedInt64 CSignedInt64
-memoryHeap maximumSignedInt64 no
+input operation maximumSignedInt64 leftValue Int64
+input operation maximumSignedInt64 rightValue Int64
+output operation maximumSignedInt64 Int64
+memory maximumSignedInt64 heap no
 async maximumSignedInt64 no
-purpose maximumSignedInt64 "Returns the larger of leftValue and rightValue."
-invariant maximumSignedInt64 "Commutative."
+purpose operation maximumSignedInt64 "Returns the larger of leftValue and rightValue."
+invariant operation maximumSignedInt64 "Commutative."
 guarantee maximumSignedInt64 "Total."
 label startMaximumSignedInt64
-call detectLeftGreaterForMaxCall math.greaterThanI64
-arg detectLeftGreaterForMaxCall left leftValue
-arg detectLeftGreaterForMaxCall right rightValue
+call detectLeftGreaterForMaxCall math.greaterThanInt64
+argument detectLeftGreaterForMaxCall left Int64 leftValue
+argument detectLeftGreaterForMaxCall right Int64 rightValue
 run detectLeftGreaterForMaxCall
-bind leftGreaterThanRightForMax Bool detectLeftGreaterForMaxCall
-branchIf leftGreaterThanRightForMax returnMaxLeft
-returnValue rightValue
+bind value leftGreaterThanRightForMax Bool detectLeftGreaterForMaxCall
+branch if condition leftGreaterThanRightForMax target returnMaxLeft
+return value rightValue
 label returnMaxLeft
-returnValue leftValue
+return value leftValue
 
 operation powerSignedInt64
-input powerSignedInt64 baseValue CSignedInt64
-input powerSignedInt64 exponentValue CSignedInt64
-output powerSignedInt64 Result CSignedInt64 NumericArithmeticError
-memoryHeap powerSignedInt64 no
+input operation powerSignedInt64 baseValue Int64
+input operation powerSignedInt64 exponentValue Int64
+output operation powerSignedInt64 Result Int64 NumericArithmeticError
+memory powerSignedInt64 heap no
 async powerSignedInt64 no
-purpose powerSignedInt64 "Returns baseValue^exponentValue via repeated multiplication."
-invariant powerSignedInt64 "exponent == 0 always returns 1 (including 0^0)."
+purpose operation powerSignedInt64 "Returns baseValue^exponentValue via repeated multiplication."
+invariant operation powerSignedInt64 "exponent == 0 always returns 1 (including 0^0)."
 failure powerSignedInt64 NegativeExponentNotSupported "Returned for exponent < 0 (integer arithmetic can't represent fractions)."
 warning powerSignedInt64 "Wraps modulo 2^64 on overflow."
 guarantee powerSignedInt64 "Defined for every (base, non-negative exponent) pair."
 label startPowerSignedInt64
-call detectExponentNegativeCall math.lessThanI64
-arg detectExponentNegativeCall left exponentValue
-arg detectExponentNegativeCall right integerZeroBoundary
+call detectExponentNegativeCall math.lessThanInt64
+argument detectExponentNegativeCall left Int64 exponentValue
+argument detectExponentNegativeCall right Int64 integerZeroBoundary
 run detectExponentNegativeCall
-bind exponentIsNegative Bool detectExponentNegativeCall
-branchIf exponentIsNegative raiseNegativeExponentError
-var powerProduct I64 1
-var powerCounter I64 0
+bind value exponentIsNegative Bool detectExponentNegativeCall
+branch if condition exponentIsNegative target raiseNegativeExponentError
+memory powerSignedInt64 mutable powerProduct Int64 1
+memory powerSignedInt64 mutable powerCounter Int64 0
 label powerLoop
-call detectPowerDoneCall math.greaterThanOrEqualI64
-arg detectPowerDoneCall left powerCounter
-arg detectPowerDoneCall right exponentValue
+call detectPowerDoneCall math.greaterThanOrEqualInt64
+argument detectPowerDoneCall left Int64 powerCounter
+argument detectPowerDoneCall right Int64 exponentValue
 run detectPowerDoneCall
-bind powerLoopDone Bool detectPowerDoneCall
-branchIf powerLoopDone returnPowerProduct
-call multiplyPowerProductByBaseCall math.multiplyI64
-arg multiplyPowerProductByBaseCall left powerProduct
-arg multiplyPowerProductByBaseCall right baseValue
+bind value powerLoopDone Bool detectPowerDoneCall
+branch if condition powerLoopDone target returnPowerProduct
+call multiplyPowerProductByBaseCall math.multiplyInt64
+argument multiplyPowerProductByBaseCall left Int64 powerProduct
+argument multiplyPowerProductByBaseCall right Int64 baseValue
 run multiplyPowerProductByBaseCall
-bind nextPowerProduct I64 multiplyPowerProductByBaseCall
-set powerProduct nextPowerProduct
-call advancePowerCounterCall math.addI64
-arg advancePowerCounterCall left powerCounter
-arg advancePowerCounterCall right integerOneStepValue
+bind value nextPowerProduct Int64 multiplyPowerProductByBaseCall
+set memory powerProduct nextPowerProduct
+call advancePowerCounterCall math.addInt64
+argument advancePowerCounterCall left Int64 powerCounter
+argument advancePowerCounterCall right Int64 integerOneStepValue
 run advancePowerCounterCall
-bind nextPowerCounter I64 advancePowerCounterCall
-set powerCounter nextPowerCounter
-branch powerLoop
+bind value nextPowerCounter Int64 advancePowerCounterCall
+set memory powerCounter nextPowerCounter
+jump target powerLoop
 label returnPowerProduct
-returnOk powerProduct
+return ok powerProduct
 label raiseNegativeExponentError
 makeError negativeExponentFailure NumericArithmeticError.NegativeExponentNotSupported
-returnError negativeExponentFailure
+return error negativeExponentFailure
 
 operation greatestCommonDivisorSignedInt64
-input greatestCommonDivisorSignedInt64 leftValue CSignedInt64
-input greatestCommonDivisorSignedInt64 rightValue CSignedInt64
-output greatestCommonDivisorSignedInt64 CSignedInt64
-memoryHeap greatestCommonDivisorSignedInt64 no
+input operation greatestCommonDivisorSignedInt64 leftValue Int64
+input operation greatestCommonDivisorSignedInt64 rightValue Int64
+output operation greatestCommonDivisorSignedInt64 Int64
+memory greatestCommonDivisorSignedInt64 heap no
 async greatestCommonDivisorSignedInt64 no
-purpose greatestCommonDivisorSignedInt64 "Greatest common divisor via the Euclidean algorithm. Works on absolute values, so signs of inputs don't matter."
-invariant greatestCommonDivisorSignedInt64 "gcd(a, 0) == |a|; gcd(0, b) == |b|; gcd(0, 0) == 0 (mathematical convention)."
-guarantee greatestCommonDivisorSignedInt64 "Total over CSignedInt64."
+purpose operation greatestCommonDivisorSignedInt64 "Greatest common divisor via the Euclidean algorithm. Works on absolute values, so signs of inputs don't matter."
+invariant operation greatestCommonDivisorSignedInt64 "gcd(a, 0) == |a|; gcd(0, b) == |b|; gcd(0, 0) == 0 (mathematical convention)."
+guarantee greatestCommonDivisorSignedInt64 "Total over Int64."
 label startGreatestCommonDivisorSignedInt64
 call resolveLeftAbsCall absoluteSignedInt64
-arg resolveLeftAbsCall inputValue leftValue
+argument resolveLeftAbsCall inputValue Int64 leftValue
 run resolveLeftAbsCall
-bind gcdLeftAbsolute CSignedInt64 resolveLeftAbsCall
+bind value gcdLeftAbsolute Int64 resolveLeftAbsCall
 call resolveRightAbsCall absoluteSignedInt64
-arg resolveRightAbsCall inputValue rightValue
+argument resolveRightAbsCall inputValue Int64 rightValue
 run resolveRightAbsCall
-bind gcdRightAbsolute CSignedInt64 resolveRightAbsCall
-var gcdDividend I64 0
-var gcdDivisor I64 0
-set gcdDividend gcdLeftAbsolute
-set gcdDivisor gcdRightAbsolute
+bind value gcdRightAbsolute Int64 resolveRightAbsCall
+memory greatestCommonDivisorSignedInt64 mutable gcdDividend Int64 0
+memory greatestCommonDivisorSignedInt64 mutable gcdDivisor Int64 0
+set memory gcdDividend gcdLeftAbsolute
+set memory gcdDivisor gcdRightAbsolute
 label gcdEuclidLoop
-call detectGcdDivisorZeroCall math.equalI64
-arg detectGcdDivisorZeroCall left gcdDivisor
-arg detectGcdDivisorZeroCall right integerZeroBoundary
+call detectGcdDivisorZeroCall math.equalInt64
+argument detectGcdDivisorZeroCall left Int64 gcdDivisor
+argument detectGcdDivisorZeroCall right Int64 integerZeroBoundary
 run detectGcdDivisorZeroCall
-bind gcdDivisorIsZero Bool detectGcdDivisorZeroCall
-branchIf gcdDivisorIsZero returnGcd
-call computeGcdRemainderCall math.moduloI64
-arg computeGcdRemainderCall left gcdDividend
-arg computeGcdRemainderCall right gcdDivisor
+bind value gcdDivisorIsZero Bool detectGcdDivisorZeroCall
+branch if condition gcdDivisorIsZero target returnGcd
+call computeGcdRemainderCall math.moduloInt64
+argument computeGcdRemainderCall left Int64 gcdDividend
+argument computeGcdRemainderCall right Int64 gcdDivisor
 run computeGcdRemainderCall
-bind gcdRemainder I64 computeGcdRemainderCall
-set gcdDividend gcdDivisor
-set gcdDivisor gcdRemainder
-branch gcdEuclidLoop
+bind value gcdRemainder Int64 computeGcdRemainderCall
+set memory gcdDividend gcdDivisor
+set memory gcdDivisor gcdRemainder
+jump target gcdEuclidLoop
 label returnGcd
-returnValue gcdDividend
+return value gcdDividend
 
 operation clampSignedInt64ToInclusiveRange
-input clampSignedInt64ToInclusiveRange inputValue CSignedInt64
-input clampSignedInt64ToInclusiveRange lowerBound CSignedInt64
-input clampSignedInt64ToInclusiveRange upperBound CSignedInt64
-output clampSignedInt64ToInclusiveRange CSignedInt64
-memoryHeap clampSignedInt64ToInclusiveRange no
+input operation clampSignedInt64ToInclusiveRange inputValue Int64
+input operation clampSignedInt64ToInclusiveRange lowerBound Int64
+input operation clampSignedInt64ToInclusiveRange upperBound Int64
+output operation clampSignedInt64ToInclusiveRange Int64
+memory clampSignedInt64ToInclusiveRange heap no
 async clampSignedInt64ToInclusiveRange no
-purpose clampSignedInt64ToInclusiveRange "Returns lowerBound if inputValue < lowerBound, upperBound if inputValue > upperBound, else inputValue."
-invariant clampSignedInt64ToInclusiveRange "Output is always in [lowerBound, upperBound] when lowerBound <= upperBound."
+purpose operation clampSignedInt64ToInclusiveRange "Returns lowerBound if inputValue < lowerBound, upperBound if inputValue > upperBound, else inputValue."
+invariant operation clampSignedInt64ToInclusiveRange "Output is always in [lowerBound, upperBound] when lowerBound <= upperBound."
 warning clampSignedInt64ToInclusiveRange "If lowerBound > upperBound, the result is either bound depending on input â€” caller should pre-check."
 guarantee clampSignedInt64ToInclusiveRange "Total."
 label startClampSignedInt64ToInclusiveRange
-call detectInputBelowLowerCall math.lessThanI64
-arg detectInputBelowLowerCall left inputValue
-arg detectInputBelowLowerCall right lowerBound
+call detectInputBelowLowerCall math.lessThanInt64
+argument detectInputBelowLowerCall left Int64 inputValue
+argument detectInputBelowLowerCall right Int64 lowerBound
 run detectInputBelowLowerCall
-bind inputBelowLowerBoundForClamp Bool detectInputBelowLowerCall
-branchIf inputBelowLowerBoundForClamp returnClampLower
-call detectInputAboveUpperCall math.greaterThanI64
-arg detectInputAboveUpperCall left inputValue
-arg detectInputAboveUpperCall right upperBound
+bind value inputBelowLowerBoundForClamp Bool detectInputBelowLowerCall
+branch if condition inputBelowLowerBoundForClamp target returnClampLower
+call detectInputAboveUpperCall math.greaterThanInt64
+argument detectInputAboveUpperCall left Int64 inputValue
+argument detectInputAboveUpperCall right Int64 upperBound
 run detectInputAboveUpperCall
-bind inputAboveUpperBoundForClamp Bool detectInputAboveUpperCall
-branchIf inputAboveUpperBoundForClamp returnClampUpper
-returnValue inputValue
+bind value inputAboveUpperBoundForClamp Bool detectInputAboveUpperCall
+branch if condition inputAboveUpperBoundForClamp target returnClampUpper
+return value inputValue
 label returnClampLower
-returnValue lowerBound
+return value lowerBound
 label returnClampUpper
-returnValue upperBound
+return value upperBound
 
 # ============================================================
-

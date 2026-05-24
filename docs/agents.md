@@ -1,7 +1,12 @@
 # SemanticScript agents.md
 
-Dense agent context. ASCII only. Truth: SYNTAX.md, semsc.py, semlint.py,
-vscode-semanticscript/extension.js. Editor support != compiler support.
+Dense agent context. ASCII only.
+
+Public truth for agents: the `sem` wrapper JSON surfaces and version-matched
+skills.
+
+Implementation truth for compiler work: `docs/reference/syntax-inventory.md`, `semsc.py`, `semlint.py`,
+and `vscode-semanticscript/extension.js`. Editor support != compiler support.
 
 == core ==
 SemanticScript = flat semantic tape. One line = one record. First token = verb.
@@ -13,12 +18,115 @@ cleanup, authority.
 Status: lowered = LLVM now; metadata = parsed/indexed only; sync-fallback =
 single-thread lowering; partial = mixed; refined = future/tooling surface.
 
+== stable tool loop ==
+Use the `sem` wrapper as the public agent contract before falling back to raw
+compiler/linter internals.
+
+Load matching rules:
+  python SemanticScript\tools\sem.py --version --json
+  python SemanticScript\tools\sem.py skills list --json
+  python SemanticScript\tools\sem.py skills get sem sem-agent --json
+
+`skills get --json` is summary-first; add `--full` when raw skill bodies are
+actually needed.
+
+On large project surfaces, `check`, `fix`, `graph`, and `slice` are compact by
+default. Add `--full` when you explicitly need the full machine payload.
+
+Iteration roles:
+  skills get          load version-matched rules before editing
+  check               prove current semantic state before/after edits
+  graph summary/routes cheap map of the surface before deeper retrieval
+  slice               one local semantic neighborhood to edit
+  explain             why a rule exists and what safe repairs look like
+  fix --plan          derive candidate edits without mutating source
+  patch               preview/apply a reviewed plan with stale-file protection
+  fmt --check         keep diffs normalized and repair landings stable
+  test                behavior validation after semantic preflight is clean
+  dev                 watch/restart contract after the surface is close to runnable
+  readiness           separate source blockers from environment blockers
+  size                cheap footprint probe before expensive graph/detail hops
+
+Check and inspect:
+  python SemanticScript\tools\sem.py check --json PATH
+  python SemanticScript\tools\sem.py check --json --with-readiness PATH
+  python SemanticScript\tools\sem.py readiness --json PATH
+  python SemanticScript\tools\sem.py graph --kind summary --json PATH
+  python SemanticScript\tools\sem.py graph --kind routes --json PATH
+  python SemanticScript\tools\sem.py slice --operation NAME --json PATH
+  python SemanticScript\tools\sem.py explain SS3104 --json
+
+Lower-level fallback surfaces:
+  python SemanticScript\tools\sem.py context --json PATH   # lower-level project envelope
+  python SemanticScript\tools\sem.py symbols --json PATH   # lower-level full source graph
+
+Repair and verify:
+  python SemanticScript\tools\sem.py fix --plan --json PATH | Out-File plan.json -Encoding utf8
+  python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
+  python SemanticScript\tools\sem.py patch --apply --json PLAN.json
+  python SemanticScript\tools\sem.py fmt --check PATH
+  python SemanticScript\tools\sem.py check --json PATH
+
+Only auto-apply a plan when the fix payload reports `status: "actionable"` and
+`planUsable: true`. A `mixed` plan still contains useful edits, but it should
+start with `sem patch --dry-run`, not blind apply. A `suggestions-only` plan
+has no machine-applicable patch, and a compact fix payload is not valid patch
+input.
+
+Harness loop, only after semantic preflight is clean:
+  python SemanticScript\tools\sem.py test --json PATH
+  python SemanticScript\tools\sem.py dev --json PATH
+
+`sem test --json PATH` can execute Python harnesses and app processes when PATH
+points at a project surface. Use `--skip-python-harnesses` when the goal is to
+skip process-level harness work, not when the goal is project-surface semantic
+validation; for that, use `sem check --json PATH`. Skipping Python harnesses
+does not hide preflight source diagnostics on project surfaces, and project
+Python harnesses are deferred until semantic preflight is clean. Use
+`--allow-red-preflight-harnesses` when runtime signal is still worth gathering
+on a semantic-red project; in that mode the runtime harnesses are prioritized
+and project-surface semantic contract files are deferred. Project test
+discovery now includes `tests\*.py`, not only `test_*.py`. Read
+`preflightStatus`, `runtimeHarnessStatus`, and `compositeStatus` together
+before deciding whether the surface is blocked by source debt, runtime
+failures, or both.
+
+`sem check --json` now reports the source lane as one of
+`ok`, `ok-with-warnings`, `lint-diagnostics`, `compiler-error`, or
+`tool-error`. `sem readiness --json` is the environment lane and exits
+nonzero unless the payload is actually `ok`. `sem fix --plan --json` is
+blocker-first by default; use `--include-warnings` only when a buildable
+surface still needs cleanup guidance. A `mixed` fix plan with
+`planUsable: true` is still a valid machine step.
+
+`nextCommands` entries are machine-facing. Prefer `argv` over `command`, honor
+`cwd`, and only auto-replay entries where `replayable` is true. When
+`replayable` is false, use `requiredArgs` or `artifactInputs` to supply the
+missing project path or saved plan file.
+
+Current JSON surfaces:
+  sem.version.v1
+  sem.skills.v1
+  sem.readiness.v1
+  sem.context.v1
+  sem.symbols.v1
+  sem.check.v1
+  sem.graph.v1
+  sem.slice.v1
+  sem.size.v1
+  sem.explain.v1
+  sem.fixPlan.v1
+  sem.patch.v1
+  sem.dev.v1
+  sem.test.v1
+  sem.doctor.v0  # provisional environment surface
+
 Good:
-  call totalCall math.addI64
-  arg totalCall left subtotalAmount
-  arg totalCall right taxAmount
+  call totalCall math.addInt64
+  argument totalCall left Int64 subtotalAmount
+  argument totalCall right Int64 taxAmount
   run totalCall
-  bind totalAmount I64 totalCall
+  bind value totalAmount Int64 totalCall
 
 Bad:
   total = subtotal + tax
@@ -45,29 +153,29 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   entry console main
 
   error ConsoleWriteError
-  errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+  errorCase ConsoleWriteError ConsoleWriteFailed Int32
   capability stdoutWriter console.stdout write
 
   operation main
-  output main ExitCode
+  output operation main ExitCode
   effect main write console.stdout
   memory main noHeapAllocation
   async main no
   purpose main "Do the thing exactly"
   useCapability main stdoutWriter
-  const outputText CNullTerminatedByteString "hello world"
+  storage local immutable outputText String "hello world"
   call outputWriteCall console.writeLine
-  arg outputWriteCall text outputText
+  argument outputWriteCall text String outputText
   run outputWriteCall
-  ignoreOk outputWriteCall Void
-  bindError outputWriteError ConsoleWriteError outputWriteCall
-  branchIfError outputWriteCall outputWriteFailed
-  const successExitCode ExitCode 0
-  returnValue successExitCode
+  ignore ok source outputWriteCall type Void
+  bind error outputWriteError ConsoleWriteError outputWriteCall
+  branch error source outputWriteCall target outputWriteFailed
+  storage local immutable successExitCode ExitCode 0
+  return value successExitCode
   label outputWriteFailed
   makeError outputWriteFailure ConsoleWriteError.ConsoleWriteFailed outputWriteError
-  const writeFailedExitCode ExitCode 1
-  returnValue writeFailedExitCode
+  storage local immutable writeFailedExitCode ExitCode 1
+  return value writeFailedExitCode
 
 No entry => library mode: compile all ops + stub main returns 0, except routed
 `target webServer` programs, which emit a native HTTP entrypoint. Reserved
@@ -81,7 +189,7 @@ Top:
   module DOTTED.PATH
   mode capturedOutputReplay
   entry console OPERATION
-  importModule DOTTED.PATH [as ALIAS]
+  import ALIAS DOTTED.PATH
   section NAME
 
 == std imports ==
@@ -91,11 +199,11 @@ Module entries: `SemanticScript/std/<module>/main.sem`.
 Self-tests: `SemanticScript/std/<module>/main.test.sem`.
 
 Preferred imports:
-  importModule html standard.html
-  importModule http standard.http
-  importModule json standard.json
-  importModule sqlite standard.sqlite
-  importModule gui standard.gui
+  import html standard.html
+  import http standard.http
+  import json standard.json
+  import sqlite standard.sqlite
+  import gui standard.gui
 
 Std resolution order:
   --std-path PATH
@@ -111,6 +219,7 @@ the installed compiler, or when the std root is passed explicitly.
 Compiler-owned GUI surface should stay minimal:
   target windowsGui
   targetRuntime PROJECT windowsGui
+  guiBackend PROJECT win32|winui3  # win32 default; winui3 scaffold is blocked until Windows App SDK build integration
   native GUI runtime link/codegen bridge
   preserve GuiSession and GuiEvent handler ABI inputs
   lower explicit standard.gui gui.* calls
@@ -118,15 +227,19 @@ Compiler-owned GUI surface should stay minimal:
 Do not add `entry windowsGui OPERATION`. Do not move control/event validation
 into a giant compiler grammar. `standard.gui` owns GUI functions,
 contracts, capabilities, and most validation. Preferred import:
-  importModule gui standard.gui
+  import gui standard.gui
+
+Do not implement WinUI by adding C# / XAML app sidecars under `apps/`. The app
+UI source remains SemanticScript; WinUI belongs behind `guiBackend winui3` as a
+native backend adapter exporting the existing `ss_gui_*` ABI.
 
 Standard GUI source shape:
   entry console main
   operation main
   call createApp gui.applicationCreate
-  arg createApp title titleText
+  argument createApp title GuiText titleText
   run createApp
-  bind app GuiApplication createApp
+  bind value app GuiApplication createApp
   call createWindow gui.windowCreate
   ...
   call runApp gui.applicationRun
@@ -134,7 +247,7 @@ Standard GUI source shape:
 GUI handler ABI:
   input saveClicked session GuiSession
   input saveClicked event GuiEvent
-  output saveClicked CSignedInt32
+  output saveClicked Int32
 
 Reserved gui.* targets live under standard.gui contracts:
   gui.applicationCreate gui.windowCreate gui.buttonCreate
@@ -147,9 +260,9 @@ Reserved gui.* targets live under standard.gui contracts:
 
 == operation ==
   operation OP
-  input OP NAME TYPE
-  output OP TYPE...
-  output OP Result OK_TYPE ERR_TYPE
+  input operation OP NAME TYPE
+  output operation OP TYPE...
+  output operation OP Result OK_TYPE ERR_TYPE
   effect OP ACTION PATH
   memory OP POLICY...
   async OP yes|no
@@ -162,10 +275,10 @@ Reserved gui.* targets live under standard.gui contracts:
   timing OP "text"
   observability OP "text"
 
-Owner arg must match current op. Opaque inputs are context, not LLVM params:
+Owner argument must match current op. Opaque inputs are context, not LLVM params:
 console environment process httpRequest databaseClient clock. Do not add
-`arg callName console console` to built-in console.writeLine; it only needs
-`arg callName text valueName`.
+`argument callName console Console console` to built-in console.writeLine; it
+only needs `argument callName text String valueName`.
 
 Minimum useful metadata:
   purpose opName "specific intent"
@@ -180,20 +293,20 @@ score`. Any declared effect needs useCapability or authority.
 
 == types/values ==
   Bool -> i1
-  I8/CSignedByte/CUnsignedByte -> i8
-  I16/CSignedInt16/CUnsignedInt16 -> i16
-  I32/ExitCode/CSignedInt32/CUnsignedInt32 -> i32
-  I64/CSignedInt64/CUnsignedInt64 -> i64
-  F32/CFloat32 -> f32
-  F64/CFloat64 -> f64
-  String/CNullTerminatedByteString -> i8*
-  COpaqueMemoryAddress/CFileHandle/VoidPtr -> i8*
-  Void/CVoid -> void where valid
+  Int8/UInt8 -> i8
+  Int16/UInt16 -> i16
+  Int32/ExitCode/UInt32 -> i32
+  Int64/UInt64 -> i64
+  Float32 -> f32
+  Float64 -> f64
+  String -> i8*
+  OpaquePointer/FileHandle -> i8*
+  Void -> void where valid
 
-  type AccountId CNullTerminatedByteString
+  type AccountId String
   type LookupResult Result AccountBalance LookupError
   typeInvariant AccountId "non-empty"
-  typeRepresentation AccountId CNullTerminatedByteString utf8 nullByte
+  typeRepresentation AccountId String utf8 nullByte
   typeTrust AccountId trustedInternal
   typeMemory AccountId inline
   typeLayout AccountId packed
@@ -201,16 +314,16 @@ score`. Any declared effect needs useCapability or authority.
   typeLiteralEncoding AccountId utf8
   typeLiteralTerminator AccountId nullByte
 
-  const retryLimit I64 3
-  const greetingText String "hello"
-  const strictMode Bool true
-  var runningTotal I64 0
+  storage local immutable retryLimit Int64 3
+  storage local immutable greetingText String "hello"
+  storage local immutable strictMode Bool true
+  storage local mutable runningTotal Int64 0
 Bool tokens: true false yes no 1 0.
 
-  domainLiteral signalKillNumber CSignedInt32 9
+  domainLiteral signalKillNumber Int32 9
   domainLiteralSource signalKillNumber posix.SIGKILL
   domainLiteralTrust signalKillNumber trustedStaticLiteral
-  literal templateText CNullTerminatedByteString
+  literal templateText String
   literalSource templateText "fixtures/template.txt"
   literalBytes templateText 128
   literalDigest templateText sha256 DIGEST
@@ -218,20 +331,20 @@ Bool tokens: true false yes no 1 0.
   literalTrust templateText trustedStaticLiteral
 
 == state/memory ==
-  storage module immutable zeroValue I64 0
-  storage module mutable lastRevision I64 zeroValue
-  storage local immutable stepValue I64 1
-  storage local mutable currentRevision I64 lastRevision
+  storage module immutable zeroValue Int64 0
+  storage module mutable lastRevision Int64 zeroValue
+  storage local immutable stepValue Int64 1
+  storage local mutable currentRevision Int64 lastRevision
   set local currentRevision nextRevision
   set module lastRevision nextRevision ownedBy moduleStateOwner
 
 Module mutable => LLVM global. Local mutable => alloca. Owner/protected tails
 metadata today.
 
-  sharedState process mutable failureCount I64 zeroValue
+  sharedState process mutable failureCount Int64 zeroValue
   sharedStateOwner failureCount metricsRuntime
   sharedStateGuard failureCount failureCountGuardToken
-  read sharedState currentFailureCount I64 failureCount protectedBy failureCountGuardToken
+  read sharedState currentFailureCount Int64 failureCount protectedBy failureCountGuardToken
   set sharedState failureCount nextFailureCount protectedBy failureCountGuardToken
   guardTokenSource failureCountGuardToken acquireLockCall
   guardTokenOwner failureCountGuardToken metricsRuntime
@@ -242,102 +355,104 @@ Pointer:
   pointer.loadByte     buffer offset -> byte
   pointer.storeByte    buffer offset value -> void
   pointer.offset       base offset -> ptr
-  pointer.difference   left right -> I64
+  pointer.difference   left right -> Int64
   pointer.isNull       ptr -> bool/int
 
 == calls ==
 Infallible:
-  call totalCall math.addI64
-  arg totalCall left subtotalAmount
-  arg totalCall right taxAmount
+  call totalCall math.addInt64
+  argument totalCall left Int64 subtotalAmount
+  argument totalCall right Int64 taxAmount
   run totalCall
-  bind totalAmount I64 totalCall
+  bind value totalAmount Int64 totalCall
 
 Fallible:
   call writeCall console.writeLine
-  arg writeCall text outputText
+  argument writeCall text String outputText
   run writeCall
-  ignoreOk writeCall Void
-  bindError writeError ConsoleWriteError writeCall
-  branchIfError writeCall writeFailed
-  const successExitCode ExitCode 0
-  returnValue successExitCode
+  ignore ok source writeCall type Void
+  bind error writeError ConsoleWriteError writeCall
+  branch error source writeCall target writeFailed
+  storage local immutable successExitCode ExitCode 0
+  return value successExitCode
   label writeFailed
   makeError writeFailure ConsoleWriteError.ConsoleWriteFailed writeError
-  const writeFailedExitCode ExitCode 1
-  returnValue writeFailedExitCode
+  storage local immutable writeFailedExitCode ExitCode 1
+  return value writeFailedExitCode
 
 Async/sync-fallback:
   start fetchCall
   await fetchCall
-  bindOk fetchedValue ValueType fetchCall
-  bindError fetchError FetchError fetchCall
+  bind ok fetchedValue ValueType fetchCall
+  bind error fetchError FetchError fetchCall
 
 Attach/discard:
   timeout CALL BUDGET
   cancelOn CALL TOKEN
   useRetry CALL POLICY
-  ignoreOk CALL TYPE
-  ignoreValue CALL TYPE
+  ignore ok source CALL type TYPE
+  ignore value source CALL type TYPE
 
 User op:
   operation addTwoValues
-  input addTwoValues leftValue I64
-  input addTwoValues rightValue I64
-  output addTwoValues I64
-  call sumCall math.addI64
-  arg sumCall left leftValue
-  arg sumCall right rightValue
+  input operation addTwoValues leftValue Int64
+  input operation addTwoValues rightValue Int64
+  output operation addTwoValues Int64
+  call sumCall math.addInt64
+  argument sumCall left Int64 leftValue
+  argument sumCall right Int64 rightValue
   run sumCall
-  bind sumValue I64 sumCall
-  returnValue sumValue
+  bind value sumValue Int64 sumCall
+  return value sumValue
 
   operation main
-  output main ExitCode
-  const leftInput I64 40
-  const rightInput I64 2
+  output operation main ExitCode
+  storage local immutable leftInput Int64 40
+  storage local immutable rightInput Int64 2
   call answerCall addTwoValues
-  arg answerCall leftValue leftInput
-  arg answerCall rightValue rightInput
+  argument answerCall leftValue Int64 leftInput
+  argument answerCall rightValue Int64 rightInput
   run answerCall
-  bind answerValue I64 answerCall
-  returnValue answerValue
+  bind value answerValue Int64 answerCall
+  return value answerValue
 
-Arg names should match callee inputs. Dispatch by callee input order after
+Argument names should match callee inputs. Dispatch by callee input order after
 dropping opaque inputs.
 
 == control ==
   label NAME
-  branch LABEL
-  branchIf CONDITION LABEL
-  branchIfError CALL LABEL
-  returnOk VALUE
-  returnError VALUE
-  returnValue VALUE
+  jump target LABEL
+  branch if condition CONDITION target LABEL
+  branch error source CALL target LABEL
+  branch else target LABEL
+  return ok VALUE
+  return error VALUE
+  return value VALUE
+  return void
 
 Loop:
-  var currentIndex I64 0
-  const finalIndex I64 10
-  const indexStep I64 1
+  storage local mutable currentIndex Int64 0
+  storage local immutable finalIndex Int64 10
+  storage local immutable indexStep Int64 1
   label loopStart
-  call doneCall math.greaterThanOrEqualI64
-  arg doneCall left currentIndex
-  arg doneCall right finalIndex
+  call doneCall math.greaterThanOrEqualInt64
+  argument doneCall left Int64 currentIndex
+  argument doneCall right Int64 finalIndex
   run doneCall
-  bind loopDone Bool doneCall
-  branchIf loopDone loopEnd
-  call nextIndexCall math.addI64
-  arg nextIndexCall left currentIndex
-  arg nextIndexCall right indexStep
+  bind value loopDone Bool doneCall
+  branch if condition loopDone target loopEnd
+  call nextIndexCall math.addInt64
+  argument nextIndexCall left Int64 currentIndex
+  argument nextIndexCall right Int64 indexStep
   run nextIndexCall
-  bind nextIndex I64 nextIndexCall
+  bind value nextIndex Int64 nextIndexCall
   set local currentIndex nextIndex
-  branch loopStart
+  jump target loopStart
   label loopEnd
 
 == error/effect/auth/deps ==
   error ConsoleWriteError
-  errorCase ConsoleWriteError ConsoleWriteFailed CSignedInt32
+  errorCase ConsoleWriteError ConsoleWriteFailed Int32
   makeError validationFailure RequestError.InvalidJson rawDecodeError
   declareFailure timeoutFailure RequestError.TimedOut timeoutCall
 
@@ -356,26 +471,26 @@ Loop:
 
 == targets ==
 Console:
-  console.writeLine arg text only; no arg console console
-  console.writeIntegerLine arg value
-  console.writeFloatLine arg value
+  console.writeLine argument text only; no argument console console
+  console.writeIntegerLine argument value
+  console.writeFloatLine argument value
 
-I64:
-  math.addI64 subtractI64 multiplyI64 divideI64 moduloI64
-  math.equalI64 notEqualI64 lessThanI64 lessThanOrEqualI64
-  math.greaterThanI64 greaterThanOrEqualI64 checkedMultiplyI64
+Int64:
+  math.addInt64 subtractInt64 multiplyInt64 divideInt64 moduloInt64
+  math.equalInt64 notEqualInt64 lessThanInt64 lessThanOrEqualInt64
+  math.greaterThanInt64 greaterThanOrEqualInt64 checkedMultiplyInt64
 
-F64:
-  math.addF64 subtractF64 multiplyF64 divideF64
-  math.equalF64 notEqualF64 lessThanF64 lessThanOrEqualF64
-  math.greaterThanF64 greaterThanOrEqualF64
-  math.intToFloat math.floatToInt
+Float64:
+  math.addFloat64 subtractFloat64 multiplyFloat64 divideFloat64
+  math.equalFloat64 notEqualFloat64 lessThanFloat64 lessThanOrEqualFloat64
+  math.greaterThanFloat64 greaterThanOrEqualFloat64
+  math.convertInt64ToFloat64 math.convertFloat64ToInt64
 
 c.*:
   call allocateCall c.malloc
-  arg allocateCall size requestedByteCount
+  argument allocateCall size ByteCount requestedByteCount
   run allocateCall
-  bind allocatedBuffer COpaqueMemoryAddress allocateCall
+  bind value allocatedBuffer OpaquePointer allocateCall
 
 c.* signatures: compiler/libc_registry.py. Prefer SemanticScript camelCase aliases for C
 names with underscores.
@@ -383,7 +498,7 @@ names with underscores.
 Heap edge: avoid c.malloc/c.free in demo apps unless the user asks for heap.
 If used, declare effect allocate heap, effect free heap, memoryHeap OP yes,
 memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
-handle c.malloc as fallible with bindError + branchIfError. For executable code,
+handle c.malloc as fallible with `bind error` + `branch error`. For executable code,
 emit an explicit `call ... c.free` cleanup on every ownership path. A
 `defer NAME c.free allocatedPointer` row is useful cleanup metadata, but current
 compiler lowering treats non-user-op defer targets as metadata, so do not claim
@@ -397,12 +512,12 @@ For generic heap buffers or duplicateCStringIntoOwnedMemory output, current
 stdlib examples still use c.free / defer NAME c.free POINTER.
 
 Domain method:
-  type CountdownValue I64
+  type CountdownValue Int64
   call nextCall CountdownValue.subtractPositiveStep
-  arg nextCall left currentCountdownValue
-  arg nextCall right decrementStep
+  argument nextCall left CountdownValue currentCountdownValue
+  argument nextCall right CountdownValue decrementStep
   run nextCall
-  bind nextCountdownValue CountdownValue nextCall
+  bind value nextCountdownValue CountdownValue nextCall
 
 == records/codecs/bounds ==
 Edge rule: record/json/trust lines are safe as schema/metadata context. Do not
@@ -417,8 +532,8 @@ the scalar values; use record/json/trust as adjacent metadata only.
   field Task title ValidatedText
   field Task completed Bool
   # metadata/schema above; scalar runtime values below are still the print path
-  const taskId TaskId 1001
-  const taskTitle ValidatedText "demo task"
+  storage local immutable taskId TaskId 1001
+  storage local immutable taskTitle ValidatedText "demo task"
 
 Record field ops are edge/runtime-specific:
   new taskValue Task
@@ -437,8 +552,8 @@ Record field ops are edge/runtime-specific:
   jsonCodecUnknownFields taskJsonCodec reject
   jsonCodecInput taskJsonCodec RawJson
   jsonCodecOutput taskJsonCodec Task
-  jsonCodecDecodeTarget taskJsonCodec json.decode.Task
-  jsonCodecEncodeTarget taskJsonCodec json.encode.Task
+  jsonCodecDecodeTarget taskJsonCodec json.parse.Task
+  jsonCodecEncodeTarget taskJsonCodec json.stringify.Task
   jsonCodecRequiredField taskJsonCodec title
   jsonCodecDecodeFailure taskJsonCodec TaskDecodeError.MissingTitle
   jsonCodecLimit taskJsonCodec maximumBytes 65536
@@ -508,13 +623,17 @@ locks/select/interval no-op/fallthrough.
 
   operation addSignedInt64
   operationBody addSignedInt64 intrinsic
-  intrinsicName addSignedInt64 arithmetic.addI64
+  intrinsicName addSignedInt64 arithmetic.addInt64
 
-Selected names lower directly. Unknown runtime binding => normal body.
+Pure ABI names lower directly. Policy-bearing runtime bindings such as retry
+delay, metrics increment, metrics lock token sentinels, scheduler sleep,
+calendar predicates, and UTF-8 validation must be normal SemanticScript
+operation bodies or explicit native runtime calls; known legacy targets are
+compile-blocking.
 
 == linter ==
 semlint checks and guardrails: unknown verbs; vague names; missing op metadata; hidden
-failures; effects without capability; unresolved refs; arg arity/type; dead
+failures; effects without capability; unresolved refs; argument arity/type; dead
 stores; unused calls/labels/consts/inputs/binds/caps/error cases/storage;
 allocation in loop; heap contradiction; missing allocation source; unpaired
 alloc/free; unclosed file; guard source without release; partial retry/trust/
@@ -524,7 +643,7 @@ state cleanup; record align; zero array length; unawaited group/work; lock
 without cleanup; duplicate decls; metadata drift; circular type aliases.
 T0/T1/T2 correctness. T3 design debt. T4 style.
 
-== commands ==
+== internals only / compiler debugging ==
   python SemanticScript/compiler/semsc.py file.sscript --parse-only
   python SemanticScript/compiler/semsc.py file.sscript --run
   python SemanticScript/compiler/semsc.py file.sscript --emit-ir out.ll
@@ -535,7 +654,7 @@ T0/T1/T2 correctness. T3 design debt. T4 style.
   python SemanticScript/linter/semlint.py file.sscript --tier T3 --code SS0101
 
 == change protocol ==
-  1 SYNTAX.md schema/status
+  1 docs/reference/syntax-inventory.md schema/status
   2 semsc.py parser + lowering or metadata/sync behavior
   3 feature_tests minimal executable case
   4 semlint known verbs/checks

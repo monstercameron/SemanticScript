@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.event_context
+purpose module app.realtime_auction_arena.server.tests.event_context "Unit coverage contract for server/src/event_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.event_context "Event replay handler and event type mapper test-plan coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.event_context "Route registration, auth implementation, SQLite runtime adapter, or SSE socket primitives."
+invariant module app.realtime_auction_arena.server.tests.event_context "Event-context tests must cover authorization, cursor precedence, replay bounds, event ordering, and stable event type names."
+
+storage module immutable eventContextUnitTestPlanSummary String "server/src/event_context.sem coverage: auctionEventTypeNameFromCode maps auction lifecycle, accepted bid, and chat event codes; auctionEventsHandler rejects unauthorized requests; accepts seeded auctioneer and bidder viewer scopes; requires auctionId; honors Last-Event-ID over ?after; rejects negative cursors and limits outside 1..200; returns auction_not_found for missing auctions; replays committed rows ordered by sequence with eventTypeCode, eventType, payload, count, and nextAfter for JSON clients; and delegates Accept: text/event-stream clients to sse_context."
+
+operation getEventContextUnitTestPlan
+output operation getEventContextUnitTestPlan String
+memory getEventContextUnitTestPlan heap no
+async getEventContextUnitTestPlan no
+purpose operation getEventContextUnitTestPlan "Return the event-context unit coverage plan."
+return value eventContextUnitTestPlanSummary

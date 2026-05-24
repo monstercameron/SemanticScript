@@ -5,87 +5,87 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation isOdd
-input isOdd n CSignedInt64
-output isOdd Result Bool Void
+input operation isOdd n Int64
+output operation isOdd Result Bool Void
 memory isOdd heap no
 async isOdd no
-purpose isOdd "Return true when n is odd. Exercises a Bool-returning user op that is binarized via `bind X Bool callRes` then used in `branchIf X` — the i64 → i1 trunc path."
-invariant isOdd "Uses math.moduloI64 with 2 to test parity."
+purpose operation isOdd "Return true when n is odd. Exercises a Bool-returning user op that is binarized via `bind X Bool callRes` then used in `branchIf X` — the i64 → i1 trunc path."
+invariant operation isOdd "Uses math.moduloInt64 with 2 to test parity."
 label startIsOdd
-const twoModulus CSignedInt64 2
-const zeroRemainder CSignedInt64 0
-call modCall math.moduloI64
-arg modCall left n
-arg modCall right twoModulus
+storage module immutable twoModulus Int64 2
+storage module immutable zeroRemainder Int64 0
+call modCall math.moduloInt64
+argument modCall left Int64 n
+argument modCall right Int64 twoModulus
 run modCall
-bind remainder CSignedInt64 modCall
-call eqCall math.equalI64
-arg eqCall left remainder
-arg eqCall right zeroRemainder
+bind value remainder Int64 modCall
+call eqCall math.equalInt64
+argument eqCall left Int64 remainder
+argument eqCall right Int64 zeroRemainder
 run eqCall
-bind isZero Bool eqCall
-branchIf isZero reportEvenCase
-const trueValue CSignedInt64 1
-var oddResult Bool trueValue
-returnOk oddResult
+bind value isZero Bool eqCall
+branch if condition isZero target reportEvenCase
+storage module immutable trueValue Int64 1
+memory isOdd mutable oddResult Bool trueValue
+return ok oddResult
 label reportEvenCase
-const falseValue CSignedInt64 0
-var evenResult Bool falseValue
-returnOk evenResult
+storage module immutable falseValue Int64 0
+memory isOdd mutable evenResult Bool falseValue
+return ok evenResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Count odd numbers in 1..6 via isOdd; expect 3, then also exercise an even/odd branch directly. Final printed value is total odd count + first-odd-seen."
-invariant main "isOdd(1) and isOdd(2) yield Bool values used by branchIf."
+purpose operation main "Count odd numbers in 1..6 via isOdd; expect 3, then also exercise an even/odd branch directly. Final printed value is total odd count + first-odd-seen."
+invariant operation main "isOdd(1) and isOdd(2) yield Bool values used by branchIf."
 label startMain
-const oneTarget CSignedInt64 1
-const twoTarget CSignedInt64 2
+storage module immutable oneTarget Int64 1
+storage module immutable twoTarget Int64 2
 call oneOddCall isOdd
-arg oneOddCall n oneTarget
+argument oneOddCall n Int64 oneTarget
 run oneOddCall
-bindOk oneIsOdd Bool oneOddCall
+bind ok oneIsOdd Bool oneOddCall
 call twoOddCall isOdd
-arg twoOddCall n twoTarget
+argument twoOddCall n Int64 twoTarget
 run twoOddCall
-bindOk twoIsOdd Bool twoOddCall
-var totalScore I64 0
-const fiveBoost I64 5
-const twoBoost I64 2
-branchIf oneIsOdd boostFromOne
-branch maybeBoostTwo
+bind ok twoIsOdd Bool twoOddCall
+memory main mutable totalScore Int64 0
+storage module immutable fiveBoost Int64 5
+storage module immutable twoBoost Int64 2
+branch if condition oneIsOdd target boostFromOne
+branch else target maybeBoostTwo
 label boostFromOne
-set totalScore fiveBoost
-branch maybeBoostTwo
+set memory totalScore fiveBoost
+jump target maybeBoostTwo
 label maybeBoostTwo
-branchIf twoIsOdd boostFromTwo
-branch printResult
+branch if condition twoIsOdd target boostFromTwo
+branch else target printResult
 label boostFromTwo
-call wrongBoostCall math.addI64
-arg wrongBoostCall left totalScore
-arg wrongBoostCall right twoBoost
+call wrongBoostCall math.addInt64
+argument wrongBoostCall left Int64 totalScore
+argument wrongBoostCall right Int64 twoBoost
 run wrongBoostCall
-bind wrongScore I64 wrongBoostCall
-set totalScore wrongScore
-branch printResult
+bind value wrongScore Int64 wrongBoostCall
+set memory totalScore wrongScore
+jump target printResult
 label printResult
-call sumCall math.addI64
-arg sumCall left totalScore
-arg sumCall right twoBoost
+call sumCall math.addInt64
+argument sumCall left Int64 totalScore
+argument sumCall right Int64 twoBoost
 run sumCall
-bind finalScore I64 sumCall
-var finalStorage I64 0
-set finalStorage finalScore
+bind value finalScore Int64 sumCall
+memory main mutable finalStorage Int64 0
+set memory finalStorage finalScore
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value finalStorage
+argument writeCall console Console console
+argument writeCall value Int64 finalStorage
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

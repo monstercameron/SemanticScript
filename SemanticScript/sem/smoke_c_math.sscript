@@ -5,92 +5,92 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Exercise c.sqrt, c.pow, c.sin, c.cos against printf so the F64 ABI round-trip is observable"
-invariant main "Each c.* math call lowers to a direct extern call with no SemanticScript-side wrapping"
+purpose operation main "Exercise c.sqrt, c.pow, c.sin, c.cos against printf so the Float64 ABI round-trip is observable"
+invariant operation main "Each c.* math call lowers to a direct extern call with no SemanticScript-side wrapping"
 
 label startMain
 
-const formatSquareRootText CNullTerminatedByteString "sqrt(%g) = %g\n"
-const formatPowText CNullTerminatedByteString "pow(%g, %g) = %g\n"
-const formatSinCosText CNullTerminatedByteString "sin(%g) = %g; cos(%g) = %g\n"
+storage module immutable formatSquareRootText String "sqrt(%g) = %g\n"
+storage module immutable formatPowText String "pow(%g, %g) = %g\n"
+storage module immutable formatSinCosText String "sin(%g) = %g; cos(%g) = %g\n"
 
-const inputSquareRootValue CFloat64 2.0
-const inputPowBase CFloat64 2.0
-const inputPowExponent CFloat64 10.0
-const inputAngleRadians CFloat64 1.5707963267948966
+storage module immutable inputSquareRootValue Float64 2.0
+storage module immutable inputPowBase Float64 2.0
+storage module immutable inputPowExponent Float64 10.0
+storage module immutable inputAngleRadians Float64 1.5707963267948966
 
 call sqrtCall c.sqrt
-arg sqrtCall x inputSquareRootValue
+argument sqrtCall x Float64 inputSquareRootValue
 run sqrtCall
-bind sqrtResult CFloat64 sqrtCall
+bind value sqrtResult Float64 sqrtCall
 
 call printSqrtCall c.printf
-arg printSqrtCall format formatSquareRootText
-arg printSqrtCall input inputSquareRootValue
-arg printSqrtCall result sqrtResult
+argument printSqrtCall format String formatSquareRootText
+argument printSqrtCall input Float64 inputSquareRootValue
+argument printSqrtCall result Float64 sqrtResult
 run printSqrtCall
-ignoreOk printSqrtCall Void
-bindError printSqrtError CSignedInt32 printSqrtCall
-branchIfError printSqrtCall sqrtWriteFailed
+ignore void source printSqrtCall
+bind error printSqrtError Int32 printSqrtCall
+branch error source printSqrtCall target sqrtWriteFailed
 
 call powCall c.pow
-arg powCall base inputPowBase
-arg powCall exponent inputPowExponent
+argument powCall base Float64 inputPowBase
+argument powCall exponent Float64 inputPowExponent
 run powCall
-bind powResult CFloat64 powCall
+bind value powResult Float64 powCall
 
 call printPowCall c.printf
-arg printPowCall format formatPowText
-arg printPowCall base inputPowBase
-arg printPowCall exponent inputPowExponent
-arg printPowCall result powResult
+argument printPowCall format String formatPowText
+argument printPowCall base Float64 inputPowBase
+argument printPowCall exponent Float64 inputPowExponent
+argument printPowCall result Float64 powResult
 run printPowCall
-ignoreOk printPowCall Void
-bindError printPowError CSignedInt32 printPowCall
-branchIfError printPowCall powWriteFailed
+ignore void source printPowCall
+bind error printPowError Int32 printPowCall
+branch error source printPowCall target powWriteFailed
 
 call sinCall c.sin
-arg sinCall x inputAngleRadians
+argument sinCall x Float64 inputAngleRadians
 run sinCall
-bind sinResult CFloat64 sinCall
+bind value sinResult Float64 sinCall
 
 call cosCall c.cos
-arg cosCall x inputAngleRadians
+argument cosCall x Float64 inputAngleRadians
 run cosCall
-bind cosResult CFloat64 cosCall
+bind value cosResult Float64 cosCall
 
 call printSinCosCall c.printf
-arg printSinCosCall format formatSinCosText
-arg printSinCosCall angleSin inputAngleRadians
-arg printSinCosCall valueSin sinResult
-arg printSinCosCall angleCos inputAngleRadians
-arg printSinCosCall valueCos cosResult
+argument printSinCosCall format String formatSinCosText
+argument printSinCosCall angleSin Float64 inputAngleRadians
+argument printSinCosCall valueSin Float64 sinResult
+argument printSinCosCall angleCos Float64 inputAngleRadians
+argument printSinCosCall valueCos Float64 cosResult
 run printSinCosCall
-ignoreOk printSinCosCall Void
-bindError printSinCosError CSignedInt32 printSinCosCall
-branchIfError printSinCosCall sinCosWriteFailed
+ignore void source printSinCosCall
+bind error printSinCosError Int32 printSinCosCall
+branch error source printSinCosCall target sinCosWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label sqrtWriteFailed
 makeError sqrtWriteFailure MainError.ConsoleWriteFailed printSqrtError
-returnError sqrtWriteFailure
+return error sqrtWriteFailure
 
 label powWriteFailed
 makeError powWriteFailure MainError.ConsoleWriteFailed printPowError
-returnError powWriteFailure
+return error powWriteFailure
 
 label sinCosWriteFailed
 makeError sinCosWriteFailure MainError.ConsoleWriteFailed printSinCosError
-returnError sinCosWriteFailure
+return error sinCosWriteFailure

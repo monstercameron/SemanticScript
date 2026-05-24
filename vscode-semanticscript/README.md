@@ -19,18 +19,17 @@ explicit runtime checks, and refinement-only documentation forms.
 
 ## Current Status
 
-Active editor tooling. Version `1.0.3` supports highlighting, semantic tokens,
-hovers, same-file navigation, completions, lint integration, and direct
+Active editor tooling. Version `1.0.5` supports highlighting, semantic tokens,
+hovers, project-aware navigation, completions, lint integration, and direct
 `semsc.py` executable builds from VS Code. The package also includes a
 SemanticScript gallery icon, language file icon fallback, and selectable
 SemanticScript file icon theme.
 
 ## Release Readiness
 
-The package is 1.0 local-release oriented. Before a public Marketplace release,
-the release owner must decide:
-
-- the real Marketplace `publisher` value to replace `semanticscript-local`.
+The initial 1.0 package is local VSIX only. Marketplace publishing is out of
+scope until the release owner selects a real Marketplace `publisher` value to
+replace `semanticscript-local`.
 
 The extension package is licensed as MIT, matching the root repository license.
 Run `npm run check` before packaging. Use `npm run package:vsix` for local VSIX
@@ -43,7 +42,8 @@ builds after accepting the publisher metadata constraint for the target release.
   `.sem`, `build.sscript`, and `build.sem`.
 - TextMate highlighting for verbs, types, strings, numbers, comments, symbols,
   qualified paths, error variants, schema values, primitive targets, generated
-  targets, domain targets, and embedded `htmlBody` markup islands.
+  targets, domain targets, and embedded `html body template`, `jsonBody`, and
+  `sql body` islands.
 - Semantic token coloring for declaration, context, action, and control verbs.
 - Semantic roles for declared names, immutable values, mutable values, call
   objects, argument names, labels, effect paths, opaque inputs, generated
@@ -53,17 +53,21 @@ builds after accepting the publisher metadata constraint for the target release.
 - Context-aware hovers that explain the concrete line being hovered, including
   actual constant names, types, values, call targets, argument flow, control
   edges, cleanup edges, worker items, and same-file operation metadata.
-- Identifier hovers resolve same-file symbols such as constants, variables,
+- Identifier hovers resolve same-file symbols such as constants, storage slots,
   inputs, storage slots, call objects, labels, bindings, failures, fields,
   groups, collection declarations, and work items.
 - Go to Definition for same-file SemanticScript symbols.
+- Go to Definition for build-tape module registrations and project imports,
+  including `registerModule ... "path"` rows and `import ... module.path`
+  lookups resolved through the nearest `build.sem`.
 - Outline/Breadcrumb support through document symbols for operations, routes,
   records, fields, capabilities, constants, storage, calls, labels, and key
   project declarations.
 - Completion suggestions for verbs, primitive/native call targets, and same-file
   symbols, including `html.hydrate.TemplateName` targets declared by local
-  `htmlTemplate` rows.
-- Optional diagnostics from the canonical `semlint.py` engine.
+  `html template` rows.
+- Optional diagnostics from the canonical `semlint.py` engine, including
+  related-span links plus quick fixes for auto-applicable single-line fixes.
 - `SemanticScript: Compile Current File` runs `semsc.py --emit-exe` with
   configurable build profile, runtime checks, and LLVM IR persistence.
 
@@ -85,15 +89,25 @@ The extension recognizes the recent syntax families from the refined example:
   `operationBody`, `runtimeBinding`, `runtimeBindingPrecondition`,
   `runtimeBindingFailure`, `intrinsicName`, `dependencyPath`,
   `dependencyFailure`, `precondition`, `pinsNullBodyFailurePath`,
-  `responseBodyForwarder`, `rationale`, and explicit `returnVoid` control flow.
+  `responseBodyForwarder`, `rationale`, and explicit `return void` control flow.
 - Native web server declarations:
-  `webServer`, `serverHost`, `serverPort`, `route`, `routeTimeout`,
+  `webServer`, `serverHost`, `serverPort`, `route`, `routeNotFound`,
+  `routeMethodNotAllowed`, `routeTimeout`,
   `routeMiddleware`, `routeTimeoutOptOut`, and `routeMiddlewareOptOut`.
+- RuntimeBinding async hooks:
+  `runtimeBindingAsyncStart` and `runtimeBindingAsyncAwait` for generic
+  `start` / `await` lowering on runtime-bound operations.
 - Native HTTP call targets:
   `http.requestMethod`, `http.requestPath`, `http.requestHeader`,
   `http.requestQueryParam`, `http.requestBodyText`, `http.requestBodyBytes`,
-  `http.requestBodyLength`, `http.responseText`, `http.responseBytes`,
-  `http.responseHeader`, `http.responseSseEvent`, and multipart helpers such as
+  `http.requestBodyLength`, `http.requestPathParam`, `http.requestCookie`,
+  `http.responseHtml`, `http.responseText`, `http.responseBytes`,
+  `http.responseFile`, `http.responseHeader`, `http.responseSseEvent`,
+  `http.openSseStream`, `http.writeSseEvent`, `http.writeSseEventWithId`,
+  `http.writeSseHeartbeat`, `http.closeSseStream`,
+  `http.clientDisconnected`, `http.serverIsShuttingDown`,
+  `http.clientGet`, `http.clientPost`, `http.escapeHtml`,
+  `http.ensureDirectory`, `http.nowMillis`, and multipart helpers such as
   `http.multipartPartText`, `http.multipartPartBytes`,
   `http.multipartPartLength`, `http.multipartPartFilename`, and
   `http.multipartPartContentType`.
@@ -105,13 +119,20 @@ The extension recognizes the recent syntax families from the refined example:
   `gui.applicationRun`, `gui.textBoxText`, `gui.textLabelSetText`, and
   `gui.windowClose`.
 - First-class HTML templates:
-  `htmlTemplate`, `htmlArg`, `htmlBody`, `HtmlText`, `HtmlClass`, `SafeUrl`,
-  `HtmlFragment`, `HtmlTrustedFragment`, `HtmlDocument`, embedded HTML/SSX
-  highlighting, `{htmlArg.name}` hole hovers, and generated hydration targets
-  such as `html.hydrate.TodoDashboardPageTemplate`.
+  `html template`, `html body template`, `String`, `HtmlFragment`,
+  `HtmlTrustedFragment`, `HtmlDocument`, embedded HTML/SSX highlighting,
+  inferred bare or dotted hole hovers such as `{titleText}` and
+  `{profile.title}`, and generated hydration targets such as
+  `html.hydrate.TodoDashboardPageTemplate`.
+- First-class SQL text islands:
+  `sql body`, `sqlBody`, `SqlText`, placeholder highlighting, and storage-target
+  hovers for SQL passed to `sqlite.prepareStatement` or `sqlite.exec`.
 - Module/dependency build tape:
-  `importModule`, singular imports such as `importOperation` and `importType`,
-  plus `dependencyFetch`, `dependencyCache`, and `dependencyLock`.
+  `import ALIAS MODULE_PATH`, legacy `importModule`, singular imports such as
+  `importOperation` and `importType`, plus `dependencyFetch`,
+  `dependencyCache`, `dependencyLock`, `asyncRuntime`, `keepResources`,
+  `resourcesDir`, `buildConstant`, `nativeRuntimeSource`, and
+  `nativeRuntimeLinkArg`.
 - Memory contracts:
   `memoryHeap`, `memoryArena`, `memoryAllocationSource`, `memoryStackLimit`.
 - Trust and literals:
@@ -119,6 +140,7 @@ The extension recognizes the recent syntax families from the refined example:
   `typeLiteralTerminator`, `domainLiteral*`, `literal*`.
 - Records and builders:
   `recordLayout`, `recordAlign`, `fieldDefault`, `fieldInvariant`,
+  `recordFieldJsonName`, `recordFieldJsonOmitWhen`,
   `recordBuilder`, `recordSet`, `recordCopy`, `recordBuild`,
   `recordBuildFailure`, `recordConstructor*`, `fieldGet`, `fieldSet`.
 - Collections and aggregates:
@@ -126,8 +148,19 @@ The extension recognizes the recent syntax families from the refined example:
   `listLiteral*`, `collectionOperation*`, and typed collection methods such as
   `TaskList.length`, `TaskList.append`, `TaskList.get`, and `TaskMap.insert`.
 - Codecs:
-  `jsonCodec*`, plus generated targets such as `json.decode.Task` and
-  `json.encode.AccountBalanceResponse`.
+  `jsonCodec*`, legacy `json.encode.*` / `json.decode.*`, high-level
+  `json.parse.Task` / `json.stringify.AccountBalanceResponse`, and native JSON
+  builder/document CRUD targets such as `json.createDocument`,
+  `json.cursorAtPath`, `json.setObjectFieldString`, and
+  `json.removeArrayElementAt`.
+- Standard native targets:
+  `net.fetchText`, `net.fetchBytes`, `net.freeTextBody`, expanded SQLite targets
+  including `sqlite.finalizeStatement`, `sqlite.resetStatement`,
+  `sqlite.columnBlob`, `sqlite.columnByteCount`, `sqlite.execStatus`, JWT
+  helpers such as `jwt.hs256VerifyToken` and
+  `jwt.formatBearerLoginEnvelope`, and standard exported type/value
+  surfaces for `standard.gui`, `standard.json`, `standard.sqlite`,
+  `standard.net`, and `standard.bcrypt`.
 - Groups, guards, and defers:
   `group*`, `guardToken*`, `deferLog`, `deferLogSink`, `deferRunOn`,
   `deferOrder`, `deferFailurePolicy`, `deferConsumes`, and async defer forms.
@@ -146,26 +179,31 @@ ordinary variables. Examples include:
 ```text
 yes no
 strictExecutable refinedSyntax
+permissiveExecutable library none libuv
 local module process sharedState
 immutable mutable
+win32 winui3 x86_64_v1 on off
 sourceTape runtimeBinding recordConstructor intrinsic externalDependency
 success error
 decode encode reject ignore keep none
 utf8 nullByte sha256 maximumBytes
+empty null zero
 validatedRuntimeValue trustedStaticLiteral trustedUtf8Literal
 rawPointerToValidatedCString rawUtf8ToValidatedText
 row immutableUpdate borrowedView
 zeroBasedChecked zeroBasedCheckedRange contiguousUniqueAscending
 arena.request arena.process arena.static
-returnOk returnError reverseRegistration logAndSuppress
+return value ok error void reverseRegistration logAndSuppress
 protectedBy ownedBy
 continueMiddlewareControl shortCircuitMiddlewareControl
 inMemorySqliteOpenMode readWriteCreateSqliteOpenMode
+rowSqliteStepResult doneSqliteStepResult objectJsonValueKind arrayJsonValueKind
+defaultGuiWindowLayout clickGuiEventKind okGuiRuntimeStatus
 ```
 
 Role suffix highlighting is intentionally limited to real user symbols. Fixed
 schema values and opaque dependency names are kept atomic, so words like
-`sharedState`, `returnError`, and `metricsLock` are not split into misleading
+`sharedState`, `return error`, and `metricsLock` are not split into misleading
 suffix fragments.
 
 ## Linting
@@ -259,9 +297,12 @@ Then reload VS Code.
   "semanticScript.compiler.persistLlvmIr": "auto",
   "semanticScript.compiler.optLevel": "default",
   "semanticScript.compiler.emitLlvmIr": false,
+  "semanticScript.compiler.emitOptimizedLlvmIr": false,
   "semanticScript.compiler.buildDir": "",
   "semanticScript.compiler.buildRoot": "",
   "semanticScript.compiler.buildFolderName": "",
+  "semanticScript.compiler.keepResources": false,
+  "semanticScript.compiler.resourceDir": "",
   "semanticScript.compiler.cpuBaseline": "default",
   "semanticScript.compiler.cpuTune": "",
   "semanticScript.compiler.cpuFeatureCheck": "default"
@@ -284,6 +325,8 @@ Then reload VS Code.
 
 `semanticScript.compiler.optLevel` can be `default`, `0`, `1`, `2`, or `3`.
 
+`semanticScript.compiler.emitOptimizedLlvmIr` passes `--emit-optimized-ir`.
+
 `semanticScript.compiler.cpuBaseline` can be `default`, `generic`, `native`,
 `x86_64_v1`, `x86_64_v2`, `x86_64_v3`, `x86_64_v4`, `arm64_generic`, or
 `arm64_v8_2`.
@@ -298,3 +341,7 @@ When a `.sem` file is inside a project, compile and lint commands use the
 nearest `build.sem` as the project root. `buildDir`, `buildRoot`, and
 `buildFolderName` pass through the matching compiler artifact-directory flags.
 CPU settings pass through the matching compiler CPU flags.
+
+`semanticScript.compiler.keepResources` and
+`semanticScript.compiler.resourceDir` pass through the matching Windows resource
+debugging flags.

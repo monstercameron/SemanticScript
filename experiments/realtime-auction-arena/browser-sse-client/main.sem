@@ -1,0 +1,1377 @@
+# Realtime Auction Arena - SSR browser client.
+#
+# A separate SemanticScript webServer (port 18090) that server-renders the
+# bidder Lobby + Floor. It is a proper decoupled client: it talks to the API
+# server (:18083) over HTTP using the new standard.http outbound client
+# (clientGet/clientPost) - it logs in once (cached bearer token), fetches the
+# auction snapshot, parses the JSON with standard.json, and composes
+# standard.html templates into the response. A thin assets/floor.js refreshes
+# the live regions between loads.
+
+module app.realtime_auction_arena.client
+purpose module app.realtime_auction_arena.client "Server-rendered bidder Lobby + Floor for the Realtime Auction Arena, fetching state from the API over standard.http and composing standard.html templates."
+moduleOwns app.realtime_auction_arena.client "webServer + route table, the cached API bearer-token login, static asset + health handlers, and the Lobby/Floor/404 page templates and handlers that fetch + parse + render."
+moduleDoesNotOwn app.realtime_auction_arena.client "Auction rules, writes, or auth issuance (owned by the API server). HTML fragment components live in app.realtime_auction_arena.client.components."
+invariant module app.realtime_auction_arena.client "This client never owns auction state; it fetches over HTTP and renders. Dynamic text flows through escaped String template holes; heap-owned fetch buffers are freed via defer."
+moduleWarning app.realtime_auction_arena.client "One cached bearer token shared across requests; safe under the blocking HTTP/1.1 backend (one request at a time). On token expiry the floor degrades to 'unavailable' until process restart (re-login-on-401 is a follow-up)."
+
+import http standard.http
+import html standard.html
+import json standard.json
+import components app.realtime_auction_arena.client.components
+
+webServer realtimeAuctionArenaClientServer
+purpose operation realtimeAuctionArenaClientServer "Host the Realtime Auction Arena SSR bidder client on localhost:18090."
+serverHost realtimeAuctionArenaClientServer "127.0.0.1"
+serverPort realtimeAuctionArenaClientServer 18090
+route realtimeAuctionArenaClientServer GET "/" lobbyPageHandler
+route realtimeAuctionArenaClientServer GET "/floor/:auctionId" floorPageHandler
+route realtimeAuctionArenaClientServer GET "/assets/:filename" staticAssetHandler
+route realtimeAuctionArenaClientServer GET "/health" healthHandler
+route realtimeAuctionArenaClientServer GET "/probe-api" probeApiHandler
+route realtimeAuctionArenaClientServer GET "*" notFoundPageHandler
+
+capability filesystemReadCapability filesystem read
+purpose operation filesystemReadCapability "Authority to read files from the assets directory for static response serving."
+capability jsonDocumentReadCapability json.document.tree read
+purpose operation jsonDocumentReadCapability "Authority to parse and read JSON fetched from the API server."
+capability heapAllocCapability heap allocate
+purpose operation heapAllocCapability "Authority to allocate scratch buffers for JSON string reads."
+capability heapFreeCapability heap free
+purpose operation heapFreeCapability "Authority to free JSON scratch + fetched response buffers."
+
+# ===== module constants =====
+storage module immutable httpStatusOk Int32 200
+storage module immutable httpStatusNotReady Int32 503
+storage module immutable assetsDirectoryPath String "assets"
+storage module immutable assetFilenameParam String "filename"
+storage module immutable auctionIdParam String "auctionId"
+storage module immutable apiBaseUrlText String "http://127.0.0.1:18083"
+storage module immutable apiHostText String "127.0.0.1"
+storage module immutable apiPortNumber Int32 18083
+storage module immutable healthzPathText String "/healthz"
+storage module immutable emptyHeaderText String ""
+storage module immutable jsonFieldData String "data"
+storage module immutable jsonFieldStatus String "status"
+storage module immutable jsonDocCapacityBytes JsonCapacityBytes 8192
+storage module immutable statusScratchCapacityBytes ByteCount 128
+storage module immutable statusScratchCapacityInt64 Int64 128
+storage module immutable apiStatusUnknownText String "unreachable"
+storage module immutable loginPathText String "/api/v1/auth/login"
+storage module immutable loginBodyText String "{\"username\":\"bidder\",\"password\":\"auctioneer-demo-password\"}"
+storage module immutable jsonFieldAccessToken String "accessToken"
+storage module immutable jsonFieldAuction String "auction"
+storage module immutable jsonFieldTitle String "title"
+storage module immutable jsonFieldStatusText String "status"
+storage module immutable bearerHeaderFormat String "Authorization: Bearer %s"
+storage module immutable snapshotPathFormat String "/api/v1/auctions/%s"
+storage module immutable tokenBufferCapacity ByteCount 768
+storage module immutable tokenScratchCapacityInt64 Int64 768
+storage module immutable headerBufferCapacity ByteCount 896
+storage module immutable headerBufferCapacityArg Int64 896
+storage module immutable pathBufferCapacity ByteCount 256
+storage module immutable pathBufferCapacityArg Int64 256
+storage module immutable titleScratchCapacity ByteCount 512
+storage module immutable titleScratchCapacityInt64 Int64 512
+storage module immutable emptyToken String 0
+storage module immutable oneReadyFlag Int32 1
+storage module immutable floorTitleUnknownText String "Auction unavailable"
+storage module immutable floorStatusPlaceholder String "running"
+storage module immutable floorDashText String "--"
+storage module immutable floorZeroText String "0"
+storage module immutable floorLiveDescription String "Live auction snapshot fetched via standard.http"
+storage module immutable floorUnavailableDescription String "Could not reach the auction API."
+storage module immutable jsonFieldDescription String "description"
+storage module immutable jsonFieldCurrentBid String "currentBid"
+storage module immutable jsonFieldStatusCode String "statusCode"
+storage module immutable moneyFormat String "$%lld.%02lld"
+storage module immutable descScratchCapacity ByteCount 512
+storage module immutable descScratchCapacityInt64 Int64 512
+storage module immutable moneyBufferCapacity ByteCount 64
+storage module immutable moneyBufferCapacityArg Int64 64
+storage module immutable hundredInt64 Int64 100
+storage module immutable zeroDefaultInt64 Int64 0
+storage module immutable statusCodeDraftValue Int64 1
+storage module immutable statusCodeRunningValue Int64 2
+storage module immutable statusCodeClosedValue Int64 3
+storage module immutable statusDraftText String "draft"
+storage module immutable statusRunningText String "running"
+storage module immutable statusClosedText String "closed"
+storage module immutable statusCancelledText String "cancelled"
+storage module immutable auctionsListPathText String "/api/v1/auctions"
+storage module immutable jsonFieldAuctions String "auctions"
+storage module immutable jsonFieldAuctionId String "auctionId"
+storage module immutable gridBufferCapacity ByteCount 65536
+storage module immutable gridBufferCapacityInt64 Int64 65536
+storage module immutable maxLobbyCards Int64 20
+storage module immutable perCardSnprintfSize Int64 2000
+storage module immutable emptyStrFormat String ""
+storage module immutable zeroByteCount ByteCount 0
+storage module immutable oneInt64 Int64 1
+storage module immutable lobbyLiveText String "live"
+storage module immutable escapedTextCapacity ByteCount 3072
+storage module immutable escapedTextCapacityArg Int32 3072
+storage module immutable eventsPathFormat String "/api/v1/auctions/%s/events"
+storage module immutable jsonFieldEvents String "events"
+storage module immutable jsonFieldEventType String "eventType"
+storage module immutable jsonFieldSequence String "sequence"
+storage module immutable jsonFieldClosesAt String "closesAtUtcMillis"
+storage module immutable feedBufferCapacity ByteCount 65536
+storage module immutable feedBufferCapacityInt64 Int64 65536
+storage module immutable maxFeedRows Int64 40
+storage module immutable eventTypeScratchCap ByteCount 128
+storage module immutable eventTypeScratchCapInt64 Int64 128
+storage module immutable closesAtFormat String "%lld"
+storage module immutable closesAtBufCap ByteCount 32
+storage module immutable closesAtBufCapArg Int64 32
+storage module immutable feedRowFormat String "<li class=\"feed-item flex items-start gap-3 border-l-2 border-floor-edge py-2 pl-3 text-sm\"><strong class=\"text-ink\">%s</strong><span class=\"ml-2 text-xs text-muted\">#%lld</span></li>"
+storage module immutable cardFormat String "<a class=\"auction-card block rounded-xl border border-floor-edge bg-floor-panel p-4 transition hover:-translate-y-0.5 hover:border-accent/50\" href=\"/floor/%s\"><h3 class=\"text-lg font-semibold text-ink\">%s</h3><p class=\"mt-2 font-mono text-2xl font-bold text-accent\">%s</p></a>"
+storage module immutable probeFailedBody HttpTextBody "upstream fetch failed\n"
+storage module immutable brandText String "Realtime Auction Arena"
+storage module immutable lobbyTitleText String "Auction Arena - Lobby"
+storage module immutable floorTitleText String "Auction Arena - Floor"
+storage module immutable notFoundTitleText String "Auction Arena - Not found"
+storage module immutable lobbySectionTitle String "Open auctions"
+storage module immutable feedSectionTitle String "Event feed"
+storage module immutable lobbyGridContainerId String "auctionGrid"
+storage module immutable feedContainerId String "eventFeed"
+storage module immutable rowStatusValue Int32 100
+storage module immutable columnIndex0 Int32 0
+storage module immutable columnIndex1 Int32 1
+storage module immutable columnIndex2 Int32 2
+storage module immutable columnIndex3 Int32 3
+storage module immutable columnIndex4 Int32 4
+storage module immutable columnIndex5 Int32 5
+storage module immutable columnIndex6 Int32 6
+storage module immutable bindIndex1 Int32 1
+storage module immutable emptyFragmentText HtmlFragment ""
+storage module immutable healthReadyBody HttpTextBody "{\"ok\":true,\"service\":\"realtime-auction-arena-client\"}\n"
+storage module immutable healthNotReadyBody HttpTextBody "{\"ok\":false,\"error\":\"shared database unavailable\"}\n"
+storage module immutable assetMissingBody HttpTextBody "asset not found\n"
+storage module immutable notFoundFallbackText String "That auction floor could not be found."
+
+# Lobby grid: one aggregate row whose single column is the whole grid HTML.
+storage module immutable sqlLobbyGrid SqlText
+sql body sqlLobbyGrid
+  SELECT COALESCE(group_concat(printf('<a class="block rounded-xl border border-floor-edge bg-floor-panel p-4 transition hover:-translate-y-0.5 hover:border-accent/50" href="/floor/%s"><div class="mb-2 flex items-center justify-between"><span class="status-chip text-xs font-semibold uppercase tracking-wide" data-status="%s">%s</span><span class="font-mono text-xs text-muted">%s</span></div><h3 class="text-lg font-semibold text-ink">%s</h3><p class="mt-2 font-mono text-2xl font-bold text-accent">$%.2f</p></a>', auction_id, CASE status WHEN 1 THEN 'draft' WHEN 2 THEN 'running' WHEN 3 THEN 'closed' ELSE 'cancelled' END, CASE status WHEN 1 THEN 'draft' WHEN 2 THEN 'running' WHEN 3 THEN 'closed' ELSE 'cancelled' END, auction_id, replace(replace(replace(title, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), current_bid_minor / 100.0), ''), '<p class="text-muted">No auctions are open right now.</p>') FROM (SELECT auction_id, status, title, current_bid_minor FROM auctions ORDER BY created_at DESC LIMIT 50)
+
+# Floor scalars: one row of pre-formatted display strings for one auction.
+storage module immutable sqlFloorScalars SqlText
+sql body sqlFloorScalars
+  SELECT CASE status WHEN 1 THEN 'draft' WHEN 2 THEN 'running' WHEN 3 THEN 'closed' ELSE 'cancelled' END, replace(replace(replace(title, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), replace(replace(replace(description, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), printf('$%.2f', current_bid_minor / 100.0), COALESCE(NULLIF(current_winner_user_id, ''), 'No bids yet'), printf('$%.2f', (current_bid_minor + minimum_increment_minor) / 100.0), closes_at FROM auctions WHERE auction_id = ? LIMIT 1
+
+# Floor feed: newest 40 events as one HTML string.
+storage module immutable sqlFloorFeed SqlText
+sql body sqlFloorFeed
+  SELECT COALESCE(group_concat(printf('<li class="feed-item flex items-start gap-3 border-l-2 border-floor-edge py-2 pl-3 text-sm"><div><strong class="block text-ink">%s</strong><span class="text-xs text-muted">#%d</span></div></li>', replace(replace(replace(event_type, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), sequence), ''), '<li class="text-muted">No events yet.</li>') FROM (SELECT event_type, sequence FROM auction_events WHERE auction_id = ? ORDER BY sequence DESC LIMIT 40)
+
+# Floor chat: newest 40 messages as one HTML string.
+storage module immutable sqlFloorChat SqlText
+sql body sqlFloorChat
+  SELECT COALESCE(group_concat(printf('<article class="chat-msg rounded-lg bg-floor-raised px-3 py-2 text-sm"><strong class="block text-xs text-muted">%s</strong><p class="text-ink">%s</p></article>', replace(replace(replace(author_user_id, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), CASE status WHEN 2 THEN 'Message removed' ELSE replace(replace(replace(body_text, '&', '&amp;'), '<', '&lt;'), '>', '&gt;') END), ''), '<p class="text-muted">No messages yet.</p>') FROM (SELECT author_user_id, body_text, status, created_at FROM chat_messages WHERE auction_id = ? ORDER BY created_at DESC LIMIT 40)
+
+# ===== shared read-only database handle (lazy) =====
+storage module mutable cachedApiToken String 0
+storage module mutable cachedApiTokenReady Int32 0
+
+# ===== static asset handler =====
+operation staticAssetHandler
+input operation staticAssetHandler request HttpRequest
+input operation staticAssetHandler response HttpResponse
+output operation staticAssetHandler Int32
+effect staticAssetHandler read http.request.header
+effect staticAssetHandler read filesystem
+effect staticAssetHandler write http.response
+useCapability staticAssetHandler httpRequestReader
+useCapability staticAssetHandler httpResponseWriter
+useCapability staticAssetHandler filesystemReadCapability
+memory staticAssetHandler arena request
+async staticAssetHandler no
+purpose operation staticAssetHandler "GET /assets/:filename - serve a file from the assets directory; the runtime refuses path traversal and sniffs the content type."
+
+label startStaticAssetHandler
+call readAssetFilenameCall http.requestPathParam
+argument readAssetFilenameCall request HttpRequest request
+argument readAssetFilenameCall name String assetFilenameParam
+run readAssetFilenameCall
+bind value assetFilename String readAssetFilenameCall
+call assetFilenameMissingCall pointer.isNull
+argument assetFilenameMissingCall ptr OpaquePointer assetFilename
+run assetFilenameMissingCall
+bind value assetFilenameMissing Bool assetFilenameMissingCall
+branch if condition assetFilenameMissing target staticAssetMissing
+call writeAssetFileCall http.responseFile
+argument writeAssetFileCall response HttpResponse response
+argument writeAssetFileCall status Int32 httpStatusOk
+argument writeAssetFileCall rootDirectory String assetsDirectoryPath
+argument writeAssetFileCall requestedPath String assetFilename
+run writeAssetFileCall
+bind value writeAssetFileStatus Int32 writeAssetFileCall
+storage local immutable assetWriteOkValue Int32 0
+call assetWriteOkCall math.equalInt32
+argument assetWriteOkCall left Int32 writeAssetFileStatus
+argument assetWriteOkCall right Int32 assetWriteOkValue
+run assetWriteOkCall
+bind value assetWriteOk Bool assetWriteOkCall
+branch if condition assetWriteOk target staticAssetServed
+branch else target staticAssetMissing
+
+label staticAssetServed
+return value writeAssetFileStatus
+
+label staticAssetMissing
+call writeAssetMissingCall http.responseText
+argument writeAssetMissingCall response HttpResponse response
+argument writeAssetMissingCall status Int32 httpStatusOk
+argument writeAssetMissingCall body HttpTextBody assetMissingBody
+argument writeAssetMissingCall contentType HttpContentType plainTextContentType
+run writeAssetMissingCall
+bind value writeAssetMissingStatus Int32 writeAssetMissingCall
+return value writeAssetMissingStatus
+
+# ===== health =====
+operation healthHandler
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
+effect healthHandler write http.response
+useCapability healthHandler httpResponseWriter
+memory healthHandler arena request
+async healthHandler no
+purpose operation healthHandler "GET /health - process liveness for the SSR client."
+
+label startHealthHandler
+call writeHealthReadyCall http.responseText
+argument writeHealthReadyCall response HttpResponse response
+argument writeHealthReadyCall status Int32 httpStatusOk
+argument writeHealthReadyCall body HttpTextBody healthReadyBody
+argument writeHealthReadyCall contentType HttpContentType jsonContentType
+run writeHealthReadyCall
+bind value writeHealthReadyStatus Int32 writeHealthReadyCall
+return value writeHealthReadyStatus
+
+# ===== API fetch probe (validates standard.http outbound client) =====
+operation probeApiHandler
+input operation probeApiHandler request HttpRequest
+input operation probeApiHandler response HttpResponse
+output operation probeApiHandler Int32
+effect probeApiHandler read http.client
+effect probeApiHandler write http.response
+useCapability probeApiHandler httpClientCaller
+useCapability probeApiHandler httpResponseWriter
+memory probeApiHandler heap yes
+async probeApiHandler no
+purpose operation probeApiHandler "GET /probe-api - proves the outbound HTTP client by fetching the API server /healthz and echoing the body."
+
+label startProbeApiHandler
+call probeFetchCall http.clientGet
+argument probeFetchCall host String apiHostText
+argument probeFetchCall port Int32 apiPortNumber
+argument probeFetchCall path String healthzPathText
+argument probeFetchCall headerLine String emptyHeaderText
+run probeFetchCall
+bind value probeBody HttpClientResponseBody probeFetchCall
+call probeBodyMissingCall pointer.isNull
+argument probeBodyMissingCall ptr OpaquePointer probeBody
+run probeBodyMissingCall
+bind value probeBodyMissing Bool probeBodyMissingCall
+branch if condition probeBodyMissing target probeFailed
+call writeProbeCall http.responseText
+argument writeProbeCall response HttpResponse response
+argument writeProbeCall status Int32 httpStatusOk
+argument writeProbeCall body HttpClientResponseBody probeBody
+argument writeProbeCall contentType HttpContentType jsonContentType
+run writeProbeCall
+bind value writeProbeStatus Int32 writeProbeCall
+return value writeProbeStatus
+
+label probeFailed
+call writeProbeFailedCall http.responseText
+argument writeProbeFailedCall response HttpResponse response
+argument writeProbeFailedCall status Int32 httpStatusNotReady
+argument writeProbeFailedCall body HttpTextBody probeFailedBody
+argument writeProbeFailedCall contentType HttpContentType plainTextContentType
+run writeProbeFailedCall
+bind value writeProbeFailedStatus Int32 writeProbeFailedCall
+return value writeProbeFailedStatus
+
+# ===== Lobby page =====
+html template LobbyPageTemplate
+html body template LobbyPageTemplate
+  <!doctype html>
+  <html lang="en" class="h-full">
+  <head>
+  {headFragment}
+  </head>
+  <body class="min-h-full bg-floor-bg text-ink antialiased">
+  <div class="mx-auto max-w-6xl px-4 py-6">
+  {topBarFragment}
+  <p class="mb-4 text-xs text-muted">Live API status (fetched over standard.http): <span class="font-mono text-accent">{apiStatusText}</span></p>
+  {lobbySectionFragment}
+  </div>
+  </body>
+  </html>
+
+operation lobbyPageHandler
+input operation lobbyPageHandler request HttpRequest
+input operation lobbyPageHandler response HttpResponse
+output operation lobbyPageHandler Int32
+effect lobbyPageHandler read http.client
+effect lobbyPageHandler read json.document.tree
+effect lobbyPageHandler allocate heap
+effect lobbyPageHandler free heap
+effect lobbyPageHandler write http.response
+useCapability lobbyPageHandler httpClientCaller
+useCapability lobbyPageHandler jsonDocumentReadCapability
+useCapability lobbyPageHandler heapAllocCapability
+useCapability lobbyPageHandler heapFreeCapability
+useCapability lobbyPageHandler httpResponseWriter
+memory lobbyPageHandler heap yes
+async lobbyPageHandler no
+purpose operation lobbyPageHandler "GET / - fetch the open-auction list from the API over standard.http, build the grid HTML by iterating the JSON array, and server-render the lobby."
+
+label startLobbyPageHandler
+call renderLobbyHeadCall renderPageHead
+argument renderLobbyHeadCall pageTitleText String lobbyTitleText
+run renderLobbyHeadCall
+bind value lobbyHeadFragment HtmlFragment renderLobbyHeadCall
+call renderLobbyTopBarCall renderTopBar
+argument renderLobbyTopBarCall brandText String brandText
+run renderLobbyTopBarCall
+bind value lobbyTopBarFragment HtmlFragment renderLobbyTopBarCall
+
+call lobbyTokenCall ensureApiToken
+run lobbyTokenCall
+bind value lobbyToken String lobbyTokenCall
+call lobbyTokenMissingCall pointer.isNull
+argument lobbyTokenMissingCall ptr OpaquePointer lobbyToken
+run lobbyTokenMissingCall
+bind value lobbyTokenMissing Bool lobbyTokenMissingCall
+branch if condition lobbyTokenMissing target lobbyStatusUnknown
+
+call allocLobbyHeaderCall c.malloc
+argument allocLobbyHeaderCall size ByteCount headerBufferCapacity
+run allocLobbyHeaderCall
+bind ok lobbyHeaderBuf OpaquePointer allocLobbyHeaderCall
+bind error lobbyHeaderBufError OpaquePointer allocLobbyHeaderCall
+branch error source allocLobbyHeaderCall target lobbyStatusUnknown
+defer freeLobbyHeaderDefer c.free lobbyHeaderBuf
+call fmtLobbyHeaderCall c.snprintf
+argument fmtLobbyHeaderCall buffer OpaquePointer lobbyHeaderBuf
+argument fmtLobbyHeaderCall size Int64 headerBufferCapacityArg
+argument fmtLobbyHeaderCall format String bearerHeaderFormat
+argument fmtLobbyHeaderCall first String lobbyToken
+run fmtLobbyHeaderCall
+ignore ok source fmtLobbyHeaderCall type Int32
+bind value lobbyAuthHeader String allocLobbyHeaderCall
+
+call lobbyListCall http.clientGet
+argument lobbyListCall host String apiHostText
+argument lobbyListCall port Int32 apiPortNumber
+argument lobbyListCall path String auctionsListPathText
+argument lobbyListCall headerLine String lobbyAuthHeader
+run lobbyListCall
+bind value lobbyListResp HttpClientResponseBody lobbyListCall
+call lobbyListMissingCall pointer.isNull
+argument lobbyListMissingCall ptr OpaquePointer lobbyListResp
+run lobbyListMissingCall
+bind value lobbyListMissing Bool lobbyListMissingCall
+branch if condition lobbyListMissing target lobbyStatusUnknown
+defer freeLobbyListDefer c.free lobbyListResp
+
+call allocLobbyGridCall c.malloc
+argument allocLobbyGridCall size ByteCount gridBufferCapacity
+run allocLobbyGridCall
+bind ok lobbyGridBufAddr OpaquePointer allocLobbyGridCall
+bind error lobbyGridBufError OpaquePointer allocLobbyGridCall
+branch error source allocLobbyGridCall target lobbyStatusUnknown
+defer freeLobbyGridDefer c.free lobbyGridBufAddr
+call lobbyGridStrCall pointer.offset
+argument lobbyGridStrCall base OpaquePointer lobbyGridBufAddr
+argument lobbyGridStrCall offset ByteCount zeroByteCount
+run lobbyGridStrCall
+bind value lobbyGridBufStr String lobbyGridStrCall
+call lobbyInitGridCall c.snprintf
+argument lobbyInitGridCall buffer OpaquePointer lobbyGridBufAddr
+argument lobbyInitGridCall size Int64 perCardSnprintfSize
+argument lobbyInitGridCall format String emptyStrFormat
+run lobbyInitGridCall
+ignore ok source lobbyInitGridCall type Int32
+
+call allocLobbyIdScratchCall c.malloc
+argument allocLobbyIdScratchCall size ByteCount titleScratchCapacity
+run allocLobbyIdScratchCall
+bind ok lobbyIdScratch OpaquePointer allocLobbyIdScratchCall
+bind error lobbyIdScratchError OpaquePointer allocLobbyIdScratchCall
+branch error source allocLobbyIdScratchCall target lobbyStatusUnknown
+defer freeLobbyIdScratchDefer c.free lobbyIdScratch
+call allocLobbyTitleScratchCall c.malloc
+argument allocLobbyTitleScratchCall size ByteCount titleScratchCapacity
+run allocLobbyTitleScratchCall
+bind ok lobbyTitleScratch OpaquePointer allocLobbyTitleScratchCall
+bind error lobbyTitleScratchError OpaquePointer allocLobbyTitleScratchCall
+branch error source allocLobbyTitleScratchCall target lobbyStatusUnknown
+defer freeLobbyTitleScratchDefer c.free lobbyTitleScratch
+call allocLobbyMoneyCall c.malloc
+argument allocLobbyMoneyCall size ByteCount moneyBufferCapacity
+run allocLobbyMoneyCall
+bind ok lobbyMoneyBuf OpaquePointer allocLobbyMoneyCall
+bind error lobbyMoneyBufError OpaquePointer allocLobbyMoneyCall
+branch error source allocLobbyMoneyCall target lobbyStatusUnknown
+defer freeLobbyMoneyDefer c.free lobbyMoneyBuf
+call lobbyMoneyStrCall pointer.offset
+argument lobbyMoneyStrCall base OpaquePointer lobbyMoneyBuf
+argument lobbyMoneyStrCall offset ByteCount zeroByteCount
+run lobbyMoneyStrCall
+bind value lobbyMoneyStr String lobbyMoneyStrCall
+call allocLobbyEscTitleCall c.malloc
+argument allocLobbyEscTitleCall size ByteCount escapedTextCapacity
+run allocLobbyEscTitleCall
+bind ok lobbyEscTitleBuf OpaquePointer allocLobbyEscTitleCall
+bind error lobbyEscTitleBufError OpaquePointer allocLobbyEscTitleCall
+branch error source allocLobbyEscTitleCall target lobbyStatusUnknown
+defer freeLobbyEscTitleDefer c.free lobbyEscTitleBuf
+
+call parseLobbyListCall json.createDocument
+argument parseLobbyListCall jsonText String lobbyListResp
+argument parseLobbyListCall capacityBytes JsonCapacityBytes jsonDocCapacityBytes
+run parseLobbyListCall
+bind ok lobbyListDoc JsonDocument parseLobbyListCall
+bind error parseLobbyListError JsonAccessError parseLobbyListCall
+branch error source parseLobbyListCall target lobbyStatusUnknown
+defer destroyLobbyListDocDefer json.destroyDocument lobbyListDoc
+call lobbyListRootCall json.documentRoot
+argument lobbyListRootCall document JsonDocument lobbyListDoc
+run lobbyListRootCall
+bind value lobbyListRoot JsonCursor lobbyListRootCall
+call lobbyListDataCall json.objectFieldAt
+argument lobbyListDataCall document JsonDocument lobbyListDoc
+argument lobbyListDataCall cursor JsonCursor lobbyListRoot
+argument lobbyListDataCall fieldName String jsonFieldData
+run lobbyListDataCall
+bind ok lobbyListData JsonCursor lobbyListDataCall
+bind error lobbyListDataError JsonAccessError lobbyListDataCall
+branch error source lobbyListDataCall target lobbyStatusUnknown
+call lobbyAuctionsCursorCall json.objectFieldAt
+argument lobbyAuctionsCursorCall document JsonDocument lobbyListDoc
+argument lobbyAuctionsCursorCall cursor JsonCursor lobbyListData
+argument lobbyAuctionsCursorCall fieldName String jsonFieldAuctions
+run lobbyAuctionsCursorCall
+bind ok lobbyAuctionsCursor JsonCursor lobbyAuctionsCursorCall
+bind error lobbyAuctionsCursorError JsonAccessError lobbyAuctionsCursorCall
+branch error source lobbyAuctionsCursorCall target lobbyStatusUnknown
+call lobbyArrayLengthCall json.cursorArrayLength
+argument lobbyArrayLengthCall document JsonDocument lobbyListDoc
+argument lobbyArrayLengthCall cursor JsonCursor lobbyAuctionsCursor
+run lobbyArrayLengthCall
+bind value lobbyArrayLen Int64 lobbyArrayLengthCall
+
+storage local mutable lobbyIndex Int64 0
+storage local mutable lobbyOffset ByteCount 0
+
+label lobbyLoop
+call lobbyIdxLtLenCall math.lessThanInt64
+argument lobbyIdxLtLenCall left Int64 lobbyIndex
+argument lobbyIdxLtLenCall right Int64 lobbyArrayLen
+run lobbyIdxLtLenCall
+bind value lobbyIdxLtLen Bool lobbyIdxLtLenCall
+branch if condition lobbyIdxLtLen target lobbyCheckCap
+jump target lobbyLoopDone
+label lobbyCheckCap
+call lobbyIdxLtCapCall math.lessThanInt64
+argument lobbyIdxLtCapCall left Int64 lobbyIndex
+argument lobbyIdxLtCapCall right Int64 maxLobbyCards
+run lobbyIdxLtCapCall
+bind value lobbyIdxLtCap Bool lobbyIdxLtCapCall
+branch if condition lobbyIdxLtCap target lobbyLoopBody
+jump target lobbyLoopDone
+
+label lobbyLoopBody
+call lobbyElemCall json.arrayElementAt
+argument lobbyElemCall document JsonDocument lobbyListDoc
+argument lobbyElemCall cursor JsonCursor lobbyAuctionsCursor
+argument lobbyElemCall index Int64 lobbyIndex
+run lobbyElemCall
+bind ok lobbyElemCursor JsonCursor lobbyElemCall
+bind error lobbyElemError JsonAccessError lobbyElemCall
+branch error source lobbyElemCall target lobbyLoopDone
+call lobbyCardIdCursorCall json.objectFieldAt
+argument lobbyCardIdCursorCall document JsonDocument lobbyListDoc
+argument lobbyCardIdCursorCall cursor JsonCursor lobbyElemCursor
+argument lobbyCardIdCursorCall fieldName String jsonFieldAuctionId
+run lobbyCardIdCursorCall
+bind ok lobbyCardIdCursor JsonCursor lobbyCardIdCursorCall
+bind error lobbyCardIdCursorError JsonAccessError lobbyCardIdCursorCall
+branch error source lobbyCardIdCursorCall target lobbyLoopDone
+call lobbyReadCardIdCall json.cursorString
+argument lobbyReadCardIdCall document JsonDocument lobbyListDoc
+argument lobbyReadCardIdCall cursor JsonCursor lobbyCardIdCursor
+argument lobbyReadCardIdCall scratch OpaquePointer lobbyIdScratch
+argument lobbyReadCardIdCall scratchCapacity Int64 titleScratchCapacityInt64
+run lobbyReadCardIdCall
+bind ok lobbyCardId String lobbyReadCardIdCall
+bind error lobbyReadCardIdError JsonAccessError lobbyReadCardIdCall
+branch error source lobbyReadCardIdCall target lobbyLoopDone
+call lobbyCardTitleCursorCall json.objectFieldAt
+argument lobbyCardTitleCursorCall document JsonDocument lobbyListDoc
+argument lobbyCardTitleCursorCall cursor JsonCursor lobbyElemCursor
+argument lobbyCardTitleCursorCall fieldName String jsonFieldTitle
+run lobbyCardTitleCursorCall
+bind ok lobbyCardTitleCursor JsonCursor lobbyCardTitleCursorCall
+bind error lobbyCardTitleCursorError JsonAccessError lobbyCardTitleCursorCall
+branch error source lobbyCardTitleCursorCall target lobbyLoopDone
+call lobbyReadCardTitleCall json.cursorString
+argument lobbyReadCardTitleCall document JsonDocument lobbyListDoc
+argument lobbyReadCardTitleCall cursor JsonCursor lobbyCardTitleCursor
+argument lobbyReadCardTitleCall scratch OpaquePointer lobbyTitleScratch
+argument lobbyReadCardTitleCall scratchCapacity Int64 titleScratchCapacityInt64
+run lobbyReadCardTitleCall
+bind ok lobbyCardTitle String lobbyReadCardTitleCall
+bind error lobbyReadCardTitleError JsonAccessError lobbyReadCardTitleCall
+branch error source lobbyReadCardTitleCall target lobbyLoopDone
+call lobbyEscTitleCall http.escapeHtml
+argument lobbyEscTitleCall input String lobbyCardTitle
+argument lobbyEscTitleCall scratch OpaquePointer lobbyEscTitleBuf
+argument lobbyEscTitleCall capacity Int32 escapedTextCapacityArg
+run lobbyEscTitleCall
+bind value lobbyEscapedTitle String lobbyEscTitleCall
+call lobbyCardBidCursorCall json.objectFieldAt
+argument lobbyCardBidCursorCall document JsonDocument lobbyListDoc
+argument lobbyCardBidCursorCall cursor JsonCursor lobbyElemCursor
+argument lobbyCardBidCursorCall fieldName String jsonFieldCurrentBid
+run lobbyCardBidCursorCall
+bind ok lobbyCardBidCursor JsonCursor lobbyCardBidCursorCall
+bind error lobbyCardBidCursorError JsonAccessError lobbyCardBidCursorCall
+branch error source lobbyCardBidCursorCall target lobbyLoopDone
+call lobbyReadCardBidCall json.cursorInt64
+argument lobbyReadCardBidCall document JsonDocument lobbyListDoc
+argument lobbyReadCardBidCall cursor JsonCursor lobbyCardBidCursor
+argument lobbyReadCardBidCall missingDefault Int64 zeroDefaultInt64
+run lobbyReadCardBidCall
+bind value lobbyCardBidMinor Int64 lobbyReadCardBidCall
+call lobbyCardDollarsCall math.divideInt64
+argument lobbyCardDollarsCall left Int64 lobbyCardBidMinor
+argument lobbyCardDollarsCall right Int64 hundredInt64
+run lobbyCardDollarsCall
+bind value lobbyCardDollars Int64 lobbyCardDollarsCall
+call lobbyCardCentsCall math.moduloInt64
+argument lobbyCardCentsCall left Int64 lobbyCardBidMinor
+argument lobbyCardCentsCall right Int64 hundredInt64
+run lobbyCardCentsCall
+bind value lobbyCardCents Int64 lobbyCardCentsCall
+call lobbyCardMoneyFmtCall c.snprintf
+argument lobbyCardMoneyFmtCall buffer OpaquePointer lobbyMoneyBuf
+argument lobbyCardMoneyFmtCall size Int64 moneyBufferCapacityArg
+argument lobbyCardMoneyFmtCall format String moneyFormat
+argument lobbyCardMoneyFmtCall first Int64 lobbyCardDollars
+argument lobbyCardMoneyFmtCall second Int64 lobbyCardCents
+run lobbyCardMoneyFmtCall
+ignore ok source lobbyCardMoneyFmtCall type Int32
+call lobbyWritePtrCall pointer.offset
+argument lobbyWritePtrCall base OpaquePointer lobbyGridBufAddr
+argument lobbyWritePtrCall offset ByteCount lobbyOffset
+run lobbyWritePtrCall
+bind value lobbyWritePtr OpaquePointer lobbyWritePtrCall
+call lobbyRemainingCall math.subtractInt64
+argument lobbyRemainingCall left Int64 gridBufferCapacityInt64
+argument lobbyRemainingCall right Int64 lobbyOffset
+run lobbyRemainingCall
+bind value lobbyRemaining Int64 lobbyRemainingCall
+call lobbyCardFmtCall c.snprintf
+argument lobbyCardFmtCall buffer OpaquePointer lobbyWritePtr
+argument lobbyCardFmtCall size Int64 lobbyRemaining
+argument lobbyCardFmtCall format String cardFormat
+argument lobbyCardFmtCall first String lobbyCardId
+argument lobbyCardFmtCall second String lobbyEscapedTitle
+argument lobbyCardFmtCall third String lobbyMoneyStr
+run lobbyCardFmtCall
+ignore ok source lobbyCardFmtCall type Int32
+call lobbyStrlenCall c.strlen
+argument lobbyStrlenCall str String lobbyGridBufStr
+run lobbyStrlenCall
+bind value lobbyNewOffset ByteCount lobbyStrlenCall
+set memory lobbyOffset lobbyNewOffset
+call lobbyIncCall math.addInt64
+argument lobbyIncCall left Int64 lobbyIndex
+argument lobbyIncCall right Int64 oneInt64
+run lobbyIncCall
+bind value lobbyNextIndex Int64 lobbyIncCall
+set memory lobbyIndex lobbyNextIndex
+jump target lobbyLoop
+
+label lobbyLoopDone
+call renderLobbySectionCall renderListSection
+argument renderLobbySectionCall sectionTitleText String lobbySectionTitle
+argument renderLobbySectionCall listBodyFragment HtmlFragment lobbyGridBufStr
+run renderLobbySectionCall
+bind value lobbySectionFragment HtmlFragment renderLobbySectionCall
+call hydrateLobbyCall html.hydrate.LobbyPageTemplate
+argument hydrateLobbyCall headFragment HtmlFragment lobbyHeadFragment
+argument hydrateLobbyCall topBarFragment HtmlFragment lobbyTopBarFragment
+argument hydrateLobbyCall apiStatusText String lobbyLiveText
+argument hydrateLobbyCall lobbySectionFragment HtmlFragment lobbySectionFragment
+run hydrateLobbyCall
+bind value lobbyPageHtml HtmlDocument hydrateLobbyCall
+call writeLobbyCall http.responseText
+argument writeLobbyCall response HttpResponse response
+argument writeLobbyCall status Int32 httpStatusOk
+argument writeLobbyCall body HtmlDocument lobbyPageHtml
+argument writeLobbyCall contentType HttpContentType htmlContentType
+run writeLobbyCall
+bind value writeLobbyStatus Int32 writeLobbyCall
+return value writeLobbyStatus
+
+label lobbyStatusUnknown
+call renderLobbyUnknownHeadCall renderPageHead
+argument renderLobbyUnknownHeadCall pageTitleText String lobbyTitleText
+run renderLobbyUnknownHeadCall
+bind value lobbyUnknownHeadFragment HtmlFragment renderLobbyUnknownHeadCall
+call renderLobbyUnknownTopBarCall renderTopBar
+argument renderLobbyUnknownTopBarCall brandText String brandText
+run renderLobbyUnknownTopBarCall
+bind value lobbyUnknownTopBarFragment HtmlFragment renderLobbyUnknownTopBarCall
+call renderLobbyUnknownSectionCall renderListSection
+argument renderLobbyUnknownSectionCall sectionTitleText String lobbySectionTitle
+argument renderLobbyUnknownSectionCall listBodyFragment HtmlFragment emptyFragmentText
+run renderLobbyUnknownSectionCall
+bind value lobbyUnknownSectionFragment HtmlFragment renderLobbyUnknownSectionCall
+call hydrateLobbyUnknownCall html.hydrate.LobbyPageTemplate
+argument hydrateLobbyUnknownCall headFragment HtmlFragment lobbyUnknownHeadFragment
+argument hydrateLobbyUnknownCall topBarFragment HtmlFragment lobbyUnknownTopBarFragment
+argument hydrateLobbyUnknownCall apiStatusText String apiStatusUnknownText
+argument hydrateLobbyUnknownCall lobbySectionFragment HtmlFragment lobbyUnknownSectionFragment
+run hydrateLobbyUnknownCall
+bind value lobbyUnknownHtml HtmlDocument hydrateLobbyUnknownCall
+call writeLobbyUnknownCall http.responseText
+argument writeLobbyUnknownCall response HttpResponse response
+argument writeLobbyUnknownCall status Int32 httpStatusOk
+argument writeLobbyUnknownCall body HtmlDocument lobbyUnknownHtml
+argument writeLobbyUnknownCall contentType HttpContentType htmlContentType
+run writeLobbyUnknownCall
+bind value writeLobbyUnknownStatus Int32 writeLobbyUnknownCall
+return value writeLobbyUnknownStatus
+
+# ===== Floor page =====
+html template FloorPageTemplate
+html body template FloorPageTemplate
+  <!doctype html>
+  <html lang="en" class="h-full">
+  <head>
+  {headFragment}
+  </head>
+  <body class="min-h-full bg-floor-bg text-ink antialiased">
+  <div class="mx-auto max-w-6xl px-4 py-6">
+  {topBarFragment}
+  {stageFragment}
+  {bidFormFragment}
+  {feedSectionFragment}
+  {chatPanelFragment}
+  </div>
+  <script src="/assets/floor.js" defer></script>
+  </body>
+  </html>
+
+operation floorStatusTextFromCode
+input operation floorStatusTextFromCode code Int64
+output operation floorStatusTextFromCode String
+memory floorStatusTextFromCode heap no
+async floorStatusTextFromCode no
+purpose operation floorStatusTextFromCode "Map a numeric auction statusCode (1 draft / 2 running / 3 closed / 4 cancelled) to display text."
+label startFloorStatusTextFromCode
+call statusIsDraftCall math.equalInt64
+argument statusIsDraftCall left Int64 code
+argument statusIsDraftCall right Int64 statusCodeDraftValue
+run statusIsDraftCall
+bind value statusIsDraft Bool statusIsDraftCall
+branch if condition statusIsDraft target statusReturnDraft
+call statusIsRunningCall math.equalInt64
+argument statusIsRunningCall left Int64 code
+argument statusIsRunningCall right Int64 statusCodeRunningValue
+run statusIsRunningCall
+bind value statusIsRunning Bool statusIsRunningCall
+branch if condition statusIsRunning target statusReturnRunning
+call statusIsClosedCall math.equalInt64
+argument statusIsClosedCall left Int64 code
+argument statusIsClosedCall right Int64 statusCodeClosedValue
+run statusIsClosedCall
+bind value statusIsClosed Bool statusIsClosedCall
+branch if condition statusIsClosed target statusReturnClosed
+return value statusCancelledText
+label statusReturnDraft
+return value statusDraftText
+label statusReturnRunning
+return value statusRunningText
+label statusReturnClosed
+return value statusClosedText
+
+operation ensureApiToken
+output operation ensureApiToken String
+effect ensureApiToken read http.client
+effect ensureApiToken read json.document.tree
+effect ensureApiToken allocate heap
+effect ensureApiToken free heap
+memory ensureApiToken heap yes
+async ensureApiToken no
+useCapability ensureApiToken httpClientCaller
+useCapability ensureApiToken jsonDocumentReadCapability
+useCapability ensureApiToken heapAllocCapability
+useCapability ensureApiToken heapFreeCapability
+purpose operation ensureApiToken "Return a cached API bearer token, logging in as the demo bidder over standard.http on first call. Null on failure. Caching avoids hitting the API login rate limit on every page load."
+
+label startEnsureApiToken
+call tokenReadyCall math.equalInt32
+argument tokenReadyCall left Int32 cachedApiTokenReady
+argument tokenReadyCall right Int32 oneReadyFlag
+run tokenReadyCall
+bind value tokenReadyValue Bool tokenReadyCall
+branch if condition tokenReadyValue target returnCachedToken
+
+call ensureLoginCall http.clientPost
+argument ensureLoginCall host String apiHostText
+argument ensureLoginCall port Int32 apiPortNumber
+argument ensureLoginCall path String loginPathText
+argument ensureLoginCall headerLine String emptyHeaderText
+argument ensureLoginCall body String loginBodyText
+run ensureLoginCall
+bind value ensureLoginResp HttpClientResponseBody ensureLoginCall
+call ensureLoginMissingCall pointer.isNull
+argument ensureLoginMissingCall ptr OpaquePointer ensureLoginResp
+run ensureLoginMissingCall
+bind value ensureLoginMissing Bool ensureLoginMissingCall
+branch if condition ensureLoginMissing target tokenUnavailable
+defer freeEnsureLoginDefer c.free ensureLoginResp
+
+call allocCachedTokenCall c.malloc
+argument allocCachedTokenCall size ByteCount tokenBufferCapacity
+run allocCachedTokenCall
+bind ok cachedTokenBuffer OpaquePointer allocCachedTokenCall
+bind error cachedTokenBufferError OpaquePointer allocCachedTokenCall
+branch error source allocCachedTokenCall target tokenUnavailable
+
+call parseEnsureLoginCall json.createDocument
+argument parseEnsureLoginCall jsonText String ensureLoginResp
+argument parseEnsureLoginCall capacityBytes JsonCapacityBytes jsonDocCapacityBytes
+run parseEnsureLoginCall
+bind ok ensureLoginDoc JsonDocument parseEnsureLoginCall
+bind error parseEnsureLoginError JsonAccessError parseEnsureLoginCall
+branch error source parseEnsureLoginCall target tokenUnavailable
+defer destroyEnsureLoginDocDefer json.destroyDocument ensureLoginDoc
+
+call ensureLoginRootCall json.documentRoot
+argument ensureLoginRootCall document JsonDocument ensureLoginDoc
+run ensureLoginRootCall
+bind value ensureLoginRoot JsonCursor ensureLoginRootCall
+call ensureLoginDataCall json.objectFieldAt
+argument ensureLoginDataCall document JsonDocument ensureLoginDoc
+argument ensureLoginDataCall cursor JsonCursor ensureLoginRoot
+argument ensureLoginDataCall fieldName String jsonFieldData
+run ensureLoginDataCall
+bind ok ensureLoginData JsonCursor ensureLoginDataCall
+bind error ensureLoginDataError JsonAccessError ensureLoginDataCall
+branch error source ensureLoginDataCall target tokenUnavailable
+call ensureTokenCursorCall json.objectFieldAt
+argument ensureTokenCursorCall document JsonDocument ensureLoginDoc
+argument ensureTokenCursorCall cursor JsonCursor ensureLoginData
+argument ensureTokenCursorCall fieldName String jsonFieldAccessToken
+run ensureTokenCursorCall
+bind ok ensureTokenCursor JsonCursor ensureTokenCursorCall
+bind error ensureTokenCursorError JsonAccessError ensureTokenCursorCall
+branch error source ensureTokenCursorCall target tokenUnavailable
+call readEnsureTokenCall json.cursorString
+argument readEnsureTokenCall document JsonDocument ensureLoginDoc
+argument readEnsureTokenCall cursor JsonCursor ensureTokenCursor
+argument readEnsureTokenCall scratch OpaquePointer cachedTokenBuffer
+argument readEnsureTokenCall scratchCapacity Int64 tokenScratchCapacityInt64
+run readEnsureTokenCall
+bind ok ensureTokenText String readEnsureTokenCall
+bind error readEnsureTokenError JsonAccessError readEnsureTokenCall
+branch error source readEnsureTokenCall target tokenUnavailable
+
+set storage cachedApiToken ensureTokenText
+set storage cachedApiTokenReady oneReadyFlag
+return value ensureTokenText
+
+label returnCachedToken
+return value cachedApiToken
+
+label tokenUnavailable
+return value emptyToken
+
+operation floorPageHandler
+input operation floorPageHandler request HttpRequest
+input operation floorPageHandler response HttpResponse
+output operation floorPageHandler Int32
+effect floorPageHandler read http.request.header
+effect floorPageHandler read http.client
+effect floorPageHandler read json.document.tree
+effect floorPageHandler allocate heap
+effect floorPageHandler free heap
+effect floorPageHandler write http.response
+useCapability floorPageHandler httpRequestReader
+useCapability floorPageHandler httpClientCaller
+useCapability floorPageHandler jsonDocumentReadCapability
+useCapability floorPageHandler heapAllocCapability
+useCapability floorPageHandler heapFreeCapability
+useCapability floorPageHandler httpResponseWriter
+memory floorPageHandler heap yes
+async floorPageHandler no
+purpose operation floorPageHandler "GET /floor/:auctionId - log in to the API over standard.http, fetch the auction snapshot, parse it, and server-render the stage with the real auction title."
+
+label startFloorPageHandler
+call floorHeadCall renderPageHead
+argument floorHeadCall pageTitleText String floorTitleText
+run floorHeadCall
+bind value floorHeadFragment HtmlFragment floorHeadCall
+call floorTopBarCall renderTopBar
+argument floorTopBarCall brandText String brandText
+run floorTopBarCall
+bind value floorTopBarFragment HtmlFragment floorTopBarCall
+call floorBidFormCall renderBidForm
+argument floorBidFormCall minBidText String floorDashText
+argument floorBidFormCall apiBaseUrlText String apiBaseUrlText
+argument floorBidFormCall auctionIdText String floorTitleText
+run floorBidFormCall
+bind value floorBidFormFragment HtmlFragment floorBidFormCall
+call floorFeedSectionCall renderListSection
+argument floorFeedSectionCall sectionTitleText String feedSectionTitle
+argument floorFeedSectionCall listBodyFragment HtmlFragment emptyFragmentText
+run floorFeedSectionCall
+bind value floorFeedSectionFragment HtmlFragment floorFeedSectionCall
+call floorChatPanelCall renderChatPanel
+argument floorChatPanelCall chatBodyFragment HtmlFragment emptyFragmentText
+argument floorChatPanelCall apiBaseUrlText String apiBaseUrlText
+argument floorChatPanelCall auctionIdText String floorTitleText
+run floorChatPanelCall
+bind value floorChatPanelFragment HtmlFragment floorChatPanelCall
+
+call floorAuctionIdCall http.requestPathParam
+argument floorAuctionIdCall request HttpRequest request
+argument floorAuctionIdCall name String auctionIdParam
+run floorAuctionIdCall
+bind value floorAuctionId String floorAuctionIdCall
+call floorAuctionIdMissingCall pointer.isNull
+argument floorAuctionIdMissingCall ptr OpaquePointer floorAuctionId
+run floorAuctionIdMissingCall
+bind value floorAuctionIdMissing Bool floorAuctionIdMissingCall
+branch if condition floorAuctionIdMissing target floorUnavailable
+
+call floorEnsureTokenCall ensureApiToken
+run floorEnsureTokenCall
+bind value floorToken String floorEnsureTokenCall
+call floorTokenMissingCall pointer.isNull
+argument floorTokenMissingCall ptr OpaquePointer floorToken
+run floorTokenMissingCall
+bind value floorTokenMissing Bool floorTokenMissingCall
+branch if condition floorTokenMissing target floorUnavailable
+
+call allocFloorHeaderCall c.malloc
+argument allocFloorHeaderCall size ByteCount headerBufferCapacity
+run allocFloorHeaderCall
+bind ok floorHeaderBuf OpaquePointer allocFloorHeaderCall
+bind error floorHeaderBufError OpaquePointer allocFloorHeaderCall
+branch error source allocFloorHeaderCall target floorUnavailable
+defer freeFloorHeaderDefer c.free floorHeaderBuf
+call fmtFloorHeaderCall c.snprintf
+argument fmtFloorHeaderCall buffer OpaquePointer floorHeaderBuf
+argument fmtFloorHeaderCall size Int64 headerBufferCapacityArg
+argument fmtFloorHeaderCall format String bearerHeaderFormat
+argument fmtFloorHeaderCall first String floorToken
+run fmtFloorHeaderCall
+ignore ok source fmtFloorHeaderCall type Int32
+bind value floorAuthHeader String allocFloorHeaderCall
+
+call allocFloorPathCall c.malloc
+argument allocFloorPathCall size ByteCount pathBufferCapacity
+run allocFloorPathCall
+bind ok floorPathBuf OpaquePointer allocFloorPathCall
+bind error floorPathBufError OpaquePointer allocFloorPathCall
+branch error source allocFloorPathCall target floorUnavailable
+defer freeFloorPathDefer c.free floorPathBuf
+call fmtFloorPathCall c.snprintf
+argument fmtFloorPathCall buffer OpaquePointer floorPathBuf
+argument fmtFloorPathCall size Int64 pathBufferCapacityArg
+argument fmtFloorPathCall format String snapshotPathFormat
+argument fmtFloorPathCall first String floorAuctionId
+run fmtFloorPathCall
+ignore ok source fmtFloorPathCall type Int32
+bind value floorSnapPath String allocFloorPathCall
+
+call floorSnapCall http.clientGet
+argument floorSnapCall host String apiHostText
+argument floorSnapCall port Int32 apiPortNumber
+argument floorSnapCall path String floorSnapPath
+argument floorSnapCall headerLine String floorAuthHeader
+run floorSnapCall
+bind value floorSnapResp HttpClientResponseBody floorSnapCall
+call floorSnapMissingCall pointer.isNull
+argument floorSnapMissingCall ptr OpaquePointer floorSnapResp
+run floorSnapMissingCall
+bind value floorSnapMissing Bool floorSnapMissingCall
+branch if condition floorSnapMissing target floorUnavailable
+defer freeFloorSnapDefer c.free floorSnapResp
+
+call allocFloorTitleScratchCall c.malloc
+argument allocFloorTitleScratchCall size ByteCount titleScratchCapacity
+run allocFloorTitleScratchCall
+bind ok floorTitleScratch OpaquePointer allocFloorTitleScratchCall
+bind error floorTitleScratchError OpaquePointer allocFloorTitleScratchCall
+branch error source allocFloorTitleScratchCall target floorUnavailable
+defer freeFloorTitleScratchDefer c.free floorTitleScratch
+
+call parseFloorSnapCall json.createDocument
+argument parseFloorSnapCall jsonText String floorSnapResp
+argument parseFloorSnapCall capacityBytes JsonCapacityBytes jsonDocCapacityBytes
+run parseFloorSnapCall
+bind ok floorSnapDoc JsonDocument parseFloorSnapCall
+bind error parseFloorSnapError JsonAccessError parseFloorSnapCall
+branch error source parseFloorSnapCall target floorUnavailable
+defer destroyFloorSnapDocDefer json.destroyDocument floorSnapDoc
+
+call floorSnapRootCall json.documentRoot
+argument floorSnapRootCall document JsonDocument floorSnapDoc
+run floorSnapRootCall
+bind value floorSnapRoot JsonCursor floorSnapRootCall
+call floorSnapDataCall json.objectFieldAt
+argument floorSnapDataCall document JsonDocument floorSnapDoc
+argument floorSnapDataCall cursor JsonCursor floorSnapRoot
+argument floorSnapDataCall fieldName String jsonFieldData
+run floorSnapDataCall
+bind ok floorSnapData JsonCursor floorSnapDataCall
+bind error floorSnapDataError JsonAccessError floorSnapDataCall
+branch error source floorSnapDataCall target floorUnavailable
+call floorAuctionCursorCall json.objectFieldAt
+argument floorAuctionCursorCall document JsonDocument floorSnapDoc
+argument floorAuctionCursorCall cursor JsonCursor floorSnapData
+argument floorAuctionCursorCall fieldName String jsonFieldAuction
+run floorAuctionCursorCall
+bind ok floorAuctionCursor JsonCursor floorAuctionCursorCall
+bind error floorAuctionCursorError JsonAccessError floorAuctionCursorCall
+branch error source floorAuctionCursorCall target floorUnavailable
+call floorTitleCursorCall json.objectFieldAt
+argument floorTitleCursorCall document JsonDocument floorSnapDoc
+argument floorTitleCursorCall cursor JsonCursor floorAuctionCursor
+argument floorTitleCursorCall fieldName String jsonFieldTitle
+run floorTitleCursorCall
+bind ok floorTitleCursor JsonCursor floorTitleCursorCall
+bind error floorTitleCursorError JsonAccessError floorTitleCursorCall
+branch error source floorTitleCursorCall target floorUnavailable
+call readFloorTitleCall json.cursorString
+argument readFloorTitleCall document JsonDocument floorSnapDoc
+argument readFloorTitleCall cursor JsonCursor floorTitleCursor
+argument readFloorTitleCall scratch OpaquePointer floorTitleScratch
+argument readFloorTitleCall scratchCapacity Int64 titleScratchCapacityInt64
+run readFloorTitleCall
+bind ok floorTitle String readFloorTitleCall
+bind error readFloorTitleError JsonAccessError readFloorTitleCall
+branch error source readFloorTitleCall target floorUnavailable
+
+call floorDescCursorCall json.objectFieldAt
+argument floorDescCursorCall document JsonDocument floorSnapDoc
+argument floorDescCursorCall cursor JsonCursor floorAuctionCursor
+argument floorDescCursorCall fieldName String jsonFieldDescription
+run floorDescCursorCall
+bind ok floorDescCursor JsonCursor floorDescCursorCall
+bind error floorDescCursorError JsonAccessError floorDescCursorCall
+branch error source floorDescCursorCall target floorUnavailable
+call allocFloorDescScratchCall c.malloc
+argument allocFloorDescScratchCall size ByteCount descScratchCapacity
+run allocFloorDescScratchCall
+bind ok floorDescScratch OpaquePointer allocFloorDescScratchCall
+bind error floorDescScratchError OpaquePointer allocFloorDescScratchCall
+branch error source allocFloorDescScratchCall target floorUnavailable
+defer freeFloorDescScratchDefer c.free floorDescScratch
+call readFloorDescCall json.cursorString
+argument readFloorDescCall document JsonDocument floorSnapDoc
+argument readFloorDescCall cursor JsonCursor floorDescCursor
+argument readFloorDescCall scratch OpaquePointer floorDescScratch
+argument readFloorDescCall scratchCapacity Int64 descScratchCapacityInt64
+run readFloorDescCall
+bind ok floorDescription String readFloorDescCall
+bind error readFloorDescError JsonAccessError readFloorDescCall
+branch error source readFloorDescCall target floorUnavailable
+
+call floorBidCursorCall json.objectFieldAt
+argument floorBidCursorCall document JsonDocument floorSnapDoc
+argument floorBidCursorCall cursor JsonCursor floorAuctionCursor
+argument floorBidCursorCall fieldName String jsonFieldCurrentBid
+run floorBidCursorCall
+bind ok floorBidCursor JsonCursor floorBidCursorCall
+bind error floorBidCursorError JsonAccessError floorBidCursorCall
+branch error source floorBidCursorCall target floorUnavailable
+call readFloorBidCall json.cursorInt64
+argument readFloorBidCall document JsonDocument floorSnapDoc
+argument readFloorBidCall cursor JsonCursor floorBidCursor
+argument readFloorBidCall missingDefault Int64 zeroDefaultInt64
+run readFloorBidCall
+bind value floorBidMinor Int64 readFloorBidCall
+call floorBidDollarsCall math.divideInt64
+argument floorBidDollarsCall left Int64 floorBidMinor
+argument floorBidDollarsCall right Int64 hundredInt64
+run floorBidDollarsCall
+bind value floorBidDollars Int64 floorBidDollarsCall
+call floorBidCentsCall math.moduloInt64
+argument floorBidCentsCall left Int64 floorBidMinor
+argument floorBidCentsCall right Int64 hundredInt64
+run floorBidCentsCall
+bind value floorBidCents Int64 floorBidCentsCall
+call allocFloorMoneyCall c.malloc
+argument allocFloorMoneyCall size ByteCount moneyBufferCapacity
+run allocFloorMoneyCall
+bind ok floorMoneyBuf OpaquePointer allocFloorMoneyCall
+bind error floorMoneyBufError OpaquePointer allocFloorMoneyCall
+branch error source allocFloorMoneyCall target floorUnavailable
+defer freeFloorMoneyDefer c.free floorMoneyBuf
+call fmtFloorMoneyCall c.snprintf
+argument fmtFloorMoneyCall buffer OpaquePointer floorMoneyBuf
+argument fmtFloorMoneyCall size Int64 moneyBufferCapacityArg
+argument fmtFloorMoneyCall format String moneyFormat
+argument fmtFloorMoneyCall first Int64 floorBidDollars
+argument fmtFloorMoneyCall second Int64 floorBidCents
+run fmtFloorMoneyCall
+ignore ok source fmtFloorMoneyCall type Int32
+bind value floorBidMoney String allocFloorMoneyCall
+
+call floorStatusCursorCall json.objectFieldAt
+argument floorStatusCursorCall document JsonDocument floorSnapDoc
+argument floorStatusCursorCall cursor JsonCursor floorAuctionCursor
+argument floorStatusCursorCall fieldName String jsonFieldStatusCode
+run floorStatusCursorCall
+bind ok floorStatusCursor JsonCursor floorStatusCursorCall
+bind error floorStatusCursorError JsonAccessError floorStatusCursorCall
+branch error source floorStatusCursorCall target floorUnavailable
+call readFloorStatusCodeCall json.cursorInt64
+argument readFloorStatusCodeCall document JsonDocument floorSnapDoc
+argument readFloorStatusCodeCall cursor JsonCursor floorStatusCursor
+argument readFloorStatusCodeCall missingDefault Int64 zeroDefaultInt64
+run readFloorStatusCodeCall
+bind value floorStatusCode Int64 readFloorStatusCodeCall
+call floorStatusTextCall floorStatusTextFromCode
+argument floorStatusTextCall code Int64 floorStatusCode
+run floorStatusTextCall
+bind value floorStatusReal String floorStatusTextCall
+
+call floorClosesCursorCall json.objectFieldAt
+argument floorClosesCursorCall document JsonDocument floorSnapDoc
+argument floorClosesCursorCall cursor JsonCursor floorAuctionCursor
+argument floorClosesCursorCall fieldName String jsonFieldClosesAt
+run floorClosesCursorCall
+bind ok floorClosesCursor JsonCursor floorClosesCursorCall
+bind error floorClosesCursorError JsonAccessError floorClosesCursorCall
+branch error source floorClosesCursorCall target floorUnavailable
+call readFloorClosesCall json.cursorInt64
+argument readFloorClosesCall document JsonDocument floorSnapDoc
+argument readFloorClosesCall cursor JsonCursor floorClosesCursor
+argument readFloorClosesCall missingDefault Int64 zeroDefaultInt64
+run readFloorClosesCall
+bind value floorClosesAt Int64 readFloorClosesCall
+call allocFloorClosesBufCall c.malloc
+argument allocFloorClosesBufCall size ByteCount closesAtBufCap
+run allocFloorClosesBufCall
+bind ok floorClosesBuf OpaquePointer allocFloorClosesBufCall
+bind error floorClosesBufError OpaquePointer allocFloorClosesBufCall
+branch error source allocFloorClosesBufCall target floorUnavailable
+defer freeFloorClosesBufDefer c.free floorClosesBuf
+call fmtFloorClosesCall c.snprintf
+argument fmtFloorClosesCall buffer OpaquePointer floorClosesBuf
+argument fmtFloorClosesCall size Int64 closesAtBufCapArg
+argument fmtFloorClosesCall format String closesAtFormat
+argument fmtFloorClosesCall first Int64 floorClosesAt
+run fmtFloorClosesCall
+ignore ok source fmtFloorClosesCall type Int32
+bind value floorClosesAtText String allocFloorClosesBufCall
+
+call allocFloorEventsPathCall c.malloc
+argument allocFloorEventsPathCall size ByteCount pathBufferCapacity
+run allocFloorEventsPathCall
+bind ok floorEventsPathBuf OpaquePointer allocFloorEventsPathCall
+bind error floorEventsPathBufError OpaquePointer allocFloorEventsPathCall
+branch error source allocFloorEventsPathCall target floorUnavailable
+defer freeFloorEventsPathDefer c.free floorEventsPathBuf
+call fmtFloorEventsPathCall c.snprintf
+argument fmtFloorEventsPathCall buffer OpaquePointer floorEventsPathBuf
+argument fmtFloorEventsPathCall size Int64 pathBufferCapacityArg
+argument fmtFloorEventsPathCall format String eventsPathFormat
+argument fmtFloorEventsPathCall first String floorAuctionId
+run fmtFloorEventsPathCall
+ignore ok source fmtFloorEventsPathCall type Int32
+bind value floorEventsPath String allocFloorEventsPathCall
+
+call allocFloorFeedBufCall c.malloc
+argument allocFloorFeedBufCall size ByteCount feedBufferCapacity
+run allocFloorFeedBufCall
+bind ok floorFeedBufAddr OpaquePointer allocFloorFeedBufCall
+bind error floorFeedBufError OpaquePointer allocFloorFeedBufCall
+branch error source allocFloorFeedBufCall target floorUnavailable
+defer freeFloorFeedBufDefer c.free floorFeedBufAddr
+call floorFeedStrCall pointer.offset
+argument floorFeedStrCall base OpaquePointer floorFeedBufAddr
+argument floorFeedStrCall offset ByteCount zeroByteCount
+run floorFeedStrCall
+bind value floorFeedBufStr String floorFeedStrCall
+call floorFeedInitCall c.snprintf
+argument floorFeedInitCall buffer OpaquePointer floorFeedBufAddr
+argument floorFeedInitCall size Int64 perCardSnprintfSize
+argument floorFeedInitCall format String emptyStrFormat
+run floorFeedInitCall
+ignore ok source floorFeedInitCall type Int32
+call allocFloorEventTypeScratchCall c.malloc
+argument allocFloorEventTypeScratchCall size ByteCount eventTypeScratchCap
+run allocFloorEventTypeScratchCall
+bind ok floorEventTypeScratch OpaquePointer allocFloorEventTypeScratchCall
+bind error floorEventTypeScratchError OpaquePointer allocFloorEventTypeScratchCall
+branch error source allocFloorEventTypeScratchCall target floorUnavailable
+defer freeFloorEventTypeScratchDefer c.free floorEventTypeScratch
+
+call floorEventsCall http.clientGet
+argument floorEventsCall host String apiHostText
+argument floorEventsCall port Int32 apiPortNumber
+argument floorEventsCall path String floorEventsPath
+argument floorEventsCall headerLine String floorAuthHeader
+run floorEventsCall
+bind value floorEventsResp HttpClientResponseBody floorEventsCall
+call floorEventsMissingCall pointer.isNull
+argument floorEventsMissingCall ptr OpaquePointer floorEventsResp
+run floorEventsMissingCall
+bind value floorEventsMissing Bool floorEventsMissingCall
+branch if condition floorEventsMissing target floorFeedReady
+defer freeFloorEventsDefer c.free floorEventsResp
+call parseFloorEventsCall json.createDocument
+argument parseFloorEventsCall jsonText String floorEventsResp
+argument parseFloorEventsCall capacityBytes JsonCapacityBytes jsonDocCapacityBytes
+run parseFloorEventsCall
+bind ok floorEventsDoc JsonDocument parseFloorEventsCall
+bind error parseFloorEventsError JsonAccessError parseFloorEventsCall
+branch error source parseFloorEventsCall target floorFeedReady
+defer destroyFloorEventsDocDefer json.destroyDocument floorEventsDoc
+call floorEventsRootCall json.documentRoot
+argument floorEventsRootCall document JsonDocument floorEventsDoc
+run floorEventsRootCall
+bind value floorEventsRoot JsonCursor floorEventsRootCall
+call floorEventsDataCall json.objectFieldAt
+argument floorEventsDataCall document JsonDocument floorEventsDoc
+argument floorEventsDataCall cursor JsonCursor floorEventsRoot
+argument floorEventsDataCall fieldName String jsonFieldData
+run floorEventsDataCall
+bind ok floorEventsData JsonCursor floorEventsDataCall
+bind error floorEventsDataError JsonAccessError floorEventsDataCall
+branch error source floorEventsDataCall target floorFeedReady
+call floorEventsArrayCall json.objectFieldAt
+argument floorEventsArrayCall document JsonDocument floorEventsDoc
+argument floorEventsArrayCall cursor JsonCursor floorEventsData
+argument floorEventsArrayCall fieldName String jsonFieldEvents
+run floorEventsArrayCall
+bind ok floorEventsArray JsonCursor floorEventsArrayCall
+bind error floorEventsArrayError JsonAccessError floorEventsArrayCall
+branch error source floorEventsArrayCall target floorFeedReady
+call floorFeedLenCall json.cursorArrayLength
+argument floorFeedLenCall document JsonDocument floorEventsDoc
+argument floorFeedLenCall cursor JsonCursor floorEventsArray
+run floorFeedLenCall
+bind value floorFeedLen Int64 floorFeedLenCall
+
+storage local mutable floorFeedIndex Int64 0
+storage local mutable floorFeedOffset ByteCount 0
+
+label floorFeedLoop
+call floorFeedIdxLtLenCall math.lessThanInt64
+argument floorFeedIdxLtLenCall left Int64 floorFeedIndex
+argument floorFeedIdxLtLenCall right Int64 floorFeedLen
+run floorFeedIdxLtLenCall
+bind value floorFeedIdxLtLen Bool floorFeedIdxLtLenCall
+branch if condition floorFeedIdxLtLen target floorFeedCheckCap
+jump target floorFeedReady
+label floorFeedCheckCap
+call floorFeedIdxLtCapCall math.lessThanInt64
+argument floorFeedIdxLtCapCall left Int64 floorFeedIndex
+argument floorFeedIdxLtCapCall right Int64 maxFeedRows
+run floorFeedIdxLtCapCall
+bind value floorFeedIdxLtCap Bool floorFeedIdxLtCapCall
+branch if condition floorFeedIdxLtCap target floorFeedBody
+jump target floorFeedReady
+
+label floorFeedBody
+call floorFeedElemCall json.arrayElementAt
+argument floorFeedElemCall document JsonDocument floorEventsDoc
+argument floorFeedElemCall cursor JsonCursor floorEventsArray
+argument floorFeedElemCall index Int64 floorFeedIndex
+run floorFeedElemCall
+bind ok floorFeedElem JsonCursor floorFeedElemCall
+bind error floorFeedElemError JsonAccessError floorFeedElemCall
+branch error source floorFeedElemCall target floorFeedReady
+call floorFeedTypeCursorCall json.objectFieldAt
+argument floorFeedTypeCursorCall document JsonDocument floorEventsDoc
+argument floorFeedTypeCursorCall cursor JsonCursor floorFeedElem
+argument floorFeedTypeCursorCall fieldName String jsonFieldEventType
+run floorFeedTypeCursorCall
+bind ok floorFeedTypeCursor JsonCursor floorFeedTypeCursorCall
+bind error floorFeedTypeCursorError JsonAccessError floorFeedTypeCursorCall
+branch error source floorFeedTypeCursorCall target floorFeedReady
+call readFloorFeedTypeCall json.cursorString
+argument readFloorFeedTypeCall document JsonDocument floorEventsDoc
+argument readFloorFeedTypeCall cursor JsonCursor floorFeedTypeCursor
+argument readFloorFeedTypeCall scratch OpaquePointer floorEventTypeScratch
+argument readFloorFeedTypeCall scratchCapacity Int64 eventTypeScratchCapInt64
+run readFloorFeedTypeCall
+bind ok floorFeedEventType String readFloorFeedTypeCall
+bind error readFloorFeedTypeError JsonAccessError readFloorFeedTypeCall
+branch error source readFloorFeedTypeCall target floorFeedReady
+call floorFeedSeqCursorCall json.objectFieldAt
+argument floorFeedSeqCursorCall document JsonDocument floorEventsDoc
+argument floorFeedSeqCursorCall cursor JsonCursor floorFeedElem
+argument floorFeedSeqCursorCall fieldName String jsonFieldSequence
+run floorFeedSeqCursorCall
+bind ok floorFeedSeqCursor JsonCursor floorFeedSeqCursorCall
+bind error floorFeedSeqCursorError JsonAccessError floorFeedSeqCursorCall
+branch error source floorFeedSeqCursorCall target floorFeedReady
+call readFloorFeedSeqCall json.cursorInt64
+argument readFloorFeedSeqCall document JsonDocument floorEventsDoc
+argument readFloorFeedSeqCall cursor JsonCursor floorFeedSeqCursor
+argument readFloorFeedSeqCall missingDefault Int64 zeroDefaultInt64
+run readFloorFeedSeqCall
+bind value floorFeedSeq Int64 readFloorFeedSeqCall
+call floorFeedWritePtrCall pointer.offset
+argument floorFeedWritePtrCall base OpaquePointer floorFeedBufAddr
+argument floorFeedWritePtrCall offset ByteCount floorFeedOffset
+run floorFeedWritePtrCall
+bind value floorFeedWritePtr OpaquePointer floorFeedWritePtrCall
+call floorFeedRemainingCall math.subtractInt64
+argument floorFeedRemainingCall left Int64 feedBufferCapacityInt64
+argument floorFeedRemainingCall right Int64 floorFeedOffset
+run floorFeedRemainingCall
+bind value floorFeedRemaining Int64 floorFeedRemainingCall
+call floorFeedRowFmtCall c.snprintf
+argument floorFeedRowFmtCall buffer OpaquePointer floorFeedWritePtr
+argument floorFeedRowFmtCall size Int64 floorFeedRemaining
+argument floorFeedRowFmtCall format String feedRowFormat
+argument floorFeedRowFmtCall first String floorFeedEventType
+argument floorFeedRowFmtCall second Int64 floorFeedSeq
+run floorFeedRowFmtCall
+ignore ok source floorFeedRowFmtCall type Int32
+call floorFeedStrlenCall c.strlen
+argument floorFeedStrlenCall str String floorFeedBufStr
+run floorFeedStrlenCall
+bind value floorFeedNewOffset ByteCount floorFeedStrlenCall
+set memory floorFeedOffset floorFeedNewOffset
+call floorFeedIncCall math.addInt64
+argument floorFeedIncCall left Int64 floorFeedIndex
+argument floorFeedIncCall right Int64 oneInt64
+run floorFeedIncCall
+bind value floorFeedNextIndex Int64 floorFeedIncCall
+set memory floorFeedIndex floorFeedNextIndex
+jump target floorFeedLoop
+
+label floorFeedReady
+call renderFloorFeedFullCall renderListSection
+argument renderFloorFeedFullCall sectionTitleText String feedSectionTitle
+argument renderFloorFeedFullCall listBodyFragment HtmlFragment floorFeedBufStr
+run renderFloorFeedFullCall
+bind value floorFeedSectionFull HtmlFragment renderFloorFeedFullCall
+
+call floorStageCall renderAuctionStage
+argument floorStageCall statusText String floorStatusReal
+argument floorStageCall auctionIdText String floorAuctionId
+argument floorStageCall titleText String floorTitle
+argument floorStageCall descriptionText String floorDescription
+argument floorStageCall currentBidText String floorBidMoney
+argument floorStageCall winnerText String floorDashText
+argument floorStageCall closesAtText String floorClosesAtText
+run floorStageCall
+bind value floorStageFragment HtmlFragment floorStageCall
+call floorHydrateCall html.hydrate.FloorPageTemplate
+argument floorHydrateCall headFragment HtmlFragment floorHeadFragment
+argument floorHydrateCall topBarFragment HtmlFragment floorTopBarFragment
+argument floorHydrateCall stageFragment HtmlFragment floorStageFragment
+argument floorHydrateCall bidFormFragment HtmlFragment floorBidFormFragment
+argument floorHydrateCall feedSectionFragment HtmlFragment floorFeedSectionFull
+argument floorHydrateCall chatPanelFragment HtmlFragment floorChatPanelFragment
+run floorHydrateCall
+bind value floorPageHtml HtmlDocument floorHydrateCall
+call writeFloorCall http.responseText
+argument writeFloorCall response HttpResponse response
+argument writeFloorCall status Int32 httpStatusOk
+argument writeFloorCall body HtmlDocument floorPageHtml
+argument writeFloorCall contentType HttpContentType htmlContentType
+run writeFloorCall
+bind value writeFloorStatus Int32 writeFloorCall
+return value writeFloorStatus
+
+label floorUnavailable
+call floorUnavailableStageCall renderAuctionStage
+argument floorUnavailableStageCall statusText String apiStatusUnknownText
+argument floorUnavailableStageCall auctionIdText String floorTitleText
+argument floorUnavailableStageCall titleText String floorTitleUnknownText
+argument floorUnavailableStageCall descriptionText String floorUnavailableDescription
+argument floorUnavailableStageCall currentBidText String floorDashText
+argument floorUnavailableStageCall winnerText String floorDashText
+argument floorUnavailableStageCall closesAtText String floorZeroText
+run floorUnavailableStageCall
+bind value floorUnavailableStageFragment HtmlFragment floorUnavailableStageCall
+call floorUnavailableHydrateCall html.hydrate.FloorPageTemplate
+argument floorUnavailableHydrateCall headFragment HtmlFragment floorHeadFragment
+argument floorUnavailableHydrateCall topBarFragment HtmlFragment floorTopBarFragment
+argument floorUnavailableHydrateCall stageFragment HtmlFragment floorUnavailableStageFragment
+argument floorUnavailableHydrateCall bidFormFragment HtmlFragment floorBidFormFragment
+argument floorUnavailableHydrateCall feedSectionFragment HtmlFragment floorFeedSectionFragment
+argument floorUnavailableHydrateCall chatPanelFragment HtmlFragment floorChatPanelFragment
+run floorUnavailableHydrateCall
+bind value floorUnavailableHtml HtmlDocument floorUnavailableHydrateCall
+call writeFloorUnavailableCall http.responseText
+argument writeFloorUnavailableCall response HttpResponse response
+argument writeFloorUnavailableCall status Int32 httpStatusOk
+argument writeFloorUnavailableCall body HtmlDocument floorUnavailableHtml
+argument writeFloorUnavailableCall contentType HttpContentType htmlContentType
+run writeFloorUnavailableCall
+bind value writeFloorUnavailableStatus Int32 writeFloorUnavailableCall
+return value writeFloorUnavailableStatus
+
+# ===== 404 =====
+html template NotFoundPageTemplate
+html body template NotFoundPageTemplate
+  <!doctype html>
+  <html lang="en" class="h-full">
+  <head>
+  {headFragment}
+  </head>
+  <body class="min-h-full bg-floor-bg text-ink antialiased">
+  <div class="mx-auto max-w-2xl px-4 py-20 text-center">
+  {topBarFragment}
+  <h2 class="mt-10 text-3xl font-bold text-ink">Not found</h2>
+  <p class="mt-3 text-muted">{messageText}</p>
+  <a href="/" class="mt-6 inline-flex rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-floor-bg">Back to lobby</a>
+  </div>
+  </body>
+  </html>
+
+operation notFoundPageHandler
+input operation notFoundPageHandler request HttpRequest
+input operation notFoundPageHandler response HttpResponse
+output operation notFoundPageHandler Int32
+effect notFoundPageHandler write http.response
+useCapability notFoundPageHandler httpResponseWriter
+memory notFoundPageHandler arena request
+async notFoundPageHandler no
+purpose operation notFoundPageHandler "Render the branded 404 page."
+
+label startNotFoundPageHandler
+call renderNotFoundHeadCall renderPageHead
+argument renderNotFoundHeadCall pageTitleText String notFoundTitleText
+run renderNotFoundHeadCall
+bind value notFoundHeadFragment HtmlFragment renderNotFoundHeadCall
+call renderNotFoundTopBarCall renderTopBar
+argument renderNotFoundTopBarCall brandText String brandText
+run renderNotFoundTopBarCall
+bind value notFoundTopBarFragment HtmlFragment renderNotFoundTopBarCall
+call hydrateNotFoundCall html.hydrate.NotFoundPageTemplate
+argument hydrateNotFoundCall headFragment HtmlFragment notFoundHeadFragment
+argument hydrateNotFoundCall topBarFragment HtmlFragment notFoundTopBarFragment
+argument hydrateNotFoundCall messageText String notFoundFallbackText
+run hydrateNotFoundCall
+bind value notFoundPageHtml HtmlDocument hydrateNotFoundCall
+call writeNotFoundCall http.responseText
+argument writeNotFoundCall response HttpResponse response
+argument writeNotFoundCall status Int32 httpStatusOk
+argument writeNotFoundCall body HtmlDocument notFoundPageHtml
+argument writeNotFoundCall contentType HttpContentType htmlContentType
+run writeNotFoundCall
+bind value writeNotFoundStatus Int32 writeNotFoundCall
+return value writeNotFoundStatus

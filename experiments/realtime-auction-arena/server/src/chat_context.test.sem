@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.chat_context
+purpose module app.realtime_auction_arena.server.tests.chat_context "Unit coverage plan for server/src/chat_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.chat_context "Coverage notes for copied chat HTTP handler flow and cross-context dependencies."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.chat_context "Executable HTTP smoke tests or native route registration."
+invariant module app.realtime_auction_arena.server.tests.chat_context "The plan tracks registered chat create/delete/report handler flow with SQLite moderation persistence, idempotency, audit rows, and committed auction events."
+
+storage module immutable chatContextUnitTestPlanSummary String "server/src/chat_context.sem coverage: chatCreateHandler JSON/content-type/body/idempotency/auth/database/rate-limit/replay paths; chatDeleteHandler idempotency/auth/path-param guard paths; chatReportHandler idempotency/auth/path-param guard paths; shared envelope writers; and cross-context auth/database/metrics dependencies that remain owned outside this module."
+
+operation getChatContextUnitTestPlan
+output operation getChatContextUnitTestPlan String
+memory getChatContextUnitTestPlan heap no
+async getChatContextUnitTestPlan no
+purpose operation getChatContextUnitTestPlan "Return the chat HTTP context coverage plan."
+return value chatContextUnitTestPlanSummary

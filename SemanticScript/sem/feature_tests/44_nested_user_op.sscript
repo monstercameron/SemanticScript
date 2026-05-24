@@ -5,48 +5,48 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation square
-input square x CSignedInt64
-output square Result CSignedInt64 Void
+input operation square x Int64
+output operation square Result Int64 Void
 memory square heap no
 async square no
-purpose square "Return x squared."
-invariant square "x * x."
+purpose operation square "Return x squared."
+invariant operation square "x * x."
 label startSquare
-call mulCall math.multiplyI64
-arg mulCall left x
-arg mulCall right x
+call mulCall math.multiplyInt64
+argument mulCall left Int64 x
+argument mulCall right Int64 x
 run mulCall
-bind productValue I64 mulCall
-returnOk productValue
+bind value productValue Int64 mulCall
+return ok productValue
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "square(square(2)) = 16."
-invariant main "Nested op application."
+purpose operation main "square(square(2)) = 16."
+invariant operation main "Nested op application."
 label startMain
-const twoInitial I64 2
-var x I64 twoInitial
+storage module immutable twoInitial Int64 2
+memory main mutable x Int64 twoInitial
 call innerCall square
-arg innerCall x x
+argument innerCall x Int64 x
 run innerCall
-bindOk innerResult I64 innerCall
+bind ok innerResult Int64 innerCall
 call outerCall square
-arg outerCall x innerResult
+argument outerCall x Int64 innerResult
 run outerCall
-bindOk outerResult I64 outerCall
-var outputVar I64 twoInitial
-set outputVar outerResult
+bind ok outerResult Int64 outerCall
+memory main mutable outputVar Int64 twoInitial
+set memory outputVar outerResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value outputVar
+argument writeCall console Console console
+argument writeCall value Int64 outputVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

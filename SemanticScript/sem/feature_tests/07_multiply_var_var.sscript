@@ -7,29 +7,29 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "var * var: 6*7=42 via math.multiplyI64."
-invariant main "Both operands are vars; result printed."
+purpose operation main "var * var: 6*7=42 via math.multiplyInt64."
+invariant operation main "Both operands are vars; result printed."
 label startMain
-const sixInitial I64 6
-const sevenInitial I64 7
-var leftOp I64 sixInitial
-var rightOp I64 sevenInitial
-call mulCall math.multiplyI64
-arg mulCall left leftOp
-arg mulCall right rightOp
+storage module immutable sixInitial Int64 6
+storage module immutable sevenInitial Int64 7
+memory main mutable leftOp Int64 sixInitial
+memory main mutable rightOp Int64 sevenInitial
+call mulCall math.multiplyInt64
+argument mulCall left Int64 leftOp
+argument mulCall right Int64 rightOp
 run mulCall
-bind productResult I64 mulCall
-var productVar I64 sixInitial
-set productVar productResult
+bind value productResult Int64 mulCall
+memory main mutable productVar Int64 sixInitial
+set memory productVar productResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value productVar
+argument writeCall console Console console
+argument writeCall value Int64 productVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

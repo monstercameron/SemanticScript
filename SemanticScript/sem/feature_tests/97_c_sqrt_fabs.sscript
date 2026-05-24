@@ -5,44 +5,44 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "c.sqrt(16.0) == 4.0 and c.fabs(-2.5) == 2.5. Exercises math libc passthroughs from user code (with c.malloc as a walker trigger)."
-invariant main "Output is '4.000000\\n2.500000\\n'."
+purpose operation main "c.sqrt(16.0) == 4.0 and c.fabs(-2.5) == 2.5. Exercises math libc passthroughs from user code (with c.malloc as a walker trigger)."
+invariant operation main "Output is '4.000000\\n2.500000\\n'."
 label startMain
-const sixteenFloat CFloat64 16.0
-const negTwoAndHalf CFloat64 -2.5
-const triggerSize CByteCount 1
+storage module immutable sixteenFloat Float64 16.0
+storage module immutable negTwoAndHalf Float64 -2.5
+storage module immutable triggerSize ByteCount 1
 call walkerTriggerCall c.malloc
-arg walkerTriggerCall size triggerSize
+argument walkerTriggerCall size ByteCount triggerSize
 run walkerTriggerCall
-bind triggerBuffer COpaqueMemoryAddress walkerTriggerCall
+bind value triggerBuffer OpaquePointer walkerTriggerCall
 call sqrtCall c.sqrt
-arg sqrtCall value sixteenFloat
+argument sqrtCall value Float64 sixteenFloat
 run sqrtCall
-bind sqrtResult CFloat64 sqrtCall
+bind value sqrtResult Float64 sqrtCall
 call write1Call console.writeFloatLine
-arg write1Call console console
-arg write1Call value sqrtResult
+argument write1Call console Console console
+argument write1Call value Float64 sqrtResult
 run write1Call
-ignoreOk write1Call Void
+ignore void source write1Call
 call fabsCall c.fabs
-arg fabsCall value negTwoAndHalf
+argument fabsCall value Float64 negTwoAndHalf
 run fabsCall
-bind fabsResult CFloat64 fabsCall
+bind value fabsResult Float64 fabsCall
 call write2Call console.writeFloatLine
-arg write2Call console console
-arg write2Call value fabsResult
+argument write2Call console Console console
+argument write2Call value Float64 fabsResult
 run write2Call
-ignoreOk write2Call Void
+ignore void source write2Call
 call freeCall c.free
-arg freeCall ptr triggerBuffer
+argument freeCall ptr OpaquePointer triggerBuffer
 run freeCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

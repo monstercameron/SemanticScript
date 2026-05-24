@@ -5,41 +5,41 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Apply pointer.offset twice (1 byte then 1 more byte) to reach index 2 ('l') of 'hello' and print it."
-invariant main "Exercises pointer.offset where the BASE is itself a bind from a prior pointer.offset."
+purpose operation main "Apply pointer.offset twice (1 byte then 1 more byte) to reach index 2 ('l') of 'hello' and print it."
+invariant operation main "Exercises pointer.offset where the BASE is itself a bind from a prior pointer.offset."
 label startMain
-const greeting CNullTerminatedByteString "hello"
-const oneStep I64 1
+storage module immutable greeting String "hello"
+storage module immutable oneStep Int64 1
 call shiftOnceCall pointer.offset
-arg shiftOnceCall base greeting
-arg shiftOnceCall offset oneStep
+argument shiftOnceCall base String greeting
+argument shiftOnceCall offset Int64 oneStep
 run shiftOnceCall
-bind oneShifted COpaqueMemoryAddress shiftOnceCall
+bind value oneShifted OpaquePointer shiftOnceCall
 call shiftTwiceCall pointer.offset
-arg shiftTwiceCall base oneShifted
-arg shiftTwiceCall offset oneStep
+argument shiftTwiceCall base OpaquePointer oneShifted
+argument shiftTwiceCall offset Int64 oneStep
 run shiftTwiceCall
-bind twoShifted COpaqueMemoryAddress shiftTwiceCall
-const zeroOffset I64 0
+bind value twoShifted OpaquePointer shiftTwiceCall
+storage module immutable zeroOffset Int64 0
 call loadCall pointer.loadByte
-arg loadCall buffer twoShifted
-arg loadCall offset zeroOffset
+argument loadCall buffer OpaquePointer twoShifted
+argument loadCall offset Int64 zeroOffset
 run loadCall
-bind byteValue I8 loadCall
+bind value byteValue Int8 loadCall
 call writeByteCall c.putchar
-arg writeByteCall c byteValue
+argument writeByteCall c Int8 byteValue
 run writeByteCall
-const newlineByte CSignedInt32 10
+storage module immutable newlineByte Int32 10
 call writeNewlineCall c.putchar
-arg writeNewlineCall c newlineByte
+argument writeNewlineCall c Int32 newlineByte
 run writeNewlineCall
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

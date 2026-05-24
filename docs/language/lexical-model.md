@@ -15,7 +15,7 @@ For each physical line:
 Quoted strings use double quotes:
 
 ```semanticscript
-const greetingText String "hello world"
+storage local immutable greetingText String "hello world"
 purpose main "Print a greeting with one exact line"
 ```
 
@@ -33,11 +33,46 @@ Supported escapes inside strings:
 The tokenizer does not parse expressions. Every unquoted token is an atom:
 
 ```semanticscript
-arg addCall left leftValue
-arg addCall right rightValue
+argument addCall left Int64 leftValue
+argument addCall right Int64 rightValue
 ```
 
 There is no `add(leftValue, rightValue)` form.
+
+## Grammar Islands
+
+SemanticScript normally rejects indentation blocks, brace blocks, and generic
+angle-bracket syntax because executable source is a row tape. `html body
+template`, `jsonBody`, and `sql body` are narrow exceptions: a column-0 row
+starts an indented literal island, and the island ends at the next non-empty
+column-0 SemanticScript row.
+
+The exception exists only for data formats whose native syntax would be damaged
+by row tokenization. HTML/SSX keeps tags, attributes, and `{name}` or
+`{record.field}` holes inside `html body template`; JSON keeps braces, brackets,
+strings, and commas inside `jsonBody`; SQL keeps comments, quoted strings,
+semicolons, and `?` placeholders inside `sql body`. Those islands must be
+attached to explicit declaration rows such as `html template`, `storage ...
+JsonText`, or `storage ... SqlText`, so the compiler and linter still see typed
+boundaries around the non-row text.
+
+## Language Modes
+
+Language mode rows are normal top-level rows:
+
+```semanticscript
+languageMode strictExecutable
+languageMode refinedSyntax
+```
+
+`strictExecutable` closes the executable grammar from that point in the resolved
+source stream. Unknown lowercase top-level and operation-body verbs become parse
+errors. Plain comments, typed semantic comments, and `# group` / `# endGroup`
+anchors remain parseable because they are comments, not executable rows.
+
+`refinedSyntax` keeps permissive parsing for research files and metadata-heavy
+examples that intentionally use proposed lowercase rows. Do not use it to hide
+misspelled executable rows in production source.
 
 ## Comments
 
@@ -68,7 +103,7 @@ Group anchors are also preserved:
 ```semanticscript
 # group consoleOutput
 call writeGreetingCall console.writeLine
-arg writeGreetingCall text greetingText
+argument writeGreetingCall text TYPE greetingText
 run writeGreetingCall
 # endGroup consoleOutput
 ```
@@ -110,10 +145,9 @@ dynamic array literals
 Use explicit line records instead:
 
 ```semanticscript
-call sumCall math.addI64
-arg sumCall left invoiceSubtotal
-arg sumCall right taxAmount
+call sumCall math.addInt64
+argument sumCall left TYPE invoiceSubtotal
+argument sumCall right TYPE taxAmount
 run sumCall
-bind invoiceTotal I64 sumCall
+bind value invoiceTotal Int64 sumCall
 ```
-

@@ -1,0 +1,940 @@
+module app.realtime_auction_arena.server.http_helpers
+purpose module app.realtime_auction_arena.server.http_helpers "Shared HTTP response and request helper operations for the Realtime Auction Arena executable server."
+moduleOwns app.realtime_auction_arena.server.http_helpers "Common API headers, JSON envelope writing, static envelope writers, JSON content-type checks, and repeated success-envelope JSON seeding."
+moduleDoesNotOwn app.realtime_auction_arena.server.http_helpers "Route dispatch, mutable context state, SQLite command behavior, or auction business rules."
+invariant module app.realtime_auction_arena.server.http_helpers "Helpers must remain route-agnostic and must not own business decisions or process-local mutable state."
+
+import http standard.http
+import json standard.json
+import bcrypt standard.bcrypt
+import runtime app.realtime_auction_arena.server.runtime_constants
+import wire app.realtime_auction_arena.server.wire_envelopes
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to inspect request headers in route-agnostic helper operations."
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write shared HTTP response headers and bodies."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to read request header memory and write helper-owned request-id scratch buffers."
+capability heapAllocCapability heap allocate
+purpose operation heapAllocCapability "Authority to allocate process-local request-id generation buffers."
+capability jsonDocumentWriteCapability json.document.tree write
+purpose operation jsonDocumentWriteCapability "Authority to seed JSON envelope fields in caller-owned response documents."
+capability jsonDocumentReadCapability json.document.tree read
+purpose operation jsonDocumentReadCapability "Authority to inspect JSON command object field counts."
+capability requestIdRandomCapability bcrypt.hash compute
+purpose operation requestIdRandomCapability "Authority to generate random request ids with the existing CSPRNG-backed bcrypt namespace."
+
+exportOperation app.realtime_auction_arena.server.http_helpers addCommonHeaders
+exportOperation app.realtime_auction_arena.server.http_helpers writeJsonEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers acknowledgeJsonAccessError
+exportOperation app.realtime_auction_arena.server.http_helpers acknowledgeAllocationError
+exportOperation app.realtime_auction_arena.server.http_helpers requestContentTypeIsJson
+exportOperation app.realtime_auction_arena.server.http_helpers stampRequestIdHeader
+exportOperation app.realtime_auction_arena.server.http_helpers jsonObjectFieldCountEquals
+exportOperation app.realtime_auction_arena.server.http_helpers seedSuccessEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeHealthEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeReadyEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeApiIndexEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writePayloadTooLargeEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeUnsupportedMediaTypeEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeInvalidCredentialsEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeMalformedJsonServerErrorEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeInvalidRefreshTokenEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuthLogoutSuccessEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuthBidderSessionEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuthAdminSessionEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuthSessionEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeExpiredTokenEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeWrongAudienceEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeInsufficientRoleEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeUnauthorizedEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuthConfigInvalidEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeDatabaseUnavailableEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeMissingIdempotencyKeyEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeIdempotencyConflictEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeValidationFailedEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuctionNotFoundEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeStaleRevisionEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAuctionNotRunningEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeLifecycleRejectedEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeExtensionOutOfBoundsEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeBidBelowMinimumEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeAmountTooHighEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeChatRejectedEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeMessageNotFoundEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeRateLimitedEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeMethodNotAllowedEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeApiNotFoundEnvelope
+exportOperation app.realtime_auction_arena.server.http_helpers writeServerShuttingDownEnvelope
+
+storage module mutable currentRequestId String runtime.fallbackRequestId
+storage module mutable requestIdRandomBuffer OpaquePointer 0
+storage module mutable requestIdEncodedBuffer OpaquePointer 0
+
+operation addCommonHeaders
+input operation addCommonHeaders response HttpResponse
+output operation addCommonHeaders Void
+effect addCommonHeaders write http.response
+memory addCommonHeaders arena request
+async addCommonHeaders no
+useCapability addCommonHeaders httpResponseWriter
+purpose operation addCommonHeaders "Attach stable API headers before a response body is written."
+invariant operation addCommonHeaders "Headers are static and written before any response body writer runs."
+label startAddCommonHeaders
+storage local immutable apiHeaderName String "X-Api-Version"
+call apiHeaderCall http.responseHeader
+argument apiHeaderCall response HttpResponse response
+argument apiHeaderCall name String apiHeaderName
+argument apiHeaderCall value String runtime.apiVersionText
+run apiHeaderCall
+ignore value source apiHeaderCall type Int32
+storage local immutable bodyLimitHeaderName String "X-Max-Body-Bytes"
+storage local immutable bodyLimitHeaderValue String "65536"
+call bodyLimitHeaderCall http.responseHeader
+argument bodyLimitHeaderCall response HttpResponse response
+argument bodyLimitHeaderCall name String bodyLimitHeaderName
+argument bodyLimitHeaderCall value String bodyLimitHeaderValue
+run bodyLimitHeaderCall
+ignore value source bodyLimitHeaderCall type Int32
+return void
+
+operation writeJsonEnvelope
+input operation writeJsonEnvelope response HttpResponse
+input operation writeJsonEnvelope status Int32
+input operation writeJsonEnvelope responseBody String
+output operation writeJsonEnvelope Int32
+responseBodyForwarder writeJsonEnvelope responseBody
+effect writeJsonEnvelope write http.response
+memory writeJsonEnvelope arena request
+async writeJsonEnvelope no
+useCapability writeJsonEnvelope httpResponseWriter
+purpose operation writeJsonEnvelope "Write one null-terminated JSON envelope body with shared headers."
+invariant operation writeJsonEnvelope "The supplied body is app-owned JSON wire text: either a static envelope, serialized JsonText, or a persisted idempotency replay body."
+label startWriteJsonEnvelope
+call commonHeadersCall addCommonHeaders
+argument commonHeadersCall response HttpResponse response
+run commonHeadersCall
+call responseCall http.responseText
+argument responseCall response HttpResponse response
+argument responseCall status Int32 status
+argument responseCall body String responseBody
+argument responseCall contentType HttpContentType runtime.jsonContentType
+run responseCall
+bind value responseStatus Int32 responseCall
+return value responseStatus
+
+operation acknowledgeJsonAccessError
+input operation acknowledgeJsonAccessError errorValue JsonAccessError
+output operation acknowledgeJsonAccessError Void
+memory acknowledgeJsonAccessError heap no
+async acknowledgeJsonAccessError no
+purpose operation acknowledgeJsonAccessError "Consume a JSON access error before mapping it to a public auth envelope."
+return void
+
+operation acknowledgeAllocationError
+input operation acknowledgeAllocationError errorValue OpaquePointer
+output operation acknowledgeAllocationError Void
+memory acknowledgeAllocationError heap no
+async acknowledgeAllocationError no
+purpose operation acknowledgeAllocationError "Consume a heap allocation error before mapping it to a public auth envelope."
+return void
+
+operation requestContentTypeIsJson
+input operation requestContentTypeIsJson request HttpRequest
+output operation requestContentTypeIsJson Bool
+effect requestContentTypeIsJson read http.request.header
+effect requestContentTypeIsJson read memory.buffer
+memory requestContentTypeIsJson arena request
+async requestContentTypeIsJson no
+useCapability requestContentTypeIsJson httpRequestReader
+useCapability requestContentTypeIsJson memoryBufferReadWriteCapability
+purpose operation requestContentTypeIsJson "Return true when a write request declares an application/json content type."
+invariant operation requestContentTypeIsJson "A charset suffix is accepted by prefix comparison; missing or different content types fail closed."
+label startRequestContentTypeIsJson
+call contentTypeHeaderCall http.requestHeader
+argument contentTypeHeaderCall request HttpRequest request
+argument contentTypeHeaderCall name String runtime.contentTypeHeaderName
+run contentTypeHeaderCall
+bind value requestContentType String contentTypeHeaderCall
+call contentTypeMissingCall pointer.isNull
+argument contentTypeMissingCall ptr OpaquePointer requestContentType
+run contentTypeMissingCall
+bind value contentTypeMissing Bool contentTypeMissingCall
+branch if condition contentTypeMissing target contentTypeRejected
+call jsonPrefixCompareCall c.strncmp
+argument jsonPrefixCompareCall left String requestContentType
+argument jsonPrefixCompareCall right String runtime.applicationJsonContentTypePrefix
+argument jsonPrefixCompareCall count Int64 runtime.applicationJsonContentTypePrefixLength
+run jsonPrefixCompareCall
+bind value jsonPrefixCompareResult Int32 jsonPrefixCompareCall
+call jsonPrefixMatchesCall math.equalInt32
+argument jsonPrefixMatchesCall left Int32 jsonPrefixCompareResult
+argument jsonPrefixMatchesCall right Int32 runtime.authSuccessCode
+run jsonPrefixMatchesCall
+bind value jsonPrefixMatches Bool jsonPrefixMatchesCall
+branch if condition jsonPrefixMatches target contentTypeAccepted
+label contentTypeRejected
+storage local immutable rejected Bool false
+return value rejected
+label contentTypeAccepted
+storage local immutable accepted Bool true
+return value accepted
+
+operation stampRequestIdHeader
+input operation stampRequestIdHeader request HttpRequest
+input operation stampRequestIdHeader response HttpResponse
+output operation stampRequestIdHeader Void
+effect stampRequestIdHeader read http.request.header
+effect stampRequestIdHeader write http.response
+effect stampRequestIdHeader allocate heap
+effect stampRequestIdHeader write memory.buffer
+memory stampRequestIdHeader heap yes
+async stampRequestIdHeader no
+useCapability stampRequestIdHeader httpRequestReader
+useCapability stampRequestIdHeader httpResponseWriter
+useCapability stampRequestIdHeader memoryBufferReadWriteCapability
+useCapability stampRequestIdHeader heapAllocCapability
+useCapability stampRequestIdHeader requestIdRandomCapability
+purpose operation stampRequestIdHeader "Echo X-Request-Id when present, otherwise generate a bounded opaque request id and stamp it on the response."
+invariant operation stampRequestIdHeader "Generated ids use the existing CSPRNG-backed random byte source and are stored in process-local helper buffers for dynamic envelope seeding."
+label startStampRequestIdHeader
+call requestIdReadCall http.requestHeader
+argument requestIdReadCall request HttpRequest request
+argument requestIdReadCall name String runtime.requestIdHeaderName
+run requestIdReadCall
+bind value requestIdValue String requestIdReadCall
+call requestIdNullCall pointer.isNull
+argument requestIdNullCall ptr OpaquePointer requestIdValue
+run requestIdNullCall
+bind value requestIdMissing Bool requestIdNullCall
+branch if condition requestIdMissing target generateRequestId
+set storage currentRequestId requestIdValue
+call echoRequestIdHeaderCall http.responseHeader
+argument echoRequestIdHeaderCall response HttpResponse response
+argument echoRequestIdHeaderCall name String runtime.requestIdHeaderName
+argument echoRequestIdHeaderCall value String currentRequestId
+run echoRequestIdHeaderCall
+ignore value source echoRequestIdHeaderCall type Int32
+return void
+
+label generateRequestId
+call randomBufferMissingCall pointer.isNull
+argument randomBufferMissingCall ptr OpaquePointer requestIdRandomBuffer
+run randomBufferMissingCall
+bind value randomBufferMissing Bool randomBufferMissingCall
+branch if condition randomBufferMissing target allocateRequestIdRandomBuffer
+jump target requestIdRandomBufferReady
+label allocateRequestIdRandomBuffer
+call allocateRandomBufferCall c.malloc
+argument allocateRandomBufferCall size ByteCount runtime.requestIdRandomBufferCapacity
+run allocateRandomBufferCall
+bind ok allocatedRandomBuffer OpaquePointer allocateRandomBufferCall
+bind error allocateRandomBufferError OpaquePointer allocateRandomBufferCall
+branch error source allocateRandomBufferCall target fallbackRequestId
+set storage requestIdRandomBuffer allocatedRandomBuffer
+label requestIdRandomBufferReady
+call encodedBufferMissingCall pointer.isNull
+argument encodedBufferMissingCall ptr OpaquePointer requestIdEncodedBuffer
+run encodedBufferMissingCall
+bind value encodedBufferMissing Bool encodedBufferMissingCall
+branch if condition encodedBufferMissing target allocateRequestIdEncodedBuffer
+jump target requestIdEncodedBufferReady
+label allocateRequestIdEncodedBuffer
+call allocateEncodedBufferCall c.malloc
+argument allocateEncodedBufferCall size ByteCount runtime.requestIdEncodedBufferCapacity
+run allocateEncodedBufferCall
+bind ok allocatedEncodedBuffer OpaquePointer allocateEncodedBufferCall
+bind error allocateEncodedBufferError OpaquePointer allocateEncodedBufferCall
+branch error source allocateEncodedBufferCall target fallbackRequestId
+set storage requestIdEncodedBuffer allocatedEncodedBuffer
+label requestIdEncodedBufferReady
+call requestIdRandomCall bcrypt.randomBytes
+argument requestIdRandomCall outBuffer OpaquePointer requestIdRandomBuffer
+argument requestIdRandomCall byteCount Int32 runtime.requestIdRandomByteCount
+run requestIdRandomCall
+bind value requestIdRandomStatus Int32 requestIdRandomCall
+call requestIdRandomOkCall math.equalInt32
+argument requestIdRandomOkCall left Int32 requestIdRandomStatus
+argument requestIdRandomOkCall right Int32 runtime.authSuccessCode
+run requestIdRandomOkCall
+bind value requestIdRandomOk Bool requestIdRandomOkCall
+branch if condition requestIdRandomOk target requestIdRandomReady
+branch else target fallbackRequestId
+label requestIdRandomReady
+memory stampRequestIdHeader mutable requestIdEncodedLength Int32 0
+set memory requestIdEncodedLength runtime.authSuccessCode
+call requestIdEncodeCall bcrypt.base64UrlEncode
+argument requestIdEncodeCall inputBuffer OpaquePointer requestIdRandomBuffer
+argument requestIdEncodeCall inputCount Int32 runtime.requestIdRandomByteCount
+argument requestIdEncodeCall outputBuffer OpaquePointer requestIdEncodedBuffer
+argument requestIdEncodeCall outputCapacity Int32 runtime.requestIdEncodedCapacityArg
+argument requestIdEncodeCall outputLengthOut Int32 requestIdEncodedLength
+run requestIdEncodeCall
+bind value requestIdEncodeStatus Int32 requestIdEncodeCall
+call requestIdEncodeOkCall math.equalInt32
+argument requestIdEncodeOkCall left Int32 requestIdEncodeStatus
+argument requestIdEncodeOkCall right Int32 runtime.authSuccessCode
+run requestIdEncodeOkCall
+bind value requestIdEncodeOk Bool requestIdEncodeOkCall
+branch if condition requestIdEncodeOk target generatedRequestIdReady
+branch else target fallbackRequestId
+label generatedRequestIdReady
+set storage currentRequestId requestIdEncodedBuffer
+jump target writeGeneratedRequestIdHeader
+
+label fallbackRequestId
+set storage currentRequestId runtime.fallbackRequestId
+label writeGeneratedRequestIdHeader
+call generatedRequestIdHeaderCall http.responseHeader
+argument generatedRequestIdHeaderCall response HttpResponse response
+argument generatedRequestIdHeaderCall name String runtime.requestIdHeaderName
+argument generatedRequestIdHeaderCall value String currentRequestId
+run generatedRequestIdHeaderCall
+ignore value source generatedRequestIdHeaderCall type Int32
+return void
+
+operation jsonObjectFieldCountEquals
+input operation jsonObjectFieldCountEquals document JsonDocument
+input operation jsonObjectFieldCountEquals cursor JsonCursor
+input operation jsonObjectFieldCountEquals expected Int64
+output operation jsonObjectFieldCountEquals Bool
+effect jsonObjectFieldCountEquals read json.document.tree
+memory jsonObjectFieldCountEquals arena request
+async jsonObjectFieldCountEquals no
+useCapability jsonObjectFieldCountEquals jsonDocumentReadCapability
+purpose operation jsonObjectFieldCountEquals "Return true when a parsed JSON command body is an object with exactly the expected field count."
+invariant operation jsonObjectFieldCountEquals "Handlers still read required typed fields; exact object field counts reject unknown or duplicate command fields."
+label startJsonObjectFieldCountEquals
+call fieldCountCall json.cursorObjectFieldCount
+argument fieldCountCall document JsonDocument document
+argument fieldCountCall cursor JsonCursor cursor
+run fieldCountCall
+bind ok actualFieldCount Int64 fieldCountCall
+bind error fieldCountError JsonAccessError fieldCountCall
+branch error source fieldCountCall target jsonObjectFieldCountRejected
+call fieldCountMatchesCall math.equalInt64
+argument fieldCountMatchesCall left Int64 actualFieldCount
+argument fieldCountMatchesCall right Int64 expected
+run fieldCountMatchesCall
+bind value fieldCountMatches Bool fieldCountMatchesCall
+return value fieldCountMatches
+label jsonObjectFieldCountRejected
+storage local immutable rejected Bool false
+return value rejected
+
+operation seedSuccessEnvelope
+input operation seedSuccessEnvelope document JsonDocument
+input operation seedSuccessEnvelope cursor JsonCursor
+output operation seedSuccessEnvelope Void
+effect seedSuccessEnvelope write json.document.tree
+memory seedSuccessEnvelope arena request
+async seedSuccessEnvelope no
+useCapability seedSuccessEnvelope jsonDocumentWriteCapability
+purpose operation seedSuccessEnvelope "Attach the common successful API envelope fields to a dynamic JSON response root."
+invariant operation seedSuccessEnvelope "The caller still owns route-specific data construction and final serialization."
+label startSeedSuccessEnvelope
+call seedApiVersionCall json.setObjectFieldString
+argument seedApiVersionCall document JsonDocument document
+argument seedApiVersionCall cursor JsonCursor cursor
+argument seedApiVersionCall fieldName String runtime.fieldApiVersion
+argument seedApiVersionCall value String runtime.apiVersionText
+run seedApiVersionCall
+ignore ok source seedApiVersionCall type Int32
+call seedRequestIdCall json.setObjectFieldString
+argument seedRequestIdCall document JsonDocument document
+argument seedRequestIdCall cursor JsonCursor cursor
+argument seedRequestIdCall fieldName String runtime.fieldRequestId
+argument seedRequestIdCall value String currentRequestId
+run seedRequestIdCall
+ignore ok source seedRequestIdCall type Int32
+call seedOkCall json.setObjectFieldBool
+argument seedOkCall document JsonDocument document
+argument seedOkCall cursor JsonCursor cursor
+argument seedOkCall fieldName String runtime.fieldOk
+argument seedOkCall value Bool runtime.boolTrue
+run seedOkCall
+ignore ok source seedOkCall type Int32
+return void
+
+operation writeHealthEnvelope
+input operation writeHealthEnvelope response HttpResponse
+output operation writeHealthEnvelope Int32
+effect writeHealthEnvelope write http.response
+memory writeHealthEnvelope arena request
+async writeHealthEnvelope no
+useCapability writeHealthEnvelope httpResponseWriter
+purpose operation writeHealthEnvelope "Return the public liveness envelope."
+label startWriteHealthEnvelope
+call healthEnvelopeCall writeJsonEnvelope
+argument healthEnvelopeCall response HttpResponse response
+argument healthEnvelopeCall status Int32 runtime.okStatus
+argument healthEnvelopeCall responseBody String wire.healthEnvelopeWireBody
+run healthEnvelopeCall
+bind value healthEnvelopeStatus Int32 healthEnvelopeCall
+return value healthEnvelopeStatus
+
+operation writeReadyEnvelope
+input operation writeReadyEnvelope response HttpResponse
+output operation writeReadyEnvelope Int32
+effect writeReadyEnvelope write http.response
+memory writeReadyEnvelope arena request
+async writeReadyEnvelope no
+useCapability writeReadyEnvelope httpResponseWriter
+purpose operation writeReadyEnvelope "Return the public readiness envelope."
+label startWriteReadyEnvelope
+call readyEnvelopeCall writeJsonEnvelope
+argument readyEnvelopeCall response HttpResponse response
+argument readyEnvelopeCall status Int32 runtime.okStatus
+argument readyEnvelopeCall responseBody String wire.readyEnvelopeWireBody
+run readyEnvelopeCall
+bind value readyEnvelopeStatus Int32 readyEnvelopeCall
+return value readyEnvelopeStatus
+
+operation writeApiIndexEnvelope
+input operation writeApiIndexEnvelope response HttpResponse
+output operation writeApiIndexEnvelope Int32
+effect writeApiIndexEnvelope write http.response
+memory writeApiIndexEnvelope arena request
+async writeApiIndexEnvelope no
+useCapability writeApiIndexEnvelope httpResponseWriter
+purpose operation writeApiIndexEnvelope "Return the versioned route index envelope."
+label startWriteApiIndexEnvelope
+call apiIndexEnvelopeCall writeJsonEnvelope
+argument apiIndexEnvelopeCall response HttpResponse response
+argument apiIndexEnvelopeCall status Int32 runtime.okStatus
+argument apiIndexEnvelopeCall responseBody String wire.apiIndexEnvelopeWireBody
+run apiIndexEnvelopeCall
+bind value apiIndexEnvelopeStatus Int32 apiIndexEnvelopeCall
+return value apiIndexEnvelopeStatus
+
+operation writePayloadTooLargeEnvelope
+input operation writePayloadTooLargeEnvelope response HttpResponse
+output operation writePayloadTooLargeEnvelope Int32
+effect writePayloadTooLargeEnvelope write http.response
+memory writePayloadTooLargeEnvelope arena request
+async writePayloadTooLargeEnvelope no
+useCapability writePayloadTooLargeEnvelope httpResponseWriter
+purpose operation writePayloadTooLargeEnvelope "Return the shared payload-too-large error envelope."
+label startWritePayloadTooLargeEnvelope
+call payloadTooLargeEnvelopeCall writeJsonEnvelope
+argument payloadTooLargeEnvelopeCall response HttpResponse response
+argument payloadTooLargeEnvelopeCall status Int32 runtime.payloadTooLargeStatus
+argument payloadTooLargeEnvelopeCall responseBody String wire.payloadTooLargeEnvelopeWireBody
+run payloadTooLargeEnvelopeCall
+bind value payloadTooLargeEnvelopeStatus Int32 payloadTooLargeEnvelopeCall
+return value payloadTooLargeEnvelopeStatus
+
+operation writeUnsupportedMediaTypeEnvelope
+input operation writeUnsupportedMediaTypeEnvelope response HttpResponse
+output operation writeUnsupportedMediaTypeEnvelope Int32
+effect writeUnsupportedMediaTypeEnvelope write http.response
+memory writeUnsupportedMediaTypeEnvelope arena request
+async writeUnsupportedMediaTypeEnvelope no
+useCapability writeUnsupportedMediaTypeEnvelope httpResponseWriter
+purpose operation writeUnsupportedMediaTypeEnvelope "Return the shared unsupported-media-type error envelope."
+label startWriteUnsupportedMediaTypeEnvelope
+call unsupportedMediaTypeEnvelopeCall writeJsonEnvelope
+argument unsupportedMediaTypeEnvelopeCall response HttpResponse response
+argument unsupportedMediaTypeEnvelopeCall status Int32 runtime.unsupportedMediaTypeStatus
+argument unsupportedMediaTypeEnvelopeCall responseBody String wire.unsupportedMediaTypeEnvelopeWireBody
+run unsupportedMediaTypeEnvelopeCall
+bind value unsupportedMediaTypeEnvelopeStatus Int32 unsupportedMediaTypeEnvelopeCall
+return value unsupportedMediaTypeEnvelopeStatus
+
+operation writeInvalidCredentialsEnvelope
+input operation writeInvalidCredentialsEnvelope response HttpResponse
+output operation writeInvalidCredentialsEnvelope Int32
+effect writeInvalidCredentialsEnvelope write http.response
+memory writeInvalidCredentialsEnvelope arena request
+async writeInvalidCredentialsEnvelope no
+useCapability writeInvalidCredentialsEnvelope httpResponseWriter
+purpose operation writeInvalidCredentialsEnvelope "Return the login invalid-credentials envelope."
+label startWriteInvalidCredentialsEnvelope
+call invalidCredentialsEnvelopeCall writeJsonEnvelope
+argument invalidCredentialsEnvelopeCall response HttpResponse response
+argument invalidCredentialsEnvelopeCall status Int32 runtime.unauthorizedStatus
+argument invalidCredentialsEnvelopeCall responseBody String wire.invalidCredentialsEnvelopeWireBody
+run invalidCredentialsEnvelopeCall
+bind value invalidCredentialsEnvelopeStatus Int32 invalidCredentialsEnvelopeCall
+return value invalidCredentialsEnvelopeStatus
+
+operation writeMalformedJsonServerErrorEnvelope
+input operation writeMalformedJsonServerErrorEnvelope response HttpResponse
+output operation writeMalformedJsonServerErrorEnvelope Int32
+effect writeMalformedJsonServerErrorEnvelope write http.response
+memory writeMalformedJsonServerErrorEnvelope arena request
+async writeMalformedJsonServerErrorEnvelope no
+useCapability writeMalformedJsonServerErrorEnvelope httpResponseWriter
+purpose operation writeMalformedJsonServerErrorEnvelope "Return the internal JSON failure envelope used by auth parsing fallbacks."
+label startWriteMalformedJsonServerErrorEnvelope
+call malformedJsonServerErrorEnvelopeCall writeJsonEnvelope
+argument malformedJsonServerErrorEnvelopeCall response HttpResponse response
+argument malformedJsonServerErrorEnvelopeCall status Int32 runtime.serverErrorStatus
+argument malformedJsonServerErrorEnvelopeCall responseBody String wire.malformedJsonEnvelopeWireBody
+run malformedJsonServerErrorEnvelopeCall
+bind value malformedJsonServerErrorEnvelopeStatus Int32 malformedJsonServerErrorEnvelopeCall
+return value malformedJsonServerErrorEnvelopeStatus
+
+operation writeInvalidRefreshTokenEnvelope
+input operation writeInvalidRefreshTokenEnvelope response HttpResponse
+output operation writeInvalidRefreshTokenEnvelope Int32
+effect writeInvalidRefreshTokenEnvelope write http.response
+memory writeInvalidRefreshTokenEnvelope arena request
+async writeInvalidRefreshTokenEnvelope no
+useCapability writeInvalidRefreshTokenEnvelope httpResponseWriter
+purpose operation writeInvalidRefreshTokenEnvelope "Return the invalid refresh-token envelope."
+label startWriteInvalidRefreshTokenEnvelope
+call invalidRefreshTokenEnvelopeCall writeJsonEnvelope
+argument invalidRefreshTokenEnvelopeCall response HttpResponse response
+argument invalidRefreshTokenEnvelopeCall status Int32 runtime.unauthorizedStatus
+argument invalidRefreshTokenEnvelopeCall responseBody String wire.invalidRefreshTokenEnvelopeWireBody
+run invalidRefreshTokenEnvelopeCall
+bind value invalidRefreshTokenEnvelopeStatus Int32 invalidRefreshTokenEnvelopeCall
+return value invalidRefreshTokenEnvelopeStatus
+
+operation writeAuthLogoutSuccessEnvelope
+input operation writeAuthLogoutSuccessEnvelope response HttpResponse
+output operation writeAuthLogoutSuccessEnvelope Int32
+effect writeAuthLogoutSuccessEnvelope write http.response
+memory writeAuthLogoutSuccessEnvelope arena request
+async writeAuthLogoutSuccessEnvelope no
+useCapability writeAuthLogoutSuccessEnvelope httpResponseWriter
+purpose operation writeAuthLogoutSuccessEnvelope "Return the logout success envelope."
+label startWriteAuthLogoutSuccessEnvelope
+call authLogoutSuccessEnvelopeCall writeJsonEnvelope
+argument authLogoutSuccessEnvelopeCall response HttpResponse response
+argument authLogoutSuccessEnvelopeCall status Int32 runtime.okStatus
+argument authLogoutSuccessEnvelopeCall responseBody String wire.authLogoutSuccessEnvelopeWireBody
+run authLogoutSuccessEnvelopeCall
+bind value authLogoutSuccessEnvelopeStatus Int32 authLogoutSuccessEnvelopeCall
+return value authLogoutSuccessEnvelopeStatus
+
+operation writeAuthBidderSessionEnvelope
+input operation writeAuthBidderSessionEnvelope response HttpResponse
+output operation writeAuthBidderSessionEnvelope Int32
+effect writeAuthBidderSessionEnvelope write http.response
+memory writeAuthBidderSessionEnvelope arena request
+async writeAuthBidderSessionEnvelope no
+useCapability writeAuthBidderSessionEnvelope httpResponseWriter
+purpose operation writeAuthBidderSessionEnvelope "Return the bidder session envelope."
+label startWriteAuthBidderSessionEnvelope
+call authBidderSessionEnvelopeCall writeJsonEnvelope
+argument authBidderSessionEnvelopeCall response HttpResponse response
+argument authBidderSessionEnvelopeCall status Int32 runtime.okStatus
+argument authBidderSessionEnvelopeCall responseBody String wire.authBidderSessionEnvelopeWireBody
+run authBidderSessionEnvelopeCall
+bind value authBidderSessionEnvelopeStatus Int32 authBidderSessionEnvelopeCall
+return value authBidderSessionEnvelopeStatus
+
+operation writeAuthAdminSessionEnvelope
+input operation writeAuthAdminSessionEnvelope response HttpResponse
+output operation writeAuthAdminSessionEnvelope Int32
+effect writeAuthAdminSessionEnvelope write http.response
+memory writeAuthAdminSessionEnvelope arena request
+async writeAuthAdminSessionEnvelope no
+useCapability writeAuthAdminSessionEnvelope httpResponseWriter
+purpose operation writeAuthAdminSessionEnvelope "Return the admin session envelope."
+label startWriteAuthAdminSessionEnvelope
+call authAdminSessionEnvelopeCall writeJsonEnvelope
+argument authAdminSessionEnvelopeCall response HttpResponse response
+argument authAdminSessionEnvelopeCall status Int32 runtime.okStatus
+argument authAdminSessionEnvelopeCall responseBody String wire.authAdminSessionEnvelopeWireBody
+run authAdminSessionEnvelopeCall
+bind value authAdminSessionEnvelopeStatus Int32 authAdminSessionEnvelopeCall
+return value authAdminSessionEnvelopeStatus
+
+operation writeAuthSessionEnvelope
+input operation writeAuthSessionEnvelope response HttpResponse
+output operation writeAuthSessionEnvelope Int32
+effect writeAuthSessionEnvelope write http.response
+memory writeAuthSessionEnvelope arena request
+async writeAuthSessionEnvelope no
+useCapability writeAuthSessionEnvelope httpResponseWriter
+purpose operation writeAuthSessionEnvelope "Return the auctioneer session envelope."
+label startWriteAuthSessionEnvelope
+call authSessionEnvelopeCall writeJsonEnvelope
+argument authSessionEnvelopeCall response HttpResponse response
+argument authSessionEnvelopeCall status Int32 runtime.okStatus
+argument authSessionEnvelopeCall responseBody String wire.authSessionEnvelopeWireBody
+run authSessionEnvelopeCall
+bind value authSessionEnvelopeStatus Int32 authSessionEnvelopeCall
+return value authSessionEnvelopeStatus
+
+operation writeExpiredTokenEnvelope
+input operation writeExpiredTokenEnvelope response HttpResponse
+output operation writeExpiredTokenEnvelope Int32
+effect writeExpiredTokenEnvelope write http.response
+memory writeExpiredTokenEnvelope arena request
+async writeExpiredTokenEnvelope no
+useCapability writeExpiredTokenEnvelope httpResponseWriter
+purpose operation writeExpiredTokenEnvelope "Return the expired access-token envelope."
+label startWriteExpiredTokenEnvelope
+call expiredTokenEnvelopeCall writeJsonEnvelope
+argument expiredTokenEnvelopeCall response HttpResponse response
+argument expiredTokenEnvelopeCall status Int32 runtime.unauthorizedStatus
+argument expiredTokenEnvelopeCall responseBody String wire.expiredTokenEnvelopeWireBody
+run expiredTokenEnvelopeCall
+bind value expiredTokenEnvelopeStatus Int32 expiredTokenEnvelopeCall
+return value expiredTokenEnvelopeStatus
+
+operation writeWrongAudienceEnvelope
+input operation writeWrongAudienceEnvelope response HttpResponse
+output operation writeWrongAudienceEnvelope Int32
+effect writeWrongAudienceEnvelope write http.response
+memory writeWrongAudienceEnvelope arena request
+async writeWrongAudienceEnvelope no
+useCapability writeWrongAudienceEnvelope httpResponseWriter
+purpose operation writeWrongAudienceEnvelope "Return the wrong JWT audience envelope."
+label startWriteWrongAudienceEnvelope
+call wrongAudienceEnvelopeCall writeJsonEnvelope
+argument wrongAudienceEnvelopeCall response HttpResponse response
+argument wrongAudienceEnvelopeCall status Int32 runtime.unauthorizedStatus
+argument wrongAudienceEnvelopeCall responseBody String wire.wrongAudienceEnvelopeWireBody
+run wrongAudienceEnvelopeCall
+bind value wrongAudienceEnvelopeStatus Int32 wrongAudienceEnvelopeCall
+return value wrongAudienceEnvelopeStatus
+
+operation writeInsufficientRoleEnvelope
+input operation writeInsufficientRoleEnvelope response HttpResponse
+output operation writeInsufficientRoleEnvelope Int32
+effect writeInsufficientRoleEnvelope write http.response
+memory writeInsufficientRoleEnvelope arena request
+async writeInsufficientRoleEnvelope no
+useCapability writeInsufficientRoleEnvelope httpResponseWriter
+purpose operation writeInsufficientRoleEnvelope "Return the authenticated-but-forbidden role/scope envelope."
+label startWriteInsufficientRoleEnvelope
+call insufficientRoleEnvelopeCall writeJsonEnvelope
+argument insufficientRoleEnvelopeCall response HttpResponse response
+argument insufficientRoleEnvelopeCall status Int32 runtime.forbiddenStatus
+argument insufficientRoleEnvelopeCall responseBody String wire.insufficientRoleEnvelopeWireBody
+run insufficientRoleEnvelopeCall
+bind value insufficientRoleEnvelopeStatus Int32 insufficientRoleEnvelopeCall
+return value insufficientRoleEnvelopeStatus
+
+operation writeUnauthorizedEnvelope
+input operation writeUnauthorizedEnvelope response HttpResponse
+output operation writeUnauthorizedEnvelope Int32
+effect writeUnauthorizedEnvelope write http.response
+memory writeUnauthorizedEnvelope arena request
+async writeUnauthorizedEnvelope no
+useCapability writeUnauthorizedEnvelope httpResponseWriter
+purpose operation writeUnauthorizedEnvelope "Return the shared unauthorized envelope."
+label startWriteUnauthorizedEnvelope
+call unauthorizedEnvelopeCall writeJsonEnvelope
+argument unauthorizedEnvelopeCall response HttpResponse response
+argument unauthorizedEnvelopeCall status Int32 runtime.unauthorizedStatus
+argument unauthorizedEnvelopeCall responseBody String wire.unauthorizedEnvelopeWireBody
+run unauthorizedEnvelopeCall
+bind value unauthorizedEnvelopeStatus Int32 unauthorizedEnvelopeCall
+return value unauthorizedEnvelopeStatus
+
+operation writeAuthConfigInvalidEnvelope
+input operation writeAuthConfigInvalidEnvelope response HttpResponse
+output operation writeAuthConfigInvalidEnvelope Int32
+effect writeAuthConfigInvalidEnvelope write http.response
+memory writeAuthConfigInvalidEnvelope arena request
+async writeAuthConfigInvalidEnvelope no
+useCapability writeAuthConfigInvalidEnvelope httpResponseWriter
+purpose operation writeAuthConfigInvalidEnvelope "Return the shared production configuration failure envelope."
+label startWriteAuthConfigInvalidEnvelope
+call authConfigInvalidEnvelopeCall writeJsonEnvelope
+argument authConfigInvalidEnvelopeCall response HttpResponse response
+argument authConfigInvalidEnvelopeCall status Int32 runtime.serviceUnavailableStatus
+argument authConfigInvalidEnvelopeCall responseBody String wire.authConfigInvalidEnvelopeWireBody
+run authConfigInvalidEnvelopeCall
+bind value authConfigInvalidEnvelopeStatus Int32 authConfigInvalidEnvelopeCall
+return value authConfigInvalidEnvelopeStatus
+
+operation writeDatabaseUnavailableEnvelope
+input operation writeDatabaseUnavailableEnvelope response HttpResponse
+output operation writeDatabaseUnavailableEnvelope Int32
+effect writeDatabaseUnavailableEnvelope write http.response
+memory writeDatabaseUnavailableEnvelope arena request
+async writeDatabaseUnavailableEnvelope no
+useCapability writeDatabaseUnavailableEnvelope httpResponseWriter
+purpose operation writeDatabaseUnavailableEnvelope "Return the shared database unavailable envelope."
+label startWriteDatabaseUnavailableEnvelope
+call databaseUnavailableEnvelopeCall writeJsonEnvelope
+argument databaseUnavailableEnvelopeCall response HttpResponse response
+argument databaseUnavailableEnvelopeCall status Int32 runtime.serviceUnavailableStatus
+argument databaseUnavailableEnvelopeCall responseBody String wire.databaseUnavailableEnvelopeWireBody
+run databaseUnavailableEnvelopeCall
+bind value databaseUnavailableEnvelopeStatus Int32 databaseUnavailableEnvelopeCall
+return value databaseUnavailableEnvelopeStatus
+
+operation writeMissingIdempotencyKeyEnvelope
+input operation writeMissingIdempotencyKeyEnvelope response HttpResponse
+output operation writeMissingIdempotencyKeyEnvelope Int32
+effect writeMissingIdempotencyKeyEnvelope write http.response
+memory writeMissingIdempotencyKeyEnvelope arena request
+async writeMissingIdempotencyKeyEnvelope no
+useCapability writeMissingIdempotencyKeyEnvelope httpResponseWriter
+purpose operation writeMissingIdempotencyKeyEnvelope "Return the shared missing idempotency-key envelope."
+label startWriteMissingIdempotencyKeyEnvelope
+call missingIdempotencyKeyEnvelopeCall writeJsonEnvelope
+argument missingIdempotencyKeyEnvelopeCall response HttpResponse response
+argument missingIdempotencyKeyEnvelopeCall status Int32 runtime.badRequestStatus
+argument missingIdempotencyKeyEnvelopeCall responseBody String wire.missingIdempotencyKeyEnvelopeWireBody
+run missingIdempotencyKeyEnvelopeCall
+bind value missingIdempotencyKeyEnvelopeStatus Int32 missingIdempotencyKeyEnvelopeCall
+return value missingIdempotencyKeyEnvelopeStatus
+
+operation writeIdempotencyConflictEnvelope
+input operation writeIdempotencyConflictEnvelope response HttpResponse
+output operation writeIdempotencyConflictEnvelope Int32
+effect writeIdempotencyConflictEnvelope write http.response
+memory writeIdempotencyConflictEnvelope arena request
+async writeIdempotencyConflictEnvelope no
+useCapability writeIdempotencyConflictEnvelope httpResponseWriter
+purpose operation writeIdempotencyConflictEnvelope "Return the shared idempotency conflict envelope."
+label startWriteIdempotencyConflictEnvelope
+call idempotencyConflictEnvelopeCall writeJsonEnvelope
+argument idempotencyConflictEnvelopeCall response HttpResponse response
+argument idempotencyConflictEnvelopeCall status Int32 runtime.conflictStatus
+argument idempotencyConflictEnvelopeCall responseBody String wire.idempotencyConflictEnvelopeWireBody
+run idempotencyConflictEnvelopeCall
+bind value idempotencyConflictEnvelopeStatus Int32 idempotencyConflictEnvelopeCall
+return value idempotencyConflictEnvelopeStatus
+
+operation writeValidationFailedEnvelope
+input operation writeValidationFailedEnvelope response HttpResponse
+output operation writeValidationFailedEnvelope Int32
+effect writeValidationFailedEnvelope write http.response
+memory writeValidationFailedEnvelope arena request
+async writeValidationFailedEnvelope no
+useCapability writeValidationFailedEnvelope httpResponseWriter
+purpose operation writeValidationFailedEnvelope "Return the shared validation-failed envelope."
+label startWriteValidationFailedEnvelope
+call validationFailedEnvelopeCall writeJsonEnvelope
+argument validationFailedEnvelopeCall response HttpResponse response
+argument validationFailedEnvelopeCall status Int32 runtime.badRequestStatus
+argument validationFailedEnvelopeCall responseBody String wire.validationFailedEnvelopeWireBody
+run validationFailedEnvelopeCall
+bind value validationFailedEnvelopeStatus Int32 validationFailedEnvelopeCall
+return value validationFailedEnvelopeStatus
+
+operation writeAuctionNotFoundEnvelope
+input operation writeAuctionNotFoundEnvelope response HttpResponse
+output operation writeAuctionNotFoundEnvelope Int32
+effect writeAuctionNotFoundEnvelope write http.response
+memory writeAuctionNotFoundEnvelope arena request
+async writeAuctionNotFoundEnvelope no
+useCapability writeAuctionNotFoundEnvelope httpResponseWriter
+purpose operation writeAuctionNotFoundEnvelope "Return the shared auction-not-found envelope."
+label startWriteAuctionNotFoundEnvelope
+call auctionNotFoundEnvelopeCall writeJsonEnvelope
+argument auctionNotFoundEnvelopeCall response HttpResponse response
+argument auctionNotFoundEnvelopeCall status Int32 runtime.notFoundStatus
+argument auctionNotFoundEnvelopeCall responseBody String wire.auctionNotFoundEnvelopeWireBody
+run auctionNotFoundEnvelopeCall
+bind value auctionNotFoundEnvelopeStatus Int32 auctionNotFoundEnvelopeCall
+return value auctionNotFoundEnvelopeStatus
+
+operation writeStaleRevisionEnvelope
+input operation writeStaleRevisionEnvelope response HttpResponse
+output operation writeStaleRevisionEnvelope Int32
+effect writeStaleRevisionEnvelope write http.response
+memory writeStaleRevisionEnvelope arena request
+async writeStaleRevisionEnvelope no
+useCapability writeStaleRevisionEnvelope httpResponseWriter
+purpose operation writeStaleRevisionEnvelope "Return the shared stale-revision envelope."
+label startWriteStaleRevisionEnvelope
+call staleRevisionEnvelopeCall writeJsonEnvelope
+argument staleRevisionEnvelopeCall response HttpResponse response
+argument staleRevisionEnvelopeCall status Int32 runtime.conflictStatus
+argument staleRevisionEnvelopeCall responseBody String wire.staleRevisionEnvelopeWireBody
+run staleRevisionEnvelopeCall
+bind value staleRevisionEnvelopeStatus Int32 staleRevisionEnvelopeCall
+return value staleRevisionEnvelopeStatus
+
+operation writeAuctionNotRunningEnvelope
+input operation writeAuctionNotRunningEnvelope response HttpResponse
+output operation writeAuctionNotRunningEnvelope Int32
+effect writeAuctionNotRunningEnvelope write http.response
+memory writeAuctionNotRunningEnvelope arena request
+async writeAuctionNotRunningEnvelope no
+useCapability writeAuctionNotRunningEnvelope httpResponseWriter
+purpose operation writeAuctionNotRunningEnvelope "Return the shared auction-not-running envelope."
+label startWriteAuctionNotRunningEnvelope
+call auctionNotRunningEnvelopeCall writeJsonEnvelope
+argument auctionNotRunningEnvelopeCall response HttpResponse response
+argument auctionNotRunningEnvelopeCall status Int32 runtime.conflictStatus
+argument auctionNotRunningEnvelopeCall responseBody String wire.auctionNotRunningEnvelopeWireBody
+run auctionNotRunningEnvelopeCall
+bind value auctionNotRunningEnvelopeStatus Int32 auctionNotRunningEnvelopeCall
+return value auctionNotRunningEnvelopeStatus
+
+operation writeLifecycleRejectedEnvelope
+input operation writeLifecycleRejectedEnvelope response HttpResponse
+output operation writeLifecycleRejectedEnvelope Int32
+effect writeLifecycleRejectedEnvelope write http.response
+memory writeLifecycleRejectedEnvelope arena request
+async writeLifecycleRejectedEnvelope no
+useCapability writeLifecycleRejectedEnvelope httpResponseWriter
+purpose operation writeLifecycleRejectedEnvelope "Return the shared lifecycle-rejected envelope."
+label startWriteLifecycleRejectedEnvelope
+call lifecycleRejectedEnvelopeCall writeJsonEnvelope
+argument lifecycleRejectedEnvelopeCall response HttpResponse response
+argument lifecycleRejectedEnvelopeCall status Int32 runtime.conflictStatus
+argument lifecycleRejectedEnvelopeCall responseBody String wire.lifecycleRejectedEnvelopeWireBody
+run lifecycleRejectedEnvelopeCall
+bind value lifecycleRejectedEnvelopeStatus Int32 lifecycleRejectedEnvelopeCall
+return value lifecycleRejectedEnvelopeStatus
+
+operation writeExtensionOutOfBoundsEnvelope
+input operation writeExtensionOutOfBoundsEnvelope response HttpResponse
+output operation writeExtensionOutOfBoundsEnvelope Int32
+effect writeExtensionOutOfBoundsEnvelope write http.response
+memory writeExtensionOutOfBoundsEnvelope arena request
+async writeExtensionOutOfBoundsEnvelope no
+useCapability writeExtensionOutOfBoundsEnvelope httpResponseWriter
+purpose operation writeExtensionOutOfBoundsEnvelope "Return the shared extension-out-of-bounds envelope."
+label startWriteExtensionOutOfBoundsEnvelope
+call extensionOutOfBoundsEnvelopeCall writeJsonEnvelope
+argument extensionOutOfBoundsEnvelopeCall response HttpResponse response
+argument extensionOutOfBoundsEnvelopeCall status Int32 runtime.badRequestStatus
+argument extensionOutOfBoundsEnvelopeCall responseBody String wire.extensionOutOfBoundsEnvelopeWireBody
+run extensionOutOfBoundsEnvelopeCall
+bind value extensionOutOfBoundsEnvelopeStatus Int32 extensionOutOfBoundsEnvelopeCall
+return value extensionOutOfBoundsEnvelopeStatus
+
+operation writeBidBelowMinimumEnvelope
+input operation writeBidBelowMinimumEnvelope response HttpResponse
+output operation writeBidBelowMinimumEnvelope Int32
+effect writeBidBelowMinimumEnvelope write http.response
+memory writeBidBelowMinimumEnvelope arena request
+async writeBidBelowMinimumEnvelope no
+useCapability writeBidBelowMinimumEnvelope httpResponseWriter
+purpose operation writeBidBelowMinimumEnvelope "Return the shared bid-below-minimum envelope."
+label startWriteBidBelowMinimumEnvelope
+call bidBelowMinimumEnvelopeCall writeJsonEnvelope
+argument bidBelowMinimumEnvelopeCall response HttpResponse response
+argument bidBelowMinimumEnvelopeCall status Int32 runtime.conflictStatus
+argument bidBelowMinimumEnvelopeCall responseBody String wire.bidBelowMinimumEnvelopeWireBody
+run bidBelowMinimumEnvelopeCall
+bind value bidBelowMinimumEnvelopeStatus Int32 bidBelowMinimumEnvelopeCall
+return value bidBelowMinimumEnvelopeStatus
+
+operation writeAmountTooHighEnvelope
+input operation writeAmountTooHighEnvelope response HttpResponse
+output operation writeAmountTooHighEnvelope Int32
+effect writeAmountTooHighEnvelope write http.response
+memory writeAmountTooHighEnvelope arena request
+async writeAmountTooHighEnvelope no
+useCapability writeAmountTooHighEnvelope httpResponseWriter
+purpose operation writeAmountTooHighEnvelope "Return the shared bid amount-too-high envelope."
+label startWriteAmountTooHighEnvelope
+call amountTooHighEnvelopeCall writeJsonEnvelope
+argument amountTooHighEnvelopeCall response HttpResponse response
+argument amountTooHighEnvelopeCall status Int32 runtime.conflictStatus
+argument amountTooHighEnvelopeCall responseBody String wire.amountTooHighEnvelopeWireBody
+run amountTooHighEnvelopeCall
+bind value amountTooHighEnvelopeStatus Int32 amountTooHighEnvelopeCall
+return value amountTooHighEnvelopeStatus
+
+operation writeChatRejectedEnvelope
+input operation writeChatRejectedEnvelope response HttpResponse
+output operation writeChatRejectedEnvelope Int32
+effect writeChatRejectedEnvelope write http.response
+memory writeChatRejectedEnvelope arena request
+async writeChatRejectedEnvelope no
+useCapability writeChatRejectedEnvelope httpResponseWriter
+purpose operation writeChatRejectedEnvelope "Return the shared chat validation or moderation rejection envelope."
+invariant operation writeChatRejectedEnvelope "The envelope is static and contains no caller-supplied chat text."
+label startWriteChatRejectedEnvelope
+call chatRejectedEnvelopeCall writeJsonEnvelope
+argument chatRejectedEnvelopeCall response HttpResponse response
+argument chatRejectedEnvelopeCall status Int32 runtime.badRequestStatus
+argument chatRejectedEnvelopeCall responseBody String wire.chatRejectedEnvelopeWireBody
+run chatRejectedEnvelopeCall
+bind value chatRejectedEnvelopeStatus Int32 chatRejectedEnvelopeCall
+return value chatRejectedEnvelopeStatus
+
+operation writeMessageNotFoundEnvelope
+input operation writeMessageNotFoundEnvelope response HttpResponse
+output operation writeMessageNotFoundEnvelope Int32
+effect writeMessageNotFoundEnvelope write http.response
+memory writeMessageNotFoundEnvelope arena request
+async writeMessageNotFoundEnvelope no
+useCapability writeMessageNotFoundEnvelope httpResponseWriter
+purpose operation writeMessageNotFoundEnvelope "Return the shared chat message-not-found envelope."
+invariant operation writeMessageNotFoundEnvelope "The envelope is static and contains no caller-supplied route parameter."
+label startWriteMessageNotFoundEnvelope
+call messageNotFoundEnvelopeCall writeJsonEnvelope
+argument messageNotFoundEnvelopeCall response HttpResponse response
+argument messageNotFoundEnvelopeCall status Int32 runtime.notFoundStatus
+argument messageNotFoundEnvelopeCall responseBody String wire.messageNotFoundEnvelopeWireBody
+run messageNotFoundEnvelopeCall
+bind value messageNotFoundEnvelopeStatus Int32 messageNotFoundEnvelopeCall
+return value messageNotFoundEnvelopeStatus
+
+operation writeRateLimitedEnvelope
+input operation writeRateLimitedEnvelope response HttpResponse
+output operation writeRateLimitedEnvelope Int32
+effect writeRateLimitedEnvelope write http.response
+memory writeRateLimitedEnvelope arena request
+async writeRateLimitedEnvelope no
+useCapability writeRateLimitedEnvelope httpResponseWriter
+purpose operation writeRateLimitedEnvelope "Return the shared rate-limited envelope."
+invariant operation writeRateLimitedEnvelope "The envelope is static and does not expose bucket keys or actor identifiers."
+label startWriteRateLimitedEnvelope
+call rateLimitedEnvelopeCall writeJsonEnvelope
+argument rateLimitedEnvelopeCall response HttpResponse response
+argument rateLimitedEnvelopeCall status Int32 runtime.tooManyRequestsStatus
+argument rateLimitedEnvelopeCall responseBody String wire.rateLimitedEnvelopeWireBody
+run rateLimitedEnvelopeCall
+bind value rateLimitedEnvelopeStatus Int32 rateLimitedEnvelopeCall
+return value rateLimitedEnvelopeStatus
+
+operation writeServerShuttingDownEnvelope
+input operation writeServerShuttingDownEnvelope response HttpResponse
+output operation writeServerShuttingDownEnvelope Int32
+effect writeServerShuttingDownEnvelope write http.response
+memory writeServerShuttingDownEnvelope arena request
+async writeServerShuttingDownEnvelope no
+useCapability writeServerShuttingDownEnvelope httpResponseWriter
+purpose operation writeServerShuttingDownEnvelope "Return the shared graceful-shutdown command rejection envelope."
+invariant operation writeServerShuttingDownEnvelope "This helper only owns the static wire shape; route policy decides when graceful shutdown rejects a request."
+label startWriteServerShuttingDownEnvelope
+call serverShuttingDownEnvelopeCall writeJsonEnvelope
+argument serverShuttingDownEnvelopeCall response HttpResponse response
+argument serverShuttingDownEnvelopeCall status Int32 runtime.serviceUnavailableStatus
+argument serverShuttingDownEnvelopeCall responseBody String wire.serverShuttingDownEnvelopeWireBody
+run serverShuttingDownEnvelopeCall
+bind value serverShuttingDownEnvelopeStatus Int32 serverShuttingDownEnvelopeCall
+return value serverShuttingDownEnvelopeStatus
+
+operation writeApiNotFoundEnvelope
+input operation writeApiNotFoundEnvelope response HttpResponse
+output operation writeApiNotFoundEnvelope Int32
+effect writeApiNotFoundEnvelope write http.response
+memory writeApiNotFoundEnvelope arena request
+async writeApiNotFoundEnvelope no
+useCapability writeApiNotFoundEnvelope httpResponseWriter
+purpose operation writeApiNotFoundEnvelope "Return the API not-found envelope."
+label startWriteApiNotFoundEnvelope
+call apiNotFoundEnvelopeCall writeJsonEnvelope
+argument apiNotFoundEnvelopeCall response HttpResponse response
+argument apiNotFoundEnvelopeCall status Int32 runtime.notFoundStatus
+argument apiNotFoundEnvelopeCall responseBody String wire.apiNotFoundEnvelopeWireBody
+run apiNotFoundEnvelopeCall
+bind value apiNotFoundEnvelopeStatus Int32 apiNotFoundEnvelopeCall
+return value apiNotFoundEnvelopeStatus
+
+operation writeMethodNotAllowedEnvelope
+input operation writeMethodNotAllowedEnvelope response HttpResponse
+output operation writeMethodNotAllowedEnvelope Int32
+effect writeMethodNotAllowedEnvelope write http.response
+memory writeMethodNotAllowedEnvelope arena request
+async writeMethodNotAllowedEnvelope no
+useCapability writeMethodNotAllowedEnvelope httpResponseWriter
+purpose operation writeMethodNotAllowedEnvelope "Return the shared method-not-allowed error envelope."
+label startWriteMethodNotAllowedEnvelope
+call methodNotAllowedEnvelopeCall writeJsonEnvelope
+argument methodNotAllowedEnvelopeCall response HttpResponse response
+argument methodNotAllowedEnvelopeCall status Int32 runtime.methodNotAllowedStatus
+argument methodNotAllowedEnvelopeCall responseBody String wire.methodNotAllowedEnvelopeWireBody
+run methodNotAllowedEnvelopeCall
+bind value methodNotAllowedEnvelopeStatus Int32 methodNotAllowedEnvelopeCall
+return value methodNotAllowedEnvelopeStatus

@@ -5,64 +5,64 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read memory.buffer
 effect main write console.stdout
 memory main heap auto
 async main no
-purpose main "Test pointer.isNull primitive against a malloc'd pointer (not null) and a fresh c.malloc(0) followed by reset to null-like usage."
-invariant main "Exercises icmp eq i8* X, null path."
+purpose operation main "Test pointer.isNull primitive against a malloc'd pointer (not null) and a fresh c.malloc(0) followed by reset to null-like usage."
+invariant operation main "Exercises icmp eq i8* X, null path."
 label startMain
-const fourBytes I64 4
-const oneVal I64 1
-const zeroVal I64 0
+storage module immutable fourBytes Int64 4
+storage module immutable oneVal Int64 1
+storage module immutable zeroVal Int64 0
 call mallocCall c.malloc
-arg mallocCall size fourBytes
+argument mallocCall size Int64 fourBytes
 run mallocCall
-bind allocatedBuffer COpaqueMemoryAddress mallocCall
+bind value allocatedBuffer OpaquePointer mallocCall
 call notNullCheckCall pointer.isNull
-arg notNullCheckCall p allocatedBuffer
+argument notNullCheckCall p OpaquePointer allocatedBuffer
 run notNullCheckCall
-bind allocatedIsNull Bool notNullCheckCall
-var firstNumeric I64 0
-branchIf allocatedIsNull markFirstOne
-branch printFirst
+bind value allocatedIsNull Bool notNullCheckCall
+memory main mutable firstNumeric Int64 0
+branch if condition allocatedIsNull target markFirstOne
+branch else target printFirst
 label markFirstOne
-set firstNumeric oneVal
-branch printFirst
+set memory firstNumeric oneVal
+jump target printFirst
 label printFirst
 call writeFirstCall console.writeIntegerLine
-arg writeFirstCall console console
-arg writeFirstCall value firstNumeric
+argument writeFirstCall console Console console
+argument writeFirstCall value Int64 firstNumeric
 run writeFirstCall
-ignoreOk writeFirstCall Void
+ignore void source writeFirstCall
 call freeCall c.free
-arg freeCall ptr allocatedBuffer
+argument freeCall ptr OpaquePointer allocatedBuffer
 run freeCall
 # Now build a "null" by calling getenv on a name we know is unset.
-const definitelyUnsetName CNullTerminatedByteString "SEMANTICSCRIPT_DEFINITELY_NOT_SET_X"
+storage module immutable definitelyUnsetName String "SEMANTICSCRIPT_DEFINITELY_NOT_SET_X"
 call envCall c.getenv
-arg envCall name definitelyUnsetName
+argument envCall name String definitelyUnsetName
 run envCall
-bind envPointer COpaqueMemoryAddress envCall
+bind value envPointer OpaquePointer envCall
 call envIsNullCall pointer.isNull
-arg envIsNullCall p envPointer
+argument envIsNullCall p OpaquePointer envPointer
 run envIsNullCall
-bind envIsNull Bool envIsNullCall
-var secondNumeric I64 0
-branchIf envIsNull markSecondOne
-branch printSecond
+bind value envIsNull Bool envIsNullCall
+memory main mutable secondNumeric Int64 0
+branch if condition envIsNull target markSecondOne
+branch else target printSecond
 label markSecondOne
-set secondNumeric oneVal
-branch printSecond
+set memory secondNumeric oneVal
+jump target printSecond
 label printSecond
 call writeSecondCall console.writeIntegerLine
-arg writeSecondCall console console
-arg writeSecondCall value secondNumeric
+argument writeSecondCall console Console console
+argument writeSecondCall value Int64 secondNumeric
 run writeSecondCall
-ignoreOk writeSecondCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeSecondCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

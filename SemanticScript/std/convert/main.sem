@@ -1,177 +1,174 @@
 # SemanticScript standard-library canonical module: standard.convert.
 
 module standard.convert
-modulePurpose standard.convert "Canonical standard-library module for conversion helpers."
+purpose module standard.convert "Canonical standard-library module for conversion helpers."
 moduleOwns standard.convert "The official import path `standard.convert` and this module's implementation body."
 moduleDoesNotOwn standard.convert "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.convert "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.convert "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.convert convertModuleVersionText
-storage module immutable convertModuleVersionText CNullTerminatedByteString "standard.convert 0.1"
+storage module immutable convertModuleVersionText String "standard.convert 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: numeric + pointer conversions
 # ============================================================
 #
-# # rationale: width / sign / pointer conversions between the
+# rationale: width / sign / pointer conversions between the
 #   C-ABI numeric types. Every operation is total â€” no input
 #   produces a failure, so the Result wrapper is dropped.
 #
-# # invariant: lossy narrowing is documented per-op. Widening
+# invariant: lossy narrowing is documented per-op. Widening
 #   preserves value within its representable range.
 #
-# # security: pure value-level math; no I/O; no allocation;
+# security: pure value-level math; no I/O; no allocation;
 #   no branches over secret bits.
 #
-# # timing: O(1) per call.
+# timing: O(1) per call.
 #
-# # observability: no logs; consumers wrap when needed.
-
+# observability: no logs; consumers wrap when needed.
 
 # Pure-module file: smoke + extended tests live in
 # std/convert/main.test.sem.
 
-
-domainLiteral byteRoleAdjustmentValue CSignedInt64 256
+domainLiteral byteRoleAdjustmentValue Int64 256
 domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
 
 # section convert.integers
 
 operation widenSignedInt32ToSignedInt64
-input widenSignedInt32ToSignedInt64 inputValue CSignedInt32
-output widenSignedInt32ToSignedInt64 CSignedInt64
-memoryHeap widenSignedInt32ToSignedInt64 no
+input operation widenSignedInt32ToSignedInt64 inputValue Int32
+output operation widenSignedInt32ToSignedInt64 Int64
+memory widenSignedInt32ToSignedInt64 heap no
 async widenSignedInt32ToSignedInt64 no
-purpose widenSignedInt32ToSignedInt64 "Sign-extend an i32 to i64 through the explicit compiler conversion target."
-invariant widenSignedInt32ToSignedInt64 "Value-preserving: every CSignedInt32 fits in CSignedInt64."
+purpose operation widenSignedInt32ToSignedInt64 "Sign-extend an i32 to i64 through the explicit compiler conversion target."
+invariant operation widenSignedInt32ToSignedInt64 "Value-preserving: every Int32 fits in Int64."
 guarantee widenSignedInt32ToSignedInt64 "Total."
 label startWidenSignedInt32ToSignedInt64
-call widenInputCall math.signExtendCSignedInt32ToCSignedInt64
-arg widenInputCall inputValue inputValue
+call widenInputCall math.signExtendInt32ToInt64
+argument widenInputCall inputValue Int32 inputValue
 run widenInputCall
-bind widenedInput CSignedInt64 widenInputCall
-returnValue widenedInput
+bind value widenedInput Int64 widenInputCall
+return value widenedInput
 
 operation narrowSignedInt64ToSignedInt32
-input narrowSignedInt64ToSignedInt32 inputValue CSignedInt64
-output narrowSignedInt64ToSignedInt32 CSignedInt32
-memoryHeap narrowSignedInt64ToSignedInt32 no
+input operation narrowSignedInt64ToSignedInt32 inputValue Int64
+output operation narrowSignedInt64ToSignedInt32 Int32
+memory narrowSignedInt64ToSignedInt32 heap no
 async narrowSignedInt64ToSignedInt32 no
-purpose narrowSignedInt64ToSignedInt32 "Truncate an i64 to i32. Discards the high 32 bits."
-invariant narrowSignedInt64ToSignedInt32 "For inputs in [-2^31, 2^31-1] the result equals the input."
+purpose operation narrowSignedInt64ToSignedInt32 "Truncate an i64 to i32. Discards the high 32 bits."
+invariant operation narrowSignedInt64ToSignedInt32 "For inputs in [-2^31, 2^31-1] the result equals the input."
 warning narrowSignedInt64ToSignedInt32 "Inputs outside the i32 range are silently truncated â€” caller must screen first to avoid surprise."
 guarantee narrowSignedInt64ToSignedInt32 "Total."
 label startNarrowSignedInt64ToSignedInt32
-call narrowInputCall math.truncateCSignedInt64ToCSignedInt32
-arg narrowInputCall inputValue inputValue
+call narrowInputCall math.truncateInt64ToInt32
+argument narrowInputCall inputValue Int64 inputValue
 run narrowInputCall
-bind narrowedInput CSignedInt32 narrowInputCall
-returnValue narrowedInput
+bind value narrowedInput Int32 narrowInputCall
+return value narrowedInput
 
 operation convertByteValueToUnsignedInt32
-input convertByteValueToUnsignedInt32 signExtendedByteValue CSignedInt32
-output convertByteValueToUnsignedInt32 CSignedInt32
-memoryHeap convertByteValueToUnsignedInt32 no
+input operation convertByteValueToUnsignedInt32 signExtendedByteValue Int32
+output operation convertByteValueToUnsignedInt32 Int32
+memory convertByteValueToUnsignedInt32 heap no
 async convertByteValueToUnsignedInt32 no
-purpose convertByteValueToUnsignedInt32 "Treat the low 8 bits of signExtendedByteValue as an unsigned byte in [0, 255]."
-invariant convertByteValueToUnsignedInt32 "Output always in [0, 255]; (byte + 256) % 256 produces 0..255 for all inputs."
+purpose operation convertByteValueToUnsignedInt32 "Treat the low 8 bits of signExtendedByteValue as an unsigned byte in [0, 255]."
+invariant operation convertByteValueToUnsignedInt32 "Output always in [0, 255]; (byte + 256) % 256 produces 0..255 for all inputs."
 guarantee convertByteValueToUnsignedInt32 "Total."
 # rationale: pointer.loadByte sign-extends the loaded byte to i32
 #   under the LLVM ABI, so callers consuming the value as an
 #   unsigned byte need this conversion. The +256 then mod-256
 #   normalizes any sign-extended -1 / -2 / ... back to 255 / 254 / ...
 label startConvertByteValueToUnsignedInt32
-call widenByteCall math.signExtendCSignedInt32ToCSignedInt64
-arg widenByteCall inputValue signExtendedByteValue
+call widenByteCall math.signExtendInt32ToInt64
+argument widenByteCall inputValue Int32 signExtendedByteValue
 run widenByteCall
-bind signExtendedByteValue64 CSignedInt64 widenByteCall
-call shiftByteUpwardCall math.addI64
-arg shiftByteUpwardCall left signExtendedByteValue64
-arg shiftByteUpwardCall right byteRoleAdjustmentValue
+bind value signExtendedByteValue64 Int64 widenByteCall
+call shiftByteUpwardCall math.addInt64
+argument shiftByteUpwardCall left Int64 signExtendedByteValue64
+argument shiftByteUpwardCall right Int64 byteRoleAdjustmentValue
 run shiftByteUpwardCall
-bind shiftedByteUpward I64 shiftByteUpwardCall
-call reduceByteModuloCall math.moduloI64
-arg reduceByteModuloCall left shiftedByteUpward
-arg reduceByteModuloCall right byteRoleAdjustmentValue
+bind value shiftedByteUpward Int64 shiftByteUpwardCall
+call reduceByteModuloCall math.moduloInt64
+argument reduceByteModuloCall left Int64 shiftedByteUpward
+argument reduceByteModuloCall right Int64 byteRoleAdjustmentValue
 run reduceByteModuloCall
-bind unsignedByteValue64 CSignedInt64 reduceByteModuloCall
-call narrowUnsignedByteCall math.truncateCSignedInt64ToCSignedInt32
-arg narrowUnsignedByteCall inputValue unsignedByteValue64
+bind value unsignedByteValue64 Int64 reduceByteModuloCall
+call narrowUnsignedByteCall math.truncateInt64ToInt32
+argument narrowUnsignedByteCall inputValue Int64 unsignedByteValue64
 run narrowUnsignedByteCall
-bind unsignedByteValue CSignedInt32 narrowUnsignedByteCall
-returnValue unsignedByteValue
+bind value unsignedByteValue Int32 narrowUnsignedByteCall
+return value unsignedByteValue
 
 # section convert.numericFloats
 
 operation convertSignedInt64ToFloat64
-input convertSignedInt64ToFloat64 inputValue CSignedInt64
-output convertSignedInt64ToFloat64 CFloat64
-memoryHeap convertSignedInt64ToFloat64 no
+input operation convertSignedInt64ToFloat64 inputValue Int64
+output operation convertSignedInt64ToFloat64 Float64
+memory convertSignedInt64ToFloat64 heap no
 async convertSignedInt64ToFloat64 no
-purpose convertSignedInt64ToFloat64 "Convert a signed 64-bit integer to a double. Wraps math.intToFloat (LLVM sitofp)."
-invariant convertSignedInt64ToFloat64 "Loss-of-precision possible for magnitudes >= 2^53; otherwise round-trippable."
+purpose operation convertSignedInt64ToFloat64 "Convert a signed 64-bit integer to a double. Wraps math.convertInt64ToFloat64 (LLVM sitofp)."
+invariant operation convertSignedInt64ToFloat64 "Loss-of-precision possible for magnitudes >= 2^53; otherwise round-trippable."
 guarantee convertSignedInt64ToFloat64 "Total."
 label startConvertSignedInt64ToFloat64
-call sitoffpCall math.intToFloat
-arg sitoffpCall value inputValue
+call sitoffpCall math.convertInt64ToFloat64
+argument sitoffpCall value Int64 inputValue
 run sitoffpCall
-bind asDoubleResult CFloat64 sitoffpCall
-returnValue asDoubleResult
+bind value asDoubleResult Float64 sitoffpCall
+return value asDoubleResult
 
 operation convertFloat64ToSignedInt64
-input convertFloat64ToSignedInt64 inputValue CFloat64
-output convertFloat64ToSignedInt64 CSignedInt64
-memoryHeap convertFloat64ToSignedInt64 no
+input operation convertFloat64ToSignedInt64 inputValue Float64
+output operation convertFloat64ToSignedInt64 Int64
+memory convertFloat64ToSignedInt64 heap no
 async convertFloat64ToSignedInt64 no
-purpose convertFloat64ToSignedInt64 "Convert a double to a signed 64-bit integer by rounding toward zero. Wraps math.floatToInt (LLVM fptosi)."
-invariant convertFloat64ToSignedInt64 "For inputs in [-2^63, 2^63) the conversion is well-defined; outside that range the result is implementation-defined (LLVM fptosi)."
+purpose operation convertFloat64ToSignedInt64 "Convert a double to a signed 64-bit integer by rounding toward zero. Wraps math.convertFloat64ToInt64 (LLVM fptosi)."
+invariant operation convertFloat64ToSignedInt64 "For inputs in [-2^63, 2^63) the conversion is well-defined; outside that range the result is implementation-defined (LLVM fptosi)."
 warning convertFloat64ToSignedInt64 "NaN inputs produce an unspecified i64 â€” caller must screen with c.isnan when defined behavior is required."
-guarantee convertFloat64ToSignedInt64 "Total over the in-range CFloat64 domain."
+guarantee convertFloat64ToSignedInt64 "Total over the in-range Float64 domain."
 label startConvertFloat64ToSignedInt64
-call fptosiCall math.floatToInt
-arg fptosiCall value inputValue
+call fptosiCall math.convertFloat64ToInt64
+argument fptosiCall value Float64 inputValue
 run fptosiCall
-bind asIntegerResult CSignedInt64 fptosiCall
-returnValue asIntegerResult
+bind value asIntegerResult Int64 fptosiCall
+return value asIntegerResult
 
 # section convert.pointers
 
 operation calculateCStringPointerOffset
-input calculateCStringPointerOffset baseValue CNullTerminatedByteString
-input calculateCStringPointerOffset pointerValue CNullTerminatedByteString
-output calculateCStringPointerOffset CSignedInt64
-memoryHeap calculateCStringPointerOffset no
+input operation calculateCStringPointerOffset baseValue String
+input operation calculateCStringPointerOffset pointerValue String
+output operation calculateCStringPointerOffset Int64
+memory calculateCStringPointerOffset heap no
 async calculateCStringPointerOffset no
-purpose calculateCStringPointerOffset "Returns pointerValue - baseValue as a signed CSignedInt64 byte offset."
-invariant calculateCStringPointerOffset "Result is meaningful only when both pointers point into the same allocation."
+purpose operation calculateCStringPointerOffset "Returns pointerValue - baseValue as a signed Int64 byte offset."
+invariant operation calculateCStringPointerOffset "Result is meaningful only when both pointers point into the same allocation."
 warning calculateCStringPointerOffset "Subtracting pointers from different allocations yields undefined values."
-guarantee calculateCStringPointerOffset "Total â€” never traps on valid CNullTerminatedByteString inputs."
+guarantee calculateCStringPointerOffset "Total â€” never traps on valid String inputs."
 label startCalculateCStringPointerOffset
 call computePointerDifferenceCall pointer.difference
-arg computePointerDifferenceCall left pointerValue
-arg computePointerDifferenceCall right baseValue
+argument computePointerDifferenceCall left OpaquePointer pointerValue
+argument computePointerDifferenceCall right OpaquePointer baseValue
 run computePointerDifferenceCall
-bind pointerDifferenceResult CSignedInt64 computePointerDifferenceCall
-returnValue pointerDifferenceResult
+bind value pointerDifferenceResult Int64 computePointerDifferenceCall
+return value pointerDifferenceResult
 
 operation advanceOpaquePointerByByteOffset
-input advanceOpaquePointerByByteOffset baseValue COpaqueMemoryAddress
-input advanceOpaquePointerByByteOffset byteOffset CByteCount
-output advanceOpaquePointerByByteOffset COpaqueMemoryAddress
-memoryHeap advanceOpaquePointerByByteOffset no
+input operation advanceOpaquePointerByByteOffset baseValue OpaquePointer
+input operation advanceOpaquePointerByByteOffset byteOffset ByteCount
+output operation advanceOpaquePointerByByteOffset OpaquePointer
+memory advanceOpaquePointerByByteOffset heap no
 async advanceOpaquePointerByByteOffset no
-purpose advanceOpaquePointerByByteOffset "Returns baseValue + byteOffset as a new COpaqueMemoryAddress (no dereference)."
-invariant advanceOpaquePointerByByteOffset "Pointer arithmetic only; the result is guaranteed not to dereference the input pointer."
+purpose operation advanceOpaquePointerByByteOffset "Returns baseValue + byteOffset as a new OpaquePointer (no dereference)."
+invariant operation advanceOpaquePointerByByteOffset "Pointer arithmetic only; the result is guaranteed not to dereference the input pointer."
 warning advanceOpaquePointerByByteOffset "Caller is responsible for the result lying within an allocation before any subsequent load/store."
 guarantee advanceOpaquePointerByByteOffset "Total."
 label startAdvanceOpaquePointerByByteOffset
 call applyPointerOffsetCall pointer.offset
-arg applyPointerOffsetCall base baseValue
-arg applyPointerOffsetCall offset byteOffset
+argument applyPointerOffsetCall base String baseValue
+argument applyPointerOffsetCall offset ByteCount byteOffset
 run applyPointerOffsetCall
-bind offsetPointerResult COpaqueMemoryAddress applyPointerOffsetCall
-returnValue offsetPointerResult
+bind value offsetPointerResult OpaquePointer applyPointerOffsetCall
+return value offsetPointerResult
 
 # ============================================================
-

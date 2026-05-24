@@ -13,33 +13,41 @@ const declarationVerbs = new Set([
   'buildProject', 'modulePath', 'languageVersion', 'sourceRoot', 'registerModule',
   'projectVersion', 'projectLicense', 'mainFile', 'mainOperation', 'testPattern', 'testRoot',
   'dependencySource', 'dependencyFetch', 'dependencyCache', 'dependencyLock', 'dependencyIntegrity',
-  'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel', 'persistLlvmIr',
+  'targetRuntime', 'guiBackend', 'buildProfile', 'runtimeChecks', 'asyncRuntime', 'optLevel', 'persistLlvmIr',
   'emitLlvmIr', 'llvmIrOutput', 'emitOptimizedLlvmIr', 'optimizedLlvmIrOutput',
   'buildDir', 'buildRoot', 'buildFolderName',
   'cpuBaseline', 'cpuTune', 'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
-  'nativeHttpHost', 'nativeHttpPort', 'formatterSetting', 'linterSetting', 'docsOutput',
+  'keepResources', 'resourcesDir', 'nativeHttpHost', 'nativeHttpPort',
+  'formatterSetting', 'linterSetting', 'docsOutput', 'buildConstant',
+  'iconRoleDefinition', 'icon', 'iconRole', 'iconPurpose',
+  'iconImage', 'iconImageGroup', 'iconImagePath', 'iconImageFormat',
+  'iconImageWidth', 'iconImageHeight', 'iconImageScale',
+  'iconImageDepth', 'iconImagePlatform', 'iconImagePurpose',
   'comptimeOperation', 'moduleFolder', 'modulePurpose', 'moduleOwns',
   'moduleDoesNotOwn', 'moduleDependency', 'moduleWarning', 'moduleInvariant',
-  'moduleSecurity', 'moduleObservability', 'exportType', 'exportError',
+  'moduleSecurity', 'moduleObservability', 'nativeRuntimeSource',
+  'nativeRuntimeLinkArg', 'exportType', 'exportError',
   'exportOperation', 'exportCapability', 'exportConstant',
   'version', 'publisher', 'description', 'copyright', 'productName',
   'internalName', 'originalFilename', 'trademark', 'comments', 'metadata',
-  'importModule', 'importOperation', 'importType', 'importError',
+  'import', 'importModule', 'importOperation', 'importType', 'importError',
   'importCapability', 'importConstant',
   'type', 'typeParameter', 'typeInvariant', 'typeRepresentation', 'typeTrust',
   'typeMemory', 'typeLayout', 'typeLiteralEncoding', 'typeLiteralTerminator',
   'record', 'recordLayout', 'recordAlign', 'field', 'fieldDefault', 'fieldInvariant',
+  'recordFieldJsonName', 'recordFieldJsonOmitWhen',
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
+  'routeNotFound', 'routeMethodNotAllowed',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
-  'storage', 'sharedState', 'domainLiteral', 'jsonBody',
-  'literal', 'listLiteral', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
+  'storage', 'sharedState', 'domainLiteral', 'json', 'jsonBody', 'sql', 'sqlBody',
+  'literal', 'listLiteral', 'html', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
   'validator', 'codec', 'schema', 'unknownFields', 'resource', 'resourceKey',
   'resourceValue', 'resourceKind', 'adapter', 'boundary', 'mapper', 'retryPolicy',
   'timeoutBudget', 'capability', 'authority', 'mutex', 'shared', 'channel',
   'listType', 'arrayType', 'sliceType', 'smallListType', 'mapType',
   'interval', 'workerPool', 'work',
-  'const', 'var', 'testCovers',
+  'const', 'var', 'let', 'testCovers',
 ]);
 
 const contextVerbs = new Set([
@@ -50,6 +58,7 @@ const contextVerbs = new Set([
   'pinsNullBodyFailurePath', 'responseBodyForwarder', 'htmlArg', 'htmlBody', 'rationale',
   'dependencyPath', 'dependencyFailure', 'intrinsicName',
   'runtimeBinding', 'runtimeBindingPrecondition', 'runtimeBindingFailure',
+  'runtimeBindingAsyncStart', 'runtimeBindingAsyncAwait',
   'recordConstructor', 'recordConstructorFailure', 'recordBuildFailure',
   'jsonCodecStrict', 'jsonCodecUnknownFields', 'jsonCodecDecodeTarget',
   'jsonCodecEncodeTarget', 'jsonCodecRequiredField', 'jsonCodecInput',
@@ -79,8 +88,9 @@ const contextVerbs = new Set([
 ]);
 
 const actionVerbs = new Set([
-  'set', 'call', 'arg', 'run', 'start', 'await', 'bind', 'bindOk',
-  'bindError', 'ignoreOk', 'ignoreValue', 'declareFailure', 'makeError',
+  'set', 'call', 'arg', 'argument', 'run', 'runChecked', 'start', 'await', 'case', 'done', 'bind', 'bindOk',
+  'bindError', 'bindOwned', 'bindOkOwned', 'ignore', 'ignoreOk', 'ignoreValue', 'ignoreError',
+  'declareFailure', 'makeError', 'requireNonNull',
   'new', 'fieldGet', 'fieldSet', 'recordBuilder', 'recordSet', 'recordCopy',
   'recordBuild', 'read', 'timeout', 'cancelOn',
   'defer', 'deferLog', 'deferAwaitLog', 'deferWhenExitLog', 'select', 'selectCase',
@@ -90,77 +100,96 @@ const actionVerbs = new Set([
 ]);
 
 const controlVerbs = new Set([
-  'label', 'branch', 'branchIf', 'branchIfError', 'branchSelected',
-  'branchIfGroupError', 'branchIfChannelClosed', 'returnOk', 'returnError',
+  'label', 'branch', 'jump', 'branchIf', 'branchIfError', 'branchSelected',
+  'branchIfGroupError', 'branchIfChannelClosed', 'return', 'returnOk', 'returnError',
   'returnValue', 'returnVoid',
 ]);
 
 const roleSuffixPattern = /(Call|Error|Failed|Failure|Result|Option|Request|Response|Token|Timeout|Deadline|Defer|Group|Policy|Codec|Validator|Mapper|Adapter|Boundary|Resource|Capability|Authority|Channel|Mutex|Lock|Guard|State|Storage|Select|Record|Builder|Field|Enum|Variant|Template|Html|Document|Fragment|Class|Value|Counter|Count|Index|Length|Capacity|Allocator|Source|Target|Step|Accumulator|Divisor|Remainder|Span|Metric|Trace)$/;
 
 const primitiveTargets = new Map([
-  ['console.writeLine', 'puts(text) -> i32. Writes one text line.'],
-  ['console.writeIntegerLine', 'printf("%lld\\n", value) -> i32. Writes one integer line.'],
+  ['console.writeLine', 'puts(text) -> Int32. Writes one text line.'],
+  ['console.writeIntegerLine', 'printf("%lld\\n", value) -> Int32. Writes one integer line.'],
   ['console.writeInteger', 'Alias for console.writeIntegerLine.'],
-  ['console.writeFloatLine', 'printf("%f\\n", value) -> i32. Writes one floating-point line.'],
-  ['math.addI64', 'i64 addition. Infallible math target; use bind.'],
-  ['math.subtractI64', 'i64 subtraction. Infallible math target; use bind.'],
-  ['math.multiplyI64', 'i64 multiplication. Infallible math target; use bind.'],
-  ['math.divideI64', 'i64 signed division. Infallible in the current AST model; use bind.'],
-  ['math.moduloI64', 'i64 signed remainder. Infallible in the current AST model; use bind.'],
-  ['math.equalI64', 'i64 equality comparison returning Bool.'],
-  ['math.notEqualI64', 'i64 inequality comparison returning Bool.'],
-  ['math.lessThanI64', 'i64 less-than comparison returning Bool.'],
-  ['math.lessThanOrEqualI64', 'i64 less-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanI64', 'i64 greater-than comparison returning Bool.'],
-  ['math.greaterThanOrEqualI64', 'i64 greater-than-or-equal comparison returning Bool.'],
-  ['math.addF64', 'F64 addition. Infallible math target; use bind.'],
-  ['math.subtractF64', 'F64 subtraction. Infallible math target; use bind.'],
-  ['math.multiplyF64', 'F64 multiplication. Infallible math target; use bind.'],
-  ['math.divideF64', 'F64 division. Infallible math target; use bind.'],
-  ['math.equalF64', 'F64 equality comparison returning Bool.'],
-  ['math.notEqualF64', 'F64 inequality comparison returning Bool.'],
-  ['math.lessThanF64', 'F64 less-than comparison returning Bool.'],
-  ['math.lessThanOrEqualF64', 'F64 less-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanF64', 'F64 greater-than comparison returning Bool.'],
-  ['math.greaterThanOrEqualF64', 'F64 greater-than-or-equal comparison returning Bool.'],
-  ['math.intToFloat', 'Signed integer to F64 conversion.'],
-  ['math.floatToInt', 'F64 to signed integer conversion, rounding toward zero.'],
+  ['console.writeFloatLine', 'printf("%f\\n", value) -> Int32. Writes one floating-point line.'],
+  ['math.addInt64', 'Int64 addition. Infallible math target; use bind.'],
+  ['math.subtractInt64', 'Int64 subtraction. Infallible math target; use bind.'],
+  ['math.multiplyInt64', 'Int64 multiplication. Infallible math target; use bind.'],
+  ['math.divideInt64', 'Int64 signed division. Infallible in the current AST model; use bind.'],
+  ['math.moduloInt64', 'Int64 signed remainder. Infallible in the current AST model; use bind.'],
+  ['math.equalInt64', 'Int64 equality comparison returning Bool.'],
+  ['math.notEqualInt64', 'Int64 inequality comparison returning Bool.'],
+  ['math.lessThanInt64', 'Int64 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualInt64', 'Int64 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanInt64', 'Int64 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualInt64', 'Int64 greater-than-or-equal comparison returning Bool.'],
+  ['math.addFloat64', 'Float64 addition. Infallible math target; use bind.'],
+  ['math.subtractFloat64', 'Float64 subtraction. Infallible math target; use bind.'],
+  ['math.multiplyFloat64', 'Float64 multiplication. Infallible math target; use bind.'],
+  ['math.divideFloat64', 'Float64 division. Infallible math target; use bind.'],
+  ['math.equalFloat64', 'Float64 equality comparison returning Bool.'],
+  ['math.notEqualFloat64', 'Float64 inequality comparison returning Bool.'],
+  ['math.lessThanFloat64', 'Float64 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualFloat64', 'Float64 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanFloat64', 'Float64 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualFloat64', 'Float64 greater-than-or-equal comparison returning Bool.'],
+  ['math.intToFloat', 'Signed integer to Float64 conversion.'],
+  ['math.floatToInt', 'Float64 to signed integer conversion, rounding toward zero.'],
   ['math.convertSignedInt64ToFloat64', 'Alias for math.intToFloat.'],
   ['math.convertFloat64ToSignedInt64', 'Alias for math.floatToInt.'],
-  ['math.convertSignedInt32ToSignedInt64', 'Alias for math.signExtendCSignedInt32ToCSignedInt64.'],
-  ['math.convertSignedInt64ToSignedInt32', 'Alias for math.truncateCSignedInt64ToCSignedInt32.'],
-  ['math.signExtendCSignedInt32ToCSignedInt64', 'Explicit signed i32 to i64 conversion.'],
-  ['math.truncateCSignedInt64ToCSignedInt32', 'Explicit signed i64 to i32 truncation. Caller owns range safety.'],
-  ['math.equalCSignedInt32', 'C signed 32-bit equality comparison returning Bool.'],
-  ['math.notEqualCSignedInt32', 'C signed 32-bit inequality comparison returning Bool.'],
-  ['math.lessThanCSignedInt32', 'C signed 32-bit less-than comparison returning Bool.'],
-  ['math.lessThanOrEqualCSignedInt32', 'C signed 32-bit less-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanCSignedInt32', 'C signed 32-bit greater-than comparison returning Bool.'],
-  ['math.greaterThanOrEqualCSignedInt32', 'C signed 32-bit greater-than-or-equal comparison returning Bool.'],
-  ['math.greaterThanOrEqualCByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
-  ['math.checkedMultiplyI64', 'i64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
+  ['math.convertSignedInt32ToSignedInt64', 'Alias for math.signExtendInt32ToInt64.'],
+  ['math.convertSignedInt64ToSignedInt32', 'Alias for math.truncateInt64ToInt32.'],
+  ['math.signExtendInt32ToInt64', 'Explicit signed Int32 to Int64 conversion.'],
+  ['math.truncateInt64ToInt32', 'Explicit signed Int64 to Int32 truncation. Caller owns range safety.'],
+  ['math.equalInt32', 'Signed Int32 equality comparison returning Bool.'],
+  ['math.notEqualInt32', 'Signed Int32 inequality comparison returning Bool.'],
+  ['math.lessThanInt32', 'Signed Int32 less-than comparison returning Bool.'],
+  ['math.lessThanOrEqualInt32', 'Signed Int32 less-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanInt32', 'Signed Int32 greater-than comparison returning Bool.'],
+  ['math.greaterThanOrEqualInt32', 'Signed Int32 greater-than-or-equal comparison returning Bool.'],
+  ['math.greaterThanOrEqualByteCount', 'C byte-count greater-than-or-equal comparison returning Bool.'],
+  ['math.checkedMultiplyInt64', 'Int64 signed multiply with overflow detection. Fallible target; use bindOk, bindError, and branchIfError.'],
   ['pointer.loadByte', 'Reads one byte from buffer + offset. Requires declared memory read effects for checked lint paths.'],
   ['pointer.storeByte', 'Writes one byte to buffer + offset. Requires declared memory write effects for checked lint paths.'],
   ['pointer.offset', 'Returns buffer + offset without dereferencing.'],
   ['pointer.difference', 'Returns pointer distance as a signed integer.'],
   ['pointer.isNull', 'Returns Bool indicating whether a pointer is null.'],
-  ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bindError, and branchIfError.'],
+  ['scheduler.sleep', 'Async typed-duration sleep target. Use cancelOn, start, await, bind error, and branch error.'],
   ['retryPolicy.delayForAttempt', 'Retry-policy delay calculation target. Fallible when policy or attempt state is invalid.'],
-  ['metrics.computeIncrementI64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
-  ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> CSignedInt32. Body must be non-null.'],
-  ['http.responseBytes', 'Native HTTP binary writer: response, status, body, bodyLength, optional contentType -> CSignedInt32. Preserves embedded NUL bytes.'],
-  ['http.responseSseEvent', 'Native one-shot SSE writer: response, status, event, data -> CSignedInt32. Emits text/event-stream and closes the response.'],
-  ['http.responseHeader', 'Native HTTP header writer: response, name, value -> CSignedInt32. Must run before the response body is sent.'],
+  ['metrics.computeIncrementInt64', 'Metrics-owned counter increment calculation. Fallible target; bind success and error explicitly.'],
+  ['net.fetchText', 'Native HTTP client text fetch. Accepts either request HttpGetRequest or url/timeoutMillis/maxBodyBytes args and returns borrowed response text that must be freed with net.freeTextBody.'],
+  ['net.fetchBytes', 'Native HTTP client byte fetch MVP. Shares the text-fetch buffer and should be paired with net.freeTextBody.'],
+  ['net.freeTextBody', 'Native HTTP client cleanup target for bodies returned by net.fetchText/net.fetchBytes.'],
+  ['http.responseHtml', 'Native HTTP HTML writer: response, status, body -> Int32. Uses fixed text/html; charset=utf-8 and rejects null body pointers.'],
+  ['http.responseText', 'Native HTTP writer: response, status, body, optional contentType -> Int32. Body must be non-null.'],
+  ['http.responseBytes', 'Native HTTP binary writer: response, status, body, bodyLength, optional contentType -> Int32. Preserves embedded NUL bytes.'],
+  ['http.responseSseEvent', 'Native one-shot SSE writer: response, status, event, data -> Int32. Emits text/event-stream and closes the response.'],
+  ['http.responseHeader', 'Native HTTP header writer: response, name, value -> Int32. Must run before the response body is sent.'],
   ['http.requestMethod', 'Native HTTP request reader: request -> non-null method string.'],
   ['http.requestPath', 'Native HTTP request reader: request -> non-null path string without query.'],
   ['http.requestHeader', 'Native nullable HTTP request header reader: request, name -> string or NULL. Guard before response body use.'],
   ['http.requestQueryParam', 'Native nullable query reader: request, name -> raw first matching value or NULL. Percent decoding is future work.'],
   ['http.requestBodyText', 'Native nullable body-text reader for bounded request bodies. Guard missing/empty bodies explicitly.'],
   ['http.requestBodyBytes', 'Native nullable body-bytes reader for bounded request bodies. Pair with http.requestBodyLength.'],
-  ['http.requestBodyLength', 'Native body length reader: request -> CByteCount. Zero means no bytes.'],
+  ['http.requestBodyLength', 'Native body length reader: request -> ByteCount. Zero means no bytes.'],
+  ['http.requestCookie', 'Native nullable cookie reader: request, name -> string or NULL.'],
+  ['http.requestPathParam', 'Native route path-parameter reader: request, name -> string or NULL.'],
+  ['http.responseFile', 'Native static-file response writer.'],
+  ['http.ensureDirectory', 'Native helper for ensuring a filesystem directory exists.'],
+  ['http.nowMillis', 'Native helper returning current wall-clock milliseconds.'],
+  ['http.openSseStream', 'standard.http SSE opener: response, status -> Int32. Opens a text/event-stream response with standard headers.'],
+  ['http.writeSseEvent', 'standard.http SSE writer: response, event, data -> Int32. Writes one event frame to an open stream.'],
+  ['http.writeSseEventWithId', 'standard.http SSE writer: response, id, event, data -> Int32. Writes one id-bearing event frame to an open stream.'],
+  ['http.writeSseHeartbeat', 'standard.http SSE heartbeat writer: response, comment -> Int32. Writes one comment heartbeat frame.'],
+  ['http.closeSseStream', 'standard.http SSE closer: response -> Int32. Marks the stream complete for the native adapter.'],
+  ['http.clientDisconnected', 'standard.http stream-state reader: response -> Bool. True after the native writer observed a disconnect or write failure.'],
+  ['http.serverIsShuttingDown', 'standard.http server-state reader: Bool. True once the native HTTP server entered graceful-shutdown drain mode.'],
+  ['http.clientGet', 'standard.http blocking HTTP GET: host, port, path, optional headerLine -> HttpClientResponseBody. Returns the 2xx body or null.'],
+  ['http.clientPost', 'standard.http blocking HTTP POST: host, port, path, optional headerLine, body -> HttpClientResponseBody. Returns the 2xx body or null.'],
+  ['http.escapeHtml', 'standard.http HTML escaper: input, scratch, capacity -> escaped text in caller-owned buffer.'],
   ['http.multipartPartText', 'Native nullable multipart text-part reader: request, name -> string or NULL.'],
   ['http.multipartPartBytes', 'Native nullable multipart binary-part reader: request, name -> pointer or NULL. Pair with http.multipartPartLength.'],
-  ['http.multipartPartLength', 'Native multipart part length reader: request, name -> CByteCount.'],
+  ['http.multipartPartLength', 'Native multipart part length reader: request, name -> ByteCount.'],
   ['http.multipartPartFilename', 'Native nullable multipart filename reader: request, name -> string or NULL.'],
   ['http.multipartPartContentType', 'Native nullable multipart content-type reader: request, name -> string or NULL.'],
   ['gui.applicationCreate', 'Native GUI builder: title -> GuiApplication. Requires allocate gui.application.'],
@@ -184,50 +213,194 @@ const primitiveTargets = new Map([
   ['gui.eventSelectedIndex', 'Native GUI event reader: event -> selected index. Requires read gui.event.'],
   ['gui.eventWindowWidth', 'Native GUI event reader: event -> window width. Requires read gui.event.'],
   ['gui.eventWindowHeight', 'Native GUI event reader: event -> window height. Requires read gui.event.'],
-  ['math.subI64', 'Alias for math.subtractI64.'],
-  ['math.mulI64', 'Alias for math.multiplyI64.'],
-  ['math.divI64', 'Alias for math.divideI64.'],
-  ['math.modI64', 'Alias for math.moduloI64.'],
-  ['math.eqI64', 'Alias for math.equalI64.'],
-  ['math.neI64', 'Alias for math.notEqualI64.'],
-  ['math.ltI64', 'Alias for math.lessThanI64.'],
-  ['math.leI64', 'Alias for math.lessThanOrEqualI64.'],
-  ['math.gtI64', 'Alias for math.greaterThanI64.'],
-  ['math.geI64', 'Alias for math.greaterThanOrEqualI64.'],
+  ['math.subInt64', 'Alias for math.subtractInt64.'],
+  ['math.mulInt64', 'Alias for math.multiplyInt64.'],
+  ['math.divInt64', 'Alias for math.divideInt64.'],
+  ['math.modInt64', 'Alias for math.moduloInt64.'],
+  ['math.eqInt64', 'Alias for math.equalInt64.'],
+  ['math.neInt64', 'Alias for math.notEqualInt64.'],
+  ['math.ltInt64', 'Alias for math.lessThanInt64.'],
+  ['math.leInt64', 'Alias for math.lessThanOrEqualInt64.'],
+  ['math.gtInt64', 'Alias for math.greaterThanInt64.'],
+  ['math.geInt64', 'Alias for math.greaterThanOrEqualInt64.'],
+  ['bcrypt.hashPassword', 'Native bcrypt password hashing target from standard.bcrypt.'],
+  ['bcrypt.verifyPassword', 'Native bcrypt password verification target from standard.bcrypt.'],
+  ['bcrypt.randomBytes', 'Native cryptographic random byte generation target from standard.bcrypt.'],
+  ['bcrypt.base64UrlEncode', 'Native base64url encoder target from standard.bcrypt.'],
+  ['sqlite.openDatabase', 'Native sqlite database open target.'],
+  ['sqlite.closeDatabase', 'Native sqlite database close target.'],
+  ['sqlite.errorMessage', 'Native sqlite database error-message reader. Returns SQLite-owned text.'],
+  ['sqlite.lastInsertRowId', 'Native sqlite last insert rowid target.'],
+  ['sqlite.changedRowCount', 'Native sqlite changed-row-count reader target.'],
+  ['sqlite.exec', 'Native sqlite statement execution target.'],
+  ['sqlite.prepareStatement', 'Native sqlite prepared statement target.'],
+  ['sqlite.finalizeStatement', 'Native sqlite prepared-statement finalizer target.'],
+  ['sqlite.resetStatement', 'Native sqlite statement reset target.'],
+  ['sqlite.stepStatement', 'Native sqlite statement step target returning SqliteStepResult on success.'],
+  ['sqlite.bindInt64', 'Native sqlite int64 binding target.'],
+  ['sqlite.bindDouble', 'Native sqlite floating-point binding target.'],
+  ['sqlite.bindText', 'Native sqlite text binding target.'],
+  ['sqlite.bindBlob', 'Native sqlite blob binding target.'],
+  ['sqlite.bindNull', 'Native sqlite null binding target.'],
+  ['sqlite.columnCount', 'Native sqlite column-count reader target.'],
+  ['sqlite.columnType', 'Native sqlite column-type reader target.'],
+  ['sqlite.columnName', 'Native sqlite column-name reader target. Returns SQLite-owned text.'],
+  ['sqlite.columnInt64', 'Native sqlite int64 column reader target.'],
+  ['sqlite.columnDouble', 'Native sqlite floating-point column reader target.'],
+  ['sqlite.columnText', 'Native sqlite text column reader target.'],
+  ['sqlite.columnBlob', 'Native sqlite blob column reader target. Returns SQLite-owned bytes.'],
+  ['sqlite.columnByteCount', 'Native sqlite column byte-count reader target.'],
+  ['sqlite.libraryVersion', 'Native sqlite library version reader target.'],
+  ['sqlite.execStatus', 'standard.sqlite direct script execution target: database, sql -> Int32. Returns the native SQLite adapter status code.'],
+  ['jwt.hs256SignJsonPayloadWithRandomJti', 'standard.jwt signer: secret, payloadTemplate, outBuffer, outCapacity -> Int32. Writes an HS256 JWT with a generated jti.'],
+  ['jwt.hs256VerifyToken', 'standard.jwt verifier: token, secret -> Int32. Returns jwtStatusMatch only when the compact JWT signature matches.'],
+  ['jwt.readStringClaim', 'standard.jwt claim reader: token, claimName, outBuffer, outCapacity -> string claim text after caller-verified signature trust.'],
+  ['jwt.readInt64Claim', 'standard.jwt claim reader: token, claimName, missingDefault -> Int64. Returns the caller-supplied default on missing or malformed claims.'],
+  ['jwt.formatBearerLoginEnvelope', 'standard.jwt formatter for access-token login envelopes using caller-supplied user fields, scopes JSON, and output buffer.'],
+  ['jwt.formatBearerRefreshEnvelope', 'standard.jwt formatter for rotated bearer refresh envelopes using caller-supplied tokens and output buffer.'],
+  ['json.createBuilder', 'Native JSON builder creation target. Deprecated in favor of the document CRUD API for new code.'],
+  ['json.destroyBuilder', 'Native JSON builder cleanup target.'],
+  ['json.objectOpen', 'Native JSON builder object-open target.'],
+  ['json.objectClose', 'Native JSON builder object-close target.'],
+  ['json.arrayOpen', 'Native JSON builder array-open target.'],
+  ['json.arrayClose', 'Native JSON builder array-close target.'],
+  ['json.fieldInt64', 'Native JSON builder object int64 field writer.'],
+  ['json.fieldDouble', 'Native JSON builder object double field writer.'],
+  ['json.fieldBool', 'Native JSON builder object bool field writer.'],
+  ['json.fieldString', 'Native JSON builder object string field writer.'],
+  ['json.fieldNull', 'Native JSON builder object null field writer.'],
+  ['json.elementInt64', 'Native JSON builder array int64 element writer.'],
+  ['json.elementDouble', 'Native JSON builder array double element writer.'],
+  ['json.elementBool', 'Native JSON builder array bool element writer.'],
+  ['json.elementString', 'Native JSON builder array string element writer.'],
+  ['json.elementNull', 'Native JSON builder array null element writer.'],
+  ['json.finishBuilder', 'Native JSON builder finish target returning serialized text.'],
+  ['json.builderLength', 'Native JSON builder serialized-length reader.'],
+  ['json.hasField', 'Deprecated flat JSON field-presence finder. Prefer document cursors for nested JSON.'],
+  ['json.findString', 'Deprecated flat JSON string-field finder. Prefer document cursors for nested JSON.'],
+  ['json.findInt64', 'Deprecated flat JSON int64-field finder. Prefer document cursors for nested JSON.'],
+  ['json.findDouble', 'Deprecated flat JSON double-field finder. Prefer document cursors for nested JSON.'],
+  ['json.findBool', 'Deprecated flat JSON bool-field finder. Prefer document cursors for nested JSON.'],
+  ['json.createDocument', 'Native JSON document creation target.'],
+  ['json.createEmptyDocument', 'Native empty JSON document creation target.'],
+  ['json.destroyDocument', 'Native JSON document cleanup target.'],
+  ['json.documentRoot', 'Native JSON document root cursor target.'],
+  ['json.serializeDocument', 'Native JSON document serialization target.'],
+  ['json.documentLength', 'Native JSON document serialized-length target.'],
+  ['json.objectFieldAt', 'Native JSON object field cursor target.'],
+  ['json.arrayElementAt', 'Native JSON array element cursor target.'],
+  ['json.cursorParent', 'Native JSON parent cursor target.'],
+  ['json.cursorAtPath', 'Native JSON path cursor target using .field and [index] syntax.'],
+  ['json.cursorKind', 'Native JSON cursor kind reader target.'],
+  ['json.cursorIsNull', 'Native JSON cursor null-check target.'],
+  ['json.cursorString', 'Native JSON cursor string reader target.'],
+  ['json.cursorInt64', 'Native JSON cursor int64 reader target.'],
+  ['json.cursorDouble', 'Native JSON cursor double reader target.'],
+  ['json.cursorBool', 'Native JSON cursor bool reader target.'],
+  ['json.cursorArrayLength', 'Native JSON cursor array-length reader target.'],
+  ['json.cursorObjectFieldCount', 'Native JSON cursor object-field-count reader target.'],
+  ['json.cursorObjectFieldNameAt', 'Native JSON cursor object-field-name reader target.'],
+  ['json.cursorObjectFieldValueAt', 'Native JSON cursor object-field-value reader target.'],
+  ['json.setObjectFieldString', 'Native JSON object string setter target.'],
+  ['json.setObjectFieldInt64', 'Native JSON object int64 setter target.'],
+  ['json.setObjectFieldDouble', 'Native JSON object double setter target.'],
+  ['json.setObjectFieldBool', 'Native JSON object bool setter target.'],
+  ['json.setObjectFieldNull', 'Native JSON object null setter target.'],
+  ['json.setObjectFieldObject', 'Native JSON object child-object setter target.'],
+  ['json.setObjectFieldArray', 'Native JSON object child-array setter target.'],
+  ['json.setObjectFieldJsonText', 'Native JSON object raw JsonText setter target.'],
+  ['json.appendArrayElementString', 'Native JSON array string append target.'],
+  ['json.appendArrayElementInt64', 'Native JSON array int64 append target.'],
+  ['json.appendArrayElementDouble', 'Native JSON array double append target.'],
+  ['json.appendArrayElementBool', 'Native JSON array bool append target.'],
+  ['json.appendArrayElementNull', 'Native JSON array null append target.'],
+  ['json.appendArrayElementObject', 'Native JSON array object append target.'],
+  ['json.appendArrayElementArray', 'Native JSON array child-array append target.'],
+  ['json.appendArrayElementJsonText', 'Native JSON array raw JsonText append target.'],
+  ['json.insertArrayElementString', 'Native JSON array string insert target.'],
+  ['json.insertArrayElementInt64', 'Native JSON array int64 insert target.'],
+  ['json.insertArrayElementDouble', 'Native JSON array double insert target.'],
+  ['json.insertArrayElementBool', 'Native JSON array bool insert target.'],
+  ['json.insertArrayElementNull', 'Native JSON array null insert target.'],
+  ['json.insertArrayElementObject', 'Native JSON array object insert target.'],
+  ['json.insertArrayElementArray', 'Native JSON array child-array insert target.'],
+  ['json.insertArrayElementJsonText', 'Native JSON array raw JsonText insert target.'],
+  ['json.replaceArrayElementString', 'Native JSON array string replace target.'],
+  ['json.replaceArrayElementInt64', 'Native JSON array int64 replace target.'],
+  ['json.replaceArrayElementDouble', 'Native JSON array double replace target.'],
+  ['json.replaceArrayElementBool', 'Native JSON array bool replace target.'],
+  ['json.replaceArrayElementNull', 'Native JSON array null replace target.'],
+  ['json.replaceArrayElementObject', 'Native JSON array object replace target.'],
+  ['json.replaceArrayElementArray', 'Native JSON array child-array replace target.'],
+  ['json.replaceArrayElementJsonText', 'Native JSON array raw JsonText replace target.'],
+  ['json.removeObjectField', 'Native JSON object-field removal target.'],
+  ['json.removeArrayElementAt', 'Native JSON array element removal target.'],
+  ['json.clearObject', 'Native JSON object clear target.'],
+  ['json.clearArray', 'Native JSON array clear target.'],
 ]);
 
-const generatedTargetPattern = /^(?:json\.(?:decode|encode)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
+const generatedTargetPattern = /^(?:json\.(?:encode|decode|parse|stringify)\.[A-Z][A-Za-z0-9_]*|html\.hydrate\.[A-Z][A-Za-z0-9_]*)$/;
 const cRuntimeTargetPattern = /^c\.[A-Za-z_][A-Za-z0-9_]*$/;
-const jsonPrimitiveTargetTypes = new Set([
-  'I64', 'CSignedInt64', 'CSignedInt32', 'CUnsignedInt32',
-  'CSignedInt16', 'CUnsignedInt16', 'CSignedByte', 'CUnsignedByte',
+const jsonDecodePrimitiveTargetTypes = new Set([
+  'Int64', 'Int64', 'Int32', 'UInt32',
+  'Int16', 'UInt16', 'Int8', 'UInt8',
   'DurationMilliseconds', 'MonotonicMilliseconds', 'UtcMilliseconds',
-  'Bool', 'F64', 'CFloat64', 'CFloat32', 'String', 'CNullTerminatedByteString',
+  'Bool', 'Float64', 'Float64', 'Float32',
+]);
+const jsonEncodePrimitiveTargetTypes = new Set([
+  ...jsonDecodePrimitiveTargetTypes,
+  'String', 'String',
+]);
+const jsonParsePrimitiveTargetTypes = new Set([
+  ...jsonDecodePrimitiveTargetTypes,
+  'JsonText',
+]);
+const jsonStringifyPrimitiveTargetTypes = new Set([
+  ...jsonEncodePrimitiveTargetTypes,
+  'JsonText',
 ]);
 
 const generatedTargetHoverText = (text) => {
   const targetType = text.split('.').pop();
 
-  if (jsonPrimitiveTargetTypes.has(targetType)) {
-    if (text.startsWith('json.decode.')) {
-      return 'Reference compiler primitive JSON decode target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
-    }
+  if (text.startsWith('json.decode.') && jsonDecodePrimitiveTargetTypes.has(targetType)) {
+    return 'Legacy primitive JSON decode target. Numeric values use libc parsing, Bool compares against true, and malformed inputs return the libc default.';
+  }
 
-    if (text.startsWith('json.encode.')) {
-      return 'Reference compiler primitive JSON encode target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
+  if (text.startsWith('json.encode.') && jsonEncodePrimitiveTargetTypes.has(targetType)) {
+    return 'Legacy primitive JSON encode target. Numerics and Bool use direct formatting; strings are quoted with full escaping deferred to the codec runtime.';
+  }
+
+  if (jsonParsePrimitiveTargetTypes.has(targetType)) {
+    if (text.startsWith('json.parse.')) {
+      return 'High-level primitive JSON parse target. It lowers through native_json strict token parsing for primitives and validates JsonText syntax.';
+    }
+  }
+
+  if (jsonStringifyPrimitiveTargetTypes.has(targetType)) {
+    if (text.startsWith('json.stringify.')) {
+      return 'High-level primitive JSON stringify target. Strings and JsonText lower through native_json escaping/copy paths; numeric and Bool values use bounded formatting.';
     }
   }
 
   if (text.startsWith('json.decode.')) {
-    return 'Generated JSON decode target. It should be declared by jsonCodecDecodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+    return 'Legacy generated JSON decode target for record metadata. It remains partial while json.parse.* is the preferred high-level surface.';
   }
 
   if (text.startsWith('json.encode.')) {
-    return 'Generated JSON encode target. It should be declared by jsonCodecEncodeTarget and backed by jsonCodec input, output, failure, strictness, and limit metadata.';
+    return 'Legacy generated JSON encode target for record metadata. It remains partial while json.stringify.* is the preferred high-level surface.';
+  }
+
+  if (text.startsWith('json.parse.')) {
+    return 'Generated JSON parse target backed by record metadata and the native document runtime.';
+  }
+
+  if (text.startsWith('json.stringify.')) {
+    return 'Generated JSON stringify target backed by record metadata and the native document runtime.';
   }
 
   if (text.startsWith('html.hydrate.')) {
-    return 'Generated HTML template hydration target. It is declared by htmlTemplate/htmlArg/htmlBody rows and lowers explicit arg rows into one hydrated HtmlDocument or HtmlFragment value.';
+    return 'Generated HTML template hydration target. It is declared by `html template` and `html body template` rows and lowers explicit `argument` rows into one hydrated HtmlDocument or HtmlFragment value.';
   }
 
   return 'Generated SemanticScript target declared by metadata.';
@@ -243,12 +416,42 @@ const schemaValues = new Map([
   ['refinedSyntax', 'Language mode for research/metadata files that keep permissive lowercase rows.'],
   ['local', 'Storage scope for operation-local storage.'],
   ['module', 'Storage scope for module-owned storage.'],
+  ['operation', 'Qualifier for operation-owned metadata such as input operation NAME ARG TYPE.'],
+  ['template', 'Qualifier for HTML template declarations and body islands.'],
+  ['parameter', 'Qualifier for explicit HTML template parameter metadata.'],
+  ['body', 'Qualifier for HTML template body islands.'],
+  ['memory', 'Mutation target for operation-local memory slots.'],
+  ['storage', 'Mutation target for module or process storage slots.'],
+  ['source', 'Keyword naming a source call or value in phrase-shaped rows.'],
+  ['target', 'Keyword naming a branch, jump, work, or operation target.'],
+  ['condition', 'Keyword naming the boolean value in `branch if condition ...`.'],
+  ['type', 'Keyword naming an explicit type in phrase-shaped rows.'],
+  ['value', 'Keyword naming a plain result or returned value in phrase-shaped rows.'],
+  ['ok', 'Result success leg keyword.'],
+  ['if', 'Conditional branch keyword.'],
+  ['else', 'Fallback branch keyword.'],
+  ['void', 'Void result keyword.'],
   ['process', 'Storage scope for process-shared state.'],
   ['sharedState', 'Shared-state storage scope. Reads and writes require guard-token authority.'],
   ['immutable', 'Storage mutability: value cannot be changed after declaration.'],
   ['mutable', 'Storage mutability: value can change through explicit set lines.'],
   ['read', 'Effect or collection role mode: read.'],
   ['write', 'Effect or collection role mode: write.'],
+  ['append', 'Effect or authority mode: append.'],
+  ['open', 'Effect or authority mode: open.'],
+  ['close', 'Effect or authority mode: close.'],
+  ['allocate', 'Effect or authority mode: allocate.'],
+  ['free', 'Effect or authority mode: free.'],
+  ['observe', 'Effect or authority mode: observe.'],
+  ['execute', 'Effect or authority mode: execute.'],
+  ['connect', 'Effect or authority mode: connect.'],
+  ['send', 'Effect or authority mode: send.'],
+  ['receive', 'Effect or authority mode: receive.'],
+  ['delete', 'Effect or authority mode: delete.'],
+  ['configure', 'Effect or authority mode: configure.'],
+  ['create', 'Effect or authority mode: create.'],
+  ['update', 'Effect or authority mode: update.'],
+  ['network', 'Effect or authority mode: network.'],
   ['log', 'Effect mode: log/observability output.'],
   ['sourceTape', 'operationBody kind for normal explicit SemanticScript semantic tape.'],
   ['runtimeBinding', 'operationBody kind for a semantic signature implemented by runtime binding metadata.'],
@@ -264,11 +467,25 @@ const schemaValues = new Map([
   ['encode', 'Codec direction: typed record into bytes.'],
   ['github', 'Dependency fetch kind for a GitHub owner/repo/ref source.'],
   ['http', 'Dependency fetch kind for an HTTPS archive or API source. Plain HTTP URLs are rejected.'],
-  ['as', 'Legacy importModule alias separator. Prefer importModule ALIAS MODULE_PATH in new code.'],
+  ['as', 'Legacy importModule alias separator. Prefer import ALIAS MODULE_PATH in new code.'],
   ['dev', 'Build profile that keeps development diagnostics visible.'],
   ['prod', 'Build profile that hides source context and favors release defaults.'],
   ['auto', 'Toolchain policy: let the compiler choose from build.sem and platform context.'],
+  ['nativeExe', 'Native executable target runtime.'],
+  ['webServer', 'Native web server target runtime.'],
   ['windowsGui', 'Windows desktop GUI target runtime. Use entry console plus standard.gui gui.* calls.'],
+  ['applicationPrimary', 'Icon role for the primary application icon.'],
+  ['applicationSecondary', 'Icon role for secondary shell or notification surfaces.'],
+  ['documentType', 'Icon role for a registered document type.'],
+  ['png', 'Icon image format token: PNG source image.'],
+  ['ico', 'Icon image format token: ICO source image.'],
+  ['bits32', 'Icon image color depth token: 32-bit RGBA.'],
+  ['bits24', 'Icon image color depth token: 24-bit color.'],
+  ['bits8', 'Icon image color depth token: 8-bit indexed color.'],
+  ['any', 'Platform selector token: applies to every supported target platform.'],
+  ['windows', 'Platform selector token for Windows-specific resources.'],
+  ['macos', 'Platform selector token for macOS-specific resources.'],
+  ['linux', 'Platform selector token for Linux-specific resources.'],
   ['verticalStack', 'GUI window layout token: stack child controls vertically.'],
   ['horizontalStack', 'GUI window layout token: stack child controls horizontally.'],
   ['grid', 'GUI window layout token: arrange controls in a grid.'],
@@ -301,12 +518,14 @@ const schemaValues = new Map([
   ['trustedInternal', 'Trust marker for internally trusted data.'],
   ['trustedSessionContext', 'Trust marker for values supplied by trusted session context.'],
   ['trustedStaticAsset', 'Trust marker for committed/static assets.'],
-  ['rawPointerToValidatedCString', 'Trust-boundary kind: raw pointer becomes validated C string.'],
+  ['rawPointerToValidatedCString', 'Trust-boundary kind: raw pointer becomes a validated null-terminated string.'],
   ['rawUtf8ToValidatedText', 'Trust-boundary kind: raw UTF-8 becomes validated text.'],
   ['row', 'Record layout kind: row layout.'],
   ['column', 'Record layout kind: column layout.'],
   ['packed', 'Record layout kind: packed layout.'],
   ['heap', 'Heap allocator or memory policy marker.'],
+  ['arena', 'Arena allocator or memory policy marker.'],
+  ['request', 'Request-scoped arena or policy marker.'],
   ['inPlace', 'Collection mutation mode: mutates existing storage.'],
   ['boundsChecked', 'Collection index policy: bounds checked.'],
   ['denseZeroIndexed', 'List literal index policy: dense zero-based indexes.'],
@@ -325,6 +544,74 @@ const schemaValues = new Map([
   ['logAndSuppress', 'Defer failure policy: log cleanup failure and preserve the original return.'],
   ['protectedBy', 'Authority marker: following token is the guard token protecting the operation.'],
   ['ownedBy', 'Authority marker: following token owns the module mutation.'],
+  ['permissiveExecutable', 'Language mode that explicitly opts out of the strict executable wall.'],
+  ['library', 'Project target runtime for library-style builds.'],
+  ['none', 'Explicit no-failure marker or asyncRuntime value that preserves synchronous start/await lowering.'],
+  ['libuv', 'Experimental asyncRuntime backend selector for the native async runtime.'],
+  ['on', 'Boolean-ish build option value, commonly used by cpuFeature.'],
+  ['off', 'Boolean-ish build option value, runtime-check mode, or CPU feature-check opt-out.'],
+  ['path', 'Dependency source kind for a local filesystem dependency path.'],
+  ['x86_64_v1', 'Portable x86-64 baseline CPU feature level.'],
+  ['win32', 'Native Windows GUI backend selector.'],
+  ['winui3', 'Recognized but currently blocked Windows App SDK GUI backend selector.'],
+  ['cursor', 'Icon role token for cursor assets.'],
+  ['notification', 'Icon role token for notification assets.'],
+  ['splash', 'Icon role token for splash-screen assets.'],
+  ['empty', 'recordFieldJsonOmitWhen policy for omitted or empty string fields.'],
+  ['null', 'JSON null literal or recordFieldJsonOmitWhen policy for explicit null values.'],
+  ['zero', 'recordFieldJsonOmitWhen policy for absent numeric zero defaults.'],
+  ['rowSqliteStepResult', 'SqliteStepResult enum value for a row being available.'],
+  ['doneSqliteStepResult', 'SqliteStepResult enum value for statement completion.'],
+  ['integerSqliteColumnType', 'SqliteColumnType enum value for integer columns.'],
+  ['floatSqliteColumnType', 'SqliteColumnType enum value for floating-point columns.'],
+  ['textSqliteColumnType', 'SqliteColumnType enum value for text columns.'],
+  ['blobSqliteColumnType', 'SqliteColumnType enum value for blob columns.'],
+  ['nullSqliteColumnType', 'SqliteColumnType enum value for null columns.'],
+  ['objectJsonValueKind', 'JsonValueKind enum value for object cursors.'],
+  ['arrayJsonValueKind', 'JsonValueKind enum value for array cursors.'],
+  ['stringJsonValueKind', 'JsonValueKind enum value for string cursors.'],
+  ['integerJsonValueKind', 'JsonValueKind enum value for integer cursors.'],
+  ['doubleJsonValueKind', 'JsonValueKind enum value for double cursors.'],
+  ['booleanJsonValueKind', 'JsonValueKind enum value for boolean cursors.'],
+  ['nullJsonValueKind', 'JsonValueKind enum value for null cursors.'],
+  ['windowGuiTargetKind', 'GuiTargetKind enum value for windows.'],
+  ['controlGuiTargetKind', 'GuiTargetKind enum value for controls.'],
+  ['defaultGuiWindowLayout', 'GuiWindowLayout enum default value.'],
+  ['verticalStackGuiWindowLayout', 'GuiWindowLayout enum value for vertical stacks.'],
+  ['horizontalStackGuiWindowLayout', 'GuiWindowLayout enum value for horizontal stacks.'],
+  ['gridGuiWindowLayout', 'GuiWindowLayout enum value for grid layout.'],
+  ['absoluteGuiWindowLayout', 'GuiWindowLayout enum value for absolute positioning.'],
+  ['buttonGuiControlKind', 'GuiControlKind enum value for buttons.'],
+  ['textBoxGuiControlKind', 'GuiControlKind enum value for text boxes.'],
+  ['listBoxGuiControlKind', 'GuiControlKind enum value for list boxes.'],
+  ['checkBoxGuiControlKind', 'GuiControlKind enum value for check boxes.'],
+  ['menuItemGuiControlKind', 'GuiControlKind enum value for menu items.'],
+  ['statusBarGuiControlKind', 'GuiControlKind enum value for status bars.'],
+  ['textLabelGuiControlKind', 'GuiControlKind enum value for text labels.'],
+  ['defaultGuiListBoxSelectionMode', 'GuiListBoxSelectionMode default enum value.'],
+  ['singleGuiListBoxSelectionMode', 'GuiListBoxSelectionMode single-selection value.'],
+  ['multipleGuiListBoxSelectionMode', 'GuiListBoxSelectionMode multi-selection value.'],
+  ['clickGuiEventKind', 'GuiEventKind enum value for clicks.'],
+  ['valueChangedGuiEventKind', 'GuiEventKind enum value for value changes.'],
+  ['selectionChangedGuiEventKind', 'GuiEventKind enum value for selection changes.'],
+  ['enterPressedGuiEventKind', 'GuiEventKind enum value for Enter key events.'],
+  ['keyPressedGuiEventKind', 'GuiEventKind enum value for key events.'],
+  ['focusGainedGuiEventKind', 'GuiEventKind enum value for focus gained.'],
+  ['focusLostGuiEventKind', 'GuiEventKind enum value for focus lost.'],
+  ['closeRequestedGuiEventKind', 'GuiEventKind enum value for close requests.'],
+  ['resizedGuiEventKind', 'GuiEventKind enum value for resize events.'],
+  ['shownGuiEventKind', 'GuiEventKind enum value for shown events.'],
+  ['hiddenGuiEventKind', 'GuiEventKind enum value for hidden events.'],
+  ['okGuiRuntimeStatus', 'GuiRuntimeStatus enum success value.'],
+  ['configGuiRuntimeStatus', 'GuiRuntimeStatus enum config error value.'],
+  ['runtimeUnavailableGuiRuntimeStatus', 'GuiRuntimeStatus enum runtime-unavailable value.'],
+  ['allocationGuiRuntimeStatus', 'GuiRuntimeStatus enum allocation failure value.'],
+  ['platformGuiRuntimeStatus', 'GuiRuntimeStatus enum platform failure value.'],
+  ['notFoundGuiRuntimeStatus', 'GuiRuntimeStatus enum not-found value.'],
+  ['wrongKindGuiRuntimeStatus', 'GuiRuntimeStatus enum wrong-kind value.'],
+  ['handlerGuiRuntimeStatus', 'GuiRuntimeStatus enum handler failure value.'],
+  ['unsupportedGuiRuntimeStatus', 'GuiRuntimeStatus enum unsupported operation value.'],
+  ['threadGuiRuntimeStatus', 'GuiRuntimeStatus enum thread-policy failure value.'],
 ]);
 
 const domainMethods = new Set([
@@ -334,23 +621,34 @@ const domainMethods = new Set([
   'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual',
   'square', 'checkedMultiply', 'checkedMultiplyByCounter', 'checkedMultiplyByStep',
   'length', 'append', 'get', 'set', 'slice', 'insert', 'update', 'remove',
+  'clear', 'contains', 'borrow', 'capacity', 'reserve',
 ]);
 
 const primitiveTypes = new Map([
-  ['I64', '64-bit integer.'],
-  ['I32', '32-bit integer.'],
-  ['I16', '16-bit integer.'],
-  ['I8', '8-bit integer.'],
+  ['Int64', '64-bit integer.'],
+  ['Int32', '32-bit integer.'],
+  ['Int16', '16-bit integer.'],
+  ['Int8', '8-bit integer.'],
   ['ExitCode', '32-bit process exit code.'],
   ['Bool', 'Boolean value.'],
-  ['F64', '64-bit floating-point value.'],
-  ['F32', '32-bit floating-point value.'],
+  ['Float64', '64-bit floating-point value.'],
+  ['Float32', '32-bit floating-point value.'],
   ['String', 'Null-terminated UTF-8 string.'],
   ['Bytes', 'Byte sequence.'],
   ['Utf8Text', 'UTF-8 text value.'],
   ['RawUtf8Text', 'Unvalidated UTF-8 text bytes.'],
   ['RawJsonBytes', 'Untrusted JSON byte input.'],
   ['JsonBytes', 'Validated/generated JSON bytes.'],
+  ['JsonBuilder', 'Opaque native JSON builder handle.'],
+  ['JsonDocument', 'Opaque native JSON document handle.'],
+  ['JsonCursor', 'Stable per-document JSON cursor index.'],
+  ['JsonText', 'Validated JSON text value.'],
+  ['JsonFieldName', 'JSON object field-name text.'],
+  ['JsonPath', 'JSON document path using .field and [index] steps.'],
+  ['JsonStringValue', 'JSON string payload value.'],
+  ['JsonScratchBuffer', 'Caller-owned JSON scratch buffer.'],
+  ['JsonCapacityBytes', 'JSON runtime capacity in bytes.'],
+  ['JsonValueKind', 'JSON cursor kind enum.'],
   ['HtmlText', 'Escaped HTML text value safe for text content and quoted attributes during template hydration.'],
   ['HtmlClass', 'HTML class attribute value. Template sink checks require this for class attributes.'],
   ['SafeUrl', 'Trusted URL value for URL-bearing HTML attributes such as href, src, action, formaction, and poster.'],
@@ -369,28 +667,113 @@ const primitiveTypes = new Map([
   ['GuiMenuItem', 'Opaque GUI menu-item handle reserved for future standard.gui functions.'],
   ['GuiStatusBar', 'Opaque GUI status-bar handle reserved for future standard.gui functions.'],
   ['GuiTextLabel', 'Opaque GUI text-label handle returned by gui.textLabelCreate.'],
-  ['CNullTerminatedByteString', 'Validated null-terminated C byte string.'],
-  ['RawCStringPointer', 'Raw C string pointer before trust-boundary validation.'],
-  ['COpaqueMemoryAddress', 'Opaque memory address value.'],
-  ['CByteCount', 'C ABI byte-count value.'],
-  ['CSignedByteCount', 'C ABI signed byte-count value.'],
-  ['CAddressOffset', 'C ABI pointer offset value.'],
-  ['CUnixSecondsSinceEpoch', 'C ABI Unix timestamp seconds value.'],
-  ['CCpuClockTicks', 'C ABI CPU clock tick value.'],
-  ['CFileByteOffset', 'C ABI file byte offset value.'],
-  ['CSignedByte', 'C ABI signed 8-bit byte.'],
-  ['CUnsignedByte', 'C ABI unsigned 8-bit byte.'],
-  ['CSignedInt16', 'C ABI signed 16-bit integer.'],
-  ['CUnsignedInt16', 'C ABI unsigned 16-bit integer.'],
-  ['CSignedInt32', 'C ABI signed 32-bit integer.'],
-  ['CUnsignedInt32', 'C ABI unsigned 32-bit integer.'],
-  ['CSignedInt64', 'C ABI signed 64-bit integer.'],
-  ['CUnsignedInt64', 'C ABI unsigned 64-bit integer.'],
-  ['CFloat32', 'C ABI 32-bit floating-point value.'],
-  ['CFloat64', 'C ABI 64-bit floating-point value.'],
-  ['CFileHandle', 'Opaque C file handle pointer.'],
-  ['CDecomposedTimeAddress', 'Opaque C decomposed-time pointer.'],
-  ['CSetjmpRegisterBuffer', 'Opaque C setjmp buffer pointer.'],
+  ['GuiWindowId', 'standard.gui role alias for emitted window identifiers.'],
+  ['GuiControlId', 'standard.gui role alias for emitted control identifiers.'],
+  ['GuiText', 'standard.gui text payload alias.'],
+  ['GuiApplicationTitle', 'standard.gui application-title alias.'],
+  ['GuiWindowTitle', 'standard.gui window-title alias.'],
+  ['GuiControlText', 'standard.gui control-text alias.'],
+  ['GuiPlaceholderText', 'standard.gui placeholder-text alias.'],
+  ['GuiAccessibleName', 'standard.gui accessible-name alias.'],
+  ['GuiListBoxItemText', 'standard.gui list-box item text alias.'],
+  ['GuiIconGroupName', 'standard.gui icon-group name alias.'],
+  ['GuiPixels', 'standard.gui pixel measurement alias.'],
+  ['GuiMinimumPixels', 'standard.gui minimum pixel measurement alias.'],
+  ['GuiTabIndex', 'standard.gui tab-index alias.'],
+  ['GuiKeyCode', 'standard.gui key-code alias.'],
+  ['GuiSelectedIndex', 'standard.gui selected-index alias.'],
+  ['GuiEventDimensionPixels', 'standard.gui event dimension alias.'],
+  ['GuiHandlerStatus', 'standard.gui GUI handler status alias.'],
+  ['GuiRuntimeStatusCode', 'standard.gui runtime status-code alias.'],
+  ['GuiDeclarationVerb', 'standard.gui declaration verb token alias.'],
+  ['GuiKeywordToken', 'standard.gui keyword token alias.'],
+  ['GuiRuntimeTarget', 'standard.gui runtime target token alias.'],
+  ['GuiTargetKind', 'standard.gui target-kind enum.'],
+  ['GuiWindowLayout', 'standard.gui window-layout enum.'],
+  ['GuiControlKind', 'standard.gui control-kind enum.'],
+  ['GuiListBoxSelectionMode', 'standard.gui list-box selection enum.'],
+  ['GuiEventKind', 'standard.gui event-kind enum.'],
+  ['GuiRuntimeStatus', 'standard.gui runtime-status enum.'],
+  ['String', 'Canonical string primitive.'],
+  ['RawStringPointer', 'Raw null-terminated string pointer before trust-boundary validation.'],
+  ['OpaquePointer', 'Opaque memory address value.'],
+  ['OpaquePointer', 'Opaque C void pointer alias.'],
+  ['OpaquePointer', 'Opaque C void pointer alias.'],
+  ['ByteCount', 'C ABI byte-count value.'],
+  ['SignedByteCount', 'C ABI signed byte-count value.'],
+  ['AddressOffset', 'C ABI pointer offset value.'],
+  ['UnixSecondsSinceEpoch', 'C ABI Unix timestamp seconds value.'],
+  ['CpuClockTicks', 'C ABI CPU clock tick value.'],
+  ['FileByteOffset', 'C ABI file byte offset value.'],
+  ['Int8', 'C ABI signed 8-bit byte.'],
+  ['UInt8', 'C ABI unsigned 8-bit byte.'],
+  ['Int16', 'C ABI signed 16-bit integer.'],
+  ['UInt16', 'C ABI unsigned 16-bit integer.'],
+  ['Int32', 'C ABI signed 32-bit integer.'],
+  ['UInt32', 'C ABI unsigned 32-bit integer.'],
+  ['Int64', 'C ABI signed 64-bit integer.'],
+  ['UInt64', 'C ABI unsigned 64-bit integer.'],
+  ['Float32', 'C ABI 32-bit floating-point value.'],
+  ['Float64', 'C ABI 64-bit floating-point value.'],
+  ['Void', 'C ABI void result marker.'],
+  ['CFile', 'C ABI FILE object marker.'],
+  ['FileHandle', 'Opaque C FILE* pointer.'],
+  ['FileHandle', 'Opaque C file handle pointer.'],
+  ['DecomposedTimeAddress', 'C ABI decomposed-time object marker.'],
+  ['DecomposedTimeAddress', 'Opaque C tm* pointer.'],
+  ['SetjmpRegisterBuffer', 'Opaque C jmp_buf pointer.'],
+  ['DecomposedTimeAddress', 'Opaque C decomposed-time pointer.'],
+  ['SetjmpRegisterBuffer', 'Opaque C setjmp buffer pointer.'],
+  ['SqliteDatabase', 'Opaque standard.sqlite database handle.'],
+  ['SqliteStatement', 'Opaque standard.sqlite prepared statement handle.'],
+  ['SqliteRowId', 'standard.sqlite rowid alias.'],
+  ['SqlText', 'standard.sqlite SQL source text for prepareStatement or exec.'],
+  ['SqliteText', 'standard.sqlite text alias.'],
+  ['SqliteBlob', 'standard.sqlite blob pointer alias.'],
+  ['SqliteByteCount', 'standard.sqlite byte-count alias.'],
+  ['SqliteOpenMode', 'standard.sqlite database-open mode enum.'],
+  ['SqliteStepResult', 'standard.sqlite step result enum.'],
+  ['SqliteColumnType', 'standard.sqlite column type enum.'],
+  ['Url', 'standard.net URL alias.'],
+  ['NetworkTimeoutMilliseconds', 'standard.net timeout alias.'],
+  ['ResponseBodyLimitBytes', 'standard.net response body limit alias.'],
+  ['HttpRedirectLimit', 'standard.net redirect-limit alias.'],
+  ['HttpClientStatusCode', 'standard.net HTTP client status-code alias.'],
+  ['HttpClientResponse', 'standard.net HTTP client response record.'],
+  ['HttpClientBodyText', 'standard.net owned response body text.'],
+  ['HttpClientBodyBytes', 'standard.net owned response body bytes.'],
+  ['HttpClientBodyLength', 'standard.net response body length alias.'],
+  ['HttpClientErrorCode', 'standard.net HTTP client error-code alias.'],
+  ['HttpFetchPolicy', 'standard.net fetch policy record.'],
+  ['HttpGetRequest', 'standard.net GET request record.'],
+  ['HttpTextResponse', 'standard.net text response record.'],
+  ['HttpStatusCode', 'standard.http status-code alias used by HTTP response and SSE helpers.'],
+  ['HttpHeaderName', 'standard.http header-name alias.'],
+  ['HttpHeaderValue', 'standard.http header-value alias.'],
+  ['HttpContentType', 'standard.http content-type alias.'],
+  ['HttpTextBody', 'standard.http text-body alias.'],
+  ['HttpByteBody', 'standard.http byte-body alias.'],
+  ['HttpBodyLength', 'standard.http body-length alias.'],
+  ['HttpRequestValue', 'standard.http request-derived string alias.'],
+  ['SseEventName', 'standard.http server-sent event-name alias.'],
+  ['SseEventId', 'standard.http server-sent event id alias.'],
+  ['SseEventData', 'standard.http server-sent event payload alias.'],
+  ['SseHeartbeatComment', 'standard.http SSE heartbeat-comment alias.'],
+  ['HttpClientResponseBody', 'standard.http owned outbound-HTTP response body. Free with c.free after use.'],
+  ['JwtAccessToken', 'standard.jwt trusted compact JWT access-token text.'],
+  ['JwtSecret', 'standard.jwt server-side HMAC secret alias.'],
+  ['JwtPayloadTemplate', 'standard.jwt JSON payload template containing exactly one literal %s placeholder for jti.'],
+  ['JwtClaimName', 'standard.jwt top-level claim-name alias.'],
+  ['JwtOutputBuffer', 'standard.jwt caller-owned output buffer for compact JWT text.'],
+  ['JwtClaimBuffer', 'standard.jwt caller-owned scratch buffer for decoded string claims.'],
+  ['AuthEnvelopeBuffer', 'standard.jwt caller-owned output buffer for JSON auth envelopes.'],
+  ['BcryptPlaintextPassword', 'standard.bcrypt plaintext password alias; explicitly untrusted.'],
+  ['BcryptPasswordHash', 'standard.bcrypt trusted bcrypt hash alias.'],
+  ['BcryptHashBuffer', 'standard.bcrypt caller-owned hash output buffer.'],
+  ['BcryptRandomBuffer', 'standard.bcrypt caller-owned random byte buffer.'],
+  ['SessionToken', 'standard.bcrypt session token text alias.'],
+  ['SessionTokenBuffer', 'standard.bcrypt session-token output buffer.'],
+  ['Base64UrlBuffer', 'standard.bcrypt base64url output buffer.'],
   ['Console', 'Opaque console dependency token.'],
   ['Process', 'Opaque process dependency token.'],
   ['Environment', 'Opaque environment dependency token.'],
@@ -417,7 +800,7 @@ const verbHoverText = new Map([
   ['entry', 'Top-level declaration: entry MODE OPERATION.'],
   ['module', 'Top-level module declaration. Validated as a dotted namespace and recorded in compiler metadata.'],
   ['mode', 'Top-level mode declaration such as mode capturedOutputReplay.'],
-  ['languageMode', 'Top-level language mode declaration: languageMode strictExecutable or languageMode refinedSyntax.'],
+  ['languageMode', 'Top-level language mode declaration: languageMode strictExecutable, refinedSyntax, or permissiveExecutable.'],
   ['buildProject', 'Build tape declaration: buildProject PROJECT.'],
   ['modulePath', 'Build tape project path: modulePath PROJECT MODULE_PATH.'],
   ['languageVersion', 'Build tape language contract: languageVersion PROJECT "VERSION".'],
@@ -430,8 +813,10 @@ const verbHoverText = new Map([
   ['testRoot', 'Build tape test root: testRoot PROJECT "PATH".'],
   ['testPattern', 'Build tape test glob: testPattern PROJECT "*.test.sem".'],
   ['targetRuntime', 'Build tape runtime target: targetRuntime PROJECT nativeExe|webServer|library|windowsGui.'],
+  ['guiBackend', 'Build tape GUI backend: guiBackend PROJECT win32|winui3. win32 is active/default; winui3 is blocked until Windows App SDK integration lands.'],
   ['buildProfile', 'Build tape profile: buildProfile PROJECT dev|prod.'],
   ['runtimeChecks', 'Build tape runtime checks: runtimeChecks PROJECT off|traps|panic.'],
+  ['asyncRuntime', 'Build tape async backend: asyncRuntime PROJECT none|libuv. none preserves 1.0 synchronous lowering; libuv is experimental.'],
   ['optLevel', 'Build tape LLVM optimization level: optLevel PROJECT 0|1|2|3.'],
   ['persistLlvmIr', 'Build tape LLVM IR persistence: persistLlvmIr PROJECT auto|yes|no.'],
   ['emitLlvmIr', 'Build tape pre-optimization LLVM IR switch: emitLlvmIr PROJECT auto|yes|no.'],
@@ -441,17 +826,36 @@ const verbHoverText = new Map([
   ['buildDir', 'Build tape exact artifact directory: buildDir PROJECT "PATH".'],
   ['buildRoot', 'Build tape artifact parent directory: buildRoot PROJECT "PATH".'],
   ['buildFolderName', 'Build tape managed artifact folder name: buildFolderName PROJECT NAME.'],
-  ['cpuBaseline', 'Build tape CPU baseline: cpuBaseline PROJECT generic|native|x86_64_v2|x86_64_v3|x86_64_v4|arm64_generic|arm64_v8_2.'],
+  ['cpuBaseline', 'Build tape CPU baseline: cpuBaseline PROJECT generic|native|x86_64_v1|x86_64_v2|x86_64_v3|x86_64_v4|arm64_generic|arm64_v8_2.'],
   ['cpuTune', 'Build tape CPU tune token: cpuTune PROJECT generic|native|CPU_NAME.'],
   ['cpuFeature', 'Build tape CPU feature override: cpuFeature PROJECT FEATURE on|off.'],
   ['cpuFeatureCheck', 'Build tape host CPU check policy: cpuFeatureCheck PROJECT auto|off|warn|require.'],
   ['nativeOutput', 'Build tape native executable output: nativeOutput PROJECT "PATH". Basenames use the managed build folder.'],
+  ['keepResources', 'Build tape Windows resource retention switch: keepResources PROJECT yes|no.'],
+  ['resourcesDir', 'Build tape Windows resource scratch directory: resourcesDir PROJECT "PATH". Implies keepResources yes.'],
   ['nativeHttpHost', 'Build tape native webserver host metadata: nativeHttpHost PROJECT "HOST".'],
   ['nativeHttpPort', 'Build tape native webserver port metadata: nativeHttpPort PROJECT PORT.'],
   ['formatterSetting', 'Build tape formatter setting: formatterSetting PROJECT KEY VALUE.'],
   ['linterSetting', 'Build tape linter setting: linterSetting PROJECT KEY VALUE.'],
   ['docsOutput', 'Build tape documentation output: docsOutput PROJECT "PATH".'],
+  ['buildConstant', 'Build tape constant injection: buildConstant PROJECT NAME TYPE VALUE. Exposes shared build config as module immutable storage.'],
+  ['iconRoleDefinition', 'Icon role taxonomy entry: iconRoleDefinition ROLE "text".'],
+  ['icon', 'Icon group declaration: icon GROUP.'],
+  ['iconRole', 'Icon group role assignment: iconRole GROUP ROLE.'],
+  ['iconPurpose', 'Icon group documentation: iconPurpose GROUP "text".'],
+  ['iconImage', 'Icon image declaration: iconImage IMAGE.'],
+  ['iconImageGroup', 'Icon image group edge: iconImageGroup IMAGE GROUP.'],
+  ['iconImagePath', 'Icon image source path: iconImagePath IMAGE "PATH".'],
+  ['iconImageFormat', 'Icon image format: iconImageFormat IMAGE png|ico.'],
+  ['iconImageWidth', 'Icon image width in pixels: iconImageWidth IMAGE PIXELS.'],
+  ['iconImageHeight', 'Icon image height in pixels: iconImageHeight IMAGE PIXELS.'],
+  ['iconImageScale', 'Icon image display scale: iconImageScale IMAGE SCALE.'],
+  ['iconImageDepth', 'Icon image color depth: iconImageDepth IMAGE bits32|bits24|bits8.'],
+  ['iconImagePlatform', 'Icon image platform selector: iconImagePlatform IMAGE any|windows|macos|linux.'],
+  ['iconImagePurpose', 'Icon image documentation: iconImagePurpose IMAGE "text".'],
   ['moduleFolder', 'Compatibility module registry alias. Prefer registerModule PROJECT MODULE_PATH "PATH".'],
+  ['nativeRuntimeSource', 'Standard-library native adapter source metadata: nativeRuntimeSource MODULE "path.c".'],
+  ['nativeRuntimeLinkArg', 'Standard-library native adapter link metadata: nativeRuntimeLinkArg MODULE any|windows|posix "ARG".'],
   ['exportType', 'Module-local export contract: exportType MODULE_PATH TYPE. Belongs in the module source.'],
   ['exportError', 'Module-local export contract: exportError MODULE_PATH ERROR. Belongs in the module source.'],
   ['exportOperation', 'Module-local export contract: exportOperation MODULE_PATH OPERATION. Belongs in the module source.'],
@@ -479,6 +883,7 @@ const verbHoverText = new Map([
   ['dependencyFunctionOutput', 'Dependency function output metadata.'],
   ['dependencyFunctionEffect', 'Dependency function effect metadata.'],
   ['dependencyFunctionAsync', 'Dependency function async metadata.'],
+  ['import', 'Module import declaration: import LOCAL_ALIAS MODULE_PATH.'],
   ['importModule', 'Import declaration: importModule LOCAL_ALIAS MODULE_PATH. The older MODULE_PATH as ALIAS form may exist in legacy samples.'],
   ['importOperation', 'Singular import declaration: importOperation LOCAL_NAME MODULE_ALIAS EXPORTED_OPERATION.'],
   ['importType', 'Singular import declaration: importType LOCAL_NAME MODULE_ALIAS EXPORTED_TYPE.'],
@@ -493,6 +898,8 @@ const verbHoverText = new Map([
   ['typeLayout', 'Type metadata: typeLayout TYPE row|column|packed.'],
   ['record', 'Record declaration: record NAME [layout KIND] [align N]. Parsed by the current compiler.'],
   ['field', 'Record field declaration: field RECORD_NAME FIELD_NAME FIELD_TYPE.'],
+  ['recordFieldJsonName', 'Record JSON key override: recordFieldJsonName RECORD FIELD "jsonKey".'],
+  ['recordFieldJsonOmitWhen', 'Record JSON omission policy: recordFieldJsonOmitWhen RECORD FIELD empty|null|false|zero.'],
   ['enum', 'Enum declaration: enum NAME [repr TYPE]. Parsed by the current compiler.'],
   ['enumCase', 'Enum case declaration: enumCase ENUM_NAME CASE_NAME [VALUE].'],
   ['error', 'Error type declaration: error NAME.'],
@@ -502,14 +909,20 @@ const verbHoverText = new Map([
   ['serverHost', 'Web server metadata: serverHost SERVER_NAME "host".'],
   ['serverPort', 'Web server metadata: serverPort SERVER_NAME PORT.'],
   ['route', 'Web server route: route SERVER METHOD PATH HANDLER_OPERATION.'],
+  ['routeNotFound', 'Web server fallback handler: routeNotFound SERVER HANDLER_OPERATION. Runs when no declared route matches the request path.'],
+  ['routeMethodNotAllowed', 'Web server method fallback: routeMethodNotAllowed SERVER HANDLER_OPERATION. Runs when a path matches but the HTTP method does not.'],
   ['routeTimeout', 'Web server route timeout metadata keyed by exact route path. Parsed today; preemptive enforcement is future runtime work.'],
   ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
   ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
   ['routeMiddlewareOptOut', 'Web server route middleware opt-out: routeMiddlewareOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
+  ['html', 'HTML template syntax family: html template NAME, html parameter template TEMPLATE NAME TYPE, or html body template TEMPLATE.'],
   ['htmlTemplate', 'First-class HTML/SSX template declaration: htmlTemplate NAME. The body starts at htmlBody NAME.'],
   ['htmlArg', 'HTML template hydration input: htmlArg TEMPLATE ARG_NAME TYPE. Body holes must reference declared args as {htmlArg.ARG_NAME}.'],
   ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
+  ['json', 'JSON syntax family: json body NAME starts an indentation-sensitive JSON literal island.'],
   ['jsonBody', 'Starts an indentation-sensitive JSON literal island bound to a preceding immutable storage binding with the same name.'],
+  ['sql', 'SQL syntax family: sql body NAME starts an indentation-sensitive SQL source island.'],
+  ['sqlBody', 'Starts an indentation-sensitive SQL source island bound to a preceding immutable SqlText storage binding with the same name.'],
   ['jsonCodec', 'Contract-heavy JSON codec declaration.'],
   ['codec', 'Contract-heavy codec declaration.'],
   ['schema', 'Codec schema attachment: schema CODEC_NAME RECORD_NAME.'],
@@ -552,21 +965,32 @@ const verbHoverText = new Map([
   ['pinsNullBodyFailurePath', 'Operation metadata: explicit opt-in to the native HTTP null-body failure path. Requires a rationale string.'],
   ['responseBodyForwarder', 'Operation metadata: declares that an operation forwards a named body input into an http.response* writer.'],
   ['rationale', 'Call-site rationale: rationale CALL "text". Attaches context to one call so diagnostics survive refactors.'],
+  ['runtimeBindingAsyncStart', 'Operation metadata: native async-start symbol paired with runtimeBindingAsyncAwait for generic start CALL lowering.'],
+  ['runtimeBindingAsyncAwait', 'Operation metadata: native async-await symbol paired with runtimeBindingAsyncStart for generic await CALL lowering.'],
   ['const', 'Body declaration statement: const NAME TYPE VALUE.'],
   ['var', 'Body declaration statement: var NAME TYPE INITIAL_VALUE.'],
+  ['let', 'Legacy body declaration statement: let NAME TYPE INITIAL_VALUE. Prefer explicit storage rows in new executable code.'],
   ['label', 'Control-flow statement: label NAME. Labels are first-class basic blocks.'],
   ['call', 'Call lifecycle statement: call CALL_NAME TARGET_PATH.'],
+  ['argument', 'Call argument edge: argument CALL_NAME ARG_NAME ARG_TYPE VALUE_NAME.'],
   ['arg', 'Call lifecycle statement: arg CALL_NAME ARG_NAME VALUE_NAME.'],
   ['timeout', 'Call lifecycle statement: timeout CALL_NAME DURATION_VALUE.'],
   ['cancelOn', 'Call lifecycle statement: cancelOn CALL_NAME CANCELLATION_TOKEN.'],
   ['run', 'Call lifecycle statement: execute call immediately.'],
+  ['runChecked', 'Strict checked-call statement: runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL. Current compiler support is limited to the committed checked-call lowering/tests.'],
   ['start', 'Call lifecycle statement: begin async work. Parsed by current compiler.'],
-  ['await', 'Call lifecycle statement: wait for started async work. Parsed by current compiler.'],
+  ['await', 'Call lifecycle statement: wait for started async work, or introduce an await/case/done wait set. Parsed by current compiler.'],
+  ['case', 'Await wait-set statement: case CALL_NAME LABEL_NAME. Must immediately follow await WAIT_SET and materializes the selected call before branching.'],
+  ['done', 'Await wait-set terminator: done LABEL_NAME. Branches after all wait-set cases are consumed.'],
   ['bind', 'Binding statement for infallible calls: bind VALUE TYPE CALL_NAME.'],
   ['bindOk', 'Binding statement for success leg: bindOk VALUE TYPE CALL_NAME.'],
   ['bindError', 'Binding statement for failure leg: bindError ERROR ERROR_TYPE CALL_NAME. Must pair with branchIfError.'],
+  ['bindOwned', 'Reserved strict ownership statement: bindOwned VALUE TYPE CALL cleanup TARGET. Do not use until parser and ownership-table support are committed.'],
+  ['bindOkOwned', 'Reserved strict ownership statement for fallible calls: bindOkOwned VALUE TYPE CALL cleanup TARGET. Do not use until parser and ownership-table support are committed.'],
   ['ignoreOk', 'Binding statement: ignoreOk CALL_NAME TYPE explicitly discards a fallible call success value.'],
   ['ignoreValue', 'Binding statement: ignoreValue CALL_NAME TYPE explicitly discards an infallible call result.'],
+  ['ignore', 'Phrase-shaped discard: ignore value|ok|error|void source CALL_NAME [type TYPE].'],
+  ['requireNonNull', 'Reserved strict nullable-refinement statement: requireNonNull OUT TYPE INPUT else LABEL. Do not use until nullable ABI support is committed.'],
   ['makeError', 'Error construction: makeError NAME ERROR_TYPE.VARIANT [SOURCE_VALUE].'],
   ['new', 'Reserved record I/O statement: new VALUE_NAME RECORD_NAME. Parsed, not lowered by current compiler.'],
   ['fieldGet', 'Reserved record I/O statement: fieldGet OUT_NAME TYPE RECORD_VALUE FIELD_NAME.'],
@@ -595,6 +1019,7 @@ const verbHoverText = new Map([
   ['useRetry', 'Reserved policy attachment: useRetry CALL_NAME RETRY_POLICY_NAME.'],
   ['useCapability', 'Reserved policy attachment: useCapability OPERATION_OR_CALL CAPABILITY_NAME.'],
   ['set', 'Mutation statement: set VAR_NAME VALUE_NAME.'],
+  ['jump', 'Unconditional branch statement: jump target LABEL_NAME.'],
   ['branch', 'Control-flow statement: branch LABEL_NAME.'],
   ['branchIf', 'Control-flow statement: branchIf BOOL_VALUE LABEL_NAME. False leg falls through.'],
   ['branchIfError', 'Control-flow statement: branchIfError CALL_NAME LABEL_NAME.'],
@@ -603,7 +1028,8 @@ const verbHoverText = new Map([
   ['returnOk', 'Return success value from Result operation.'],
   ['returnError', 'Return typed error value from Result operation.'],
   ['returnValue', 'Return plain value.'],
-  ['returnVoid', 'Return from a Void/CVoid operation without exposing the ABI zero sentinel.'],
+  ['returnVoid', 'Return from a Void/Void operation without exposing the ABI zero sentinel.'],
+  ['return', 'Phrase-shaped return: return value VALUE, return ok VALUE, return error ERROR, or return void.'],
 ]);
 
 const refinedVerbHoverText = new Map([
@@ -767,9 +1193,12 @@ let compilerRuntimeChecks = 'default';
 let compilerPersistLlvmIr = 'auto';
 let compilerOptLevel = 'default';
 let compilerEmitLlvmIr = false;
+let compilerEmitOptimizedLlvmIr = false;
 let compilerBuildDir = '';
 let compilerBuildRoot = '';
 let compilerBuildFolderName = '';
+let compilerKeepResources = false;
+let compilerResourceDir = '';
 let compilerCpuBaseline = 'default';
 let compilerCpuTune = '';
 let compilerCpuFeatureCheck = 'default';
@@ -778,6 +1207,7 @@ let lintStatusBarItem = null;
 let compilerOutputChannel = null;
 const lintUpdateTimeouts = new Map();
 const runningLintProcesses = new Map();
+const lintRecordCache = new Map();
 
 const futureSyntaxLinterSkipVerbs = new Set([
   'section',
@@ -950,7 +1380,7 @@ const isHtmlBodyContentLine = (lineText) => {
 };
 
 const isIndentedIslandContentLine = isHtmlBodyContentLine;
-const indentedIslandVerbs = new Set(['htmlBody', 'jsonBody']);
+const indentedIslandVerbs = new Set(['htmlBody', 'jsonBody', 'sqlBody']);
 
 const createDecorationOptions = (backgroundColor, overviewRulerColor) => {
   const options = {
@@ -1088,7 +1518,7 @@ const updateSegmentDecorations = (editor) => {
         ));
       }
 
-      if (indentedIslandVerbs.has(verbText)) {
+      if (startsIndentedIsland(tokenizeLine(line.text))) {
         insideIndentedIsland = true;
       }
     }
@@ -1127,6 +1557,194 @@ const tokenizeLine = (lineText) => {
   }
 
   return tokens;
+};
+
+const tokenAt = (tokens, index) => (tokens[index] ? tokens[index].text : '');
+
+const isHtmlTemplateDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'html' && tokenAt(tokens, 1) === 'template'
+);
+
+const isHtmlParameterDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'html' && tokenAt(tokens, 1) === 'parameter' && tokenAt(tokens, 2) === 'template'
+);
+
+const isHtmlBodyDeclaration = (tokens) => (
+  (tokenAt(tokens, 0) === 'html' && tokenAt(tokens, 1) === 'body' && tokenAt(tokens, 2) === 'template')
+  || tokenAt(tokens, 0) === 'htmlBody'
+);
+
+const isJsonBodyDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'jsonBody'
+  || (tokenAt(tokens, 0) === 'json' && tokenAt(tokens, 1) === 'body')
+);
+
+const isSqlBodyDeclaration = (tokens) => (
+  tokenAt(tokens, 0) === 'sqlBody'
+  || (tokenAt(tokens, 0) === 'sql' && tokenAt(tokens, 1) === 'body')
+);
+
+const htmlTemplateNameIndex = (tokens) => {
+  if (isHtmlTemplateDeclaration(tokens)) {
+    return 2;
+  }
+
+  if (isHtmlParameterDeclaration(tokens) || isHtmlBodyDeclaration(tokens)) {
+    return 3;
+  }
+
+  return 1;
+};
+
+const jsonBodyNameIndex = (tokens) => (
+  tokenAt(tokens, 0) === 'json' && tokenAt(tokens, 1) === 'body' ? 2 : 1
+);
+
+const sqlBodyNameIndex = (tokens) => (
+  tokenAt(tokens, 0) === 'sql' && tokenAt(tokens, 1) === 'body' ? 2 : 1
+);
+
+const startsIndentedIsland = (tokens) => (
+  isJsonBodyDeclaration(tokens) || isSqlBodyDeclaration(tokens) || isHtmlBodyDeclaration(tokens)
+);
+
+const operationOwnerIndex = (tokens) => {
+  if (tokenAt(tokens, 1) === 'operation') {
+    return 2;
+  }
+
+  if (tokenAt(tokens, 1) === 'module') {
+    return null;
+  }
+
+  return 1;
+};
+
+const operationOwnerName = (tokens) => {
+  const index = operationOwnerIndex(tokens);
+  return index === null ? '' : tokenAt(tokens, index);
+};
+
+const inputParts = (tokens) => {
+  const ownerIndex = operationOwnerIndex(tokens);
+  const nameIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+  return { ownerIndex, nameIndex, typeIndex: nameIndex + 1 };
+};
+
+const outputParts = (tokens) => {
+  const ownerIndex = operationOwnerIndex(tokens);
+  const typeIndex = ownerIndex === null ? 2 : ownerIndex + 1;
+  return { ownerIndex, typeIndex };
+};
+
+const narrativeParts = (tokens) => {
+  if (tokenAt(tokens, 1) === 'module' || tokenAt(tokens, 1) === 'operation') {
+    return { subjectKindIndex: 1, subjectIndex: 2, textIndex: 3 };
+  }
+
+  return { subjectKindIndex: null, subjectIndex: 1, textIndex: 2 };
+};
+
+const branchLabelIndex = (tokens) => {
+  if (tokenAt(tokens, 0) === 'jump' && tokenAt(tokens, 1) === 'target') {
+    return 2;
+  }
+
+  if (tokenAt(tokens, 0) !== 'branch') {
+    return null;
+  }
+
+  if (tokenAt(tokens, 1) === 'if' && tokenAt(tokens, 2) === 'condition' && tokenAt(tokens, 4) === 'target') {
+    return 5;
+  }
+
+  if (tokenAt(tokens, 1) === 'error' && tokenAt(tokens, 2) === 'source' && tokenAt(tokens, 4) === 'target') {
+    return 5;
+  }
+
+  if (tokenAt(tokens, 1) === 'else' && tokenAt(tokens, 2) === 'target') {
+    return 3;
+  }
+
+  return 1;
+};
+
+const argumentParts = (tokens) => {
+  if (tokenAt(tokens, 0) === 'argument') {
+    return { callIndex: 1, roleIndex: 2, typeIndex: 3, valueIndex: 4 };
+  }
+
+  if (tokenAt(tokens, 0) === 'arg') {
+    return { callIndex: 1, roleIndex: 2, typeIndex: null, valueIndex: 3 };
+  }
+
+  return null;
+};
+
+const bindParts = (tokens) => {
+  const verb = tokenAt(tokens, 0);
+
+  if (verb === 'bind' && ['value', 'ok', 'error'].includes(tokenAt(tokens, 1))) {
+    return {
+      kind: tokenAt(tokens, 1) === 'error' ? 'bound error' : 'bound value',
+      nameIndex: 2,
+      typeIndex: 3,
+      callIndex: 4,
+    };
+  }
+
+  if (verb === 'bind' || verb === 'bindOk' || verb === 'bindError') {
+    return {
+      kind: verb === 'bindError' ? 'bound error' : 'bound value',
+      nameIndex: 1,
+      typeIndex: 2,
+      callIndex: 3,
+    };
+  }
+
+  return null;
+};
+
+const returnParts = (tokens) => {
+  const verb = tokenAt(tokens, 0);
+
+  if (verb === 'return') {
+    const mode = tokenAt(tokens, 1) || 'value';
+    return {
+      mode,
+      valueIndex: mode === 'void' ? null : 2,
+    };
+  }
+
+  if (verb === 'returnOk') {
+    return { mode: 'ok', valueIndex: 1 };
+  }
+
+  if (verb === 'returnError') {
+    return { mode: 'error', valueIndex: 1 };
+  }
+
+  if (verb === 'returnValue') {
+    return { mode: 'value', valueIndex: 1 };
+  }
+
+  if (verb === 'returnVoid') {
+    return { mode: 'void', valueIndex: null };
+  }
+
+  return null;
+};
+
+const ignoreCallIndex = (tokens) => {
+  if (tokenAt(tokens, 0) === 'ignore' && tokenAt(tokens, 2) === 'source') {
+    return 3;
+  }
+
+  if (tokenAt(tokens, 0) === 'ignoreOk' || tokenAt(tokens, 0) === 'ignoreValue' || tokenAt(tokens, 0) === 'ignoreError') {
+    return 1;
+  }
+
+  return null;
 };
 
 const isDomainTarget = (text) => {
@@ -1202,16 +1820,20 @@ const namedDeclarationVerbs = new Set([
   'project', 'operation', 'webServer', 'record', 'enum', 'error', 'codec',
   'jsonCodec', 'validator', 'mapper', 'adapter', 'boundary', 'policy',
   'errorPolicy', 'retryPolicy', 'timeoutBudget', 'resource', 'capability',
-  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'jsonBody',
+  'mutex', 'shared', 'channel', 'section', 'domainLiteral', 'literal', 'json', 'jsonBody', 'sql', 'sqlBody',
   'listLiteral', 'htmlTemplate', 'listType', 'arrayType', 'sliceType', 'smallListType',
   'mapType', 'collectionOperation', 'interval', 'workerPool', 'work',
   'buildProject', 'registerModule', 'modulePath', 'mainFile', 'mainOperation',
-  'targetRuntime', 'buildProfile', 'optLevel', 'cpuBaseline', 'cpuTune',
-  'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
+  'targetRuntime', 'guiBackend', 'buildProfile', 'runtimeChecks', 'asyncRuntime', 'optLevel',
+  'cpuBaseline', 'cpuTune', 'cpuFeature', 'cpuFeatureCheck', 'nativeOutput',
+  'keepResources', 'resourcesDir', 'nativeHttpHost', 'nativeHttpPort',
+  'formatterSetting', 'linterSetting', 'docsOutput', 'nativeRuntimeSource',
+  'nativeRuntimeLinkArg',
+  'iconRoleDefinition', 'icon', 'iconImage',
 ]);
 
 const singleCallReferenceVerbs = new Set([
-  'run', 'start', 'await', 'timeout', 'cancelOn', 'ignoreOk', 'ignoreValue',
+  'run', 'start', 'await', 'case', 'timeout', 'cancelOn', 'ignoreOk', 'ignoreValue',
   'useRetry', 'recordBuild', 'rationale',
 ]);
 
@@ -1280,8 +1902,8 @@ const buildOperationMetadataIndex = (document) => {
       continue;
     }
 
-    if (operationMetadataVerbs.has(verb) && tokens[1]) {
-      const entry = ensureOperationMetadataEntry(operations, tokens[1].text);
+    if (operationMetadataVerbs.has(verb) && operationOwnerName(tokens)) {
+      const entry = ensureOperationMetadataEntry(operations, operationOwnerName(tokens));
 
       if (!entry.section) {
         entry.section = currentSection;
@@ -1293,7 +1915,7 @@ const buildOperationMetadataIndex = (document) => {
       });
     }
 
-    if (indentedIslandVerbs.has(verb)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -1396,11 +2018,14 @@ const buildDocumentSymbolIndex = (document) => {
         break;
 
       case 'input':
-        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('input parameter', tokens, lineIndex, {
-          name: tokenText(tokens, 2),
-          owner: tokenText(tokens, 1),
-          type: tokenText(tokens, 3),
-        }));
+        {
+          const { ownerIndex, nameIndex, typeIndex } = inputParts(tokens);
+          addSymbolDeclaration(symbols, tokenText(tokens, nameIndex), declarationBase('input parameter', tokens, lineIndex, {
+            name: tokenText(tokens, nameIndex),
+            owner: ownerIndex === null ? '?' : tokenText(tokens, ownerIndex),
+            type: tokenText(tokens, typeIndex),
+          }));
+        }
         break;
 
       case 'const':
@@ -1413,6 +2038,7 @@ const buildDocumentSymbolIndex = (document) => {
         break;
 
       case 'var':
+      case 'let':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('mutable variable', tokens, lineIndex, {
           name: tokenText(tokens, 1),
           type: tokenText(tokens, 2),
@@ -1441,15 +2067,48 @@ const buildDocumentSymbolIndex = (document) => {
         }));
         break;
 
+      case 'memory':
+        if (tokens[2] && ['mutable', 'immutable'].includes(tokens[2].text)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, 3), declarationBase('memory binding', tokens, lineIndex, {
+            name: tokenText(tokens, 3),
+            owner: tokenText(tokens, 1),
+            mutability: tokenText(tokens, 2),
+            type: tokenText(tokens, 4),
+            value: tokenTailText(tokens, 5),
+          }));
+        }
+        break;
+
       case 'domainLiteral':
       case 'literal':
       case 'jsonBody':
+      case 'sqlBody':
       case 'listLiteral':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
           name: tokenText(tokens, 1),
           type: tokenText(tokens, 2),
           value: tokenTailText(tokens, 3),
         }));
+        break;
+
+      case 'json':
+        if (isJsonBodyDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, jsonBodyNameIndex(tokens)), declarationBase('json body', tokens, lineIndex, {
+            name: tokenText(tokens, jsonBodyNameIndex(tokens)),
+            type: 'JsonText island',
+            value: 'indented JSON',
+          }));
+        }
+        break;
+
+      case 'sql':
+        if (isSqlBodyDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, sqlBodyNameIndex(tokens)), declarationBase('sql body', tokens, lineIndex, {
+            name: tokenText(tokens, sqlBodyNameIndex(tokens)),
+            type: 'SqlText island',
+            value: 'indented SQL',
+          }));
+        }
         break;
 
       case 'type':
@@ -1504,6 +2163,13 @@ const buildDocumentSymbolIndex = (document) => {
         break;
       }
 
+      case 'import':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase('module import', tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          details: tokenText(tokens, 2),
+        }));
+        break;
+
       case 'dependencyFetch':
         addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('dependency fetch', tokens, lineIndex, {
           name: tokenText(tokens, 2),
@@ -1514,6 +2180,30 @@ const buildDocumentSymbolIndex = (document) => {
 
       case 'dependencyCache':
       case 'dependencyLock':
+      case 'asyncRuntime':
+      case 'keepResources':
+      case 'resourcesDir':
+      case 'nativeRuntimeSource':
+      case 'nativeRuntimeLinkArg':
+        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
+          name: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 2),
+        }));
+        break;
+
+      case 'buildConstant':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('build constant', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          type: tokenText(tokens, 3),
+          value: tokenTailText(tokens, 4),
+          mutability: 'immutable',
+        }));
+        break;
+
+      case 'iconRoleDefinition':
+      case 'icon':
+      case 'iconImage':
         addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(readableVerbName(verb).toLowerCase(), tokens, lineIndex, {
           name: tokenText(tokens, 1),
           details: tokenTailText(tokens, 2),
@@ -1528,12 +2218,36 @@ const buildDocumentSymbolIndex = (document) => {
         }));
         break;
 
+      case 'recordFieldJsonName':
+      case 'recordFieldJsonOmitWhen':
+        addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('record field JSON metadata', tokens, lineIndex, {
+          name: tokenText(tokens, 2),
+          owner: tokenText(tokens, 1),
+          details: tokenTailText(tokens, 3),
+        }));
+        break;
+
       case 'htmlArg':
         addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('html template argument', tokens, lineIndex, {
           name: tokenText(tokens, 2),
           owner: tokenText(tokens, 1),
           type: tokenText(tokens, 3),
         }));
+        break;
+
+      case 'html':
+        if (isHtmlTemplateDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, 2), declarationBase('html template', tokens, lineIndex, {
+            name: tokenText(tokens, 2),
+            details: 'html template',
+          }));
+        } else if (isHtmlParameterDeclaration(tokens)) {
+          addSymbolDeclaration(symbols, tokenText(tokens, 4), declarationBase('html template argument', tokens, lineIndex, {
+            name: tokenText(tokens, 4),
+            owner: tokenText(tokens, 3),
+            type: tokenText(tokens, 5),
+          }));
+        }
         break;
 
       case 'enumCase':
@@ -1565,13 +2279,16 @@ const buildDocumentSymbolIndex = (document) => {
         break;
       }
 
-      case 'arg': {
-        const callDeclaration = calls.get(tokenText(tokens, 1));
+      case 'arg':
+      case 'argument': {
+        const parts = argumentParts(tokens);
+        const callDeclaration = parts ? calls.get(tokenText(tokens, parts.callIndex)) : null;
 
         if (callDeclaration) {
           callDeclaration.args.push({
-            role: tokenText(tokens, 2),
-            value: tokenText(tokens, 3),
+            role: tokenText(tokens, parts.roleIndex),
+            type: parts.typeIndex === null ? '' : tokenText(tokens, parts.typeIndex),
+            value: tokenText(tokens, parts.valueIndex),
             line: lineIndex + 1,
           });
         }
@@ -1581,20 +2298,20 @@ const buildDocumentSymbolIndex = (document) => {
       case 'bind':
       case 'bindOk':
       case 'bindError': {
-        const bindingKind = verb === 'bindError' ? 'bound error' : 'bound value';
-        addSymbolDeclaration(symbols, tokenText(tokens, 1), declarationBase(bindingKind, tokens, lineIndex, {
-          name: tokenText(tokens, 1),
-          type: tokenText(tokens, 2),
-          sourceCall: tokenText(tokens, 3),
+        const parts = bindParts(tokens);
+        addSymbolDeclaration(symbols, tokenText(tokens, parts.nameIndex), declarationBase(parts.kind, tokens, lineIndex, {
+          name: tokenText(tokens, parts.nameIndex),
+          type: tokenText(tokens, parts.typeIndex),
+          sourceCall: tokenText(tokens, parts.callIndex),
         }));
 
-        const callDeclaration = calls.get(tokenText(tokens, 3));
+        const callDeclaration = calls.get(tokenText(tokens, parts.callIndex));
 
         if (callDeclaration) {
           callDeclaration.resultBindings.push({
             verb,
-            name: tokenText(tokens, 1),
-            type: tokenText(tokens, 2),
+            name: tokenText(tokens, parts.nameIndex),
+            type: tokenText(tokens, parts.typeIndex),
             line: lineIndex + 1,
           });
         }
@@ -1663,7 +2380,7 @@ const buildDocumentSymbolIndex = (document) => {
         break;
     }
 
-    if (indentedIslandVerbs.has(verb)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -1696,7 +2413,7 @@ const operationHoverNameForToken = (text, tokenIndex, tokens) => {
 
   const verb = tokens && tokens[0] ? tokens[0].text : '';
 
-  if (operationMetadataVerbs.has(verb) && tokenIndex === 1) {
+  if (operationMetadataVerbs.has(verb) && operationOwnerIndex(tokens) === tokenIndex) {
     return text;
   }
 
@@ -1726,8 +2443,12 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptConstName';
   }
 
-  if (verb === 'var' && index === 1) {
+  if ((verb === 'var' || verb === 'let') && index === 1) {
     return 'semanticscriptMutableName';
+  }
+
+  if (verb === 'buildConstant' && index === 2) {
+    return 'semanticscriptConstName';
   }
 
   if (verb === 'type' && index === 1) {
@@ -1742,8 +2463,37 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if (verb === 'jsonBody' && index === 1) {
+  if (verb === 'html') {
+    if (isHtmlTemplateDeclaration(tokens) && index === 2) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (isHtmlBodyDeclaration(tokens) && index === htmlTemplateNameIndex(tokens)) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (isHtmlParameterDeclaration(tokens)) {
+      if (index === 3) {
+        return 'semanticscriptDeclaredName';
+      }
+
+      if (index === 4) {
+        return 'semanticscriptArgumentName';
+      }
+    }
+  }
+
+  if (isJsonBodyDeclaration(tokens) && index === jsonBodyNameIndex(tokens)) {
     return 'semanticscriptConstName';
+  }
+
+  if (isSqlBodyDeclaration(tokens) && index === sqlBodyNameIndex(tokens)) {
+    return 'semanticscriptConstName';
+  }
+
+  const returnInfo = returnParts(tokens);
+  if (returnInfo && index === returnInfo.valueIndex) {
+    return returnInfo.mode === 'error' ? 'semanticscriptErrorVariant' : 'semanticscriptConstName';
   }
 
   if (verb === 'htmlArg' && index === 2) {
@@ -1762,6 +2512,18 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return null;
   }
 
+  if (verb === 'import') {
+    if (index === 1) {
+      return 'semanticscriptDeclaredName';
+    }
+
+    if (index === 2) {
+      return 'namespace';
+    }
+
+    return null;
+  }
+
   if (['importOperation', 'importType', 'importError', 'importCapability', 'importConstant'].includes(verb) && index === 1) {
     return 'semanticscriptDeclaredName';
   }
@@ -1774,7 +2536,13 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if ((verb === 'field' || verb === 'fieldDefault' || verb === 'fieldInvariant') && index === 2) {
+  if ((
+    verb === 'field'
+    || verb === 'fieldDefault'
+    || verb === 'fieldInvariant'
+    || verb === 'recordFieldJsonName'
+    || verb === 'recordFieldJsonOmitWhen'
+  ) && index === 2) {
     return 'semanticscriptArgumentName';
   }
 
@@ -1792,11 +2560,17 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'set' && index === 1 && !['local', 'module', 'sharedState'].includes(text)) {
+  if (verb === 'memory' && index === 3 && tokens[2] && ['mutable', 'immutable'].includes(tokens[2].text)) {
+    return tokens[2].text === 'mutable'
+      ? 'semanticscriptMutableName'
+      : 'semanticscriptConstName';
+  }
+
+  if (verb === 'set' && index === 1 && !['local', 'module', 'sharedState', 'memory', 'storage'].includes(text)) {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'set' && index === 2 && tokens[1] && ['local', 'module', 'sharedState'].includes(tokens[1].text)) {
+  if (verb === 'set' && index === 2 && tokens[1] && ['local', 'module', 'sharedState', 'memory', 'storage'].includes(tokens[1].text)) {
     return 'semanticscriptMutableName';
   }
 
@@ -1808,7 +2582,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptLabelName';
   }
 
-  if (branchLabelPositions.get(verb) === index) {
+  if (branchLabelIndex(tokens) === index) {
     return 'semanticscriptLabelName';
   }
 
@@ -1832,27 +2606,31 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if (verb === 'arg' && index === 1) {
+  if ((verb === 'arg' || verb === 'argument') && argumentParts(tokens) && index === argumentParts(tokens).callIndex) {
     return 'semanticscriptCallObject';
   }
 
-  if (verb === 'arg' && index === 2) {
+  if ((verb === 'arg' || verb === 'argument') && argumentParts(tokens) && index === argumentParts(tokens).roleIndex) {
     return 'semanticscriptArgumentName';
+  }
+
+  if (ignoreCallIndex(tokens) === index) {
+    return 'semanticscriptCallObject';
   }
 
   if (singleCallReferenceVerbs.has(verb) && index === 1) {
     return 'semanticscriptCallObject';
   }
 
-  if ((verb === 'bind' || verb === 'bindOk' || verb === 'bindError') && index === 3) {
+  if (bindParts(tokens) && index === bindParts(tokens).callIndex) {
     return 'semanticscriptCallObject';
   }
 
-  if ((verb === 'bind' || verb === 'bindOk') && index === 1) {
+  if (bindParts(tokens) && index === bindParts(tokens).nameIndex && bindParts(tokens).kind === 'bound value') {
     return 'semanticscriptConstName';
   }
 
-  if (verb === 'bindError' && index === 1) {
+  if (bindParts(tokens) && index === bindParts(tokens).nameIndex && bindParts(tokens).kind === 'bound error') {
     return 'semanticscriptMutableName';
   }
 
@@ -1860,7 +2638,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptMutableName';
   }
 
-  if (verb === 'input' && index === 2) {
+  if (verb === 'input' && index === inputParts(tokens).nameIndex) {
     return 'semanticscriptArgumentName';
   }
 
@@ -1924,7 +2702,7 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptDeclaredName';
   }
 
-  if (operationReferenceVerbs.has(verb) && index === 1) {
+  if (operationReferenceVerbs.has(verb) && operationOwnerIndex(tokens) === index) {
     return 'semanticscriptDeclaredName';
   }
 
@@ -1972,7 +2750,14 @@ const contextTokenTypeForSymbol = (text, index, tokens) => {
     return 'semanticscriptEffectPath';
   }
 
-  if ((verb === 'capability' || verb === 'authority') && index === 2 && isLowerQualifiedName(text)) {
+  if (verb === 'authority' && (
+    (index === 2 && isLowerQualifiedName(text))
+    || (index === 3 && isLowerQualifiedName(text))
+  )) {
+    return 'semanticscriptEffectPath';
+  }
+
+  if (verb === 'capability' && index === 2 && isLowerQualifiedName(text)) {
     return 'semanticscriptEffectPath';
   }
 
@@ -1983,18 +2768,18 @@ const domainTargetHoverText = (text) => {
   const methodName = text.split('.')[1];
 
   if (methodName && methodName.startsWith('checkedMultiply')) {
-    return 'AST.md: checked domain multiply lowers to `math.checkedMultiplyI64`; it is fallible and should use `bindOk`, `bindError`, and `branchIfError`.';
+    return 'docs/ast.md: checked domain multiply lowers to `math.checkedMultiplyInt64`; it is fallible and should use `bindOk`, `bindError`, and `branchIfError`.';
   }
 
   if (methodName === 'square') {
-    return 'AST.md: domain `square` is a semantic method for multiplying a value by itself while keeping the source domain context visible.';
+    return 'docs/ast.md: domain `square` is a semantic method for multiplying a value by itself while keeping the source domain context visible.';
   }
 
   if (['equal', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual'].includes(methodName)) {
-    return 'SYNTAX.md: enum/domain comparison methods preserve the declared type in source. For repr-backed enums the compiler resolves this to the matching width-specific math target, with no implicit widening at the call site.';
+    return 'docs/reference/syntax-inventory.md: enum/domain comparison methods preserve the declared type in source. For repr-backed enums the compiler resolves this to the matching width-specific math target, with no implicit widening at the call site.';
   }
 
-  return 'AST.md: `TypeName.methodName` lowers to an underlying primitive based on the alias type while preserving domain context in source.';
+  return 'docs/ast.md: `TypeName.methodName` lowers to an underlying primitive based on the alias type while preserving domain context in source.';
 };
 
 const tokenTypeForSymbol = (text, index, tokens) => {
@@ -2137,7 +2922,7 @@ const provideDocumentSemanticTokens = (document) => {
       }
     });
 
-    if (tokens[0] && indentedIslandVerbs.has(tokens[0].text)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -2181,7 +2966,7 @@ const getTokenAtPosition = (document, position) => {
 
 const getHtmlArgReferenceAtPosition = (document, position) => {
   const lineText = document.lineAt(position.line).text;
-  const referencePattern = /\{\s*htmlArg\.([A-Za-z_][A-Za-z0-9_]*)\s*\}/g;
+  const referencePattern = /\{\s*(?:htmlArg\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}/g;
   let match;
 
   while ((match = referencePattern.exec(lineText)) !== null) {
@@ -2191,6 +2976,7 @@ const getHtmlArgReferenceAtPosition = (document, position) => {
     if (position.character >= start && position.character <= end) {
       return {
         text: match[1],
+        rootText: match[1].split('.')[0],
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }
@@ -2221,9 +3007,9 @@ const htmlBodyTemplateAtLine = (document, targetLine) => {
 
     const tokens = tokenizeLine(lineText);
 
-    if (tokens[0] && tokens[0].text === 'htmlBody' && tokens[1]) {
+    if (isHtmlBodyDeclaration(tokens)) {
       insideHtmlBody = true;
-      templateName = tokens[1].text;
+      templateName = tokenText(tokens, htmlTemplateNameIndex(tokens));
 
       if (lineIndex === targetLine) {
         return templateName;
@@ -2309,6 +3095,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'var':
+    case 'let':
       return detailHover(`Mutable variable: ${tokenText(tokens, 1)}`, [
         `Declares ${inlineCode(tokenText(tokens, 1))} as an operation-local mutable value.`,
         `Type: ${inlineCode(tokenText(tokens, 2))}`,
@@ -2341,6 +3128,13 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Registered module imports make cross-module references explicit for agents and tooling.',
       ]);
 
+    case 'import':
+      return detailHover(`Module import: ${tokenText(tokens, 1)}`, [
+        `Local alias: ${inlineCode(tokenText(tokens, 1))}`,
+        `Module path: ${inlineCode(tokenText(tokens, 2))}`,
+        'Registered module imports make cross-module references explicit for agents and tooling.',
+      ]);
+
     case 'importOperation':
     case 'importType':
     case 'importError':
@@ -2368,6 +3162,29 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         `Path: ${inlineCode(tokenTailText(tokens, 2))}`,
       ]);
 
+    case 'asyncRuntime':
+    case 'keepResources':
+    case 'resourcesDir':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Project: ${inlineCode(tokenText(tokens, 1))}`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
+    case 'buildConstant':
+      return detailHover(`Build constant: ${tokenText(tokens, 2)}`, [
+        `Project: ${inlineCode(tokenText(tokens, 1))}`,
+        `Name: ${inlineCode(tokenText(tokens, 2))}`,
+        `Type: ${inlineCode(tokenText(tokens, 3))}`,
+        `Value: ${inlineCode(tokenTailText(tokens, 4))}`,
+      ]);
+
+    case 'nativeRuntimeSource':
+    case 'nativeRuntimeLinkArg':
+      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
+        `Module: ${inlineCode(tokenText(tokens, 1))}`,
+        `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
+      ]);
+
     case 'htmlTemplate':
       return detailHover(`HTML template: ${tokenText(tokens, 1)}`, [
         `Declares first-class HTML/SSX template ${inlineCode(tokenText(tokens, 1))}.`,
@@ -2388,10 +3205,51 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Indented following lines are parsed as markup until the next non-empty column-0 SemanticScript line.',
       ]);
 
+    case 'html':
+      if (isHtmlTemplateDeclaration(tokens)) {
+        return detailHover(`HTML template: ${tokenText(tokens, 2)}`, [
+          `Declares first-class HTML/SSX template ${inlineCode(tokenText(tokens, 2))}.`,
+          'Follow with one `html body template` island for the same template name.',
+        ]);
+      }
+
+      if (isHtmlParameterDeclaration(tokens)) {
+        return detailHover(`HTML parameter: ${tokenText(tokens, 4)}`, [
+          `Template: ${inlineCode(tokenText(tokens, 3))}`,
+          `Parameter: ${inlineCode(tokenText(tokens, 4))}`,
+          `Type: ${inlineCode(tokenText(tokens, 5))}`,
+        ]);
+      }
+
+      if (isHtmlBodyDeclaration(tokens)) {
+        return detailHover(`HTML body: ${tokenText(tokens, htmlTemplateNameIndex(tokens))}`, [
+          `Starts the HTML/SSX body for template ${inlineCode(tokenText(tokens, htmlTemplateNameIndex(tokens)))}.`,
+          'Indented following lines are parsed as markup until the next non-empty column-0 SemanticScript line.',
+        ]);
+      }
+
+      break;
+
+    case 'json':
     case 'jsonBody':
-      return detailHover(`JSON body: ${tokenText(tokens, 1)}`, [
-        `Binds validated JSON text to immutable storage ${inlineCode(tokenText(tokens, 1))}.`,
+      if (!isJsonBodyDeclaration(tokens)) {
+        break;
+      }
+
+      return detailHover(`JSON body: ${tokenText(tokens, jsonBodyNameIndex(tokens))}`, [
+        `Binds validated JSON text to immutable storage ${inlineCode(tokenText(tokens, jsonBodyNameIndex(tokens)))}.`,
         'Indented following lines are parsed as strict JSON until the next non-empty column-0 SemanticScript line.',
+      ]);
+
+    case 'sql':
+    case 'sqlBody':
+      if (!isSqlBodyDeclaration(tokens)) {
+        break;
+      }
+
+      return detailHover(`SQL body: ${tokenText(tokens, sqlBodyNameIndex(tokens))}`, [
+        `Binds validated SQL source text to immutable SqlText storage ${inlineCode(tokenText(tokens, sqlBodyNameIndex(tokens)))}.`,
+        'Dynamic values use ? placeholders plus sqlite.bind* rows; interpolation holes are not allowed.',
       ]);
 
     case 'operation':
@@ -2401,16 +3259,22 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'input':
-      return detailHover(`Input: ${tokenText(tokens, 2)}`, [
-        `Adds parameter ${inlineCode(tokenText(tokens, 2))} to operation ${inlineCode(tokenText(tokens, 1))}.`,
-        `Type: ${inlineCode(tokenText(tokens, 3))}`,
-      ]);
+      {
+        const { ownerIndex, nameIndex, typeIndex } = inputParts(tokens);
+        return detailHover(`Input: ${tokenText(tokens, nameIndex)}`, [
+          `Adds parameter ${inlineCode(tokenText(tokens, nameIndex))} to operation ${inlineCode(tokenText(tokens, ownerIndex))}.`,
+          `Type: ${inlineCode(tokenText(tokens, typeIndex))}`,
+        ]);
+      }
 
     case 'output':
-      return detailHover(`Output contract: ${tokenText(tokens, 1)}`, [
-        `Declares what ${inlineCode(tokenText(tokens, 1))} returns.`,
-        `Return shape: ${inlineCode(tokenTailText(tokens, 2))}`,
-      ]);
+      {
+        const { ownerIndex, typeIndex } = outputParts(tokens);
+        return detailHover(`Output contract: ${tokenText(tokens, ownerIndex)}`, [
+          `Declares what ${inlineCode(tokenText(tokens, ownerIndex))} returns.`,
+          `Return shape: ${inlineCode(tokenTailText(tokens, typeIndex))}`,
+        ]);
+      }
 
     case 'effect':
       return detailHover(`Effect: ${tokenText(tokens, 1)}`, [
@@ -2426,6 +3290,8 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'memoryStackLimit':
     case 'async':
     case 'operationBody':
+    case 'runtimeBindingAsyncStart':
+    case 'runtimeBindingAsyncAwait':
       return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
         `Attaches ${inlineCode(verb)} metadata to ${inlineCode(tokenText(tokens, 1))}.`,
         `Value: ${inlineCode(tokenTailText(tokens, 2))}`,
@@ -2440,10 +3306,14 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'security':
     case 'timing':
     case 'observability':
-      return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, 1)}`, [
-        `Human context attached to ${inlineCode(tokenText(tokens, 1))}.`,
-        `Text: ${inlineCode(tokenTailText(tokens, 2))}`,
-      ]);
+      {
+        const { subjectKindIndex, subjectIndex, textIndex } = narrativeParts(tokens);
+        return detailHover(`${readableVerbName(verb)}: ${tokenText(tokens, subjectIndex)}`, [
+          subjectKindIndex === null ? '' : `Subject kind: ${inlineCode(tokenText(tokens, subjectKindIndex))}`,
+          `Human context attached to ${inlineCode(tokenText(tokens, subjectIndex))}.`,
+          `Text: ${inlineCode(tokenTailText(tokens, textIndex))}`,
+        ]);
+      }
 
     case 'call':
       return detailHover(`Call: ${tokenText(tokens, 1)}`, [
@@ -2453,10 +3323,14 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'arg':
+    case 'argument': {
+      const parts = argumentParts(tokens);
       return detailHover(`Argument: ${tokenText(tokens, 2)}`, [
-        `Passes ${inlineCode(tokenText(tokens, 3))} into call ${inlineCode(tokenText(tokens, 1))}.`,
-        `Argument role: ${inlineCode(tokenText(tokens, 2))}`,
+        `Passes ${inlineCode(tokenText(tokens, parts.valueIndex))} into call ${inlineCode(tokenText(tokens, parts.callIndex))}.`,
+        `Argument role: ${inlineCode(tokenText(tokens, parts.roleIndex))}`,
+        parts.typeIndex === null ? '' : `Type: ${inlineCode(tokenText(tokens, parts.typeIndex))}`,
       ]);
+    }
 
     case 'run':
       return detailHover(`Run call: ${tokenText(tokens, 1)}`, [
@@ -2473,13 +3347,33 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'await':
       return detailHover(`Await call: ${tokenText(tokens, 1)}`, [
         `Waits for started call ${inlineCode(tokenText(tokens, 1))}.`,
-        'Under current synchronous lowering this is a no-op after `start`, but the contract remains visible.',
+        'When followed by `case` rows and `done`, this introduces a wait set, materializes whichever case is ready next, and branches to that case label.',
+      ]);
+
+    case 'case':
+      return detailHover(`Await case: ${tokenText(tokens, 1)}`, [
+        `Adds started call ${inlineCode(tokenText(tokens, 1))} to the current wait set.`,
+        `Branches to ${inlineCode(tokenText(tokens, 2))} when this future is selected.`,
+      ]);
+
+    case 'done':
+      return detailHover(`Wait set done: ${tokenText(tokens, 1)}`, [
+        `Branches to ${inlineCode(tokenText(tokens, 1))} after every wait-set case has been consumed.`,
       ]);
 
     case 'bind':
-      return detailHover(`Bind result: ${tokenText(tokens, 1)}`, [
-        `Stores the infallible result of ${inlineCode(tokenText(tokens, 3))} into ${inlineCode(tokenText(tokens, 1))}.`,
-        `Type: ${inlineCode(tokenText(tokens, 2))}`,
+      {
+        const parts = bindParts(tokens);
+        return detailHover(`Bind result: ${tokenText(tokens, parts.nameIndex)}`, [
+          `Stores the result of ${inlineCode(tokenText(tokens, parts.callIndex))} into ${inlineCode(tokenText(tokens, parts.nameIndex))}.`,
+          `Type: ${inlineCode(tokenText(tokens, parts.typeIndex))}`,
+        ]);
+      }
+
+    case 'ignore':
+      return detailHover(`Ignore ${tokenText(tokens, 1)}: ${tokenText(tokens, ignoreCallIndex(tokens))}`, [
+        `Explicitly discards ${inlineCode(tokenText(tokens, 1))} from ${inlineCode(tokenText(tokens, ignoreCallIndex(tokens)))}.`,
+        tokenText(tokens, 4) === 'type' ? `Discarded type: ${inlineCode(tokenText(tokens, 5))}` : '',
       ]);
 
     case 'bindOk':
@@ -2511,8 +3405,32 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
       ]);
 
     case 'branch':
+      if (tokenText(tokens, 1) === 'if') {
+        return detailHover(`Conditional branch: ${tokenText(tokens, 5)}`, [
+          `Jumps to ${inlineCode(tokenText(tokens, 5))} when ${inlineCode(tokenText(tokens, 3))} is true.`,
+          'The false path continues to the next line unless followed by `branch else target ...`.',
+        ]);
+      }
+
+      if (tokenText(tokens, 1) === 'error') {
+        return detailHover(`Error branch: ${tokenText(tokens, 5)}`, [
+          `Jumps to ${inlineCode(tokenText(tokens, 5))} if call ${inlineCode(tokenText(tokens, 3))} failed.`,
+        ]);
+      }
+
+      if (tokenText(tokens, 1) === 'else') {
+        return detailHover(`Else branch: ${tokenText(tokens, 3)}`, [
+          `Jumps to ${inlineCode(tokenText(tokens, 3))} as the paired fallback path.`,
+        ]);
+      }
+
       return detailHover(`Branch: ${tokenText(tokens, 1)}`, [
         `Always jumps to ${inlineCode(tokenText(tokens, 1))}.`,
+      ]);
+
+    case 'jump':
+      return detailHover(`Jump: ${tokenText(tokens, 2)}`, [
+        `Always jumps to ${inlineCode(tokenText(tokens, 2))}.`,
       ]);
 
     case 'branchIf':
@@ -2543,9 +3461,18 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
 
     case 'returnVoid':
       return detailHover('Return void', [
-        'Returns from an operation declared `output OP Void` or `output OP CVoid`.',
+        'Returns from an operation declared `output OP Void` or `output OP Void`.',
         'Codegen lowers this to the internal zero sentinel, but the source stays semantically explicit.',
       ]);
+
+    case 'return': {
+      const info = returnParts(tokens);
+      return detailHover(`Return ${info.mode}`, [
+        info.valueIndex === null
+          ? 'Returns from a Void/Void operation.'
+          : `Returns ${inlineCode(tokenText(tokens, info.valueIndex))} through the ${inlineCode(info.mode)} path.`,
+      ]);
+    }
 
     case 'makeError':
       return detailHover(`Construct error: ${tokenText(tokens, 1)}`, [
@@ -2707,6 +3634,20 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         'Current single-thread lowering treats interval waiting as a no-op.',
       ]);
 
+    case 'recordFieldJsonName':
+      return detailHover(`Record JSON field name: ${tokenText(tokens, 2)}`, [
+        `Record: ${inlineCode(tokenText(tokens, 1))}`,
+        `Field: ${inlineCode(tokenText(tokens, 2))}`,
+        `JSON key: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
+    case 'recordFieldJsonOmitWhen':
+      return detailHover(`Record JSON omit policy: ${tokenText(tokens, 2)}`, [
+        `Record: ${inlineCode(tokenText(tokens, 1))}`,
+        `Field: ${inlineCode(tokenText(tokens, 2))}`,
+        `Policy: ${inlineCode(tokenText(tokens, 3))}`,
+      ]);
+
     case 'project':
     case 'target':
     case 'runtime':
@@ -2833,6 +3774,7 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
   switch (verb) {
     case 'const':
     case 'var':
+    case 'let':
       if (tokenIndex === 1) {
         return `This token declares ${inlineCode(text)}.`;
       }
@@ -2857,18 +3799,51 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
       }
       break;
 
+    case 'json':
     case 'jsonBody':
-      if (tokenIndex === 1) {
+      if (isJsonBodyDeclaration(tokens) && tokenIndex === jsonBodyNameIndex(tokens)) {
         return `This token selects the immutable storage slot that receives the validated JSON literal.`;
       }
       break;
 
+    case 'sql':
+    case 'sqlBody':
+      if (isSqlBodyDeclaration(tokens) && tokenIndex === sqlBodyNameIndex(tokens)) {
+        return `This token selects the immutable SqlText storage slot that receives the SQL source literal.`;
+      }
+      break;
+
     case 'input':
+      if (tokenIndex === inputParts(tokens).nameIndex) {
+        return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, inputParts(tokens).ownerIndex))}.`;
+      }
+      if (tokenIndex === inputParts(tokens).typeIndex) {
+        return `This token is the parameter type for ${inlineCode(tokenText(tokens, inputParts(tokens).nameIndex))}.`;
+      }
+      break;
+
+    case 'buildConstant':
       if (tokenIndex === 2) {
-        return `This token declares input parameter ${inlineCode(text)} for ${inlineCode(tokenText(tokens, 1))}.`;
+        return `This token declares a build-injected immutable constant.`;
       }
       if (tokenIndex === 3) {
-        return `This token is the parameter type for ${inlineCode(tokenText(tokens, 2))}.`;
+        return `This token is the declared type for ${inlineCode(tokenText(tokens, 2))}.`;
+      }
+      if (tokenIndex >= 4) {
+        return `This token contributes to the build constant value for ${inlineCode(tokenText(tokens, 2))}.`;
+      }
+      break;
+
+    case 'recordFieldJsonName':
+    case 'recordFieldJsonOmitWhen':
+      if (tokenIndex === 1) {
+        return `This token names the record whose JSON mapping metadata is being configured.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token names the record field receiving JSON metadata.`;
+      }
+      if (tokenIndex >= 3) {
+        return `This token configures the JSON mapping metadata for ${inlineCode(tokenText(tokens, 2))}.`;
       }
       break;
 
@@ -2896,11 +3871,34 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
     case 'run':
     case 'start':
     case 'await':
-    case 'ignoreOk':
-    case 'ignoreValue':
     case 'timeout':
     case 'cancelOn':
     case 'useRetry':
+      if (tokenIndex === 1) {
+        return `This token references call object ${inlineCode(text)}.`;
+      }
+      if (tokenIndex >= 2) {
+        return `This token configures ${inlineCode(tokenText(tokens, 1))}.`;
+      }
+      break;
+
+    case 'case':
+      if (tokenIndex === 1) {
+        return `This token references a started call in the current wait set.`;
+      }
+      if (tokenIndex === 2) {
+        return `This token is the label selected when the call is ready.`;
+      }
+      break;
+
+    case 'done':
+      if (tokenIndex === 1) {
+        return `This token is the label selected after all wait-set cases are consumed.`;
+      }
+      break;
+
+    case 'ignoreOk':
+    case 'ignoreValue':
       if (tokenIndex === 1) {
         return `This token references call object ${inlineCode(text)}.`;
       }
@@ -2997,9 +3995,20 @@ const tokenUseDescription = (tokens, tokenIndex, declaration) => {
 
     case 'returnVoid':
       if (tokenIndex === 0) {
-        return `Explicit Void/CVoid return form.`;
+        return `Explicit Void/Void return form.`;
       }
       break;
+
+    case 'return': {
+      const info = returnParts(tokens);
+      if (tokenIndex === 1) {
+        return `This token selects the ${inlineCode(info.mode)} return path.`;
+      }
+      if (tokenIndex === info.valueIndex) {
+        return `This token is returned through the ${inlineCode(info.mode)} path.`;
+      }
+      break;
+    }
 
     case 'makeError':
     case 'declareFailure':
@@ -3133,15 +4142,15 @@ const provideHover = (document, position) => {
   const htmlArgReference = getHtmlArgReferenceAtPosition(document, position);
 
   if (htmlArgReference) {
-    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.text, position.line);
+    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.rootText, position.line);
     const templateName = declaration ? declaration.owner : htmlBodyTemplateAtLine(document, position.line);
 
     return markdownHover(
-      `HTML arg reference: ${htmlArgReference.text}`,
+      `HTML hole: ${htmlArgReference.text}`,
       [
         templateName ? `Template: ${inlineCode(templateName)}` : '',
         declaration && declaration.type ? `Declared type: ${inlineCode(declaration.type)}` : '',
-        'Dynamic HTML holes must resolve to a declared `htmlArg TEMPLATE NAME TYPE` row. The compiler checks sink context before lowering hydration.',
+        'Dynamic HTML holes resolve through hydrate `argument` rows. Bare names and dotted record-field paths are checked by sink context before lowering hydration.',
       ].filter(Boolean).join('\n\n')
     );
   }
@@ -3228,7 +4237,7 @@ const provideHover = (document, position) => {
   if (opaqueInputs.has(text)) {
     return markdownHover(
       `Opaque input: ${text}`,
-      'AST.md: opaque dependency inputs may appear in `arg` lines to preserve dependency context, but they do not flow into computation.'
+      'docs/ast.md: opaque dependency inputs may appear in `arg` lines to preserve dependency context, but they do not flow into computation.'
     );
   }
 
@@ -3266,7 +4275,8 @@ const provideDefinition = (document, position) => {
   const htmlArgReference = getHtmlArgReferenceAtPosition(document, position);
 
   if (htmlArgReference) {
-    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.text, position.line);
+    const declaration = chooseHtmlArgDeclaration(document, htmlArgReference.rootText, position.line)
+      || chooseSymbolDeclaration(getDocumentSymbolIndex(document).symbols.get(htmlArgReference.rootText), null);
 
     if (declaration) {
       return new vscode.Location(document.uri, declarationRange(document, declaration));
@@ -3274,6 +4284,14 @@ const provideDefinition = (document, position) => {
   }
 
   const tokenInfo = getTokenAtPosition(document, position);
+
+  if (tokenInfo) {
+    const buildTapeDefinition = buildTapeDefinitionForToken(document, tokenInfo.tokens, tokenInfo.tokenIndex);
+
+    if (buildTapeDefinition) {
+      return buildTapeDefinition;
+    }
+  }
 
   if (!tokenInfo || tokenInfo.tokenIndex === 0) {
     return null;
@@ -3298,16 +4316,36 @@ const provideDefinition = (document, position) => {
 };
 
 const documentSymbolNameIndex = (verb, tokens) => {
+  if (verb === 'html') {
+    if (isHtmlTemplateDeclaration(tokens) || isHtmlBodyDeclaration(tokens)) {
+      return htmlTemplateNameIndex(tokens);
+    }
+
+    if (isHtmlParameterDeclaration(tokens)) {
+      return 4;
+    }
+  }
+
   switch (verb) {
     case 'input':
+      return inputParts(tokens).nameIndex;
+    case 'buildConstant':
       return 2;
+    case 'json':
+      return isJsonBodyDeclaration(tokens) ? jsonBodyNameIndex(tokens) : 1;
+    case 'sql':
+      return isSqlBodyDeclaration(tokens) ? sqlBodyNameIndex(tokens) : 1;
     case 'htmlArg':
       return 2;
     case 'dependencyFetch':
       return 2;
     case 'importModule':
       return importModuleAliasIndex(tokens);
+    case 'import':
+      return 1;
     case 'field':
+    case 'recordFieldJsonName':
+    case 'recordFieldJsonOmitWhen':
     case 'enumCase':
     case 'errorCase':
       return 2;
@@ -3325,11 +4363,13 @@ const documentSymbolKind = (verb) => {
   switch (verb) {
     case 'operation':
       return vscode.SymbolKind.Function;
+    case 'html':
     case 'htmlTemplate':
       return vscode.SymbolKind.Class;
     case 'htmlArg':
       return vscode.SymbolKind.Field;
     case 'importModule':
+    case 'import':
       return vscode.SymbolKind.Module;
     case 'importOperation':
       return vscode.SymbolKind.Function;
@@ -3348,6 +4388,8 @@ const documentSymbolKind = (verb) => {
     case 'record':
       return vscode.SymbolKind.Struct;
     case 'field':
+    case 'recordFieldJsonName':
+    case 'recordFieldJsonOmitWhen':
       return vscode.SymbolKind.Field;
     case 'enum':
     case 'enumCase':
@@ -3361,9 +4403,14 @@ const documentSymbolKind = (verb) => {
     case 'authority':
       return vscode.SymbolKind.Key;
     case 'const':
+    case 'buildConstant':
+    case 'json':
     case 'jsonBody':
+    case 'sql':
+    case 'sqlBody':
       return vscode.SymbolKind.Constant;
     case 'var':
+    case 'let':
     case 'storage':
     case 'sharedState':
       return vscode.SymbolKind.Variable;
@@ -3387,8 +4434,24 @@ const symbolDetailText = (verb, tokens) => {
     return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
   }
 
+  if (verb === 'html') {
+    if (isHtmlParameterDeclaration(tokens)) {
+      return `${tokenText(tokens, 3)}: ${tokenText(tokens, 5)}`;
+    }
+
+    if (isHtmlBodyDeclaration(tokens)) {
+      return 'HTML island';
+    }
+
+    return 'HTML template';
+  }
+
   if (verb === 'importModule') {
     return tokenText(tokens, importModulePathIndex(tokens));
+  }
+
+  if (verb === 'import') {
+    return tokenText(tokens, 2);
   }
 
   if (['importOperation', 'importType', 'importError', 'importCapability', 'importConstant'].includes(verb)) {
@@ -3404,15 +4467,28 @@ const symbolDetailText = (verb, tokens) => {
   }
 
   if (verb === 'input') {
-    return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
+    const { ownerIndex, typeIndex } = inputParts(tokens);
+    return `${ownerIndex === null ? '?' : tokenText(tokens, ownerIndex)}: ${tokenText(tokens, typeIndex)}`;
   }
 
-  if (verb === 'const' || verb === 'var') {
+  if (verb === 'const' || verb === 'var' || verb === 'let') {
     return tokenText(tokens, 2);
   }
 
-  if (verb === 'jsonBody') {
+  if (verb === 'buildConstant') {
+    return `${tokenText(tokens, 1)}: ${tokenText(tokens, 3)}`;
+  }
+
+  if (verb === 'recordFieldJsonName' || verb === 'recordFieldJsonOmitWhen') {
+    return `${tokenText(tokens, 1)} ${tokenTailText(tokens, 3)}`;
+  }
+
+  if (isJsonBodyDeclaration(tokens)) {
     return 'JsonText island';
+  }
+
+  if (isSqlBodyDeclaration(tokens)) {
+    return 'SqlText island';
   }
 
   return tokenTailText(tokens, 2);
@@ -3424,20 +4500,27 @@ const provideDocumentSymbols = (document) => {
     'section', 'project', 'target', 'runtime', 'entry', 'module',
     'buildProject', 'modulePath', 'projectVersion', 'projectLicense',
     'sourceRoot', 'registerModule', 'mainFile', 'mainOperation',
-    'targetRuntime', 'buildProfile', 'runtimeChecks', 'optLevel',
+    'targetRuntime', 'guiBackend', 'buildProfile', 'runtimeChecks', 'asyncRuntime', 'optLevel',
     'persistLlvmIr', 'emitLlvmIr', 'llvmIrOutput', 'buildDir',
     'buildRoot', 'buildFolderName', 'cpuBaseline', 'cpuTune',
-    'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'docsOutput',
-    'dependencyFetch', 'dependencyCache', 'dependencyLock',
-    'importModule', 'importOperation', 'importType', 'importError',
+    'cpuFeature', 'cpuFeatureCheck', 'nativeOutput', 'keepResources',
+    'resourcesDir', 'nativeHttpHost', 'nativeHttpPort', 'docsOutput',
+    'buildConstant', 'dependencyFetch', 'dependencyCache', 'dependencyLock',
+    'nativeRuntimeSource', 'nativeRuntimeLinkArg',
+    'import', 'importModule', 'importOperation', 'importType', 'importError',
     'importCapability', 'importConstant',
+    'iconRoleDefinition', 'icon', 'iconRole', 'iconPurpose',
+    'iconImage', 'iconImageGroup', 'iconImagePath', 'iconImageFormat',
+    'iconImageWidth', 'iconImageHeight', 'iconImageScale',
+    'iconImageDepth', 'iconImagePlatform', 'iconImagePurpose',
     'exportOperation', 'exportType',
     'exportError', 'exportCapability', 'exportConstant',
     'operation', 'input', 'webServer', 'route', 'record', 'field',
+    'recordFieldJsonName', 'recordFieldJsonOmitWhen',
     'enum', 'enumCase', 'error', 'errorCase', 'type', 'capability',
     'authority', 'timeoutBudget', 'storage', 'sharedState', 'const',
-    'var', 'call', 'label', 'jsonCodec', 'jsonBody', 'policy', 'retryPolicy',
-    'workerPool', 'work', 'interval', 'htmlTemplate', 'htmlArg',
+    'var', 'let', 'call', 'label', 'jsonCodec', 'json', 'jsonBody', 'policy', 'retryPolicy',
+    'workerPool', 'work', 'interval', 'html', 'htmlTemplate', 'htmlArg',
   ]);
   let insideIndentedIsland = false;
 
@@ -3488,7 +4571,7 @@ const provideDocumentSymbols = (document) => {
       selectionRange
     ));
 
-    if (indentedIslandVerbs.has(verb)) {
+    if (startsIndentedIsland(tokens)) {
       insideIndentedIsland = true;
     }
   }
@@ -3537,6 +4620,9 @@ const generatedCompletionItems = (document) => {
 
     if (tokens[0] && tokens[0].text === 'htmlTemplate' && tokens[1]) {
       const target = `html.hydrate.${tokens[1].text}`;
+      targets.set(target, generatedTargetHoverText(target));
+    } else if (isHtmlTemplateDeclaration(tokens) && tokens[2]) {
+      const target = `html.hydrate.${tokens[2].text}`;
       targets.set(target, generatedTargetHoverText(target));
     }
   }
@@ -3617,9 +4703,12 @@ const syncConfiguration = () => {
   compilerPersistLlvmIr = compilerConfig.get('persistLlvmIr', 'auto');
   compilerOptLevel = compilerConfig.get('optLevel', 'default');
   compilerEmitLlvmIr = compilerConfig.get('emitLlvmIr', false);
+  compilerEmitOptimizedLlvmIr = compilerConfig.get('emitOptimizedLlvmIr', false);
   compilerBuildDir = compilerConfig.get('buildDir', '');
   compilerBuildRoot = compilerConfig.get('buildRoot', '');
   compilerBuildFolderName = compilerConfig.get('buildFolderName', '');
+  compilerKeepResources = compilerConfig.get('keepResources', false);
+  compilerResourceDir = compilerConfig.get('resourceDir', '');
   compilerCpuBaseline = compilerConfig.get('cpuBaseline', 'default');
   compilerCpuTune = compilerConfig.get('cpuTune', '');
   compilerCpuFeatureCheck = compilerConfig.get('cpuFeatureCheck', 'default');
@@ -3632,6 +4721,18 @@ const isSemanticScriptDocument = (document) => (
 const isBuildTapePath = (filePath) => {
   const baseName = path.basename(filePath || '').toLowerCase();
   return baseName === 'build.sem' || baseName === 'build.sscript';
+};
+
+const unquoteToken = (text) => {
+  if (!text || text.length < 2 || text[0] !== '"' || text[text.length - 1] !== '"') {
+    return text;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return text.slice(1, -1);
+  }
 };
 
 const findNearestBuildTapePath = (startPath) => {
@@ -3667,6 +4768,86 @@ const projectRootForDocument = (document) => {
     return path.dirname(buildTapePath);
   }
   return document && document.fileName ? path.dirname(document.fileName) : undefined;
+};
+
+const buildTapeModuleRegistry = (buildTapePath) => {
+  const registry = new Map();
+
+  if (!buildTapePath || !fs.existsSync(buildTapePath)) {
+    return registry;
+  }
+
+  const buildTapeDirectory = path.dirname(buildTapePath);
+  const lines = fs.readFileSync(buildTapePath, 'utf8').split(/\r?\n/);
+
+  lines.forEach((lineText) => {
+    const tokens = tokenizeLine(lineText);
+    const verb = tokenAt(tokens, 0);
+
+    if ((verb === 'registerModule' || verb === 'moduleFolder') && tokens[2] && tokens[3]) {
+      registry.set(
+        tokenText(tokens, 2),
+        path.resolve(buildTapeDirectory, unquoteToken(tokenText(tokens, 3)))
+      );
+    }
+  });
+
+  return registry;
+};
+
+const semanticScriptFileLocation = (filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+
+  let targetLine = 0;
+
+  try {
+    const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+    const declarationLine = lines.findIndex((lineText) => {
+      const trimmed = lineText.trim();
+      return trimmed.startsWith('module ') || trimmed.startsWith('project ') || trimmed.startsWith('buildProject ');
+    });
+
+    if (declarationLine >= 0) {
+      targetLine = declarationLine;
+    }
+  } catch (_error) {
+    targetLine = 0;
+  }
+
+  return new vscode.Location(vscode.Uri.file(filePath), new vscode.Position(targetLine, 0));
+};
+
+const buildTapeDefinitionForToken = (document, tokens, tokenIndex) => {
+  const buildTapePath = findNearestBuildTapePath(document.fileName);
+
+  if (!buildTapePath) {
+    return null;
+  }
+
+  const verb = tokenAt(tokens, 0);
+  const buildTapeDirectory = path.dirname(buildTapePath);
+  const moduleRegistry = buildTapeModuleRegistry(buildTapePath);
+
+  if ((verb === 'registerModule' || verb === 'moduleFolder') && tokens[2] && tokens[3]) {
+    const sourcePath = path.resolve(buildTapeDirectory, unquoteToken(tokenText(tokens, 3)));
+
+    if (tokenIndex === 2 || tokenIndex === 3) {
+      return semanticScriptFileLocation(sourcePath);
+    }
+  }
+
+  if (verb === 'mainFile' && tokenIndex === 2) {
+    const sourcePath = path.resolve(buildTapeDirectory, unquoteToken(tokenText(tokens, 2)));
+    return semanticScriptFileLocation(sourcePath);
+  }
+
+  if ((verb === 'import' || verb === 'importModule') && tokenIndex === importModulePathIndex(tokens)) {
+    return semanticScriptFileLocation(moduleRegistry.get(tokenText(tokens, importModulePathIndex(tokens))));
+  }
+
+  return null;
 };
 
 const documentUsesFutureSyntax = (document) => {
@@ -3808,7 +4989,67 @@ const semlintMessage = (record) => {
   return parts.join(' - ') || 'SemanticScript lint diagnostic';
 };
 
-const diagnosticFromSemlintRecord = (document, record) => {
+const linterRecordKey = (record) => {
+  const primary = record && record.primary ? record.primary : {};
+  return [
+    record.code || '',
+    record.kind || '',
+    primary.path || '',
+    primary.line || 0,
+    primary.column || 0,
+  ].join(':');
+};
+
+const resolveLinterRecordPath = (document, lintCwd, recordPath) => {
+  if (!recordPath) {
+    return null;
+  }
+
+  if (path.isAbsolute(recordPath)) {
+    return recordPath;
+  }
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  const candidates = [
+    lintCwd ? path.resolve(lintCwd, recordPath) : null,
+    workspaceFolder ? path.resolve(workspaceFolder.uri.fsPath, recordPath) : null,
+    path.resolve(path.dirname(document.fileName), recordPath),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0] || null;
+};
+
+const relatedInformationFromSemlintRecord = (document, record, lintCwd) => {
+  const relatedSpans = Array.isArray(record.related) ? record.related : [];
+
+  return relatedSpans.map((span) => {
+    const absolutePath = resolveLinterRecordPath(document, lintCwd, span.path);
+
+    if (!absolutePath || !fs.existsSync(absolutePath)) {
+      return null;
+    }
+
+    const lineIndex = Math.max(0, (span.line || 1) - 1);
+    const characterIndex = Math.max(0, (span.column || 1) - 1);
+    const location = new vscode.Location(
+      vscode.Uri.file(absolutePath),
+      new vscode.Position(lineIndex, characterIndex)
+    );
+
+    return new vscode.DiagnosticRelatedInformation(
+      location,
+      span.role || 'related SemanticScript source'
+    );
+  }).filter(Boolean);
+};
+
+const diagnosticFromSemlintRecord = (document, record, lintCwd) => {
   const primary = record.primary || {};
   const diagnostic = new vscode.Diagnostic(
     diagnosticRange(document, primary.line, primary.column),
@@ -3817,6 +5058,8 @@ const diagnosticFromSemlintRecord = (document, record) => {
   );
   diagnostic.source = 'semlint';
   diagnostic.code = record.code || undefined;
+  diagnostic.relatedInformation = relatedInformationFromSemlintRecord(document, record, lintCwd);
+  diagnostic._semanticScriptRecordKey = linterRecordKey(record);
   return diagnostic;
 };
 
@@ -3831,32 +5074,39 @@ const diagnosticFromSimpleSemlintRecord = (document, record) => {
   return diagnostic;
 };
 
-const parseLinterDiagnostics = (document, stdout) => {
+const parseLinterDiagnostics = (document, stdout, lintCwd) => {
   let records;
 
   try {
     records = JSON.parse(stdout || '[]');
   } catch (_error) {
-    return [
-      new vscode.Diagnostic(
-        new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
-        `${linterEngine} returned invalid JSON diagnostics.`,
-        vscode.DiagnosticSeverity.Error
-      ),
-    ];
+    return {
+      diagnostics: [
+        new vscode.Diagnostic(
+          new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
+          `${linterEngine} returned invalid JSON diagnostics.`,
+          vscode.DiagnosticSeverity.Error
+        ),
+      ],
+      recordsByKey: new Map(),
+    };
   }
 
   if (!Array.isArray(records)) {
-    return [];
+    return { diagnostics: [], recordsByKey: new Map() };
   }
 
-  return records.map((record) => {
+  const recordsByKey = new Map();
+  const diagnostics = records.map((record) => {
     if (record && record.primary) {
-      return diagnosticFromSemlintRecord(document, record);
+      recordsByKey.set(linterRecordKey(record), record);
+      return diagnosticFromSemlintRecord(document, record, lintCwd);
     }
 
     return diagnosticFromSimpleSemlintRecord(document, record || {});
   });
+
+  return { diagnostics, recordsByKey };
 };
 
 const setLinterStatus = (text, tooltip) => {
@@ -3886,12 +5136,13 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     return;
   }
 
+  const documentKey = document.uri.toString();
+
   if (!linterEnabled) {
     diagnosticCollection.delete(document.uri);
+    lintRecordCache.delete(documentKey);
     return;
   }
-
-  const documentKey = document.uri.toString();
   const existingProcess = runningLintProcesses.get(documentKey);
 
   if (existingProcess) {
@@ -3901,6 +5152,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   if (linterSkipFutureSyntax && linterEngine === 'semlint' && documentUsesFutureSyntax(document)) {
     diagnosticCollection.delete(document.uri);
+    lintRecordCache.delete(documentKey);
     setLinterStatus('$(info) SemanticScript future syntax', 'stable semlint is skipped for refined future syntax.');
     clearLinterStatusLater();
     return;
@@ -3910,6 +5162,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   if (!linterPath) {
     diagnosticCollection.delete(document.uri);
+    lintRecordCache.delete(documentKey);
 
     if (showMissingLinterMessage) {
       vscode.window.showWarningMessage(
@@ -3922,14 +5175,15 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   setLinterStatus('$(sync~spin) SemanticScript lint', document.fileName);
   const linterArgs = [linterPath, document.fileName, '--format', 'json'];
+  const linterCwd = projectRootForDocument(document)
+    || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+    || path.dirname(document.fileName);
 
   const lintProcess = childProcess.spawn(
     linterPythonPath,
     linterArgs,
     {
-      cwd: projectRootForDocument(document)
-        || vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-        || path.dirname(document.fileName),
+      cwd: linterCwd,
       windowsHide: true,
     }
   );
@@ -3949,6 +5203,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
 
   lintProcess.on('error', (error) => {
     runningLintProcesses.delete(documentKey);
+    lintRecordCache.delete(documentKey);
     diagnosticCollection.set(document.uri, [
       new vscode.Diagnostic(
         new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
@@ -3968,6 +5223,7 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
     runningLintProcesses.delete(documentKey);
 
     if (stderr.trim() && !stdout.trim()) {
+      lintRecordCache.delete(documentKey);
       diagnosticCollection.set(document.uri, [
         new vscode.Diagnostic(
           new vscode.Range(0, 0, 0, Math.max(1, document.lineAt(0).text.length)),
@@ -3980,7 +5236,8 @@ const runLinterForDocument = (document, showMissingLinterMessage = false) => {
       return;
     }
 
-    const diagnostics = parseLinterDiagnostics(document, stdout);
+    const { diagnostics, recordsByKey } = parseLinterDiagnostics(document, stdout, linterCwd);
+    lintRecordCache.set(documentKey, { cwd: linterCwd, recordsByKey });
     diagnosticCollection.set(document.uri, diagnostics);
 
     if (diagnostics.length > 0) {
@@ -4011,6 +5268,56 @@ const scheduleLinterRun = (document, delayMilliseconds = 350) => {
   }, delayMilliseconds));
 };
 
+const codeActionsFromSemlintDiagnostic = (document, diagnostic) => {
+  const cacheEntry = lintRecordCache.get(document.uri.toString());
+
+  if (!cacheEntry || !diagnostic || diagnostic.source !== 'semlint' || !diagnostic._semanticScriptRecordKey) {
+    return [];
+  }
+
+  const record = cacheEntry.recordsByKey.get(diagnostic._semanticScriptRecordKey);
+
+  if (!record || !record.primary || !Array.isArray(record.fixCandidates)) {
+    return [];
+  }
+
+  const primaryPath = resolveLinterRecordPath(document, cacheEntry.cwd, record.primary.path);
+
+  if (
+    !primaryPath
+    || path.normalize(primaryPath).toLowerCase() !== path.normalize(document.fileName).toLowerCase()
+  ) {
+    return [];
+  }
+
+  const lineIndex = Math.max(0, Math.min(document.lineCount - 1, (record.primary.line || 1) - 1));
+  const line = document.lineAt(lineIndex);
+  const indentation = line.text.match(/^\s*/)?.[0] || '';
+  let preferredAssigned = false;
+
+  return record.fixCandidates.flatMap((fixCandidate) => {
+    if (!fixCandidate.autoApplicable || typeof fixCandidate.shape !== 'string' || fixCandidate.shape.includes('\n')) {
+      return [];
+    }
+
+    const action = new vscode.CodeAction(
+      `SemanticScript: ${fixCandidate.name}`,
+      vscode.CodeActionKind.QuickFix
+    );
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(document.uri, line.range, `${indentation}${fixCandidate.shape.trim()}`);
+    action.edit = edit;
+    action.diagnostics = [diagnostic];
+
+    if (!preferredAssigned) {
+      action.isPreferred = true;
+      preferredAssigned = true;
+    }
+
+    return [action];
+  });
+};
+
 const registerLinter = (context) => {
   diagnosticCollection = vscode.languages.createDiagnosticCollection('semlint');
   lintStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -4029,6 +5336,22 @@ const registerLinter = (context) => {
 
       runLinterForDocument(editor.document, true);
     })
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { language: 'semanticscript' },
+      {
+        provideCodeActions(document, _range, contextForActions) {
+          return contextForActions.diagnostics.flatMap((diagnostic) => (
+            codeActionsFromSemlintDiagnostic(document, diagnostic)
+          ));
+        },
+      },
+      {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+      }
+    )
   );
 
   context.subscriptions.push(
@@ -4051,6 +5374,7 @@ const registerLinter = (context) => {
     vscode.workspace.onDidCloseTextDocument((document) => {
       diagnosticCollection.delete(document.uri);
       const key = document.uri.toString();
+      lintRecordCache.delete(key);
       const existingTimeout = lintUpdateTimeouts.get(key);
 
       if (existingTimeout) {
@@ -4203,6 +5527,10 @@ const runCompilerForDocument = async (document) => {
     args.push('--emit-ir');
   }
 
+  if (compilerEmitOptimizedLlvmIr) {
+    args.push('--emit-optimized-ir');
+  }
+
   if (compilerCpuBaseline !== 'default') {
     args.push('--cpu-baseline', compilerCpuBaseline);
   }
@@ -4224,6 +5552,14 @@ const runCompilerForDocument = async (document) => {
     if (compilerBuildFolderName) {
       args.push('--build-folder-name', compilerBuildFolderName);
     }
+  }
+
+  if (compilerKeepResources) {
+    args.push('--keep-resources');
+  }
+
+  if (compilerResourceDir) {
+    args.push('--resource-dir', compilerResourceDir);
   }
 
   compilerOutputChannel.clear();
@@ -4354,6 +5690,7 @@ const activate = (context) => {
 
         if (!linterEnabled && diagnosticCollection) {
           diagnosticCollection.clear();
+          lintRecordCache.clear();
         } else if (linterRunMode !== 'manual') {
           vscode.workspace.textDocuments.forEach((document) => scheduleLinterRun(document, 100));
         }
@@ -4371,6 +5708,7 @@ const deactivate = () => {
   runningLintProcesses.clear();
   lintUpdateTimeouts.forEach((timeoutHandle) => clearTimeout(timeoutHandle));
   lintUpdateTimeouts.clear();
+  lintRecordCache.clear();
   disposeDecorations();
 };
 

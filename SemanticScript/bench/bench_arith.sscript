@@ -5,94 +5,94 @@ runtime AgentRuntime 0.1
 entry console main
 
 error MainError
-errorCase MainError ConsoleWriteFailed CSignedInt32
+errorCase MainError ConsoleWriteFailed Int32
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main read clock.cpu
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Pure-codegen benchmark with a Fibonacci-style data-dependency chain; each iteration depends on the previous two values so the loop cannot be folded"
-invariant main "Each iteration performs exactly one addition and two register-to-register moves"
+purpose operation main "Pure-codegen benchmark with a Fibonacci-style data-dependency chain; each iteration depends on the previous two values so the loop cannot be folded"
+invariant operation main "Each iteration performs exactly one addition and two register-to-register moves"
 
 label startMain
 
-const iterationLimit I64 200000000
-const iterationStep I64 1
-const fibonacciInitialPreviousValue I64 1
-const fibonacciInitialCurrentValue I64 1
+storage module immutable iterationLimit Int64 200000000
+storage module immutable iterationStep Int64 1
+storage module immutable fibonacciInitialPreviousValue Int64 1
+storage module immutable fibonacciInitialCurrentValue Int64 1
 
-var currentIteration I64 0
-var fibonacciPreviousValue I64 fibonacciInitialPreviousValue
-var fibonacciCurrentValue I64 fibonacciInitialCurrentValue
+memory main mutable currentIteration Int64 0
+memory main mutable fibonacciPreviousValue Int64 fibonacciInitialPreviousValue
+memory main mutable fibonacciCurrentValue Int64 fibonacciInitialCurrentValue
 
 call startClockCall c.clock
 run startClockCall
-bind startClockTicks CCpuClockTicks startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
 
 label arithLoopHead
 
-call shouldContinueCmpCall math.lessThanI64
-arg shouldContinueCmpCall left currentIteration
-arg shouldContinueCmpCall right iterationLimit
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
 run shouldContinueCmpCall
-bind arithShouldContinue Bool shouldContinueCmpCall
-branchIf arithShouldContinue arithLoopBody
-branch arithFinished
+bind value arithShouldContinue Bool shouldContinueCmpCall
+branch if condition arithShouldContinue target arithLoopBody
+branch else target arithFinished
 
 label arithLoopBody
 
 # next = a + b
-call fibonacciAdvanceCall math.addI64
-arg fibonacciAdvanceCall left fibonacciPreviousValue
-arg fibonacciAdvanceCall right fibonacciCurrentValue
+call fibonacciAdvanceCall math.addInt64
+argument fibonacciAdvanceCall left Int64 fibonacciPreviousValue
+argument fibonacciAdvanceCall right Int64 fibonacciCurrentValue
 run fibonacciAdvanceCall
-bind fibonacciNextValue I64 fibonacciAdvanceCall
+bind value fibonacciNextValue Int64 fibonacciAdvanceCall
 
 # a = b
-set fibonacciPreviousValue fibonacciCurrentValue
+set memory fibonacciPreviousValue fibonacciCurrentValue
 # b = next
-set fibonacciCurrentValue fibonacciNextValue
+set memory fibonacciCurrentValue fibonacciNextValue
 
 # i = i + 1
-call incrementCall math.addI64
-arg incrementCall left currentIteration
-arg incrementCall right iterationStep
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
 run incrementCall
-bind nextIteration I64 incrementCall
-set currentIteration nextIteration
-branch arithLoopHead
+bind value nextIteration Int64 incrementCall
+set memory currentIteration nextIteration
+jump target arithLoopHead
 
 label arithFinished
 
 call endClockCall c.clock
 run endClockCall
-bind endClockTicks CCpuClockTicks endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
 
-call elapsedTicksCall math.subtractI64
-arg elapsedTicksCall left endClockTicks
-arg elapsedTicksCall right startClockTicks
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
 run elapsedTicksCall
-bind elapsedClockTicks I64 elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
 
-const reportFormatText CNullTerminatedByteString "iterations=%lld accumulator=%lld clockTicks=%lld\n"
+storage module immutable reportFormatText String "iterations=%lld accumulator=%lld clockTicks=%lld\n"
 call reportCall c.printf
-arg reportCall format reportFormatText
-arg reportCall iterations iterationLimit
-arg reportCall accumulator fibonacciCurrentValue
-arg reportCall ticks elapsedClockTicks
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Int64 fibonacciCurrentValue
+argument reportCall ticks Int64 elapsedClockTicks
 run reportCall
-ignoreOk reportCall Void
-bindError reportError CSignedInt32 reportCall
-branchIfError reportCall reportWriteFailed
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target reportWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label reportWriteFailed
 makeError reportWriteFailure MainError.ConsoleWriteFailed reportError
-returnError reportWriteFailure
+return error reportWriteFailure

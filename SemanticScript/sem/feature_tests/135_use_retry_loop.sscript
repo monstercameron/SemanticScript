@@ -1,46 +1,45 @@
 # expect.stdout: 0\n
 # expect.exit: 0
-# expect.xfail: feature_coverage.py runs through bootstrap_general.sscript which does not yet wrap a `run CALL` in a retry loop when `useRetry CALL POLICY` attaches a policy. Direct semsc.py compilation works correctly (`python compiler/semsc.py THIS_FILE --emit-exe /tmp/x.exe && /tmp/x.exe` prints `0\n` because the retry loop runs the call 3 times until the counter walks from -3 to 0). Closing means teaching bootstrap_general to emit retry_top/body/inc/exit blocks around `run` when the call has a policy attached.
 project UseRetryLoop
 target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
 errorCase MainError CallFailed CallError
-const oneStep I64 1
-const negativeThreeStart I64 -3
-storage module mutable retryProgressCounter I64 negativeThreeStart
+storage module immutable oneStep Int64 1
+storage module immutable negativeThreeStart Int64 -3
+storage module mutable retryProgressCounter Int64 negativeThreeStart
 retryPolicy fiveAttemptRetryPolicy
 retryMaxAttempts fiveAttemptRetryPolicy 5
 operation incrementAndReportProgress
-input incrementAndReportProgress unusedTrigger I64
-output incrementAndReportProgress I64
-call incrementProgressCall math.addI64
-arg incrementProgressCall left retryProgressCounter
-arg incrementProgressCall right oneStep
+input operation incrementAndReportProgress unusedTrigger Int64
+output operation incrementAndReportProgress Int64
+call incrementProgressCall math.addInt64
+argument incrementProgressCall left Int64 retryProgressCounter
+argument incrementProgressCall right Int64 oneStep
 run incrementProgressCall
-bind nextProgressValue I64 incrementProgressCall
-set module retryProgressCounter nextProgressValue
-returnValue nextProgressValue
+bind value nextProgressValue Int64 incrementProgressCall
+set storage retryProgressCounter nextProgressValue
+return value nextProgressValue
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "useRetry retries while the call returns a negative value; counter walks -2 -> -1 -> 0; result of the successful attempt prints."
-invariant main "Without retry, output would be -2 after a single attempt. With retry, the loop runs 3 times until the call returns 0 (not negative)."
+purpose operation main "useRetry retries while the call returns a negative value; counter walks -2 -> -1 -> 0; result of the successful attempt prints."
+invariant operation main "Without retry, output would be -2 after a single attempt. With retry, the loop runs 3 times until the call returns 0 (not negative)."
 label startMain
-const zeroValue I64 0
+storage module immutable zeroValue Int64 0
 useRetry retryHelperCall fiveAttemptRetryPolicy
 call retryHelperCall incrementAndReportProgress
-arg retryHelperCall unusedTrigger zeroValue
+argument retryHelperCall unusedTrigger Int64 zeroValue
 run retryHelperCall
-bind finalProgressResult I64 retryHelperCall
+bind value finalProgressResult Int64 retryHelperCall
 call printResultCall console.writeIntegerLine
-arg printResultCall console console
-arg printResultCall value finalProgressResult
+argument printResultCall console Console console
+argument printResultCall value Int64 finalProgressResult
 run printResultCall
-ignoreOk printResultCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source printResultCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

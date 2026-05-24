@@ -5,24 +5,24 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Smoke: every channel / lock / interval / select / worker-pool body verb compiles to runnable IR (synchronous no-op lowering)."
-invariant main "Exits 0 and prints 'ok'."
+purpose operation main "Smoke: every channel / lock / interval / select / worker-pool body verb compiles to runnable IR (synchronous no-op lowering)."
+invariant operation main "Exits 0 and prints 'ok'."
 label startMain
 
-const zeroVal I64 0
+storage module immutable zeroVal Int64 0
 
 # Channels (spec §22): synchronous-only no-op lowering. `receive` registers
 # its OUT name as a zero bind.
 send myChannel zeroVal
-receive recvVal I64 myChannel
+receive recvVal Int64 myChannel
 branchIfChannelClosed myChannel done
 
 # Locks (spec §22): drop.
@@ -47,17 +47,17 @@ selectCase chooser foo barBranch
 runSelect chooser
 branchSelected chooser foo barBranch
 
-branch done
+jump target done
 
 label barBranch
-branch done
+jump target done
 
 label done
-const okText CNullTerminatedByteString "ok"
+storage module immutable okText String "ok"
 call writeCall console.writeLine
-arg writeCall console console
-arg writeCall text okText
+argument writeCall console Console console
+argument writeCall text String okText
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

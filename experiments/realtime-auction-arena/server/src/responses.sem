@@ -1,0 +1,349 @@
+module app.realtime_auction_arena.server.responses
+purpose module app.realtime_auction_arena.server.responses "Compile-time-validated JSON response envelopes for the Realtime Auction Arena server scaffold."
+moduleOwns app.realtime_auction_arena.server.responses "Static API envelope bodies used by executable registered-route handlers."
+moduleDoesNotOwn app.realtime_auction_arena.server.responses "HTTP route dispatch, response header writing, dynamic JSON builders, or request-specific request-id substitution."
+invariant module app.realtime_auction_arena.server.responses "Every exported body is declared as JsonText and validated with jsonBody rather than embedded as an escaped byte string in route code."
+
+import json standard.json
+import http standard.http
+
+exportConstant app.realtime_auction_arena.server.responses healthEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses readyEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses apiIndexEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses authLoginSuccessEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses payloadTooLargeEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses unsupportedMediaTypeEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses missingIdempotencyKeyEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses idempotencyConflictEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses authRefreshSuccessEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses authLogoutSuccessEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses unauthorizedEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses auctionsListEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses auctionCreateForbiddenEnvelopeJson
+exportConstant app.realtime_auction_arena.server.responses apiNotFoundEnvelopeJson
+exportOperation app.realtime_auction_arena.server.responses getHealthEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getReadyEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getApiIndexEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getAuthLoginSuccessEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getPayloadTooLargeEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getUnsupportedMediaTypeEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getMissingIdempotencyKeyEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getIdempotencyConflictEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getAuthRefreshSuccessEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getAuthLogoutSuccessEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getUnauthorizedEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getAuctionsListEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getAuctionCreateForbiddenEnvelopeBody
+exportOperation app.realtime_auction_arena.server.responses getApiNotFoundEnvelopeBody
+
+storage module immutable healthEnvelopeJson JsonText
+jsonBody healthEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "status": "ok",
+          "service": "realtime-auction-arena"
+      },
+      "error": null
+  }
+
+storage module immutable readyEnvelopeJson JsonText
+jsonBody readyEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "ready": true,
+          "database": "schema_plan_declared",
+          "runtime": "native_http_exact_routes"
+      },
+      "error": null
+  }
+
+storage module immutable apiIndexEnvelopeJson JsonText
+jsonBody apiIndexEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "routes": [
+              "POST /api/v1/auth/login",
+              "POST /api/v1/auth/refresh",
+              "POST /api/v1/auth/logout",
+              "GET /api/v1/session",
+              "GET /api/v1/auctions",
+              "POST /api/v1/auctions",
+              "GET /api/v1/auctions/:auctionId",
+              "POST /api/v1/auctions/:auctionId/bids",
+              "GET /api/v1/auctions/:auctionId/events"
+          ]
+      },
+      "error": null
+  }
+
+storage module immutable authLoginSuccessEnvelopeJson JsonText
+jsonBody authLoginSuccessEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "tokenType": "Bearer",
+          "accessToken": "hs256.jwt.token",
+          "expiresInSeconds": 900,
+          "refreshToken": "dynamic_opaque_refresh_token"
+      },
+      "error": null
+  }
+
+storage module immutable payloadTooLargeEnvelopeJson JsonText
+jsonBody payloadTooLargeEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "payload_too_large",
+          "message": "Request body exceeds the 65536 byte limit",
+          "details": {}
+      }
+  }
+
+storage module immutable unsupportedMediaTypeEnvelopeJson JsonText
+jsonBody unsupportedMediaTypeEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "unsupported_media_type",
+          "message": "JSON write routes require Content-Type application/json",
+          "details": {
+              "contentType": "application/json"
+          }
+      }
+  }
+
+storage module immutable missingIdempotencyKeyEnvelopeJson JsonText
+jsonBody missingIdempotencyKeyEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "missing_idempotency_key",
+          "message": "Command routes require an Idempotency-Key header",
+          "details": {
+              "header": "Idempotency-Key"
+          }
+      }
+  }
+
+storage module immutable idempotencyConflictEnvelopeJson JsonText
+jsonBody idempotencyConflictEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "idempotency_conflict",
+          "message": "The Idempotency-Key was already used with a different request body",
+          "details": {
+              "header": "Idempotency-Key"
+          }
+      }
+  }
+
+storage module immutable authRefreshSuccessEnvelopeJson JsonText
+jsonBody authRefreshSuccessEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "tokenType": "Bearer",
+          "accessToken": "hs256.jwt.token",
+          "expiresInSeconds": 900,
+          "refreshToken": "dynamic_opaque_refresh_token",
+          "rotated": true
+      },
+      "error": null
+  }
+
+storage module immutable authLogoutSuccessEnvelopeJson JsonText
+jsonBody authLogoutSuccessEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "loggedOut": true,
+          "revoked": "process_local_demo_session"
+      },
+      "error": null
+  }
+
+storage module immutable unauthorizedEnvelopeJson JsonText
+jsonBody unauthorizedEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "unauthorized",
+          "message": "Authentication is required",
+          "details": {
+              "auth": "Bearer access token from POST /api/v1/auth/login"
+          }
+      }
+  }
+
+storage module immutable auctionsListEnvelopeJson JsonText
+jsonBody auctionsListEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": true,
+      "data": {
+          "auctions": [],
+          "source": "scaffold"
+      },
+      "error": null
+  }
+
+storage module immutable auctionCreateForbiddenEnvelopeJson JsonText
+jsonBody auctionCreateForbiddenEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "forbidden",
+          "message": "Auction creation requires admin or auctioneer role",
+          "details": {
+              "roles": ["admin", "auctioneer"]
+          }
+      }
+  }
+
+storage module immutable apiNotFoundEnvelopeJson JsonText
+jsonBody apiNotFoundEnvelopeJson
+  {
+      "apiVersion": "v1",
+      "requestId": "req_runtime_header_unavailable",
+      "ok": false,
+      "data": null,
+      "error": {
+          "code": "not_found",
+          "message": "No API route matched the request",
+          "details": {}
+      }
+  }
+
+operation getHealthEnvelopeBody
+output operation getHealthEnvelopeBody JsonText
+memory getHealthEnvelopeBody heap no
+async getHealthEnvelopeBody no
+purpose operation getHealthEnvelopeBody "Return the validated health envelope body for a route-local bind."
+return value healthEnvelopeJson
+
+operation getReadyEnvelopeBody
+output operation getReadyEnvelopeBody JsonText
+memory getReadyEnvelopeBody heap no
+async getReadyEnvelopeBody no
+purpose operation getReadyEnvelopeBody "Return the validated readiness envelope body for a route-local bind."
+return value readyEnvelopeJson
+
+operation getApiIndexEnvelopeBody
+output operation getApiIndexEnvelopeBody JsonText
+memory getApiIndexEnvelopeBody heap no
+async getApiIndexEnvelopeBody no
+purpose operation getApiIndexEnvelopeBody "Return the validated API-index envelope body for a route-local bind."
+return value apiIndexEnvelopeJson
+
+operation getAuthLoginSuccessEnvelopeBody
+output operation getAuthLoginSuccessEnvelopeBody JsonText
+memory getAuthLoginSuccessEnvelopeBody heap no
+async getAuthLoginSuccessEnvelopeBody no
+purpose operation getAuthLoginSuccessEnvelopeBody "Return the validated auth login success envelope body for a route-local bind."
+return value authLoginSuccessEnvelopeJson
+
+operation getPayloadTooLargeEnvelopeBody
+output operation getPayloadTooLargeEnvelopeBody JsonText
+memory getPayloadTooLargeEnvelopeBody heap no
+async getPayloadTooLargeEnvelopeBody no
+purpose operation getPayloadTooLargeEnvelopeBody "Return the validated payload-too-large envelope body for a route-local bind."
+return value payloadTooLargeEnvelopeJson
+
+operation getUnsupportedMediaTypeEnvelopeBody
+output operation getUnsupportedMediaTypeEnvelopeBody JsonText
+memory getUnsupportedMediaTypeEnvelopeBody heap no
+async getUnsupportedMediaTypeEnvelopeBody no
+purpose operation getUnsupportedMediaTypeEnvelopeBody "Return the validated unsupported-media-type envelope body for JSON write-route guards."
+return value unsupportedMediaTypeEnvelopeJson
+
+operation getMissingIdempotencyKeyEnvelopeBody
+output operation getMissingIdempotencyKeyEnvelopeBody JsonText
+memory getMissingIdempotencyKeyEnvelopeBody heap no
+async getMissingIdempotencyKeyEnvelopeBody no
+purpose operation getMissingIdempotencyKeyEnvelopeBody "Return the validated missing-idempotency-key envelope body for command-route guards."
+return value missingIdempotencyKeyEnvelopeJson
+
+operation getIdempotencyConflictEnvelopeBody
+output operation getIdempotencyConflictEnvelopeBody JsonText
+memory getIdempotencyConflictEnvelopeBody heap no
+async getIdempotencyConflictEnvelopeBody no
+purpose operation getIdempotencyConflictEnvelopeBody "Return the validated idempotency-conflict envelope body for replay protection."
+return value idempotencyConflictEnvelopeJson
+
+operation getAuthRefreshSuccessEnvelopeBody
+output operation getAuthRefreshSuccessEnvelopeBody JsonText
+memory getAuthRefreshSuccessEnvelopeBody heap no
+async getAuthRefreshSuccessEnvelopeBody no
+purpose operation getAuthRefreshSuccessEnvelopeBody "Return the validated auth refresh success envelope body for a route-local bind."
+return value authRefreshSuccessEnvelopeJson
+
+operation getAuthLogoutSuccessEnvelopeBody
+output operation getAuthLogoutSuccessEnvelopeBody JsonText
+memory getAuthLogoutSuccessEnvelopeBody heap no
+async getAuthLogoutSuccessEnvelopeBody no
+purpose operation getAuthLogoutSuccessEnvelopeBody "Return the validated auth logout success envelope body for a route-local bind."
+return value authLogoutSuccessEnvelopeJson
+
+operation getUnauthorizedEnvelopeBody
+output operation getUnauthorizedEnvelopeBody JsonText
+memory getUnauthorizedEnvelopeBody heap no
+async getUnauthorizedEnvelopeBody no
+purpose operation getUnauthorizedEnvelopeBody "Return the validated unauthorized envelope body for a route-local bind."
+return value unauthorizedEnvelopeJson
+
+operation getAuctionsListEnvelopeBody
+output operation getAuctionsListEnvelopeBody JsonText
+memory getAuctionsListEnvelopeBody heap no
+async getAuctionsListEnvelopeBody no
+purpose operation getAuctionsListEnvelopeBody "Return the validated auctions-list envelope body for a route-local bind."
+return value auctionsListEnvelopeJson
+
+operation getAuctionCreateForbiddenEnvelopeBody
+output operation getAuctionCreateForbiddenEnvelopeBody JsonText
+memory getAuctionCreateForbiddenEnvelopeBody heap no
+async getAuctionCreateForbiddenEnvelopeBody no
+purpose operation getAuctionCreateForbiddenEnvelopeBody "Return the validated auction-create forbidden envelope body for a route-local bind."
+return value auctionCreateForbiddenEnvelopeJson
+
+operation getApiNotFoundEnvelopeBody
+output operation getApiNotFoundEnvelopeBody JsonText
+memory getApiNotFoundEnvelopeBody heap no
+async getApiNotFoundEnvelopeBody no
+purpose operation getApiNotFoundEnvelopeBody "Return the validated API not-found envelope body for a route-local bind."
+return value apiNotFoundEnvelopeJson

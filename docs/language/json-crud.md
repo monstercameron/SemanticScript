@@ -3,7 +3,7 @@
 `standard.json` is the public contract module for JSON values. Import it with:
 
 ```semanticscript
-importModule json standard.json
+import json standard.json
 ```
 
 The current executable implementation includes the legacy builder and flat
@@ -11,7 +11,7 @@ finder calls, the `standard.json` type/error/enum contracts, JsonText-backed
 `jsonBody` literals, and primitive `json.stringify` / `json.parse` aliases
 that rewrite to the legacy primitive encode/decode lowering. Full document
 CRUD lowering, Result-shaped stringify/parse errors, and record-typed
-`jsonBody`/codec generation remain pending unless `SYNTAX.md` marks a specific
+`jsonBody`/codec generation remain pending unless `docs/reference/syntax-inventory.md` marks a specific
 row `Impl'd`.
 
 ## Types
@@ -40,7 +40,7 @@ structural edits invalidate affected descendant cursors:
 Object steps are `.fieldName`; array steps are `[index]`. Any other segment
 shape fails with `JsonAccessError.MalformedPath`.
 
-`JsonValueKind` is a `CSignedInt32` enum:
+`JsonValueKind` is a `Int32` enum:
 
 | Case | Value |
 | --- | ---: |
@@ -59,14 +59,14 @@ serialization, and mutators:
 
 ```semanticscript
 error JsonAccessError
-errorCase JsonAccessError PathNotFound CSignedInt32
-errorCase JsonAccessError WrongType CSignedInt32
-errorCase JsonAccessError IndexOutOfRange CSignedInt32
-errorCase JsonAccessError FieldNameTooLong CSignedInt32
-errorCase JsonAccessError DocumentNotMutable CSignedInt32
-errorCase JsonAccessError CapacityExceeded CSignedInt32
-errorCase JsonAccessError MalformedPath CSignedInt32
-errorCase JsonAccessError ScratchTooSmall CSignedInt32
+errorCase JsonAccessError PathNotFound Int32
+errorCase JsonAccessError WrongType Int32
+errorCase JsonAccessError IndexOutOfRange Int32
+errorCase JsonAccessError FieldNameTooLong Int32
+errorCase JsonAccessError DocumentNotMutable Int32
+errorCase JsonAccessError CapacityExceeded Int32
+errorCase JsonAccessError MalformedPath Int32
+errorCase JsonAccessError ScratchTooSmall Int32
 ```
 
 `JsonEncodeError` is reserved for `json.stringify.<TypeName>`:
@@ -82,12 +82,12 @@ Document lifecycle calls use ordinary call rows:
 
 ```semanticscript
 call createDocCall json.createDocument
-arg createDocCall jsonText requestBody
-arg createDocCall capacityBytes maxJsonBytes
+argument createDocCall jsonText JsonText requestBody
+argument createDocCall capacityBytes JsonCapacityBytes maxJsonBytes
 run createDocCall
-bindOk document JsonDocument createDocCall
-bindError accessError JsonAccessError createDocCall
-branchIfError createDocCall badJson
+bind ok document JsonDocument createDocCall
+bind error accessError JsonAccessError createDocCall
+branch error source createDocCall target badJson
 defer releaseDoc json.destroyDocument document
 ```
 
@@ -147,15 +147,15 @@ Delete and clear calls are:
 - `json.clearObject`
 - `json.clearArray`
 
-Mutators return a status compatible with `ignoreOk`, `bindError`, and
-`branchIfError`. Structural mutators must follow the cursor invalidation
+Mutators return a status compatible with `ignore ok`, `bind error`, and
+`branch error`. Structural mutators must follow the cursor invalidation
 contract above.
 
 ## jsonBody
 
-`jsonBody NAME` is the JSON counterpart to `htmlBody`: a column-0 row followed
-by an indented JSON island. It binds to a matching storage row with no inline
-value:
+`jsonBody NAME` is the JSON counterpart to `html body template`: a column-0 row
+followed by an indented JSON island. It binds to a matching storage row with no
+inline value:
 
 ```semanticscript
 storage module immutable healthBody JsonText
@@ -163,12 +163,13 @@ jsonBody healthBody
   {"ok":true}
 ```
 
-Current compiler support validates JsonText islands with Python's JSON parser,
-rejects non-standard constants, canonicalizes the value as compact JSON, and
-binds it as a null-terminated constant. Record-typed targets are recognized but
-rejected until generated record literal lowering exists; the intended record
-path will type-check fields, JSON name overrides, required fields,
-unknown-field policy, and omit-default metadata.
+Compiler support validates JsonText islands with Python's JSON parser, rejects
+non-standard constants, canonicalizes the value as compact JSON, and binds it
+as a null-terminated constant. Record-typed targets are type-checked at compile
+time: required fields must be present, unknown fields are rejected, field JSON
+name overrides are honored, nested records recurse through the same checks, and
+`recordFieldJsonOmitWhen` supplies the configured omitted-field defaults. The
+current emitted representation is the compiler's flattened record-slot model.
 
 ## Stringify And Parse
 
@@ -176,8 +177,15 @@ unknown-field policy, and omit-default metadata.
 typed entry points. They are intended to wrap the native document/builder
 surface instead of requiring handlers to assemble JSON with `c.snprintf`.
 
-Current primitive stringify/parse aliases dispatch to the existing primitive
-`json.encode.<TypeName>` / `json.decode.<TypeName>` lowering. Result-shaped
-`JsonEncodeError` / `JsonDecodeError` handling is not complete yet. Record
-stringify/parse is reserved for generated record codecs that honor
-`recordFieldJsonName`, `recordFieldJsonOmitWhen`, and `jsonCodecUnknownFields`.
+Primitive stringify/parse aliases use compiler glue only to allocate scratch
+and call native JSON helpers. `json.stringify.String` and
+`json.stringify.String` escape through native_json and fail
+with `JsonEncodeError.OutputBufferTooSmall` when the bounded scratch cannot
+hold the quoted value. Primitive `json.parse` targets reject malformed input
+and trailing junk with `JsonDecodeError.UnexpectedToken`; they no longer mark
+success unconditionally after libc default parsing. `JsonText` stringify copies
+through bounded scratch and `JsonText` parse validates syntax through the
+native document parser. Record stringify/parse walks record metadata and the
+native document runtime field by field, honoring `recordFieldJsonName`,
+`recordFieldJsonOmitWhen`, required fields, nested records, and wrong-type
+errors while exposing `JsonEncodeError` / `JsonDecodeError` at the call site.

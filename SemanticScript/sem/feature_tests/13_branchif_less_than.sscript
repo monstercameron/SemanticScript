@@ -7,40 +7,40 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "math.lessThanI64 + branchIf picks the less branch."
-invariant main "3 < 7 evaluates true."
+purpose operation main "math.lessThanInt64 + branchIf picks the less branch."
+invariant operation main "3 < 7 evaluates true."
 label startMain
-const threeInitial I64 3
-const sevenCompare I64 7
-var leftOp I64 threeInitial
-call ltCall math.lessThanI64
-arg ltCall left leftOp
-arg ltCall right sevenCompare
+storage module immutable threeInitial Int64 3
+storage module immutable sevenCompare Int64 7
+memory main mutable leftOp Int64 threeInitial
+call ltCall math.lessThanInt64
+argument ltCall left Int64 leftOp
+argument ltCall right Int64 sevenCompare
 run ltCall
-bind isLessThan Bool ltCall
-branchIf isLessThan lessLabel
-branch greaterEqualLabel
+bind value isLessThan Bool ltCall
+branch if condition isLessThan target lessLabel
+branch else target greaterEqualLabel
 label lessLabel
-const lessText CNullTerminatedByteString "less"
+storage module immutable lessText String "less"
 call writeLessCall console.writeLine
-arg writeLessCall console console
-arg writeLessCall text lessText
+argument writeLessCall console Console console
+argument writeLessCall text String lessText
 run writeLessCall
-ignoreOk writeLessCall Void
-branch endLabel
+ignore void source writeLessCall
+jump target endLabel
 label greaterEqualLabel
-const geText CNullTerminatedByteString "ge"
+storage module immutable geText String "ge"
 call writeGeCall console.writeLine
-arg writeGeCall console console
-arg writeGeCall text geText
+argument writeGeCall console Console console
+argument writeGeCall text String geText
 run writeGeCall
-ignoreOk writeGeCall Void
-branch endLabel
+ignore void source writeGeCall
+jump target endLabel
 label endLabel
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

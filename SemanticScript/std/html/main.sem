@@ -4,49 +4,39 @@
 #
 # Import this module with:
 #
-#   importModule html standard.html
+#   import html standard.html
 #
 # The template grammar itself is compiler-owned syntax:
 #
-#   htmlTemplate NAME
-#   htmlArg TEMPLATE ARG_NAME TYPE
-#   htmlBody TEMPLATE
-#     <p>{htmlArg.ARG_NAME}</p>
+#   html template NAME
+#   html body template TEMPLATE
+#     <p>{valueName}</p>
 #
 # Hydration is exposed through generated standard targets:
 #
 #   call hydrateCall html.hydrate.TemplateName
 #
-# This module owns the public standard-library namespace and trust-type
-# contracts for that syntax. The compiler owns parsing, sink-context checking,
-# escaping, buffer bounds, and code generation.
+# This module owns the public standard-library namespace and explicit fragment
+# contracts for that syntax. Plain dynamic holes use String. The compiler owns
+# parsing, sink-context checking, escaping, buffer bounds, and code generation.
 
 module standard.html
-modulePurpose standard.html "Standard-library namespace and trust contracts for first-class SemanticScript HTML templates."
-moduleOwns standard.html "The official import path `standard.html`, HTML trust-type contracts, and the `html.hydrate.TemplateName` generated-target namespace."
+purpose module standard.html "Standard-library namespace and fragment contracts for first-class SemanticScript HTML templates."
+moduleOwns standard.html "The official import path `standard.html`, explicit HTML fragment contracts, and the `html.hydrate.TemplateName` generated-target namespace."
 moduleDoesNotOwn standard.html "Application templates, page/component module boundaries, HTTP response writing, or the compiler's HTML parser and code generator."
-moduleInvariant standard.html "The standard module entry is this file; application modules import it as alias `html` before using generated targets in the `html.hydrate.*` namespace."
+invariant module standard.html "The standard module entry is this file; application modules import it as alias `html` before using generated targets in the `html.hydrate.*` namespace."
 
-type HtmlText CNullTerminatedByteString
-type HtmlClass CNullTerminatedByteString
-type SafeUrl CNullTerminatedByteString
-type HtmlFragment CNullTerminatedByteString
-type HtmlTrustedFragment CNullTerminatedByteString
-type HtmlDocument CNullTerminatedByteString
+type HtmlFragment String
+type HtmlTrustedFragment String
+type HtmlDocument String
 
-exportType standard.html HtmlText
-exportType standard.html HtmlClass
-exportType standard.html SafeUrl
 exportType standard.html HtmlFragment
 exportType standard.html HtmlTrustedFragment
 exportType standard.html HtmlDocument
 exportConstant standard.html htmlModuleVersionText
 
-typeInvariant HtmlText "Escaped text value safe for HTML text content and quoted attribute values during hydration."
-typeInvariant HtmlClass "Safe for an HTML class attribute; may contain a space-separated class list for composed UI states."
-typeInvariant SafeUrl "Trusted URL value safe for URL-bearing HTML attributes such as href, src, action, formaction, and poster."
 typeInvariant HtmlFragment "Hydrated HTML fragment inserted raw only into text-content positions where markup composition is intentional."
 typeInvariant HtmlTrustedFragment "Trusted HTML fragment inserted raw only into text-content positions where markup composition is intentional."
 typeInvariant HtmlDocument "Full hydrated HTML document value; suitable for console output or future HTML response writers."
 
-storage module immutable htmlModuleVersionText HtmlText "standard.html 0.1"
+storage module immutable htmlModuleVersionText String "standard.html 0.1"

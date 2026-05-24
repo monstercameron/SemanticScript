@@ -1,0 +1,138 @@
+# expect.stdout: sqlBodyRoundTripOk\n
+# expect.exit: 0
+#
+# Exercises `sql body` islands end-to-end through standard.sqlite.
+
+project SqlBodySqliteRoundTrip
+target console
+runtime AgentRuntime 0.1
+module sqlBodySqliteRoundTripModule
+entry console main
+
+import sqlite standard.sqlite
+
+error MainError
+errorCase MainError DatabaseOpenFailed SqliteDatabaseOpenFailure
+errorCase MainError DatabaseExecFailed SqliteDatabaseExecFailure
+errorCase MainError StatementPrepareFailed SqliteStatementPrepareFailure
+errorCase MainError StatementStepFailed SqliteStatementStepFailure
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+capability sqliteRoundTripDatabase database readWrite
+purpose operation sqliteRoundTripDatabase "Authority to open the in-memory sqlite database and exec the SQL body round trip"
+
+capability sqliteRoundTripStdout console.stdout write
+purpose operation sqliteRoundTripStdout "Authority to print the SQL body round-trip marker to stdout"
+
+storage module immutable databasePath String ":memory:"
+storage module immutable createTableSql SqlText
+sql body createTableSql
+  CREATE TABLE markers (body TEXT NOT NULL)
+
+storage module immutable insertMarkerSql SqlText
+sql body insertMarkerSql
+  INSERT INTO markers (body) VALUES ('sqlBodyRoundTripOk')
+
+storage module immutable selectMarkerSql SqlText
+sql body selectMarkerSql
+  SELECT body FROM markers
+
+storage module immutable firstColumnIndex Int32 0
+storage module immutable successExitCode ExitCode 0
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main readWrite database
+effect main write console.stdout
+memory main heap auto
+async main no
+useCapability main sqliteRoundTripDatabase
+useCapability main sqliteRoundTripStdout
+purpose operation main "Open an in-memory sqlite database, execute SqlText islands, SELECT the marker, and write it to stdout"
+invariant operation main "stdout matches the sql body marker iff sql body constants lower to real sqlite SQL text"
+
+label startMain
+
+call openCall sqlite.openDatabase
+argument openCall path String databasePath
+argument openCall mode SqliteOpenMode inMemorySqliteOpenMode
+run openCall
+bind ok roundTripDatabase SqliteDatabase openCall
+bind error databaseOpenError SqliteDatabaseOpenFailure openCall
+branch error source openCall target openFailed
+
+defer databaseCloseDefer sqlite.closeDatabase roundTripDatabase
+
+call createTableCall sqlite.exec
+argument createTableCall database SqliteDatabase roundTripDatabase
+argument createTableCall sql SqlText createTableSql
+run createTableCall
+ignore void source createTableCall
+bind error createTableError SqliteDatabaseExecFailure createTableCall
+branch error source createTableCall target createTableFailed
+
+call insertMarkerCall sqlite.exec
+argument insertMarkerCall database SqliteDatabase roundTripDatabase
+argument insertMarkerCall sql SqlText insertMarkerSql
+run insertMarkerCall
+ignore void source insertMarkerCall
+bind error insertMarkerError SqliteDatabaseExecFailure insertMarkerCall
+branch error source insertMarkerCall target insertMarkerFailed
+
+call prepareSelectCall sqlite.prepareStatement
+argument prepareSelectCall database SqliteDatabase roundTripDatabase
+argument prepareSelectCall sql SqlText selectMarkerSql
+run prepareSelectCall
+bind ok selectStatement SqliteStatement prepareSelectCall
+bind error prepareSelectError SqliteStatementPrepareFailure prepareSelectCall
+branch error source prepareSelectCall target prepareFailed
+
+defer selectStatementFinalizeDefer sqlite.finalizeStatement selectStatement
+
+call stepSelectCall sqlite.stepStatement
+argument stepSelectCall statement SqliteStatement selectStatement
+run stepSelectCall
+ignore ok source stepSelectCall type SqliteStepResult
+bind error stepSelectError SqliteStatementStepFailure stepSelectCall
+branch error source stepSelectCall target stepFailed
+
+call readMarkerCall sqlite.columnText
+argument readMarkerCall statement SqliteStatement selectStatement
+argument readMarkerCall columnIndex Int32 firstColumnIndex
+run readMarkerCall
+bind value selectedMarkerText String readMarkerCall
+
+call writeMarkerCall console.writeLine
+argument writeMarkerCall console Console console
+argument writeMarkerCall text String selectedMarkerText
+run writeMarkerCall
+ignore void source writeMarkerCall
+bind error consoleWriteError ConsoleWriteError writeMarkerCall
+branch error source writeMarkerCall target consoleWriteFailed
+
+return ok successExitCode
+
+label openFailed
+makeError openFailedFailure MainError.DatabaseOpenFailed databaseOpenError
+return error openFailedFailure
+
+label createTableFailed
+makeError createTableFailedFailure MainError.DatabaseExecFailed createTableError
+return error createTableFailedFailure
+
+label insertMarkerFailed
+makeError insertMarkerFailedFailure MainError.DatabaseExecFailed insertMarkerError
+return error insertMarkerFailedFailure
+
+label prepareFailed
+makeError prepareFailedFailure MainError.StatementPrepareFailed prepareSelectError
+return error prepareFailedFailure
+
+label stepFailed
+makeError stepFailedFailure MainError.StatementStepFailed stepSelectError
+return error stepFailedFailure
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed consoleWriteError
+return error consoleWriteFailure

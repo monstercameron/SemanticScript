@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.auction_context
+purpose module app.realtime_auction_arena.server.tests.auction_context "Unit coverage contract for server/src/auction_context.sem."
+moduleOwns app.realtime_auction_arena.server.tests.auction_context "Assertions that auction command/read handler coverage remains discoverable by the *.test.sem harness."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auction_context "Native HTTP dispatch, SQLite adapter behavior, auth helper internals, or shared envelope writer implementation."
+invariant module app.realtime_auction_arena.server.tests.auction_context "The auction context coverage summary must mention rejected-bid persistence plus list, create, snapshot, start, extend, close, and bid handler flows."
+
+storage module immutable serverAuctionContextUnitTestPlanSummary String "server/src/auction_context.sem coverage: persistRejectedBidCommand rejected-bid transaction persistence; auctionsListHandler and auctionSnapshotHandler authenticated read paths; auctionsCreateHandler, auctionStartHandler, auctionExtendHandler, auctionCloseHandler, and auctionBidHandler idempotency, validation, SQLite transaction, audit/request-log, JSON response, and rejection-envelope paths."
+
+operation getServerAuctionContextUnitTestPlan
+output operation getServerAuctionContextUnitTestPlan String
+memory getServerAuctionContextUnitTestPlan heap no
+async getServerAuctionContextUnitTestPlan no
+purpose operation getServerAuctionContextUnitTestPlan "Return the server auction context unit coverage plan."
+return value serverAuctionContextUnitTestPlanSummary

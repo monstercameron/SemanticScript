@@ -1,36 +1,36 @@
 # SemanticScript standard-library canonical module: standard.iso646.
 
 module standard.iso646
-modulePurpose standard.iso646 "Canonical standard-library module for iso646-style boolean operator helpers."
+purpose module standard.iso646 "Canonical standard-library module for iso646-style boolean operator helpers."
 moduleOwns standard.iso646 "The official import path `standard.iso646` and this module's implementation body."
 moduleDoesNotOwn standard.iso646 "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.iso646 "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.iso646 "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.iso646 iso646ModuleVersionText
-storage module immutable iso646ModuleVersionText CNullTerminatedByteString "standard.iso646 0.1"
+storage module immutable iso646ModuleVersionText String "standard.iso646 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: <iso646.h>-style logical keywords
 # ============================================================
 #
-# # rationale: C's <iso646.h> defines `and`, `or`, `not`, `xor`,
+# rationale: C's <iso646.h> defines `and`, `or`, `not`, `xor`,
 #   `compl`, `bitand`, `bitor`, `not_eq` as macro spellings of C
 #   operators. SemanticScript has no macro expansion, so this module
 #   exposes each as a real operation. The refined surface returns
-#   Bool (not CSignedInt32 0/1) and reads its inputs as CSignedInt64
+#   Bool (not Int32 0/1) and reads its inputs as Int64
 #   integers â€” the keyword operates on the "truth" of an integer
 #   (zero vs non-zero), matching C semantics exactly.
 #
-# # invariant: every operation here is total. The result of "non-zero
+# invariant: every operation here is total. The result of "non-zero
 #   integer truth" is encoded in Bool, eliminating the C convention
 #   of "any non-zero" for inputs while normalizing the output.
 #
-# # security: pure value-level math; no allocation; no I/O.
+# security: pure value-level math; no allocation; no I/O.
 #
-# # timing: at most two `icmp` operations and one branch per call.
+# timing: at most two `icmp` operations and one branch per call.
 #
-# # observability: no logs or metrics.
+# observability: no logs or metrics.
 #
 # Operations exposed:
 #   evaluateIso646AndKeyword(leftValue, rightValue)      -> Bool
@@ -40,147 +40,144 @@ storage module immutable iso646ModuleVersionText CNullTerminatedByteString "stan
 #   evaluateIso646EqualKeyword(leftValue, rightValue)    -> Bool
 #   evaluateIso646NotEqualKeyword(leftValue, rightValue) -> Bool
 
-
 # Pure-module file: smoke + extended tests live in
 # std/iso646/main.test.sem.
 
-
-domainLiteral integerZeroBoundaryValue CSignedInt64 0
+domainLiteral integerZeroBoundaryValue Int64 0
 domainLiteralTrust integerZeroBoundaryValue trustedStaticLiteral
 
 # section iso646.logicalKeywords
 # rationale: integer-truth combinators that return Bool.
 
 operation evaluateIso646AndKeyword
-input evaluateIso646AndKeyword leftValue CSignedInt64
-input evaluateIso646AndKeyword rightValue CSignedInt64
-output evaluateIso646AndKeyword Bool
-memoryHeap evaluateIso646AndKeyword no
+input operation evaluateIso646AndKeyword leftValue Int64
+input operation evaluateIso646AndKeyword rightValue Int64
+output operation evaluateIso646AndKeyword Bool
+memory evaluateIso646AndKeyword heap no
 async evaluateIso646AndKeyword no
-purpose evaluateIso646AndKeyword "Returns true when both inputs are non-zero (mirrors C's 'and' keyword applied to integers)."
-invariant evaluateIso646AndKeyword "Commutative and associative under integer truth semantics."
+purpose operation evaluateIso646AndKeyword "Returns true when both inputs are non-zero (mirrors C's 'and' keyword applied to integers)."
+invariant operation evaluateIso646AndKeyword "Commutative and associative under integer truth semantics."
 guarantee evaluateIso646AndKeyword "Total."
 label startEvaluateIso646AndKeyword
-call detectLeftIsZeroCall math.equalI64
-arg detectLeftIsZeroCall left leftValue
-arg detectLeftIsZeroCall right integerZeroBoundaryValue
+call detectLeftIsZeroCall math.equalInt64
+argument detectLeftIsZeroCall left Int64 leftValue
+argument detectLeftIsZeroCall right Int64 integerZeroBoundaryValue
 run detectLeftIsZeroCall
-bind leftIsZero Bool detectLeftIsZeroCall
-branchIf leftIsZero returnAndFalse
-call detectRightIsZeroCall math.equalI64
-arg detectRightIsZeroCall left rightValue
-arg detectRightIsZeroCall right integerZeroBoundaryValue
+bind value leftIsZero Bool detectLeftIsZeroCall
+branch if condition leftIsZero target returnAndFalse
+call detectRightIsZeroCall math.equalInt64
+argument detectRightIsZeroCall left Int64 rightValue
+argument detectRightIsZeroCall right Int64 integerZeroBoundaryValue
 run detectRightIsZeroCall
-bind rightIsZero Bool detectRightIsZeroCall
-branchIf rightIsZero returnAndFalse
-const andTrueResult Bool true
-returnValue andTrueResult
+bind value rightIsZero Bool detectRightIsZeroCall
+branch if condition rightIsZero target returnAndFalse
+storage module immutable andTrueResult Bool true
+return value andTrueResult
 label returnAndFalse
-const andFalseResult Bool false
-returnValue andFalseResult
+storage module immutable andFalseResult Bool false
+return value andFalseResult
 
 operation evaluateIso646OrKeyword
-input evaluateIso646OrKeyword leftValue CSignedInt64
-input evaluateIso646OrKeyword rightValue CSignedInt64
-output evaluateIso646OrKeyword Bool
-memoryHeap evaluateIso646OrKeyword no
+input operation evaluateIso646OrKeyword leftValue Int64
+input operation evaluateIso646OrKeyword rightValue Int64
+output operation evaluateIso646OrKeyword Bool
+memory evaluateIso646OrKeyword heap no
 async evaluateIso646OrKeyword no
-purpose evaluateIso646OrKeyword "Returns true when at least one input is non-zero (mirrors C's 'or' keyword)."
-invariant evaluateIso646OrKeyword "Commutative and associative under integer truth semantics."
+purpose operation evaluateIso646OrKeyword "Returns true when at least one input is non-zero (mirrors C's 'or' keyword)."
+invariant operation evaluateIso646OrKeyword "Commutative and associative under integer truth semantics."
 guarantee evaluateIso646OrKeyword "Total."
 label startEvaluateIso646OrKeyword
-call detectLeftIsNonZeroCall math.notEqualI64
-arg detectLeftIsNonZeroCall left leftValue
-arg detectLeftIsNonZeroCall right integerZeroBoundaryValue
+call detectLeftIsNonZeroCall math.notEqualInt64
+argument detectLeftIsNonZeroCall left Int64 leftValue
+argument detectLeftIsNonZeroCall right Int64 integerZeroBoundaryValue
 run detectLeftIsNonZeroCall
-bind leftIsNonZero Bool detectLeftIsNonZeroCall
-branchIf leftIsNonZero returnOrTrue
-call detectRightIsNonZeroCall math.notEqualI64
-arg detectRightIsNonZeroCall left rightValue
-arg detectRightIsNonZeroCall right integerZeroBoundaryValue
+bind value leftIsNonZero Bool detectLeftIsNonZeroCall
+branch if condition leftIsNonZero target returnOrTrue
+call detectRightIsNonZeroCall math.notEqualInt64
+argument detectRightIsNonZeroCall left Int64 rightValue
+argument detectRightIsNonZeroCall right Int64 integerZeroBoundaryValue
 run detectRightIsNonZeroCall
-bind rightIsNonZero Bool detectRightIsNonZeroCall
-branchIf rightIsNonZero returnOrTrue
-const orFalseResult Bool false
-returnValue orFalseResult
+bind value rightIsNonZero Bool detectRightIsNonZeroCall
+branch if condition rightIsNonZero target returnOrTrue
+storage module immutable orFalseResult Bool false
+return value orFalseResult
 label returnOrTrue
-const orTrueResult Bool true
-returnValue orTrueResult
+storage module immutable orTrueResult Bool true
+return value orTrueResult
 
 operation evaluateIso646NotKeyword
-input evaluateIso646NotKeyword inputValue CSignedInt64
-output evaluateIso646NotKeyword Bool
-memoryHeap evaluateIso646NotKeyword no
+input operation evaluateIso646NotKeyword inputValue Int64
+output operation evaluateIso646NotKeyword Bool
+memory evaluateIso646NotKeyword heap no
 async evaluateIso646NotKeyword no
-purpose evaluateIso646NotKeyword "Returns true when the input is zero (mirrors C's 'not' keyword)."
-invariant evaluateIso646NotKeyword "Involutive over Bool: evaluateIso646NotKeyword(evaluateIso646NotKeyword(x)) == truthOf(x)."
+purpose operation evaluateIso646NotKeyword "Returns true when the input is zero (mirrors C's 'not' keyword)."
+invariant operation evaluateIso646NotKeyword "Involutive over Bool: evaluateIso646NotKeyword(evaluateIso646NotKeyword(x)) == truthOf(x)."
 guarantee evaluateIso646NotKeyword "Total."
 label startEvaluateIso646NotKeyword
-call detectInputIsZeroCall math.equalI64
-arg detectInputIsZeroCall left inputValue
-arg detectInputIsZeroCall right integerZeroBoundaryValue
+call detectInputIsZeroCall math.equalInt64
+argument detectInputIsZeroCall left Int64 inputValue
+argument detectInputIsZeroCall right Int64 integerZeroBoundaryValue
 run detectInputIsZeroCall
-bind inputIsZero Bool detectInputIsZeroCall
-returnValue inputIsZero
+bind value inputIsZero Bool detectInputIsZeroCall
+return value inputIsZero
 
 operation evaluateIso646XorKeyword
-input evaluateIso646XorKeyword leftValue CSignedInt64
-input evaluateIso646XorKeyword rightValue CSignedInt64
-output evaluateIso646XorKeyword Bool
-memoryHeap evaluateIso646XorKeyword no
+input operation evaluateIso646XorKeyword leftValue Int64
+input operation evaluateIso646XorKeyword rightValue Int64
+output operation evaluateIso646XorKeyword Bool
+memory evaluateIso646XorKeyword heap no
 async evaluateIso646XorKeyword no
-purpose evaluateIso646XorKeyword "Returns true when exactly one input is non-zero (logical XOR over integer truth)."
-invariant evaluateIso646XorKeyword "Self-inverse: evaluateIso646XorKeyword(x, x) == false for every x."
+purpose operation evaluateIso646XorKeyword "Returns true when exactly one input is non-zero (logical XOR over integer truth)."
+invariant operation evaluateIso646XorKeyword "Self-inverse: evaluateIso646XorKeyword(x, x) == false for every x."
 guarantee evaluateIso646XorKeyword "Total."
 label startEvaluateIso646XorKeyword
-call leftXorTruthCall math.notEqualI64
-arg leftXorTruthCall left leftValue
-arg leftXorTruthCall right integerZeroBoundaryValue
+call leftXorTruthCall math.notEqualInt64
+argument leftXorTruthCall left Int64 leftValue
+argument leftXorTruthCall right Int64 integerZeroBoundaryValue
 run leftXorTruthCall
-bind leftXorTruth Bool leftXorTruthCall
-call rightXorTruthCall math.notEqualI64
-arg rightXorTruthCall left rightValue
-arg rightXorTruthCall right integerZeroBoundaryValue
+bind value leftXorTruth Bool leftXorTruthCall
+call rightXorTruthCall math.notEqualInt64
+argument rightXorTruthCall left Int64 rightValue
+argument rightXorTruthCall right Int64 integerZeroBoundaryValue
 run rightXorTruthCall
-bind rightXorTruth Bool rightXorTruthCall
-call detectXorOperandsDifferCall math.notEqualI64
-arg detectXorOperandsDifferCall left leftXorTruth
-arg detectXorOperandsDifferCall right rightXorTruth
+bind value rightXorTruth Bool rightXorTruthCall
+call detectXorOperandsDifferCall math.notEqualInt64
+argument detectXorOperandsDifferCall left Int64 leftXorTruth
+argument detectXorOperandsDifferCall right Int64 rightXorTruth
 run detectXorOperandsDifferCall
-bind xorOperandsDiffer Bool detectXorOperandsDifferCall
-returnValue xorOperandsDiffer
+bind value xorOperandsDiffer Bool detectXorOperandsDifferCall
+return value xorOperandsDiffer
 
 operation evaluateIso646EqualKeyword
-input evaluateIso646EqualKeyword leftValue CSignedInt64
-input evaluateIso646EqualKeyword rightValue CSignedInt64
-output evaluateIso646EqualKeyword Bool
-memoryHeap evaluateIso646EqualKeyword no
+input operation evaluateIso646EqualKeyword leftValue Int64
+input operation evaluateIso646EqualKeyword rightValue Int64
+output operation evaluateIso646EqualKeyword Bool
+memory evaluateIso646EqualKeyword heap no
 async evaluateIso646EqualKeyword no
-purpose evaluateIso646EqualKeyword "Returns true when the two integer inputs are bitwise equal."
-invariant evaluateIso646EqualKeyword "Symmetric; reflexive."
+purpose operation evaluateIso646EqualKeyword "Returns true when the two integer inputs are bitwise equal."
+invariant operation evaluateIso646EqualKeyword "Symmetric; reflexive."
 guarantee evaluateIso646EqualKeyword "Total."
 label startEvaluateIso646EqualKeyword
-call detectEqualCall math.equalI64
-arg detectEqualCall left leftValue
-arg detectEqualCall right rightValue
+call detectEqualCall math.equalInt64
+argument detectEqualCall left Int64 leftValue
+argument detectEqualCall right Int64 rightValue
 run detectEqualCall
-bind valuesEqual Bool detectEqualCall
-returnValue valuesEqual
+bind value valuesEqual Bool detectEqualCall
+return value valuesEqual
 
 operation evaluateIso646NotEqualKeyword
-input evaluateIso646NotEqualKeyword leftValue CSignedInt64
-input evaluateIso646NotEqualKeyword rightValue CSignedInt64
-output evaluateIso646NotEqualKeyword Bool
-memoryHeap evaluateIso646NotEqualKeyword no
+input operation evaluateIso646NotEqualKeyword leftValue Int64
+input operation evaluateIso646NotEqualKeyword rightValue Int64
+output operation evaluateIso646NotEqualKeyword Bool
+memory evaluateIso646NotEqualKeyword heap no
 async evaluateIso646NotEqualKeyword no
-purpose evaluateIso646NotEqualKeyword "Returns true when the two integer inputs differ."
-invariant evaluateIso646NotEqualKeyword "Symmetric; irreflexive."
+purpose operation evaluateIso646NotEqualKeyword "Returns true when the two integer inputs differ."
+invariant operation evaluateIso646NotEqualKeyword "Symmetric; irreflexive."
 guarantee evaluateIso646NotEqualKeyword "Total."
 label startEvaluateIso646NotEqualKeyword
-call detectNotEqualCall math.notEqualI64
-arg detectNotEqualCall left leftValue
-arg detectNotEqualCall right rightValue
+call detectNotEqualCall math.notEqualInt64
+argument detectNotEqualCall left Int64 leftValue
+argument detectNotEqualCall right Int64 rightValue
 run detectNotEqualCall
-bind valuesDiffer Bool detectNotEqualCall
-returnValue valuesDiffer
-
+bind value valuesDiffer Bool detectNotEqualCall
+return value valuesDiffer

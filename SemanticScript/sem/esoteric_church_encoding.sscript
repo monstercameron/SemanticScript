@@ -10,153 +10,153 @@ mode capturedOutputReplay
 
 entry console main
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 memory writeStandardOutputLine heap no
 memory writeStandardOutputLine stack max 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
-const writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Print the Church encoding demonstration output from javascript/esoteric-church-encoding.js"
-invariant main "Order: title, underline, then natural-number encodings, pair selectors, and boolean branches"
+purpose operation main "Print the Church encoding demonstration output from javascript/esoteric-church-encoding.js"
+invariant operation main "Order: title, underline, then natural-number encodings, pair selectors, and boolean branches"
 
 label startMain
 
-const churchTitleText String "Esoteric Church Encoding"
-const churchTitleUnderlineText String "========================"
-const churchTwoText String "two: 2"
-const churchThreeText String "three: 3"
-const churchTwoPlusThreeText String "twoPlusThree: 5"
-const churchTwoTimesThreeText String "twoTimesThree: 6"
-const churchFirstPairText String "first(pair): 5"
-const churchSecondPairText String "second(pair): 6"
-const churchIfTrueText String "ifTrue: true"
-const churchIfFalseText String "ifFalse: false"
+storage module immutable churchTitleText String "Esoteric Church Encoding"
+storage module immutable churchTitleUnderlineText String "========================"
+storage module immutable churchTwoText String "two: 2"
+storage module immutable churchThreeText String "three: 3"
+storage module immutable churchTwoPlusThreeText String "twoPlusThree: 5"
+storage module immutable churchTwoTimesThreeText String "twoTimesThree: 6"
+storage module immutable churchFirstPairText String "first(pair): 5"
+storage module immutable churchSecondPairText String "second(pair): 6"
+storage module immutable churchIfTrueText String "ifTrue: true"
+storage module immutable churchIfFalseText String "ifFalse: false"
 
-var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+memory main mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeChurchTitleLineCall writeStandardOutputLine
-arg writeChurchTitleLineCall text churchTitleText
+argument writeChurchTitleLineCall text String churchTitleText
 run writeChurchTitleLineCall
-ignoreOk writeChurchTitleLineCall Void
-bindError writeChurchTitleLineError ConsoleWriteError writeChurchTitleLineCall
-set lastConsoleWriteErrorCode writeChurchTitleLineError
-branchIfError writeChurchTitleLineCall consoleWriteFailed
+ignore void source writeChurchTitleLineCall
+bind error writeChurchTitleLineError ConsoleWriteError writeChurchTitleLineCall
+set memory lastConsoleWriteErrorCode writeChurchTitleLineError
+branch error source writeChurchTitleLineCall target consoleWriteFailed
 
 call writeChurchTitleUnderlineLineCall writeStandardOutputLine
-arg writeChurchTitleUnderlineLineCall text churchTitleUnderlineText
+argument writeChurchTitleUnderlineLineCall text String churchTitleUnderlineText
 run writeChurchTitleUnderlineLineCall
-ignoreOk writeChurchTitleUnderlineLineCall Void
-bindError writeChurchTitleUnderlineLineError ConsoleWriteError writeChurchTitleUnderlineLineCall
-set lastConsoleWriteErrorCode writeChurchTitleUnderlineLineError
-branchIfError writeChurchTitleUnderlineLineCall consoleWriteFailed
+ignore void source writeChurchTitleUnderlineLineCall
+bind error writeChurchTitleUnderlineLineError ConsoleWriteError writeChurchTitleUnderlineLineCall
+set memory lastConsoleWriteErrorCode writeChurchTitleUnderlineLineError
+branch error source writeChurchTitleUnderlineLineCall target consoleWriteFailed
 
 call writeChurchTwoLineCall writeStandardOutputLine
-arg writeChurchTwoLineCall text churchTwoText
+argument writeChurchTwoLineCall text String churchTwoText
 run writeChurchTwoLineCall
-ignoreOk writeChurchTwoLineCall Void
-bindError writeChurchTwoLineError ConsoleWriteError writeChurchTwoLineCall
-set lastConsoleWriteErrorCode writeChurchTwoLineError
-branchIfError writeChurchTwoLineCall consoleWriteFailed
+ignore void source writeChurchTwoLineCall
+bind error writeChurchTwoLineError ConsoleWriteError writeChurchTwoLineCall
+set memory lastConsoleWriteErrorCode writeChurchTwoLineError
+branch error source writeChurchTwoLineCall target consoleWriteFailed
 
 call writeChurchThreeLineCall writeStandardOutputLine
-arg writeChurchThreeLineCall text churchThreeText
+argument writeChurchThreeLineCall text String churchThreeText
 run writeChurchThreeLineCall
-ignoreOk writeChurchThreeLineCall Void
-bindError writeChurchThreeLineError ConsoleWriteError writeChurchThreeLineCall
-set lastConsoleWriteErrorCode writeChurchThreeLineError
-branchIfError writeChurchThreeLineCall consoleWriteFailed
+ignore void source writeChurchThreeLineCall
+bind error writeChurchThreeLineError ConsoleWriteError writeChurchThreeLineCall
+set memory lastConsoleWriteErrorCode writeChurchThreeLineError
+branch error source writeChurchThreeLineCall target consoleWriteFailed
 
 call writeChurchTwoPlusThreeLineCall writeStandardOutputLine
-arg writeChurchTwoPlusThreeLineCall text churchTwoPlusThreeText
+argument writeChurchTwoPlusThreeLineCall text String churchTwoPlusThreeText
 run writeChurchTwoPlusThreeLineCall
-ignoreOk writeChurchTwoPlusThreeLineCall Void
-bindError writeChurchTwoPlusThreeLineError ConsoleWriteError writeChurchTwoPlusThreeLineCall
-set lastConsoleWriteErrorCode writeChurchTwoPlusThreeLineError
-branchIfError writeChurchTwoPlusThreeLineCall consoleWriteFailed
+ignore void source writeChurchTwoPlusThreeLineCall
+bind error writeChurchTwoPlusThreeLineError ConsoleWriteError writeChurchTwoPlusThreeLineCall
+set memory lastConsoleWriteErrorCode writeChurchTwoPlusThreeLineError
+branch error source writeChurchTwoPlusThreeLineCall target consoleWriteFailed
 
 call writeChurchTwoTimesThreeLineCall writeStandardOutputLine
-arg writeChurchTwoTimesThreeLineCall text churchTwoTimesThreeText
+argument writeChurchTwoTimesThreeLineCall text String churchTwoTimesThreeText
 run writeChurchTwoTimesThreeLineCall
-ignoreOk writeChurchTwoTimesThreeLineCall Void
-bindError writeChurchTwoTimesThreeLineError ConsoleWriteError writeChurchTwoTimesThreeLineCall
-set lastConsoleWriteErrorCode writeChurchTwoTimesThreeLineError
-branchIfError writeChurchTwoTimesThreeLineCall consoleWriteFailed
+ignore void source writeChurchTwoTimesThreeLineCall
+bind error writeChurchTwoTimesThreeLineError ConsoleWriteError writeChurchTwoTimesThreeLineCall
+set memory lastConsoleWriteErrorCode writeChurchTwoTimesThreeLineError
+branch error source writeChurchTwoTimesThreeLineCall target consoleWriteFailed
 
 call writeChurchFirstPairLineCall writeStandardOutputLine
-arg writeChurchFirstPairLineCall text churchFirstPairText
+argument writeChurchFirstPairLineCall text String churchFirstPairText
 run writeChurchFirstPairLineCall
-ignoreOk writeChurchFirstPairLineCall Void
-bindError writeChurchFirstPairLineError ConsoleWriteError writeChurchFirstPairLineCall
-set lastConsoleWriteErrorCode writeChurchFirstPairLineError
-branchIfError writeChurchFirstPairLineCall consoleWriteFailed
+ignore void source writeChurchFirstPairLineCall
+bind error writeChurchFirstPairLineError ConsoleWriteError writeChurchFirstPairLineCall
+set memory lastConsoleWriteErrorCode writeChurchFirstPairLineError
+branch error source writeChurchFirstPairLineCall target consoleWriteFailed
 
 call writeChurchSecondPairLineCall writeStandardOutputLine
-arg writeChurchSecondPairLineCall text churchSecondPairText
+argument writeChurchSecondPairLineCall text String churchSecondPairText
 run writeChurchSecondPairLineCall
-ignoreOk writeChurchSecondPairLineCall Void
-bindError writeChurchSecondPairLineError ConsoleWriteError writeChurchSecondPairLineCall
-set lastConsoleWriteErrorCode writeChurchSecondPairLineError
-branchIfError writeChurchSecondPairLineCall consoleWriteFailed
+ignore void source writeChurchSecondPairLineCall
+bind error writeChurchSecondPairLineError ConsoleWriteError writeChurchSecondPairLineCall
+set memory lastConsoleWriteErrorCode writeChurchSecondPairLineError
+branch error source writeChurchSecondPairLineCall target consoleWriteFailed
 
 call writeChurchIfTrueLineCall writeStandardOutputLine
-arg writeChurchIfTrueLineCall text churchIfTrueText
+argument writeChurchIfTrueLineCall text String churchIfTrueText
 run writeChurchIfTrueLineCall
-ignoreOk writeChurchIfTrueLineCall Void
-bindError writeChurchIfTrueLineError ConsoleWriteError writeChurchIfTrueLineCall
-set lastConsoleWriteErrorCode writeChurchIfTrueLineError
-branchIfError writeChurchIfTrueLineCall consoleWriteFailed
+ignore void source writeChurchIfTrueLineCall
+bind error writeChurchIfTrueLineError ConsoleWriteError writeChurchIfTrueLineCall
+set memory lastConsoleWriteErrorCode writeChurchIfTrueLineError
+branch error source writeChurchIfTrueLineCall target consoleWriteFailed
 
 call writeChurchIfFalseLineCall writeStandardOutputLine
-arg writeChurchIfFalseLineCall text churchIfFalseText
+argument writeChurchIfFalseLineCall text String churchIfFalseText
 run writeChurchIfFalseLineCall
-ignoreOk writeChurchIfFalseLineCall Void
-bindError writeChurchIfFalseLineError ConsoleWriteError writeChurchIfFalseLineCall
-set lastConsoleWriteErrorCode writeChurchIfFalseLineError
-branchIfError writeChurchIfFalseLineCall consoleWriteFailed
+ignore void source writeChurchIfFalseLineCall
+bind error writeChurchIfFalseLineError ConsoleWriteError writeChurchIfFalseLineCall
+set memory lastConsoleWriteErrorCode writeChurchIfFalseLineError
+branch error source writeChurchIfFalseLineCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

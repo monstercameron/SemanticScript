@@ -1,0 +1,27 @@
+module experiment.realtime_auction_arena.win32_auctioneer.tests.auction_api
+purpose module experiment.realtime_auction_arena.win32_auctioneer.tests.auction_api "Unit coverage contract for win32-auctioneer/src/auction_api.sem."
+moduleOwns experiment.realtime_auction_arena.win32_auctioneer.tests.auction_api "Command context, auction config, extend, moderation, unsupported POST, and polling result coverage."
+moduleDoesNotOwn experiment.realtime_auction_arena.win32_auctioneer.tests.auction_api "HTTP client transport."
+invariant module experiment.realtime_auction_arena.win32_auctioneer.tests.auction_api "Every operator command payload must have a named factory coverage row."
+
+record Win32AuctionApiUnitTestPlan
+field Win32AuctionApiUnitTestPlan sourceFile String
+field Win32AuctionApiUnitTestPlan factoryCoverage String
+field Win32AuctionApiUnitTestPlan errorCoverage String
+field Win32AuctionApiUnitTestPlan blockedRuntimeCases String
+
+storage module immutable win32AuctionApiUnitTestPlan Win32AuctionApiUnitTestPlan
+jsonBody win32AuctionApiUnitTestPlan
+  {
+      "sourceFile": "win32-auctioneer/src/auction_api.sem",
+      "factoryCoverage": "makeCommandContext, makeAuctionConfig, makeExtendRequest, makeModerateChatRequest",
+      "errorCoverage": "unsupportedPostResult and unsupportedPollResult surface runtime gaps in the UI",
+      "blockedRuntimeCases": "POST JSON, custom bearer headers, and response JSON parsing"
+  }
+
+operation getWin32AuctionApiUnitTestPlan
+output operation getWin32AuctionApiUnitTestPlan Win32AuctionApiUnitTestPlan
+memory getWin32AuctionApiUnitTestPlan heap no
+async getWin32AuctionApiUnitTestPlan no
+purpose operation getWin32AuctionApiUnitTestPlan "Return the Win32 auction API unit coverage plan."
+return value win32AuctionApiUnitTestPlan

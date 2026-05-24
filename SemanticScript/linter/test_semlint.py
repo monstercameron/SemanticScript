@@ -113,6 +113,45 @@ label startMain
 
 
 # ==========================================================================
+# SS3630  controlFlow.unreachableRow
+# ==========================================================================
+
+class TestUnreachableOperationRows(unittest.TestCase):
+    def test_label_after_unconditional_return_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+storage module immutable success ExitCode 0
+storage module immutable failure ExitCode 1
+return value success
+label stalePath
+return value failure
+""")
+        self.assertIn("SS3630", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3630")[0]
+        self.assertEqual(matchingDiagnostic.kind, "controlFlow.unreachableRow")
+        self.assertEqual(matchingDiagnostic.subjectName, "stalePath")
+
+    def test_failure_label_reached_by_branch_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+storage module immutable success ExitCode 0
+storage module immutable failure ExitCode 1
+call riskyCall runtime.risky
+run riskyCall
+bind error riskyError RuntimeError riskyCall
+branch error source riskyCall target failed
+return value success
+label failed
+return value failure
+""")
+        self.assertNotIn("SS3630", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS0103  unusedDeclaration.capability
 # ==========================================================================
 
@@ -166,19 +205,19 @@ returnError mainFailure
 class TestUnusedMutableStorage(unittest.TestCase):
     def test_never_set_mutable_module_storage_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable accountLookupRevision I64 zeroCount
+storage module mutable accountLookupRevision Int64 zeroCount
 """)
         self.assertIn("SS0105", _codes(diagnostics))
 
     def test_immutable_storage_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable attemptLimit I64 fiveAttemptCount
+storage module immutable attemptLimit Int64 fiveAttemptCount
 """)
         self.assertNotIn("SS0105", _codes(diagnostics))
 
     def test_set_mutable_storage_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable accountLookupRevision I64 zeroCount
+storage module mutable accountLookupRevision Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -270,7 +309,7 @@ run writeLineCall
 
     def test_state_touching_op_without_invariant_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module mutable accountLookupRevision I64 zeroCount
+storage module mutable accountLookupRevision Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -291,7 +330,7 @@ run writeLineCall
 
 # ==========================================================================
 # SS3104  capabilityCoverage.missing  (T3, NOT compile-blocking — matches
-# SYNTAX.md which scopes capability coverage as a linter rule)
+# docs/reference/syntax-inventory.md which scopes capability coverage as a linter rule)
 # ==========================================================================
 
 class TestEffectWithoutCapability(unittest.TestCase):
@@ -336,7 +375,7 @@ authority main console.stdout write
 class TestSharedStateProtection(unittest.TestCase):
     def test_unprotected_write_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -347,7 +386,7 @@ set sharedState lookupFailureCount nextLookupFailureCount
 
     def test_protected_write_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -360,7 +399,7 @@ set sharedState lookupFailureCount nextLookupFailureCount protectedBy lookupFail
 class TestSupportedSharedStateScope(unittest.TestCase):
     def test_cross_process_scope_is_flagged_as_unsupported_runtime_claim(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState cluster mutable lookupFailureCount I64 zeroCount
+sharedState cluster mutable lookupFailureCount Int64 zeroCount
 """)
         self.assertIn("SS3108", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3108")[0]
@@ -369,7 +408,7 @@ sharedState cluster mutable lookupFailureCount I64 zeroCount
 
     def test_process_scope_is_currently_supported(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 """)
         self.assertNotIn("SS3108", _codes(diagnostics))
 
@@ -451,44 +490,44 @@ purpose main "smoke"
         self.assertNotIn("SS0001", _codes(diagnostics))
 
     def test_build_tape_verbs_not_flagged(self) -> None:
-        diagnostics = _lint_source("""buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/monstercameron/SemanticScript/app/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "fixture.sscript"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
-testRoot todoTui "."
-dependencySource todoTui semstd github.com/monstercameron/SemanticScript/std
-dependencyIntegrity todoTui semstd "sha256-example"
-buildProfile todoTui dev
-runtimeChecks todoTui panic
-persistLlvmIr todoTui no
-optLevel todoTui 2
-emitLlvmIr todoTui auto
-llvmIrOutput todoTui "build/todo.ll"
-emitOptimizedLlvmIr todoTui no
-optimizedLlvmIrOutput todoTui "build/todo.opt.ll"
-buildRoot todoTui "."
-buildFolderName todoTui build
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeature todoTui avx2 off
-cpuFeatureCheck todoTui auto
-nativeOutput todoTui "todo.exe"
-nativeHttpHost todoTui "127.0.0.1"
-nativeHttpPort todoTui 18080
-formatterSetting todoTui lineWidth 100
-linterSetting todoTui maxTier T4
-docsOutput todoTui "docs"
-keepResources todoTui no
-resourcesDir todoTui "build/resources"
-targetRuntime todoTui nativeExe
-comptimeOperation todoTui configureTodoTuiBuild
+        diagnostics = _lint_source("""buildProject taskForgeTui
+project TaskForgeTui
+modulePath taskForgeTui github.com/monstercameron/SemanticScript/apps/taskforge-tui
+languageVersion taskForgeTui "1.0"
+projectVersion taskForgeTui "1.0.0"
+projectLicense taskForgeTui MIT
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "fixture.sscript"
+mainOperation taskForgeTui main
+testPattern taskForgeTui "*.test.sem"
+testRoot taskForgeTui "."
+dependencySource taskForgeTui semstd github.com/monstercameron/SemanticScript/std
+dependencyIntegrity taskForgeTui semstd "sha256-example"
+buildProfile taskForgeTui dev
+runtimeChecks taskForgeTui panic
+persistLlvmIr taskForgeTui no
+optLevel taskForgeTui 2
+emitLlvmIr taskForgeTui auto
+llvmIrOutput taskForgeTui "build/todo.ll"
+emitOptimizedLlvmIr taskForgeTui no
+optimizedLlvmIrOutput taskForgeTui "build/todo.opt.ll"
+buildRoot taskForgeTui "."
+buildFolderName taskForgeTui build
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeature taskForgeTui avx2 off
+cpuFeatureCheck taskForgeTui auto
+nativeOutput taskForgeTui "taskforge_tui.exe"
+nativeHttpHost taskForgeTui "127.0.0.1"
+nativeHttpPort taskForgeTui 18080
+formatterSetting taskForgeTui lineWidth 100
+linterSetting taskForgeTui maxTier T4
+docsOutput taskForgeTui "docs"
+keepResources taskForgeTui no
+resourcesDir taskForgeTui "build/resources"
+targetRuntime taskForgeTui nativeExe
+comptimeOperation taskForgeTui configureTaskForgeTuiBuild
 iconRoleDefinition applicationPrimary "Primary app icon."
 icon todoPrimaryIcon
 iconRole todoPrimaryIcon applicationPrimary
@@ -510,55 +549,55 @@ iconImagePurpose todoPrimaryAt16 "Small shell icon."
     def test_gui_function_calls_not_flagged(self) -> None:
         diagnostics = _lint_source("""project GuiLint
 target windowsGui
-importModule gui standard.gui
+import gui standard.gui
 storage module immutable title GuiText "Todo"
 storage module immutable width GuiPixels 640
 storage module immutable height GuiPixels 480
-storage module immutable yesFlag CSignedInt32 1
-storage module immutable maxTitleLength CSignedInt32 120
+storage module immutable yesFlag Int32 1
+storage module immutable maxTitleLength Int32 120
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main allocate gui.control
 effect main write gui.window
-authority main gui.application allocate
-authority main gui.window allocate
-authority main gui.control allocate
-authority main gui.window write
-purpose main "compose the GUI through standard function calls"
+authority main allocate gui.application
+authority main allocate gui.window
+authority main allocate gui.control
+authority main write gui.window
+purpose operation main "compose the GUI through standard function calls"
 call createApplicationCall gui.applicationCreate
-arg createApplicationCall title title
+argument createApplicationCall title GuiText title
 run createApplicationCall
-bind application GuiApplication createApplicationCall
+bind value application GuiApplication createApplicationCall
 call createWindowCall gui.windowCreate
-arg createWindowCall title title
-arg createWindowCall width width
-arg createWindowCall height height
-arg createWindowCall layout verticalStackGuiWindowLayout
-arg createWindowCall resizable yesFlag
+argument createWindowCall title GuiText title
+argument createWindowCall width GuiPixels width
+argument createWindowCall height GuiPixels height
+argument createWindowCall layout GuiWindowLayout verticalStackGuiWindowLayout
+argument createWindowCall resizable Int32 yesFlag
 run createWindowCall
-bind window GuiWindow createWindowCall
+bind value window GuiWindow createWindowCall
 call createTextBoxCall gui.textBoxCreate
-arg createTextBoxCall placeholder title
-arg createTextBoxCall maxLength maxTitleLength
+argument createTextBoxCall placeholder GuiText title
+argument createTextBoxCall maxLength Int32 maxTitleLength
 run createTextBoxCall
-bind textBox GuiTextBox createTextBoxCall
+bind value textBox GuiTextBox createTextBoxCall
 call addControlCall gui.windowAddControl
-arg addControlCall window window
-arg addControlCall control textBox
+argument addControlCall window GuiWindow window
+argument addControlCall control GuiControl textBox
 run addControlCall
-ignoreValue addControlCall CSignedInt32
+ignore value source addControlCall type Int32
 call setMainWindowCall gui.applicationSetMainWindow
-arg setMainWindowCall application application
-arg setMainWindowCall window window
+argument setMainWindowCall application GuiApplication application
+argument setMainWindowCall window GuiWindow window
 run setMainWindowCall
-ignoreValue setMainWindowCall CSignedInt32
+ignore value source setMainWindowCall type Int32
 call runApplicationCall gui.applicationRun
-arg runApplicationCall application application
+argument runApplicationCall application GuiApplication application
 run runApplicationCall
-bind status ExitCode runApplicationCall
-returnValue status
+bind value status ExitCode runApplicationCall
+return value status
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
@@ -586,31 +625,28 @@ guiButton addTodoButton
 class TestHtmlSyntaxIsland(unittest.TestCase):
     def test_html_template_verbs_and_body_lines_are_known(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlArg CardTemplate cardClassName HtmlClass
-htmlBody CardTemplate
-  <section class="{htmlArg.cardClassName}">
+html template CardTemplate
+html body template CardTemplate
+  <section class="{cardClassName}">
     <style>
       .meter { width: 100%; content: "{literal-braces-stay-static}"; }
     </style>
-    <h1>{htmlArg.titleText}</h1>
+    <h1>{titleText}</h1>
   </section>
 operation main
-output main Void
-purpose main "html lint smoke"
+output operation main Void
+purpose operation main "html lint smoke"
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
 
     def test_html_body_can_continue_through_blank_lines_and_eof(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlBody CardTemplate
+html template CardTemplate
+html body template CardTemplate
   <section>
 
-    <h1>{htmlArg.titleText}</h1>
+    <h1>{titleText}</h1>
   </section>
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
@@ -618,10 +654,9 @@ htmlBody CardTemplate
 
     def test_column_zero_after_html_body_is_linted_normally(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
 operation main
 output main Void
 purpose main "html lint smoke"
@@ -640,26 +675,105 @@ purpose main "html lint smoke"
 """)
         self.assertIn("SS0001", _codes(diagnostics))
 
-    def test_html_arg_arity_is_checked(self) -> None:
+    def test_html_parameter_rows_are_rejected(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText
-htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
+html template CardTemplate
+html parameter template CardTemplate titleText String
+html body template CardTemplate
+  <h1>{titleText}</h1>
 """)
-        self.assertIn("SS0002", _codes(diagnostics))
-        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0002")[0]
-        self.assertEqual(matchingDiagnostic.subjectName, "htmlArg")
+        self.assertIn("SS0003", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0003")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "html")
 
     def test_html_body_arity_is_checked(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
-htmlTemplate CardTemplate
-htmlBody
+html template CardTemplate
+html body template
   <h1>missing template name</h1>
 """)
-        self.assertIn("SS0002", _codes(diagnostics))
-        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0002")[0]
-        self.assertEqual(matchingDiagnostic.subjectName, "htmlBody")
+        self.assertIn("SS0003", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0003")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "html")
+
+    def test_html_hydrate_requires_exact_inferred_hole_roots(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+operation main
+output operation main Void
+purpose operation main "html lint smoke"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall extraText String extraText
+run hydrateCardCall
+return void
+""")
+        codes = _codes(diagnostics)
+        self.assertIn("SS3520", codes)
+        messages = [diagnostic.invariantRule for diagnostic in diagnostics if diagnostic.code == "SS3520"]
+        self.assertTrue(any("titleText" in message for message in messages))
+        self.assertTrue(any("extraText" in message for message in messages))
+
+    def test_html_record_field_hole_root_is_the_required_argument(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <h1>{profile.titleText}</h1>
+operation main
+output operation main Void
+purpose operation main "html lint smoke"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall profile Profile profileValue
+run hydrateCardCall
+return void
+""")
+        self.assertNotIn("SS3520", _codes(diagnostics))
+
+    def test_request_data_cannot_be_hydrated_as_raw_html(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <section>{bodyHtml}</section>
+operation unsafeHandler
+input operation unsafeHandler request HttpRequest
+output operation unsafeHandler Void
+purpose operation unsafeHandler "request body must not become raw HTML"
+call bodyReadCall http.requestBodyText
+argument bodyReadCall request HttpRequest request
+run bodyReadCall
+bind value bodyValue String bodyReadCall
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall bodyHtml HtmlFragment bodyValue
+run hydrateCardCall
+ignore value source hydrateCardCall type HtmlDocument
+return void
+""")
+        matching = _diagnostics_with_code(diagnostics, "SS3616")
+        self.assertEqual(1, len(matching))
+        self.assertEqual(matching[0].kind, "webserver.untrustedHtmlHydration")
+        self.assertEqual(matching[0].subjectName, "bodyValue")
+
+    def test_request_data_may_be_hydrated_as_escaped_string(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <section>{bodyText}</section>
+operation safeHandler
+input operation safeHandler request HttpRequest
+output operation safeHandler Void
+purpose operation safeHandler "request body enters an escaped String hole"
+call bodyReadCall http.requestBodyText
+argument bodyReadCall request HttpRequest request
+run bodyReadCall
+bind value bodyValue String bodyReadCall
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall bodyText String bodyValue
+run hydrateCardCall
+ignore value source hydrateCardCall type HtmlDocument
+return void
+""")
+        self.assertNotIn("SS3616", _codes(diagnostics))
 
 
 class TestGuiRuntimeContracts(unittest.TestCase):
@@ -670,7 +784,7 @@ operation handleTitleChanged
 input handleTitleChanged session GuiSession
 input handleTitleChanged event GuiEvent
 input handleTitleChanged todoTitleTextBox GuiTextBox
-output handleTitleChanged CSignedInt32
+output handleTitleChanged Int32
 effect handleTitleChanged read gui.control.textBox.text
 authority handleTitleChanged gui.control.textBox.text read
 purpose handleTitleChanged "read the live text box text after a GUI event"
@@ -678,7 +792,7 @@ call titleReadCall gui.textBoxText
 arg titleReadCall session session
 arg titleReadCall textBox todoTitleTextBox
 run titleReadCall
-ignoreValue titleReadCall CNullTerminatedByteString
+ignoreValue titleReadCall String
 returnValue 0
 """)
         codes = _codes(diagnostics)
@@ -693,7 +807,7 @@ operation handleTitleChanged
 input handleTitleChanged session GuiSession
 input handleTitleChanged event GuiEvent
 input handleTitleChanged addTodoButton GuiButton
-output handleTitleChanged CSignedInt32
+output handleTitleChanged Int32
 effect handleTitleChanged read gui.control.textBox.text
 authority handleTitleChanged gui.control.textBox.text read
 purpose handleTitleChanged "read the live text box text after a GUI event"
@@ -701,7 +815,7 @@ call titleReadCall gui.textBoxText
 arg titleReadCall session session
 arg titleReadCall textBox addTodoButton
 run titleReadCall
-ignoreValue titleReadCall CNullTerminatedByteString
+ignoreValue titleReadCall String
 returnValue 0
 """)
         self.assertIn("SS4301", _codes(diagnostics))
@@ -713,13 +827,13 @@ operation handleClose
 input handleClose session GuiSession
 input handleClose event GuiEvent
 input handleClose todoMainWindow GuiWindow
-output handleClose CSignedInt32
+output handleClose Int32
 purpose handleClose "close the main GUI window"
 call closeCall gui.windowClose
 arg closeCall session session
 arg closeCall window todoMainWindow
 run closeCall
-ignoreValue closeCall CSignedInt32
+ignoreValue closeCall Int32
 returnValue 0
 """)
         matching = _diagnostics_with_code(diagnostics, "SS3111")[0]
@@ -740,12 +854,12 @@ arg registerClickCall control addTodoButton
 arg registerClickCall eventKind clickGuiEventKind
 arg registerClickCall handler addTaskFromInput
 run registerClickCall
-ignoreValue registerClickCall CSignedInt32
+ignoreValue registerClickCall Int32
 returnValue 0
 operation addTaskFromInput
 input addTaskFromInput session GuiSession
 input addTaskFromInput event GuiEvent
-output addTaskFromInput CSignedInt32
+output addTaskFromInput Int32
 purpose addTaskFromInput "handle a GUI click"
 returnValue 0
 """)
@@ -763,32 +877,32 @@ class TestProjectBuildTapeSchema(unittest.TestCase):
     def _write_complete_project(self, root: Path, extraRows: str = "") -> Path:
         (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
         buildPath = root / "build.sem"
-        buildPath.write_text(f"""buildProject todoTui
-project TodoTuiApp
-modulePath todoTui github.com/example/todo
-languageVersion todoTui "1.0"
-projectVersion todoTui "1.0.0"
-projectLicense todoTui MIT
-sourceRoot todoTui "."
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
-mainOperation todoTui main
-testPattern todoTui "*.test.sem"
-testRoot todoTui "."
-targetRuntime todoTui nativeExe
-buildProfile todoTui dev
-runtimeChecks todoTui panic
-persistLlvmIr todoTui auto
-optLevel todoTui 2
-emitLlvmIr todoTui auto
-emitOptimizedLlvmIr todoTui no
-buildFolderName todoTui build
-cpuBaseline todoTui generic
-cpuTune todoTui generic
-cpuFeatureCheck todoTui auto
-formatterSetting todoTui lineWidth 100
-linterSetting todoTui maxTier T4
-docsOutput todoTui "docs"
+        buildPath.write_text(f"""buildProject taskForgeTui
+project TaskForgeTui
+modulePath taskForgeTui github.com/example/todo
+languageVersion taskForgeTui "1.0"
+projectVersion taskForgeTui "1.0.0"
+projectLicense taskForgeTui MIT
+sourceRoot taskForgeTui "."
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
+mainOperation taskForgeTui main
+testPattern taskForgeTui "*.test.sem"
+testRoot taskForgeTui "."
+targetRuntime taskForgeTui nativeExe
+buildProfile taskForgeTui dev
+runtimeChecks taskForgeTui panic
+persistLlvmIr taskForgeTui auto
+optLevel taskForgeTui 2
+emitLlvmIr taskForgeTui auto
+emitOptimizedLlvmIr taskForgeTui no
+buildFolderName taskForgeTui build
+cpuBaseline taskForgeTui generic
+cpuTune taskForgeTui generic
+cpuFeatureCheck taskForgeTui auto
+formatterSetting taskForgeTui lineWidth 100
+linterSetting taskForgeTui maxTier T4
+docsOutput taskForgeTui "docs"
 {extraRows}""", encoding="utf-8")
         return buildPath
 
@@ -823,6 +937,73 @@ docsOutput todoGui "docs"
 {extraRows}""", encoding="utf-8")
         return buildPath
 
+    def _write_regular_build_plan_project(
+        self,
+        root: Path,
+        *,
+        targetRuntime: str = "nativeExe",
+        guiBackend: str = "win32",
+        optLevel: int = 2,
+    ) -> Path:
+        (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
+        buildPath = root / "build.sem"
+        buildPath.write_text(f"""module app.todo.build
+record BuildProject
+field BuildProject id String
+field BuildProject name String
+field BuildProject modulePath String
+field BuildProject languageVersion String
+field BuildProject projectVersion String
+field BuildProject license String
+record BuildModule
+field BuildModule moduleName String
+field BuildModule sourceRoot String
+field BuildModule sourcePath String
+field BuildModule mainFile String
+field BuildModule mainOperation String
+record BuildTarget
+field BuildTarget runtime String
+field BuildTarget guiBackend String
+field BuildTarget profile String
+field BuildTarget optLevel Int64
+field BuildTarget runtimeChecks String
+field BuildTarget persistLlvmIr Bool
+field BuildTarget buildFolderName String
+record BuildPlan
+field BuildPlan project BuildProject
+field BuildPlan module BuildModule
+field BuildPlan target BuildTarget
+storage module immutable todoBuildPlan BuildPlan
+jsonBody todoBuildPlan
+  {{
+    "project": {{
+      "id": "taskForgeTui",
+      "name": "TaskForgeTui",
+      "modulePath": "github.com/example/todo",
+      "languageVersion": "1.0",
+      "projectVersion": "1.0.0",
+      "license": "MIT"
+    }},
+    "module": {{
+      "moduleName": "app.todo",
+      "sourceRoot": ".",
+      "sourcePath": ".",
+      "mainFile": "main.sem",
+      "mainOperation": "main"
+    }},
+    "target": {{
+      "runtime": "{targetRuntime}",
+      "guiBackend": "{guiBackend}",
+      "profile": "dev",
+      "optLevel": {optLevel},
+      "runtimeChecks": "panic",
+      "persistLlvmIr": true,
+      "buildFolderName": "build"
+    }}
+  }}
+""", encoding="utf-8")
+        return buildPath
+
     def test_complete_build_tape_schema_is_clean(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(Path(tempDir))
@@ -846,9 +1027,58 @@ docsOutput todoGui "docs"
         self.assertNotIn("SS2522", codes)
         self.assertNotIn("SS2525", codes)
 
+    def test_gui_backend_build_tape_choice_is_validated(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_windows_gui_project(
+                Path(tempDir),
+                extraRows="guiBackend todoGui win32\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertNotIn("SS2525", _codes(diagnostics))
+
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_windows_gui_project(
+                Path(tempDir),
+                extraRows="guiBackend todoGui qt\n",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
+
+    def test_regular_build_plan_schema_is_clean_and_registers_module(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_regular_build_plan_project(Path(tempDir))
+            diagnostics = semlint.lint_path(buildPath)
+            facts = semlint.parse_file(buildPath)
+            registered, mainFiles = semlint._collect_registered_modules(facts)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2521", codes)
+        self.assertNotIn("SS2522", codes)
+        self.assertNotIn("SS2525", codes)
+        self.assertEqual({"app.todo"}, set(registered))
+        self.assertEqual(["main.sem"], mainFiles)
+
+    def test_regular_build_plan_invalid_runtime_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_regular_build_plan_project(
+                Path(tempDir),
+                targetRuntime="desktopWizard",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
+
+    def test_regular_build_plan_invalid_gui_backend_is_flagged(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            buildPath = self._write_regular_build_plan_project(
+                Path(tempDir),
+                targetRuntime="windowsGui",
+                guiBackend="qt",
+            )
+            diagnostics = semlint.lint_path(buildPath)
+        self.assertIn("SS2525", _codes(diagnostics))
+
     def test_missing_required_rows_are_flagged(self) -> None:
-        diagnostics = _lint_source("""buildProject todoTui
-project TodoTuiApp
+        diagnostics = _lint_source("""buildProject taskForgeTui
+project TaskForgeTui
 """)
         self.assertIn("SS2522", _codes(diagnostics))
 
@@ -856,7 +1086,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="optLevel todoTui 9\n",
+                extraRows="optLevel taskForgeTui 9\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2524", _codes(diagnostics))
@@ -866,7 +1096,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="buildProfile todoTui prod\n",
+                extraRows="buildProfile taskForgeTui prod\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2524", _codes(diagnostics))
@@ -884,7 +1114,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="buildFolderName todoTui nested/build\n",
+                extraRows="buildFolderName taskForgeTui nested/build\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2526", _codes(diagnostics))
@@ -893,7 +1123,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="cpuFeature todoTui avx2 maybe\n",
+                extraRows="cpuFeature taskForgeTui avx2 maybe\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2525", _codes(diagnostics))
@@ -904,14 +1134,14 @@ project TodoTuiApp
             buildPath = self._write_complete_project(
                 Path(tempDir),
                 extraRows=(
-                    "dependency todoTui semstd github.com/example/semstd v1.0.0\n"
-                    "dependencyFetch todoTui semstd github example/semstd v1.0.0\n"
-                    "dependencyIntegrity todoTui semstd commit:abcdef1234567890\n"
-                    "dependency todoTui api github.com/example/api v2.0.0\n"
-                    "dependencyFetch todoTui api http \"https://example.com/api.tar.gz\"\n"
-                    f"dependencyIntegrity todoTui api sha256:{digest}\n"
-                    "dependencyCache todoTui \".semcache\"\n"
-                    "dependencyLock todoTui \"sem.lock\"\n"
+                    "dependency taskForgeTui semstd github.com/example/semstd v1.0.0\n"
+                    "dependencyFetch taskForgeTui semstd github example/semstd v1.0.0\n"
+                    "dependencyIntegrity taskForgeTui semstd commit:abcdef1234567890\n"
+                    "dependency taskForgeTui api github.com/example/api v2.0.0\n"
+                    "dependencyFetch taskForgeTui api http \"https://example.com/api.tar.gz\"\n"
+                    f"dependencyIntegrity taskForgeTui api sha256:{digest}\n"
+                    "dependencyCache taskForgeTui \".semcache\"\n"
+                    "dependencyLock taskForgeTui \"sem.lock\"\n"
                 ),
             )
             diagnostics = semlint.lint_path(buildPath)
@@ -927,7 +1157,7 @@ project TodoTuiApp
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(
                 Path(tempDir),
-                extraRows="dependencyFetch todoTui missing http \"http://example.com/api.tar.gz\"\n",
+                extraRows="dependencyFetch taskForgeTui missing http \"http://example.com/api.tar.gz\"\n",
             )
             diagnostics = semlint.lint_path(buildPath)
         codes = _codes(diagnostics)
@@ -939,8 +1169,8 @@ project TodoTuiApp
             buildPath = self._write_complete_project(
                 Path(tempDir),
                 extraRows=(
-                    "dependency todoTui api github.com/example/api v1.0.0\n"
-                    "dependencySource todoTui api git \"https://example.com/api.git\"\n"
+                    "dependency taskForgeTui api github.com/example/api v1.0.0\n"
+                    "dependencySource taskForgeTui api git \"https://example.com/api.git\"\n"
                 ),
             )
             diagnostics = semlint.lint_path(buildPath)
@@ -951,8 +1181,8 @@ project TodoTuiApp
             buildPath = self._write_complete_project(
                 Path(tempDir),
                 extraRows=(
-                    "dependency todoTui semstd github.com/example/semstd main\n"
-                    "dependencyFetch todoTui semstd github example/semstd main\n"
+                    "dependency taskForgeTui semstd github.com/example/semstd main\n"
+                    "dependencyFetch taskForgeTui semstd github example/semstd main\n"
                 ),
             )
             diagnostics = semlint.lint_path(buildPath)
@@ -972,9 +1202,9 @@ class TestProjectModuleRegistry(unittest.TestCase):
             root = Path(tempDir)
             (root / "main.sem").write_text("module app.todo\n", encoding="utf-8")
             buildPath = root / "build.sem"
-            buildPath.write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            buildPath.write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 exportOperation app.todo main
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(buildPath)
@@ -983,9 +1213,9 @@ exportOperation app.todo main
     def test_registered_module_exports_are_local_and_clean(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1004,9 +1234,9 @@ returnVoid
     def test_exported_symbol_must_be_declared(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1018,14 +1248,14 @@ exportOperation app.todo missingMain
     def test_storage_constant_export_counts_as_declared(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
 exportConstant app.todo publicLimit
-storage module immutable publicLimit I64 5
+storage module immutable publicLimit Int64 5
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
         self.assertNotIn("SS2506", _codes(diagnostics))
@@ -1033,9 +1263,9 @@ storage module immutable publicLimit I64 5
     def test_unregistered_module_declaration_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.other
@@ -1046,9 +1276,9 @@ mainFile todoTui "main.sem"
     def test_unregistered_module_import_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1060,18 +1290,17 @@ importModule app.missing
     def test_standard_html_import_is_allowed_in_registered_module(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
 importModule html standard.html
-htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
-htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
-storage module immutable titleText HtmlText "Title"
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+storage module immutable titleText String "Title"
 operation main
 output main HtmlDocument
 purpose main "hydrate through the imported standard.html namespace"
@@ -1104,7 +1333,7 @@ moduleOwns standard.customlint "The customLintVersionText export."
 moduleDoesNotOwn standard.customlint "Application code."
 moduleInvariant standard.customlint "The module is visible only through SEMANTICSCRIPT_STD_PATH."
 exportConstant standard.customlint customLintVersionText
-storage module immutable customLintVersionText CNullTerminatedByteString "custom"
+storage module immutable customLintVersionText String "custom"
 """, encoding="utf-8")
             appRoot = root / "app"
             appRoot.mkdir()
@@ -1138,7 +1367,7 @@ returnValue okCode
         semanticScriptRoot = Path(_LINTER_DIRECTORY).resolve().parent
         relayPath = semanticScriptRoot / "std" / "module.sem"
         diagnostics = semlint.lint_path(relayPath)
-        self.assertEqual([], _codes(diagnostics))
+        self.assertEqual(set(), set(_codes(diagnostics)))
         relayText = relayPath.read_text(encoding="utf-8")
         canonicalModules = (
             "array", "assert", "bit", "bool", "char", "compare", "constants",
@@ -1149,7 +1378,7 @@ returnValue okCode
         )
         for moduleName in canonicalModules:
             self.assertIn(
-                f"importModule standard.{moduleName}",
+                f"import {moduleName} standard.{moduleName}",
                 relayText,
             )
             self.assertTrue(
@@ -1171,9 +1400,9 @@ mainFile runtimeImports "main.sem"
 importModule http standard.http
 importModule json standard.json
 importCapability importedHttpResponseWriter http httpResponseWriter
-storage module immutable okBody CNullTerminatedByteString "ok"
-storage module immutable plainType CNullTerminatedByteString "text/plain; charset=utf-8"
-storage module immutable builderCapacity CByteCount 128
+storage module immutable okBody String "ok"
+storage module immutable plainType String "text/plain; charset=utf-8"
+storage module immutable builderCapacity ByteCount 128
 operation main
 output main Void
 effect main write http.response
@@ -1185,7 +1414,7 @@ arg writeCall status 200
 arg writeCall body okBody
 arg writeCall contentType plainType
 run writeCall
-ignoreValue writeCall CSignedInt32
+ignoreValue writeCall Int32
 call createBuilderCall json.createBuilder
 arg createBuilderCall capacity builderCapacity
 run createBuilderCall
@@ -1200,9 +1429,9 @@ returnVoid
     def test_missing_registered_module_source_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = Path(tempDir) / "build.sem"
-            buildPath.write_text("""buildProject todoTui
-registerModule todoTui app.todo "missing"
-mainFile todoTui "main.sem"
+            buildPath.write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "missing"
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(buildPath)
         self.assertIn("SS2501", _codes(diagnostics))
@@ -1210,9 +1439,9 @@ mainFile todoTui "main.sem"
     def test_duplicate_export_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1229,14 +1458,14 @@ returnVoid
     def test_mutable_storage_export_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
 exportConstant app.todo mutableRevision
-storage module mutable mutableRevision I64 0
+storage module mutable mutableRevision Int64 0
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
         self.assertIn("SS2508", _codes(diagnostics))
@@ -1244,9 +1473,9 @@ storage module mutable mutableRevision I64 0
     def test_local_storage_export_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1254,7 +1483,7 @@ exportConstant app.todo scratchLimit
 operation main
 output main Void
 purpose main "smoke"
-storage local immutable scratchLimit I64 5
+storage local immutable scratchLimit Int64 5
 returnVoid
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
@@ -1325,14 +1554,14 @@ exportType app.todo TodoItem
 exportError app.todo TodoError
 exportCapability app.todo todoWriter
 exportConstant app.todo maxTodoCount
-enum TodoStatus repr CSignedInt32
+enum TodoStatus repr Int32
 enumCase TodoStatus openTodoStatus 0
 record TodoItem
-field TodoItem title CNullTerminatedByteString
+field TodoItem title String
 error TodoError
 errorCase TodoError SaveFailed SaveTodosFailure
 capability todoWriter todo write
-storage module immutable maxTodoCount I64 128
+storage module immutable maxTodoCount Int64 128
 """, encoding="utf-8")
             facts = semlint.gather_extended(semlint.parse_file(modulePath))
             tape = semlint.build_export_contract_tape(facts)
@@ -1346,9 +1575,9 @@ storage module immutable maxTodoCount I64 128
     def test_exported_operation_quality_diagnostics(self) -> None:
         with TemporaryDirectory() as tempDir:
             root = Path(tempDir)
-            (root / "build.sem").write_text("""buildProject todoTui
-registerModule todoTui app.todo "."
-mainFile todoTui "main.sem"
+            (root / "build.sem").write_text("""buildProject taskForgeTui
+registerModule taskForgeTui app.todo "."
+mainFile taskForgeTui "main.sem"
 """, encoding="utf-8")
             modulePath = root / "main.sem"
             modulePath.write_text("""module app.todo
@@ -1383,19 +1612,19 @@ exportConstant app.provider providerLimit
 exportConstant app.provider mutableCounter
 exportOperation app.provider providerPing
 exportOperation app.provider providerCount
-type ProviderCount I64
+type ProviderCount Int64
 error ProviderError
 errorCase ProviderError Failed ProviderFailure
 capability providerReader provider read
-storage module immutable providerLimit I64 7
-storage module mutable mutableCounter I64 0
+storage module immutable providerLimit Int64 7
+storage module mutable mutableCounter Int64 0
 operation providerPing
 output providerPing Void
 purpose providerPing "public provider ping"
 returnVoid
 operation providerCount
-input providerCount count I64
-output providerCount Result I64 ProviderError
+input providerCount count Int64
+output providerCount Result Int64 ProviderError
 effect providerCount read provider
 useCapability providerCount providerReader
 purpose providerCount "public provider count"
@@ -1499,7 +1728,7 @@ returnError providerError
             consumerPath.write_text("""module app.consumer
 importModule svc app.provider
 importOperation countProvider svc providerCount
-const wrongCount CNullTerminatedByteString "wrong"
+const wrongCount String "wrong"
 operation main
 output main Void
 purpose main "consumer"
@@ -1517,7 +1746,7 @@ returnVoid
             consumerPath = self._write_project(root)
             consumerPath.write_text("""module app.consumer
 importModule svc app.provider
-const countValue I64 1
+const countValue Int64 1
 operation main
 output main Void
 purpose main "consumer"
@@ -1537,7 +1766,7 @@ returnVoid
             consumerPath = self._write_project(root)
             consumerPath.write_text("""module app.consumer
 importModule svc app.provider
-const countValue I64 1
+const countValue Int64 1
 operation main
 output main Void
 effect main read provider
@@ -1684,11 +1913,11 @@ class TestUnusedBindSlots(unittest.TestCase):
 operation main
 output main Void
 purpose main "smoke"
-call computeCall math.addI64
+call computeCall math.addInt64
 arg computeCall left someLeftValue
 arg computeCall right someRightValue
 run computeCall
-bind unreadResult I64 computeCall
+bind unreadResult Int64 computeCall
 """)
         self.assertIn("SS0106", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0106")[0]
@@ -1697,13 +1926,13 @@ bind unreadResult I64 computeCall
     def test_read_bind_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main I64
+output main Int64
 purpose main "smoke"
-call computeCall math.addI64
+call computeCall math.addInt64
 arg computeCall left someLeftValue
 arg computeCall right someRightValue
 run computeCall
-bind computedSum I64 computeCall
+bind computedSum Int64 computeCall
 returnValue computedSum
 """)
         self.assertNotIn("SS0106", _codes(diagnostics))
@@ -1729,8 +1958,8 @@ ignoreOk writeLineCall Void
         self.assertIn("SS3106", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3106")[0]
         self.assertEqual(matchingDiagnostic.subjectName, "writeLineCall")
-        self.assertIn("bindError", matchingDiagnostic.gapEdge)
-        self.assertIn("branchIfError", matchingDiagnostic.gapEdge)
+        self.assertIn("bind error", matchingDiagnostic.gapEdge)
+        self.assertIn("branch error", matchingDiagnostic.gapEdge)
 
     def test_console_write_with_full_error_disposition_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -1754,6 +1983,247 @@ returnError writeLineFailure
 """)
         self.assertNotIn("SS3106", _codes(diagnostics))
 
+    def test_run_checked_counts_as_fallible_disposition(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        self.assertNotIn("SS3106", _codes(diagnostics))
+
+    def test_mixed_run_and_run_checked_same_fallible_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+run writeLineCall
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and diagnostic.gapEdge == "runOrRunChecked"
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_mixed_start_and_run_checked_same_fallible_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+start writeLineCall
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and diagnostic.gapEdge == "runOrRunChecked"
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_mixed_start_in_group_and_run_checked_same_fallible_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError WriteFailure
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main write console.stdout
+taskGroup writeGroup
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+startInGroup writeLineCall writeGroup
+runChecked writeLineCall ok writeLineStatus Int32 error writeLineError MainError else writeFailed
+awaitGroup writeGroup
+returnOk noResult
+label writeFailed
+returnError writeLineError
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and diagnostic.gapEdge == "runOrRunChecked"
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_non_wait_set_ignore_error_does_not_hide_missing_branch(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call firstFetchCall net.fetchText
+start firstFetchCall
+await firstFetchCall
+ignoreError firstFetchCall
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "firstFetchCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                and "bind error" in diagnostic.gapEdge
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_result_call_bind_value_is_not_success_disposition(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call firstFetchCall net.fetchText
+start firstFetchCall
+label waitNextResult
+await nextResult
+case firstFetchCall fetchReady
+done allDone
+label fetchReady
+bind value firstFetchCallResponse HttpTextResponse firstFetchCall
+ignore error source firstFetchCall
+jump target waitNextResult
+label allDone
+return void
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "firstFetchCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_pre_run_fallible_dispositions_do_not_count(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+ignore ok source writeLineCall type Int32
+bind error writeLineCallError MainError writeLineCall
+branch error source writeLineCall target writeFailed
+run writeLineCall
+return void
+label writeFailed
+return void
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and "bind/ignore ok" in diagnostic.gapEdge
+                and "bind error" in diagnostic.gapEdge
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_wait_set_pre_wait_ignore_error_does_not_count_as_handler_disposition(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call firstFetchCall net.fetchText
+start firstFetchCall
+ignore error source firstFetchCall
+label waitNextResult
+await nextResult
+case firstFetchCall fetchReady
+done allDone
+label fetchReady
+bind ok firstFetchCallResponse HttpTextResponse firstFetchCall
+jump target waitNextResult
+label allDone
+return void
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "firstFetchCall"
+                and "bind error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
+    def test_pre_wait_call_ignore_error_inside_wait_handler_is_still_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+effect main write console.stdout
+call writeLineCall console.writeLine
+arg writeLineCall console console
+arg writeLineCall text someMessageText
+run writeLineCall
+ignoreOk writeLineCall Void
+call asyncCall math.addInt64
+start asyncCall
+label waitNextResult
+await nextResult
+case asyncCall asyncReady
+done allDone
+label asyncReady
+ignoreError writeLineCall
+jump target waitNextResult
+label allDone
+returnValue noResult
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
+        self.assertTrue(
+            any(
+                diagnostic.subjectName == "writeLineCall"
+                and "branch error" in diagnostic.gapEdge
+                for diagnostic in matchingDiagnostics
+            ),
+            diagnostics,
+        )
+
     def test_c_status_call_with_ignore_value_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
@@ -1763,7 +2233,7 @@ effect main write console.stdout
 call writeCharacterCall c.putchar
 arg writeCharacterCall character escapeByte
 run writeCharacterCall
-ignoreValue writeCharacterCall CSignedInt32
+ignoreValue writeCharacterCall Int32
 """)
         self.assertNotIn("SS3106", _codes(diagnostics))
 
@@ -1866,7 +2336,7 @@ errorCase MainError SomeFailure
 operation main
 output main Result Void MainError
 purpose main "smoke"
-call computeCall math.addI64
+call computeCall math.addInt64
 run computeCall
 bindError oopsie MainError computeCall
 """)
@@ -1889,7 +2359,7 @@ returnError shortname
 operation main
 output main Void
 purpose main "smoke"
-const tmp I64 zeroCount
+const tmp Int64 zeroCount
 """)
         self.assertIn("SS4004", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS4004")[0]
@@ -1957,7 +2427,7 @@ class TestUnusedConst(unittest.TestCase):
 operation main
 output main Void
 purpose main "smoke"
-const dangling I64 zeroCount
+const dangling Int64 zeroCount
 """)
         self.assertIn("SS0107", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0107")[0]
@@ -1966,9 +2436,9 @@ const dangling I64 zeroCount
     def test_referenced_const_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main I64
+output main Int64
 purpose main "smoke"
-const exitOkCode I64 zeroCount
+const exitOkCode Int64 zeroCount
 returnValue exitOkCode
 """)
         self.assertNotIn("SS0107", _codes(diagnostics))
@@ -1982,7 +2452,7 @@ class TestUnusedInput(unittest.TestCase):
     def test_unreferenced_input_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-input main unusedParameter I64
+input main unusedParameter Int64
 output main Void
 purpose main "smoke"
 """)
@@ -1993,8 +2463,8 @@ purpose main "smoke"
     def test_referenced_input_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-input main usedParameter I64
-output main I64
+input main usedParameter Int64
+output main Int64
 purpose main "smoke"
 returnValue usedParameter
 """)
@@ -2099,7 +2569,7 @@ returnError mainFailure
 class TestDeadStore(unittest.TestCase):
     def test_two_sets_without_read_between_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage local mutable counter I64 zeroValue
+storage local mutable counter Int64 zeroValue
 operation main
 output main Void
 purpose main "smoke"
@@ -2111,9 +2581,9 @@ set local counter secondValue
 
     def test_read_between_sets_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage local mutable counter I64 zeroValue
+storage local mutable counter Int64 zeroValue
 operation main
-output main I64
+output main Int64
 purpose main "smoke"
 invariant main "counter mutates"
 set local counter firstValue
@@ -2233,61 +2703,61 @@ branchIf someCondition loopHeader
         self.assertNotIn("SS3203", _codes(diagnostics))
 
 
-class TestSnprintfI32OffsetWithoutWidening(unittest.TestCase):
-    def test_snprintf_result_added_to_i64_cursor_is_flagged(self) -> None:
+class TestSnprintfInt32OffsetWithoutWidening(unittest.TestCase):
+    def test_snprintf_result_added_to_int64_cursor_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable format CNullTerminatedByteString "%s"
-storage local immutable text CNullTerminatedByteString "row"
-storage local mutable writeOffset CSignedInt64 0
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable format String "%s"
+storage local immutable text String "row"
+storage local mutable writeOffset Int64 0
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
 arg formatRowCall format format
 arg formatRowCall first text
 run formatRowCall
-bind rowBytesWritten CSignedInt32 formatRowCall
-call afterRowOffsetCall math.addI64
+bind rowBytesWritten Int32 formatRowCall
+call afterRowOffsetCall math.addInt64
 arg afterRowOffsetCall left writeOffset
 arg afterRowOffsetCall right rowBytesWritten
 run afterRowOffsetCall
-bind afterRowOffset CSignedInt64 afterRowOffsetCall
+bind afterRowOffset Int64 afterRowOffsetCall
 """)
         self.assertIn("SS3205", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3205")[0]
         self.assertEqual(matching.subjectName, "afterRowOffsetCall")
-        self.assertEqual(matching.gapEdge, "signExtendCSignedInt32ToCSignedInt64")
+        self.assertEqual(matching.gapEdge, "signExtendInt32ToInt64")
 
-    def test_explicit_widen_before_i64_cursor_not_flagged(self) -> None:
+    def test_explicit_widen_before_int64_cursor_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable format CNullTerminatedByteString "%s"
-storage local immutable text CNullTerminatedByteString "row"
-storage local mutable writeOffset CSignedInt64 0
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable format String "%s"
+storage local immutable text String "row"
+storage local mutable writeOffset Int64 0
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
 arg formatRowCall format format
 arg formatRowCall first text
 run formatRowCall
-bind rowBytesWritten CSignedInt32 formatRowCall
-call widenRowBytesWrittenCall math.signExtendCSignedInt32ToCSignedInt64
+bind rowBytesWritten Int32 formatRowCall
+call widenRowBytesWrittenCall math.signExtendInt32ToInt64
 arg widenRowBytesWrittenCall inputValue rowBytesWritten
 run widenRowBytesWrittenCall
-bind rowBytesWrittenI64 CSignedInt64 widenRowBytesWrittenCall
-call afterRowOffsetCall math.addI64
+bind rowBytesWrittenInt64 Int64 widenRowBytesWrittenCall
+call afterRowOffsetCall math.addInt64
 arg afterRowOffsetCall left writeOffset
-arg afterRowOffsetCall right rowBytesWrittenI64
+arg afterRowOffsetCall right rowBytesWrittenInt64
 run afterRowOffsetCall
-bind afterRowOffset CSignedInt64 afterRowOffsetCall
+bind afterRowOffset Int64 afterRowOffsetCall
 """)
         self.assertNotIn("SS3205", _codes(diagnostics))
 
@@ -2298,20 +2768,20 @@ class TestGuiSelectionHandlerAppendsListItem(unittest.TestCase):
 operation markSelectedTask
 input markSelectedTask session GuiSession
 input markSelectedTask event GuiEvent
-output markSelectedTask CSignedInt32
+output markSelectedTask Int32
 purpose markSelectedTask "complete selected task"
 invariant markSelectedTask "selection handler"
 call selectedIndexCall gui.listBoxSelectedIndex
 arg selectedIndexCall session session
 arg selectedIndexCall listBox taskListHandle
 run selectedIndexCall
-bind selectedTaskIndex CSignedInt32 selectedIndexCall
+bind selectedTaskIndex Int32 selectedIndexCall
 call appendCompletedCall gui.listBoxAppendItem
 arg appendCompletedCall session session
 arg appendCompletedCall listBox taskListHandle
 arg appendCompletedCall text completedText
 run appendCompletedCall
-bind appendStatus CSignedInt32 appendCompletedCall
+bind appendStatus Int32 appendCompletedCall
 """)
         self.assertIn("SS3206", _codes(diagnostics))
 
@@ -2320,20 +2790,20 @@ bind appendStatus CSignedInt32 appendCompletedCall
 operation markSelectedTask
 input markSelectedTask session GuiSession
 input markSelectedTask event GuiEvent
-output markSelectedTask CSignedInt32
+output markSelectedTask Int32
 purpose markSelectedTask "complete selected task"
 invariant markSelectedTask "selection handler"
 call selectedIndexCall gui.listBoxSelectedIndex
 arg selectedIndexCall session session
 arg selectedIndexCall listBox taskListHandle
 run selectedIndexCall
-bind selectedTaskIndex CSignedInt32 selectedIndexCall
+bind selectedTaskIndex Int32 selectedIndexCall
 call statusCall gui.textLabelSetText
 arg statusCall session session
 arg statusCall textLabel statusLabelHandle
 arg statusCall text completedText
 run statusCall
-bind status CSignedInt32 statusCall
+bind status Int32 statusCall
 """)
         self.assertNotIn("SS3206", _codes(diagnostics))
 
@@ -2344,8 +2814,8 @@ class TestRowCountMutationUnchecked(unittest.TestCase):
 operation handleEnter
 output handleEnter Void
 purpose handleEnter "insert row"
-storage local mutable activeRowCount CSignedInt64 4
-storage local immutable maxRows CSignedInt64 4
+storage local mutable activeRowCount Int64 4
+storage local immutable maxRows Int64 4
 call addEmptyAtEndCall insertEmptyRowAt
 arg addEmptyAtEndCall rowsBuffer rowsBuffer
 arg addEmptyAtEndCall rowLengths rowLengths
@@ -2354,7 +2824,7 @@ arg addEmptyAtEndCall rowIndex activeRowCount
 arg addEmptyAtEndCall maxRows maxRows
 arg addEmptyAtEndCall rowCapacity rowCapacity
 run addEmptyAtEndCall
-bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
+bind rowsAfterAddEmpty Int64 addEmptyAtEndCall
 set local activeRowCount rowsAfterAddEmpty
 """)
         self.assertIn("SS3207", _codes(diagnostics))
@@ -2364,8 +2834,8 @@ set local activeRowCount rowsAfterAddEmpty
 operation handleEnter
 output handleEnter Void
 purpose handleEnter "insert row"
-storage local mutable activeRowCount CSignedInt64 4
-storage local immutable maxRows CSignedInt64 4
+storage local mutable activeRowCount Int64 4
+storage local immutable maxRows Int64 4
 call addEmptyAtEndCall insertEmptyRowAt
 arg addEmptyAtEndCall rowsBuffer rowsBuffer
 arg addEmptyAtEndCall rowLengths rowLengths
@@ -2374,8 +2844,8 @@ arg addEmptyAtEndCall rowIndex activeRowCount
 arg addEmptyAtEndCall maxRows maxRows
 arg addEmptyAtEndCall rowCapacity rowCapacity
 run addEmptyAtEndCall
-bind rowsAfterAddEmpty CSignedInt64 addEmptyAtEndCall
-call addEmptyAtEndFailedCheckCall math.equalI64
+bind rowsAfterAddEmpty Int64 addEmptyAtEndCall
+call addEmptyAtEndFailedCheckCall math.equalInt64
 arg addEmptyAtEndFailedCheckCall left rowsAfterAddEmpty
 arg addEmptyAtEndFailedCheckCall right activeRowCount
 run addEmptyAtEndFailedCheckCall
@@ -2394,10 +2864,10 @@ class TestBindThenIgnore(unittest.TestCase):
 operation main
 output main Void
 purpose main "smoke"
-call sideEffectCall math.addI64
+call sideEffectCall math.addInt64
 run sideEffectCall
-bind redundantResult I64 sideEffectCall
-ignoreValue redundantResult I64
+bind redundantResult Int64 sideEffectCall
+ignoreValue redundantResult Int64
 """)
         self.assertIn("SS3204", _codes(diagnostics))
 
@@ -2470,7 +2940,7 @@ effect main allocate heap
 authority main heap allocate
 memoryHeap main yes
 memoryAllocationSource main allocationCall
-storage local immutable allocationSize CByteCount 8
+storage local immutable allocationSize ByteCount 8
 call allocationCall {targetName}
 arg allocationCall size allocationSize
 run allocationCall
@@ -2503,6 +2973,30 @@ label allocationFailed
 returnError allocationCallError""",
         ))
         self.assertNotIn("SS3305", _codes(diagnostics))
+
+    def test_heap_allocator_with_run_checked_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError OutOfMemory
+operation main
+output main Result Void MainError
+purpose main "smoke"
+effect main allocate heap
+authority main heap allocate
+memoryHeap main yes
+memoryAllocationSource main allocationCall
+storage local immutable allocationSize ByteCount 8
+call allocationCall c.malloc
+arg allocationCall size allocationSize
+runChecked allocationCall ok allocatedBuffer OpaquePointer error allocationError MainError else allocationFailed
+defer releaseAllocationCall c.free allocatedBuffer
+returnOk noResult
+label allocationFailed
+returnError allocationError
+""")
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS3305", codes)
+        self.assertNotIn("SS3106", codes)
 
     def test_heap_allocator_with_bind_error_only_is_flagged(self) -> None:
         diagnostics = _lint_source(self._allocation_source(
@@ -2570,7 +3064,7 @@ memoryAllocationSource main allocationCall
 call allocationCall c.malloc
 arg allocationCall size eightBytes
 run allocationCall
-bindOk allocatedBuffer COpaqueMemoryAddress allocationCall
+bindOk allocatedBuffer OpaquePointer allocationCall
 call freeAllocationCall c.free
 arg freeAllocationCall ptr allocatedBuffer
 run freeAllocationCall
@@ -2583,14 +3077,14 @@ ignoreValue freeAllocationCall Void
         # transfers to the caller and the lack of free is correct.
         diagnostics = _lint_source("""project Test
 operation allocateBuffer
-output allocateBuffer COpaqueMemoryAddress
+output allocateBuffer OpaquePointer
 purpose allocateBuffer "allocator"
 effect allocateBuffer allocate heap
 memoryHeap allocateBuffer yes
 memoryAllocationSource allocateBuffer allocationCall
 call allocationCall c.malloc
 run allocationCall
-bind allocatedBuffer COpaqueMemoryAddress allocationCall
+bind allocatedBuffer OpaquePointer allocationCall
 returnValue allocatedBuffer
 """)
         self.assertNotIn("SS3303", _codes(diagnostics))
@@ -2598,15 +3092,15 @@ returnValue allocatedBuffer
 
 class TestStackLimitOverrun(unittest.TestCase):
     def test_tiny_stack_limit_with_many_binds_flagged(self) -> None:
-        # Declare a 4-byte limit but bind several I64 values (8 bytes each)
+        # Declare a 4-byte limit but bind several Int64 values (8 bytes each)
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
 memoryStackLimit main 4
-const firstValue I64 zeroValue
-const secondValue I64 zeroValue
-const thirdValue I64 zeroValue
+const firstValue Int64 zeroValue
+const secondValue Int64 zeroValue
+const thirdValue Int64 zeroValue
 """)
         self.assertIn("SS3304", _codes(diagnostics))
 
@@ -2616,7 +3110,7 @@ operation main
 output main Void
 purpose main "smoke"
 memoryStackLimit main 8192
-const firstValue I64 zeroValue
+const firstValue Int64 zeroValue
 """)
         self.assertNotIn("SS3304", _codes(diagnostics))
 
@@ -2640,14 +3134,14 @@ recordAlign SomeRecord 8
 class TestArrayLengthZero(unittest.TestCase):
     def test_zero_length_array_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-arrayType EmptyArray I64
+arrayType EmptyArray Int64
 arrayLength EmptyArray 0
 """)
         self.assertIn("SS3404", _codes(diagnostics))
 
     def test_nonzero_length_array_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-arrayType FixedArray I64
+arrayType FixedArray Int64
 arrayLength FixedArray 8
 """)
         self.assertNotIn("SS3404", _codes(diagnostics))
@@ -2656,14 +3150,14 @@ arrayLength FixedArray 8
 class TestInlineCapacityWithoutSpillAllocator(unittest.TestCase):
     def test_capacity_without_spill_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-smallListType TaskQueue I64
+smallListType TaskQueue Int64
 smallListInlineCapacity TaskQueue 8
 """)
         self.assertIn("SS3405", _codes(diagnostics))
 
     def test_capacity_with_spill_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-smallListType TaskQueue I64
+smallListType TaskQueue Int64
 smallListInlineCapacity TaskQueue 8
 smallListSpillAllocator TaskQueue heapAllocator
 """)
@@ -2692,7 +3186,7 @@ literalSource embeddedConfig "config.bin"
         # Primitive types are encoded by representation; no
         # typeLiteralEncoding expected.
         diagnostics = _lint_source("""project Test
-literal eightByteCount CByteCount
+literal eightByteCount ByteCount
 literalSource eightByteCount "size.bin"
 """)
         self.assertNotIn("SS3406", _codes(diagnostics))
@@ -2768,10 +3262,13 @@ class TestUnawaitedSubmitWork(unittest.TestCase):
     def test_submit_without_await_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
+operation renderTask
+output renderTask Void
+purpose renderTask "render"
 operation main
 output main Void
 purpose main "smoke"
-work renderTaskWork
+work renderTaskWork target renderTask
 submitWork renderTaskWork backgroundPool
 """)
         self.assertIn("SS3506", _codes(diagnostics))
@@ -2779,14 +3276,193 @@ submitWork renderTaskWork backgroundPool
     def test_submit_with_await_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 workerPool backgroundPool
+operation renderTask
+output renderTask Void
+purpose renderTask "render"
 operation main
 output main Void
 purpose main "smoke"
-work renderTaskWork
+work renderTaskWork target renderTask
 submitWork renderTaskWork backgroundPool
 awaitWork renderTaskWork
 """)
         self.assertNotIn("SS3506", _codes(diagnostics))
+
+    def test_submit_missing_work_declaration_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation main
+output main Void
+purpose main "smoke"
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        self.assertIn("SS3514", _codes(diagnostics))
+
+    def test_submit_work_with_unknown_target_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target missingRenderTask
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        self.assertIn("SS3514", _codes(diagnostics))
+
+    def test_submit_work_with_unknown_pool_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+submitWork renderTaskWork missingPool
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workerPool" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_missing_target_input_arg_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput Int64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workArg" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_late_target_input_arg_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput Int64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+submitWork renderTaskWork backgroundPool
+workArg renderTaskWork renderInput inputValue
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workArg" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_late_work_declaration_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput Int64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+workArg renderTaskWork renderInput inputValue
+submitWork renderTaskWork backgroundPool
+work renderTaskWork target renderTask
+awaitWork renderTaskWork
+""")
+        matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3514")
+        self.assertTrue(
+            any(diagnostic.gapEdge == "workDeclaration" for diagnostic in matchingDiagnostics),
+            diagnostics,
+        )
+
+    def test_submit_work_late_duplicate_work_after_valid_declaration_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput Int64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+workArg renderTaskWork renderInput inputValue
+submitWork renderTaskWork backgroundPool
+work renderTaskWork target renderTask
+awaitWork renderTaskWork
+""")
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3514")
+                if diagnostic.subjectName == "renderTaskWork"
+            ],
+            diagnostics,
+        )
+
+    def test_submit_work_late_duplicate_arg_after_valid_arg_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput Int64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+workArg renderTaskWork renderInput inputValue
+submitWork renderTaskWork backgroundPool
+workArg renderTaskWork renderInput replacementInputValue
+awaitWork renderTaskWork
+""")
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3514")
+                if diagnostic.subjectName == "renderTaskWork"
+            ],
+            diagnostics,
+        )
+
+    def test_submit_work_non_target_duplicate_before_submit_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+workerPool backgroundPool
+operation renderTask
+input renderTask renderInput Int64
+output renderTask Void
+purpose renderTask "render"
+operation main
+output main Void
+purpose main "smoke"
+work renderTaskWork target renderTask
+workArg renderTaskWork renderInput inputValue
+work renderTaskWork
+submitWork renderTaskWork backgroundPool
+awaitWork renderTaskWork
+""")
+        self.assertFalse(
+            [
+                diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3514")
+                if diagnostic.subjectName == "renderTaskWork"
+            ],
+            diagnostics,
+        )
 
 
 class TestSelectWithoutCases(unittest.TestCase):
@@ -2887,26 +3563,26 @@ call openFileHandleCall c.fopen
 arg openFileHandleCall path filePath
 arg openFileHandleCall mode readMode
 run openFileHandleCall
-bind openedFileHandle CFileHandle openFileHandleCall
+bind openedFileHandle FileHandle openFileHandleCall
 call closeFileHandleCall c.fclose
 arg closeFileHandleCall stream openedFileHandle
 run closeFileHandleCall
-ignoreValue closeFileHandleCall CSignedInt32
+ignoreValue closeFileHandleCall Int32
 """)
         self.assertNotIn("SS3901", _codes(diagnostics))
 
     def test_handle_returning_op_not_flagged(self) -> None:
-        # Op output is CFileHandle — ownership transfers to caller.
+        # Op output is FileHandle — ownership transfers to caller.
         diagnostics = _lint_source("""project Test
 operation openConfigurationFile
-output openConfigurationFile CFileHandle
+output openConfigurationFile FileHandle
 purpose openConfigurationFile "opener"
 effect openConfigurationFile open file
 call openFileHandleCall c.fopen
 arg openFileHandleCall path filePath
 arg openFileHandleCall mode readMode
 run openFileHandleCall
-bind openedFileHandle CFileHandle openFileHandleCall
+bind openedFileHandle FileHandle openFileHandleCall
 returnValue openedFileHandle
 """)
         self.assertNotIn("SS3901", _codes(diagnostics))
@@ -2921,8 +3597,8 @@ errorCase DbError SchemaFailed SqliteDatabaseExecFailure
 operation openConfiguredDb
 output openConfiguredDb Result SqliteDatabase DbError
 purpose openConfiguredDb "open and bootstrap sqlite"
-storage local immutable databasePath CNullTerminatedByteString ":memory:"
-storage local immutable schemaSql CNullTerminatedByteString "CREATE TABLE t(id INTEGER);"
+storage local immutable databasePath String ":memory:"
+storage local immutable schemaSql String "CREATE TABLE t(id INTEGER);"
 call openCall sqlite.openDatabase
 arg openCall path databasePath
 arg openCall mode inMemorySqliteOpenMode
@@ -2953,8 +3629,8 @@ errorCase DbError SchemaFailed SqliteDatabaseExecFailure
 operation openConfiguredDb
 output openConfiguredDb Result SqliteDatabase DbError
 purpose openConfiguredDb "open and bootstrap sqlite"
-storage local immutable databasePath CNullTerminatedByteString ":memory:"
-storage local immutable schemaSql CNullTerminatedByteString "CREATE TABLE t(id INTEGER);"
+storage local immutable databasePath String ":memory:"
+storage local immutable schemaSql String "CREATE TABLE t(id INTEGER);"
 call openCall sqlite.openDatabase
 arg openCall path databasePath
 arg openCall mode inMemorySqliteOpenMode
@@ -3041,7 +3717,7 @@ guardTokenRelease accountUpdateGuard releaseAccountUpdate
 class TestGuardTokenProtectsSharedStateAccess(unittest.TestCase):
     def test_protected_by_without_matching_protects_edge_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 operation main
 output main Void
 purpose main "smoke"
@@ -3055,7 +3731,7 @@ set sharedState lookupFailureCount nextLookupFailureCount protectedBy lookupFail
 
     def test_protected_by_matching_protects_edge_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-sharedState process mutable lookupFailureCount I64 zeroCount
+sharedState process mutable lookupFailureCount Int64 zeroCount
 guardTokenProtects lookupFailureGuard lookupFailureCount
 operation main
 output main Void
@@ -3077,7 +3753,7 @@ type SecondAlias FirstAlias
     def test_terminating_alias_chain_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 type AccountId UuidV7
-type UuidV7 CSignedInt64
+type UuidV7 Int64
 """)
         self.assertNotIn("SS3701", _codes(diagnostics))
 
@@ -3113,7 +3789,7 @@ class TestRuntimeBackingMissing(unittest.TestCase):
     def test_record_json_generated_target_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 jsonCodec taskJsonCodec
-jsonCodecInput taskJsonCodec CNullTerminatedByteString
+jsonCodecInput taskJsonCodec String
 jsonCodecOutput taskJsonCodec Task
 jsonCodecDecodeTarget taskJsonCodec json.decode.Task
 jsonCodecEncodeTarget taskJsonCodec json.encode.Task
@@ -3123,7 +3799,7 @@ purpose main "smoke"
 call decodeTaskCall json.decode.Task
 arg decodeTaskCall value rawTaskJson
 run decodeTaskCall
-bind decodedTask I64 decodeTaskCall
+bind decodedTask Int64 decodeTaskCall
 """)
         self.assertIn("SS3802", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3802")[0]
@@ -3135,11 +3811,11 @@ bind decodedTask I64 decodeTaskCall
 operation main
 output main Void
 purpose main "smoke"
-const rawNumber CNullTerminatedByteString "42"
-call decodeIntegerCall json.decode.I64
+const rawNumber String "42"
+call decodeIntegerCall json.decode.Int64
 arg decodeIntegerCall value rawNumber
 run decodeIntegerCall
-bind decodedInteger I64 decodeIntegerCall
+bind decodedInteger Int64 decodeIntegerCall
 """)
         self.assertNotIn("SS3802", _codes(diagnostics))
 
@@ -3152,7 +3828,7 @@ purpose main "smoke"
 call encodeTaskCall taskBinaryCodec.encode
 arg encodeTaskCall value taskRecord
 run encodeTaskCall
-bind encodedTaskBytes I64 encodeTaskCall
+bind encodedTaskBytes Int64 encodeTaskCall
 """)
         self.assertIn("SS3803", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3803")[0]
@@ -3169,7 +3845,7 @@ call appendTaskCall TaskList.append
 arg appendTaskCall list taskList
 arg appendTaskCall item taskRecord
 run appendTaskCall
-bindOk updatedTaskList I64 appendTaskCall
+bindOk updatedTaskList Int64 appendTaskCall
 """)
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
@@ -3187,7 +3863,7 @@ call getTaskCall TaskMap.get
 arg getTaskCall map taskMap
 arg getTaskCall key taskId
 run getTaskCall
-bindOk taskValue I64 getTaskCall
+bindOk taskValue Int64 getTaskCall
 """)
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
@@ -3202,7 +3878,7 @@ call appendTaskCall TaskList.append
 arg appendTaskCall list taskList
 arg appendTaskCall item taskRecord
 run appendTaskCall
-bindOk updatedTaskList I64 appendTaskCall
+bindOk updatedTaskList Int64 appendTaskCall
 """)
         self.assertIn("SS3804", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3804")[0]
@@ -3362,10 +4038,10 @@ storage module immutable nestedPath JsonPath ".items[0].title"
 operation renderRow
 output renderRow Void
 purpose renderRow "generic JSON formatting fixture"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable rowFormat CNullTerminatedByteString "{\\"title\\":\\"%s\\"}"
-storage local immutable title CNullTerminatedByteString "hello"
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable rowFormat String "{\\"title\\":\\"%s\\"}"
+storage local immutable title String "hello"
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
@@ -3384,10 +4060,10 @@ returnVoid
 operation renderText
 output renderText Void
 purpose renderText "plain text formatting fixture"
-storage local immutable buffer COpaqueMemoryAddress 0
-storage local immutable capacity CSignedInt64 256
-storage local immutable rowFormat CNullTerminatedByteString "title=%s"
-storage local immutable title CNullTerminatedByteString "hello"
+storage local immutable buffer OpaquePointer 0
+storage local immutable capacity Int64 256
+storage local immutable rowFormat String "title=%s"
+storage local immutable title String "hello"
 call formatRowCall c.snprintf
 arg formatRowCall buffer buffer
 arg formatRowCall size capacity
@@ -3403,7 +4079,7 @@ returnVoid
 operation legacyBuilder
 output legacyBuilder Void
 purpose legacyBuilder "legacy JSON builder fixture"
-storage local immutable capacity CByteCount 128
+storage local immutable capacity ByteCount 128
 call createBuilderCall json.createBuilder
 arg createBuilderCall capacity capacity
 run createBuilderCall
@@ -3432,6 +4108,618 @@ returnVoid
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.subjectName, "findTitleCall")
 
+    def test_json_body_invalid_json_blocks_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable payload JsonText
+jsonBody payload
+  {"title":}
+""")
+        self.assertIn("SS3626", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertEqual(matching.kind, "json.invalidJsonBody")
+
+    def test_json_body_valid_json_text_is_silent(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable payload JsonText
+jsonBody payload
+  {"title":"ok","count":1}
+operation main
+output main Void
+purpose main "smoke"
+returnVoid
+""")
+        self.assertNotIn("SS3626", _codes(diagnostics))
+
+    def test_json_body_missing_storage_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+jsonBody payload
+  {"ok":true}
+""")
+        self.assertIn("SS3626", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
+        self.assertEqual(matching.kind, "json.orphanJsonBody")
+
+    def test_json_body_record_target_is_type_checked(self) -> None:
+        diagnostics = _lint_source("""project Test
+record Payload
+field Payload title JsonText
+storage module immutable payload Payload
+jsonBody payload
+  {"title":"ok"}
+""")
+        self.assertNotIn("SS3626", _codes(diagnostics))
+
+    def test_json_body_record_missing_required_field_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+record Payload
+field Payload title JsonText
+field Payload count Int64
+storage module immutable payload Payload
+jsonBody payload
+  {"title":"ok"}
+""")
+        self.assertIn("SS3626", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
+        self.assertEqual(matching.kind, "json.jsonBodyMissingRequired")
+
+    def test_json_body_record_json_name_and_omit_policy_are_honored(self) -> None:
+        diagnostics = _lint_source("""project Test
+record Payload
+field Payload title JsonText
+field Payload count Int64
+recordFieldJsonName Payload title "display_title"
+recordFieldJsonOmitWhen Payload count zero
+storage module immutable payload Payload
+jsonBody payload
+  {"display_title":"ok"}
+""")
+        self.assertNotIn("SS3626", _codes(diagnostics))
+
+
+class TestSqlBodySyntaxIsland(unittest.TestCase):
+    def test_sql_body_argument_reference_is_declared_by_unvalued_storage(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT body FROM markers
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText selectSql
+""")
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS3627", codes)
+        self.assertNotIn("SS4105", codes)
+        self.assertNotIn("SS4301", codes)
+
+    def test_sql_body_dynamic_hole_blocks_compile(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT {unsafeValue}
+""")
+        self.assertIn("SS3627", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3627")[0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertEqual(matching.kind, "sql.sqlBodyDynamicHole")
+
+    def test_inline_sql_literal_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable selectSql String "SELECT 1"
+""")
+        self.assertIn("SS3628", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3628")[0]
+        self.assertEqual(matching.kind, "sql.inlineLiteral")
+        self.assertEqual(matching.subjectName, "selectSql")
+
+    def test_sql_body_redundant_case_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT CASE WHEN ?1 IS NULL THEN body ELSE body END FROM notes
+""")
+        self.assertIn("SS3629", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3629")[0]
+        self.assertEqual(matching.kind, "sql.redundantCaseBranches")
+        self.assertEqual(matching.subjectName, "selectSql")
+
+    def test_sql_body_last_insert_rowid_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable insertEventSql SqlText
+sql body insertEventSql
+  INSERT INTO events(message_id) SELECT message_id FROM messages WHERE rowid = last_insert_rowid()
+""")
+        self.assertIn("SS3639", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3639")[0]
+        self.assertEqual(matching.kind, "sql.lastInsertRowidFunction")
+        self.assertEqual(matching.subjectName, "insertEventSql")
+
+    def test_native_last_insert_rowid_call_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call rowidCall sqlite.lastInsertRowId
+argument rowidCall database SqliteDatabase databaseHandle
+run rowidCall
+bind value insertedRowId SqliteRowId rowidCall
+""")
+        self.assertIn("SS3639", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3639")[0]
+        self.assertEqual(matching.kind, "sqlite.lastInsertRowIdCall")
+        self.assertEqual(matching.subjectName, "rowidCall")
+
+    def test_sql_body_returning_generated_id_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable insertMessageSql SqlText
+sql body insertMessageSql
+  INSERT INTO messages(message_id) VALUES ('msg_' || lower(hex(randomblob(8)))) RETURNING message_id
+""")
+        self.assertNotIn("SS3639", _codes(diagnostics))
+
+    def test_wide_sql_existence_probe_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main auctionId String
+output operation main Void
+purpose operation main "smoke"
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText selectSql
+run prepareCall
+bind ok statement SqliteStatement prepareCall
+call bindAuctionCall sqlite.bindText
+argument bindAuctionCall statement SqliteStatement statement
+argument bindAuctionCall parameterIndex Int32 1
+argument bindAuctionCall value String auctionId
+run bindAuctionCall
+ignore void source bindAuctionCall
+call stepCall sqlite.stepStatement
+argument stepCall statement SqliteStatement statement
+run stepCall
+bind ok stepStatus Int32 stepCall
+""")
+        self.assertIn("SS3631", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3631")[0]
+        self.assertEqual(matching.kind, "sql.wideExistenceProbe")
+        self.assertEqual(matching.subjectName, "prepareCall")
+
+    def test_sql_projection_with_column_read_is_not_existence_probe(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT status, revision FROM auctions WHERE auction_id = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main auctionId String
+output operation main Void
+purpose operation main "smoke"
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText selectSql
+run prepareCall
+bind ok statement SqliteStatement prepareCall
+call bindAuctionCall sqlite.bindText
+argument bindAuctionCall statement SqliteStatement statement
+argument bindAuctionCall parameterIndex Int32 1
+argument bindAuctionCall value String auctionId
+run bindAuctionCall
+ignore void source bindAuctionCall
+call stepCall sqlite.stepStatement
+argument stepCall statement SqliteStatement statement
+run stepCall
+bind ok stepStatus Int32 stepCall
+call statusCall sqlite.columnInt64
+argument statusCall statement SqliteStatement statement
+argument statusCall columnIndex Int32 0
+run statusCall
+bind value status Int64 statusCall
+""")
+        self.assertNotIn("SS3631", _codes(diagnostics))
+
+    def test_sql_write_then_read_same_table_suggests_returning(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, window_start, count) VALUES (?, ?, 1) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main bucketKey String
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+ignore ok source stepUpsertCall type Int32
+call prepareSelectCall sqlite.prepareStatement
+argument prepareSelectCall database SqliteDatabase databaseHandle
+argument prepareSelectCall sql SqlText selectSql
+run prepareSelectCall
+bind ok selectStatement SqliteStatement prepareSelectCall
+""")
+        self.assertIn("SS3632", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3632")[0]
+        self.assertEqual(
+            matching.kind,
+            "sql.writeThenReadReturningOpportunity",
+        )
+        self.assertEqual(matching.subjectName, "prepareSelectCall")
+
+    def test_sql_write_with_returning_then_read_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, window_start, count) VALUES (?, ?, 1) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1 RETURNING count
+storage module immutable selectSql SqlText
+sql body selectSql
+  SELECT count FROM rate_limit_buckets WHERE bucket_key = ? AND window_start = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+input operation main bucketKey String
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+bind ok upsertStatus Int32 stepUpsertCall
+call readReturnedCountCall sqlite.columnInt64
+argument readReturnedCountCall statement SqliteStatement upsertStatement
+argument readReturnedCountCall columnIndex Int32 0
+run readReturnedCountCall
+bind value count Int64 readReturnedCountCall
+call prepareSelectCall sqlite.prepareStatement
+argument prepareSelectCall database SqliteDatabase databaseHandle
+argument prepareSelectCall sql SqlText selectSql
+run prepareSelectCall
+bind ok selectStatement SqliteStatement prepareSelectCall
+""")
+        self.assertNotIn("SS3632", _codes(diagnostics))
+
+    def test_multiple_sql_writes_without_transaction_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareAuditCall sqlite.prepareStatement
+argument prepareAuditCall database SqliteDatabase databaseHandle
+argument prepareAuditCall sql SqlText insertAuditSql
+run prepareAuditCall
+bind ok auditStatement SqliteStatement prepareAuditCall
+call stepAuditCall sqlite.stepStatement
+argument stepAuditCall statement SqliteStatement auditStatement
+run stepAuditCall
+ignore ok source stepAuditCall type Int32
+call prepareRequestLogCall sqlite.prepareStatement
+argument prepareRequestLogCall database SqliteDatabase databaseHandle
+argument prepareRequestLogCall sql SqlText insertRequestLogSql
+run prepareRequestLogCall
+bind ok requestLogStatement SqliteStatement prepareRequestLogCall
+call stepRequestLogCall sqlite.stepStatement
+argument stepRequestLogCall statement SqliteStatement requestLogStatement
+run stepRequestLogCall
+ignore ok source stepRequestLogCall type Int32
+""")
+        self.assertIn("SS3635", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3635")[0]
+        self.assertEqual(
+            matching.kind,
+            "sqlite.multipleWritesWithoutTransaction",
+        )
+        self.assertEqual(matching.subjectName, "main")
+
+    def test_multiple_sql_writes_with_transaction_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable beginSql SqlText
+sql body beginSql
+  BEGIN IMMEDIATE
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call beginTxCall sqlite.exec
+argument beginTxCall database SqliteDatabase databaseHandle
+argument beginTxCall sql SqlText beginSql
+run beginTxCall
+ignore void source beginTxCall
+call prepareAuditCall sqlite.prepareStatement
+argument prepareAuditCall database SqliteDatabase databaseHandle
+argument prepareAuditCall sql SqlText insertAuditSql
+run prepareAuditCall
+bind ok auditStatement SqliteStatement prepareAuditCall
+call stepAuditCall sqlite.stepStatement
+argument stepAuditCall statement SqliteStatement auditStatement
+run stepAuditCall
+ignore ok source stepAuditCall type Int32
+call prepareRequestLogCall sqlite.prepareStatement
+argument prepareRequestLogCall database SqliteDatabase databaseHandle
+argument prepareRequestLogCall sql SqlText insertRequestLogSql
+run prepareRequestLogCall
+bind ok requestLogStatement SqliteStatement prepareRequestLogCall
+call stepRequestLogCall sqlite.stepStatement
+argument stepRequestLogCall statement SqliteStatement requestLogStatement
+run stepRequestLogCall
+ignore ok source stepRequestLogCall type Int32
+call commitTxCall sqlite.exec
+argument commitTxCall database SqliteDatabase databaseHandle
+argument commitTxCall sql SqlText commitSql
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3635", _codes(diagnostics))
+
+    def test_returning_statement_commit_without_drain_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, count) VALUES (?, 1) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1 RETURNING count
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+bind ok upsertStatus Int32 stepUpsertCall
+call readReturnedCountCall sqlite.columnInt64
+argument readReturnedCountCall statement SqliteStatement upsertStatement
+argument readReturnedCountCall columnIndex Int32 0
+run readReturnedCountCall
+bind value count Int64 readReturnedCountCall
+call commitTxCall sqlite.exec
+argument commitTxCall database SqliteDatabase databaseHandle
+argument commitTxCall sql SqlText commitSql
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertIn("SS3636", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3636")[0]
+        self.assertEqual(
+            matching.kind,
+            "sqlite.returningStatementNotDrainedBeforeCommit",
+        )
+        self.assertEqual(matching.subjectName, "commitTxCall")
+
+    def test_returning_statement_drained_before_commit_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable upsertSql SqlText
+sql body upsertSql
+  INSERT INTO rate_limit_buckets(bucket_key, count) VALUES (?, 1) ON CONFLICT(bucket_key) DO UPDATE SET count = count + 1 RETURNING count
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareUpsertCall sqlite.prepareStatement
+argument prepareUpsertCall database SqliteDatabase databaseHandle
+argument prepareUpsertCall sql SqlText upsertSql
+run prepareUpsertCall
+bind ok upsertStatement SqliteStatement prepareUpsertCall
+call stepUpsertCall sqlite.stepStatement
+argument stepUpsertCall statement SqliteStatement upsertStatement
+run stepUpsertCall
+bind ok upsertStatus Int32 stepUpsertCall
+call readReturnedCountCall sqlite.columnInt64
+argument readReturnedCountCall statement SqliteStatement upsertStatement
+argument readReturnedCountCall columnIndex Int32 0
+run readReturnedCountCall
+bind value count Int64 readReturnedCountCall
+call drainUpsertCall sqlite.stepStatement
+argument drainUpsertCall statement SqliteStatement upsertStatement
+run drainUpsertCall
+ignore ok source drainUpsertCall type Int32
+call commitTxCall sqlite.exec
+argument commitTxCall database SqliteDatabase databaseHandle
+argument commitTxCall sql SqlText commitSql
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3636", _codes(diagnostics))
+
+    def test_process_environment_read_without_cache_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation resolveSecret
+output operation resolveSecret String
+effect resolveSecret read process.environment
+purpose operation resolveSecret "smoke"
+storage module immutable secretEnvName String "APP_SECRET"
+call getenvSecretCall c.getenv
+argument getenvSecretCall name String secretEnvName
+run getenvSecretCall
+bind value secret String getenvSecretCall
+return value secret
+""")
+        self.assertIn("SS3633", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3633")[0]
+        self.assertEqual(matching.kind, "process.getenvUncached")
+        self.assertEqual(matching.subjectName, "getenvSecretCall")
+
+    def test_process_environment_read_with_cache_guard_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module mutable cachedSecret String ""
+storage module mutable cachedSecretReady Int32 0
+operation resolveSecret
+output operation resolveSecret String
+effect resolveSecret read process.environment
+purpose operation resolveSecret "smoke"
+storage module immutable secretEnvName String "APP_SECRET"
+call readyCall math.equalInt32
+argument readyCall left Int32 cachedSecretReady
+argument readyCall right Int32 1
+run readyCall
+bind value ready Bool readyCall
+branch if condition ready target returnCached
+call getenvSecretCall c.getenv
+argument getenvSecretCall name String secretEnvName
+run getenvSecretCall
+bind value secret String getenvSecretCall
+set storage cachedSecret secret
+set storage cachedSecretReady 1
+return value cachedSecret
+label returnCached
+return value cachedSecret
+""")
+        self.assertNotIn("SS3633", _codes(diagnostics))
+
+    def test_repeated_request_time_read_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import http standard.http
+operation main
+input operation main request HttpRequest
+output operation main Void
+purpose operation main "smoke"
+call requestNowCall http.nowMillis
+run requestNowCall
+bind value requestNow Int64 requestNowCall
+call laterNowCall http.nowMillis
+run laterNowCall
+bind value laterNow Int64 laterNowCall
+""")
+        self.assertIn("SS3637", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3637")[0]
+        self.assertEqual(matching.kind, "performance.repeatedRequestTimeRead")
+        self.assertEqual(matching.subjectName, "laterNowCall")
+
+    def test_single_request_time_read_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import http standard.http
+operation main
+input operation main request HttpRequest
+output operation main Void
+purpose operation main "smoke"
+call requestNowCall http.nowMillis
+run requestNowCall
+bind value requestNow Int64 requestNowCall
+return void
+""")
+        self.assertNotIn("SS3637", _codes(diagnostics))
+
+    def test_idempotency_replay_body_classification_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectIdem SqlText
+sql body selectIdem
+  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = ? LIMIT 1
+storage module immutable conflictBody String "{}"
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareIdemCall sqlite.prepareStatement
+argument prepareIdemCall database SqliteDatabase databaseHandle
+argument prepareIdemCall sql SqlText selectIdem
+run prepareIdemCall
+bind ok idemStatement SqliteStatement prepareIdemCall
+call readReplayBodyCall sqlite.columnText
+argument readReplayBodyCall statement SqliteStatement idemStatement
+argument readReplayBodyCall columnIndex Int32 1
+run readReplayBodyCall
+bind value replayBody String readReplayBodyCall
+call compareReplayBodyCall c.strcmp
+argument compareReplayBodyCall left String replayBody
+argument compareReplayBodyCall right String conflictBody
+run compareReplayBodyCall
+bind value compareResult Int32 compareReplayBodyCall
+""")
+        self.assertIn("SS3638", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3638")[0]
+        self.assertEqual(
+            matching.kind,
+            "performance.idempotencyReplayBodyClassification",
+        )
+        self.assertEqual(matching.subjectName, "compareReplayBodyCall")
+
+    def test_idempotency_replay_status_branch_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable selectIdem SqlText
+sql body selectIdem
+  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = ? LIMIT 1
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareIdemCall sqlite.prepareStatement
+argument prepareIdemCall database SqliteDatabase databaseHandle
+argument prepareIdemCall sql SqlText selectIdem
+run prepareIdemCall
+bind ok idemStatement SqliteStatement prepareIdemCall
+call readReplayStatusCall sqlite.columnInt64
+argument readReplayStatusCall statement SqliteStatement idemStatement
+argument readReplayStatusCall columnIndex Int32 2
+run readReplayStatusCall
+bind value replayStatus Int64 readReplayStatusCall
+call replayConflictCall math.equalInt64
+argument replayConflictCall left Int64 replayStatus
+argument replayConflictCall right Int64 409
+run replayConflictCall
+bind value replayConflict Bool replayConflictCall
+""")
+        self.assertNotIn("SS3638", _codes(diagnostics))
+
+    def test_non_sql_method_literal_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable methods String "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+""")
+        self.assertNotIn("SS3628", _codes(diagnostics))
+
 
 class TestArgumentArity(unittest.TestCase):
     def test_operation_without_name_is_flagged(self) -> None:
@@ -3456,12 +4744,148 @@ arg writeCall console
     def test_correctly_arity_lines_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main Void
-purpose main "smoke"
+output operation main Void
+purpose operation main "smoke"
 call writeCall console.writeLine
-arg writeCall console consoleHandle
+argument writeCall console Console consoleHandle
 """)
         self.assertNotIn("SS0002", _codes(diagnostics))
+
+
+class TestSemanticSyntaxCutover(unittest.TestCase):
+    def test_new_cutover_rows_are_accepted_by_grammar_passes(self) -> None:
+        diagnostics = _lint_source("""project Test
+import math standard.math
+type MainResult result ok ExitCode error MainError
+error MainError
+errorCase MainError Failed
+storage module immutable okCode ExitCode 0
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+operation main
+input operation main console Console
+output operation main MainResult
+purpose operation main "smoke"
+effect main write console.stdout
+authority main write console.stdout
+memory main heap no
+memory main mutable counter Int64 0
+call writeCall console.writeLine
+argument writeCall console Console console
+argument writeCall text String someMessageText
+run writeCall
+bind error writeCallError MainError writeCall
+branch error source writeCall target failed
+branch else target succeeded
+label succeeded
+return ok okCode
+label failed
+makeError writeFailure MainError.Failed
+return error writeFailure
+""")
+        self.assertNotIn("SS0002", _codes(diagnostics))
+        self.assertNotIn("SS0003", _codes(diagnostics))
+
+    def test_replaced_old_rows_emit_cutover_error(self) -> None:
+        diagnostics = _lint_source("""project Test
+importModule math standard.math
+operation main
+output main Void
+purpose main "old fixture"
+memoryHeap main no
+htmlTemplate CardTemplate
+htmlArg CardTemplate titleText String
+htmlBody CardTemplate
+  <h1>{titleText}</h1>
+arg callName param value
+bind result Int64 callName
+bindOk ok Int64 callName
+bindError bad MainError callName
+branchIf condition done
+branchIfError callName failed
+branch done
+returnValue result
+returnOk ok
+returnError bad
+returnVoid
+ignoreValue callName Int64
+ignoreOk callName Int64
+ignoreError callName
+""")
+        cutoverSubjects = {
+            diagnostic.subjectName
+            for diagnostic in _diagnostics_with_code(diagnostics, "SS0003")
+        }
+        self.assertIn("importModule", cutoverSubjects)
+        self.assertIn("arg", cutoverSubjects)
+        self.assertIn("htmlTemplate", cutoverSubjects)
+        self.assertIn("htmlArg", cutoverSubjects)
+        self.assertIn("htmlBody", cutoverSubjects)
+        self.assertIn("bind", cutoverSubjects)
+        self.assertIn("branchIf", cutoverSubjects)
+        self.assertIn("returnVoid", cutoverSubjects)
+        self.assertIn("ignoreError", cutoverSubjects)
+
+    def test_branch_if_condition_must_be_bool(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+memory main immutable count Int64 1
+branch if condition count target done
+label done
+return void
+""")
+        self.assertIn("SS4106", _codes(diagnostics))
+
+    def test_branch_error_requires_fallible_source(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+call addCall math.addInt64
+branch error source addCall target failed
+label failed
+return void
+""")
+        self.assertIn("SS4107", _codes(diagnostics))
+
+    def test_branch_else_must_be_physically_adjacent(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+memory main immutable isReady Bool true
+branch if condition isReady target ready
+# comment breaks adjacency
+branch else target notReady
+label ready
+return void
+label notReady
+return void
+""")
+        self.assertIn("SS4108", _codes(diagnostics))
+
+    def test_jump_target_resolution_uses_new_shape(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+jump target missingLabel
+""")
+        self.assertIn("SS4102", _codes(diagnostics))
+
+    def test_argument_repeated_type_must_match_signature(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+memory main immutable leftValue Int64 1
+call addCall math.addInt64
+argument addCall left Bool leftValue
+""")
+        self.assertIn("SS4301", _codes(diagnostics))
 
 
 class TestUnresolvedReferences(unittest.TestCase):
@@ -3479,8 +4903,8 @@ arg neverDeclaredCall consoleArgName consoleHandle
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 1
-call addCall math.addI64
+const leftValue Int64 1
+call addCall math.addInt64
 arg addCall left leftValue
 arg addCall right typoValue
 run addCall
@@ -3534,7 +4958,7 @@ purpose neverDeclaredAnything "this subject doesn't exist anywhere"
     def test_purpose_on_webserver_not_flagged(self) -> None:
         # Pre-P1 this incorrectly tripped SS4104 because webServer subjects
         # weren't in the linter's attachment-subject table even though they
-        # legitimately carry purpose/invariant/warning per SYNTAX.md.
+        # legitimately carry purpose/invariant/warning per docs/reference/syntax-inventory.md.
         diagnostics = _lint_source("""project Test
 webServer demoServer
 purpose demoServer "smoke test for non-operation purpose subjects"
@@ -3550,7 +4974,7 @@ purpose consoleWriteCapability "describe the capability's authority"
 
     def test_purpose_on_module_storage_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable retryAttemptLimit I64 5
+storage module immutable retryAttemptLimit Int64 5
 purpose retryAttemptLimit "max attempts before giving up on a transient failure"
 """)
         self.assertNotIn("SS4104", _codes(diagnostics))
@@ -3564,7 +4988,7 @@ purpose requestTimeoutBudget "per-request budget the future preemptive runtime w
 
     def test_purpose_on_enum_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 purpose SaveStatus "result domain for the save operation"
@@ -3588,7 +5012,7 @@ effect demoServer write http.response
     def test_operation_body_verb_on_capability_flagged_with_SS4105(self) -> None:
         diagnostics = _lint_source("""project Test
 capability consoleWriteCapability console.stdout write
-input consoleWriteCapability badInput I64
+input consoleWriteCapability badInput Int64
 """)
         self.assertIn("SS4105", _codes(diagnostics))
 
@@ -3668,7 +5092,7 @@ label startLabel
     def test_duplicate_type_alias_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 type AccountId UuidV7
-type AccountId CSignedInt64
+type AccountId Int64
 """)
         self.assertIn("SS4201", _codes(diagnostics))
 
@@ -3679,8 +5103,8 @@ type AccountId CSignedInt64
 
 class TestArgumentTypeMismatch(unittest.TestCase):
     def test_passing_bool_where_string_expected_flagged(self) -> None:
-        # Bool is in the integer family (sext to I64 on the wire);
-        # CNullTerminatedByteString is in the pointer family. Distinct
+        # Bool is in the integer family (sext to Int64 on the wire);
+        # String is in the pointer family. Distinct
         # families → must be flagged.
         diagnostics = _lint_source("""project Test
 operation main
@@ -3698,49 +5122,81 @@ run writeCall
         self.assertEqual(matchingDiagnostic.subjectName, "trueFlag")
         self.assertTrue(matchingDiagnostic.blocksCompile)
 
-    def test_passing_i64_where_i64_expected_not_flagged(self) -> None:
+    def test_passing_int64_where_int64_expected_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 zeroValue
-const rightValue I64 zeroValue
-call addCall math.addI64
+const leftValue Int64 zeroValue
+const rightValue Int64 zeroValue
+call addCall math.addInt64
 arg addCall left leftValue
 arg addCall right rightValue
 run addCall
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
-    def test_csignedint64_canonical_equivalent_to_i64(self) -> None:
-        # CSignedInt64 and I64 are width-equivalent; passing one where the
-        # other is expected should NOT be flagged after canonical
-        # resolution.
+    def test_canonical_int64_arg_not_flagged(self) -> None:
+        # A correctly annotated Int64 argument should not trip the
+        # builtin-signature checker.
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue CSignedInt64 zeroValue
-const rightValue I64 zeroValue
-call addCall math.addI64
+const leftValue Int64 zeroValue
+const rightValue Int64 zeroValue
+call addCall math.addInt64
 arg addCall left leftValue
 arg addCall right rightValue
 run addCall
+""")
+        self.assertNotIn("SS4301", _codes(diagnostics))
+
+    def test_float_builtin_with_integer_arg_type_is_flagged(self) -> None:
+        # Regression: math.greaterThanFloat64 is a float-domain builtin; an
+        # `argument` row annotated with an integer C-ABI type (Int64)
+        # is a real type-context bug (found in std/compare + std/convert).
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const leftValue Float64 zeroValue
+const rightValue Float64 zeroValue
+call gtCall math.greaterThanFloat64
+argument gtCall left Int64 leftValue
+argument gtCall right Int64 rightValue
+run gtCall
+""")
+        self.assertIn("SS4301", _codes(diagnostics))
+
+    def test_float_builtin_with_float64_arg_type_not_flagged(self) -> None:
+        # A Float64 argument annotation against a Float64 builtin signature
+        # must not flag.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const leftValue Float64 zeroValue
+const rightValue Float64 zeroValue
+call gtCall math.greaterThanFloat64
+argument gtCall left Float64 leftValue
+argument gtCall right Float64 rightValue
+run gtCall
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
     def test_type_alias_resolves_through_to_base(self) -> None:
-        # `type AccountId UuidV7; type UuidV7 CSignedInt64` — passing an
-        # AccountId where I64 is expected should resolve via aliases.
+        # `type AccountId UuidV7; type UuidV7 Int64` — passing an
+        # AccountId where Int64 is expected should resolve via aliases.
         diagnostics = _lint_source("""project Test
 type AccountId UuidV7
-type UuidV7 CSignedInt64
+type UuidV7 Int64
 operation main
 output main Void
 purpose main "smoke"
 const lookupAccountId AccountId zeroValue
-const rightValue I64 zeroValue
-call addCall math.addI64
+const rightValue Int64 zeroValue
+call addCall math.addInt64
 arg addCall left lookupAccountId
 arg addCall right rightValue
 run addCall
@@ -3749,13 +5205,13 @@ run addCall
 
     def test_enum_case_uses_repr_width_for_builtin_signature(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation main
 output main Void
 purpose main "smoke"
-call statusCheckCall math.equalCSignedInt32
+call statusCheckCall math.equalInt32
 arg statusCheckCall left SaveSucceeded
 arg statusCheckCall right SaveFailed
 run statusCheckCall
@@ -3764,13 +5220,13 @@ run statusCheckCall
 
     def test_enum_case_to_wrong_width_builtin_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
-const zeroValue I64 0
+const zeroValue Int64 0
 operation main
 output main Void
 purpose main "smoke"
-call statusCheckCall math.equalI64
+call statusCheckCall math.equalInt64
 arg statusCheckCall left SaveSucceeded
 arg statusCheckCall right zeroValue
 run statusCheckCall
@@ -3782,13 +5238,13 @@ run statusCheckCall
         # input — distinct families, must flag.
         diagnostics = _lint_source("""project Test
 operation processCount
-input processCount inputCount I64
+input processCount inputCount Int64
 output processCount Void
 purpose processCount "smoke"
 operation main
 output main Void
 purpose main "smoke"
-const someText CNullTerminatedByteString textValue
+const someText String textValue
 call processCountCall processCount
 arg processCountCall inputCount someText
 run processCountCall
@@ -3815,14 +5271,14 @@ run externalCall
 # ==========================================================================
 
 class TestMathOperandWidthDrift(unittest.TestCase):
-    def test_i64_compare_with_i32_values_is_flagged(self) -> None:
+    def test_int64_compare_with_int32_values_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftStatus CSignedInt32 1
-const rightStatus CSignedInt32 1
-call statusCheckCall math.equalI64
+const leftStatus Int32 1
+const rightStatus Int32 1
+call statusCheckCall math.equalInt64
 arg statusCheckCall left leftStatus
 arg statusCheckCall right rightStatus
 run statusCheckCall
@@ -3832,44 +5288,44 @@ run statusCheckCall
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
         self.assertEqual(diagnostic.severity, semlint.Severity.ERROR)
         self.assertTrue(diagnostic.blocksCompile)
-        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalCSignedInt32")
+        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalInt32")
 
-    def test_width_specific_i32_compare_not_flagged(self) -> None:
+    def test_width_specific_int32_compare_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftStatus CSignedInt32 1
-const rightStatus CSignedInt32 1
-call statusCheckCall math.equalCSignedInt32
+const leftStatus Int32 1
+const rightStatus Int32 1
+call statusCheckCall math.equalInt32
 arg statusCheckCall left leftStatus
 arg statusCheckCall right rightStatus
 run statusCheckCall
 """)
         self.assertNotIn("SS4303", _codes(diagnostics))
 
-    def test_i64_compare_with_i64_values_not_flagged(self) -> None:
+    def test_int64_compare_with_int64_values_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 1
-const rightValue I64 1
-call statusCheckCall math.equalI64
+const leftValue Int64 1
+const rightValue Int64 1
+call statusCheckCall math.equalInt64
 arg statusCheckCall left leftValue
 arg statusCheckCall right rightValue
 run statusCheckCall
 """)
         self.assertNotIn("SS4303", _codes(diagnostics))
 
-    def test_i64_arithmetic_with_i32_values_is_flagged(self) -> None:
+    def test_int64_arithmetic_with_int32_values_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftStatus CSignedInt32 1
-const rightStatus CSignedInt32 1
-call addCall math.addI64
+const leftStatus Int32 1
+const rightStatus Int32 1
+call addCall math.addInt64
 arg addCall left leftStatus
 arg addCall right rightStatus
 run addCall
@@ -3879,14 +5335,14 @@ run addCall
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
         self.assertEqual(diagnostic.fixCandidates[0].name, "makeConversionExplicit")
 
-    def test_i32_compare_with_i64_values_is_flagged(self) -> None:
+    def test_int32_compare_with_int64_values_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const leftValue I64 1
-const rightValue I64 1
-call statusCheckCall math.equalCSignedInt32
+const leftValue Int64 1
+const rightValue Int64 1
+call statusCheckCall math.equalInt32
 arg statusCheckCall left leftValue
 arg statusCheckCall right rightValue
 run statusCheckCall
@@ -3894,15 +5350,15 @@ run statusCheckCall
         self.assertIn("SS4303", _codes(diagnostics))
         diagnostic = _diagnostics_with_code(diagnostics, "SS4303")[0]
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
-        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalI64")
+        self.assertEqual(diagnostic.fixCandidates[0].shape, "call statusCheckCall math.equalInt64")
 
     def test_explicit_conversion_target_with_wrong_input_width_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 purpose main "smoke"
-const sourceValue I64 1
-call widenCall math.signExtendCSignedInt32ToCSignedInt64
+const sourceValue Int64 1
+call widenCall math.signExtendInt32ToInt64
 arg widenCall inputValue sourceValue
 run widenCall
 """)
@@ -3918,7 +5374,7 @@ run widenCall
 class TestEnumReturnUsesCase(unittest.TestCase):
     def test_enum_output_returning_raw_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 2
 operation saveTodos
@@ -3929,11 +5385,11 @@ returnValue 2
         self.assertIn("SS4302", _codes(diagnostics))
         diagnostic = _diagnostics_with_code(diagnostics, "SS4302")[0]
         self.assertEqual(diagnostic.kind, "typeIntegrity.enumReturnUsesRawValue")
-        self.assertEqual(diagnostic.fixCandidates[0].shape, "returnValue SaveFailed")
+        self.assertEqual(diagnostic.fixCandidates[0].shape, "return value SaveFailed")
 
     def test_enum_output_returning_case_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 2
 operation saveTodos
@@ -3945,7 +5401,7 @@ returnValue SaveFailed
 
     def test_result_enum_ok_returning_raw_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 2
 error SaveError
@@ -3968,15 +5424,15 @@ class TestDuplicateLocalImmutableAcrossOps(unittest.TestCase):
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 operation gamma
 output gamma Void
 purpose gamma "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 """)
         ss4401 = _diagnostics_with_code(diagnostics, "SS4401")
         self.assertEqual(len(ss4401), 3, "expected one info per duplicate site")
@@ -3987,7 +5443,7 @@ storage local immutable nulByte CSignedInt32 0
         self.assertEqual(diagnostic.tier, semlint.Tier.T4_STYLE)
         self.assertEqual(diagnostic.severity, semlint.Severity.INFO)
         self.assertTrue(any(
-            fixCandidate.shape.startswith("storage module immutable nulByte CSignedInt32 0")
+            fixCandidate.shape.startswith("storage module immutable nulByte Int32 0")
             for fixCandidate in diagnostic.fixCandidates
         ))
 
@@ -3996,11 +5452,11 @@ storage local immutable nulByte CSignedInt32 0
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable nulByte CSignedInt32 0
+storage local immutable nulByte Int32 0
 """)
         self.assertNotIn("SS4401", _codes(diagnostics))
 
@@ -4009,17 +5465,59 @@ storage local immutable nulByte CSignedInt32 0
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable offset CSignedInt64 10
+storage local immutable offset Int64 10
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable offset CSignedInt64 19
+storage local immutable offset Int64 19
 operation gamma
 output gamma Void
 purpose gamma "smoke"
-storage local immutable offset CSignedInt64 30
+storage local immutable offset Int64 30
 """)
         self.assertNotIn("SS4401", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3634  performance.largeLocalStaticLiteral
+# ==========================================================================
+
+class TestLargeLocalStaticLiteral(unittest.TestCase):
+    def test_large_local_static_literal_is_flagged(self) -> None:
+        largeBody = "x" * 520
+        diagnostics = _lint_source(f"""project Test
+operation metrics
+output metrics Void
+purpose metrics "smoke"
+storage local immutable metricsFormat String "{largeBody}"
+""")
+        ss3634 = _diagnostics_with_code(diagnostics, "SS3634")
+        self.assertEqual(len(ss3634), 1)
+        diagnostic = ss3634[0]
+        self.assertEqual(diagnostic.subjectName, "metricsFormat")
+        self.assertEqual(diagnostic.subjectKind, "storageSlot")
+        self.assertEqual(diagnostic.gapEdge, "storage module immutable")
+        self.assertEqual(diagnostic.severity, semlint.Severity.WARNING)
+
+    def test_large_module_static_literal_is_not_flagged(self) -> None:
+        largeBody = "x" * 520
+        diagnostics = _lint_source(f"""project Test
+storage module immutable metricsFormat String "{largeBody}"
+operation metrics
+output metrics Void
+purpose metrics "smoke"
+returnVoid
+""")
+        self.assertNotIn("SS3634", _codes(diagnostics))
+
+    def test_small_local_static_literal_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation metrics
+output metrics Void
+purpose metrics "smoke"
+storage local immutable routeName String "/metrics"
+""")
+        self.assertNotIn("SS3634", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -4032,7 +5530,7 @@ class TestMagicAsciiByteLiteral(unittest.TestCase):
 operation parser
 output parser Void
 purpose parser "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 """)
         ss4402 = _diagnostics_with_code(diagnostics, "SS4402")
         self.assertEqual(len(ss4402), 1)
@@ -4048,7 +5546,7 @@ operation parser
 output parser Void
 purpose parser "smoke"
 # rationale: 34 = ASCII double quote; bounded JSON string delimiter.
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 """)
         self.assertNotIn("SS4402", _codes(diagnostics))
 
@@ -4057,17 +5555,17 @@ storage local immutable quoteByte CSignedInt32 34
 operation terminal
 output terminal Void
 purpose terminal "smoke"
-storage local immutable escapeByte CSignedInt32 27
+storage local immutable escapeByte Int32 27
 """)
         # 27 is below the printable-ASCII range (32..126).
         self.assertNotIn("SS4402", _codes(diagnostics))
 
-    def test_non_csignedint32_type_not_flagged(self) -> None:
+    def test_non_int32_type_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation counter
 output counter Void
 purpose counter "smoke"
-storage local immutable offsetValue CSignedInt64 65
+storage local immutable offsetValue Int64 65
 """)
         self.assertNotIn("SS4402", _codes(diagnostics))
 
@@ -4076,15 +5574,15 @@ storage local immutable offsetValue CSignedInt64 65
 operation alpha
 output alpha Void
 purpose alpha "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 operation beta
 output beta Void
 purpose beta "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 operation gamma
 output gamma Void
 purpose gamma "smoke"
-storage local immutable quoteByte CSignedInt32 34
+storage local immutable quoteByte Int32 34
 """)
         # SS4401 catches the cross-op duplication; SS4402 must not pile on
         # additional info diagnostics for the same name.
@@ -4102,9 +5600,9 @@ class TestDeadStorageInitializer(unittest.TestCase):
 operation loop
 output loop Void
 purpose loop "smoke"
-storage local immutable zeroIndex CSignedInt64 0
-storage local immutable startOffset CSignedInt64 7
-storage local mutable cursor CSignedInt64 zeroIndex
+storage local immutable zeroIndex Int64 0
+storage local immutable startOffset Int64 7
+storage local mutable cursor Int64 zeroIndex
 set local cursor startOffset
 """)
         ss4403 = _diagnostics_with_code(diagnostics, "SS4403")
@@ -4121,8 +5619,8 @@ set local cursor startOffset
 operation loop
 output loop Void
 purpose loop "smoke"
-storage local immutable zeroIndex CSignedInt64 0
-storage local mutable cursor CSignedInt64 zeroIndex
+storage local immutable zeroIndex Int64 0
+storage local mutable cursor Int64 zeroIndex
 call probe console.writeLine
 arg probe text zeroIndex
 run probe
@@ -4135,8 +5633,8 @@ set local cursor zeroIndex
 operation loop
 output loop Void
 purpose loop "smoke"
-storage local immutable zeroIndex CSignedInt64 0
-storage local mutable cursor CSignedInt64 zeroIndex
+storage local immutable zeroIndex Int64 0
+storage local mutable cursor Int64 zeroIndex
 call printCursor console.writeIntegerLine
 arg printCursor value cursor
 run printCursor
@@ -4155,8 +5653,8 @@ class TestFixedOffsetParserNeedsRationale(unittest.TestCase):
 operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
 """)
         ss4404 = _diagnostics_with_code(diagnostics, "SS4404")
         self.assertEqual(len(ss4404), 1)
@@ -4173,8 +5671,8 @@ output parseLine Void
 purpose parseLine "smoke"
 # rationale: Offsets count bytes into the line emitted by saveTodos's
 # itemPrefixFormatText; an edit to that format must update these in lockstep.
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -4184,8 +5682,8 @@ operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
 # rationale: positions in the fixed JSON format string written upstream.
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -4194,7 +5692,7 @@ storage local immutable doneValueOffset CSignedInt64 19
 operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
-storage local immutable activeValueOffset CSignedInt64 10
+storage local immutable activeValueOffset Int64 10
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -4203,8 +5701,8 @@ storage local immutable activeValueOffset CSignedInt64 10
 operation parseLine
 output parseLine Void
 purpose parseLine "smoke"
-storage local immutable activeValue CSignedInt64 10
-storage local immutable doneValue CSignedInt64 19
+storage local immutable activeValue Int64 10
+storage local immutable doneValue Int64 19
 """)
         self.assertNotIn("SS4404", _codes(diagnostics))
 
@@ -4216,14 +5714,14 @@ storage local immutable doneValue CSignedInt64 19
 class TestEnumReprComparison(unittest.TestCase):
     def test_int32_repr_enum_compared_with_raw_math_target_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation checkSave
 input checkSave status SaveStatus
 output checkSave Bool
 purpose checkSave "smoke"
-call sameCall math.equalCSignedInt32
+call sameCall math.equalInt32
 arg sameCall left status
 arg sameCall right SaveSucceeded
 run sameCall
@@ -4241,16 +5739,16 @@ returnValue isSame
             "call sameCall SaveStatus.equal",
         )
 
-    def test_int64_repr_enum_compared_with_math_equal_i64_is_flagged(self) -> None:
+    def test_int64_repr_enum_compared_with_math_equal_int64_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum Mode repr CSignedInt64
+enum Mode repr Int64
 enumCase Mode ListMode 0
 enumCase Mode EditMode 1
 operation checkMode
 input checkMode mode Mode
 output checkMode Bool
 purpose checkMode "smoke"
-call modeCall math.equalI64
+call modeCall math.equalInt64
 arg modeCall left mode
 arg modeCall right EditMode
 run modeCall
@@ -4266,7 +5764,7 @@ returnValue isEdit
 
     def test_enum_domain_method_call_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation checkSave
@@ -4285,10 +5783,10 @@ returnValue isSame
     def test_non_enum_int_compare_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation check
-input check left CSignedInt32
+input check left Int32
 output check Bool
 purpose check "smoke"
-call cmpCall math.equalCSignedInt32
+call cmpCall math.equalInt32
 arg cmpCall left left
 arg cmpCall right left
 run cmpCall
@@ -4305,7 +5803,7 @@ returnValue isEqual
 class TestEnumResultDiscarded(unittest.TestCase):
     def test_ignore_value_on_enum_typed_call_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation saveAndForget
@@ -4335,13 +5833,13 @@ call write console.writeLine
 arg write console console
 arg write text someText
 run write
-ignoreValue write CSignedInt32
+ignoreValue write Int32
 """)
         self.assertNotIn("SS4406", _codes(diagnostics))
 
     def test_bound_enum_return_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 operation doIt
@@ -4370,8 +5868,8 @@ input main console Console
 output main Void
 purpose main "smoke"
 invariant main "lineBufferBytes and lineBufferCapacity MUST stay equal: the malloc size and the c.fgets count argument must agree."
-storage local immutable lineBufferBytes CByteCount 384
-storage local immutable lineBufferCapacity CSignedInt32 256
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 256
 """)
         ss4407 = _diagnostics_with_code(diagnostics, "SS4407")
         self.assertEqual(len(ss4407), 1)
@@ -4389,8 +5887,8 @@ input main console Console
 output main Void
 purpose main "smoke"
 invariant main "lineBufferBytes and lineBufferCapacity MUST stay equal."
-storage local immutable lineBufferBytes CByteCount 384
-storage local immutable lineBufferCapacity CSignedInt32 384
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 384
 """)
         self.assertNotIn("SS4407", _codes(diagnostics))
 
@@ -4401,8 +5899,8 @@ input main console Console
 output main Void
 purpose main "smoke"
 invariant main "lineBufferBytes is the malloc size; lineBufferCapacity is the c.fgets count."
-storage local immutable lineBufferBytes CByteCount 384
-storage local immutable lineBufferCapacity CSignedInt32 256
+storage local immutable lineBufferBytes ByteCount 384
+storage local immutable lineBufferCapacity Int32 256
 """)
         # Without the `MUST stay equal` anchor the rule does not fire — the
         # values are allowed to differ when the invariant doesn't claim
@@ -4411,8 +5909,8 @@ storage local immutable lineBufferCapacity CSignedInt32 256
 
     def test_module_scope_paired_scalars_are_resolved(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable retryLimitBytes CByteCount 1024
-storage module immutable retryLimitCapacity CSignedInt32 512
+storage module immutable retryLimitBytes ByteCount 1024
+storage module immutable retryLimitCapacity Int32 512
 operation main
 input main console Console
 output main Void
@@ -4445,7 +5943,7 @@ capability httpResponseWriter http.response write
 operation edgeHandler
 input edgeHandler request HttpRequest
 input edgeHandler response HttpResponse
-output edgeHandler CSignedInt32
+output edgeHandler Int32
 effect edgeHandler write http.response
 memory edgeHandler arena request
 async edgeHandler no
@@ -4453,14 +5951,14 @@ useCapability edgeHandler httpResponseWriter
 purpose edgeHandler "smoke handler for whitelist test"
 invariant edgeHandler "static response so the test can poll"
 label startEdgeHandler
-storage local immutable bodyText CNullTerminatedByteString "edge\\n"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable bodyText String "edge\\n"
+storage local immutable okStatus Int32 200
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -4520,7 +6018,7 @@ capability httpResponseWriter http.response write
 operation probeMiddleware
 input probeMiddleware request HttpRequest
 input probeMiddleware response HttpResponse
-output probeMiddleware CSignedInt32
+output probeMiddleware Int32
 {middlewareEffectLine}
 memory probeMiddleware arena request
 async probeMiddleware no
@@ -4528,13 +6026,13 @@ useCapability probeMiddleware httpRequestReader
 purpose probeMiddleware "demo middleware for SS3602 fixture"
 invariant probeMiddleware "synchronous middleware that returns 0 to continue"
 label startProbeMiddleware
-storage local immutable continueStatus CSignedInt32 0
+storage local immutable continueStatus Int32 0
 returnValue continueStatus
 
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -4542,14 +6040,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -4628,7 +6126,7 @@ capability httpResponseWriter http.response write
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -4638,21 +6136,21 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token back"
 invariant echoHandler "static reply on missing token"
 {warningLine}label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
-storage local immutable badStatus CSignedInt32 400
-storage local immutable missingBody CNullTerminatedByteString "missing\\n"
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
+storage local immutable badStatus Int32 400
+storage local immutable missingBody String "missing\\n"
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenHeaderValue CNullTerminatedByteString headerReadCall
+bind tokenHeaderValue String headerReadCall
 {guardBlock}call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body tokenHeaderValue
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 label missingPath
@@ -4661,7 +6159,7 @@ arg missingWriteCall response response
 arg missingWriteCall status badStatus
 arg missingWriteCall body missingBody
 run missingWriteCall
-bind missingWriteStatus CSignedInt32 missingWriteCall
+bind missingWriteStatus Int32 missingWriteCall
 returnValue missingWriteStatus
 """
 
@@ -4710,9 +6208,9 @@ capability httpResponseWriter http.response write
 
 operation writeTextResponseWrapper
 input writeTextResponseWrapper response HttpResponse
-input writeTextResponseWrapper status CSignedInt32
-input writeTextResponseWrapper body CNullTerminatedByteString
-output writeTextResponseWrapper CSignedInt32
+input writeTextResponseWrapper status Int32
+input writeTextResponseWrapper body String
+output writeTextResponseWrapper Int32
 effect writeTextResponseWrapper write http.response
 memory writeTextResponseWrapper arena request
 async writeTextResponseWrapper no
@@ -4726,13 +6224,13 @@ arg writeCall response response
 arg writeCall status status
 arg writeCall body body
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -4742,19 +6240,19 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token via wrapper"
 invariant echoHandler "transitive-detection target"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenHeaderValue CNullTerminatedByteString headerReadCall
+bind tokenHeaderValue String headerReadCall
 call writeWrapperCall writeTextResponseWrapper
 arg writeWrapperCall response response
 arg writeWrapperCall status okStatus
 arg writeWrapperCall body tokenHeaderValue
 run writeWrapperCall
-bind writeWrapperStatus CSignedInt32 writeWrapperCall
+bind writeWrapperStatus Int32 writeWrapperCall
 returnValue writeWrapperStatus
 """)
         codes = _codes(diagnostics)
@@ -4780,7 +6278,7 @@ capability httpResponseWriter http.response write
 operation methodHandler
 input methodHandler request HttpRequest
 input methodHandler response HttpResponse
-output methodHandler CSignedInt32
+output methodHandler Int32
 effect methodHandler read http.request.method
 effect methodHandler write http.response
 memory methodHandler arena request
@@ -4790,17 +6288,17 @@ useCapability methodHandler httpResponseWriter
 purpose methodHandler "echo request method"
 invariant methodHandler "method is never null for dispatched requests"
 label startMethodHandler
-storage local immutable okStatus CSignedInt32 200
+storage local immutable okStatus Int32 200
 call methodReadCall http.requestMethod
 arg methodReadCall request request
 run methodReadCall
-bind requestMethod CNullTerminatedByteString methodReadCall
+bind requestMethod String methodReadCall
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body requestMethod
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         self.assertNotIn("SS3603", _codes(diagnostics))
@@ -4832,7 +6330,7 @@ capability httpResponseWriter http.response write
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler read http.request.header
 effect probeHandler write http.response
 memory probeHandler arena request
@@ -4842,19 +6340,19 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "echo X-Token unguarded as a SS3603 test fixture"
 invariant probeHandler "intentionally unguarded for opt-out testing"
 {optOutLine}label startProbeHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body tokenValue
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -4909,7 +6407,7 @@ capability httpResponseWriter http.response write
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -4920,15 +6418,15 @@ purpose echoHandler "echo X-Token with a defensive guard"
 invariant echoHandler "missing X-Token returns 400, never falls into the null-body failure path"
 warning echoHandler "do not switch this route back to the null-body failure path; the 400 contract is tested"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
-storage local immutable badStatus CSignedInt32 400
-storage local immutable missingBody CNullTerminatedByteString "missing\\n"
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
+storage local immutable badStatus Int32 400
+storage local immutable missingBody String "missing\\n"
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call guardCall pointer.isNull
 arg guardCall pointer tokenValue
 run guardCall
@@ -4939,7 +6437,7 @@ arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body tokenValue
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 label missingPath
@@ -4948,7 +6446,7 @@ arg missingWriteCall response response
 arg missingWriteCall status badStatus
 arg missingWriteCall body missingBody
 run missingWriteCall
-bind missingWriteStatus CSignedInt32 missingWriteCall
+bind missingWriteStatus Int32 missingWriteCall
 returnValue missingWriteStatus
 """)
         codes = _codes(diagnostics)
@@ -4984,9 +6482,9 @@ capability httpResponseWriter http.response write
 
 operation writeTextResponseWrapper
 input writeTextResponseWrapper response HttpResponse
-input writeTextResponseWrapper status CSignedInt32
-input writeTextResponseWrapper body CNullTerminatedByteString
-output writeTextResponseWrapper CSignedInt32
+input writeTextResponseWrapper status Int32
+input writeTextResponseWrapper body String
+output writeTextResponseWrapper Int32
 effect writeTextResponseWrapper write http.response
 memory writeTextResponseWrapper arena request
 async writeTextResponseWrapper no
@@ -4999,13 +6497,13 @@ arg writeCall response response
 arg writeCall status status
 arg writeCall body body
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -5015,19 +6513,19 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token via wrapper"
 invariant echoHandler "transitive-detection target"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call writeWrapperCall writeTextResponseWrapper
 arg writeWrapperCall response response
 arg writeWrapperCall status okStatus
 arg writeWrapperCall body tokenValue
 run writeWrapperCall
-bind writeWrapperStatus CSignedInt32 writeWrapperCall
+bind writeWrapperStatus Int32 writeWrapperCall
 returnValue writeWrapperStatus
 """
 
@@ -5066,8 +6564,8 @@ capability httpResponseWriter http.response write
 
 operation pretendsToForward
 input pretendsToForward response HttpResponse
-input pretendsToForward body CNullTerminatedByteString
-output pretendsToForward CSignedInt32
+input pretendsToForward body String
+output pretendsToForward Int32
 effect pretendsToForward write http.response
 memory pretendsToForward arena request
 async pretendsToForward no
@@ -5076,7 +6574,7 @@ purpose pretendsToForward "claims to forward body but actually drops it"
 invariant pretendsToForward "for SS3607 fixture"
 responseBodyForwarder pretendsToForward body
 label startPretendsToForward
-storage local immutable okStatus CSignedInt32 0
+storage local immutable okStatus Int32 0
 returnValue okStatus
 """)
         self.assertIn("SS3607", _codes(diagnostics))
@@ -5101,9 +6599,9 @@ capability httpResponseWriter http.response write
 
 operation innerWrapper
 input innerWrapper response HttpResponse
-input innerWrapper status CSignedInt32
-input innerWrapper body CNullTerminatedByteString
-output innerWrapper CSignedInt32
+input innerWrapper status Int32
+input innerWrapper body String
+output innerWrapper Int32
 effect innerWrapper write http.response
 memory innerWrapper arena request
 async innerWrapper no
@@ -5117,14 +6615,14 @@ arg writeCall response response
 arg writeCall status status
 arg writeCall body body
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 
 operation outerWrapper
 input outerWrapper response HttpResponse
-input outerWrapper status CSignedInt32
-input outerWrapper body CNullTerminatedByteString
-output outerWrapper CSignedInt32
+input outerWrapper status Int32
+input outerWrapper body String
+output outerWrapper Int32
 effect outerWrapper write http.response
 memory outerWrapper arena request
 async outerWrapper no
@@ -5138,13 +6636,13 @@ arg innerCall response response
 arg innerCall status status
 arg innerCall body body
 run innerCall
-bind innerStatus CSignedInt32 innerCall
+bind innerStatus Int32 innerCall
 returnValue innerStatus
 
 operation echoHandler
 input echoHandler request HttpRequest
 input echoHandler response HttpResponse
-output echoHandler CSignedInt32
+output echoHandler Int32
 effect echoHandler read http.request.header
 effect echoHandler write http.response
 memory echoHandler arena request
@@ -5154,19 +6652,19 @@ useCapability echoHandler httpResponseWriter
 purpose echoHandler "echo X-Token via two-layer wrapper"
 invariant echoHandler "fixed-point forwarder test"
 label startEchoHandler
-storage local immutable tokenHeaderName CNullTerminatedByteString "x-token"
-storage local immutable okStatus CSignedInt32 200
+storage local immutable tokenHeaderName String "x-token"
+storage local immutable okStatus Int32 200
 call headerReadCall http.requestHeader
 arg headerReadCall request request
 arg headerReadCall name tokenHeaderName
 run headerReadCall
-bind tokenValue CNullTerminatedByteString headerReadCall
+bind tokenValue String headerReadCall
 call outerCall outerWrapper
 arg outerCall response response
 arg outerCall status okStatus
 arg outerCall body tokenValue
 run outerCall
-bind outerStatus CSignedInt32 outerCall
+bind outerStatus Int32 outerCall
 returnValue outerStatus
 """)
         self.assertIn("SS3603", _codes(diagnostics))
@@ -5197,7 +6695,7 @@ capability httpResponseWriter http.response write
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -5205,14 +6703,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -5280,7 +6778,7 @@ output main Void
 purpose main "smoke"
 invariant main "smoke"
 label startMain
-storage local immutable okStatus CSignedInt32 0
+storage local immutable okStatus Int32 0
 call ackCall console.writeLine
 arg ackCall console console
 arg ackCall text okStatus
@@ -5340,7 +6838,7 @@ capability httpResponseWriter http.response write
 operation methodEchoHandler
 input methodEchoHandler request HttpRequest
 input methodEchoHandler response HttpResponse
-output methodEchoHandler CSignedInt32
+output methodEchoHandler Int32
 effect methodEchoHandler read http.request.method
 effect methodEchoHandler write http.response
 memory methodEchoHandler arena request
@@ -5350,17 +6848,17 @@ useCapability methodEchoHandler httpResponseWriter
 purpose methodEchoHandler "smoke test that http.request authorizes http.request.method"
 invariant methodEchoHandler "if missingCapabilityUse fires here, the hierarchy walk is broken"
 label startMethodEchoHandler
-storage local immutable okStatus CSignedInt32 200
+storage local immutable okStatus Int32 200
 call methodReadCall http.requestMethod
 arg methodReadCall request request
 run methodReadCall
-bind requestMethod CNullTerminatedByteString methodReadCall
+bind requestMethod String methodReadCall
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body requestMethod
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         # The whole point: no missing-capability diagnostic for the narrow
@@ -5400,7 +6898,7 @@ capability httpResponseWriter http.response write
 operation probeHandler
 input probeHandler {requestInputName} HttpRequest
 input probeHandler {responseInputName} HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -5408,14 +6906,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler for SS3609 fixture"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response {responseInputName}
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
@@ -5481,7 +6979,7 @@ capability httpResponseWriter http.response write
 operation tracingMiddleware
 input tracingMiddleware req HttpRequest
 input tracingMiddleware resp HttpResponse
-output tracingMiddleware CSignedInt32
+output tracingMiddleware Int32
 effect tracingMiddleware write http.response
 memory tracingMiddleware arena request
 async tracingMiddleware no
@@ -5489,13 +6987,13 @@ useCapability tracingMiddleware httpResponseWriter
 purpose tracingMiddleware "non-canonical input names should fire SS3609"
 invariant tracingMiddleware "middleware ABI follows route ABI"
 label startTracingMiddleware
-storage local immutable continueStatus CSignedInt32 0
+storage local immutable continueStatus Int32 0
 returnValue continueStatus
 
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -5503,14 +7001,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "canonical-name handler so only the middleware trips SS3609"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         ss3609 = _diagnostics_with_code(diagnostics, "SS3609")
@@ -5535,19 +7033,19 @@ capability httpResponseWriter http.response write
 
 operation requestInspector
 input requestInspector req HttpRequest
-output requestInspector CSignedInt32
+output requestInspector Int32
 memory requestInspector arena request
 async requestInspector no
 purpose requestInspector "library helper, NOT a route handler"
 invariant requestInspector "called only from other ops, not from a route binding"
 label startRequestInspector
-storage local immutable inspectStatus CSignedInt32 0
+storage local immutable inspectStatus Int32 0
 returnValue inspectStatus
 
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -5555,14 +7053,14 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "canonical handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         self.assertNotIn("SS3609", _codes(diagnostics))
@@ -5574,10 +7072,10 @@ returnValue writeStatus
 
 class TestHttpTargetSourceOfTruth(unittest.TestCase):
     """The native HTTP target surface lives in three places: semsc.py's
-    dispatch block, semlint.py's classifier constants, and SYNTAX.md's
+    dispatch block, semlint.py's classifier constants, and docs/reference/syntax-inventory.md's
     umbrella rows. Adding a target in one place without the others
     leaves a silent contract drift — SS3603 misses new readers, SS3601
-    misses new writers, and SYNTAX.md becomes a lie.
+    misses new writers, and docs/reference/syntax-inventory.md becomes a lie.
 
     This test parses semsc.py for every `"http.*"` literal target,
     then asserts the resulting set equals
@@ -5596,7 +7094,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
     def setUpClass(cls) -> None:
         repoRoot = Path(__file__).resolve().parents[2]
         cls.semscPath = repoRoot / "SemanticScript" / "compiler" / "semsc.py"
-        cls.syntaxMdPath = repoRoot / "SYNTAX.md"
+        cls.syntaxInventoryPath = repoRoot / "docs" / "reference" / "syntax-inventory.md"
 
     def _http_targets_in_semsc(self) -> "set[str]":
         """Extract every `http.X` literal target referenced anywhere in
@@ -5608,12 +7106,12 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
         targetPattern = re.compile(r'"(http\.[A-Za-z_][A-Za-z0-9_]*)"')
         return set(targetPattern.findall(sourceText))
 
-    def _http_targets_in_syntax_md(self) -> "set[str]":
-        """Extract every `http.X` target referenced in SYNTAX.md. The
+    def _http_targets_in_syntax_inventory(self) -> "set[str]":
+        """Extract every `http.X` target referenced in docs/reference/syntax-inventory.md. The
         spec wraps targets in backticks (` `http.X` `) so the regex is
         anchored on that."""
         import re
-        sourceText = self.syntaxMdPath.read_text(encoding="utf-8")
+        sourceText = self.syntaxInventoryPath.read_text(encoding="utf-8")
         targetPattern = re.compile(r'`(http\.[A-Za-z_][A-Za-z0-9_]*)`')
         return set(targetPattern.findall(sourceText))
 
@@ -5637,7 +7135,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
                 f"{sorted(onlyInSemsc)}. Add each to the appropriate "
                 f"classifier set (NON_NULLABLE_HTTP_REQUEST_READS / "
                 f"NULLABLE_HTTP_REQUEST_READS / HTTP_RESPONSE_BODY_WRITERS / "
-                f"HTTP_RESPONSE_OTHER_WRITERS / HTTP_UTILITY_TARGETS) and to the SYNTAX.md "
+                f"HTTP_RESPONSE_OTHER_WRITERS / HTTP_UTILITY_TARGETS) and to the docs/reference/syntax-inventory.md "
                 f"umbrella row."
             ),
         )
@@ -5652,15 +7150,15 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
             ),
         )
 
-    def test_every_dispatch_target_appears_in_syntax_md(self) -> None:
+    def test_every_dispatch_target_appears_in_syntax_inventory(self) -> None:
         targetsInSemsc = self._http_targets_in_semsc()
-        targetsInSyntaxMd = self._http_targets_in_syntax_md()
-        missingFromSyntax = targetsInSemsc - targetsInSyntaxMd
+        targetsInSyntaxInventory = self._http_targets_in_syntax_inventory()
+        missingFromSyntax = targetsInSemsc - targetsInSyntaxInventory
         self.assertFalse(
             missingFromSyntax,
             msg=(
                 f"http.* targets dispatched in semsc.py but not "
-                f"mentioned in SYNTAX.md: {sorted(missingFromSyntax)}. "
+                f"mentioned in docs/reference/syntax-inventory.md: {sorted(missingFromSyntax)}. "
                 f"Add each to the umbrella row so the spec inventory "
                 f"matches the runtime surface."
             ),
@@ -5699,7 +7197,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
 class TestMiddlewareReturnType(unittest.TestCase):
     """Middleware ops bound via routeMiddleware MUST declare `output OP
     MiddlewareControl`. The dispatcher's short-circuit semantics depend
-    on the typed enum; bare CSignedInt32 erases the named-case
+    on the typed enum; bare Int32 erases the named-case
     contract."""
 
     def _program_with_middleware_output(self, outputDeclaration: str) -> str:
@@ -5733,7 +7231,7 @@ returnValue continueMiddlewareControl
 operation probeHandler
 input probeHandler request HttpRequest
 input probeHandler response HttpResponse
-output probeHandler CSignedInt32
+output probeHandler Int32
 effect probeHandler write http.response
 memory probeHandler arena request
 async probeHandler no
@@ -5741,20 +7239,20 @@ useCapability probeHandler httpResponseWriter
 purpose probeHandler "smoke handler"
 invariant probeHandler "static response"
 label startProbeHandler
-storage local immutable okStatus CSignedInt32 200
-storage local immutable bodyText CNullTerminatedByteString "ok\\n"
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
 call writeCall http.responseText
 arg writeCall response response
 arg writeCall status okStatus
 arg writeCall body bodyText
 run writeCall
-bind writeStatus CSignedInt32 writeCall
+bind writeStatus Int32 writeCall
 returnValue writeStatus
 """
 
-    def test_middleware_with_csignedint32_output_flagged(self) -> None:
+    def test_middleware_with_int32_output_flagged(self) -> None:
         diagnostics = _lint_source(self._program_with_middleware_output(
-            "output probeMiddleware CSignedInt32"
+            "output probeMiddleware Int32"
         ))
         self.assertIn("SS3610", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3610")[0]
@@ -5789,16 +7287,16 @@ returnValue writeStatus
         matching = _diagnostics_with_code(diagnostics, "SS3610")[0]
         self.assertIn("ExitCode", matching.intentSlogan)
 
-    def test_non_middleware_op_returning_csignedint32_not_flagged(self) -> None:
+    def test_non_middleware_op_returning_int32_not_flagged(self) -> None:
         # An operation that's NOT bound via routeMiddleware can return
         # any type — SS3610 only speaks to the dispatcher-bound subset.
         diagnostics = _lint_source("""project Test
 operation helperOp
-output helperOp CSignedInt32
+output helperOp Int32
 purpose helperOp "ordinary helper, not a middleware"
 invariant helperOp "no routeMiddleware binding => SS3610 does not apply"
 label startHelperOp
-storage local immutable okValue CSignedInt32 0
+storage local immutable okValue Int32 0
 returnValue okValue
 """)
         self.assertNotIn("SS3610", _codes(diagnostics))
@@ -5829,17 +7327,17 @@ class TestMiddlewareControlBuiltinEnum(unittest.TestCase):
         prog = self._parse_with_semsc("project Trivial\n")
         self.assertIn("MiddlewareControl", prog.enums)
         enumFact = prog.enums["MiddlewareControl"]
-        self.assertEqual(enumFact.repr, "CSignedInt32")
+        self.assertEqual(enumFact.repr, "Int32")
         caseNames = [name for name, _value in enumFact.cases]
         self.assertEqual(
             caseNames,
             ["continueMiddlewareControl", "shortCircuitMiddlewareControl"],
         )
 
-    def test_case_consts_are_typed_MiddlewareControl_not_csignedint32(self) -> None:
+    def test_case_consts_are_typed_MiddlewareControl_not_int32(self) -> None:
         # The case-name consts carry the enum type so the result-contract
         # checker can compare them apples-to-apples against `output OP
-        # MiddlewareControl`. If these come back as CSignedInt32 the
+        # MiddlewareControl`. If these come back as Int32 the
         # contract enforcement falls back to the loose equivalence
         # check and silently allows raw integers at returnValue sites.
         prog = self._parse_with_semsc("project Trivial\n")
@@ -5865,7 +7363,7 @@ class TestSqliteBuiltinSurface(unittest.TestCase):
             facts.consts["inMemorySqliteOpenMode"].type_name,
             "SqliteOpenMode",
         )
-        self.assertEqual(facts.type_aliases["SqliteRowId"], "CSignedInt64")
+        self.assertEqual(facts.type_aliases["SqliteRowId"], "Int64")
         self.assertIn("SqliteDatabase", facts.type_aliases)
 
     def test_sqlite_builtin_case_is_not_an_unresolved_arg_value(self) -> None:
@@ -5873,7 +7371,7 @@ class TestSqliteBuiltinSurface(unittest.TestCase):
 operation openDatabase
 output openDatabase Void
 purpose openDatabase "prove sqlite enum cases are visible to semlint"
-storage local immutable sqlitePath CNullTerminatedByteString ":memory:"
+storage local immutable sqlitePath String ":memory:"
 call openDatabaseCall sqlite.openDatabase
 arg openDatabaseCall path sqlitePath
 arg openDatabaseCall mode inMemorySqliteOpenMode
@@ -5899,7 +7397,7 @@ output legacyVoidOp Void
 purpose legacyVoidOp "returns Void per the output line but uses returnValue sentinel"
 invariant legacyVoidOp "legacy shape"
 label startLegacyVoidOp
-storage local immutable legacyZeroSentinel CSignedInt32 0
+storage local immutable legacyZeroSentinel Int32 0
 returnValue legacyZeroSentinel
 """)
         self.assertIn("SS3612", _codes(diagnostics))
@@ -5907,7 +7405,7 @@ returnValue legacyZeroSentinel
         self.assertEqual(matching.subjectName, "legacyVoidOp")
         self.assertEqual(matching.gapEdge, "returnVoid")
         self.assertEqual(matching.fixCandidates[0].name, "replaceReturnValueWithReturnVoid")
-        self.assertEqual(matching.fixCandidates[0].shape, "returnVoid")
+        self.assertEqual(matching.fixCandidates[0].shape, "return void")
         self.assertTrue(matching.fixCandidates[0].autoApplicable)
 
     def test_void_output_with_return_void_not_flagged(self) -> None:
@@ -5921,26 +7419,26 @@ returnVoid
 """)
         self.assertNotIn("SS3612", _codes(diagnostics))
 
-    def test_csignedint32_output_with_return_value_not_flagged(self) -> None:
+    def test_int32_output_with_return_value_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation typedOp
-output typedOp CSignedInt32
+output typedOp Int32
 purpose typedOp "returns a typed status"
 invariant typedOp "returnValue is correct for non-Void output"
 label startTypedOp
-storage local immutable okStatus CSignedInt32 0
+storage local immutable okStatus Int32 0
 returnValue okStatus
 """)
         self.assertNotIn("SS3612", _codes(diagnostics))
 
-    def test_cvoid_alias_also_caught(self) -> None:
+    def test_second_void_output_fixture_also_caught(self) -> None:
         diagnostics = _lint_source("""project Test
-operation cvoidOp
-output cvoidOp CVoid
-purpose cvoidOp "CVoid is the C ABI alias for Void"
-invariant cvoidOp "rule should treat both alike"
-label startCvoidOp
-storage local immutable zeroSentinel CSignedInt32 0
+operation voidSentinelOp
+output voidSentinelOp Void
+purpose voidSentinelOp "Void output still requires returnVoid"
+invariant voidSentinelOp "returnValue should be rejected for Void outputs"
+label startVoidSentinelOp
+storage local immutable zeroSentinel Int32 0
 returnValue zeroSentinel
 """)
         self.assertIn("SS3612", _codes(diagnostics))
@@ -5974,7 +7472,7 @@ returnVoid
 operation refOp
 output refOp Void
 purpose refOp "smoke"
-warning refOp "the assertion at test_http_api_gauntlet.py:273-279 verifies this"
+warning refOp "the assertion at test_http_runtime_gauntlet.py:273-279 verifies this"
 label startRefOp
 returnVoid
 """)
@@ -6018,7 +7516,7 @@ returnVoid
 operation refOp
 output refOp Void
 purpose refOp "smoke"
-invariant refOp "tracked under SYNTAX.md#routeMiddleware as Impl'd"
+invariant refOp "tracked under docs/reference/syntax-inventory.md#routeMiddleware as Impl'd"
 label startRefOp
 returnVoid
 """)
@@ -6114,6 +7612,54 @@ mainFile sampleProject "{mainFileName}"
             )
             diagnostics = semlint.lint_path(modulePath)
             self.assertNotIn("SS3614", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS2515  module.standardLibraryDefinesSmokeMain
+# ==========================================================================
+
+class TestStdlibModuleNoSmokeMain(unittest.TestCase):
+    _STDLIB_MODULE_WITH_MAIN = (
+        "module standard.demo\n"
+        "exportConstant standard.demo demoModuleVersionText\n"
+        "storage module immutable demoModuleVersionText "
+        "String \"standard.demo 0.1\"\n"
+        "operation main\n"
+        "output operation main ExitCode\n"
+        "memory main heap no\n"
+        "async main no\n"
+        "purpose operation main \"smoke\"\n"
+        "label startMain\n"
+        "storage module immutable exitOkCode ExitCode 0\n"
+        "return value exitOkCode\n"
+    )
+
+    def test_stdlib_implementation_module_with_main_is_flagged(self) -> None:
+        diagnostics = _lint_source_at("main.sem", self._STDLIB_MODULE_WITH_MAIN)
+        self.assertIn("SS2515", _codes(diagnostics))
+
+    def test_colocated_test_file_with_main_is_not_flagged(self) -> None:
+        # The smoke main legitimately lives in main.test.sem.
+        diagnostics = _lint_source_at("main.test.sem", self._STDLIB_MODULE_WITH_MAIN)
+        self.assertNotIn("SS2515", _codes(diagnostics))
+
+    def test_non_standard_module_with_main_is_not_flagged(self) -> None:
+        # App modules under app.* legitimately declare the entry `main`.
+        appModule = self._STDLIB_MODULE_WITH_MAIN.replace(
+            "standard.demo", "app.demo"
+        )
+        diagnostics = _lint_source_at("main.sem", appModule)
+        self.assertNotIn("SS2515", _codes(diagnostics))
+
+    def test_stdlib_module_without_main_is_not_flagged(self) -> None:
+        moduleOnly = (
+            "module standard.demo\n"
+            "exportConstant standard.demo demoModuleVersionText\n"
+            "storage module immutable demoModuleVersionText "
+            "String \"standard.demo 0.1\"\n"
+        )
+        diagnostics = _lint_source_at("main.sem", moduleOnly)
+        self.assertNotIn("SS2515", _codes(diagnostics))
 
 
 if __name__ == "__main__":

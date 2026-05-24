@@ -10,108 +10,108 @@ mode capturedOutputReplay
 
 entry console main
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 memory writeStandardOutputLine heap no
 memory writeStandardOutputLine stack max 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
-const writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+storage module immutable writeStandardOutputLineSuccessSentinel ExitCode 0
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 memory main stack max 4KiB
 async main no
 
-purpose main "Print the deterministic event-workflow trace from javascript/event-workflow.js"
-invariant main "Trace lines appear in emit order: created, paid, shipped for order-2001"
+purpose operation main "Print the deterministic event-workflow trace from javascript/event-workflow.js"
+invariant operation main "Trace lines appear in emit order: created, paid, shipped for order-2001"
 
 label startMain
 
-const eventWorkflowTitleText String "Event Workflow"
-const eventWorkflowTitleUnderlineText String "=============="
-const eventWorkflowCreatedText String "created order-2001 for Katherine"
-const eventWorkflowPaidText String "paid order-2001 amount=3499"
-const eventWorkflowShippedText String "shipped order-2001 carrier=UPS"
+storage module immutable eventWorkflowTitleText String "Event Workflow"
+storage module immutable eventWorkflowTitleUnderlineText String "=============="
+storage module immutable eventWorkflowCreatedText String "created order-2001 for Katherine"
+storage module immutable eventWorkflowPaidText String "paid order-2001 amount=3499"
+storage module immutable eventWorkflowShippedText String "shipped order-2001 carrier=UPS"
 
-var lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
+memory main mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 call writeEventWorkflowTitleLineCall writeStandardOutputLine
-arg writeEventWorkflowTitleLineCall text eventWorkflowTitleText
+argument writeEventWorkflowTitleLineCall text String eventWorkflowTitleText
 run writeEventWorkflowTitleLineCall
-ignoreOk writeEventWorkflowTitleLineCall Void
-bindError writeEventWorkflowTitleLineError ConsoleWriteError writeEventWorkflowTitleLineCall
-set lastConsoleWriteErrorCode writeEventWorkflowTitleLineError
-branchIfError writeEventWorkflowTitleLineCall consoleWriteFailed
+ignore void source writeEventWorkflowTitleLineCall
+bind error writeEventWorkflowTitleLineError ConsoleWriteError writeEventWorkflowTitleLineCall
+set memory lastConsoleWriteErrorCode writeEventWorkflowTitleLineError
+branch error source writeEventWorkflowTitleLineCall target consoleWriteFailed
 
 call writeEventWorkflowTitleUnderlineLineCall writeStandardOutputLine
-arg writeEventWorkflowTitleUnderlineLineCall text eventWorkflowTitleUnderlineText
+argument writeEventWorkflowTitleUnderlineLineCall text String eventWorkflowTitleUnderlineText
 run writeEventWorkflowTitleUnderlineLineCall
-ignoreOk writeEventWorkflowTitleUnderlineLineCall Void
-bindError writeEventWorkflowTitleUnderlineLineError ConsoleWriteError writeEventWorkflowTitleUnderlineLineCall
-set lastConsoleWriteErrorCode writeEventWorkflowTitleUnderlineLineError
-branchIfError writeEventWorkflowTitleUnderlineLineCall consoleWriteFailed
+ignore void source writeEventWorkflowTitleUnderlineLineCall
+bind error writeEventWorkflowTitleUnderlineLineError ConsoleWriteError writeEventWorkflowTitleUnderlineLineCall
+set memory lastConsoleWriteErrorCode writeEventWorkflowTitleUnderlineLineError
+branch error source writeEventWorkflowTitleUnderlineLineCall target consoleWriteFailed
 
 call writeEventWorkflowCreatedLineCall writeStandardOutputLine
-arg writeEventWorkflowCreatedLineCall text eventWorkflowCreatedText
+argument writeEventWorkflowCreatedLineCall text String eventWorkflowCreatedText
 run writeEventWorkflowCreatedLineCall
-ignoreOk writeEventWorkflowCreatedLineCall Void
-bindError writeEventWorkflowCreatedLineError ConsoleWriteError writeEventWorkflowCreatedLineCall
-set lastConsoleWriteErrorCode writeEventWorkflowCreatedLineError
-branchIfError writeEventWorkflowCreatedLineCall consoleWriteFailed
+ignore void source writeEventWorkflowCreatedLineCall
+bind error writeEventWorkflowCreatedLineError ConsoleWriteError writeEventWorkflowCreatedLineCall
+set memory lastConsoleWriteErrorCode writeEventWorkflowCreatedLineError
+branch error source writeEventWorkflowCreatedLineCall target consoleWriteFailed
 
 call writeEventWorkflowPaidLineCall writeStandardOutputLine
-arg writeEventWorkflowPaidLineCall text eventWorkflowPaidText
+argument writeEventWorkflowPaidLineCall text String eventWorkflowPaidText
 run writeEventWorkflowPaidLineCall
-ignoreOk writeEventWorkflowPaidLineCall Void
-bindError writeEventWorkflowPaidLineError ConsoleWriteError writeEventWorkflowPaidLineCall
-set lastConsoleWriteErrorCode writeEventWorkflowPaidLineError
-branchIfError writeEventWorkflowPaidLineCall consoleWriteFailed
+ignore void source writeEventWorkflowPaidLineCall
+bind error writeEventWorkflowPaidLineError ConsoleWriteError writeEventWorkflowPaidLineCall
+set memory lastConsoleWriteErrorCode writeEventWorkflowPaidLineError
+branch error source writeEventWorkflowPaidLineCall target consoleWriteFailed
 
 call writeEventWorkflowShippedLineCall writeStandardOutputLine
-arg writeEventWorkflowShippedLineCall text eventWorkflowShippedText
+argument writeEventWorkflowShippedLineCall text String eventWorkflowShippedText
 run writeEventWorkflowShippedLineCall
-ignoreOk writeEventWorkflowShippedLineCall Void
-bindError writeEventWorkflowShippedLineError ConsoleWriteError writeEventWorkflowShippedLineCall
-set lastConsoleWriteErrorCode writeEventWorkflowShippedLineError
-branchIfError writeEventWorkflowShippedLineCall consoleWriteFailed
+ignore void source writeEventWorkflowShippedLineCall
+bind error writeEventWorkflowShippedLineError ConsoleWriteError writeEventWorkflowShippedLineCall
+set memory lastConsoleWriteErrorCode writeEventWorkflowShippedLineError
+branch error source writeEventWorkflowShippedLineCall target consoleWriteFailed
 
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

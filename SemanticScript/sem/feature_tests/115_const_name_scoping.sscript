@@ -5,50 +5,50 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation getSeven
-output getSeven Result CSignedInt64 Void
+output operation getSeven Result Int64 Void
 label startGetSeven
-const answer CSignedInt64 7
-returnOk answer
+storage module immutable answer Int64 7
+return ok answer
 
 operation getFortyTwo
-output getFortyTwo Result CSignedInt64 Void
+output operation getFortyTwo Result Int64 Void
 label startGetFortyTwo
-const answer CSignedInt64 42
-returnOk answer
+storage module immutable answer Int64 42
+return ok answer
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Two user ops each declare `const answer` with different values. Print both."
-invariant main "Output: 7 then 42."
+purpose operation main "Two user ops each declare `const answer` with different values. Print both."
+invariant operation main "Output: 7 then 42."
 label startMain
 call sevenCall getSeven
 run sevenCall
-bindOk sevenResult CSignedInt64 sevenCall
-var s1 I64 0
-set s1 sevenResult
+bind ok sevenResult Int64 sevenCall
+memory main mutable s1 Int64 0
+set memory s1 sevenResult
 call w1 console.writeIntegerLine
-arg w1 console console
-arg w1 value s1
+argument w1 console Console console
+argument w1 value Int64 s1
 run w1
-ignoreOk w1 Void
+ignore void source w1
 
 call fortytwoCall getFortyTwo
 run fortytwoCall
-bindOk fortytwoResult CSignedInt64 fortytwoCall
-var s2 I64 0
-set s2 fortytwoResult
+bind ok fortytwoResult Int64 fortytwoCall
+memory main mutable s2 Int64 0
+set memory s2 fortytwoResult
 call w2 console.writeIntegerLine
-arg w2 console console
-arg w2 value s2
+argument w2 console Console console
+argument w2 value Int64 s2
 run w2
-ignoreOk w2 Void
+ignore void source w2
 
-const okExit ExitCode 0
-returnOk okExit
+storage module immutable okExit ExitCode 0
+return ok okExit

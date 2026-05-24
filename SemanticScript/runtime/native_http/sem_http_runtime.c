@@ -1,18 +1,21 @@
 #include "sem_http_runtime.h"
 
 #include <ctype.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Keep request buffering capped at 64 KiB. The native backend buffers one
- * request at a time, so larger uploads need a streaming/multipart path rather
- * than raising this shared allocation ceiling. */
-#define SS_HTTP_MAX_REQUEST_BYTES 65536
+/* Keep the fallback backend's full-request buffer bounded. Applications should
+ * enforce their own smaller body policy with ss_http_request_body_length; this
+ * transport ceiling only prevents unbounded allocation in the blocking adapter.
+ */
+#define SS_HTTP_MAX_REQUEST_BYTES (1024 * 1024)
 #define SS_HTTP_MAX_HEADERS 32
 #define SS_HTTP_MAX_QUERY_PARAMS 32
 #define SS_HTTP_MAX_MULTIPART_PARTS 16
 #define SS_HTTP_MULTIPART_BOUNDARY_MAX 128
+#define SS_HTTP_SHUTDOWN_POLL_MILLIS 250
 
 /* Pattern-route knobs. SS_HTTP_MAX_PATH_PARAMS bounds the number of
  * :name segments per request — 8 is more than any realistic REST path.
@@ -56,6 +59,7 @@ static void ss_close_socket(ss_socket_t socket_handle) {
 #include <arpa/inet.h>
 #include <errno.h>
 #include <sys/stat.h>          /* mkdir for ss_http_filesystem_ensure_directory */
+#include <sys/select.h>
 #include <time.h>              /* clock_gettime for ss_http_now_millis */
 #include <netdb.h>
 #include <sys/socket.h>
@@ -67,6 +71,55 @@ static void ss_close_socket(ss_socket_t socket_handle) {
     close(socket_handle);
 }
 #endif
+
+typedef struct SSHttpResponseBackend {
+    ss_socket_t socket_handle;
+    int stream_started;
+    int stream_closed;
+    int stream_error;
+} SSHttpResponseBackend;
+
+static volatile sig_atomic_t g_http_shutdown_requested = 0;
+
+static void request_http_shutdown_from_signal(int signal_number) {
+    (void)signal_number;
+    g_http_shutdown_requested = 1;
+}
+
+static void reset_http_shutdown_state(void) {
+    g_http_shutdown_requested = 0;
+}
+
+static int http_shutdown_requested(void) {
+    return g_http_shutdown_requested != 0;
+}
+
+int ss_http_server_is_shutting_down(void) {
+    return http_shutdown_requested();
+}
+
+#ifdef _WIN32
+static BOOL WINAPI http_console_ctrl_handler(DWORD ctrl_type) {
+    switch (ctrl_type) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        g_http_shutdown_requested = 1;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#endif
+
+static void install_http_shutdown_handlers(void) {
+    signal(SIGINT, request_http_shutdown_from_signal);
+    signal(SIGTERM, request_http_shutdown_from_signal);
+#ifdef _WIN32
+    SetConsoleCtrlHandler(http_console_ctrl_handler, TRUE);
+#endif
+}
 
 struct SSHttpRequest {
     const char *method;
@@ -689,6 +742,232 @@ long long ss_http_now_millis(void) {
     return (long long)now_ts.tv_sec * 1000LL
          + (long long)(now_ts.tv_nsec / 1000000L);
 #endif
+}
+
+/* ----- outbound HTTP/1.1 client (ss_http_client_fetch) -----
+ *
+ * A minimal blocking HTTP/1.1 client so SemanticScript apps can call other
+ * services over HTTP (the runtime previously exposed only the server side).
+ * Connects to host:port, sends `method path` with a Host header, an optional
+ * caller-supplied header line (e.g. "Authorization: Bearer ..."), and an
+ * optional JSON body, then reads the whole response (Connection: close).
+ *
+ * Returns a malloc'd, null-terminated copy of the RESPONSE BODY on a 2xx
+ * status, or NULL on transport error / non-2xx. The caller owns the buffer and
+ * must free it (c.free). Does not handle chunked transfer-encoding; the bundled
+ * native server replies with Content-Length + close, which this reads in full. */
+#ifdef _WIN32
+static int ss_http_client_winsock_ready(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        WSADATA wsa_data;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            return 0;
+        }
+        initialized = 1;
+    }
+    return 1;
+}
+#endif
+
+static char *ss_http_client_dup(const char *text) {
+    size_t length = strlen(text);
+    char *copy = (char *)malloc(length + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, text, length + 1);
+    return copy;
+}
+
+const char *ss_http_client_fetch(
+    const char *method,
+    const char *host,
+    int port,
+    const char *path,
+    const char *header_line,
+    const char *body
+) {
+    if (method == NULL || host == NULL || path == NULL) {
+        return NULL;
+    }
+#ifdef _WIN32
+    if (!ss_http_client_winsock_ready()) {
+        return NULL;
+    }
+#endif
+
+    char port_text[16];
+    snprintf(port_text, sizeof(port_text), "%d", port);
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    struct addrinfo *resolved = NULL;
+    if (getaddrinfo(host, port_text, &hints, &resolved) != 0 || resolved == NULL) {
+        return NULL;
+    }
+
+    ss_socket_t client_socket = SS_INVALID_SOCKET;
+    for (struct addrinfo *candidate = resolved; candidate != NULL; candidate = candidate->ai_next) {
+        client_socket = socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol);
+        if (client_socket == SS_INVALID_SOCKET) {
+            continue;
+        }
+        if (connect(client_socket, candidate->ai_addr, (int)candidate->ai_addrlen) == 0) {
+            break;
+        }
+        ss_close_socket(client_socket);
+        client_socket = SS_INVALID_SOCKET;
+    }
+    freeaddrinfo(resolved);
+    if (client_socket == SS_INVALID_SOCKET) {
+        return NULL;
+    }
+
+    /* Bound the blocking calls so a hung upstream cannot freeze the single
+     * server thread indefinitely (review N2). */
+#ifdef _WIN32
+    DWORD client_timeout_ms = 5000;
+    setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&client_timeout_ms, sizeof(client_timeout_ms));
+    setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, (const char *)&client_timeout_ms, sizeof(client_timeout_ms));
+#else
+    struct timeval client_timeout;
+    client_timeout.tv_sec = 5;
+    client_timeout.tv_usec = 0;
+    setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &client_timeout, sizeof(client_timeout));
+    setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &client_timeout, sizeof(client_timeout));
+#endif
+
+    const char *body_text = body ? body : "";
+    size_t body_length = strlen(body_text);
+    int has_body = body_length > 0;
+
+    size_t request_capacity = strlen(method) + strlen(path) + strlen(host)
+        + (header_line ? strlen(header_line) : 0) + body_length + 256;
+    char *request = (char *)malloc(request_capacity);
+    if (request == NULL) {
+        ss_close_socket(client_socket);
+        return NULL;
+    }
+    int written = snprintf(request, request_capacity,
+        "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
+        method, path, host);
+    if (header_line != NULL && header_line[0] != '\0') {
+        written += snprintf(request + written, request_capacity - (size_t)written,
+            "%s\r\n", header_line);
+    }
+    if (has_body) {
+        written += snprintf(request + written, request_capacity - (size_t)written,
+            "Content-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",
+            body_length, body_text);
+    } else {
+        written += snprintf(request + written, request_capacity - (size_t)written, "\r\n");
+    }
+
+    size_t sent_total = 0;
+    int send_failed = 0;
+    while (sent_total < (size_t)written) {
+        int sent_now = send(client_socket, request + sent_total, (int)((size_t)written - sent_total), 0);
+        if (sent_now <= 0) {
+            send_failed = 1;
+            break;
+        }
+        sent_total += (size_t)sent_now;
+    }
+    free(request);
+    if (send_failed) {
+        ss_close_socket(client_socket);
+        return NULL;
+    }
+
+    size_t response_capacity = 8192;
+    size_t response_length = 0;
+    char *response = (char *)malloc(response_capacity);
+    if (response == NULL) {
+        ss_close_socket(client_socket);
+        return NULL;
+    }
+    for (;;) {
+        if (response_length + 4096 >= response_capacity) {
+            size_t next_capacity = response_capacity * 2;
+            char *grown = (char *)realloc(response, next_capacity);
+            if (grown == NULL) {
+                free(response);
+                ss_close_socket(client_socket);
+                return NULL;
+            }
+            response = grown;
+            response_capacity = next_capacity;
+        }
+        int read_now = recv(client_socket, response + response_length,
+            (int)(response_capacity - response_length - 1), 0);
+        if (read_now <= 0) {
+            break;
+        }
+        response_length += (size_t)read_now;
+    }
+    ss_close_socket(client_socket);
+    response[response_length] = '\0';
+
+    int status_code = 0;
+    /* Only trust the status line when the response actually begins with the
+     * HTTP version token (review S2). */
+    if (response_length >= 5 && strncmp(response, "HTTP/", 5) == 0) {
+        const char *status_space = strchr(response, ' ');
+        if (status_space != NULL) {
+            status_code = atoi(status_space + 1);
+        }
+    }
+
+    char *body_start = strstr(response, "\r\n\r\n");
+    char *result = NULL;
+    if (body_start != NULL && status_code >= 200 && status_code < 300) {
+        result = ss_http_client_dup(body_start + 4);
+    }
+    free(response);
+    return result;
+}
+
+/* ----- ss_http_html_escape -----
+ * Escape the HTML special characters & < > " ' into entities, writing into the
+ * caller's bounded scratch buffer (always null-terminated; truncates rather
+ * than overflows). Returns the scratch pointer, or NULL on bad args. Used by
+ * SSR clients to render untrusted text into HTML safely. */
+const char *ss_http_html_escape(const char *input, char *out, int out_capacity) {
+    if (input == NULL || out == NULL || out_capacity <= 0) {
+        return NULL;
+    }
+    int oi = 0;
+    for (int i = 0; input[i] != '\0'; i++) {
+        const char *replacement = NULL;
+        int replacement_length = 0;
+        switch (input[i]) {
+            case '&': replacement = "&amp;"; replacement_length = 5; break;
+            case '<': replacement = "&lt;"; replacement_length = 4; break;
+            case '>': replacement = "&gt;"; replacement_length = 4; break;
+            case '"': replacement = "&quot;"; replacement_length = 6; break;
+            case '\'': replacement = "&#39;"; replacement_length = 5; break;
+            default: break;
+        }
+        if (replacement != NULL) {
+            if (oi + replacement_length >= out_capacity) {
+                break;
+            }
+            memcpy(out + oi, replacement, (size_t)replacement_length);
+            oi += replacement_length;
+        } else {
+            if (oi + 1 >= out_capacity) {
+                break;
+            }
+            out[oi++] = input[i];
+        }
+    }
+    out[oi] = '\0';
+    return out;
 }
 
 /* ----- ss_http_filesystem_ensure_directory ----- */
@@ -1482,6 +1761,231 @@ static int send_response(
     return SS_HTTP_OK;
 }
 
+static SSHttpResponseBackend *response_backend(SSHttpResponse *response) {
+    if (response == NULL || response->backend_response == NULL) {
+        return NULL;
+    }
+    return (SSHttpResponseBackend *)response->backend_response;
+}
+
+static int send_sse_headers(SSHttpResponse *response, int status) {
+    SSHttpResponseBackend *backend = response_backend(response);
+    char header[512];
+    size_t index;
+    int header_length;
+
+    if (backend == NULL || backend->stream_started || backend->stream_closed) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+
+    header_length = snprintf(
+        header,
+        sizeof(header),
+        "HTTP/1.1 %d %s\r\n"
+        "Content-Type: text/event-stream; charset=utf-8\r\n"
+        "Connection: close\r\n",
+        status,
+        reason_phrase_for_status(status)
+    );
+    if (header_length <= 0 || (size_t)header_length >= sizeof(header)) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+    if (send_all(backend->socket_handle, header, (size_t)header_length) != SS_HTTP_OK) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+    for (index = 0; index < response->header_count; ++index) {
+        const char *name = response->headers[index].name;
+        const char *value = response->headers[index].value;
+        if (name == NULL || value == NULL) {
+            continue;
+        }
+        if (ascii_case_equal(name, "Content-Length") ||
+                ascii_case_equal(name, "Connection") ||
+                ascii_case_equal(name, "Content-Type")) {
+            continue;
+        }
+        header_length = snprintf(header, sizeof(header), "%s: %s\r\n", name, value);
+        if (header_length <= 0 || (size_t)header_length >= sizeof(header)) {
+            backend->stream_error = 1;
+            return SS_HTTP_ERR_ENGINE;
+        }
+        if (send_all(backend->socket_handle, header, (size_t)header_length) != SS_HTTP_OK) {
+            backend->stream_error = 1;
+            return SS_HTTP_ERR_ENGINE;
+        }
+    }
+    if (send_all(backend->socket_handle, "\r\n", 2) != SS_HTTP_OK) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+    backend->stream_started = 1;
+    response->status = status;
+    response->body = "";
+    response->body_length = 0;
+    response->content_type = "text/event-stream; charset=utf-8";
+    return SS_HTTP_OK;
+}
+
+int ss_http_sse_open(SSHttpResponse *response, int status) {
+    if (response == NULL) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    return send_sse_headers(response, status);
+}
+
+int ss_http_sse_write_event(
+    SSHttpResponse *response,
+    const char *event_name,
+    const char *event_data
+) {
+    SSHttpResponseBackend *backend = response_backend(response);
+    const char *event_prefix = "event: ";
+    size_t event_name_length;
+    size_t payload_length;
+    char *payload;
+    char *cursor;
+    int status;
+
+    if (backend == NULL || !backend->stream_started || backend->stream_closed ||
+            !is_valid_sse_event_name(event_name) || event_data == NULL) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+
+    event_name_length = strlen(event_name);
+    payload_length =
+        strlen(event_prefix) + event_name_length + 1 +
+        sse_data_wire_length(event_data) +
+        1;
+    payload = (char *)malloc(payload_length + 1);
+    if (payload == NULL) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+
+    cursor = payload;
+    memcpy(cursor, event_prefix, strlen(event_prefix));
+    cursor += strlen(event_prefix);
+    memcpy(cursor, event_name, event_name_length);
+    cursor += event_name_length;
+    *cursor++ = '\n';
+    cursor = write_sse_data_lines(cursor, event_data);
+    *cursor++ = '\n';
+    *cursor = '\0';
+
+    status = send_all(backend->socket_handle, payload, (size_t)(cursor - payload));
+    free(payload);
+    if (status != SS_HTTP_OK) {
+        backend->stream_error = 1;
+    }
+    return status;
+}
+
+int ss_http_sse_write_event_with_id(
+    SSHttpResponse *response,
+    long long event_id,
+    const char *event_name,
+    const char *event_data
+) {
+    SSHttpResponseBackend *backend = response_backend(response);
+    const char *id_prefix = "id: ";
+    const char *event_prefix = "event: ";
+    char id_buffer[32];
+    int id_length;
+    size_t event_name_length;
+    size_t payload_length;
+    char *payload;
+    char *cursor;
+    int status;
+
+    if (backend == NULL || !backend->stream_started || backend->stream_closed ||
+            event_id < 0 || !is_valid_sse_event_name(event_name) || event_data == NULL) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+
+    id_length = snprintf(id_buffer, sizeof(id_buffer), "%lld", event_id);
+    if (id_length <= 0 || (size_t)id_length >= sizeof(id_buffer)) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+
+    event_name_length = strlen(event_name);
+    payload_length =
+        strlen(id_prefix) + (size_t)id_length + 1 +
+        strlen(event_prefix) + event_name_length + 1 +
+        sse_data_wire_length(event_data) +
+        1;
+    payload = (char *)malloc(payload_length + 1);
+    if (payload == NULL) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+
+    cursor = payload;
+    memcpy(cursor, id_prefix, strlen(id_prefix));
+    cursor += strlen(id_prefix);
+    memcpy(cursor, id_buffer, (size_t)id_length);
+    cursor += id_length;
+    *cursor++ = '\n';
+    memcpy(cursor, event_prefix, strlen(event_prefix));
+    cursor += strlen(event_prefix);
+    memcpy(cursor, event_name, event_name_length);
+    cursor += event_name_length;
+    *cursor++ = '\n';
+    cursor = write_sse_data_lines(cursor, event_data);
+    *cursor++ = '\n';
+    *cursor = '\0';
+
+    status = send_all(backend->socket_handle, payload, (size_t)(cursor - payload));
+    free(payload);
+    if (status != SS_HTTP_OK) {
+        backend->stream_error = 1;
+    }
+    return status;
+}
+
+int ss_http_sse_heartbeat(SSHttpResponse *response, const char *comment) {
+    SSHttpResponseBackend *backend = response_backend(response);
+    const char *prefix = ": ";
+    char buffer[256];
+    int length;
+    if (backend == NULL || !backend->stream_started || backend->stream_closed ||
+            comment == NULL) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    if (strchr(comment, '\r') != NULL || strchr(comment, '\n') != NULL) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    length = snprintf(buffer, sizeof(buffer), "%s%s\n\n", prefix, comment);
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+    if (send_all(backend->socket_handle, buffer, (size_t)length) != SS_HTTP_OK) {
+        backend->stream_error = 1;
+        return SS_HTTP_ERR_ENGINE;
+    }
+    return SS_HTTP_OK;
+}
+
+int ss_http_sse_close(SSHttpResponse *response) {
+    SSHttpResponseBackend *backend = response_backend(response);
+    if (backend == NULL || !backend->stream_started) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    backend->stream_closed = 1;
+    return backend->stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+}
+
+int ss_http_client_disconnected(SSHttpResponse *response) {
+    SSHttpResponseBackend *backend = response_backend(response);
+    if (backend == NULL) {
+        return 1;
+    }
+    return backend->stream_error ? 1 : 0;
+}
+
 /* -------------------------------------------------------------------
  * Pattern-route compilation.
  *
@@ -1773,6 +2277,25 @@ static const SSHttpRoute *find_compiled_route(
     return NULL;
 }
 
+static const SSHttpRoute *find_compiled_method_mismatch(
+    const char *method,
+    const char *path,
+    SSHttpRequest *request
+) {
+    for (size_t route_index = 0; route_index < g_compiled_route_count; ++route_index) {
+        const SSCompiledRoute *compiled = &g_compiled_routes[route_index];
+        if (ascii_case_equal(compiled->route->method, method)) {
+            continue;
+        }
+        if (try_match_compiled_route(compiled, path, request)) {
+            return compiled->route;
+        }
+    }
+    request->path_param_count = 0;
+    request->path_params_buffer_used = 0;
+    return NULL;
+}
+
 static int parse_request_line(
     char *buffer,
     char **method_out,
@@ -1841,6 +2364,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     const SSHttpRoute *route;
     SSHttpRequest request;
     SSHttpResponse response;
+    SSHttpResponseBackend stream_backend;
     int handler_status;
     int response_status;
 
@@ -1932,9 +2456,45 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     request.body = body_start;
     request.body_length = (size_t)content_length;
     request.backend_request = NULL;
+    parse_headers(header_start, body_start, &request);
+    parse_query_params(query, &request);
+    memset(&stream_backend, 0, sizeof(stream_backend));
+    stream_backend.socket_handle = client_socket;
 
     route = find_compiled_route(method, path, &request);
     if (route == NULL) {
+        if (config->method_not_allowed_handler != NULL &&
+                find_compiled_method_mismatch(method, path, &request) != NULL) {
+            memset(&response, 0, sizeof(response));
+            response.status = 405;
+            response.body = NULL;
+            response.body_length = 0;
+            response.content_type = "text/plain; charset=utf-8";
+            response.owned_body = NULL;
+            response.owned_content_type = NULL;
+            response.backend_response = &stream_backend;
+            int mna_status = config->method_not_allowed_handler(&request, &response);
+            if (mna_status == SS_HTTP_OK && stream_backend.stream_started) {
+                response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+            } else if (mna_status == SS_HTTP_OK && response.body != NULL) {
+                response_status = send_response(
+                    client_socket,
+                    response.status,
+                    response.content_type,
+                    response.body,
+                    &response);
+            } else {
+                response_status = send_response(
+                    client_socket,
+                    405,
+                    "text/plain; charset=utf-8",
+                    response.body != NULL ? response.body : "method not allowed\n",
+                    &response);
+            }
+            clear_owned_response(&response);
+            free(request_storage);
+            return response_status;
+        }
         /* If the caller registered a not-found handler, give it the
          * same (request, response) pair every route handler sees so it
          * can return an HTML page, JSON envelope, or whatever shape
@@ -1948,9 +2508,11 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             response.content_type = "text/plain; charset=utf-8";
             response.owned_body = NULL;
             response.owned_content_type = NULL;
-            response.backend_response = NULL;
+            response.backend_response = &stream_backend;
             int nf_status = config->not_found_handler(&request, &response);
-            if (nf_status == SS_HTTP_OK && response.body != NULL) {
+            if (nf_status == SS_HTTP_OK && stream_backend.stream_started) {
+                response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+            } else if (nf_status == SS_HTTP_OK && response.body != NULL) {
                 response_status = send_response(
                     client_socket,
                     response.status,
@@ -1980,9 +2542,6 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
         return response_status;
     }
 
-    parse_headers(header_start, body_start, &request);
-    parse_query_params(query, &request);
-
     memset(&response, 0, sizeof(response));
     response.status = 200;
     response.body = NULL;
@@ -1990,7 +2549,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     response.content_type = "text/plain; charset=utf-8";
     response.owned_body = NULL;
     response.owned_content_type = NULL;
-    response.backend_response = NULL;
+    response.backend_response = &stream_backend;
 
     if (route->middleware != NULL) {
         handler_status = route->middleware(&request, &response);
@@ -1998,13 +2557,15 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             /* Middleware took ownership of the response: skip the route
              * handler and send what middleware wrote. This is the
              * `shortCircuitMiddlewareControl` arm of the MiddlewareControl
-             * contract (see SYNTAX.md `MiddlewareControl`). If middleware
+             * contract (see docs/reference/syntax-inventory.md `MiddlewareControl`). If middleware
              * returned short-circuit but never wrote a body, that's a
              * silent dispatcher gap — surface it as a 500 with an
              * explicit reason so the regression shows up at the client
              * instead of producing an empty 200 (or worse, a malformed
              * response from an uninitialized field). */
-            if (response.body == NULL) {
+            if (stream_backend.stream_started) {
+                response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+            } else if (response.body == NULL) {
                 response_status = send_response(
                     client_socket,
                     500,
@@ -2045,6 +2606,12 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     }
 
     handler_status = route->handler(&request, &response);
+    if (stream_backend.stream_started) {
+        response_status = stream_backend.stream_error ? SS_HTTP_ERR_ENGINE : SS_HTTP_OK;
+        clear_owned_response(&response);
+        free(request_storage);
+        return response_status;
+    }
     if (handler_status != SS_HTTP_OK) {
         response_status = send_response(
             client_socket,
@@ -2082,6 +2649,23 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     return response_status;
 }
 
+static int wait_for_listen_socket(ss_socket_t listen_socket) {
+    fd_set read_set;
+    struct timeval timeout;
+    int ready;
+
+    FD_ZERO(&read_set);
+    FD_SET(listen_socket, &read_set);
+    timeout.tv_sec = SS_HTTP_SHUTDOWN_POLL_MILLIS / 1000;
+    timeout.tv_usec = (SS_HTTP_SHUTDOWN_POLL_MILLIS % 1000) * 1000;
+
+    ready = select((int)(listen_socket + 1), &read_set, NULL, NULL, &timeout);
+    if (ready <= 0) {
+        return ready;
+    }
+    return FD_ISSET(listen_socket, &read_set) ? 1 : 0;
+}
+
 int ss_http_server_run(const SSHttpServerConfig *config) {
     struct addrinfo hints;
     struct addrinfo *result = NULL;
@@ -2092,6 +2676,9 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     if (!has_valid_route_table(config)) {
         return SS_HTTP_ERR_CONFIG;
     }
+
+    reset_http_shutdown_state();
+    install_http_shutdown_handlers();
 
     /* Pre-parse every route path into segment tables exactly once. A
      * compile failure (bad pattern, malloc OOM) aborts startup with the
@@ -2121,6 +2708,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     hints.ai_flags = AI_PASSIVE;
 
     if (getaddrinfo(config->host, port_text, &hints, &result) != 0) {
+        free_compiled_routes();
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -2150,6 +2738,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     freeaddrinfo(result);
 
     if (listen_socket == SS_INVALID_SOCKET) {
+        free_compiled_routes();
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -2158,6 +2747,7 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
 
     if (listen(listen_socket, 128) != 0) {
         ss_close_socket(listen_socket);
+        free_compiled_routes();
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -2167,14 +2757,38 @@ int ss_http_server_run(const SSHttpServerConfig *config) {
     printf("SemanticScript HTTP server listening at http://%s:%hu\n", config->host, config->port);
     fflush(stdout);
 
-    for (;;) {
-        ss_socket_t client_socket = accept(listen_socket, NULL, NULL);
+    while (!http_shutdown_requested()) {
+        int ready = wait_for_listen_socket(listen_socket);
+        ss_socket_t client_socket;
+        if (ready == 0) {
+            continue;
+        }
+        if (ready < 0) {
+#ifndef _WIN32
+            if (errno == EINTR) {
+                continue;
+            }
+#endif
+            if (http_shutdown_requested()) {
+                break;
+            }
+            continue;
+        }
+
+        client_socket = accept(listen_socket, NULL, NULL);
         if (client_socket == SS_INVALID_SOCKET) {
             continue;
         }
         (void)handle_client(client_socket, config);
         ss_close_socket(client_socket);
     }
+
+    ss_close_socket(listen_socket);
+    free_compiled_routes();
+#ifdef _WIN32
+    WSACleanup();
+#endif
+    return SS_HTTP_OK;
 }
 
 #endif

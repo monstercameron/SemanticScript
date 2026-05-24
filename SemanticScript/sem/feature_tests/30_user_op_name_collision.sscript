@@ -5,45 +5,45 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 
 operation doubleIt
-input doubleIt n CSignedInt64
-output doubleIt Result CSignedInt64 Void
+input operation doubleIt n Int64
+output operation doubleIt Result Int64 Void
 memory doubleIt heap no
 async doubleIt no
-purpose doubleIt "Doubles input. Param name `n` collides with main's `var n`."
-invariant doubleIt "Result is 2n."
+purpose operation doubleIt "Doubles input. Param name `n` collides with main's `var n`."
+invariant operation doubleIt "Result is 2n."
 label startDoubleIt
-const twoLit I64 2
-call mulCall math.multiplyI64
-arg mulCall left n
-arg mulCall right twoLit
+storage module immutable twoLit Int64 2
+call mulCall math.multiplyInt64
+argument mulCall left Int64 n
+argument mulCall right Int64 twoLit
 run mulCall
-bind productResult I64 mulCall
-returnOk productResult
+bind value productResult Int64 mulCall
+return ok productResult
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Call doubleIt(5) and print."
-invariant main "Outputs 10."
+purpose operation main "Call doubleIt(5) and print."
+invariant operation main "Outputs 10."
 label startMain
-const fiveInitial I64 5
-var n I64 fiveInitial
+storage module immutable fiveInitial Int64 5
+memory main mutable n Int64 fiveInitial
 call dblCall doubleIt
-arg dblCall n n
+argument dblCall n Int64 n
 run dblCall
-bindOk dblResult I64 dblCall
-var resultVar I64 fiveInitial
-set resultVar dblResult
+bind ok dblResult Int64 dblCall
+memory main mutable resultVar Int64 fiveInitial
+set memory resultVar dblResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value resultVar
+argument writeCall console Console console
+argument writeCall value Int64 resultVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

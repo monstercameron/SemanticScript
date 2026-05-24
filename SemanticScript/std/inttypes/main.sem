@@ -1,43 +1,42 @@
 # SemanticScript standard-library canonical module: standard.inttypes.
 
 module standard.inttypes
-modulePurpose standard.inttypes "Canonical standard-library module for inttypes-style parsing and formatting helpers."
+purpose module standard.inttypes "Canonical standard-library module for inttypes-style parsing and formatting helpers."
 moduleOwns standard.inttypes "The official import path `standard.inttypes` and this module's implementation body."
 moduleDoesNotOwn standard.inttypes "App-specific wrappers, compatibility aliases, or generated build artifacts."
-moduleInvariant standard.inttypes "The standard module entry is this file; tests live beside it as `main.test.sem`."
+invariant module standard.inttypes "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.inttypes inttypesModuleVersionText
-storage module immutable inttypesModuleVersionText CNullTerminatedByteString "standard.inttypes 0.1"
+storage module immutable inttypesModuleVersionText String "standard.inttypes 0.1"
 
 # Canonical standard-library implementation body.
 # ============================================================
 # SEMANTICSCRIPT STANDARD LIBRARY: <inttypes.h>-style helpers
 # ============================================================
 #
-# # rationale: C's <inttypes.h> provides intmax_t arithmetic helpers
+# rationale: C's <inttypes.h> provides intmax_t arithmetic helpers
 #   (imaxabs, imaxdiv) plus base-2 / base-8 parsing utilities. The
-#   pre-refined version returned `Result CSignedInt64 Void` from
+#   pre-refined version returned `Result Int64 Void` from
 #   every operation, hiding real fallibility (division by zero) and
 #   real partiality (parsing). The refined surface separates the
 #   total ops (abs) from the fallible ones (divide-by-zero), and
 #   keeps the parsers total â€” they stop scanning at the first
 #   non-matching byte and return whatever has accumulated so far.
 #
-# # invariant: integer arithmetic is two's-complement; division
+# invariant: integer arithmetic is two's-complement; division
 #   rounds toward zero (LLVM's sdiv); modulo carries the sign of
 #   the dividend (LLVM's srem).
 #
-# # security: parsers walk a null-terminated input byte by byte and
+# security: parsers walk a null-terminated input byte by byte and
 #   stop at the first byte outside the digit set OR the NUL
 #   terminator (byte == 0 stops because '0' is byte 48, not 0).
 #   No bounds check needed; the NUL terminator is the boundary.
 #
-# # timing: arithmetic ops are O(1); parsers are O(byteLength).
+# timing: arithmetic ops are O(1); parsers are O(byteLength).
 #
-# # observability: no logs; parsers do not signal "junk after the
+# observability: no logs; parsers do not signal "junk after the
 #   digits were consumed" â€” that contract belongs to a stricter
 #   variant in stdlib.sscript.
-
 
 # Pure-module file: smoke + extended tests live in
 # std/inttypes/main.test.sem.
@@ -50,227 +49,225 @@ storage module immutable inttypesModuleVersionText CNullTerminatedByteString "st
 error IntegerArithmeticError
 errorCase IntegerArithmeticError DivisionByZeroAttempted
 
-
-domainLiteral integerZeroComparisonValue CSignedInt64 0
+domainLiteral integerZeroComparisonValue Int64 0
 domainLiteralTrust integerZeroComparisonValue trustedStaticLiteral
-domainLiteral integerNegativeOneMultiplier CSignedInt64 -1
+domainLiteral integerNegativeOneMultiplier Int64 -1
 domainLiteralTrust integerNegativeOneMultiplier trustedStaticLiteral
-domainLiteral asciiDigitZeroByte CSignedInt64 48
+domainLiteral asciiDigitZeroByte Int64 48
 domainLiteralTrust asciiDigitZeroByte trustedStaticLiteral
-domainLiteral asciiDigitOneByte CSignedInt64 49
+domainLiteral asciiDigitOneByte Int64 49
 domainLiteralTrust asciiDigitOneByte trustedStaticLiteral
-domainLiteral asciiDigitSevenByte CSignedInt64 55
+domainLiteral asciiDigitSevenByte Int64 55
 domainLiteralTrust asciiDigitSevenByte trustedStaticLiteral
-domainLiteral binaryBase CSignedInt64 2
+domainLiteral binaryBase Int64 2
 domainLiteralTrust binaryBase trustedStaticLiteral
-domainLiteral octalBase CSignedInt64 8
+domainLiteral octalBase Int64 8
 domainLiteralTrust octalBase trustedStaticLiteral
-domainLiteral integerOneStep CSignedInt64 1
+domainLiteral integerOneStep Int64 1
 domainLiteralTrust integerOneStep trustedStaticLiteral
 
 # section inttypes.absoluteValue
 
 operation absoluteMaxWidthSignedInt
-input absoluteMaxWidthSignedInt inputValue CSignedInt64
-output absoluteMaxWidthSignedInt CSignedInt64
-memoryHeap absoluteMaxWidthSignedInt no
+input operation absoluteMaxWidthSignedInt inputValue Int64
+output operation absoluteMaxWidthSignedInt Int64
+memory absoluteMaxWidthSignedInt heap no
 async absoluteMaxWidthSignedInt no
-purpose absoluteMaxWidthSignedInt "Returns |inputValue| over the CSignedInt64 domain."
-invariant absoluteMaxWidthSignedInt "Non-negative result for every input except INT64_MIN."
+purpose operation absoluteMaxWidthSignedInt "Returns |inputValue| over the Int64 domain."
+invariant operation absoluteMaxWidthSignedInt "Non-negative result for every input except INT64_MIN."
 warning absoluteMaxWidthSignedInt "INT64_MIN negated overflows back to INT64_MIN (no positive representation exists in two's complement)."
-guarantee absoluteMaxWidthSignedInt "Total â€” every input produces some CSignedInt64 result."
+guarantee absoluteMaxWidthSignedInt "Total â€” every input produces some Int64 result."
 label startAbsoluteMaxWidthSignedInt
-call detectInputIsNegativeCall math.lessThanI64
-arg detectInputIsNegativeCall left inputValue
-arg detectInputIsNegativeCall right integerZeroComparisonValue
+call detectInputIsNegativeCall math.lessThanInt64
+argument detectInputIsNegativeCall left Int64 inputValue
+argument detectInputIsNegativeCall right Int64 integerZeroComparisonValue
 run detectInputIsNegativeCall
-bind inputIsNegative Bool detectInputIsNegativeCall
-branchIf inputIsNegative negateInputForAbsoluteValue
-returnValue inputValue
+bind value inputIsNegative Bool detectInputIsNegativeCall
+branch if condition inputIsNegative target negateInputForAbsoluteValue
+return value inputValue
 label negateInputForAbsoluteValue
-call multiplyByNegativeOneCall math.multiplyI64
-arg multiplyByNegativeOneCall left inputValue
-arg multiplyByNegativeOneCall right integerNegativeOneMultiplier
+call multiplyByNegativeOneCall math.multiplyInt64
+argument multiplyByNegativeOneCall left Int64 inputValue
+argument multiplyByNegativeOneCall right Int64 integerNegativeOneMultiplier
 run multiplyByNegativeOneCall
-bind negatedAbsoluteValue CSignedInt64 multiplyByNegativeOneCall
-returnValue negatedAbsoluteValue
+bind value negatedAbsoluteValue Int64 multiplyByNegativeOneCall
+return value negatedAbsoluteValue
 
 # section inttypes.division
 
 operation divideMaxWidthSignedIntQuotient
-input divideMaxWidthSignedIntQuotient dividendValue CSignedInt64
-input divideMaxWidthSignedIntQuotient divisorValue CSignedInt64
-output divideMaxWidthSignedIntQuotient Result CSignedInt64 IntegerArithmeticError
-memoryHeap divideMaxWidthSignedIntQuotient no
+input operation divideMaxWidthSignedIntQuotient dividendValue Int64
+input operation divideMaxWidthSignedIntQuotient divisorValue Int64
+output operation divideMaxWidthSignedIntQuotient Result Int64 IntegerArithmeticError
+memory divideMaxWidthSignedIntQuotient heap no
 async divideMaxWidthSignedIntQuotient no
-purpose divideMaxWidthSignedIntQuotient "Integer quotient dividendValue / divisorValue, rounded toward zero. Fails when divisorValue is zero."
-invariant divideMaxWidthSignedIntQuotient "Quotient sign is dividend sign XOR divisor sign."
+purpose operation divideMaxWidthSignedIntQuotient "Integer quotient dividendValue / divisorValue, rounded toward zero. Fails when divisorValue is zero."
+invariant operation divideMaxWidthSignedIntQuotient "Quotient sign is dividend sign XOR divisor sign."
 failure divideMaxWidthSignedIntQuotient DivisionByZeroAttempted "Returned when divisorValue equals zero â€” caller must screen first."
 guarantee divideMaxWidthSignedIntQuotient "Defined for every (dividendValue, nonZeroDivisorValue) input pair."
 label startDivideMaxWidthSignedIntQuotient
-call detectDivisorIsZeroCall math.equalI64
-arg detectDivisorIsZeroCall left divisorValue
-arg detectDivisorIsZeroCall right integerZeroComparisonValue
+call detectDivisorIsZeroCall math.equalInt64
+argument detectDivisorIsZeroCall left Int64 divisorValue
+argument detectDivisorIsZeroCall right Int64 integerZeroComparisonValue
 run detectDivisorIsZeroCall
-bind divisorIsZero Bool detectDivisorIsZeroCall
-branchIf divisorIsZero raiseDivisionByZeroForQuotient
-call computeSignedQuotientCall math.divideI64
-arg computeSignedQuotientCall left dividendValue
-arg computeSignedQuotientCall right divisorValue
+bind value divisorIsZero Bool detectDivisorIsZeroCall
+branch if condition divisorIsZero target raiseDivisionByZeroForQuotient
+call computeSignedQuotientCall math.divideInt64
+argument computeSignedQuotientCall left Int64 dividendValue
+argument computeSignedQuotientCall right Int64 divisorValue
 run computeSignedQuotientCall
-bind computedQuotient CSignedInt64 computeSignedQuotientCall
-returnOk computedQuotient
+bind value computedQuotient Int64 computeSignedQuotientCall
+return ok computedQuotient
 label raiseDivisionByZeroForQuotient
 makeError quotientDivisionByZeroFailure IntegerArithmeticError.DivisionByZeroAttempted
-returnError quotientDivisionByZeroFailure
+return error quotientDivisionByZeroFailure
 
 operation divideMaxWidthSignedIntRemainder
-input divideMaxWidthSignedIntRemainder dividendValue CSignedInt64
-input divideMaxWidthSignedIntRemainder divisorValue CSignedInt64
-output divideMaxWidthSignedIntRemainder Result CSignedInt64 IntegerArithmeticError
-memoryHeap divideMaxWidthSignedIntRemainder no
+input operation divideMaxWidthSignedIntRemainder dividendValue Int64
+input operation divideMaxWidthSignedIntRemainder divisorValue Int64
+output operation divideMaxWidthSignedIntRemainder Result Int64 IntegerArithmeticError
+memory divideMaxWidthSignedIntRemainder heap no
 async divideMaxWidthSignedIntRemainder no
-purpose divideMaxWidthSignedIntRemainder "Integer remainder dividendValue % divisorValue. Fails when divisorValue is zero."
-invariant divideMaxWidthSignedIntRemainder "Remainder sign carries the dividend sign (LLVM srem semantics)."
+purpose operation divideMaxWidthSignedIntRemainder "Integer remainder dividendValue % divisorValue. Fails when divisorValue is zero."
+invariant operation divideMaxWidthSignedIntRemainder "Remainder sign carries the dividend sign (LLVM srem semantics)."
 failure divideMaxWidthSignedIntRemainder DivisionByZeroAttempted "Returned when divisorValue equals zero."
 guarantee divideMaxWidthSignedIntRemainder "Defined for every (dividendValue, nonZeroDivisorValue) input pair."
 label startDivideMaxWidthSignedIntRemainder
-call detectDivisorIsZeroForRemainderCall math.equalI64
-arg detectDivisorIsZeroForRemainderCall left divisorValue
-arg detectDivisorIsZeroForRemainderCall right integerZeroComparisonValue
+call detectDivisorIsZeroForRemainderCall math.equalInt64
+argument detectDivisorIsZeroForRemainderCall left Int64 divisorValue
+argument detectDivisorIsZeroForRemainderCall right Int64 integerZeroComparisonValue
 run detectDivisorIsZeroForRemainderCall
-bind divisorIsZeroForRemainder Bool detectDivisorIsZeroForRemainderCall
-branchIf divisorIsZeroForRemainder raiseDivisionByZeroForRemainder
-call computeSignedRemainderCall math.moduloI64
-arg computeSignedRemainderCall left dividendValue
-arg computeSignedRemainderCall right divisorValue
+bind value divisorIsZeroForRemainder Bool detectDivisorIsZeroForRemainderCall
+branch if condition divisorIsZeroForRemainder target raiseDivisionByZeroForRemainder
+call computeSignedRemainderCall math.moduloInt64
+argument computeSignedRemainderCall left Int64 dividendValue
+argument computeSignedRemainderCall right Int64 divisorValue
 run computeSignedRemainderCall
-bind computedRemainder CSignedInt64 computeSignedRemainderCall
-returnOk computedRemainder
+bind value computedRemainder Int64 computeSignedRemainderCall
+return ok computedRemainder
 label raiseDivisionByZeroForRemainder
 makeError remainderDivisionByZeroFailure IntegerArithmeticError.DivisionByZeroAttempted
-returnError remainderDivisionByZeroFailure
+return error remainderDivisionByZeroFailure
 
 # section inttypes.parsers
 
 operation parsePositiveBinaryCStringToSignedInt64
-input parsePositiveBinaryCStringToSignedInt64 inputText CNullTerminatedByteString
-output parsePositiveBinaryCStringToSignedInt64 CSignedInt64
-memoryHeap parsePositiveBinaryCStringToSignedInt64 no
+input operation parsePositiveBinaryCStringToSignedInt64 inputText String
+output operation parsePositiveBinaryCStringToSignedInt64 Int64
+memory parsePositiveBinaryCStringToSignedInt64 heap no
 async parsePositiveBinaryCStringToSignedInt64 no
-purpose parsePositiveBinaryCStringToSignedInt64 "Parse a null-terminated C string of '0' / '1' bytes as an unsigned base-2 integer. Stops at the first byte that is neither '0' nor '1' and returns the partial accumulator."
-invariant parsePositiveBinaryCStringToSignedInt64 "Empty or junk inputs return 0; otherwise the prefix of valid binary digits is consumed left-to-right."
-warning parsePositiveBinaryCStringToSignedInt64 "No overflow detection â€” inputs longer than 63 binary digits silently wrap around CSignedInt64."
+purpose operation parsePositiveBinaryCStringToSignedInt64 "Parse a null-terminated C string of '0' / '1' bytes as an unsigned base-2 integer. Stops at the first byte that is neither '0' nor '1' and returns the partial accumulator."
+invariant operation parsePositiveBinaryCStringToSignedInt64 "Empty or junk inputs return 0; otherwise the prefix of valid binary digits is consumed left-to-right."
+warning parsePositiveBinaryCStringToSignedInt64 "No overflow detection â€” inputs longer than 63 binary digits silently wrap around Int64."
 guarantee parsePositiveBinaryCStringToSignedInt64 "Total (no error path); always terminates at the NUL terminator or first invalid byte."
 label startParsePositiveBinaryCStringToSignedInt64
-var binaryAccumulator I64 0
-var binaryByteCursor I64 0
+memory parsePositiveBinaryCStringToSignedInt64 mutable binaryAccumulator Int64 0
+memory parsePositiveBinaryCStringToSignedInt64 mutable binaryByteCursor Int64 0
 label binaryParseLoop
 call loadBinaryByteCall pointer.loadByte
-arg loadBinaryByteCall buffer inputText
-arg loadBinaryByteCall offset binaryByteCursor
+argument loadBinaryByteCall buffer OpaquePointer inputText
+argument loadBinaryByteCall offset ByteCount binaryByteCursor
 run loadBinaryByteCall
-bind currentBinaryByte I8 loadBinaryByteCall
-call detectBinaryByteIsZeroCall math.equalI64
-arg detectBinaryByteIsZeroCall left currentBinaryByte
-arg detectBinaryByteIsZeroCall right asciiDigitZeroByte
+bind value currentBinaryByte Int8 loadBinaryByteCall
+call detectBinaryByteIsZeroCall math.equalInt64
+argument detectBinaryByteIsZeroCall left Int64 currentBinaryByte
+argument detectBinaryByteIsZeroCall right Int64 asciiDigitZeroByte
 run detectBinaryByteIsZeroCall
-bind binaryByteIsZeroChar Bool detectBinaryByteIsZeroCall
-branchIf binaryByteIsZeroChar shiftAccumulatorForZeroBit
-call detectBinaryByteIsOneCall math.equalI64
-arg detectBinaryByteIsOneCall left currentBinaryByte
-arg detectBinaryByteIsOneCall right asciiDigitOneByte
+bind value binaryByteIsZeroChar Bool detectBinaryByteIsZeroCall
+branch if condition binaryByteIsZeroChar target shiftAccumulatorForZeroBit
+call detectBinaryByteIsOneCall math.equalInt64
+argument detectBinaryByteIsOneCall left Int64 currentBinaryByte
+argument detectBinaryByteIsOneCall right Int64 asciiDigitOneByte
 run detectBinaryByteIsOneCall
-bind binaryByteIsOneChar Bool detectBinaryByteIsOneCall
-branchIf binaryByteIsOneChar shiftAccumulatorForOneBit
-branch binaryParseDone
+bind value binaryByteIsOneChar Bool detectBinaryByteIsOneCall
+branch if condition binaryByteIsOneChar target shiftAccumulatorForOneBit
+branch else target binaryParseDone
 label shiftAccumulatorForZeroBit
-call doubleAccumulatorForZeroCall math.multiplyI64
-arg doubleAccumulatorForZeroCall left binaryAccumulator
-arg doubleAccumulatorForZeroCall right binaryBase
+call doubleAccumulatorForZeroCall math.multiplyInt64
+argument doubleAccumulatorForZeroCall left Int64 binaryAccumulator
+argument doubleAccumulatorForZeroCall right Int64 binaryBase
 run doubleAccumulatorForZeroCall
-bind accumulatorAfterZeroBit I64 doubleAccumulatorForZeroCall
-set binaryAccumulator accumulatorAfterZeroBit
-branch advanceBinaryCursor
+bind value accumulatorAfterZeroBit Int64 doubleAccumulatorForZeroCall
+set memory binaryAccumulator accumulatorAfterZeroBit
+jump target advanceBinaryCursor
 label shiftAccumulatorForOneBit
-call doubleAccumulatorForOneCall math.multiplyI64
-arg doubleAccumulatorForOneCall left binaryAccumulator
-arg doubleAccumulatorForOneCall right binaryBase
+call doubleAccumulatorForOneCall math.multiplyInt64
+argument doubleAccumulatorForOneCall left Int64 binaryAccumulator
+argument doubleAccumulatorForOneCall right Int64 binaryBase
 run doubleAccumulatorForOneCall
-bind shiftedAccumulatorForOneBit I64 doubleAccumulatorForOneCall
-call addOneBitCall math.addI64
-arg addOneBitCall left shiftedAccumulatorForOneBit
-arg addOneBitCall right integerOneStep
+bind value shiftedAccumulatorForOneBit Int64 doubleAccumulatorForOneCall
+call addOneBitCall math.addInt64
+argument addOneBitCall left Int64 shiftedAccumulatorForOneBit
+argument addOneBitCall right Int64 integerOneStep
 run addOneBitCall
-bind accumulatorAfterOneBit I64 addOneBitCall
-set binaryAccumulator accumulatorAfterOneBit
-branch advanceBinaryCursor
+bind value accumulatorAfterOneBit Int64 addOneBitCall
+set memory binaryAccumulator accumulatorAfterOneBit
+jump target advanceBinaryCursor
 label advanceBinaryCursor
-call advanceBinaryCursorCall math.addI64
-arg advanceBinaryCursorCall left binaryByteCursor
-arg advanceBinaryCursorCall right integerOneStep
+call advanceBinaryCursorCall math.addInt64
+argument advanceBinaryCursorCall left Int64 binaryByteCursor
+argument advanceBinaryCursorCall right Int64 integerOneStep
 run advanceBinaryCursorCall
-bind nextBinaryCursorPosition I64 advanceBinaryCursorCall
-set binaryByteCursor nextBinaryCursorPosition
-branch binaryParseLoop
+bind value nextBinaryCursorPosition Int64 advanceBinaryCursorCall
+set memory binaryByteCursor nextBinaryCursorPosition
+jump target binaryParseLoop
 label binaryParseDone
-returnValue binaryAccumulator
+return value binaryAccumulator
 
 operation parsePositiveOctalCStringToSignedInt64
-input parsePositiveOctalCStringToSignedInt64 inputText CNullTerminatedByteString
-output parsePositiveOctalCStringToSignedInt64 CSignedInt64
-memoryHeap parsePositiveOctalCStringToSignedInt64 no
+input operation parsePositiveOctalCStringToSignedInt64 inputText String
+output operation parsePositiveOctalCStringToSignedInt64 Int64
+memory parsePositiveOctalCStringToSignedInt64 heap no
 async parsePositiveOctalCStringToSignedInt64 no
-purpose parsePositiveOctalCStringToSignedInt64 "Parse a null-terminated C string of '0'..'7' bytes as an unsigned base-8 integer. Stops at the first byte outside that range."
-invariant parsePositiveOctalCStringToSignedInt64 "Empty or junk inputs return 0; otherwise the prefix of valid octal digits is consumed left-to-right."
-warning parsePositiveOctalCStringToSignedInt64 "No overflow detection â€” inputs longer than 21 octal digits silently wrap around CSignedInt64."
+purpose operation parsePositiveOctalCStringToSignedInt64 "Parse a null-terminated C string of '0'..'7' bytes as an unsigned base-8 integer. Stops at the first byte outside that range."
+invariant operation parsePositiveOctalCStringToSignedInt64 "Empty or junk inputs return 0; otherwise the prefix of valid octal digits is consumed left-to-right."
+warning parsePositiveOctalCStringToSignedInt64 "No overflow detection â€” inputs longer than 21 octal digits silently wrap around Int64."
 guarantee parsePositiveOctalCStringToSignedInt64 "Total."
 label startParsePositiveOctalCStringToSignedInt64
-var octalAccumulator I64 0
-var octalByteCursor I64 0
+memory parsePositiveOctalCStringToSignedInt64 mutable octalAccumulator Int64 0
+memory parsePositiveOctalCStringToSignedInt64 mutable octalByteCursor Int64 0
 label octalParseLoop
 call loadOctalByteCall pointer.loadByte
-arg loadOctalByteCall buffer inputText
-arg loadOctalByteCall offset octalByteCursor
+argument loadOctalByteCall buffer OpaquePointer inputText
+argument loadOctalByteCall offset ByteCount octalByteCursor
 run loadOctalByteCall
-bind currentOctalByte I8 loadOctalByteCall
-call detectOctalByteBelowRangeCall math.lessThanI64
-arg detectOctalByteBelowRangeCall left currentOctalByte
-arg detectOctalByteBelowRangeCall right asciiDigitZeroByte
+bind value currentOctalByte Int8 loadOctalByteCall
+call detectOctalByteBelowRangeCall math.lessThanInt64
+argument detectOctalByteBelowRangeCall left Int64 currentOctalByte
+argument detectOctalByteBelowRangeCall right Int64 asciiDigitZeroByte
 run detectOctalByteBelowRangeCall
-bind octalByteBelowRange Bool detectOctalByteBelowRangeCall
-branchIf octalByteBelowRange octalParseDone
-call detectOctalByteAboveRangeCall math.greaterThanI64
-arg detectOctalByteAboveRangeCall left currentOctalByte
-arg detectOctalByteAboveRangeCall right asciiDigitSevenByte
+bind value octalByteBelowRange Bool detectOctalByteBelowRangeCall
+branch if condition octalByteBelowRange target octalParseDone
+call detectOctalByteAboveRangeCall math.greaterThanInt64
+argument detectOctalByteAboveRangeCall left Int64 currentOctalByte
+argument detectOctalByteAboveRangeCall right Int64 asciiDigitSevenByte
 run detectOctalByteAboveRangeCall
-bind octalByteAboveRange Bool detectOctalByteAboveRangeCall
-branchIf octalByteAboveRange octalParseDone
-call computeOctalDigitValueCall math.subtractI64
-arg computeOctalDigitValueCall left currentOctalByte
-arg computeOctalDigitValueCall right asciiDigitZeroByte
+bind value octalByteAboveRange Bool detectOctalByteAboveRangeCall
+branch if condition octalByteAboveRange target octalParseDone
+call computeOctalDigitValueCall math.subtractInt64
+argument computeOctalDigitValueCall left Int64 currentOctalByte
+argument computeOctalDigitValueCall right Int64 asciiDigitZeroByte
 run computeOctalDigitValueCall
-bind currentOctalDigitValue I64 computeOctalDigitValueCall
-call shiftAccumulatorForOctalCall math.multiplyI64
-arg shiftAccumulatorForOctalCall left octalAccumulator
-arg shiftAccumulatorForOctalCall right octalBase
+bind value currentOctalDigitValue Int64 computeOctalDigitValueCall
+call shiftAccumulatorForOctalCall math.multiplyInt64
+argument shiftAccumulatorForOctalCall left Int64 octalAccumulator
+argument shiftAccumulatorForOctalCall right Int64 octalBase
 run shiftAccumulatorForOctalCall
-bind shiftedOctalAccumulator I64 shiftAccumulatorForOctalCall
-call addOctalDigitCall math.addI64
-arg addOctalDigitCall left shiftedOctalAccumulator
-arg addOctalDigitCall right currentOctalDigitValue
+bind value shiftedOctalAccumulator Int64 shiftAccumulatorForOctalCall
+call addOctalDigitCall math.addInt64
+argument addOctalDigitCall left Int64 shiftedOctalAccumulator
+argument addOctalDigitCall right Int64 currentOctalDigitValue
 run addOctalDigitCall
-bind octalAccumulatorAfterDigit I64 addOctalDigitCall
-set octalAccumulator octalAccumulatorAfterDigit
-call advanceOctalCursorCall math.addI64
-arg advanceOctalCursorCall left octalByteCursor
-arg advanceOctalCursorCall right integerOneStep
+bind value octalAccumulatorAfterDigit Int64 addOctalDigitCall
+set memory octalAccumulator octalAccumulatorAfterDigit
+call advanceOctalCursorCall math.addInt64
+argument advanceOctalCursorCall left Int64 octalByteCursor
+argument advanceOctalCursorCall right Int64 integerOneStep
 run advanceOctalCursorCall
-bind nextOctalCursorPosition I64 advanceOctalCursorCall
-set octalByteCursor nextOctalCursorPosition
-branch octalParseLoop
+bind value nextOctalCursorPosition Int64 advanceOctalCursorCall
+set memory octalByteCursor nextOctalCursorPosition
+jump target octalParseLoop
 label octalParseDone
-returnValue octalAccumulator
+return value octalAccumulator
 
 # ============================================================
-

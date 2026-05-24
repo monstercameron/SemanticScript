@@ -10,7 +10,7 @@ mode capturedOutputReplay
 
 entry console main
 
-type ConsoleWriteErrorCode I32
+type ConsoleWriteErrorCode Int32
 
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
@@ -18,47 +18,47 @@ errorCase MainError ConsoleWriteFailed ConsoleWriteError
 capability consoleStdoutWriteCapability console.stdout write
 
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 useCapability writeStandardOutputLine consoleStdoutWriteCapability
-memoryHeap writeStandardOutputLine no
+memory writeStandardOutputLine heap no
 memoryStackLimit writeStandardOutputLine 1KiB
 async writeStandardOutputLine no
 
-purpose writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
-invariant writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line to standard output via console.writeLine and surface a typed ConsoleWriteError on driver failure"
+invariant operation writeStandardOutputLine "The single console.writeLine call is the only path that can produce stdout from this operation"
 guarantee writeStandardOutputLine "On success the entire text plus a single newline byte is written exactly once"
 
 # group writeStandardOutputLineHelperBody
 label startWriteStandardOutputLine
 
 call writeStandardOutputLineConsoleWriteCall console.writeLine
-arg writeStandardOutputLineConsoleWriteCall console console
-arg writeStandardOutputLineConsoleWriteCall text text
+argument writeStandardOutputLineConsoleWriteCall console Console console
+argument writeStandardOutputLineConsoleWriteCall text String text
 run writeStandardOutputLineConsoleWriteCall
-ignoreOk writeStandardOutputLineConsoleWriteCall Void
-bindError writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
-branchIfError writeStandardOutputLineConsoleWriteCall writeStandardOutputLineConsoleWriteFailed
+ignore void source writeStandardOutputLineConsoleWriteCall
+bind error writeStandardOutputLineConsoleWriteError ConsoleWriteError writeStandardOutputLineConsoleWriteCall
+branch error source writeStandardOutputLineConsoleWriteCall target writeStandardOutputLineConsoleWriteFailed
 
 storage local immutable writeStandardOutputLineSuccessSentinel ExitCode 0
-returnOk writeStandardOutputLineSuccessSentinel
+return ok writeStandardOutputLineSuccessSentinel
 
 label writeStandardOutputLineConsoleWriteFailed
-returnError writeStandardOutputLineConsoleWriteError
+return error writeStandardOutputLineConsoleWriteError
 # endGroup writeStandardOutputLineHelperBody
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 useCapability main consoleStdoutWriteCapability
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 4KiB
 async main no
 
-purpose main "Print the baseline greeting from javascript/hello-world.js exactly as Node emits it"
-invariant main "The output is a single line: Hello, world!"
+purpose operation main "Print the baseline greeting from javascript/hello-world.js exactly as Node emits it"
+invariant operation main "The output is a single line: Hello, world!"
 
 label startMain
 
@@ -68,19 +68,19 @@ storage local mutable lastConsoleWriteErrorCode ConsoleWriteErrorCode 0
 
 # rationale: One named call so the success and failure legs of the write are both inspectable.
 call writeHelloWorldGreetingLineCall writeStandardOutputLine
-arg writeHelloWorldGreetingLineCall text helloWorldGreetingText
+argument writeHelloWorldGreetingLineCall text String helloWorldGreetingText
 run writeHelloWorldGreetingLineCall
-ignoreOk writeHelloWorldGreetingLineCall Void
-bindError writeHelloWorldGreetingLineError ConsoleWriteError writeHelloWorldGreetingLineCall
-set local lastConsoleWriteErrorCode writeHelloWorldGreetingLineError
-branchIfError writeHelloWorldGreetingLineCall consoleWriteFailed
+ignore void source writeHelloWorldGreetingLineCall
+bind error writeHelloWorldGreetingLineError ConsoleWriteError writeHelloWorldGreetingLineCall
+set memory lastConsoleWriteErrorCode writeHelloWorldGreetingLineError
+branch error source writeHelloWorldGreetingLineCall target consoleWriteFailed
 
 storage local immutable successfulExitCode ExitCode 0
-returnOk successfulExitCode
+return ok successfulExitCode
 
 label consoleWriteFailed
 # rationale: lastConsoleWriteErrorCode holds whichever emit actually failed; its `set`
 # ran immediately before the corresponding branchIfError, so the typed
 # MainError.ConsoleWriteFailed value honestly names its cause (Â§12).
 makeError consoleWriteFailure MainError.ConsoleWriteFailed lastConsoleWriteErrorCode
-returnError consoleWriteFailure
+return error consoleWriteFailure

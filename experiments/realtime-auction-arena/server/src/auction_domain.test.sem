@@ -1,0 +1,14 @@
+module app.realtime_auction_arena.server.tests.auction_domain
+purpose module app.realtime_auction_arena.server.tests.auction_domain "Unit coverage contract for server/src/auction_domain.sem."
+moduleOwns app.realtime_auction_arena.server.tests.auction_domain "Auction API command contract, role/idempotency/revision preconditions, policy, lifecycle, bid-validation, anti-sniping, winner, revision, and sequence rule coverage."
+moduleDoesNotOwn app.realtime_auction_arena.server.tests.auction_domain "HTTP route wiring or SQLite writes."
+invariant module app.realtime_auction_arena.server.tests.auction_domain "Every pure rule exported by auction_domain.sem must have a named test case."
+
+storage module immutable auctionDomainUnitTestPlanSummary String "server/src/auction_domain.sem coverage: create/start/extend/close/bid/snapshot API contract, role and scope policy labels, idempotency and revision preconditions, policy bounds, lifecycle transitions, bid rejects, anti-sniping, winner selection, revision, and event sequence."
+
+operation getAuctionDomainUnitTestPlan
+output operation getAuctionDomainUnitTestPlan String
+memory getAuctionDomainUnitTestPlan heap no
+async getAuctionDomainUnitTestPlan no
+purpose operation getAuctionDomainUnitTestPlan "Return the auction-domain unit coverage plan."
+return value auctionDomainUnitTestPlanSummary

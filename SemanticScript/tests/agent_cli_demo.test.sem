@@ -1,0 +1,13 @@
+project AgentCliDemoTest
+target console
+runtime AgentRuntime 0.1
+entry console main
+module demo.agentCli
+
+operation main
+output operation main ExitCode
+memory main heap no
+async main no
+purpose operation main "Provide a clean green-path fixture for sem CLI docs and contract smokes."
+invariant operation main "Returns exit code 0 without side effects."
+return value 0

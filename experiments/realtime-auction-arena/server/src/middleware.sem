@@ -1,0 +1,284 @@
+module app.realtime_auction_arena.server.middleware
+purpose module app.realtime_auction_arena.server.middleware "Cross-cutting middleware, request policy, and observability contracts for the server scaffold."
+moduleOwns app.realtime_auction_arena.server.middleware "Request id, API versioning, envelope, log, audit, metrics, redaction, idempotency, body limit, and content-type policy declarations."
+moduleDoesNotOwn app.realtime_auction_arena.server.middleware "Native dispatcher fallback behavior or durable request-log writes."
+invariant module app.realtime_auction_arena.server.middleware "Request logs and audit records must redact raw Authorization, refresh tokens, and password fields."
+
+record RequestIdContract
+field RequestIdContract header String
+field RequestIdContract acceptedCharacters String
+field RequestIdContract maxBytes Int64
+field RequestIdContract missingFallback String
+field RequestIdContract propagationRule String
+field RequestIdContract generationRuntimeGap String
+
+record ApiEnvelopeContract
+field ApiEnvelopeContract apiVersion String
+field ApiEnvelopeContract successShape String
+field ApiEnvelopeContract errorShape String
+field ApiEnvelopeContract errorCodeRule String
+field ApiEnvelopeContract dynamicBodyRuntimeGap String
+
+record ApiVersionContract
+field ApiVersionContract currentVersion String
+field ApiVersionContract routePrefix String
+field ApiVersionContract responseHeader String
+field ApiVersionContract unsupportedVersionErrorCode String
+field ApiVersionContract compatibilityRule String
+
+record ContentTypeContract
+field ContentTypeContract writeRouteMethods String
+field ContentTypeContract requiredMediaType String
+field ContentTypeContract acceptedMediaTypePrefix String
+field ContentTypeContract missingOrInvalidStatus Int64
+field ContentTypeContract missingOrInvalidErrorCode String
+field ContentTypeContract runtimeGap String
+
+record SecurityLimitContract
+field SecurityLimitContract maxJsonBodyBytes Int64
+field SecurityLimitContract maxRouteParamBytes Int64
+field SecurityLimitContract maxChatMessageBytes Int64
+field SecurityLimitContract maxTitleBytes Int64
+field SecurityLimitContract maxDescriptionBytes Int64
+field SecurityLimitContract oversizedStatus Int64
+field SecurityLimitContract oversizedErrorCode String
+
+record IdempotencyContract
+field IdempotencyContract header String
+field IdempotencyContract requiredMethods String
+field IdempotencyContract requiredRouteScope String
+field IdempotencyContract keyMaxBytes Int64
+field IdempotencyContract requestHashRule String
+field IdempotencyContract replayRule String
+field IdempotencyContract conflictErrorCode String
+field IdempotencyContract runtimeGap String
+
+record LogContract
+field LogContract requestStartFields String
+field LogContract requestFinishFields String
+field LogContract redactedFields String
+field LogContract eventNames String
+field LogContract runtimeStatus String
+
+record RequestLogContract
+field RequestLogContract durableTable String
+field RequestLogContract startRule String
+field RequestLogContract finishRule String
+field RequestLogContract requiredFields String
+field RequestLogContract failureRule String
+field RequestLogContract retentionRule String
+field RequestLogContract runtimeStatus String
+
+record AuditContract
+field AuditContract durableTable String
+field AuditContract requiredFields String
+field AuditContract actionNames String
+field AuditContract redactionRule String
+field AuditContract runtimeGap String
+
+record RateLimitPolicyContract
+field RateLimitPolicyContract name String
+field RateLimitPolicyContract subject String
+field RateLimitPolicyContract windowMillis Int64
+field RateLimitPolicyContract limitCount Int64
+field RateLimitPolicyContract publicError String
+field RateLimitPolicyContract auditRule String
+
+record RateLimitContract
+field RateLimitContract durableTable String
+field RateLimitContract login RateLimitPolicyContract
+field RateLimitContract bid RateLimitPolicyContract
+field RateLimitContract chat RateLimitPolicyContract
+field RateLimitContract eventStream RateLimitPolicyContract
+field RateLimitContract storageRule String
+field RateLimitContract runtimeStatus String
+
+record MetricsContract
+field MetricsContract endpoint String
+field MetricsContract contentType String
+field MetricsContract bootstrapSeries String
+field MetricsContract plannedSeries String
+field MetricsContract labelRule String
+field MetricsContract runtimeGap String
+
+record SseTransportContract
+field SseTransportContract route String
+field SseTransportContract contentType String
+field SseTransportContract authRule String
+field SseTransportContract replayRule String
+field SseTransportContract heartbeatMillis Int64
+field SseTransportContract subscriberQueueLimit Int64
+field SseTransportContract disconnectRule String
+field SseTransportContract runtimeStatus String
+
+record ServerConfigContract
+field ServerConfigContract databasePathEnv String
+field ServerConfigContract corsOriginsEnv String
+field ServerConfigContract bodyLimitEnv String
+field ServerConfigContract sseHeartbeatEnv String
+field ServerConfigContract rateLimitEnv String
+field ServerConfigContract startupValidationRule String
+field ServerConfigContract runtimeStatus String
+
+record MiddlewareContract
+field MiddlewareContract requestId RequestIdContract
+field MiddlewareContract apiVersion ApiVersionContract
+field MiddlewareContract envelope ApiEnvelopeContract
+field MiddlewareContract contentType ContentTypeContract
+field MiddlewareContract limits SecurityLimitContract
+field MiddlewareContract idempotency IdempotencyContract
+field MiddlewareContract logs LogContract
+field MiddlewareContract requestLog RequestLogContract
+field MiddlewareContract audit AuditContract
+field MiddlewareContract rateLimit RateLimitContract
+field MiddlewareContract metrics MetricsContract
+field MiddlewareContract sse SseTransportContract
+field MiddlewareContract config ServerConfigContract
+
+storage module immutable middlewareContract MiddlewareContract
+jsonBody middlewareContract
+  {
+      "requestId": {
+          "header": "X-Request-Id",
+          "acceptedCharacters": "ASCII letters, digits, dot, underscore, hyphen",
+          "maxBytes": 128,
+          "missingFallback": "req_runtime_header_unavailable",
+          "propagationRule": "reflect a valid incoming request id as X-Request-Id and include the same value in every JSON envelope",
+          "generationRuntimeGap": "secure random id generation plus dynamic envelope substitution still belong in route/runtime wiring"
+      },
+      "apiVersion": {
+          "currentVersion": "v1",
+          "routePrefix": "/api/v1",
+          "responseHeader": "X-Api-Version",
+          "unsupportedVersionErrorCode": "not_found",
+          "compatibilityRule": "new breaking API behavior must use a new route prefix and envelope apiVersion"
+      },
+      "envelope": {
+          "apiVersion": "v1",
+          "successShape": "apiVersion, requestId, ok=true, data, error=null",
+          "errorShape": "apiVersion, requestId, ok=false, data=null, error={code,message,details}",
+          "errorCodeRule": "code is stable snake_case; message is public-safe; details is an object and may be empty",
+          "dynamicBodyRuntimeGap": "static JsonText bodies validate shape; per-request requestId substitution waits on string builder/runtime helper work"
+      },
+      "contentType": {
+          "writeRouteMethods": "POST, PUT, PATCH",
+          "requiredMediaType": "application/json",
+          "acceptedMediaTypePrefix": "application/json",
+          "missingOrInvalidStatus": 415,
+          "missingOrInvalidErrorCode": "unsupported_media_type",
+          "runtimeGap": "login currently parses JSON without strict content-type rejection; route-level middleware branching is still needed"
+      },
+      "limits": {
+          "maxJsonBodyBytes": 65536,
+          "maxRouteParamBytes": 128,
+          "maxChatMessageBytes": 1000,
+          "maxTitleBytes": 160,
+          "maxDescriptionBytes": 4000,
+          "oversizedStatus": 413,
+          "oversizedErrorCode": "payload_too_large"
+      },
+      "idempotency": {
+          "header": "Idempotency-Key",
+          "requiredMethods": "POST, PUT, PATCH, DELETE command routes except auth login",
+          "requiredRouteScope": "method plus canonical route pattern plus authenticated actor",
+          "keyMaxBytes": 128,
+          "requestHashRule": "store a hash of the canonical JSON request body with the scoped key",
+          "replayRule": "same scoped key and same request hash returns the original status and envelope; same key with a different hash returns idempotency_conflict",
+          "conflictErrorCode": "idempotency_conflict",
+          "runtimeGap": "requires SQLite idempotency_keys lookup/write inside the same transaction as command state changes"
+      },
+      "logs": {
+          "requestStartFields": "requestId, method, path, routePattern, actorId",
+          "requestFinishFields": "requestId, routePattern, status, actorId, durationMs, errorCode",
+          "redactedFields": "authorization, cookie, refreshToken, password, passwordHash",
+          "eventNames": "http.request.start, http.request.finish",
+          "runtimeStatus": "header stamping, request counters, and durable finish rows for auth/command paths are executable; full structured stdout remains planned"
+      },
+      "requestLog": {
+          "durableTable": "request_log",
+          "startRule": "write or buffer request start after route match with requestId, method, path, routePattern, startedAt, actorUserId when known, requestBytes, ipHash, and userAgentHash",
+          "finishRule": "finish row with status, durationMs, responseBytes, stable errorCode, actor role, and finishedAt before response completion when possible",
+          "requiredFields": "request_id, method, path, route_pattern, status, actor_user_id, actor_role, duration_ms, request_bytes, response_bytes, error_code, started_at, finished_at",
+          "failureRule": "best-effort request-log failure must not commit a command transaction that otherwise failed; command transaction rollback wins over log persistence",
+          "retentionRule": "keep full local demo request logs for development; production retention is deployment-configured and may sample successful reads",
+          "runtimeStatus": "executable auth and command routes persist finish rows; IP and user-agent fields are stored only as redaction markers"
+      },
+      "audit": {
+          "durableTable": "audit_events",
+          "requiredFields": "auditEventId, requestId, actorUserId, action, outcome, payloadJson, createdAt",
+          "actionNames": "auth.login.accepted, auth.login.rejected, auth.refresh.accepted, auth.refresh.rejected, auth.logout, auction.create, auction.start, auction.extend, auction.close, bid.accepted, bid.rejected, chat.message.created, chat.message.deleted, chat.message.reported",
+          "redactionRule": "payloadJson never stores raw credentials, bearer tokens, refresh tokens, cookies, or password hashes",
+          "runtimeGap": "accepted command, rejected bid, and login audit rows are executable; denied/failed coverage continues expanding route by route"
+      },
+      "rateLimit": {
+          "durableTable": "rate_limit_buckets",
+          "login": {
+              "name": "auth.login",
+              "subject": "username_norm plus ipHash",
+              "windowMillis": 60000,
+              "limitCount": 10,
+              "publicError": "rate_limited",
+              "auditRule": "audit auth.login.rejected with reason rate_limited without exposing whether the username exists"
+          },
+          "bid": {
+              "name": "auction.bid",
+              "subject": "auctionId plus actorUserId plus sessionId",
+              "windowMillis": 10000,
+              "limitCount": 20,
+              "publicError": "rate_limited",
+              "auditRule": "persist rejected bid/rate-limit audit without mutating auction revision"
+          },
+          "chat": {
+              "name": "chat.message.create",
+              "subject": "auctionId plus actorUserId plus sessionId",
+              "windowMillis": 10000,
+              "limitCount": 8,
+              "publicError": "rate_limited",
+              "auditRule": "audit chat.message.rejected with reason rate_limited"
+          },
+          "eventStream": {
+              "name": "auction.events.subscribe",
+              "subject": "auctionId plus actorUserId plus sessionId",
+              "windowMillis": 60000,
+              "limitCount": 30,
+              "publicError": "rate_limited",
+              "auditRule": "log subscription drops as operational events, not domain auction events"
+          },
+          "storageRule": "rate_limit_buckets are updated in the same command transaction before domain mutation; read-only subscription limits may use a short transaction before opening SSE",
+          "runtimeStatus": "login uses durable SQLite buckets, chat uses executable policy/bucket checks, and bid uses a process-local demo limiter"
+      },
+      "metrics": {
+          "endpoint": "GET /metrics",
+          "contentType": "text/plain; charset=utf-8",
+          "bootstrapSeries": "auction_server_bootstrap_info",
+          "plannedSeries": "http_requests_total, auth_attempts_total, auction_commands_total, auction_bids_total, rate_limit_hits_total, active_sse_clients, auction_server_sse_slow_client_drops_total",
+          "labelRule": "labels use bounded route patterns and stable codes, never raw paths, ids, usernames, tokens, or request bodies",
+          "runtimeGap": "runtime counters/gauges are executable; histograms still need a monotonic duration aggregation helper"
+      },
+      "sse": {
+          "route": "GET /api/v1/auctions/:auctionId/events",
+          "contentType": "text/event-stream; charset=utf-8",
+          "authRule": "viewer policy with auctions:read or bids:read before replay or live subscription",
+          "replayRule": "replay committed auction_events ordered by sequence after Last-Event-ID or ?after, bounded by ?limit 1..200 for JSON replay, then attach subscriber to live fanout without losing committed events when SSE exists",
+          "heartbeatMillis": 15000,
+          "subscriberQueueLimit": 256,
+          "disconnectRule": "client disconnect removes subscriber, decrements active_sse_clients, and never rolls back committed events",
+          "runtimeStatus": "current executable route returns bounded JSON replay by default and opt-in SSE replay frames with Last-Event-ID/?after/?limit; it does not keep a live fanout subscription open"
+      },
+      "config": {
+          "databasePathEnv": "AUCTION_ARENA_DB optional path override, default local auction_arena.sqlite3",
+          "corsOriginsEnv": "AUCTION_ARENA_CORS_ORIGINS comma-separated allowlist; wildcard is local-demo only",
+          "bodyLimitEnv": "AUCTION_ARENA_MAX_JSON_BODY_BYTES optional override clamped by deployment policy",
+          "sseHeartbeatEnv": "AUCTION_ARENA_SSE_HEARTBEAT_MILLIS optional override, default 15000",
+          "rateLimitEnv": "AUCTION_ARENA_RATE_LIMIT_MODE disabled|local|sqlite, default sqlite outside tests",
+          "startupValidationRule": "readiness fails when required production config is missing, database schema is unavailable, or unsafe demo settings are enabled in production",
+          "runtimeStatus": "contract; executable currently uses static local defaults and bootstrap readiness"
+      }
+  }
+
+operation getMiddlewareContract
+output operation getMiddlewareContract MiddlewareContract
+memory getMiddlewareContract heap no
+async getMiddlewareContract no
+purpose operation getMiddlewareContract "Return the static middleware contract."
+return value middlewareContract

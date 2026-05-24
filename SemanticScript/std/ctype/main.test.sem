@@ -15,7 +15,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.ctype
+import ctype standard.ctype
 error MainError
 errorCase MainError CtypeSmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -29,155 +29,155 @@ capability stdoutWriteCapability console.stdout write
 # ============================================================
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
-memoryHeap main no
+memory main heap no
 memoryStackLimit main 1024
 async main no
-purpose main "Smoke-test every classifier and case mapper; print OK on success, returnError otherwise."
-invariant main "Every predicate asserted is satisfied or the assertion-failure path runs."
+purpose operation main "Smoke-test every classifier and case mapper; print OK on success, returnError otherwise."
+invariant operation main "Every predicate asserted is satisfied or the assertion-failure path runs."
 label startMain
 
-const digit5Code CSignedInt32 53
-const lowerHCode CSignedInt32 104
-const upperHCode CSignedInt32 72
-const exclamationMarkCode CSignedInt32 33
-const upperFHexCode CSignedInt32 70
-const nullByteCode CSignedInt32 0
-const tabByteCode CSignedInt32 9
-const lineFeedByteCode CSignedInt32 10
-const spaceByteCode CSignedInt32 32
+storage module immutable digit5Code Int32 53
+storage module immutable lowerHCode Int32 104
+storage module immutable upperHCode Int32 72
+storage module immutable exclamationMarkCode Int32 33
+storage module immutable upperFHexCode Int32 70
+storage module immutable nullByteCode Int32 0
+storage module immutable tabByteCode Int32 9
+storage module immutable lineFeedByteCode Int32 10
+storage module immutable spaceByteCode Int32 32
 
 # isAsciiDecimalDigitCode('5') == true
 call assertDigit5Call isAsciiDecimalDigitCode
-arg assertDigit5Call characterCode digit5Code
+argument assertDigit5Call characterCode Int32 digit5Code
 run assertDigit5Call
-bind digit5IsDigit Bool assertDigit5Call
-branchIf digit5IsDigit digit5Holds
-branch smokeAssertionFailed
+bind value digit5IsDigit Bool assertDigit5Call
+branch if condition digit5IsDigit target digit5Holds
+branch else target smokeAssertionFailed
 label digit5Holds
 
 # isAsciiLetterCode('h') == true
 call assertLetterHCall isAsciiLetterCode
-arg assertLetterHCall characterCode lowerHCode
+argument assertLetterHCall characterCode Int32 lowerHCode
 run assertLetterHCall
-bind lowerHIsLetter Bool assertLetterHCall
-branchIf lowerHIsLetter letterHHolds
-branch smokeAssertionFailed
+bind value lowerHIsLetter Bool assertLetterHCall
+branch if condition lowerHIsLetter target letterHHolds
+branch else target smokeAssertionFailed
 label letterHHolds
 
 # isAsciiLetterOrDigitCode('5') == true
 call assertAlnumDigitCall isAsciiLetterOrDigitCode
-arg assertAlnumDigitCall characterCode digit5Code
+argument assertAlnumDigitCall characterCode Int32 digit5Code
 run assertAlnumDigitCall
-bind digit5IsAlnum Bool assertAlnumDigitCall
-branchIf digit5IsAlnum alnumDigitHolds
-branch smokeAssertionFailed
+bind value digit5IsAlnum Bool assertAlnumDigitCall
+branch if condition digit5IsAlnum target alnumDigitHolds
+branch else target smokeAssertionFailed
 label alnumDigitHolds
 
 # isAsciiLetterOrDigitCode('!') == false
 call assertAlnumPunctCall isAsciiLetterOrDigitCode
-arg assertAlnumPunctCall characterCode exclamationMarkCode
+argument assertAlnumPunctCall characterCode Int32 exclamationMarkCode
 run assertAlnumPunctCall
-bind exclamationIsAlnum Bool assertAlnumPunctCall
-branchIf exclamationIsAlnum smokeAssertionFailed
+bind value exclamationIsAlnum Bool assertAlnumPunctCall
+branch if condition exclamationIsAlnum target smokeAssertionFailed
 
 # isAsciiHexDigitCode('F') == true
 call assertHexCall isAsciiHexDigitCode
-arg assertHexCall characterCode upperFHexCode
+argument assertHexCall characterCode Int32 upperFHexCode
 run assertHexCall
-bind upperFIsHexDigit Bool assertHexCall
-branchIf upperFIsHexDigit hexHolds
-branch smokeAssertionFailed
+bind value upperFIsHexDigit Bool assertHexCall
+branch if condition upperFIsHexDigit target hexHolds
+branch else target smokeAssertionFailed
 label hexHolds
 
 # isAsciiWhitespaceCode(' ') == true
 call assertWhitespaceSpaceCall isAsciiWhitespaceCode
-arg assertWhitespaceSpaceCall characterCode spaceByteCode
+argument assertWhitespaceSpaceCall characterCode Int32 spaceByteCode
 run assertWhitespaceSpaceCall
-bind spaceIsWhitespace Bool assertWhitespaceSpaceCall
-branchIf spaceIsWhitespace whitespaceSpaceHolds
-branch smokeAssertionFailed
+bind value spaceIsWhitespace Bool assertWhitespaceSpaceCall
+branch if condition spaceIsWhitespace target whitespaceSpaceHolds
+branch else target smokeAssertionFailed
 label whitespaceSpaceHolds
 
 # isAsciiBlankCode('\t') == true
 call assertBlankTabCall isAsciiBlankCode
-arg assertBlankTabCall characterCode tabByteCode
+argument assertBlankTabCall characterCode Int32 tabByteCode
 run assertBlankTabCall
-bind tabIsBlank Bool assertBlankTabCall
-branchIf tabIsBlank blankTabHolds
-branch smokeAssertionFailed
+bind value tabIsBlank Bool assertBlankTabCall
+branch if condition tabIsBlank target blankTabHolds
+branch else target smokeAssertionFailed
 label blankTabHolds
 
 # isAsciiBlankCode('\n') == false
 call assertBlankLineFeedCall isAsciiBlankCode
-arg assertBlankLineFeedCall characterCode lineFeedByteCode
+argument assertBlankLineFeedCall characterCode Int32 lineFeedByteCode
 run assertBlankLineFeedCall
-bind lineFeedIsBlank Bool assertBlankLineFeedCall
-branchIf lineFeedIsBlank smokeAssertionFailed
+bind value lineFeedIsBlank Bool assertBlankLineFeedCall
+branch if condition lineFeedIsBlank target smokeAssertionFailed
 
 # isAsciiControlCode(0) == true
 call assertControlNullCall isAsciiControlCode
-arg assertControlNullCall characterCode nullByteCode
+argument assertControlNullCall characterCode Int32 nullByteCode
 run assertControlNullCall
-bind nullIsControl Bool assertControlNullCall
-branchIf nullIsControl controlNullHolds
-branch smokeAssertionFailed
+bind value nullIsControl Bool assertControlNullCall
+branch if condition nullIsControl target controlNullHolds
+branch else target smokeAssertionFailed
 label controlNullHolds
 
 # isAsciiPrintableCode(' ') == true
 call assertPrintableSpaceCall isAsciiPrintableCode
-arg assertPrintableSpaceCall characterCode spaceByteCode
+argument assertPrintableSpaceCall characterCode Int32 spaceByteCode
 run assertPrintableSpaceCall
-bind spaceIsPrintable Bool assertPrintableSpaceCall
-branchIf spaceIsPrintable printableSpaceHolds
-branch smokeAssertionFailed
+bind value spaceIsPrintable Bool assertPrintableSpaceCall
+branch if condition spaceIsPrintable target printableSpaceHolds
+branch else target smokeAssertionFailed
 label printableSpaceHolds
 
 # isAsciiGraphicalCode(' ') == false (space is not graphical)
 call assertGraphicalSpaceCall isAsciiGraphicalCode
-arg assertGraphicalSpaceCall characterCode spaceByteCode
+argument assertGraphicalSpaceCall characterCode Int32 spaceByteCode
 run assertGraphicalSpaceCall
-bind spaceIsGraphical Bool assertGraphicalSpaceCall
-branchIf spaceIsGraphical smokeAssertionFailed
+bind value spaceIsGraphical Bool assertGraphicalSpaceCall
+branch if condition spaceIsGraphical target smokeAssertionFailed
 
 # isAsciiPunctuationCode('!') == true
 call assertPunctuationExclamationCall isAsciiPunctuationCode
-arg assertPunctuationExclamationCall characterCode exclamationMarkCode
+argument assertPunctuationExclamationCall characterCode Int32 exclamationMarkCode
 run assertPunctuationExclamationCall
-bind exclamationIsPunctuation Bool assertPunctuationExclamationCall
-branchIf exclamationIsPunctuation punctuationExclamationHolds
-branch smokeAssertionFailed
+bind value exclamationIsPunctuation Bool assertPunctuationExclamationCall
+branch if condition exclamationIsPunctuation target punctuationExclamationHolds
+branch else target smokeAssertionFailed
 label punctuationExclamationHolds
 
 # convertAsciiLetterCodeToUppercase('h') == 'H'
 call assertToUpperCall convertAsciiLetterCodeToUppercase
-arg assertToUpperCall characterCode lowerHCode
+argument assertToUpperCall characterCode Int32 lowerHCode
 run assertToUpperCall
-bind upperConversionResult CSignedInt32 assertToUpperCall
-call checkToUpperCall math.equalI64
-arg checkToUpperCall left upperConversionResult
-arg checkToUpperCall right upperHCode
+bind value upperConversionResult Int32 assertToUpperCall
+call checkToUpperCall math.equalInt64
+argument checkToUpperCall left Int64 upperConversionResult
+argument checkToUpperCall right Int64 upperHCode
 run checkToUpperCall
-bind toUpperOk Bool checkToUpperCall
-branchIf toUpperOk toUpperHolds
-branch smokeAssertionFailed
+bind value toUpperOk Bool checkToUpperCall
+branch if condition toUpperOk target toUpperHolds
+branch else target smokeAssertionFailed
 label toUpperHolds
 
 # convertAsciiLetterCodeToLowercase('H') == 'h'
 call assertToLowerCall convertAsciiLetterCodeToLowercase
-arg assertToLowerCall characterCode upperHCode
+argument assertToLowerCall characterCode Int32 upperHCode
 run assertToLowerCall
-bind lowerConversionResult CSignedInt32 assertToLowerCall
-call checkToLowerCall math.equalI64
-arg checkToLowerCall left lowerConversionResult
-arg checkToLowerCall right lowerHCode
+bind value lowerConversionResult Int32 assertToLowerCall
+call checkToLowerCall math.equalInt64
+argument checkToLowerCall left Int64 lowerConversionResult
+argument checkToLowerCall right Int64 lowerHCode
 run checkToLowerCall
-bind toLowerOk Bool checkToLowerCall
-branchIf toLowerOk toLowerHolds
-branch smokeAssertionFailed
+bind value toLowerOk Bool checkToLowerCall
+branch if condition toLowerOk target toLowerHolds
+branch else target smokeAssertionFailed
 label toLowerHolds
 
 # ============================================================
@@ -188,194 +188,206 @@ label toLowerHolds
 # outside check).
 # ============================================================
 
-const lowerACode CSignedInt32 97
-const upperACode CSignedInt32 65
-const lowerFHexCode CSignedInt32 102
-const letterGNotHexCode CSignedInt32 71
-const digit0Code CSignedInt32 48
-const tildeCode CSignedInt32 126
-const deleteCode CSignedInt32 127
+storage module immutable lowerACode Int32 97
+storage module immutable upperACode Int32 65
+storage module immutable lowerFHexCode Int32 102
+storage module immutable letterGNotHexCode Int32 71
+storage module immutable digit0Code Int32 48
+storage module immutable tildeCode Int32 126
+storage module immutable deleteCode Int32 127
 
 # isAsciiLowercaseLetterCode('a') == true
 call lowerATrueCall isAsciiLowercaseLetterCode
-arg lowerATrueCall characterCode lowerACode
+argument lowerATrueCall characterCode Int32 lowerACode
 run lowerATrueCall
-bind lowerATrueResult Bool lowerATrueCall
-branchIf lowerATrueResult lowerATrueHolds
-branch smokeAssertionFailed
+bind value lowerATrueResult Bool lowerATrueCall
+branch if condition lowerATrueResult target lowerATrueHolds
+branch else target smokeAssertionFailed
 label lowerATrueHolds
 
 # isAsciiLowercaseLetterCode('A') == false
 call lowerAFalseCall isAsciiLowercaseLetterCode
-arg lowerAFalseCall characterCode upperACode
+argument lowerAFalseCall characterCode Int32 upperACode
 run lowerAFalseCall
-bind lowerAFalseResult Bool lowerAFalseCall
-branchIf lowerAFalseResult smokeAssertionFailed
-branch lowerAFalseHolds
+bind value lowerAFalseResult Bool lowerAFalseCall
+branch if condition lowerAFalseResult target smokeAssertionFailed
+branch else target lowerAFalseHolds
 label lowerAFalseHolds
 
 # isAsciiUppercaseLetterCode('A') == true
 call upperATrueCall isAsciiUppercaseLetterCode
-arg upperATrueCall characterCode upperACode
+argument upperATrueCall characterCode Int32 upperACode
 run upperATrueCall
-bind upperATrueResult Bool upperATrueCall
-branchIf upperATrueResult upperATrueHolds
-branch smokeAssertionFailed
+bind value upperATrueResult Bool upperATrueCall
+branch if condition upperATrueResult target upperATrueHolds
+branch else target smokeAssertionFailed
 label upperATrueHolds
 
 # isAsciiUppercaseLetterCode('a') == false
 call upperAFalseCall isAsciiUppercaseLetterCode
-arg upperAFalseCall characterCode lowerACode
+argument upperAFalseCall characterCode Int32 lowerACode
 run upperAFalseCall
-bind upperAFalseResult Bool upperAFalseCall
-branchIf upperAFalseResult smokeAssertionFailed
-branch upperAFalseHolds
+bind value upperAFalseResult Bool upperAFalseCall
+branch if condition upperAFalseResult target smokeAssertionFailed
+branch else target upperAFalseHolds
 label upperAFalseHolds
 
 # isAsciiDecimalDigitCode('a') == false (letter outside digit range)
 call digitNonCall isAsciiDecimalDigitCode
-arg digitNonCall characterCode lowerACode
+argument digitNonCall characterCode Int32 lowerACode
 run digitNonCall
-bind digitNonResult Bool digitNonCall
-branchIf digitNonResult smokeAssertionFailed
-branch digitNonHolds
+bind value digitNonResult Bool digitNonCall
+branch if condition digitNonResult target smokeAssertionFailed
+branch else target digitNonHolds
 label digitNonHolds
 
 # isAsciiDecimalDigitCode('0') == true (boundary)
 call digitZeroCall isAsciiDecimalDigitCode
-arg digitZeroCall characterCode digit0Code
+argument digitZeroCall characterCode Int32 digit0Code
 run digitZeroCall
-bind digitZeroResult Bool digitZeroCall
-branchIf digitZeroResult digitZeroHolds
-branch smokeAssertionFailed
+bind value digitZeroResult Bool digitZeroCall
+branch if condition digitZeroResult target digitZeroHolds
+branch else target smokeAssertionFailed
 label digitZeroHolds
 
 # isAsciiLetterCode('5') == false (digit not letter)
 call letterNonCall isAsciiLetterCode
-arg letterNonCall characterCode digit5Code
+argument letterNonCall characterCode Int32 digit5Code
 run letterNonCall
-bind letterNonResult Bool letterNonCall
-branchIf letterNonResult smokeAssertionFailed
-branch letterNonHolds
+bind value letterNonResult Bool letterNonCall
+branch if condition letterNonResult target smokeAssertionFailed
+branch else target letterNonHolds
 label letterNonHolds
 
 # isAsciiHexDigitCode('f') == true (lowercase hex digit)
 call hexLowerCall isAsciiHexDigitCode
-arg hexLowerCall characterCode lowerFHexCode
+argument hexLowerCall characterCode Int32 lowerFHexCode
 run hexLowerCall
-bind hexLowerResult Bool hexLowerCall
-branchIf hexLowerResult hexLowerHolds
-branch smokeAssertionFailed
+bind value hexLowerResult Bool hexLowerCall
+branch if condition hexLowerResult target hexLowerHolds
+branch else target smokeAssertionFailed
 label hexLowerHolds
 
 # isAsciiHexDigitCode('G') == false (just past F)
 call hexGFalseCall isAsciiHexDigitCode
-arg hexGFalseCall characterCode letterGNotHexCode
+argument hexGFalseCall characterCode Int32 letterGNotHexCode
 run hexGFalseCall
-bind hexGFalseResult Bool hexGFalseCall
-branchIf hexGFalseResult smokeAssertionFailed
-branch hexGFalseHolds
+bind value hexGFalseResult Bool hexGFalseCall
+branch if condition hexGFalseResult target smokeAssertionFailed
+branch else target hexGFalseHolds
 label hexGFalseHolds
 
 # isAsciiControlCode(' ') == false (space is not control)
 call controlSpaceCall isAsciiControlCode
-arg controlSpaceCall characterCode spaceByteCode
+argument controlSpaceCall characterCode Int32 spaceByteCode
 run controlSpaceCall
-bind controlSpaceResult Bool controlSpaceCall
-branchIf controlSpaceResult smokeAssertionFailed
-branch controlSpaceHolds
+bind value controlSpaceResult Bool controlSpaceCall
+branch if condition controlSpaceResult target smokeAssertionFailed
+branch else target controlSpaceHolds
 label controlSpaceHolds
 
 # isAsciiControlCode(127) == true (DEL is control)
 call controlDelCall isAsciiControlCode
-arg controlDelCall characterCode deleteCode
+argument controlDelCall characterCode Int32 deleteCode
 run controlDelCall
-bind controlDelResult Bool controlDelCall
-branchIf controlDelResult controlDelHolds
-branch smokeAssertionFailed
+bind value controlDelResult Bool controlDelCall
+branch if condition controlDelResult target controlDelHolds
+branch else target smokeAssertionFailed
 label controlDelHolds
+
+# Regression: isAsciiControlCode(-1) == false. A 0xFF byte loaded via
+# pointer.loadByte sign-extends to -1; the pre-fix `<= 31` check (with no
+# lower floor) misclassified it as a control character.
+storage module immutable negativeOneByteCode Int32 -1
+call controlNegativeCall isAsciiControlCode
+argument controlNegativeCall characterCode Int32 negativeOneByteCode
+run controlNegativeCall
+bind value controlNegativeResult Bool controlNegativeCall
+branch if condition controlNegativeResult target smokeAssertionFailed
+branch else target controlNegativeHolds
+label controlNegativeHolds
 
 # isAsciiPrintableCode(0) == false (NUL not printable)
 call printNonCall isAsciiPrintableCode
-arg printNonCall characterCode nullByteCode
+argument printNonCall characterCode Int32 nullByteCode
 run printNonCall
-bind printNonResult Bool printNonCall
-branchIf printNonResult smokeAssertionFailed
-branch printNonHolds
+bind value printNonResult Bool printNonCall
+branch if condition printNonResult target smokeAssertionFailed
+branch else target printNonHolds
 label printNonHolds
 
 # isAsciiPrintableCode('~') == true (last printable)
 call printTildeCall isAsciiPrintableCode
-arg printTildeCall characterCode tildeCode
+argument printTildeCall characterCode Int32 tildeCode
 run printTildeCall
-bind printTildeResult Bool printTildeCall
-branchIf printTildeResult printTildeHolds
-branch smokeAssertionFailed
+bind value printTildeResult Bool printTildeCall
+branch if condition printTildeResult target printTildeHolds
+branch else target smokeAssertionFailed
 label printTildeHolds
 
 # convertAsciiLetterCodeToUppercase('H') == 'H' (already upper, identity)
 call upperIdCall convertAsciiLetterCodeToUppercase
-arg upperIdCall characterCode upperHCode
+argument upperIdCall characterCode Int32 upperHCode
 run upperIdCall
-bind upperIdResult CSignedInt32 upperIdCall
-call upperIdCheckCall math.equalI64
-arg upperIdCheckCall left upperIdResult
-arg upperIdCheckCall right upperHCode
+bind value upperIdResult Int32 upperIdCall
+call upperIdCheckCall math.equalInt64
+argument upperIdCheckCall left Int64 upperIdResult
+argument upperIdCheckCall right Int64 upperHCode
 run upperIdCheckCall
-bind upperIdOk Bool upperIdCheckCall
-branchIf upperIdOk upperIdHolds
-branch smokeAssertionFailed
+bind value upperIdOk Bool upperIdCheckCall
+branch if condition upperIdOk target upperIdHolds
+branch else target smokeAssertionFailed
 label upperIdHolds
 
 # convertAsciiLetterCodeToLowercase('5') == '5' (non-letter identity)
 call lowerNonLetterCall convertAsciiLetterCodeToLowercase
-arg lowerNonLetterCall characterCode digit5Code
+argument lowerNonLetterCall characterCode Int32 digit5Code
 run lowerNonLetterCall
-bind lowerNonLetterResult CSignedInt32 lowerNonLetterCall
-call lowerNonLetterCheckCall math.equalI64
-arg lowerNonLetterCheckCall left lowerNonLetterResult
-arg lowerNonLetterCheckCall right digit5Code
+bind value lowerNonLetterResult Int32 lowerNonLetterCall
+call lowerNonLetterCheckCall math.equalInt64
+argument lowerNonLetterCheckCall left Int64 lowerNonLetterResult
+argument lowerNonLetterCheckCall right Int64 digit5Code
 run lowerNonLetterCheckCall
-bind lowerNonLetterOk Bool lowerNonLetterCheckCall
-branchIf lowerNonLetterOk lowerNonLetterHolds
-branch smokeAssertionFailed
+bind value lowerNonLetterOk Bool lowerNonLetterCheckCall
+branch if condition lowerNonLetterOk target lowerNonLetterHolds
+branch else target smokeAssertionFailed
 label lowerNonLetterHolds
 
 # Property: convertToUpper(convertToLower('H')) == 'H' (round-trip)
 call propLowerCall convertAsciiLetterCodeToLowercase
-arg propLowerCall characterCode upperHCode
+argument propLowerCall characterCode Int32 upperHCode
 run propLowerCall
-bind propLowerResult CSignedInt32 propLowerCall
+bind value propLowerResult Int32 propLowerCall
 call propUpperCall convertAsciiLetterCodeToUppercase
-arg propUpperCall characterCode propLowerResult
+argument propUpperCall characterCode Int32 propLowerResult
 run propUpperCall
-bind propUpperResult CSignedInt32 propUpperCall
-call propRoundTripCheckCall math.equalI64
-arg propRoundTripCheckCall left propUpperResult
-arg propRoundTripCheckCall right upperHCode
+bind value propUpperResult Int32 propUpperCall
+call propRoundTripCheckCall math.equalInt64
+argument propRoundTripCheckCall left Int64 propUpperResult
+argument propRoundTripCheckCall right Int64 upperHCode
 run propRoundTripCheckCall
-bind propRoundTripOk Bool propRoundTripCheckCall
-branchIf propRoundTripOk propRoundTripHolds
-branch smokeAssertionFailed
+bind value propRoundTripOk Bool propRoundTripCheckCall
+branch if condition propRoundTripOk target propRoundTripHolds
+branch else target smokeAssertionFailed
 label propRoundTripHolds
 
-const successMessageText CNullTerminatedByteString "OK"
+storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-arg writeSuccessLineCall console console
-arg writeSuccessLineCall text successMessageText
+argument writeSuccessLineCall console Console console
+argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignoreOk writeSuccessLineCall CSignedInt32
-bindError consoleWriteResultError CSignedInt32 writeSuccessLineCall
-branchIfError writeSuccessLineCall consoleWriteFailedHandler
-const exitOkCode ExitCode 0
-returnOk exitOkCode
+ignore ok source writeSuccessLineCall type Int32
+bind error consoleWriteResultError Int32 writeSuccessLineCall
+branch error source writeSuccessLineCall target consoleWriteFailedHandler
+storage module immutable exitOkCode ExitCode 0
+return ok exitOkCode
 
-# Failure leg: surface the raw negative CSignedInt32 from
+# Failure leg: surface the raw negative Int32 from
 # console.writeLine as the cause attached to the typed
 # MainError.ConsoleWriteFailed variant.
 label consoleWriteFailedHandler
 makeError consoleWriteFailedFailure MainError.ConsoleWriteFailed consoleWriteResultError
-returnError consoleWriteFailedFailure
+return error consoleWriteFailedFailure
 label smokeAssertionFailed
 makeError ctypeSmokeFailure MainError.CtypeSmokeAssertionFailed
-returnError ctypeSmokeFailure
+return error ctypeSmokeFailure

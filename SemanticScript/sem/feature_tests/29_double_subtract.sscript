@@ -7,33 +7,33 @@ entry console main
 error MainError
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "10 - 5 - 5 = 0 via two chained subtracts."
-invariant main "Two sequential subtract calls."
+purpose operation main "10 - 5 - 5 = 0 via two chained subtracts."
+invariant operation main "Two sequential subtract calls."
 label startMain
-const tenInitial I64 10
-const fiveLit I64 5
-var leftOp I64 tenInitial
-call firstSubCall math.subtractI64
-arg firstSubCall left leftOp
-arg firstSubCall right fiveLit
+storage module immutable tenInitial Int64 10
+storage module immutable fiveLit Int64 5
+memory main mutable leftOp Int64 tenInitial
+call firstSubCall math.subtractInt64
+argument firstSubCall left Int64 leftOp
+argument firstSubCall right Int64 fiveLit
 run firstSubCall
-bind midResult I64 firstSubCall
-call secondSubCall math.subtractI64
-arg secondSubCall left midResult
-arg secondSubCall right fiveLit
+bind value midResult Int64 firstSubCall
+call secondSubCall math.subtractInt64
+argument secondSubCall left Int64 midResult
+argument secondSubCall right Int64 fiveLit
 run secondSubCall
-bind finalResult I64 secondSubCall
-var resultVar I64 tenInitial
-set resultVar finalResult
+bind value finalResult Int64 secondSubCall
+memory main mutable resultVar Int64 tenInitial
+set memory resultVar finalResult
 call writeCall console.writeIntegerLine
-arg writeCall console console
-arg writeCall value resultVar
+argument writeCall console Console console
+argument writeCall value Int64 resultVar
 run writeCall
-ignoreOk writeCall Void
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+ignore void source writeCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -18,23 +18,23 @@ c.fwrite    # item count
 Those values are not canonical SemanticScript operation status codes. If an operation only needs to report success or failure, normalize the return:
 
 ```semanticscript
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveFailed 1
 
 call writeJsonCall c.fprintf
-arg writeJsonCall stream saveFileHandle
-arg writeJsonCall format saveFormat
+argument writeJsonCall stream TYPE saveFileHandle
+argument writeJsonCall format TYPE saveFormat
 run writeJsonCall
-ignoreValue writeJsonCall CSignedInt32
-returnValue SaveSucceeded
+ignore value source writeJsonCall type Int32
+return value SaveSucceeded
 ```
 
 Avoid this shape:
 
 ```semanticscript
-bind writeJsonResult CSignedInt32 writeJsonCall
-returnValue writeJsonResult
+bind value writeJsonResult Int32 writeJsonCall
+return value writeJsonResult
 ```
 
 That leaks a libc byte count into the operation boundary. A caller or backend may later interpret a nonzero scalar as failure-like control flow.
@@ -55,20 +55,20 @@ The intended fix is one of:
 - Rename/retype the operation so the raw byte/count value is honestly the public result.
 
 Do not declare `Result SomeValue Void` for helpers that cannot actually
-`returnError`. That shape makes callers use fallible syntax for an infallible
+`return error`. That shape makes callers use fallible syntax for an infallible
 operation and can interact badly with the current user-operation ABI, where the
 success payload is the concrete return slot. Use a plain output instead:
 
 ```semanticscript
-output copyStringBuffer CSignedInt64
+output copyStringBuffer Int64
 ```
 
 `semlint.py` reports `resultVoidErrorWithoutFailurePath` when an operation
-declares `Result A Void` without any `returnError` path.
+declares `Result A Void` without any `return error` path.
 
 ## App Boundary Rule
 
-Treat `c.*` as a bootstrap/backend boundary, not as the normal application API.
+Treat `c.*` as a backend boundary, not as the normal application API.
 Application code should call SemanticScript-facing operations once a matching
 surface exists:
 
@@ -90,13 +90,13 @@ memory.zero
 memory.copy
 ```
 
-Direct `c.*` calls are acceptable in low-level bootstrap/runtime modules,
+Direct `c.*` calls are acceptable in low-level runtime/backend modules,
 stdlib implementation files, compiler smoke tests, and backend bring-up samples.
 They should be avoided in top-level apps and user-facing examples unless the
 top-level SemanticScript API is still missing.
 
 This keeps the dependency direction clean: apps depend on SemanticScript
-contracts, stdlib/runtime code owns the temporary C bootstrap, and the backend
+contracts, stdlib/runtime code owns the temporary C interop layer, and the backend
 can later replace libc with Win32, POSIX syscalls, or a custom runtime without
 rewriting app code.
 
@@ -217,11 +217,11 @@ Prefer one of these shapes:
 Avoid this shape for user-editable content:
 
 ```semanticscript
-storage local immutable itemFormat CNullTerminatedByteString "{\"title\":\"%s\"}\n"
+storage local immutable itemFormat String "{\"title\":\"%s\"}\n"
 call writeItemCall c.fprintf
-arg writeItemCall stream fileHandle
-arg writeItemCall format itemFormat
-arg writeItemCall title titleBuffer
+argument writeItemCall stream TYPE fileHandle
+argument writeItemCall format TYPE itemFormat
+argument writeItemCall title TYPE titleBuffer
 run writeItemCall
 ```
 
@@ -253,25 +253,25 @@ optimization.
 
 `semlint.py` reports SS3203 `performanceDiscipline.stringAccumulatorAppendInLoop`
 when `c.strcat`/`c.strncat` style appends appear inside a back-edge loop.
-It also reports SS3205 `performanceDiscipline.snprintfI32OffsetWithoutWidening`
+It also reports SS3205 `performanceDiscipline.snprintfInt32OffsetWithoutWidening`
 when a `c.snprintf` byte count is added directly to an i64 cursor; widen it
-with `math.signExtendCSignedInt32ToCSignedInt64` first.
+with `math.signExtendInt32ToInt64` first.
 
 Prefer a cursor-based builder:
 
 ```semanticscript
-storage local mutable writeOffset CSignedInt64 zeroIndex
+storage local mutable writeOffset Int64 zeroIndex
 call copyChunkCall memory.copy
-arg copyChunkCall destination outputBuffer
-arg copyChunkCall destinationOffset writeOffset
-arg copyChunkCall source chunkBuffer
-arg copyChunkCall byteCount chunkLength
+argument copyChunkCall destination TYPE outputBuffer
+argument copyChunkCall destinationOffset TYPE writeOffset
+argument copyChunkCall source TYPE chunkBuffer
+argument copyChunkCall byteCount TYPE chunkLength
 run copyChunkCall
-call nextOffsetCall math.addI64
-arg nextOffsetCall left writeOffset
-arg nextOffsetCall right chunkLength
+call nextOffsetCall math.addInt64
+argument nextOffsetCall left TYPE writeOffset
+argument nextOffsetCall right TYPE chunkLength
 run nextOffsetCall
-bind nextOffset CSignedInt64 nextOffsetCall
+bind value nextOffset Int64 nextOffsetCall
 set local writeOffset nextOffset
 ```
 
@@ -295,13 +295,13 @@ same literal in two constants. This keeps later capacity changes from silently
 under-allocating or over-allocating:
 
 ```semanticscript
-storage local immutable todoCapacity CSignedInt64 128
-storage local immutable doneFlagByteWidth CSignedInt64 1
-call todoArrayBytesCall math.multiplyI64
-arg todoArrayBytesCall left todoCapacity
-arg todoArrayBytesCall right doneFlagByteWidth
+storage local immutable todoCapacity Int64 128
+storage local immutable doneFlagByteWidth Int64 1
+call todoArrayBytesCall math.multiplyInt64
+argument todoArrayBytesCall left TYPE todoCapacity
+argument todoArrayBytesCall right TYPE doneFlagByteWidth
 run todoArrayBytesCall
-bind todoArrayBytes CByteCount todoArrayBytesCall
+bind value todoArrayBytes ByteCount todoArrayBytesCall
 ```
 
 For scalar state, keep widths consistent across direct assignment. `semlint.py`
@@ -310,7 +310,7 @@ known 32-bit scalar into a known 64-bit scalar, or the reverse, without an
 explicit widening or narrowing operation.
 
 Keep C vararg format strings aligned with argument width. If a value is
-`CSignedInt32`, use a 32-bit conversion such as `%d`, or explicitly widen the
+`Int32`, use a 32-bit conversion such as `%d`, or explicitly widen the
 value before using a 64-bit conversion such as `%lld`. The compiler cannot infer
 the vararg contract from the format string at lowering time.
 
@@ -320,7 +320,7 @@ passed as the corresponding semantic argument.
 
 For C-style APIs that report failure through a returned sentinel or status,
 bind the return value and check it, or explicitly discard it with
-`ignoreValue`. Do not add `bindError`/`branchIfError` to calls that are not
+`ignore value`. Do not add `bind error`/`branch error` to calls that are not
 Result-shaped.
 
 For owned resources, executable code needs executable cleanup. Use explicit
@@ -330,7 +330,7 @@ a substitute for code that actually runs.
 
 Heap allocation failure is also executable control flow. Every heap-producing
 call (`memory.allocate`, `c.malloc`, allocator-backed string builders, or
-runtime bootstrap allocators) must bind the returned pointer, check it with
+runtime setup allocators) must bind the returned pointer, check it with
 `pointer.isNull`, and branch to an OOM path before the first dereference or
 copy. The OOM path must return a typed error/status or cleanly unwind to the
 caller; a warning comment, optimistic use, or crash-by-null-dereference is not a
@@ -338,12 +338,12 @@ valid failure contract.
 
 For C heap allocators, `semlint.py` reports SS3305
 `memoryDiscipline.uncheckedHeapAllocation` unless each `c.malloc`, `c.calloc`,
-or `c.realloc` call has both `bindError` and `branchIfError`.
+or `c.realloc` call has both `bind error` and `branch error`.
 
-Partial bootstrap failures must close any handles already opened. For SQLite,
+Partial setup failures must close any handles already opened. For SQLite,
 that means a successful `sqlite3_open` followed by a failed schema creation,
 pragma setup, prepare, or migration step must call the matching close operation
-before returning failure. Prefer a shared cleanup label for bootstrap code so
+before returning failure. Prefer a shared cleanup label for setup code so
 every failure after handle acquisition passes through the same executable close
 path. A `defer` row is enough only when the current backend lowers it on that
 failure path; otherwise write the close call directly.
@@ -410,21 +410,21 @@ output saveTodosToJson Result Void SaveTodosError
 Use an explicit status type when the operation is intentionally status-only:
 
 ```semanticscript
-enum SaveStatus repr CSignedInt32
+enum SaveStatus repr Int32
 enumCase SaveStatus SaveSucceeded 0
 enumCase SaveStatus SaveOpenFailed 1
 ```
 
-Do not use bare `CSignedInt32` as a dumping ground for byte counts, OS statuses, exit codes, and typed semantic status. If several meanings share the same primitive shape, create aliases or enums so the source carries the distinction. Prefer enums for closed status domains; they give linters enough context to reject accidental comparisons through the wrong primitive width, such as sending a `CSignedInt32` status enum through an `I64` comparison target.
+Do not use bare `Int32` as a dumping ground for byte counts, OS statuses, exit codes, and typed semantic status. If several meanings share the same primitive shape, create aliases or enums so the source carries the distinction. Prefer enums for closed status domains; they give linters enough context to reject accidental comparisons through the wrong primitive width, such as sending a `Int32` status enum through an `Int64` comparison target.
 
 When an operation returns an enum-typed status, return enum cases at the
 operation boundary:
 
 ```semanticscript
-returnValue SaveWriteFailed
+return value SaveWriteFailed
 ```
 
-Do not return raw repr values such as `returnValue 2`. `semlint.py` reports
+Do not return raw repr values such as `return value 2`. `semlint.py` reports
 `enumReturnUsesRawValue` for that shape because it erases the closed status
 domain that the enum was introduced to provide.
 
@@ -432,10 +432,10 @@ Use math targets that match the value width. For C status bytes, key codes, and
 pointer-loaded bytes, prefer:
 
 ```semanticscript
-call doneCheckCall math.equalCSignedInt32
+call doneCheckCall math.equalInt32
 ```
 
-over routing those values through `math.equalI64`. `semlint.py` reports
+over routing those values through `math.equalInt64`. `semlint.py` reports
 `mathOperandWidthDrift` when any math target receives an operand with a
 different numeric shape. The compiler rejects those mismatches too; use a
 width-specific math target or an explicit conversion operation.
@@ -443,23 +443,23 @@ width-specific math target or an explicit conversion operation.
 For intentional integer width changes, call the conversion target directly:
 
 ```semanticscript
-call widenCall math.signExtendCSignedInt32ToCSignedInt64
-arg widenCall inputValue statusCode
+call widenCall math.signExtendInt32ToInt64
+argument widenCall inputValue TYPE statusCode
 ```
 
 Keep byte and flag helpers byte-shaped. A parser that reads a JSON `0`/`1`
 field or a value loaded with `pointer.loadByte` should normally return
-`CSignedInt32`, not `CSignedInt64`; indexes, lengths, capacities, and counters
-remain the I64-shaped values.
+`Int32`, not `Int64`; indexes, lengths, capacities, and counters
+remain the Int64-shaped values.
 
 Use domain aliases and enums once raw primitives start carrying application
-state. Key input can use a domain alias over `CSignedInt32`, while closed modal
+state. Key input can use a domain alias over `Int32`, while closed modal
 or screen state should be an enum:
 
 ```semanticscript
-type TuiKeyCode CSignedInt32
+type TuiKeyCode Int32
 
-enum ScreenMode repr CSignedInt64
+enum ScreenMode repr Int64
 enumCase ScreenMode ListMode 0
 enumCase ScreenMode EditMode 1
 ```
@@ -511,27 +511,27 @@ declaration line to paste.
 
 ## ASCII Byte Literals
 
-Storage lines that hold ASCII codepoints (`storage * immutable * CSignedInt32
+Storage lines that hold ASCII codepoints (`storage * immutable * Int32
 V` for `V` in 32..126) should name the codepoint's role, not its byte value,
 and either declare them at module scope or add a `# rationale:` comment that
 identifies the character:
 
 ```semanticscript
 # rationale: 34 = ASCII double quote; emitted by saveTodosToJson around titles.
-storage module immutable asciiDoubleQuote CSignedInt32 34
-storage module immutable asciiBackslash CSignedInt32 92
+storage module immutable asciiDoubleQuote Int32 34
+storage module immutable asciiBackslash Int32 92
 ```
 
 Avoid this shape, where the value-as-character mapping lives only in the
 reader's head:
 
 ```semanticscript
-storage local immutable quoteByte CSignedInt32 34
-storage local immutable backslashByte CSignedInt32 92
+storage local immutable quoteByte Int32 34
+storage local immutable backslashByte Int32 92
 ```
 
 `semlint.py` reports `SS4402 styleDiscipline.magicAsciiByteLiteral` (T4 style,
-info severity) when a `storage local immutable NAME CSignedInt32 V` declares a
+info severity) when a `storage local immutable NAME Int32 V` declares a
 printable-ASCII byte value (V in 32..126) without a `# rationale:` comment
 naming the character. The diagnostic is suppressed when SS4401 already flags
 the same name as a cross-operation duplicate so the same line isn't piled with
@@ -551,9 +551,9 @@ the offsets in lockstep:
 #   ,"done":     = 9 bytes  → doneValueOffset = 10 + 9 = 19
 #   ,"title":"   = 11 bytes → titleValueOffset = 19 + 11 = 30
 # Any edit to itemPrefixFormatText must update these three offsets in lockstep.
-storage local immutable activeValueOffset CSignedInt64 10
-storage local immutable doneValueOffset CSignedInt64 19
-storage local immutable titleValueOffset CSignedInt64 30
+storage local immutable activeValueOffset Int64 10
+storage local immutable doneValueOffset Int64 19
+storage local immutable titleValueOffset Int64 30
 ```
 
 The `warning` line on the loader operation should also point at the produces
@@ -576,15 +576,15 @@ is dead. Replace the initializer with the real first value:
 ```semanticscript
 # rationale: readIndex starts at valueOffset so the loop begins past the
 # `"title":"` prefix. The earlier zeroIndex initializer was dead.
-storage local mutable readIndex CSignedInt64 valueOffset
+storage local mutable readIndex Int64 valueOffset
 ```
 
 Avoid this shape, where the initial value misleads a reader about where the
 loop actually starts:
 
 ```semanticscript
-storage local mutable readIndex CSignedInt64 zeroIndex
-storage local mutable writeIndex CSignedInt64 zeroIndex
+storage local mutable readIndex Int64 zeroIndex
+storage local mutable writeIndex Int64 zeroIndex
 set local readIndex valueOffset
 ```
 
@@ -639,13 +639,13 @@ the source-level call expresses the enum, not the integer width.
 ```semanticscript
 # Prefer:
 call sameStatusCall SaveTodosStatus.equal
-arg sameStatusCall left titleWriteStatus
-arg sameStatusCall right SaveSucceeded
+argument sameStatusCall left TYPE titleWriteStatus
+argument sameStatusCall right TYPE SaveSucceeded
 
 # Avoid:
-call sameStatusCall math.equalCSignedInt32
-arg sameStatusCall left titleWriteStatus
-arg sameStatusCall right SaveSucceeded
+call sameStatusCall math.equalInt32
+argument sameStatusCall left TYPE titleWriteStatus
+argument sameStatusCall right TYPE SaveSucceeded
 ```
 
 `semlint.py` reports `SS4405 styleDiscipline.enumReprComparison` (T4 style,
@@ -655,22 +655,22 @@ The fix candidate carries the exact `call <name> <EnumName>.<method>` line
 to paste.
 
 **2. Discarding enum returns.** An enum-typed return advertises a closed set
-of distinct outcomes. `ignoreValue` claims all cases are interchangeable;
+of distinct outcomes. `ignore value` claims all cases are interchangeable;
 that claim must be load-bearing, not accidental.
 
 ```semanticscript
 # Prefer one of:
-bind saveStatus SaveTodosStatus saveCall
+bind value saveStatus SaveTodosStatus saveCall
 # rationale: every SaveTodosStatus case is acceptable here because the
 # render frame already shows save state from the previous tick.
-ignoreValue saveCall SaveTodosStatus
+ignore value source saveCall type SaveTodosStatus
 
 # Avoid bare:
-ignoreValue saveCall SaveTodosStatus
+ignore value source saveCall type SaveTodosStatus
 ```
 
 `semlint.py` reports `SS4406 styleDiscipline.enumResultDiscarded` (T4
-style, info severity) when an `ignoreValue` row discards a value typed as
+style, info severity) when an `ignore value` row discards a value typed as
 a declared enum. The diagnostic suggests either binding the result and
 branching on the cases, or adding a `# rationale:` line justifying why all
 cases are acceptable at the discard site.
@@ -683,7 +683,7 @@ them must name the enum, not the underlying integer.
 Declare project metadata in the project's `build.sem` tape so executable
 identity lives beside target/runtime/output configuration instead of inside
 `main.sem`. `build.sem` also registers module folders; module files keep their
-own `module`, `importModule`, and `export*` contract rows. On `--emit-exe` the
+own `module`, `import`, and `export*` contract rows. On `--emit-exe` the
 compiler generates a transient Windows
 `VERSIONINFO` resource, compiles it with `llvm-rc` (or `windres` if present),
 and links the compiled `.res` from the managed `build/resources/` directory
@@ -693,23 +693,23 @@ PowerShell `(Get-Item file.exe).VersionInfo`, and via `version.dll`'s
 `VerQueryValue` for arbitrary user keys.
 
 ```semanticscript
-project TodoTuiApp
+project TaskForgeTui
 target console
 runtime native 1
 entry console main
 
 version "1.0.0.0"
 publisher "Earl Cameron"
-description "SemanticScript Todo TUI — keyboard-driven console todo app."
+description "SemanticScript TaskForge TUI — keyboard-driven console todo app."
 copyright "Copyright (c) 2026 Earl Cameron."
-productName "Todo TUI"
+productName "TaskForge TUI"
 internalName "todo"
-originalFilename "todo.exe"
-comments "Built from app/todo/main.sem by the SemanticScript compiler."
-metadata "BuildSource" "app/todo/main.sem"
+originalFilename "taskforge_tui.exe"
+comments "Built from apps/taskforge-tui/main.sem by the SemanticScript compiler."
+metadata "BuildSource" "apps/taskforge-tui/main.sem"
 metadata "RuntimeContract" "native 1"
 
-registerModule todoTui app.todo "."
+registerModule taskForgeTui app.taskforge_tui "."
 ```
 
 Mapping to Windows VERSIONINFO StringFileInfo entries:
@@ -805,7 +805,7 @@ on):
 
 ```text
 build/
-  todo.exe
+  taskforge_tui.exe
   todo.ll
 ```
 
@@ -814,16 +814,16 @@ isn't appearing or a custom metadata key isn't readable), opt in via the
 build tape:
 
 ```semanticscript
-keepResources    todoTui yes
+keepResources    taskForgeTui yes
 # or, with an explicit directory:
-resourcesDir     todoTui "build/resources"
+resourcesDir     taskForgeTui "build/resources"
 ```
 
 Or per-invocation via the CLI:
 
 ```text
-python compiler/semsc.py build.sem --emit-exe build/todo.exe --keep-resources
-python compiler/semsc.py build.sem --emit-exe build/todo.exe --resource-dir /tmp/icon-debug
+python compiler/semsc.py build.sem --emit-exe build/taskforge_tui.exe --keep-resources
+python compiler/semsc.py build.sem --emit-exe build/taskforge_tui.exe --resource-dir /tmp/icon-debug
 ```
 
 CLI flags override `build.sem` declarations. The default is intentionally
@@ -842,7 +842,7 @@ Before optimizing a sequence, identify the semantic boundary:
 5. Repeated `storage local immutable` across operations is a hoist signal, not a convenience.
 6. State-bearing integer storage that takes a small named set of values is an enum waiting to be declared.
 7. Enum comparisons use `EnumName.equal` (and the comparison family), not `math.equal*` directly.
-8. Discarded enum returns require a `# rationale:` or a bind site, not silent `ignoreValue`.
+8. Discarded enum returns require a `# rationale:` or a bind site, not silent `ignore value`.
 
 This keeps optimized code patchable by agents and predictable for compiler lowering.
 
@@ -879,7 +879,7 @@ job that belongs elsewhere.
 operation tracingMiddleware
 input tracingMiddleware request HttpRequest
 input tracingMiddleware response HttpResponse
-output tracingMiddleware CSignedInt32
+output tracingMiddleware Int32
 effect tracingMiddleware read http.request.path
 effect tracingMiddleware write http.response    # SS3602 requires this
 memory tracingMiddleware arena request
@@ -913,16 +913,16 @@ The guard pattern:
 
 ```semanticscript
 call queryReadCall http.requestQueryParam
-arg queryReadCall request request
-arg queryReadCall name nameQueryName
+argument queryReadCall request TYPE request
+argument queryReadCall name TYPE nameQueryName
 run queryReadCall
-bind queryValue CNullTerminatedByteString queryReadCall
+bind value queryValue String queryReadCall
 
 call queryMissingCheckCall pointer.isNull
-arg queryMissingCheckCall pointer queryValue
+argument queryMissingCheckCall pointer TYPE queryValue
 run queryMissingCheckCall
-bind queryMissing Bool queryMissingCheckCall
-branchIf queryMissing queryMissingPath
+bind value queryMissing Bool queryMissingCheckCall
+branch if condition queryMissing target queryMissingPath
 
 # happy path: queryValue is non-null and safe to pass to a response body
 ```
@@ -963,14 +963,14 @@ writer returns:
 
 ```semanticscript
 call responseCall http.responseText
-arg responseCall response response
-arg responseCall status okStatus
-arg responseCall body scratchBody
+argument responseCall response TYPE response
+argument responseCall status TYPE okStatus
+argument responseCall body TYPE scratchBody
 run responseCall
 call scratchFreeCall c.free
-arg scratchFreeCall pointer scratchBody
+argument scratchFreeCall pointer TYPE scratchBody
 run scratchFreeCall
-returnValue okStatus
+return value okStatus
 ```
 
 That shape is safe only if the response writer has already copied `scratchBody`
@@ -996,7 +996,11 @@ overhead" is wasted work — the cost model is:
 | `lock` / `unlock`               | No-op (no contention possible)                                 |
 | `select` + `selectCase`         | Ordinary branches, runtime dispatch deferred                   |
 | `interval` + `awaitIntervalTick`| No-op (no timer runtime bound)                                 |
-| `scheduler.sleep`               | Returns `i64 0` — no time passes                               |
+| `scheduler.sleep` runtimeBinding| Unsupported until an explicit scheduler runtime is bound        |
+
+Note: declaring `scheduler.sleep` as a runtimeBinding is now compile-blocking
+unless an explicit scheduler runtime owns that behavior; the old compiler
+no-op was removed from the runtimeBinding fast path.
 
 These will become real concurrency when a scheduler runtime is bound;
 until then, attempting to win throughput by parallelizing across them is
@@ -1029,8 +1033,8 @@ Prefer the high-level JSON surface over direct stack-buffer formatting:
 Legacy `json.encode.<Primitive>` stack-allocates a per-call-site buffer that
 lives only for the lifetime of the enclosing operation:
 
-- 32B for numerics (I64, CSignedInt32, Duration/Monotonic/UtcMilliseconds, Bool, F64/CFloat64/CFloat32)
-- 256B for strings (String, CNullTerminatedByteString)
+- 32B for numerics (Int64, Int32, Duration/Monotonic/UtcMilliseconds, Bool, Float64/Float64/Float32)
+- 256B for strings (String, String)
 
 Two consequences:
 
@@ -1051,28 +1055,36 @@ before the scratch storage is released.
 
 ## Math Operand Width Discipline
 
-The `math.*I64` family requires both operands to already be i64-shaped.
-Codegen does **not** widen or narrow implicitly. CByteCount, DurationMilliseconds,
-MonotonicMilliseconds, UtcMilliseconds, CSignedByteCount, CAddressOffset,
-CUnixSecondsSinceEpoch, CCpuClockTicks, CFileByteOffset, and Bool all
+The `math.*Int64` family requires both operands to already be i64-shaped.
+Codegen does **not** widen or narrow implicitly. ByteCount, DurationMilliseconds,
+MonotonicMilliseconds, UtcMilliseconds, SignedByteCount, AddressOffset,
+UnixSecondsSinceEpoch, CpuClockTicks, FileByteOffset, and Bool all
 lower as i64 and are accepted as i64 operands by the math intrinsics.
-Bool's lowering as i64 means math.equalI64 / math.greaterThanI64 over Bool
-values work but are usually a code smell — use `math.equalCSignedInt32`
+Bool's lowering as i64 means math.equalInt64 / math.greaterThanInt64 over Bool
+values work but are usually a code smell — use `math.equalInt32`
 or the bool-specific branches instead.
 
-For 32-bit comparisons, prefer `math.equalCSignedInt32` /
-`math.lessThanCSignedInt32` over the I64 path — the i32 comparison avoids
+For 32-bit comparisons, prefer `math.equalInt32` /
+`math.lessThanInt32` over the Int64 path — the i32 comparison avoids
 routing status/count values through a needless extend, and lints under
 SS4303 (`mathOperandWidthDrift`) flag the wrong width directly.
 
 ## Intrinsic / Runtime-Binding Fast Paths vs. Zero-Stub Fallback
 
-`runtimeBinding OP TARGET` is real lowering for 12 targets in
-`_RUNTIME_BINDING_MAP`. `intrinsicName OP NAME` is real LLVM lowering for
-13 `arithmetic.*` targets in `_INTRINSIC_MAP`. Any other target falls
+`runtimeBinding OP TARGET` is real lowering only for pure ABI shims in
+`_RUNTIME_BINDING_MAP` such as cstring length/compare and memory copy.
+`intrinsicName OP NAME` is real LLVM lowering for 13 `arithmetic.*`
+targets in `_INTRINSIC_MAP`. Any other target falls
 back to the dotted-target external-module **zero-stub** lowering — the
 call compiles but returns 0 (or a null pointer), regardless of what the
 op claims to do.
+
+Policy or domain runtimeBinding targets are intentionally not compiler
+semantics. Retry-delay calculation, metrics increment behavior, lock token
+sentinels, scheduler sleeps, calendar predicates, and UTF-8 validation should
+be normal SemanticScript operation bodies or explicit native runtime calls.
+Known legacy policy targets fail at executable codegen instead of silently
+returning a compiler stub.
 
 When optimizing a hot path, verify the call lowers to real code:
 
@@ -1087,7 +1099,7 @@ this compiler.
 
 ## Storage Form Hygiene
 
-`const NAME TYPE VALUE` and `var NAME TYPE VALUE` are legacy
+`const NAME TYPE VALUE` and `var NAME TYPE VALUE` are removed
 shorthands; new code should use the explicit storage forms (`storage
 module immutable`, `storage local immutable`, `storage local mutable`,
 `storage module mutable`, `sharedState process mutable`). The explicit
@@ -1103,11 +1115,11 @@ binding (and every operation bound via `routeMiddleware`) MUST declare
 its `HttpRequest` input under the canonical name `request` and its
 `HttpResponse` input under the canonical name `response`. The native
 dispatcher binds positionally (`[HttpRequest, HttpResponse,
-CSignedInt32]`) so a handler with `req`/`resp` *compiles and runs*,
+Int32]`) so a handler with `req`/`resp` *compiles and runs*,
 but every other name-based lookup in the toolchain breaks silently:
 
 - `semlint`'s SS3603 transitive-body walk resolves the response slot
-  by looking for `arg <call> body <slot>` against the `body` input
+  by looking for `argument <call> body <type> <slot>` against the `body` input
   name.
 - `narrative_citations_for_operation` walks per-input narrative edges
   by input name.
@@ -1138,7 +1150,7 @@ between POST and PUT semantics), it MUST declare the matching effect:
 operation methodAwareHandler
 input methodAwareHandler request HttpRequest
 input methodAwareHandler response HttpResponse
-output methodAwareHandler CSignedInt32
+output methodAwareHandler Int32
 effect methodAwareHandler read http.request.method  # required when inspecting method
 effect methodAwareHandler write http.response
 ```
@@ -1160,17 +1172,17 @@ Middleware ops bound through `routeMiddleware` declare:
 ```semanticscript
 output gauntletMiddleware MiddlewareControl
 ...
-returnValue continueMiddlewareControl
+return value continueMiddlewareControl
 ```
 
-`MiddlewareControl` is a compiler-registered enum backed by `CSignedInt32`.
+`MiddlewareControl` is a compiler-registered enum backed by `Int32`.
 `continueMiddlewareControl` runs the route handler. `shortCircuitMiddlewareControl`
 skips the handler and sends the response already written by the middleware.
 The dispatcher makes a missing short-circuit body visible as a 500 response
 instead of treating it as success.
 
 `semlint.py` reports SS3610 `middlewareReturnNotMiddlewareControl` when an
-operation bound via `routeMiddleware` still declares `output OP CSignedInt32` or
+operation bound via `routeMiddleware` still declares `output OP Int32` or
 another non-`MiddlewareControl` output. This is an ERROR with
 `blocksCompile=True`, even though the source-level enforcement still lives in
 the linter rather than in the parser.
@@ -1178,16 +1190,16 @@ the linter rather than in the parser.
 ## Cross-Document References
 
 Several `warning OP "..."` and `invariant OP "..."` lines cite spec
-rows by anchor (`SYNTAX.md#webServer`, `SYNTAX.md#routeMiddleware`).
+rows by anchor (`docs/reference/syntax-inventory.md#webServer`, `docs/reference/syntax-inventory.md#routeMiddleware`).
 There is no first-class `tracks OP "anchor"` verb; the references are
 prose. The discipline:
 
-- Use the literal anchor text that appears in `SYNTAX.md` (e.g.,
+- Use the literal anchor text that appears in `docs/reference/syntax-inventory.md` (e.g.,
   `#routeMiddleware` not `#middleware`).
 - The drift guard `TestHttpTargetSourceOfTruth` (`test_semlint.py`)
   asserts every `http.*` target from `semsc.py` is mentioned in
-  `SYNTAX.md`. For other cross-doc references, manual review is the
-  only enforcement — add `grep -F 'SYNTAX.md#anchor' app/` to the
+  `docs/reference/syntax-inventory.md`. For other cross-doc references, manual review is the
+  only enforcement — add `grep -F 'docs/reference/syntax-inventory.md#anchor' apps/` to the
   review checklist if you add a new tracking citation pattern.
 - If a tracking citation breaks (anchor renamed, row removed), fix
   the source row rather than silently updating the reference; the
@@ -1209,13 +1221,13 @@ The native HTTP target surface lives in three places:
    `NON_NULLABLE_HTTP_REQUEST_READS`, `NULLABLE_HTTP_REQUEST_READS`,
    `HTTP_RESPONSE_BODY_WRITERS`, `HTTP_RESPONSE_OTHER_WRITERS`, and
    the `ALL_NATIVE_HTTP_TARGETS` union.
-3. `SYNTAX.md` — the two `http.requestMethod, …` and
+3. `docs/reference/syntax-inventory.md` — the two `http.requestMethod, …` and
    `http.responseText, …` umbrella rows.
 
 `TestHttpTargetSourceOfTruth` in `test_semlint.py` parses semsc.py
 for every `"http.X"` literal and asserts the set equals
 `ALL_NATIVE_HTTP_TARGETS`. A second assertion checks every dispatch
-target appears in SYNTAX.md. A third checks the four classifier sets
+target appears in docs/reference/syntax-inventory.md. A third checks the four classifier sets
 are pairwise disjoint so membership-based decisions in SS3603 /
 SS3601 are unambiguous.
 
@@ -1223,18 +1235,18 @@ When you add a new `http.*` target to the runtime, update all three
 sites in lockstep. The drift test will tell you if you missed one;
 don't silence the test, fix the drift.
 
-## Void Output Operations Use `returnVoid`
+## Void Output Operations Use `return void`
 
 The user-op ABI returns i32 even for operations declared
-`output OP Void` / `output OP CVoid` — the type system maps Void to
+`output OP Void` / `output OP Void` — the type system maps Void to
 i32 at the return slot, and codegen tolerates any sentinel value.
-That tolerance has a cost: a Void op that ends with `returnValue
-someI32Zero` says one thing at the output line ("no caller-actionable
+That tolerance has a cost: a Void op that ends with `return value
+someInt32Zero` says one thing at the output line ("no caller-actionable
 value") and another at the return site ("here is an integer
 sentinel"), and a future agent reading either half in isolation has
 to recognise the ABI quirk to reconcile them.
 
-`returnVoid` is the explicit form:
+`return void` is the explicit form:
 
 ```semanticscript
 operation addCommonHeaders
@@ -1248,19 +1260,19 @@ purpose addCommonHeaders "stamp diagnostic headers; no caller-actionable status"
 invariant addCommonHeaders "Void output means the op never reports a recoverable error"
 label startAddCommonHeaders
 # ... header writes ...
-returnVoid
+return void
 ```
 
 Codegen still emits the i32-zero sentinel under the hood, but the
 source matches the semantic contract. The compiler rejects
-`returnVoid` on non-Void outputs so the verb cannot become a backdoor
+`return void` on non-Void outputs so the verb cannot become a backdoor
 around the result-contract checker.
 
 `semlint` SS3612 `voidReturnValueShouldBeReturnVoid` flags Void-output
-ops that still use `returnValue NAME`. The fix candidate is
+ops that still use `return value NAME`. The fix candidate is
 auto-applicable: drop the `storage local immutable zeroSentinel
-CSignedInt32 0` line and rewrite `returnValue zeroSentinel` →
-`returnVoid`. SS3612 is WARNING by default (the legacy form compiles
+Int32 0` line and rewrite `return value zeroSentinel` →
+`return void`. SS3612 is WARNING by default (the older form may still compile
 correctly); `--strict` promotes it to fatal for CI pipelines that
 want source-level honesty enforced.
 
@@ -1272,7 +1284,7 @@ The stable choices, in order of preference:
 
 1. **Rule ID** — `SS3603 unguardedHttpInput`. Rule IDs are assigned
    once and never renumbered.
-2. **Spec anchor** — `SYNTAX.md#routeMiddleware`. Anchors track the
+2. **Spec anchor** — `docs/reference/syntax-inventory.md#routeMiddleware`. Anchors track the
    spec row; row reordering doesn't change the anchor.
 3. **Function name** — `semsc.py`'s `_check_route_methods`. Function
    names rename rarely and break loudly when they do.
@@ -1285,7 +1297,7 @@ The brittle form is:
 ```semanticscript
 # DON'T:
 invariant gauntletMiddleware "see semsc.py:3674 for the lowering"
-warning requiredHeaderHandler "asserted at test_http_api_gauntlet.py:273-279"
+warning requiredHeaderHandler "asserted at test_http_runtime_gauntlet.py:273-279"
 ```
 
 Both citations drift the moment the referenced file gets an insertion
@@ -1298,7 +1310,7 @@ The stable form is:
 ```semanticscript
 # DO:
 invariant gauntletMiddleware "see semsc.py's pointer.isNull lowering"
-warning requiredHeaderHandler "asserted by the `/reflect/required-header-or-fail` block in test_http_api_gauntlet.py"
+warning requiredHeaderHandler "asserted by the `/reflect/required-header-or-fail` block in test_http_runtime_gauntlet.py"
 ```
 
 `semlint` SS3613 `narrativeReferencesLineNumber` flags `<file>:<line>`
@@ -1316,9 +1328,9 @@ safe — the native runtime defaults a NULL `contentType` to
 `"application/octet-stream"`. So this pattern is well-defined:
 
 ```semanticscript
-bind uploadFileContentType CNullTerminatedByteString uploadFileContentTypeReadCall
+bind value uploadFileContentType String uploadFileContentTypeReadCall
 # safe to pass straight to http.responseBytes — runtime defaults NULL → octet-stream
-arg uploadFileBytesResponseCall contentType uploadFileContentType
+argument uploadFileBytesResponseCall contentType TYPE uploadFileContentType
 ```
 
 What is NOT safe is using `uploadFileContentType` for anything OTHER

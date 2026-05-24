@@ -1,12 +1,11 @@
 # expect.stdout: sqliteRoundTripOk\n
 # expect.exit: 0
-# expect.xfail: standard.sqlite is wired into semsc.py but the bootstrap_general compiler does not yet know about the sqlite.* call targets, so this test is currently driven only by the semsc end-to-end test in SemanticScript/tests/test_compiler.py (`test_sqlite_syntax_sample_runs_end_to_end`). Promote out of xfail once bootstrap_general.sscript gets the same dispatch surface.
 #
 # Deep-audit smoke for standard.sqlite. Exercises open -> exec(CREATE) ->
 # exec(INSERT literal) -> prepare(SELECT) -> step -> columnText round trip
 # and writes the selected body to stdout. If the lowering for any sqlite.*
 # call became a no-op, columnText would return an empty string and the
-# stdout comparison would fail — satisfying the "must fail under no-op
+# stdout comparison would fail â€” satisfying the "must fail under no-op
 # lowering" requirement that feature_tests 130-160 are built around.
 
 project SqliteRoundTrip
@@ -15,7 +14,7 @@ runtime AgentRuntime 0.1
 module sqliteRoundTripModule
 entry console main
 
-importModule standard.sqlite as sqlite
+import sqlite standard.sqlite
 
 dependency standard.sqlite version 0.1 source standard
 dependencyEffect standard.sqlite readWrite database
@@ -28,111 +27,117 @@ errorCase MainError StatementStepFailed SqliteStatementStepFailure
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability sqliteRoundTripDatabase database readWrite
-purpose sqliteRoundTripDatabase "Authority to open the in-memory sqlite database and exec the round-trip cycle"
+purpose operation sqliteRoundTripDatabase "Authority to open the in-memory sqlite database and exec the round-trip cycle"
 
 capability sqliteRoundTripStdout console.stdout write
-purpose sqliteRoundTripStdout "Authority to print the round-trip outcome marker to stdout"
+purpose operation sqliteRoundTripStdout "Authority to print the round-trip outcome marker to stdout"
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main readWrite database
 effect main write console.stdout
 memory main heap auto
 async main no
 useCapability main sqliteRoundTripDatabase
 useCapability main sqliteRoundTripStdout
-purpose main "Open an in-memory sqlite database, INSERT a fixed marker via exec, SELECT it back, and write the result to stdout"
-invariant main "stdout matches the column text iff every sqlite.* call lowered to a real ss_sqlite_* call"
+purpose operation main "Open an in-memory sqlite database, INSERT a fixed marker via exec, SELECT it back, and write the result to stdout"
+invariant operation main "stdout matches the column text iff every sqlite.* call lowered to a real ss_sqlite_* call"
 
 label startMain
 
-const databasePath CNullTerminatedByteString ":memory:"
-const createTableSql CNullTerminatedByteString "CREATE TABLE markers (body TEXT NOT NULL)"
-const insertMarkerSql CNullTerminatedByteString "INSERT INTO markers (body) VALUES ('sqliteRoundTripOk')"
-const selectMarkerSql CNullTerminatedByteString "SELECT body FROM markers"
-const firstColumnIndex CSignedInt32 0
+storage module immutable databasePath String ":memory:"
+storage module immutable createTableSql SqlText
+sql body createTableSql
+  CREATE TABLE markers (body TEXT NOT NULL)
+storage module immutable insertMarkerSql SqlText
+sql body insertMarkerSql
+  INSERT INTO markers (body) VALUES ('sqliteRoundTripOk')
+storage module immutable selectMarkerSql SqlText
+sql body selectMarkerSql
+  SELECT body FROM markers
+storage module immutable firstColumnIndex Int32 0
 
 call openCall sqlite.openDatabase
-arg openCall path databasePath
-arg openCall mode inMemorySqliteOpenMode
+argument openCall path String databasePath
+argument openCall mode SqliteOpenMode inMemorySqliteOpenMode
 run openCall
-bindOk roundTripDatabase SqliteDatabase openCall
-bindError databaseOpenError SqliteDatabaseOpenFailure openCall
-branchIfError openCall openFailed
+bind ok roundTripDatabase SqliteDatabase openCall
+bind error databaseOpenError SqliteDatabaseOpenFailure openCall
+branch error source openCall target openFailed
 
 defer databaseCloseDefer sqlite.closeDatabase roundTripDatabase
 
 call createTableCall sqlite.exec
-arg createTableCall database roundTripDatabase
-arg createTableCall sql createTableSql
+argument createTableCall database SqliteDatabase roundTripDatabase
+argument createTableCall sql SqlText createTableSql
 run createTableCall
-ignoreOk createTableCall Void
-bindError createTableError SqliteDatabaseExecFailure createTableCall
-branchIfError createTableCall createTableFailed
+ignore void source createTableCall
+bind error createTableError SqliteDatabaseExecFailure createTableCall
+branch error source createTableCall target createTableFailed
 
 call insertMarkerCall sqlite.exec
-arg insertMarkerCall database roundTripDatabase
-arg insertMarkerCall sql insertMarkerSql
+argument insertMarkerCall database SqliteDatabase roundTripDatabase
+argument insertMarkerCall sql SqlText insertMarkerSql
 run insertMarkerCall
-ignoreOk insertMarkerCall Void
-bindError insertMarkerError SqliteDatabaseExecFailure insertMarkerCall
-branchIfError insertMarkerCall insertMarkerFailed
+ignore void source insertMarkerCall
+bind error insertMarkerError SqliteDatabaseExecFailure insertMarkerCall
+branch error source insertMarkerCall target insertMarkerFailed
 
 call prepareSelectCall sqlite.prepareStatement
-arg prepareSelectCall database roundTripDatabase
-arg prepareSelectCall sql selectMarkerSql
+argument prepareSelectCall database SqliteDatabase roundTripDatabase
+argument prepareSelectCall sql SqlText selectMarkerSql
 run prepareSelectCall
-bindOk selectStatement SqliteStatement prepareSelectCall
-bindError prepareSelectError SqliteStatementPrepareFailure prepareSelectCall
-branchIfError prepareSelectCall prepareFailed
+bind ok selectStatement SqliteStatement prepareSelectCall
+bind error prepareSelectError SqliteStatementPrepareFailure prepareSelectCall
+branch error source prepareSelectCall target prepareFailed
 
 defer selectStatementFinalizeDefer sqlite.finalizeStatement selectStatement
 
 call stepSelectCall sqlite.stepStatement
-arg stepSelectCall statement selectStatement
+argument stepSelectCall statement SqliteStatement selectStatement
 run stepSelectCall
-bindOk stepOutcome SqliteStepResult stepSelectCall
-bindError stepSelectError SqliteStatementStepFailure stepSelectCall
-branchIfError stepSelectCall stepFailed
+ignore ok source stepSelectCall type SqliteStepResult
+bind error stepSelectError SqliteStatementStepFailure stepSelectCall
+branch error source stepSelectCall target stepFailed
 
 call readMarkerCall sqlite.columnText
-arg readMarkerCall statement selectStatement
-arg readMarkerCall columnIndex firstColumnIndex
+argument readMarkerCall statement SqliteStatement selectStatement
+argument readMarkerCall columnIndex Int32 firstColumnIndex
 run readMarkerCall
-bind selectedMarkerText CNullTerminatedByteString readMarkerCall
+bind value selectedMarkerText String readMarkerCall
 
 call writeMarkerCall console.writeLine
-arg writeMarkerCall console console
-arg writeMarkerCall text selectedMarkerText
+argument writeMarkerCall console Console console
+argument writeMarkerCall text String selectedMarkerText
 run writeMarkerCall
-ignoreOk writeMarkerCall Void
-bindError consoleWriteError ConsoleWriteError writeMarkerCall
-branchIfError writeMarkerCall consoleWriteFailed
+ignore void source writeMarkerCall
+bind error consoleWriteError ConsoleWriteError writeMarkerCall
+branch error source writeMarkerCall target consoleWriteFailed
 
-const successExitCode ExitCode 0
-returnOk successExitCode
+storage module immutable successExitCode ExitCode 0
+return ok successExitCode
 
 label openFailed
 makeError openFailedFailure MainError.DatabaseOpenFailed databaseOpenError
-returnError openFailedFailure
+return error openFailedFailure
 
 label createTableFailed
 makeError createTableFailedFailure MainError.DatabaseExecFailed createTableError
-returnError createTableFailedFailure
+return error createTableFailedFailure
 
 label insertMarkerFailed
 makeError insertMarkerFailedFailure MainError.DatabaseExecFailed insertMarkerError
-returnError insertMarkerFailedFailure
+return error insertMarkerFailedFailure
 
 label prepareFailed
 makeError prepareFailedFailure MainError.StatementPrepareFailed prepareSelectError
-returnError prepareFailedFailure
+return error prepareFailedFailure
 
 label stepFailed
 makeError stepFailedFailure MainError.StatementStepFailed stepSelectError
-returnError stepFailedFailure
+return error stepFailedFailure
 
 label consoleWriteFailed
 makeError consoleWriteFailure MainError.ConsoleWriteFailed consoleWriteError
-returnError consoleWriteFailure
+return error consoleWriteFailure

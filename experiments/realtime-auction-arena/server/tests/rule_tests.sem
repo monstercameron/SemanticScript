@@ -1,0 +1,644 @@
+# Parse-oriented rule tests for the Realtime Auction Arena domain scaffold.
+#
+# These tests are shaped like executable SemanticScript smoke tests. They use
+# primitive scalar values so math intrinsic boundaries stay explicit.
+
+project RealtimeAuctionArenaRuleTests
+target console
+runtime AgentRuntime 1.0
+entry console main
+
+import domain app.realtime_auction_arena.server.auction_domain
+
+error MainError
+errorCase MainError RuleAssertionFailed
+errorCase MainError ConsoleWriteFailed
+
+capability stdoutWriteCapability console.stdout write
+purpose operation stdoutWriteCapability "Authority to print a single OK line when parse/run promotion becomes available."
+
+storage module immutable okText String "OK"
+storage module immutable exitOk ExitCode 0
+
+storage module immutable draftStatusCode Int32 1
+storage module immutable runningStatusCode Int32 2
+storage module immutable closedStatusCode Int32 3
+storage module immutable bidderRoleCode Int32 10
+storage module immutable auctioneerRoleCode Int32 20
+storage module immutable bidderOneUserId String "u1"
+storage module immutable bidderZeroUserId String "u0"
+storage module immutable assertionOkStatus Int32 0
+storage module immutable createAuctionCommandKindCode Int32 1
+storage module immutable startAuctionCommandKindCode Int32 2
+storage module immutable placeBidCommandKindCode Int32 6
+
+operation requireSignedInt64ValuesEqual
+input operation requireSignedInt64ValuesEqual leftValue Int64
+input operation requireSignedInt64ValuesEqual rightValue Int64
+output operation requireSignedInt64ValuesEqual Bool
+memory requireSignedInt64ValuesEqual heap no
+async requireSignedInt64ValuesEqual no
+purpose operation requireSignedInt64ValuesEqual "Return true when two signed 64-bit values match."
+label startRequireSignedInt64ValuesEqual
+call equalCall math.equalInt64
+argument equalCall left Int64 leftValue
+argument equalCall right Int64 rightValue
+run equalCall
+bind value valuesEqual Bool equalCall
+return value valuesEqual
+
+operation requireConditionTrue
+input operation requireConditionTrue conditionValue Bool
+output operation requireConditionTrue Bool
+memory requireConditionTrue heap no
+async requireConditionTrue no
+purpose operation requireConditionTrue "Return the supplied condition as an explicit Bool assertion value."
+label startRequireConditionTrue
+return value conditionValue
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Smoke-test deterministic rule helper contracts for policy, lifecycle, bid rejection, anti-sniping, winner selection, and monotonic counters."
+invariant operation main "Every expected reject code has a direct assertion row so TODO coverage remains visible to parent orchestration."
+warning main "TODO(runtime): promote this from parse-oriented contract smoke to compiled/run test once the experiment has a build tape that resolves sibling src modules."
+
+label startMain
+
+# Policy reject codes: 1 minimum increment, 2 max bid, 3 window, 4 extension, 5 title, 6 description, 0 accepted.
+call policyMinimumIncrementCall domain.validateAuctionPolicy
+argument policyMinimumIncrementCall minimumIncrement Int64 0
+argument policyMinimumIncrementCall startingBid Int64 100
+argument policyMinimumIncrementCall maxBidAmount Int64 1000
+argument policyMinimumIncrementCall antiSnipingWindowMillis Int64 60000
+argument policyMinimumIncrementCall antiSnipingExtensionMillis Int64 60000
+argument policyMinimumIncrementCall titleBytes Int64 10
+argument policyMinimumIncrementCall maxTitleBytes Int64 120
+argument policyMinimumIncrementCall descriptionBytes Int64 20
+argument policyMinimumIncrementCall maxDescriptionBytes Int64 2048
+run policyMinimumIncrementCall
+bind value policyMinimumIncrementReason Int64 policyMinimumIncrementCall
+call assertPolicyMinimumIncrementCall requireSignedInt64ValuesEqual
+argument assertPolicyMinimumIncrementCall leftValue Int64 policyMinimumIncrementReason
+argument assertPolicyMinimumIncrementCall rightValue Int64 1
+run assertPolicyMinimumIncrementCall
+bind value assertPolicyMinimumIncrementPassed Bool assertPolicyMinimumIncrementCall
+branch if condition assertPolicyMinimumIncrementPassed target afterAssertPolicyMinimumIncrement
+jump target ruleAssertionFailed
+label afterAssertPolicyMinimumIncrement
+
+call policyMaxBidCall domain.validateAuctionPolicy
+argument policyMaxBidCall minimumIncrement Int64 10
+argument policyMaxBidCall startingBid Int64 100
+argument policyMaxBidCall maxBidAmount Int64 100
+argument policyMaxBidCall antiSnipingWindowMillis Int64 60000
+argument policyMaxBidCall antiSnipingExtensionMillis Int64 60000
+argument policyMaxBidCall titleBytes Int64 10
+argument policyMaxBidCall maxTitleBytes Int64 120
+argument policyMaxBidCall descriptionBytes Int64 20
+argument policyMaxBidCall maxDescriptionBytes Int64 2048
+run policyMaxBidCall
+bind value policyMaxBidReason Int64 policyMaxBidCall
+call assertPolicyMaxBidCall requireSignedInt64ValuesEqual
+argument assertPolicyMaxBidCall leftValue Int64 policyMaxBidReason
+argument assertPolicyMaxBidCall rightValue Int64 2
+run assertPolicyMaxBidCall
+bind value assertPolicyMaxBidPassed Bool assertPolicyMaxBidCall
+branch if condition assertPolicyMaxBidPassed target afterAssertPolicyMaxBid
+jump target ruleAssertionFailed
+label afterAssertPolicyMaxBid
+
+call policyWindowCall domain.validateAuctionPolicy
+argument policyWindowCall minimumIncrement Int64 10
+argument policyWindowCall startingBid Int64 100
+argument policyWindowCall maxBidAmount Int64 1000
+argument policyWindowCall antiSnipingWindowMillis Int64 999999
+argument policyWindowCall antiSnipingExtensionMillis Int64 60000
+argument policyWindowCall titleBytes Int64 10
+argument policyWindowCall maxTitleBytes Int64 120
+argument policyWindowCall descriptionBytes Int64 20
+argument policyWindowCall maxDescriptionBytes Int64 2048
+run policyWindowCall
+bind value policyWindowReason Int64 policyWindowCall
+call assertPolicyWindowCall requireSignedInt64ValuesEqual
+argument assertPolicyWindowCall leftValue Int64 policyWindowReason
+argument assertPolicyWindowCall rightValue Int64 3
+run assertPolicyWindowCall
+bind value assertPolicyWindowPassed Bool assertPolicyWindowCall
+branch if condition assertPolicyWindowPassed target afterAssertPolicyWindow
+jump target ruleAssertionFailed
+label afterAssertPolicyWindow
+
+call policyExtensionCall domain.validateAuctionPolicy
+argument policyExtensionCall minimumIncrement Int64 10
+argument policyExtensionCall startingBid Int64 100
+argument policyExtensionCall maxBidAmount Int64 1000
+argument policyExtensionCall antiSnipingWindowMillis Int64 60000
+argument policyExtensionCall antiSnipingExtensionMillis Int64 999999
+argument policyExtensionCall titleBytes Int64 10
+argument policyExtensionCall maxTitleBytes Int64 120
+argument policyExtensionCall descriptionBytes Int64 20
+argument policyExtensionCall maxDescriptionBytes Int64 2048
+run policyExtensionCall
+bind value policyExtensionReason Int64 policyExtensionCall
+call assertPolicyExtensionCall requireSignedInt64ValuesEqual
+argument assertPolicyExtensionCall leftValue Int64 policyExtensionReason
+argument assertPolicyExtensionCall rightValue Int64 4
+run assertPolicyExtensionCall
+bind value assertPolicyExtensionPassed Bool assertPolicyExtensionCall
+branch if condition assertPolicyExtensionPassed target afterAssertPolicyExtension
+jump target ruleAssertionFailed
+label afterAssertPolicyExtension
+
+call policyTitleCall domain.validateAuctionPolicy
+argument policyTitleCall minimumIncrement Int64 10
+argument policyTitleCall startingBid Int64 100
+argument policyTitleCall maxBidAmount Int64 1000
+argument policyTitleCall antiSnipingWindowMillis Int64 60000
+argument policyTitleCall antiSnipingExtensionMillis Int64 60000
+argument policyTitleCall titleBytes Int64 121
+argument policyTitleCall maxTitleBytes Int64 120
+argument policyTitleCall descriptionBytes Int64 20
+argument policyTitleCall maxDescriptionBytes Int64 2048
+run policyTitleCall
+bind value policyTitleReason Int64 policyTitleCall
+call assertPolicyTitleCall requireSignedInt64ValuesEqual
+argument assertPolicyTitleCall leftValue Int64 policyTitleReason
+argument assertPolicyTitleCall rightValue Int64 5
+run assertPolicyTitleCall
+bind value assertPolicyTitlePassed Bool assertPolicyTitleCall
+branch if condition assertPolicyTitlePassed target afterAssertPolicyTitle
+jump target ruleAssertionFailed
+label afterAssertPolicyTitle
+
+call policyDescriptionCall domain.validateAuctionPolicy
+argument policyDescriptionCall minimumIncrement Int64 10
+argument policyDescriptionCall startingBid Int64 100
+argument policyDescriptionCall maxBidAmount Int64 1000
+argument policyDescriptionCall antiSnipingWindowMillis Int64 60000
+argument policyDescriptionCall antiSnipingExtensionMillis Int64 60000
+argument policyDescriptionCall titleBytes Int64 10
+argument policyDescriptionCall maxTitleBytes Int64 120
+argument policyDescriptionCall descriptionBytes Int64 2049
+argument policyDescriptionCall maxDescriptionBytes Int64 2048
+run policyDescriptionCall
+bind value policyDescriptionReason Int64 policyDescriptionCall
+call assertPolicyDescriptionCall requireSignedInt64ValuesEqual
+argument assertPolicyDescriptionCall leftValue Int64 policyDescriptionReason
+argument assertPolicyDescriptionCall rightValue Int64 6
+run assertPolicyDescriptionCall
+bind value assertPolicyDescriptionPassed Bool assertPolicyDescriptionCall
+branch if condition assertPolicyDescriptionPassed target afterAssertPolicyDescription
+jump target ruleAssertionFailed
+label afterAssertPolicyDescription
+
+# Lifecycle reject codes: 0 accepted, 1 draft only starts, 2 running only closes/cancels, 3 terminal.
+call lifecycleDraftStartCall domain.validateLifecycleTransition
+argument lifecycleDraftStartCall currentStatus Int32 draftStatusCode
+argument lifecycleDraftStartCall nextStatus Int32 runningStatusCode
+run lifecycleDraftStartCall
+bind value lifecycleDraftStartReason Int64 lifecycleDraftStartCall
+call assertLifecycleDraftStartCall requireSignedInt64ValuesEqual
+argument assertLifecycleDraftStartCall leftValue Int64 lifecycleDraftStartReason
+argument assertLifecycleDraftStartCall rightValue Int64 0
+run assertLifecycleDraftStartCall
+bind value assertLifecycleDraftStartPassed Bool assertLifecycleDraftStartCall
+branch if condition assertLifecycleDraftStartPassed target afterAssertLifecycleDraftStart
+jump target ruleAssertionFailed
+label afterAssertLifecycleDraftStart
+
+call lifecycleClosedStartCall domain.validateLifecycleTransition
+argument lifecycleClosedStartCall currentStatus Int32 closedStatusCode
+argument lifecycleClosedStartCall nextStatus Int32 runningStatusCode
+run lifecycleClosedStartCall
+bind value lifecycleClosedStartReason Int64 lifecycleClosedStartCall
+call assertLifecycleClosedStartCall requireSignedInt64ValuesEqual
+argument assertLifecycleClosedStartCall leftValue Int64 lifecycleClosedStartReason
+argument assertLifecycleClosedStartCall rightValue Int64 3
+run assertLifecycleClosedStartCall
+bind value assertLifecycleClosedStartPassed Bool assertLifecycleClosedStartCall
+branch if condition assertLifecycleClosedStartPassed target afterAssertLifecycleClosedStart
+jump target ruleAssertionFailed
+label afterAssertLifecycleClosedStart
+
+call lifecycleDraftCloseCall domain.validateLifecycleTransition
+argument lifecycleDraftCloseCall currentStatus Int32 draftStatusCode
+argument lifecycleDraftCloseCall nextStatus Int32 closedStatusCode
+run lifecycleDraftCloseCall
+bind value lifecycleDraftCloseReason Int64 lifecycleDraftCloseCall
+call assertLifecycleDraftCloseCall requireSignedInt64ValuesEqual
+argument assertLifecycleDraftCloseCall leftValue Int64 lifecycleDraftCloseReason
+argument assertLifecycleDraftCloseCall rightValue Int64 1
+run assertLifecycleDraftCloseCall
+bind value assertLifecycleDraftClosePassed Bool assertLifecycleDraftCloseCall
+branch if condition assertLifecycleDraftClosePassed target afterAssertLifecycleDraftClose
+jump target ruleAssertionFailed
+label afterAssertLifecycleDraftClose
+
+call lifecycleRunningDraftCall domain.validateLifecycleTransition
+argument lifecycleRunningDraftCall currentStatus Int32 runningStatusCode
+argument lifecycleRunningDraftCall nextStatus Int32 draftStatusCode
+run lifecycleRunningDraftCall
+bind value lifecycleRunningDraftReason Int64 lifecycleRunningDraftCall
+call assertLifecycleRunningDraftCall requireSignedInt64ValuesEqual
+argument assertLifecycleRunningDraftCall leftValue Int64 lifecycleRunningDraftReason
+argument assertLifecycleRunningDraftCall rightValue Int64 2
+run assertLifecycleRunningDraftCall
+bind value assertLifecycleRunningDraftPassed Bool assertLifecycleRunningDraftCall
+branch if condition assertLifecycleRunningDraftPassed target afterAssertLifecycleRunningDraft
+jump target ruleAssertionFailed
+label afterAssertLifecycleRunningDraft
+
+# Bid reject codes: 1 missing, 2 not running, 3 role, 4 too low, 5 too high, 6 same bidder, 7 stale, 0 accepted.
+call bidMissingAuctionCall domain.validateBid
+argument bidMissingAuctionCall auctionExists Bool false
+argument bidMissingAuctionCall auctionStatus Int32 runningStatusCode
+argument bidMissingAuctionCall actorRole Int32 bidderRoleCode
+argument bidMissingAuctionCall amount Int64 120
+argument bidMissingAuctionCall currentBid Int64 100
+argument bidMissingAuctionCall minimumIncrement Int64 10
+argument bidMissingAuctionCall maxBidAmount Int64 1000
+argument bidMissingAuctionCall bidderUserId String bidderOneUserId
+argument bidMissingAuctionCall lastBidderUserId String bidderZeroUserId
+argument bidMissingAuctionCall expectedRevision Int64 1
+argument bidMissingAuctionCall currentRevision Int64 1
+argument bidMissingAuctionCall hasExpectedRevision Bool true
+argument bidMissingAuctionCall allowStaleExpectedRevision Bool false
+run bidMissingAuctionCall
+bind value bidMissingAuctionReason Int64 bidMissingAuctionCall
+call assertBidMissingAuctionCall requireSignedInt64ValuesEqual
+argument assertBidMissingAuctionCall leftValue Int64 bidMissingAuctionReason
+argument assertBidMissingAuctionCall rightValue Int64 1
+run assertBidMissingAuctionCall
+bind value assertBidMissingAuctionPassed Bool assertBidMissingAuctionCall
+branch if condition assertBidMissingAuctionPassed target afterAssertBidMissingAuction
+jump target ruleAssertionFailed
+label afterAssertBidMissingAuction
+
+call bidNotRunningCall domain.validateBid
+argument bidNotRunningCall auctionExists Bool true
+argument bidNotRunningCall auctionStatus Int32 draftStatusCode
+argument bidNotRunningCall actorRole Int32 bidderRoleCode
+argument bidNotRunningCall amount Int64 120
+argument bidNotRunningCall currentBid Int64 100
+argument bidNotRunningCall minimumIncrement Int64 10
+argument bidNotRunningCall maxBidAmount Int64 1000
+argument bidNotRunningCall bidderUserId String bidderOneUserId
+argument bidNotRunningCall lastBidderUserId String bidderZeroUserId
+argument bidNotRunningCall expectedRevision Int64 1
+argument bidNotRunningCall currentRevision Int64 1
+argument bidNotRunningCall hasExpectedRevision Bool true
+argument bidNotRunningCall allowStaleExpectedRevision Bool false
+run bidNotRunningCall
+bind value bidNotRunningReason Int64 bidNotRunningCall
+call assertBidNotRunningCall requireSignedInt64ValuesEqual
+argument assertBidNotRunningCall leftValue Int64 bidNotRunningReason
+argument assertBidNotRunningCall rightValue Int64 2
+run assertBidNotRunningCall
+bind value assertBidNotRunningPassed Bool assertBidNotRunningCall
+branch if condition assertBidNotRunningPassed target afterAssertBidNotRunning
+jump target ruleAssertionFailed
+label afterAssertBidNotRunning
+
+call bidActorRoleCall domain.validateBid
+argument bidActorRoleCall auctionExists Bool true
+argument bidActorRoleCall auctionStatus Int32 runningStatusCode
+argument bidActorRoleCall actorRole Int32 auctioneerRoleCode
+argument bidActorRoleCall amount Int64 120
+argument bidActorRoleCall currentBid Int64 100
+argument bidActorRoleCall minimumIncrement Int64 10
+argument bidActorRoleCall maxBidAmount Int64 1000
+argument bidActorRoleCall bidderUserId String bidderOneUserId
+argument bidActorRoleCall lastBidderUserId String bidderZeroUserId
+argument bidActorRoleCall expectedRevision Int64 1
+argument bidActorRoleCall currentRevision Int64 1
+argument bidActorRoleCall hasExpectedRevision Bool true
+argument bidActorRoleCall allowStaleExpectedRevision Bool false
+run bidActorRoleCall
+bind value bidActorRoleReason Int64 bidActorRoleCall
+call assertBidActorRoleCall requireSignedInt64ValuesEqual
+argument assertBidActorRoleCall leftValue Int64 bidActorRoleReason
+argument assertBidActorRoleCall rightValue Int64 3
+run assertBidActorRoleCall
+bind value assertBidActorRolePassed Bool assertBidActorRoleCall
+branch if condition assertBidActorRolePassed target afterAssertBidActorRole
+jump target ruleAssertionFailed
+label afterAssertBidActorRole
+
+call bidTooLowCall domain.validateBid
+argument bidTooLowCall auctionExists Bool true
+argument bidTooLowCall auctionStatus Int32 runningStatusCode
+argument bidTooLowCall actorRole Int32 bidderRoleCode
+argument bidTooLowCall amount Int64 109
+argument bidTooLowCall currentBid Int64 100
+argument bidTooLowCall minimumIncrement Int64 10
+argument bidTooLowCall maxBidAmount Int64 1000
+argument bidTooLowCall bidderUserId String bidderOneUserId
+argument bidTooLowCall lastBidderUserId String bidderZeroUserId
+argument bidTooLowCall expectedRevision Int64 1
+argument bidTooLowCall currentRevision Int64 1
+argument bidTooLowCall hasExpectedRevision Bool true
+argument bidTooLowCall allowStaleExpectedRevision Bool false
+run bidTooLowCall
+bind value bidTooLowReason Int64 bidTooLowCall
+call assertBidTooLowCall requireSignedInt64ValuesEqual
+argument assertBidTooLowCall leftValue Int64 bidTooLowReason
+argument assertBidTooLowCall rightValue Int64 4
+run assertBidTooLowCall
+bind value assertBidTooLowPassed Bool assertBidTooLowCall
+branch if condition assertBidTooLowPassed target afterAssertBidTooLow
+jump target ruleAssertionFailed
+label afterAssertBidTooLow
+
+call bidTooHighCall domain.validateBid
+argument bidTooHighCall auctionExists Bool true
+argument bidTooHighCall auctionStatus Int32 runningStatusCode
+argument bidTooHighCall actorRole Int32 bidderRoleCode
+argument bidTooHighCall amount Int64 1001
+argument bidTooHighCall currentBid Int64 100
+argument bidTooHighCall minimumIncrement Int64 10
+argument bidTooHighCall maxBidAmount Int64 1000
+argument bidTooHighCall bidderUserId String bidderOneUserId
+argument bidTooHighCall lastBidderUserId String bidderZeroUserId
+argument bidTooHighCall expectedRevision Int64 1
+argument bidTooHighCall currentRevision Int64 1
+argument bidTooHighCall hasExpectedRevision Bool true
+argument bidTooHighCall allowStaleExpectedRevision Bool false
+run bidTooHighCall
+bind value bidTooHighReason Int64 bidTooHighCall
+call assertBidTooHighCall requireSignedInt64ValuesEqual
+argument assertBidTooHighCall leftValue Int64 bidTooHighReason
+argument assertBidTooHighCall rightValue Int64 5
+run assertBidTooHighCall
+bind value assertBidTooHighPassed Bool assertBidTooHighCall
+branch if condition assertBidTooHighPassed target afterAssertBidTooHigh
+jump target ruleAssertionFailed
+label afterAssertBidTooHigh
+
+call bidSameBidderCall domain.validateBid
+argument bidSameBidderCall auctionExists Bool true
+argument bidSameBidderCall auctionStatus Int32 runningStatusCode
+argument bidSameBidderCall actorRole Int32 bidderRoleCode
+argument bidSameBidderCall amount Int64 120
+argument bidSameBidderCall currentBid Int64 100
+argument bidSameBidderCall minimumIncrement Int64 10
+argument bidSameBidderCall maxBidAmount Int64 1000
+argument bidSameBidderCall bidderUserId String bidderOneUserId
+argument bidSameBidderCall lastBidderUserId String bidderOneUserId
+argument bidSameBidderCall expectedRevision Int64 1
+argument bidSameBidderCall currentRevision Int64 1
+argument bidSameBidderCall hasExpectedRevision Bool true
+argument bidSameBidderCall allowStaleExpectedRevision Bool false
+run bidSameBidderCall
+bind value bidSameBidderReason Int64 bidSameBidderCall
+call assertBidSameBidderCall requireSignedInt64ValuesEqual
+argument assertBidSameBidderCall leftValue Int64 bidSameBidderReason
+argument assertBidSameBidderCall rightValue Int64 6
+run assertBidSameBidderCall
+bind value assertBidSameBidderPassed Bool assertBidSameBidderCall
+branch if condition assertBidSameBidderPassed target afterAssertBidSameBidder
+jump target ruleAssertionFailed
+label afterAssertBidSameBidder
+
+call bidStaleRevisionCall domain.validateBid
+argument bidStaleRevisionCall auctionExists Bool true
+argument bidStaleRevisionCall auctionStatus Int32 runningStatusCode
+argument bidStaleRevisionCall actorRole Int32 bidderRoleCode
+argument bidStaleRevisionCall amount Int64 120
+argument bidStaleRevisionCall currentBid Int64 100
+argument bidStaleRevisionCall minimumIncrement Int64 10
+argument bidStaleRevisionCall maxBidAmount Int64 1000
+argument bidStaleRevisionCall bidderUserId String bidderOneUserId
+argument bidStaleRevisionCall lastBidderUserId String bidderZeroUserId
+argument bidStaleRevisionCall expectedRevision Int64 0
+argument bidStaleRevisionCall currentRevision Int64 1
+argument bidStaleRevisionCall hasExpectedRevision Bool true
+argument bidStaleRevisionCall allowStaleExpectedRevision Bool false
+run bidStaleRevisionCall
+bind value bidStaleRevisionReason Int64 bidStaleRevisionCall
+call assertBidStaleRevisionCall requireSignedInt64ValuesEqual
+argument assertBidStaleRevisionCall leftValue Int64 bidStaleRevisionReason
+argument assertBidStaleRevisionCall rightValue Int64 7
+run assertBidStaleRevisionCall
+bind value assertBidStaleRevisionPassed Bool assertBidStaleRevisionCall
+branch if condition assertBidStaleRevisionPassed target afterAssertBidStaleRevision
+jump target ruleAssertionFailed
+label afterAssertBidStaleRevision
+
+call bidAcceptedCall domain.validateBid
+argument bidAcceptedCall auctionExists Bool true
+argument bidAcceptedCall auctionStatus Int32 runningStatusCode
+argument bidAcceptedCall actorRole Int32 bidderRoleCode
+argument bidAcceptedCall amount Int64 120
+argument bidAcceptedCall currentBid Int64 100
+argument bidAcceptedCall minimumIncrement Int64 10
+argument bidAcceptedCall maxBidAmount Int64 1000
+argument bidAcceptedCall bidderUserId String bidderOneUserId
+argument bidAcceptedCall lastBidderUserId String bidderZeroUserId
+argument bidAcceptedCall expectedRevision Int64 1
+argument bidAcceptedCall currentRevision Int64 1
+argument bidAcceptedCall hasExpectedRevision Bool true
+argument bidAcceptedCall allowStaleExpectedRevision Bool false
+run bidAcceptedCall
+bind value bidAcceptedReason Int64 bidAcceptedCall
+call assertBidAcceptedCall requireSignedInt64ValuesEqual
+argument assertBidAcceptedCall leftValue Int64 bidAcceptedReason
+argument assertBidAcceptedCall rightValue Int64 0
+run assertBidAcceptedCall
+bind value assertBidAcceptedPassed Bool assertBidAcceptedCall
+branch if condition assertBidAcceptedPassed target afterAssertBidAccepted
+jump target ruleAssertionFailed
+label afterAssertBidAccepted
+
+# Command contract reject codes: 0 accepted, 10 missing auction id, 11 missing idempotency key, 12 missing expected revision, 13 forbidden.
+call commandCreateRequirementsCall domain.validateAuctionCommandRequestRequirements
+argument commandCreateRequirementsCall requiresAuctionId Bool false
+argument commandCreateRequirementsCall hasAuctionId Bool false
+argument commandCreateRequirementsCall requiresIdempotencyKey Bool true
+argument commandCreateRequirementsCall hasIdempotencyKey Bool true
+argument commandCreateRequirementsCall requiresExpectedRevision Bool false
+argument commandCreateRequirementsCall hasExpectedRevision Bool false
+run commandCreateRequirementsCall
+bind value commandCreateRequirementsReason Int64 commandCreateRequirementsCall
+call assertCommandCreateRequirementsCall requireSignedInt64ValuesEqual
+argument assertCommandCreateRequirementsCall leftValue Int64 commandCreateRequirementsReason
+argument assertCommandCreateRequirementsCall rightValue Int64 0
+run assertCommandCreateRequirementsCall
+bind value assertCommandCreateRequirementsPassed Bool assertCommandCreateRequirementsCall
+branch if condition assertCommandCreateRequirementsPassed target afterAssertCommandCreateRequirements
+jump target ruleAssertionFailed
+label afterAssertCommandCreateRequirements
+
+call commandMissingAuctionIdCall domain.validateAuctionCommandRequestRequirements
+argument commandMissingAuctionIdCall requiresAuctionId Bool true
+argument commandMissingAuctionIdCall hasAuctionId Bool false
+argument commandMissingAuctionIdCall requiresIdempotencyKey Bool true
+argument commandMissingAuctionIdCall hasIdempotencyKey Bool true
+argument commandMissingAuctionIdCall requiresExpectedRevision Bool true
+argument commandMissingAuctionIdCall hasExpectedRevision Bool true
+run commandMissingAuctionIdCall
+bind value commandMissingAuctionIdReason Int64 commandMissingAuctionIdCall
+call assertCommandMissingAuctionIdCall requireSignedInt64ValuesEqual
+argument assertCommandMissingAuctionIdCall leftValue Int64 commandMissingAuctionIdReason
+argument assertCommandMissingAuctionIdCall rightValue Int64 10
+run assertCommandMissingAuctionIdCall
+bind value assertCommandMissingAuctionIdPassed Bool assertCommandMissingAuctionIdCall
+branch if condition assertCommandMissingAuctionIdPassed target afterAssertCommandMissingAuctionId
+jump target ruleAssertionFailed
+label afterAssertCommandMissingAuctionId
+
+call commandMissingIdempotencyCall domain.validateAuctionCommandRequestRequirements
+argument commandMissingIdempotencyCall requiresAuctionId Bool true
+argument commandMissingIdempotencyCall hasAuctionId Bool true
+argument commandMissingIdempotencyCall requiresIdempotencyKey Bool true
+argument commandMissingIdempotencyCall hasIdempotencyKey Bool false
+argument commandMissingIdempotencyCall requiresExpectedRevision Bool true
+argument commandMissingIdempotencyCall hasExpectedRevision Bool true
+run commandMissingIdempotencyCall
+bind value commandMissingIdempotencyReason Int64 commandMissingIdempotencyCall
+call assertCommandMissingIdempotencyCall requireSignedInt64ValuesEqual
+argument assertCommandMissingIdempotencyCall leftValue Int64 commandMissingIdempotencyReason
+argument assertCommandMissingIdempotencyCall rightValue Int64 11
+run assertCommandMissingIdempotencyCall
+bind value assertCommandMissingIdempotencyPassed Bool assertCommandMissingIdempotencyCall
+branch if condition assertCommandMissingIdempotencyPassed target afterAssertCommandMissingIdempotency
+jump target ruleAssertionFailed
+label afterAssertCommandMissingIdempotency
+
+call commandMissingRevisionCall domain.validateAuctionCommandRequestRequirements
+argument commandMissingRevisionCall requiresAuctionId Bool true
+argument commandMissingRevisionCall hasAuctionId Bool true
+argument commandMissingRevisionCall requiresIdempotencyKey Bool true
+argument commandMissingRevisionCall hasIdempotencyKey Bool true
+argument commandMissingRevisionCall requiresExpectedRevision Bool true
+argument commandMissingRevisionCall hasExpectedRevision Bool false
+run commandMissingRevisionCall
+bind value commandMissingRevisionReason Int64 commandMissingRevisionCall
+call assertCommandMissingRevisionCall requireSignedInt64ValuesEqual
+argument assertCommandMissingRevisionCall leftValue Int64 commandMissingRevisionReason
+argument assertCommandMissingRevisionCall rightValue Int64 12
+run assertCommandMissingRevisionCall
+bind value assertCommandMissingRevisionPassed Bool assertCommandMissingRevisionCall
+branch if condition assertCommandMissingRevisionPassed target afterAssertCommandMissingRevision
+jump target ruleAssertionFailed
+label afterAssertCommandMissingRevision
+
+call commandAuctioneerAllowedCall domain.validateAuctionCommandActor
+argument commandAuctioneerAllowedCall actorRole Int32 auctioneerRoleCode
+argument commandAuctioneerAllowedCall commandKind Int32 startAuctionCommandKindCode
+run commandAuctioneerAllowedCall
+bind value commandAuctioneerAllowedReason Int64 commandAuctioneerAllowedCall
+call assertCommandAuctioneerAllowedCall requireSignedInt64ValuesEqual
+argument assertCommandAuctioneerAllowedCall leftValue Int64 commandAuctioneerAllowedReason
+argument assertCommandAuctioneerAllowedCall rightValue Int64 0
+run assertCommandAuctioneerAllowedCall
+bind value assertCommandAuctioneerAllowedPassed Bool assertCommandAuctioneerAllowedCall
+branch if condition assertCommandAuctioneerAllowedPassed target afterAssertCommandAuctioneerAllowed
+jump target ruleAssertionFailed
+label afterAssertCommandAuctioneerAllowed
+
+call commandBidderForbiddenCreateCall domain.validateAuctionCommandActor
+argument commandBidderForbiddenCreateCall actorRole Int32 bidderRoleCode
+argument commandBidderForbiddenCreateCall commandKind Int32 createAuctionCommandKindCode
+run commandBidderForbiddenCreateCall
+bind value commandBidderForbiddenCreateReason Int64 commandBidderForbiddenCreateCall
+call assertCommandBidderForbiddenCreateCall requireSignedInt64ValuesEqual
+argument assertCommandBidderForbiddenCreateCall leftValue Int64 commandBidderForbiddenCreateReason
+argument assertCommandBidderForbiddenCreateCall rightValue Int64 13
+run assertCommandBidderForbiddenCreateCall
+bind value assertCommandBidderForbiddenCreatePassed Bool assertCommandBidderForbiddenCreateCall
+branch if condition assertCommandBidderForbiddenCreatePassed target afterAssertCommandBidderForbiddenCreate
+jump target ruleAssertionFailed
+label afterAssertCommandBidderForbiddenCreate
+
+call commandBidderAllowedBidCall domain.validateAuctionCommandActor
+argument commandBidderAllowedBidCall actorRole Int32 bidderRoleCode
+argument commandBidderAllowedBidCall commandKind Int32 placeBidCommandKindCode
+run commandBidderAllowedBidCall
+bind value commandBidderAllowedBidReason Int64 commandBidderAllowedBidCall
+call assertCommandBidderAllowedBidCall requireSignedInt64ValuesEqual
+argument assertCommandBidderAllowedBidCall leftValue Int64 commandBidderAllowedBidReason
+argument assertCommandBidderAllowedBidCall rightValue Int64 0
+run assertCommandBidderAllowedBidCall
+bind value assertCommandBidderAllowedBidPassed Bool assertCommandBidderAllowedBidCall
+branch if condition assertCommandBidderAllowedBidPassed target afterAssertCommandBidderAllowedBid
+jump target ruleAssertionFailed
+label afterAssertCommandBidderAllowedBid
+
+# Anti-sniping and monotonic properties.
+call antiSnipingCall domain.shouldExtendForAntiSniping
+argument antiSnipingCall nowUtcMillis Int64 950
+argument antiSnipingCall closesAtUtcMillis Int64 1000
+argument antiSnipingCall antiSnipingWindowMillis Int64 60
+run antiSnipingCall
+bind value shouldExtend Bool antiSnipingCall
+call assertAntiSnipingCall requireConditionTrue
+argument assertAntiSnipingCall conditionValue Bool shouldExtend
+run assertAntiSnipingCall
+bind value assertAntiSnipingPassed Bool assertAntiSnipingCall
+branch if condition assertAntiSnipingPassed target afterAssertAntiSniping
+jump target ruleAssertionFailed
+label afterAssertAntiSniping
+
+call closeTimeCall domain.computeAntiSnipingCloseTime
+argument closeTimeCall nowUtcMillis Int64 950
+argument closeTimeCall currentClosesAtUtcMillis Int64 1000
+argument closeTimeCall antiSnipingExtensionMillis Int64 120
+run closeTimeCall
+bind value extendedCloseTime Int64 closeTimeCall
+call assertCloseTimeCall requireSignedInt64ValuesEqual
+argument assertCloseTimeCall leftValue Int64 extendedCloseTime
+argument assertCloseTimeCall rightValue Int64 1070
+run assertCloseTimeCall
+bind value assertCloseTimePassed Bool assertCloseTimeCall
+branch if condition assertCloseTimePassed target afterAssertCloseTime
+jump target ruleAssertionFailed
+label afterAssertCloseTime
+
+call revisionCall domain.nextRevisionAfterAcceptedCommand
+argument revisionCall currentRevision Int64 41
+argument revisionCall accepted Bool true
+run revisionCall
+bind value nextRevision Int64 revisionCall
+call assertRevisionCall requireSignedInt64ValuesEqual
+argument assertRevisionCall leftValue Int64 nextRevision
+argument assertRevisionCall rightValue Int64 42
+run assertRevisionCall
+bind value assertRevisionPassed Bool assertRevisionCall
+branch if condition assertRevisionPassed target afterAssertRevision
+jump target ruleAssertionFailed
+label afterAssertRevision
+
+call sequenceCall domain.nextEventSequence
+argument sequenceCall currentSequence Int64 7
+run sequenceCall
+bind value nextSequence Int64 sequenceCall
+call assertSequenceCall requireSignedInt64ValuesEqual
+argument assertSequenceCall leftValue Int64 nextSequence
+argument assertSequenceCall rightValue Int64 8
+run assertSequenceCall
+bind value assertSequencePassed Bool assertSequenceCall
+branch if condition assertSequencePassed target afterAssertSequence
+jump target ruleAssertionFailed
+label afterAssertSequence
+
+call writeOkCall console.writeLine
+argument writeOkCall console Console console
+argument writeOkCall text String okText
+run writeOkCall
+ignore ok source writeOkCall type Int32
+bind error writeOkError Int32 writeOkCall
+branch error source writeOkCall target consoleWriteFailed
+return ok exitOk
+
+label ruleAssertionFailed
+makeError ruleAssertionFailure MainError.RuleAssertionFailed
+return error ruleAssertionFailure
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed writeOkError
+return error consoleWriteFailure

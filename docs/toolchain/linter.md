@@ -169,13 +169,14 @@ async calls without timeout/cancel boundary
 file handles not closed, accepting defer metadata or explicit close calls
 SQLite database setup failures without close cleanup
 SQLite statements without finalize cleanup
+SQL body islands bound to non-`SqlText` storage or containing interpolation holes
 guard tokens without release
 circular type aliases
 incomplete JSON codecs
 argument arity and type mismatch
-arg rows that reference undeclared values
+argument rows that reference undeclared values
 enum outputs returning enum cases rather than raw repr values
-math operand width drift across I64, CSignedInt32, and F64 targets
+math operand width drift across Int64, Int32, and Float64 targets
 unresolved references
 duplicate declarations
 ```
@@ -221,14 +222,14 @@ reported when missing.
 
 ## Width Checks
 
-Math lowering is exact: `math.*I64` receives I64-shaped values,
-`math.*CSignedInt32` receives CSignedInt32-shaped values, and F64 math receives
-F64-shaped values. The compiler does not widen or narrow these operands
-implicitly. Use width-specific math targets such as `math.lessThanCSignedInt32`
+Math lowering is exact: `math.*Int64` receives Int64-shaped values,
+`math.*Int32` receives Int32-shaped values, and Float64 math receives
+Float64-shaped values. The compiler does not widen or narrow these operands
+implicitly. Use width-specific math targets such as `math.lessThanInt32`
 for C status/count values, or insert an explicit conversion operation before the
 math call. For signed i32/i64 changes, use
-`math.signExtendCSignedInt32ToCSignedInt64` or
-`math.truncateCSignedInt64ToCSignedInt32`.
+`math.signExtendInt32ToInt64` or
+`math.truncateInt64ToInt32`.
 
 When a closed status domain is modeled as an enum, semlint treats enum cases as
 typed values and checks the enum repr against the target signature so a status

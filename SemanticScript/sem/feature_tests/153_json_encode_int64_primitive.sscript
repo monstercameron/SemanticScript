@@ -1,0 +1,41 @@
+# expect.stdout: 42\n
+# expect.exit: 0
+languageMode permissiveExecutable
+project JsonStringifyInt64Primitive
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError EncodeFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "json.stringify.Int64 formats an integer to its JSON decimal string."
+invariant operation main "Output is the JSON representation of 42, exactly the string 42."
+label startMain
+storage module immutable fortyTwoValue Int64 42
+call stringifyIntCall json.stringify.Int64
+argument stringifyIntCall value Int64 fortyTwoValue
+run stringifyIntCall
+bind ok encodedString JsonText stringifyIntCall
+bind error encodeError JsonEncodeError stringifyIntCall
+branch error source stringifyIntCall target encodeFailed
+call writeResultCall console.writeLine
+argument writeResultCall console Console console
+argument writeResultCall text JsonText encodedString
+run writeResultCall
+ignore void source writeResultCall
+bind error writeError ConsoleWriteError writeResultCall
+branch error source writeResultCall target consoleWriteFailed
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+label encodeFailed
+makeError encodeFailure MainError.EncodeFailed encodeError
+return error encodeFailure
+label consoleWriteFailed
+makeError writeFailure MainError.ConsoleWriteFailed writeError
+return error writeFailure

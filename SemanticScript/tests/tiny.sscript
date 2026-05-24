@@ -3,15 +3,15 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 error MainError
-errorCase MainError Placeholder CSignedInt32
+errorCase MainError Placeholder Int32
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 memory main heap no
 async main no
-purpose main "Minimal: just exit 0 — no string consts, no calls."
-invariant main "Self-host smoke test."
+purpose operation main "Minimal: just exit 0 — no string consts, no calls."
+invariant operation main "Self-host smoke test."
 label startMain
-const successfulExitCode ExitCode 0
-returnOk successfulExitCode
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

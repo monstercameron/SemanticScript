@@ -1,304 +1,239 @@
-# JSON runtime smoke — exercises the standard.json builder + finder
-# surface end-to-end through semsc + the native_json adapter. The
-# program asserts every round-trip in source so a regression in
-# escape handling, comma placement, missing-field semantics, or
-# defer cleanup fails the exit code rather than producing subtly
-# wrong stdout.
-#
-# This sample is the AgentScript-level counterpart to
-# SemanticScript/runtime/native_json/health_demo.c; both must keep
-# passing.
+# JSON runtime smoke - exercises the standard.json document CRUD surface
+# end-to-end through semsc + the native_json adapter.
 project JsonRuntimeSmoke
 target console
 runtime native 1
 module fixture.json_runtime_smoke
 
-importModule standard.json as json
+import json standard.json
 dependency standard.json version 0.1 source standard
 
 entry console main
 
 error MainError
-errorCase MainError BuilderCreateFailed CSignedInt32
-errorCase MainError BuilderMutationFailed CSignedInt32
-errorCase MainError RoundTripMismatch CSignedInt32
+errorCase MainError JsonAccessFailed JsonAccessError
+errorCase MainError RoundTripMismatch Int32
 errorCase MainError ConsoleWriteFailed ConsoleWriteError
 
 capability jsonScratch console.stdout write
-purpose jsonScratch "Authority to write smoke-result markers to stdout for the harness to assert against"
-
-storage module immutable defaultJsonCapacity CSignedInt64 4096
-storage module immutable scratchCapacity CSignedInt64 256
-storage module immutable successExit ExitCode 0
-storage module immutable trueValue CSignedInt32 1
-storage module immutable falseValue CSignedInt32 0
-storage module immutable expectedId CSignedInt64 42
-storage module immutable wrongId CSignedInt64 99
-storage module immutable missingIntDefault CSignedInt64 -1
-storage module immutable missingBoolDefault CSignedInt32 -1
-
+purpose operation jsonScratch "Authority to write smoke-result markers to stdout for the harness to assert against"
 capability heapAllocCapability heap allocate
-purpose heapAllocCapability "Authority to allocate the scratch buffer for json.findString recovery"
+purpose operation heapAllocCapability "Authority to allocate JSON serialization and string scratch buffers"
 capability heapFreeCapability heap free
-purpose heapFreeCapability "Authority to free the scratch buffer at the deferred cleanup site"
+purpose operation heapFreeCapability "Authority to free scratch buffers at deferred cleanup sites"
+
+storage module immutable defaultJsonCapacity JsonCapacityBytes 4096
+storage module immutable scratchCapacity JsonCapacityBytes 512
+storage module immutable successExit ExitCode 0
+storage module immutable objectRootKind Int32 0
+storage module immutable expectedId Int64 42
+storage module immutable missingIntDefault Int64 -1
+storage module immutable missingBoolDefault Int32 -1
+storage module immutable falseValue Int32 0
+storage module immutable mismatchCode Int32 1
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 effect main write console.stdout
 effect main allocate heap
 effect main free heap
+effect main read json.document.tree
+effect main write json.document.tree
 memory main heap auto
 async main no
 useCapability main jsonScratch
 useCapability main heapAllocCapability
 useCapability main heapFreeCapability
-purpose main "Round-trip a JSON object through json.createBuilder + json.field* + json.finishBuilder + json.find* and assert every value comes back intact, then write 'jsonRuntimeSmokeOk' to stdout."
-invariant main "The builder is destroyed via defer on every exit path (success AND every failure label). The recovered values must equal the values written; any mismatch routes to RoundTripMismatch with a non-zero exit code so the harness sees the failure."
+purpose operation main "Build a JSON object through json.createEmptyDocument and json.setObjectField*, read it back through cursors, serialize it, then write a success marker."
+invariant operation main "Every recovered value must match the value written; any mismatch routes to RoundTripMismatch so the harness sees the failure."
 
 label startMain
 
-# --- create the builder + arrange guaranteed cleanup -------------------
-call createBuilderCall json.createBuilder
-arg createBuilderCall capacity defaultJsonCapacity
-run createBuilderCall
-bind smokeBuilder JsonBuilder createBuilderCall
+call createDocumentCall json.createEmptyDocument
+argument createDocumentCall capacityBytes JsonCapacityBytes defaultJsonCapacity
+argument createDocumentCall rootKind Int32 objectRootKind
+run createDocumentCall
+bind ok smokeDocument JsonDocument createDocumentCall
+bind error createDocumentError JsonAccessError createDocumentCall
+branch error source createDocumentCall target jsonAccessFailed
 
-defer destroyBuilderDefer json.destroyBuilder smokeBuilder
+call rootCursorCall json.documentRoot
+argument rootCursorCall document JsonDocument smokeDocument
+run rootCursorCall
+bind value rootCursor JsonCursor rootCursorCall
 
-# --- build {"id":42,"title":"hello \"json\"\\world\nline\t\x01","done":false,"completedAt":null} ---
-call openObjectCall json.objectOpen
-arg openObjectCall builder smokeBuilder
-run openObjectCall
-ignoreOk openObjectCall CSignedInt32
-bindError openObjectError CSignedInt32 openObjectCall
-branchIfError openObjectCall openObjectFailed
+storage local immutable idFieldName String "id"
+call setIdCall json.setObjectFieldInt64
+argument setIdCall document JsonDocument smokeDocument
+argument setIdCall cursor JsonCursor rootCursor
+argument setIdCall fieldName String idFieldName
+argument setIdCall value Int64 expectedId
+run setIdCall
+ignore ok source setIdCall type Int32
+bind error setIdError JsonAccessError setIdCall
+branch error source setIdCall target jsonAccessFailed
 
-storage local immutable idFieldName CNullTerminatedByteString "id"
-call fieldIdCall json.fieldInt64
-arg fieldIdCall builder smokeBuilder
-arg fieldIdCall fieldName idFieldName
-arg fieldIdCall value expectedId
-run fieldIdCall
-ignoreOk fieldIdCall CSignedInt32
-bindError fieldIdError CSignedInt32 fieldIdCall
-branchIfError fieldIdCall fieldIdFailed
+storage local immutable titleFieldName String "title"
+storage local immutable titleValue String "hello \"json\"\\world\nline\t\x01"
+call setTitleCall json.setObjectFieldString
+argument setTitleCall document JsonDocument smokeDocument
+argument setTitleCall cursor JsonCursor rootCursor
+argument setTitleCall fieldName String titleFieldName
+argument setTitleCall value String titleValue
+run setTitleCall
+ignore ok source setTitleCall type Int32
+bind error setTitleError JsonAccessError setTitleCall
+branch error source setTitleCall target jsonAccessFailed
 
-# Title contains a quote, a backslash, a newline, a tab, AND a control
-# byte below 0x20 — exercises every required escape path. The literal
-# below pins the exact bytes; the recovered string must match.
-storage local immutable titleFieldName CNullTerminatedByteString "title"
-storage local immutable titleValue CNullTerminatedByteString "hello \"json\"\\world\nline\t\x01"
-call fieldTitleCall json.fieldString
-arg fieldTitleCall builder smokeBuilder
-arg fieldTitleCall fieldName titleFieldName
-arg fieldTitleCall value titleValue
-run fieldTitleCall
-ignoreOk fieldTitleCall CSignedInt32
-bindError fieldTitleError CSignedInt32 fieldTitleCall
-branchIfError fieldTitleCall fieldTitleFailed
+storage local immutable doneFieldName String "done"
+call setDoneCall json.setObjectFieldBool
+argument setDoneCall document JsonDocument smokeDocument
+argument setDoneCall cursor JsonCursor rootCursor
+argument setDoneCall fieldName String doneFieldName
+argument setDoneCall value Int32 falseValue
+run setDoneCall
+ignore ok source setDoneCall type Int32
+bind error setDoneError JsonAccessError setDoneCall
+branch error source setDoneCall target jsonAccessFailed
 
-storage local immutable doneFieldName CNullTerminatedByteString "done"
-call fieldDoneCall json.fieldBool
-arg fieldDoneCall builder smokeBuilder
-arg fieldDoneCall fieldName doneFieldName
-arg fieldDoneCall value falseValue
-run fieldDoneCall
-ignoreOk fieldDoneCall CSignedInt32
-bindError fieldDoneError CSignedInt32 fieldDoneCall
-branchIfError fieldDoneCall fieldDoneFailed
+storage local immutable completedAtFieldName String "completedAt"
+call setCompletedAtCall json.setObjectFieldNull
+argument setCompletedAtCall document JsonDocument smokeDocument
+argument setCompletedAtCall cursor JsonCursor rootCursor
+argument setCompletedAtCall fieldName String completedAtFieldName
+run setCompletedAtCall
+ignore ok source setCompletedAtCall type Int32
+bind error setCompletedAtError JsonAccessError setCompletedAtCall
+branch error source setCompletedAtCall target jsonAccessFailed
 
-storage local immutable completedAtFieldName CNullTerminatedByteString "completedAt"
-call fieldCompletedAtCall json.fieldNull
-arg fieldCompletedAtCall builder smokeBuilder
-arg fieldCompletedAtCall fieldName completedAtFieldName
-run fieldCompletedAtCall
-ignoreOk fieldCompletedAtCall CSignedInt32
-bindError fieldCompletedAtError CSignedInt32 fieldCompletedAtCall
-branchIfError fieldCompletedAtCall fieldCompletedAtFailed
+call idCursorCall json.objectFieldAt
+argument idCursorCall document JsonDocument smokeDocument
+argument idCursorCall cursor JsonCursor rootCursor
+argument idCursorCall fieldName String idFieldName
+run idCursorCall
+bind ok idCursor JsonCursor idCursorCall
+bind error idCursorError JsonAccessError idCursorCall
+branch error source idCursorCall target jsonAccessFailed
 
-call closeObjectCall json.objectClose
-arg closeObjectCall builder smokeBuilder
-run closeObjectCall
-ignoreOk closeObjectCall CSignedInt32
-bindError closeObjectError CSignedInt32 closeObjectCall
-branchIfError closeObjectCall closeObjectFailed
+call readIdCall json.cursorInt64
+argument readIdCall document JsonDocument smokeDocument
+argument readIdCall cursor JsonCursor idCursor
+argument readIdCall missingDefault Int64 missingIntDefault
+run readIdCall
+bind value recoveredId Int64 readIdCall
 
-# --- finish and capture the body pointer -------------------------------
-call finishCall json.finishBuilder
-arg finishCall builder smokeBuilder
-run finishCall
-bind responseBody CNullTerminatedByteString finishCall
-
-# --- round-trip every value via the finder API -------------------------
-call findIdCall json.findInt64
-arg findIdCall jsonText responseBody
-arg findIdCall fieldName idFieldName
-arg findIdCall missingDefault missingIntDefault
-run findIdCall
-bind recoveredId CSignedInt64 findIdCall
-
-# Assert recoveredId == expectedId. If not, jump to mismatch.
-call idMatchCall math.equalI64
-arg idMatchCall left recoveredId
-arg idMatchCall right expectedId
+call idMatchCall math.equalInt64
+argument idMatchCall left Int64 recoveredId
+argument idMatchCall right Int64 expectedId
 run idMatchCall
-bind idMatched Bool idMatchCall
-branchIf idMatched idMatchOk
-branch roundTripMismatch
+bind value idMatched Bool idMatchCall
+branch if condition idMatched target idMatchOk
+branch else target roundTripMismatch
 label idMatchOk
 
-# Verify a deliberately wrong default propagates when the field IS absent.
-storage local immutable absentFieldName CNullTerminatedByteString "doesNotExist"
-call findAbsentCall json.findInt64
-arg findAbsentCall jsonText responseBody
-arg findAbsentCall fieldName absentFieldName
-arg findAbsentCall missingDefault wrongId
-run findAbsentCall
-bind absentFallback CSignedInt64 findAbsentCall
+call doneCursorCall json.objectFieldAt
+argument doneCursorCall document JsonDocument smokeDocument
+argument doneCursorCall cursor JsonCursor rootCursor
+argument doneCursorCall fieldName String doneFieldName
+run doneCursorCall
+bind ok doneCursor JsonCursor doneCursorCall
+bind error doneCursorError JsonAccessError doneCursorCall
+branch error source doneCursorCall target jsonAccessFailed
 
-call absentMatchCall math.equalI64
-arg absentMatchCall left absentFallback
-arg absentMatchCall right wrongId
-run absentMatchCall
-bind absentMatched Bool absentMatchCall
-branchIf absentMatched absentMatchOk
-branch roundTripMismatch
-label absentMatchOk
+call readDoneCall json.cursorBool
+argument readDoneCall document JsonDocument smokeDocument
+argument readDoneCall cursor JsonCursor doneCursor
+argument readDoneCall missingDefault Int32 missingBoolDefault
+run readDoneCall
+bind value recoveredDone Bool readDoneCall
+branch if condition recoveredDone target roundTripMismatch
 
-# has_field must be 1 for an existing field, 0 for an absent one.
-call hasIdCall json.hasField
-arg hasIdCall jsonText responseBody
-arg hasIdCall fieldName idFieldName
-run hasIdCall
-bind idPresent CSignedInt32 hasIdCall
+call completedAtCursorCall json.objectFieldAt
+argument completedAtCursorCall document JsonDocument smokeDocument
+argument completedAtCursorCall cursor JsonCursor rootCursor
+argument completedAtCursorCall fieldName String completedAtFieldName
+run completedAtCursorCall
+bind ok completedAtCursor JsonCursor completedAtCursorCall
+bind error completedAtCursorError JsonAccessError completedAtCursorCall
+branch error source completedAtCursorCall target jsonAccessFailed
 
-call idPresentMatchCall math.equalCSignedInt32
-arg idPresentMatchCall left idPresent
-arg idPresentMatchCall right trueValue
-run idPresentMatchCall
-bind idPresentOk Bool idPresentMatchCall
-branchIf idPresentOk idPresenceOk
-branch roundTripMismatch
-label idPresenceOk
+call completedAtNullCall json.cursorIsNull
+argument completedAtNullCall document JsonDocument smokeDocument
+argument completedAtNullCall cursor JsonCursor completedAtCursor
+run completedAtNullCall
+bind value completedAtIsNull Bool completedAtNullCall
+branch if condition completedAtIsNull target completedAtNullOk
+branch else target roundTripMismatch
+label completedAtNullOk
 
-call hasAbsentCall json.hasField
-arg hasAbsentCall jsonText responseBody
-arg hasAbsentCall fieldName absentFieldName
-run hasAbsentCall
-bind absentPresent CSignedInt32 hasAbsentCall
-
-call absentPresenceMatchCall math.equalCSignedInt32
-arg absentPresenceMatchCall left absentPresent
-arg absentPresenceMatchCall right falseValue
-run absentPresenceMatchCall
-bind absentPresenceOk Bool absentPresenceMatchCall
-branchIf absentPresenceOk absentPresenceOkLabel
-branch roundTripMismatch
-label absentPresenceOkLabel
-
-# completedAt is JSON null → has_field returns 1 (present) but find_int64
-# falls through to the missing-default path because null isn't a number.
-call hasCompletedAtCall json.hasField
-arg hasCompletedAtCall jsonText responseBody
-arg hasCompletedAtCall fieldName completedAtFieldName
-run hasCompletedAtCall
-bind completedAtPresent CSignedInt32 hasCompletedAtCall
-
-call completedAtPresenceMatchCall math.equalCSignedInt32
-arg completedAtPresenceMatchCall left completedAtPresent
-arg completedAtPresenceMatchCall right trueValue
-run completedAtPresenceMatchCall
-bind completedAtPresenceOk Bool completedAtPresenceMatchCall
-branchIf completedAtPresenceOk completedAtPresenceOkLabel
-branch roundTripMismatch
-label completedAtPresenceOkLabel
-
-# Bool round-trip: written 'false', expect 0.
-call findDoneCall json.findBool
-arg findDoneCall jsonText responseBody
-arg findDoneCall fieldName doneFieldName
-arg findDoneCall missingDefault missingBoolDefault
-run findDoneCall
-bind recoveredDone CSignedInt32 findDoneCall
-
-call doneMatchCall math.equalCSignedInt32
-arg doneMatchCall left recoveredDone
-arg doneMatchCall right falseValue
-run doneMatchCall
-bind doneMatched Bool doneMatchCall
-branchIf doneMatched doneMatchOk
-branch roundTripMismatch
-label doneMatchOk
-
-# String round-trip via the finder + a stack scratch buffer. We don't
-# byte-compare the recovered text in this fixture (the C-side health
-# demo already does that under deterministic conditions); the
-# AgentScript test asserts presence + non-nullness so the recovered
-# pointer is wired correctly.
-var scratchBuffer COpaqueMemoryAddress 0
 call allocateScratchCall c.malloc
-arg allocateScratchCall size scratchCapacity
+argument allocateScratchCall size JsonCapacityBytes scratchCapacity
 run allocateScratchCall
-bind allocatedScratch COpaqueMemoryAddress allocateScratchCall
-set scratchBuffer allocatedScratch
-defer releaseScratchDefer c.free scratchBuffer
+bind value titleScratch OpaquePointer allocateScratchCall
 
-call findTitleCall json.findString
-arg findTitleCall jsonText responseBody
-arg findTitleCall fieldName titleFieldName
-arg findTitleCall scratch scratchBuffer
-arg findTitleCall scratchCapacity scratchCapacity
-run findTitleCall
-bind recoveredTitle CNullTerminatedByteString findTitleCall
+call titleCursorCall json.objectFieldAt
+argument titleCursorCall document JsonDocument smokeDocument
+argument titleCursorCall cursor JsonCursor rootCursor
+argument titleCursorCall fieldName String titleFieldName
+run titleCursorCall
+bind ok titleCursor JsonCursor titleCursorCall
+bind error titleCursorError JsonAccessError titleCursorCall
+branch error source titleCursorCall target jsonAccessFailed
+
+call readTitleCall json.cursorString
+argument readTitleCall document JsonDocument smokeDocument
+argument readTitleCall cursor JsonCursor titleCursor
+argument readTitleCall scratch OpaquePointer titleScratch
+argument readTitleCall scratchCapacity JsonCapacityBytes scratchCapacity
+run readTitleCall
+bind ok recoveredTitle String readTitleCall
+bind error readTitleError JsonAccessError readTitleCall
+branch error source readTitleCall target jsonAccessFailed
 
 call titleNullCheckCall pointer.isNull
-arg titleNullCheckCall pointer recoveredTitle
+argument titleNullCheckCall pointer String recoveredTitle
 run titleNullCheckCall
-bind titleIsNull Bool titleNullCheckCall
-branchIf titleIsNull roundTripMismatch
+bind value titleIsNull Bool titleNullCheckCall
+branch if condition titleIsNull target roundTripMismatch
 
-# Success — write the marker, then fall through to returnOk.
-storage local immutable successMarker CNullTerminatedByteString "jsonRuntimeSmokeOk"
+call serializeDocumentCall json.serializeDocument
+argument serializeDocumentCall document JsonDocument smokeDocument
+argument serializeDocumentCall scratch OpaquePointer titleScratch
+argument serializeDocumentCall scratchCapacity JsonCapacityBytes scratchCapacity
+run serializeDocumentCall
+bind ok serializedDocument JsonText serializeDocumentCall
+bind error serializeDocumentError JsonAccessError serializeDocumentCall
+branch error source serializeDocumentCall target jsonAccessFailed
+
+storage local immutable successMarker String "jsonRuntimeSmokeOk"
 call writeMarkerCall console.writeLine
-arg writeMarkerCall console console
-arg writeMarkerCall text successMarker
+argument writeMarkerCall console Console console
+argument writeMarkerCall text String successMarker
 run writeMarkerCall
-ignoreOk writeMarkerCall Void
-bindError consoleWriteError ConsoleWriteError writeMarkerCall
-branchIfError writeMarkerCall consoleWriteFailed
+ignore void source writeMarkerCall
+bind error consoleWriteError ConsoleWriteError writeMarkerCall
+branch error source writeMarkerCall target consoleWriteFailed
 
-returnOk successExit
+call releaseScratchCall c.free
+argument releaseScratchCall ptr OpaquePointer titleScratch
+run releaseScratchCall
+
+call destroyDocumentCall json.destroyDocument
+argument destroyDocumentCall document JsonDocument smokeDocument
+run destroyDocumentCall
+ignore ok source destroyDocumentCall type Int32
+
+return ok successExit
+
+label jsonAccessFailed
+makeError jsonAccessFailure MainError.JsonAccessFailed createDocumentError
+return error jsonAccessFailure
 
 label roundTripMismatch
-storage local immutable mismatchSentinel CSignedInt32 1
-makeError roundTripFailure MainError.RoundTripMismatch mismatchSentinel
-returnError roundTripFailure
-
-label openObjectFailed
-makeError openObjectFailure MainError.BuilderMutationFailed openObjectError
-returnError openObjectFailure
-
-label fieldIdFailed
-makeError fieldIdFailure MainError.BuilderMutationFailed fieldIdError
-returnError fieldIdFailure
-
-label fieldTitleFailed
-makeError fieldTitleFailure MainError.BuilderMutationFailed fieldTitleError
-returnError fieldTitleFailure
-
-label fieldDoneFailed
-makeError fieldDoneFailure MainError.BuilderMutationFailed fieldDoneError
-returnError fieldDoneFailure
-
-label fieldCompletedAtFailed
-makeError fieldCompletedAtFailure MainError.BuilderMutationFailed fieldCompletedAtError
-returnError fieldCompletedAtFailure
-
-label closeObjectFailed
-makeError closeObjectFailure MainError.BuilderMutationFailed closeObjectError
-returnError closeObjectFailure
+makeError roundTripFailure MainError.RoundTripMismatch mismatchCode
+return error roundTripFailure
 
 label consoleWriteFailed
 makeError consoleWriteFailure MainError.ConsoleWriteFailed consoleWriteError
-returnError consoleWriteFailure
+return error consoleWriteFailure

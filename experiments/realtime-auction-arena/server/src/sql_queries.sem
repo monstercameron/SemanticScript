@@ -1,0 +1,133 @@
+module app.realtime_auction_arena.server.sql_queries
+purpose module app.realtime_auction_arena.server.sql_queries "Executable SQLite statement text for the Realtime Auction Arena server."
+moduleOwns app.realtime_auction_arena.server.sql_queries "SQL statement constants used by the live SQLite command and replay handlers."
+moduleDoesNotOwn app.realtime_auction_arena.server.sql_queries "Schema DDL, transaction control behavior, domain policy, or response formatting."
+invariant module app.realtime_auction_arena.server.sql_queries "Constants in this module are imported by executable handlers so the route shell can stay focused on route wiring."
+
+import sqlite standard.sqlite
+
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectIdempotency
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertIdempotency
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuction
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionsList
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionSnapshot
+exportConstant app.realtime_auction_arena.server.sql_queries sqlUpdateAuctionStart
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionCommandState
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionLifecycleState
+exportConstant app.realtime_auction_arena.server.sql_queries sqlUpdateAuctionExtend
+exportConstant app.realtime_auction_arena.server.sql_queries sqlUpdateAuctionClose
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertBidAccepted
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertBidRejected
+exportConstant app.realtime_auction_arena.server.sql_queries sqlUpdateAuctionAfterBid
+exportConstant app.realtime_auction_arena.server.sql_queries sqlIncrementRejectedBidCount
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuctionEvent
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionEvents
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionEventsAfter
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuditEvent
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertAuditEventWithError
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionAuditEventsAfter
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertRequestLog
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertRateLimitBucket
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectAuctionExists
+exportConstant app.realtime_auction_arena.server.sql_queries sqlAdvanceAuctionEventSequenceForChat
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertChatMessage
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectChatMessageForModeration
+exportConstant app.realtime_auction_arena.server.sql_queries sqlMarkChatMessageDeleted
+exportConstant app.realtime_auction_arena.server.sql_queries sqlMarkChatMessageReported
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertChatAuctionEvent
+exportConstant app.realtime_auction_arena.server.sql_queries sqlSelectChatRateActiveCount
+exportConstant app.realtime_auction_arena.server.sql_queries sqlInsertChatRateBucket
+
+storage module immutable sqlSelectIdempotency SqlText
+sql body sqlSelectIdempotency
+  SELECT request_hash, response_json, response_status FROM idempotency_keys WHERE scope = ? AND key = ? AND actor_user_id = ? AND auction_id = ? AND expires_at > ? LIMIT 1
+storage module immutable sqlInsertIdempotency SqlText
+sql body sqlInsertIdempotency
+  INSERT OR REPLACE INTO idempotency_keys(scope, key, request_hash, actor_user_id, auction_id, response_status, response_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+storage module immutable sqlInsertAuction SqlText
+sql body sqlInsertAuction
+  INSERT INTO auctions(auction_id, seller_user_id, created_by_user_id, status, title, description, starting_bid_minor, minimum_increment_minor, max_bid_minor, anti_sniping_window_ms, anti_sniping_extension_ms, current_bid_minor, revision, event_sequence, created_at, starts_at, closes_at, updated_at) VALUES ('auc_' || lower(hex(randomblob(8))), ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?) RETURNING auction_id
+storage module immutable sqlSelectAuctionsList SqlText
+sql body sqlSelectAuctionsList
+  SELECT auction_id, title, status, current_bid_minor, revision, event_sequence, closes_at, accepted_bid_count FROM auctions ORDER BY created_at DESC LIMIT 100
+storage module immutable sqlSelectAuctionSnapshot SqlText
+sql body sqlSelectAuctionSnapshot
+  SELECT auction_id, title, description, status, starting_bid_minor, minimum_increment_minor, max_bid_minor, anti_sniping_window_ms, anti_sniping_extension_ms, current_bid_minor, revision, event_sequence, starts_at, closes_at, accepted_bid_count, last_bidder_user_id FROM auctions WHERE auction_id = ? LIMIT 1
+storage module immutable sqlUpdateAuctionStart SqlText
+sql body sqlUpdateAuctionStart
+  UPDATE auctions SET status = 2, revision = revision + 1, event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ? AND status = 1 AND revision = ?
+storage module immutable sqlSelectAuctionCommandState SqlText
+sql body sqlSelectAuctionCommandState
+  SELECT status, current_bid_minor, minimum_increment_minor, max_bid_minor, revision, event_sequence, last_bidder_user_id FROM auctions WHERE auction_id = ? LIMIT 1
+storage module immutable sqlSelectAuctionLifecycleState SqlText
+sql body sqlSelectAuctionLifecycleState
+  SELECT status, current_bid_minor, revision, event_sequence, closes_at, last_bidder_user_id FROM auctions WHERE auction_id = ? LIMIT 1
+storage module immutable sqlUpdateAuctionExtend SqlText
+sql body sqlUpdateAuctionExtend
+  UPDATE auctions SET closes_at = ?, revision = revision + 1, event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ? AND status = 2 AND revision = ?
+storage module immutable sqlUpdateAuctionClose SqlText
+sql body sqlUpdateAuctionClose
+  UPDATE auctions SET status = 3, closed_at = ?, revision = revision + 1, event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ? AND status = 2 AND revision = ?
+storage module immutable sqlInsertBidAccepted SqlText
+sql body sqlInsertBidAccepted
+  INSERT INTO bids(bid_id, auction_id, bidder_user_id, amount_minor, status, reject_reason, expected_revision, has_expected_revision, request_id, idempotency_key, created_at) VALUES ('bid_' || lower(hex(randomblob(8))), ?, ?, ?, 1, 0, ?, 1, ?, ?, ?) RETURNING bid_id
+storage module immutable sqlInsertBidRejected SqlText
+sql body sqlInsertBidRejected
+  INSERT INTO bids(bid_id, auction_id, bidder_user_id, amount_minor, status, reject_reason, auction_revision, expected_revision, has_expected_revision, request_id, idempotency_key, response_status, error_code, created_at) VALUES ('bid_' || lower(hex(randomblob(8))), ?, ?, ?, 2, ?, ?, ?, 1, ?, ?, ?, ?, ?) RETURNING bid_id
+storage module immutable sqlUpdateAuctionAfterBid SqlText
+sql body sqlUpdateAuctionAfterBid
+  UPDATE auctions SET current_bid_minor = ?, current_winner_user_id = ?, last_bid_id = ?, last_bidder_user_id = ?, accepted_bid_count = accepted_bid_count + 1, revision = revision + 1, event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ? AND status = 2 AND revision = ?
+storage module immutable sqlIncrementRejectedBidCount SqlText
+sql body sqlIncrementRejectedBidCount
+  UPDATE auctions SET rejected_bid_count = rejected_bid_count + 1, updated_at = ? WHERE auction_id = ?
+storage module immutable sqlInsertAuctionEvent SqlText
+sql body sqlInsertAuctionEvent
+  INSERT INTO auction_events(event_id, auction_id, sequence, auction_revision, schema_version, event_type, actor_user_id, request_id, idempotency_key, bid_id, payload_json, created_at) VALUES ('evt_' || lower(hex(randomblob(8))), ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+storage module immutable sqlSelectAuctionEvents SqlText
+sql body sqlSelectAuctionEvents
+  SELECT sequence, auction_revision, event_type, payload_json, created_at FROM auction_events WHERE auction_id = ? ORDER BY sequence ASC LIMIT 200
+storage module immutable sqlSelectAuctionEventsAfter SqlText
+sql body sqlSelectAuctionEventsAfter
+  SELECT sequence, auction_revision, event_type, payload_json, created_at FROM auction_events WHERE auction_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?
+storage module immutable sqlInsertAuditEvent SqlText
+sql body sqlInsertAuditEvent
+  INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, idempotency_key, action, command_kind, auction_id, bid_id, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+storage module immutable sqlInsertAuditEventWithError SqlText
+sql body sqlInsertAuditEventWithError
+  INSERT INTO audit_events(audit_event_id, schema_version, actor_user_id, actor_role, request_id, idempotency_key, action, command_kind, auction_id, bid_id, outcome, error_code, payload_json, created_at) VALUES ('aud_' || lower(hex(randomblob(8))), 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+storage module immutable sqlSelectAuctionAuditEventsAfter SqlText
+sql body sqlSelectAuctionAuditEventsAfter
+  SELECT audit_event_id, actor_user_id, actor_role, request_id, idempotency_key, action, command_kind, auction_id, bid_id, outcome, error_code, payload_json, created_at FROM audit_events WHERE auction_id = ? AND (created_at > ? OR (created_at = ? AND audit_event_id > ?)) ORDER BY created_at ASC, audit_event_id ASC LIMIT ?
+storage module immutable sqlInsertRequestLog SqlText
+sql body sqlInsertRequestLog
+  INSERT INTO request_log(request_id, method, path, route_pattern, status, actor_user_id, actor_role, duration_ms, auction_id, idempotency_key, ip_address_hash, user_agent_hash, request_bytes, response_bytes, error_code, started_at, finished_at) VALUES ('req_' || lower(hex(randomblob(8))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+storage module immutable sqlInsertRateLimitBucket SqlText
+sql body sqlInsertRateLimitBucket
+  INSERT OR REPLACE INTO rate_limit_buckets(bucket_key, scope, actor_user_id, route_pattern, window_start, window_ms, count, denied_count, limit_count, reset_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+storage module immutable sqlSelectAuctionExists SqlText
+sql body sqlSelectAuctionExists
+  SELECT 1 FROM auctions WHERE auction_id = ? LIMIT 1
+storage module immutable sqlAdvanceAuctionEventSequenceForChat SqlText
+sql body sqlAdvanceAuctionEventSequenceForChat
+  UPDATE auctions SET event_sequence = event_sequence + 1, updated_at = ? WHERE auction_id = ?
+storage module immutable sqlInsertChatMessage SqlText
+sql body sqlInsertChatMessage
+  INSERT INTO chat_messages(message_id, auction_id, author_user_id, status, body_text, request_id, created_at) VALUES ('msg_' || lower(hex(randomblob(8))), ?, ?, 1, ?, ?, ?) RETURNING message_id
+storage module immutable sqlSelectChatMessageForModeration SqlText
+sql body sqlSelectChatMessageForModeration
+  SELECT status, author_user_id, deleted_at, reported_at FROM chat_messages WHERE auction_id = ? AND message_id = ? LIMIT 1
+storage module immutable sqlMarkChatMessageDeleted SqlText
+sql body sqlMarkChatMessageDeleted
+  UPDATE chat_messages SET status = 2, deleted_at = ? WHERE auction_id = ? AND message_id = ? AND status <> 2
+storage module immutable sqlMarkChatMessageReported SqlText
+sql body sqlMarkChatMessageReported
+  UPDATE chat_messages SET status = 3, reported_at = ? WHERE auction_id = ? AND message_id = ? AND reported_at = 0
+storage module immutable sqlInsertChatAuctionEvent SqlText
+sql body sqlInsertChatAuctionEvent
+  INSERT INTO auction_events(event_id, auction_id, sequence, auction_revision, schema_version, event_type, actor_user_id, request_id, idempotency_key, bid_id, chat_message_id, payload_json, created_at) SELECT 'evt_' || lower(hex(randomblob(8))), ?1, event_sequence, revision, 1, ?2, ?3, ?4, ?5, '', ?6, ?7, ?8 FROM auctions WHERE auction_id = ?1
+storage module immutable sqlSelectChatRateActiveCount SqlText
+sql body sqlSelectChatRateActiveCount
+  SELECT COALESCE(SUM(count), 0) FROM rate_limit_buckets WHERE scope = ? AND actor_user_id = ? AND route_pattern = ? AND reset_at > ?
+storage module immutable sqlInsertChatRateBucket SqlText
+sql body sqlInsertChatRateBucket
+  INSERT INTO rate_limit_buckets(bucket_key, scope, actor_user_id, route_pattern, window_start, window_ms, count, denied_count, limit_count, reset_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)
