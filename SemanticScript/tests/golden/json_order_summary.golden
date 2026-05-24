@@ -1,0 +1,27 @@
+JSON Order Summary
+==================
+{
+  "orderCount": 3,
+  "totalCents": 4400,
+  "customerTotals": {
+    "Ada": 1901,
+    "Grace": 2499
+  },
+  "orderTotals": [
+    {
+      "id": "order-1001",
+      "customer": "Ada",
+      "totalCents": 1643
+    },
+    {
+      "id": "order-1002",
+      "customer": "Grace",
+      "totalCents": 2499
+    },
+    {
+      "id": "order-1003",
+      "customer": "Ada",
+      "totalCents": 258
+    }
+  ]
+}
