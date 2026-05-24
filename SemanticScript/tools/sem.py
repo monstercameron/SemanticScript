@@ -21,9 +21,16 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = "0.1.0"
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.repo_version import read_repo_version
+
+VERSION = read_repo_version()
+STARTER_PROJECT_VERSION = "0.0.1"
 SYNTAX_PAYLOAD_VERSION = "sem.syntaxCutover.v1"
+SYNTAX_INVENTORY_PATH = ROOT.parent / "docs" / "reference" / "syntax-inventory.md"
 CALL_DISPOSITION_VARIANTS = ("value", "ok", "error", "void")
 AUTHORITY_ACTIONS = frozenset({
     "allocate",
@@ -239,7 +246,7 @@ DIAGNOSTIC_EXPLAINERS = {
             "Parse failures usually mean the next safe move is to restore a valid row shape before broader repairs."
         ],
         "commonFixes": [
-            "Inspect the cited source line and restore a valid current-row form from SYNTAX.md or `sem skills get sem --json`.",
+            "Inspect the cited source line and restore a valid current-row form from docs/reference/syntax-inventory.md or `sem skills get sem --json`.",
             "Run `sem check --json` again after fixing the malformed row so higher-level diagnostics are trustworthy."
         ],
     },
@@ -379,6 +386,328 @@ def _profile_delta_payload(baseline_path: Path, candidate_path: Path) -> dict:
                 _nested_get(candidate, "hot.runtimeExternalCalls", {})),
         },
     }
+
+
+def _starter_project_words(path: Path) -> list[str]:
+    words = re.findall(r"[A-Za-z0-9]+", path.name)
+    return words or ["starter", "project"]
+
+
+def _starter_github_repo_details(repo_url: str) -> dict | None:
+    text = (repo_url or "").strip()
+    if not text:
+        return None
+    match = re.match(
+        r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$",
+        text,
+        re.IGNORECASE,
+    )
+    if match is None:
+        match = re.match(
+            r"^git@github\.com:(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?$",
+            text,
+            re.IGNORECASE,
+        )
+    if match is None:
+        return None
+    owner = match.group("owner")
+    repo = match.group("repo")
+    return {
+        "githubRepoUrl": f"https://github.com/{owner}/{repo}",
+        "githubRepoSlug": f"{owner}/{repo}",
+        "modulePath": f"github.com/{owner}/{repo}",
+    }
+
+
+def _prompt_for_starter_github_url() -> str | None:
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return None
+    try:
+        value = input("GitHub repo URL for this project (optional; press Enter to skip): ").strip()
+    except EOFError:
+        return None
+    return value or None
+
+
+def _starter_project_metadata(path: Path, github_repo: dict | None = None) -> dict:
+    words = _starter_project_words(path)
+    slug = "-".join(word.lower() for word in words)
+    project_name = "".join(word[:1].upper() + word[1:] for word in words)
+    build_project = words[0].lower() + "".join(word[:1].upper() + word[1:] for word in words[1:])
+    module_segment = "_".join(word.lower() for word in words)
+    if slug[0].isdigit():
+        slug = f"project-{slug}"
+    if project_name[0].isdigit():
+        project_name = f"Project{project_name}"
+    if build_project[0].isdigit():
+        build_project = f"project{build_project}"
+    if module_segment[0].isdigit():
+        module_segment = f"project_{module_segment}"
+    return {
+        "buildProject": build_project,
+        "projectName": project_name,
+        "projectTestName": f"{project_name}SmokeTest",
+        "moduleName": f"app.{module_segment}",
+        "moduleSegment": module_segment,
+        "moduleAlias": build_project,
+        "modulePath": (github_repo or {}).get("modulePath", f"github.com/example/{slug}"),
+        "nativeOutput": f"{slug}.exe",
+        "projectVersion": STARTER_PROJECT_VERSION,
+        "testFileName": "main.test.sem",
+        "githubRepoUrl": (github_repo or {}).get("githubRepoUrl", ""),
+        "githubRepoSlug": (github_repo or {}).get("githubRepoSlug", ""),
+    }
+
+
+def _starter_build_sem_text(meta: dict) -> str:
+    return "\n".join([
+        f"buildProject {meta['buildProject']}",
+        f"project {meta['projectName']}",
+        f"modulePath {meta['buildProject']} {meta['modulePath']}",
+        f"languageVersion {meta['buildProject']} \"1.0\"",
+        f"projectVersion {meta['buildProject']} \"{meta['projectVersion']}\"",
+        f"projectLicense {meta['buildProject']} MIT",
+        f"sourceRoot {meta['buildProject']} \".\"",
+        f"registerModule {meta['buildProject']} {meta['moduleName']} \".\"",
+        f"mainFile {meta['buildProject']} \"main.sem\"",
+        f"mainOperation {meta['buildProject']} main",
+        f"testRoot {meta['buildProject']} \".\"",
+        f"testPattern {meta['buildProject']} \"*.test.sem\"",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        f"targetRuntime {meta['buildProject']} nativeExe",
+        f"buildProfile {meta['buildProject']} dev",
+        f"optLevel {meta['buildProject']} 2",
+        f"runtimeChecks {meta['buildProject']} panic",
+        f"persistLlvmIr {meta['buildProject']} auto",
+        f"nativeOutput {meta['buildProject']} \"{meta['nativeOutput']}\"",
+        f"import {meta['moduleAlias']} {meta['moduleName']}",
+        "",
+    ])
+
+
+def _starter_main_sem_text(meta: dict) -> str:
+    return "\n".join([
+        f"module {meta['moduleName']}",
+        f"purpose module {meta['moduleName']} \"Starter console module for {meta['projectName']}.\"",
+        f"moduleOwns {meta['moduleName']} \"The exported console entrypoint and its stdout write contract.\"",
+        f"moduleDoesNotOwn {meta['moduleName']} \"Project registration and artifact policy; build.sem owns those rows.\"",
+        f"invariant module {meta['moduleName']} \"The exported main operation writes one greeting line and exits successfully when stdout is available.\"",
+        f"exportOperation {meta['moduleName']} main",
+        "",
+        "error MainError",
+        "errorCase MainError ConsoleWriteFailed ConsoleWriteError",
+        "",
+        "storage module immutable greetingText String \"Hello, world!\"",
+        "",
+        "operation main",
+        "input operation main console Console",
+        "output operation main Result ExitCode MainError",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"Write a hello-world line to standard output and exit successfully.\"",
+        "invariant operation main \"Exactly one greeting line is emitted before a success or console-write failure result is returned.\"",
+        "",
+        "call writeGreetingCall console.writeLine",
+        "argument writeGreetingCall console Console console",
+        "argument writeGreetingCall text String greetingText",
+        "run writeGreetingCall",
+        "ignore void source writeGreetingCall",
+        "bind error writeGreetingError ConsoleWriteError writeGreetingCall",
+        "branch error source writeGreetingCall target writeGreetingFailed",
+        "storage local immutable successCode ExitCode 0",
+        "return ok successCode",
+        "label writeGreetingFailed",
+        "makeError consoleWriteFailure MainError.ConsoleWriteFailed writeGreetingError",
+        "return error consoleWriteFailure",
+        "",
+    ])
+
+
+def _starter_test_sem_text(meta: dict) -> str:
+    return "\n".join([
+        f"project {meta['projectTestName']}",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"Keep the starter project green with one passing semantic smoke test.\"",
+        "invariant operation main \"The starter semantic smoke test remains side-effect free and exits with code 0.\"",
+        "return value 0",
+        "",
+    ])
+
+
+def _starter_ci_workflow_text(meta: dict) -> str:
+    return "\n".join([
+        "name: CI",
+        "",
+        "on:",
+        "  push:",
+        "  pull_request:",
+        "  workflow_dispatch:",
+        "",
+        "permissions:",
+        "  contents: read",
+        "",
+        "jobs:",
+        "  validate:",
+        "    runs-on: windows-latest",
+        "    steps:",
+        "      - name: Check out starter project",
+        "        uses: actions/checkout@v4",
+        "",
+        "      - name: Check out SemanticScript toolchain",
+        "        uses: actions/checkout@v4",
+        "        with:",
+        "          repository: monstercameron/SemanticScript",
+        "          path: SemanticScript",
+        "",
+        "      - name: Set up Python",
+        "        uses: actions/setup-python@v5",
+        "        with:",
+        "          python-version: \"3.12\"",
+        "          cache: pip",
+        "          cache-dependency-path: SemanticScript/requirements.txt",
+        "",
+        "      - name: Install SemanticScript dependencies",
+        "        run: |",
+        "          python -m pip install --upgrade pip",
+        "          python -m pip install -r SemanticScript/requirements.txt",
+        "",
+        "      - name: Check project",
+        "        run: python SemanticScript/SemanticScript/tools/sem.py check --json .",
+        "",
+        "      - name: Run semantic smoke tests",
+        "        run: python SemanticScript/SemanticScript/tools/sem.py test --json . --skip-python-harnesses",
+        "",
+        "      - name: Build native executable",
+        "        run: python SemanticScript/SemanticScript/tools/sem.py build . -- --emit-exe",
+        "",
+        "      - name: Smoke run hello world",
+        "        run: python SemanticScript/SemanticScript/tools/sem.py run .",
+        "",
+    ])
+
+
+def _starter_project_payload(path: Path, *, force: bool = False, github_url: str | None = None) -> dict:
+    root = path.resolve()
+    github_repo = None
+    if github_url:
+        github_repo = _starter_github_repo_details(github_url)
+        if github_repo is None:
+            return {
+                "schemaVersion": "sem.newProject.v1",
+                "tool": {"name": "sem", "version": VERSION},
+                "ok": False,
+                "status": "invalid-github-url",
+                "requestedPath": str(path),
+                "error": "GitHub repo URL must look like https://github.com/OWNER/REPO or git@github.com:OWNER/REPO.git",
+                "project": {
+                    "root": str(root),
+                    "githubRepoUrl": github_url,
+                },
+                "filesCreated": [],
+                "filesOverwritten": [],
+                "nextCommands": [],
+            }
+    meta = _starter_project_metadata(root, github_repo=github_repo)
+    build_path = root / "build.sem"
+    main_path = root / "main.sem"
+    test_path = root / meta["testFileName"]
+    workflow_path = root / ".github" / "workflows" / "ci.yml"
+    files_created: list[str] = []
+    files_overwritten: list[str] = []
+    next_commands = [
+        _next_command_entry(
+            "check",
+            "verify that the generated starter project parses, lints, and compiles cleanly",
+            argv=["sem", "check", "--json", str(root)],
+        ),
+        _next_command_entry(
+            "test",
+            "run the generated semantic smoke test from the starter project",
+            argv=["sem", "test", "--json", str(root), "--skip-python-harnesses"],
+        ),
+        _next_command_entry(
+            "run",
+            "run the starter project through the JIT and confirm the hello-world output",
+            argv=["sem", "run", str(root)],
+        ),
+        _next_command_entry(
+            "build",
+            "emit the native executable for the starter project",
+            argv=["sem", "build", str(root), "--", "--emit-exe"],
+        ),
+    ]
+    payload = {
+        "schemaVersion": "sem.newProject.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": False,
+        "status": "error",
+        "requestedPath": str(path),
+        "project": {
+            "root": str(root),
+            "buildProject": meta["buildProject"],
+            "projectName": meta["projectName"],
+            "moduleName": meta["moduleName"],
+            "modulePath": meta["modulePath"],
+            "buildFile": str(build_path),
+            "mainFile": str(main_path),
+            "testFile": str(test_path),
+            "workflowFile": str(workflow_path),
+            "projectVersion": meta["projectVersion"],
+            "nativeOutput": meta["nativeOutput"],
+            "githubRepoUrl": meta["githubRepoUrl"],
+            "githubRepoSlug": meta["githubRepoSlug"],
+        },
+        "filesCreated": files_created,
+        "filesOverwritten": files_overwritten,
+        "nextCommands": next_commands,
+    }
+    try:
+        if root.exists():
+            if not root.is_dir():
+                payload["error"] = "target path exists and is not a directory"
+                payload["status"] = "path-not-directory"
+                return payload
+            existing_entries = list(root.iterdir())
+            if existing_entries and not force:
+                payload["error"] = "target directory already exists and is not empty; pass --force to overwrite the starter scaffold files"
+                payload["status"] = "path-not-empty"
+                return payload
+        else:
+            root.mkdir(parents=True, exist_ok=True)
+
+        for target_path in (workflow_path.parent,):
+            target_path.mkdir(parents=True, exist_ok=True)
+
+        for target_path, text in (
+            (build_path, _starter_build_sem_text(meta)),
+            (main_path, _starter_main_sem_text(meta)),
+            (test_path, _starter_test_sem_text(meta)),
+            (workflow_path, _starter_ci_workflow_text(meta)),
+        ):
+            if target_path.exists():
+                files_overwritten.append(str(target_path))
+            else:
+                files_created.append(str(target_path))
+            target_path.write_text(text, encoding="utf-8", newline="\n")
+    except OSError as exc:
+        payload["error"] = str(exc)
+        payload["status"] = "write-failed"
+        return payload
+
+    payload["ok"] = True
+    payload["status"] = "updated" if files_overwritten else "created"
+    return payload
 
 
 def _find_build_tape(start: Path) -> Path | None:
@@ -770,18 +1099,6 @@ def _doctor_payload() -> dict:
     }
 
 
-def _module_version_from_path(path: Path) -> str:
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("__version__"):
-                _name, _equals, value = stripped.partition("=")
-                return value.strip().strip("\"'")
-    except OSError:
-        return ""
-    return ""
-
-
 def _load_semlint_module():
     module_name = "_sem_driver_semlint"
     if module_name in sys.modules:
@@ -820,10 +1137,9 @@ def _row_values(facts, verb: str, index: int = 0) -> list[str]:
 
 
 def _syntax_status_counts() -> dict:
-    syntax_path = ROOT.parent / "SYNTAX.md"
     counts = {"implemented": 0, "partial": 0, "notImplemented": 0}
     try:
-        text = syntax_path.read_text(encoding="utf-8")
+        text = SYNTAX_INVENTORY_PATH.read_text(encoding="utf-8")
     except OSError:
         return counts
     counts["implemented"] = text.count("| Impl'd |")
@@ -885,20 +1201,20 @@ def _build_context_payload(path: Path) -> dict:
         "tools": {
             "compiler": {
                 "path": str((ROOT / "compiler" / "semsc.py").resolve()),
-                "version": _module_version_from_path(ROOT / "compiler" / "semsc.py"),
+                "version": VERSION,
             },
             "linter": {
                 "path": str((ROOT / "linter" / "semlint.py").resolve()),
-                "version": _module_version_from_path(ROOT / "linter" / "semlint.py"),
+                "version": VERSION,
             },
             "formatter": {
                 "path": str((ROOT / "formatter" / "semfmt.py").resolve()),
-                "version": _module_version_from_path(ROOT / "formatter" / "semfmt.py"),
+                "version": VERSION,
             },
         },
         "runtimeFeatureFlags": _runtime_feature_flags(),
         "supportedSyntax": {
-            "inventoryPath": str((ROOT.parent / "SYNTAX.md").resolve()),
+            "inventoryPath": str(SYNTAX_INVENTORY_PATH.resolve()),
             "statusCounts": syntax_counts,
             "languageModes": ["strictExecutable", "refinedSyntax"],
             "schemaVersion": SYNTAX_PAYLOAD_VERSION,
@@ -1531,15 +1847,15 @@ def _version_payload() -> dict:
         "tool": {"name": "sem", "version": VERSION},
         "compiler": {
             "path": str((ROOT / "compiler" / "semsc.py").resolve()),
-            "version": _module_version_from_path(ROOT / "compiler" / "semsc.py"),
+            "version": VERSION,
         },
         "linter": {
             "path": str((ROOT / "linter" / "semlint.py").resolve()),
-            "version": _module_version_from_path(ROOT / "linter" / "semlint.py"),
+            "version": VERSION,
         },
         "formatter": {
             "path": str((ROOT / "formatter" / "semfmt.py").resolve()),
-            "version": _module_version_from_path(ROOT / "formatter" / "semfmt.py"),
+            "version": VERSION,
         },
         "runtimeFeatureFlags": _runtime_feature_flags(),
         "syntax": {
@@ -5314,6 +5630,30 @@ def command_version(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_new(args: argparse.Namespace) -> int:
+    github_url = getattr(args, "github_url", None)
+    if not args.json and not github_url:
+        github_url = _prompt_for_starter_github_url()
+    payload = _starter_project_payload(Path(args.path), force=bool(args.force), github_url=github_url)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        if payload["ok"]:
+            print(f"created starter project at {payload['project']['root']}")
+            for path in payload["filesCreated"]:
+                print(f"- created {path}")
+            for path in payload["filesOverwritten"]:
+                print(f"- updated {path}")
+            if payload["project"].get("githubRepoUrl"):
+                print(f"- github {payload['project']['githubRepoUrl']}")
+            print("next:")
+            for item in payload["nextCommands"]:
+                print(f"- {item['command']}")
+        else:
+            print(f"sem new: {payload['error']}", file=sys.stderr)
+    return 0 if payload["ok"] else 1
+
+
 def command_readiness(args: argparse.Namespace) -> int:
     payload = _readiness_payload(Path(args.path))
     if args.json:
@@ -5670,6 +6010,19 @@ def build_parser() -> argparse.ArgumentParser:
     version.add_argument("--json", action="store_true",
                          help="emit machine-readable version facts")
     version.set_defaults(func=command_version)
+
+    new = subparsers.add_parser(
+        "new",
+        help="create a starter SemanticScript console project with source, test, and CI scaffold files",
+    )
+    new.add_argument("--json", action="store_true",
+                     help="emit machine-readable scaffold results")
+    new.add_argument("--force", action="store_true",
+                     help="overwrite the starter scaffold files when the target directory already exists")
+    new.add_argument("--github-url",
+                     help="optional GitHub repository URL used to replace the placeholder modulePath during setup")
+    new.add_argument("path")
+    new.set_defaults(func=command_new)
 
     check = subparsers.add_parser(
         "check",

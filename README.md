@@ -1,5 +1,8 @@
 # SemanticScript
 
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmonstercameron%2FSemanticScript%2Fmain%2Fversion.json&query=%24.version&label=version)](https://github.com/monstercameron/SemanticScript/blob/main/version.json)
+[![CI](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml)
+
 SemanticScript is an agent-first application language and toolchain.
 
 It is built around a flat, line-oriented semantic tape where every executable
@@ -28,17 +31,24 @@ maintenance instead of human terseness.
 
 ## Start Here
 
+Install dependencies, check the tool wrapper, scaffold a small project, and run
+the green validation fixture:
+
+```powershell
+python -m pip install -r requirements.txt -c constraints.txt
+python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py new hello-world
+python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
+python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+```
+
 Use the `sem` wrapper first. It is the public agent-facing surface for
 validation, retrieval, repair planning, patching, and test orchestration.
 
-```powershell
-python -m pip install -r requirements.txt
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py graph --kind summary --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py explain SS3104 --json
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
-```
+`sem new` scaffolds `build.sem`, `main.sem`, `main.test.sem`, and a Windows
+GitHub Actions CI workflow for a minimal hello-world project. Add
+`--github-url https://github.com/you/hello-world` when you want the generated
+project metadata to point at a remote repository.
 
 `SemanticScript\tests\agent_cli_demo.test.sem` is the green validation fixture.
 `SemanticScript\tests\tiny.sem` is intentionally diagnostic-heavy and is useful
@@ -47,6 +57,45 @@ for repair-plan demos.
 On large project surfaces, `check`, `fix`, `graph`, and `slice` JSON output is
 compact by default for agent sessions. Use `--full` when you explicitly need
 the full payload expansion.
+
+## Hello World Shape
+
+This shortened `main.sem` excerpt shows the core language shape: named records,
+explicit effects, typed failure, and named call dataflow. `sem new hello-world`
+creates the complete runnable version.
+
+```semanticscript
+module app.hello_world
+purpose module app.hello_world "Console hello-world example."
+invariant module app.hello_world "The main operation emits one greeting line or returns a typed console-write failure."
+
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+
+storage module immutable greetingText String "Hello, world!"
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+authority main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Write Hello, world! to standard output and exit successfully."
+invariant operation main "The operation makes one console.writeLine call before returning either success or ConsoleWriteFailed."
+
+call writeGreetingCall console.writeLine
+argument writeGreetingCall console Console console
+argument writeGreetingCall text String greetingText
+run writeGreetingCall
+bind error writeGreetingError ConsoleWriteError writeGreetingCall
+branch error source writeGreetingCall target writeGreetingFailed
+storage local immutable successCode ExitCode 0
+return ok successCode
+label writeGreetingFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed writeGreetingError
+return error consoleWriteFailure
+```
 
 ## How The Tools Help In Iteration
 
@@ -291,7 +340,7 @@ mainOperation taskForgeWeb main
 targetRuntime taskForgeWeb nativeExe
 nativeOutput taskForgeWeb "taskforge_web.exe"
 
-importModule app.taskforge_web
+import taskForgeWeb app.taskforge_web
 ```
 
 The build tape is intentionally explicit. It gives compilers, editors, CI,
@@ -561,22 +610,16 @@ The current repository contains:
 - `apps/`: curated runnable app demos.
 - `experiments/kilo-port/`: native terminal editor stress port.
 - `vscode-semanticscript/`: local VS Code language extension.
-- `SYNTAX.md`: implementation-status table for the syntax surface.
+- `docs/reference/syntax-inventory.md`: implementation-status table for the syntax surface.
 
 The compiler supports project tapes, module imports, operation contracts,
 storage, calls, branches, typed returns, native executables, native HTTP,
 SQLite, JSON, bcrypt, HTML hydration, GUI and terminal runtime adapters,
 experimental native async/event and outbound HTTP client surfaces, and many
-refined metadata rows. `SYNTAX.md` is the source of truth for which rows are
+refined metadata rows. `docs/reference/syntax-inventory.md` is the source of truth for which rows are
 implemented, partial, or design-target syntax.
 
-## Quick Start
-
-Install Python dependencies:
-
-```powershell
-python -m pip install -r requirements.txt
-```
+## Validation Commands
 
 List and run the central project test suites:
 
@@ -590,17 +633,8 @@ python SemanticScript\tests\run_suite.py all
 ```
 
 GitHub Actions uses the same runner through the `ci-fast`, `editor`, and
-`ci-release` suite aliases.
-
-Run the sem-first quick path:
-
-```powershell
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
-```
+`ci-release` suite aliases. The top-level `Start Here` section is the
+sem-first path for newcomers.
 
 Run the lower-level component smoke when working on compiler, linter, or
 formatter internals:
@@ -770,7 +804,7 @@ navigation path. These follow-ups now carry:
 ## Repository Layout
 
 ```text
-SYNTAX.md                          Syntax inventory and implementation status
+docs/reference/syntax-inventory.md                          Syntax inventory and implementation status
 CHANGELOG.md                       Repository changelog
 docs/                              Maintained developer documentation
 docs/semantic-script.md             Root language/specification document
@@ -814,7 +848,7 @@ third_party/                       Vendored native dependencies and submodules
 - `docs/toolchain/formatter.md`: formatter CLI and canonical source style.
 - `docs/toolchain/linter.md`: linter CLI and diagnostic formats.
 - `docs/reference/compatibility.md`: public 1.0 compatibility contract.
-- `SYNTAX.md`: complete syntax inventory and implementation status table.
+- `docs/reference/syntax-inventory.md`: complete syntax inventory and implementation status table.
 - `docs/ast.md`: language and AST design notes.
 - `docs/semantic-script.md`: language specification and design intent.
 - `CHANGELOG.md`: dated repository history.

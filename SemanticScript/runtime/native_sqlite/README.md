@@ -83,7 +83,7 @@ This adapter is now wired through the SemanticScript toolchain:
 1. `SemanticScript/std/sqlite/main.sem` exposes the public `standard.sqlite`
    import surface for `SqliteDatabase`, `SqliteStatement`, open modes, step
    results, column types, and `sqlite.*` targets.
-2. Apps import it with `importModule sqlite standard.sqlite`; the compiler
+2. Apps import it with `import sqlite standard.sqlite`; the compiler
    links `sem_sqlite_runtime` for lowered SQLite calls.
 3. Feature and app coverage exercise the open / schema / prepare / bind /
    step / column / finalize / close path through generated SemanticScript

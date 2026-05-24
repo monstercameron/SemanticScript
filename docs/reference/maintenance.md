@@ -7,7 +7,7 @@ will drift: compiler, syntax inventory, linter, editor, examples, docs.
 
 For a new verb or changed schema:
 
-1. Update `SYNTAX.md` with the exact schema and implementation status.
+1. Update `syntax-inventory.md` with the exact schema and implementation status.
 2. Update `SemanticScript/compiler/semsc.py` parser handling.
 3. Add or update lowering if the verb affects runtime behavior.
 4. Add a focused file in `SemanticScript/sem/feature_tests/`.
@@ -42,7 +42,7 @@ Use the same status words everywhere:
 | `partial` | Some behavior lowers; some remains metadata or external runtime work. |
 | `proposed` | Research syntax, not committed compiler surface. |
 
-`SYNTAX.md` uses `Impl'd`, `Partial`, `Not impl'd`, and `Proposed`. Keep the
+`syntax-inventory.md` uses `Impl'd`, `Partial`, `Not impl'd`, and `Proposed`. Keep the
 meaning aligned when writing prose docs.
 
 ## Example Standards

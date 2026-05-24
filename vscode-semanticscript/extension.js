@@ -2776,7 +2776,7 @@ const domainTargetHoverText = (text) => {
   }
 
   if (['equal', 'notEqual', 'lessThan', 'lessThanOrEqual', 'greaterThan', 'greaterThanOrEqual'].includes(methodName)) {
-    return 'SYNTAX.md: enum/domain comparison methods preserve the declared type in source. For repr-backed enums the compiler resolves this to the matching width-specific math target, with no implicit widening at the call site.';
+    return 'docs/reference/syntax-inventory.md: enum/domain comparison methods preserve the declared type in source. For repr-backed enums the compiler resolves this to the matching width-specific math target, with no implicit widening at the call site.';
   }
 
   return 'docs/ast.md: `TypeName.methodName` lowers to an underlying primitive based on the alias type while preserving domain context in source.';

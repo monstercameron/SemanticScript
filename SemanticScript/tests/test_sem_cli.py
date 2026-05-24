@@ -2,6 +2,7 @@ import argparse
 import io
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -398,6 +399,159 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertNotIn("content", skill)
         self.assertTrue(skill["fileSummaries"])
         self.assertTrue(skill["sectionIndex"])
+
+    def test_new_payload_creates_starter_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            payload = sem._starter_project_payload(root)
+
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["schemaVersion"], "sem.newProject.v1")
+            self.assertEqual(payload["status"], "created")
+            self.assertEqual(payload["project"]["projectName"], "HelloWorld")
+            self.assertEqual(payload["project"]["moduleName"], "app.hello_world")
+            self.assertTrue((root / "build.sem").is_file())
+            self.assertTrue((root / "main.sem").is_file())
+            self.assertTrue((root / "main.test.sem").is_file())
+            self.assertTrue((root / ".github" / "workflows" / "ci.yml").is_file())
+
+            build_text = (root / "build.sem").read_text(encoding="utf-8")
+            main_text = (root / "main.sem").read_text(encoding="utf-8")
+            test_text = (root / "main.test.sem").read_text(encoding="utf-8")
+            workflow_text = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+            self.assertIn("entry console main", build_text)
+            self.assertIn(f'projectVersion helloWorld "{sem.STARTER_PROJECT_VERSION}"', build_text)
+            self.assertIn("target console", build_text)
+            self.assertIn('testPattern helloWorld "*.test.sem"', build_text)
+            self.assertIn("call writeGreetingCall console.writeLine", main_text)
+            self.assertIn("project HelloWorldSmokeTest", test_text)
+            self.assertIn("sem.py test --json . --skip-python-harnesses", workflow_text)
+            self.assertIn("sem.py build . -- --emit-exe", workflow_text)
+            self.assertTrue(any(item["kind"] == "check" for item in payload["nextCommands"]))
+            self.assertTrue(any(item["kind"] == "test" for item in payload["nextCommands"]))
+            self.assertTrue(any(item["kind"] == "run" for item in payload["nextCommands"]))
+
+    def test_new_payload_refuses_nonempty_directory_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            root.mkdir()
+            (root / "notes.txt").write_text("keep", encoding="utf-8")
+
+            payload = sem._starter_project_payload(root)
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["status"], "path-not-empty")
+
+            forced = sem._starter_project_payload(root, force=True)
+            self.assertTrue(forced["ok"])
+            self.assertEqual(forced["status"], "created")
+            self.assertTrue((root / "build.sem").is_file())
+            self.assertTrue((root / "main.sem").is_file())
+
+    def test_new_payload_sanitizes_arbitrary_folder_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "123 weird app!!!"
+            payload = sem._starter_project_payload(root)
+
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["project"]["projectName"], "Project123WeirdApp")
+            self.assertEqual(payload["project"]["buildProject"], "project123WeirdApp")
+            self.assertEqual(payload["project"]["moduleName"], "app.project_123_weird_app")
+            self.assertEqual(payload["project"]["nativeOutput"], "project-123-weird-app.exe")
+
+    def test_new_payload_uses_github_url_for_module_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            payload = sem._starter_project_payload(
+                root,
+                github_url="https://github.com/acme/hello-world",
+            )
+
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["project"]["modulePath"], "github.com/acme/hello-world")
+            self.assertEqual(payload["project"]["githubRepoUrl"], "https://github.com/acme/hello-world")
+            self.assertEqual(payload["project"]["githubRepoSlug"], "acme/hello-world")
+            build_text = (root / "build.sem").read_text(encoding="utf-8")
+            self.assertIn("modulePath helloWorld github.com/acme/hello-world", build_text)
+
+    def test_new_payload_rejects_invalid_github_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            payload = sem._starter_project_payload(
+                root,
+                github_url="https://gitlab.com/acme/hello-world",
+            )
+
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["status"], "invalid-github-url")
+
+    def test_command_new_prompts_for_github_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            args = argparse.Namespace(
+                path=str(root),
+                force=False,
+                json=False,
+                github_url=None,
+            )
+            with mock.patch.object(
+                sem,
+                "_prompt_for_starter_github_url",
+                return_value="https://github.com/acme/hello-world",
+            ), mock.patch("sys.stdout", new=io.StringIO()):
+                code = sem.command_new(args)
+
+            self.assertEqual(code, 0)
+            build_text = (root / "build.sem").read_text(encoding="utf-8")
+            self.assertIn("modulePath helloWorld github.com/acme/hello-world", build_text)
+
+    def test_new_starter_project_checks_and_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            payload = sem._starter_project_payload(root)
+            self.assertTrue(payload["ok"])
+
+            check_proc = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "SemanticScript" / "tools" / "sem.py"), "check", "--json", str(root)],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(check_proc.returncode, 0, check_proc.stderr)
+            check_payload = json.loads(check_proc.stdout)
+            self.assertEqual(check_payload["schemaVersion"], "sem.check.v1")
+            self.assertEqual(check_payload["status"], "ok")
+
+            test_proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "SemanticScript" / "tools" / "sem.py"),
+                    "test",
+                    "--json",
+                    str(root),
+                    "--skip-python-harnesses",
+                ],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(test_proc.returncode, 0, test_proc.stderr)
+            test_payload = json.loads(test_proc.stdout)
+            self.assertEqual(test_payload["schemaVersion"], "sem.test.v1")
+            self.assertEqual(test_payload["status"], "passed")
+            self.assertEqual(test_payload["discoveredTests"], 1)
+            self.assertEqual(test_payload["passedTests"], 1)
+
+            run_proc = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "SemanticScript" / "tools" / "sem.py"), "run", str(root)],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(run_proc.returncode, 0, run_proc.stderr)
+            self.assertEqual(run_proc.stdout, "Hello, world!\n")
 
     def test_markdown_heading_index_ignores_indented_example_comments(self) -> None:
         headings = sem._markdown_heading_index(

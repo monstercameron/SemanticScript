@@ -4,7 +4,7 @@
 #
 # Import this module with:
 #
-#   importModule gui standard.gui
+#   import gui standard.gui
 #
 # The `gui.*` call targets are the standard GUI construction and runtime
 # surface. Source code uses ordinary SemanticScript operation/call/arg/run

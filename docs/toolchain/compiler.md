@@ -66,7 +66,7 @@ CLI flags:
 | `--opt-level N` | LLVM optimization level `0..3`, default `2` unless `build.sem` provides `optLevel PROJECT N`. |
 | `--build-profile dev\|prod` | Runtime safety profile for compiled output. `dev` is the default and embeds `SSRUN001` panic context; `prod` keeps trap checks but hides source context. |
 | `--runtime-checks off\|traps\|panic` | Override the profile default. `off` emits no runtime checks, `traps` emits silent `llvm.trap` checks, and `panic` embeds the SemanticScript panic message before trapping. |
-| `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that use `importModule` directly. |
+| `--build-file PATH` | Merge build-time declarations (project metadata, icon registry, build switches) from this `.sem` / `.sscript` file into the main Program before codegen. Conflicting redeclarations are rejected. Unused by `build.sem` entry points that import their registered main module directly. |
 | `--std-path PATH` | Add an explicit standard-library root. May be repeated. Accepts a `std` root containing `module.sem`, a `SemanticScript` root containing `std/`, or a repo root containing `SemanticScript/std`. |
 | `--keep-resources` | Retain the intermediate Windows resource files (`.rc` / `.res` / `.ico`) next to the executable for debugging. Default behavior writes them to a tempdir and deletes after linking — the bytes survive only inside the `.exe`'s PE resource section. Overrides `keepResources PROJECT no` in the build tape. |
 | `--resource-dir PATH` | Explicit directory for intermediate resource files. Implies `--keep-resources`. Path resolves relative to the source file's directory unless absolute. Overrides `resourcesDir PROJECT "path"` in the build tape. |
@@ -195,7 +195,7 @@ CLI flags win over build-tape defaults for one-off invocations.
 
 On Windows, the compiler bakes project metadata and icon assets into the
 executable's PE resource section via `llvm-rc`. Source-level verbs
-(documented in `SYNTAX.md`) declare the resources:
+(documented in `docs/reference/syntax-inventory.md`) declare the resources:
 
 - Project metadata: `version`, `publisher`, `description`, `copyright`,
   `productName`, `internalName`, `originalFilename`, `trademark`,
@@ -245,13 +245,13 @@ embedded.
 
 | Area | 1.0 status | Supported in 1.0 | Not a 1.0 guarantee |
 |---|---|---|---|
-| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `importModule`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host, and the repository no longer includes a maintained SemanticScript-written compiler path. |
-| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `SYNTAX.md` decide runtime support. |
+| Python reference compiler | Supported | `SemanticScript/compiler/semsc.py` is the release compiler. It accepts `.sscript` and `.sem`, resolves `import ALIAS MODULE_PATH`, emits LLVM IR, JIT-runs `entry console`, and can link native executables through clang. | It is not a general web server host, and the repository no longer includes a maintained SemanticScript-written compiler path. |
+| VS Code extension | Supported editor tooling | `vscode-semanticscript/` registers `.sscript` and `.sem`, provides highlighting, hovers, semantic roles, and optional `semlint` / `semlint` diagnostics. | Highlighted or hovered syntax is not automatically executable compiler support. The compiler and `docs/reference/syntax-inventory.md` decide runtime support. |
 | Refined syntax | Partial, inspectable | The parser accepts many refined declarative lines for AST, linter, and editor inspection. Pure metadata is preserved or skipped safely. Some concurrency and dataflow forms lower to documented synchronous fallbacks. | Refined syntax is not uniformly runtime-complete. Use `--parse-only` for forms whose backend is intentionally absent. |
 | Web / HTTP runtime | Preview, release-tested | Routed `target webServer` programs emit a native HTTP/1.1 listener with exact method/path dispatch and `:name` path-parameter matching. Handlers use `input request HttpRequest`, `input response HttpResponse`, and `output Int32`. The native adapter supports request method/path/path-param/header/query/cookie/body text/body bytes reads, bounded multipart part reads, response text/bytes/SSE-event/header/file writes, one path-scoped middleware callback, blocking SSE primitives including id-bearing event frames, and `standard.http.serverIsShuttingDown` for handler-visible drain state. | HTTP/2/H2O, route timeout enforcement, structured body decoders, async long-lived fanout, request cancellation tokens, method-scoped middleware, and persistent server state are not 1.0 guarantees. Unrouted webserver files still compile as library/stub programs. |
 | Outbound `standard.net` client | Experimental prototype | `import net standard.net`, role types, `HttpGetRequest`, `HttpTextResponse`, `networkHttpClient`, and `net.fetchText` / `net.fetchBytes` call tapes are accepted. Canonical `net.fetchText` source passes a request record and receives a response record, while lowering still targets the native HTTP client ABI. The runtime link registry pulls in `native_http_client` plus `native_async` sources when these targets are used. Real network behavior requires building the optional libcurl/libuv runtime path. | The prototype is not a 1.0 guarantee. Continuation-frame `await` lowering, production async handler integration, and libcurl `multi_socket` support remain future work. |
 | Windows GUI runtime | Preview / partial | The committed compiler-owned surface is `target windowsGui`, `targetRuntime PROJECT windowsGui`, optional `guiBackend PROJECT win32\|winui3`, normal `entry console main`, explicit `standard.gui` `gui.*` calls, native runtime linking, and handler ABI preservation for `GuiSession` / `GuiEvent`. The active/default executable backend is the classic Win32 adapter in `native_win32_gui`; `guiBackend winui3` is recognized but rejected until the Windows App SDK backend is buildable. | `standard.gui` owns the GUI vocabulary, declaration contracts, capabilities, and validation semantics. There is no `entry windowsGui` row, and WinUI must not be implemented as a C# / XAML app sidecar. WinUI 3 is not link-ready until Windows App SDK / C++/WinRT build integration lands. |
-| Partial syntax rows | Explicitly partial | Rows marked partial in `SYNTAX.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
+| Partial syntax rows | Explicitly partial | Rows marked partial in `docs/reference/syntax-inventory.md` may parse, lint, lower synchronously, or emit structural stubs exactly as documented there. | A partial row must not be treated as full application-runtime support. Unsupported runtime semantics should fail rather than silently disappear. |
 | Runtime and diagnostics flags | Supported compiler interface | `--build-profile dev\|prod`, `--runtime-checks off\|traps\|panic`, `--persist-llvm-ir auto\|yes\|no`, `--diagnostics-format agent\|json\|raw`, and `--opt-level 0..3` are the 1.0 flag surface. | These flags do not change language support. `prod` hides panic source context; `off` removes runtime checks and should be chosen deliberately. |
 
 Native runtime ownership: `semsc.py` collects executable adapter sources through
@@ -278,8 +278,9 @@ Compiler-owned call-target boundary:
 ## Parse Pipeline
 
 1. Read source as UTF-8.
-2. Resolve `importModule` lines and inline imported files. For build tapes,
-   registered modules are resolved before legacy filesystem fallbacks.
+2. Resolve `import ALIAS MODULE_PATH` lines and inline imported files. For
+   build tapes, registered modules are resolved before filesystem/stdlib
+   fallbacks.
 3. Tokenize line by line.
 4. Build the `Program` object and current-operation body tapes.
 5. Load external literals from `literalSource` metadata.
@@ -288,12 +289,11 @@ Compiler-owned call-target boundary:
 
 ## Import Resolution
 
-`importModule ALIAS DOTTED.PATH` and the compatibility form
-`importModule DOTTED.PATH [as ALIAS]` are resolved before parsing. If the root
-source declares modules with `registerModule PROJECT MODULE_PATH "PATH"`, the
-compiler resolves those registered module paths first. A registered path may
-point at a source file or a folder with `main.sem`, `index.sem`, the leaf module
-file, or exactly one non-test `.sem` / `.sscript`.
+`import ALIAS DOTTED.PATH` rows are resolved before parsing. If the root source
+declares modules with `registerModule PROJECT MODULE_PATH "PATH"`, the compiler
+resolves those registered module paths first. A registered path may point at a
+source file or a folder with `main.sem`, `index.sem`, the leaf module file, or
+exactly one non-test `.sem` / `.sscript`.
 
 If no project-registered module matches, canonical standard-library module
 paths resolve through the std search path. `standard` maps to `std/module.sem`
@@ -313,7 +313,7 @@ the provider exports that operation. Singular import rows such as
 `importOperation localName provider publicOperation` bind an exported provider
 symbol to a local facade name. New project code should keep `registerModule`
 rows in `build.sem`; module files should keep their own `module`,
-`importModule`, singular import, and `export*` rows.
+`import`, singular import, and `export*` rows.
 
 ## Entry and Library Modes
 
@@ -350,7 +350,7 @@ apps\desktop-window-smoke\build\desktop_window_smoke.exe
 
 Expected behavior: a top-level window titled `Desktop Window Smoke` appears. Closing the
 window exits the process with status `0`. The source should keep using ordinary
-`operation` / `call` / `argument` / `run` rows with `importModule gui standard.gui`;
+`operation` / `call` / `argument` / `run` rows with `import gui standard.gui`;
 do not add `entry windowsGui`.
 
 The stub mode supports stdlib files and refined syntax showcases that need

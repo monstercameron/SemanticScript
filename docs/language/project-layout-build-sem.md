@@ -94,7 +94,7 @@ keepResources taskForgeTui no
 
 comptimeOperation taskForgeTui configureTaskForgeTuiBuild
 
-importModule app.todo
+import todo app.todo
 ```
 
 ### build.sem Schema Reference
@@ -127,7 +127,7 @@ Current responsibilities:
 - `formatterSetting`, `linterSetting`, and `docsOutput` expose project tool
   settings without adding a TOML/YAML sidecar.
 - `comptimeOperation` is reserved for future compile-time configuration work.
-- The final `importModule app.todo` is the current compiler bridge that inlines
+- The final `import todo app.todo` is the current compiler bridge that inlines
   the registered executable module.
 
 `build.sem` must not own public API export rows. Those belong in the module
@@ -179,7 +179,7 @@ starts with the same `PROJECT` token declared by `buildProject PROJECT`.
 | `linterSetting PROJECT KEY VALUE` | no | Project linter setting row. |
 | `docsOutput PROJECT "PATH"` | no | Documentation output directory. |
 | `comptimeOperation PROJECT OPERATION` | reserved | Future 2.0 compile-time build hook. |
-| `importModule MODULE_PATH` | bridge | Current compiler bridge that inlines registered module source. |
+| `import ALIAS MODULE_PATH` | bridge | Current compiler bridge that inlines registered module source. |
 
 Strict checks now reject multiple `buildProject` rows, project-name drift,
 malformed project rows, invalid enum values, missing required rows, and
@@ -279,7 +279,7 @@ nativeOutput helloWeb "hello_web.exe"
 nativeHttpHost helloWeb "127.0.0.1"
 nativeHttpPort helloWeb 18080
 
-importModule app.hello_web
+import helloWeb app.hello_web
 ```
 
 ## Native Windows GUI Example
@@ -287,9 +287,8 @@ importModule app.hello_web
 The build tape owns only the target/link bridge. GUI vocabulary belongs to the
 imported `standard.gui` module, which should provide the metadata contracts,
 capabilities, and validation rules for application/window/control declarations.
-Use `importModule gui standard.gui` in GUI source. The legacy
-`importModule standard.gui as gui` form remains accepted during the
-compatibility window, but the alias-first form is preferred.
+Use `import gui standard.gui` in GUI source. Legacy `importModule` rows are
+rejected by the compiler; migrate older source before compiling.
 
 `build.sem`:
 
@@ -322,14 +321,14 @@ cpuFeatureCheck desktopWindowSmoke auto
 nativeOutput desktopWindowSmoke "desktop_window_smoke.exe"
 
 entry console main
-importModule app.desktop_window_smoke
+import desktopWindowSmoke app.desktop_window_smoke
 ```
 
 `main.sem`:
 
 ```semanticscript
 module app.desktop_window_smoke
-importModule gui standard.gui
+import gui standard.gui
 
 storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
@@ -372,7 +371,7 @@ Rules:
 
 - Do not declare `entry windowsGui` in a `windowsGui` build tape.
 - Use `entry console main` and keep GUI construction as explicit `gui.*` calls.
-- Use `importModule gui standard.gui` for the GUI contract namespace.
+- Use `import gui standard.gui` for the GUI contract namespace.
 - The compiler bridge should only lower `gui.*` calls and link the runtime.
 - Shape checks such as duplicate controls, allowed events, accessibility names,
   and GUI capability coverage belong in `standard.gui` and lint/tooling where
@@ -426,8 +425,8 @@ moduleOwns app.todo "TUI lifecycle, keyboard handling, todo state, and save/load
 moduleDoesNotOwn app.todo "Reusable standard library abstractions."
 moduleInvariant app.todo "main.sem is the executable entry selected by build.sem."
 
-importModule domain app.todo.domain
-importModule persistence app.todo.persistence
+import domain app.todo.domain
+import persistence app.todo.persistence
 
 exportType app.todo TodoItem
 exportError app.todo MainError
@@ -446,9 +445,9 @@ operation main
 Rules:
 
 - `module MODULE_PATH` must name a module registered by `build.sem`.
-- `importModule ALIAS MODULE_PATH` is the preferred project import form.
-  `importModule MODULE_PATH [as ALIAS]` remains supported for legacy source
-  and standard-library samples.
+- `import ALIAS MODULE_PATH` is the project and standard-library import form.
+  Legacy `importModule` rows are rejected by the compiler and should be
+  converted with the syntax migration tool.
 - `exportType`, `exportError`, `exportOperation`, `exportCapability`, and
   `exportConstant` are explicit public contract rows.
 - `exportType` covers aliases, records, and enums; there are no separate
@@ -541,11 +540,11 @@ imports create qualified names backed by the provider's export contract tape.
 Good:
 
 ```semanticscript
-importModule persistence app.todo.persistence
+import persistence app.todo.persistence
 call loadCall persistence.loadTodos
 ```
 
-Compatibility:
+Legacy rows rejected by the compiler:
 
 ```semanticscript
 importModule app.todo.persistence as persistence
@@ -554,8 +553,7 @@ importModule app.todo.persistence
 
 The alias-first form is preferred for project modules because it puts the local
 namespace before the provider path and makes call sites mechanically
-predictable. Unaliased `importModule MODULE_PATH` keeps the legacy import bridge
-alive, but new multi-module code should use an alias.
+predictable.
 
 External dependency imports must use aliases. The alias is the local source
 name; the dependency alias and module path remain package identity in
@@ -566,7 +564,7 @@ name; the dependency alias and module path remain package identity in
 Qualified names are resolved from provider export rows only:
 
 ```semanticscript
-importModule persistence app.todo.persistence
+import persistence app.todo.persistence
 call loadCall persistence.loadTodos
 input saveHandler todo persistence.TodoItem
 useCapability saveHandler persistence.todoStoreReader
@@ -593,7 +591,7 @@ Singular imports are allowed when a module intentionally wants a local facade
 name:
 
 ```semanticscript
-importModule persistence app.todo.persistence
+import persistence app.todo.persistence
 importOperation loadTodos persistence loadTodosFromDisk
 importType TodoItem persistence TodoItem
 importError TodoStoreError persistence TodoStoreError
@@ -635,7 +633,7 @@ consumer operation must restate that effect, or a broader hierarchical effect
 path, in its own source:
 
 ```semanticscript
-importModule github app.net.github
+import github app.net.github
 
 operation syncIssues
 output syncIssues Void
@@ -760,7 +758,7 @@ The current linter enforces the project-module boundary with `SS250x` rules:
 | `SS2512` | Exported operation names should be domain-specific, not generic placeholders. |
 | `SS2513` | Exported operations should declare every effect implied by known runtime calls. |
 | `SS2514` | Exported dependency wrappers should carry module ownership context. |
-| `SS2530` | `importModule` rows must use a supported module/alias shape. |
+| `SS2530` | Legacy `importModule` rows must be converted to `import ALIAS MODULE_PATH`. |
 | `SS2531` | Module aliases must not collide or shadow local declarations. |
 | `SS2532` | Wildcard singular imports are rejected. |
 | `SS2533` | Singular imports must target a known module alias. |
@@ -843,9 +841,9 @@ Parser-only and compatibility assumptions for 1.x:
   future tool integration.
 - `moduleFolder MODULE_PATH "PATH"` remains a compatibility alias for
   `registerModule PROJECT MODULE_PATH "PATH"`.
-- `importModule ALIAS MODULE_PATH` is preferred. Legacy
+- `import ALIAS MODULE_PATH` is the committed import form. Legacy
   `importModule MODULE_PATH as ALIAS` and unaliased `importModule MODULE_PATH`
-  stay parseable during the migration window.
+  are migration-tool inputs, not compiler-accepted rows.
 - Registered folder resolution accepts `main.sem`, `main.sscript`,
   `index.sem`, `index.sscript`, a source file named after the module leaf, or
   exactly one non-test `.sem` / `.sscript` file. Ambiguous folders should be
@@ -860,7 +858,7 @@ Changed docs and examples:
 - `docs/language/program-structure.md` explains `build.sem`, `main.sem`,
   module registration, colocated tests, standard-library module layout, and
   import/export boundaries.
-- `SYNTAX.md` and `docs/reference/verb-index.md` list the build-tape,
+- `docs/reference/syntax-inventory.md` and `docs/reference/verb-index.md` list the build-tape,
   module-metadata, import, and export rows.
 - `docs/reference/package-management.md` defines local/Git dependency syntax,
   `.semcache/`, and `sem.lock` policy.
@@ -869,8 +867,8 @@ Changed docs and examples:
 
 Compatibility warnings users should expect:
 
-- Prefer `importModule ALIAS MODULE_PATH`; legacy
-  `importModule MODULE_PATH [as ALIAS]` remains accepted during migration.
+- Prefer `import ALIAS MODULE_PATH`; run the syntax migration tool for legacy
+  `importModule` source.
 - Prefer `registerModule PROJECT MODULE_PATH "PATH"`; `moduleFolder` is a
   compatibility alias.
 - Export rows belong in module source files, not `build.sem`.
@@ -900,7 +898,7 @@ matures.
 Implemented now:
 
 - `.sem` and `.sscript` source files.
-- `build.sem` as a compiler entry point through the final `importModule`.
+- `build.sem` as a compiler entry point through the final `import` row.
 - registered module resolution before filesystem fallback.
 - compiler-managed build folders.
 - `sem build PATH` discovery through the thin `SemanticScript/tools/sem.py`

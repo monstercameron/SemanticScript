@@ -1,7 +1,7 @@
 module app.http_runtime_gauntlet
 purpose module app.http_runtime_gauntlet "Native HTTP/1.1 adapter conformance harness: every routing, request-read, response-write, multipart, SSE, and middleware edge currently lowered by the reference compiler is exercised here under a test asserting the exact wire-level contract."
 moduleOwns app.http_runtime_gauntlet "All 27 route handlers and middleware ops, the webServer routing surface, path-scoped routeTimeout/routeMiddleware bindings, the gauntlet's two capabilities (httpRequestReader, httpResponseWriter), module-scope status constants, the request-timeout budget, and the response-body forwarder declaration on writeTextResponse."
-moduleDoesNotOwn app.http_runtime_gauntlet "The native HTTP runtime itself (sem_http_runtime.c lives under SemanticScript/runtime/native_http), the MiddlewareControl built-in enum (auto-registered by semsc per the SYNTAX.md MiddlewareControl row), and the dispatcher's short-circuit semantics (owned by the runtime; this module only exercises them via shortCircuitProbeMiddleware)."
+moduleDoesNotOwn app.http_runtime_gauntlet "The native HTTP runtime itself (sem_http_runtime.c lives under SemanticScript/runtime/native_http), the MiddlewareControl built-in enum (auto-registered by semsc per the docs/reference/syntax-inventory.md MiddlewareControl row), and the dispatcher's short-circuit semantics (owned by the runtime; this module only exercises them via shortCircuitProbeMiddleware)."
 moduleWarning app.http_runtime_gauntlet "Two routes intentionally exhibit non-default contracts that future agents MUST NOT 'fix' silently: /reflect/required-header-or-fail pins the adapter's null-body 500 failure path via `pinsNullBodyFailurePath requiredHeaderHandler`, and /middleware-short-circuit pins the dispatcher's short-circuit arm via shortCircuitMiddlewareControl. Both behaviors are externally asserted by test_http_runtime_gauntlet.py; remove the pin and you delete coverage."
 invariant module app.http_runtime_gauntlet "Every dispatched route either guards nullable http.request* reads with pointer.isNull and returns 400 on absence, OR carries `pinsNullBodyFailurePath OP \"rationale\"` to opt into the legacy null-body 500 contract. The semlint SS3603 rule enforces this split — silence it only by adding the verb, never by deleting the guard."
 
@@ -926,7 +926,7 @@ async sseOneEventHandler no
 useCapability sseOneEventHandler httpResponseWriter
 purpose operation sseOneEventHandler "Return one server-sent-event frame (text/event-stream) through the blocking HTTP adapter so tests can verify SSE framing without needing a long-lived connection"
 invariant operation sseOneEventHandler "Current native SSE support is one-shot event-stream FORMATTING, not a long-lived streaming connection — the response is sent and the socket closes. Cache-Control: no-cache is added because intermediaries can otherwise cache an event-stream response, defeating the live-event semantics."
-warning sseOneEventHandler "Real SSE clients hold the socket open for many events; this handler returns immediately after one event. Tests that expect server-push behavior need a future long-lived response API (tracked under SYNTAX.md's webServer Partial row)."
+warning sseOneEventHandler "Real SSE clients hold the socket open for many events; this handler returns immediately after one event. Tests that expect server-push behavior need a future long-lived response API (tracked under docs/reference/syntax-inventory.md's webServer Partial row)."
 
 label startSseOneEventHandler
 

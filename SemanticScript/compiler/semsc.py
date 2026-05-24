@@ -76,8 +76,9 @@ from shared.call_contracts import (
     fallibility_kind,
     is_supported_route_method,
 )
+from shared.repo_version import read_repo_version
 
-__version__ = "1.0.0"
+__version__ = read_repo_version()
 
 
 # ============================================================
@@ -539,7 +540,7 @@ class Program:
         # the role taxonomy, `icon` declares a group, `iconImage` declares a
         # named image entity, and `iconImage*` rows attach each property of
         # that image. Compiler walks these at emit-exe to build platform
-        # icons. See SYNTAX.md for the row schemas.
+        # icons. See docs/reference/syntax-inventory.md for the row schemas.
         self.icon_role_definitions = {}   # role_token -> description text
         self.icon_groups = {}             # group_name -> dict(role, purpose, line)
         self.icon_images = {}             # image_name -> dict(group, path, format, width, height, scale, depth, platform, purpose, line)
@@ -640,7 +641,7 @@ BODY_VERBS_RESERVED_SOFT = {
     # native HTTP adapter's null-body 500 contract. Replaces a stringly-
     # typed marker phrase that used to live inside `warning OP "..."`
     # text. semsc treats it as metadata; semlint SS3603 reads it as the
-    # canonical opt-out. See SYNTAX.md#pinsNullBodyFailurePath.
+    # canonical opt-out. See docs/reference/syntax-inventory.md#pinsNullBodyFailurePath.
     "pinsNullBodyFailurePath",
     # `responseBodyForwarder OP bodyArgName` — declares that an operation
     # forwards its `bodyArgName` input straight into an http.response*
@@ -650,7 +651,7 @@ BODY_VERBS_RESERVED_SOFT = {
     # `rationale CALL "text"` — operation-body counterpart to the
     # `# rationale:` typed comment; explicitly attaches a rationale to a
     # specific call site so SS3603 (and other rules) can cite it without
-    # relying on comment proximity. See SYNTAX.md#rationale.
+    # relying on comment proximity. See docs/reference/syntax-inventory.md#rationale.
     "rationale",
 }
 
@@ -1175,16 +1176,16 @@ _ICON_ROLES_RECOGNIZED = frozenset({
     "splash",
 })
 
-# Recognised image-format tokens for iconImageFormat. Matches SYNTAX.md.
+# Recognised image-format tokens for iconImageFormat. Matches docs/reference/syntax-inventory.md.
 _ICON_IMAGE_FORMATS = frozenset({"png", "ico"})
 
-# Recognised colour-depth tokens for iconImageDepth. Matches SYNTAX.md.
+# Recognised colour-depth tokens for iconImageDepth. Matches docs/reference/syntax-inventory.md.
 _ICON_IMAGE_DEPTHS = frozenset({"bits8", "bits24", "bits32"})
 
 # Recognised platform tokens for iconImagePlatform. `any` means the image
 # is consumed by every platform that has an emitter; the three explicit
 # tokens limit the image to a single platform's lowering pass. The
-# `macos` spelling matches the SYNTAX.md row and the user-facing vocab.
+# `macos` spelling matches the docs/reference/syntax-inventory.md row and the user-facing vocab.
 _ICON_IMAGE_PLATFORMS = frozenset({"any", "windows", "macos", "linux"})
 
 # Verb -> property name in the icon_images[name] dict.
@@ -10856,7 +10857,7 @@ class Codegen:
         # Record-typed `json.encode.TypeName` still falls through to the
         # external-module fallback because that requires walking record
         # fields and emitting a structural encoder, which is the real
-        # codec runtime work tracked under SYNTAX.md's Partial row.
+        # codec runtime work tracked under docs/reference/syntax-inventory.md's Partial row.
         if target in (
             "json.encode.Int64", "json.encode.UInt64",
             "json.encode.Int32", "json.encode.UInt32",
@@ -11104,7 +11105,7 @@ class Codegen:
             # produce the string surrounded by ASCII quotes — correct for
             # ASCII payloads that contain none of the special characters.
             # Full escape handling is deferred to the real codec runtime
-            # tracked under SYNTAX.md's Partial row.
+            # tracked under docs/reference/syntax-inventory.md's Partial row.
             v = arg_val_named("value")
             if isinstance(v.type, ir.IntType):
                 v = builder.inttoptr(v, Int8P)
@@ -11986,7 +11987,7 @@ class Codegen:
         #      NULLABLE_HTTP_REQUEST_READS / HTTP_RESPONSE_BODY_WRITERS
         #      constants that drive SS3603 (unguardedHttpInput) and the
         #      `_collect_transitive_response_body_writers` walk.
-        #   3. SYNTAX.md — the two `http.requestMethod, …` and
+        #   3. docs/reference/syntax-inventory.md — the two `http.requestMethod, …` and
         #      `http.responseText, …` umbrella rows.
         #
         # The drift between these three sources is asserted by the

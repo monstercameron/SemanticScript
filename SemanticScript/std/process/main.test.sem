@@ -13,7 +13,7 @@
 #   returns an error.
 #
 # # pattern: this is the canonical main.test.sem form â€” same
-#   directory as main.sem, importModule foo, project block local
+#   directory as main.sem, import foo standard.foo, project block local
 #   to the test, entry console main. The implementation file
 #   std/process/main.sem carries no smoke main itself.
 

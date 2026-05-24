@@ -11,7 +11,7 @@ from pathlib import Path
 # repository root: scripts -> http-runtime-gauntlet -> apps -> repo-root.
 ROOT = Path(__file__).resolve().parents[3]
 # The gauntlet is compiled via its project-mode build tape (build.sem) per the
-# new SYNTAX.md build-tape rows (buildProject / registerModule / mainFile /
+# new docs/reference/syntax-inventory.md build-tape rows (buildProject / registerModule / mainFile /
 # importModule …). build.sem inlines main.sem as the module source; passing
 # build.sem to semsc applies the project metadata (VERSIONINFO embedded into
 # the PE), the build settings (profile / runtime-checks / native output), and

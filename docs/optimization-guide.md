@@ -683,7 +683,7 @@ them must name the enum, not the underlying integer.
 Declare project metadata in the project's `build.sem` tape so executable
 identity lives beside target/runtime/output configuration instead of inside
 `main.sem`. `build.sem` also registers module folders; module files keep their
-own `module`, `importModule`, and `export*` contract rows. On `--emit-exe` the
+own `module`, `import`, and `export*` contract rows. On `--emit-exe` the
 compiler generates a transient Windows
 `VERSIONINFO` resource, compiles it with `llvm-rc` (or `windres` if present),
 and links the compiled `.res` from the managed `build/resources/` directory
@@ -1190,16 +1190,16 @@ the linter rather than in the parser.
 ## Cross-Document References
 
 Several `warning OP "..."` and `invariant OP "..."` lines cite spec
-rows by anchor (`SYNTAX.md#webServer`, `SYNTAX.md#routeMiddleware`).
+rows by anchor (`docs/reference/syntax-inventory.md#webServer`, `docs/reference/syntax-inventory.md#routeMiddleware`).
 There is no first-class `tracks OP "anchor"` verb; the references are
 prose. The discipline:
 
-- Use the literal anchor text that appears in `SYNTAX.md` (e.g.,
+- Use the literal anchor text that appears in `docs/reference/syntax-inventory.md` (e.g.,
   `#routeMiddleware` not `#middleware`).
 - The drift guard `TestHttpTargetSourceOfTruth` (`test_semlint.py`)
   asserts every `http.*` target from `semsc.py` is mentioned in
-  `SYNTAX.md`. For other cross-doc references, manual review is the
-  only enforcement — add `grep -F 'SYNTAX.md#anchor' apps/` to the
+  `docs/reference/syntax-inventory.md`. For other cross-doc references, manual review is the
+  only enforcement — add `grep -F 'docs/reference/syntax-inventory.md#anchor' apps/` to the
   review checklist if you add a new tracking citation pattern.
 - If a tracking citation breaks (anchor renamed, row removed), fix
   the source row rather than silently updating the reference; the
@@ -1221,13 +1221,13 @@ The native HTTP target surface lives in three places:
    `NON_NULLABLE_HTTP_REQUEST_READS`, `NULLABLE_HTTP_REQUEST_READS`,
    `HTTP_RESPONSE_BODY_WRITERS`, `HTTP_RESPONSE_OTHER_WRITERS`, and
    the `ALL_NATIVE_HTTP_TARGETS` union.
-3. `SYNTAX.md` — the two `http.requestMethod, …` and
+3. `docs/reference/syntax-inventory.md` — the two `http.requestMethod, …` and
    `http.responseText, …` umbrella rows.
 
 `TestHttpTargetSourceOfTruth` in `test_semlint.py` parses semsc.py
 for every `"http.X"` literal and asserts the set equals
 `ALL_NATIVE_HTTP_TARGETS`. A second assertion checks every dispatch
-target appears in SYNTAX.md. A third checks the four classifier sets
+target appears in docs/reference/syntax-inventory.md. A third checks the four classifier sets
 are pairwise disjoint so membership-based decisions in SS3603 /
 SS3601 are unambiguous.
 
@@ -1284,7 +1284,7 @@ The stable choices, in order of preference:
 
 1. **Rule ID** — `SS3603 unguardedHttpInput`. Rule IDs are assigned
    once and never renumbered.
-2. **Spec anchor** — `SYNTAX.md#routeMiddleware`. Anchors track the
+2. **Spec anchor** — `docs/reference/syntax-inventory.md#routeMiddleware`. Anchors track the
    spec row; row reordering doesn't change the anchor.
 3. **Function name** — `semsc.py`'s `_check_route_methods`. Function
    names rename rarely and break loudly when they do.

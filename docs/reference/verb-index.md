@@ -1,6 +1,6 @@
 # Verb Index
 
-This is a grouped index, not the exhaustive status table. Use `SYNTAX.md` for
+This is a grouped index, not the exhaustive status table. Use `syntax-inventory.md` for
 the row-by-row implementation inventory. Keep this file stable and readable:
 add verbs to the family that owns their semantics.
 
@@ -64,7 +64,10 @@ partial       mixed behavior; see owning language doc
 | `formatterSetting` | `formatterSetting PROJECT KEY VALUE` | metadata |
 | `linterSetting` | `linterSetting PROJECT KEY VALUE` | metadata |
 | `docsOutput` | `docsOutput PROJECT "PATH"` | metadata |
-| `importModule` | `importModule ALIAS DOTTED.PATH` or `importModule DOTTED.PATH [as ALIAS]` | lowered pre-parse |
+| `buildConstant` | `buildConstant PROJECT NAME TYPE VALUE` | lowered |
+| `nativeRuntimeSource` | `nativeRuntimeSource MODULE "PATH"` | lowered |
+| `nativeRuntimeLinkArg` | `nativeRuntimeLinkArg MODULE [any\|windows\|posix] "ARG"` | lowered |
+| `import` | `import ALIAS DOTTED.PATH` | lowered pre-parse |
 | `importOperation` | `importOperation LOCAL_NAME MODULE_ALIAS EXPORTED_OPERATION` | partial |
 | `importType` | `importType LOCAL_NAME MODULE_ALIAS EXPORTED_TYPE` | partial |
 | `importError` | `importError LOCAL_NAME MODULE_ALIAS EXPORTED_ERROR` | partial |
@@ -128,7 +131,7 @@ literalBytes literalDigest literalPreview literalSource literalTrust
 
 | Family | Verbs |
 |---|---|
-| Calls | `call`, `argument`, `timeout`, `cancelOn`, `run`, `start`, `await`, `case`, `done` |
+| Calls | `call`, `argument`, `timeout`, `cancelOn`, `run`, `runChecked`, `start`, `await`, `case`, `done` |
 | Binding | `bind value`, `bind ok`, `bind error`, `ignore ok`, `ignore value`, `ignore void` |
 | Errors | `makeError`, `declareFailure`, `error`, `errorCase` |
 | Labels | `label`, `jump`, `branch if`, `branch error`, `branch else` |
@@ -168,13 +171,13 @@ Import `standard.json` with the canonical `json` alias before using the public
 JSON surface:
 
 ```text
-importModule json standard.json
+import json standard.json
 ```
 
 Implemented builder/finder calls remain available while the document CRUD API
 lands. Rows marked `proposed` are the public contract shape but do not have
 current parser/runtime lowering; rows marked `partial` have some parser or
-primitive-alias behavior but not the full intended surface. See `SYNTAX.md` for
+primitive-alias behavior but not the full intended surface. See `syntax-inventory.md` for
 the row-level implementation status before relying on them in executable code.
 
 | Verb | Schema | Status |
@@ -252,11 +255,11 @@ for `guiBackend winui3`. There is no `entry windowsGui` row. The preferred
 standard-library import is:
 
 ```text
-importModule gui standard.gui
+import gui standard.gui
 ```
 
-The legacy `importModule standard.gui as gui` shape remains accepted during the
-compatibility window, but new GUI code should use the alias-first form above.
+Legacy `importModule` rows are rejected by the compiler; use the alias-first
+`import` form above.
 Top-level row-centric GUI declarations such as `guiApplication`, `guiWindow`,
 and `guiButton` are historical design notes, not committed executable verbs.
 
@@ -363,9 +366,14 @@ fallback.
 runtimeBinding NAME TARGET
 runtimeBindingPrecondition NAME "text"
 runtimeBindingFailure NAME ERROR.VARIANT
+runtimeBindingAsyncStart NAME native.SYMBOL
+runtimeBindingAsyncAwait NAME native.SYMBOL
+nativeRuntimeSource MODULE "PATH"
+nativeRuntimeLinkArg MODULE [any|windows|posix] "ARG"
 intrinsicName NAME arithmetic.addInt64
 ```
 
-The compiler has direct lowering for selected runtime bindings and arithmetic
-intrinsics. Unknown runtime binding names fall back to normal operation body
-compilation.
+The compiler has direct lowering for selected runtime bindings, generic async
+runtimeBinding start/await pairs, module-declared native adapter sources/link
+args, and arithmetic intrinsics. Unknown runtime binding names fall back to
+normal operation body compilation.

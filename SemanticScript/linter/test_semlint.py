@@ -330,7 +330,7 @@ run writeLineCall
 
 # ==========================================================================
 # SS3104  capabilityCoverage.missing  (T3, NOT compile-blocking — matches
-# SYNTAX.md which scopes capability coverage as a linter rule)
+# docs/reference/syntax-inventory.md which scopes capability coverage as a linter rule)
 # ==========================================================================
 
 class TestEffectWithoutCapability(unittest.TestCase):
@@ -4958,7 +4958,7 @@ purpose neverDeclaredAnything "this subject doesn't exist anywhere"
     def test_purpose_on_webserver_not_flagged(self) -> None:
         # Pre-P1 this incorrectly tripped SS4104 because webServer subjects
         # weren't in the linter's attachment-subject table even though they
-        # legitimately carry purpose/invariant/warning per SYNTAX.md.
+        # legitimately carry purpose/invariant/warning per docs/reference/syntax-inventory.md.
         diagnostics = _lint_source("""project Test
 webServer demoServer
 purpose demoServer "smoke test for non-operation purpose subjects"
@@ -7072,10 +7072,10 @@ returnValue writeStatus
 
 class TestHttpTargetSourceOfTruth(unittest.TestCase):
     """The native HTTP target surface lives in three places: semsc.py's
-    dispatch block, semlint.py's classifier constants, and SYNTAX.md's
+    dispatch block, semlint.py's classifier constants, and docs/reference/syntax-inventory.md's
     umbrella rows. Adding a target in one place without the others
     leaves a silent contract drift — SS3603 misses new readers, SS3601
-    misses new writers, and SYNTAX.md becomes a lie.
+    misses new writers, and docs/reference/syntax-inventory.md becomes a lie.
 
     This test parses semsc.py for every `"http.*"` literal target,
     then asserts the resulting set equals
@@ -7094,7 +7094,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
     def setUpClass(cls) -> None:
         repoRoot = Path(__file__).resolve().parents[2]
         cls.semscPath = repoRoot / "SemanticScript" / "compiler" / "semsc.py"
-        cls.syntaxMdPath = repoRoot / "SYNTAX.md"
+        cls.syntaxInventoryPath = repoRoot / "docs" / "reference" / "syntax-inventory.md"
 
     def _http_targets_in_semsc(self) -> "set[str]":
         """Extract every `http.X` literal target referenced anywhere in
@@ -7106,12 +7106,12 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
         targetPattern = re.compile(r'"(http\.[A-Za-z_][A-Za-z0-9_]*)"')
         return set(targetPattern.findall(sourceText))
 
-    def _http_targets_in_syntax_md(self) -> "set[str]":
-        """Extract every `http.X` target referenced in SYNTAX.md. The
+    def _http_targets_in_syntax_inventory(self) -> "set[str]":
+        """Extract every `http.X` target referenced in docs/reference/syntax-inventory.md. The
         spec wraps targets in backticks (` `http.X` `) so the regex is
         anchored on that."""
         import re
-        sourceText = self.syntaxMdPath.read_text(encoding="utf-8")
+        sourceText = self.syntaxInventoryPath.read_text(encoding="utf-8")
         targetPattern = re.compile(r'`(http\.[A-Za-z_][A-Za-z0-9_]*)`')
         return set(targetPattern.findall(sourceText))
 
@@ -7135,7 +7135,7 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
                 f"{sorted(onlyInSemsc)}. Add each to the appropriate "
                 f"classifier set (NON_NULLABLE_HTTP_REQUEST_READS / "
                 f"NULLABLE_HTTP_REQUEST_READS / HTTP_RESPONSE_BODY_WRITERS / "
-                f"HTTP_RESPONSE_OTHER_WRITERS / HTTP_UTILITY_TARGETS) and to the SYNTAX.md "
+                f"HTTP_RESPONSE_OTHER_WRITERS / HTTP_UTILITY_TARGETS) and to the docs/reference/syntax-inventory.md "
                 f"umbrella row."
             ),
         )
@@ -7150,15 +7150,15 @@ class TestHttpTargetSourceOfTruth(unittest.TestCase):
             ),
         )
 
-    def test_every_dispatch_target_appears_in_syntax_md(self) -> None:
+    def test_every_dispatch_target_appears_in_syntax_inventory(self) -> None:
         targetsInSemsc = self._http_targets_in_semsc()
-        targetsInSyntaxMd = self._http_targets_in_syntax_md()
-        missingFromSyntax = targetsInSemsc - targetsInSyntaxMd
+        targetsInSyntaxInventory = self._http_targets_in_syntax_inventory()
+        missingFromSyntax = targetsInSemsc - targetsInSyntaxInventory
         self.assertFalse(
             missingFromSyntax,
             msg=(
                 f"http.* targets dispatched in semsc.py but not "
-                f"mentioned in SYNTAX.md: {sorted(missingFromSyntax)}. "
+                f"mentioned in docs/reference/syntax-inventory.md: {sorted(missingFromSyntax)}. "
                 f"Add each to the umbrella row so the spec inventory "
                 f"matches the runtime surface."
             ),
@@ -7516,7 +7516,7 @@ returnVoid
 operation refOp
 output refOp Void
 purpose refOp "smoke"
-invariant refOp "tracked under SYNTAX.md#routeMiddleware as Impl'd"
+invariant refOp "tracked under docs/reference/syntax-inventory.md#routeMiddleware as Impl'd"
 label startRefOp
 returnVoid
 """)

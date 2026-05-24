@@ -60,9 +60,12 @@ branch error source CALL target LABEL
 Strict compiler checking is intentionally incremental. Source-level
 `languageMode strictExecutable` rejects misspelled executable rows; compiler
 `--strict` promotes the current fallible-call disposition checks to fatal
-diagnostics for known Result-shaped and explicit-disposition targets. The
-future `runChecked` row remains research syntax until parser, lowering, and
-migration tests all exist.
+diagnostics for known Result-shaped and explicit-disposition targets.
+`runChecked CALL ok VALUE TYPE error ERROR TYPE else LABEL` is implemented as
+the compact checked-call form for one prepared fallible call. Use it when the
+success/error binds and failure branch are local to that call; use explicit
+`run` plus `bind ok` / `bind error` / `branch error` when retry policy or more
+complex control flow is involved.
 
 ## Constructing Domain Failures
 

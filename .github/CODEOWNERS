@@ -1,0 +1,13 @@
+# Repository defaults.
+* @monstercameron
+
+# High-churn implementation areas.
+/SemanticScript/compiler/ @monstercameron
+/SemanticScript/linter/ @monstercameron
+/SemanticScript/runtime/ @monstercameron
+/vscode-semanticscript/ @monstercameron
+
+# Community and release metadata.
+/.github/ @monstercameron
+/SECURITY.md @monstercameron
+/RELEASE.md @monstercameron

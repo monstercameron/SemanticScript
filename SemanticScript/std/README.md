@@ -37,7 +37,7 @@ contracts (`JsonDocument`, `JsonCursor`, `JsonPath`, `JsonValueKind`,
 `JsonAccessError`, `JsonEncodeError`, and `JsonDecodeError`). The document
 CRUD, `jsonBody`, and typed `json.stringify.<TypeName>` /
 `json.parse.<TypeName>` entry points are documented in
-`docs/language/json-crud.md`; check `SYNTAX.md` for the current lowering
+`docs/language/json-crud.md`; check `docs/reference/syntax-inventory.md` for the current lowering
 status before using a surface in executable code.
 
 `standard.net` currently owns the prototype outbound client contract. It

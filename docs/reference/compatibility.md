@@ -15,7 +15,7 @@ already relied on `Partial`, `Proposed`, or metadata-only syntax.
 
 ## Stable Surface
 
-Rows marked `Impl'd` in `SYNTAX.md` are the stable 1.0 executable surface for
+Rows marked `Impl'd` in `syntax-inventory.md` are the stable 1.0 executable surface for
 the Python reference compiler unless a row explicitly scopes support to tooling
 or metadata. This includes core project, operation, storage, call, argument,
 branch, return, effect, capability, record, enum, error, build-tape, module,
@@ -29,7 +29,8 @@ compiler-managed build folders, and CLI overrides described in
 `docs/language/project-layout-build-sem.md`.
 
 Module/import/export compatibility covers explicit `registerModule`,
-`importModule`, singular import rows, and export rows documented for 1.0.
+`import ALIAS MODULE_PATH`, singular import rows, and export rows documented for
+1.0.
 Imported private symbols remain private unless explicitly exported.
 
 Native HTTP compatibility covers the documented first-party native HTTP call
@@ -60,21 +61,21 @@ generated outputs.
 
 ## Preview And Partial Surface
 
-Rows marked `Partial`, `Not impl'd`, or `Proposed` in `SYNTAX.md` are not stable
+Rows marked `Partial`, `Not impl'd`, or `Proposed` in `syntax-inventory.md` are not stable
 1.0 executable guarantees. They may be parser-only, linter-only, metadata-only,
 or design targets for future compiler/runtime work.
 
 Package fetching, language server, documentation generator, test runner,
 installer/version manager, full registry workflow, record JSON codecs,
-outbound `standard.net`, native async/event-stream integration, H2O/HTTP/2,
-WinUI 3, and declarative GUI top-level rows are preview or future work unless a
-narrower row in `SYNTAX.md` says otherwise.
+outbound `standard.net`, declarative event topology rows, H2O/HTTP/2, WinUI 3,
+and declarative GUI top-level rows are preview or future work unless a narrower
+row in `syntax-inventory.md` says otherwise.
 
 ## Deprecation
 
 Changing stable 1.0 syntax requires a documented deprecation path:
 
-- document the replacement in `SYNTAX.md` and the owning language/toolchain doc;
+- document the replacement in `syntax-inventory.md` and the owning language/toolchain doc;
 - emit a warning before rejecting old valid 1.0 source when practical;
 - keep compatibility examples or migration notes until the old form is removed;
 - make security- or correctness-driven exceptions explicit in release notes.

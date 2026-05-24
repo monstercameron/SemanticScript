@@ -2,7 +2,7 @@
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
   "description": "Syntax highlighting, navigation, completion, linting, and compiler integration for SemanticScript .sscript and .sem files.",
-  "version": "1.0.5",
+  "version": "0.0.1",
   "publisher": "semanticscript-local",
   "icon": "icons/semanticscript-extension.png",
   "galleryBanner": {

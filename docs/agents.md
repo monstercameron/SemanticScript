@@ -5,7 +5,7 @@ Dense agent context. ASCII only.
 Public truth for agents: the `sem` wrapper JSON surfaces and version-matched
 skills.
 
-Implementation truth for compiler work: `SYNTAX.md`, `semsc.py`, `semlint.py`,
+Implementation truth for compiler work: `docs/reference/syntax-inventory.md`, `semsc.py`, `semlint.py`,
 and `vscode-semanticscript/extension.js`. Editor support != compiler support.
 
 == core ==
@@ -189,7 +189,7 @@ Top:
   module DOTTED.PATH
   mode capturedOutputReplay
   entry console OPERATION
-  importModule DOTTED.PATH [as ALIAS]
+  import ALIAS DOTTED.PATH
   section NAME
 
 == std imports ==
@@ -199,11 +199,11 @@ Module entries: `SemanticScript/std/<module>/main.sem`.
 Self-tests: `SemanticScript/std/<module>/main.test.sem`.
 
 Preferred imports:
-  importModule html standard.html
-  importModule http standard.http
-  importModule json standard.json
-  importModule sqlite standard.sqlite
-  importModule gui standard.gui
+  import html standard.html
+  import http standard.http
+  import json standard.json
+  import sqlite standard.sqlite
+  import gui standard.gui
 
 Std resolution order:
   --std-path PATH
@@ -227,7 +227,7 @@ Compiler-owned GUI surface should stay minimal:
 Do not add `entry windowsGui OPERATION`. Do not move control/event validation
 into a giant compiler grammar. `standard.gui` owns GUI functions,
 contracts, capabilities, and most validation. Preferred import:
-  importModule gui standard.gui
+  import gui standard.gui
 
 Do not implement WinUI by adding C# / XAML app sidecars under `apps/`. The app
 UI source remains SemanticScript; WinUI belongs behind `guiBackend winui3` as a
@@ -654,7 +654,7 @@ T0/T1/T2 correctness. T3 design debt. T4 style.
   python SemanticScript/linter/semlint.py file.sscript --tier T3 --code SS0101
 
 == change protocol ==
-  1 SYNTAX.md schema/status
+  1 docs/reference/syntax-inventory.md schema/status
   2 semsc.py parser + lowering or metadata/sync behavior
   3 feature_tests minimal executable case
   4 semlint known verbs/checks

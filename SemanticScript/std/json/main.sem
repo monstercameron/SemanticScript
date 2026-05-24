@@ -4,7 +4,7 @@
 #
 # Import this module with:
 #
-#   importModule json standard.json
+#   import json standard.json
 #
 # The `json.*` call targets are compiler/runtime-owned intrinsics. This module
 # owns the official standard-library import path and semantic type contracts for

@@ -4,7 +4,7 @@
 #
 # Import this module with:
 #
-#   importModule event standard.event
+#   import event standard.event
 #
 # The `event.*` operations are ordinary SemanticScript operation wrappers over
 # generic native runtimeBinding symbols. The compiler does not special-case event

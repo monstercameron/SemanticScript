@@ -3,7 +3,7 @@
 `standard.json` is the public contract module for JSON values. Import it with:
 
 ```semanticscript
-importModule json standard.json
+import json standard.json
 ```
 
 The current executable implementation includes the legacy builder and flat
@@ -11,7 +11,7 @@ finder calls, the `standard.json` type/error/enum contracts, JsonText-backed
 `jsonBody` literals, and primitive `json.stringify` / `json.parse` aliases
 that rewrite to the legacy primitive encode/decode lowering. Full document
 CRUD lowering, Result-shaped stringify/parse errors, and record-typed
-`jsonBody`/codec generation remain pending unless `SYNTAX.md` marks a specific
+`jsonBody`/codec generation remain pending unless `docs/reference/syntax-inventory.md` marks a specific
 row `Impl'd`.
 
 ## Types

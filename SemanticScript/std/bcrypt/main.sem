@@ -4,7 +4,7 @@
 #
 # Import this module with:
 #
-#   importModule bcrypt standard.bcrypt
+#   import bcrypt standard.bcrypt
 #
 # The `bcrypt.*` call targets are compiler/runtime-owned intrinsics
 # backed by the vendored crypt_blowfish 1.3 implementation at

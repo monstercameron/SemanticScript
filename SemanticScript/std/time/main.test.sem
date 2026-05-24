@@ -8,7 +8,7 @@
 # readCurrentUnixEpochSeconds) are invoked but not value-asserted
 # (non-deterministic across runs); they exist to verify the
 # capability + heap-slot plumbing still wires correctly across the
-# importModule boundary.
+# import boundary.
 #
 # Pattern: std/main.sem ships pure-module operations only;
 # std/main.test.sem carries every smoke / unit test for it.

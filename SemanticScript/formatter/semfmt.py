@@ -26,7 +26,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, TextIO, Tuple
 
-__version__ = "0.1.0"
+_SEMANTICSCRIPT_ROOT = Path(__file__).resolve().parents[1]
+if str(_SEMANTICSCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SEMANTICSCRIPT_ROOT))
+
+from shared.repo_version import read_repo_version
+
+__version__ = read_repo_version()
 
 SUPPORTED_SUFFIXES = frozenset({".sem", ".sscript"})
 DEFAULT_EXCLUDED_DIRECTORIES = frozenset({

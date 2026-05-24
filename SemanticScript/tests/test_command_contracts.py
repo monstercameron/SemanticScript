@@ -44,6 +44,52 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertIn("runtimeFeatureFlags", payload)
         self.assertIn("syntax", payload)
 
+    def test_new_json_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            proc = subprocess.run(
+                [sys.executable, str(SEM_PATH), "new", "--json", str(root)],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            payload = json.loads(proc.stdout)
+            self.assertEqual(payload["schemaVersion"], "sem.newProject.v1")
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["status"], "created")
+            self.assertEqual(payload["project"]["projectName"], "HelloWorld")
+            self.assertTrue(any(item["kind"] == "check" for item in payload["nextCommands"]))
+            self.assertTrue(any(item["kind"] == "test" for item in payload["nextCommands"]))
+            self.assertTrue((root / "build.sem").is_file())
+            self.assertTrue((root / "main.sem").is_file())
+            self.assertTrue((root / "main.test.sem").is_file())
+            self.assertTrue((root / ".github" / "workflows" / "ci.yml").is_file())
+
+    def test_new_json_contract_accepts_github_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SEM_PATH),
+                    "new",
+                    "--json",
+                    "--github-url",
+                    "https://github.com/acme/hello-world",
+                    str(root),
+                ],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            payload = json.loads(proc.stdout)
+            self.assertEqual(payload["project"]["modulePath"], "github.com/acme/hello-world")
+            self.assertEqual(payload["project"]["githubRepoUrl"], "https://github.com/acme/hello-world")
+
     def test_doctor_json_contract(self) -> None:
         code, payload = _sem_json("doctor", "--json")
         self.assertIn(code, {0, 1})

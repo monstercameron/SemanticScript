@@ -5,75 +5,82 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SEMANTICSCRIPT_ROOT = ROOT / "SemanticScript"
+if str(SEMANTICSCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(SEMANTICSCRIPT_ROOT))
+
+from shared.repo_version import read_repo_version  # noqa: E402
 
 
-def _python_assignment(path: Path, name: str) -> str:
+def _package_metadata(path: Path) -> dict:
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"{path}: {exc}") from exc
-    match = re.search(rf"^{re.escape(name)}\s*=\s*['\"]([^'\"]+)['\"]", text, re.MULTILINE)
-    if not match:
-        raise RuntimeError(f"{path}: missing {name} assignment")
-    return match.group(1)
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{path}: package metadata must be a JSON object")
+    return payload
 
 
 def collect_versions() -> dict:
+    repo_version = read_repo_version()
     components = [
         {
             "name": "semsc",
             "kind": "command",
             "path": "SemanticScript/compiler/semsc.py",
-            "version": _python_assignment(ROOT / "SemanticScript" / "compiler" / "semsc.py", "__version__"),
-            "versionSource": "__version__",
+            "version": repo_version,
+            "versionSource": "version.json",
         },
         {
             "name": "semlint",
             "kind": "command",
             "path": "SemanticScript/linter/semlint.py",
-            "version": _python_assignment(ROOT / "SemanticScript" / "linter" / "semlint.py", "__version__"),
-            "versionSource": "__version__",
+            "version": repo_version,
+            "versionSource": "version.json",
         },
         {
             "name": "semfmt",
             "kind": "command",
             "path": "SemanticScript/formatter/semfmt.py",
-            "version": _python_assignment(ROOT / "SemanticScript" / "formatter" / "semfmt.py", "__version__"),
-            "versionSource": "__version__",
+            "version": repo_version,
+            "versionSource": "version.json",
         },
         {
             "name": "sem",
             "kind": "command",
             "path": "SemanticScript/tools/sem.py",
-            "version": _python_assignment(ROOT / "SemanticScript" / "tools" / "sem.py", "VERSION"),
-            "versionSource": "VERSION",
+            "version": repo_version,
+            "versionSource": "version.json",
         },
     ]
 
     package_path = ROOT / "vscode-semanticscript" / "package.json"
-    try:
-        package = json.loads(package_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"{package_path}: {exc}") from exc
+    package = _package_metadata(package_path)
+    package_version = package.get("version", "")
+    if package_version != repo_version:
+        raise RuntimeError(
+            f"{package_path}: package.json version {package_version!r} must match version.json {repo_version!r}"
+        )
     components.append({
         "name": package.get("name", "semanticscript-vscode"),
         "kind": "vscode-extension",
         "path": "vscode-semanticscript/package.json",
-        "version": package.get("version", ""),
-        "versionSource": "package.json.version",
+        "version": repo_version,
+        "versionSource": "version.json -> package.json.version",
         "publisher": package.get("publisher", ""),
         "license": package.get("license", ""),
     })
 
     return {
-        "schemaVersion": "sem.releaseVersions.v0",
-        "versionPolicy": "component-local versions are allowed when recorded in the release matrix",
+        "schemaVersion": "sem.releaseVersions.v1",
+        "repoVersion": repo_version,
+        "versionPolicy": "repository-wide semantic version; command tools and the VS Code package must stay synchronized to version.json",
         "components": components,
     }
 

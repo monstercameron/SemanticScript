@@ -19,23 +19,23 @@ lives in `docs/reference/compatibility.md`.
 
 ## Version Policy
 
-SemanticScript uses component-local versions for the initial public release.
-`semsc`, `semlint`, `semfmt`, `sem`, and the VS Code extension do not need to
-share one product version as long as the release notes record the matrix below.
-The release version check prints the matrix and fails only when a version cannot
-be read.
+SemanticScript uses a repository-wide semantic version from `version.json`.
+`semsc`, `semlint`, `semfmt`, `sem`, and the VS Code extension are expected to
+stay synchronized to that shared version. The release version check prints the
+matrix and fails when the package metadata drifts from `version.json`.
 
 | Component | Version | Source |
 | --- | --- | --- |
-| `semsc` | `1.0.0` | `SemanticScript/compiler/semsc.py` |
-| `semlint` | `0.3.0` | `SemanticScript/linter/semlint.py` |
-| `semfmt` | `0.1.0` | `SemanticScript/formatter/semfmt.py` |
-| `sem` | `0.1.0` | `SemanticScript/tools/sem.py` |
-| `semanticscript-vscode` | `1.0.5` | `vscode-semanticscript/package.json` |
+| `semsc` | `0.0.1` | `version.json` |
+| `semlint` | `0.0.1` | `version.json` |
+| `semfmt` | `0.0.1` | `version.json` |
+| `sem` | `0.0.1` | `version.json` |
+| `semanticscript-vscode` | `0.0.1` | `version.json` -> `vscode-semanticscript/package.json` |
 
 ```powershell
 python SemanticScript\tools\release_versions.py
 python SemanticScript\tools\release_versions.py --json
+python SemanticScript\tools\bump_version.py --check
 ```
 
 ## Release Manifest
@@ -47,12 +47,19 @@ should record the release tag, commit SHA, release date, tool versions,
 validation environments, exact commands, skipped checks, generated artifacts,
 checksums, signature status, deferred features, and known limitations.
 
+The GitHub release workflow at `.github/workflows/release.yml` performs the
+Windows release validation path, packages the VS Code extension, generates the
+same manifest shape as a release artifact, and creates or updates the GitHub
+release for `v*` tags or manual dispatches. Keep this manual policy section and
+the workflow in sync when release commands or artifact rules change.
+
 ## Environment
 
 Minimum release validation environment:
 
 - Python 3.11 or 3.12
-- dependencies from `requirements.txt`
+- dependencies from `requirements.txt`; use `constraints.txt` when you need the
+  same pinned dependency floor as CI/release validation
 - Node.js 20 or newer for VS Code extension syntax checks
 - LLVM/clang for native emit, stdlib, and parity checks
 
@@ -68,7 +75,7 @@ These commands mirror the lightweight CI workflow:
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 python -m compileall -q SemanticScript python
 python SemanticScript/tools/release_versions.py
 python SemanticScript/tools/sem.py --version --json
@@ -177,7 +184,8 @@ local native toolchains, long-running app processes, or release-owner approval:
 ## Release Checklist
 
 1. Confirm `git status --short` contains only intentional release changes.
-2. Install Python dependencies from `requirements.txt`.
+2. Install Python dependencies from `requirements.txt` with `constraints.txt`
+   for repeatable validation.
 3. Run focused CI parity commands.
 4. Run full release validation commands when compiler, stdlib, extension, or
    sample behavior changed.

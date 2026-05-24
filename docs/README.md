@@ -9,7 +9,7 @@ The docs here should not replace source-of-truth implementation files. They
 organize them:
 
 ```text
-SYNTAX.md                         complete syntax inventory and status table
+docs/reference/syntax-inventory.md                         complete syntax inventory and status table
 docs/ast.md                       language and AST design notes
 SemanticScript/compiler/semsc.py       reference parser, AST, lowering, CLI
 SemanticScript/linter/semlint.py       canonical standalone structured linter
@@ -47,7 +47,7 @@ matrix. The release-level boundary is:
 |---|---|---|
 | Python reference compiler | Supported release compiler for `.sscript` and `.sem`, console entry, LLVM IR, JIT run, and clang-linked executables. | `SemanticScript/compiler/semsc.py`, [toolchain/compiler.md](toolchain/compiler.md) |
 | VS Code extension | Supported editor tooling for `.sscript` / `.sem`; syntax visibility is not executable support. | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) |
-| Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `SYNTAX.md`, [toolchain/compiler.md](toolchain/compiler.md) |
+| Refined syntax and partial rows | Inspectable and documented as metadata, fallback, partial, or implemented. | `docs/reference/syntax-inventory.md`, [toolchain/compiler.md](toolchain/compiler.md) |
 | Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, response writers, blocking SSE primitives, and handler-visible shutdown drain state; HTTP/2/H2O remains future work. | [toolchain/compiler.md](toolchain/compiler.md) |
 | Native async and event streams | Experimental adapter and stdlib surface for futures, timers, cancel tokens, queued work, `standard.event` process queues, and durable local event streams. | [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) |
 | Outbound `standard.net` client | Experimental prototype for `net.fetchText` / `net.fetchBytes`; real network behavior needs the optional libcurl/libuv runtime path. | [language/native-http-client-api.md](language/native-http-client-api.md), [toolchain/compiler.md](toolchain/compiler.md) |
@@ -89,5 +89,5 @@ matrix. The release-level boundary is:
 - Mark runtime behavior explicitly: parsed metadata, lowered synchronously,
   lowered to real LLVM, or future runtime work.
 - Prefer examples from `SemanticScript/sem/feature_tests/` when possible.
-- Keep `SYNTAX.md` as the broad inventory; keep these docs as the explanation
+- Keep `docs/reference/syntax-inventory.md` as the broad inventory; keep these docs as the explanation
   layer developers actually read while implementing.

@@ -1,0 +1,34 @@
+# Lightweight repository hygiene checks only. Language formatters and linters are
+# intentionally not enforced here so installing pre-commit does not rewrite the repo.
+minimum_pre_commit_version: "3.5.0"
+
+default_install_hook_types:
+  - pre-commit
+
+exclude: |
+  (?x)^(
+    build/|
+    third_party/|
+    .*/build/|
+    .*/node_modules/|
+    .*/dist/|
+    .*/\.venv/
+  )
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        exclude: '\.(bat|cmd|ps1)$'
+      - id: trailing-whitespace
+        exclude: '\.md$'

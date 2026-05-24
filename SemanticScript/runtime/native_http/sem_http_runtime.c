@@ -2557,7 +2557,7 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
             /* Middleware took ownership of the response: skip the route
              * handler and send what middleware wrote. This is the
              * `shortCircuitMiddlewareControl` arm of the MiddlewareControl
-             * contract (see SYNTAX.md `MiddlewareControl`). If middleware
+             * contract (see docs/reference/syntax-inventory.md `MiddlewareControl`). If middleware
              * returned short-circuit but never wrote a body, that's a
              * silent dispatcher gap — surface it as a 500 with an
              * explicit reason so the regression shows up at the client

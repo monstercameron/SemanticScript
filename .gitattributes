@@ -1,0 +1,44 @@
+# Normalize text files while preserving explicit binary assets.
+* text=auto
+
+# Source and configuration files should use LF in the repository.
+*.c text eol=lf
+*.h text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.sem text eol=lf
+*.sh text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.xml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Windows entry points are checked out with CRLF for native tooling.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Documentation and web assets.
+*.css text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+
+# Binary assets.
+*.gif binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.png binary
+*.webp binary
+*.zip binary
+
+# Keep generated or vendored dependencies from dominating GitHub language stats.
+build/** linguist-generated=true
+third_party/** linguist-vendored=true
+apps/**/build/** linguist-generated=true

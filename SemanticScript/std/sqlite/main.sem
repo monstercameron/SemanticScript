@@ -4,7 +4,7 @@
 #
 # Import this module with:
 #
-#   importModule sqlite standard.sqlite
+#   import sqlite standard.sqlite
 #
 # The `sqlite.*` call targets are compiler/runtime-owned intrinsics. This
 # module owns the official standard-library import path and semantic type,

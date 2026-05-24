@@ -3,7 +3,7 @@
 This document describes the current parser and AST model implemented by
 `SemanticScript/compiler/semsc.py`. It is a developer reference for compiler,
 linter, formatter, editor, and runtime work. The public syntax inventory remains
-`SYNTAX.md`; the language-design narrative is `docs/semantic-script.md`.
+`docs/reference/syntax-inventory.md`; the language-design narrative is `docs/semantic-script.md`.
 
 Current scope:
 
@@ -393,7 +393,7 @@ runSelect NAME
 branchSelected NAME BRANCH target LABEL
 ```
 
-`SYNTAX.md` is the source of truth for which of these rows are executable,
+`docs/reference/syntax-inventory.md` is the source of truth for which of these rows are executable,
 synchronous fallback, metadata-only, or reserved.
 
 ## Type Universe

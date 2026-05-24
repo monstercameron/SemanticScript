@@ -41,7 +41,7 @@ diagnostics.
 ## Import Resolution
 
 ```semanticscript
-importModule standard.string as string
+import string standard.string
 ```
 
 For project builds, `build.sem` registers modules and the module source files
@@ -54,12 +54,12 @@ registerModule taskForgeTui app.taskforge_tui "."
 mainFile taskForgeTui "main.sem"
 mainOperation taskForgeTui main
 
-importModule app.todo
+import todo app.todo
 ```
 
 ```semanticscript
 module app.todo
-importModule app.persistence
+import persistence app.persistence
 exportOperation app.todo main
 ```
 
@@ -67,8 +67,7 @@ Exports are explicit only. The compiler and linter must not infer a public API
 from reachable operations, entry points, or call sites; each `export*` row has
 to name a symbol declared by that same module source.
 
-`semsc.py` resolves `importModule ALIAS DOTTED.PATH` and the compatibility
-form `importModule DOTTED.PATH [as ALIAS]` before parsing:
+`semsc.py` resolves `import ALIAS DOTTED.PATH` before parsing:
 
 1. If the root source has `registerModule` rows, resolve matching module paths
    from that registry first.
@@ -87,6 +86,9 @@ form `importModule DOTTED.PATH [as ALIAS]` before parsing:
 7. Search the project root.
 8. Inline imported content with cycle detection while preserving the import row
    for alias and singular-import resolution.
+
+Legacy `importModule` rows are rejected by the compiler. Run
+`SemanticScript/tools/syntax_migration.py` on older source before compiling.
 
 Aliased project imports are namespace edges. A call like
 `persistence.loadTodos` resolves only if the provider module exports
@@ -147,7 +149,7 @@ runtime native 1
 entry console main
 module examples.desktopWindowSmoke
 
-importModule gui standard.gui
+import gui standard.gui
 
 storage module immutable title GuiText "Desktop Window Smoke"
 storage module immutable width GuiPixels 800
@@ -186,8 +188,8 @@ bind value status ExitCode runApp
 return value status
 ```
 
-`importModule standard.gui as gui` remains accepted for compatibility, but new
-GUI source should use the alias-first `importModule gui standard.gui` form.
+Legacy `importModule` rows are rejected; GUI source should use the alias-first
+`import gui standard.gui` form.
 
 Do not write `entry windowsGui OPERATION`; that form is intentionally outside
 the committed surface. GUI event handlers are ordinary operations whose
@@ -249,7 +251,7 @@ crowded by smoke / unit-test prose.
 
 ```text
 std/bit/main.sem       # module standard.bit, exports, implementation
-std/bit/main.test.sem  # tests: importModule standard.bit + operation main
+std/bit/main.test.sem  # tests: import bit standard.bit + operation main
 ```
 
 `main.sem` (module entry):
@@ -271,7 +273,7 @@ target console
 runtime AgentRuntime 0.1
 entry console main
 
-importModule standard.bit
+import bit standard.bit
 
 error MainError
 errorCase MainError BitSmokeAssertionFailed
@@ -290,7 +292,7 @@ Rules:
 
 - `main.test.sem` lives in the same directory as `main.sem`.
 - It has its own `project` block (`StdFooTest` by convention), `entry console
-  main`, and `importModule standard.foo` directive. The imported file's header
+  main`, and `import foo standard.foo` directive. The imported file's header
   lines are stripped by the import resolver, so the test owns the executable.
 - Test files consume sibling modules through normal imports and public exports
   by default. Same-folder private symbols are not implicitly visible to tests;

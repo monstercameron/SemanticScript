@@ -51,8 +51,9 @@ from shared.call_contracts import (
     SUPPORTED_HTTP_ROUTE_METHODS as SHARED_SUPPORTED_HTTP_ROUTE_METHODS,
     is_supported_route_method,
 )
+from shared.repo_version import read_repo_version
 
-__version__ = "0.3.0"
+__version__ = read_repo_version()
 
 
 # ==========================================================================
@@ -1723,9 +1724,9 @@ OPERATION_ATTACHMENT_VERBS: frozenset = frozenset({
 })
 
 
-# Comprehensive vocabulary built from SYNTAX.md. Verbs missing from this
+# Comprehensive vocabulary built from docs/reference/syntax-inventory.md. Verbs missing from this
 # set are reported as SS0001 unknownVerb at T0 (parse / grammar). Additive
-# refinements to SemanticScript land in SYNTAX.md first, then in this set — keeping
+# refinements to SemanticScript land in docs/reference/syntax-inventory.md first, then in this set — keeping
 # both in lockstep is the linter's job over time.
 KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Project structure
@@ -3273,7 +3274,7 @@ def check_unused_calls(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(callFact.line, "callDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule="every declared call must be either executed or referenced",
-                specAnchor="SYNTAX.md#call",
+                specAnchor="docs/reference/syntax-inventory.md#call",
                 citations=narrative_citations_for_operation(facts, operation.name),
                 fixCandidates=[
                     FixCandidate(
@@ -3325,7 +3326,7 @@ def check_unused_labels(facts: ExtendedFacts) -> List[Diagnostic]:
             related=[span_of_line(facts.base.operations[labelFact.operationName].line, "enclosingOperation")]
                 if labelFact.operationName in facts.base.operations else [],
             invariantRule="every declared label must be reachable via branch / branchIf*",
-            specAnchor="SYNTAX.md#label",
+            specAnchor="docs/reference/syntax-inventory.md#label",
             citations=narrative_citations_for_operation(facts, labelFact.operationName),
             fixCandidates=[
                 FixCandidate(
@@ -3380,7 +3381,7 @@ def check_unreachable_operation_rows(facts: ExtendedFacts) -> List[Diagnostic]:
                     "operation entry through fallthrough, branch, jump, await, "
                     "or runChecked edges"
                 ),
-                specAnchor="SYNTAX.md#control-flow",
+                specAnchor="docs/reference/syntax-inventory.md#control-flow",
                 fixCandidates=[
                     FixCandidate(
                         name="removeUnreachableBlock",
@@ -3426,7 +3427,7 @@ def check_unused_capabilities(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="capability declared but unused",
             primary=span_of_line(capabilityFact.line, "capabilityDeclaration"),
             invariantRule="every declared capability must authorize at least one site",
-            specAnchor="SYNTAX.md#capability",
+            specAnchor="docs/reference/syntax-inventory.md#capability",
             fixCandidates=[
                 FixCandidate(
                     name="addUseCapabilityAtEffectSite",
@@ -3461,7 +3462,7 @@ def check_unused_error_cases(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="errorCase declared but never raised",
             primary=span_of_line(errorCaseFact.line, "errorCaseDeclaration"),
             invariantRule="every errorCase variant should have at least one construction site",
-            specAnchor="SYNTAX.md#errorCase",
+            specAnchor="docs/reference/syntax-inventory.md#errorCase",
             fixCandidates=[
                 FixCandidate(
                     # Suffix the suggested name with `Failure` so applying
@@ -3504,7 +3505,7 @@ def check_unused_mutable_storage(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="mutable storage never mutated",
             primary=span_of_line(storageFact.line, "storageDeclaration"),
             invariantRule="mutable storage slots should be written via `set` at least once",
-            specAnchor="SYNTAX.md#storage",
+            specAnchor="docs/reference/syntax-inventory.md#storage",
             fixCandidates=[
                 FixCandidate(
                     name="demoteToImmutable",
@@ -3574,7 +3575,7 @@ def check_partial_retry_policies(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="retryPolicy missing edges",
             primary=span_of_line(retryPolicyFact.line, "policyDeclaration"),
             invariantRule="retryPolicy should declare maxAttempts plus delay/jitter for predictable behavior",
-            specAnchor="SYNTAX.md#retryPolicy",
+            specAnchor="docs/reference/syntax-inventory.md#retryPolicy",
             fixCandidates=[
                 FixCandidate(
                     name=f"add{edgeName[0].upper()}{edgeName[1:]}",
@@ -3618,7 +3619,7 @@ def check_partial_trust_boundaries(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="trustBoundary triad incomplete",
             primary=span_of_line(trustBoundaryFact.line, "trustBoundaryDeclaration"),
             invariantRule="trustBoundary must declare input, output, and validator to prove the transition",
-            specAnchor="SYNTAX.md#trustBoundary",
+            specAnchor="docs/reference/syntax-inventory.md#trustBoundary",
             fixCandidates=[
                 FixCandidate(
                     name=f"add{edgeName[0].upper()}{edgeName[1:]}",
@@ -3654,7 +3655,7 @@ def check_literal_without_digest(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="external literal lacks integrity pin",
             primary=span_of_line(literalFact.line, "literalDeclaration"),
             invariantRule="literals with `literalSource` should pin bytes via `literalDigest`",
-            specAnchor="SYNTAX.md#literalDigest",
+            specAnchor="docs/reference/syntax-inventory.md#literalDigest",
             fixCandidates=[
                 FixCandidate(
                     name="addLiteralDigest",
@@ -3715,7 +3716,7 @@ def check_operation_metadata_gaps(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(operation.line, "operationDeclaration"),
                 related=[firstBodySpan],
                 invariantRule=f"every operation should declare `{edgeName}`",
-                specAnchor=f"SYNTAX.md#{edgeName}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{edgeName}",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -3752,7 +3753,7 @@ def check_shared_state_protection(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="sharedState access lacks guard token",
             primary=span_of_line(accessFact.line, f"sharedState{accessFact.accessKind.capitalize()}"),
             invariantRule="every sharedState set/read should declare protectedBy <guardToken>",
-            specAnchor="SYNTAX.md#sharedState",
+            specAnchor="docs/reference/syntax-inventory.md#sharedState",
             fixCandidates=[
                 FixCandidate(
                     name="addProtectedByClause",
@@ -3760,7 +3761,7 @@ def check_shared_state_protection(facts: ExtendedFacts) -> List[Diagnostic]:
                     evidence=[span_of_line(accessFact.line)],
                 ),
                 FixCandidate(
-                    # SYNTAX.md has no bare `guardToken NAME` declaration verb;
+                    # docs/reference/syntax-inventory.md has no bare `guardToken NAME` declaration verb;
                     # guard tokens are declared via their acquisition call
                     # plus protects/owner/release edges. Shape uses only
                     # registered verbs so the fix doesn't trip SS0001.
@@ -3814,7 +3815,7 @@ def check_supported_shared_state_scope(facts: ExtendedFacts) -> List[Diagnostic]
                 "module global visible within one process; cross-process or "
                 "cluster state requires an external runtime not wired today"
             ),
-            specAnchor="SYNTAX.md#sharedState",
+            specAnchor="docs/reference/syntax-inventory.md#sharedState",
             fixCandidates=[
                 FixCandidate(
                     name="useProcessScope",
@@ -3915,7 +3916,7 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
                     reusableCapabilityName = candidateCapability.name
                     reusableCapabilityIsAlreadyUsed = True
             diagnostics.append(Diagnostic(
-                # SYNTAX.md frames capability coverage as a LINTER rule, not a
+                # docs/reference/syntax-inventory.md frames capability coverage as a LINTER rule, not a
                 # compiler-blocking spec violation: "the linter checks that
                 # every effect site has an authorizing capability… enforcement
                 # at the runtime authority layer is a future runtime concern."
@@ -3930,7 +3931,7 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
                 intentSlogan="effect lacks capability proof",
                 primary=span_of_line(effectLine, "effectDeclaration"),
                 invariantRule="every declared effect should have an authorizing capability proof",
-                specAnchor="SYNTAX.md#useCapability",
+                specAnchor="docs/reference/syntax-inventory.md#useCapability",
                 citations=operationCitations,
                 fixCandidates=_build_capability_coverage_fix_candidates(
                     operationName=operationName,
@@ -3954,7 +3955,7 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
 
 def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
     """Verbs not in `KNOWN_AGENT_SCRIPT_VERBS` are grammar gaps — either a
-    typo, or a SYNTAX.md row landed without updating this set. Reported as
+    typo, or a docs/reference/syntax-inventory.md row landed without updating this set. Reported as
     T0 because nothing else downstream can interpret an unrecognised verb."""
     diagnostics: List[Diagnostic] = []
     seenUnknownAtLine: Set[Tuple[Path, int]] = set()
@@ -3978,12 +3979,12 @@ def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
             gapEdge="grammarRegistration",
             intentSlogan="verb not in language vocabulary",
             primary=span_of_line(sourceLine, "unknownVerbSite"),
-            invariantRule="every verb must be a row in SYNTAX.md and registered in KNOWN_AGENT_SCRIPT_VERBS",
-            specAnchor="SYNTAX.md",
+            invariantRule="every verb must be a row in docs/reference/syntax-inventory.md and registered in KNOWN_AGENT_SCRIPT_VERBS",
+            specAnchor="docs/reference/syntax-inventory.md",
             fixCandidates=[
                 FixCandidate(
                     name="correctTypo",
-                    shape=f"# verify spelling of `{verb}` against SYNTAX.md",
+                    shape=f"# verify spelling of `{verb}` against docs/reference/syntax-inventory.md",
                 ),
                 FixCandidate(
                     name="addToVocabulary",
@@ -3995,7 +3996,7 @@ def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
             effort=Effort.TRIVIAL,
             passProvenance="check_unknown_verbs",
             agentHint=(
-                "if a new SYNTAX.md row was added recently, this vocab is "
+                "if a new docs/reference/syntax-inventory.md row was added recently, this vocab is "
                 "out of date — sync the set"
             ),
         ))
@@ -4054,7 +4055,7 @@ def _syntax_cutover_diagnostic(
         intentSlogan=intent,
         primary=span_of_line(sourceLine, "syntaxCutoverSite"),
         invariantRule=rule,
-        specAnchor="SYNTAX.md#syntax-cutover",
+        specAnchor="docs/reference/syntax-inventory.md#syntax-cutover",
         fixCandidates=[
             FixCandidate(
                 name="rewriteToNewSyntax",
@@ -4295,7 +4296,7 @@ def _html_hole_diagnostic(
         intentSlogan=intent,
         primary=span_of_line(sourceLine, "htmlHoleSite"),
         invariantRule=rule,
-        specAnchor="SYNTAX.md#html",
+        specAnchor="docs/reference/syntax-inventory.md#html",
         fixCandidates=[FixCandidate(name="rewriteHtmlHole", shape=shape)],
         confidence=Confidence.HIGH,
         blocksCompile=True,
@@ -4603,7 +4604,7 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(declarationLine, "bindDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=f"every `{bindVerb}` value should be referenced on a subsequent line",
-                specAnchor=f"SYNTAX.md#{bindVerb}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{bindVerb}",
                 citations=narrative_citations_for_operation(facts, operation.name),
                 fixCandidates=[
                     FixCandidate(
@@ -4762,7 +4763,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                         "execution + success/error/branch disposition shape; do not "
                         "mix both on the same call name"
                     ),
-                    specAnchor="SYNTAX.md#runchecked",
+                    specAnchor="docs/reference/syntax-inventory.md#runchecked",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -4806,7 +4807,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                         "sentinel/status value; bind it for checking or explicitly "
                         "discard it with `ignore value`"
                     ),
-                    specAnchor="SYNTAX.md#ignore",
+                    specAnchor="docs/reference/syntax-inventory.md#ignore",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -4900,7 +4901,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(callFact.line, "callDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule=invariantRule,
-                specAnchor="SYNTAX.md#bind",
+                specAnchor="docs/reference/syntax-inventory.md#bind",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -4988,7 +4989,7 @@ def check_sibling_metadata_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"operations in the same file should consistently declare or "
                     f"omit `{edgeName}`; mixed declarations create ambiguity"
                 ),
-                specAnchor=f"SYNTAX.md#{edgeName}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{edgeName}",
                 citations=narrative_citations_for_operation(facts, operationName),
                 fixCandidates=[
                     FixCandidate(
@@ -5051,7 +5052,7 @@ def check_undeclared_body_effect(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`{impliedAction} {impliedPath}`; the operation must "
                     f"declare it via `effect OP ACTION PATH`"
                 ),
-                specAnchor="SYNTAX.md#effect",
+                specAnchor="docs/reference/syntax-inventory.md#effect",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5125,7 +5126,7 @@ def check_make_error_unknown_variant(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"`{sourceLine.verb}` must reference a declared "
                 f"`errorCase {errorName} <variant>` row"
             ),
-            specAnchor="SYNTAX.md#errorCase",
+            specAnchor="docs/reference/syntax-inventory.md#errorCase",
             fixCandidates=[
                 FixCandidate(
                     name="declareMissingErrorCase",
@@ -5193,7 +5194,7 @@ def check_unused_const(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(declarationLine, "constDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule="every `const` declaration in an operation must be referenced on a later line",
-                specAnchor="SYNTAX.md#domainLiteral",
+                specAnchor="docs/reference/syntax-inventory.md#domainLiteral",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5257,7 +5258,7 @@ def check_unused_input(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(declarationLine, "inputDeclaration"),
                 related=[span_of_line(operation.line, "enclosingOperation")],
                 invariantRule="every declared input parameter must be referenced in the operation body",
-                specAnchor="SYNTAX.md#input",
+                specAnchor="docs/reference/syntax-inventory.md#input",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -5385,7 +5386,7 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
                                 span_of_line(operation.line, "enclosingOperation"),
                             ],
                             invariantRule="every `set` write should be observed before being overwritten",
-                            specAnchor="SYNTAX.md#set",
+                            specAnchor="docs/reference/syntax-inventory.md#set",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -6012,7 +6013,7 @@ def check_enum_repr_comparison(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"the call site; use `{suggestedTarget}` instead so the "
                     f"source compare expresses the enum, not the integer width."
                 ),
-                specAnchor="SYNTAX.md#enum-domain-methods",
+                specAnchor="docs/reference/syntax-inventory.md#enum-domain-methods",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6275,7 +6276,7 @@ def check_sem_one_zero_legacy_forms(facts: ExtendedFacts) -> List[Diagnostic]:
                 "`storage local immutable`, `storage local mutable`, `set local`, "
                 "`memoryHeap`, and `memoryStackLimit`"
             ),
-            specAnchor="SYNTAX.md#storage",
+            specAnchor="docs/reference/syntax-inventory.md#storage",
             fixCandidates=[
                 FixCandidate(
                     name="convertToOneZeroForm",
@@ -6343,7 +6344,7 @@ def check_declaration_only_sample(facts: ExtendedFacts) -> List[Diagnostic]:
             "top-level `.sem` samples should include call/run/control-flow rows "
             "so they exercise the compiler rather than only storing constants"
         ),
-        specAnchor="SYNTAX.md#call",
+        specAnchor="docs/reference/syntax-inventory.md#call",
         fixCandidates=[
             FixCandidate(
                 name="addExecutableSourceTape",
@@ -6427,7 +6428,7 @@ def check_allocation_in_loop(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"iteration; hoist the allocation above the `label "
                         f"{loopLabel}` loop header"
                     ),
-                    specAnchor="SYNTAX.md#label",
+                    specAnchor="docs/reference/syntax-inventory.md#label",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -6796,7 +6797,7 @@ def check_bind_then_ignore(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(currentLine, "bindDeclaration"),
                 related=[span_of_line(nextLine, "ignoreValueSite")],
                 invariantRule="binding a value just to discard it is redundant; ignoreValue the call directly",
-                specAnchor="SYNTAX.md#ignoreValue",
+                specAnchor="docs/reference/syntax-inventory.md#ignoreValue",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6851,7 +6852,7 @@ def check_memory_heap_contradiction(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`memoryHeap {operation.name} no` forbids heap allocation but "
                     f"body calls `{sourceLine.args[1]}`"
                 ),
-                specAnchor="SYNTAX.md#memoryHeap",
+                specAnchor="docs/reference/syntax-inventory.md#memoryHeap",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -6916,7 +6917,7 @@ def check_allocation_source_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"`memoryAllocationSource {operationName} <callName>` so the "
                 f"allocator contract is auditable"
             ),
-            specAnchor="SYNTAX.md#memoryAllocationSource",
+            specAnchor="docs/reference/syntax-inventory.md#memoryAllocationSource",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -6966,7 +6967,7 @@ def check_unchecked_heap_allocation(facts: ExtendedFacts) -> List[Diagnostic]:
                     "allocation calls must have both `bindError` and "
                     "`branchIfError`"
                 ),
-                specAnchor="SYNTAX.md#bindError",
+                specAnchor="docs/reference/syntax-inventory.md#bindError",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7048,7 +7049,7 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`defer NAME c.free <pointerArg>` or explicit `c.free` "
                     "cleanup in the same operation"
                 ),
-                specAnchor="SYNTAX.md#defer",
+                specAnchor="docs/reference/syntax-inventory.md#defer",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7111,7 +7112,7 @@ def check_stack_limit_overrun(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"declared `memoryStackLimit {operationName} {declaredLimitBytes}` is "
                 f"smaller than the estimated alloca footprint ({estimatedBytes} bytes)"
             ),
-            specAnchor="SYNTAX.md#memoryStackLimit",
+            specAnchor="docs/reference/syntax-inventory.md#memoryStackLimit",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -7154,7 +7155,7 @@ def check_record_align_power_of_two(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="record alignment must be power of two",
             primary=span_of_line(alignLine, "recordAlignDeclaration"),
             invariantRule="recordAlign values must be in {1, 2, 4, 8, 16, 32, 64}",
-            specAnchor="SYNTAX.md#recordAlign",
+            specAnchor="docs/reference/syntax-inventory.md#recordAlign",
             fixCandidates=[
                 FixCandidate(
                     name="alignToNearestPowerOfTwo",
@@ -7187,7 +7188,7 @@ def check_array_length_zero(facts: ExtendedFacts) -> List[Diagnostic]:
             intentSlogan="fixed array declared with length zero",
             primary=span_of_line(lengthLine, "arrayLengthDeclaration"),
             invariantRule="arrayLength should be > 0 (use sliceType / listType for variable-length sequences)",
-            specAnchor="SYNTAX.md#arrayLength",
+            specAnchor="docs/reference/syntax-inventory.md#arrayLength",
             fixCandidates=[
                 FixCandidate(
                     name="setNonZeroLength",
@@ -7229,7 +7230,7 @@ def check_inline_capacity_without_spill_allocator(facts: ExtendedFacts) -> List[
                 f"`smallListSpillAllocator {typeName} <allocator>` for the "
                 f"overflow path"
             ),
-            specAnchor="SYNTAX.md#smallListSpillAllocator",
+            specAnchor="docs/reference/syntax-inventory.md#smallListSpillAllocator",
             fixCandidates=[
                 FixCandidate(
                     name="addSpillAllocator",
@@ -7272,7 +7273,7 @@ def check_literal_encoding_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"literal `{literalName}` loads bytes from disk but its type "
                 f"`{literalFact.typeName}` has no `typeLiteralEncoding` row"
             ),
-            specAnchor="SYNTAX.md#typeLiteralEncoding",
+            specAnchor="docs/reference/syntax-inventory.md#typeLiteralEncoding",
             fixCandidates=[
                 FixCandidate(
                     name="declareTypeLiteralEncoding",
@@ -7324,7 +7325,7 @@ def check_unawaited_task_group(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"every `startInGroup` must be paired with an `awaitGroup "
                     f"{groupName}` in the same operation"
                 ),
-                specAnchor="SYNTAX.md#awaitGroup",
+                specAnchor="docs/reference/syntax-inventory.md#awaitGroup",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7377,7 +7378,7 @@ def check_lock_without_cleanup(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"{mutexName}` or `defer NAME unlock {mutexName}` "
                     f"for exit-path safety"
                 ),
-                specAnchor="SYNTAX.md#unlock",
+                specAnchor="docs/reference/syntax-inventory.md#unlock",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7433,7 +7434,7 @@ def check_unawaited_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"every `submitWork {workName}` must be paired with "
                     f"`awaitWork {workName}` in the same operation"
                 ),
-                specAnchor="SYNTAX.md#awaitWork",
+                specAnchor="docs/reference/syntax-inventory.md#awaitWork",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7492,7 +7493,7 @@ def check_invalid_submit_work(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(submitLine, "submitWorkSite"),
                 related=related,
                 invariantRule=invariantRule,
-                specAnchor="SYNTAX.md#submitWork",
+                specAnchor="docs/reference/syntax-inventory.md#submitWork",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -7654,7 +7655,7 @@ def check_select_without_cases(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"{selectName} <token> <branch>` row; zero-case select "
                 f"deadlocks at runtime"
             ),
-            specAnchor="SYNTAX.md#selectCase",
+            specAnchor="docs/reference/syntax-inventory.md#selectCase",
             fixCandidates=[
                 FixCandidate(
                     name="addAtLeastOneSelectCase",
@@ -7697,7 +7698,7 @@ def check_select_case_references_unknown_select(facts: ExtendedFacts) -> List[Di
                     f"`selectCase {selectName} …` must reference a declared "
                     f"`select {selectName}` row"
                 ),
-                specAnchor="SYNTAX.md#select",
+                specAnchor="docs/reference/syntax-inventory.md#select",
                 fixCandidates=[
                     FixCandidate(
                         # Bundle the select + at least one case so applying
@@ -8032,7 +8033,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         "label"
                     )
                 ),
-                specAnchor="SYNTAX.md#case",
+                specAnchor="docs/reference/syntax-inventory.md#case",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -8078,7 +8079,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"back to `{waitEntryLabel}` so remaining futures are "
                     "consumed before the operation exits"
                 ),
-                specAnchor="SYNTAX.md#case",
+                specAnchor="docs/reference/syntax-inventory.md#case",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -8114,7 +8115,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`{row.verb}` rows in an await wait set must have exactly "
                     f"{expectedCount} argument(s): `{expectedShape}`"
                 ),
-                specAnchor=f"SYNTAX.md#{row.verb}",
+                specAnchor=f"docs/reference/syntax-inventory.md#{row.verb}",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -8167,7 +8168,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         "a wait set, not a call; choose a wait-set name that "
                         "does not match any declared call"
                     ),
-                    specAnchor="SYNTAX.md#await",
+                    specAnchor="docs/reference/syntax-inventory.md#await",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8233,7 +8234,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"`await {waitSetName}` may list each started "
                                 "call at most once"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8265,7 +8266,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "call; the same call cannot be listed in a later "
                                 "wait set"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8300,7 +8301,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "one prior `start`; repeated starts need fresh "
                                 "call names so each future has one owner"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8341,7 +8342,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"`await {waitSetName}` block after "
                                 f"`start {callName}` has created the future"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8381,7 +8382,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"`{edgeLabel}` can execute the same start "
                                 "again. Use a fresh call name for each future."
                             ),
-                            specAnchor="SYNTAX.md#start",
+                            specAnchor="docs/reference/syntax-inventory.md#start",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8417,7 +8418,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"`case {callName} ...` requires a call target "
                                 "that `start` lowers to an async future"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8458,7 +8459,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"`case {callName} {targetLabel}` must branch "
                                 "to a handler label declared after the case row"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8509,7 +8510,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "source row must terminate or be the wait-set "
                                 "`done` row"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8546,7 +8547,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "entry edge into its handler; other source "
                                 "branches must not target that label"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8579,7 +8580,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "to a distinct handler label so the selected "
                                 "call result dominates that handler"
                             ),
-                            specAnchor="SYNTAX.md#case",
+                            specAnchor="docs/reference/syntax-inventory.md#case",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8623,7 +8624,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                             f"`{nextEffectiveLine.verb}` cannot appear between "
                             "the `done` row and the next label"
                         ),
-                        specAnchor="SYNTAX.md#done",
+                        specAnchor="docs/reference/syntax-inventory.md#done",
                         citations=operationCitations,
                         fixCandidates=[
                             FixCandidate(
@@ -8657,7 +8658,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"`done {doneLabel}` must branch to a label "
                                 "declared after the wait-set `done` row"
                             ),
-                            specAnchor="SYNTAX.md#done",
+                            specAnchor="docs/reference/syntax-inventory.md#done",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8715,7 +8716,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "entry edge; the preceding source row must "
                                 "terminate or be the wait-set `case` row"
                             ),
-                            specAnchor="SYNTAX.md#done",
+                            specAnchor="docs/reference/syntax-inventory.md#done",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8752,7 +8753,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "entry edge into its continuation; other "
                                 "source branches must not target that label"
                             ),
-                            specAnchor="SYNTAX.md#done",
+                            specAnchor="docs/reference/syntax-inventory.md#done",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8786,7 +8787,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                                 "disjoint from the `done` label; `done` is only "
                                 "entered after every case has been consumed"
                             ),
-                            specAnchor="SYNTAX.md#done",
+                            specAnchor="docs/reference/syntax-inventory.md#done",
                             citations=operationCitations,
                             fixCandidates=[
                                 FixCandidate(
@@ -8823,7 +8824,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"`await {waitSetName}` must be preceded by a label "
                         "so case handlers can jump back and consume remaining futures"
                     ),
-                    specAnchor="SYNTAX.md#await",
+                    specAnchor="docs/reference/syntax-inventory.md#await",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8903,7 +8904,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"`await {waitSetName}` followed by `done` must include "
                         "at least one `case CALL LABEL` row"
                     ),
-                    specAnchor="SYNTAX.md#case",
+                    specAnchor="docs/reference/syntax-inventory.md#case",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8933,7 +8934,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"`await {waitSetName}` with `case` rows must end with "
                         "`done LABEL` so the all-consumed path is explicit"
                     ),
-                    specAnchor="SYNTAX.md#done",
+                    specAnchor="docs/reference/syntax-inventory.md#done",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -8969,7 +8970,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`{sourceLine.verb}` rows must immediately follow an "
                     "`await WAIT_SET` block"
                 ),
-                specAnchor="SYNTAX.md#await",
+                specAnchor="docs/reference/syntax-inventory.md#await",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -9120,7 +9121,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                     "already awaits and materializes that call before branching; "
                     f"do not also write `await {sourceLine.args[0]}`"
                 ),
-                specAnchor="SYNTAX.md#await",
+                specAnchor="docs/reference/syntax-inventory.md#await",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -9158,7 +9159,7 @@ def check_await_wait_set_shape(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"do not later write `start {callName}`. Use a fresh "
                         "call name for a new future."
                     ),
-                    specAnchor="SYNTAX.md#case",
+                    specAnchor="docs/reference/syntax-inventory.md#case",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -9216,7 +9217,7 @@ def check_async_call_missing_boundary(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"every awaited call must declare both `timeout` and "
                     f"`cancelOn` to bound the wait and allow cancellation"
                 ),
-                specAnchor="SYNTAX.md#timeout",
+                specAnchor="docs/reference/syntax-inventory.md#timeout",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -9271,7 +9272,7 @@ def check_await_without_start(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`await {callFact.name}` must be paired with "
                     f"`start {callFact.name}` in the same operation"
                 ),
-                specAnchor="SYNTAX.md#await",
+                specAnchor="docs/reference/syntax-inventory.md#await",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -9320,7 +9321,7 @@ def check_started_call_without_await(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`await {callFact.name}` until an explicit detach/cancel "
                     f"verb exists"
                 ),
-                specAnchor="SYNTAX.md#start",
+                specAnchor="docs/reference/syntax-inventory.md#start",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -9395,7 +9396,7 @@ def check_file_handle_not_closed(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`defer NAME {closeTargetSuggestion} <handle>` or explicit "
                     f"`{closeTargetSuggestion}` cleanup in the same operation"
                 ),
-                specAnchor="SYNTAX.md#defer",
+                specAnchor="docs/reference/syntax-inventory.md#defer",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -9621,7 +9622,7 @@ def check_guard_token_source_without_release(facts: ExtendedFacts) -> List[Diagn
                 f"`guardTokenRelease {tokenName} <releaseOp>` so callers know "
                 f"the release path"
             ),
-            specAnchor="SYNTAX.md#guardTokenRelease",
+            specAnchor="docs/reference/syntax-inventory.md#guardTokenRelease",
             fixCandidates=[
                 FixCandidate(
                     name="declareGuardTokenRelease",
@@ -9662,7 +9663,7 @@ def check_guard_token_protects_shared_state_access(facts: ExtendedFacts) -> List
                 f"`protectedBy {tokenName}` on sharedState `{accessFact.slotName}` "
                 f"requires `guardTokenProtects {tokenName} {accessFact.slotName}`"
             ),
-            specAnchor="SYNTAX.md#guardTokenProtects",
+            specAnchor="docs/reference/syntax-inventory.md#guardTokenProtects",
             fixCandidates=[
                 FixCandidate(
                     name="declareGuardTokenProtectsResource",
@@ -9724,7 +9725,7 @@ def check_circular_type_alias(facts: ExtendedFacts) -> List[Diagnostic]:
                     intentSlogan="type alias chain contains a cycle",
                     primary=span_of_line(cycleStarterLine, "cycleStarter"),
                     invariantRule="type alias chains must terminate in a base type, not loop",
-                    specAnchor="SYNTAX.md#type",
+                    specAnchor="docs/reference/syntax-inventory.md#type",
                     fixCandidates=[
                         FixCandidate(
                             name="breakCycleAtConcreteBase",
@@ -9774,7 +9775,7 @@ def check_json_codec_incomplete(facts: ExtendedFacts) -> List[Diagnostic]:
                 "every jsonCodec must declare input, output, decodeTarget, "
                 "and encodeTarget for the codec to be wireable"
             ),
-            specAnchor="SYNTAX.md#jsonCodec",
+            specAnchor="docs/reference/syntax-inventory.md#jsonCodec",
             fixCandidates=[
                 FixCandidate(
                     name=f"add{edgeName[0].upper()}{edgeName[1:]}",
@@ -9984,7 +9985,7 @@ def check_argument_arity(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"verb `{verb}` requires at least {requiredArity} argument(s); "
                 f"row supplied {actualArity}"
             ),
-            specAnchor=f"SYNTAX.md#{verb}",
+            specAnchor=f"docs/reference/syntax-inventory.md#{verb}",
             fixCandidates=[
                 FixCandidate(
                     name="supplyMissingArguments",
@@ -9996,7 +9997,7 @@ def check_argument_arity(facts: ExtendedFacts) -> List[Diagnostic]:
             effort=Effort.TRIVIAL,
             passProvenance="check_argument_arity",
             agentHint=(
-                f"check SYNTAX.md row for `{verb}` to see the exact argument shape"
+                f"check docs/reference/syntax-inventory.md row for `{verb}` to see the exact argument shape"
             ),
         ))
     return diagnostics
@@ -10243,7 +10244,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
     validAttachmentSubjects.update(facts.collectionTypeDeclarations.keys())
     validAttachmentSubjects.update(facts.collectionOperationDeclarations.keys())
     # Module-scope verbs not already tracked by ExtendedFacts but legal
-    # narrative-attachment subjects per SYNTAX.md.
+    # narrative-attachment subjects per docs/reference/syntax-inventory.md.
     for sourceLine in facts.base.lines:
         if not sourceLine.tokens or is_comment(sourceLine) or not sourceLine.args:
             continue
@@ -10301,7 +10302,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"boundary, policy, errorPolicy, resource, timeoutBudget, or "
                     f"collection declaration)"
                 ),
-                specAnchor="SYNTAX.md#operation",
+                specAnchor="docs/reference/syntax-inventory.md#operation",
                 fixCandidates=[
                     FixCandidate(
                         name="declareSubject",
@@ -10341,7 +10342,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"meaningful only for `operation` subjects, not for the kind "
                     f"of `{referencedSubjectName}` that is actually declared"
                 ),
-                specAnchor="SYNTAX.md#operation",
+                specAnchor="docs/reference/syntax-inventory.md#operation",
                 fixCandidates=[
                     FixCandidate(
                         name="renameSubjectToActualOperation",
@@ -10457,7 +10458,7 @@ def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
                             f"`branch if condition {conditionName} target {args[4]}` "
                             f"requires `{conditionName}` to be Bool, got `{conditionType}`"
                         ),
-                        specAnchor="SYNTAX.md#branch",
+                        specAnchor="docs/reference/syntax-inventory.md#branch",
                         citations=operationCitations,
                         fixCandidates=[
                             FixCandidate(
@@ -10490,7 +10491,7 @@ def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
                             f"`branch error source {callName}` requires a result or fallible call; "
                             f"`{callFact.target}` has no known error channel"
                         ),
-                        specAnchor="SYNTAX.md#branch",
+                        specAnchor="docs/reference/syntax-inventory.md#branch",
                         citations=operationCitations,
                         fixCandidates=[
                             FixCandidate(
@@ -10520,7 +10521,7 @@ def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
                         primary=span_of_line(sourceLine, "branchElse"),
                         related=[span_of_line(operation.line, "enclosingOperation")],
                         invariantRule="`branch else target LABEL` must be the very next physical row after `branch if` or `branch error`",
-                        specAnchor="SYNTAX.md#branch",
+                        specAnchor="docs/reference/syntax-inventory.md#branch",
                         citations=operationCitations,
                         fixCandidates=[
                             FixCandidate(
@@ -10566,7 +10567,7 @@ def _unresolved_reference_diagnostic(
             f"every `{verbThatReferenced}` reference must resolve to a declared "
             f"{referencedKind} in scope"
         ),
-        specAnchor=f"SYNTAX.md#{referencedKind}",
+        specAnchor=f"docs/reference/syntax-inventory.md#{referencedKind}",
         citations=operationCitations,
         fixCandidates=[
             FixCandidate(
@@ -10958,7 +10959,7 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                             f"`argument {callReferenceName} {argumentName} {declaredArgumentType} {suppliedValueName}` "
                             f"declares `{declaredArgumentType}`, but `{targetName}` expects `{expectedType}`"
                         ),
-                        specAnchor="SYNTAX.md#argument",
+                        specAnchor="docs/reference/syntax-inventory.md#argument",
                         citations=operationCitations,
                         fixCandidates=[
                             FixCandidate(
@@ -11006,7 +11007,7 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`{suppliedValueName}` is declared `{actualType}` "
                     f"(canonical `{resolvedActual}`)"
                 ),
-                specAnchor="SYNTAX.md#argument",
+                specAnchor="docs/reference/syntax-inventory.md#argument",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -11376,7 +11377,7 @@ def check_enum_return_uses_case(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"operation `{operation.name}` returns enum `{enumType}`; "
                     f"`{expectedReturnVerb}` must use one of its enum cases"
                 ),
-                specAnchor="SYNTAX.md#enumCase",
+                specAnchor="docs/reference/syntax-inventory.md#enumCase",
                 citations=operationCitations,
                 fixCandidates=[
                     FixCandidate(
@@ -11606,7 +11607,7 @@ def check_duplicate_declarations(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"each `{verb}` declaration name must be unique within its scope"
                 + scopeHint
             ),
-            specAnchor=f"SYNTAX.md#{verb}",
+            specAnchor=f"docs/reference/syntax-inventory.md#{verb}",
             fixCandidates=[
                 FixCandidate(
                     name="renameDuplicate",
@@ -11685,7 +11686,7 @@ def check_unguarded_json_access(facts: ExtendedFacts) -> List[Diagnostic]:
                         "JsonAccessError`; install `branchIfError` after `run` "
                         "and before the first use of the cursor"
                     ),
-                    specAnchor="SYNTAX.md#json-cursor-navigation",
+                    specAnchor="docs/reference/syntax-inventory.md#json-cursor-navigation",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -11762,7 +11763,7 @@ def check_stale_json_cursor(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"`{mutatorCall.target}` ran on the same JsonDocument; "
                         "reacquire a cursor before reading it again"
                     ),
-                    specAnchor="SYNTAX.md#json-cursor-lifetime",
+                    specAnchor="docs/reference/syntax-inventory.md#json-cursor-lifetime",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -11839,7 +11840,7 @@ def check_malformed_json_path(facts: ExtendedFacts) -> List[Diagnostic]:
                 "JsonPath literals accept only `.fieldName` object steps and "
                 "`[index]` array steps with non-negative decimal indices"
             ),
-            specAnchor="SYNTAX.md#JsonPath",
+            specAnchor="docs/reference/syntax-inventory.md#JsonPath",
             fixCandidates=[
                 FixCandidate(
                     name="rewriteJsonPathLiteral",
@@ -11899,7 +11900,7 @@ def check_unescaped_json_string_interpolation(facts: ExtendedFacts) -> List[Diag
                         f"`{formatName}` contains `%s` inside JSON string "
                         "content; interpolated bytes are not JSON-escaped"
                     ),
-                    specAnchor="SYNTAX.md#json.stringify",
+                    specAnchor="docs/reference/syntax-inventory.md#json.stringify",
                     citations=operationCitations,
                     fixCandidates=[
                         FixCandidate(
@@ -11955,7 +11956,7 @@ def _deprecated_json_call_diagnostic(
             "json.stringify.<TypeName>, json.parse.<TypeName>, or the "
             "JsonDocument cursor/mutator API"
         ),
-        specAnchor="SYNTAX.md#json-crud-api",
+        specAnchor="docs/reference/syntax-inventory.md#json-crud-api",
         citations=narrative_citations_for_operation(facts, operation.name),
         fixCandidates=[
             FixCandidate(
@@ -12230,7 +12231,7 @@ def _json_body_diagnostic(
         primary=span_of_line(json_body.line, "jsonBodyDeclaration"),
         related=related or [],
         invariantRule=rule,
-        specAnchor="SYNTAX.md#jsonBody",
+        specAnchor="docs/reference/syntax-inventory.md#jsonBody",
         fixCandidates=[
             FixCandidate(
                 name="repairJsonBodyLiteral",
@@ -12690,7 +12691,7 @@ def _sql_body_diagnostic(
         primary=span_of_line(sql_body.line, "sqlBodyDeclaration"),
         related=related or [],
         invariantRule=rule,
-        specAnchor="SYNTAX.md#sqlBody",
+        specAnchor="docs/reference/syntax-inventory.md#sqlBody",
         fixCandidates=[
             FixCandidate(
                 name="repairSqlBodyLiteral",
@@ -12862,7 +12863,7 @@ def _inline_sql_literal_diagnostic(
             "so tools can validate statement shape, placeholders, and SQL text "
             "without string escaping"
         ),
-        specAnchor="SYNTAX.md#sqlBody",
+        specAnchor="docs/reference/syntax-inventory.md#sqlBody",
         fixCandidates=[
             FixCandidate(
                 name="moveSqlToBodyIsland",
@@ -13802,7 +13803,7 @@ def check_idempotency_replay_uses_response_status(
 #   1. semsc.py — the dispatch block (`if target == "http.responseText":`
 #      and friends). That block carries the same SOURCE-OF-TRUTH banner.
 #   2. semlint.py (here) — the constants below + ALL_NATIVE_HTTP_TARGETS.
-#   3. SYNTAX.md — the two `http.requestMethod, …` and
+#   3. docs/reference/syntax-inventory.md — the two `http.requestMethod, …` and
 #      `http.responseText, …` umbrella rows under the call-targets section.
 #
 # Adding or removing a target requires updating all three sites. The
@@ -13913,7 +13914,7 @@ ALL_NATIVE_HTTP_TARGETS: frozenset = (
 # Legacy substring markers that, when present in an operation's `warning`
 # text, used to opt the operation out of the unguardedHttpInput lint. The
 # canonical opt-out is now the `pinsNullBodyFailurePath OP "rationale"`
-# verb (see SYNTAX.md); these substrings are still honored for one
+# verb (see docs/reference/syntax-inventory.md); these substrings are still honored for one
 # deprecation cycle, but their use trips SS3605 `legacyNullBodyMarker`
 # pointing the agent at the verb-based replacement.
 LEGACY_HTTP_NULL_GUARD_OPT_OUT_MARKERS: Tuple[str, ...] = (
@@ -14103,7 +14104,7 @@ def check_response_body_forwarder_declaration_honored(facts: ExtendedFacts) -> L
                 f"op body must contain `arg <writerCall> body {declaredBodyArgName}` "
                 f"against a known writer for the claim to hold"
             ),
-            specAnchor="SYNTAX.md#responseBodyForwarder",
+            specAnchor="docs/reference/syntax-inventory.md#responseBodyForwarder",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -14185,7 +14186,7 @@ def check_response_body_forwarder_missing(facts: ExtendedFacts) -> List[Diagnost
                         "so nullable request-body/header values are checked "
                         "transitively through this wrapper"
                     ),
-                    specAnchor="SYNTAX.md#responseBodyForwarder",
+                    specAnchor="docs/reference/syntax-inventory.md#responseBodyForwarder",
                     citations=narrative_citations_for_operation(facts, operation.name),
                     fixCandidates=[
                         FixCandidate(
@@ -14229,7 +14230,7 @@ def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
                 "GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS; the native dispatcher "
                 "silently never matches anything else, leaving the handler dead"
             ),
-            specAnchor="SYNTAX.md#route",
+            specAnchor="docs/reference/syntax-inventory.md#route",
             fixCandidates=[
                 FixCandidate(
                     name="useWhitelistedMethod",
@@ -14302,7 +14303,7 @@ def check_middleware_missing_response_effect(facts: ExtendedFacts) -> List[Diagn
                 "invokes middleware specifically so it can write response "
                 "state before the handler runs"
             ),
-            specAnchor="SYNTAX.md#routeMiddleware",
+            specAnchor="docs/reference/syntax-inventory.md#routeMiddleware",
             citations=narrative_citations_for_operation(facts, middlewareName),
             fixCandidates=[
                 FixCandidate(
@@ -14443,7 +14444,7 @@ def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
                             "(or a wrapper that forwards body to one); the "
                             "adapter rejects a null body pointer with a 500"
                         ),
-                        specAnchor="SYNTAX.md#pointer.isNull",
+                        specAnchor="docs/reference/syntax-inventory.md#pointer.isNull",
                         citations=narrative_citations_for_operation(facts, operationName),
                         fixCandidates=[
                             FixCandidate(
@@ -14543,7 +14544,7 @@ def check_untrusted_http_html_hydration(facts: ExtendedFacts) -> List[Diagnostic
                         "`HtmlDocument`) require a separate reviewed escape or "
                         "trust-conversion operation before hydration."
                     ),
-                    specAnchor="SYNTAX.md#html",
+                    specAnchor="docs/reference/syntax-inventory.md#html",
                     citations=narrative_citations_for_operation(facts, operationName),
                     fixCandidates=[
                         FixCandidate(
@@ -14675,7 +14676,7 @@ def check_middleware_return_type_is_middleware_control(facts: ExtendedFacts) -> 
                 f"silently short-circuit the route handler even when the "
                 f"author intended it as a failure sentinel."
             ),
-            specAnchor="SYNTAX.md#MiddlewareControl",
+            specAnchor="docs/reference/syntax-inventory.md#MiddlewareControl",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -14816,7 +14817,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
                 primary=span_of_line(sourceLine, "handlerInputDeclaration"),
                 related=relatedSpans,
                 invariantRule=(
-                    f"the native HTTP ABI defined at SYNTAX.md#route requires "
+                    f"the native HTTP ABI defined at docs/reference/syntax-inventory.md#route requires "
                     f"every route-bound or middleware-bound operation to "
                     f"declare its `{inputType}` input under the exact name "
                     f"`{canonicalName}`. The dispatcher at semsc.py:2290 "
@@ -14829,7 +14830,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"so the rule is graded ERROR and blocks compile under "
                     f"--strict so the contract cannot drift unnoticed."
                 ),
-                specAnchor="SYNTAX.md#route",
+                specAnchor="docs/reference/syntax-inventory.md#route",
                 citations=narrative_citations_for_operation(facts, operationName),
                 fixCandidates=[
                     FixCandidate(
@@ -14951,7 +14952,7 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
                 f"renamed and the build tape's mainFile row wasn't updated "
                 f"in lockstep."
             ),
-            specAnchor="SYNTAX.md#mainFile",
+            specAnchor="docs/reference/syntax-inventory.md#mainFile",
             fixCandidates=[
                 FixCandidate(
                     name="updateMainFileToActualName",
@@ -15050,7 +15051,7 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                         "\"rationale\"` so future preemptive-runtime coverage is "
                         "not a silent gap"
                     ),
-                    specAnchor="SYNTAX.md#routeTimeout",
+                    specAnchor="docs/reference/syntax-inventory.md#routeTimeout",
                     fixCandidates=[
                         FixCandidate(
                             name="addRouteTimeout",
@@ -15088,7 +15089,7 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                         "(tracing headers, auth checks, etc.) are not silently "
                         "skipped on the missed route"
                     ),
-                    specAnchor="SYNTAX.md#routeMiddleware",
+                    specAnchor="docs/reference/syntax-inventory.md#routeMiddleware",
                     fixCandidates=[
                         FixCandidate(
                             name="addRouteMiddleware",
@@ -15209,7 +15210,7 @@ def check_legacy_null_body_marker(facts: ExtendedFacts) -> List[Diagnostic]:
                 "is still honored for one deprecation cycle but should be "
                 "replaced with the explicit verb"
             ),
-            specAnchor="SYNTAX.md#pinsNullBodyFailurePath",
+            specAnchor="docs/reference/syntax-inventory.md#pinsNullBodyFailurePath",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -15263,7 +15264,7 @@ def check_pins_null_body_failure_path_missing_rationale(facts: ExtendedFacts) ->
                 "empty rationale string explaining WHY this route is "
                 "intentionally exercising the adapter's null-body 500 path"
             ),
-            specAnchor="SYNTAX.md#pinsNullBodyFailurePath",
+            specAnchor="docs/reference/syntax-inventory.md#pinsNullBodyFailurePath",
             fixCandidates=[
                 FixCandidate(
                     name="addRationaleString",
@@ -15322,7 +15323,7 @@ def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Dia
                     f"earlier in operation `{operationName}`; dangling "
                     f"rationale rots when the call is renamed or removed"
                 ),
-                specAnchor="SYNTAX.md#rationale",
+                specAnchor="docs/reference/syntax-inventory.md#rationale",
                 fixCandidates=[
                     FixCandidate(
                         name="correctCallName",
@@ -15362,7 +15363,7 @@ def check_rationale_call_references_known_call(facts: ExtendedFacts) -> List[Dia
                     "proximity-based `# rationale:` comment it was meant to "
                     "replace"
                 ),
-                specAnchor="SYNTAX.md#rationale",
+                specAnchor="docs/reference/syntax-inventory.md#rationale",
                 fixCandidates=[
                     FixCandidate(
                         name="addRationaleText",
@@ -15449,7 +15450,7 @@ def check_void_output_should_use_return_void(facts: ExtendedFacts) -> List[Diagn
                 f"to recognise as a Void-ABI quirk instead of as a real "
                 f"value being returned."
             ),
-            specAnchor="SYNTAX.md#return",
+            specAnchor="docs/reference/syntax-inventory.md#return",
             citations=narrative_citations_for_operation(facts, operationName),
             fixCandidates=[
                 FixCandidate(
@@ -15512,7 +15513,7 @@ def check_narrative_references_line_number(facts: ExtendedFacts) -> List[Diagnos
     fatal for projects that want narrative durability enforced.
     """
     diagnostics: List[Diagnostic] = []
-    # Track every narrative-bearing line. Per SYNTAX.md, the narrative
+    # Track every narrative-bearing line. Per docs/reference/syntax-inventory.md, the narrative
     # verbs are purpose / invariant / warning / guarantee / failure /
     # security / timing / observability + the `rationale CALL` verb +
     # `# rationale:` comments. The check looks at args[1:] joined
@@ -15549,7 +15550,7 @@ def check_narrative_references_line_number(facts: ExtendedFacts) -> List[Diagnos
                 f"`guarantee` / `failure` / `security` / `timing` / "
                 f"`observability` / `rationale`) should cite STABLE "
                 f"identifiers: function names, rule IDs (SS3603), spec "
-                f"anchors (SYNTAX.md#routeMiddleware), or grep-strings. "
+                f"anchors (docs/reference/syntax-inventory.md#routeMiddleware), or grep-strings. "
                 f"Line numbers drift the moment the referenced file gets "
                 f"an insertion — your narrative says `{offendingReference}` "
                 f"and a future agent will trust it to find the wrong line."
@@ -17177,7 +17178,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "(main.sem, index.sem, the leaf module file, or exactly "
                     "one non-test .sem/.sscript)."
                 ),
-                specAnchor="SYNTAX.md#registerModule",
+                specAnchor="docs/reference/syntax-inventory.md#registerModule",
                 fixCandidates=[
                     FixCandidate(
                         name="pointRegistrationAtSource",
@@ -17221,7 +17222,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "different export verbs, creates an ambiguous public "
                         "API edge for importers and documentation tools."
                     ),
-                    specAnchor="SYNTAX.md#exportOperation",
+                    specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                     fixCandidates=[
                         FixCandidate(
                             name="removeDuplicateExport",
@@ -17265,7 +17266,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "back, so cross-module mutation must go through "
                             "an exported operation with explicit effects."
                         ),
-                        specAnchor="SYNTAX.md#exportConstant",
+                        specAnchor="docs/reference/syntax-inventory.md#exportConstant",
                         fixCandidates=[
                             FixCandidate(
                                 name="exportMutationOperation",
@@ -17304,7 +17305,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "module immutable constant or an operation that "
                             "accesses the state with declared effects."
                         ),
-                        specAnchor="SYNTAX.md#exportConstant",
+                        specAnchor="docs/reference/syntax-inventory.md#exportConstant",
                         fixCandidates=[
                             FixCandidate(
                                 name="moveToImmutableModuleStorage",
@@ -17356,7 +17357,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "understand why the contract exists without reading "
                         "the body first."
                     ),
-                    specAnchor="SYNTAX.md#purpose",
+                    specAnchor="docs/reference/syntax-inventory.md#purpose",
                     fixCandidates=[
                         FixCandidate(
                             name="addPurpose",
@@ -17386,7 +17387,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "A generic name forces importers to recover intent "
                         "from context that is not present at the call site."
                     ),
-                    specAnchor="SYNTAX.md#naming",
+                    specAnchor="docs/reference/syntax-inventory.md#naming",
                     fixCandidates=[
                         FixCandidate(
                             name="renamePublicOperation",
@@ -17434,7 +17435,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         f"{impliedPath}`. Importers cannot reason about the "
                         "effect unless it is part of the exported contract."
                     ),
-                    specAnchor="SYNTAX.md#effect",
+                    specAnchor="docs/reference/syntax-inventory.md#effect",
                     fixCandidates=[
                         FixCandidate(
                             name="addPublicEffect",
@@ -17531,7 +17532,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "The current import bridge inlines files, but the "
                             "semantic contract is already export-only."
                         ),
-                        specAnchor="SYNTAX.md#exportOperation",
+                        specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                         fixCandidates=[
                             FixCandidate(
                                 name="exportProviderOperation",
@@ -17577,7 +17578,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "agents can reason about a folder without editing the "
                     "build entry point."
                 ),
-                specAnchor="SYNTAX.md#exportOperation",
+                specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                 fixCandidates=[
                     FixCandidate(
                         name="moveExportToModuleSource",
@@ -17613,7 +17614,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                     "build.sem before module source can import from it or "
                     "export a public contract."
                 ),
-                specAnchor="SYNTAX.md#registerModule",
+                specAnchor="docs/reference/syntax-inventory.md#registerModule",
                 related=[
                     span_of_line(line, "registeredModule")
                     for _module, (line, _path) in registeredModules.items()
@@ -17651,7 +17652,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "by build.sem; dependency modules should also be given a "
                         "build-time registration before module source imports them."
                     ),
-                    specAnchor="SYNTAX.md#importModule",
+                    specAnchor="docs/reference/syntax-inventory.md#importModule",
                     fixCandidates=[
                         FixCandidate(
                             name="registerImportedModule",
@@ -17693,7 +17694,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                         "name the module declared by this source file, and "
                         "that module must be registered by build.sem."
                     ),
-                    specAnchor="SYNTAX.md#exportOperation",
+                    specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                     fixCandidates=[
                         FixCandidate(
                             name="retargetExport",
@@ -17734,7 +17735,7 @@ def check_registered_module_contract(facts: ExtendedFacts) -> List[Diagnostic]:
                             "the exported type, error, operation, capability, "
                             "or constant."
                         ),
-                        specAnchor="SYNTAX.md#exportOperation",
+                        specAnchor="docs/reference/syntax-inventory.md#exportOperation",
                         fixCandidates=[
                             FixCandidate(
                                 name="declareExportedSymbol",
@@ -18045,7 +18046,7 @@ def check_stdlib_module_no_smoke_main(facts: ExtendedFacts) -> List[Diagnostic]:
                 "(plus its test-only MainError and capability rows) lives in "
                 "the colocated `main.test.sem`, which imports the module."
             ),
-            specAnchor="SYNTAX.md#module",
+            specAnchor="docs/reference/syntax-inventory.md#module",
             fixCandidates=[
                 FixCandidate(
                     name="moveSmokeMainToTest",
@@ -18657,11 +18658,11 @@ def render_agent(diagnostics: Sequence[Diagnostic]) -> str:
 
 # Note for the sem-record format: the `diagnostic*` verbs emitted below are
 # DRAFT PROPOSALS for the diagnostic syntax surface — they are not yet rows
-# in SYNTAX.md, so the output will NOT pass `semsc --lint --parse-only`. We
+# in docs/reference/syntax-inventory.md, so the output will NOT pass `semsc --lint --parse-only`. We
 # emit the format here as a design demonstration; a real spec landing must
 # precede production use. See refined-diagnostic design notes for the proposed grammar.
 SEM_RECORD_HEADER = (
-    "# DRAFT: diagnostic* verbs below are PROPOSED, not yet in SYNTAX.md.\n"
+    "# DRAFT: diagnostic* verbs below are PROPOSED, not yet in docs/reference/syntax-inventory.md.\n"
     "# Output will not pass `semsc --lint --parse-only` until the diagnostic\n"
     "# syntax surface is landed. See refined-diagnostic design notes.\n"
 )

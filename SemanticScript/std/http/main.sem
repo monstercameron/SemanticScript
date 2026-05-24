@@ -4,7 +4,7 @@
 #
 # Import this module with:
 #
-#   importModule http standard.http
+#   import http standard.http
 #
 # The legacy `http.response*` and `http.request*` call targets are
 # compiler/runtime-owned intrinsics. Streaming SSE is exposed as ordinary

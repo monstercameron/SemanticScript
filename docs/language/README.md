@@ -12,7 +12,7 @@ The current repository has two related surfaces:
   by `SemanticScript/sem/` and `SemanticScript/sem/feature_tests/`.
 - Refined SemanticScript: accepted as parseable metadata or synchronous fallback
   by the reference compiler/linter/editor, but not always backed by a runtime
-  service yet. `SYNTAX.md` is the status inventory.
+  service yet. `docs/reference/syntax-inventory.md` is the status inventory.
 
 Do not infer compiler support from VS Code highlighting alone. The editor
 tracks syntax and hover semantics for both surfaces; the compiler is the

@@ -4,7 +4,7 @@
 #
 # Import with:
 #
-#   importModule standard.log
+#   import log standard.log
 #
 # Pure-SemanticScript structured-logging package. Owns one shared
 # append-mode FILE handle and writes one JSON object per line. All

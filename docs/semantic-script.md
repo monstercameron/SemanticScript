@@ -1330,9 +1330,9 @@ dependencyExports database.postgres DatabaseClient DatabaseConnection DatabaseTr
 Importing should be explicit:
 
 ```text
-importModule standard.http as http
-importModule standard.json as json
-importModule database.postgres as postgres
+import http standard.http
+import json standard.json
+import postgres database.postgres
 ```
 
 No wildcard import that silently dumps symbols into scope.

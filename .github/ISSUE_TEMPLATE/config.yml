@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/monstercameron/SemanticScript/security/policy
+    about: Please follow SECURITY.md instead of opening a public issue.
+  - name: Read project documentation
+    url: https://github.com/monstercameron/SemanticScript/tree/main/docs
+    about: Check language, compiler, runtime, and tooling documentation first.

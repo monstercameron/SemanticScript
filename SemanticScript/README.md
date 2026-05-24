@@ -33,9 +33,9 @@ std/
 Apps import std modules by namespace:
 
 ```semanticscript
-importModule html standard.html
-importModule json standard.json
-importModule sqlite standard.sqlite
+import html standard.html
+import json standard.json
+import sqlite standard.sqlite
 ```
 
 Std discovery is flexible enough for apps outside this repository. The compiler
@@ -55,7 +55,7 @@ APIs and low-level runtime implementation details.
 |---|---|
 | Python reference compiler | Supported 1.0 compiler for `.sscript` and `.sem`, console entry, parse/lint, LLVM IR, JIT run, and clang-linked executables. |
 | VS Code extension | Supported editor tooling in `../vscode-semanticscript/`; highlighting refined syntax does not imply runtime support. |
-| Refined and partial syntax | Parseable or lowered only where documented in `../SYNTAX.md` and `../docs/toolchain/compiler.md`. Use `--parse-only` for metadata-heavy forms. |
+| Refined and partial syntax | Parseable or lowered only where documented in `../docs/reference/syntax-inventory.md` and `../docs/toolchain/compiler.md`. Use `--parse-only` for metadata-heavy forms. |
 | Web / HTTP runtime | Preview native HTTP/1.1 listener for routed `target webServer` programs with path params, middleware, request readers, response writers, file responses, and curated app coverage. HTTP/2/H2O remains future work. |
 | Runtime flags | `--build-profile`, `--runtime-checks`, `--persist-llvm-ir`, `--diagnostics-format`, and `--opt-level` are supported compiler flags. |
 

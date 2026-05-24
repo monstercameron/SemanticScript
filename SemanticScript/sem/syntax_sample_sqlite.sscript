@@ -3,7 +3,7 @@
 # Refined-syntax sample for the proposed `standard.sqlite` standard module.
 # This file is the canonical reference for what SQLite usage looks like in
 # SemanticScript source: it pins the call surface, type universe, capability
-# grant, error domain, and effect taxonomy that semsc / semlint / SYNTAX.md
+# grant, error domain, and effect taxonomy that semsc / semlint / docs/reference/syntax-inventory.md
 # must agree on once the compiler wiring lands.
 #
 # Status: the lowering for `sqlite.*` targets is not in semsc.py yet. The
