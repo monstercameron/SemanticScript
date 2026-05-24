@@ -680,13 +680,59 @@ Rules:
 - `dependencyIntegrity` must use `sha256:<64 hex>` for archive bytes or
   `commit:<7-40 hex>` for resolved GitHub commits.
 - `dependencyCache` should normally be `.semcache`; it is ignored source cache,
-  not checked-in project source.
-- `dependencyLock` names the future lock tape. Locked builds should read
-  resolved commits and checksums from the lock tape before touching the network.
+  not checked-in project source. Declaring it pins all dependencies to the
+  project-local cache. When it is omitted, fetched (`github`/`http`)
+  dependencies use a shared, version-keyed machine cache so multiple projects
+  share a single download per pinned version, while versions coexist side by
+  side. `path`/`local` dependencies always stay project-local because local
+  source is not a shareable artifact.
+- `dependencyLock` names the lock tape (`sem.lock`, schema `sem.lock.v1`). It
+  records each dependency's resolved hash and integrity so locked builds are
+  reproducible and offline.
 
-The current compiler validates the row shapes but does not yet perform network
-fetching. The linter emits `SS255x` diagnostics when remote dependency rows are
-missing cache, lock, source, or integrity context.
+### Resolving dependencies
+
+`sem deps` drives resolution. Fetching is build-time authority, so only `sync`
+touches the network:
+
+```powershell
+sem deps sync PATH      # fetch, verify integrity, populate the cache, write sem.lock
+sem deps verify PATH    # offline: confirm the cache and lock agree with build.sem
+sem deps list PATH      # offline: show declared dependencies and their cache/lock state
+sem deps sync --offline PATH   # materialize only path/local deps and the existing cache
+```
+
+After `sem deps sync`, the compiler's import bridge resolves
+`import ALIAS MODULE_PATH` against the materialized cache. Import resolution is
+always offline: a declared-but-unsynced dependency raises an actionable
+`run sem deps sync` error only if the program actually imports it. The shared
+machine cache root is `SEMANTICSCRIPT_CACHE` (falling back to a per-user cache
+directory).
+
+The shared cache layout is `github.com/OWNER/REPO/REF` (or a URL hash for
+`http` sources), so `repo@v1.0.0` and `repo@v2.0.0` live in distinct
+directories and never collide. Integrity pins make the shared cache safe to
+reuse across projects: a fetched archive is rejected unless its SHA-256 matches
+the declared pin.
+
+A fetch without a `dependencyIntegrity` row is trust-on-first-use: the resolved
+SHA-256 is recorded in `sem.lock` and re-verified on later syncs, and `sem deps`
+warns and prints the exact `dependencyIntegrity` row to add. A `commit:` pin
+selects a GitHub ref but is not cryptographically verified, so `sem deps` warns
+and recommends a `sha256:` pin for tamper-proof reproducibility. `sem deps sync`
+is idempotent — a fetched dependency already present in the cache and matching
+the lock is reused without a network round-trip.
+
+Archive extraction guards against path traversal, link members, decompression
+bombs, and reserved/unsafe filenames, so a hostile package cannot write outside
+its cache directory or exhaust the disk. Cache writes are atomic: source is
+built in a temporary directory and swapped into place, so a crashed or
+concurrent sync never leaves a half-populated cache. Transitive resolution and
+version solving are not implemented yet: every dependency is pinned exactly by
+its declared ref + integrity.
+
+The linter emits `SS255x` diagnostics when remote dependency rows are missing
+cache, lock, source, or integrity context.
 
 ## Registered Module Source Selection
 

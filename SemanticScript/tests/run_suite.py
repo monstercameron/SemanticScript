@@ -86,6 +86,12 @@ COMMANDS: tuple[TestCommand, ...] = (
         py("-m", "unittest", "SemanticScript.tests.test_sem_clean", "-v"),
     ),
     TestCommand(
+        "deps.unit",
+        "External dependency resolution: parse, fetch, integrity, cache, lock, and import bridge",
+        "unit",
+        py("-m", "unittest", "SemanticScript.tests.test_semdeps", "-v"),
+    ),
+    TestCommand(
         "cli-errors.unit",
         "semsc/sem CLI error contracts (missing file, bad flag, unknown subcommand)",
         "unit",

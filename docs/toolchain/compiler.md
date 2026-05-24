@@ -413,14 +413,22 @@ resolves those registered module paths first. A registered path may point at a
 source file or a folder with `main.sem`, `index.sem`, the leaf module file, or
 exactly one non-test `.sem` / `.sscript`.
 
-If no project-registered module matches, canonical standard-library module
-paths resolve through the std search path. `standard` maps to `std/module.sem`
-and `standard.<module>` maps to `std/<module>/main.sem`. Search order is:
-explicit `--std-path` roots, `SEMANTICSCRIPT_STD_PATH` / `SEMSC_STD_PATH`,
-vendored `std/` folders found while walking up from the source file, `std/`
-under the current working directory, then the compiler-bundled `../std`.
-After that, the legacy resolver searches source-relative paths, std roots, and
-the project root. Imports are inlined with cycle detection, and the import row
+When the root source is a build tape with external `dependency*` rows, the
+materialized dependency cache is merged into the registry next, so
+`import ALIAS MODULE_PATH` resolves against fetched packages. This bridge is
+strictly offline — it reads only the cache populated by `sem deps sync`; a
+declared-but-unsynced dependency raises an actionable `sem deps sync` error when
+its module is imported, and the compiler never performs a network fetch. See
+[../reference/package-management.md](../reference/package-management.md).
+
+If no project-registered or dependency module matches, canonical
+standard-library module paths resolve through the std search path. `standard`
+maps to `std/module.sem` and `standard.<module>` maps to `std/<module>/main.sem`.
+Search order is: explicit `--std-path` roots, `SEMANTICSCRIPT_STD_PATH` /
+`SEMSC_STD_PATH`, vendored `std/` folders found while walking up from the source
+file, `std/` under the current working directory, then the compiler-bundled
+`../std`. After that, the legacy resolver searches source-relative paths, std
+roots, and the project root. Imports are inlined with cycle detection, and the import row
 is preserved so alias and
 singular-import metadata remain visible after inlining.
 

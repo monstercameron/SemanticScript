@@ -52,12 +52,12 @@ partial       mixed behavior; see owning language doc
 | `cpuTune` | `cpuTune PROJECT generic|native|CPU_NAME` | partial |
 | `cpuFeature` | `cpuFeature PROJECT FEATURE on|off` | partial |
 | `cpuFeatureCheck` | `cpuFeatureCheck PROJECT auto|off|warn|require` | partial |
-| `dependency` | `dependency PROJECT ALIAS MODULE_PATH VERSION_OR_REF` | partial |
-| `dependencySource` | `dependencySource PROJECT ALIAS [local|path|github|http] SOURCE [REF]` | partial |
-| `dependencyFetch` | `dependencyFetch PROJECT ALIAS github OWNER/REPO REF` or `dependencyFetch PROJECT ALIAS http "https://..."` | partial |
-| `dependencyCache` | `dependencyCache PROJECT "PATH"` | partial |
-| `dependencyLock` | `dependencyLock PROJECT "PATH"` | partial |
-| `dependencyIntegrity` | `dependencyIntegrity PROJECT ALIAS sha256:<64-hex>|commit:<7-40-hex>` | partial |
+| `dependency` | `dependency PROJECT ALIAS MODULE_PATH VERSION_OR_REF` | implemented |
+| `dependencySource` | `dependencySource PROJECT ALIAS [local|path|github|http] SOURCE [REF]` | implemented |
+| `dependencyFetch` | `dependencyFetch PROJECT ALIAS github OWNER/REPO REF` or `dependencyFetch PROJECT ALIAS http "https://..."` | implemented |
+| `dependencyCache` | `dependencyCache PROJECT "PATH"` | implemented |
+| `dependencyLock` | `dependencyLock PROJECT "PATH"` | implemented |
+| `dependencyIntegrity` | `dependencyIntegrity PROJECT ALIAS sha256:<64-hex>|commit:<7-40-hex>` | implemented |
 | `nativeOutput` | `nativeOutput PROJECT "PATH"` | partial |
 | `nativeHttpHost` | `nativeHttpHost PROJECT "HOST"` | metadata |
 | `nativeHttpPort` | `nativeHttpPort PROJECT PORT` | metadata |

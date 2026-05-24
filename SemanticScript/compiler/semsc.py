@@ -68,6 +68,7 @@ for _import_path in (_COMPILER_DIR, _SEMANTICSCRIPT_ROOT):
     if _import_path not in sys.path:
         sys.path.insert(0, _import_path)
 import libc_registry
+import semdeps
 from shared.call_contracts import (
     KNOWN_FALLIBLE_CALL_TARGETS,
     MIDDLEWARE_CONTROL_CASES,
@@ -18290,6 +18291,23 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
     module_registry, registry_main_files = _collect_module_registry(
         source, source_path)
 
+    # External-dependency import bridge. When the unit being resolved is a
+    # build tape carrying `dependency*` rows, merge the offline, materialized
+    # dependency cache into the registry so `import ALIAS MODULE_PATH` resolves
+    # against fetched packages. Import resolution stays offline: a declared but
+    # unsynced dependency is recorded as pending and only errors if the program
+    # actually imports it, with an actionable `sem deps sync` message.
+    dep_pending: dict = {}
+    if _is_build_tape_path(source_path):
+        try:
+            dep_config = semdeps.parse_build_sem(source, source_path)
+            if dep_config.specs:
+                dep_registry, dep_pending = semdeps.resolve_import_registry(dep_config)
+                for dep_module_path, dep_source_file in dep_registry.items():
+                    module_registry.setdefault(dep_module_path, dep_source_file)
+        except semdeps.DependencyError as dep_error:
+            raise SyntaxError(f"build.sem dependency error: {dep_error}")
+
     def find_standard_library_module(dotted: str):
         for stdlib_dir in stdlib_dirs:
             if dotted == "standard":
@@ -18357,6 +18375,8 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
                 candidate = os.path.join(base, rel)
                 if os.path.isfile(candidate):
                     return candidate
+        if dotted in dep_pending:
+            raise SyntaxError(dep_pending[dotted])
         # No leaf fallback: a missing module must stay missing, not silently
         # bind to a same-leafname file in a sibling directory (e.g. importing
         # `standard.time` should not pick up `std/time.sscript`).
