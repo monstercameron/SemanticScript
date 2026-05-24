@@ -1,0 +1,16 @@
+Inventory Manager
+=================
+Current Inventory
+-----------------
+1. Notebook stock=7 reorderPoint=3 status=ok
+3. Marker stock=16 reorderPoint=5 status=ok
+
+Audit Log
+---------
+added Notebook
+added Pencil
+added Marker
+sold 3 for item 1
+rejected sale 30 for item 2
+received 12 for item 3
+removed item 2

@@ -1,0 +1,33 @@
+JavaScript Folder Inventory
+===========================
+directory: retired/javascript-reference-snapshot
+scriptCount: 29
+async-workflow.js          lines= 47 bytes=1241
+complex-checkout-saga.js   lines=439 bytes=12035
+countdown.js               lines=  4 bytes=56
+counterintuitive-closure-capture.js lines= 35 bytes=1071
+counterintuitive-coercion.js lines= 49 bytes=1289
+counterintuitive-event-loop.js lines= 38 bytes=773
+counterintuitive-mutation.js lines= 39 bytes=1343
+counterintuitive-numbers.js lines= 22 bytes=931
+counterintuitive-this-binding.js lines= 38 bytes=1044
+esoteric-church-encoding.js lines= 39 bytes=1587
+esoteric-reactive-proxy.js lines= 73 bytes=2309
+esoteric-self-referential.js lines= 38 bytes=1178
+esoteric-stack-language.js lines=139 bytes=3012
+esoteric-trampoline.js     lines= 53 bytes=1211
+event-workflow.js          lines= 48 bytes=1327
+factorial.js               lines=  7 bytes=103
+file-inventory.js          lines= 43 bytes=1302
+fizzbuzz.js                lines= 12 bytes=263
+hello-world.js             lines=  7 bytes=142
+hello.js                   lines=  2 bytes=31
+inventory-manager.js       lines= 85 bytes=2355
+json-order-summary.js      lines= 58 bytes=1571
+number-stats.js            lines= 56 bytes=1980
+run-all.js                 lines=117 bytes=3321
+simple-calculator.js       lines= 48 bytes=1291
+string-analyzer.js         lines= 35 bytes=1113
+sum_of_squares.js          lines=  7 bytes=115
+todos-list.js              lines=293 bytes=6353
+webserver-console.js       lines= 45 bytes=1329

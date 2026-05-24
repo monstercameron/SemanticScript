@@ -1,0 +1,7 @@
+Counterintuitive Closure Capture
+================================
+var callbacks => 3, 3, 3
+let callbacks => 0, 1, 2
+firstCounterAlias() => 1
+secondCounterAlias() => 2
+firstCounterAlias() again => 3

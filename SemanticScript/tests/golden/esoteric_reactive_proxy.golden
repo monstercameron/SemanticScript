@@ -1,0 +1,14 @@
+Esoteric Reactive Proxy
+=======================
+priceCents=999
+quantity=3
+discountCents=500
+totalCents=2497
+status=ready
+trace:
+totalCalculator observed quantity: 2 -> 3
+statusCalculator observed totalCents: 2400 -> 3600
+totalCalculator observed discountCents: 0 -> 500
+statusCalculator observed totalCents: 3600 -> 3100
+totalCalculator observed priceCents: 1200 -> 999
+statusCalculator observed totalCents: 3100 -> 2497
