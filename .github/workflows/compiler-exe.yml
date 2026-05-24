@@ -45,6 +45,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -c constraints.txt
+          python -m pip install -r requirements-mcp.txt
           python -m pip install pyinstaller==6.20.0
 
       - name: Install VS Code extension dependencies
@@ -73,6 +74,18 @@ jobs:
 
           & $sem fmt --check SemanticScript\tests\agent_cli_demo.test.sem
           if ($LASTEXITCODE -ne 0) { throw "sem fmt failed with $LASTEXITCODE." }
+
+          # The MCP server reads JSON-RPC from stdin; an empty stdin yields EOF,
+          # so it should start, initialize, and shut down cleanly. This proves
+          # the bundled mcp SDK loads inside the frozen executable.
+          $null | & $sem mcp
+          if ($LASTEXITCODE -ne 0) { throw "sem mcp failed to start with $LASTEXITCODE." }
+
+      # Build the .mcpb bundle on every merge so packaging stays validated, but
+      # do not stamp scoop/winget/registry manifests here: those reference a
+      # stable, non-prerelease semver release and are produced by release.yml.
+      - name: Build .mcpb Desktop Extension bundle
+        run: python packaging/mcpb/build_mcpb.py --sem-exe dist/sem.exe --output dist/semanticscript.mcpb
 
       - name: Remove stale VSIX artifacts
         shell: pwsh
@@ -212,6 +225,13 @@ jobs:
         with:
           name: semanticscript-merge-release-manifest
           path: ${{ steps.artifacts.outputs.manifest_path }}
+          if-no-files-found: error
+
+      - name: Upload .mcpb bundle artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semanticscript-mcpb
+          path: dist/semanticscript.mcpb
           if-no-files-found: error
 
       - name: Create or update main-branch prerelease

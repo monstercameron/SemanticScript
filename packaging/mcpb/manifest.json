@@ -1,0 +1,33 @@
+{
+  "manifest_version": "0.3",
+  "name": "semanticscript",
+  "display_name": "SemanticScript",
+  "version": "0.0.1",
+  "description": "Agent-first SemanticScript toolchain: compile, lint, and analyze .sem source through stable JSON surfaces.",
+  "long_description": "Exposes the SemanticScript `sem` CLI's stable JSON surfaces (check, readiness, context, symbols, graph, slice, explain, fix plan, patch, test, and more) as MCP tools, backed by the bundled single-file `sem` executable.",
+  "author": {
+    "name": "Earl Cameron",
+    "url": "https://github.com/monstercameron"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/monstercameron/SemanticScript"
+  },
+  "homepage": "https://github.com/monstercameron/SemanticScript",
+  "documentation": "https://github.com/monstercameron/SemanticScript/blob/main/docs/toolchain/compiler.md",
+  "license": "MIT",
+  "keywords": ["semanticscript", "compiler", "linter", "agent", "mcp"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/sem.exe",
+    "mcp_config": {
+      "command": "${__dirname}/server/sem.exe",
+      "args": ["mcp"],
+      "env": {}
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["win32"]
+  }
+}
