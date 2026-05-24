@@ -26,7 +26,7 @@ doc file that owns that behavior. Avoid giant catch-all edits.
 
 ## Contents
 
-- `agents.md` is the compact agent-facing guide.
+- `../AGENTS.md` is the compact agent-facing guide.
 - `ast.md` records the language and AST design notes.
 - `optimization-guide.md` records optimization and app-boundary rules.
 - `language/` explains the language model and schemas.
@@ -58,7 +58,7 @@ matrix. The release-level boundary is:
 
 | File | Purpose |
 |---|---|
-| [agents.md](agents.md) | Compact agent-facing language guide with dense schemas and examples. |
+| [AGENTS.md](../AGENTS.md) | Compact agent-facing language guide with dense schemas and examples. |
 | [optimization-guide.md](optimization-guide.md) | Optimization rules that preserve semantic return and failure contracts. |
 | [language/README.md](language/README.md) | Language model, executable vs refined surfaces, minimal program. |
 | [language/lexical-model.md](language/lexical-model.md) | Tokenization, comments, strings, identifiers, rejected syntax. |

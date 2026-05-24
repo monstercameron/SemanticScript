@@ -515,7 +515,7 @@ first-pass agent contract in `SemanticScript/tools/sem.py`.
         `sem-stdlib`, `sem-builds`, `sem-packages`, and `sem-testing`.
   - [ ] If skills move to generated or embedded payloads, add release
         validation that fails when the shipped skill content is stale.
-  - [x] Document the workflow in `docs/agents.md` and `README.md`: agents load
+  - [x] Document the workflow in `AGENTS.md` and `README.md`: agents load
         the matching skill from the same `sem` binary that will check or build
         the project.
 
@@ -2057,7 +2057,7 @@ is the preferred source shape.
 - [ ] Update `README.md` support matrix once the surface is implemented or
       explicitly preview.
 - [ ] Update `docs/README.md` with links to GUI language/runtime docs.
-- [ ] Update `docs/agents.md` with compact GUI syntax guidance.
+- [ ] Update `AGENTS.md` and `CLAUDE.md` with compact GUI syntax guidance.
 - [ ] Update `docs/optimization-guide.md` with GUI effect/capability examples.
 - [ ] Decide whether declarative Windows GUI support is in 1.0 scope,
       post-1.0 preview scope, or experimental-only scope.
