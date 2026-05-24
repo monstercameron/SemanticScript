@@ -67,12 +67,27 @@ def collect_versions() -> dict:
         raise RuntimeError(
             f"{package_path}: package.json version {package_version!r} must match version.json {repo_version!r}"
         )
+    package_lock_path = ROOT / "vscode-semanticscript" / "package-lock.json"
+    package_lock = _package_metadata(package_lock_path)
+    package_lock_version = package_lock.get("version", "")
+    package_lock_packages = package_lock.get("packages")
+    if not isinstance(package_lock_packages, dict):
+        raise RuntimeError(f"{package_lock_path}: packages must be a JSON object")
+    package_lock_root = package_lock_packages.get("")
+    if not isinstance(package_lock_root, dict):
+        raise RuntimeError(f"{package_lock_path}: packages[''] must be a JSON object")
+    package_lock_root_version = package_lock_root.get("version", "")
+    if package_lock_version != repo_version or package_lock_root_version != repo_version:
+        raise RuntimeError(
+            f"{package_lock_path}: package-lock version {package_lock_version!r} and root package version "
+            f"{package_lock_root_version!r} must match version.json {repo_version!r}"
+        )
     components.append({
         "name": package.get("name", "semanticscript-vscode"),
         "kind": "vscode-extension",
         "path": "vscode-semanticscript/package.json",
         "version": repo_version,
-        "versionSource": "version.json -> package.json.version",
+        "versionSource": "version.json -> package.json.version and package-lock.json root version",
         "publisher": package.get("publisher", ""),
         "license": package.get("license", ""),
     })
@@ -80,7 +95,7 @@ def collect_versions() -> dict:
     return {
         "schemaVersion": "sem.releaseVersions.v1",
         "repoVersion": repo_version,
-        "versionPolicy": "repository-wide semantic version; command tools and the VS Code package must stay synchronized to version.json",
+        "versionPolicy": "repository-wide semantic version; command tools, VS Code package metadata, and VS Code package-lock root metadata must stay synchronized to version.json",
         "components": components,
     }
 

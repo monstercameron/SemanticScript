@@ -24,8 +24,9 @@ edges, and review intent directly in the source. The goal is not terse code. The
 goal is code that humans and agents can inspect, repair, and validate without
 guessing.
 
-Current release status: `0.0.1` pre-release. No stable public release has been
-published yet. Main-branch prerelease builds are published on
+Current release status: pre-release, with the repository version recorded in
+[`version.json`](version.json). No stable public release has been published yet.
+Main-branch prerelease builds are published on
 [GitHub Releases](https://github.com/monstercameron/SemanticScript/releases)
 with a Windows `sem.exe`, VS Code VSIX, and checksum manifest.
 

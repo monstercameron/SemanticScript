@@ -43,6 +43,28 @@ def _write_package_file(path: Path, version: str) -> None:
     )
 
 
+def _write_package_lock_file(path: Path, version: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "name": "semanticscript-vscode",
+                "version": version,
+                "lockfileVersion": 3,
+                "requires": True,
+                "packages": {
+                    "": {
+                        "name": "semanticscript-vscode",
+                        "version": version,
+                        "license": "MIT",
+                    }
+                },
+            },
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+
+
 class TestRepoVersionHelpers(unittest.TestCase):
     def test_read_repo_version_is_valid_semver(self) -> None:
         version = repo_version.read_repo_version()
@@ -52,6 +74,11 @@ class TestRepoVersionHelpers(unittest.TestCase):
     def test_bump_patch_increments_only_patch_segment(self) -> None:
         self.assertEqual(repo_version.bump_patch("0.0.1"), "0.0.2")
         self.assertEqual(repo_version.bump_patch("1.9.9"), "1.9.10")
+
+    def test_bump_semver_increments_requested_segment(self) -> None:
+        self.assertEqual(repo_version.bump_semver("1.2.3", "patch"), "1.2.4")
+        self.assertEqual(repo_version.bump_semver("1.2.3", "minor"), "1.3.0")
+        self.assertEqual(repo_version.bump_semver("1.2.3", "major"), "2.0.0")
 
     def test_write_repo_version_round_trips(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -67,12 +94,21 @@ class TestBumpVersion(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             version_path = Path(tmp) / "version.json"
             package_path = Path(tmp) / "package.json"
+            package_lock_path = Path(tmp) / "package-lock.json"
             _write_version_file(version_path, "0.0.1")
             _write_package_file(package_path, "0.0.1")
-            payload = bump_version.apply_version("0.0.2", version_path=version_path, package_path=package_path)
+            _write_package_lock_file(package_lock_path, "0.0.1")
+            payload = bump_version.apply_version(
+                "0.0.2",
+                version_path=version_path,
+                package_path=package_path,
+                package_lock_path=package_lock_path,
+            )
             self.assertEqual(payload["previousVersion"], "0.0.1")
             self.assertEqual(repo_version.read_repo_version(version_path), "0.0.2")
             self.assertEqual(bump_version.read_package_version(package_path), "0.0.2")
+            self.assertEqual(bump_version.read_package_lock_version(package_lock_path), "0.0.2")
+            self.assertIn(str(package_lock_path), payload["filesUpdated"])
 
     def test_check_sync_reports_drift(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -85,17 +121,54 @@ class TestBumpVersion(unittest.TestCase):
             self.assertEqual(payload["version"], "0.0.1")
             self.assertEqual(payload["packageVersion"], "0.0.3")
 
+    def test_check_sync_reports_package_lock_drift(self) -> None:
+        with TemporaryDirectory() as tmp:
+            version_path = Path(tmp) / "version.json"
+            package_path = Path(tmp) / "package.json"
+            package_lock_path = Path(tmp) / "package-lock.json"
+            _write_version_file(version_path, "0.0.1")
+            _write_package_file(package_path, "0.0.1")
+            _write_package_lock_file(package_lock_path, "0.0.2")
+            payload = bump_version.check_sync(
+                version_path=version_path,
+                package_path=package_path,
+                package_lock_path=package_lock_path,
+            )
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["packageLockVersion"], "0.0.2")
+
+    def test_package_lock_with_malformed_packages_reports_error(self) -> None:
+        with TemporaryDirectory() as tmp:
+            package_lock_path = Path(tmp) / "package-lock.json"
+            package_lock_path.write_text(
+                json.dumps(
+                    {
+                        "name": "semanticscript-vscode",
+                        "version": "0.0.1",
+                        "packages": [],
+                    },
+                    indent=2,
+                ) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(RuntimeError, "packages must be a JSON object"):
+                bump_version.read_package_lock_version(package_lock_path)
+
     def test_main_bump_patch_and_check_paths(self) -> None:
         with TemporaryDirectory() as tmp:
             version_path = Path(tmp) / "version.json"
             package_path = Path(tmp) / "package.json"
+            package_lock_path = Path(tmp) / "package-lock.json"
             _write_version_file(version_path, "0.0.1")
             _write_package_file(package_path, "0.0.1")
+            _write_package_lock_file(package_lock_path, "0.0.1")
             original_version_file = bump_version.VERSION_FILE
             original_package_json = bump_version.PACKAGE_JSON
+            original_package_lock_json = bump_version.PACKAGE_LOCK_JSON
             try:
                 bump_version.VERSION_FILE = version_path
                 bump_version.PACKAGE_JSON = package_path
+                bump_version.PACKAGE_LOCK_JSON = package_lock_path
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
                     rc = bump_version.main(["--bump-patch"])
@@ -112,6 +185,49 @@ class TestBumpVersion(unittest.TestCase):
             finally:
                 bump_version.VERSION_FILE = original_version_file
                 bump_version.PACKAGE_JSON = original_package_json
+                bump_version.PACKAGE_LOCK_JSON = original_package_lock_json
+
+    def test_main_bump_minor_json_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            version_path = Path(tmp) / "version.json"
+            package_path = Path(tmp) / "package.json"
+            package_lock_path = Path(tmp) / "package-lock.json"
+            _write_version_file(version_path, "0.1.9")
+            _write_package_file(package_path, "0.1.9")
+            _write_package_lock_file(package_lock_path, "0.1.9")
+            original_version_file = bump_version.VERSION_FILE
+            original_package_json = bump_version.PACKAGE_JSON
+            original_package_lock_json = bump_version.PACKAGE_LOCK_JSON
+            try:
+                bump_version.VERSION_FILE = version_path
+                bump_version.PACKAGE_JSON = package_path
+                bump_version.PACKAGE_LOCK_JSON = package_lock_path
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    rc = bump_version.main(["--bump", "minor", "--json"])
+                self.assertEqual(rc, 0)
+                payload = json.loads(stdout.getvalue())
+                self.assertEqual(payload["version"], "0.2.0")
+                self.assertEqual(repo_version.read_repo_version(version_path), "0.2.0")
+                self.assertEqual(bump_version.read_package_lock_version(package_lock_path), "0.2.0")
+            finally:
+                bump_version.VERSION_FILE = original_version_file
+                bump_version.PACKAGE_JSON = original_package_json
+                bump_version.PACKAGE_LOCK_JSON = original_package_lock_json
+
+    def test_check_sync_requires_package_lock_file(self) -> None:
+        with TemporaryDirectory() as tmp:
+            version_path = Path(tmp) / "version.json"
+            package_path = Path(tmp) / "package.json"
+            package_lock_path = Path(tmp) / "missing-package-lock.json"
+            _write_version_file(version_path, "0.0.1")
+            _write_package_file(package_path, "0.0.1")
+            with self.assertRaisesRegex(RuntimeError, "package-lock.json"):
+                bump_version.check_sync(
+                    version_path=version_path,
+                    package_path=package_path,
+                    package_lock_path=package_lock_path,
+                )
 
 
 class TestReleaseVersions(unittest.TestCase):
