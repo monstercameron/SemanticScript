@@ -2,7 +2,7 @@
   color: #e7f3ea;
   background: #07100d;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Bahnschrift, "Aptos Display", "Trebuchet MS", Verdana, sans-serif;
   font-synthesis: none;
   line-height: 1.5;
   text-rendering: optimizeLegibility;
@@ -110,7 +110,7 @@ main {
 .eyebrow {
   margin-bottom: 14px;
   color: var(--accent);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -179,8 +179,6 @@ h3 {
 .proofCard,
 .valueCard,
 .mechanicCard,
-.researchCard,
-.benchmarkCard,
 .docCard,
 .closingCard,
 .quickstartCard,
@@ -214,7 +212,7 @@ h3 {
   border: 1px solid rgba(185, 255, 103, 0.28);
   border-radius: 999px;
   color: var(--accent);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
 }
 
@@ -223,7 +221,7 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
   color: #eaffd9;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;
   line-height: 1.62;
 }
@@ -380,7 +378,7 @@ pre {
 .factCard p {
   margin: 0 0 18px;
   color: var(--muted);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -448,8 +446,6 @@ pre {
 
 .valueCard p,
 .proofCard p,
-.researchCard li,
-.benchmarkCard p,
 .docCard p {
   color: var(--muted);
 }
@@ -466,7 +462,7 @@ pre {
 .proofValue {
   margin-bottom: 26px;
   color: var(--accent) !important;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-weight: 800;
 }
 
@@ -526,6 +522,15 @@ pre {
   color: #e6c9aa;
 }
 
+.notReadyCard h2 {
+  margin-bottom: 14px;
+  font-size: clamp(1.85rem, 3.2vw, 3.4rem);
+}
+
+.notReadyCard p:not(.eyebrow) {
+  color: #e6c9aa;
+}
+
 .mechanicStack {
   display: grid;
   gap: 20px;
@@ -553,6 +558,30 @@ pre {
   border: 1px solid rgba(96, 230, 194, 0.18);
 }
 
+.pipelineGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.pipelineCard {
+  min-height: 172px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(231, 243, 234, 0.045);
+}
+
+.pipelineCard h3 {
+  color: var(--accent);
+}
+
+.pipelineCard p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
 .split {
   display: grid;
   grid-template-columns: 0.82fr 1.18fr;
@@ -576,44 +605,19 @@ pre {
   font-weight: 750;
 }
 
-.evidenceGrid {
-  display: grid;
-  grid-template-columns: 0.86fr 1.14fr;
-  gap: 20px;
-}
-
-.researchCard,
-.benchmarkCard,
 .closingCard {
   padding: 28px;
   border-radius: 28px;
-}
-
-.researchCard ul {
-  display: grid;
-  gap: 14px;
-  margin: 0;
-  padding-left: 20px;
-}
-
-.benchmarkIntro {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: start;
-  margin-bottom: 18px;
-}
-
-.benchmarkIntro p {
-  max-width: 360px;
-  margin-bottom: 0;
-  font-size: 0.92rem;
 }
 
 .tableWrap {
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 18px;
+}
+
+.supportTable {
+  margin-top: 20px;
 }
 
 table {
@@ -632,7 +636,7 @@ td {
 
 th {
   color: var(--accent);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.76rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -644,10 +648,6 @@ td {
 
 tr:last-child td {
   border-bottom: 0;
-}
-
-.benchmarkNote {
-  margin: 16px 0 0;
 }
 
 .inlineLink {
@@ -676,7 +676,7 @@ tr:last-child td {
   display: block;
   margin-bottom: 28px;
   color: var(--accent-2);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.82rem;
 }
 
@@ -738,7 +738,8 @@ tr:last-child td {
   .proofGrid,
   .lawGrid,
   .docsGrid,
-  .factStrip {
+  .factStrip,
+  .pipelineGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -774,13 +775,12 @@ tr:last-child td {
   .lawGrid,
   .docsGrid,
   .factStrip,
-  .workflowRail {
+  .workflowRail,
+  .pipelineGrid {
     grid-template-columns: 1fr;
   }
 
   .mechanicCard,
-  .researchCard,
-  .benchmarkCard,
   .closingCard,
   .heroPanel,
   .quickstartCard,
@@ -789,10 +789,6 @@ tr:last-child td {
   .notReadyCard {
     padding: 20px;
     border-radius: 22px;
-  }
-
-  .benchmarkIntro {
-    display: block;
   }
 
   .button {
