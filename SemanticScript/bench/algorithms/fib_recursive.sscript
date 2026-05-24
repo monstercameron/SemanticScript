@@ -1,0 +1,131 @@
+project FibRecursive
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError ConsoleWriteFailed Int32
+
+# Naive recursive Fibonacci: fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2).
+# Each frame does negligible arithmetic, so total time is dominated by
+# call/return overhead rather than the body. This mirrors fib_recursive.c.
+operation computeFibonacciValue
+input operation computeFibonacciValue fibonacciIndex Int64
+output operation computeFibonacciValue Result Int64 Void
+memory computeFibonacciValue heap no
+async computeFibonacciValue no
+purpose operation computeFibonacciValue "Naive recursive Fibonacci used to benchmark function-call overhead"
+invariant operation computeFibonacciValue "fibonacciIndex below two returns fibonacciIndex unchanged; otherwise sums the two preceding Fibonacci values"
+
+label startComputeFibonacciValue
+
+storage module immutable fibonacciBaseCaseThreshold Int64 2
+storage module immutable fibonacciFirstDecrement Int64 1
+storage module immutable fibonacciSecondDecrement Int64 2
+
+call fibonacciIndexBelowBaseCaseCall math.lessThanInt64
+argument fibonacciIndexBelowBaseCaseCall left Int64 fibonacciIndex
+argument fibonacciIndexBelowBaseCaseCall right Int64 fibonacciBaseCaseThreshold
+run fibonacciIndexBelowBaseCaseCall
+bind value fibonacciIndexIsBaseCase Bool fibonacciIndexBelowBaseCaseCall
+branch if condition fibonacciIndexIsBaseCase target fibonacciBaseCaseReached
+branch else target fibonacciRecursiveStep
+
+label fibonacciBaseCaseReached
+return ok fibonacciIndex
+
+label fibonacciRecursiveStep
+
+call fibonacciPreviousIndexCall math.subtractInt64
+argument fibonacciPreviousIndexCall left Int64 fibonacciIndex
+argument fibonacciPreviousIndexCall right Int64 fibonacciFirstDecrement
+run fibonacciPreviousIndexCall
+bind value fibonacciPreviousIndex Int64 fibonacciPreviousIndexCall
+
+call fibonacciPreviousValueCall computeFibonacciValue
+argument fibonacciPreviousValueCall fibonacciIndex Int64 fibonacciPreviousIndex
+run fibonacciPreviousValueCall
+bind ok fibonacciPreviousValue Int64 fibonacciPreviousValueCall
+
+call fibonacciSecondPreviousIndexCall math.subtractInt64
+argument fibonacciSecondPreviousIndexCall left Int64 fibonacciIndex
+argument fibonacciSecondPreviousIndexCall right Int64 fibonacciSecondDecrement
+run fibonacciSecondPreviousIndexCall
+bind value fibonacciSecondPreviousIndex Int64 fibonacciSecondPreviousIndexCall
+
+call fibonacciSecondPreviousValueCall computeFibonacciValue
+argument fibonacciSecondPreviousValueCall fibonacciIndex Int64 fibonacciSecondPreviousIndex
+run fibonacciSecondPreviousValueCall
+bind ok fibonacciSecondPreviousValue Int64 fibonacciSecondPreviousValueCall
+
+call fibonacciSumCall math.addInt64
+argument fibonacciSumCall left Int64 fibonacciPreviousValue
+argument fibonacciSumCall right Int64 fibonacciSecondPreviousValue
+run fibonacciSumCall
+bind value fibonacciSum Int64 fibonacciSumCall
+return ok fibonacciSum
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main read clock.cpu
+effect main write console.stdout
+memory main heap no
+memory main stack max 64KiB
+async main no
+
+purpose operation main "Time computeFibonacciValue and report checksum plus elapsed seconds in the shared benchmark output format"
+invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided by the Windows CLOCKS_PER_SEC of 1000"
+
+label startMain
+
+storage module immutable fibonacciInputIndex Int64 38
+storage module immutable windowsClocksPerSecond Float64 1000.0
+
+call benchmarkStartClockCall c.clock
+run benchmarkStartClockCall
+bind value benchmarkStartClockTicks CpuClockTicks benchmarkStartClockCall
+
+call fibonacciResultCall computeFibonacciValue
+argument fibonacciResultCall fibonacciIndex Int64 fibonacciInputIndex
+run fibonacciResultCall
+bind ok fibonacciChecksum Int64 fibonacciResultCall
+
+call benchmarkEndClockCall c.clock
+run benchmarkEndClockCall
+bind value benchmarkEndClockTicks CpuClockTicks benchmarkEndClockCall
+
+call elapsedClockTicksCall math.subtractInt64
+argument elapsedClockTicksCall left CpuClockTicks benchmarkEndClockTicks
+argument elapsedClockTicksCall right CpuClockTicks benchmarkStartClockTicks
+run elapsedClockTicksCall
+bind value elapsedClockTicks Int64 elapsedClockTicksCall
+
+call elapsedClockTicksAsFloatCall math.convertInt64ToFloat64
+argument elapsedClockTicksAsFloatCall value Int64 elapsedClockTicks
+run elapsedClockTicksAsFloatCall
+bind value elapsedClockTicksAsFloat Float64 elapsedClockTicksAsFloatCall
+
+call elapsedSecondsCall math.divideFloat64
+argument elapsedSecondsCall left Float64 elapsedClockTicksAsFloat
+argument elapsedSecondsCall right Float64 windowsClocksPerSecond
+run elapsedSecondsCall
+bind value elapsedSeconds Float64 elapsedSecondsCall
+
+storage module immutable reportFormatText String "checksum=%lld elapsedSeconds=%.6f\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall checksum Int64 fibonacciChecksum
+argument reportCall elapsedSeconds Float64 elapsedSeconds
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure
