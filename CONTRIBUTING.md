@@ -69,6 +69,18 @@ toolchain. Set `SEMSC_CLANG` if clang is not discoverable on PATH.
   packaged `.vsix` files, or `__pycache__/`.
 - Do not introduce public `.as` source-extension support.
 - Do not change the project license without a release-owner decision.
+- Follow the project [Code of Conduct](CODE_OF_CONDUCT.md) in issues, pull
+  requests, discussions, and other project spaces.
+
+## Review Policy
+
+`main` is protected with strict required checks and resolved conversations. The
+approving-review count is intentionally zero in solo-maintainer mode, and
+CODEOWNER review, stale-review dismissal, and last-push approval are disabled so
+the single maintainer is not blocked waiting for a second account. Release tag
+creation for `v*` is restricted to the maintainer, and existing `v*` tags are
+protected against update and deletion unless the tag ruleset is deliberately
+changed for recovery.
 
 ## License
 

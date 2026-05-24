@@ -98,15 +98,17 @@ SKILL_REGISTRY = (
         "name": "agent-tooling-research",
         "description": "Long-form research and experiments on agent-first SemanticScript tooling.",
         "files": (
-            "experiments/agent-first-tooling-research/README.md",
+            "research/README.md",
+            "research/04-competitive-syntax-arena.md",
         ),
     },
     {
         "name": "taskforge-web-patterns",
-        "description": "Concrete multi-user web application patterns from TaskForge Web.",
+        "description": "TaskForge Web status and native HTTP application patterns without bundling app source.",
         "files": (
-            "apps/taskforge-web/README.md",
-            "apps/taskforge-web/main.sem",
+            "docs/reference/roadmap.md",
+            "docs/toolchain/native-http-runtime.md",
+            "docs/language/native-http-api.md",
         ),
     },
     {
@@ -114,8 +116,8 @@ SKILL_REGISTRY = (
         "description": "SQLite usage, cleanup, and JSON CRUD patterns.",
         "files": (
             "docs/language/json-crud.md",
+            "docs/language/records-codecs-boundaries.md",
             "docs/reference/call-targets.md",
-            "apps/taskforge-web/main.sem",
         ),
     },
     {
@@ -123,8 +125,8 @@ SKILL_REGISTRY = (
         "description": "Native HTTP, route, handler, and HTML boundary patterns.",
         "files": (
             "docs/language/native-http-api.md",
+            "docs/toolchain/native-http-runtime.md",
             "docs/language/records-codecs-boundaries.md",
-            "apps/taskforge-web/README.md",
         ),
     },
     {
@@ -133,7 +135,8 @@ SKILL_REGISTRY = (
         "files": (
             "docs/toolchain/compiler.md",
             "docs/toolchain/linter.md",
-            "experiments/agent-first-tooling-research/README.md",
+            "docs/toolchain/agent-workflows.md",
+            "research/README.md",
         ),
     },
 )
@@ -575,16 +578,16 @@ def _starter_ci_workflow_text(meta: dict) -> str:
         "    runs-on: windows-latest",
         "    steps:",
         "      - name: Check out starter project",
-        "        uses: actions/checkout@v4",
+        "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6",
         "",
         "      - name: Check out SemanticScript toolchain",
-        "        uses: actions/checkout@v4",
+        "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6",
         "        with:",
         "          repository: monstercameron/SemanticScript",
         "          path: SemanticScript",
         "",
         "      - name: Set up Python",
-        "        uses: actions/setup-python@v5",
+        "        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6",
         "        with:",
         "          python-version: \"3.12\"",
         "          cache: pip",

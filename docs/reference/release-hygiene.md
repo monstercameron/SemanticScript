@@ -49,6 +49,12 @@ Public release manifests live at `releases/<TAG>/manifest.json`. They should be
 committed with the release notes and attached to external release artifacts when
 publishing outside the repository.
 
+Main-branch merge prereleases use generated, uncommitted manifests named
+`semanticscript-merge-release-manifest-main-<SHORT_SHA>.json`. The
+`compiler-exe.yml` workflow attaches those manifests to the matching
+`main-<SHORT_SHA>` GitHub prerelease alongside the merge-built `sem.exe` and
+VSIX assets.
+
 ## VS Code Extension Metadata
 
 `vscode-semanticscript/package.json` uses the shared version from
@@ -61,6 +67,32 @@ account is selected and the `publisher` field is changed.
 
 Generated `.vsix` files are ignored and should be attached outside the repo or
 rebuilt from the release tag.
+
+The VSIX packager is a locked `devDependency` in
+`vscode-semanticscript/package.json`. Use `npm --prefix vscode-semanticscript
+ci` after a fresh checkout, then use the
+`npm --prefix vscode-semanticscript run package:vsix` command instead of an ad
+hoc `npx @vscode/vsce` invocation so release packaging stays visible to
+Dependabot.
+
+## GitHub Repository Settings
+
+Public release hygiene depends on repository settings as well as files:
+
+- enable Dependabot vulnerability alerts and security updates;
+- enable private vulnerability reporting;
+- keep `main` protected by required CI and resolved conversations;
+- keep the approving-review count at zero in solo-maintainer mode, with
+  CODEOWNERS review, stale-review dismissal, and last-push approval disabled
+  unless additional maintainers become active;
+- require the CI checks configured in `.github/workflows/ci.yml` before merging;
+- disable force pushes and branch deletions on `main`;
+- restrict GitHub Actions to pinned, GitHub-owned actions;
+- restrict `v*` release tag creation to the maintainer;
+- protect existing `v*` release tags against update and deletion unless the
+  tag ruleset is deliberately changed for recovery;
+- disable unused repository surfaces such as the wiki when they are not part of
+  the maintained documentation set.
 
 ## `.sem` Mirror Policy
 

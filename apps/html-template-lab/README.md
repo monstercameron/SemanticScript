@@ -19,8 +19,9 @@ The app keeps reusable text helpers, todo data, row/card components, and page as
 
 ## Build And Run
 
+From the repository root:
+
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript
 python SemanticScript\compiler\semsc.py apps\html-template-lab\build.sem --emit-exe --quiet
 .\apps\html-template-lab\build\html-template-lab.exe
 ```
