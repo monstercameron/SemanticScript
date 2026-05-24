@@ -40,9 +40,9 @@ python SemanticScript\tests\run_suite.py stdlib   # or: std
 
 | Suite | Where it runs | Notes |
 |-------|---------------|-------|
-| **ci-fast** | Python 3.11 + 3.12, all OSes | Pure-Python validation; no native toolchain needed |
+| **ci-fast** | Python 3.11 + 3.12 on Windows | Pure-Python validation; no native toolchain needed |
 | **editor** | Node 20 | `vscode.check` only |
-| **ci-release** | Ubuntu | Builds/runs artifacts; needs a C compiler on PATH |
+| **ci-release** | Windows | Builds/runs artifacts; needs a C compiler on PATH |
 
 Aliases: `fast → ci-fast`, `release → ci-release`, `full → all`, `std → stdlib`.
 

@@ -46,6 +46,10 @@ def check(label, predicate, message=""):
         print(f"[FAIL] {label}: {message}")
 
 
+def canonical_path_text(value: str | Path) -> str:
+    return os.path.normcase(os.path.realpath(str(value)))
+
+
 def run_semsc_source(source, *args, suffix=".sscript"):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / f"sample{suffix}"
@@ -4338,12 +4342,13 @@ def test_inspect_ir_preserves_imported_source_origins():
         helper = next((op for op in payload.get("operations", [])
                        if op.get("name") == "helper"), {})
         origin = helper.get("sourceSpan", {}).get("origin", {})
+        imported_path_text = canonical_path_text(imported_path)
         check("inspect-ir: source model preserves imported file origins",
               proc.returncode == 0
               and payload.get("source", {}).get("sourceModel") == "flattenedResolvedStreamWithOrigins"
-              and any(item.get("path") == str(imported_path.resolve())
+              and any(canonical_path_text(item.get("path", "")) == imported_path_text
                       for item in imported_sources)
-              and origin.get("path") == str(imported_path.resolve())
+              and canonical_path_text(origin.get("path", "")) == imported_path_text
               and origin.get("line") == 3
               and origin.get("imported") is True,
               f"rc={proc.returncode} stderr={proc.stderr!r} payload={payload}")
@@ -4691,10 +4696,10 @@ def test_build_tape_path_normalization():
         absolute_path = semsc._normalize_build_tape_path(
             str(build_path), str(absolute_target), "src")
         check("build tape: relative path normalizes beside sourceRoot",
-              relative_path == str((root / "main.sem").resolve()),
+              canonical_path_text(relative_path) == canonical_path_text(root / "main.sem"),
               relative_path)
         check("build tape: absolute path remains absolute",
-              absolute_path == str(absolute_target.resolve()),
+              canonical_path_text(absolute_path) == canonical_path_text(absolute_target),
               absolute_path)
 
 

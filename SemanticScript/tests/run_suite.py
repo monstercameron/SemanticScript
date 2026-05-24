@@ -230,8 +230,8 @@ SUITE_DESCRIPTIONS = {
     "stdlib": "Standard library only: JIT module smokes (http quarantined), native-exe smokes (log/bcrypt/jwt/net), and the event/async native runtime.",
     "e2e": "End-to-end parity checks for reference output and .sem source alias behavior.",
     "editor": "VS Code extension validation only.",
-    "ci-fast": "Cross-platform GitHub Python validation lane.",
-    "ci-release": "Ubuntu GitHub release validation lane.",
+    "ci-fast": "Windows GitHub Python validation lane.",
+    "ci-release": "Windows GitHub release validation lane.",
     "all": "All project lanes: unit, component, integration, and e2e.",
 }
 
