@@ -4,6 +4,8 @@
 [![CI](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+Project site: <https://monstercameron.github.io/SemanticScript/>
+
 SemanticScript is a pre-release, agent-first application language and toolchain.
 
 It is designed around explicit, line-addressable source records: operations
