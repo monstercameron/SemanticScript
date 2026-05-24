@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.ctype.
 
+# rationale: Canonical standard-library module for C ctype-style classifiers and case conversion helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.ctype
 purpose module standard.ctype "Canonical standard-library module for C ctype-style classifiers and case conversion helpers."
 moduleOwns standard.ctype "The official import path `standard.ctype` and this module's implementation body."
@@ -61,10 +63,10 @@ storage module immutable ctypeModuleVersionText String "standard.ctype 0.1"
 # consumed by other programs (notably std/ctype/main.test.sem which
 # importModules it and runs the smoke). The project / target /
 # runtime / entry block is retained so the module can still be
-# linted standalone Ã¢â‚¬â€ the entry just points at the first exported
+# linted standalone - the entry just points at the first exported
 # operation rather than a `main` smoke.
 
-# Canonical ASCII boundary literals Ã¢â‚¬â€ declared once at module scope so
+# Canonical ASCII boundary literals - declared once at module scope so
 # every classifier references the same trusted source of truth.
 domainLiteral asciiDigitZeroCode Int32 48
 domainLiteralTrust asciiDigitZeroCode trustedStaticLiteral
@@ -110,6 +112,8 @@ domainLiteralTrust asciiUppercaseLowercaseGap trustedStaticLiteral
 # section ctype.digit
 # rationale: numeric classifiers.
 
+# invariant: Holds iff 48 <= characterCode <= 57.
+# rationale: Returns true when characterCode is an ASCII decimal digit (0x30..0x39).
 operation isAsciiDecimalDigitCode
 input operation isAsciiDecimalDigitCode characterCode Int32
 output operation isAsciiDecimalDigitCode Bool
@@ -141,6 +145,8 @@ return value isDigitFalse
 # section ctype.letter
 # rationale: alphabetic classifiers and case-aware variants.
 
+# invariant: Holds iff 97 <= characterCode <= 122.
+# rationale: Returns true when characterCode is an ASCII lowercase letter (0x61..0x7A).
 operation isAsciiLowercaseLetterCode
 input operation isAsciiLowercaseLetterCode characterCode Int32
 output operation isAsciiLowercaseLetterCode Bool
@@ -169,6 +175,8 @@ label returnNotLowercase
 storage module immutable isLowercaseFalse Bool false
 return value isLowercaseFalse
 
+# rationale: Returns true when characterCode is an ASCII uppercase letter (0x41..0x5A).
+# invariant: Holds iff 65 <= characterCode <= 90.
 operation isAsciiUppercaseLetterCode
 input operation isAsciiUppercaseLetterCode characterCode Int32
 output operation isAsciiUppercaseLetterCode Bool
@@ -197,6 +205,8 @@ label returnNotUppercase
 storage module immutable isUppercaseFalse Bool false
 return value isUppercaseFalse
 
+# rationale: Returns true when characterCode is an ASCII letter (upper or lower case).
+# invariant: Equivalent to isAsciiUppercaseLetterCode(c) OR isAsciiLowercaseLetterCode(c).
 operation isAsciiLetterCode
 input operation isAsciiLetterCode characterCode Int32
 output operation isAsciiLetterCode Bool
@@ -223,6 +233,8 @@ label returnIsLetter
 storage module immutable isLetterTrue Bool true
 return value isLetterTrue
 
+# rationale: Returns true when characterCode is an ASCII letter or decimal digit.
+# invariant: Equivalent to isAsciiLetterCode(c) OR isAsciiDecimalDigitCode(c).
 operation isAsciiLetterOrDigitCode
 input operation isAsciiLetterOrDigitCode characterCode Int32
 output operation isAsciiLetterOrDigitCode Bool
@@ -249,6 +261,8 @@ label returnIsLetterOrDigit
 storage module immutable isLetterOrDigitTrue Bool true
 return value isLetterOrDigitTrue
 
+# rationale: Returns true when characterCode is an ASCII hexadecimal digit (0-9, A-F, a-f).
+# invariant: Equivalent to digit OR uppercase A..F OR lowercase a..f.
 operation isAsciiHexDigitCode
 input operation isAsciiHexDigitCode characterCode Int32
 output operation isAsciiHexDigitCode Bool
@@ -301,6 +315,8 @@ return value isHexDigitFalse
 # section ctype.whitespace
 # rationale: whitespace and blank classification per ASCII conventions.
 
+# invariant: Same membership as C's isspace() on ASCII inputs.
+# rationale: Returns true for space, tab, LF, VT, FF, or CR (the standard ASCII whitespace set).
 operation isAsciiWhitespaceCode
 input operation isAsciiWhitespaceCode characterCode Int32
 output operation isAsciiWhitespaceCode Bool
@@ -353,6 +369,8 @@ label returnIsWhitespace
 storage module immutable isWhitespaceTrue Bool true
 return value isWhitespaceTrue
 
+# rationale: Returns true only for space or horizontal tab.
+# invariant: Strict subset of isAsciiWhitespaceCode - excludes LF, VT, FF, CR.
 operation isAsciiBlankCode
 input operation isAsciiBlankCode characterCode Int32
 output operation isAsciiBlankCode Bool
@@ -360,7 +378,7 @@ memory isAsciiBlankCode heap no
 memory isAsciiBlankCode stack max 1024
 async isAsciiBlankCode no
 purpose operation isAsciiBlankCode "Returns true only for space or horizontal tab."
-invariant operation isAsciiBlankCode "Strict subset of isAsciiWhitespaceCode Ã¢â‚¬â€ excludes LF, VT, FF, CR."
+invariant operation isAsciiBlankCode "Strict subset of isAsciiWhitespaceCode - excludes LF, VT, FF, CR."
 guarantee isAsciiBlankCode "Total."
 label startIsAsciiBlankCode
 call detectBlankSpaceCall math.equalInt64
@@ -384,6 +402,8 @@ return value isBlankTrue
 # section ctype.control
 # rationale: control / printable / graphical / punctuation classification.
 
+# invariant: Holds iff 0 <= c <= 31 OR c == 127.
+# rationale: Returns true for control characters (0x00..0x1F or 0x7F).
 operation isAsciiControlCode
 input operation isAsciiControlCode characterCode Int32
 output operation isAsciiControlCode Bool
@@ -425,6 +445,8 @@ label returnIsControl
 storage module immutable isControlTrue Bool true
 return value isControlTrue
 
+# rationale: Returns true for printable characters (0x20..0x7E).
+# invariant: Holds iff 32 <= c <= 126 (space through tilde).
 operation isAsciiPrintableCode
 input operation isAsciiPrintableCode characterCode Int32
 output operation isAsciiPrintableCode Bool
@@ -453,6 +475,8 @@ label returnNotPrintable
 storage module immutable isPrintableFalse Bool false
 return value isPrintableFalse
 
+# rationale: Returns true for printable characters that are not space (0x21..0x7E).
+# invariant: Holds iff 33 <= c <= 126.
 operation isAsciiGraphicalCode
 input operation isAsciiGraphicalCode characterCode Int32
 output operation isAsciiGraphicalCode Bool
@@ -481,6 +505,8 @@ label returnNotGraphical
 storage module immutable isGraphicalFalse Bool false
 return value isGraphicalFalse
 
+# rationale: Returns true for printable characters that are not space or alphanumeric.
+# invariant: Equivalent to isAsciiGraphicalCode AND NOT isAsciiLetterOrDigitCode.
 operation isAsciiPunctuationCode
 input operation isAsciiPunctuationCode characterCode Int32
 output operation isAsciiPunctuationCode Bool
@@ -513,6 +539,8 @@ return value isPunctuationFalse
 # section ctype.case
 # rationale: case-mapping operations that preserve out-of-range bytes.
 
+# invariant: For characterCode in 97..122, output == characterCode - 32. Otherwise output == characterCode.
+# rationale: Maps ASCII lowercase letters (0x61..0x7A) to uppercase; passes every other byte through unchanged.
 operation convertAsciiLetterCodeToUppercase
 input operation convertAsciiLetterCodeToUppercase characterCode Int32
 output operation convertAsciiLetterCodeToUppercase Int32
@@ -544,6 +572,8 @@ return value shiftedUppercaseCharacter
 label passThroughCharacterForUppercase
 return value characterCode
 
+# rationale: Maps ASCII uppercase letters (0x41..0x5A) to lowercase; passes every other byte through unchanged.
+# invariant: For characterCode in 65..90, output == characterCode + 32. Otherwise output == characterCode.
 operation convertAsciiLetterCodeToLowercase
 input operation convertAsciiLetterCodeToLowercase characterCode Int32
 output operation convertAsciiLetterCodeToLowercase Int32

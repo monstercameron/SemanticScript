@@ -11,6 +11,17 @@
 # standard-library operations that delegate to generic native runtimeBinding
 # symbols, so the compiler does not need SSE-specific lowering.
 
+# rationale: import as `import http standard.http` for native HTTP route
+#   handlers, response writing, SSE streams, graceful-shutdown checks,
+#   blocking outbound HTTP calls, and HTML escaping.
+# invariant: exported wrappers such as openSseStream,
+#   writeSseEventWithId, clientDisconnected, serverIsShuttingDown,
+#   clientGet, clientPost, and escapeHtml are the public API. Direct
+#   *Native runtimeBinding operations are internal hooks.
+# memory: clientGet and clientPost return heap-owned HttpClientResponseBody values; free non-null bodies with c.free on every ownership path.
+# failure: SSE and response wrappers return native Int32 status codes; clientGet/clientPost return null on transport failure or non-2xx until a typed Result API exists.
+# security: headerLine, body, and escapeHtml scratch buffers are caller-provided trust boundaries; validate header syntax and buffer capacity before calling.
+
 module standard.http
 nativeRuntimeSource standard.http "SemanticScript/runtime/native_http/sem_http_runtime.c"
 nativeRuntimeLinkArg standard.http windows "-lws2_32"
@@ -116,6 +127,11 @@ storage module immutable sseDefaultHeartbeatComment SseHeartbeatComment "heartbe
 storage module immutable disconnectedCode Int32 1
 storage module immutable shuttingDownCode Int32 1
 
+# rationale: SSE handlers openSseStream first, then loop while not
+#   clientDisconnected and not serverIsShuttingDown, then write events or
+#   heartbeats, and closeSseStream when complete.
+# failure: non-zero native status values are propagated as Int32; handlers decide whether that becomes route failure, retry, or silent disconnect handling.
+# invariant: Application code owns replay/fanout semantics; this wrapper only sets generic SSE transport headers and delegates to the native stream primitive.
 operation openSseStream
 input operation openSseStream response HttpResponse
 input operation openSseStream status HttpStatusCode
@@ -146,6 +162,7 @@ run openCall
 bind value openStatus Int32 openCall
 return value openStatus
 
+# rationale: Low-level runtimeBinding hook used by standard.http openSseStream after semantic header setup.
 operation openSseStreamNative
 input operation openSseStreamNative response HttpResponse
 input operation openSseStreamNative status HttpStatusCode
@@ -159,6 +176,8 @@ purpose operation openSseStreamNative "Low-level runtimeBinding hook used by sta
 runtimeBindingPrecondition openSseStreamNative "response is the active route response and status is a valid HTTP status code."
 runtimeBinding openSseStreamNative native.ss_http_sse_open
 
+# rationale: Write one framed SSE event to an already opened stream.
+# invariant: Event id/cursor policy is application-owned; use data payloads that include replay cursor data until the stdlib id helper is added.
 operation writeSseEvent
 input operation writeSseEvent response HttpResponse
 input operation writeSseEvent event SseEventName
@@ -180,6 +199,7 @@ run writeCall
 bind value writeStatus Int32 writeCall
 return value writeStatus
 
+# rationale: Low-level runtimeBinding hook used by standard.http writeSseEvent.
 operation writeSseEventNative
 input operation writeSseEventNative response HttpResponse
 input operation writeSseEventNative event SseEventName
@@ -195,6 +215,8 @@ purpose operation writeSseEventNative "Low-level runtimeBinding hook used by sta
 runtimeBindingPrecondition writeSseEventNative "response has an open SSE stream, event contains no CR/LF/colon, and data is non-null."
 runtimeBinding writeSseEventNative native.ss_http_sse_write_event
 
+# rationale: Write one framed SSE event with an explicit decimal id to an already opened stream.
+# invariant: Cursor policy remains application-owned; this helper only emits the reusable SSE id/event/data wire shape.
 operation writeSseEventWithId
 input operation writeSseEventWithId response HttpResponse
 input operation writeSseEventWithId id SseEventId
@@ -218,6 +240,7 @@ run writeCall
 bind value writeStatus Int32 writeCall
 return value writeStatus
 
+# rationale: Low-level runtimeBinding hook used by standard.http writeSseEventWithId.
 operation writeSseEventWithIdNative
 input operation writeSseEventWithIdNative response HttpResponse
 input operation writeSseEventWithIdNative id SseEventId
@@ -234,6 +257,7 @@ purpose operation writeSseEventWithIdNative "Low-level runtimeBinding hook used 
 runtimeBindingPrecondition writeSseEventWithIdNative "response has an open SSE stream, id is non-negative, event contains no CR/LF/colon, and data is non-null."
 runtimeBinding writeSseEventWithIdNative native.ss_http_sse_write_event_with_id
 
+# rationale: Write one SSE comment heartbeat to an already opened stream.
 operation writeSseHeartbeat
 input operation writeSseHeartbeat response HttpResponse
 input operation writeSseHeartbeat comment SseHeartbeatComment
@@ -252,6 +276,7 @@ run heartbeatCall
 bind value heartbeatStatus Int32 heartbeatCall
 return value heartbeatStatus
 
+# rationale: Low-level runtimeBinding hook used by standard.http writeSseHeartbeat.
 operation writeSseHeartbeatNative
 input operation writeSseHeartbeatNative response HttpResponse
 input operation writeSseHeartbeatNative comment SseHeartbeatComment
@@ -266,6 +291,7 @@ purpose operation writeSseHeartbeatNative "Low-level runtimeBinding hook used by
 runtimeBindingPrecondition writeSseHeartbeatNative "response has an open SSE stream and comment contains no CR or LF."
 runtimeBinding writeSseHeartbeatNative native.ss_http_sse_heartbeat
 
+# rationale: Mark the SSE stream complete; the current blocking adapter closes the socket after the handler returns.
 operation closeSseStream
 input operation closeSseStream response HttpResponse
 output operation closeSseStream Int32
@@ -281,6 +307,7 @@ run closeCall
 bind value closeStatus Int32 closeCall
 return value closeStatus
 
+# rationale: Low-level runtimeBinding hook used by standard.http closeSseStream.
 operation closeSseStreamNative
 input operation closeSseStreamNative response HttpResponse
 output operation closeSseStreamNative Int32
@@ -293,6 +320,7 @@ purpose operation closeSseStreamNative "Low-level runtimeBinding hook used by st
 runtimeBindingPrecondition closeSseStreamNative "response has an open SSE stream."
 runtimeBinding closeSseStreamNative native.ss_http_sse_close
 
+# rationale: Return true after the native stream writer has observed a client disconnect or write failure.
 operation clientDisconnected
 input operation clientDisconnected response HttpResponse
 output operation clientDisconnected Bool
@@ -313,6 +341,7 @@ run disconnectedMatchesCall
 bind value disconnected Bool disconnectedMatchesCall
 return value disconnected
 
+# rationale: Low-level runtimeBinding hook used by standard.http clientDisconnected.
 operation clientDisconnectedNative
 input operation clientDisconnectedNative response HttpResponse
 output operation clientDisconnectedNative Int32
@@ -325,6 +354,8 @@ purpose operation clientDisconnectedNative "Low-level runtimeBinding hook used b
 runtimeBindingPrecondition clientDisconnectedNative "response is the active route response."
 runtimeBinding clientDisconnectedNative native.ss_http_client_disconnected
 
+# rationale: Return true after the native HTTP server has entered graceful-shutdown drain mode.
+# invariant: This exposes only reusable transport drain state; applications own which routes reject, drain, or remain live.
 operation serverIsShuttingDown
 output operation serverIsShuttingDown Bool
 effect serverIsShuttingDown read http.server
@@ -344,6 +375,7 @@ run shutdownMatchesCall
 bind value shuttingDown Bool shutdownMatchesCall
 return value shuttingDown
 
+# rationale: Low-level runtimeBinding hook used by standard.http serverIsShuttingDown.
 operation serverIsShuttingDownNative
 output operation serverIsShuttingDownNative Int32
 effect serverIsShuttingDownNative read http.server
@@ -367,6 +399,10 @@ storage module immutable httpClientMethodGet String "GET"
 storage module immutable httpClientMethodPost String "POST"
 storage module immutable httpClientEmptyBody String ""
 
+# rationale: clientGet fixes the HTTP method to GET. Pass an empty
+#   headerLine when no extra single-line header is needed.
+# memory: returned non-null body is heap-owned by caller and must be released with c.free.
+# failure: returns null on connection failure, malformed response, timeout in the native adapter, or non-2xx status.
 operation clientGet
 input operation clientGet host String
 input operation clientGet port Int32
@@ -390,6 +426,11 @@ run clientGetCall
 bind value clientGetBody HttpClientResponseBody clientGetCall
 return value clientGetBody
 
+# rationale: clientPost fixes the HTTP method to POST. body is sent as
+#   the request body and headerLine carries one optional caller-supplied
+#   header.
+# memory: returned non-null body is heap-owned by caller and must be released with c.free.
+# failure: returns null on connection failure, malformed response, timeout in the native adapter, or non-2xx status.
 operation clientPost
 input operation clientPost host String
 input operation clientPost port Int32
@@ -414,6 +455,7 @@ run clientPostCall
 bind value clientPostBody HttpClientResponseBody clientPostCall
 return value clientPostBody
 
+# rationale: Low-level runtimeBinding hook used by standard.http clientGet/clientPost.
 operation clientFetchNative
 input operation clientFetchNative method String
 input operation clientFetchNative host String
@@ -431,6 +473,10 @@ purpose operation clientFetchNative "Low-level runtimeBinding hook used by stand
 runtimeBindingPrecondition clientFetchNative "method/host/path are non-null; returns a heap-owned 2xx response body or null."
 runtimeBinding clientFetchNative native.ss_http_client_fetch
 
+# rationale: use escapeHtml before reflecting untrusted text into
+#   htmlContentType responses.
+# memory: scratch is caller-owned writable memory; capacity must include the trailing NUL byte.
+# failure: output is bounded by capacity; callers that need lossless output must size scratch for worst-case escaping.
 operation escapeHtml
 input operation escapeHtml input String
 input operation escapeHtml scratch OpaquePointer

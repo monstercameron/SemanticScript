@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.constants.
 
+# rationale: Canonical standard-library module for standard constants.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.constants
 purpose module standard.constants "Canonical standard-library module for standard constants."
 moduleOwns standard.constants "The official import path `standard.constants` and this module's implementation body."
@@ -19,18 +21,18 @@ storage module immutable constantsModuleVersionText String "standard.constants 0
 #   pre-refined version exposed each constant as a zero-arg
 #   operation returning `Result Float64 Void`. The refined surface
 #   replaces every operation with a module-scope `domainLiteral`
-#   (AST Â§2.12.5) so constants are typed compile-time values, not
+#   (AST section 2.12.5) so constants are typed compile-time values, not
 #   callable operations. Every reference is constant-folded by LLVM.
 #
 # invariant: every Float64 literal is the double-precision
 #   IEEE-754 nearest representable value of the named constant.
 #   Some constants (e.g. golden ratio) are mathematically irrational
-#   and are approximated to 17 significant decimal digits â€” the
+#   and are approximated to 17 significant decimal digits - the
 #   round-trip representation of an IEEE-754 binary64.
 #
 # security: pure constants. No effects. No allocation.
 #
-# timing: zero â€” every reference inlines.
+# timing: zero - every reference inlines.
 #
 # observability: nothing to observe at runtime.
 

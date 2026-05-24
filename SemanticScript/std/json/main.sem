@@ -10,6 +10,15 @@
 # owns the official standard-library import path and semantic type contracts for
 # that intrinsic namespace.
 
+# rationale: import as `import json standard.json` for typed JSON
+#   builder, finder, document CRUD contracts, json.stringify.* targets,
+#   and json.parse.* targets.
+# invariant: document access is Result-aware and owned documents must use
+#   json.destroyDocument through defer or explicit cleanup.
+# memory: JsonBuilder and JsonDocument are opaque owned runtime handles; scratch output uses caller-owned JsonScratchBuffer with explicit JsonCapacityBytes.
+# failure: JsonAccessError, JsonEncodeError, and JsonDecodeError describe path, capacity, type, serialization, and parse failures.
+# security: treat JsonText, JsonPath, and JsonFieldName from requests or files as untrusted until parsed or validated by the JSON runtime.
+
 module standard.json
 purpose module standard.json "Standard-library namespace and contracts for JSON encode/decode, builder, finder, document CRUD, and typed stringify/parse intrinsics."
 moduleOwns standard.json "The official import path `standard.json`, semantic JSON type aliases, enum tokens, error domains, default constants, and the compiler-owned `json.*` intrinsic namespace contract."
@@ -27,6 +36,12 @@ type JsonStringValue String
 type JsonScratchBuffer OpaquePointer
 type JsonCapacityBytes ByteCount
 
+# memory: JsonDocument owns a mutable native JSON tree; pair creation
+#   paths with defer or explicit json.destroyDocument cleanup.
+# invariant: JsonCursor is scoped to one JsonDocument; structural edits
+#   can invalidate descendant cursors.
+# memory: JsonScratchBuffer is caller-owned scratch memory; every output
+#   reader or serializer must be paired with JsonCapacityBytes.
 enum JsonValueKind repr Int32
 enumCase JsonValueKind objectJsonValueKind 0
 enumCase JsonValueKind arrayJsonValueKind 1
@@ -59,6 +74,9 @@ errorCase JsonDecodeError Oversize Int32
 errorCase JsonDecodeError Truncated Int32
 errorCase JsonDecodeError EscapeMalformed Int32
 
+# failure: JsonAccessError covers document, path, and cursor mutations;
+#   JsonEncodeError covers serialization; JsonDecodeError covers parsing
+#   or typed-codec decoding.
 exportType standard.json JsonBuilder
 exportType standard.json JsonDocument
 exportType standard.json JsonCursor

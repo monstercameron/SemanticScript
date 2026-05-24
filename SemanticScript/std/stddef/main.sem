@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.stddef.
 
+# rationale: Canonical standard-library module for stddef constants and helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.stddef
 purpose module standard.stddef "Canonical standard-library module for stddef constants and helpers."
 moduleOwns standard.stddef "The official import path `standard.stddef` and this module's implementation body."
@@ -17,8 +19,8 @@ storage module immutable stddefModuleVersionText String "standard.stddef 0.1"
 # rationale: C's <stddef.h> is mostly typedefs (size_t, ptrdiff_t)
 #   plus the NULL macro. SemanticScript has those types natively
 #   (ByteCount, OpaquePointer, etc.) so this module only
-#   exposes the few callable surfaces â€” sizeof-style accessors for
-#   the common ABI types â€” as module-scope domainLiteral constants
+#   exposes the few callable surfaces - sizeof-style accessors for
+#   the common ABI types - as module-scope domainLiteral constants
 #   per the refined-syntax pattern (docs/ast.md section 2.12.5). The previous
 #   shape (zero-arg operations returning `Result Int64 Void`)
 #   is removed because constants belong in domainLiteral, not in
@@ -34,7 +36,7 @@ storage module immutable stddefModuleVersionText String "standard.stddef 0.1"
 #
 # security: pure constants. No effects. No allocation.
 #
-# timing: zero â€” the LLVM optimizer inlines every reference.
+# timing: zero - the LLVM optimizer inlines every reference.
 #
 # observability: nothing to observe; consumers see only the
 #   raw Int64 value.
@@ -43,7 +45,7 @@ storage module immutable stddefModuleVersionText String "standard.stddef 0.1"
 # domainLiterals consumed by other programs (notably
 # std/stddef/main.test.sem which importModules it and runs the
 # smoke). The project / target / runtime / entry block is retained
-# so the module can still be linted standalone â€” the entry just
+# so the module can still be linted standalone - the entry just
 # points at the first exported operation rather than a `main` smoke.
 
 # section stddef.byteSizes
@@ -82,6 +84,8 @@ domainLiteralValidation byteSizeOfSignedByte trustedAbiConstant
 # section stddef.opaquePointers
 # rationale: NULL pointer accessor; resolved at runtime via libc.
 
+# invariant: Result compares equal to any other NULL produced by libc.
+# rationale: Returns the canonical NULL pointer (i8* 0).
 operation acquireNullOpaquePointer
 output operation acquireNullOpaquePointer OpaquePointer
 memory acquireNullOpaquePointer heap no

@@ -48,6 +48,67 @@ or libcurl. The current compiler lowers `net.fetch*` through
 `native_http_client` and links `native_async` as the adapter dependency; real
 network behavior still depends on the opt-in libcurl/libuv runtime build.
 
+## API comment extraction
+
+Std modules can include typed comment blocks intended for agents and future
+documentation extractors. The semantic rows remain the source of truth;
+comments summarize API usage, ownership, failure, and trust-boundary guidance
+without inventing behavior that is not present in the rows.
+
+Suggested compact shape inside `main.sem`:
+
+```text
+# rationale: use this module for route handlers, response writers, SSE, or outbound client calls.
+# invariant: exported SemanticScript operations are the public API; direct runtimeBinding targets are internal hooks.
+# memory: returned heap-owned values, cleanup rules, and scratch-buffer requirements.
+# failure: null sentinels, non-zero status codes, or Result error domains.
+# security: caller validation expected at trust boundaries.
+```
+
+A simple extractor can read contiguous typed comments above a `module`, `type`,
+`capability`, `storage`, or `operation` row, then join them with nearby
+`purpose`, `invariant`, `typeInvariant`, `runtimeBindingPrecondition`,
+`export*`, `effect`, `memory`, and `useCapability` rows.
+
+The `sem` wrapper exposes this as a standard-library documentation surface:
+
+```powershell
+python SemanticScript\tools\sem.py docs list --module http --json
+python SemanticScript\tools\sem.py docs list --module http --summary-tag failure
+python SemanticScript\tools\sem.py docs get http.clientGet --json
+python SemanticScript\tools\sem.py docs get gui.applicationCreate --json
+python SemanticScript\tools\sem.py docs get json.createDocument --json
+python SemanticScript\tools\sem.py docs get http.clientFetchNative --all --json
+```
+
+`docs list` returns public operations by default. Public means an operation
+is exported or is a normal SemanticScript helper; runtimeBinding helpers and
+`*Native` operations are hidden unless `--all` is passed. `docs get` uses
+the same visibility rule. Operation payloads promote `purpose` and `invariants`
+to predictable top-level fields, resolve capability declarations, include
+runtime binding preconditions, and provide a `usage` object with call rows,
+required caller effects/capabilities, explicit `failureHandling` rows, cleanup
+rows, and failure-mode guidance. `usage.call.rows` are the call-and-bind core;
+also apply `usage.failureHandling.rows` and `usage.cleanup.rows` when their
+`required` flags are true. If `usage.preconditions.required` is true, validate
+the named caller precondition before emitting the call. Cleanup payloads for
+`c.free` include the caller's required heap-free effect and authority guidance.
+For non-exported capabilities, `usage.useCapabilityRows` stays empty and the
+payload provides `usage.authorityRows` plus complete local
+`usage.localCapabilityRows` declaration/use pairs instead of encouraging
+callers to reference std-internal capability names.
+Unexported helpers report `visibility.apiTier:
+"helper"` and `agentWarnings` so agents know they are less stable than exported
+APIs.
+Modules without operation docs still appear in `moduleDocs` with
+`operationDocStatus: "no-operation-docs"`; compiler-owned call targets such as
+`gui.*`, known `json.*`, `console.*`, `math.*`, `pointer.*`, and selected `c.*`
+targets appear under `moduleDocs[].callTargets` and can be retrieved directly
+with `docs get TARGET --json`. Compiler-owned modules use an empty
+`usage.importRow` because they do not require source imports. Reserved targets
+carry `loweringStatus: "reserved"`; lowered targets report
+`visibility.apiTier: "compiler-lowered"`.
+
 This library tree intentionally has no `build.sem`. Add standard modules under
 `std/<module>/main.sem` and relay them from `std/module.sem`.
 

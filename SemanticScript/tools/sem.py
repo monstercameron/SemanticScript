@@ -30,8 +30,1109 @@ from shared.repo_version import read_repo_version
 VERSION = read_repo_version()
 STARTER_PROJECT_VERSION = "0.0.1"
 SYNTAX_PAYLOAD_VERSION = "sem.syntaxCutover.v1"
+DOCS_PAYLOAD_VERSION = "sem.docs.v1"
 SYNTAX_INVENTORY_PATH = ROOT.parent / "docs" / "reference" / "syntax-inventory.md"
 CALL_DISPOSITION_VARIANTS = ("value", "ok", "error", "void")
+STD_DOC_COMMENT_TAGS = (
+    "rationale",
+    "invariant",
+    "warning",
+    "memory",
+    "concurrency",
+    "timing",
+    "failure",
+    "security",
+    "dependency",
+    "observability",
+    "test",
+    "todo",
+)
+STD_DOC_STATIC_TARGETS = {
+    "standard.gui": {
+        "gui.applicationCreate": {
+            "summary": "Create the GUI application handle before creating windows or controls.",
+            "inputs": [{"name": "title", "type": "GuiText"}],
+            "outputs": [{"type": "GuiApplication", "values": ["GuiApplication"]}],
+            "effects": [{"action": "allocate", "path": "gui.application"}],
+            "failureMode": {"kind": "null-sentinel", "text": "A null handle indicates GUI runtime, configuration, or allocation failure."},
+        },
+        "gui.windowCreate": {
+            "summary": "Create a window handle for later attachment to the application.",
+            "inputs": [
+                {"name": "title", "type": "GuiText"},
+                {"name": "width", "type": "GuiPixels"},
+                {"name": "height", "type": "GuiPixels"},
+                {"name": "layout", "type": "GuiWindowLayout"},
+                {"name": "resizable", "type": "Int32"},
+            ],
+            "outputs": [{"type": "GuiWindow", "values": ["GuiWindow"]}],
+            "effects": [{"action": "allocate", "path": "gui.window"}],
+            "failureMode": {"kind": "null-sentinel", "text": "A null handle indicates GUI runtime, configuration, or allocation failure."},
+        },
+        "gui.textLabelCreate": {
+            "summary": "Create a static text-label control handle.",
+            "inputs": [{"name": "text", "type": "GuiText"}],
+            "outputs": [{"type": "GuiTextLabel", "values": ["GuiTextLabel"]}],
+            "effects": [{"action": "allocate", "path": "gui.control"}],
+            "failureMode": {"kind": "null-sentinel", "text": "A null handle indicates GUI runtime, configuration, or allocation failure."},
+        },
+        "gui.textBoxCreate": {
+            "summary": "Create a text-box control handle.",
+            "inputs": [{"name": "placeholder", "type": "GuiText"}, {"name": "maxLength", "type": "Int32"}],
+            "outputs": [{"type": "GuiTextBox", "values": ["GuiTextBox"]}],
+            "effects": [{"action": "allocate", "path": "gui.control"}],
+            "failureMode": {"kind": "null-sentinel", "text": "A null handle indicates GUI runtime, configuration, or allocation failure."},
+        },
+        "gui.buttonCreate": {
+            "summary": "Create a button control handle.",
+            "inputs": [{"name": "text", "type": "GuiText"}, {"name": "isDefault", "type": "Int32"}],
+            "outputs": [{"type": "GuiButton", "values": ["GuiButton"]}],
+            "effects": [{"action": "allocate", "path": "gui.control"}],
+            "failureMode": {"kind": "null-sentinel", "text": "A null handle indicates GUI runtime, configuration, or allocation failure."},
+        },
+        "gui.listBoxCreate": {
+            "summary": "Create a list-box control handle.",
+            "inputs": [{"name": "selectionMode", "type": "GuiListBoxSelectionMode"}],
+            "outputs": [{"type": "GuiListBox", "values": ["GuiListBox"]}],
+            "effects": [{"action": "allocate", "path": "gui.control"}],
+            "failureMode": {"kind": "null-sentinel", "text": "A null handle indicates GUI runtime, configuration, or allocation failure."},
+        },
+        "gui.windowAddControl": {
+            "summary": "Attach a control handle to a window during GUI construction.",
+            "inputs": [{"name": "window", "type": "GuiWindow"}, {"name": "control", "type": "GuiControl"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.window"}],
+            "capabilities": ["guiWindowWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports a GUI runtime configuration failure."},
+        },
+        "gui.controlOnEvent": {
+            "summary": "Register a GUI event handler operation for a control.",
+            "inputs": [{"name": "control", "type": "GuiControl"}, {"name": "eventKind", "type": "GuiEventKind"}, {"name": "handler", "type": "GuiEventHandler"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.control.event"}],
+            "capabilities": ["guiControlEventWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports handler registration failure."},
+        },
+        "gui.applicationSetMainWindow": {
+            "summary": "Select the main window for the GUI application before applicationRun.",
+            "inputs": [{"name": "application", "type": "GuiApplication"}, {"name": "window", "type": "GuiWindow"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.window"}],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports invalid application or window handles."},
+        },
+        "gui.applicationRun": {
+            "summary": "Run the configured GUI application and return the GUI process status.",
+            "inputs": [{"name": "application", "type": "GuiApplication"}],
+            "outputs": [{"type": "ExitCode", "values": ["ExitCode"]}],
+            "effects": [{"action": "write", "path": "gui.window"}],
+            "failureMode": {"kind": "sentinel-value", "text": "Non-zero exit status reports runtime or handler failure; callers commonly return this ExitCode directly instead of branching."},
+        },
+        "gui.textBoxText": {
+            "summary": "Read current text from a text box inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "textBox", "type": "GuiTextBox"}],
+            "outputs": [{"type": "GuiText", "values": ["GuiText"]}],
+            "effects": [{"action": "read", "path": "gui.control.textBox.text"}],
+            "capabilities": ["guiTextBoxReader"],
+            "failureMode": {"kind": "null-sentinel", "text": "A null text pointer indicates an invalid session or text-box handle."},
+        },
+        "gui.textBoxSetText": {
+            "summary": "Set current text on a text box inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "textBox", "type": "GuiTextBox"}, {"name": "text", "type": "String"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.control.textBox.text"}],
+            "capabilities": ["guiTextBoxWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports an invalid session or text-box handle."},
+        },
+        "gui.listBoxSelectedIndex": {
+            "summary": "Read the selected list-box row index inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "listBox", "type": "GuiListBox"}],
+            "outputs": [{"type": "GuiSelectedIndex", "values": ["GuiSelectedIndex"]}],
+            "effects": [{"action": "read", "path": "gui.control.listBox.selection"}],
+            "capabilities": ["guiListBoxSelectionReader"],
+            "failureMode": {"kind": "sentinel-value", "text": "guiInvalidSelectedIndex means no selected row; invalid handles are runtime errors."},
+        },
+        "gui.listBoxAppendItem": {
+            "summary": "Append one visible item to a list box inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "listBox", "type": "GuiListBox"}, {"name": "text", "type": "String"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.control.listBox.items"}],
+            "capabilities": ["guiListBoxWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports an invalid session, list-box handle, or item text."},
+        },
+        "gui.listBoxClear": {
+            "summary": "Remove all items from a list box inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "listBox", "type": "GuiListBox"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.control.listBox.items"}],
+            "capabilities": ["guiListBoxWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports an invalid session or list-box handle."},
+        },
+        "gui.textLabelSetText": {
+            "summary": "Set text on a text label inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "textLabel", "type": "GuiTextLabel"}, {"name": "text", "type": "GuiText"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.control.textLabel.text"}],
+            "capabilities": ["guiTextLabelWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports an invalid session or label handle."},
+        },
+        "gui.windowClose": {
+            "summary": "Request closing a GUI window inside a GUI handler.",
+            "inputs": [{"name": "session", "type": "GuiSession"}, {"name": "window", "type": "GuiWindow"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "gui.window"}],
+            "capabilities": ["guiWindowWriter"],
+            "failureMode": {"kind": "status-code", "text": "Non-zero status reports an invalid session or window handle."},
+        },
+        "gui.eventKeyCode": {"summary": "Reserved event-reader target for keyPressed events.", "inputs": [{"name": "event", "type": "GuiEvent"}], "outputs": [{"type": "Int32", "values": ["Int32"]}], "loweringStatus": "reserved"},
+        "gui.eventSelectedIndex": {"summary": "Reserved event-reader target for selectionChanged events.", "inputs": [{"name": "event", "type": "GuiEvent"}], "outputs": [{"type": "GuiSelectedIndex", "values": ["GuiSelectedIndex"]}], "loweringStatus": "reserved"},
+        "gui.eventWindowWidth": {"summary": "Reserved event-reader target for resized window width.", "inputs": [{"name": "event", "type": "GuiEvent"}], "outputs": [{"type": "GuiPixels", "values": ["GuiPixels"]}], "loweringStatus": "reserved"},
+        "gui.eventWindowHeight": {"summary": "Reserved event-reader target for resized window height.", "inputs": [{"name": "event", "type": "GuiEvent"}], "outputs": [{"type": "GuiPixels", "values": ["GuiPixels"]}], "loweringStatus": "reserved"},
+        "gui.eventCancelClose": {"summary": "Reserved event-writer target for closeRequested events.", "inputs": [{"name": "event", "type": "GuiEvent"}], "outputs": [{"type": "Int32", "values": ["Int32"]}], "loweringStatus": "reserved"},
+    },
+    "standard.json": {
+        "json.createDocument": {
+            "summary": "Parse JSON text into an owned JsonDocument; destroy it on every ownership path.",
+            "inputs": [{"name": "jsonText", "type": "String"}, {"name": "capacityBytes", "type": "JsonCapacityBytes"}],
+            "outputs": [{"type": "Result", "values": ["Result", "JsonDocument", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports malformed input or capacity failure."},
+            "cleanup": {"required": True, "strategy": "defer or explicitly call json.destroyDocument for the ok JsonDocument", "callTarget": "json.destroyDocument", "argumentName": "document", "argumentType": "JsonDocument", "resultType": "Int32"},
+        },
+        "json.createEmptyDocument": {
+            "summary": "Create an owned mutable JsonDocument with object or array root kind.",
+            "inputs": [{"name": "capacityBytes", "type": "JsonCapacityBytes"}, {"name": "rootKind", "type": "JsonValueKind"}],
+            "outputs": [{"type": "Result", "values": ["Result", "JsonDocument", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports capacity or root-kind failure."},
+            "cleanup": {"required": True, "strategy": "defer or explicitly call json.destroyDocument for the ok JsonDocument", "callTarget": "json.destroyDocument", "argumentName": "document", "argumentType": "JsonDocument", "resultType": "Int32"},
+        },
+        "json.destroyDocument": {
+            "summary": "Release an owned JsonDocument.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "failureMode": {"kind": "none", "text": "Destroy is best-effort and should be used as cleanup."},
+        },
+        "json.documentRoot": {
+            "summary": "Get the root cursor for a JsonDocument.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}],
+            "outputs": [{"type": "JsonCursor", "values": ["JsonCursor"]}],
+        },
+        "json.objectFieldAt": {
+            "summary": "Find a direct object field cursor under an object cursor.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}, {"name": "fieldName", "type": "String"}],
+            "outputs": [{"type": "Result", "values": ["Result", "JsonCursor", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports missing field, wrong kind, or malformed access."},
+        },
+        "json.cursorString": {
+            "summary": "Read a string cursor into caller-owned scratch memory.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}, {"name": "scratch", "type": "OpaquePointer"}, {"name": "scratchCapacity", "type": "Int64"}],
+            "outputs": [{"type": "Result", "values": ["Result", "String", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports wrong type or scratch capacity failure."},
+        },
+        "json.cursorInt64": {
+            "summary": "Read an integer cursor, returning missingDefault when the cursor is not an integer.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}, {"name": "missingDefault", "type": "Int64"}],
+            "outputs": [{"type": "Int64", "values": ["Int64"]}],
+            "failureMode": {"kind": "sentinel-value", "text": "missingDefault is returned when the cursor is missing or not an integer."},
+        },
+        "json.cursorArrayLength": {
+            "summary": "Read an array cursor length.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int64", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports wrong type or invalid cursor."},
+        },
+        "json.setObjectFieldString": {
+            "summary": "Set a string field on an object cursor.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}, {"name": "fieldName", "type": "String"}, {"name": "value", "type": "String"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports wrong type, field limits, or capacity failure."},
+        },
+        "json.setObjectFieldInt64": {
+            "summary": "Set an integer field on an object cursor.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}, {"name": "fieldName", "type": "String"}, {"name": "value", "type": "Int64"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports wrong type, field limits, or capacity failure."},
+        },
+        "json.setObjectFieldNull": {
+            "summary": "Set a null field on an object cursor.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "cursor", "type": "JsonCursor"}, {"name": "fieldName", "type": "String"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports wrong type, field limits, or capacity failure."},
+        },
+        "json.serializeDocument": {
+            "summary": "Serialize a JsonDocument into caller-owned scratch memory.",
+            "inputs": [{"name": "document", "type": "JsonDocument"}, {"name": "scratch", "type": "OpaquePointer"}, {"name": "scratchCapacity", "type": "Int64"}],
+            "outputs": [{"type": "Result", "values": ["Result", "JsonText", "JsonAccessError"]}],
+            "failureMode": {"kind": "result", "text": "JsonAccessError reports scratch capacity or serialization failure."},
+        },
+        "json.stringify.String": {
+            "summary": "Encode a string as JSON text using the high-level stringify alias.",
+            "inputs": [{"name": "value", "type": "String"}],
+            "outputs": [{"type": "Result", "values": ["Result", "JsonText", "JsonEncodeError"]}],
+            "failureMode": {"kind": "result", "text": "JsonEncodeError reports output capacity or serialization failure."},
+        },
+        "json.parse.Int64": {
+            "summary": "Parse a JSON integer literal using the high-level parse alias.",
+            "inputs": [{"name": "jsonText", "type": "JsonText"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int64", "JsonDecodeError"]}],
+            "failureMode": {"kind": "result", "text": "JsonDecodeError reports malformed, truncated, or wrong-type input."},
+        },
+    },
+    "standard.bcrypt": {
+        "bcrypt.hashPassword": {
+            "summary": "Hash a plaintext password into a caller-owned bcrypt hash buffer.",
+            "inputs": [
+                {"name": "plaintext", "type": "BcryptPlaintextPassword"},
+                {"name": "cost", "type": "Int32"},
+                {"name": "outBuffer", "type": "BcryptHashBuffer"},
+                {"name": "outCapacity", "type": "Int32"},
+            ],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}, {"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "system.random"}],
+            "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports bad cost, undersized output, random-source failure, or hash failure."},
+        },
+        "bcrypt.verifyPassword": {
+            "summary": "Verify a plaintext password against a trusted bcrypt hash.",
+            "inputs": [{"name": "plaintext", "type": "BcryptPlaintextPassword"}, {"name": "expectedHash", "type": "BcryptPasswordHash"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}],
+            "failureMode": {"kind": "negative-status", "text": "1 means password match, 0 means mismatch, and negative status means malformed hash or runtime failure; branch on negative status before treating 0 as an authentication mismatch."},
+        },
+        "bcrypt.randomBytes": {
+            "summary": "Fill a caller-owned buffer with platform CSPRNG bytes.",
+            "inputs": [{"name": "outBuffer", "type": "BcryptRandomBuffer"}, {"name": "byteCount", "type": "Int32"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "system.random"}],
+            "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports invalid output buffer or CSPRNG failure."},
+        },
+        "bcrypt.base64UrlEncode": {
+            "summary": "Base64url-encode caller-owned bytes into a caller-owned output buffer.",
+            "inputs": [
+                {"name": "inputBuffer", "type": "BcryptRandomBuffer"},
+                {"name": "inputCount", "type": "Int32"},
+                {"name": "outputBuffer", "type": "Base64UrlBuffer"},
+                {"name": "outputCapacity", "type": "Int32"},
+                {"name": "outputLengthOut", "type": "OpaquePointer"},
+            ],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}, {"action": "write", "path": "memory.buffer"}],
+            "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports invalid pointers, capacity failure, or encoder failure."},
+        },
+    },
+    "standard.net": {
+        "net.fetchText": {
+            "summary": "Fetch an outbound HTTP URL as text using an explicit request policy.",
+            "inputs": [{"name": "request", "type": "HttpGetRequest"}],
+            "outputs": [{"type": "Result", "values": ["Result", "HttpTextResponse", "HttpClientErrorCode"]}],
+            "effects": [{"action": "write", "path": "network.http.client"}, {"action": "allocate", "path": "heap"}],
+            "capabilities": ["networkHttpClient"],
+            "failureMode": {"kind": "result", "text": "HttpClientErrorCode reports DNS, connect, timeout, TLS, redirect, body-limit, or backend failures. HTTP non-2xx statuses are response data."},
+            "cleanup": {"required": True, "strategy": "extract HttpTextResponse.body and call net.freeTextBody on every ok ownership path", "callTarget": "net.freeTextBody", "argumentName": "body", "argumentType": "HttpClientBodyText", "resultType": "Int32", "resultField": {"name": "body", "type": "HttpClientBodyText"}},
+        },
+        "net.fetchBytes": {
+            "summary": "Prototype outbound HTTP bytes fetch target; exact binary length-safe source API is still partial.",
+            "inputs": [{"name": "url", "type": "Url"}, {"name": "timeoutMillis", "type": "NetworkTimeoutMilliseconds"}, {"name": "maxBodyBytes", "type": "ResponseBodyLimitBytes"}],
+            "outputs": [{"type": "Result", "values": ["Result", "HttpClientBodyBytes", "HttpClientErrorCode"]}],
+            "effects": [{"action": "write", "path": "network.http.client"}, {"action": "allocate", "path": "heap"}],
+            "capabilities": ["networkHttpClient"],
+            "failureMode": {"kind": "result", "text": "HttpClientErrorCode reports DNS, connect, timeout, TLS, redirect, body-limit, or backend failures."},
+            "loweringStatus": "partial",
+        },
+        "net.freeTextBody": {
+            "summary": "Release a text body returned by net.fetchText.",
+            "inputs": [{"name": "body", "type": "HttpClientBodyText"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "free", "path": "heap"}],
+            "failureMode": {"kind": "none", "text": "Cleanup is best-effort; pass only bodies returned by net.fetchText."},
+        },
+    },
+    "standard.sqlite": {
+        "sqlite.openDatabase": {
+            "summary": "Open a SQLite database handle using the requested open mode.",
+            "inputs": [{"name": "path", "type": "String"}, {"name": "mode", "type": "SqliteOpenMode"}],
+            "outputs": [{"type": "Result", "values": ["Result", "SqliteDatabase", "SqliteDatabaseOpenFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteDatabaseOpenFailure carries the native status when the path, mode, or SQLite runtime rejects the open."},
+            "cleanup": {"required": True, "strategy": "call sqlite.closeDatabase or defer it for every successfully opened database handle", "callTarget": "sqlite.closeDatabase", "argumentName": "database", "argumentType": "SqliteDatabase", "resultType": "Int32", "ignoreKind": "ok", "errorType": "SqliteDatabaseCloseFailure"},
+        },
+        "sqlite.closeDatabase": {
+            "summary": "Close an open SQLite database handle.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteDatabaseCloseFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteDatabaseCloseFailure reports an unclosed statement or native close failure."},
+        },
+        "sqlite.errorMessage": {
+            "summary": "Read SQLite's current database error message pointer.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "SqliteText", "values": ["SqliteText"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "none", "text": "The returned pointer is SQLite-owned and valid until SQLite changes the connection error state."},
+        },
+        "sqlite.lastInsertRowId": {
+            "summary": "Read the connection-global row id from the most recent successful insert.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "SqliteRowId", "values": ["SqliteRowId"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "sentinel-value", "text": "The value is connection-global state; prefer RETURNING when concurrent writes or triggers could hide the intended row."},
+        },
+        "sqlite.changedRowCount": {
+            "summary": "Read SQLite's changed-row count for the most recent write on the connection.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+        },
+        "sqlite.exec": {
+            "summary": "Execute a complete SQL statement directly against a database handle.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}, {"name": "sql", "type": "SqlText"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteDatabaseExecFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteDatabaseExecFailure carries the native status; dynamic values must use prepareStatement plus bind rows, not SQL interpolation."},
+        },
+        "sqlite.execStatus": {
+            "summary": "Execute SQL and return the raw SQLite adapter status code.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}, {"name": "sql", "type": "SqlText"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "status-code", "text": "Zero means success; non-zero is a SQLite adapter error status."},
+        },
+        "sqlite.prepareStatement": {
+            "summary": "Prepare one SQL statement and return an owned statement handle.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}, {"name": "sql", "type": "SqlText"}],
+            "outputs": [{"type": "Result", "values": ["Result", "SqliteStatement", "SqliteStatementPrepareFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementPrepareFailure carries the native status; SQL must be a single statement and dynamic values must use ? placeholders."},
+            "cleanup": {"required": True, "strategy": "call sqlite.finalizeStatement or defer it for every successfully prepared statement handle", "callTarget": "sqlite.finalizeStatement", "argumentName": "statement", "argumentType": "SqliteStatement", "resultType": "Int32", "ignoreKind": "ok", "errorType": "SqliteStatementFinalizeFailure"},
+        },
+        "sqlite.finalizeStatement": {
+            "summary": "Finalize an owned prepared statement handle.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementFinalizeFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementFinalizeFailure reports native finalize failure; still treat the handle as consumed."},
+        },
+        "sqlite.resetStatement": {
+            "summary": "Reset a prepared statement so it can be rebound or stepped again.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementResetFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementResetFailure carries the native reset status."},
+        },
+        "sqlite.stepStatement": {
+            "summary": "Advance a prepared statement and return row/done status on the ok leg.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}],
+            "outputs": [{"type": "Result", "values": ["Result", "SqliteStepResult", "SqliteStatementStepFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementStepFailure covers native statuses below the row/done range; compare ok values to rowSqliteStepResult or doneSqliteStepResult."},
+        },
+        "sqlite.bindInt64": {
+            "summary": "Bind one Int64 value to a 1-based SQLite parameter index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "parameterIndex", "type": "Int32"}, {"name": "value", "type": "Int64"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementBindFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementBindFailure carries the native bind status; parameterIndex is 1-based."},
+        },
+        "sqlite.bindDouble": {
+            "summary": "Bind one Float64 value to a 1-based SQLite parameter index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "parameterIndex", "type": "Int32"}, {"name": "value", "type": "Float64"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementBindFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementBindFailure carries the native bind status; parameterIndex is 1-based."},
+        },
+        "sqlite.bindText": {
+            "summary": "Bind one null-terminated text value to a 1-based SQLite parameter index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "parameterIndex", "type": "Int32"}, {"name": "value", "type": "SqliteText"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementBindFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementBindFailure carries the native bind status; parameterIndex is 1-based and the text is copied by SQLite."},
+        },
+        "sqlite.bindBlob": {
+            "summary": "Bind one blob pointer and byte count to a 1-based SQLite parameter index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "parameterIndex", "type": "Int32"}, {"name": "value", "type": "SqliteBlob"}, {"name": "valueLength", "type": "SqliteByteCount"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementBindFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementBindFailure carries the native bind status; parameterIndex is 1-based and the blob bytes are copied by SQLite."},
+        },
+        "sqlite.bindNull": {
+            "summary": "Bind SQLite NULL to a 1-based parameter index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "parameterIndex", "type": "Int32"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteStatementBindFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteStatementBindFailure carries the native bind status; parameterIndex is 1-based."},
+        },
+        "sqlite.columnCount": {
+            "summary": "Return the number of columns in a prepared statement result row shape.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+        },
+        "sqlite.columnType": {
+            "summary": "Return the SQLite type tag for a 0-based result column index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "SqliteColumnType", "values": ["SqliteColumnType"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+        },
+        "sqlite.columnName": {
+            "summary": "Return the SQLite-owned name for a 0-based result column index.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "SqliteText", "values": ["SqliteText"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned and valid only while the statement remains alive and positioned."},
+        },
+        "sqlite.columnInt64": {
+            "summary": "Read a 0-based result column as Int64.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "Int64", "values": ["Int64"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+        },
+        "sqlite.columnDouble": {
+            "summary": "Read a 0-based result column as Float64.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "Float64", "values": ["Float64"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+        },
+        "sqlite.columnText": {
+            "summary": "Read a 0-based result column as SQLite-owned text.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "SqliteText", "values": ["SqliteText"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned and valid until the statement advances, resets, or finalizes; copy before then if needed."},
+        },
+        "sqlite.columnBlob": {
+            "summary": "Read a 0-based result column as a SQLite-owned blob pointer.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "SqliteBlob", "values": ["SqliteBlob"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned and valid until the statement advances, resets, or finalizes; pair with sqlite.columnByteCount before consuming."},
+        },
+        "sqlite.columnByteCount": {
+            "summary": "Read the byte count for the current text or blob column value.",
+            "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
+            "outputs": [{"type": "SqliteByteCount", "values": ["SqliteByteCount"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+        },
+        "sqlite.libraryVersion": {
+            "summary": "Return the SQLite library version string from the native runtime.",
+            "inputs": [],
+            "outputs": [{"type": "SqliteText", "values": ["SqliteText"]}],
+            "failureMode": {"kind": "none", "text": "The returned string is runtime-owned static memory."},
+        },
+    },
+}
+
+
+def _static_inputs(*pairs: tuple[str, str]) -> list[dict]:
+    return [{"name": name, "type": type_name} for name, type_name in pairs]
+
+
+def _static_value_output(type_name: str) -> list[dict]:
+    return [{"type": type_name, "values": [type_name]}]
+
+
+def _static_result_output(ok_type: str, error_type: str) -> list[dict]:
+    return [{"type": "Result", "values": ["Result", ok_type, error_type]}]
+
+
+def _static_target_contract(
+    summary: str,
+    *,
+    inputs: list[dict] | None = None,
+    outputs: list[dict] | None = None,
+    effects: list[dict] | None = None,
+    capabilities: list[str] | None = None,
+    failure_kind: str = "none",
+    failure_text: str = "",
+    cleanup: dict | None = None,
+    agent_warnings: list[str] | None = None,
+    lowering_status: str = "lowered",
+) -> dict:
+    payload = {
+        "summary": summary,
+        "inputs": inputs or [],
+        "outputs": outputs or [],
+    }
+    if effects:
+        payload["effects"] = effects
+    if capabilities:
+        payload["capabilities"] = capabilities
+    if failure_kind != "none" or failure_text:
+        payload["failureMode"] = {"kind": failure_kind, "text": failure_text}
+    if cleanup:
+        payload["cleanup"] = cleanup
+    if agent_warnings:
+        payload["agentWarnings"] = agent_warnings
+    if lowering_status != "lowered":
+        payload["loweringStatus"] = lowering_status
+    return payload
+
+
+def _register_http_static_targets() -> None:
+    http_docs = STD_DOC_STATIC_TARGETS.setdefault("standard.http", {})
+    request_effect = [{"action": "read", "path": "http.request"}]
+    response_effect = [{"action": "write", "path": "http.response"}]
+    status_failure = "Non-zero status reports native HTTP adapter failure."
+    http_docs.update({
+        "http.responseHtml": _static_target_contract(
+            "Write an HTML response body with the standard text/html content type.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("body", "HttpTextBody")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text=status_failure,
+        ),
+        "http.responseText": _static_target_contract(
+            "Write a text response body with an explicit content type.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("body", "HttpTextBody"), ("contentType", "HttpContentType")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text=status_failure,
+        ),
+        "http.responseBytes": _static_target_contract(
+            "Write a byte response body with an explicit byte length and content type.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("body", "HttpByteBody"), ("bodyLength", "HttpBodyLength"), ("contentType", "HttpContentType")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text=status_failure,
+        ),
+        "http.responseSseEvent": _static_target_contract(
+            "Write one Server-Sent Event frame to an HTTP response.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("event", "SseEventName"), ("data", "SseEventData")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text=status_failure,
+        ),
+        "http.responseHeader": _static_target_contract(
+            "Write one HTTP response header before the response body is sent.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("name", "HttpHeaderName"), ("value", "HttpHeaderValue")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text=status_failure,
+        ),
+        "http.responseFile": _static_target_contract(
+            "Serve a file under a public root directory without allowing path traversal.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("rootDirectory", "String"), ("requestedPath", "String")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text="Non-zero status reports missing file, traversal attempt, or native send failure.",
+        ),
+        "http.ensureDirectory": _static_target_contract(
+            "Create a directory path if it does not already exist.",
+            inputs=_static_inputs(("directoryPath", "String")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "write", "path": "filesystem"}],
+            failure_kind="status-code",
+            failure_text="Non-zero status reports invalid path or filesystem failure.",
+        ),
+        "http.nowMillis": _static_target_contract(
+            "Read the native HTTP runtime clock in milliseconds.",
+            outputs=_static_value_output("Int64"),
+            effects=[{"action": "read", "path": "clock"}],
+        ),
+    })
+    for target, summary in {
+        "http.requestMethod": "Read the dispatched HTTP request method.",
+        "http.requestPath": "Read the dispatched HTTP request path.",
+    }.items():
+        http_docs[target] = _static_target_contract(
+            summary,
+            inputs=_static_inputs(("request", "HttpRequest")),
+            outputs=_static_value_output("HttpRequestValue"),
+            effects=request_effect,
+            capabilities=["httpRequestReader"],
+        )
+    for target, input_name, summary in (
+        ("http.requestHeader", "name", "Read a named request header value."),
+        ("http.requestQueryParam", "name", "Read a named query parameter value."),
+        ("http.requestPathParam", "name", "Read a named route path parameter value."),
+        ("http.requestCookie", "cookieName", "Read a named cookie value from the Cookie header."),
+    ):
+        http_docs[target] = _static_target_contract(
+            summary,
+            inputs=_static_inputs(("request", "HttpRequest"), (input_name, "String")),
+            outputs=_static_value_output("HttpRequestValue"),
+            effects=request_effect,
+            capabilities=["httpRequestReader"],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when the named request value is absent or overflows native request scratch.",
+        )
+    for target, output_type, summary in (
+        ("http.requestBodyText", "HttpTextBody", "Read the request body as text."),
+        ("http.requestBodyBytes", "HttpByteBody", "Read the request body as bytes."),
+    ):
+        http_docs[target] = _static_target_contract(
+            summary,
+            inputs=_static_inputs(("request", "HttpRequest")),
+            outputs=_static_value_output(output_type),
+            effects=request_effect,
+            capabilities=["httpRequestReader"],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when the body is absent or not available in the requested representation.",
+        )
+    http_docs["http.requestBodyLength"] = _static_target_contract(
+        "Read the request body byte length.",
+        inputs=_static_inputs(("request", "HttpRequest")),
+        outputs=_static_value_output("HttpBodyLength"),
+        effects=request_effect,
+        capabilities=["httpRequestReader"],
+    )
+    for target, output_type, summary in (
+        ("http.multipartPartText", "HttpTextBody", "Read one multipart part as text."),
+        ("http.multipartPartBytes", "HttpByteBody", "Read one multipart part as bytes."),
+        ("http.multipartPartFilename", "HttpRequestValue", "Read one multipart part filename."),
+        ("http.multipartPartContentType", "HttpContentType", "Read one multipart part content type."),
+    ):
+        http_docs[target] = _static_target_contract(
+            summary,
+            inputs=_static_inputs(("request", "HttpRequest"), ("name", "String")),
+            outputs=_static_value_output(output_type),
+            effects=request_effect,
+            capabilities=["httpRequestReader"],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when the named multipart part or requested field is absent.",
+        )
+    http_docs["http.multipartPartLength"] = _static_target_contract(
+        "Read one multipart part byte length.",
+        inputs=_static_inputs(("request", "HttpRequest"), ("name", "String")),
+        outputs=_static_value_output("HttpBodyLength"),
+        effects=request_effect,
+        capabilities=["httpRequestReader"],
+    )
+
+
+def _register_json_static_targets() -> None:
+    json_docs = STD_DOC_STATIC_TARGETS.setdefault("standard.json", {})
+    json_deprecated_warning = ["Legacy builder/finder target; prefer JsonDocument CRUD targets for new code when mutation or typed error handling is needed."]
+    primitive_types = [
+        "Int64", "UInt64", "Int32", "UInt32", "Int16", "UInt16", "Int8", "UInt8",
+        "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds", "Bool", "Float64", "Float32", "String",
+    ]
+    for type_name in primitive_types:
+        json_docs.setdefault(f"json.encode.{type_name}", _static_target_contract(
+            f"Encode one {type_name} value as JSON text using the legacy primitive encoder.",
+            inputs=_static_inputs(("value", type_name)),
+            outputs=_static_value_output("JsonText"),
+            agent_warnings=json_deprecated_warning,
+        ))
+        if type_name != "String":
+            json_docs.setdefault(f"json.decode.{type_name}", _static_target_contract(
+                f"Decode one JSON primitive literal as {type_name} using the legacy primitive decoder.",
+                inputs=_static_inputs(("value", "JsonText")),
+                outputs=_static_value_output(type_name),
+                failure_kind="sentinel-value",
+                failure_text="Malformed input returns the runtime default for this primitive decoder; use high-level parse or JsonDocument APIs when malformed input must be distinguished.",
+                agent_warnings=json_deprecated_warning,
+            ))
+    json_docs.setdefault("json.createBuilder", _static_target_contract(
+        "Create a legacy JSON builder with a bounded output capacity.",
+        inputs=_static_inputs(("capacity", "JsonCapacityBytes")),
+        outputs=_static_value_output("JsonBuilder"),
+        failure_kind="null-sentinel",
+        failure_text="Returns null when the native JSON builder cannot allocate the requested capacity.",
+        cleanup={"required": True, "strategy": "call json.destroyBuilder after finishBuilder or on every failure path", "callTarget": "json.destroyBuilder", "argumentName": "builder", "argumentType": "JsonBuilder", "resultType": "Int32"},
+        agent_warnings=json_deprecated_warning,
+    ))
+    json_docs.setdefault("json.destroyBuilder", _static_target_contract(
+        "Destroy a legacy JSON builder handle.",
+        inputs=_static_inputs(("builder", "JsonBuilder")),
+        outputs=_static_value_output("Int32"),
+        agent_warnings=json_deprecated_warning,
+    ))
+    for target in ("json.objectOpen", "json.objectClose", "json.arrayOpen", "json.arrayClose", "json.elementNull"):
+        json_docs.setdefault(target, _static_target_contract(
+            f"Apply legacy builder operation {target}.",
+            inputs=_static_inputs(("builder", "JsonBuilder")),
+            outputs=_static_value_output("Int32"),
+            failure_kind="status-code",
+            failure_text="Non-zero status reports invalid builder state or capacity failure.",
+            agent_warnings=json_deprecated_warning,
+        ))
+    for target, value_type in {
+        "json.fieldInt64": "Int64",
+        "json.fieldDouble": "Float64",
+        "json.fieldBool": "Bool",
+        "json.fieldString": "JsonStringValue",
+    }.items():
+        json_docs.setdefault(target, _static_target_contract(
+            f"Write a legacy object field with {value_type} value.",
+            inputs=_static_inputs(("builder", "JsonBuilder"), ("fieldName", "JsonFieldName"), ("value", value_type)),
+            outputs=_static_value_output("Int32"),
+            failure_kind="status-code",
+            failure_text="Non-zero status reports invalid builder state or capacity failure.",
+            agent_warnings=json_deprecated_warning,
+        ))
+    json_docs.setdefault("json.fieldNull", _static_target_contract(
+        "Write a legacy object field with null value.",
+        inputs=_static_inputs(("builder", "JsonBuilder"), ("fieldName", "JsonFieldName")),
+        outputs=_static_value_output("Int32"),
+        failure_kind="status-code",
+        failure_text="Non-zero status reports invalid builder state or capacity failure.",
+        agent_warnings=json_deprecated_warning,
+    ))
+    for target, value_type in {
+        "json.elementInt64": "Int64",
+        "json.elementDouble": "Float64",
+        "json.elementBool": "Bool",
+        "json.elementString": "JsonStringValue",
+    }.items():
+        json_docs.setdefault(target, _static_target_contract(
+            f"Append a legacy array element with {value_type} value.",
+            inputs=_static_inputs(("builder", "JsonBuilder"), ("value", value_type)),
+            outputs=_static_value_output("Int32"),
+            failure_kind="status-code",
+            failure_text="Non-zero status reports invalid builder state or capacity failure.",
+            agent_warnings=json_deprecated_warning,
+        ))
+    json_docs.setdefault("json.finishBuilder", _static_target_contract(
+        "Finish a legacy builder and return its JSON text buffer.",
+        inputs=_static_inputs(("builder", "JsonBuilder")),
+        outputs=_static_value_output("JsonText"),
+        failure_kind="null-sentinel",
+        failure_text="Returns null when the builder is invalid or incomplete.",
+        agent_warnings=json_deprecated_warning,
+    ))
+    json_docs.setdefault("json.builderLength", _static_target_contract(
+        "Read the current output length of a legacy JSON builder.",
+        inputs=_static_inputs(("builder", "JsonBuilder")),
+        outputs=_static_value_output("JsonCapacityBytes"),
+        agent_warnings=json_deprecated_warning,
+    ))
+    json_docs.setdefault("json.hasField", _static_target_contract(
+        "Return non-zero when a flat JSON object has a named field.",
+        inputs=_static_inputs(("jsonText", "JsonText"), ("fieldName", "JsonFieldName")),
+        outputs=_static_value_output("Int32"),
+        failure_kind="sentinel-value",
+        failure_text="Non-zero means present; zero means absent or malformed flat-object input.",
+        agent_warnings=json_deprecated_warning,
+    ))
+    json_docs.setdefault("json.findString", _static_target_contract(
+        "Find a flat object string field into caller-owned scratch memory.",
+        inputs=_static_inputs(("jsonText", "JsonText"), ("fieldName", "JsonFieldName"), ("scratch", "JsonScratchBuffer"), ("scratchCapacity", "JsonCapacityBytes")),
+        outputs=_static_value_output("JsonStringValue"),
+        failure_kind="null-sentinel",
+        failure_text="Returns null when the field is absent, wrong type, malformed, or too large for scratch.",
+        agent_warnings=json_deprecated_warning,
+    ))
+    for target, value_type in {"json.findInt64": "Int64", "json.findDouble": "Float64", "json.findBool": "Bool"}.items():
+        json_docs.setdefault(target, _static_target_contract(
+            f"Find a flat object field as {value_type}, returning missingDefault when not usable.",
+            inputs=_static_inputs(("jsonText", "JsonText"), ("fieldName", "JsonFieldName"), ("missingDefault", value_type)),
+            outputs=_static_value_output(value_type),
+            failure_kind="sentinel-value",
+            failure_text="missingDefault is returned when the field is absent, wrong type, or malformed.",
+            agent_warnings=json_deprecated_warning,
+        ))
+    json_docs.setdefault("json.documentLength", _static_target_contract("Read the serialized length estimate for a JsonDocument.", inputs=_static_inputs(("document", "JsonDocument")), outputs=_static_value_output("JsonCapacityBytes")))
+    for target, inputs in {
+        "json.arrayElementAt": _static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("index", "Int64")),
+        "json.cursorParent": _static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor")),
+        "json.cursorAtPath": _static_inputs(("document", "JsonDocument"), ("path", "JsonPath")),
+    }.items():
+        json_docs.setdefault(target, _static_target_contract(f"Navigate a JsonDocument cursor with {target}.", inputs=inputs, outputs=_static_result_output("JsonCursor", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports missing path, wrong kind, or invalid cursor."))
+    json_docs.setdefault("json.cursorKind", _static_target_contract("Read a JsonCursor value kind.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor")), outputs=_static_value_output("JsonValueKind")))
+    json_docs.setdefault("json.cursorIsNull", _static_target_contract("Return true when a JsonCursor points at a JSON null value.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor")), outputs=_static_value_output("Bool")))
+    for target, value_type in {"json.cursorDouble": "Float64", "json.cursorBool": "Bool"}.items():
+        json_docs.setdefault(target, _static_target_contract(f"Read a cursor as {value_type}, returning missingDefault when not usable.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("missingDefault", value_type)), outputs=_static_value_output(value_type), failure_kind="sentinel-value", failure_text="missingDefault is returned when the cursor is missing or wrong type."))
+    json_docs.setdefault("json.cursorObjectFieldCount", _static_target_contract("Read the number of fields under an object cursor.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor")), outputs=_static_result_output("Int64", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind or invalid cursor."))
+    json_docs.setdefault("json.cursorObjectFieldNameAt", _static_target_contract("Read the field name at a 0-based object field index into scratch memory.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("index", "Int64"), ("scratch", "JsonScratchBuffer"), ("scratchCapacity", "JsonCapacityBytes")), outputs=_static_result_output("JsonFieldName", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind, invalid index, or scratch capacity failure."))
+    json_docs.setdefault("json.cursorObjectFieldValueAt", _static_target_contract("Read the field value cursor at a 0-based object field index.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("index", "Int64")), outputs=_static_result_output("JsonCursor", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind or invalid index."))
+    for target, value_type in {
+        "json.setObjectFieldDouble": "Float64",
+        "json.setObjectFieldBool": "Bool",
+    }.items():
+        json_docs.setdefault(target, _static_target_contract(f"Set an object field to a {value_type} value.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("fieldName", "JsonFieldName"), ("value", value_type)), outputs=_static_result_output("Int32", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind, field limits, or capacity failure."))
+    for target, value_type in {"json.setObjectFieldObject": "JsonCursor", "json.setObjectFieldArray": "JsonCursor"}.items():
+        json_docs.setdefault(target, _static_target_contract(f"Create a child container at an object field and return its cursor.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("fieldName", "JsonFieldName")), outputs=_static_result_output(value_type, "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind, field limits, or capacity failure."))
+    json_docs.setdefault("json.setObjectFieldJsonText", _static_target_contract("Set an object field from raw JSON text and return the inserted cursor.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("fieldName", "JsonFieldName"), ("jsonText", "JsonText")), outputs=_static_result_output("JsonCursor", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports malformed input, wrong kind, field limits, or capacity failure."))
+    for prefix in ("appendArrayElement", "insertArrayElement", "replaceArrayElement"):
+        indexed = prefix != "appendArrayElement"
+        for suffix, value_type in {"String": "JsonStringValue", "Int64": "Int64", "Double": "Float64", "Bool": "Bool"}.items():
+            inputs = _static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), *(([("index", "Int64")] if indexed else [])), ("value", value_type))
+            json_docs.setdefault(f"json.{prefix}{suffix}", _static_target_contract(f"{prefix} {suffix} under an array cursor.", inputs=inputs, outputs=_static_result_output("Int32", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind, invalid index, or capacity failure."))
+        for suffix in ("Null", "Object", "Array", "JsonText"):
+            extra_inputs = [] if suffix in {"Null", "Object", "Array"} else [("jsonText", "JsonText")]
+            inputs = _static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), *(([("index", "Int64")] if indexed else [])), *extra_inputs)
+            ok_type = "Int32" if suffix == "Null" else "JsonCursor"
+            json_docs.setdefault(f"json.{prefix}{suffix}", _static_target_contract(f"{prefix} {suffix} under an array cursor.", inputs=inputs, outputs=_static_result_output(ok_type, "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind, invalid index, malformed JSON text, or capacity failure."))
+    json_docs.setdefault("json.removeObjectField", _static_target_contract("Remove a named field from an object cursor.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("fieldName", "JsonFieldName")), outputs=_static_result_output("Int32", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind or missing field."))
+    json_docs.setdefault("json.removeArrayElementAt", _static_target_contract("Remove the element at a 0-based array index.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor"), ("index", "Int64")), outputs=_static_result_output("Int32", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind or invalid index."))
+    for target in ("json.clearObject", "json.clearArray"):
+        json_docs.setdefault(target, _static_target_contract(f"Clear all children from {target.rsplit('.', 1)[1]}.", inputs=_static_inputs(("document", "JsonDocument"), ("cursor", "JsonCursor")), outputs=_static_result_output("Int32", "JsonAccessError"), failure_kind="result", failure_text="JsonAccessError reports wrong kind or invalid cursor."))
+
+
+def _register_compiler_static_targets() -> None:
+    console_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.console", {})
+    console_effect = [{"action": "write", "path": "console.stdout"}]
+    console_failure = "The native console writer returns an error status when stdout cannot accept the write."
+    console_result = _static_result_output("Void", "Int32")
+    console_docs.update({
+        "console.writeLine": _static_target_contract(
+            "Write one UTF-8 string followed by a newline to stdout.",
+            inputs=_static_inputs(("text", "String")),
+            outputs=console_result,
+            effects=console_effect,
+            failure_kind="result",
+            failure_text=console_failure,
+        ),
+        "console.writeIntegerLine": _static_target_contract(
+            "Write one Int64 followed by a newline to stdout.",
+            inputs=_static_inputs(("value", "Int64")),
+            outputs=console_result,
+            effects=console_effect,
+            failure_kind="result",
+            failure_text=console_failure,
+        ),
+        "console.writeInteger": _static_target_contract(
+            "Compatibility alias for console.writeIntegerLine.",
+            inputs=_static_inputs(("value", "Int64")),
+            outputs=console_result,
+            effects=console_effect,
+            failure_kind="result",
+            failure_text=console_failure,
+            agent_warnings=["Prefer console.writeIntegerLine in new code; console.writeInteger is an alias."],
+        ),
+        "console.writeFloatLine": _static_target_contract(
+            "Write one Float64 followed by a newline to stdout using the native printf default precision.",
+            inputs=_static_inputs(("value", "Float64")),
+            outputs=console_result,
+            effects=console_effect,
+            failure_kind="result",
+            failure_text=console_failure,
+        ),
+    })
+
+    math_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.math", {})
+    for target in ("math.addInt64", "math.subtractInt64", "math.multiplyInt64", "math.divideInt64", "math.moduloInt64"):
+        failure_kind = "caller-precondition" if target in {"math.divideInt64", "math.moduloInt64"} else "none"
+        failure_text = "Caller must ensure right is non-zero; runtime checks may trap on zero divisors." if failure_kind != "none" else ""
+        math_docs[target] = _static_target_contract(
+            f"Compute {target.rsplit('.', 1)[1]} on two Int64 operands.",
+            inputs=_static_inputs(("left", "Int64"), ("right", "Int64")),
+            outputs=_static_value_output("Int64"),
+            failure_kind=failure_kind,
+            failure_text=failure_text,
+        )
+    for target in (
+        "math.equalInt64", "math.notEqualInt64", "math.lessThanInt64", "math.lessThanOrEqualInt64",
+        "math.greaterThanInt64", "math.greaterThanOrEqualInt64",
+    ):
+        math_docs[target] = _static_target_contract(
+            f"Compare two Int64 operands with {target.rsplit('.', 1)[1]}.",
+            inputs=_static_inputs(("left", "Int64"), ("right", "Int64")),
+            outputs=_static_value_output("Bool"),
+        )
+    for target in (
+        "math.equalInt32", "math.notEqualInt32", "math.lessThanInt32", "math.lessThanOrEqualInt32",
+        "math.greaterThanInt32", "math.greaterThanOrEqualInt32",
+    ):
+        math_docs[target] = _static_target_contract(
+            f"Compare two Int32 operands with {target.rsplit('.', 1)[1]}.",
+            inputs=_static_inputs(("left", "Int32"), ("right", "Int32")),
+            outputs=_static_value_output("Bool"),
+        )
+    for target in ("math.bitwiseAndInt64", "math.bitwiseOrInt64", "math.bitwiseXorInt64"):
+        math_docs[target] = _static_target_contract(
+            f"Apply {target.rsplit('.', 1)[1]} to two Int64 operands.",
+            inputs=_static_inputs(("left", "Int64"), ("right", "Int64")),
+            outputs=_static_value_output("Int64"),
+        )
+    for target in ("math.shiftLeftInt64", "math.shiftRightLogicalInt64", "math.shiftRightArithmeticInt64"):
+        math_docs[target] = _static_target_contract(
+            f"Shift an Int64 value with {target.rsplit('.', 1)[1]}.",
+            inputs=_static_inputs(("left", "Int64"), ("right", "Int64")),
+            outputs=_static_value_output("Int64"),
+            failure_kind="caller-precondition",
+            failure_text="Caller must ensure right is a shift count in [0, 63].",
+        )
+    math_docs["math.bitwiseNotInt64"] = _static_target_contract(
+        "Flip every bit in one Int64 operand.",
+        inputs=_static_inputs(("value", "Int64")),
+        outputs=_static_value_output("Int64"),
+    )
+    for target in ("math.addFloat64", "math.subtractFloat64", "math.multiplyFloat64", "math.divideFloat64"):
+        math_docs[target] = _static_target_contract(
+            f"Compute {target.rsplit('.', 1)[1]} on two Float64 operands.",
+            inputs=_static_inputs(("left", "Float64"), ("right", "Float64")),
+            outputs=_static_value_output("Float64"),
+        )
+    for target in (
+        "math.equalFloat64", "math.notEqualFloat64", "math.lessThanFloat64", "math.lessThanOrEqualFloat64",
+        "math.greaterThanFloat64", "math.greaterThanOrEqualFloat64",
+    ):
+        math_docs[target] = _static_target_contract(
+            f"Compare two Float64 operands with {target.rsplit('.', 1)[1]}.",
+            inputs=_static_inputs(("left", "Float64"), ("right", "Float64")),
+            outputs=_static_value_output("Bool"),
+        )
+    for target in ("math.intToFloat", "math.convertInt64ToFloat64"):
+        math_docs[target] = _static_target_contract(
+            "Convert one Int64 value to Float64.",
+            inputs=_static_inputs(("inputValue", "Int64")),
+            outputs=_static_value_output("Float64"),
+        )
+    for target in ("math.floatToInt", "math.convertFloat64ToInt64"):
+        math_docs[target] = _static_target_contract(
+            "Convert one Float64 value to Int64 by truncating toward zero.",
+            inputs=_static_inputs(("inputValue", "Float64")),
+            outputs=_static_value_output("Int64"),
+        )
+    math_docs["math.signExtendInt32ToInt64"] = _static_target_contract(
+        "Sign-extend one Int32 value to Int64.",
+        inputs=_static_inputs(("inputValue", "Int32")),
+        outputs=_static_value_output("Int64"),
+    )
+    math_docs["math.truncateInt64ToInt32"] = _static_target_contract(
+        "Truncate one Int64 value to Int32.",
+        inputs=_static_inputs(("inputValue", "Int64")),
+        outputs=_static_value_output("Int32"),
+    )
+    math_docs["math.checkedMultiplyInt64"] = _static_target_contract(
+        "Multiply two Int64 operands and report overflow on the error leg.",
+        inputs=_static_inputs(("left", "Int64"), ("right", "Int64")),
+        outputs=_static_result_output("Int64", "Bool"),
+        failure_kind="result",
+        failure_text="The error leg is true when signed Int64 multiplication overflows.",
+    )
+
+    pointer_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.pointer", {})
+    pointer_docs.update({
+        "pointer.loadByte": _static_target_contract(
+            "Read one byte from buffer plus offset and return it as Int32.",
+            inputs=_static_inputs(("buffer", "OpaquePointer"), ("offset", "ByteCount")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "read", "path": "memory.buffer"}],
+            failure_kind="caller-precondition",
+            failure_text="Caller must ensure buffer is non-null and offset is in bounds for the allocation.",
+        ),
+        "pointer.storeByte": _static_target_contract(
+            "Write the low byte of value into buffer plus offset.",
+            inputs=_static_inputs(("buffer", "OpaquePointer"), ("offset", "ByteCount"), ("value", "Int64")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "write", "path": "memory.buffer"}],
+            failure_kind="caller-precondition",
+            failure_text="Caller must ensure buffer is non-null, writable, and offset is in bounds for the allocation.",
+        ),
+        "pointer.offset": _static_target_contract(
+            "Return buffer plus offset without dereferencing it.",
+            inputs=_static_inputs(("buffer", "OpaquePointer"), ("offset", "ByteCount")),
+            outputs=_static_value_output("OpaquePointer"),
+            failure_kind="caller-precondition",
+            failure_text="Caller must ensure the computed pointer remains within the same allocation or one past it before dereferencing.",
+        ),
+        "pointer.difference": _static_target_contract(
+            "Return the byte-address difference between two pointers as Int64.",
+            inputs=_static_inputs(("left", "OpaquePointer"), ("right", "OpaquePointer")),
+            outputs=_static_value_output("Int64"),
+            failure_kind="caller-precondition",
+            failure_text="Caller must ensure both pointers belong to the same allocation for the difference to be meaningful.",
+        ),
+        "pointer.isNull": _static_target_contract(
+            "Return true when pointer is null.",
+            inputs=_static_inputs(("pointer", "OpaquePointer")),
+            outputs=_static_value_output("Bool"),
+        ),
+    })
+
+    c_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.c", {})
+    heap_cleanup = {"required": True, "strategy": "call c.free on every non-null ownership path", "callTarget": "c.free", "argumentName": "ptr", "argumentType": "OpaquePointer", "resultType": "Void"}
+    c_docs.update({
+        "c.malloc": _static_target_contract(
+            "Allocate size bytes of uninitialized heap memory; release the returned pointer with c.free.",
+            inputs=_static_inputs(("size", "ByteCount")),
+            outputs=_static_value_output("OpaquePointer"),
+            effects=[{"action": "allocate", "path": "heap"}],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when the allocation fails.",
+            cleanup=heap_cleanup,
+            agent_warnings=["Prefer std/domain allocators over raw c.malloc unless heap ownership is the point of the code."],
+        ),
+        "c.calloc": _static_target_contract(
+            "Allocate zero-initialized heap memory for count elements of size bytes; release with c.free.",
+            inputs=_static_inputs(("count", "ByteCount"), ("size", "ByteCount")),
+            outputs=_static_value_output("OpaquePointer"),
+            effects=[{"action": "allocate", "path": "heap"}],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when the allocation fails or count * size cannot be allocated.",
+            cleanup=heap_cleanup,
+        ),
+        "c.realloc": _static_target_contract(
+            "Resize a heap allocation; success transfers ownership to the returned pointer, while failure leaves the input pointer owned by the caller.",
+            inputs=_static_inputs(("ptr", "OpaquePointer"), ("size", "ByteCount")),
+            outputs=_static_value_output("OpaquePointer"),
+            effects=[{"action": "allocate", "path": "heap"}, {"action": "free", "path": "heap"}],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when resizing fails; preserve the original pointer until success is known.",
+            lowering_status="partial",
+            agent_warnings=["Do not generate c.realloc from docs rows yet; ownership transfer requires caller-specific success and failure cleanup paths."],
+        ),
+        "c.free": _static_target_contract(
+            "Release a pointer previously returned by a compatible heap allocator.",
+            inputs=_static_inputs(("ptr", "OpaquePointer")),
+            outputs=_static_value_output("Void"),
+            effects=[{"action": "free", "path": "heap"}],
+            failure_kind="none",
+            failure_text="Pass only null or a live allocation pointer not already freed.",
+        ),
+        "c.exit": _static_target_contract(
+            "Terminate the current process with the supplied status code.",
+            inputs=_static_inputs(("code", "Int32")),
+            outputs=_static_value_output("Void"),
+            effects=[{"action": "write", "path": "process"}],
+            agent_warnings=["c.exit does not return to SemanticScript cleanup paths; prefer returning ExitCode from main when possible."],
+        ),
+        "c.abort": _static_target_contract(
+            "Abnormally terminate the current process.",
+            inputs=[],
+            outputs=_static_value_output("Void"),
+            effects=[{"action": "write", "path": "process"}],
+            agent_warnings=["c.abort bypasses normal cleanup and should not be generated for ordinary error handling."],
+        ),
+        "c.putchar": _static_target_contract(
+            "Write one character code to stdout using the C runtime.",
+            inputs=_static_inputs(("c", "Int32")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "write", "path": "console.stdout"}],
+            failure_kind="negative-status",
+            failure_text="A negative return status reports EOF or write failure.",
+        ),
+    })
+
+
+_register_http_static_targets()
+_register_json_static_targets()
+_register_compiler_static_targets()
 AUTHORITY_ACTIONS = frozenset({
     "allocate",
     "close",
@@ -1984,6 +3085,1368 @@ def _symbol_graph_payload(path: Path) -> dict:
         },
         "unresolvedReferences": unresolved,
         "errors": errors,
+    }
+
+
+def _docs_std_root(std_root: Path | None = None) -> Path:
+    if std_root is not None:
+        return std_root.resolve()
+    for env_name in ("SEMANTICSCRIPT_STD_PATH", "SEMSC_STD_PATH"):
+        raw_value = os.environ.get(env_name, "")
+        for part in raw_value.split(os.pathsep):
+            if part.strip():
+                return Path(part).expanduser().resolve()
+    return (ROOT / "std").resolve()
+
+
+def _std_module_short_name(module_name: str) -> str:
+    if module_name.startswith("standard."):
+        return module_name.split(".", 1)[1]
+    if module_name.startswith("compiler."):
+        return module_name.split(".", 1)[1]
+    return module_name
+
+
+def _std_module_matches(module_name: str, requested: str) -> bool:
+    if not requested:
+        return True
+    normalized = requested.strip()
+    if not normalized:
+        return True
+    short_name = _std_module_short_name(module_name)
+    return normalized in {module_name, short_name, f"standard.{normalized}", f"compiler.{normalized}"}
+
+
+def _std_module_path_matches(path: Path, requested: str) -> bool:
+    if not requested or not requested.strip():
+        return True
+    normalized = requested.strip()
+    short_name = path.parent.name
+    return normalized in {short_name, f"standard.{short_name}"}
+
+
+def _std_main_files(std_root: Path) -> list[Path]:
+    if not std_root.exists():
+        return []
+    return sorted(
+        path.resolve()
+        for path in std_root.glob("*/main.sem")
+        if path.is_file()
+    )
+
+
+def _is_comment_line(source_line) -> bool:
+    return source_line.raw.strip().startswith("#")
+
+
+def _comment_body(source_line) -> str:
+    stripped = source_line.raw.strip()
+    if not stripped.startswith("#"):
+        return ""
+    return stripped[1:].strip()
+
+
+def _preceding_comment_block(lines: list, target_line) -> list:
+    target_index = -1
+    for index, source_line in enumerate(lines):
+        if source_line is target_line:
+            target_index = index
+            break
+        if source_line.number == target_line.number and Path(source_line.path) == Path(target_line.path):
+            target_index = index
+            break
+    if target_index <= 0:
+        return []
+    block = []
+    index = target_index - 1
+    while index >= 0 and not lines[index].raw.strip():
+        index -= 1
+    while index >= 0:
+        source_line = lines[index]
+        if not source_line.raw.strip():
+            break
+        if not _is_comment_line(source_line):
+            break
+        block.append(source_line)
+        index -= 1
+    return list(reversed(block))
+
+
+def _typed_comment_payloads(lines: list) -> list[dict]:
+    comments: list[dict] = []
+    current: dict | None = None
+    tag_pattern = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$")
+    for source_line in lines:
+        body = _comment_body(source_line)
+        match = tag_pattern.match(body)
+        if match and match.group(1) in STD_DOC_COMMENT_TAGS:
+            current = {
+                "tag": match.group(1),
+                "text": match.group(2).strip(),
+                "location": _line_payload(source_line),
+            }
+            comments.append(current)
+            continue
+        if current is None:
+            continue
+        continuation = body.strip()
+        if not continuation or continuation.startswith("===") or continuation.startswith("---"):
+            continue
+        current["text"] = f"{current['text']} {continuation}".strip()
+    return comments
+
+
+def _comments_by_tag(comments: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for comment in comments:
+        grouped.setdefault(comment["tag"], []).append(comment)
+    return grouped
+
+
+def _operation_text_row(source_line, operation_name: str) -> dict | None:
+    verb = source_line.verb
+    args = source_line.args
+    if verb in {"purpose", "invariant"}:
+        if len(args) >= 3 and args[0] == "operation" and args[1] == operation_name:
+            return {
+                "tag": verb,
+                "text": " ".join(args[2:]).strip(),
+                "location": _line_payload(source_line),
+            }
+        if len(args) >= 2 and args[0] == operation_name:
+            return {
+                "tag": verb,
+                "text": " ".join(args[1:]).strip(),
+                "location": _line_payload(source_line),
+            }
+    if verb == "failure" and len(args) >= 3 and args[0] == operation_name:
+        return {
+            "tag": verb,
+            "name": args[1],
+            "text": " ".join(args[2:]).strip(),
+            "location": _line_payload(source_line),
+        }
+    if verb in {"warning", "guarantee", "security", "timing", "observability"} and len(args) >= 2 and args[0] == operation_name:
+        return {
+            "tag": verb,
+            "text": " ".join(args[1:]).strip(),
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _operation_text_rows(operation) -> dict[str, list[dict]]:
+    rows: dict[str, list[dict]] = {}
+    for source_line in operation.lines:
+        if not source_line.tokens:
+            continue
+        payload = _operation_text_row(source_line, operation.name)
+        if payload is not None:
+            rows.setdefault(payload["tag"], []).append(payload)
+    return rows
+
+
+def _operation_memory_rows(operation) -> list[dict]:
+    rows = []
+    for source_line in operation.lines:
+        if source_line.verb == "memory" and len(source_line.args) >= 2 and source_line.args[0] == operation.name:
+            rows.append({
+                "policy": source_line.args[1:],
+                "text": " ".join(source_line.args[1:]),
+                "location": _line_payload(source_line),
+            })
+    return rows
+
+
+def _operation_runtime_rows(facts, operation) -> dict[str, list[dict]]:
+    rows: dict[str, list[dict]] = {
+        "operationBody": [],
+        "runtimeBinding": [],
+        "runtimeBindingPrecondition": [],
+        "runtimeBindingFailure": [],
+    }
+    for source_line in facts.lines:
+        if source_line.verb not in rows or len(source_line.args) < 2 or source_line.args[0] != operation.name:
+            continue
+        rows[source_line.verb].append({
+            "values": source_line.args[1:],
+            "text": " ".join(source_line.args[1:]),
+            "location": _line_payload(source_line),
+        })
+    return rows
+
+
+def _operation_exports(facts, module_name: str, operation_name: str) -> list[dict]:
+    exports = []
+    for source_line in facts.lines:
+        if source_line.verb != "exportOperation" or len(source_line.args) < 2:
+            continue
+        if source_line.args[0] == module_name and source_line.args[1] == operation_name:
+            exports.append({
+                "module": source_line.args[0],
+                "name": source_line.args[1],
+                "location": _line_payload(source_line),
+            })
+    return exports
+
+
+def _exported_names(facts, verb: str, module_name: str) -> set[str]:
+    names = set()
+    for source_line in facts.lines:
+        if source_line.verb == verb and len(source_line.args) >= 2 and source_line.args[0] == module_name:
+            names.add(source_line.args[1])
+    return names
+
+
+def _capability_details(facts, module_name: str, capabilities: list[dict]) -> list[dict]:
+    if facts is None:
+        facts = argparse.Namespace(lines=[], capabilities={})
+    exported_capabilities = _exported_names(facts, "exportCapability", module_name)
+    details = []
+    for capability_ref in capabilities:
+        name = capability_ref["name"]
+        fact = facts.capabilities.get(name)
+        payload = {
+            "name": name,
+            "exported": name in exported_capabilities,
+            "referenceLocation": capability_ref.get("location", {}),
+        }
+        if fact is not None:
+            payload.update({
+                "resource": fact.effect_path,
+                "action": fact.access,
+                "declarationLocation": _line_payload(fact.line),
+            })
+        details.append(payload)
+    return details
+
+
+def _operation_visibility(operation, exports: list[dict], runtime_rows: dict[str, list[dict]]) -> dict:
+    runtime_internal = bool(runtime_rows.get("runtimeBinding") or runtime_rows.get("runtimeBindingPrecondition"))
+    operation_body_runtime = any(
+        "runtimeBinding" in row.get("values", []) or row.get("text") == "runtimeBinding"
+        for row in runtime_rows.get("operationBody", [])
+    )
+    name_internal = operation.name.endswith("Native") or operation.name.startswith("_")
+    internal = not exports and (runtime_internal or operation_body_runtime or name_internal)
+    tier = "exported" if exports else ("internal" if internal else "helper")
+    return {
+        "exported": bool(exports),
+        "internal": internal,
+        "public": not internal,
+        "apiTier": tier,
+        "reason": "exportOperation" if exports else ("runtime-internal" if internal else "operation"),
+    }
+
+
+def _operation_agent_warnings(visibility: dict, capability_details: list[dict]) -> list[str]:
+    warnings = []
+    if visibility.get("apiTier") == "helper":
+        warnings.append("Unexported helper API: prefer exported standard-library operations when one exists.")
+    hidden_capabilities = [detail["name"] for detail in capability_details if not detail.get("exported", False)]
+    if hidden_capabilities:
+        warnings.append(
+            "Uses non-exported capability rows; callers may need explicit authority or a higher-level exported wrapper: "
+            + ", ".join(hidden_capabilities)
+        )
+    return warnings
+
+
+def _signature_text(inputs: list[dict], outputs: list[dict]) -> str:
+    input_text = ", ".join(f"{item['name']}:{item['type']}" for item in inputs)
+    output_values = []
+    for output in outputs:
+        if output.get("values"):
+            output_values.append(" ".join(output["values"]))
+        elif output.get("type"):
+            output_values.append(output["type"])
+    output_text = " | ".join(output_values) if output_values else "Void"
+    return f"({input_text}) -> {output_text}"
+
+
+def _first_text(items: list[dict]) -> str:
+    for item in items:
+        text = item.get("text", "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _metadata_text(text_rows: dict[str, list[dict]]) -> str:
+    parts = []
+    for tag in ("purpose", "invariant", "warning", "guarantee", "failure", "security"):
+        parts.extend(row.get("text", "") for row in text_rows.get(tag, []))
+    return " ".join(part for part in parts if part).strip()
+
+
+def _summary_from_doc(
+    comments_by_tag: dict[str, list[dict]],
+    text_rows: dict[str, list[dict]],
+    summary_tag: str,
+) -> tuple[str, str]:
+    if summary_tag == "purpose":
+        purpose = _first_text(text_rows.get("purpose", []))
+        if purpose:
+            return purpose, "purpose"
+    else:
+        tagged = _first_text(comments_by_tag.get(summary_tag, []))
+        if tagged:
+            return tagged, f"comment:{summary_tag}"
+        row_text = _first_text(text_rows.get(summary_tag, []))
+        if row_text:
+            return row_text, summary_tag
+    for tag, source in (("purpose", "purpose"), ("rationale", "comment:rationale"), ("invariant", "comment:invariant")):
+        if tag == "purpose":
+            text = _first_text(text_rows.get(tag, []))
+        else:
+            text = _first_text(comments_by_tag.get(tag, []))
+        if text:
+            return text, source
+    return "", ""
+
+
+def _result_value_name(operation_name: str) -> str:
+    return f"{operation_name}Result"
+
+
+def _call_name(operation_name: str) -> str:
+    return f"{operation_name}Call"
+
+
+def _target_call_base_name(target: str) -> str:
+    parts = [part for part in target.split(".") if part]
+    if len(parts) > 1:
+        parts = parts[1:]
+    if not parts:
+        return "target"
+    name = re.sub(r"[^A-Za-z0-9]", "", parts[0])
+    for part in parts[1:]:
+        cleaned = re.sub(r"[^A-Za-z0-9]", "", part)
+        if cleaned:
+            name += cleaned[:1].upper() + cleaned[1:]
+    if not name:
+        return "target"
+    return name[:1].lower() + name[1:]
+
+
+def _usage_call_template_for_target(target: str, call_base_name: str, inputs: list[dict], outputs: list[dict]) -> dict:
+    call_name = _call_name(call_base_name)
+    result_name = _result_value_name(call_base_name)
+    error_name = f"{call_base_name}Error"
+    argument_rows = [
+        f"argument {call_name} {item['name']} {item['type']} <{item['name']}>"
+        for item in inputs
+    ]
+    rows = [f"call {call_name} {target}", *argument_rows, f"run {call_name}"]
+    result_rows = []
+    output = outputs[0] if outputs else {}
+    output_type = output.get("type", "") if output else "Void"
+    output_values = output.get("values", []) if output else []
+    result_value_name = result_name if output_type and output_type != "Void" else ""
+    if output_values and output_values[0] == "Result":
+        ok_type = output_values[1] if len(output_values) > 1 else "OK_TYPE"
+        error_type = output_values[2] if len(output_values) > 2 else "ERROR_TYPE"
+        if ok_type == "Void":
+            result_rows.append(f"ignore ok source {call_name} type Void")
+            result_value_name = ""
+        else:
+            result_rows.append(f"bind ok {result_name} {ok_type} {call_name}")
+            result_value_name = result_name
+    elif output_type and output_type != "Void":
+        result_rows.append(f"bind value {result_name} {output_type} {call_name}")
+        result_value_name = result_name
+    else:
+        result_rows.append(f"ignore void source {call_name}")
+    return {
+        "target": target,
+        "callName": call_name,
+        "errorName": error_name if output_values and output_values[0] == "Result" else "",
+        "errorType": error_type if output_values and output_values[0] == "Result" else "",
+        "resultName": result_value_name,
+        "rows": [*rows, *result_rows],
+        "argumentRows": argument_rows,
+        "resultRows": result_rows,
+        "templateScope": "call-and-bind-only",
+    }
+
+
+def _usage_call_template(module_short_name: str, operation_name: str, inputs: list[dict], outputs: list[dict]) -> dict:
+    target = f"{module_short_name}.{operation_name}"
+    return _usage_call_template_for_target(target, operation_name, inputs, outputs)
+
+
+def _usage_failure_mode(comments_by_tag: dict[str, list[dict]], text_rows: dict[str, list[dict]], outputs: list[dict]) -> dict:
+    failure_text = _first_text(comments_by_tag.get("failure", [])) or _first_text(text_rows.get("failure", []))
+    source = "comment:failure" if comments_by_tag.get("failure") else ("failure" if failure_text else "")
+    if not failure_text:
+        metadata_text = _metadata_text(text_rows)
+        lowered_metadata = metadata_text.lower()
+        if any(phrase in lowered_metadata for phrase in ("returns null", "return null", "non-zero", "failure", "error", "must c.free", "caller frees")):
+            failure_text = metadata_text
+            source = "metadata"
+    output_values = outputs[0].get("values", []) if outputs else []
+    output_type = outputs[0].get("type", "") if outputs else ""
+    lowered_failure = failure_text.lower()
+    if output_values and output_values[0] == "Result":
+        kind = "result"
+    elif re.search(r"\b(returns?|return)\s+null\b|\bnull\s+(on|means|indicates)\b", lowered_failure):
+        kind = "null-sentinel"
+    elif "null" in lowered_failure and any(phrase in lowered_failure for phrase in ("no null", "must not be null", "null-pointer", "null pointer")):
+        kind = "caller-precondition"
+    elif output_type in {"Int32", "ExitCode", "GuiRuntimeStatusCode", "GuiSelectedIndex"} and any(word in lowered_failure for word in ("non-zero", "status", "failure", "error")):
+        kind = "status-code"
+    elif failure_text:
+        kind = "documented-prose"
+    else:
+        kind = "none"
+    return {
+        "kind": kind,
+        "text": failure_text,
+        "source": source,
+    }
+
+
+def _cleanup_rows(call: dict, cleanup: dict) -> list[str]:
+    if not cleanup.get("required") or not cleanup.get("callTarget") or not call.get("resultName"):
+        return []
+    call_base_name = call["callName"][:-4] if call.get("callName", "").endswith("Call") else call.get("callName", "cleanup")
+    cleanup_call_name = f"{call_base_name}CleanupCall"
+    argument_name = cleanup.get("argumentName", "ptr")
+    argument_type = cleanup.get("argumentType", "OpaquePointer")
+    result_type = cleanup.get("resultType", "Void")
+    cleanup_source = call["resultName"]
+    rows = []
+    result_field = cleanup.get("resultField", {})
+    if result_field:
+        field_name = result_field.get("name", "")
+        field_type = result_field.get("type", argument_type)
+        field_value_name = result_field.get("valueName", f"{call_base_name}{field_name[:1].upper()}{field_name[1:]}")
+        if field_name and field_type:
+            rows.append(f"fieldGet {field_value_name} {field_type} {call['resultName']} {field_name}")
+            cleanup_source = field_value_name
+    ignore_kind = cleanup.get("ignoreKind", "")
+    if result_type == "Void":
+        ignore_row = f"ignore void source {cleanup_call_name}"
+    elif ignore_kind == "ok":
+        ignore_row = f"ignore ok source {cleanup_call_name} type {result_type}"
+    else:
+        ignore_row = f"ignore value source {cleanup_call_name} type {result_type}"
+    rows.extend([
+        f"call {cleanup_call_name} {cleanup['callTarget']}",
+        f"argument {cleanup_call_name} {argument_name} {argument_type} {cleanup_source}",
+        f"run {cleanup_call_name}",
+        ignore_row,
+    ])
+    if ignore_kind == "ok" and cleanup.get("errorType"):
+        cleanup_error_name = f"{call_base_name}CleanupError"
+        rows.extend([
+            f"bind error {cleanup_error_name} {cleanup['errorType']} {cleanup_call_name}",
+            f"branch error source {cleanup_call_name} target <cleanupErrorLabel>",
+        ])
+    return rows
+
+
+def _augment_cleanup_guidance(cleanup: dict) -> dict:
+    cleanup = dict(cleanup or {})
+    cleanup.setdefault("agentWarnings", [])
+    if cleanup.get("callTarget") in {"c.free", "net.freeTextBody"}:
+        cleanup["requiredCallerEffects"] = [{"action": "free", "path": "heap"}]
+        cleanup["authorityRows"] = [
+            "effect <callerOperation> free heap",
+            "capability <heapFreeCapability> heap free",
+            "useCapability <callerOperation> <heapFreeCapability>",
+        ]
+        cleanup["agentWarnings"].append(f"{cleanup.get('callTarget')} cleanup requires caller free heap effect plus matching capability or authority.")
+    else:
+        cleanup.setdefault("requiredCallerEffects", [])
+        cleanup.setdefault("authorityRows", [])
+    if cleanup.get("required") and not cleanup.get("callTarget"):
+        cleanup["agentWarnings"].append("Cleanup is required, but no cleanup call target was inferred; inspect ownership docs before generating code.")
+    return cleanup
+
+
+def _failure_handling_rows(call: dict, outputs: list[dict], failure_mode: dict) -> list[str]:
+    kind = failure_mode.get("kind", "none")
+    call_name = call.get("callName", "")
+    result_name = call.get("resultName", "")
+    call_base_name = call_name[:-4] if call_name.endswith("Call") else call_name
+    if kind == "result":
+        error_name = call.get("errorName") or f"{call_base_name}Error"
+        error_type = call.get("errorType") or "ERROR_TYPE"
+        return [
+            f"bind error {error_name} {error_type} {call_name}",
+            f"branch error source {call_name} target <errorLabel>",
+        ]
+    if kind == "null-sentinel" and result_name:
+        null_check_call = f"{call_base_name}NullCheckCall"
+        null_flag = f"{call_base_name}IsNull"
+        return [
+            f"call {null_check_call} pointer.isNull",
+            f"argument {null_check_call} pointer OpaquePointer {result_name}",
+            f"run {null_check_call}",
+            f"bind value {null_flag} Bool {null_check_call}",
+            f"branch if condition {null_flag} target <failureLabel>",
+        ]
+    if kind == "status-code" and result_name:
+        status_check_call = f"{call_base_name}StatusCheckCall"
+        success_status = f"{call_base_name}SuccessStatus"
+        failed_flag = f"{call_base_name}Failed"
+        status_type = outputs[0].get("type", "Int32") if outputs else "Int32"
+        return [
+            f"storage local immutable {success_status} {status_type} 0",
+            f"call {status_check_call} math.notEqualInt32",
+            f"argument {status_check_call} left {status_type} {result_name}",
+            f"argument {status_check_call} right {status_type} {success_status}",
+            f"run {status_check_call}",
+            f"bind value {failed_flag} Bool {status_check_call}",
+            f"branch if condition {failed_flag} target <failureLabel>",
+        ]
+    if kind == "negative-status" and result_name:
+        status_check_call = f"{call_base_name}NegativeStatusCheckCall"
+        zero_status = f"{call_base_name}ZeroStatus"
+        failed_flag = f"{call_base_name}Failed"
+        status_type = outputs[0].get("type", "Int32") if outputs else "Int32"
+        return [
+            f"storage local immutable {zero_status} {status_type} 0",
+            f"call {status_check_call} math.lessThanInt32",
+            f"argument {status_check_call} left {status_type} {result_name}",
+            f"argument {status_check_call} right {status_type} {zero_status}",
+            f"run {status_check_call}",
+            f"bind value {failed_flag} Bool {status_check_call}",
+            f"branch if condition {failed_flag} target <failureLabel>",
+        ]
+    return []
+
+
+def _usage_failure_handling(call: dict, outputs: list[dict], failure_mode: dict) -> dict:
+    kind = failure_mode.get("kind", "none")
+    if kind == "none":
+        required = False
+        phase = "none"
+    elif kind == "caller-precondition":
+        required = False
+        phase = "before-call"
+    elif kind == "sentinel-value":
+        required = False
+        phase = "after-call"
+    elif kind == "documented-prose":
+        required = False
+        phase = "documented"
+    else:
+        required = True
+        phase = "after-call"
+    agent_warnings = []
+    if kind == "sentinel-value":
+        agent_warnings.append("Sentinel-value handling is domain-dependent; compare the result against the documented sentinel when absence is not acceptable.")
+    if kind == "documented-prose":
+        agent_warnings.append("Failure guidance is prose-only; inspect the text before deciding whether to branch, pre-size buffers, or document a caller precondition.")
+    return {
+        "required": required,
+        "kind": kind,
+        "phase": phase,
+        "rows": _failure_handling_rows(call, outputs, failure_mode),
+        "text": failure_mode.get("text", ""),
+        "agentWarnings": agent_warnings,
+    }
+
+
+def _usage_preconditions(failure_mode: dict) -> dict:
+    if failure_mode.get("kind") != "caller-precondition":
+        return {"required": False, "text": "", "rows": []}
+    return {
+        "required": True,
+        "text": failure_mode.get("text", ""),
+        "rows": [],
+        "callerMustEnsure": failure_mode.get("text", ""),
+    }
+
+
+def _usage_cleanup(comments_by_tag: dict[str, list[dict]], text_rows: dict[str, list[dict]], outputs: list[dict], memory_rows: list[dict]) -> dict:
+    memory_text = " ".join(comment.get("text", "") for comment in comments_by_tag.get("memory", []))
+    metadata_text = _metadata_text(text_rows)
+    output_type = outputs[0].get("type", "") if outputs else ""
+    lowered_memory = f"{memory_text} {metadata_text}".lower()
+    heap_output = any(row.get("policy") == ["heap", "yes"] for row in memory_rows) and output_type not in {"", "Void"}
+    requires_free = "c.free" in lowered_memory or "heap-owned" in lowered_memory or heap_output
+    cleanup = {
+        "required": requires_free,
+        "text": memory_text or (metadata_text if requires_free else ""),
+        "source": "comment:memory" if memory_text else ("metadata" if requires_free and metadata_text else ("memory" if heap_output else "")),
+    }
+    if requires_free:
+        cleanup.update({
+            "strategy": "release returned non-null heap-owned value on every ownership path",
+            "callTarget": "c.free" if "c.free" in lowered_memory else "",
+        })
+    return cleanup
+
+
+def _operation_usage_payload(
+    module_name: str,
+    module_short_name: str,
+    operation_name: str,
+    inputs: list[dict],
+    outputs: list[dict],
+    effects: list[dict],
+    capabilities: list[dict],
+    capability_details: list[dict],
+    comments_by_tag: dict[str, list[dict]],
+    text_rows: dict[str, list[dict]],
+    memory_rows: list[dict],
+) -> dict:
+    call = _usage_call_template(module_short_name, operation_name, inputs, outputs)
+    failure_mode = _usage_failure_mode(comments_by_tag, text_rows, outputs)
+    failure_handling = _usage_failure_handling(call, outputs, failure_mode)
+    preconditions = _usage_preconditions(failure_mode)
+    cleanup = _usage_cleanup(comments_by_tag, text_rows, outputs, memory_rows)
+    cleanup = _augment_cleanup_guidance(cleanup)
+    cleanup["rows"] = _cleanup_rows(call, cleanup)
+    call["requiresFailureHandling"] = failure_handling["required"]
+    call["requiresPreconditions"] = preconditions["required"]
+    call["requiresCleanup"] = cleanup["required"]
+    capability_guidance = _capability_usage_guidance(capabilities, capability_details)
+    capability_guidance["authorityRows"] = list(dict.fromkeys([
+        *capability_guidance["authorityRows"],
+        *_effect_authority_rows(effects, capability_details),
+    ]))
+    return {
+        "importRow": f"import {module_short_name} {module_name}",
+        "call": call,
+        "requiredCallerEffects": [
+            {"action": effect["action"], "path": effect["path"]}
+            for effect in effects
+        ],
+        "effectRows": [
+            f"effect <callerOperation> {effect['action']} {effect['path']}"
+            for effect in effects
+        ],
+        "requiredCapabilities": [detail for detail in capability_details],
+        **capability_guidance,
+        "failureMode": failure_mode,
+        "failureHandling": failure_handling,
+        "preconditions": preconditions,
+        "cleanup": cleanup,
+    }
+
+
+def _std_operation_doc_payload(facts, path: Path, operation, summary_tag: str) -> dict:
+    module_name = _row_value(facts, "module")
+    module_short_name = _std_module_short_name(module_name)
+    comment_block = _preceding_comment_block(facts.lines, operation.line)
+    comments = _typed_comment_payloads(comment_block)
+    comments_by_tag = _comments_by_tag(comments)
+    text_rows = _operation_text_rows(operation)
+    inputs = []
+    outputs = []
+    effects = []
+    capabilities = []
+    for source_line in operation.lines:
+        if not source_line.tokens:
+            continue
+        input_payload = _signature_input_payload(source_line, operation)
+        output_payload = _signature_output_payload(source_line, operation)
+        effect_payload = _effect_payload(source_line, operation)
+        if input_payload is not None:
+            inputs.append(input_payload)
+        elif output_payload is not None:
+            outputs.append(output_payload)
+        elif effect_payload is not None:
+            effects.append(effect_payload)
+        elif source_line.verb == "useCapability" and len(source_line.args) >= 2 and source_line.args[0] == operation.name:
+            capabilities.append({
+                "name": source_line.args[1],
+                "location": _line_payload(source_line),
+            })
+    summary, summary_source = _summary_from_doc(comments_by_tag, text_rows, summary_tag)
+    exports = _operation_exports(facts, module_name, operation.name)
+    runtime_rows = _operation_runtime_rows(facts, operation)
+    memory_rows = _operation_memory_rows(operation)
+    capability_details = _capability_details(facts, module_name, capabilities)
+    purpose_rows = text_rows.get("purpose", [])
+    invariant_rows = text_rows.get("invariant", [])
+    visibility = _operation_visibility(operation, exports, runtime_rows)
+    return {
+        "module": module_name,
+        "moduleName": module_short_name,
+        "name": operation.name,
+        "qualifiedName": f"{module_short_name}.{operation.name}",
+        "fullName": f"{module_name}.{operation.name}",
+        "location": _line_payload(operation.line),
+        "sourceFile": str(path.resolve()),
+        "visibility": visibility,
+        "agentWarnings": _operation_agent_warnings(visibility, capability_details),
+        "summary": summary,
+        "summarySource": summary_source,
+        "purpose": _first_text(purpose_rows),
+        "invariants": [row["text"] for row in invariant_rows if row.get("text")],
+        "signature": {
+            "inputs": inputs,
+            "outputs": outputs,
+            "text": _signature_text(inputs, outputs),
+        },
+        "comments": comments,
+        "commentsByTag": comments_by_tag,
+        "metadata": text_rows,
+        "effects": effects,
+        "memory": memory_rows,
+        "capabilities": capabilities,
+        "capabilityDetails": capability_details,
+        "runtime": runtime_rows,
+        "exports": exports,
+        "usage": _operation_usage_payload(
+            module_name,
+            module_short_name,
+            operation.name,
+            inputs,
+            outputs,
+            effects,
+            capabilities,
+            capability_details,
+            comments_by_tag,
+            text_rows,
+            memory_rows,
+        ),
+    }
+
+
+def _std_doc_list_item(operation_doc: dict) -> dict:
+    signature = operation_doc["signature"]
+    return {
+        "module": operation_doc["module"],
+        "moduleName": operation_doc["moduleName"],
+        "name": operation_doc["name"],
+        "qualifiedName": operation_doc["qualifiedName"],
+        "fullName": operation_doc["fullName"],
+        "signature": {
+            "text": signature["text"],
+            "inputs": [
+                {"name": item["name"], "type": item["type"]}
+                for item in signature.get("inputs", [])
+            ],
+            "outputs": [
+                {"type": item.get("type", ""), "values": item.get("values", [])}
+                for item in signature.get("outputs", [])
+            ],
+        },
+        "summary": operation_doc["summary"],
+        "summarySource": operation_doc["summarySource"],
+        "location": operation_doc["location"],
+        "sourceFile": operation_doc["sourceFile"],
+        "visibility": operation_doc["visibility"],
+        "agentWarnings": operation_doc.get("agentWarnings", []),
+        "purpose": operation_doc.get("purpose", ""),
+        "invariants": operation_doc.get("invariants", []),
+        "effects": [
+            {"action": effect["action"], "path": effect["path"]}
+            for effect in operation_doc.get("effects", [])
+        ],
+        "capabilities": [
+            {"name": detail["name"], "resource": detail.get("resource", ""), "action": detail.get("action", "")}
+            for detail in operation_doc.get("capabilityDetails", [])
+        ],
+        "failureMode": operation_doc.get("usage", {}).get("failureMode", {}),
+        "cleanup": operation_doc.get("usage", {}).get("cleanup", {}),
+    }
+
+
+def _std_operation_matches(operation_doc: dict, query: str) -> bool:
+    candidates = {
+        operation_doc["name"],
+        operation_doc["qualifiedName"],
+        operation_doc["fullName"],
+    }
+    return query in candidates
+
+
+def _std_target_matches(target_doc: dict, query: str) -> bool:
+    candidates = {
+        target_doc.get("target", ""),
+        target_doc.get("qualifiedName", ""),
+        target_doc.get("fullName", ""),
+        target_doc.get("name", ""),
+    }
+    return query in candidates
+
+
+def _target_list_item(target_doc: dict) -> dict:
+    return {
+        "kind": "callTarget",
+        "module": target_doc.get("module", ""),
+        "moduleName": target_doc.get("moduleName", ""),
+        "name": target_doc.get("name", ""),
+        "target": target_doc.get("target", ""),
+        "qualifiedName": target_doc.get("qualifiedName", target_doc.get("target", "")),
+        "fullName": target_doc.get("fullName", ""),
+        "loweringStatus": target_doc.get("loweringStatus", ""),
+        "visibility": target_doc.get("visibility", {}),
+        "agentWarnings": target_doc.get("agentWarnings", []),
+        "signature": target_doc.get("signature", {}),
+        "summary": target_doc.get("summary", ""),
+        "effects": target_doc.get("effects", []),
+        "capabilities": [
+            {"name": detail["name"], "resource": detail.get("resource", ""), "action": detail.get("action", "")}
+            for detail in target_doc.get("capabilityDetails", [])
+        ],
+        "failureMode": target_doc.get("failureMode", {}),
+        "cleanup": target_doc.get("cleanup", {}),
+    }
+
+
+def _module_targets(modules: list[dict]) -> list[dict]:
+    return [target for module in modules for target in module.get("callTargets", [])]
+
+
+def _module_text_row(source_line, module_name: str) -> dict | None:
+    verb = source_line.verb
+    args = source_line.args
+    if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] == "module" and args[1] == module_name:
+        return {
+            "tag": verb,
+            "text": " ".join(args[2:]).strip(),
+            "location": _line_payload(source_line),
+        }
+    if verb in {"moduleOwns", "moduleDoesNotOwn"} and len(args) >= 2 and args[0] == module_name:
+        return {
+            "tag": verb,
+            "text": " ".join(args[1:]).strip(),
+            "location": _line_payload(source_line),
+        }
+    return None
+
+
+def _module_text_rows(facts, module_name: str) -> dict[str, list[dict]]:
+    rows: dict[str, list[dict]] = {}
+    for source_line in facts.lines:
+        if not source_line.tokens:
+            continue
+        payload = _module_text_row(source_line, module_name)
+        if payload is not None:
+            rows.setdefault(payload["tag"], []).append(payload)
+    return rows
+
+
+def _module_line(facts, module_name: str):
+    for source_line in facts.lines:
+        if source_line.verb == "module" and source_line.args[:1] == [module_name]:
+            return source_line
+    return None
+
+
+def _location_or_empty(source_line) -> dict:
+    return _line_payload(source_line) if source_line is not None else {}
+
+
+def _capability_usage_guidance(capabilities: list[dict], capability_details: list[dict]) -> dict:
+    details_by_name = {detail.get("name", ""): detail for detail in capability_details}
+    use_rows = []
+    authority_rows = []
+    local_capability_rows = []
+    for capability in capabilities:
+        name = capability["name"]
+        detail = details_by_name.get(name, {})
+        resource = detail.get("resource", "")
+        action = detail.get("action", "")
+        if detail.get("exported", False):
+            use_rows.append(f"useCapability <callerOperation> {name}")
+        elif resource and action:
+            authority_rows.append(f"authority <callerOperation> {action} {resource}")
+            local_name = f"local{name[:1].upper()}{name[1:]}"
+            local_capability_rows.extend([
+                f"capability {local_name} {resource} {action}",
+                f"useCapability <callerOperation> {local_name}",
+            ])
+    return {
+        "useCapabilityRows": use_rows,
+        "authorityRows": authority_rows,
+        "localCapabilityRows": local_capability_rows,
+    }
+
+
+def _effect_authority_rows(effects: list[dict], capability_details: list[dict]) -> list[str]:
+    rows = []
+    for effect in effects:
+        action = effect.get("action", "")
+        path = effect.get("path", "")
+        covered_by_exported_capability = any(
+            detail.get("exported") and detail.get("action") == action and detail.get("resource") == path
+            for detail in capability_details
+        )
+        if action and path and not covered_by_exported_capability:
+            rows.append(f"authority <callerOperation> {action} {path}")
+    return rows
+
+
+def _docs_import_row(module_name: str) -> str:
+    if module_name.startswith("compiler."):
+        return ""
+    module_short_name = _std_module_short_name(module_name)
+    return f"import {module_short_name} {module_name}"
+
+
+def _target_usage_payload(
+    module_name: str,
+    target: str,
+    inputs: list[dict],
+    outputs: list[dict],
+    effects: list[dict],
+    capabilities: list[dict],
+    capability_details: list[dict],
+    failure_mode: dict,
+    cleanup: dict,
+) -> dict:
+    call = _usage_call_template_for_target(target, _target_call_base_name(target), inputs, outputs)
+    failure_handling = _usage_failure_handling(call, outputs, failure_mode)
+    preconditions = _usage_preconditions(failure_mode)
+    cleanup = dict(cleanup or {"required": False, "source": "", "text": ""})
+    cleanup.setdefault("required", False)
+    cleanup.setdefault("source", "")
+    cleanup.setdefault("text", "")
+    cleanup = _augment_cleanup_guidance(cleanup)
+    cleanup["rows"] = _cleanup_rows(call, cleanup)
+    call["requiresFailureHandling"] = failure_handling["required"]
+    call["requiresPreconditions"] = preconditions["required"]
+    call["requiresCleanup"] = cleanup["required"]
+    capability_guidance = _capability_usage_guidance(capabilities, capability_details)
+    capability_guidance["authorityRows"] = list(dict.fromkeys([
+        *capability_guidance["authorityRows"],
+        *_effect_authority_rows(effects, capability_details),
+    ]))
+    return {
+        "importRequired": bool(_docs_import_row(module_name)),
+        "importRow": _docs_import_row(module_name),
+        "call": call,
+        "requiredCallerEffects": [
+            {"action": effect["action"], "path": effect["path"]}
+            for effect in effects
+        ],
+        "effectRows": [
+            f"effect <callerOperation> {effect['action']} {effect['path']}"
+            for effect in effects
+        ],
+        "requiredCapabilities": [detail for detail in capability_details],
+        **capability_guidance,
+        "failureMode": failure_mode,
+        "failureHandling": failure_handling,
+        "preconditions": preconditions,
+        "cleanup": cleanup,
+    }
+
+
+def _target_doc_payload(
+    facts,
+    module_name: str,
+    target: str,
+    *,
+    name: str = "",
+    type_name: str = "",
+    exported: bool = False,
+    location_source=None,
+    comments: list[dict] | None = None,
+) -> dict:
+    static_doc = STD_DOC_STATIC_TARGETS.get(module_name, {}).get(target, {})
+    comments = comments or []
+    comments_by_tag = _comments_by_tag(comments)
+    inputs = copy.deepcopy(static_doc.get("inputs", []))
+    outputs = copy.deepcopy(static_doc.get("outputs", []))
+    effects = copy.deepcopy(static_doc.get("effects", []))
+    capability_refs = [
+        {"name": capability_name, "location": _location_or_empty(location_source)}
+        for capability_name in static_doc.get("capabilities", [])
+    ]
+    capability_details = _capability_details(facts, module_name, capability_refs)
+    failure_mode = copy.deepcopy(static_doc.get("failureMode", {"kind": "none", "text": "", "source": ""}))
+    failure_mode.setdefault("source", "static-target-contract" if failure_mode.get("text") else "")
+    cleanup = copy.deepcopy(static_doc.get("cleanup", {"required": False, "source": "", "text": ""}))
+    if cleanup.get("required"):
+        cleanup.setdefault("source", "static-target-contract")
+        cleanup.setdefault("text", cleanup.get("strategy", ""))
+    lowering_status = static_doc.get("loweringStatus", "lowered" if inputs or outputs else "unknown")
+    if lowering_status == "lowered":
+        usage = _target_usage_payload(module_name, target, inputs, outputs, effects, capability_refs, capability_details, failure_mode, cleanup)
+    else:
+        usage = {
+            "availableForCodegen": False,
+            "reason": f"target loweringStatus is {lowering_status}; do not generate calls without backend support",
+        }
+    target_visibility = {
+        "exported": exported,
+        "internal": False,
+        "public": lowering_status == "lowered",
+        "apiTier": "compiler-lowered" if lowering_status == "lowered" else lowering_status,
+        "reason": "static-target-contract" if location_source is None else "exportConstant",
+    }
+    agent_warnings = list(static_doc.get("agentWarnings", []))
+    if lowering_status != "lowered":
+        agent_warnings.append(f"Target loweringStatus is {lowering_status}; do not generate calls without backend support.")
+    if failure_mode.get("kind") == "sentinel-value":
+        agent_warnings.append("Sentinel-value handling is domain-dependent; compare against the documented sentinel when absence is not acceptable.")
+    return {
+        "kind": "callTarget",
+        "module": module_name,
+        "moduleName": _std_module_short_name(module_name),
+        "name": name or _target_call_base_name(target),
+        "type": type_name or "",
+        "target": target,
+        "qualifiedName": target,
+        "fullName": f"{module_name}.{target}",
+        "exported": exported,
+        "visibility": target_visibility,
+        "agentWarnings": agent_warnings,
+        "source": "storage" if location_source is not None else "static-target-contract",
+        "loweringStatus": lowering_status,
+        "summary": static_doc.get("summary", _first_text(comments_by_tag.get("rationale", []))),
+        "invariants": [comment["text"] for comment in comments_by_tag.get("invariant", []) if comment.get("text")],
+        "commentsByTag": comments_by_tag,
+        "signature": {"inputs": inputs, "outputs": outputs, "text": _signature_text(inputs, outputs)},
+        "effects": effects,
+        "capabilities": capability_refs,
+        "capabilityDetails": capability_details,
+        "failureMode": failure_mode,
+        "cleanup": cleanup,
+        "usage": usage,
+        "comments": comments,
+        "location": _location_or_empty(location_source),
+    }
+
+
+def _module_call_targets(facts, module_name: str) -> list[dict]:
+    exported_constants = _exported_names(facts, "exportConstant", module_name)
+    targets = []
+    seen_targets = set()
+    for source_line in facts.lines:
+        args = source_line.args
+        if source_line.verb != "storage" or len(args) < 5:
+            continue
+        if args[0] != "module":
+            continue
+        name = args[2]
+        type_name = args[3]
+        value = args[4]
+        if name not in exported_constants:
+            continue
+        if not (type_name.endswith("RuntimeTarget") or (name.endswith("Target") and "." in value)):
+            continue
+        comments = _typed_comment_payloads(_preceding_comment_block(facts.lines, source_line))
+        targets.append(_target_doc_payload(
+            facts,
+            module_name,
+            value,
+            name=name,
+            type_name=type_name,
+            exported=True,
+            location_source=source_line,
+            comments=comments,
+        ))
+        seen_targets.add(value)
+    for target in sorted(STD_DOC_STATIC_TARGETS.get(module_name, {})):
+        if target not in seen_targets:
+            targets.append(_target_doc_payload(facts, module_name, target))
+    return targets
+
+
+def _std_module_doc_payload(facts, path: Path, operations: list[dict], summary_tag: str) -> dict:
+    module_name = _row_value(facts, "module")
+    module_short_name = _std_module_short_name(module_name)
+    module_line = _module_line(facts, module_name)
+    comments = _typed_comment_payloads(_preceding_comment_block(facts.lines, module_line)) if module_line is not None else []
+    comments_by_tag = _comments_by_tag(comments)
+    metadata = _module_text_rows(facts, module_name)
+    summary, summary_source = _summary_from_doc(comments_by_tag, metadata, summary_tag)
+    public_operations = [operation for operation in operations if operation["visibility"]["public"]]
+    call_targets = _module_call_targets(facts, module_name)
+    if public_operations:
+        operation_status = "ok"
+    elif operations:
+        operation_status = "internal-only"
+    else:
+        operation_status = "no-operation-docs"
+    return {
+        "module": module_name,
+        "moduleName": module_short_name,
+        "sourceFile": str(path.resolve()),
+        "location": _line_payload(module_line) if module_line is not None else {},
+        "summary": summary,
+        "summarySource": summary_source,
+        "purpose": _first_text(metadata.get("purpose", [])),
+        "invariants": [row["text"] for row in metadata.get("invariant", []) if row.get("text")],
+        "comments": comments,
+        "commentsByTag": comments_by_tag,
+        "metadata": metadata,
+        "operationDocStatus": operation_status,
+        "operationCount": len(operations),
+        "publicOperationCount": len(public_operations),
+        "callTargets": call_targets,
+    }
+
+
+def _compiler_module_summary(module_name: str) -> str:
+    summaries = {
+        "compiler.console": "Compiler-lowered console stdout targets that do not require a standard-library import.",
+        "compiler.math": "Compiler-lowered arithmetic, comparison, conversion, and checked arithmetic targets.",
+        "compiler.pointer": "Compiler-lowered pointer and byte-buffer primitives.",
+        "compiler.c": "Selected compiler-lowered C runtime targets that require explicit effects and ownership handling.",
+    }
+    return summaries.get(module_name, "Compiler-lowered call targets.")
+
+
+def _compiler_module_doc_payload(module_name: str) -> dict:
+    targets = [
+        _target_doc_payload(None, module_name, target)
+        for target in sorted(STD_DOC_STATIC_TARGETS.get(module_name, {}))
+    ]
+    module_short_name = _std_module_short_name(module_name)
+    summary = _compiler_module_summary(module_name)
+    return {
+        "module": module_name,
+        "moduleName": module_short_name,
+        "sourceFile": "",
+        "location": {},
+        "summary": summary,
+        "summarySource": "comment:static-target-contract",
+        "purpose": summary,
+        "invariants": ["These targets are owned by compiler lowering; do not add import rows for compiler.* modules."],
+        "comments": [],
+        "commentsByTag": {},
+        "metadata": {},
+        "operationDocStatus": "no-operation-docs",
+        "operationCount": 0,
+        "publicOperationCount": 0,
+        "callTargets": targets,
+    }
+
+
+def _compiler_module_docs(module_name: str = "") -> list[dict]:
+    modules = []
+    for compiler_module in sorted(name for name in STD_DOC_STATIC_TARGETS if name.startswith("compiler.")):
+        if _std_module_matches(compiler_module, module_name):
+            modules.append(_compiler_module_doc_payload(compiler_module))
+    return modules
+
+
+def _compact_module_doc(module_doc: dict) -> dict:
+    return {
+        "module": module_doc.get("module", ""),
+        "moduleName": module_doc.get("moduleName", ""),
+        "sourceFile": module_doc.get("sourceFile", ""),
+        "location": module_doc.get("location", {}),
+        "summary": module_doc.get("summary", ""),
+        "summarySource": module_doc.get("summarySource", ""),
+        "purpose": module_doc.get("purpose", ""),
+        "operationDocStatus": module_doc.get("operationDocStatus", ""),
+        "operationCount": module_doc.get("operationCount", 0),
+        "publicOperationCount": module_doc.get("publicOperationCount", 0),
+        "callTargetCount": len(module_doc.get("callTargets", [])),
+    }
+
+
+def _docs_inventory(module_name: str = "", summary_tag: str = "rationale", std_root: Path | None = None) -> tuple[list[dict], list[dict], list[str], Path]:
+    semlint = _load_semlint_module()
+    root = _docs_std_root(std_root)
+    errors: list[str] = []
+    operations: list[dict] = []
+    modules: list[dict] = []
+    if not root.exists():
+        return operations, modules, [f"{root}: standard-library root does not exist"], root
+    if not root.is_dir():
+        return operations, modules, [f"{root}: standard-library root is not a directory"], root
+    main_files = _std_main_files(root)
+    if not main_files:
+        return operations, modules, [f"{root}: no standard-library module main.sem files found"], root
+    for path in main_files:
+        if not _std_module_path_matches(path, module_name):
+            continue
+        try:
+            facts = semlint.parse_file(path)
+        except (OSError, RuntimeError) as exc:
+            errors.append(f"{path}: {exc}")
+            continue
+        parsed_module_name = _row_value(facts, "module")
+        if not _std_module_matches(parsed_module_name, module_name):
+            continue
+        module_operations = []
+        for operation in sorted(facts.operations.values(), key=lambda item: item.line.number):
+            operation_doc = _std_operation_doc_payload(facts, path, operation, summary_tag)
+            operations.append(operation_doc)
+            module_operations.append(operation_doc)
+        modules.append(_std_module_doc_payload(facts, path, module_operations, summary_tag))
+    modules.extend(_compiler_module_docs(module_name))
+    return operations, modules, errors, root
+
+
+def _docs_next_commands(
+    command: str,
+    operation_name: str,
+    module_name: str,
+    status: str,
+    *,
+    has_operations: bool = True,
+    has_targets: bool = False,
+    std_root: Path | None = None,
+) -> list[dict]:
+    std_path_args = ["--std-path", str(std_root)] if std_root is not None else []
+    if command == "list":
+        if not has_operations and not has_targets:
+            return []
+        argv = ["sem", "docs", "get", *std_path_args]
+        if module_name:
+            argv.extend(["--module", module_name])
+        argv.append("--json")
+        required_name = "operation" if has_operations else "target"
+        required_description = "operation name from the docs list output" if has_operations else "call target from moduleDocs.callTargets"
+        return [
+            _next_command_entry(
+                "docs",
+                "inspect one documented API before generating call rows",
+                argv=argv,
+                command=_display_command(["sem", "docs", "get", *std_path_args, required_name.upper(), "--json"]),
+                replayable=False,
+                required_args=[{
+                    "name": required_name,
+                    "position": "final",
+                    "description": required_description,
+                }],
+            )
+        ]
+    if status == "not-found":
+        argv = ["sem", "docs", "list", *std_path_args, "--json"]
+        if module_name:
+            argv.extend(["--module", module_name])
+        return [
+            _next_command_entry(
+                "docs",
+                "list available documented APIs after a failed lookup",
+                argv=argv,
+            )
+        ]
+    if status == "ambiguous":
+        return [
+            _next_command_entry(
+                "docs",
+                "disambiguate the operation lookup with --module",
+                argv=["sem", "docs", "get", *std_path_args, "--module", "MODULE", operation_name, "--json"],
+                replayable=False,
+                required_args=[{
+                    "name": "module",
+                    "position": "--module",
+                    "description": "module name from matches, such as http, standard.http, or compiler.console",
+                }],
+            )
+        ]
+    return []
+
+
+def _docs_payload(
+    command: str,
+    *,
+    operation_name: str = "",
+    module_name: str = "",
+    summary_tag: str = "rationale",
+    include_internal: bool = False,
+    std_root: Path | None = None,
+) -> dict:
+    operations, modules, errors, root = _docs_inventory(module_name, summary_tag, std_root)
+    query = {
+        "command": command,
+        "operation": operation_name,
+        "module": module_name,
+        "summaryTag": summary_tag,
+        "includeInternal": include_internal,
+    }
+    base = {
+        "schemaVersion": DOCS_PAYLOAD_VERSION,
+        "tool": {"name": "sem", "version": VERSION},
+        "stdRoot": str(root),
+        "query": query,
+        "errors": errors,
+    }
+    inventory_blocked = bool(errors) and not operations and not modules
+    if command == "list":
+        visible_operations = operations if include_internal else [
+            operation for operation in operations
+            if operation["visibility"]["public"]
+        ]
+        module_names = sorted({module["module"] for module in modules})
+        items = [_std_doc_list_item(operation) for operation in visible_operations]
+        has_targets = any(module.get("callTargets") for module in modules)
+        status = "tool-error" if inventory_blocked else ("partial" if errors else "ok")
+        return {
+            **base,
+            "ok": not errors,
+            "status": status,
+            "nextCommands": _docs_next_commands(
+                "list",
+                operation_name,
+                module_name,
+                status,
+                has_operations=bool(items),
+                has_targets=has_targets,
+                std_root=root,
+            ),
+            "modules": module_names,
+            "moduleDocs": modules,
+            "operations": items,
+            "summary": {
+                "moduleCount": len(module_names),
+                "operationCount": len(items),
+                "scannedOperationCount": len(operations),
+                "moduleWithoutOperationDocsCount": sum(1 for module in modules if module["operationDocStatus"] == "no-operation-docs"),
+            },
+        }
+    searchable_operations = operations if include_internal else [
+        operation for operation in operations
+        if operation["visibility"]["public"]
+    ]
+    matches = [operation for operation in searchable_operations if _std_operation_matches(operation, operation_name)]
+    target_matches = [] if matches else [target for target in _module_targets(modules) if _std_target_matches(target, operation_name)]
+    if inventory_blocked:
+        status = "tool-error"
+        ok = False
+    elif not matches and not target_matches:
+        status = "not-found"
+        ok = False
+    elif len(matches) + len(target_matches) > 1:
+        status = "ambiguous"
+        ok = False
+    elif errors:
+        status = "partial"
+        ok = False
+    else:
+        status = "ok"
+        ok = True
+    if matches:
+        matched_module_names = {operation["module"] for operation in matches}
+        payload_modules = [module for module in modules if module["module"] in matched_module_names]
+    elif target_matches:
+        matched_module_names = {target["module"] for target in target_matches}
+        payload_modules = [module for module in modules if module["module"] in matched_module_names]
+    elif module_name:
+        payload_modules = modules
+    elif "." in operation_name:
+        query_module = operation_name.split(".", 1)[0]
+        payload_modules = [module for module in modules if _std_module_matches(module["module"], query_module)]
+    else:
+        payload_modules = []
+    next_module_name = module_name
+    if not next_module_name and "." in operation_name:
+        next_module_name = operation_name.split(".", 1)[0]
+    return {
+        **base,
+        "ok": ok,
+        "status": status,
+        "nextCommands": _docs_next_commands("get", operation_name, next_module_name, status, std_root=root),
+        "operation": matches[0] if len(matches) == 1 else {},
+        "target": target_matches[0] if len(target_matches) == 1 else {},
+        "matches": [_std_doc_list_item(operation) for operation in matches] + [_target_list_item(target) for target in target_matches],
+        "moduleDocs": [_compact_module_doc(module) for module in payload_modules],
+        "moduleDocMode": "compact",
+        "summary": {
+            "matchCount": len(matches) + len(target_matches),
+            "operationMatchCount": len(matches),
+            "targetMatchCount": len(target_matches),
+            "searchedOperationCount": len(searchable_operations),
+            "searchedTargetCount": len(_module_targets(modules)),
+            "scannedOperationCount": len(operations),
+        },
     }
 
 
@@ -6223,6 +8686,110 @@ def command_symbols(args: argparse.Namespace) -> int:
     return 0 if not payload["errors"] else 1
 
 
+def _print_std_doc_operation(operation: dict) -> None:
+    print(f"{operation['fullName']}{operation['signature']['text']}")
+    if operation.get("summary"):
+        print(operation["summary"])
+    if operation.get("purpose"):
+        print(f"purpose: {operation['purpose']}")
+    if operation.get("invariants"):
+        print("invariants:")
+        for invariant in operation["invariants"]:
+            print(f"- {invariant}")
+    for tag in STD_DOC_COMMENT_TAGS:
+        comments = operation.get("commentsByTag", {}).get(tag, [])
+        if comments:
+            print(f"{tag}:")
+            for comment in comments:
+                print(f"- {comment['text']}")
+    for tag in ("purpose", "invariant", "warning", "guarantee", "failure", "security", "timing", "observability"):
+        rows = operation.get("metadata", {}).get(tag, [])
+        if rows:
+            print(f"{tag} rows:")
+            for row in rows:
+                name = f"{row.get('name')}: " if row.get("name") else ""
+                print(f"- {name}{row['text']}")
+    if operation.get("effects"):
+        print("effects:")
+        for effect in operation["effects"]:
+            print(f"- {effect['action']} {effect['path']}")
+    if operation.get("capabilityDetails"):
+        print("capabilities:")
+        for capability in operation["capabilityDetails"]:
+            resource = capability.get("resource", "")
+            action = capability.get("action", "")
+            suffix = f" {resource} {action}" if resource or action else ""
+            print(f"- {capability['name']}{suffix}")
+    if operation.get("memory"):
+        print("memory rows:")
+        for memory_row in operation["memory"]:
+            print(f"- {memory_row['text']}")
+    usage = operation.get("usage", {})
+    if usage:
+        print("usage rows:")
+        for row in usage.get("call", {}).get("rows", []):
+            print(f"- {row}")
+
+
+def _print_std_doc_target(target: dict) -> None:
+    print(f"{target['target']}{target['signature']['text']}")
+    if target.get("summary"):
+        print(target["summary"])
+    if target.get("loweringStatus") and target.get("loweringStatus") != "lowered":
+        print(f"loweringStatus: {target['loweringStatus']}")
+    usage = target.get("usage", {})
+    if usage.get("call"):
+        print("usage rows:")
+        for row in usage.get("call", {}).get("rows", []):
+            print(f"- {row}")
+    if usage.get("failureHandling", {}).get("rows"):
+        print("failure handling rows:")
+        for row in usage["failureHandling"]["rows"]:
+            print(f"- {row}")
+
+
+def command_docs(args: argparse.Namespace) -> int:
+    if args.docs_command == "list":
+        payload = _docs_payload(
+            "list",
+            module_name=args.module or "",
+            summary_tag=args.summary_tag,
+            include_internal=bool(args.all),
+            std_root=Path(args.std_path) if args.std_path else None,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            for operation in payload["operations"]:
+                summary = f" - {operation['summary']}" if operation.get("summary") else ""
+                print(f"{operation['fullName']}{operation['signature']['text']}{summary}")
+        return 0 if payload.get("ok") else 1
+    if args.docs_command == "get":
+        payload = _docs_payload(
+            "get",
+            operation_name=args.operation,
+            module_name=args.module or "",
+            summary_tag="rationale",
+            include_internal=bool(args.all),
+            std_root=Path(args.std_path) if args.std_path else None,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        elif payload.get("status") == "ok" and payload.get("operation"):
+            _print_std_doc_operation(payload["operation"])
+        elif payload.get("status") == "ok" and payload.get("target"):
+            _print_std_doc_target(payload["target"])
+        elif payload.get("status") == "ambiguous":
+            print(f"docs get: {args.operation} is ambiguous; pass --module", file=sys.stderr)
+            for match in payload.get("matches", []):
+                print(f"- {match.get('fullName') or match.get('target')}", file=sys.stderr)
+        else:
+            print(f"docs get: no standard-library operation named {args.operation}", file=sys.stderr)
+        return 0 if payload.get("ok") else 1
+    print(f"docs: unsupported command {args.docs_command}", file=sys.stderr)
+    return 2
+
+
 def command_size(args: argparse.Namespace) -> int:
     payload = _size_payload(Path(args.path))
     if args.json:
@@ -6720,6 +9287,44 @@ def build_parser() -> argparse.ArgumentParser:
                          help="emit machine-readable symbol graph")
     symbols.add_argument("path", nargs="?", default=".")
     symbols.set_defaults(func=command_symbols)
+
+    docs = subparsers.add_parser(
+        "docs",
+        help="list or get standard-library API documentation from typed comments",
+    )
+    docs_subparsers = docs.add_subparsers(dest="docs_command", required=True)
+    docs_list = docs_subparsers.add_parser(
+        "list",
+        help="list standard-library operations with short summaries",
+    )
+    docs_list.add_argument("--json", action="store_true",
+                           help="emit machine-readable docs inventory")
+    docs_list.add_argument("--std-path",
+                           help="standard-library root to inspect; defaults to env vars then bundled std")
+    docs_list.add_argument("--module",
+                           help="limit results to one standard module, such as http or standard.http")
+    docs_list.add_argument("--summary-tag", default="rationale",
+                           choices=(*STD_DOC_COMMENT_TAGS, "purpose"),
+                           help="prefer this typed comment tag for list summaries")
+    docs_list.add_argument("--all", action="store_true",
+                           help="include internal runtimeBinding helper operations")
+    docs_list.set_defaults(func=command_docs)
+
+    docs_get = docs_subparsers.add_parser(
+        "get",
+        help="get documentation for one standard-library operation/function",
+    )
+    docs_get.add_argument("--json", action="store_true",
+                          help="emit machine-readable operation documentation")
+    docs_get.add_argument("--std-path",
+                          help="standard-library root to inspect; defaults to env vars then bundled std")
+    docs_get.add_argument("--module",
+                          help="limit lookup to one standard module, such as http or standard.http")
+    docs_get.add_argument("--all", action="store_true",
+                          help="allow lookup of internal runtimeBinding helper operations")
+    docs_get.add_argument("operation",
+                          help="operation name, module.name, or full standard.module.name")
+    docs_get.set_defaults(func=command_docs)
 
     graph = subparsers.add_parser(
         "graph",

@@ -229,6 +229,7 @@ Current stable `v1` schema versions:
 - `sem.graph.v1`
 - `sem.slice.v1`
 - `sem.size.v1`
+- `sem.docs.v1`
 - `sem.explain.v1`
 - `sem.fixPlan.v1`
 - `sem.patch.v1`
@@ -295,6 +296,38 @@ python SemanticScript\tools\sem.py slice --effect database --json apps\taskforge
 Use `context --json` for project envelope facts and `symbols --json` for the
 full source graph when `graph` or `slice` is too narrow. They remain public,
 but `graph` and `slice` are the primary agent-repair retrieval surfaces.
+
+Use `docs` when an agent needs API help for standard-library operations or
+compiler-owned targets without scanning the whole std tree:
+
+```powershell
+python SemanticScript\tools\sem.py docs list --module http --json
+python SemanticScript\tools\sem.py docs get http.clientGet --json
+python SemanticScript\tools\sem.py docs get gui.applicationCreate --json
+python SemanticScript\tools\sem.py docs get json.createDocument --json
+python SemanticScript\tools\sem.py docs get console.writeLine --json
+```
+
+For code generation, prefer `docs get --json` over `list`: the full payload
+includes `purpose`, `invariants`, `usage.call.rows`,
+`usage.requiredCallerEffects`, `usage.requiredCapabilities`,
+`usage.failureMode`, `usage.failureHandling`, `usage.cleanup`,
+`capabilityDetails`, and runtime binding preconditions. Treat
+`usage.call.rows` as call-and-bind rows, not the whole safe integration; append
+`usage.failureHandling.rows` and `usage.cleanup.rows` whenever their `required`
+flags are true, and satisfy `usage.preconditions` before the call when present.
+Cleanup payloads for `c.free` include required heap-free effect and authority
+guidance. When a required capability is not exported, prefer
+`usage.authorityRows` or the complete local declaration/use pairs in
+`usage.localCapabilityRows` over std-internal capability names. Public lookup hides runtimeBinding helpers by default; pass `--all`
+only when intentionally inspecting std internals. Modules that expose
+compiler-owned targets instead of operation rows report `moduleDocs` and
+`moduleDocs[].callTargets`; `docs get TARGET --json` returns a focused
+target payload for lowered `gui.*`, known `json.*`, `console.*`, `math.*`,
+`pointer.*`, and selected `c.*` targets. Compiler-owned target payloads set
+`usage.importRequired: false` and an empty `usage.importRow`. Get payloads keep
+`moduleDocs` compact; use `list` for the broad inventory. Reserved targets
+carry `loweringStatus: "reserved"` and should not be used for generated code.
 
 ## Repair And Patch
 

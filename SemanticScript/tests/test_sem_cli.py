@@ -118,6 +118,433 @@ class TestSemAgentPayloads(unittest.TestCase):
             ["value", "error"],
         )
 
+    def test_docs_list_reads_typed_comment_summaries(self) -> None:
+        payload = sem._docs_payload("list", module_name="http", summary_tag="rationale")
+
+        self.assertEqual(payload["schemaVersion"], "sem.docs.v1")
+        client_get = next(
+            operation for operation in payload["operations"]
+            if operation["name"] == "clientGet"
+        )
+        self.assertEqual(client_get["module"], "standard.http")
+        self.assertEqual(client_get["summarySource"], "comment:rationale")
+        self.assertIn("clientGet fixes the HTTP method to GET", client_get["summary"])
+        self.assertIn("host:String", client_get["signature"]["text"])
+
+    def test_docs_get_returns_operation_documentation(self) -> None:
+        payload = sem._docs_payload("get", operation_name="http.escapeHtml")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        operation = payload["operation"]
+        self.assertEqual(operation["fullName"], "standard.http.escapeHtml")
+        self.assertEqual(operation["purpose"], "Escape HTML special characters (& < > \" ') from input into the caller-provided scratch buffer; returns the bounded, null-terminated escaped string.")
+        self.assertIn("failure", operation["commentsByTag"])
+        self.assertIn("scratch", operation["commentsByTag"]["memory"][0]["text"])
+        self.assertEqual(operation["signature"]["outputs"][0]["type"], "String")
+        self.assertEqual(operation["capabilityDetails"][0]["resource"], "memory.buffer")
+        self.assertEqual(operation["capabilityDetails"][0]["action"], "readWrite")
+        self.assertIn("runtimeBindingPrecondition", operation["runtime"])
+        self.assertIn("capacity writable bytes", operation["runtime"]["runtimeBindingPrecondition"][0]["text"])
+        self.assertIn("call escapeHtmlCall http.escapeHtml", operation["usage"]["call"]["rows"])
+
+    def test_docs_get_includes_failure_and_cleanup_rows(self) -> None:
+        payload = sem._docs_payload("get", operation_name="http.clientGet")
+
+        operation = payload["operation"]
+        self.assertTrue(operation["usage"]["call"]["requiresFailureHandling"])
+        self.assertTrue(operation["usage"]["call"]["requiresCleanup"])
+        self.assertIn("branch if condition clientGetIsNull target <failureLabel>", operation["usage"]["failureHandling"]["rows"])
+        self.assertIn("argument clientGetNullCheckCall pointer OpaquePointer clientGetResult", operation["usage"]["failureHandling"]["rows"])
+        self.assertIn("call clientGetCleanupCall c.free", operation["usage"]["cleanup"]["rows"])
+        self.assertIn({"action": "free", "path": "heap"}, operation["usage"]["cleanup"]["requiredCallerEffects"])
+        self.assertIn("effect <callerOperation> free heap", operation["usage"]["cleanup"]["authorityRows"])
+
+    def test_docs_get_result_usage_uses_ok_and_error_binds(self) -> None:
+        payload = sem._docs_payload("get", operation_name="assert.requireConditionTrue")
+
+        self.assertTrue(payload["ok"])
+        rows = payload["operation"]["usage"]["call"]["rows"]
+        failure_rows = payload["operation"]["usage"]["failureHandling"]["rows"]
+        self.assertIn("bind ok requireConditionTrueResult Int32 requireConditionTrueCall", rows)
+        self.assertIn("bind error requireConditionTrueError AssertionError requireConditionTrueCall", failure_rows)
+        self.assertIn("branch error source requireConditionTrueCall target <errorLabel>", failure_rows)
+        self.assertNotIn("bind value requireConditionTrueResult Result requireConditionTrueCall", rows)
+
+    def test_docs_recommended_rows_do_not_duplicate_result_error_rows(self) -> None:
+        payload = sem._docs_payload("get", operation_name="json.createDocument")
+
+        usage = payload["target"]["usage"]
+        recommended_rows = usage["call"]["rows"] + usage["failureHandling"]["rows"] + usage["cleanup"]["rows"]
+        self.assertEqual(len(recommended_rows), len(set(recommended_rows)))
+        self.assertEqual(sum(1 for row in recommended_rows if row.startswith("bind error createDocumentError")), 1)
+        self.assertEqual(sum(1 for row in recommended_rows if row.startswith("branch error source createDocumentCall")), 1)
+
+    def test_docs_get_hides_internal_helpers_by_default(self) -> None:
+        payload = sem._docs_payload("get", operation_name="http.clientFetchNative")
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "not-found")
+
+        internal_payload = sem._docs_payload(
+            "get",
+            operation_name="http.clientFetchNative",
+            include_internal=True,
+        )
+        self.assertTrue(internal_payload["ok"])
+        self.assertTrue(internal_payload["operation"]["visibility"]["internal"])
+
+    def test_docs_list_includes_non_exported_public_operations(self) -> None:
+        payload = sem._docs_payload("list", module_name="math", summary_tag="purpose")
+
+        self.assertTrue(payload["ok"])
+        self.assertGreater(payload["summary"]["operationCount"], 0)
+        self.assertTrue(all(not item["visibility"]["internal"] for item in payload["operations"]))
+
+    def test_docs_next_commands_preserve_std_path(self) -> None:
+        std_root = (sem.ROOT / "std").resolve()
+        payload = sem._docs_payload("list", module_name="http", std_root=std_root)
+
+        argv = payload["nextCommands"][0]["argv"]
+        self.assertIn("--std-path", argv)
+        self.assertEqual(Path(argv[argv.index("--std-path") + 1]), std_root)
+        self.assertIn("--std-path", payload["nextCommands"][0]["command"])
+
+    def test_docs_invalid_std_path_is_tool_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_root = Path(temp_dir) / "missing-std"
+            payload = sem._docs_payload("list", module_name="http", std_root=missing_root)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "tool-error")
+        self.assertEqual(payload["operations"], [])
+        self.assertIn("standard-library root does not exist", payload["errors"][0])
+
+    def test_docs_module_filter_skips_unrelated_parse_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            std_root = Path(temp_dir)
+            http_dir = std_root / "http"
+            broken_dir = std_root / "broken"
+            http_dir.mkdir()
+            broken_dir.mkdir()
+            (http_dir / "main.sem").write_text(
+                "# rationale: HTTP docs fixture.\n"
+                "module standard.http\n"
+                "# rationale: Fixture operation.\n"
+                "operation fixtureHttpOperation\n"
+                "output operation fixtureHttpOperation Int32\n"
+                "purpose fixtureHttpOperation \"Return a fixture status\"\n"
+                "storage local immutable fixtureStatus Int32 0\n"
+                "return value fixtureStatus\n",
+                encoding="utf-8",
+            )
+            (broken_dir / "main.sem").write_text("operation \"unterminated\n", encoding="utf-8")
+
+            payload = sem._docs_payload("list", module_name="http", std_root=std_root)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["errors"], [])
+        self.assertEqual(payload["modules"], ["standard.http"])
+        self.assertEqual(payload["operations"][0]["name"], "fixtureHttpOperation")
+
+    def test_docs_get_reports_ambiguous_operation_names(self) -> None:
+        def operation_doc(module_name: str) -> dict:
+            module_short_name = module_name.rsplit(".", 1)[-1]
+            return {
+                "module": module_name,
+                "moduleName": module_short_name,
+                "name": "sharedName",
+                "qualifiedName": f"{module_short_name}.sharedName",
+                "fullName": f"{module_name}.sharedName",
+                "signature": {"text": "() -> Void", "inputs": [], "outputs": []},
+                "summary": "",
+                "summarySource": "",
+                "location": {},
+                "sourceFile": "",
+                "visibility": {"public": True, "internal": False, "exported": False, "reason": "operation"},
+                "purpose": "",
+                "invariants": [],
+                "effects": [],
+                "capabilityDetails": [],
+                "usage": {"failureMode": {}, "cleanup": {}},
+            }
+
+        inventory = ([operation_doc("standard.alpha"), operation_doc("standard.beta")], [], [], sem.ROOT / "std")
+        with mock.patch.object(sem, "_docs_inventory", return_value=inventory):
+            payload = sem._docs_payload("get", operation_name="sharedName")
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "ambiguous")
+        self.assertEqual(len(payload["matches"]), 2)
+        self.assertEqual(payload["nextCommands"][0]["requiredArgs"][0]["name"], "module")
+
+    def test_docs_get_module_call_target_returns_actionable_payload(self) -> None:
+        payload = sem._docs_payload("get", operation_name="gui.applicationCreate")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["summary"]["targetMatchCount"], 1)
+        target = payload["target"]
+        self.assertEqual(target["target"], "gui.applicationCreate")
+        self.assertEqual(target["visibility"]["apiTier"], "compiler-lowered")
+        self.assertEqual(target["signature"]["inputs"][0]["name"], "title")
+        self.assertIn({"action": "allocate", "path": "gui.application"}, target["usage"]["requiredCallerEffects"])
+        self.assertIn("effect <callerOperation> allocate gui.application", target["usage"]["effectRows"])
+        self.assertIn("authority <callerOperation> allocate gui.application", target["usage"]["authorityRows"])
+        self.assertIn("call applicationCreateCall gui.applicationCreate", target["usage"]["call"]["rows"])
+        self.assertIn("branch if condition applicationCreateIsNull target <failureLabel>", target["usage"]["failureHandling"]["rows"])
+        self.assertEqual(payload["moduleDocMode"], "compact")
+        self.assertNotIn("callTargets", payload["moduleDocs"][0])
+
+    def test_docs_gui_control_on_event_matches_linter_signature(self) -> None:
+        payload = sem._docs_payload("get", operation_name="gui.controlOnEvent")
+        semlint = sem._load_semlint_module()
+
+        target = payload["target"]
+        self.assertIn("argument controlOnEventCall handler GuiEventHandler <handler>", target["usage"]["call"]["rows"])
+        self.assertEqual(semlint.BUILTIN_TARGET_SIGNATURES["gui.controlOnEvent"], [
+            ("control", "GuiControl"),
+            ("eventKind", "GuiEventKind"),
+            ("handler", "GuiEventHandler"),
+        ])
+
+    def test_docs_static_target_signatures_match_linter(self) -> None:
+        _operations, modules, errors, _root = sem._docs_inventory()
+        semlint = sem._load_semlint_module()
+
+        self.assertEqual(errors, [])
+        docs_by_target = {
+            target["target"]: target
+            for module in modules
+            for target in module.get("callTargets", [])
+        }
+        for target, expected_signature in semlint.BUILTIN_TARGET_SIGNATURES.items():
+            if target not in docs_by_target:
+                continue
+            expected_inputs = [
+                (name, type_name)
+                for name, type_name in expected_signature
+                if name != "console"
+            ]
+            actual_inputs = [
+                (item["name"], item["type"])
+                for item in docs_by_target[target]["signature"]["inputs"]
+            ]
+            self.assertEqual(actual_inputs, expected_inputs, target)
+
+    def test_docs_get_compiler_owned_targets_returns_actionable_payload(self) -> None:
+        console_payload = sem._docs_payload("get", operation_name="console.writeLine")
+        math_payload = sem._docs_payload("get", operation_name="math.addInt64")
+        pointer_payload = sem._docs_payload("get", operation_name="pointer.isNull")
+        malloc_payload = sem._docs_payload("get", operation_name="c.malloc")
+        free_payload = sem._docs_payload("get", operation_name="c.free")
+        realloc_payload = sem._docs_payload("get", operation_name="c.realloc")
+
+        self.assertTrue(console_payload["ok"])
+        console_usage = console_payload["target"]["usage"]
+        self.assertFalse(console_usage["importRequired"])
+        self.assertEqual(console_usage["importRow"], "")
+        self.assertIn("effect <callerOperation> write console.stdout", console_usage["effectRows"])
+        self.assertIn("ignore ok source writeLineCall type Void", console_usage["call"]["rows"])
+        self.assertIn("bind error writeLineError Int32 writeLineCall", console_usage["failureHandling"]["rows"])
+
+        self.assertTrue(math_payload["ok"])
+        self.assertIn("bind value addInt64Result Int64 addInt64Call", math_payload["target"]["usage"]["call"]["rows"])
+        self.assertEqual(math_payload["target"]["usage"]["failureMode"], {"kind": "none", "text": "", "source": ""})
+
+        self.assertTrue(pointer_payload["ok"])
+        self.assertEqual(pointer_payload["target"]["signature"]["outputs"][0]["type"], "Bool")
+        self.assertIn("argument isNullCall pointer OpaquePointer <pointer>", pointer_payload["target"]["usage"]["call"]["rows"])
+
+        self.assertTrue(malloc_payload["ok"])
+        malloc_usage = malloc_payload["target"]["usage"]
+        self.assertIn({"action": "allocate", "path": "heap"}, malloc_usage["requiredCallerEffects"])
+        self.assertIn("branch if condition mallocIsNull target <failureLabel>", malloc_usage["failureHandling"]["rows"])
+        self.assertIn("call mallocCleanupCall c.free", malloc_usage["cleanup"]["rows"])
+        self.assertIn({"action": "free", "path": "heap"}, malloc_usage["cleanup"]["requiredCallerEffects"])
+
+        self.assertTrue(free_payload["ok"])
+        self.assertIn("ignore void source freeCall", free_payload["target"]["usage"]["call"]["rows"])
+        self.assertIn("effect <callerOperation> free heap", free_payload["target"]["usage"]["effectRows"])
+
+        self.assertTrue(realloc_payload["ok"])
+        self.assertEqual(realloc_payload["target"]["loweringStatus"], "partial")
+        self.assertFalse(realloc_payload["target"]["usage"]["availableForCodegen"])
+
+    def test_docs_get_json_target_returns_cleanup_guidance(self) -> None:
+        payload = sem._docs_payload("get", operation_name="json.createDocument")
+
+        self.assertTrue(payload["ok"])
+        target = payload["target"]
+        self.assertEqual(target["signature"]["outputs"][0]["values"], ["Result", "JsonDocument", "JsonAccessError"])
+        self.assertIn("bind ok createDocumentResult JsonDocument createDocumentCall", target["usage"]["call"]["rows"])
+        self.assertIn("call createDocumentCleanupCall json.destroyDocument", target["usage"]["cleanup"]["rows"])
+        self.assertIn("argument createDocumentCleanupCall document JsonDocument createDocumentResult", target["usage"]["cleanup"]["rows"])
+        self.assertIn("ignore value source createDocumentCleanupCall type Int32", target["usage"]["cleanup"]["rows"])
+
+    def test_docs_failure_mode_distinguishes_null_preconditions(self) -> None:
+        payload = sem._docs_payload("get", operation_name="string.stringByteLength")
+
+        operation = payload["operation"]
+        self.assertEqual(operation["usage"]["failureMode"]["kind"], "caller-precondition")
+        self.assertTrue(operation["usage"]["preconditions"]["required"])
+        self.assertFalse(operation["usage"]["failureHandling"]["required"])
+        self.assertEqual(operation["visibility"]["apiTier"], "helper")
+        self.assertTrue(operation["agentWarnings"])
+
+    def test_docs_metadata_ownership_text_becomes_actionable(self) -> None:
+        payload = sem._docs_payload("get", operation_name="string.duplicateCStringIntoOwnedMemory")
+
+        usage = payload["operation"]["usage"]
+        self.assertEqual(usage["failureMode"]["kind"], "null-sentinel")
+        self.assertIn("branch if condition duplicateCStringIntoOwnedMemoryIsNull target <failureLabel>", usage["failureHandling"]["rows"])
+        self.assertTrue(usage["cleanup"]["required"])
+        self.assertIn("call duplicateCStringIntoOwnedMemoryCleanupCall c.free", usage["cleanup"]["rows"])
+        self.assertIn("authority <callerOperation> read memory.buffer", usage["authorityRows"])
+        self.assertIn("capability localMemoryBufferReadCapability memory.buffer read", usage["localCapabilityRows"])
+        self.assertIn("useCapability <callerOperation> localMemoryBufferReadCapability", usage["localCapabilityRows"])
+        self.assertNotIn("useCapability <callerOperation> memoryBufferReadCapability", usage["useCapabilityRows"])
+
+    def test_docs_reports_modules_without_operation_docs(self) -> None:
+        payload = sem._docs_payload("list", module_name="json", summary_tag="rationale")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["operations"], [])
+        self.assertEqual(payload["nextCommands"][0]["requiredArgs"][0]["name"], "target")
+        module_doc = payload["moduleDocs"][0]
+        self.assertEqual(module_doc["operationDocStatus"], "no-operation-docs")
+        self.assertIn("json.stringify", module_doc["summary"])
+        targets = {target["target"] for target in module_doc["callTargets"]}
+        self.assertIn("json.createDocument", targets)
+        self.assertIn("json.stringify.String", targets)
+
+    def test_docs_module_docs_include_gui_call_targets(self) -> None:
+        payload = sem._docs_payload("list", module_name="gui", summary_tag="rationale")
+
+        module_doc = payload["moduleDocs"][0]
+        targets = {target["target"] for target in module_doc["callTargets"]}
+        self.assertIn("gui.applicationCreate", targets)
+        self.assertIn("gui.applicationRun", targets)
+        create_target = next(target for target in module_doc["callTargets"] if target["target"] == "gui.applicationCreate")
+        self.assertEqual(create_target["signature"]["text"], "(title:GuiText) -> GuiApplication")
+        self.assertIn("construction targets create handles", create_target["invariants"][0])
+        reserved_target = next(target for target in module_doc["callTargets"] if target["target"] == "gui.eventKeyCode")
+        self.assertFalse(reserved_target["usage"]["availableForCodegen"])
+
+    def test_docs_std_library_uses_typed_comment_summaries(self) -> None:
+        operations, modules, errors, _root = sem._docs_inventory()
+
+        self.assertEqual(errors, [])
+        missing_operations = [
+            operation["fullName"]
+            for operation in operations
+            if operation["visibility"]["public"]
+            and not operation.get("summarySource", "").startswith("comment:")
+        ]
+        missing_modules = [
+            module["module"]
+            for module in modules
+            if not module.get("summarySource", "").startswith("comment:")
+        ]
+        self.assertEqual(missing_operations, [])
+        self.assertEqual(missing_modules, [])
+
+    def test_docs_static_intrinsic_targets_are_actionable(self) -> None:
+        sqlite_payload = sem._docs_payload("get", operation_name="sqlite.openDatabase")
+        bcrypt_payload = sem._docs_payload("get", operation_name="bcrypt.hashPassword")
+        net_payload = sem._docs_payload("get", operation_name="net.fetchText")
+
+        self.assertTrue(sqlite_payload["ok"])
+        self.assertEqual(sqlite_payload["target"]["signature"]["outputs"][0]["values"], [
+            "Result",
+            "SqliteDatabase",
+            "SqliteDatabaseOpenFailure",
+        ])
+        self.assertIn(
+            "ignore ok source openDatabaseCleanupCall type Int32",
+            sqlite_payload["target"]["usage"]["cleanup"]["rows"],
+        )
+        self.assertIn(
+            "bind error openDatabaseCleanupError SqliteDatabaseCloseFailure openDatabaseCleanupCall",
+            sqlite_payload["target"]["usage"]["cleanup"]["rows"],
+        )
+        self.assertIn(
+            "useCapability <callerOperation> sqliteDatabaseReadWriter",
+            sqlite_payload["target"]["usage"]["useCapabilityRows"],
+        )
+
+        self.assertTrue(bcrypt_payload["ok"])
+        self.assertEqual(bcrypt_payload["target"]["usage"]["failureHandling"]["kind"], "status-code")
+        self.assertIn(
+            "argument hashPasswordCall outBuffer BcryptHashBuffer <outBuffer>",
+            bcrypt_payload["target"]["usage"]["call"]["rows"],
+        )
+
+        self.assertTrue(net_payload["ok"])
+        self.assertIn(
+            "fieldGet fetchTextBody HttpClientBodyText fetchTextResult body",
+            net_payload["target"]["usage"]["cleanup"]["rows"],
+        )
+        self.assertIn({"action": "free", "path": "heap"}, net_payload["target"]["usage"]["cleanup"]["requiredCallerEffects"])
+        self.assertIn(
+            "bind error fetchTextError HttpClientErrorCode fetchTextCall",
+            net_payload["target"]["usage"]["failureHandling"]["rows"],
+        )
+
+    def test_docs_static_target_coverage_matches_known_runtime_sets(self) -> None:
+        _operations, modules, errors, _root = sem._docs_inventory()
+        semlint = sem._load_semlint_module()
+
+        self.assertEqual(errors, [])
+        targets = {target["target"] for module in modules for target in module.get("callTargets", [])}
+        self.assertEqual(sorted(semlint.ALL_NATIVE_HTTP_TARGETS - targets), [])
+        self.assertEqual(sorted(semlint.SUPPORTED_JSON_RUNTIME_TARGETS - targets), [])
+        self.assertEqual(sorted(semlint.SUPPORTED_JSON_PRIMITIVE_TARGETS - targets), [])
+        self.assertIn("bcrypt.hashPassword", targets)
+        self.assertIn("net.fetchText", targets)
+        self.assertIn("net.fetchBytes", targets)
+        self.assertIn("sqlite.openDatabase", targets)
+
+    def test_docs_static_target_edge_rows_are_not_misleading(self) -> None:
+        application_run = sem._docs_payload("get", operation_name="gui.applicationRun")["target"]
+        verify_password = sem._docs_payload("get", operation_name="bcrypt.verifyPassword")["target"]
+        create_builder = sem._docs_payload("get", operation_name="json.createBuilder")["target"]
+        response_text = sem._docs_payload("get", operation_name="http.responseText")["target"]
+        fetch_bytes = sem._docs_payload("get", operation_name="net.fetchBytes")["target"]
+
+        self.assertEqual(application_run["usage"]["failureHandling"]["kind"], "sentinel-value")
+        self.assertFalse(application_run["usage"]["failureHandling"]["required"])
+        self.assertEqual(verify_password["usage"]["failureHandling"]["kind"], "negative-status")
+        self.assertIn(
+            "call verifyPasswordNegativeStatusCheckCall math.lessThanInt32",
+            verify_password["usage"]["failureHandling"]["rows"],
+        )
+        self.assertIn("Legacy builder/finder target", create_builder["agentWarnings"][0])
+        self.assertIn(
+            "useCapability <callerOperation> httpResponseWriter",
+            response_text["usage"]["useCapabilityRows"],
+        )
+        self.assertFalse(fetch_bytes["usage"]["availableForCodegen"])
+        self.assertEqual(fetch_bytes["loweringStatus"], "partial")
+
+    def test_docs_sentinel_value_failure_is_domain_dependent(self) -> None:
+        payload = sem._docs_payload("get", operation_name="gui.listBoxSelectedIndex")
+
+        handling = payload["target"]["usage"]["failureHandling"]
+        self.assertEqual(handling["kind"], "sentinel-value")
+        self.assertFalse(handling["required"])
+        self.assertIn("domain-dependent", handling["agentWarnings"][0])
+        self.assertIn("domain-dependent", payload["target"]["agentWarnings"][0])
+
+    def test_docs_cli_get_json_uses_parser(self) -> None:
+        stdout = io.StringIO()
+        with mock.patch("sys.stdout", stdout):
+            result = sem.main(["docs", "get", "http.clientGet", "--json"])
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(result, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.docs.v1")
+        self.assertEqual(payload["operation"]["usage"]["failureMode"]["kind"], "null-sentinel")
+
     def test_context_payload_declares_no_implicit_migration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "main.sem"

@@ -10,6 +10,9 @@
 # declaration. The compiler only understands generic runtimeBinding native
 # symbols; it does not special-case jwt.* call names.
 
+# rationale: Standard-library namespace and contracts for HS256 JWT signing, signature verification, flat claim reading, and token-bearing formatting helpers.
+# invariant: Downstream modules import this module as alias `jwt` before calling exported JWT operations; the operation bodies delegate through generic native runtimeBinding rows.
+# security: JWT secrets must come from deployment configuration before production. Source literals are acceptable only for local demos and tests.
 module standard.jwt
 purpose module standard.jwt "Standard-library namespace and contracts for HS256 JWT signing, signature verification, flat claim reading, and token-bearing formatting helpers."
 moduleOwns standard.jwt "The official import path `standard.jwt`, JWT access-token trust types, generic claim payload signing, flat JWT claim readers, HS256 status codes, runtimeBinding operation wrappers, and the native adapter source declaration."
@@ -83,6 +86,8 @@ exportOperation standard.jwt readInt64Claim
 exportOperation standard.jwt formatBearerLoginEnvelope
 exportOperation standard.jwt formatBearerRefreshEnvelope
 
+# rationale: Write an HS256-signed JWT whose claim payload is supplied by the caller and receives a generated jti.
+# invariant: The native binding does not own application claim policy; callers provide the payload template.
 operation hs256SignJsonPayloadWithRandomJti
 input operation hs256SignJsonPayloadWithRandomJti secret JwtSecret
 input operation hs256SignJsonPayloadWithRandomJti payloadTemplate JwtPayloadTemplate
@@ -101,6 +106,8 @@ invariant operation hs256SignJsonPayloadWithRandomJti "The native binding does n
 runtimeBindingPrecondition hs256SignJsonPayloadWithRandomJti "secret and payloadTemplate are null-terminated, outBuffer points to writable memory, outCapacity is positive, and payloadTemplate contains exactly one literal %s placeholder and no other printf directives."
 runtimeBinding hs256SignJsonPayloadWithRandomJti native.ss_jwt_hs256_sign_json_payload_with_random_jti
 
+# rationale: Return jwtStatusMatch only when the compact JWT's HS256 signature matches the supplied secret.
+# invariant: This verifier checks compact-token shape and signature only; callers own claim validation.
 operation hs256VerifyToken
 input operation hs256VerifyToken token JwtAccessToken
 input operation hs256VerifyToken secret JwtSecret
@@ -115,6 +122,8 @@ invariant operation hs256VerifyToken "This verifier checks compact-token shape a
 runtimeBindingPrecondition hs256VerifyToken "token and secret are null-terminated strings; token is expected to use compact JWT header.payload.signature shape."
 runtimeBinding hs256VerifyToken native.ss_jwt_hs256_verify_token
 
+# rationale: Decode a top-level string claim from a compact JWT into caller-owned scratch after the caller has verified signature trust.
+# invariant: This helper reads payload shape only and does not authorize a token; callers must verify the signature and enforce claim policy.
 operation readStringClaim
 input operation readStringClaim token JwtAccessToken
 input operation readStringClaim claimName JwtClaimName
@@ -133,6 +142,8 @@ invariant operation readStringClaim "This helper reads payload shape only and do
 runtimeBindingPrecondition readStringClaim "token, claimName, and outBuffer are non-null; outCapacity is positive and large enough for the decoded string claim."
 runtimeBinding readStringClaim native.ss_jwt_read_string_claim
 
+# rationale: Decode a top-level integer claim from a compact JWT or return the caller-supplied missing default.
+# invariant: This helper reads payload shape only and does not authorize a token; callers must verify the signature and enforce claim policy.
 operation readInt64Claim
 input operation readInt64Claim token JwtAccessToken
 input operation readInt64Claim claimName JwtClaimName
@@ -148,6 +159,8 @@ invariant operation readInt64Claim "This helper reads payload shape only and doe
 runtimeBindingPrecondition readInt64Claim "token and claimName are non-null; missingDefault is returned for malformed, missing, or non-integer claims."
 runtimeBinding readInt64Claim native.ss_jwt_read_int64_claim
 
+# rationale: Format a bearer-token login envelope using caller-supplied user fields and scopes JSON.
+# invariant: The formatter must not hard-code application user ids, roles, scopes, issuer, or audience.
 operation formatBearerLoginEnvelope
 input operation formatBearerLoginEnvelope accessToken JwtAccessToken
 input operation formatBearerLoginEnvelope refreshToken String
@@ -171,6 +184,8 @@ invariant operation formatBearerLoginEnvelope "The formatter must not hard-code 
 runtimeBindingPrecondition formatBearerLoginEnvelope "All text inputs are null-terminated, scopesJson is caller-validated JSON text, outBuffer points to writable memory, and outCapacity is positive."
 runtimeBinding formatBearerLoginEnvelope native.ss_jwt_format_bearer_login_envelope
 
+# rationale: Format a bearer-token refresh envelope containing rotated access and refresh tokens.
+# invariant: The formatter includes only the caller-supplied tokens and generic bearer envelope fields.
 operation formatBearerRefreshEnvelope
 input operation formatBearerRefreshEnvelope accessToken JwtAccessToken
 input operation formatBearerRefreshEnvelope refreshToken String

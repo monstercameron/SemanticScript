@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.iso646.
 
+# rationale: Canonical standard-library module for iso646-style boolean operator helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.iso646
 purpose module standard.iso646 "Canonical standard-library module for iso646-style boolean operator helpers."
 moduleOwns standard.iso646 "The official import path `standard.iso646` and this module's implementation body."
@@ -19,7 +21,7 @@ storage module immutable iso646ModuleVersionText String "standard.iso646 0.1"
 #   operators. SemanticScript has no macro expansion, so this module
 #   exposes each as a real operation. The refined surface returns
 #   Bool (not Int32 0/1) and reads its inputs as Int64
-#   integers â€” the keyword operates on the "truth" of an integer
+#   integers - the keyword operates on the "truth" of an integer
 #   (zero vs non-zero), matching C semantics exactly.
 #
 # invariant: every operation here is total. The result of "non-zero
@@ -49,6 +51,8 @@ domainLiteralTrust integerZeroBoundaryValue trustedStaticLiteral
 # section iso646.logicalKeywords
 # rationale: integer-truth combinators that return Bool.
 
+# invariant: Commutative and associative under integer truth semantics.
+# rationale: Returns true when both inputs are non-zero (mirrors C's 'and' keyword applied to integers).
 operation evaluateIso646AndKeyword
 input operation evaluateIso646AndKeyword leftValue Int64
 input operation evaluateIso646AndKeyword rightValue Int64
@@ -77,6 +81,8 @@ label returnAndFalse
 storage module immutable andFalseResult Bool false
 return value andFalseResult
 
+# rationale: Returns true when at least one input is non-zero (mirrors C's 'or' keyword).
+# invariant: Commutative and associative under integer truth semantics.
 operation evaluateIso646OrKeyword
 input operation evaluateIso646OrKeyword leftValue Int64
 input operation evaluateIso646OrKeyword rightValue Int64
@@ -105,6 +111,8 @@ label returnOrTrue
 storage module immutable orTrueResult Bool true
 return value orTrueResult
 
+# rationale: Returns true when the input is zero (mirrors C's 'not' keyword).
+# invariant: Involutive over Bool: evaluateIso646NotKeyword(evaluateIso646NotKeyword(x)) == truthOf(x).
 operation evaluateIso646NotKeyword
 input operation evaluateIso646NotKeyword inputValue Int64
 output operation evaluateIso646NotKeyword Bool
@@ -121,6 +129,8 @@ run detectInputIsZeroCall
 bind value inputIsZero Bool detectInputIsZeroCall
 return value inputIsZero
 
+# rationale: Returns true when exactly one input is non-zero (logical XOR over integer truth).
+# invariant: Self-inverse: evaluateIso646XorKeyword(x, x) == false for every x.
 operation evaluateIso646XorKeyword
 input operation evaluateIso646XorKeyword leftValue Int64
 input operation evaluateIso646XorKeyword rightValue Int64
@@ -148,6 +158,8 @@ run detectXorOperandsDifferCall
 bind value xorOperandsDiffer Bool detectXorOperandsDifferCall
 return value xorOperandsDiffer
 
+# rationale: Returns true when the two integer inputs are bitwise equal.
+# invariant: Symmetric; reflexive.
 operation evaluateIso646EqualKeyword
 input operation evaluateIso646EqualKeyword leftValue Int64
 input operation evaluateIso646EqualKeyword rightValue Int64
@@ -165,6 +177,8 @@ run detectEqualCall
 bind value valuesEqual Bool detectEqualCall
 return value valuesEqual
 
+# rationale: Returns true when the two integer inputs differ.
+# invariant: Symmetric; irreflexive.
 operation evaluateIso646NotEqualKeyword
 input operation evaluateIso646NotEqualKeyword leftValue Int64
 input operation evaluateIso646NotEqualKeyword rightValue Int64

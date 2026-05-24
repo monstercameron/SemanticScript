@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.signal.
 
+# rationale: Canonical standard-library module for signal helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.signal
 purpose module standard.signal "Canonical standard-library module for signal helpers."
 moduleOwns standard.signal "The official import path `standard.signal` and this module's implementation body."
@@ -39,7 +41,7 @@ storage module immutable signalModuleVersionText String "standard.signal 0.1"
 # domainLiterals consumed by other programs (notably
 # std/signal/main.test.sem which importModules it and runs the
 # smoke). The project / target / runtime / entry block is retained
-# so the module can still be linted standalone â€” the entry just
+# so the module can still be linted standalone - the entry just
 # points at the first exported operation rather than a `main` smoke.
 
 # Typed error domain for signal delivery. libc raise() returns
@@ -84,6 +86,10 @@ domainLiteralTrust terminationSignalNumber trustedStaticLiteral
 # section signal.raise
 # rationale: deliver a signal to the current process.
 
+# invariant: On success returns 0; on failure returns SignalDeliveryError.DeliveryFailed.
+# warning: May terminate the process if the signal's default disposition is fatal and no handler is installed via c.signal.
+# failure: Returned when libc raise() reports a non-zero status - typically when signalNumber is out of range.
+# rationale: Deliver the given POSIX signal to this process via libc raise().
 operation raiseProcessSignalNumber
 input operation raiseProcessSignalNumber signalNumber Int32
 output operation raiseProcessSignalNumber Result Int32 SignalDeliveryError
@@ -93,7 +99,7 @@ memory raiseProcessSignalNumber heap no
 async raiseProcessSignalNumber no
 purpose operation raiseProcessSignalNumber "Deliver the given POSIX signal to this process via libc raise()."
 invariant operation raiseProcessSignalNumber "On success returns 0; on failure returns SignalDeliveryError.DeliveryFailed."
-failure raiseProcessSignalNumber DeliveryFailed "Returned when libc raise() reports a non-zero status â€” typically when signalNumber is out of range."
+failure raiseProcessSignalNumber DeliveryFailed "Returned when libc raise() reports a non-zero status - typically when signalNumber is out of range."
 warning raiseProcessSignalNumber "May terminate the process if the signal's default disposition is fatal and no handler is installed via c.signal."
 guarantee raiseProcessSignalNumber "Always returns OR terminates; never hangs."
 
