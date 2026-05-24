@@ -2,14 +2,14 @@
 
 This is the public-domain crypt_blowfish 1.3 implementation by Solar Designer
 (Openwall), dropped in directly rather than carried as a git submodule. The
-source is small, dependency-free, and well-tested — same vendoring rationale
+source is small, dependency-free, and well-tested - same vendoring rationale
 as `third_party/sqlite/`.
 
 ## Pinned version
 
 - Release: **crypt_blowfish 1.3**
 - Upstream: <https://www.openwall.com/crypt/>
-- License: **public domain** (with fallback "permissive" terms — see the
+- License: **public domain** (with fallback "permissive" terms - see the
   prologue comment in `crypt_blowfish.c`). No SemanticScript-side license
   obligation introduced.
 - Algorithm compatibility: fully compatible with OpenBSD's bcrypt for the
@@ -24,16 +24,16 @@ as `third_party/sqlite/`.
 | `crypt_blowfish.h` | Public functions: `_crypt_blowfish_rn` (hash), `_crypt_gensalt_blowfish_rn` (salt), `_crypt_output_magic` (error). |
 | `crypt_gensalt.c` | Generic salt-string generator shared with other crypt schemes. |
 | `crypt_gensalt.h` | Defines `_crypt_itoa64` base-64 alphabet table used by both files. |
-| `ow-crypt.h` | Outermost public header — declares `crypt_rn` and friends; we only use it to know the canonical prototypes. |
+| `ow-crypt.h` | Outermost public header - declares `crypt_rn` and friends; we only use it to know the canonical prototypes. |
 | `README` | Upstream README (public domain, license terms confirmed). |
 | `crypt.3` | Upstream man page; vendored for reference but not installed. |
 
 ## Files NOT vendored
 
-- `wrapper.c` — provides `crypt`, `crypt_r`, `crypt_rn` compatibility shims around `getpwnam`-style users. We don't need any of that; our `sem_bcrypt_runtime.c` adapter calls `_crypt_blowfish_rn` and `_crypt_gensalt_blowfish_rn` directly.
-- `x86.S` — optional hand-rolled x86 assembly variant of the inner loop (faster on i386). We use the portable C implementation; the assembly is gated by `BF_ASM=1` in upstream's Makefile and ignored without it.
-- `glibc-*.diff` — patches for grafting the implementation into glibc's `crypt` subsystem. Not relevant.
-- `Makefile`, `PERFORMANCE`, `LINKS` — build artifacts and pointers.
+- `wrapper.c` - provides `crypt`, `crypt_r`, `crypt_rn` compatibility shims around `getpwnam`-style users. We don't need any of that; our `sem_bcrypt_runtime.c` adapter calls `_crypt_blowfish_rn` and `_crypt_gensalt_blowfish_rn` directly.
+- `x86.S` - optional hand-rolled x86 assembly variant of the inner loop (faster on i386). We use the portable C implementation; the assembly is gated by `BF_ASM=1` in upstream's Makefile and ignored without it.
+- `glibc-*.diff` - patches for grafting the implementation into glibc's `crypt` subsystem. Not relevant.
+- `Makefile`, `PERFORMANCE`, `LINKS` - build artifacts and pointers.
 
 ## Why crypt_blowfish?
 
