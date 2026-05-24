@@ -16,19 +16,28 @@
 
 Project site: <https://monstercameron.github.io/SemanticScript/>
 
-SemanticScript is a pre-release, agent-first application language and toolchain.
+SemanticScript is a pre-release, agent-first application language and toolchain
+for code that should be easy to inspect, repair, and validate.
 
-It is designed around explicit, line-addressable source records: operations
-name their effects, capabilities, memory behavior, failure paths, runtime
-edges, and review intent directly in the source. The goal is not terse code. The
-goal is code that humans and agents can inspect, repair, and validate without
-guessing.
+It is built around explicit, line-addressable source records: operations name
+their effects, capabilities, memory behavior, failure paths, runtime edges, and
+review intent directly in the source. The goal is not terse code. The goal is
+source that gives humans, agents, editors, linters, and compilers enough context
+to make careful changes without reconstructing intent from framework convention
+or expression nesting.
 
 Current release status: pre-release, with the repository version recorded in
 [`version.json`](version.json). No stable public release has been published yet.
 Main-branch prerelease builds are published on
 [GitHub Releases](https://github.com/monstercameron/SemanticScript/releases)
 with a Windows `sem.exe`, VS Code VSIX, and checksum manifest.
+
+Review is especially useful now because the language, compiler, linter,
+formatter, editor extension, runtime adapters, docs, and demos are still moving
+together. A reviewer can trace one idea from syntax row to parser behavior,
+diagnostic, lowering path, editor support, and runnable app. A small PR can
+meaningfully improve the project while the compatibility boundary is still
+being shaped.
 
 ## What Works
 
@@ -107,6 +116,31 @@ python -m pip install -r requirements.txt -c constraints.txt
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tests\run_suite.py ci-fast
 ```
+
+## Start Reviewing
+
+If you are new to the project, start with one narrow pass:
+
+1. Read [docs/overview.md](docs/overview.md) for the design goal.
+2. Check [docs/reference/syntax-inventory.md](docs/reference/syntax-inventory.md)
+   to see what is implemented, partial, or metadata-only.
+3. Open one demo, such as `apps/taskforge-tui/`, then map it and inspect one
+   operation:
+
+   ```powershell
+   sem graph --kind summary --json apps/taskforge-tui
+   sem slice --operation main --json apps/taskforge-tui
+   ```
+
+4. File an issue or PR when something is unclear, inconsistent, under-tested, or
+   harder to review than it should be.
+
+Good first reviews often find mismatches between docs and implementation,
+confusing diagnostics, missing examples, editor support that moved ahead of the
+parser, or demo code that no longer shows the strongest current pattern.
+
+You do not need to design a language feature to help. A clear doc correction,
+better diagnostic example, smaller demo, or reproduced mismatch is valuable.
 
 ## Language Shape
 
@@ -230,7 +264,21 @@ Marketplace distribution.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
+PRs are welcome. The best contributions are narrow, easy to review, and include
+the command or manual check used to validate the change. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, branch naming, and review policy.
+
+High-value contribution areas right now:
+
+- Documentation fixes that explain current behavior, status, or limitations more
+  clearly.
+- Focused compiler, linter, formatter, or editor fixes with tests.
+- Diagnostics that explain what went wrong and how to repair it.
+- Demo improvements that show the intended SemanticScript style without adding
+  unrelated complexity.
+- Small runtime or stdlib fixes backed by an app or feature test.
+
+The short version:
 
 - Keep changes scoped.
 - Include validation commands in PRs.
