@@ -1,7 +1,10 @@
 """collatz.py - sum of Collatz stopping times for every start in 1..N.
 
-Mirrors collatz.c: same N, same checksum, same output contract.
-Timed with time.perf_counter().
+Mirrors collatz.c's algorithm and checksum. Uses bitwise parity/halving
+(`value & 1`, `value >> 1`), which is correct for Python's arbitrary-precision
+ints and faster than `% 2` / `// 2`. (The JavaScript port cannot do this: its
+bitwise operators are 32-bit and Collatz peaks exceed 2^31.) Timed with
+time.perf_counter().
 """
 
 import time
@@ -16,10 +19,10 @@ def main():
         value = k
         steps = 0
         while value != 1:
-            if value % 2 == 0:
-                value = value // 2
-            else:
+            if value & 1:
                 value = 3 * value + 1
+            else:
+                value >>= 1
             steps += 1
         total_steps += steps
     end = time.perf_counter()

@@ -56,11 +56,19 @@ sources (documented in each file's invariants).
 **Correctness cross-check.** The harness asserts that all four languages report
 the **same checksum** for each algorithm. If they diverge, the run is flagged
 and the timings are not comparable. This is what makes the comparison
-trustworthy: every language is verified to have done identical work, not just
+trustworthy: every language is verified to compute the same result, not just
 "a benchmark by the same name." For `mandelbrot` this required writing each
 floating-point step as a separate temporary in all four languages so no
 compiler fuses a multiply-add (FMA) and changes the rounding — with that, all
 four produce bit-identical escape counts.
+
+**Same task, idiomatic per language.** Each implementation is the *fastest
+faithful* version a competent developer would write in that language, not a
+mechanical transliteration of the C source. They run the same algorithm and
+produce the same checksum, but the in-language mechanics differ where idiom
+matters for speed (see "Per-language implementation notes" below). The most
+visible case is the Python sieve, which strikes out composites with strided
+slice assignment instead of a Python-level loop.
 
 **Fairness for the compiled pair.** Both C and SemanticScript are lowered to
 LLVM IR and compiled with `clang -O2`. The C-vs-SemanticScript ratio therefore
@@ -70,14 +78,15 @@ backend or optimizer.
 ## Results
 
 Host: Windows 11, clang 22.1.4, Node v25, CPython 3.10.11. Median of 5 runs
-(1 warm-up). Numbers will vary by machine; regenerate with `run_multilang.py`.
+(1 warm-up), with JS and Python in their optimized idiomatic form. Numbers
+will vary by machine; regenerate with `run_multilang.py`.
 
 | Algorithm       | C          | SemanticScript | JavaScript | Python      |
 |-----------------|-----------:|---------------:|-----------:|------------:|
-| `fib_recursive` | 1.00×      | **1.17×**      | 3.83×      | 102.7×      |
-| `collatz`       | 1.00×      | **0.94×**      | 9.06×      | 67.2×       |
-| `sieve`         | 1.00×      | **0.99×**      | 1.38×      | 35.1×       |
-| `mandelbrot`    | 1.00×      | **0.98×**      | 1.04×      | 51.3×       |
+| `fib_recursive` | 1.00×      | **1.13×**      | 3.94×      | 87.8×       |
+| `collatz`       | 1.00×      | **0.96×**      | 8.40×      | 64.9×       |
+| `sieve`         | 1.00×      | **0.99×**      | 1.41×      | 3.44×       |
+| `mandelbrot`    | 1.00×      | **0.97×**      | 1.03×      | 48.1×       |
 
 (× = slowdown relative to C; lower is faster. <1.0× means it beat C in that
 run, which for the compiled pair is measurement noise.)
@@ -86,10 +95,10 @@ Absolute medians (seconds) from the reference run:
 
 | Algorithm       | C        | SemanticScript | JavaScript | Python   |
 |-----------------|---------:|---------------:|-----------:|---------:|
-| `fib_recursive` | 0.072    | 0.084          | 0.276      | 7.401    |
-| `collatz`       | 0.075    | 0.071          | 0.684      | 5.076    |
-| `sieve`         | 0.098    | 0.097          | 0.135      | 3.438    |
-| `mandelbrot`    | 0.144    | 0.141          | 0.149      | 7.379    |
+| `fib_recursive` | 0.069    | 0.078          | 0.271      | 6.033    |
+| `collatz`       | 0.073    | 0.070          | 0.610      | 4.711    |
+| `sieve`         | 0.097    | 0.096          | 0.137      | 0.333    |
+| `mandelbrot`    | 0.144    | 0.140          | 0.149      | 6.926    |
 
 ## What the numbers say
 
@@ -99,16 +108,47 @@ Absolute medians (seconds) from the reference run:
   the optimizer does the rest. The benchmark's real claim is that the IR it
   emits *is* reasonable — no accidental abstraction tax in the lowered code.
 
-- **The one soft spot is recursion** (`fib_recursive`, 1.17×). Function-call
+- **The one soft spot is recursion** (`fib_recursive`, 1.13×). Function-call
   heavy code is slightly slower than C, pointing at calling-convention or
   result/error-bind overhead per frame rather than loop-body codegen. It is the
   natural place to look next for prototype codegen wins.
 
-- **JIT vs interpreter.** Node is within ~4% of C on the float-heavy
-  `mandelbrot` and the memory-bound `sieve`, but pays 4–9× on tight
-  integer/recursion loops where the JIT and number-boxing show. CPython is
-  35–100× slower throughout — worst on recursion (call overhead) and best on
-  `sieve`, where the hot inner store lands in C-level `bytearray` machinery.
+- **JIT vs interpreter.** Node is within ~3% of C on the float-heavy
+  `mandelbrot` and ~1.4× on the memory-bound `sieve`, but pays 4–8× on tight
+  integer/recursion loops where number-boxing and call overhead show. CPython
+  ranges from 3.4× to 88× — the spread is the story: it is two orders of
+  magnitude slower when the work stays in the bytecode interpreter
+  (`fib_recursive`, `mandelbrot`), but only ~3× on `sieve` once the hot path is
+  expressed as bulk C-level operations (strided slice assignment + `sum()`).
+  The lesson is the usual one for dynamic languages: speed comes from pushing
+  the inner loop out of the interpreter and into the runtime's C core.
+
+## Per-language implementation notes
+
+Each language uses the fastest faithful form of the algorithm. The notable
+choices, and the optimizations deliberately *not* taken:
+
+- **`fib_recursive` (all):** kept genuinely recursive. Memoization or an
+  iterative rewrite would be faster but would defeat the benchmark, whose
+  entire purpose is to measure function-call overhead.
+- **Python `sieve`:** marks composites with strided slice assignment
+  (`sieve[start::step] = b"\x00" * count`), loops only to `isqrt(limit)`, and
+  counts primes with `sum()`. This keeps the hot work in C-level routines and
+  is ~10× faster than the per-element Python loop it replaced (3.4 s → 0.33 s).
+- **Python `collatz`:** uses bitwise `value & 1` / `value >> 1`, which is correct
+  for Python's arbitrary-precision ints and faster than `% 2` / `// 2`.
+- **JavaScript `collatz`:** must use arithmetic (`% 2`, `/ 2`), *not* bitwise
+  operators — JS bitwise ops truncate to 32 bits and Collatz peaks exceed 2³¹,
+  so a bitwise version would silently produce wrong values. Plain numbers are
+  exact here because every value stays below 2⁵³.
+- **JavaScript (all):** hot code is wrapped in a `main()` function so V8 reliably
+  JIT-optimizes it; `sieve` uses a `Uint8Array`. These were already near-optimal,
+  so JS times barely moved after optimization.
+- **`mandelbrot` (all):** every float operation is a separate statement in a
+  fixed order so no compiler fuses a multiply-add; this is required for
+  bit-identical checksums and costs nothing measurable. Python is left as pure
+  scalar CPython — NumPy would be faster but measures a C/SIMD library, not the
+  language, so it is out of scope (as are PyPy and other alternative runtimes).
 
 ## Caveats
 
