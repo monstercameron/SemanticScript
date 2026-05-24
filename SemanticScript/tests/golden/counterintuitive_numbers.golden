@@ -1,0 +1,10 @@
+Counterintuitive Numbers
+========================
+0.1 + 0.2 => 0.30000000000000004
+0.1 + 0.2 === 0.3 => false
+Object.is(-0, 0) => false
+1 / -0 => -Infinity
+9007199254740992 + 1 => 9007199254740992
+largeInteger === largeIntegerPlusOne => true
+NaN === NaN => false
+Number.isNaN(NaN) => true

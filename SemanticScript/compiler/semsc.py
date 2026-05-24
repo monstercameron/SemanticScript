@@ -19718,13 +19718,26 @@ def main():
     except OSError as e:
         print(f"semsc: cannot read source file: {e}", file=sys.stderr)
         sys.exit(2)
+    except UnicodeDecodeError as e:
+        # Source files must be UTF-8. A non-UTF-8 file is operator error, not a
+        # compiler bug: report it cleanly instead of letting the decode raise an
+        # unhandled traceback out of main().
+        print(f"semsc: source file is not valid UTF-8: {e}", file=sys.stderr)
+        sys.exit(2)
 
     source_ext = os.path.splitext(args.source)[1].lower()
     if source_ext not in (".sscript", ".sem"):
         print("semsc: source file must use .sscript or .sem", file=sys.stderr)
         sys.exit(2)
 
-    is_build_tape_source = _is_build_tape_path(args.source) or _looks_like_build_tape(source)
+    try:
+        is_build_tape_source = _is_build_tape_path(args.source) or _looks_like_build_tape(source)
+    except SyntaxError:
+        # Build-tape sniffing tokenizes the source; if it doesn't even lex
+        # (e.g. an unterminated string), it isn't a build tape. Defer to the
+        # guarded parse() path below, which reports the lex error cleanly
+        # instead of letting it escape main() as a traceback.
+        is_build_tape_source = False
     if is_build_tape_source:
         try:
             _validate_build_tape_source(source, args.source)

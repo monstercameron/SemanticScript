@@ -1,0 +1,10 @@
+Esoteric Church Encoding
+========================
+two: 2
+three: 3
+twoPlusThree: 5
+twoTimesThree: 6
+first(pair): 5
+second(pair): 6
+ifTrue: true
+ifFalse: false

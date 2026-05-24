@@ -1,0 +1,7 @@
+Counterintuitive This Binding
+=============================
+counter.readCount() => 3
+detachedReadCount() => TypeError
+boundReadCount() => 3
+otherCounter.readCount() => 99
+arrowReadCount.call({ count: 42 }) => 3

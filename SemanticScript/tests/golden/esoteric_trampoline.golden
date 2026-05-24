@@ -1,0 +1,5 @@
+Esoteric Trampoline
+===================
+factorial(3)=6 bounces=5
+factorial(5)=120 bounces=9
+factorial(8)=40320 bounces=15

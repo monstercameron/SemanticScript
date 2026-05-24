@@ -1,0 +1,16 @@
+Esoteric Stack Language
+=======================
+source:
+: square dup * ;
+: cube dup dup * * ;
+: average + 2 / ;
+5 square print
+3 cube print
+9 3 average print
+7 4 swap - print
+output:
+25
+27
+6
+-3
+finalStackDepth: 0

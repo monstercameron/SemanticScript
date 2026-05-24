@@ -1,0 +1,8 @@
+Counterintuitive Event Loop
+===========================
+1. sync-start
+2. sync-end
+3. nextTick
+4. promise-then-1
+5. promise-then-2
+6. timeout-0
