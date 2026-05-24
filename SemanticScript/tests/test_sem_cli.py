@@ -770,7 +770,7 @@ return value 0
             self.assertEqual(payload["schemaVersion"], "sem.patch.v1")
             self.assertEqual(payload["mode"], "apply")
             self.assertTrue(payload["inputPlanPath"].endswith("plan.json"))
-            self.assertIn(str(source), payload["filesChanged"])
+            self.assertTrue(any(Path(item).samefile(source) for item in payload["filesChanged"]))
             self.assertTrue(any(item["kind"] == "graph" for item in payload["nextCommands"]))
             updated = source.read_text(encoding="utf-8")
             self.assertIn('purpose operation main "demo"', updated)
