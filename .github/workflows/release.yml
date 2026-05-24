@@ -55,6 +55,45 @@ jobs:
       - name: Run release suite
         run: python SemanticScript/tests/run_suite.py ci-release
 
+      - name: Install release packaging dependencies
+        run: python -m pip install pyinstaller==6.20.0
+
+      - name: Build sem single-file executable
+        run: python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
+
+      - name: Validate sem single-file executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sem = "dist\sem.exe"
+          if (-not (Test-Path -Path $sem -PathType Leaf)) {
+            throw "Expected PyInstaller output at $sem."
+          }
+
+          & $sem version --json
+          if ($LASTEXITCODE -ne 0) { throw "sem version failed with $LASTEXITCODE." }
+
+          & $sem skills list --json
+          if ($LASTEXITCODE -ne 0) { throw "sem skills list failed with $LASTEXITCODE." }
+
+          & $sem skills get taskforge-web-patterns --json | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "sem skills get taskforge-web-patterns failed with $LASTEXITCODE." }
+
+          & $sem check --json SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem check failed with $LASTEXITCODE." }
+
+          & $sem fmt --check SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem fmt failed with $LASTEXITCODE." }
+
+          & $sem lint SemanticScript\tests\tiny.sem -- --summary
+          if ($LASTEXITCODE -ne 0) { throw "sem lint failed with $LASTEXITCODE." }
+
+          & $sem emit-ir SemanticScript\tests\agent_cli_demo.test.sem --quiet
+          if ($LASTEXITCODE -ne 0) { throw "sem emit-ir failed with $LASTEXITCODE." }
+
+          & $sem run SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem run failed with $LASTEXITCODE." }
+
       - name: Remove stale VSIX artifacts
         shell: pwsh
         run: |
@@ -95,6 +134,14 @@ jobs:
           $artifactDir = "release-artifacts"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
+          $semExecutable = "dist\sem.exe"
+          if (-not (Test-Path -Path $semExecutable -PathType Leaf)) {
+            throw "Expected sem single-file executable at $semExecutable."
+          }
+          $releaseSemExeName = "semanticscript-sem-windows-x64-$releaseTag.exe"
+          $releaseSemExePath = Join-Path $artifactDir $releaseSemExeName
+          Copy-Item -Path $semExecutable -Destination $releaseSemExePath -Force
+
           $vsixFiles = Get-ChildItem -Path "vscode-semanticscript" -Filter "*.vsix" -File
           if ($vsixFiles.Count -ne 1) {
             throw "Expected exactly one VSIX artifact, found $($vsixFiles.Count)."
@@ -109,10 +156,24 @@ jobs:
             "python SemanticScript/tests/run_suite.py ci-fast",
             "python SemanticScript/tests/run_suite.py editor",
             "python SemanticScript/tests/run_suite.py ci-release",
+            "python -m pip install pyinstaller==6.20.0",
+            "python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec",
+            "dist/sem.exe version --json",
+            "dist/sem.exe skills list --json",
+            "dist/sem.exe skills get taskforge-web-patterns --json",
+            "dist/sem.exe check --json SemanticScript/tests/agent_cli_demo.test.sem",
+            "dist/sem.exe fmt --check SemanticScript/tests/agent_cli_demo.test.sem",
+            "dist/sem.exe lint SemanticScript/tests/tiny.sem -- --summary",
+            "dist/sem.exe emit-ir SemanticScript/tests/agent_cli_demo.test.sem --quiet",
+            "dist/sem.exe run SemanticScript/tests/agent_cli_demo.test.sem",
             "npm --prefix vscode-semanticscript run package:vsix"
           )
 
           $artifactSpecs = @(
+            @{
+              name = "semanticscript-sem-windows-x64"
+              path = $releaseSemExePath
+            },
             @{
               name = "semanticscript-vscode-vsix"
               path = $releaseVsixPath
@@ -149,7 +210,15 @@ jobs:
           "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
           "repo_version=$repoVersion" >> $env:GITHUB_OUTPUT
           "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
+          "sem_exe_path=$releaseSemExePath" >> $env:GITHUB_OUTPUT
           "vsix_path=$releaseVsixPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload sem executable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: semanticscript-sem-windows-x64
+          path: ${{ steps.manifest.outputs.sem_exe_path }}
+          if-no-files-found: error
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
@@ -171,6 +240,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.manifest.outputs.release_tag }}
           REPO_VERSION: ${{ steps.manifest.outputs.repo_version }}
+          SEM_EXE_PATH: ${{ steps.manifest.outputs.sem_exe_path }}
           VSIX_PATH: ${{ steps.manifest.outputs.vsix_path }}
           MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
         run: |
@@ -184,8 +254,10 @@ jobs:
             "- python SemanticScript/tests/run_suite.py ci-fast",
             "- python SemanticScript/tests/run_suite.py editor",
             "- python SemanticScript/tests/run_suite.py ci-release",
+            "- PyInstaller sem single-file executable smoke validation",
             "",
             "Artifacts:",
+            "- $(Split-Path -Leaf $env:SEM_EXE_PATH)",
             "- $(Split-Path -Leaf $env:VSIX_PATH)",
             "- $(Split-Path -Leaf $env:MANIFEST_PATH)"
           ) -join "`n"
@@ -197,4 +269,4 @@ jobs:
             gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes $notes --target "${{ github.sha }}" --verify-tag
           }
 
-          gh release upload $env:RELEASE_TAG $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
+          gh release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber

@@ -1,5 +1,6 @@
 import argparse
 import io
+import importlib.util
 import json
 import subprocess
 import sys
@@ -52,6 +53,18 @@ return error overflow
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
 AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
+
+
+def load_sem_launcher():
+    spec = importlib.util.spec_from_file_location(
+        "sem_release_launcher",
+        REPO_ROOT / "packaging" / "pyinstaller" / "sem_launcher.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class TestSemAgentPayloads(unittest.TestCase):
@@ -1404,6 +1417,43 @@ return value 0
             result = sem.main(["--version", "--json"])
         self.assertEqual(result, 0)
         self.assertTrue(stdout.write.called)
+
+    def test_release_launcher_routes_internal_tool_script_paths(self) -> None:
+        launcher = load_sem_launcher()
+        compiler_path = REPO_ROOT / "SemanticScript" / "compiler" / "semsc.py"
+        fake_module = mock.Mock()
+
+        with mock.patch.object(
+            launcher.importlib,
+            "import_module",
+            return_value=fake_module,
+        ) as import_mock, mock.patch.object(
+            launcher,
+            "_run_module_main",
+            return_value=0,
+        ) as run_mock:
+            result = launcher.main([
+                str(compiler_path),
+                "SemanticScript/tests/tiny.sem",
+                "--parse-only",
+            ])
+
+        self.assertEqual(result, 0)
+        import_mock.assert_called_once_with("SemanticScript.compiler.semsc")
+        run_mock.assert_called_once_with(
+            fake_module,
+            ["SemanticScript/tests/tiny.sem", "--parse-only"],
+            passes_argv=False,
+        )
+
+    def test_release_launcher_runs_public_sem_cli_by_default(self) -> None:
+        launcher = load_sem_launcher()
+
+        with mock.patch.object(sem, "main", return_value=0) as main_mock:
+            result = launcher.main(["version", "--json"])
+
+        self.assertEqual(result, 0)
+        main_mock.assert_called_once_with(["version", "--json"])
 
 
 class TestCallContracts(unittest.TestCase):
