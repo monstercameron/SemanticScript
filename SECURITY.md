@@ -9,18 +9,19 @@ is explicitly announced.
 
 Do not open a public issue with vulnerability details.
 
-Use GitHub's private reporting flow:
+Use GitHub's private reporting flow when available:
 
 1. Open the repository on GitHub.
 2. Go to **Security**.
 3. Choose **Report a vulnerability** or **Advisories**.
 4. Submit a private security advisory draft with the details below.
 
-If the private advisory flow is unavailable, use an existing private maintainer
-coordination channel. If no private contact is known, open a public issue that
-only asks maintainers to enable private vulnerability reporting; do not include
-exploit details, affected paths, logs, proof-of-concept code, or reproduction
-steps in that issue.
+If the private advisory flow is unavailable, email
+`mr.e.cameron+semanticscript-security@gmail.com` with the subject
+`SemanticScript security report`. If email is unavailable, open a public issue
+that only asks maintainers to enable private vulnerability reporting; do not
+include exploit details, affected paths, logs, proof-of-concept code, or
+reproduction steps in that issue.
 
 Expected response targets:
 

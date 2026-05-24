@@ -26,9 +26,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -37,7 +39,7 @@ jobs:
             constraints.txt
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
 
@@ -54,6 +56,45 @@ jobs:
 
       - name: Run release suite
         run: python SemanticScript/tests/run_suite.py ci-release
+
+      - name: Install release packaging dependencies
+        run: python -m pip install pyinstaller==6.20.0
+
+      - name: Build sem single-file executable
+        run: python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
+
+      - name: Validate sem single-file executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sem = "dist\sem.exe"
+          if (-not (Test-Path -Path $sem -PathType Leaf)) {
+            throw "Expected PyInstaller output at $sem."
+          }
+
+          & $sem version --json
+          if ($LASTEXITCODE -ne 0) { throw "sem version failed with $LASTEXITCODE." }
+
+          & $sem skills list --json
+          if ($LASTEXITCODE -ne 0) { throw "sem skills list failed with $LASTEXITCODE." }
+
+          & $sem skills get taskforge-web-patterns --json | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "sem skills get taskforge-web-patterns failed with $LASTEXITCODE." }
+
+          & $sem check --json SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem check failed with $LASTEXITCODE." }
+
+          & $sem fmt --check SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem fmt failed with $LASTEXITCODE." }
+
+          & $sem lint SemanticScript\tests\tiny.sem -- --summary
+          if ($LASTEXITCODE -ne 0) { throw "sem lint failed with $LASTEXITCODE." }
+
+          & $sem emit-ir SemanticScript\tests\agent_cli_demo.test.sem --quiet
+          if ($LASTEXITCODE -ne 0) { throw "sem emit-ir failed with $LASTEXITCODE." }
+
+          & $sem run SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem run failed with $LASTEXITCODE." }
 
       - name: Remove stale VSIX artifacts
         shell: pwsh
@@ -92,8 +133,61 @@ jobs:
             throw "Tag '$releaseTag' does not match version.json version '$repoVersion'. Expected 'v$repoVersion'."
           }
 
+          git fetch --force --tags
+          $releaseCommit = (git rev-list -n 1 $releaseTag).Trim()
+          if (-not $releaseCommit) {
+            throw "Could not resolve release commit for tag '$releaseTag'."
+          }
+          $releaseShortSha = (git rev-parse --short $releaseCommit).Trim()
+          $releaseSubject = (git log -1 --format=%s $releaseCommit).Trim()
+          $releaseBody = (git log -1 --format=%b $releaseCommit).Trim()
+
+          $previousTag = ""
+          $previousTagOutput = git describe --tags --abbrev=0 "$releaseCommit^" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $previousTag = ($previousTagOutput | Select-Object -First 1).Trim()
+          }
+
+          $commitRange = $releaseCommit
+          $commitRangeLabel = $releaseShortSha
+          $commitListTruncated = $false
+          $commitLogArgs = @("log", "--reverse", "--format=%H%x09%h%x09%s")
+          if ($previousTag) {
+            $commitRange = "$previousTag..$releaseCommit"
+            $commitRangeLabel = "$previousTag..$releaseShortSha"
+            $commitLogArgs += $commitRange
+          } else {
+            $commitCount = [int](git rev-list --count $releaseCommit)
+            if ($commitCount -gt 50) {
+              $commitListTruncated = $true
+            }
+            $commitLogArgs += "--max-count=50"
+            $commitLogArgs += $releaseCommit
+          }
+
+          $commitRows = git @commitLogArgs
+          $commits = @()
+          foreach ($row in $commitRows) {
+            if (-not $row) { continue }
+            $parts = $row -split "`t", 3
+            if ($parts.Count -lt 3) { continue }
+            $commits += [ordered]@{
+              sha = $parts[0]
+              shortSha = $parts[1]
+              subject = $parts[2]
+            }
+          }
+
           $artifactDir = "release-artifacts"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          $semExecutable = "dist\sem.exe"
+          if (-not (Test-Path -Path $semExecutable -PathType Leaf)) {
+            throw "Expected sem single-file executable at $semExecutable."
+          }
+          $releaseSemExeName = "semanticscript-sem-windows-x64-$releaseTag.exe"
+          $releaseSemExePath = Join-Path $artifactDir $releaseSemExeName
+          Copy-Item -Path $semExecutable -Destination $releaseSemExePath -Force
 
           $vsixFiles = Get-ChildItem -Path "vscode-semanticscript" -Filter "*.vsix" -File
           if ($vsixFiles.Count -ne 1) {
@@ -109,12 +203,28 @@ jobs:
             "python SemanticScript/tests/run_suite.py ci-fast",
             "python SemanticScript/tests/run_suite.py editor",
             "python SemanticScript/tests/run_suite.py ci-release",
+            "python -m pip install pyinstaller==6.20.0",
+            "python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec",
+            "dist/sem.exe version --json",
+            "dist/sem.exe skills list --json",
+            "dist/sem.exe skills get taskforge-web-patterns --json",
+            "dist/sem.exe check --json SemanticScript/tests/agent_cli_demo.test.sem",
+            "dist/sem.exe fmt --check SemanticScript/tests/agent_cli_demo.test.sem",
+            "dist/sem.exe lint SemanticScript/tests/tiny.sem -- --summary",
+            "dist/sem.exe emit-ir SemanticScript/tests/agent_cli_demo.test.sem --quiet",
+            "dist/sem.exe run SemanticScript/tests/agent_cli_demo.test.sem",
             "npm --prefix vscode-semanticscript run package:vsix"
           )
 
           $artifactSpecs = @(
             @{
+              name = "semanticscript-sem-windows-x64"
+              description = "Single-file Windows sem compiler and toolchain executable"
+              path = $releaseSemExePath
+            },
+            @{
               name = "semanticscript-vscode-vsix"
+              description = "VS Code extension package"
               path = $releaseVsixPath
             }
           )
@@ -123,6 +233,7 @@ jobs:
             $file = Get-Item -Path $artifact.path
             @{
               name = $artifact.name
+              description = $artifact.description
               fileName = $file.Name
               path = $artifact.path.Replace("\", "/")
               bytes = $file.Length
@@ -133,11 +244,23 @@ jobs:
           $manifest = [ordered]@{
             schemaVersion = "sem.releaseManifest.v1"
             repoVersion = $repoVersion
+            versionNote = "SemanticScript $repoVersion release. Download $releaseSemExeName for the single-file Windows compiler/toolchain."
             tag = $releaseTag
             ref = "${{ github.ref }}"
             refName = "${{ github.ref_name }}"
             refType = "${{ github.ref_type }}"
-            commitSha = "${{ github.sha }}"
+            commitSha = $releaseCommit
+            previousTag = $previousTag
+            commitRange = $commitRange
+            commitRangeLabel = $commitRangeLabel
+            commitListTruncated = $commitListTruncated
+            releaseCommit = [ordered]@{
+              sha = $releaseCommit
+              shortSha = $releaseShortSha
+              subject = $releaseSubject
+              body = $releaseBody
+            }
+            commits = $commits
             dateUtc = (Get-Date).ToUniversalTime().ToString("o")
             commands = $commands
             artifacts = $artifacts
@@ -146,20 +269,74 @@ jobs:
           $manifestPath = Join-Path $artifactDir "semanticscript-release-manifest-$releaseTag.json"
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath -Encoding utf8
 
+          $downloadLines = foreach ($artifact in $artifacts) {
+            "- $($artifact.fileName) - $($artifact.description). SHA-256: $($artifact.sha256)"
+          }
+          $changeLines = foreach ($commit in $commits) {
+            "- $($commit.shortSha) - $($commit.subject)"
+          }
+          if (-not $changeLines) {
+            $changeLines = @("- No commits were found for range $commitRangeLabel.")
+          }
+          if ($commitListTruncated) {
+            $changeLines += "- Commit list truncated to the latest 50 commits because this release has no previous tag."
+          }
+
+          $notes = @(
+            "SemanticScript $releaseTag",
+            "",
+            "Version note:",
+            "- Repository/toolchain version: $repoVersion",
+            "- Compiler/toolchain download: $releaseSemExeName",
+            "- VS Code extension download: $releaseVsixName",
+            "- The Windows compiler/toolchain artifact is a single-file sem.exe package; it extracts an internal temporary payload at runtime.",
+            "",
+            "Release commit:",
+            "- $releaseShortSha - $releaseSubject",
+            "- Full SHA: $releaseCommit",
+            "",
+            "Changes in $commitRangeLabel:",
+            $changeLines,
+            "",
+            "Downloads:",
+            $downloadLines,
+            "- $(Split-Path -Leaf $manifestPath) - Release manifest with artifact metadata and checksums.",
+            "",
+            "Validation:",
+            "- python SemanticScript/tests/run_suite.py ci-fast",
+            "- python SemanticScript/tests/run_suite.py editor",
+            "- python SemanticScript/tests/run_suite.py ci-release",
+            "- PyInstaller sem single-file executable smoke validation",
+            "- npm --prefix vscode-semanticscript run package:vsix"
+          ) -join "`n"
+
+          $notesPath = Join-Path $artifactDir "semanticscript-release-notes-$releaseTag.md"
+          $notes | Set-Content -Path $notesPath -Encoding utf8
+
           "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
           "repo_version=$repoVersion" >> $env:GITHUB_OUTPUT
+          "release_commit=$releaseCommit" >> $env:GITHUB_OUTPUT
           "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
+          "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
+          "sem_exe_path=$releaseSemExePath" >> $env:GITHUB_OUTPUT
           "vsix_path=$releaseVsixPath" >> $env:GITHUB_OUTPUT
 
+      - name: Upload sem executable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: semanticscript-sem-windows-x64
+          path: ${{ steps.manifest.outputs.sem_exe_path }}
+          if-no-files-found: error
+
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semanticscript-vscode-vsix
           path: ${{ steps.manifest.outputs.vsix_path }}
           if-no-files-found: error
 
       - name: Upload release manifest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semanticscript-release-manifest
           path: ${{ steps.manifest.outputs.manifest_path }}
@@ -171,30 +348,37 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.manifest.outputs.release_tag }}
           REPO_VERSION: ${{ steps.manifest.outputs.repo_version }}
+          RELEASE_COMMIT: ${{ steps.manifest.outputs.release_commit }}
+          SEM_EXE_PATH: ${{ steps.manifest.outputs.sem_exe_path }}
           VSIX_PATH: ${{ steps.manifest.outputs.vsix_path }}
           MANIFEST_PATH: ${{ steps.manifest.outputs.manifest_path }}
+          NOTES_PATH: ${{ steps.manifest.outputs.notes_path }}
         run: |
           $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $true
+          }
 
           $title = "SemanticScript $env:RELEASE_TAG"
-          $notes = @(
-            "Automated SemanticScript release for repo version $env:REPO_VERSION.",
-            "",
-            "Validation:",
-            "- python SemanticScript/tests/run_suite.py ci-fast",
-            "- python SemanticScript/tests/run_suite.py editor",
-            "- python SemanticScript/tests/run_suite.py ci-release",
-            "",
-            "Artifacts:",
-            "- $(Split-Path -Leaf $env:VSIX_PATH)",
-            "- $(Split-Path -Leaf $env:MANIFEST_PATH)"
-          ) -join "`n"
 
           gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes $notes --target "${{ github.sha }}"
+            gh release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target $env:RELEASE_COMMIT
           } else {
-            gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes $notes --target "${{ github.sha }}" --verify-tag
+            gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target $env:RELEASE_COMMIT --verify-tag
           }
 
-          gh release upload $env:RELEASE_TAG $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
+          gh release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
+
+          $expectedAssets = @(
+            (Split-Path -Leaf $env:SEM_EXE_PATH),
+            (Split-Path -Leaf $env:VSIX_PATH),
+            (Split-Path -Leaf $env:MANIFEST_PATH)
+          )
+          $release = gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          foreach ($assetName in $expectedAssets) {
+            if ($assetName -notin $assetNames) {
+              throw "GitHub release '$env:RELEASE_TAG' is missing downloadable asset '$assetName'."
+            }
+          }

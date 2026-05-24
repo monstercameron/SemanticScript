@@ -1,6 +1,8 @@
 # TaskForge Web
 
-Multi-user todo web app for SemanticScript. This is the flagship web demo: native HTTP, HTML templates, static JavaScript assets, bcrypt password hashing, sqlite persistence, JSON APIs, sessions, and cookie flow.
+Multi-user todo web app for SemanticScript. This preview demo exercises native
+HTTP, HTML templates, static JavaScript assets, bcrypt password hashing, sqlite
+persistence, JSON APIs, sessions, and cookie flow.
 
 ## What Works
 
@@ -19,7 +21,9 @@ Multi-user todo web app for SemanticScript. This is the flagship web demo: nativ
 - `DELETE /api/todos/:id`: deletes a todo owned by the current session user.
 - Unknown routes return 404.
 
-Still intentionally stubbed: `GET /api/todos/:id` returns 501 until the show route has full record serialization.
+Known preview gap: `GET /api/todos/:id` currently returns 501 until the show
+route has full record serialization. Use the collection route and mutation
+routes as the maintained web-demo surface.
 
 ## Source Layout
 
@@ -38,8 +42,9 @@ apps/taskforge-web/
 
 ## Build And Run
 
+From the repository root:
+
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript
 python -m SemanticScript.compiler.semsc apps/taskforge-web/build.sem --lint --parse-only
 python -m SemanticScript.compiler.semsc apps/taskforge-web/build.sem --emit-exe --quiet
 .\apps\taskforge-web\build\taskforge_web.exe
@@ -53,4 +58,6 @@ The server listens on `http://127.0.0.1:18090` and writes `taskforge_web.db`, lo
 python apps/taskforge-web/scripts/test_taskforge_web.py
 ```
 
-The harness lints, builds, starts the server, polls `/health`, exercises the HTML shell, assets, auth flows, session routes, todo list/create routes, and known 501 stubs, then tears the server down.
+The harness lints, builds, starts the server, polls `/health`, exercises the
+HTML shell, assets, auth flows, session routes, todo list/create routes, and
+the documented preview gap, then tears the server down.
