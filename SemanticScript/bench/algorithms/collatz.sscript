@@ -1,0 +1,171 @@
+project Collatz
+target console
+runtime AgentRuntime 0.1
+
+entry console main
+
+error MainError
+errorCase MainError ConsoleWriteFailed Int32
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main read clock.cpu
+effect main write console.stdout
+memory main heap no
+memory main stack max 8KiB
+async main no
+
+purpose operation main "Sum the Collatz stopping times for every start value in 1..collatzStartUpperLimit and report checksum plus elapsed seconds"
+invariant operation main "The inner loop applies the Collatz map until currentCollatzValue reaches one, so it always terminates for positive starts"
+invariant operation main "Elapsed seconds equals elapsed CPU-clock ticks divided by the Windows CLOCKS_PER_SEC of 1000"
+
+label startMain
+
+storage module immutable collatzStartUpperLimit Int64 1000000
+storage module immutable collatzStartLowerLimit Int64 1
+storage module immutable loopStepIncrement Int64 1
+storage module immutable collatzTerminationValue Int64 1
+storage module immutable evenParityRemainder Int64 0
+storage module immutable parityDivisor Int64 2
+storage module immutable collatzOddMultiplier Int64 3
+storage module immutable collatzOddAddend Int64 1
+storage module immutable stepCounterInitial Int64 0
+storage module immutable totalStepsInitial Int64 0
+storage module immutable windowsClocksPerSecond Float64 1000.0
+
+memory main mutable currentStartValue Int64 collatzStartLowerLimit
+memory main mutable totalCollatzSteps Int64 totalStepsInitial
+memory main mutable currentCollatzValue Int64 collatzStartLowerLimit
+memory main mutable currentCollatzSteps Int64 stepCounterInitial
+
+call benchmarkStartClockCall c.clock
+run benchmarkStartClockCall
+bind value benchmarkStartClockTicks CpuClockTicks benchmarkStartClockCall
+
+label outerLoopHead
+
+call outerShouldContinueCall math.lessThanOrEqualInt64
+argument outerShouldContinueCall left Int64 currentStartValue
+argument outerShouldContinueCall right Int64 collatzStartUpperLimit
+run outerShouldContinueCall
+bind value outerShouldContinue Bool outerShouldContinueCall
+branch if condition outerShouldContinue target outerLoopBody
+branch else target outerLoopFinished
+
+label outerLoopBody
+set memory currentCollatzValue currentStartValue
+set memory currentCollatzSteps stepCounterInitial
+jump target innerLoopHead
+
+label innerLoopHead
+call innerShouldContinueCall math.notEqualInt64
+argument innerShouldContinueCall left Int64 currentCollatzValue
+argument innerShouldContinueCall right Int64 collatzTerminationValue
+run innerShouldContinueCall
+bind value innerShouldContinue Bool innerShouldContinueCall
+branch if condition innerShouldContinue target innerLoopBody
+branch else target innerLoopFinished
+
+label innerLoopBody
+call collatzParityCall math.moduloInt64
+argument collatzParityCall left Int64 currentCollatzValue
+argument collatzParityCall right Int64 parityDivisor
+run collatzParityCall
+bind value collatzParityRemainder Int64 collatzParityCall
+
+call collatzValueIsEvenCall math.equalInt64
+argument collatzValueIsEvenCall left Int64 collatzParityRemainder
+argument collatzValueIsEvenCall right Int64 evenParityRemainder
+run collatzValueIsEvenCall
+bind value collatzValueIsEven Bool collatzValueIsEvenCall
+branch if condition collatzValueIsEven target collatzEvenStep
+branch else target collatzOddStep
+
+label collatzEvenStep
+call collatzHalveCall math.divideInt64
+argument collatzHalveCall left Int64 currentCollatzValue
+argument collatzHalveCall right Int64 parityDivisor
+run collatzHalveCall
+bind value collatzHalvedValue Int64 collatzHalveCall
+set memory currentCollatzValue collatzHalvedValue
+jump target collatzStepCounted
+
+label collatzOddStep
+call collatzTripleCall math.multiplyInt64
+argument collatzTripleCall left Int64 currentCollatzValue
+argument collatzTripleCall right Int64 collatzOddMultiplier
+run collatzTripleCall
+bind value collatzTripledValue Int64 collatzTripleCall
+call collatzOddNextCall math.addInt64
+argument collatzOddNextCall left Int64 collatzTripledValue
+argument collatzOddNextCall right Int64 collatzOddAddend
+run collatzOddNextCall
+bind value collatzOddNextValue Int64 collatzOddNextCall
+set memory currentCollatzValue collatzOddNextValue
+jump target collatzStepCounted
+
+label collatzStepCounted
+call incrementCollatzStepsCall math.addInt64
+argument incrementCollatzStepsCall left Int64 currentCollatzSteps
+argument incrementCollatzStepsCall right Int64 loopStepIncrement
+run incrementCollatzStepsCall
+bind value nextCollatzSteps Int64 incrementCollatzStepsCall
+set memory currentCollatzSteps nextCollatzSteps
+jump target innerLoopHead
+
+label innerLoopFinished
+call accumulateTotalStepsCall math.addInt64
+argument accumulateTotalStepsCall left Int64 totalCollatzSteps
+argument accumulateTotalStepsCall right Int64 currentCollatzSteps
+run accumulateTotalStepsCall
+bind value nextTotalCollatzSteps Int64 accumulateTotalStepsCall
+set memory totalCollatzSteps nextTotalCollatzSteps
+
+call advanceStartValueCall math.addInt64
+argument advanceStartValueCall left Int64 currentStartValue
+argument advanceStartValueCall right Int64 loopStepIncrement
+run advanceStartValueCall
+bind value nextStartValue Int64 advanceStartValueCall
+set memory currentStartValue nextStartValue
+jump target outerLoopHead
+
+label outerLoopFinished
+
+call benchmarkEndClockCall c.clock
+run benchmarkEndClockCall
+bind value benchmarkEndClockTicks CpuClockTicks benchmarkEndClockCall
+
+call elapsedClockTicksCall math.subtractInt64
+argument elapsedClockTicksCall left CpuClockTicks benchmarkEndClockTicks
+argument elapsedClockTicksCall right CpuClockTicks benchmarkStartClockTicks
+run elapsedClockTicksCall
+bind value elapsedClockTicks Int64 elapsedClockTicksCall
+
+call elapsedClockTicksAsFloatCall math.convertInt64ToFloat64
+argument elapsedClockTicksAsFloatCall value Int64 elapsedClockTicks
+run elapsedClockTicksAsFloatCall
+bind value elapsedClockTicksAsFloat Float64 elapsedClockTicksAsFloatCall
+
+call elapsedSecondsCall math.divideFloat64
+argument elapsedSecondsCall left Float64 elapsedClockTicksAsFloat
+argument elapsedSecondsCall right Float64 windowsClocksPerSecond
+run elapsedSecondsCall
+bind value elapsedSeconds Float64 elapsedSecondsCall
+
+storage module immutable reportFormatText String "checksum=%lld elapsedSeconds=%.6f\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall checksum Int64 totalCollatzSteps
+argument reportCall elapsedSeconds Float64 elapsedSeconds
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure

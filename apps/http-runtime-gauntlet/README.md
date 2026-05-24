@@ -17,8 +17,9 @@ Known intentional gaps remain visible: route timeout enforcement, structured JSO
 
 ## Check
 
+From the repository root:
+
 ```powershell
-cd C:\Users\Cam\Desktop\AgentScript
 python apps\http-runtime-gauntlet\scripts\test_http_runtime_gauntlet.py
 .\apps\http-runtime-gauntlet\scripts\check_http_runtime_gauntlet.ps1
 ```

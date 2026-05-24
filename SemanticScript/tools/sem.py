@@ -98,15 +98,17 @@ SKILL_REGISTRY = (
         "name": "agent-tooling-research",
         "description": "Long-form research and experiments on agent-first SemanticScript tooling.",
         "files": (
-            "experiments/agent-first-tooling-research/README.md",
+            "research/README.md",
+            "research/04-competitive-syntax-arena.md",
         ),
     },
     {
         "name": "taskforge-web-patterns",
-        "description": "Concrete multi-user web application patterns from TaskForge Web.",
+        "description": "TaskForge Web status and native HTTP application patterns without bundling app source.",
         "files": (
-            "apps/taskforge-web/README.md",
-            "apps/taskforge-web/main.sem",
+            "docs/reference/roadmap.md",
+            "docs/toolchain/native-http-runtime.md",
+            "docs/language/native-http-api.md",
         ),
     },
     {
@@ -114,8 +116,8 @@ SKILL_REGISTRY = (
         "description": "SQLite usage, cleanup, and JSON CRUD patterns.",
         "files": (
             "docs/language/json-crud.md",
+            "docs/language/records-codecs-boundaries.md",
             "docs/reference/call-targets.md",
-            "apps/taskforge-web/main.sem",
         ),
     },
     {
@@ -123,8 +125,8 @@ SKILL_REGISTRY = (
         "description": "Native HTTP, route, handler, and HTML boundary patterns.",
         "files": (
             "docs/language/native-http-api.md",
+            "docs/toolchain/native-http-runtime.md",
             "docs/language/records-codecs-boundaries.md",
-            "apps/taskforge-web/README.md",
         ),
     },
     {
@@ -133,7 +135,16 @@ SKILL_REGISTRY = (
         "files": (
             "docs/toolchain/compiler.md",
             "docs/toolchain/linter.md",
-            "experiments/agent-first-tooling-research/README.md",
+            "docs/toolchain/agent-workflows.md",
+            "research/README.md",
+        ),
+    },
+    {
+        "name": "package-dependencies",
+        "description": "External dependency resolution: build.sem dependency rows, `sem deps` (sync/verify/list/cache/purge), the GitHub package format, cache, and sem.lock.",
+        "files": (
+            "docs/reference/package-management.md",
+            "docs/language/project-layout-build-sem.md",
         ),
     },
 )
@@ -151,7 +162,8 @@ SKILL_ALIASES = {
     "sem-diagnostics": "patch-and-repair",
     "sem-stdlib": "sqlite-patterns",
     "sem-builds": "patch-and-repair",
-    "sem-packages": "patch-and-repair",
+    "sem-packages": "package-dependencies",
+    "sem-deps": "package-dependencies",
     "sem-testing": "graph-and-slice",
 }
 DIAGNOSTIC_EXPLAINERS = {
@@ -237,6 +249,19 @@ DIAGNOSTIC_EXPLAINERS = {
         "commonFixes": [
             "Re-run under dev panic mode and inspect the referenced operation, call, and source row.",
             "Use `sem inspect-ir` or trace output when the failure depends on runtime lowering."
+        ],
+    },
+    "SSRUN002": {
+        "title": "native fault",
+        "summary": "A fatal signal (or Windows structured exception) reached the process; the runtime caught it to report the last semantic site before terminating.",
+        "whyItMatters": [
+            "Unlike SSRUN001, the fault already happened: no guarded check could trap it ahead of time, so the report names the last operation/call the program entered rather than the exact offending row.",
+            "The named site is the place to start: a wild or null pointer, exhausted stack, or illegal instruction is usually on or just after that call."
+        ],
+        "commonFixes": [
+            "Open the operation and call named in `Last site` and check the pointer, length, or recursion bound used there.",
+            "Re-run with `sem run --explain-crash` under dev panic mode for the site; rebuild with `--build-profile dev` if the report has no Last site (prod hides it).",
+            "Note: on Windows an explicit abort()/__fastfail bypasses the handler, so a missing SSRUN002 with exit 0xC0000409 still means a deliberate abort."
         ],
     },
     "SEMSC_PARSE": {
@@ -570,6 +595,15 @@ def _starter_build_sem_text(meta: dict) -> str:
         f"nativeOutput {meta['buildProject']} \"{meta['nativeOutput']}\"",
         f"import {meta['moduleAlias']} {meta['moduleName']}",
         "",
+        "# External dependencies (optional). Declare them here, then run",
+        "# `sem deps sync` to fetch + verify + lock, and import by module path.",
+        "# Fetching is build-time authority: only `sem deps sync` touches the",
+        "# network; `sem check`/`sem build` resolve imports from the cache offline.",
+        f"# dependency {meta['buildProject']} exampleLib github.com/OWNER/REPO v1.0.0",
+        f"# dependencyFetch {meta['buildProject']} exampleLib github OWNER/REPO v1.0.0",
+        f"# dependencyIntegrity {meta['buildProject']} exampleLib sha256:<archive-digest from first sync>",
+        "# then in main.sem:  import exampleLib github.com/OWNER/REPO",
+        "",
     ])
 
 
@@ -631,6 +665,29 @@ def _starter_test_sem_text(meta: dict) -> str:
     ])
 
 
+def _starter_gitignore_text(meta: dict) -> str:
+    return "\n".join([
+        "# SemanticScript build + dependency cache artifacts.",
+        "# The fetched-dependency cache is a build input, not checked-in source.",
+        ".semcache/",
+        "**/.semcache/",
+        "build/",
+        "**/build/",
+        f"{meta['nativeOutput']}",
+        "*.exe",
+        "*.ll",
+        "*.obj",
+        "*.o",
+        "*.pdb",
+        "__pycache__/",
+        "",
+        "# Keep sem.lock committed: it pins resolved dependency versions and",
+        "# checksums so `sem deps sync` is reproducible across machines.",
+        "!sem.lock",
+        "",
+    ])
+
+
 def _starter_ci_workflow_text(meta: dict) -> str:
     return "\n".join([
         "name: CI",
@@ -648,16 +705,16 @@ def _starter_ci_workflow_text(meta: dict) -> str:
         "    runs-on: windows-latest",
         "    steps:",
         "      - name: Check out starter project",
-        "        uses: actions/checkout@v4",
+        "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6",
         "",
         "      - name: Check out SemanticScript toolchain",
-        "        uses: actions/checkout@v4",
+        "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6",
         "        with:",
         "          repository: monstercameron/SemanticScript",
         "          path: SemanticScript",
         "",
         "      - name: Set up Python",
-        "        uses: actions/setup-python@v5",
+        "        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6",
         "        with:",
         "          python-version: \"3.12\"",
         "          cache: pip",
@@ -709,6 +766,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
     main_path = root / "main.sem"
     test_path = root / meta["testFileName"]
     workflow_path = root / ".github" / "workflows" / "ci.yml"
+    gitignore_path = root / ".gitignore"
     files_created: list[str] = []
     files_overwritten: list[str] = []
     next_commands = [
@@ -749,6 +807,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             "mainFile": str(main_path),
             "testFile": str(test_path),
             "workflowFile": str(workflow_path),
+            "gitignoreFile": str(gitignore_path),
             "projectVersion": meta["projectVersion"],
             "nativeOutput": meta["nativeOutput"],
             "githubRepoUrl": meta["githubRepoUrl"],
@@ -780,6 +839,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             (main_path, _starter_main_sem_text(meta)),
             (test_path, _starter_test_sem_text(meta)),
             (workflow_path, _starter_ci_workflow_text(meta)),
+            (gitignore_path, _starter_gitignore_text(meta)),
         ):
             if target_path.exists():
                 files_overwritten.append(str(target_path))
@@ -4620,7 +4680,14 @@ def _diagnostic_index_payload() -> dict[str, dict]:
             "summary": "The program trapped with SemanticScript runtime panic context.",
             "references": [],
             "relatedCodes": [],
-        }
+        },
+        "SSRUN002": {
+            "code": "SSRUN002",
+            "title": "native fault",
+            "summary": "A fatal signal or structured exception was caught and reported with the last semantic site.",
+            "references": [],
+            "relatedCodes": ["SSRUN001"],
+        },
     }
     comment_pattern = re.compile(r"#\s*((?:SS(?:RUN)?\d{4,5})(?:\s*/\s*SS(?:RUN)?\d{4,5})*)\s+(.*)")
     code_pattern = re.compile(r"SS(?:RUN)?\d{4,5}")
@@ -5256,28 +5323,82 @@ def _inspect_payload(source: Path, compiler_args: list[str]) -> dict | None:
         return None
 
 
+def _parse_crash_last_site(descriptor: str, result: dict) -> None:
+    """Parse an SSRUN002 `Last site` descriptor emitted by the codegen, e.g.
+    `operation main call lenCall -> c.strlen line 13` or `operation main line
+    8`, into the same operation/call/line fields SSRUN001 reports."""
+    match = re.match(
+        r"operation (?P<op>\S+)(?: call (?P<call>\S+) -> (?P<target>\S+))?"
+        r" line (?P<line>\d+)",
+        descriptor.strip())
+    if not match:
+        return
+    result["operation"] = match.group("op")
+    if match.group("call"):
+        result["call"] = f"{match.group('call')} -> {match.group('target')}"
+    result["line"] = int(match.group("line"))
+
+
+def _parse_crash_stack_frame(line: str) -> dict | None:
+    """Parse one SSRUN002 call-stack frame, e.g.
+    `#1 operation middleStep (call middleCall line 34)` or `#0 operation main
+    (entry)`, into a structured frame."""
+    match = re.match(
+        r"#(?P<index>\d+) operation (?P<op>\S+)"
+        r"(?: \(call (?P<call>\S+) line (?P<line>\d+)\))?",
+        line.strip())
+    if not match:
+        return None
+    frame = {"index": int(match.group("index")), "operation": match.group("op")}
+    if match.group("call"):
+        frame["call"] = match.group("call")
+        frame["line"] = int(match.group("line"))
+    return frame
+
+
 def _parse_runtime_panic(stderr_text: str) -> dict:
     lines = stderr_text.splitlines()
     panic_index = next(
         (idx for idx, line in enumerate(lines)
-         if "SSRUN001" in line and "runtime panic" in line),
+         if ("SSRUN001" in line and "runtime panic" in line)
+         or ("SSRUN002" in line and "native fault" in line)),
         None)
     if panic_index is None:
         return {}
     block = lines[panic_index:]
-    result = {"code": "SSRUN001", "raw": "\n".join(block)}
+    code = "SSRUN002" if "SSRUN002" in lines[panic_index] else "SSRUN001"
+    result = {"code": code, "raw": "\n".join(block)}
     current_section = ""
     for line in block:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.endswith(":") and not stripped.startswith(("file:", "line:", "operation:", "call:", "reason:", "status:")):
+        if (stripped.endswith(":")
+                and not stripped.startswith(("file:", "line:", "operation:", "call:", "reason:", "status:"))):
             current_section = stripped[:-1].lower()
             continue
         if stripped.startswith("reason:"):
             result["reason"] = stripped.split(":", 1)[1].strip()
         elif stripped.startswith("status:"):
             result["status"] = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Signal:"):
+            result["fault"] = stripped.split(":", 1)[1].strip()
+            sig_match = re.match(r"(\d+)\s*\((\S+)\)", result["fault"])
+            if sig_match:
+                result["signalNumber"] = int(sig_match.group(1))
+                result["signalName"] = sig_match.group(2)
+        elif stripped.startswith("Exception:"):
+            result["fault"] = stripped.split(":", 1)[1].strip()
+            exc_match = re.match(r"(\S+)\s*\(code (\d+)\)", result["fault"])
+            if exc_match:
+                result["signalName"] = exc_match.group(1)
+                result["exceptionCode"] = int(exc_match.group(2))
+        elif current_section.startswith("call stack"):
+            frame = _parse_crash_stack_frame(stripped)
+            if frame is not None:
+                result.setdefault("callStack", []).append(frame)
+        elif current_section == "last site":
+            _parse_crash_last_site(stripped, result)
         elif current_section == "location" and stripped.startswith("file:"):
             result["file"] = stripped.split(":", 1)[1].strip()
         elif current_section == "location" and stripped.startswith("line:"):
@@ -5295,6 +5416,33 @@ def _parse_runtime_panic(stderr_text: str) -> dict:
         elif current_section == "direction":
             result.setdefault("direction", stripped)
     return result
+
+
+def _crash_fix_candidates(panic: dict, return_code: int) -> list[str]:
+    code = panic.get("code")
+    if code == "SSRUN001":
+        return [
+            "Patch the SemanticScript source row named by panic.sourceRow or the last trace event.",
+            "Use sem inspect-ir to inspect the operation, call, and LLVM block mapping.",
+            "If this is prod/traps mode, rerun with --build-profile dev --runtime-checks panic for source context.",
+        ]
+    if code == "SSRUN002":
+        op = panic.get("operation") or "the operation named in panic.operation"
+        call = panic.get("call")
+        site = f"{op} / call {call}" if call else op
+        return [
+            f"The fault landed in {site}: check the pointer, length, index, or recursion bound used on or just after that call.",
+            f"Open the row at line {panic.get('line', '?')} ({panic.get('signalName', 'fatal signal')}) and verify any c.* / pointer argument is non-null and in range.",
+            "If panic has no operation (prod/traps mode hides it), rebuild with --build-profile dev and rerun sem run --explain-crash.",
+        ]
+    if return_code != 0:
+        return [
+            "No SSRUN002 context was captured. On Windows an explicit abort()/__fastfail (exit 0xC0000409) bypasses the handler — check for a deliberate process.abort path.",
+            "Rebuild with --build-profile dev --runtime-checks panic and rerun; inspect the last trace event for the final operation entered.",
+        ]
+    return [
+        "No crash detected: the program exited cleanly. Re-check the input that was expected to fail.",
+    ]
 
 
 def _explain_crash(source: Path, compiler_args: list[str]) -> int:
@@ -5406,19 +5554,17 @@ def _explain_crash(source: Path, compiler_args: list[str]) -> int:
         "semanticContext": {
             "operation": context_operation,
             "call": panic.get("call", ""),
+            "callStack": panic.get("callStack", []),
             "routes": route_contexts,
             "lastEvent": last_event,
         },
         "lastTraceEvents": events[-20:],
         "suspectedCategory": (
             "runtimePanic" if panic.get("code") == "SSRUN001"
+            else "nativeFault" if panic.get("code") == "SSRUN002"
             else "nativeTrap" if run_proc.returncode != 0
             else "noCrash"),
-        "fixCandidates": [
-            "Patch the SemanticScript source row named by panic.sourceRow or the last trace event.",
-            "Use sem inspect-ir to inspect the operation, call, and LLVM block mapping.",
-            "If this is prod/traps mode, rerun with --build-profile dev --runtime-checks panic for source context.",
-        ],
+        "fixCandidates": _crash_fix_candidates(panic, run_proc.returncode),
         "artifacts": common_artifacts,
     }
     _write_json_artifact(crash_report_path, payload)
@@ -5705,6 +5851,297 @@ def command_doctor(args: argparse.Namespace) -> int:
             if not check["ok"] and check["fix"]:
                 print(f"        fix: {check['fix']}")
     return 0 if payload["ok"] else 1
+
+
+def _load_semdeps():
+    compiler_dir = ROOT / "compiler"
+    if str(compiler_dir) not in sys.path:
+        sys.path.insert(0, str(compiler_dir))
+    import semdeps
+    return semdeps
+
+
+def _deps_next_commands(build_tape: str, status: str) -> list[dict]:
+    entries: list[dict] = []
+    seen: set[str] = set()
+    if status in ("pending", "verify-failed", "error", "unlocked"):
+        _append_next_command(
+            entries, seen, "deps-sync",
+            f"sem deps sync {build_tape}",
+            "fetch, verify, and lock the declared dependencies",
+            argv=["sem", "deps", "sync", build_tape])
+    _append_next_command(
+        entries, seen, "check",
+        f"sem check --json {build_tape}",
+        "re-check the project against the materialized dependency cache",
+        argv=["sem", "check", "--json", build_tape])
+    return entries
+
+
+def _deps_payload(start: Path, action: str, *, allow_network: bool, force: bool = False,
+                  remove_lock: bool = False) -> dict:
+    semdeps = _load_semdeps()
+    base = {"schemaVersion": "sem.deps.v1", "action": action, "dependencies": []}
+    build_tape = _find_build_tape(start)
+
+    if action == "cache":
+        # Cache inventory is about the machine cache, not one project — it works
+        # with or without a build tape. Lists the shared cache always, plus the
+        # project-local .semcache when a build tape is found.
+        shared_root = semdeps._shared_cache_root()
+        roots = [("shared", shared_root)]
+        if build_tape is not None:
+            roots.append(("project", os.path.join(
+                os.path.dirname(str(build_tape)), semdeps.DEFAULT_CACHE_DIR)))
+        base.update(
+            ok=True, status="ok",
+            sharedCacheDir=shared_root,
+            buildTape=str(build_tape) if build_tape else "",
+            cached=semdeps.list_cached_packages(roots),
+            nextCommands=[])
+        return base
+
+    if build_tape is None:
+        base.update(ok=False, status="no-build-tape",
+                    error=f"no build.sem found from {start}", nextCommands=[])
+        return base
+    source = build_tape.read_text(encoding="utf-8")
+    try:
+        config = semdeps.parse_build_sem(source, str(build_tape))
+    except semdeps.DependencyError as exc:
+        base.update(ok=False, status="error", buildTape=str(build_tape),
+                    error=str(exc),
+                    nextCommands=_deps_next_commands(str(build_tape), "error"))
+        return base
+
+    base.update(
+        project=config.project_name,
+        buildTape=str(build_tape),
+        cacheDir=config.cache_dir,
+        sharedCacheDir=config.shared_cache_dir,
+        cacheDirExplicit=config.cache_dir_explicit,
+        lockPath=config.lock_path,
+    )
+
+    def describe(spec, status, *, resolved="", integrity="", detail="", cache_dir=""):
+        row = {
+            "alias": spec.alias,
+            "modulePath": spec.module_path,
+            "version": spec.version,
+            "sourceKind": spec.source_kind,
+            "status": status,
+        }
+        if resolved:
+            row["resolved"] = resolved
+        if integrity:
+            row["integrity"] = integrity
+        if detail:
+            row["detail"] = detail
+        if cache_dir:
+            row["cacheDir"] = cache_dir
+        return row
+
+    if action == "purge":
+        removed = semdeps.purge(config, remove_lock=remove_lock)
+        base.update(ok=True, status="purged", removed=removed)
+        for spec in config.specs:
+            base["dependencies"].append(describe(spec, "purged"))
+        base["nextCommands"] = _deps_next_commands(str(build_tape), "pending")
+        return base
+
+    if action == "sync":
+        try:
+            resolved = semdeps.sync(config, allow_network=allow_network, force=force)
+        except semdeps.DependencyError as exc:
+            base.update(ok=False, status="error", error=str(exc),
+                        nextCommands=_deps_next_commands(str(build_tape), "error"))
+            return base
+        warnings: list[str] = []
+        for item in resolved:
+            row = describe(
+                item.spec, "cached" if item.from_cache else "synced",
+                resolved=item.lock_entry.resolved,
+                integrity=item.lock_entry.integrity,
+                cache_dir=item.cache_dir)
+            if item.warnings:
+                row["warnings"] = list(item.warnings)
+                warnings.extend(item.warnings)
+            base["dependencies"].append(row)
+        base.update(ok=True, status="synced")
+        if warnings:
+            base["warnings"] = warnings
+    elif action == "verify":
+        try:
+            verify_rows = semdeps.verify(config)
+        except semdeps.DependencyError as exc:
+            base.update(ok=False, status="error", error=str(exc),
+                        nextCommands=_deps_next_commands(str(build_tape), "error"))
+            return base
+        results = {alias: (ok, detail) for alias, ok, detail in verify_rows}
+        ok_all = all(ok for ok, _ in results.values()) if results else True
+        for spec in config.specs:
+            ok, detail = results.get(spec.alias, (False, "unknown"))
+            base["dependencies"].append(describe(
+                spec, "ok" if ok else "failed", detail=detail))
+        base.update(ok=ok_all, status="verified" if ok_all else "verify-failed")
+    else:  # list
+        try:
+            locked = {e.alias: e for e in (semdeps.read_lock(config) or [])}
+        except semdeps.DependencyError as exc:
+            base.update(ok=False, status="error", error=str(exc),
+                        nextCommands=_deps_next_commands(str(build_tape), "error"))
+            return base
+        any_pending = False
+        any_unlocked = False
+        for spec in config.specs:
+            cache_dir = semdeps.cache_dir_for(config, spec)
+            materialized = os.path.isdir(cache_dir)
+            entry = locked.get(spec.alias)
+            if materialized and entry:
+                status = "locked"
+            elif materialized:
+                status = "unlocked"
+                any_unlocked = True
+            else:
+                status = "pending"
+                any_pending = True
+            base["dependencies"].append(describe(
+                spec, status,
+                resolved=entry.resolved if entry else "",
+                integrity=entry.integrity if entry else "",
+                cache_dir=cache_dir if materialized else ""))
+        base.update(
+            ok=not any_pending,
+            status="pending" if any_pending else ("unlocked" if any_unlocked else "ready"))
+
+    base["nextCommands"] = _deps_next_commands(str(build_tape), base["status"])
+    return base
+
+
+def command_deps(args: argparse.Namespace) -> int:
+    action = getattr(args, "deps_action", None) or "list"
+    allow_network = not getattr(args, "offline", False)
+    payload = _deps_payload(
+        Path(args.path), action, allow_network=allow_network,
+        force=getattr(args, "force", False), remove_lock=getattr(args, "lock", False))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("ok") else 1
+    if payload["status"] in ("no-build-tape", "error"):
+        print(f"sem deps: {payload['error']}", file=sys.stderr)
+        return 1
+    if action == "cache":
+        cached = payload.get("cached", [])
+        print(f"shared cache: {payload.get('sharedCacheDir')}")
+        if not cached:
+            print("no cached packages")
+        for entry in cached:
+            kib = entry["bytes"] / 1024
+            print(f"- [{entry['scope']}] {entry['key']} ({entry['sourceKind']}, "
+                  f"{entry['fileCount']} files, {kib:.1f} KiB)")
+        return 0
+    print(f"project: {payload.get('project') or '(unnamed)'}")
+    print(f"action: {action}  status: {payload['status']}")
+    if action == "purge":
+        removed = payload.get("removed", [])
+        print(f"removed {len(removed)} path(s)")
+        for path in removed:
+            print(f"- {path}")
+        return 0
+    if not payload["dependencies"]:
+        print("no external dependencies declared")
+    for dep in payload["dependencies"]:
+        line = f"- {dep['alias']} {dep['modulePath']} ({dep['sourceKind']}): {dep['status']}"
+        if dep.get("detail") and dep["status"] not in ("ok", "synced", "cached", "locked"):
+            line += f" — {dep['detail']}"
+        print(line)
+    for warning in payload.get("warnings", []):
+        print(f"warning: {warning}")
+    return 0 if payload.get("ok") else 1
+
+
+def _help_payload(start: Path) -> dict:
+    """Recommend the next step for an agent working on this project.
+
+    Reports project state (build tape, declared/unsynced dependencies) and an
+    ordered, replayable nextCommands list so an agent always has a concrete
+    "what do I run now" answer, not just a flag dump."""
+    resolved = str(start.resolve())
+    build_tape = _find_build_tape(start)
+    state = {
+        "buildTape": str(build_tape) if build_tape else "",
+        "declaredDependencies": 0,
+        "dependenciesSynced": True,
+        "pendingDependencies": [],
+    }
+    entries: list[dict] = []
+    seen: set[str] = set()
+    _append_next_command(
+        entries, seen, "skills",
+        "sem skills get sem-agent --json",
+        "load version-matched agent workflow rules before editing",
+        argv=["sem", "skills", "get", "sem-agent", "--json"])
+    if build_tape is not None:
+        semdeps = _load_semdeps()
+        try:
+            config = semdeps.parse_build_sem(
+                build_tape.read_text(encoding="utf-8"), str(build_tape))
+            state["declaredDependencies"] = len(config.specs)
+            _resolved, pending = semdeps.resolve_import_registry(config)
+            pending_paths = sorted(pending.keys())
+            state["pendingDependencies"] = pending_paths
+            state["dependenciesSynced"] = not pending_paths
+            if pending_paths:
+                _append_next_command(
+                    entries, seen, "deps-sync",
+                    f"sem deps sync {resolved}",
+                    "materialize declared external dependencies so imports resolve",
+                    argv=["sem", "deps", "sync", resolved])
+        except (OSError, semdeps.DependencyError):
+            pass
+    _append_next_command(
+        entries, seen, "check",
+        f"sem check --json {resolved}",
+        "gate the project: parse, lint, and semantic checks",
+        argv=["sem", "check", "--json", resolved])
+    _append_next_command(
+        entries, seen, "graph",
+        f"sem graph --kind summary --json {resolved}",
+        "inspect architecture: operations, calls, effects, and routes",
+        argv=["sem", "graph", "--kind", "summary", "--json", resolved])
+    _append_next_command(
+        entries, seen, "test",
+        f"sem test --json {resolved}",
+        "run semantic preflight and harness tests once check is clean",
+        argv=["sem", "test", "--json", resolved])
+    return {
+        "schemaVersion": "sem.help.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "summary": ("Recommended loop: skills -> (deps sync) -> check -> "
+                    "graph/slice -> explain -> fix -> patch -> test. Run the "
+                    "first nextCommand entry next."),
+        "loop": ["skills", "deps sync", "check", "graph/slice", "explain",
+                 "fix", "patch", "test"],
+        "state": state,
+        "nextCommands": entries,
+    }
+
+
+def command_help(args: argparse.Namespace) -> int:
+    payload = _help_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(payload["summary"])
+    print(f"build tape: {payload['state']['buildTape'] or '(none)'}")
+    if payload["state"]["pendingDependencies"]:
+        print("unsynced dependencies: "
+              + ", ".join(payload["state"]["pendingDependencies"]))
+    print("next steps:")
+    for item in payload["nextCommands"]:
+        label = item.get("command") or " ".join(item.get("argv", []))
+        print(f"- {label}\n    {item['reason']}")
+    return 0
 
 
 def command_version(args: argparse.Namespace) -> int:
@@ -6056,6 +6493,29 @@ def command_migrate_syntax(args: argparse.Namespace) -> int:
     return subprocess.call(command)
 
 
+def command_mcp(args: argparse.Namespace) -> int:
+    try:
+        from tools import sem_mcp
+    except ModuleNotFoundError as exc:
+        if exc.name == "mcp":
+            print(
+                "sem mcp: the Model Context Protocol SDK is not installed.\n"
+                '        fix: python -m pip install "mcp>=1.2"',
+                file=sys.stderr,
+            )
+            return 2
+        raise
+    server_args = ["--transport", args.transport]
+    if args.host is not None:
+        server_args += ["--host", args.host]
+    if args.port is not None:
+        server_args += ["--port", str(args.port)]
+    if args.path is not None:
+        server_args += ["--path", args.path]
+    sem_mcp.main(server_args)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sem",
@@ -6203,6 +6663,36 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true",
                         help="emit machine-readable prerequisite checks")
     doctor.set_defaults(func=command_doctor)
+
+    deps = subparsers.add_parser(
+        "deps",
+        help="resolve, fetch, verify, and lock external SemanticScript dependencies declared in build.sem",
+    )
+    deps.add_argument("deps_action", nargs="?", default="list",
+                      choices=("sync", "verify", "list", "purge", "cache"),
+                      help="sync fetches+locks (network); verify checks the cache offline; "
+                           "list shows declared state; purge removes this project's cached deps; "
+                           "cache inventories all materialized packages")
+    deps.add_argument("--json", action="store_true",
+                      help="emit machine-readable dependency facts")
+    deps.add_argument("--offline", action="store_true",
+                      help="never access the network; only path/local dependencies and the existing cache are materialized")
+    deps.add_argument("--force", action="store_true",
+                      help="on sync, ignore the cache and re-fetch + re-verify every dependency (repairs a corrupt cache)")
+    deps.add_argument("--lock", action="store_true",
+                      help="on purge, also delete sem.lock")
+    deps.add_argument("path", nargs="?", default=".",
+                      help="project path or build.sem to resolve dependencies for")
+    deps.set_defaults(func=command_deps)
+
+    help_cmd = subparsers.add_parser(
+        "help",
+        help="emit the recommended next-step agent workflow for a project (sem.help.v1)")
+    help_cmd.add_argument("--json", action="store_true",
+                          help="emit machine-readable next-step guidance")
+    help_cmd.add_argument("path", nargs="?", default=".",
+                          help="project path or build.sem to summarize next steps for")
+    help_cmd.set_defaults(func=command_help)
 
     readiness = subparsers.add_parser(
         "readiness",
@@ -6378,6 +6868,22 @@ def build_parser() -> argparse.ArgumentParser:
                                 help="emit machine-readable migration results")
     migrate_syntax.add_argument("paths", nargs="+")
     migrate_syntax.set_defaults(func=command_migrate_syntax)
+
+    mcp_server = subparsers.add_parser(
+        "mcp",
+        help="run the SemanticScript MCP server (Model Context Protocol); stdio by default, "
+        "pass --transport streamable-http to serve over HTTP",
+    )
+    mcp_server.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http", "sse"),
+        default="stdio",
+        help="transport to serve on (default: stdio)",
+    )
+    mcp_server.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
+    mcp_server.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
+    mcp_server.add_argument("--path", help="HTTP route for the streamable-http transport")
+    mcp_server.set_defaults(func=command_mcp)
 
     return parser
 

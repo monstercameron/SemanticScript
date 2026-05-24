@@ -5,8 +5,23 @@ tool driver, and release artifacts are stable.
 
 ## Install Strategy
 
-The first supported public install shape should be a single versioned release
-archive containing:
+The current pre-release user install path is the GitHub Releases page:
+
+<https://github.com/monstercameron/SemanticScript/releases>
+
+Main-branch prereleases are tagged `main-<SHORT_SHA>` and attach:
+
+- `semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe`, the standalone Windows
+  `sem` CLI;
+- `semanticscript-vscode-main-<SHORT_SHA>.vsix`, the local VS Code extension;
+- `semanticscript-merge-release-manifest-main-<SHORT_SHA>.json`, the generated
+  checksum and metadata manifest.
+
+The source-checkout Python command remains a contributor workflow, not the
+primary user install path.
+
+The first stable public install shape may still become a single versioned
+release archive containing:
 
 - `SemanticScript/` Python tools, stdlib, and runtime sources;
 - `requirements.txt`;
@@ -17,6 +32,9 @@ A Python package wrapper may be added later to expose console entry points such
 as `sem`, but it should wrap the same release archive layout rather than invent
 a second package format. Native launchers and platform package managers are
 deferred until the Python toolchain contract and artifact manifest are stable.
+
+Native executable builds require a host LLVM/clang installation. See
+[docs/toolchain/llvm-compiler-install.md](../toolchain/llvm-compiler-install.md).
 
 ## Version Manager Plan
 

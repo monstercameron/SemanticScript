@@ -19,8 +19,9 @@ explicit runtime checks, and refinement-only documentation forms.
 
 ## Current Status
 
-Active editor tooling. Version `1.0.5` supports highlighting, semantic tokens,
-hovers, project-aware navigation, completions, lint integration, and direct
+Active editor tooling. The package version follows `version.json` and
+`package.json`. It supports highlighting, semantic tokens, hovers,
+project-aware navigation, completions, lint integration, and direct
 `semsc.py` executable builds from VS Code. The package also includes a
 SemanticScript gallery icon, language file icon fallback, and selectable
 SemanticScript file icon theme.
@@ -32,8 +33,9 @@ scope until the release owner selects a real Marketplace `publisher` value to
 replace `semanticscript-local`.
 
 The extension package is licensed as MIT, matching the root repository license.
-Run `npm run check` before packaging. Use `npm run package:vsix` for local VSIX
-builds after accepting the publisher metadata constraint for the target release.
+Run `npm ci` after a fresh checkout, then use `npm run package:vsix` for local
+VSIX builds after accepting the publisher metadata constraint for the target
+release.
 
 ## Features
 

@@ -24,6 +24,7 @@ The corresponding semantic-loop commands are:
 ```powershell
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py deps sync --json PATH
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
@@ -61,6 +62,13 @@ exist?" but "what uncertainty does each command remove?"
 
 - `skills get` removes rule uncertainty.
   It loads the repo-backed guidance for the exact tool version in use.
+- `deps sync|verify|list|cache|purge` removes dependency-state uncertainty.
+  It materializes external `dependency*` packages into the cache and lock so
+  imports resolve, and is the full package lifecycle: `sync` creates/updates
+  (only this and `sync --force` touch the network), `list`/`cache` read,
+  `verify` detects a corrupt cache, `sync --force` redownloads/repairs, and
+  `purge` deletes. Run `sync` before `check` on a project with external
+  dependencies. `cache` inventories the shared machine cache + project cache.
 - `check --json` removes source-state uncertainty.
   It is the main semantic gate before and after edits.
 - `graph --json` removes architecture uncertainty.

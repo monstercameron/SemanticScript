@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: monstercameron.SemanticScript
+PackageVersion: 0.0.1
+PackageLocale: en-US
+Publisher: Earl Cameron
+PublisherUrl: https://github.com/monstercameron
+PackageName: SemanticScript
+PackageUrl: https://github.com/monstercameron/SemanticScript
+License: MIT
+ShortDescription: Agent-first semantic tape language compiler, linter, and MCP server.
+Tags:
+  - compiler
+  - linter
+  - mcp
+  - agent
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

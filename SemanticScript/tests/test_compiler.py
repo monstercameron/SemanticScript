@@ -5311,6 +5311,264 @@ def test_sem_explain_crash_reports_runtime_panic_context():
               f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
 
 
+def test_sem_explain_crash_reports_native_fault_context():
+    import shutil
+    clang = (os.environ.get("SEMSC_CLANG")
+             or shutil.which("clang")
+             or r"C:/Program Files/LLVM/bin/clang.exe")
+    if not Path(clang).exists():
+        check("sem explain-crash native fault: clang available", False,
+              f"clang not found at {clang}")
+        return
+    # Two-deep call chain whose leaf reads an unmapped low address, taking a
+    # genuine native fault (SIGSEGV / ACCESS_VIOLATION) that no guarded check
+    # traps ahead of time — the SSRUN002 path. The chain exercises the shadow
+    # call stack; the result is printed so the optimizer cannot drop the
+    # faulting call as dead.
+    src = "\n".join([
+        "project NativeFaultDiagnostic",
+        "entry console main",
+        "operation faultingLeaf",
+        "output operation faultingLeaf ByteCount",
+        "memory faultingLeaf heap no",
+        "async faultingLeaf no",
+        "purpose operation faultingLeaf \"read an unmapped address to take a native fault\"",
+        "storage local immutable badAddress Int64 4096",
+        "call lenCall c.strlen",
+        "argument lenCall s String badAddress",
+        "run lenCall",
+        "bind value textLength ByteCount lenCall",
+        "return value textLength",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"call into a chain that faults at the bottom\"",
+        "call leafCall faultingLeaf",
+        "run leafCall",
+        "bind value leafResult ByteCount leafCall",
+        "call reportCall console.writeIntegerLine",
+        "argument reportCall value Int64 leafResult",
+        "run reportCall",
+        "ignore void source reportCall",
+        "storage local immutable successExitCode ExitCode 0",
+        "return value successExitCode",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "native_fault.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--explain-crash", str(src_path)],
+            capture_output=True, text=True,
+            timeout=300,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        panic = payload.get("panic", {})
+        call_stack = panic.get("callStack", [])
+        stack_ops = [frame.get("operation") for frame in call_stack]
+        check("sem run --explain-crash: reports native fault with last-site context",
+              proc.returncode == 0
+              and payload.get("schemaVersion") == "sem.crash.v0"
+              and payload.get("suspectedCategory") == "nativeFault"
+              and panic.get("code") == "SSRUN002"
+              and panic.get("operation") == "faultingLeaf"
+              and "lenCall -> c.strlen" in panic.get("call", "")
+              and isinstance(panic.get("line"), int)
+              and bool(panic.get("signalName"))
+              and payload.get("semanticContext", {}).get("operation") == "faultingLeaf"
+              and any("lenCall" in candidate
+                      for candidate in payload.get("fixCandidates", [])),
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
+        check("sem run --explain-crash: native fault includes the operation call stack",
+              stack_ops[:1] == ["main"]
+              and stack_ops[-1:] == ["faultingLeaf"]
+              and "faultingLeaf" in stack_ops
+              and all(isinstance(frame.get("index"), int) for frame in call_stack),
+              f"callStack={call_stack}")
+
+
+def test_parse_runtime_panic_handles_ssrun002_and_ssrun001():
+    # Pure-function coverage of the SSRUN002 parser: no clang needed, and it
+    # locks the stderr-block contract that the codegen and sem.py share.
+    sys.path.insert(0, str(ROOT / "tools"))
+    import sem  # noqa: E402
+    ssrun002 = "\n".join([
+        "error SSRUN002: SemanticScript native fault",
+        "--------------------------------------------",
+        "status: fatal signal delivered; runtime caught it before exit",
+        "reason: the process received a fatal signal that no guarded check could prevent",
+        "",
+        "Call stack (most recent last):",
+        "  #0 operation main (entry)",
+        "  #1 operation middleStep (call middleCall line 34)",
+        "  #2 operation faultingLeaf (call leafCall line 24)",
+        "",
+        "Last site:",
+        "  operation faultingLeaf call lenCall -> c.strlen line 13",
+        "",
+        "Signal: 11 (SIGSEGV)",
+        "",
+        "Direction:",
+        "  Inspect the operation named in Last site; the fault is on or just after that row.",
+    ])
+    parsed = sem._parse_runtime_panic(ssrun002)
+    stack = parsed.get("callStack", [])
+    check("parse SSRUN002: leaf site, signal, and fields",
+          parsed.get("code") == "SSRUN002"
+          and parsed.get("operation") == "faultingLeaf"
+          and parsed.get("call") == "lenCall -> c.strlen"
+          and parsed.get("line") == 13
+          and parsed.get("signalNumber") == 11
+          and parsed.get("signalName") == "SIGSEGV",
+          f"parsed={parsed}")
+    check("parse SSRUN002: call-stack frames are structured outermost-first",
+          [f.get("operation") for f in stack] == ["main", "middleStep", "faultingLeaf"]
+          and stack[0].get("index") == 0 and "call" not in stack[0]
+          and stack[1].get("call") == "middleCall" and stack[1].get("line") == 34
+          and stack[2].get("call") == "leafCall" and stack[2].get("line") == 24,
+          f"stack={stack}")
+    # Windows SEH variant: `Exception:` line, prod-style block with no last site.
+    win = sem._parse_runtime_panic("\n".join([
+        "error SSRUN002: SemanticScript native fault",
+        "status: fatal signal delivered; runtime caught it before exit",
+        "Exception: ACCESS_VIOLATION (code 3221225477)",
+    ]))
+    check("parse SSRUN002: windows exception variant",
+          win.get("code") == "SSRUN002"
+          and win.get("signalName") == "ACCESS_VIOLATION"
+          and win.get("exceptionCode") == 3221225477
+          and "callStack" not in win,
+          f"win={win}")
+    # Regression: the pre-existing SSRUN001 layer must still parse.
+    legacy = sem._parse_runtime_panic("\n".join([
+        "error SSRUN001: SemanticScript runtime panic",
+        "reason: zero divisor before math.divideInt64",
+        "Location:",
+        "  file: x.sem",
+        "  line: 10",
+        "  operation: main",
+    ]))
+    check("parse SSRUN001: still recognized after SSRUN002 changes",
+          legacy.get("code") == "SSRUN001"
+          and legacy.get("operation") == "main"
+          and legacy.get("line") == 10,
+          f"legacy={legacy}")
+
+
+def test_sem_explain_crash_prod_mode_hides_site_keeps_signal():
+    import shutil
+    clang = (os.environ.get("SEMSC_CLANG")
+             or shutil.which("clang")
+             or r"C:/Program Files/LLVM/bin/clang.exe")
+    if not Path(clang).exists():
+        check("sem explain-crash prod: clang available", False,
+              f"clang not found at {clang}")
+        return
+    src = "\n".join([
+        "project ProdNativeFault",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"read an unmapped address under prod profile\"",
+        "storage local immutable badAddress Int64 4096",
+        "call lenCall c.strlen",
+        "argument lenCall s String badAddress",
+        "run lenCall",
+        "bind value textLength ByteCount lenCall",
+        "call reportCall console.writeIntegerLine",
+        "argument reportCall value Int64 textLength",
+        "run reportCall",
+        "ignore void source reportCall",
+        "storage local immutable successExitCode ExitCode 0",
+        "return value successExitCode",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "prod_fault.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--explain-crash", str(src_path), "--build-profile", "prod"],
+            capture_output=True, text=True, timeout=300,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        panic = payload.get("panic", {})
+        # prod still classifies the fault and names the signal, but hides the
+        # operation/site/stack — matching how prod hides SSRUN001 source context.
+        check("sem explain-crash prod: SSRUN002 with signal but no leaked site/stack",
+              proc.returncode == 0
+              and payload.get("suspectedCategory") == "nativeFault"
+              and panic.get("code") == "SSRUN002"
+              and bool(panic.get("signalName"))
+              and not panic.get("operation")
+              and not panic.get("callStack")
+              and any("dev" in candidate
+                      for candidate in payload.get("fixCandidates", [])),
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
+
+
+def test_sem_explain_crash_clean_exit_reports_no_crash():
+    import shutil
+    clang = (os.environ.get("SEMSC_CLANG")
+             or shutil.which("clang")
+             or r"C:/Program Files/LLVM/bin/clang.exe")
+    if not Path(clang).exists():
+        check("sem explain-crash noCrash: clang available", False,
+              f"clang not found at {clang}")
+        return
+    src = "\n".join([
+        "project CleanExitDiagnostic",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"exit cleanly so explain-crash reports no crash\"",
+        "storage local immutable greeting String \"clean\"",
+        "call writeCall console.writeLine",
+        "argument writeCall text String greeting",
+        "run writeCall",
+        "ignore void source writeCall",
+        "storage local immutable successExitCode ExitCode 0",
+        "return value successExitCode",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "clean_exit.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "sem.py"),
+             "run", "--explain-crash", str(src_path)],
+            capture_output=True, text=True, timeout=300,
+        )
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            payload = {}
+            decode_error = str(exc)
+        else:
+            decode_error = ""
+        check("sem explain-crash: clean exit classified as noCrash",
+              payload.get("suspectedCategory") == "noCrash"
+              and payload.get("run", {}).get("returnCode") == 0
+              and not payload.get("panic"),
+              f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
+
+
 def test_sem_bench_json_reports_stable_deltas():
     import shutil
     clang = (os.environ.get("SEMSC_CLANG")
@@ -5507,6 +5765,15 @@ def test_build_tape_validation_accepts_dependency_fetch_rows():
         check("build tape: dependency fetch rows validate",
               not raised,
               msg)
+
+
+def test_build_tape_validation_rejects_confusable_github_hosts():
+    check("build tape: github owner/repo accepts canonical host prefix",
+          semsc._github_owner_repo_is_valid("github.com/example/semstd"),
+          "canonical github.com owner/repo should validate")
+    check("build tape: github owner/repo rejects host-like owner",
+          not semsc._github_owner_repo_is_valid("github.com.evil/example"),
+          "host-like owner must not validate as a GitHub repository")
 
 
 def test_build_tape_validation_rejects_insecure_dependency_fetch():
@@ -7889,12 +8156,17 @@ def main():
     test_sem_profile_json_writes_agent_artifacts_and_deltas()
     test_sem_profile_compile_failure_uses_failure_schema()
     test_sem_explain_crash_reports_runtime_panic_context()
+    test_sem_explain_crash_reports_native_fault_context()
+    test_parse_runtime_panic_handles_ssrun002_and_ssrun001()
+    test_sem_explain_crash_prod_mode_hides_site_keeps_signal()
+    test_sem_explain_crash_clean_exit_reports_no_crash()
     test_sem_bench_json_reports_stable_deltas()
     test_cli_build_root_and_folder_name()
     test_cli_build_dir_overrides_build_tape_folder_metadata()
     test_build_tape_path_normalization()
     test_build_tape_validation_rejects_missing_required_rows()
     test_build_tape_validation_accepts_dependency_fetch_rows()
+    test_build_tape_validation_rejects_confusable_github_hosts()
     test_build_tape_validation_rejects_insecure_dependency_fetch()
     test_desktop_window_smoke_sample_uses_refined_gui_surface()
     test_desktop_window_smoke_parser_contract_when_supported()

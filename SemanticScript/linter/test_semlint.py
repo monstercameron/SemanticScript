@@ -1153,6 +1153,10 @@ project TaskForgeTui
         self.assertNotIn("SS2554", codes)
         self.assertNotIn("SS2555", codes)
 
+    def test_github_owner_repo_rejects_confusable_host(self) -> None:
+        self.assertTrue(semlint._github_owner_repo_is_valid("github.com/example/semstd"))
+        self.assertFalse(semlint._github_owner_repo_is_valid("github.com.evil/example"))
+
     def test_dependency_fetch_rejects_unknown_alias_and_insecure_http(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = self._write_complete_project(

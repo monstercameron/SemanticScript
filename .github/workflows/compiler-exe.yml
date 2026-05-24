@@ -1,0 +1,300 @@
+name: Build merge release assets
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-release-assets-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release-assets:
+    name: Build sem.exe and VSIX
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: vscode-semanticscript/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -c constraints.txt
+          python -m pip install -r requirements-mcp.txt
+          python -m pip install pyinstaller==6.20.0
+
+      - name: Install VS Code extension dependencies
+        run: npm --prefix vscode-semanticscript ci
+
+      - name: Build sem single-file executable
+        run: python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
+
+      - name: Validate sem executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sem = "dist\sem.exe"
+          if (-not (Test-Path -Path $sem -PathType Leaf)) {
+            throw "Expected PyInstaller output at $sem."
+          }
+
+          & $sem version --json
+          if ($LASTEXITCODE -ne 0) { throw "sem version failed with $LASTEXITCODE." }
+
+          & $sem skills list --json
+          if ($LASTEXITCODE -ne 0) { throw "sem skills list failed with $LASTEXITCODE." }
+
+          & $sem check --json SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem check failed with $LASTEXITCODE." }
+
+          & $sem fmt --check SemanticScript\tests\agent_cli_demo.test.sem
+          if ($LASTEXITCODE -ne 0) { throw "sem fmt failed with $LASTEXITCODE." }
+
+          # The MCP server reads JSON-RPC from stdin; an empty stdin yields EOF,
+          # so it should start, initialize, and shut down cleanly. This proves
+          # the bundled mcp SDK loads inside the frozen executable.
+          $null | & $sem mcp
+          if ($LASTEXITCODE -ne 0) { throw "sem mcp failed to start with $LASTEXITCODE." }
+
+      # Build the .mcpb bundle on every merge so packaging stays validated, but
+      # do not stamp scoop/winget/registry manifests here: those reference a
+      # stable, non-prerelease semver release and are produced by release.yml.
+      - name: Build .mcpb Desktop Extension bundle
+        run: python packaging/mcpb/build_mcpb.py --sem-exe dist/sem.exe --output dist/semanticscript.mcpb
+
+      - name: Remove stale VSIX artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "vscode-semanticscript" -Filter "*.vsix" -File | Remove-Item -Force
+
+      - name: Package VS Code extension
+        run: npm --prefix vscode-semanticscript run package:vsix
+
+      - name: Stage merge release assets
+        id: artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+          $releaseTag = "main-$shortSha"
+          $artifactDir = "merge-release-artifacts"
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          $semExecutable = "dist\sem.exe"
+          if (-not (Test-Path -Path $semExecutable -PathType Leaf)) {
+            throw "Expected sem single-file executable at $semExecutable."
+          }
+          $semName = "semanticscript-sem-windows-x64-$releaseTag.exe"
+          $semPath = Join-Path $artifactDir $semName
+          Copy-Item -Path $semExecutable -Destination $semPath -Force
+
+          $vsixFiles = Get-ChildItem -Path "vscode-semanticscript" -Filter "*.vsix" -File
+          if ($vsixFiles.Count -ne 1) {
+            throw "Expected exactly one VSIX artifact, found $($vsixFiles.Count)."
+          }
+          $vsixName = "semanticscript-vscode-$releaseTag.vsix"
+          $vsixPath = Join-Path $artifactDir $vsixName
+          Copy-Item -Path $vsixFiles[0].FullName -Destination $vsixPath -Force
+
+          $artifactSpecs = @(
+            @{
+              name = "semanticscript-sem-windows-x64"
+              description = "Single-file Windows sem compiler and toolchain executable"
+              path = $semPath
+            },
+            @{
+              name = "semanticscript-vscode-vsix"
+              description = "VS Code extension package"
+              path = $vsixPath
+            }
+          )
+
+          $artifacts = foreach ($artifact in $artifactSpecs) {
+            $file = Get-Item -Path $artifact.path
+            [ordered]@{
+              name = $artifact.name
+              description = $artifact.description
+              fileName = $file.Name
+              path = $artifact.path.Replace("\", "/")
+              bytes = $file.Length
+              sha256 = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          }
+
+          $manifest = [ordered]@{
+            schemaVersion = "sem.mergeReleaseManifest.v1"
+            channel = "main"
+            prerelease = $true
+            releaseTag = $releaseTag
+            ref = "${{ github.ref }}"
+            refName = "${{ github.ref_name }}"
+            eventName = "${{ github.event_name }}"
+            commitSha = "${{ github.sha }}"
+            shortSha = $shortSha
+            runId = "${{ github.run_id }}"
+            runAttempt = "${{ github.run_attempt }}"
+            dateUtc = (Get-Date).ToUniversalTime().ToString("o")
+            commands = @(
+              "python -m pip install -r requirements.txt -c constraints.txt",
+              "python -m pip install pyinstaller==6.20.0",
+              "npm --prefix vscode-semanticscript ci",
+              "python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec",
+              "dist/sem.exe version --json",
+              "dist/sem.exe skills list --json",
+              "dist/sem.exe check --json SemanticScript/tests/agent_cli_demo.test.sem",
+              "dist/sem.exe fmt --check SemanticScript/tests/agent_cli_demo.test.sem",
+              "npm --prefix vscode-semanticscript run package:vsix"
+            )
+            artifacts = $artifacts
+          }
+
+          $manifestPath = Join-Path $artifactDir "semanticscript-merge-release-manifest-$releaseTag.json"
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath -Encoding utf8
+
+          $downloadLines = foreach ($artifact in $artifacts) {
+            "- $($artifact.fileName) - $($artifact.description). SHA-256: $($artifact.sha256)"
+          }
+
+          $notes = @(
+            "SemanticScript $releaseTag",
+            "",
+            "Automated main-branch prerelease for commit $shortSha.",
+            "",
+            "Downloads:",
+            $downloadLines,
+            "- $(Split-Path -Leaf $manifestPath) - Merge release manifest with asset metadata and checksums.",
+            "",
+            "Validation:",
+            "- PyInstaller sem single-file executable build",
+            "- sem.exe version, skills list, check, and fmt smoke validation",
+            "- npm --prefix vscode-semanticscript ci",
+            "- npm --prefix vscode-semanticscript run package:vsix"
+          ) -join "`n"
+
+          $notesPath = Join-Path $artifactDir "semanticscript-merge-release-notes-$releaseTag.md"
+          $notes | Set-Content -Path $notesPath -Encoding utf8
+
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+          "sem_exe_path=$semPath" >> $env:GITHUB_OUTPUT
+          "vsix_path=$vsixPath" >> $env:GITHUB_OUTPUT
+          "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
+          "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload sem executable artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semanticscript-sem-windows-x64
+          path: ${{ steps.artifacts.outputs.sem_exe_path }}
+          if-no-files-found: error
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semanticscript-vscode-vsix
+          path: ${{ steps.artifacts.outputs.vsix_path }}
+          if-no-files-found: error
+
+      - name: Upload merge release manifest artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semanticscript-merge-release-manifest
+          path: ${{ steps.artifacts.outputs.manifest_path }}
+          if-no-files-found: error
+
+      - name: Upload .mcpb bundle artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semanticscript-mcpb
+          path: dist/semanticscript.mcpb
+          if-no-files-found: error
+
+      - name: Create or update main-branch prerelease
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.artifacts.outputs.release_tag }}
+          SEM_EXE_PATH: ${{ steps.artifacts.outputs.sem_exe_path }}
+          VSIX_PATH: ${{ steps.artifacts.outputs.vsix_path }}
+          MANIFEST_PATH: ${{ steps.artifacts.outputs.manifest_path }}
+          NOTES_PATH: ${{ steps.artifacts.outputs.notes_path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+
+          function Invoke-GhChecked {
+            param(
+              [Parameter(ValueFromRemainingArguments = $true)]
+              [string[]] $Arguments
+            )
+
+            & gh @Arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "gh $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+            }
+          }
+
+          $title = "SemanticScript $env:RELEASE_TAG"
+
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          $null = & gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" 2>$null
+          $viewExitCode = $LASTEXITCODE
+          $ErrorActionPreference = $previousErrorActionPreference
+          $releaseExists = $viewExitCode -eq 0
+
+          if ($releaseExists) {
+            Invoke-GhChecked release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target "${{ github.sha }}" --prerelease
+          } else {
+            Invoke-GhChecked release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes-file $env:NOTES_PATH --target "${{ github.sha }}" --prerelease
+          }
+
+          Invoke-GhChecked release upload $env:RELEASE_TAG $env:SEM_EXE_PATH $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber
+
+          $expectedAssets = @(
+            (Split-Path -Leaf $env:SEM_EXE_PATH),
+            (Split-Path -Leaf $env:VSIX_PATH),
+            (Split-Path -Leaf $env:MANIFEST_PATH)
+          )
+          $releaseJson = & gh release view $env:RELEASE_TAG --repo "${{ github.repository }}" --json assets,isPrerelease
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to verify GitHub release '$env:RELEASE_TAG'."
+          }
+          $release = $releaseJson | ConvertFrom-Json
+          if (-not $release.isPrerelease) {
+            throw "GitHub release '$env:RELEASE_TAG' is not marked as a prerelease."
+          }
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          foreach ($assetName in $expectedAssets) {
+            if ($assetName -notin $assetNames) {
+              throw "GitHub release '$env:RELEASE_TAG' is missing downloadable asset '$assetName'."
+            }
+          }

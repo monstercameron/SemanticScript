@@ -74,10 +74,22 @@ COMMANDS: tuple[TestCommand, ...] = (
         py("-m", "unittest", "SemanticScript.tests.test_command_contracts", "-v"),
     ),
     TestCommand(
+        "sem-mcp.unit",
+        "sem mcp subcommand, MCP server wrapper, and distribution manifest tests",
+        "unit",
+        py("-m", "unittest", "SemanticScript.tests.test_sem_mcp", "-v"),
+    ),
+    TestCommand(
         "sem-clean.unit",
         "sem clean artifact-discovery/removal tests",
         "unit",
         py("-m", "unittest", "SemanticScript.tests.test_sem_clean", "-v"),
+    ),
+    TestCommand(
+        "deps.unit",
+        "External dependency resolution: parse, fetch, integrity, cache, lock, and import bridge",
+        "unit",
+        py("-m", "unittest", "SemanticScript.tests.test_semdeps", "-v"),
     ),
     TestCommand(
         "cli-errors.unit",
@@ -328,6 +340,7 @@ SUITES: dict[str, tuple[str, ...]] = {
         "linter.unit",
         "sem-cli.unit",
         "sem-contracts.unit",
+        "sem-mcp.unit",
         "sem-clean.unit",
         "cli-errors.unit",
         "release-versions.unit",

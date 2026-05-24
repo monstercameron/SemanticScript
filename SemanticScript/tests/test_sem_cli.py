@@ -1,5 +1,6 @@
 import argparse
 import io
+import importlib.util
 import json
 import subprocess
 import sys
@@ -52,6 +53,18 @@ return error overflow
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
 AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
+
+
+def load_sem_launcher():
+    spec = importlib.util.spec_from_file_location(
+        "sem_release_launcher",
+        REPO_ROOT / "packaging" / "pyinstaller" / "sem_launcher.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class TestSemAgentPayloads(unittest.TestCase):
@@ -400,6 +413,28 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(skill["fileSummaries"])
         self.assertTrue(skill["sectionIndex"])
 
+    def test_help_payload_recommends_next_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "proj"
+            sem._starter_project_payload(root)
+            payload = sem._help_payload(root)
+            self.assertEqual(payload["schemaVersion"], "sem.help.v1")
+            self.assertTrue(payload["nextCommands"])
+            kinds = [item["kind"] for item in payload["nextCommands"]]
+            self.assertIn("skills", kinds)
+            self.assertIn("check", kinds)
+            self.assertEqual(
+                payload["state"]["buildTape"], str((root / "build.sem").resolve()))
+
+    def test_package_dependencies_skill_is_discoverable(self) -> None:
+        self.assertEqual(sem.SKILL_ALIASES.get("sem-packages"), "package-dependencies")
+        self.assertEqual(sem.SKILL_ALIASES.get("sem-deps"), "package-dependencies")
+        content = sem._skill_content("package-dependencies", include_full_content=True)
+        self.assertIsNotNone(content)
+        sources = " ".join(str(content).lower().split())
+        self.assertIn("package-management.md", sources)
+        self.assertIn("sem deps", sources)
+
     def test_new_payload_creates_starter_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "hello-world"
@@ -414,8 +449,16 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue((root / "main.sem").is_file())
             self.assertTrue((root / "main.test.sem").is_file())
             self.assertTrue((root / ".github" / "workflows" / "ci.yml").is_file())
+            self.assertTrue((root / ".gitignore").is_file())
+
+            gitignore_text = (root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn(".semcache/", gitignore_text)
+            self.assertIn("!sem.lock", gitignore_text)  # lockfile stays committed
 
             build_text = (root / "build.sem").read_text(encoding="utf-8")
+            # build.sem documents the dependency workflow this scaffold aligns with.
+            self.assertIn("sem deps sync", build_text)
+            self.assertIn("dependencyFetch", build_text)
             main_text = (root / "main.sem").read_text(encoding="utf-8")
             test_text = (root / "main.test.sem").read_text(encoding="utf-8")
             workflow_text = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -1416,6 +1459,43 @@ return value 0
             result = sem.main(["--version", "--json"])
         self.assertEqual(result, 0)
         self.assertTrue(stdout.write.called)
+
+    def test_release_launcher_routes_internal_tool_script_paths(self) -> None:
+        launcher = load_sem_launcher()
+        compiler_path = REPO_ROOT / "SemanticScript" / "compiler" / "semsc.py"
+        fake_module = mock.Mock()
+
+        with mock.patch.object(
+            launcher.importlib,
+            "import_module",
+            return_value=fake_module,
+        ) as import_mock, mock.patch.object(
+            launcher,
+            "_run_module_main",
+            return_value=0,
+        ) as run_mock:
+            result = launcher.main([
+                str(compiler_path),
+                "SemanticScript/tests/tiny.sem",
+                "--parse-only",
+            ])
+
+        self.assertEqual(result, 0)
+        import_mock.assert_called_once_with("SemanticScript.compiler.semsc")
+        run_mock.assert_called_once_with(
+            fake_module,
+            ["SemanticScript/tests/tiny.sem", "--parse-only"],
+            passes_argv=False,
+        )
+
+    def test_release_launcher_runs_public_sem_cli_by_default(self) -> None:
+        launcher = load_sem_launcher()
+
+        with mock.patch.object(sem, "main", return_value=0) as main_mock:
+            result = launcher.main(["version", "--json"])
+
+        self.assertEqual(result, 0)
+        main_mock.assert_called_once_with(["version", "--json"])
 
 
 class TestCallContracts(unittest.TestCase):

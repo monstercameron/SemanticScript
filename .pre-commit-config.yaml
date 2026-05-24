@@ -1,5 +1,7 @@
 # Lightweight repository hygiene checks only. Language formatters and linters are
 # intentionally not enforced here so installing pre-commit does not rewrite the repo.
+# The one exception is a read-only mypy type check scoped to the MCP server (it
+# never rewrites files). Install the type checker via: pip install -r requirements-dev.txt
 minimum_pre_commit_version: "3.5.0"
 
 default_install_hook_types:
@@ -32,3 +34,14 @@ repos:
         exclude: '\.(bat|cmd|ps1)$'
       - id: trailing-whitespace
         exclude: '\.md$'
+
+  # Read-only type check for the MCP server. Uses the locally installed mypy
+  # (language: system) so it does not pin or clone an external hook repo.
+  - repo: local
+    hooks:
+      - id: mypy-mcp
+        name: mypy (mcp server, read-only)
+        entry: mypy
+        language: system
+        files: ^SemanticScript/tools/sem_mcp\.py$
+        pass_filenames: true

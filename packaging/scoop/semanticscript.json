@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "description": "SemanticScript: agent-first semantic tape language compiler, linter, and MCP server.",
+  "homepage": "https://github.com/monstercameron/SemanticScript",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/monstercameron/SemanticScript/releases/download/v0.0.1/sem.exe",
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "bin": [
+    [
+      "sem.exe",
+      "sem"
+    ]
+  ],
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/monstercameron/SemanticScript/releases/download/v$version/sem.exe"
+      }
+    }
+  }
+}
