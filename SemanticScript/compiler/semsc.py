@@ -1098,6 +1098,9 @@ _CPU_FEATURE_STATES = frozenset({"on", "off"})
 _CPU_FEATURE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _DEPENDENCY_SOURCE_KINDS = frozenset({"local", "path", "github", "http"})
 _DEPENDENCY_FETCH_KINDS = frozenset({"github", "http"})
+_GITHUB_HOST = "github.com"
+_GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+_GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _is_https_url(value: str) -> bool:
@@ -1105,10 +1108,17 @@ def _is_https_url(value: str) -> bool:
 
 
 def _github_owner_repo_is_valid(value: str) -> bool:
-    if value.startswith("github.com/"):
-        value = value[len("github.com/"):]
     parts = value.split("/")
-    return len(parts) >= 2 and all(parts[:2]) and not any(part in {".", ".."} for part in parts[:2])
+    if len(parts) >= 3 and parts[0].casefold() == _GITHUB_HOST:
+        parts = parts[1:]
+    if len(parts) < 2:
+        return False
+    owner, repo = parts[:2]
+    if not _GITHUB_OWNER_RE.fullmatch(owner):
+        return False
+    if repo in {".", ".."} or not _GITHUB_REPO_RE.fullmatch(repo):
+        return False
+    return all(part not in {"", ".", ".."} for part in parts[2:])
 
 
 def _dependency_source_kind(args):
@@ -1118,7 +1128,8 @@ def _dependency_source_kind(args):
         source_text = str(_unwrap(args[2]))
         if source_text.startswith(("https://", "http://")):
             return "http", args[2:3]
-        if source_text.startswith("github.com/"):
+        source_parts = source_text.split("/", 1)
+        if len(source_parts) == 2 and source_parts[0].casefold() == _GITHUB_HOST:
             return "github", args[2:3]
         return "local", args[2:3]
     return "", ()

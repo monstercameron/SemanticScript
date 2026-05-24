@@ -15698,6 +15698,9 @@ BUILD_TAPE_ALLOWED_NON_PROJECT_VERBS: Set[str] = {
 REMOTE_DEPENDENCY_KINDS: Set[str] = {"github", "http"}
 DEPENDENCY_SOURCE_KINDS: Set[str] = {"local", "path", "github", "http"}
 DEPENDENCY_FETCH_KINDS: Set[str] = {"github", "http"}
+GITHUB_HOST = "github.com"
+GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _is_https_url(value: str) -> bool:
@@ -15705,10 +15708,17 @@ def _is_https_url(value: str) -> bool:
 
 
 def _github_owner_repo_is_valid(value: str) -> bool:
-    if value.startswith("github.com/"):
-        value = value[len("github.com/"):]
     parts = value.split("/")
-    return len(parts) >= 2 and all(parts[:2]) and not any(part in {".", ".."} for part in parts[:2])
+    if len(parts) >= 3 and parts[0].casefold() == GITHUB_HOST:
+        parts = parts[1:]
+    if len(parts) < 2:
+        return False
+    owner, repo = parts[:2]
+    if not GITHUB_OWNER_RE.fullmatch(owner):
+        return False
+    if repo in {".", ".."} or not GITHUB_REPO_RE.fullmatch(repo):
+        return False
+    return all(part not in {"", ".", ".."} for part in parts[2:])
 
 
 def _dependency_source_kind(args: Sequence[str]) -> Tuple[str, Sequence[str]]:
@@ -15718,7 +15728,8 @@ def _dependency_source_kind(args: Sequence[str]) -> Tuple[str, Sequence[str]]:
         sourceText = args[2]
         if sourceText.startswith(("https://", "http://")):
             return "http", args[2:3]
-        if sourceText.startswith("github.com/"):
+        sourceParts = sourceText.split("/", 1)
+        if len(sourceParts) == 2 and sourceParts[0].casefold() == GITHUB_HOST:
             return "github", args[2:3]
         return "local", args[2:3]
     return "", ()
