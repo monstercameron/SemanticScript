@@ -68,6 +68,7 @@ Inspect before editing:
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py check --json --with-readiness PATH
 python SemanticScript\tools\sem.py readiness --json PATH
+python SemanticScript\tools\sem.py deps list --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py graph --kind routes --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
@@ -98,8 +99,8 @@ from `check`, `fix`, `graph`, and `slice` are usually the right first hop.
 Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
 `sem.readiness.v1`, `sem.context.v1`, `sem.symbols.v1`, `sem.check.v1`,
 `sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.explain.v1`,
-`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`, and provisional
-`sem.doctor.v0`.
+`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`, `sem.deps.v1`,
+and provisional `sem.doctor.v0`.
 
 Read `nextCommands` as machine-facing instructions. Prefer `argv` over
 `command`, honor `cwd`, and replay only entries where `replayable` is true.
@@ -363,6 +364,7 @@ Current JSON surfaces:
   sem.patch.v1
   sem.dev.v1
   sem.test.v1
+  sem.deps.v1
   sem.doctor.v0  # provisional environment surface
 
 Good:

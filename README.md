@@ -45,7 +45,10 @@ being shaped.
 - LLVM IR generation, JIT execution, and clang-linked native executables.
 - Structured linter, formatter, and semantic diagnostics.
 - `sem` CLI for validation, graph/slice retrieval, repair planning, patching,
-  readiness checks, and test orchestration.
+  readiness checks, dependency resolution, and test orchestration.
+- External dependency resolution (`sem deps`): integrity-pinned `github`/`http`
+  and `path` packages, a version-keyed shared cache, `sem.lock`, and an offline
+  import bridge.
 - VS Code extension for syntax, semantic highlighting, hovers, diagnostics, and
   compiler integration.
 - Native runtime adapters for HTTP, SQLite, JSON, bcrypt, HTML templating, and

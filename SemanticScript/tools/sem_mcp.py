@@ -411,6 +411,41 @@ def dev(
     return _run_sem(args, cwd=cwd)
 
 
+@mcp.tool()
+def deps(
+    action: str = "list",
+    path: str = ".",
+    offline: bool = False,
+    force: bool = False,
+    lock: bool = False,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Resolve external dependencies: sync/verify/list/cache/purge (sem.deps.v1).
+
+    `sync` fetches + verifies + locks (network); `verify`/`list`/`cache` are
+    offline; `purge` removes cached source. Defaults to the read-only `list`.
+    Only `sync` (without `offline`) touches the network."""
+    args = _argv(
+        "deps",
+        action,
+        "--json",
+        "--offline" if offline else None,
+        "--force" if force else None,
+        "--lock" if lock else None,
+        path,
+    )
+    return _run_sem(args, cwd=cwd)
+
+
+@mcp.tool()
+def help(path: str = ".", cwd: str | None = None) -> dict[str, Any]:
+    """Recommend the next-step agent workflow for a project (sem.help.v1).
+
+    Returns project state plus an ordered, replayable nextCommands list so an
+    agent always has a concrete next action."""
+    return _run_sem(_argv("help", "--json", path), cwd=cwd)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the MCP server.
 

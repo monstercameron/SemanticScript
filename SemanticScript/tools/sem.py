@@ -139,6 +139,14 @@ SKILL_REGISTRY = (
             "research/README.md",
         ),
     },
+    {
+        "name": "package-dependencies",
+        "description": "External dependency resolution: build.sem dependency rows, `sem deps` (sync/verify/list/cache/purge), the GitHub package format, cache, and sem.lock.",
+        "files": (
+            "docs/reference/package-management.md",
+            "docs/language/project-layout-build-sem.md",
+        ),
+    },
 )
 DIAGNOSTIC_INDEX_PATHS = (
     "docs/toolchain/compiler.md",
@@ -153,7 +161,8 @@ SKILL_ALIASES = {
     "sem-diagnostics": "patch-and-repair",
     "sem-stdlib": "sqlite-patterns",
     "sem-builds": "patch-and-repair",
-    "sem-packages": "patch-and-repair",
+    "sem-packages": "package-dependencies",
+    "sem-deps": "package-dependencies",
     "sem-testing": "graph-and-slice",
 }
 DIAGNOSTIC_EXPLAINERS = {
@@ -500,6 +509,15 @@ def _starter_build_sem_text(meta: dict) -> str:
         f"nativeOutput {meta['buildProject']} \"{meta['nativeOutput']}\"",
         f"import {meta['moduleAlias']} {meta['moduleName']}",
         "",
+        "# External dependencies (optional). Declare them here, then run",
+        "# `sem deps sync` to fetch + verify + lock, and import by module path.",
+        "# Fetching is build-time authority: only `sem deps sync` touches the",
+        "# network; `sem check`/`sem build` resolve imports from the cache offline.",
+        f"# dependency {meta['buildProject']} exampleLib github.com/OWNER/REPO v1.0.0",
+        f"# dependencyFetch {meta['buildProject']} exampleLib github OWNER/REPO v1.0.0",
+        f"# dependencyIntegrity {meta['buildProject']} exampleLib sha256:<archive-digest from first sync>",
+        "# then in main.sem:  import exampleLib github.com/OWNER/REPO",
+        "",
     ])
 
 
@@ -557,6 +575,29 @@ def _starter_test_sem_text(meta: dict) -> str:
         "purpose operation main \"Keep the starter project green with one passing semantic smoke test.\"",
         "invariant operation main \"The starter semantic smoke test remains side-effect free and exits with code 0.\"",
         "return value 0",
+        "",
+    ])
+
+
+def _starter_gitignore_text(meta: dict) -> str:
+    return "\n".join([
+        "# SemanticScript build + dependency cache artifacts.",
+        "# The fetched-dependency cache is a build input, not checked-in source.",
+        ".semcache/",
+        "**/.semcache/",
+        "build/",
+        "**/build/",
+        f"{meta['nativeOutput']}",
+        "*.exe",
+        "*.ll",
+        "*.obj",
+        "*.o",
+        "*.pdb",
+        "__pycache__/",
+        "",
+        "# Keep sem.lock committed: it pins resolved dependency versions and",
+        "# checksums so `sem deps sync` is reproducible across machines.",
+        "!sem.lock",
         "",
     ])
 
@@ -639,6 +680,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
     main_path = root / "main.sem"
     test_path = root / meta["testFileName"]
     workflow_path = root / ".github" / "workflows" / "ci.yml"
+    gitignore_path = root / ".gitignore"
     files_created: list[str] = []
     files_overwritten: list[str] = []
     next_commands = [
@@ -679,6 +721,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             "mainFile": str(main_path),
             "testFile": str(test_path),
             "workflowFile": str(workflow_path),
+            "gitignoreFile": str(gitignore_path),
             "projectVersion": meta["projectVersion"],
             "nativeOutput": meta["nativeOutput"],
             "githubRepoUrl": meta["githubRepoUrl"],
@@ -710,6 +753,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             (main_path, _starter_main_sem_text(meta)),
             (test_path, _starter_test_sem_text(meta)),
             (workflow_path, _starter_ci_workflow_text(meta)),
+            (gitignore_path, _starter_gitignore_text(meta)),
         ):
             if target_path.exists():
                 files_overwritten.append(str(target_path))
@@ -5723,6 +5767,297 @@ def command_doctor(args: argparse.Namespace) -> int:
     return 0 if payload["ok"] else 1
 
 
+def _load_semdeps():
+    compiler_dir = ROOT / "compiler"
+    if str(compiler_dir) not in sys.path:
+        sys.path.insert(0, str(compiler_dir))
+    import semdeps
+    return semdeps
+
+
+def _deps_next_commands(build_tape: str, status: str) -> list[dict]:
+    entries: list[dict] = []
+    seen: set[str] = set()
+    if status in ("pending", "verify-failed", "error", "unlocked"):
+        _append_next_command(
+            entries, seen, "deps-sync",
+            f"sem deps sync {build_tape}",
+            "fetch, verify, and lock the declared dependencies",
+            argv=["sem", "deps", "sync", build_tape])
+    _append_next_command(
+        entries, seen, "check",
+        f"sem check --json {build_tape}",
+        "re-check the project against the materialized dependency cache",
+        argv=["sem", "check", "--json", build_tape])
+    return entries
+
+
+def _deps_payload(start: Path, action: str, *, allow_network: bool, force: bool = False,
+                  remove_lock: bool = False) -> dict:
+    semdeps = _load_semdeps()
+    base = {"schemaVersion": "sem.deps.v1", "action": action, "dependencies": []}
+    build_tape = _find_build_tape(start)
+
+    if action == "cache":
+        # Cache inventory is about the machine cache, not one project — it works
+        # with or without a build tape. Lists the shared cache always, plus the
+        # project-local .semcache when a build tape is found.
+        shared_root = semdeps._shared_cache_root()
+        roots = [("shared", shared_root)]
+        if build_tape is not None:
+            roots.append(("project", os.path.join(
+                os.path.dirname(str(build_tape)), semdeps.DEFAULT_CACHE_DIR)))
+        base.update(
+            ok=True, status="ok",
+            sharedCacheDir=shared_root,
+            buildTape=str(build_tape) if build_tape else "",
+            cached=semdeps.list_cached_packages(roots),
+            nextCommands=[])
+        return base
+
+    if build_tape is None:
+        base.update(ok=False, status="no-build-tape",
+                    error=f"no build.sem found from {start}", nextCommands=[])
+        return base
+    source = build_tape.read_text(encoding="utf-8")
+    try:
+        config = semdeps.parse_build_sem(source, str(build_tape))
+    except semdeps.DependencyError as exc:
+        base.update(ok=False, status="error", buildTape=str(build_tape),
+                    error=str(exc),
+                    nextCommands=_deps_next_commands(str(build_tape), "error"))
+        return base
+
+    base.update(
+        project=config.project_name,
+        buildTape=str(build_tape),
+        cacheDir=config.cache_dir,
+        sharedCacheDir=config.shared_cache_dir,
+        cacheDirExplicit=config.cache_dir_explicit,
+        lockPath=config.lock_path,
+    )
+
+    def describe(spec, status, *, resolved="", integrity="", detail="", cache_dir=""):
+        row = {
+            "alias": spec.alias,
+            "modulePath": spec.module_path,
+            "version": spec.version,
+            "sourceKind": spec.source_kind,
+            "status": status,
+        }
+        if resolved:
+            row["resolved"] = resolved
+        if integrity:
+            row["integrity"] = integrity
+        if detail:
+            row["detail"] = detail
+        if cache_dir:
+            row["cacheDir"] = cache_dir
+        return row
+
+    if action == "purge":
+        removed = semdeps.purge(config, remove_lock=remove_lock)
+        base.update(ok=True, status="purged", removed=removed)
+        for spec in config.specs:
+            base["dependencies"].append(describe(spec, "purged"))
+        base["nextCommands"] = _deps_next_commands(str(build_tape), "pending")
+        return base
+
+    if action == "sync":
+        try:
+            resolved = semdeps.sync(config, allow_network=allow_network, force=force)
+        except semdeps.DependencyError as exc:
+            base.update(ok=False, status="error", error=str(exc),
+                        nextCommands=_deps_next_commands(str(build_tape), "error"))
+            return base
+        warnings: list[str] = []
+        for item in resolved:
+            row = describe(
+                item.spec, "cached" if item.from_cache else "synced",
+                resolved=item.lock_entry.resolved,
+                integrity=item.lock_entry.integrity,
+                cache_dir=item.cache_dir)
+            if item.warnings:
+                row["warnings"] = list(item.warnings)
+                warnings.extend(item.warnings)
+            base["dependencies"].append(row)
+        base.update(ok=True, status="synced")
+        if warnings:
+            base["warnings"] = warnings
+    elif action == "verify":
+        try:
+            verify_rows = semdeps.verify(config)
+        except semdeps.DependencyError as exc:
+            base.update(ok=False, status="error", error=str(exc),
+                        nextCommands=_deps_next_commands(str(build_tape), "error"))
+            return base
+        results = {alias: (ok, detail) for alias, ok, detail in verify_rows}
+        ok_all = all(ok for ok, _ in results.values()) if results else True
+        for spec in config.specs:
+            ok, detail = results.get(spec.alias, (False, "unknown"))
+            base["dependencies"].append(describe(
+                spec, "ok" if ok else "failed", detail=detail))
+        base.update(ok=ok_all, status="verified" if ok_all else "verify-failed")
+    else:  # list
+        try:
+            locked = {e.alias: e for e in (semdeps.read_lock(config) or [])}
+        except semdeps.DependencyError as exc:
+            base.update(ok=False, status="error", error=str(exc),
+                        nextCommands=_deps_next_commands(str(build_tape), "error"))
+            return base
+        any_pending = False
+        any_unlocked = False
+        for spec in config.specs:
+            cache_dir = semdeps.cache_dir_for(config, spec)
+            materialized = os.path.isdir(cache_dir)
+            entry = locked.get(spec.alias)
+            if materialized and entry:
+                status = "locked"
+            elif materialized:
+                status = "unlocked"
+                any_unlocked = True
+            else:
+                status = "pending"
+                any_pending = True
+            base["dependencies"].append(describe(
+                spec, status,
+                resolved=entry.resolved if entry else "",
+                integrity=entry.integrity if entry else "",
+                cache_dir=cache_dir if materialized else ""))
+        base.update(
+            ok=not any_pending,
+            status="pending" if any_pending else ("unlocked" if any_unlocked else "ready"))
+
+    base["nextCommands"] = _deps_next_commands(str(build_tape), base["status"])
+    return base
+
+
+def command_deps(args: argparse.Namespace) -> int:
+    action = getattr(args, "deps_action", None) or "list"
+    allow_network = not getattr(args, "offline", False)
+    payload = _deps_payload(
+        Path(args.path), action, allow_network=allow_network,
+        force=getattr(args, "force", False), remove_lock=getattr(args, "lock", False))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload.get("ok") else 1
+    if payload["status"] in ("no-build-tape", "error"):
+        print(f"sem deps: {payload['error']}", file=sys.stderr)
+        return 1
+    if action == "cache":
+        cached = payload.get("cached", [])
+        print(f"shared cache: {payload.get('sharedCacheDir')}")
+        if not cached:
+            print("no cached packages")
+        for entry in cached:
+            kib = entry["bytes"] / 1024
+            print(f"- [{entry['scope']}] {entry['key']} ({entry['sourceKind']}, "
+                  f"{entry['fileCount']} files, {kib:.1f} KiB)")
+        return 0
+    print(f"project: {payload.get('project') or '(unnamed)'}")
+    print(f"action: {action}  status: {payload['status']}")
+    if action == "purge":
+        removed = payload.get("removed", [])
+        print(f"removed {len(removed)} path(s)")
+        for path in removed:
+            print(f"- {path}")
+        return 0
+    if not payload["dependencies"]:
+        print("no external dependencies declared")
+    for dep in payload["dependencies"]:
+        line = f"- {dep['alias']} {dep['modulePath']} ({dep['sourceKind']}): {dep['status']}"
+        if dep.get("detail") and dep["status"] not in ("ok", "synced", "cached", "locked"):
+            line += f" — {dep['detail']}"
+        print(line)
+    for warning in payload.get("warnings", []):
+        print(f"warning: {warning}")
+    return 0 if payload.get("ok") else 1
+
+
+def _help_payload(start: Path) -> dict:
+    """Recommend the next step for an agent working on this project.
+
+    Reports project state (build tape, declared/unsynced dependencies) and an
+    ordered, replayable nextCommands list so an agent always has a concrete
+    "what do I run now" answer, not just a flag dump."""
+    resolved = str(start.resolve())
+    build_tape = _find_build_tape(start)
+    state = {
+        "buildTape": str(build_tape) if build_tape else "",
+        "declaredDependencies": 0,
+        "dependenciesSynced": True,
+        "pendingDependencies": [],
+    }
+    entries: list[dict] = []
+    seen: set[str] = set()
+    _append_next_command(
+        entries, seen, "skills",
+        "sem skills get sem-agent --json",
+        "load version-matched agent workflow rules before editing",
+        argv=["sem", "skills", "get", "sem-agent", "--json"])
+    if build_tape is not None:
+        semdeps = _load_semdeps()
+        try:
+            config = semdeps.parse_build_sem(
+                build_tape.read_text(encoding="utf-8"), str(build_tape))
+            state["declaredDependencies"] = len(config.specs)
+            _resolved, pending = semdeps.resolve_import_registry(config)
+            pending_paths = sorted(pending.keys())
+            state["pendingDependencies"] = pending_paths
+            state["dependenciesSynced"] = not pending_paths
+            if pending_paths:
+                _append_next_command(
+                    entries, seen, "deps-sync",
+                    f"sem deps sync {resolved}",
+                    "materialize declared external dependencies so imports resolve",
+                    argv=["sem", "deps", "sync", resolved])
+        except (OSError, semdeps.DependencyError):
+            pass
+    _append_next_command(
+        entries, seen, "check",
+        f"sem check --json {resolved}",
+        "gate the project: parse, lint, and semantic checks",
+        argv=["sem", "check", "--json", resolved])
+    _append_next_command(
+        entries, seen, "graph",
+        f"sem graph --kind summary --json {resolved}",
+        "inspect architecture: operations, calls, effects, and routes",
+        argv=["sem", "graph", "--kind", "summary", "--json", resolved])
+    _append_next_command(
+        entries, seen, "test",
+        f"sem test --json {resolved}",
+        "run semantic preflight and harness tests once check is clean",
+        argv=["sem", "test", "--json", resolved])
+    return {
+        "schemaVersion": "sem.help.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "summary": ("Recommended loop: skills -> (deps sync) -> check -> "
+                    "graph/slice -> explain -> fix -> patch -> test. Run the "
+                    "first nextCommand entry next."),
+        "loop": ["skills", "deps sync", "check", "graph/slice", "explain",
+                 "fix", "patch", "test"],
+        "state": state,
+        "nextCommands": entries,
+    }
+
+
+def command_help(args: argparse.Namespace) -> int:
+    payload = _help_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(payload["summary"])
+    print(f"build tape: {payload['state']['buildTape'] or '(none)'}")
+    if payload["state"]["pendingDependencies"]:
+        print("unsynced dependencies: "
+              + ", ".join(payload["state"]["pendingDependencies"]))
+    print("next steps:")
+    for item in payload["nextCommands"]:
+        label = item.get("command") or " ".join(item.get("argv", []))
+        print(f"- {label}\n    {item['reason']}")
+    return 0
+
+
 def command_version(args: argparse.Namespace) -> int:
     payload = _version_payload()
     if args.json:
@@ -6242,6 +6577,36 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true",
                         help="emit machine-readable prerequisite checks")
     doctor.set_defaults(func=command_doctor)
+
+    deps = subparsers.add_parser(
+        "deps",
+        help="resolve, fetch, verify, and lock external SemanticScript dependencies declared in build.sem",
+    )
+    deps.add_argument("deps_action", nargs="?", default="list",
+                      choices=("sync", "verify", "list", "purge", "cache"),
+                      help="sync fetches+locks (network); verify checks the cache offline; "
+                           "list shows declared state; purge removes this project's cached deps; "
+                           "cache inventories all materialized packages")
+    deps.add_argument("--json", action="store_true",
+                      help="emit machine-readable dependency facts")
+    deps.add_argument("--offline", action="store_true",
+                      help="never access the network; only path/local dependencies and the existing cache are materialized")
+    deps.add_argument("--force", action="store_true",
+                      help="on sync, ignore the cache and re-fetch + re-verify every dependency (repairs a corrupt cache)")
+    deps.add_argument("--lock", action="store_true",
+                      help="on purge, also delete sem.lock")
+    deps.add_argument("path", nargs="?", default=".",
+                      help="project path or build.sem to resolve dependencies for")
+    deps.set_defaults(func=command_deps)
+
+    help_cmd = subparsers.add_parser(
+        "help",
+        help="emit the recommended next-step agent workflow for a project (sem.help.v1)")
+    help_cmd.add_argument("--json", action="store_true",
+                          help="emit machine-readable next-step guidance")
+    help_cmd.add_argument("path", nargs="?", default=".",
+                          help="project path or build.sem to summarize next steps for")
+    help_cmd.set_defaults(func=command_help)
 
     readiness = subparsers.add_parser(
         "readiness",

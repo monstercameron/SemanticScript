@@ -32,6 +32,8 @@ EXPECTED_TOOLS = {
     "patch",
     "test",
     "dev",
+    "deps",
+    "help",
 }
 
 MINIMAL_SOURCE = """\
@@ -147,6 +149,39 @@ class TestSemMcpWrapper(unittest.TestCase):
             recorded["args"],
             ["check", "--json", "--with-readiness", "--full", "main.sem"],
         )
+
+    def test_deps_forwards_action_and_flags(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+            sem_mcp.deps(action="sync", path="proj", force=True)
+        self.assertEqual(recorded["args"], ["deps", "sync", "--json", "--force", "proj"])
+
+    def test_deps_defaults_to_readonly_list(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+            sem_mcp.deps(path="proj")
+        self.assertEqual(recorded["args"], ["deps", "list", "--json", "proj"])
+
+    def test_help_forwards_path(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+            sem_mcp.help(path="proj")
+        self.assertEqual(recorded["args"], ["help", "--json", "proj"])
 
     def test_run_sem_timeout_envelope(self) -> None:
         with mock.patch(

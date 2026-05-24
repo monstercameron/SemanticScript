@@ -77,13 +77,13 @@ blocks, dynamic object or array literals, and legacy replacement rows such as
 | `mainOperation PROJECT OPERATION` | Declares the default executable operation inside `mainFile`. | Partial |
 | `testPattern PROJECT "*.test.sem"` | Declares the local test-file glob for project test discovery. | Partial |
 | `testRoot PROJECT "PATH"` | Declares the test source root relative to `build.sem`. | Partial |
-| `dependency PROJECT ALIAS MODULE_PATH VERSION_OR_REF` | Declares one project dependency request. | Partial |
-| `dependencySource PROJECT ALIAS [local\|path\|github\|http] SOURCE [REF]` | Declares where dependency source is found. Legacy `dependencySource PROJECT ALIAS SOURCE` rows infer kind from `SOURCE`. GitHub rows use `OWNER/REPO`; HTTP rows must use `https://`. | Partial |
-| `dependencyFetch PROJECT ALIAS github OWNER/REPO REF` | Declares a future GitHub fetch edge with explicit owner/repo and requested ref. | Partial |
-| `dependencyFetch PROJECT ALIAS http "https://..."` | Declares a future HTTPS archive/API fetch edge. Plain HTTP is rejected. | Partial |
-| `dependencyCache PROJECT "PATH"` | Declares the dependency source cache directory, normally `.semcache`. | Partial |
-| `dependencyLock PROJECT "PATH"` | Declares the dependency lock tape path, normally `sem.lock`. | Partial |
-| `dependencyIntegrity PROJECT ALIAS sha256:<64-hex>\|commit:<7-40-hex>` | Records a reproducible source pin for archives or resolved GitHub commits. | Partial |
+| `dependency PROJECT ALIAS MODULE_PATH VERSION_OR_REF` | Declares one project dependency request. `sem deps sync` materializes it; the import bridge resolves `import ALIAS MODULE_PATH` against the cached package. Pin-exact only; no transitive version solving yet. | Impl'd |
+| `dependencySource PROJECT ALIAS [local\|path\|github\|http] SOURCE [REF]` | Declares where dependency source is found. `path`/`local` copy a project-relative directory and pin it by tree hash. Legacy `dependencySource PROJECT ALIAS SOURCE` rows infer kind from `SOURCE`. GitHub rows use `OWNER/REPO`; HTTP rows must use `https://`. | Impl'd |
+| `dependencyFetch PROJECT ALIAS github OWNER/REPO REF` | GitHub fetch edge. `sem deps sync` downloads the `codeload` tarball for the ref and verifies it against the `sha256:` integrity pin. | Impl'd |
+| `dependencyFetch PROJECT ALIAS http "https://..."` | HTTPS archive fetch edge (`.tar.gz`/`.zip`), verified against the `sha256:` pin. Plain HTTP is rejected. | Impl'd |
+| `dependencyCache PROJECT "PATH"` | Project-local cache directory, normally `.semcache`. When set, all dependencies stay project-local; otherwise fetched deps use the shared, version-keyed machine cache (`SEMANTICSCRIPT_CACHE`). | Impl'd |
+| `dependencyLock PROJECT "PATH"` | Reproducible lock tape path, normally `sem.lock` (`sem.lock.v1`: alias, module path, version, source kind, resolved hash, integrity). | Impl'd |
+| `dependencyIntegrity PROJECT ALIAS sha256:<64-hex>\|commit:<7-40-hex>` | Reproducible source pin. `sha256:` is enforced bytewise against the fetched archive (or path tree hash); `commit:` selects/records the GitHub ref. | Impl'd |
 | `targetRuntime PROJECT nativeExe\|webServer\|windowsGui\|library` | Declares the build target runtime class for project-mode builds. Current `windowsGui` build tapes use `target windowsGui` plus `entry console OPERATION`; the entry operation calls `gui.*` targets and the build links the selected native GUI backend. | Partial |
 | `guiBackend PROJECT win32\|winui3` | Selects the native GUI backend for `targetRuntime PROJECT windowsGui`. The default is `win32`. `winui3` is recognized but rejected at native backend selection until Windows App SDK / C++/WinRT build integration lands. | Partial |
 | `buildProfile PROJECT dev|prod` | Declares the default build profile for project-mode builds. | Partial |

@@ -413,6 +413,28 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(skill["fileSummaries"])
         self.assertTrue(skill["sectionIndex"])
 
+    def test_help_payload_recommends_next_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "proj"
+            sem._starter_project_payload(root)
+            payload = sem._help_payload(root)
+            self.assertEqual(payload["schemaVersion"], "sem.help.v1")
+            self.assertTrue(payload["nextCommands"])
+            kinds = [item["kind"] for item in payload["nextCommands"]]
+            self.assertIn("skills", kinds)
+            self.assertIn("check", kinds)
+            self.assertEqual(
+                payload["state"]["buildTape"], str((root / "build.sem").resolve()))
+
+    def test_package_dependencies_skill_is_discoverable(self) -> None:
+        self.assertEqual(sem.SKILL_ALIASES.get("sem-packages"), "package-dependencies")
+        self.assertEqual(sem.SKILL_ALIASES.get("sem-deps"), "package-dependencies")
+        content = sem._skill_content("package-dependencies", include_full_content=True)
+        self.assertIsNotNone(content)
+        sources = " ".join(str(content).lower().split())
+        self.assertIn("package-management.md", sources)
+        self.assertIn("sem deps", sources)
+
     def test_new_payload_creates_starter_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "hello-world"
@@ -427,8 +449,16 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue((root / "main.sem").is_file())
             self.assertTrue((root / "main.test.sem").is_file())
             self.assertTrue((root / ".github" / "workflows" / "ci.yml").is_file())
+            self.assertTrue((root / ".gitignore").is_file())
+
+            gitignore_text = (root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn(".semcache/", gitignore_text)
+            self.assertIn("!sem.lock", gitignore_text)  # lockfile stays committed
 
             build_text = (root / "build.sem").read_text(encoding="utf-8")
+            # build.sem documents the dependency workflow this scaffold aligns with.
+            self.assertIn("sem deps sync", build_text)
+            self.assertIn("dependencyFetch", build_text)
             main_text = (root / "main.sem").read_text(encoding="utf-8")
             test_text = (root / "main.test.sem").read_text(encoding="utf-8")
             workflow_text = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-05-24
+
+- `feat(deps): implement external SemanticScript dependency resolution`
+  - Adds `SemanticScript/compiler/semdeps.py`: parses `dependency*` build-tape
+    rows, materializes `path`/`local` (copy + tree-hash pin) and `github`/`http`
+    (download, SHA-256 verify, traversal-guarded extract) dependencies, writes
+    and verifies `sem.lock` (`sem.lock.v1`), and produces an offline module-path
+    registry.
+  - Wires a dependency→import bridge into the compiler so `import ALIAS MODULE_PATH`
+    resolves against the materialized cache. Import resolution stays offline; an
+    unsynced dependency raises an actionable `sem deps sync` error only when its
+    module is actually imported.
+  - Adds the `sem deps sync|verify|list` CLI (`sem.deps.v1` JSON surface) with a
+    shared, version-keyed machine cache (`SEMANTICSCRIPT_CACHE`) so multiple
+    projects share one download per pinned version while versions coexist;
+    `path`/`local` deps and explicit `dependencyCache` stay project-local.
+  - Marks the dependency rows `Impl'd` in the syntax inventory and updates the
+    compatibility boundary and `build.sem` layout docs. Transitive resolution,
+    version solving, and a hosted registry remain future work.
+  - Hardens the GitHub/HTTP fetch path: OWNER/REPO + REF validation and URL
+    encoding, https-only redirects, and an SSRF guard that refuses non-public
+    hosts. Clamps a fetched package's `registerModule` paths to its cache dir so
+    a hostile package cannot escape it. A live, network-gated test
+    (`SEMANTICSCRIPT_NETWORK_TESTS=1`) exercises the real transfer.
+  - Adds the package lifecycle (CRUD) for agents: `sem deps cache` inventories
+    materialized packages, `sem deps purge [--lock]` deletes them, and
+    `sem deps sync --force` redownloads/repairs a corrupt cache. Corrupt
+    `sem.lock` now yields an actionable error instead of a crash.
+
 ## 2026-05-23
 
 - `63318b755dc466d21e443b68ea1bf1ba99a878fb` - `docs: align root docs with runtime surfaces`

@@ -65,11 +65,20 @@ Rows marked `Partial`, `Not impl'd`, or `Proposed` in `syntax-inventory.md` are 
 1.0 executable guarantees. They may be parser-only, linter-only, metadata-only,
 or design targets for future compiler/runtime work.
 
-Package fetching, language server, documentation generator, test runner,
-installer/version manager, full registry workflow, record JSON codecs,
-outbound `standard.net`, declarative event topology rows, H2O/HTTP/2, WinUI 3,
-and declarative GUI top-level rows are preview or future work unless a narrower
-row in `syntax-inventory.md` says otherwise.
+Language server, documentation generator, test runner, installer/version
+manager, full registry workflow with a central checksum database, transitive
+dependency resolution and version solving, record JSON codecs, outbound
+`standard.net`, declarative event topology rows, H2O/HTTP/2, WinUI 3, and
+declarative GUI top-level rows are preview or future work unless a narrower row
+in `syntax-inventory.md` says otherwise.
+
+Dependency fetching is implemented for the documented row contract:
+`dependencyFetch` (github/http) and `dependencySource` (path/local) materialize
+into a version-keyed cache, are pinned by `dependencyIntegrity` (SHA-256
+enforced bytewise), recorded in `sem.lock` (`sem.lock.v1`), and exposed to
+imports through an offline cache bridge driven by `sem deps`. The 1.0 guarantee
+covers exact pins only; transitive resolution, version solving, and a hosted
+registry/checksum database remain future work.
 
 ## Deprecation
 
