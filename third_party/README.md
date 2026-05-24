@@ -40,8 +40,8 @@ git submodule update --init --recursive third_party/h2o
   [`sqlite/README.md`](sqlite/README.md).
 
 Vendored rather than submoduled because the amalgamation is a single ~9 MB
-unpacked drop with no transitive deps, and we want `git clone` of AgentScript
-to be usable without `git submodule update`.
+unpacked drop with no transitive deps, and we want `git clone` of
+SemanticScript to be usable without `git submodule update`.
 
 ## crypt_blowfish (vendored bcrypt)
 
@@ -50,10 +50,10 @@ to be usable without `git submodule update`.
 - Purpose: bcrypt password hashing for the `SemanticScript/runtime/native_bcrypt/`
   adapter (used by the `apps/taskforge-web` web app for user passwords + session-token
   salt + base64url helpers).
-- License: public domain (with fallback permissive terms — see
-  [`bcrypt/README.AgentScript.md`](bcrypt/README.AgentScript.md)).
+- License: public domain (with fallback permissive terms - see
+  [`bcrypt/README.SemanticScript.md`](bcrypt/README.SemanticScript.md)).
 - Pinned version: **crypt_blowfish 1.3** (Solar Designer / Openwall).
-- Compatibility: produces / validates `$2b$NN$…` hashes per the OpenBSD bcrypt
+- Compatibility: produces / validates `$2b$NN$...` hashes per the OpenBSD bcrypt
   convention.
 
 Vendored because the source is ~40 KB of pure C with no transitive dependencies;

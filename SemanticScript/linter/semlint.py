@@ -14329,14 +14329,14 @@ def check_middleware_missing_response_effect(facts: ExtendedFacts) -> List[Diagn
 
 
 def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
-    """SS3603 — a value bound from a nullable http.request* read must not
+    """SS3603 - a value bound from a nullable http.request* read must not
     flow into the `body` argument of an http.response* writer (or a
     transitive wrapper) without an intervening `pointer.isNull` guard.
 
     Opt-out (per-operation): include the phrase `null-body failure path`
     or `null-body 500` in a `warning OP "..."` line. This matches the
-    AgentScript convention of pinning intentional negative-test surfaces
-    in the source rather than the linter config — a future refactor that
+    SemanticScript convention of pinning intentional negative-test surfaces
+    in the source rather than the linter config - a future refactor that
     silently adds a guard would erase the pinned coverage, and the marker
     text is the contract that prevents that.
     """
@@ -14847,8 +14847,8 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
                 agentHint=(
                     f"`{inputName}` likely came from a different language's "
                     f"convention (Go `r`/`w`, Rust `req`/`res`, JS "
-                    f"`req`/`resp`). The canonical AgentScript names are "
-                    f"`request` and `response` — match them and every "
+                    f"`req`/`resp`). The canonical SemanticScript names are "
+                    f"`request` and `response` - match them and every "
                     f"downstream `arg <call> {canonicalName} {canonicalName}` "
                     f"resolves cleanly without positional inference."
                 ),
@@ -14857,7 +14857,7 @@ def check_route_handler_input_names(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
-    """SS3614 — every `mainFile PROJECT "PATH"` row in a build tape MUST
+    """SS3614 - every `mainFile PROJECT "PATH"` row in a build tape MUST
     reference a file that exists on disk (resolved relative to
     `sourceRoot PROJECT "ROOT_PATH"`, or to the build tape's own
     directory when sourceRoot is absent).

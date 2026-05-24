@@ -9,7 +9,7 @@ movement. It covers these known hot spots:
 | `SemanticScript/compiler/semsc.py` | about 19.7k lines | Parse, validate, lower, link, emit, and produce agent metadata. |
 | `SemanticScript/linter/semlint.py` | about 18.9k lines | Parse lint facts, run independent checks, render diagnostics. |
 | `vscode-semanticscript/extension.js` | about 5.7k lines | Extension constants, tokenization, navigation, hovers, lint, compiler commands. |
-| `TODO.md` | about 5.3k lines | Mixed release blockers, research backlog, hygiene notes, and future ideas. |
+| `release-backlog.md` | about 5.3k lines | Mixed release blockers, research backlog, hygiene notes, and future ideas. |
 
 The goal is not to make files small for its own sake. The goal is to create
 stable ownership boundaries, smaller review surfaces, and testable extraction
@@ -32,7 +32,7 @@ Assign future refactors by subsystem, not by line ranges:
 | VS Code language model | verb/target/type tables, tokenization helpers, document symbol indexes. | Shared by hover, semantic token, completion, and definition providers. |
 | VS Code UI providers | decorations, semantic tokens, hover, definition, document symbols, completion. | Use the language model; do not shell out to compiler/linter. |
 | VS Code tool adapters | configuration sync, linter process, compiler process, diagnostics, status bars. | Owns process management only; does not duplicate semantic rules already in Python. |
-| Release backlog | One GitHub issue per independently shippable outcome. | `TODO.md` becomes an index and migration ledger, not a long-lived primary tracker. |
+| Release backlog | One GitHub issue per independently shippable outcome. | `release-backlog.md` becomes an index and migration ledger, not a long-lived primary tracker. |
 
 ## Extraction Rules
 
@@ -242,27 +242,27 @@ If tests are added later, include activation smoke tests for command
 registration, linter path resolution, diagnostic parsing, and semantic token
 coverage.
 
-### Stage 7: TODO.md Migration
+### Stage 7: Release Backlog Migration
 
-Treat `TODO.md` as a migration source, not the permanent tracker.
+Treat `release-backlog.md` as a migration source, not the permanent tracker.
 
 1. Create GitHub labels before filing issues:
    `area/compiler`, `area/linter`, `area/vscode`, `area/docs`,
    `area/runtime`, `area/stdlib`, `kind/bug`, `kind/refactor`,
    `kind/research`, `kind/release-blocker`, `priority/P0`, `priority/P1`,
    `priority/P2`, `needs/design`, `needs/test`, `tracking`.
-2. Convert each top-level TODO section into either a tracking issue or a
+2. Convert each top-level backlog section into either a tracking issue or a
    milestone epic. Keep P0 release blockers separate from research or
    nice-to-have work.
 3. Split checklist items into child issues only when they can land
    independently with their own tests.
-4. Preserve the original TODO heading, copied acceptance criteria, and source
-   link back to the TODO commit or line range in every migrated issue.
-5. Mark migrated checklist entries in `TODO.md` with the issue number instead
+4. Preserve the original backlog heading, copied acceptance criteria, and source
+   link back to the backlog commit or line range in every migrated issue.
+5. Mark migrated checklist entries in `release-backlog.md` with the issue number instead
    of deleting them in the same PR.
 6. After a complete section is migrated, replace the section body with a short
    pointer to the tracking issue and milestone.
-7. Keep `TODO.md` under 500 lines after migration by making it an index:
+7. Keep `release-backlog.md` under 500 lines after migration by making it an index:
    release blockers, active tracking issues, and archival migration notes.
 
 Suggested issue template:
@@ -270,7 +270,7 @@ Suggested issue template:
 ```markdown
 ## Source
 
-- Migrated from `TODO.md`, heading: `<exact heading>`
+- Migrated from `release-backlog.md`, heading: `<exact heading>`
 - Original priority: `P0|P1|P2|P3`
 
 ## Problem
@@ -302,7 +302,7 @@ Use this checklist for every modularization PR:
 - Public commands, exit codes, and JSON payload shapes are unchanged.
 - Tests or golden outputs cover the moved code path.
 - Imports are acyclic and do not create a new shared "misc" module.
-- `TODO.md` edits only migrate or link items; they do not silently delete work.
+- `release-backlog.md` edits only migrate or link items; they do not silently delete work.
 - The PR description names the next safe extraction step.
 
 ## Stop Conditions
@@ -315,4 +315,3 @@ Pause the refactor and open a design issue if any of these happen:
 - VS Code extraction requires changing extension activation or command names.
 - TODO migration uncovers duplicate or conflicting release criteria.
 - A proposed module would exceed roughly 3k lines immediately after extraction.
-

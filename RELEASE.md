@@ -50,8 +50,9 @@ checksums, signature status, deferred features, and known limitations.
 The GitHub release workflow at `.github/workflows/release.yml` performs the
 Windows release validation path, packages the VS Code extension, generates the
 same manifest shape as a release artifact, and creates or updates the GitHub
-release for `v*` tags or manual dispatches. Keep this manual policy section and
-the workflow in sync when release commands or artifact rules change.
+release for `v*` tags. Manual dispatches require an explicit existing tag that
+matches `version.json`; keep this manual policy section and the workflow in
+sync when release commands or artifact rules change.
 
 ## Environment
 
@@ -76,7 +77,7 @@ These commands mirror the lightweight CI workflow:
 ```powershell
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt -c constraints.txt
-python -m compileall -q SemanticScript python
+python -m compileall -q SemanticScript apps experiments
 python SemanticScript/tools/release_versions.py
 python SemanticScript/tools/sem.py --version --json
 python SemanticScript/tools/sem.py skills list --json
@@ -124,7 +125,6 @@ release artifacts.
 
 Before tagging, confirm the release hygiene policies:
 
-- `python/` is the canonical Python comparison-sample tree.
 - `.sem` files directly under `SemanticScript/sem/` are intentionally tracked
   alias fixtures, not generated outputs.
 - `python SemanticScript/tools/release_versions.py` prints the component matrix
