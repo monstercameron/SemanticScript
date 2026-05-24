@@ -184,6 +184,7 @@ h3 {
 .docCard,
 .closingCard,
 .quickstartCard,
+.compilerCard,
 .compareCard,
 .notReadyCard {
   border: 1px solid var(--line);
@@ -337,9 +338,33 @@ pre {
   border: 1px solid rgba(185, 255, 103, 0.2);
 }
 
+.compilerCard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 26px;
+  border-radius: 28px;
+}
+
+.compilerCard h2 {
+  margin-bottom: 12px;
+  font-size: clamp(1.85rem, 3.2vw, 3.4rem);
+}
+
+.compilerCard p:not(.eyebrow) {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.compilerCard .markedPre {
+  border-color: rgba(185, 255, 103, 0.2);
+}
+
 .factStrip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-top: 18px;
 }
@@ -700,6 +725,7 @@ tr:last-child td {
 @media (max-width: 980px) {
   .heroGrid,
   .quickstartCard,
+  .compilerCard,
   .mechanicCard,
   .split,
   .evidenceGrid,
@@ -758,6 +784,7 @@ tr:last-child td {
   .closingCard,
   .heroPanel,
   .quickstartCard,
+  .compilerCard,
   .compareCard,
   .notReadyCard {
     padding: 20px;

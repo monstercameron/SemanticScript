@@ -154,15 +154,15 @@ const proofPoints = [
   },
   {
     label: "Reference compiler",
-    value: "LLVM now",
+    value: "LLVM + sem.exe",
     detail:
-      "The Python compiler parses .sscript and .sem, resolves modules, emits LLVM IR through llvmlite, JIT-runs, and links native executables with clang.",
+      "The source compiler parses .sscript and .sem, emits LLVM IR, JIT-runs, links native executables, and can be packaged into a single-file Windows sem.exe.",
   },
   {
     label: "Tooling contract",
-    value: "sem JSON loop",
+    value: "Python or exe",
     detail:
-      "The sem CLI exposes validation, graph/slice retrieval, repair planning, patching, readiness checks, and test orchestration for human and agent workflows.",
+      "The sem CLI exposes validation, graph/slice retrieval, repair planning, patching, readiness checks, and test orchestration from either source Python or the packaged executable.",
   },
   {
     label: "Runtime demos",
@@ -177,6 +177,12 @@ python SemanticScript\\tools\\sem.py --version --json
 python SemanticScript\\tools\\sem.py check --json SemanticScript\\tests\\agent_cli_demo.test.sem
 python SemanticScript\\tools\\sem.py test --json SemanticScript\\tests\\agent_cli_demo.test.sem --skip-python-harnesses`;
 
+const localCompilerCommands = `python -m pip install -r requirements.txt -c constraints.txt
+python -m pip install pyinstaller==6.20.0
+python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
+.\\dist\\sem.exe version --json
+.\\dist\\sem.exe check --json SemanticScript\\tests\\agent_cli_demo.test.sem`;
+
 const notReadyItems = [
   "No stable public release has been published yet; the current public status is 0.0.1 pre-release.",
   "TaskForge Web is a preview proof point, not a polished product; GET /api/todos/:id is intentionally still a documented 501 gap.",
@@ -188,7 +194,8 @@ const statusFacts = [
   ["Release status", "0.0.1 pre-release", "No stable public release has been published yet."],
   ["Syntax inventory", "362 implemented / 93 partial", "Reported by sem.version.v1 after rebasing onto main."],
   ["Benchmark harness", "4 cases / 0 failures", "Fresh local C-baseline run after the rebase."],
-  ["Packaging path", "PyInstaller sem.exe", "Documented onefile Windows toolchain packaging path."],
+  ["Packaging path", "PyInstaller sem.exe", "Local onefile compiler builds through packaging/pyinstaller/sem.spec."],
+  ["Merge artifact", "main builds sem.exe", "Every PR merge to main now produces a validated Windows compiler artifact."],
 ];
 
 const valueProps = [
@@ -284,6 +291,7 @@ function App() {
               SemanticScript is a compiled application language built around explicit,
               line-addressable source records. Operations name effects, capabilities, storage,
               memory behavior, failure paths, runtime edges, and review intent directly in source.
+              You can run it from a checkout today or package the compiler/toolchain as `sem.exe`.
             </p>
             <div className="ctaRow">
               <a className="button primary" href={`${repoUrl}#quickstart`}>
@@ -309,7 +317,7 @@ Maximize recoverable context.`}</CodeBlock>
         <article className="quickstartCard" aria-label="Try SemanticScript in two minutes">
           <div>
             <p className="eyebrow">Try in 2 minutes</p>
-            <h2>Prove the green path before reading the manifesto.</h2>
+            <h2>Prove the source checkout path before reading the manifesto.</h2>
             <p>
               These commands install the Python dependencies, inspect tool/runtime feature flags,
               parse and lint the green fixture, then run the semantic test lane. In this worktree,
@@ -317,6 +325,20 @@ Maximize recoverable context.`}</CodeBlock>
             </p>
           </div>
           <CodeBlock language="powershell">{quickstartCommands}</CodeBlock>
+        </article>
+
+        <article className="compilerCard" aria-label="Build the compiler executable locally">
+          <div>
+            <p className="eyebrow">Compiler executable</p>
+            <h2>Python is the dev path, not the only path.</h2>
+            <p>
+              The repo includes a PyInstaller spec and launcher that bundle the compiler, sem CLI,
+              docs, skills, stdlib, runtime folders, and llvmlite support into `dist\sem.exe`. Tagged
+              GitHub Releases publish the same style of Windows compiler artifact, and every PR merge
+              to `main` now builds a fresh validated artifact.
+            </p>
+          </div>
+          <CodeBlock language="powershell">{localCompilerCommands}</CodeBlock>
         </article>
 
         <div className="factStrip" aria-label="Current repository facts from main">
@@ -399,9 +421,9 @@ useCapability createTodoHandler sqliteDatabaseReadWriter`}</CodeBlock>
           <p className="eyebrow">Current prototype</p>
           <h2>Pre-release, but not vaporware.</h2>
           <p>
-            The repository contains a working compiler, linter, formatter, sem CLI, VS Code extension,
-            native runtime adapters, release packaging definitions, and curated app demos. Some rows
-            are partial, and the compatibility docs say exactly where.
+            The repository contains a working compiler, linter, formatter, sem CLI, PyInstaller
+            compiler packaging, VS Code extension, native runtime adapters, release definitions, and
+            curated app demos. Some rows are partial, and the compatibility docs say exactly where.
           </p>
         </div>
         <div className="proofGrid">
@@ -611,9 +633,9 @@ python SemanticScript\\tools\\sem.py test --json PATH`}</CodeBlock>
           <h2>Use this if your next codebase will be edited by agents anyway.</h2>
           <p>
             SemanticScript is for engineers who want app code with explicit contracts, diffable risk,
-            retrievable semantic neighborhoods, native compilation, and visible performance work. The
-            project is early, but it is pointed at a real maintenance problem rather than a decorative
-            syntax experiment.
+            retrievable semantic neighborhoods, native compilation, a packaged compiler path, and
+            visible performance work. The project is early, but it is pointed at a real maintenance
+            problem rather than a decorative syntax experiment.
           </p>
           <div className="ctaRow">
             <a className="button primary" href={docsUrl}>
