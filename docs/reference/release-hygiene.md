@@ -25,18 +25,17 @@ explicitly chooses a different license for that package.
 
 ## Version Policy
 
-SemanticScript uses component-local versions for the initial public release.
-Release checks record the component matrix instead of requiring all tools to
-share one product version. A version mismatch is acceptable when it is
-documented in the matrix; a missing or unreadable version blocks release.
+SemanticScript uses one repository-wide semantic version from `version.json`.
+Release checks record the component matrix and fail when package metadata
+drifts from the shared repository version.
 
 | Component | Version | Source |
 | --- | --- | --- |
-| `semsc` | `1.0.0` | `SemanticScript/compiler/semsc.py` |
-| `semlint` | `0.3.0` | `SemanticScript/linter/semlint.py` |
-| `semfmt` | `0.1.0` | `SemanticScript/formatter/semfmt.py` |
-| `sem` | `0.1.0` | `SemanticScript/tools/sem.py` |
-| `semanticscript-vscode` | `1.0.5` | `vscode-semanticscript/package.json` |
+| `semsc` | `0.0.1` | `version.json` |
+| `semlint` | `0.0.1` | `version.json` |
+| `semfmt` | `0.0.1` | `version.json` |
+| `sem` | `0.0.1` | `version.json` |
+| `semanticscript-vscode` | `0.0.1` | `version.json` -> `vscode-semanticscript/package.json` |
 
 Print the matrix before tagging:
 
@@ -52,8 +51,8 @@ publishing outside the repository.
 
 ## VS Code Extension Metadata
 
-`vscode-semanticscript/package.json` uses version `1.0.5` for the current
-SemanticScript local VSIX build.
+`vscode-semanticscript/package.json` uses the shared version from
+`version.json` for the current SemanticScript local VSIX build.
 
 The initial 1.0 release is local VSIX only. The publisher remains
 `semanticscript-local`; that value is for local packaging and development-host
@@ -62,16 +61,6 @@ account is selected and the `publisher` field is changed.
 
 Generated `.vsix` files are ignored and should be attached outside the repo or
 rebuilt from the release tag.
-
-## Python Sample Policy
-
-`python/` is the canonical location for Python comparison samples.
-
-Run the sample aggregator after changing comparison programs:
-
-```powershell
-python python/run_all.py
-```
 
 ## `.sem` Mirror Policy
 

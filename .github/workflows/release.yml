@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, matching version.json (for example v0.0.1)."
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -70,13 +75,20 @@ jobs:
             throw "version.json does not contain a version field."
           }
 
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.ref_name }}" -ne "${{ github.event.repository.default_branch }}") {
+            throw "Manual release dispatch must run from the default branch."
+          }
+
           if ("${{ github.ref_type }}" -eq "tag") {
             $releaseTag = "${{ github.ref_name }}"
           } else {
-            $releaseTag = "v$repoVersion"
+            $releaseTag = "${{ inputs.tag }}"
+            if (-not $releaseTag) {
+              throw "Manual release dispatch requires an explicit tag input."
+            }
           }
 
-          if ("${{ github.ref_type }}" -eq "tag" -and $releaseTag -ne "v$repoVersion") {
+          if ($releaseTag -ne "v$repoVersion") {
             throw "Tag '$releaseTag' does not match version.json version '$repoVersion'. Expected 'v$repoVersion'."
           }
 
@@ -182,7 +194,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release edit $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes $notes --target "${{ github.sha }}"
           } else {
-            gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes $notes --target "${{ github.sha }}"
+            gh release create $env:RELEASE_TAG --repo "${{ github.repository }}" --title $title --notes $notes --target "${{ github.sha }}" --verify-tag
           }
 
           gh release upload $env:RELEASE_TAG $env:VSIX_PATH $env:MANIFEST_PATH --repo "${{ github.repository }}" --clobber

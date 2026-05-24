@@ -4,8 +4,8 @@
 /*
  * SemanticScript-owned C ABI for JSON encode / decode at the field level.
  *
- * This header is self-contained — it does not include any upstream JSON
- * library. The intent is that AgentScript code composes a JSON document
+ * This header is self-contained - it does not include any upstream JSON
+ * library. The intent is that SemanticScript code composes a JSON document
  * field-by-field via an opaque SSJsonBuilder handle (the encode path)
  * and reads a parsed document field-by-field via the ss_json_find_*
  * accessors (the decode path). There is no "record codec" abstraction

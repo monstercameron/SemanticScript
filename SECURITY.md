@@ -22,6 +22,13 @@ only asks maintainers to enable private vulnerability reporting; do not include
 exploit details, affected paths, logs, proof-of-concept code, or reproduction
 steps in that issue.
 
+Expected response targets:
+
+- acknowledgement within 5 business days
+- initial triage within 10 business days
+- coordinated fix or mitigation plan for confirmed high-impact issues before
+  public disclosure
+
 In the private report, include:
 
 - affected file, tool, or release candidate

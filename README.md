@@ -286,7 +286,8 @@ It currently covers:
 - SQLite schema bootstrap with seeded demo data.
 - Authenticated todo create, list, complete, uncomplete, and delete flows.
 - Cross-user isolation checks in the end-to-end test harness.
-- Known 501 stub for the remaining item show route.
+- Deliberate 501 response for the remaining item-detail route while the full
+  detail page contract is being finalized.
 
 Run the verification harness:
 
@@ -304,9 +305,8 @@ python apps\taskforge-web\scripts\test_taskforge_web.py
 - `apps/http-runtime-gauntlet/`: native HTTP conformance harness.
 - `apps/taskforge-web/`: flagship web app.
 
-The Kilo port is now parked at `experiments/kilo-port/`. It is still useful as a
-large terminal-editor stress port, but it is not part of the polished app demo
-set.
+The Kilo port is parked at `experiments/kilo-port/` as a large
+terminal-editor stress fixture outside the curated app demo set.
 
 ## Syntax Tour
 
@@ -751,10 +751,10 @@ preflight is clean unless you use `--allow-red-preflight-harnesses`; in that
 mode the tool prioritizes runtime harnesses and defers project-surface
 semantic contract files.
 
-`sem dev --json apps\taskforge-web` currently demonstrates a quality-red watch
-plan for the flagship app, not a restart-ready loop. It is useful for
-inspecting watch files, scope, and follow-up commands while the project is
-still failing semantic quality checks.
+`sem dev --json apps\taskforge-web` currently demonstrates the watch-plan
+contract for a project surface that still has semantic follow-up work. Use it
+for inspecting watch files, scope, and follow-up commands; use `sem check`
+before treating the project as restart-ready.
 
 Only hand `sem patch --apply` a plan when `sem fix --plan --json` returns
 `status: "actionable"` and `planUsable: true`. A `mixed` plan is still useful,
@@ -827,7 +827,6 @@ experiments/
   kilo-port/                       SemanticScript port of antirez/kilo
   realtime-auction-arena/          Enterprise realtime auction server/client stress demo
 
-python/                            Python comparison programs
 vscode-semanticscript/             Local VS Code extension
 third_party/                       Vendored native dependencies and submodules
 ```
@@ -907,7 +906,6 @@ The public 1.0 compatibility contract lives in
 
 - First-party SemanticScript source, docs, samples, and tooling are distributed
   under the MIT License in the root `LICENSE`.
-- `python/` is the canonical home for Python comparison programs.
 - `.sem` files directly under `SemanticScript/sem/` are tracked alias fixtures
   and should stay aligned with their `.sscript` counterparts.
 - The initial VS Code extension release is local VSIX only.

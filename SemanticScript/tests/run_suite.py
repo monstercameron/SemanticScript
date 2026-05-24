@@ -35,7 +35,7 @@ COMMANDS: tuple[TestCommand, ...] = (
         "python.compileall",
         "Compile Python sources",
         "unit",
-        py("-m", "compileall", "-q", "SemanticScript", "python"),
+        py("-m", "compileall", "-q", "SemanticScript", "apps", "experiments"),
     ),
     TestCommand(
         "release.versions",

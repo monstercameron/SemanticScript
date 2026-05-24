@@ -1,7 +1,8 @@
-# SemanticScript 1.0 Release TODO
+# SemanticScript 1.0 Release Backlog
 
-This file tracks the release-readiness gaps found in the 2026-05-18 project
-review. A task is only done when the linked command or artifact is clean.
+This internal backlog tracks the release-readiness gaps found in the 2026-05-18
+project review. A task is only done when the linked command or artifact is
+clean.
 
 ## P0 - True Nonblocking Async Runtime
 
@@ -2774,7 +2775,7 @@ behavior regressions.
         `SemanticScript/tests/`, `SemanticScript/std/`, `docs/`, and
         `vscode-semanticscript/` before marking removal complete.
 - [ ] Audit the rest of this file.
-  - [ ] Re-run `grep -ni "json" TODO.md` and confirm every JSON-handling
+  - [ ] Re-run `grep -ni "json" docs/reference/release-backlog.md` and confirm every JSON-handling
         bullet lives under
         `### Native JSON CRUD API And jsonBody Literal`.
   - [ ] Delete any orphan JSON bullet found elsewhere and replace it with
@@ -5082,8 +5083,7 @@ order.
   - [ ] Commit or intentionally remove untracked README/doc files.
   - [x] Confirm generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and
         `.vsix` artifacts are ignored and absent from source control.
-- [x] Decide whether duplicate top-level `python/` and `python/`
-      folders should both remain.
+- [x] Decide whether the legacy top-level `python/` sample folder should remain.
 - [x] Decide whether `.sem` mirror files under `SemanticScript/sem/` should be
       tracked alias fixtures or generated artifacts.
 - [x] Run and record aggressive validation before any 1.0 tag.
@@ -5099,7 +5099,7 @@ order.
 ### Initial Release Hardening Gaps
 
 These items were identified after comparing the current release checklist,
-`TODO.md`, release docs, and repository state. They are release-polish and
+`release-backlog.md`, release docs, and repository state. They are release-polish and
 release-trust tasks that were either absent from this file or too implicit to
 assign cleanly.
 
@@ -5246,7 +5246,7 @@ assign cleanly.
   - [ ] Record generated release artifacts such as source archive and VSIX.
   - [ ] Record artifact checksums.
   - [ ] Record whether signatures were generated.
-  - [ ] Record known deferred features from `TODO.md`.
+  - [ ] Record known deferred features from `release-backlog.md`.
   - [ ] Record known deferred limitations.
   - [x] Add a release checklist item requiring the manifest before tagging.
   - [x] Decide whether manifests are committed, attached to GitHub releases, or
@@ -5311,8 +5311,8 @@ assign cleanly.
   - [x] Keep generated `.exe`, `.ll`, `__pycache__`, `todos.json`, and `.vsix`
         artifacts ignored and out of source control.
 - [x] Run legacy-name scans before release.
-  - [x] Confirm no `AgentScript` branding remains except the repository folder
-        name or intentionally documented local paths.
+  - [x] Confirm no stale project-name branding remains except intentionally
+        documented local paths.
   - [x] Confirm no stale `experiments/` paths remain after docs cleanup.
 
 ## P3 - Nice-To-Have Before 1.0
@@ -5320,7 +5320,6 @@ assign cleanly.
 - [x] Add `SECURITY.md`.
 - [x] Add `CONTRIBUTING.md`.
 - [x] Add a top-level release checklist command block in `README.md`.
-- [x] Decide whether the duplicate top-level `python/` and `python/`
-      folders should both remain.
+- [x] Decide whether the legacy top-level `python/` sample folder should remain.
 - [x] Decide whether `.sem` mirror files under `SemanticScript/sem/` should be
       tracked as alias fixtures or generated artifacts.
