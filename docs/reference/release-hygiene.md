@@ -49,6 +49,12 @@ Public release manifests live at `releases/<TAG>/manifest.json`. They should be
 committed with the release notes and attached to external release artifacts when
 publishing outside the repository.
 
+Main-branch merge prereleases use generated, uncommitted manifests named
+`semanticscript-merge-release-manifest-main-<SHORT_SHA>.json`. The
+`compiler-exe.yml` workflow attaches those manifests to the matching
+`main-<SHORT_SHA>` GitHub prerelease alongside the merge-built `sem.exe` and
+VSIX assets.
+
 ## VS Code Extension Metadata
 
 `vscode-semanticscript/package.json` uses the shared version from
