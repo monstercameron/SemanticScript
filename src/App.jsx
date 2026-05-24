@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { Marked, Renderer } from "marked";
+import semanticLogoCard from "../docs/assets/semanticscript-logo-card.png";
+import semanticMascot from "../docs/assets/semanticscript-mascot.png";
 
 const repoUrl = "https://github.com/monstercameron/SemanticScript";
 const docsUrl = `${repoUrl}/tree/main/docs`;
@@ -119,10 +122,149 @@ function highlightSemanticScript(source) {
     .join("\n");
 }
 
+const genericKeywords = {
+  javascript: new Set([
+    "async",
+    "await",
+    "const",
+    "function",
+    "return",
+    "true",
+    "false",
+    "null",
+    "let",
+    "var",
+    "if",
+    "else",
+    "for",
+    "while",
+    "new",
+    "import",
+    "from",
+  ]),
+  c: new Set([
+    "const",
+    "double",
+    "for",
+    "if",
+    "int",
+    "long",
+    "return",
+    "size_t",
+    "void",
+    "while",
+  ]),
+  json: new Set(["true", "false", "null"]),
+  llvm: new Set([
+    "define",
+    "declare",
+    "entry",
+    "br",
+    "call",
+    "ret",
+    "load",
+    "store",
+    "add",
+    "sub",
+    "mul",
+    "icmp",
+    "private",
+    "unnamed_addr",
+    "constant",
+  ]),
+  powershell: new Set(["python", "sem.exe", "clang", "node"]),
+  python: new Set([
+    "class",
+    "def",
+    "return",
+    "from",
+    "import",
+    "for",
+    "in",
+    "if",
+    "else",
+    "elif",
+    "raise",
+    "with",
+    "as",
+    "None",
+    "True",
+    "False",
+  ]),
+};
+
+const codeTokenPattern =
+  /(\/\/.*|#.*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|-{1,2}[A-Za-z][\w-]*|%[A-Za-z_.$][\w.$-]*|@[A-Za-z_.$][\w.$-]*|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$.-]*\b|[{}()[\],.:=])/g;
+
+function classifyGenericToken(token, language) {
+  if (token.startsWith("//") || token.startsWith("#")) {
+    return "code-token code-comment";
+  }
+
+  if (/^["'`]/.test(token)) {
+    return "code-token code-string";
+  }
+
+  if (/^-{1,2}[A-Za-z]/.test(token)) {
+    return "code-token code-flag";
+  }
+
+  if (/^[@%][A-Za-z_.$]/.test(token)) {
+    return "code-token code-symbol";
+  }
+
+  if (/^\d/.test(token)) {
+    return "code-token code-number";
+  }
+
+  if (genericKeywords[language]?.has(token)) {
+    return "code-token code-keyword";
+  }
+
+  if (/^[A-Z][A-Za-z0-9_$]*$/.test(token)) {
+    return "code-token code-type";
+  }
+
+  if (token.includes(".") || token.includes("\\") || token.includes("/")) {
+    return "code-token code-path";
+  }
+
+  if (/^[{}()[\],.:=]$/.test(token)) {
+    return "code-token code-punctuation";
+  }
+
+  return "code-token";
+}
+
+function highlightGeneric(source, language) {
+  let highlighted = "";
+  let cursor = 0;
+
+  for (const match of source.matchAll(codeTokenPattern)) {
+    highlighted += escapeHtml(source.slice(cursor, match.index));
+    highlighted += `<span class="${classifyGenericToken(match[0], language)}">${escapeHtml(match[0])}</span>`;
+    cursor = match.index + match[0].length;
+  }
+
+  return highlighted + escapeHtml(source.slice(cursor));
+}
+
+function highlightCode(source, language) {
+  if (language === "semanticscript") {
+    return highlightSemanticScript(source);
+  }
+
+  if (["c", "javascript", "json", "llvm", "powershell", "python"].includes(language)) {
+    return highlightGeneric(source, language);
+  }
+
+  return escapeHtml(source);
+}
+
 const codeRenderer = new Renderer();
 codeRenderer.code = ({ text, lang }) => {
   const language = normalizeLanguage(lang);
-  const highlighted = language === "semanticscript" ? highlightSemanticScript(text) : escapeHtml(text);
+  const highlighted = highlightCode(text, language);
   return `<pre class="markedPre language-${language}"><code class="language-${language}">${highlighted}</code></pre>`;
 };
 
@@ -145,71 +287,67 @@ function CodeBlock({ children, language = "semanticscript", className = "" }) {
   );
 }
 
-const proofPoints = [
-  {
-    label: "Public status",
-    value: "0.0.1 pre-release",
-    detail:
-      "No stable public release has shipped yet. The README, roadmap, compatibility doc, and syntax inventory are the source of truth for what is ready.",
-  },
-  {
-    label: "Reference compiler",
-    value: "LLVM + sem.exe",
-    detail:
-      "The source compiler parses .sscript and .sem, emits LLVM IR, JIT-runs, links native executables, and can be packaged into a single-file Windows sem.exe.",
-  },
-  {
-    label: "Tooling contract",
-    value: "Python or exe",
-    detail:
-      "The sem CLI exposes validation, graph/slice retrieval, repair planning, patching, readiness checks, and test orchestration from either source Python or the packaged executable.",
-  },
-  {
-    label: "Runtime demos",
-    value: "Curated apps",
-    detail:
-      "TaskForge TUI, HTML Template Lab, HTTP Runtime Gauntlet, TaskForge Web, TaskForge API Client, and GUI smoke fixtures exercise real app surfaces.",
-  },
-];
+const releaseCommands = `.\\sem.exe version --json
+.\\sem.exe skills get sem sem-agent --json
+.\\sem.exe check --json SemanticScript\\tests\\agent_cli_demo.test.sem
+.\\sem.exe graph --kind summary --json SemanticScript\\tests\\agent_cli_demo.test.sem
+.\\sem.exe test --json SemanticScript\\tests\\agent_cli_demo.test.sem`;
 
-const quickstartCommands = `python -m pip install -r requirements.txt -c constraints.txt
-python SemanticScript\\tools\\sem.py --version --json
-python SemanticScript\\tools\\sem.py check --json SemanticScript\\tests\\agent_cli_demo.test.sem
-python SemanticScript\\tools\\sem.py test --json SemanticScript\\tests\\agent_cli_demo.test.sem --skip-python-harnesses`;
+const compilerPipeline = `SemanticScript source rows
+  -> parser + AST records
+  -> semantic validation and linter diagnostics
+  -> lowering into LLVM IR
+  -> LLVM optimization / JIT / object emission
+  -> native executable or sem.exe command result`;
 
-const localCompilerCommands = `python -m pip install -r requirements.txt -c constraints.txt
-python -m pip install pyinstaller==6.20.0
-python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
-.\\dist\\sem.exe version --json
-.\\dist\\sem.exe check --json SemanticScript\\tests\\agent_cli_demo.test.sem`;
-
-const notReadyItems = [
-  "No stable public release has been published yet; the current public status is 0.0.1 pre-release.",
-  "TaskForge Web is a preview proof point, not a polished product; GET /api/todos/:id is intentionally still a documented 501 gap.",
-  "Package fetching, registry workflow, language server, generated docs, installer/version manager, H2O/HTTP/2, WinUI 3, and top-level declarative GUI rows remain future or preview work.",
-  "Record JSON codecs and outbound standard.net are documented partial or experimental surfaces unless a narrower inventory row says otherwise.",
-];
+const llvmIrSnippet = `define i32 @main() {
+entry:
+  %total = call i64 @ss_math_add_i64(i64 %subtotal, i64 %tax)
+  %ok = icmp sgt i64 %total, 0
+  br i1 %ok, label %return_ok, label %return_error
+return_ok:
+  ret i32 0
+return_error:
+  ret i32 1
+}`;
 
 const statusFacts = [
-  ["Release status", "0.0.1 pre-release", "No stable public release has been published yet."],
-  ["Syntax inventory", "362 implemented / 93 partial", "Reported by sem.version.v1 after rebasing onto main."],
-  ["Benchmark harness", "4 cases / 0 failures", "Fresh local C-baseline run after the rebase."],
-  ["Packaging path", "PyInstaller sem.exe", "Local onefile compiler builds through packaging/pyinstaller/sem.spec."],
-  ["Merge artifact", "main builds sem.exe", "Every PR merge to main now produces a validated Windows compiler artifact."],
+  ["Release artifact", "single sem.exe", "Release builds package the compiler and public tool surfaces into one Windows executable."],
+  ["Reference compiler", "LLVM IR prototype backend", "The compiler lowers explicit source rows into LLVM IR so the prototype can reuse LLVM optimization, JIT, and native codegen paths."],
+  ["Tooling", "sem.exe JSON contract", "Agents and humans use the same check, graph, slice, fix, patch, readiness, and test surfaces."],
+  ["Apps", "Curated runtime demos", "TaskForge, HTTP, GUI, HTML, and API-client examples exercise concrete application edges."],
 ];
 
-const valueProps = [
-  "Patches target rows instead of nested expression trees.",
-  "Diffs reveal changed effects, failure paths, routes, storage, and capabilities.",
-  "Agents can retrieve one operation, route, capability, or failure path and still have the context needed to edit it.",
-  "The compiler can erase source redundancy; reviewers and tools keep the facts that make maintenance safer.",
+const sourceProperties = [
+  ["Flat record tape", "One line is one semantic record. The first token is the verb, so edits have stable row-level targets."],
+  ["Explicit authority", "Effects, capabilities, memory behavior, cleanup, and failure paths are data instead of hidden framework behavior."],
+  ["Tool-readable slices", "The CLI can retrieve operation, route, capability, and failure neighborhoods without loading the whole project."],
+  ["Compiler-owned redundancy", "The source stays descriptive for review; the compiler lowers away repetition in the executable path."],
 ];
+
+const syntaxRationaleRows = [
+  ["Verb-first records", "The first token declares the row shape, so the remaining slots have a narrower prediction space."],
+  ["Named semantic edges", "Call names, argument names, bind names, and branch labels repeat the local contract instead of hiding it in nesting."],
+  ["Low grammar switching", "No infix expressions, brace scopes, comma calls, implicit async, or exceptions means fewer competing parse modes."],
+  ["Attention anchors", "Effects, capabilities, failures, and memory policy stay adjacent to the operation that owns them."],
+];
+
+const syntaxRationaleCode = `operation createTodo
+effect createTodo read http.request.body
+effect createTodo write http.response
+useCapability createTodo httpRequestReader
+call decodeCall json.decodeTodoRequest
+argument decodeCall source RawJson requestBody
+run decodeCall
+bind ok todo TodoCreateRequest decodeCall
+bind error decodeError JsonDecodeError decodeCall
+branch error source decodeCall target invalidJson`;
 
 const mechanics = [
   {
-    title: "Operations carry their review packet",
+    title: "Operation boundary",
     copy:
-      "Purpose, effects, memory, async behavior, invariants, and authority live at the operation boundary before the implementation details begin.",
+      "The operation declares inputs, outputs, effects, authority, memory policy, async behavior, intent, and invariants before calls begin.",
     code: `operation createTodoHandler
 input operation createTodoHandler request HttpRequest
 input operation createTodoHandler response HttpResponse
@@ -226,9 +364,9 @@ purpose operation createTodoHandler "Create one todo owned by the authenticated 
 invariant operation createTodoHandler "The user id comes from the session, never from request JSON."`,
   },
   {
-    title: "Calls are named dataflow",
+    title: "Named dataflow",
     copy:
-      "A call has an identity. Each argument edge is addressable. Success and failure bind as data instead of disappearing into ambient exception control.",
+      "Calls, arguments, run records, success bindings, error bindings, and branches are separate facts that can be searched and patched.",
     code: `call openDatabaseCall sqlite.openDatabase
 argument openDatabaseCall path String databasePath
 argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode
@@ -239,9 +377,9 @@ branch error source openDatabaseCall target openDatabaseFailed
 defer closeDatabaseDefer sqlite.closeDatabase openedDatabase`,
   },
   {
-    title: "Routes are source facts",
+    title: "Route inventory",
     copy:
-      "Route tables are greppable, diffable, lintable records rather than framework side effects hidden in callbacks.",
+      "Routes are explicit records. The handler graph is available to lint, slice, and review without reconstructing framework registration.",
     code: `webServer taskForgeWebServer
 serverHost taskForgeWebServer "127.0.0.1"
 serverPort taskForgeWebServer 18090
@@ -253,49 +391,195 @@ route taskForgeWebServer GET "*" notFoundPageHandler`,
   },
 ];
 
-const benchmarkRows = [
-  { name: "arith", c: "45", semantic: "45", percent: "100.0%", status: "passed" },
-  { name: "memset", c: "179", semantic: "179", percent: "100.0%", status: "passed" },
-  { name: "math", c: "39", semantic: "40", percent: "97.5%", status: "passed" },
-  { name: "strlen", c: "0", semantic: "0", percent: "too fast", status: "inconclusive" },
+const algorithmBenchmarkRows = [
+  {
+    name: "fib_recursive",
+    stress: "call / recursion",
+    checksum: "63245986",
+    c: "1.00x",
+    semantic: "1.16x",
+    javascript: "3.87x",
+    python: "83.7x",
+  },
+  {
+    name: "collatz",
+    stress: "integer branches",
+    checksum: "131434424",
+    c: "1.00x",
+    semantic: "0.98x",
+    javascript: "8.75x",
+    python: "65.1x",
+  },
+  {
+    name: "sieve",
+    stress: "byte-array writes",
+    checksum: "5957320",
+    c: "1.00x",
+    semantic: "1.00x",
+    javascript: "1.41x",
+    python: "5.54x",
+  },
+  {
+    name: "mandelbrot",
+    stress: "float compute",
+    checksum: "61930405",
+    c: "1.00x",
+    semantic: "0.98x",
+    javascript: "1.04x",
+    python: "48.2x",
+  },
+];
+
+const benchmarkMethodFacts = [
+  ["Workload", "same algorithm, same checksum"],
+  ["Metric", "median of 9 measured runs"],
+  ["Scale", "slowdown vs C; lower is faster"],
+  ["Compiled pair", "C and SemanticScript both reach LLVM / clang O2"],
+];
+
+const benchmarkSnippets = [
+  {
+    language: "c",
+    label: "C / clang O2",
+    note: "Native baseline walks each composite multiple.",
+    code: `for (long long multiple = candidate * candidate;
+     multiple <= limit;
+     multiple += candidate) {
+  sieve[multiple] = 0;
+}`,
+  },
+  {
+    language: "semanticscript",
+    label: "SemanticScript",
+    note: "The same mark step as addressable call records.",
+    code: `label markLoopBody
+call markCompositeCall pointer.storeByte
+argument markCompositeCall buffer OpaquePointer sieveBuffer
+argument markCompositeCall offset Int64 currentMultipleIndex
+argument markCompositeCall value Int32 compositeCellMarker
+run markCompositeCall`,
+  },
+  {
+    language: "javascript",
+    label: "JavaScript / Node",
+    note: "Typed array loop, wrapped so V8 optimizes the hot path.",
+    code: `for (let multiple = candidate * candidate;
+     multiple <= limit;
+     multiple += candidate) {
+  sieve[multiple] = 0
+}`,
+  },
+  {
+    language: "python",
+    label: "Python / CPython",
+    note: "Uses the idiomatic C-level bulk slice for the same mark pass.",
+    code: `first = candidate * candidate
+count = (limit - first) // candidate + 1
+sieve[first::candidate] = b"\\x00" * count`,
+  },
 ];
 
 const docs = [
   ["Overview", `${repoUrl}/blob/main/docs/overview.md`, "Compact public overview of the language, toolchain, runtime areas, and status."],
-  ["Quickstart", `${repoUrl}#quickstart`, "Install dependencies, check the green fixture, scaffold a project, and run CI lanes."],
+  ["Quickstart", `${repoUrl}#quickstart`, "Use the release sem.exe surface to inspect version info, check fixtures, retrieve graph data, and run tests."],
   ["Roadmap", `${repoUrl}/blob/main/docs/reference/roadmap.md`, "Pre-release status, demo status, release readiness goals, and backlog policy."],
   ["Agent workflows", `${repoUrl}/blob/main/docs/toolchain/agent-workflows.md`, "The stable check, graph, slice, fix, patch, and test loop."],
   ["Syntax inventory", `${repoUrl}/blob/main/docs/reference/syntax-inventory.md`, "Implementation status for committed, partial, and proposed rows."],
   ["Compatibility", `${repoUrl}/blob/main/docs/reference/compatibility.md`, "The 1.0 support boundary and preview/future surfaces."],
-  ["Single executable", `${repoUrl}/blob/main/docs/reference/single-executable-toolchain.md`, "PyInstaller onefile packaging path for a future sem.exe release artifact."],
-  ["Benchmarks", benchmarksUrl, "Small C baseline comparisons for optimizer and backend performance investigation."],
+  ["Single executable", `${repoUrl}/blob/main/docs/reference/single-executable-toolchain.md`, "How release builds package the compiler and toolchain into one sem.exe artifact."],
+  ["Benchmarks", benchmarksUrl, "C smoke baselines plus cross-language algorithm references for optimizer and backend investigation."],
 ];
 
+const workflowSteps = [
+  ["01", "skills get", "Load repo-matched agent rules before editing source rows."],
+  ["02", "check", "Separate compiler errors, linter diagnostics, and warnings."],
+  ["03", "graph / slice", "Retrieve the smallest source neighborhood that explains the change."],
+  ["04", "fix --plan", "Generate candidate edits without mutating the tree."],
+  ["05", "patch", "Preview and apply the reviewed plan with stale-file protection."],
+  ["06", "test", "Run behavior harnesses only after semantic preflight is clean."],
+];
+
+function SectionHeader({ eyebrow, title, children, compact = false }) {
+  return (
+    <div className={`sectionHeader ${compact ? "compact" : ""}`.trim()}>
+      <p className="eyebrow">{eyebrow}</p>
+      <h2>{title}</h2>
+      <p>{children}</p>
+    </div>
+  );
+}
+
+function ThemeToggle({ theme, onToggle }) {
+  return (
+    <button
+      className="themeToggle"
+      type="button"
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      aria-pressed={theme === "dark"}
+      onClick={onToggle}
+    >
+      <span className="toggleTrack" aria-hidden="true">
+        <span className="toggleThumb" />
+      </span>
+      <span>{theme === "dark" ? "Dark" : "Light"}</span>
+    </button>
+  );
+}
+
+function getInitialTheme() {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const storedTheme = window.localStorage.getItem("semanticscript-theme");
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 function App() {
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("semanticscript-theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
+  };
+
   return (
     <main>
       <section className="hero" id="top">
         <nav className="nav" aria-label="Primary navigation">
-          <a href="#proof-example">Proof</a>
-          <a href="#mechanics">Mechanics</a>
-          <a href="#evidence">Evidence</a>
+          <a className="navBrand" href="#top" aria-label="SemanticScript home">
+            <img src={semanticLogoCard} alt="" />
+            <span>SemanticScript</span>
+          </a>
+          <a href="#status">Status</a>
+          <a href="#source-model">Source model</a>
+          <a href="#syntax-rationale">Syntax</a>
           <a href="#workflow">Workflow</a>
+          <a href="#evidence">Evidence</a>
           <a href="#docs">Docs</a>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
         </nav>
 
         <div className="heroGrid">
           <div className="heroCopy">
-            <p className="eyebrow">0.0.1 pre-release - agent-first application language</p>
-            <h1>Make agent edits smaller, safer, and reviewable.</h1>
+            <p className="eyebrow">SemanticScript / 0.0.1 pre-release</p>
+            <h1>Semantic source rows for agent-maintained software.</h1>
             <p className="lead">
-              SemanticScript is a compiled application language built around explicit,
-              line-addressable source records. Operations name effects, capabilities, storage,
-              memory behavior, failure paths, runtime edges, and review intent directly in source.
-              You can run it from a checkout today or package the compiler/toolchain as `sem.exe`.
+              SemanticScript is a compiled application language where dataflow, failures, effects,
+              memory, cleanup, routes, and authority are explicit source records. The design goal is
+              practical: make code changes easier to retrieve, audit, patch, and compile.
             </p>
             <div className="ctaRow">
               <a className="button primary" href={`${repoUrl}#quickstart`}>
-                Start with the sem loop
+                Run the quickstart
               </a>
               <a className="button ghost" href={repoUrl}>
                 View repository
@@ -303,47 +587,40 @@ function App() {
             </div>
           </div>
 
-          <aside className="heroPanel" aria-label="Core thesis">
-            <div className="panelLabel">Core bet</div>
-            <CodeBlock language="text">{`Do not minimize source.
-Maximize recoverable context.`}</CodeBlock>
-            <p>
-              Terse source makes agents reconstruct hidden meaning before every edit. SemanticScript
-              spends source text so the next correct edit is easier to infer, verify, and review.
-            </p>
+          <aside className="heroPanel" aria-label="SemanticScript command surface">
+            <div className="mascotBadge" aria-label="SemanticScript mascot watching the tool output">
+              <img src={semanticMascot} alt="SemanticScript mascot with code brackets" />
+              <span>agent view</span>
+            </div>
+            <div className="panelHeader">
+              <span>sem.check.v1</span>
+              <strong>source lane</strong>
+            </div>
+            <CodeBlock language="json">{`{
+  "status": "ok",
+  "surface": "SemanticScript/tests/agent_cli_demo.test.sem",
+  "compiler": "pass",
+  "linter": "pass",
+  "next": ["graph", "slice", "test"]
+}`}</CodeBlock>
+            <div className="terminalMeta">
+              <span>parser</span>
+              <span>linter</span>
+              <span>graph</span>
+              <span>patch</span>
+            </div>
           </aside>
         </div>
+      </section>
 
-        <article className="quickstartCard" aria-label="Try SemanticScript in two minutes">
-          <div>
-            <p className="eyebrow">Try in 2 minutes</p>
-            <h2>Prove the source checkout path before reading the manifesto.</h2>
-            <p>
-              These commands install the Python dependencies, inspect tool/runtime feature flags,
-              parse and lint the green fixture, then run the semantic test lane. In this worktree,
-              `check` returned `status: "ok"` and `test` returned `status: "passed"`.
-            </p>
-          </div>
-          <CodeBlock language="powershell">{quickstartCommands}</CodeBlock>
-        </article>
-
-        <article className="compilerCard" aria-label="Build the compiler executable locally">
-          <div>
-            <p className="eyebrow">Compiler executable</p>
-            <h2>Python is the dev path, not the only path.</h2>
-            <p>
-              The repo includes a PyInstaller spec and launcher that bundle the compiler, sem CLI,
-              docs, skills, stdlib, runtime folders, and llvmlite support into `dist\sem.exe`. Tagged
-              GitHub Releases publish the same style of Windows compiler artifact, and every PR merge
-              to `main` now builds a fresh validated artifact.
-            </p>
-          </div>
-          <CodeBlock language="powershell">{localCompilerCommands}</CodeBlock>
-        </article>
-
-        <div className="factStrip" aria-label="Current repository facts from main">
+      <section className="section status" id="status">
+        <SectionHeader eyebrow="Current state" title="Pre-release toolchain, explicit status.">
+          The project should be evaluated as a working research compiler and toolchain, not a stable
+          public language release. The page now keeps that boundary visible instead of overselling.
+        </SectionHeader>
+        <div className="statusGrid">
           {statusFacts.map(([label, value, detail]) => (
-            <article className="factCard" key={label}>
+            <article className="statusCard" key={label}>
               <p>{label}</p>
               <strong>{value}</strong>
               <span>{detail}</span>
@@ -352,43 +629,96 @@ Maximize recoverable context.`}</CodeBlock>
         </div>
       </section>
 
-      <section className="section sell" id="sell">
-        <div className="sectionHeader">
-          <p className="eyebrow">The sell</p>
-          <h2>The source is already a fact table.</h2>
-          <p>
-            SemanticScript is not trying to make developers type less. It is trying to make
-            consequential software easier to audit and patch after agents become part of the
-            maintenance path.
-          </p>
+      <section className="section commandSection" id="quickstart">
+        <div className="commandGrid">
+          <article className="commandIntro">
+            <p className="eyebrow">Release verification path</p>
+            <h2>Start from the shipped `sem.exe` surface.</h2>
+            <p>
+              Release builds produce a single Windows compiler/toolchain executable. The public
+              workflow should verify source state, graph shape, and harness behavior through that
+              executable before dropping into development internals.
+            </p>
+          </article>
+          <CodeBlock language="powershell">{releaseCommands}</CodeBlock>
         </div>
-        <div className="valueGrid">
-          {valueProps.map((item) => (
-            <article className="valueCard" key={item}>
-              <span />
-              <p>{item}</p>
+
+        <div className="commandGrid alternate compilerGrid">
+          <article className="commandIntro">
+            <p className="eyebrow">Reference compiler path</p>
+            <h2>LLVM IR is the prototype boundary, not the language model.</h2>
+            <p>
+              The source compiler owns parsing, AST construction, semantic checks, and lowering from
+              explicit rows into LLVM IR. LLVM then supplies mature optimization, JIT execution, and
+              native object/executable generation while the project is still proving the language and
+              tool contract.
+            </p>
+          </article>
+          <div className="compilerCodeStack">
+            <CodeBlock language="text">{compilerPipeline}</CodeBlock>
+            <CodeBlock language="llvm">{llvmIrSnippet}</CodeBlock>
+          </div>
+        </div>
+      </section>
+
+      <section className="section sourceModel" id="source-model">
+        <SectionHeader eyebrow="Source model" title="A program as a typed operations log.">
+          The language rejects expression syntax, implicit async, ambient exceptions, and hidden
+          runtime authority. That makes the source longer, but it also makes the important facts
+          easier to address by line, verb, symbol, route, and operation.
+        </SectionHeader>
+        <div className="propertyGrid">
+          {sourceProperties.map(([title, copy]) => (
+            <article className="propertyCard" key={title}>
+              <h3>{title}</h3>
+              <p>{copy}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="section proofExample" id="proof-example">
-        <div className="sectionHeader">
-          <p className="eyebrow">Differentiated proof</p>
-          <h2>The useful primitive is not English syntax. It is retrievable risk.</h2>
-          <p>
-            A normal handler makes reviewers and agents infer which request fields are trusted, which
-            resources are touched, and where failures escape. SemanticScript puts those facts in rows
-            that graph, slice, lint, and patch tools can address directly.
-          </p>
+      <section className="section syntaxRationale" id="syntax-rationale">
+        <SectionHeader eyebrow="Syntax rationale" title="A source shape tuned for model attention.">
+          SemanticScript treats syntax as retrieval structure. The research direction is to reduce
+          grammar ambiguity and token surprise so agents have clearer next-token priors and fewer
+          opportunities to invent hidden behavior during edits.
+        </SectionHeader>
+        <div className="rationaleGrid">
+          <article className="rationaleLead">
+            <h3>Lower perplexity is a design aim, not a published benchmark claim.</h3>
+            <p>
+              The flat tape keeps row roles explicit, repeats names where they carry context, and
+              avoids expression forms that force a model to infer hidden control flow. The goal is
+              practical: make the likely next token clearer, reduce hallucinated arguments or
+              branches, and keep source slices legible inside limited attention windows.
+            </p>
+          </article>
+          <CodeBlock language="semanticscript" className="rationaleCode">
+            {syntaxRationaleCode}
+          </CodeBlock>
         </div>
+        <div className="rationaleRows" aria-label="Syntax rationale properties">
+          {syntaxRationaleRows.map(([title, copy]) => (
+            <article className="rationaleCard" key={title}>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="section proofExample" id="risk">
+        <SectionHeader eyebrow="Risk retrieval" title="The useful primitive is an auditable neighborhood.">
+          A normal service handler spreads route registration, auth source, body parsing, database
+          mutation, response writes, and failure behavior across framework defaults. SemanticScript
+          keeps those contracts in rows that graph, slice, lint, and patch tools can target.
+        </SectionHeader>
         <div className="compareGrid">
-          <article className="compareCard mutedCard">
+          <article className="compareCard">
             <h3>Conventional service handler</h3>
             <p>
-              The route, auth source, body parsing, database mutation, response write, and failure
-              behavior may be split across decorators, middleware, framework defaults, and nested
-              expressions. An agent has to reconstruct the contract before editing.
+              The contract is compact for authors but expensive for tools to reconstruct before a
+              change. Hidden defaults become part of the edit risk.
             </p>
             <CodeBlock language="javascript">{`app.post("/api/todos", async (req, res) => {
   const user = sessionUser(req)
@@ -398,12 +728,11 @@ Maximize recoverable context.`}</CodeBlock>
 })`}</CodeBlock>
           </article>
 
-          <article className="compareCard strongCard">
+          <article className="compareCard emphasis">
             <h3>SemanticScript edit target</h3>
             <p>
               The route row, effect rows, invariant, capabilities, call records, and failure labels are
-              stable patch targets. `sem slice --route POST:/api/todos --json apps\taskforge-web`
-              can retrieve the relevant neighborhood before an edit.
+              stable patch targets. A slice can retrieve the relevant neighborhood before editing.
             </p>
             <CodeBlock>{`route taskForgeWebServer POST "/api/todos" createTodoHandler
 effect createTodoHandler read http.request.body
@@ -416,48 +745,11 @@ useCapability createTodoHandler sqliteDatabaseReadWriter`}</CodeBlock>
         </div>
       </section>
 
-      <section className="section proof" id="prototype">
-        <div className="sectionHeader compact">
-          <p className="eyebrow">Current prototype</p>
-          <h2>Pre-release, but not vaporware.</h2>
-          <p>
-            The repository contains a working compiler, linter, formatter, sem CLI, PyInstaller
-            compiler packaging, VS Code extension, native runtime adapters, release definitions, and
-            curated app demos. Some rows are partial, and the compatibility docs say exactly where.
-          </p>
-        </div>
-        <div className="proofGrid">
-          {proofPoints.map((point) => (
-            <article className="proofCard" key={point.label}>
-              <p className="proofValue">{point.value}</p>
-              <h3>{point.label}</h3>
-              <p>{point.detail}</p>
-            </article>
-          ))}
-        </div>
-        <aside className="notReadyCard" aria-label="Not ready yet">
-          <div>
-            <p className="eyebrow">Not ready yet</p>
-            <h3>Early, but intentionally scoped.</h3>
-          </div>
-          <ul>
-            {notReadyItems.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </aside>
-      </section>
-
       <section className="section mechanics" id="mechanics">
-        <div className="sectionHeader">
-          <p className="eyebrow">Prototype mechanics</p>
-          <h2>Longer source, smaller edit uncertainty.</h2>
-          <p>
-            The surface rejects expression soup, implicit exceptions, framework magic, and hidden
-            async. The reward is local reasoning: a single retrieved operation can explain what it
-            reads, writes, allocates, awaits, trusts, and returns.
-          </p>
-        </div>
+        <SectionHeader eyebrow="Mechanics" title="Longer source, smaller edit uncertainty.">
+          A retrieved operation can explain what it reads, writes, allocates, awaits, trusts, and
+          returns without relying on framework side effects or surrounding prose.
+        </SectionHeader>
         <div className="mechanicStack">
           {mechanics.map((item) => (
             <article className="mechanicCard" key={item.title}>
@@ -471,152 +763,130 @@ useCapability createTodoHandler sqliteDatabaseReadWriter`}</CodeBlock>
         </div>
       </section>
 
-      <section className="section theory" id="theory">
-        <div className="split">
-          <div>
-            <p className="eyebrow">Theory</p>
-            <h2>Context maxxing is an engineering constraint.</h2>
-          </div>
-          <div className="theoryCopy">
-            <p>
-              Conventional languages compress meaning into nesting, scope, inference, exceptions,
-              dynamic dispatch, global state, and ambient runtime behavior. That compression is
-              pleasant while writing code and expensive while repairing it.
-            </p>
-            <p>
-              SemanticScript flips the tradeoff: expand intent into named rows, make hidden behavior
-              illegal by default, and let compilers remove redundancy after tools and reviewers have
-              used it.
-            </p>
-          </div>
-        </div>
-        <div className="lawGrid">
-          {[
-            "Every executable row does one semantic thing.",
-            "Failure is typed dataflow, not ambient exception control.",
-            "Cleanup lives near acquisition.",
-            "Effects and runtime authority are declared, not inferred.",
-            "Types encode intent, trust, memory, and layout.",
-            "Routes, SQL, JSON, HTML, and native runtime boundaries are source facts.",
-          ].map((law) => (
-            <p key={law}>{law}</p>
+      <section className="section workflow" id="workflow">
+        <SectionHeader eyebrow="Agent workflow" title="The sem wrapper is the public contract.">
+          Engineers and agents should use the same loop: load repo-matched rules, prove source
+          state, retrieve the smallest useful graph slice, create a reviewable plan, patch, format,
+          check, and only then run behavior harnesses.
+        </SectionHeader>
+        <div className="workflowRail" aria-label="SemanticScript workflow">
+          {workflowSteps.map(([number, title, copy]) => (
+            <div className="workflowStep" key={title}>
+              <span>{number}</span>
+              <strong>{title}</strong>
+              <p>{copy}</p>
+            </div>
           ))}
         </div>
+        <CodeBlock language="powershell" className="commandBlock">{`.\\sem.exe version --json
+.\\sem.exe skills get sem sem-agent --json
+.\\sem.exe check --json PATH
+.\\sem.exe graph --kind summary --json PATH
+.\\sem.exe slice --operation NAME --json PATH
+.\\sem.exe fix --plan --json PATH
+.\\sem.exe patch --dry-run --json plan.json
+.\\sem.exe test --json PATH`}</CodeBlock>
       </section>
 
       <section className="section evidence" id="evidence">
-        <div className="sectionHeader compact">
-          <p className="eyebrow">Research and benchmarks</p>
-          <h2>Current validation, openly scoped.</h2>
-          <p>
-            The research notes ask what a language should look like when the primary reader,
-            debugger, and maintainer is an AI agent. The benchmark harness checks whether the
-            explicit source shape can still lower toward native C performance without hiding gaps.
-          </p>
-        </div>
+        <SectionHeader eyebrow="Evidence" title="One benchmark family, four runtimes." compact>
+          The algorithm harness keeps C, SemanticScript, JavaScript, and Python side by side. Each
+          program computes the same checksum and reports only its timed compute region, so the table
+          stays useful without turning this page into a benchmark report.
+        </SectionHeader>
 
-        <div className="evidenceGrid">
-          <article className="researchCard">
-            <h3>Design research signals accepted into the language</h3>
-            <ul>
-              <li>Explicit local context, descriptive names, and variant words help agents recover facts.</li>
-              <li>Raw perplexity wins are filtered through greppability, patchability, auditability, and compiler ownership.</li>
-              <li>Verb-led rows stayed competitive after syntax arena tests for compliance, locality, patch, search, and modality.</li>
-              <li>Sigils, anonymous facts, object-like fact blocks, and dotted fact markers were rejected when they made long-lived source harder to own.</li>
-            </ul>
-          </article>
-
-          <article className="benchmarkCard">
-            <div className="benchmarkIntro">
-              <h3>Fresh local microbenchmark run</h3>
+        <article className="benchmarkCard">
+          <div className="benchmarkTopline">
+            <div>
+              <h3>Cross-language algorithm medians</h3>
               <p>
-                `python SemanticScript\bench\run_benchmarks.py --json`, 7 measured runs, clang
-                O2, clock ticks. These are smoke numbers for optimizer/backend work, not
-                publication-grade claims.
+                Windows 11, clang 22.1.4, Node v25, CPython 3.10.11. Values are slowdown relative
+                to C, using median of 9 measured runs after 2 warm-ups.
               </p>
             </div>
-            <div className="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Case</th>
-                    <th>C median ticks</th>
-                    <th>Semantic median ticks</th>
-                    <th>Of C</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {benchmarkRows.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td>{row.c}</td>
-                      <td>{row.semantic}</td>
-                      <td>{row.percent}</td>
-                      <td>{row.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="benchmarkNote">
-              Current read: arith, memset, and math pass the harness gate in this run; strlen is too
-              small for the clock probe and stays inconclusive. The important engineering asset is the
-              harness: backend performance regressions become visible and repeatable.
-            </p>
             <a className="inlineLink" href={benchmarksUrl}>
-              Inspect the benchmark sources and runner
+              Benchmark source
             </a>
-          </article>
-        </div>
-      </section>
+          </div>
 
-      <section className="section workflow" id="workflow">
-        <div className="sectionHeader">
-          <p className="eyebrow">How the project should work</p>
-          <h2>The sem wrapper is the stable agent contract.</h2>
-          <p>
-            Engineers and agents should use the same loop: load repo-matched rules, prove source
-            state, retrieve the smallest useful graph slice, explain diagnostics, generate a reviewable
-            repair plan, patch, format, check, and only then run behavior harnesses.
+          <div className="benchmarkMethodGrid" aria-label="Benchmark method facts">
+            {benchmarkMethodFacts.map(([label, value]) => (
+              <div className="benchmarkMethod" key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="tableWrap benchmarkTableWrap">
+            <table className="benchmarkTable">
+              <thead>
+                <tr>
+                  <th>Algorithm</th>
+                  <th>Stress</th>
+                  <th>C</th>
+                  <th>SemanticScript</th>
+                  <th>JavaScript</th>
+                  <th>Python</th>
+                  <th>Checksum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {algorithmBenchmarkRows.map((row) => (
+                  <tr key={row.name}>
+                    <td data-label="Algorithm">
+                      <code>{row.name}</code>
+                    </td>
+                    <td data-label="Stress">{row.stress}</td>
+                    <td data-label="C">{row.c}</td>
+                    <td data-label="SemanticScript" className="semanticResult">{row.semantic}</td>
+                    <td data-label="JavaScript">{row.javascript}</td>
+                    <td data-label="Python">{row.python}</td>
+                    <td data-label="Checksum">{row.checksum}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="benchmarkNote">
+            Read this as prototype backend signal: C and SemanticScript are the compiled pair, while
+            Node and CPython keep mainstream dynamic runtime behavior in frame.
           </p>
-        </div>
-        <div className="workflowRail" aria-label="SemanticScript workflow">
-          {[
-            "skills get",
-            "check",
-            "graph / slice",
-            "explain",
-            "fix --plan",
-            "patch",
-            "fmt / check",
-            "test / dev",
-          ].map((step, index) => (
-            <div className="workflowStep" key={step}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <p>{step}</p>
+        </article>
+
+        <article className="snippetPanel">
+          <div className="snippetPanelHeader">
+            <div>
+              <h3>Sieve mark pass, same workload</h3>
+              <p>
+                Sieve to 2,000,000 repeated 40 times. These are the hot composite-marking snippets
+                from the four checked sources.
+              </p>
             </div>
-          ))}
-        </div>
-        <CodeBlock language="powershell" className="commandBlock">{`python SemanticScript\\tools\\sem.py --version --json
-python SemanticScript\\tools\\sem.py skills get sem sem-agent --json
-python SemanticScript\\tools\\sem.py check --json PATH
-python SemanticScript\\tools\\sem.py graph --kind summary --json PATH
-python SemanticScript\\tools\\sem.py slice --operation NAME --json PATH
-python SemanticScript\\tools\\sem.py fix --plan --json PATH
-python SemanticScript\\tools\\sem.py patch --dry-run --json plan.json
-python SemanticScript\\tools\\sem.py test --json PATH`}</CodeBlock>
+            <span>checksum 5957320</span>
+          </div>
+          <div className="snippetGrid">
+            {benchmarkSnippets.map((snippet) => (
+              <article className="snippetCard" key={snippet.label}>
+                <div className="snippetMeta">
+                  <strong>{snippet.label}</strong>
+                  <span>{snippet.note}</span>
+                </div>
+                <CodeBlock language={snippet.language} className="compactCode">
+                  {snippet.code}
+                </CodeBlock>
+              </article>
+            ))}
+          </div>
+        </article>
       </section>
 
       <section className="section docs" id="docs">
-        <div className="sectionHeader compact">
-          <p className="eyebrow">High-level documentation map</p>
-          <h2>Where engineers should drill in.</h2>
-          <p>
-            The website is the pitch. The linked repository docs are the source of truth for exact
-            command behavior, syntax support, release status, and compatibility boundaries.
-          </p>
-        </div>
+        <SectionHeader eyebrow="Documentation map" title="Use the website as an index, not the spec." compact>
+          The linked repository docs remain the source of truth for command behavior, syntax support,
+          release status, and compatibility boundaries.
+        </SectionHeader>
         <div className="docsGrid">
           {docs.map(([title, href, copy]) => (
             <a className="docCard" href={href} key={title}>
@@ -629,20 +899,19 @@ python SemanticScript\\tools\\sem.py test --json PATH`}</CodeBlock>
 
       <section className="section closing" id="interest">
         <div className="closingCard">
-          <p className="eyebrow">Who should care</p>
-          <h2>Use this if your next codebase will be edited by agents anyway.</h2>
+          <p className="eyebrow">Fit</p>
+          <h2>For codebases where future edits need explicit context.</h2>
           <p>
-            SemanticScript is for engineers who want app code with explicit contracts, diffable risk,
-            retrievable semantic neighborhoods, native compilation, a packaged compiler path, and
-            visible performance work. The project is early, but it is pointed at a real maintenance
-            problem rather than a decorative syntax experiment.
+            SemanticScript is for engineers who want application code with explicit contracts,
+            diffable risk, retrievable semantic neighborhoods, native compilation, and a packaged
+            compiler path. It is early, but the maintenance problem it targets is concrete.
           </p>
           <div className="ctaRow">
             <a className="button primary" href={docsUrl}>
               Read the docs
             </a>
             <a className="button ghost" href={`${repoUrl}/issues`}>
-              Challenge the design
+              Open issues
             </a>
           </div>
         </div>
