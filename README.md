@@ -4,6 +4,16 @@
 [![CI](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/monstercameron/SemanticScript/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+<p align="center">
+  <a href="https://monstercameron.github.io/SemanticScript/">
+    <img src="docs/assets/semanticscript-logo-card.png" alt="SemanticScript logo with compiler graph and code glyphs" width="760">
+  </a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/semanticscript-mascot.png" alt="SemanticScript mascot with code brackets" width="190">
+</p>
+
 Project site: <https://monstercameron.github.io/SemanticScript/>
 
 SemanticScript is a pre-release, agent-first application language and toolchain.

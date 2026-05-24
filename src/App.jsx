@@ -1,4 +1,6 @@
 import { Marked, Renderer } from "marked";
+import logoCardImage from "../docs/assets/semanticscript-logo-card.png";
+import mascotImage from "../docs/assets/semanticscript-mascot.png";
 
 const repoUrl = "https://github.com/monstercameron/SemanticScript";
 const releasesUrl = `${repoUrl}/releases`;
@@ -281,6 +283,13 @@ function App() {
           </div>
 
           <aside className="heroPanel" aria-label="Technical summary">
+            <img
+              className="brandLogoCard"
+              src={logoCardImage}
+              alt="SemanticScript logo with compiler graph and code glyphs"
+              width="1254"
+              height="1254"
+            />
             <div className="panelLabel">Current toolchain</div>
             <CodeBlock language="text">{`sem.exe
   parse/check/fmt/lint
@@ -487,6 +496,14 @@ function App() {
 
       <section className="section closing" id="next">
         <div className="closingCard">
+          <img
+            className="closingMascot"
+            src={mascotImage}
+            alt="SemanticScript mascot with code brackets"
+            width="1254"
+            height="1254"
+            loading="lazy"
+          />
           <p className="eyebrow">Current next step</p>
           <h2>Download the release build or inspect the compiler.</h2>
           <p>
