@@ -3199,6 +3199,7 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3106 hiddenFailure, SS3107 siblingMetadataDrift,
 #            SS3108 unsupportedSharedStateScope,
 #            SS3109 authorityEffectMismatch,
+#            SS3110 columnUseAfterFree,
 #            SS3111 undeclaredBodyEffect, SS3112 unknownErrorVariant
 #   AS32xx — performance discipline           (T3 refinement)
 #            SS3201 deadStore, SS3202 allocationInLoop,
@@ -4096,6 +4097,125 @@ def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`authority OP ACCESS PATH`)"
                 ),
             ))
+    return diagnostics
+
+
+_OWNED_COLUMN_SOURCES = frozenset({
+    "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
+})
+_STATEMENT_RELEASE_TARGETS = frozenset({"sqlite.finalizeStatement"})
+_DATABASE_RELEASE_TARGETS = frozenset({"sqlite.closeDatabase"})
+
+
+def _sqlite_statement_argument(call_fact) -> Optional[str]:
+    """The value bound to a call's `SqliteStatement`-typed argument, if any."""
+    for arg_line in call_fact.arg_lines:
+        parts = argument_parts(arg_line)
+        if parts and parts[2] == "SqliteStatement":
+            return parts[3]
+    return None
+
+
+def check_column_memory_use_after_free(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3110 — a value read from `sqlite.columnText`/`columnBlob`/`columnName`
+    points into the prepared statement's own memory. Using it after that
+    statement is finalized or the database is closed is a use-after-free: it
+    builds and checks cleanly, then SIGSEGVs at runtime when the response writer
+    dereferences freed memory (the devlog's hardest bug — invisible to check AND
+    build). Flag a column value consumed as a call argument that linearly
+    follows an EXPLICIT `run` of `finalizeStatement` (same statement) or
+    `closeDatabase`, within the same straight-line block. `defer`-based release
+    runs at scope exit (after the use) and is correctly NOT flagged — which is
+    exactly the idiomatic fix."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        calls = collect_operation_calls(operation)
+
+        # column value -> (owning statement value, bind line number)
+        column_values: Dict[str, Tuple[Optional[str], int]] = {}
+        for call_fact in calls.values():
+            if call_fact.target not in _OWNED_COLUMN_SOURCES:
+                continue
+            statement = _sqlite_statement_argument(call_fact)
+            for bind_line in call_fact.bind_lines:
+                bind = bind_parts(bind_line)
+                if bind and bind[0] == "value":
+                    column_values[bind[1]] = (statement, bind_line.number)
+        if not column_values:
+            continue
+
+        # release points: (statement value or None == closes everything, run line)
+        releases: List[Tuple[Optional[str], int]] = []
+        for call_fact in calls.values():
+            if call_fact.target in _STATEMENT_RELEASE_TARGETS:
+                statement = _sqlite_statement_argument(call_fact)
+                releases.extend((statement, run_line.number) for run_line in call_fact.run_lines)
+            elif call_fact.target in _DATABASE_RELEASE_TARGETS:
+                releases.extend((None, run_line.number) for run_line in call_fact.run_lines)
+        if not releases:
+            continue
+
+        label_lines = sorted(
+            line.number for line in operation.lines
+            if line.tokens and not is_comment(line) and line.verb == "label"
+        )
+
+        for use_line in operation.lines:
+            if is_comment(use_line) or not use_line.tokens:
+                continue
+            parts = argument_parts(use_line)
+            if parts is None or parts[3] not in column_values:
+                continue
+            used_value = parts[3]
+            owning_statement, bind_line_number = column_values[used_value]
+            for release_statement, release_line in releases:
+                if not (bind_line_number < release_line < use_line.number):
+                    continue
+                # finalize of a DIFFERENT statement does not free this value;
+                # closeDatabase (release_statement is None) frees everything.
+                if (release_statement is not None and owning_statement is not None
+                        and release_statement != owning_statement):
+                    continue
+                # A label between the release and the use means they may be on
+                # different control-flow paths — stay conservative (no FP).
+                if any(release_line < ln < use_line.number for ln in label_lines):
+                    continue
+                release_kind = "the database is closed" if release_statement is None else \
+                    f"statement `{owning_statement or release_statement}` is finalized"
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3110",
+                    kind="resourceLifetime.columnUseAfterFree",
+                    severity=Severity.WARNING,
+                    subjectName=used_value,
+                    subjectKind="value",
+                    gapEdge="defer",
+                    intentSlogan="column memory used after finalize/close",
+                    primary=span_of_line(use_line, "columnValueUse"),
+                    invariantRule="a sqlite.column* value must be consumed before its statement is finalized or its database closed",
+                    specAnchor="docs/reference/syntax-inventory.md#defer",
+                    citations=narrative_citations_for_operation(facts, operation.name),
+                    fixCandidates=[
+                        FixCandidate(
+                            name="releaseWithDefer",
+                            shape=f"defer <name> sqlite.finalizeStatement {owning_statement or '<statement>'}",
+                        ),
+                        FixCandidate(
+                            name="writeResponseBeforeRelease",
+                            shape="# move the response/use rows above the finalize/close rows",
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_column_memory_use_after_free",
+                    agentHint=(
+                        f"`{used_value}` points into statement memory freed at line {release_line} "
+                        f"({release_kind}); consume it before that row, or release with `defer` "
+                        f"so cleanup runs at scope exit"
+                    ),
+                ))
+                break  # one diagnostic per use site
     return diagnostics
 
 
@@ -19636,6 +19756,7 @@ CHECKERS = [
     check_supported_shared_state_scope,
     check_effect_without_capability,
     check_authority_effect_mismatch,
+    check_column_memory_use_after_free,
     check_hidden_failure,
     check_sibling_metadata_drift,
     check_undeclared_body_effect,

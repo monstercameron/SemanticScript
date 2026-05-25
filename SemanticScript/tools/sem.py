@@ -216,6 +216,19 @@ DIAGNOSTIC_EXPLAINERS = {
             "Remember the order is access-first: `authority main write console.stdout`, mirroring `effect main write console.stdout`."
         ],
     },
+    "SS3110": {
+        "title": "column memory used after finalize/close (use-after-free)",
+        "summary": "A value read from sqlite.columnText/columnBlob/columnName points into the prepared statement's own memory. Using it after an explicit `run` of finalizeStatement (same statement) or closeDatabase frees that memory first — the program builds and checks cleanly, then SIGSEGVs at runtime when the response writer dereferences the freed pointer.",
+        "whyItMatters": [
+            "This crash is invisible to both `check` and `build`; it only appears when the program runs and the response writer reads freed memory.",
+            "Column pointers are owned by the statement, so their lifetime ends at finalize/close — not at the end of the operation."
+        ],
+        "commonFixes": [
+            "Release with `defer <name> sqlite.finalizeStatement <statement>` so cleanup runs at scope exit, after the response is written.",
+            "Or reorder: write the response (consume the column value) BEFORE the finalize/close rows.",
+            "Copy the bytes out of the column value before finalize if you must finalize early."
+        ],
+    },
     "SS4105": {
         "title": "reference integrity: unresolved value or wrong attachment subject kind",
         "summary": "A row references a value that is not declared in the current operation, or an operation-body verb is attached to a subject that is not an operation. Every argument value must be a named `storage`/`bind`/input value (or an integer / true / false literal) declared before use; inline enum members and string literals are rejected.",

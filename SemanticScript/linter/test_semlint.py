@@ -2004,6 +2004,95 @@ authority main read database.account
 
 
 # ==========================================================================
+# SS3110  resourceLifetime.columnUseAfterFree
+# ==========================================================================
+
+class TestColumnUseAfterFree(unittest.TestCase):
+    _PREAMBLE = """project Kv
+operation getValue
+output operation getValue Int32
+purpose operation getValue "read a column then respond"
+effect getValue write http.response
+"""
+
+    def test_column_value_used_after_explicit_finalize_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call finalizeCall sqlite.finalizeStatement
+argument finalizeCall statement SqliteStatement selectStatement
+run finalizeCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertIn("SS3110", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3110")[0]
+        self.assertEqual(matching.subjectName, "storedValue")
+
+    def test_defer_release_is_not_flagged(self) -> None:
+        # `defer` runs the finalize at scope exit (after the response), so the
+        # column value is still valid when used — the idiomatic, safe form.
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+defer finalizeDefer sqlite.finalizeStatement selectStatement
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3110", _codes(diagnostics))
+
+    def test_finalize_of_other_statement_is_not_flagged(self) -> None:
+        # Finalizing a DIFFERENT statement does not free this value.
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call finalizeOtherCall sqlite.finalizeStatement
+argument finalizeOtherCall statement SqliteStatement otherStatement
+run finalizeOtherCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3110", _codes(diagnostics))
+
+    def test_use_before_finalize_is_not_flagged(self) -> None:
+        # Correct ordering: consume the column value, THEN finalize.
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+call finalizeCall sqlite.finalizeStatement
+argument finalizeCall statement SqliteStatement selectStatement
+run finalizeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3110", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS3106  errorPathCoverage.hiddenFailure
 # ==========================================================================
 
