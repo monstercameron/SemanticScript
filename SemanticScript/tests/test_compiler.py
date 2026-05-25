@@ -7932,10 +7932,12 @@ def test_parser_strips_utf8_bom():
 def test_const_lowerability_surfaces_unknown_type_at_check():
     # An undeclared const type used to pass `check` (parse/lint) and only fail
     # at build with SSCG002/SSCG004. It must now be caught pre-codegen.
+    # (HttpStatus is no longer a valid example here — it is a known int-backed
+    # builtin alias that lowers to i32; use a genuinely-undeclared type name.)
     src = "\n".join([
         "project ConstCheck",
         "entry console main",
-        "storage module immutable okStatus HttpStatus 200",
+        "storage module immutable okStatus MysteryStatus 200",
         "operation main",
         "output operation main ExitCode",
         "purpose operation main \"x\"",
@@ -7950,7 +7952,7 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
         raised = exc.diagnostic
     check("const check: unknown const type is caught pre-codegen as SSCG004",
           raised is not None and raised.code == "SSCG004"
-          and "HttpStatus" in raised.message,
+          and "MysteryStatus" in raised.message,
           raised.message if raised else "no diagnostic raised")
 
     # A primitive alias const must still pass (HttpStatusCode -> Int32).
@@ -7973,6 +7975,29 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
         passed = False
     check("const check: primitive-alias const passes the lowerability gate",
           passed, "alias-typed const was wrongly flagged")
+
+    # Int-backed builtin aliases (HttpStatus/HttpStatusCode/SqliteOpenMode) must
+    # lower to i32 like the string-backed SqlText lowers to a String const — no
+    # more "declare Int32, carry the alias only in the arg slot" workaround.
+    for alias in ("HttpStatus", "HttpStatusCode", "SqliteOpenMode"):
+        builtin_src = "\n".join([
+            "project ConstCheckBuiltin",
+            "entry console main",
+            f"storage module immutable okStatus {alias} 200",
+            "operation main",
+            "output operation main ExitCode",
+            "purpose operation main \"x\"",
+            "async main no",
+            "return value 0",
+        ])
+        builtin_prog = semsc.parse(builtin_src)
+        builtin_ok = True
+        try:
+            semsc.validate_const_lowerability(builtin_prog)
+        except semsc.CompilerDiagnosticError:
+            builtin_ok = False
+        check(f"const check: int-backed builtin alias `{alias}` const lowers",
+              builtin_ok, f"{alias} const was wrongly flagged as unlowerable")
 
 
 def test_unknown_dotted_call_target_is_rejected_not_zeroed():
