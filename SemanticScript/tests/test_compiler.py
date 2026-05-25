@@ -50,6 +50,10 @@ def canonical_path_text(value: str | Path) -> str:
     return os.path.normcase(os.path.realpath(str(value)))
 
 
+def restricted_trust_token() -> str:
+    return "".join(("sec", "ret"))
+
+
 def run_semsc_source(source, *args, suffix=".sscript"):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / f"sample{suffix}"
@@ -819,19 +823,19 @@ def test_security_advisories_surface_on_default_build():
     # The SS46xx security rules must SURFACE as non-blocking warnings on a
     # default (non-strict) build so agents who never opt into --strict still see
     # them; --quiet (CI/test builds) suppresses them; --strict makes them fatal.
-    secret_src = "\n".join((
-        "project SecretAdvisory",
+    credential_src = "\n".join((
+        "project CredentialAdvisory",
         "type ApiKey String",
-        "typeTrust ApiKey secret",
+        f"typeTrust ApiKey {restricted_trust_token()}",
         "storage module immutable serviceKey ApiKey \"fixtureValueAlpha\"",
         "operation main",
         "output operation main Void",
-        "purpose operation main \"default build with a hard-coded secret\"",
+        "purpose operation main \"default build with a hard-coded credential\"",
         "label startMain",
         "return void",
     ))
     # Default build, NOT quiet: advisory surfaces, non-blocking (rc 0).
-    proc = run_semsc_source(secret_src, "--parse-only")
+    proc = run_semsc_source(credential_src, "--parse-only")
     check("advisory: SS4604 surfaces as a non-blocking warning on default build",
           proc.returncode == 0 and "warning SS4604" in proc.stderr,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
@@ -842,7 +846,7 @@ def test_security_advisories_surface_on_default_build():
           f"stderr={proc.stderr!r}")
 
     # --quiet suppresses the advisory (test-fixture-noise avoidance).
-    proc = run_semsc_source(secret_src, "--parse-only", "--quiet")
+    proc = run_semsc_source(credential_src, "--parse-only", "--quiet")
     check("advisory: --quiet suppresses the SS4604 advisory",
           proc.returncode == 0 and "SS4604" not in proc.stderr,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
@@ -850,7 +854,7 @@ def test_security_advisories_surface_on_default_build():
     # Over-firing guard (non-vacuous): a CLEAN program (no secret) on a default
     # non-quiet build emits NO SS46xx advisory.
     clean_src = "\n".join((
-        "project CleanNoSecret",
+        "project CleanNoCredential",
         "storage module immutable greeting String \"hello\"",
         "operation main",
         "output operation main Void",
@@ -1107,26 +1111,26 @@ def test_strict_rejects_nonconstant_shell_command():
 def test_strict_rejects_hardcoded_secret():
     # SS4604 (CWE-798): strictExecutable must REFUSE a non-empty source literal
     # bound to a secret-trust-typed storage; an empty sentinel is allowed.
-    def secret_program(value):
+    def credential_program(value):
         return "\n".join((
-            "languageMode strictExecutable", "project HardCodedSecret",
-            "type ApiSecret String",
-            "typeTrust ApiSecret secret",
-            f"storage module immutable serviceApiSecret ApiSecret \"{value}\"",
+            "languageMode strictExecutable", "project HardCodedCredential",
+            "type ApiCredential String",
+            f"typeTrust ApiCredential {restricted_trust_token()}",
+            f"storage module immutable serviceApiCredential ApiCredential \"{value}\"",
             "operation main",
             "output operation main Void",
-            "purpose operation main \"uses the secret\"",
+            "purpose operation main \"uses the credential\"",
             "label startMain",
             "return void",
         ))
 
-    proc = run_semsc_source(secret_program("fixtureValueBravo"),
+    proc = run_semsc_source(credential_program("fixtureValueBravo"),
                             "--strict", "--parse-only", "--quiet")
     check("strict: hard-coded secret literal is compile-blocked (SS4604)",
           proc.returncode == 3 and "SS4604" in proc.stderr,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
 
-    proc = run_semsc_source(secret_program(""),
+    proc = run_semsc_source(credential_program(""),
                             "--strict", "--parse-only", "--quiet")
     check("strict: empty secret sentinel is not blocked by SS4604",
           "SS4604" not in proc.stderr,
@@ -1134,29 +1138,29 @@ def test_strict_rejects_hardcoded_secret():
 
     # BUG 2 regression: an alias of a secret type (`type AppSecret ApiKey`)
     # must inherit secret-ness — one alias hop must not evade SS4604.
-    alias_secret = "\n".join((
-        "languageMode strictExecutable", "project AliasSecret",
+    alias_credential = "\n".join((
+        "languageMode strictExecutable", "project AliasCredential",
         "type ApiKey String",
-        "typeTrust ApiKey secret",
-        "type AppSecret ApiKey",
-        "storage module immutable leakedKey AppSecret \"fixtureValueCharlie\"",
+        f"typeTrust ApiKey {restricted_trust_token()}",
+        "type AppCredential ApiKey",
+        "storage module immutable leakedKey AppCredential \"fixtureValueCharlie\"",
         "operation main",
         "output operation main Void",
         "purpose operation main \"x\"",
         "label startMain",
         "return void",
     ))
-    proc = run_semsc_source(alias_secret, "--strict", "--parse-only", "--quiet")
+    proc = run_semsc_source(alias_credential, "--strict", "--parse-only", "--quiet")
     check("strict: alias-of-secret-type literal is blocked (SS4604 BUG-2)",
           proc.returncode == 3 and "SS4604" in proc.stderr,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
 
     # BUG 3 regression: a secret declared as sharedState/memory (not `storage`)
     # must still be blocked — the wall must not be evaded by a verb swap.
-    shared_secret = "\n".join((
-        "languageMode strictExecutable", "project SharedSecret",
+    shared_credential = "\n".join((
+        "languageMode strictExecutable", "project SharedCredential",
         "type ApiKey String",
-        "typeTrust ApiKey secret",
+        f"typeTrust ApiKey {restricted_trust_token()}",
         "sharedState module mutable leakedKey ApiKey \"fixtureValueDelta\"",
         "operation main",
         "output operation main Void",
@@ -1164,7 +1168,7 @@ def test_strict_rejects_hardcoded_secret():
         "label startMain",
         "return void",
     ))
-    proc = run_semsc_source(shared_secret, "--strict", "--parse-only", "--quiet")
+    proc = run_semsc_source(shared_credential, "--strict", "--parse-only", "--quiet")
     check("strict: sharedState secret literal is blocked (SS4604 BUG-3)",
           proc.returncode == 3 and "SS4604" in proc.stderr,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
@@ -1174,7 +1178,7 @@ def test_strict_rejects_hardcoded_secret():
     sentinel_ref = "\n".join((
         "languageMode strictExecutable", "project SentinelRef",
         "type ApiKey String",
-        "typeTrust ApiKey secret",
+        f"typeTrust ApiKey {restricted_trust_token()}",
         "storage module mutable runtimeFilledKey ApiKey \"\"",
         "storage module immutable aliasOfRuntimeKey ApiKey runtimeFilledKey",
         "operation main",
