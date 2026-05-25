@@ -57,7 +57,8 @@ class TestToolingCorpusSmoke(unittest.TestCase):
             with self.subTest(file=str(path.relative_to(SS))):
                 proc = subprocess.run(
                     [sys.executable, str(SEMLINT), str(path), "--summary"],
-                    cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
+                    cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=120,
                 )
                 combined = proc.stdout + proc.stderr
                 self.assertNotIn("Traceback (most recent call last)", combined,
@@ -84,7 +85,8 @@ class TestToolingCorpusSmoke(unittest.TestCase):
     def _fmt(self, path: Path) -> None:
         proc = subprocess.run(
             [sys.executable, str(SEMFMT), str(path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
+            cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=120,
         )
         self.assertNotIn("Traceback (most recent call last)", proc.stdout + proc.stderr,
                          f"semfmt crashed on {path}:\n{proc.stdout}\n{proc.stderr}")

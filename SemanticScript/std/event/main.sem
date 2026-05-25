@@ -10,6 +10,9 @@
 # generic native runtimeBinding symbols. The compiler does not special-case event
 # call names.
 
+# rationale: Standard-library namespace and contracts for async-only event stream runtime operations.
+# invariant: Downstream modules import this module as alias `event`; all event I/O operations are async-only by contract and delegate through generic native runtimeBinding rows.
+# warning: openProcessStream is process-local and replay-oriented; openProcessQueue is process-local and backpressure-oriented; openDurableStream stores a locked committed local replay log keyed by stream name and retains only the configured in-memory tail.
 module standard.event
 purpose module standard.event "Standard-library namespace and contracts for async-only event stream runtime operations."
 moduleOwns standard.event "The official import path `standard.event`, event stream handle types, status constants, reusable event capabilities, runtimeBinding operation wrappers, and the native adapter source declaration."
@@ -136,6 +139,8 @@ exportOperation standard.event receiveEvent
 exportOperation standard.event acknowledgeEvent
 exportOperation standard.event closeSubscription
 
+# rationale: Open a process-local event stream handle with a bounded retained-event capacity.
+# invariant: This operation is async-only by standard.event contract; callers start and await it with explicit timeout/cancellation.
 operation openProcessStream
 input operation openProcessStream streamName EventStreamName
 input operation openProcessStream queueCapacity EventQueueCapacity
@@ -156,6 +161,8 @@ runtimeBinding openProcessStream native.ss_event_open_process_stream
 runtimeBindingAsyncStart openProcessStream native.ss_event_open_process_stream_start
 runtimeBindingAsyncAwait openProcessStream native.ss_event_open_process_stream_await
 
+# rationale: Open a named event stream backed by a local committed replay log with cross-process writer locking.
+# invariant: Reopening the same durable stream name recovers trailing torn writes, verifies committed record checksums, reloads at most queueCapacity retained events, and continues event ids after the highest committed id.
 operation openDurableStream
 input operation openDurableStream streamName EventStreamName
 input operation openDurableStream queueCapacity EventQueueCapacity
@@ -180,6 +187,8 @@ runtimeBinding openDurableStream native.ss_event_open_durable_stream
 runtimeBindingAsyncStart openDurableStream native.ss_event_open_durable_stream_start
 runtimeBindingAsyncAwait openDurableStream native.ss_event_open_durable_stream_await
 
+# rationale: Open a process-local bounded queue stream whose append operation returns eventStatusQueueFull instead of dropping retained events when capacity is exhausted.
+# invariant: Consumers must acknowledge received events to release strict queue capacity; this shape is for command queues where producer backpressure is required.
 operation openProcessQueue
 input operation openProcessQueue streamName EventStreamName
 input operation openProcessQueue queueCapacity EventQueueCapacity
@@ -200,6 +209,8 @@ runtimeBinding openProcessQueue native.ss_event_open_process_queue
 runtimeBindingAsyncStart openProcessQueue native.ss_event_open_process_queue_start
 runtimeBindingAsyncAwait openProcessQueue native.ss_event_open_process_queue_await
 
+# rationale: Close an event stream handle, detach live subscriptions, and release runtime-owned retained events.
+# invariant: Closing a stream invalidates future subscription receives rather than leaving hidden listeners active.
 operation closeStream
 input operation closeStream stream EventStreamHandle
 output operation closeStream EventStatusCode
@@ -217,6 +228,8 @@ runtimeBinding closeStream native.ss_event_close_stream
 runtimeBindingAsyncStart closeStream native.ss_event_close_stream_start
 runtimeBindingAsyncAwait closeStream native.ss_event_close_stream_await
 
+# rationale: Append one caller-encoded event payload to a runtime stream and return its assigned EventId.
+# invariant: Payload encoding, schema version, and trust validation belong to the caller; this low-level adapter stores opaque JSON text.
 operation appendEvent
 input operation appendEvent stream EventStreamHandle
 input operation appendEvent eventType EventTypeName
@@ -237,6 +250,8 @@ runtimeBinding appendEvent native.ss_event_append
 runtimeBindingAsyncStart appendEvent native.ss_event_append_start
 runtimeBindingAsyncAwait appendEvent native.ss_event_append_await
 
+# rationale: Open a bounded subscription over a stream with event-type, key, and after-event cursor filters.
+# invariant: The returned handle is explicit caller-owned lifecycle state; no hidden listener is registered without a closeSubscription path.
 operation subscribeStream
 input operation subscribeStream stream EventStreamHandle
 input operation subscribeStream eventType EventTypeName
@@ -260,6 +275,8 @@ runtimeBinding subscribeStream native.ss_event_subscribe
 runtimeBindingAsyncStart subscribeStream native.ss_event_subscribe_start
 runtimeBindingAsyncAwait subscribeStream native.ss_event_subscribe_await
 
+# rationale: Copy the next matching event into caller-owned buffers and return its EventId, waiting asynchronously until a future matching event, close, or timeout completes the receive.
+# invariant: Async start registers a pending receive when no retained event is ready; append, close, timeout, and cancellation complete pending receives without busy-waiting or letting cancelled receives consume later events.
 operation receiveEvent
 input operation receiveEvent subscription EventSubscriptionHandle
 input operation receiveEvent outEventType EventOutputBuffer
@@ -283,6 +300,8 @@ runtimeBinding receiveEvent native.ss_event_receive
 runtimeBindingAsyncStart receiveEvent native.ss_event_receive_start
 runtimeBindingAsyncAwait receiveEvent native.ss_event_receive_await
 
+# rationale: Acknowledge a received event id for the subscription cursor.
+# invariant: Acknowledgement is explicit so replay position and at-least-once delivery policy remain reviewable.
 operation acknowledgeEvent
 input operation acknowledgeEvent subscription EventSubscriptionHandle
 input operation acknowledgeEvent eventId EventId
@@ -299,6 +318,8 @@ runtimeBinding acknowledgeEvent native.ss_event_acknowledge
 runtimeBindingAsyncStart acknowledgeEvent native.ss_event_acknowledge_start
 runtimeBindingAsyncAwait acknowledgeEvent native.ss_event_acknowledge_await
 
+# rationale: Close a subscription handle and detach it from live stream fanout.
+# invariant: Request-scoped subscriptions must pair this operation with request cancellation or shutdown cleanup.
 operation closeSubscription
 input operation closeSubscription subscription EventSubscriptionHandle
 output operation closeSubscription EventStatusCode

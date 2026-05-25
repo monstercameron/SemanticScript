@@ -13,6 +13,9 @@
 # the official standard-library import path and the trust-type
 # contracts for that intrinsic namespace.
 
+# rationale: Standard-library namespace and trust contracts for password hashing (bcrypt $2b$ with caller-chosen cost), cryptographic randomness, and base64url encoding intrinsics.
+# invariant: The standard module entry is this file; downstream modules may import it as alias `bcrypt` before using compiler-owned targets in the `bcrypt.*` namespace.
+# security: BcryptPasswordHash values MUST always carry the `$2b$NN$...` prefix and exactly 60 chars; the native runtime adapter refuses to verify against any other format so a deployment cannot silently drift to a weaker variant by writing legacy `$2a$`/`$2x$`/`$2y$` strings to the database.
 module standard.bcrypt
 purpose module standard.bcrypt "Standard-library namespace and trust contracts for password hashing (bcrypt $2b$ with caller-chosen cost), cryptographic randomness, and base64url encoding intrinsics."
 moduleOwns standard.bcrypt "The official import path `standard.bcrypt`, the BcryptPasswordHash / BcryptPlaintextPassword / SessionToken trust types, the recommended cost-factor default, the session-token byte-count default, and the required-output-buffer-size constants for hash + base64url."

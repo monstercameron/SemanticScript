@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.random.
 
+# rationale: Canonical standard-library module for pseudo-random helper operations.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.random
 purpose module standard.random "Canonical standard-library module for pseudo-random helper operations."
 moduleOwns standard.random "The official import path `standard.random` and this module's implementation body."
@@ -15,7 +17,7 @@ storage module immutable randomModuleVersionText String "standard.random 0.1"
 # ============================================================
 #
 # rationale: implements the MINSTD Linear Congruential Generator
-#   (Park-Miller) entirely in SemanticScript Ã¢â‚¬â€ no libc rand() / srand(). State
+#   (Park-Miller) entirely in SemanticScript - no libc rand() / srand(). State
 #   is held in a caller-passed 8-byte heap slot (rand_r-style
 #   reentrant pattern) because SemanticScript user-operations cannot yet share
 #   module-level mutable state portably.
@@ -23,7 +25,7 @@ storage module immutable randomModuleVersionText String "standard.random 0.1"
 # invariant: LCG parameters are multiplier 48271 over modulus
 #   2147483647 (=2^31 - 1). Period is 2^31 - 2 ~= 2.1 billion.
 #   Output is in [1, 2147483646] under a non-zero seed. Two zero
-#   inputs (zero or negative seeds) are normalized to 1 Ã¢â‚¬â€ the LCG
+#   inputs (zero or negative seeds) are normalized to 1 - the LCG
 #   has a fixed point at zero.
 #
 # security: deterministic and short-period; NOT suitable for any
@@ -31,7 +33,7 @@ storage module immutable randomModuleVersionText String "standard.random 0.1"
 #   game-mechanic determinism). Cryptographic callers must use a
 #   different source.
 #
-# timing: nextDeterministicRandomSignedInt64 is O(1) Ã¢â‚¬â€ one
+# timing: nextDeterministicRandomSignedInt64 is O(1) - one
 #   load-state, one multiply-mod, one store-state.
 #
 # observability: state mutation happens entirely in the
@@ -41,7 +43,7 @@ storage module immutable randomModuleVersionText String "standard.random 0.1"
 # consumed by other programs (notably std/random/main.test.sem which
 # importModules it and runs the smoke). The project / target /
 # runtime / entry block is retained so the module can still be
-# linted standalone Ã¢â‚¬â€ the entry just points at the first exported
+# linted standalone - the entry just points at the first exported
 # operation rather than a `main` smoke.
 
 # Typed error domain for state allocation / use failures.
@@ -108,6 +110,8 @@ domainLiteralTrust randomStateByteOffsetSeven trustedStaticLiteral
 
 # section random.byteHelper
 
+# rationale: Loads one byte at byteOffset and normalizes it to the unsigned 0..255 interpretation via (raw + 256) % 256 to undo i8 sign-extension.
+# invariant: Result is in [0, 255].
 operation loadUnsignedByteFromBufferOffset
 input operation loadUnsignedByteFromBufferOffset byteBuffer OpaquePointer
 input operation loadUnsignedByteFromBufferOffset byteOffset ByteCount
@@ -137,6 +141,9 @@ return value unsignedByteValue
 
 # section random.state
 
+# rationale: Allocate an 8-byte LCG state slot, store the seed (or 1 when seed <= 0), return the slot pointer.
+# invariant: Stored seed is always > 0; the MINSTD LCG has a zero fixed point that we explicitly avoid by normalizing.
+# failure: Returned when c.malloc returns NULL - caller should treat as fatal.
 operation createDeterministicRandomState
 input operation createDeterministicRandomState randomSeed Int64
 output operation createDeterministicRandomState Result OpaquePointer RandomStateError
@@ -147,7 +154,7 @@ memoryAllocationSource createDeterministicRandomState allocateRandomStateSlotCal
 async createDeterministicRandomState no
 purpose operation createDeterministicRandomState "Allocate an 8-byte LCG state slot, store the seed (or 1 when seed <= 0), return the slot pointer."
 invariant operation createDeterministicRandomState "Stored seed is always > 0; the MINSTD LCG has a zero fixed point that we explicitly avoid by normalizing."
-failure createDeterministicRandomState MemoryAllocationFailed "Returned when c.malloc returns NULL Ã¢â‚¬â€ caller should treat as fatal."
+failure createDeterministicRandomState MemoryAllocationFailed "Returned when c.malloc returns NULL - caller should treat as fatal."
 guarantee createDeterministicRandomState "Returns OK with a non-null slot, or Err with MemoryAllocationFailed."
 label startCreateDeterministicRandomState
 call allocateRandomStateSlotCall c.malloc
@@ -310,6 +317,8 @@ label randomStateAllocationFailedHandler
 makeError randomStateAllocationFailure RandomStateError.MemoryAllocationFailed randomStateAllocationError
 return error randomStateAllocationFailure
 
+# rationale: Releases the slot returned by createDeterministicRandomState back to the libc allocator.
+# invariant: Idempotent for double-free safety only if the libc allocator tolerates it - caller should track ownership.
 operation releaseDeterministicRandomState
 input operation releaseDeterministicRandomState randomState OpaquePointer
 output operation releaseDeterministicRandomState Int32
@@ -319,7 +328,7 @@ memory releaseDeterministicRandomState heap yes
 memoryAllocationSource releaseDeterministicRandomState releaseSlotCall
 async releaseDeterministicRandomState no
 purpose operation releaseDeterministicRandomState "Releases the slot returned by createDeterministicRandomState back to the libc allocator."
-invariant operation releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it Ã¢â‚¬â€ caller should track ownership."
+invariant operation releaseDeterministicRandomState "Idempotent for double-free safety only if the libc allocator tolerates it - caller should track ownership."
 guarantee releaseDeterministicRandomState "Always returns 0."
 label startReleaseDeterministicRandomState
 call releaseSlotCall c.free
@@ -328,6 +337,8 @@ run releaseSlotCall
 storage module immutable releaseSuccessReturnCode Int32 0
 return value releaseSuccessReturnCode
 
+# rationale: Loads the i64 value from an 8-byte little-endian state slot using loadUnsignedByteFromBufferOffset so high-bit bytes don't sign-extend.
+# invariant: Returns exactly the value most recently stored by createDeterministicRandomState or nextDeterministicRandomSignedInt64.
 operation readDeterministicRandomState
 input operation readDeterministicRandomState randomState OpaquePointer
 output operation readDeterministicRandomState Int64
@@ -451,6 +462,8 @@ run addSevenCall
 bind value fullyComposedStateValue Int64 addSevenCall
 return value fullyComposedStateValue
 
+# rationale: Advance the MINSTD LCG and return the next state value: state = (state * 48271) mod (2^31 - 1).
+# invariant: Output is in [1, 2147483646]; the state slot is mutated in place.
 operation nextDeterministicRandomSignedInt64
 input operation nextDeterministicRandomSignedInt64 randomState OpaquePointer
 output operation nextDeterministicRandomSignedInt64 Int64

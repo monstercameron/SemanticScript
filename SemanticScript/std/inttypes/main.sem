@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.inttypes.
 
+# rationale: Canonical standard-library module for inttypes-style parsing and formatting helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.inttypes
 purpose module standard.inttypes "Canonical standard-library module for inttypes-style parsing and formatting helpers."
 moduleOwns standard.inttypes "The official import path `standard.inttypes` and this module's implementation body."
@@ -20,7 +22,7 @@ storage module immutable inttypesModuleVersionText String "standard.inttypes 0.1
 #   every operation, hiding real fallibility (division by zero) and
 #   real partiality (parsing). The refined surface separates the
 #   total ops (abs) from the fallible ones (divide-by-zero), and
-#   keeps the parsers total â€” they stop scanning at the first
+#   keeps the parsers total - they stop scanning at the first
 #   non-matching byte and return whatever has accumulated so far.
 #
 # invariant: integer arithmetic is two's-complement; division
@@ -35,7 +37,7 @@ storage module immutable inttypesModuleVersionText String "standard.inttypes 0.1
 # timing: arithmetic ops are O(1); parsers are O(byteLength).
 #
 # observability: no logs; parsers do not signal "junk after the
-#   digits were consumed" â€” that contract belongs to a stricter
+#   digits were consumed" - that contract belongs to a stricter
 #   variant in stdlib.sscript.
 
 # Pure-module file: smoke + extended tests live in
@@ -43,7 +45,7 @@ storage module immutable inttypesModuleVersionText String "standard.inttypes 0.1
 
 # Typed error domain for integer arithmetic. SemanticScript-style errors
 # replace the previous "negative return = failure" C convention. The
-# only currently-detected failure is divide-by-zero â€” overflow is not
+# only currently-detected failure is divide-by-zero - overflow is not
 # detected here because LLVM's sdiv/srem wrap silently and we accept
 # that as the documented behavior in the operation warnings below.
 error IntegerArithmeticError
@@ -68,6 +70,9 @@ domainLiteralTrust integerOneStep trustedStaticLiteral
 
 # section inttypes.absoluteValue
 
+# rationale: Returns |inputValue| over the Int64 domain.
+# invariant: Non-negative result for every input except INT64_MIN.
+# warning: INT64_MIN negated overflows back to INT64_MIN (no positive representation exists in two's complement).
 operation absoluteMaxWidthSignedInt
 input operation absoluteMaxWidthSignedInt inputValue Int64
 output operation absoluteMaxWidthSignedInt Int64
@@ -76,7 +81,7 @@ async absoluteMaxWidthSignedInt no
 purpose operation absoluteMaxWidthSignedInt "Returns |inputValue| over the Int64 domain."
 invariant operation absoluteMaxWidthSignedInt "Non-negative result for every input except INT64_MIN."
 warning absoluteMaxWidthSignedInt "INT64_MIN negated overflows back to INT64_MIN (no positive representation exists in two's complement)."
-guarantee absoluteMaxWidthSignedInt "Total â€” every input produces some Int64 result."
+guarantee absoluteMaxWidthSignedInt "Total - every input produces some Int64 result."
 label startAbsoluteMaxWidthSignedInt
 call detectInputIsNegativeCall math.lessThanInt64
 argument detectInputIsNegativeCall left Int64 inputValue
@@ -95,6 +100,9 @@ return value negatedAbsoluteValue
 
 # section inttypes.division
 
+# rationale: Integer quotient dividendValue / divisorValue, rounded toward zero. Fails when divisorValue is zero.
+# invariant: Quotient sign is dividend sign XOR divisor sign.
+# failure: Returned when divisorValue equals zero - caller must screen first.
 operation divideMaxWidthSignedIntQuotient
 input operation divideMaxWidthSignedIntQuotient dividendValue Int64
 input operation divideMaxWidthSignedIntQuotient divisorValue Int64
@@ -103,7 +111,7 @@ memory divideMaxWidthSignedIntQuotient heap no
 async divideMaxWidthSignedIntQuotient no
 purpose operation divideMaxWidthSignedIntQuotient "Integer quotient dividendValue / divisorValue, rounded toward zero. Fails when divisorValue is zero."
 invariant operation divideMaxWidthSignedIntQuotient "Quotient sign is dividend sign XOR divisor sign."
-failure divideMaxWidthSignedIntQuotient DivisionByZeroAttempted "Returned when divisorValue equals zero â€” caller must screen first."
+failure divideMaxWidthSignedIntQuotient DivisionByZeroAttempted "Returned when divisorValue equals zero - caller must screen first."
 guarantee divideMaxWidthSignedIntQuotient "Defined for every (dividendValue, nonZeroDivisorValue) input pair."
 label startDivideMaxWidthSignedIntQuotient
 call detectDivisorIsZeroCall math.equalInt64
@@ -122,6 +130,9 @@ label raiseDivisionByZeroForQuotient
 makeError quotientDivisionByZeroFailure IntegerArithmeticError.DivisionByZeroAttempted
 return error quotientDivisionByZeroFailure
 
+# rationale: Integer remainder dividendValue % divisorValue. Fails when divisorValue is zero.
+# invariant: Remainder sign carries the dividend sign (LLVM srem semantics).
+# failure: Returned when divisorValue equals zero.
 operation divideMaxWidthSignedIntRemainder
 input operation divideMaxWidthSignedIntRemainder dividendValue Int64
 input operation divideMaxWidthSignedIntRemainder divisorValue Int64
@@ -151,6 +162,9 @@ return error remainderDivisionByZeroFailure
 
 # section inttypes.parsers
 
+# rationale: Parse a null-terminated C string of '0' / '1' bytes as an unsigned base-2 integer. Stops at the first byte that is neither '0' nor '1' and returns the partial accumulator.
+# invariant: Empty or junk inputs return 0; otherwise the prefix of valid binary digits is consumed left-to-right.
+# warning: No overflow detection - inputs longer than 63 binary digits silently wrap around Int64.
 operation parsePositiveBinaryCStringToSignedInt64
 input operation parsePositiveBinaryCStringToSignedInt64 inputText String
 output operation parsePositiveBinaryCStringToSignedInt64 Int64
@@ -158,7 +172,7 @@ memory parsePositiveBinaryCStringToSignedInt64 heap no
 async parsePositiveBinaryCStringToSignedInt64 no
 purpose operation parsePositiveBinaryCStringToSignedInt64 "Parse a null-terminated C string of '0' / '1' bytes as an unsigned base-2 integer. Stops at the first byte that is neither '0' nor '1' and returns the partial accumulator."
 invariant operation parsePositiveBinaryCStringToSignedInt64 "Empty or junk inputs return 0; otherwise the prefix of valid binary digits is consumed left-to-right."
-warning parsePositiveBinaryCStringToSignedInt64 "No overflow detection â€” inputs longer than 63 binary digits silently wrap around Int64."
+warning parsePositiveBinaryCStringToSignedInt64 "No overflow detection - inputs longer than 63 binary digits silently wrap around Int64."
 guarantee parsePositiveBinaryCStringToSignedInt64 "Total (no error path); always terminates at the NUL terminator or first invalid byte."
 label startParsePositiveBinaryCStringToSignedInt64
 memory parsePositiveBinaryCStringToSignedInt64 mutable binaryAccumulator Int64 0
@@ -214,6 +228,9 @@ jump target binaryParseLoop
 label binaryParseDone
 return value binaryAccumulator
 
+# rationale: Parse a null-terminated C string of '0'..'7' bytes as an unsigned base-8 integer. Stops at the first byte outside that range.
+# invariant: Empty or junk inputs return 0; otherwise the prefix of valid octal digits is consumed left-to-right.
+# warning: No overflow detection - inputs longer than 21 octal digits silently wrap around Int64.
 operation parsePositiveOctalCStringToSignedInt64
 input operation parsePositiveOctalCStringToSignedInt64 inputText String
 output operation parsePositiveOctalCStringToSignedInt64 Int64
@@ -221,7 +238,7 @@ memory parsePositiveOctalCStringToSignedInt64 heap no
 async parsePositiveOctalCStringToSignedInt64 no
 purpose operation parsePositiveOctalCStringToSignedInt64 "Parse a null-terminated C string of '0'..'7' bytes as an unsigned base-8 integer. Stops at the first byte outside that range."
 invariant operation parsePositiveOctalCStringToSignedInt64 "Empty or junk inputs return 0; otherwise the prefix of valid octal digits is consumed left-to-right."
-warning parsePositiveOctalCStringToSignedInt64 "No overflow detection â€” inputs longer than 21 octal digits silently wrap around Int64."
+warning parsePositiveOctalCStringToSignedInt64 "No overflow detection - inputs longer than 21 octal digits silently wrap around Int64."
 guarantee parsePositiveOctalCStringToSignedInt64 "Total."
 label startParsePositiveOctalCStringToSignedInt64
 memory parsePositiveOctalCStringToSignedInt64 mutable octalAccumulator Int64 0

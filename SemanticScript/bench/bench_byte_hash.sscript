@@ -1,0 +1,192 @@
+project BenchByteHash
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import memory standard.memory
+
+error MainError
+errorCase MainError AllocationFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
+
+# section capability
+# rationale: main allocates a scratch buffer, seeds it via the stdlib copy op,
+# then times repeated standard.memory.hashMemoryBytesWithFnv1a folds over it.
+# Unlike the NUL-scan in bench_string_length (which -O2 rewrites into @strlen),
+# the FNV fold has no libc idiom and a carried multiply dependency, so this
+# benchmark exercises the stdlib's real hand-written scalar loop against an
+# identical C fold. Capabilities are redeclared because the linter does not
+# trace cross-module imports.
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
+capability memoryBufferReadCapability memory.buffer read
+capability memoryBufferWriteCapability memory.buffer write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+useCapability main memoryBufferReadCapability
+useCapability main memoryBufferWriteCapability
+effect main read clock.cpu
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+effect main read memory.buffer
+memory main heap yes
+memoryAllocationSource main mallocCall
+memory main stack max 8KiB
+async main no
+
+purpose operation main "Benchmark standard.memory.hashMemoryBytesWithFnv1a over a 31-byte buffer for 50M iterations against an identical C FNV-1a fold; exercises real stdlib scalar codegen (no libc idiom, carried multiply dependency, cannot be rewritten to a library call)"
+invariant operation main "Each iteration writes a printable byte at offset 0 before hashing; because byte 0 is folded first, the whole hash depends on it, so the result varies every iteration and cannot be hoisted or constant-folded"
+invariant operation main "The scratch buffer is allocated via c.malloc before timing and freed via c.free after timing stops"
+
+label startMain
+
+storage module immutable iterationLimit Int64 50000000
+storage module immutable iterationStep Int64 1
+storage module immutable bufferSize ByteCount 64
+storage module immutable contentLength ByteCount 31
+storage module immutable seedText String "abcdefghijklmnopqrstuvwxyz01234"
+storage module immutable printableModulus Int64 95
+storage module immutable printableBase Int64 32
+storage module immutable writeOffset ByteCount 0
+storage module immutable zeroByte Int64 0
+storage module immutable oneInt64 Int64 1
+
+memory main mutable currentIteration Int64 0
+memory main mutable observationAccumulator Int64 0
+
+call mallocCall c.malloc
+argument mallocCall size ByteCount bufferSize
+run mallocCall
+bind value benchmarkBuffer OpaquePointer mallocCall
+bind error mallocError Int32 mallocCall
+branch error source mallocCall target allocationFailed
+defer releaseBufferCall c.free benchmarkBuffer
+
+# Seed the buffer with the 31-byte sample plus its NUL terminator using a
+# manual byte copy, so this benchmark depends only on standard.memory (the
+# module under test) and not on standard.string.
+memory main mutable seedCursor Int64 0
+label seedLoopHead
+call seedLoadCall pointer.loadByte
+argument seedLoadCall buffer OpaquePointer seedText
+argument seedLoadCall offset ByteCount seedCursor
+run seedLoadCall
+bind value seedByte Int8 seedLoadCall
+call seedStoreCall pointer.storeByte
+argument seedStoreCall buffer OpaquePointer benchmarkBuffer
+argument seedStoreCall offset ByteCount seedCursor
+argument seedStoreCall value Int64 seedByte
+run seedStoreCall
+call seedIsNullCall math.equalInt64
+argument seedIsNullCall left Int64 seedByte
+argument seedIsNullCall right Int64 zeroByte
+run seedIsNullCall
+bind value seedAtNull Bool seedIsNullCall
+branch if condition seedAtNull target seedDone
+call seedIncCall math.addInt64
+argument seedIncCall left Int64 seedCursor
+argument seedIncCall right Int64 oneInt64
+run seedIncCall
+bind value seedNext Int64 seedIncCall
+set memory seedCursor seedNext
+jump target seedLoopHead
+label seedDone
+
+call startClockCall c.clock
+run startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
+
+label benchmarkLoopHead
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
+run shouldContinueCmpCall
+bind value benchmarkShouldContinue Bool shouldContinueCmpCall
+branch if condition benchmarkShouldContinue target benchmarkLoopBody
+branch else target benchmarkFinished
+
+label benchmarkLoopBody
+
+# Write a printable byte (32..126) at offset 0 from the iteration counter so
+# the fold result varies and cannot be hoisted out of the loop.
+call printableModCall math.moduloInt64
+argument printableModCall left Int64 currentIteration
+argument printableModCall right Int64 printableModulus
+run printableModCall
+bind value printableOffset Int64 printableModCall
+
+call printableByteCall math.addInt64
+argument printableByteCall left Int64 printableOffset
+argument printableByteCall right Int64 printableBase
+run printableByteCall
+bind value printableByte Int64 printableByteCall
+
+call storeByteCall pointer.storeByte
+argument storeByteCall buffer OpaquePointer benchmarkBuffer
+argument storeByteCall offset ByteCount writeOffset
+argument storeByteCall value Int64 printableByte
+run storeByteCall
+
+# Timed stdlib operation under test: a real scalar FNV-style fold.
+call hashCall hashMemoryBytesWithFnv1a
+argument hashCall byteBuffer OpaquePointer benchmarkBuffer
+argument hashCall byteCount ByteCount contentLength
+run hashCall
+bind value hashValue Int64 hashCall
+
+call observationAccumulateCall math.addInt64
+argument observationAccumulateCall left Int64 observationAccumulator
+argument observationAccumulateCall right Int64 hashValue
+run observationAccumulateCall
+bind value nextObservation Int64 observationAccumulateCall
+set memory observationAccumulator nextObservation
+
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
+run incrementCall
+bind value nextIteration Int64 incrementCall
+set memory currentIteration nextIteration
+jump target benchmarkLoopHead
+
+label benchmarkFinished
+
+call endClockCall c.clock
+run endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
+
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
+run elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
+
+storage module immutable reportFormatText String "iterations=%lld accumulator=%llu clockTicks=%lld\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Int64 observationAccumulator
+argument reportCall ticks Int64 elapsedClockTicks
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label allocationFailed
+makeError allocationFailure MainError.AllocationFailed mallocError
+return error allocationFailure
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure

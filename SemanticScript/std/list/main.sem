@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.list.
 
+# rationale: Canonical standard-library module for owned list length/capacity helpers.
+# invariant: This module owns structural growable-list helpers over length/capacity facts.
 module standard.list
 purpose module standard.list "Canonical standard-library module for owned list length/capacity helpers."
 moduleOwns standard.list "The official import path `standard.list` and the executable `list.*` helper surface."
@@ -19,6 +21,7 @@ domainLiteralTrust listFailureSentinel trustedStaticLiteral
 storage module immutable listTrue Bool true
 storage module immutable listFalse Bool false
 
+# rationale: Return the current logical list length.
 operation list.length
 input operation list.length currentLength Int64
 output operation list.length Int64
@@ -27,6 +30,7 @@ async list.length no
 purpose operation list.length "Return the current logical list length."
 return value currentLength
 
+# rationale: Return the current list capacity.
 operation list.capacity
 input operation list.capacity currentCapacity Int64
 output operation list.capacity Int64
@@ -35,6 +39,7 @@ async list.capacity no
 purpose operation list.capacity "Return the current list capacity."
 return value currentCapacity
 
+# rationale: Return true when currentLength is zero.
 operation list.isEmpty
 input operation list.isEmpty currentLength Int64
 output operation list.isEmpty Bool
@@ -48,6 +53,7 @@ run listIsEmptyCheckCall
 bind value listIsEmptyResult Bool listIsEmptyCheckCall
 return value listIsEmptyResult
 
+# rationale: Return max(currentCapacity - currentLength, 0).
 operation list.remainingCapacity
 input operation list.remainingCapacity currentLength Int64
 input operation list.remainingCapacity currentCapacity Int64
@@ -70,6 +76,7 @@ return value listRemainingCapacityResult
 label listRemainingCapacityZero
 return value listZeroValue
 
+# rationale: Return true when currentLength is strictly less than currentCapacity.
 operation list.canAppend
 input operation list.canAppend currentLength Int64
 input operation list.canAppend currentCapacity Int64
@@ -84,6 +91,7 @@ run listCanAppendCheckCall
 bind value listCanAppendResult Bool listCanAppendCheckCall
 return value listCanAppendResult
 
+# rationale: Return true when index is within [0, currentLength).
 operation list.containsIndex
 input operation list.containsIndex currentLength Int64
 input operation list.containsIndex index Int64
@@ -107,6 +115,7 @@ return value listTrue
 label listContainsIndexFalse
 return value listFalse
 
+# rationale: Return true when index is within [0, currentLength] and there is append capacity.
 operation list.canInsert
 input operation list.canInsert currentLength Int64
 input operation list.canInsert currentCapacity Int64
@@ -136,6 +145,7 @@ return value listInsertCapacityOk
 label listCanInsertFalse
 return value listFalse
 
+# rationale: Return true when index is within [0, currentLength).
 operation list.canRemove
 input operation list.canRemove currentLength Int64
 input operation list.canRemove index Int64
@@ -150,6 +160,7 @@ run delegateListCanRemoveCall
 bind value listCanRemoveResult Bool delegateListCanRemoveCall
 return value listCanRemoveResult
 
+# rationale: Return currentLength + 1 when append is valid, otherwise -1.
 operation list.lengthAfterAppend
 input operation list.lengthAfterAppend currentLength Int64
 input operation list.lengthAfterAppend currentCapacity Int64
@@ -172,6 +183,7 @@ run listLengthAfterAppendValueCall
 bind value listLengthAfterAppendValue Int64 listLengthAfterAppendValueCall
 return value listLengthAfterAppendValue
 
+# rationale: Return currentLength - 1 when remove is valid, otherwise -1.
 operation list.lengthAfterRemove
 input operation list.lengthAfterRemove currentLength Int64
 input operation list.lengthAfterRemove index Int64

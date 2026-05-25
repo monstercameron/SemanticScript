@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.char.
 
+# rationale: Canonical standard-library module for character constants and helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.char
 purpose module standard.char "Canonical standard-library module for character constants and helpers."
 moduleOwns standard.char "The official import path `standard.char` and this module's implementation body."
@@ -14,13 +16,13 @@ storage module immutable charModuleVersionText String "standard.char 0.1"
 # SEMANTICSCRIPT STANDARD LIBRARY: canonical ASCII character codes
 # ============================================================
 #
-# rationale: This module is pure data â€” names for specific ASCII
+# rationale: This module is pure data - names for specific ASCII
 #   byte values that programs need to spell without embedding magic
 #   integers. The pre-refined version exposed each value as a
 #   zero-argument operation returning `Result Int32 Void`,
 #   which is the spec gap "Constants modeled as operations" called
 #   out in STDLIB_RENAME_PROPOSALS.md. The refined surface uses
-#   `domainLiteral NAME TYPE VALUE` at module scope â€” AST Â§2.12.5's
+#   `domainLiteral NAME TYPE VALUE` at module scope - AST section 2.12.5's
 #   purpose-built verb for typed compile-time constants. Every name
 #   in this file is now constant-folded by the compiler and carries
 #   a `domainLiteralSource` pointer back to the ASCII spec for
@@ -32,7 +34,7 @@ storage module immutable charModuleVersionText String "standard.char 0.1"
 #
 # security: pure constants. No effects. No allocation. No I/O.
 #
-# timing: zero â€” the LLVM optimizer inlines every reference.
+# timing: zero - the LLVM optimizer inlines every reference.
 #
 # observability: nothing to observe at runtime; consumers see only
 #   the raw Int32 value.

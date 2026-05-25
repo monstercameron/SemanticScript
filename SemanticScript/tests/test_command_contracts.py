@@ -17,6 +17,7 @@ TASKFORGE_PATH = REPO_ROOT / "apps" / "taskforge-web"
 TASKFORGE_MAIN_PATH = TASKFORGE_PATH / "main.sem"
 AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
 AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
+SEM_JSON_TIMEOUT_SECONDS = 300
 
 
 @lru_cache(maxsize=256)
@@ -26,7 +27,7 @@ def _sem_json_cached(*args: str) -> tuple[int, str]:
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=180,
+        timeout=SEM_JSON_TIMEOUT_SECONDS,
     )
     return proc.returncode, proc.stdout
 
@@ -110,7 +111,17 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertIn("aliasIndex", payload)
         self.assertEqual(payload["aliasIndex"]["sem"], "language-core")
+        self.assertEqual(payload["aliasIndex"]["sem-start"], "getting-started")
+        self.assertTrue(any(skill["name"] == "getting-started" for skill in payload["skills"]))
         self.assertTrue(any(skill["name"] == "language-core" for skill in payload["skills"]))
+        self.assertEqual(
+            payload["nextCommands"][0]["command"],
+            "sem skills get sem-start sem sem-agent --json",
+        )
+        self.assertEqual(
+            payload["nextCommands"][0]["argv"][-6:],
+            ["skills", "get", "sem-start", "sem", "sem-agent", "--json"],
+        )
 
     def test_skills_get_alias_contract(self) -> None:
         code, payload = _sem_json("skills", "get", "sem", "--json")
@@ -126,6 +137,19 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertNotIn("content", payload["skills"][0])
         self.assertFalse(payload["nextCommands"][0]["replayable"])
         self.assertIn("requiredArgs", payload["nextCommands"][0])
+
+    def test_skills_get_getting_started_alias_contract(self) -> None:
+        code, payload = _sem_json("skills", "get", "sem-start", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.skills.v1")
+        self.assertEqual(payload["skills"][0]["name"], "getting-started")
+        self.assertIn("sem-start", payload["skills"][0]["aliases"])
+        self.assertTrue(
+            any(
+                heading["title"] == "Repository Map"
+                for heading in payload["skills"][0]["sectionIndex"]
+            )
+        )
 
     def test_skills_get_full_contract(self) -> None:
         code, payload = _sem_json("skills", "get", "sem", "--full", "--json")

@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.errno_more.
 
+# rationale: Canonical standard-library module for extended errno constants and helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.errno_more
 purpose module standard.errno_more "Canonical standard-library module for extended errno constants and helpers."
 moduleOwns standard.errno_more "The official import path `standard.errno_more` and this module's implementation body."

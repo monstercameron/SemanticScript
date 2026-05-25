@@ -1,0 +1,11 @@
+{
+  "name": "semanticscript-wasm-dom-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dev-only jsdom harness for standard.document wasm/browser integration tests (see ../test_wasm_dom.py).",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

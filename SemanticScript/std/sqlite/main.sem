@@ -10,6 +10,8 @@
 # module owns the official standard-library import path and semantic type,
 # enum, constant, and capability contracts for that intrinsic namespace.
 
+# rationale: Standard-library namespace and contracts for native SQLite database intrinsics.
+# invariant: The standard module entry is this file; new modules may import it as alias `sqlite` before using compiler-owned targets in the `sqlite.*` namespace.
 module standard.sqlite
 purpose module standard.sqlite "Standard-library namespace and contracts for native SQLite database intrinsics."
 moduleOwns standard.sqlite "The official import path `standard.sqlite`, semantic SQLite type aliases, enum tokens, reusable database capabilities, and the compiler-owned `sqlite.*` intrinsic namespace contract."

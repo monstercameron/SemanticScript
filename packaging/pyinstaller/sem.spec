@@ -1,11 +1,30 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import importlib.util
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all
 
 
 ROOT = Path(SPECPATH).resolve().parents[1]
+
+
+def _load_version_info_helper():
+    helper_path = ROOT / "packaging" / "pyinstaller" / "sem_version_info.py"
+    spec = importlib.util.spec_from_file_location("sem_version_info", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load version info helper: {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+sem_version_info = _load_version_info_helper()
+VERSION_INFO_PATH = sem_version_info.write_sem_version_info(
+    ROOT,
+    ROOT / "build" / "pyinstaller" / "sem_version_info.txt",
+)
 
 
 llvmlite_datas, llvmlite_binaries, llvmlite_hiddenimports = collect_all("llvmlite")
@@ -29,12 +48,35 @@ except Exception:
     mcp_datas, mcp_binaries, mcp_hiddenimports = [], [], []
 
 
+# Docs semantic search dependencies are large. Bundle them only for an explicit
+# docs-search build variant: `$env:SEM_BUNDLE_DOCS_EMBEDDINGS = "1"`.
+docs_datas, docs_binaries, docs_hiddenimports = [], [], []
+if os.environ.get("SEM_BUNDLE_DOCS_EMBEDDINGS") == "1":
+    for _pkg in (
+        "sentence_transformers",
+        "transformers",
+        "tokenizers",
+        "safetensors",
+        "huggingface_hub",
+        "torch",
+        "sklearn",
+        "scipy",
+        "numpy",
+        "sqlite_vec",
+    ):
+        _d, _b, _h = collect_all(_pkg)
+        docs_datas += _d
+        docs_binaries += _b
+        docs_hiddenimports += _h
+
+
 def tree(source: str, target: str | None = None) -> tuple[str, str]:
     return (str(ROOT / source), target or source.replace("\\", "/"))
 
 
 datas = [
     (str(ROOT / "version.json"), "."),
+    (str(ROOT / "requirements-docs.txt"), "."),
     tree("SemanticScript/compiler"),
     tree("SemanticScript/tools"),
     tree("SemanticScript/shared"),
@@ -49,13 +91,14 @@ datas = [
     tree("third_party/bcrypt"),
     *llvmlite_datas,
     *mcp_datas,
+    *docs_datas,
 ]
 
 
 a = Analysis(
     [str(ROOT / "packaging" / "pyinstaller" / "sem_launcher.py")],
     pathex=[str(ROOT), str(ROOT / "SemanticScript")],
-    binaries=[*llvmlite_binaries, *mcp_binaries],
+    binaries=[*llvmlite_binaries, *mcp_binaries, *docs_binaries],
     datas=datas,
     hiddenimports=[
         "SemanticScript.tools.sem",
@@ -66,6 +109,7 @@ a = Analysis(
         "SemanticScript.tools.syntax_migration",
         *llvmlite_hiddenimports,
         *mcp_hiddenimports,
+        *docs_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},
@@ -95,4 +139,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version=str(VERSION_INFO_PATH),
 )

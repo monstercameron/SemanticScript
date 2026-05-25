@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.small_list.
 
+# rationale: Canonical standard-library module for small-list inline/spill helpers.
+# invariant: This module owns structural small-list helpers over logical length plus inline/spill capacities.
 module standard.small_list
 purpose module standard.small_list "Canonical standard-library module for small-list inline/spill helpers."
 moduleOwns standard.small_list "The official import path `standard.small_list` and the executable `smallList.*` helper surface."
@@ -19,6 +21,7 @@ domainLiteralTrust smallListFailureSentinel trustedStaticLiteral
 storage module immutable smallListTrue Bool true
 storage module immutable smallListFalse Bool false
 
+# rationale: Return the current logical small-list length.
 operation smallList.length
 input operation smallList.length currentLength Int64
 output operation smallList.length Int64
@@ -27,6 +30,7 @@ async smallList.length no
 purpose operation smallList.length "Return the current logical small-list length."
 return value currentLength
 
+# rationale: Return true when currentLength is zero.
 operation smallList.isEmpty
 input operation smallList.isEmpty currentLength Int64
 output operation smallList.isEmpty Bool
@@ -40,6 +44,7 @@ run smallListIsEmptyCall
 bind value smallListIsEmptyResult Bool smallListIsEmptyCall
 return value smallListIsEmptyResult
 
+# rationale: Return true when currentLength is less than or equal to inlineCapacity.
 operation smallList.usesInlineStorage
 input operation smallList.usesInlineStorage currentLength Int64
 input operation smallList.usesInlineStorage inlineCapacity Int64
@@ -54,6 +59,7 @@ run smallListUsesInlineCall
 bind value smallListUsesInlineResult Bool smallListUsesInlineCall
 return value smallListUsesInlineResult
 
+# rationale: Return true when currentLength exceeds inlineCapacity.
 operation smallList.usesSpillStorage
 input operation smallList.usesSpillStorage currentLength Int64
 input operation smallList.usesSpillStorage inlineCapacity Int64
@@ -68,6 +74,7 @@ run smallListUsesSpillCall
 bind value smallListUsesSpillResult Bool smallListUsesSpillCall
 return value smallListUsesSpillResult
 
+# rationale: Return true when currentLength is strictly less than spillCapacity.
 operation smallList.canAppend
 input operation smallList.canAppend currentLength Int64
 input operation smallList.canAppend spillCapacity Int64
@@ -82,6 +89,7 @@ run smallListCanAppendCall
 bind value smallListCanAppendResult Bool smallListCanAppendCall
 return value smallListCanAppendResult
 
+# rationale: Return max(inlineCapacity - currentLength, 0).
 operation smallList.remainingInlineCapacity
 input operation smallList.remainingInlineCapacity currentLength Int64
 input operation smallList.remainingInlineCapacity inlineCapacity Int64
@@ -104,6 +112,7 @@ return value smallListRemainingInlineValue
 label smallListRemainingInlineZero
 return value smallListZeroValue
 
+# rationale: Return max(spillCapacity - currentLength, 0).
 operation smallList.remainingTotalCapacity
 input operation smallList.remainingTotalCapacity currentLength Int64
 input operation smallList.remainingTotalCapacity spillCapacity Int64
@@ -126,6 +135,7 @@ return value smallListRemainingTotalValue
 label smallListRemainingTotalZero
 return value smallListZeroValue
 
+# rationale: Return currentLength + 1 when append is valid, otherwise -1.
 operation smallList.lengthAfterAppend
 input operation smallList.lengthAfterAppend currentLength Int64
 input operation smallList.lengthAfterAppend spillCapacity Int64

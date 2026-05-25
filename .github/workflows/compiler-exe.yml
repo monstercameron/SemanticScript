@@ -81,6 +81,14 @@ jobs:
           $null | & $sem mcp
           if ($LASTEXITCODE -ne 0) { throw "sem mcp failed to start with $LASTEXITCODE." }
 
+          # PowerShell-driven probes can prepend a UTF-8 BOM to the first
+          # stdin frame. Keep the frozen executable tolerant of that pattern.
+          $initializeMessage = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"sem-merge-smoke","version":"0"}}}'
+          $mcpOutput = ([char]0xFEFF).ToString() + $initializeMessage | & $sem mcp
+          if ($LASTEXITCODE -ne 0) { throw "sem mcp BOM initialize smoke failed with $LASTEXITCODE." }
+          if (($mcpOutput -join "`n") -match "Invalid JSON") { throw "sem mcp rejected a BOM-prefixed initialize frame." }
+          if (($mcpOutput -join "`n") -notmatch '"result"') { throw "sem mcp BOM initialize smoke did not return an initialize result." }
+
       # Build the .mcpb bundle on every merge so packaging stays validated, but
       # do not stamp scoop/winget/registry manifests here: those reference a
       # stable, non-prerelease semver release and are produced by release.yml.
@@ -169,6 +177,7 @@ jobs:
               "dist/sem.exe skills list --json",
               "dist/sem.exe check --json SemanticScript/tests/agent_cli_demo.test.sem",
               "dist/sem.exe fmt --check SemanticScript/tests/agent_cli_demo.test.sem",
+              "dist/sem.exe mcp BOM-prefixed initialize smoke",
               "npm --prefix vscode-semanticscript run package:vsix"
             )
             artifacts = $artifacts
@@ -180,12 +189,37 @@ jobs:
           $downloadLines = foreach ($artifact in $artifacts) {
             "- $($artifact.fileName) - $($artifact.description). SHA-256: $($artifact.sha256)"
           }
+          $mcpBootstrapLines = @(
+            "MCP bootstrap:",
+            "Copy this block into an MCP-aware agent after downloading the Windows executable:",
+            "",
+            '```text',
+            "Use the SemanticScript Windows executable from this release as an MCP stdio server.",
+            "Executable asset: $semName",
+            "Start command: sem.exe mcp",
+            "MCP client config JSON:",
+            '{',
+            '  "mcpServers": {',
+            '    "semanticscript": {',
+            '      "command": "C:\\path\\to\\sem.exe",',
+            '      "args": ["mcp"],',
+            '      "cwd": "<project-root>"',
+            '    }',
+            '  }',
+            '}',
+            'After connecting, call skills_get with names ["sem-start", "sem", "sem-agent"] for version-matched startup instructions.',
+            '```',
+            ""
+          )
 
-          $notes = @(
+          $noteParts = @(
             "SemanticScript $releaseTag",
             "",
             "Automated main-branch prerelease for commit $shortSha.",
-            "",
+            ""
+          )
+          $noteParts += $mcpBootstrapLines
+          $noteParts += @(
             "Downloads:",
             $downloadLines,
             "- $(Split-Path -Leaf $manifestPath) - Merge release manifest with asset metadata and checksums.",
@@ -195,7 +229,8 @@ jobs:
             "- sem.exe version, skills list, check, and fmt smoke validation",
             "- npm --prefix vscode-semanticscript ci",
             "- npm --prefix vscode-semanticscript run package:vsix"
-          ) -join "`n"
+          )
+          $notes = $noteParts -join "`n"
 
           $notesPath = Join-Path $artifactDir "semanticscript-merge-release-notes-$releaseTag.md"
           $notes | Set-Content -Path $notesPath -Encoding utf8

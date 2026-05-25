@@ -20,6 +20,8 @@
 # contracts for that syntax. Plain dynamic holes use String. The compiler owns
 # parsing, sink-context checking, escaping, buffer bounds, and code generation.
 
+# rationale: Standard-library namespace and fragment contracts for first-class SemanticScript HTML templates.
+# invariant: The standard module entry is this file; application modules import it as alias `html` before using generated targets in the `html.hydrate.*` namespace.
 module standard.html
 purpose module standard.html "Standard-library namespace and fragment contracts for first-class SemanticScript HTML templates."
 moduleOwns standard.html "The official import path `standard.html`, explicit HTML fragment contracts, and the `html.hydrate.TemplateName` generated-target namespace."

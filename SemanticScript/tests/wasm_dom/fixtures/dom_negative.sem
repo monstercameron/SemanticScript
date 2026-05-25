@@ -1,0 +1,80 @@
+project DomNegative
+target console
+runtime native 1
+module examples.domNegative
+
+import document standard.document
+dependency standard.document version 0.1 source standard
+import math standard.math
+dependency standard.math version 0.1 source standard
+
+entry console main
+
+capability mainDomReader document.dom read
+purpose operation mainDomReader "Authority to read the DOM in the negative-status fixture."
+capability mainDomWriter document.dom write
+purpose operation mainDomWriter "Authority to mutate the DOM in the negative-status fixture."
+
+operation main
+output operation main ExitCode
+effect main read document.dom
+effect main write document.dom
+memory main heap no
+async main no
+useCapability main mainDomReader
+useCapability main mainDomWriter
+purpose operation main "Append against a not-found node handle and confirm the operation returns domStatusDetached, marking the body to reflect which branch ran. Proves negative DOM status codes propagate and drive control flow."
+
+label startMain
+
+call bodyCall document.bodyElement
+run bodyCall
+bind value bodyHandle DomHandle bodyCall
+
+storage local immutable missingSelector DomSelector "#does-not-exist"
+call missingCall document.querySelector
+argument missingCall selector DomSelector missingSelector
+run missingCall
+bind value missingHandle DomHandle missingCall
+
+storage local immutable divTag DomTagName "div"
+call createCall document.createElement
+argument createCall tagName DomTagName divTag
+run createCall
+bind value divHandle DomHandle createCall
+
+call appendCall document.appendChild
+argument appendCall parent DomHandle missingHandle
+argument appendCall child DomHandle divHandle
+run appendCall
+bind value appendStatus Int32 appendCall
+
+storage local immutable expectedDetached Int32 -4
+call statusIsDetachedCall math.equalInt32
+argument statusIsDetachedCall left Int32 appendStatus
+argument statusIsDetachedCall right Int32 expectedDetached
+run statusIsDetachedCall
+bind value statusIsDetached Bool statusIsDetachedCall
+
+branch if condition statusIsDetached target appendRejected
+
+storage local immutable unexpectedText DomText "unexpected"
+call markUnexpectedCall document.setTextContent
+argument markUnexpectedCall node DomHandle bodyHandle
+argument markUnexpectedCall text DomText unexpectedText
+run markUnexpectedCall
+ignore value source markUnexpectedCall type DomStatus
+
+storage local immutable failExit ExitCode 1
+return value failExit
+
+label appendRejected
+storage local immutable detachedText DomText "detached-rejected"
+call markDetachedCall document.setTextContent
+argument markDetachedCall node DomHandle bodyHandle
+argument markDetachedCall text DomText detachedText
+run markDetachedCall
+ignore value source markDetachedCall type DomStatus
+
+storage local immutable okExit ExitCode 0
+return value okExit

@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.signal_more.
 
+# rationale: Canonical standard-library module for extended signal helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.signal_more
 purpose module standard.signal_more "Canonical standard-library module for extended signal helpers."
 moduleOwns standard.signal_more "The official import path `standard.signal_more` and this module's implementation body."
@@ -16,12 +18,12 @@ storage module immutable signalMoreModuleVersionText String "standard.signal_mor
 #
 # rationale: POSIX signal numbers beyond the headline six in
 #   signal.sscript. The refined surface replaces accessor operations
-#   with module-scope `domainLiteral` constants â€” the same shape
+#   with module-scope `domainLiteral` constants - the same shape
 #   as signal.sscript / limits.sscript / constants.sscript.
 #
 # invariant: every value matches IEEE Std 1003.1.
-# security: no effects â€” pure constants.
-# timing: zero â€” every reference inlines.
+# security: no effects - pure constants.
+# timing: zero - every reference inlines.
 # observability: nothing to observe at runtime.
 
 # section signalMore.numbers

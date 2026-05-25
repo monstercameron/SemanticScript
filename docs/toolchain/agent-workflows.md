@@ -23,7 +23,7 @@ The corresponding semantic-loop commands are:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 python SemanticScript\tools\sem.py deps sync --json PATH
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
@@ -175,19 +175,23 @@ validate the project.
 
 ```powershell
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem --json
+python SemanticScript\tools\sem.py skills get sem-start sem --json
 python SemanticScript\tools\sem.py skills get sem-agent sem-diagnostics --json
 ```
 
 The current public aliases map to canonical bundled skills:
 
+- `sem-start` -> `getting-started`
+- `sem-getting-started` -> `getting-started`
+- `sem-onboarding` -> `getting-started`
 - `sem` -> `language-core`
 - `sem-agent` -> `graph-and-slice`
 - `sem-language` -> `language-core`
 - `sem-diagnostics` -> `patch-and-repair`
 - `sem-stdlib` -> `sqlite-patterns`
 - `sem-builds` -> `patch-and-repair`
-- `sem-packages` -> `patch-and-repair`
+- `sem-packages` -> `package-dependencies`
+- `sem-deps` -> `package-dependencies`
 - `sem-testing` -> `graph-and-slice`
 
 Use `skills list --json` to discover the exact file set and alias index shipped
@@ -264,6 +268,9 @@ Current stable `v1` schema versions:
 - `sem.graph.v1`
 - `sem.slice.v1`
 - `sem.size.v1`
+- `sem.docs.v1`
+- `sem.docsIndex.v1`
+- `sem.docsSearch.v1`
 - `sem.explain.v1`
 - `sem.fixPlan.v1`
 - `sem.patch.v1`
@@ -330,6 +337,61 @@ python SemanticScript\tools\sem.py slice --effect database --json apps\taskforge
 Use `context --json` for project envelope facts and `symbols --json` for the
 full source graph when `graph` or `slice` is too narrow. They remain public,
 but `graph` and `slice` are the primary agent-repair retrieval surfaces.
+
+Use `docs` when an agent needs API help for standard-library operations or
+compiler-owned targets without scanning the whole std tree:
+
+```powershell
+python SemanticScript\tools\sem.py docs list --module http --json
+python SemanticScript\tools\sem.py docs get http.clientGet --json
+python SemanticScript\tools\sem.py docs get gui.applicationCreate --json
+python SemanticScript\tools\sem.py docs get json.createDocument --json
+python SemanticScript\tools\sem.py docs get console.writeLine --json
+```
+
+For code generation, prefer `docs get --json` over `list`: the full payload
+includes `purpose`, `invariants`, `usage.call.rows`,
+`usage.requiredCallerEffects`, `usage.requiredCapabilities`,
+`usage.failureMode`, `usage.failureHandling`, `usage.cleanup`,
+`capabilityDetails`, and runtime binding preconditions. Treat
+`usage.call.rows` as call-and-bind rows, not the whole safe integration; append
+`usage.failureHandling.rows` and `usage.cleanup.rows` whenever their `required`
+flags are true, and satisfy `usage.preconditions` before the call when present.
+Cleanup payloads for `c.free` include required heap-free effect and authority
+guidance. When a required capability is not exported, prefer
+`usage.authorityRows` or the complete local declaration/use pairs in
+`usage.localCapabilityRows` over std-internal capability names. Public lookup hides runtimeBinding helpers by default; pass `--all`
+only when intentionally inspecting std internals. Modules that expose
+compiler-owned targets instead of operation rows report `moduleDocs` and
+`moduleDocs[].callTargets`; `docs get TARGET --json` returns a focused
+target payload for lowered `gui.*`, known `json.*`, `console.*`, `math.*`,
+`pointer.*`, and selected `c.*` targets. Compiler-owned target payloads set
+`usage.importRequired: false` and an empty `usage.importRow`. Get payloads keep
+`moduleDocs` compact; use `list` for the broad inventory. Reserved targets
+carry `loweringStatus: "reserved"` and should not be used for generated code.
+
+For user/generated code lookup, build a SQLite docs cache and search it:
+
+```powershell
+python SemanticScript\tools\sem.py docs index --path apps\my-app --db .sem\docs.sqlite --include-std --json
+python SemanticScript\tools\sem.py docs search "create task from title" --db .sem\docs.sqlite --json
+```
+
+The index stores structured docs plus FTS text and real semantic vector blobs.
+The default embedding provider is `sentence-transformers` using the local CPU
+model `BAAI/bge-small-en-v1.5`; install it with
+`python -m pip install -r requirements-docs.txt`, then either pre-cache the model
+or explicitly pass `--allow-model-download` on the first trusted-network index.
+The index command returns `status: "embedding-error"` instead of silently falling
+back to fake vectors when the model or provider is unavailable. When `sqlite-vec` is available, the indexer
+creates a vector virtual table; otherwise search uses the same stored semantic
+vectors with an in-process cosine fallback.
+`sem new --enable-docs-index PATH` is the opt-in starter-project path; plain
+`sem new PATH` leaves semantic indexing disabled and only suggests it when the
+user chooses the prompt.
+MCP mode exposes `docs_list`, `docs_get`, `docs_watch`, `docs_reindex`,
+`docs_index_status`, and `docs_search`; `docs_watch` keeps the path-derived
+SQLite cache refreshed from changed `.sem` files on a background thread.
 
 ## Repair And Patch
 

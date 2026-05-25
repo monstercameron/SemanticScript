@@ -1,0 +1,72 @@
+project DomEventTarget
+target console
+runtime native 1
+module examples.domEventTarget
+
+import document standard.document
+dependency standard.document version 0.1 source standard
+
+entry console main
+
+capability mainDomReader document.dom read
+purpose operation mainDomReader "Authority to read the DOM in the event-target fixture."
+capability mainDomWriter document.dom write
+purpose operation mainDomWriter "Authority to mutate the DOM in the event-target fixture."
+capability mainEventReader document.event read
+purpose operation mainEventReader "Authority to receive DOM events."
+capability mainEventController document.event close
+purpose operation mainEventController "Authority to remove DOM event subscriptions."
+
+operation main
+output operation main ExitCode
+effect main read document.dom
+effect main write document.dom
+effect main read document.event
+effect main close document.event
+memory main heap no
+async main no
+useCapability main mainDomReader
+useCapability main mainDomWriter
+useCapability main mainEventReader
+useCapability main mainEventController
+purpose operation main "Await a click, resolve the event's target via eventTarget, and mutate that exact node to prove the event payload identifies the element that fired."
+
+label startMain
+
+storage local immutable buttonId DomElementId "btn"
+call findButtonCall document.getElementById
+argument findButtonCall elementId DomElementId buttonId
+run findButtonCall
+bind value buttonHandle DomHandle findButtonCall
+
+storage local immutable clickEventName DomEventName "click"
+call listenCall document.addEventListener
+argument listenCall node DomHandle buttonHandle
+argument listenCall eventName DomEventName clickEventName
+run listenCall
+bind value clickStream DomEventStreamHandle listenCall
+
+call awaitClickCall document.nextEvent
+argument awaitClickCall stream DomEventStreamHandle clickStream
+run awaitClickCall
+ignore value source awaitClickCall type DomStatus
+
+call targetCall document.eventTarget
+argument targetCall stream DomEventStreamHandle clickStream
+run targetCall
+bind value targetHandle DomHandle targetCall
+
+storage local immutable hitText DomText "hit"
+call markCall document.setTextContent
+argument markCall node DomHandle targetHandle
+argument markCall text DomText hitText
+run markCall
+ignore value source markCall type DomStatus
+
+call unlistenCall document.removeEventListener
+argument unlistenCall stream DomEventStreamHandle clickStream
+run unlistenCall
+ignore value source unlistenCall type DomStatus
+
+storage local immutable okExit ExitCode 0
+return value okExit

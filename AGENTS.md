@@ -50,16 +50,16 @@ Prefer the `sem` wrapper before using raw compiler or linter internals.
 
 MCP-capable agents can reach the same JSON surfaces through the built-in MCP
 server instead of shelling out: run `sem mcp` (stdio) and call the matching
-tool (`check`, `readiness`, `graph`, `slice`, `fix`, `patch`, `test`, etc.).
-The tools are thin wrappers over these same subcommands, so the loop below
-applies unchanged. See `docs/toolchain/compiler.md` ("MCP server").
+tool (`check`, `readiness`, `graph`, `slice`, `fix`, `patch`, `test`, `eval`,
+etc.). The tools are thin wrappers over these same subcommands, so the loop
+below applies unchanged. See `docs/toolchain/compiler.md` ("MCP server").
 
 Load version-matched agent rules:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 ```
 
 Inspect before editing:
@@ -72,6 +72,7 @@ python SemanticScript\tools\sem.py deps list --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py graph --kind routes --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
+python SemanticScript\tools\sem.py docs get OPERATION --json
 python SemanticScript\tools\sem.py explain SS3104 --json
 ```
 
@@ -94,13 +95,32 @@ patch.
 Use `--full` only when the compact JSON payload is not enough. Compact payloads
 from `check`, `fix`, `graph`, and `slice` are usually the right first hop.
 
+Quickly execute a snippet through the JIT without scaffolding a project:
+
+```powershell
+python SemanticScript\tools\sem.py eval --code "storage local immutable n Int64 42`ncall p console.writeIntegerLine`nargument p value Int64 n`nrun p"
+python SemanticScript\tools\sem.py eval PATH        # snippet or full program file
+type SNIPPET.txt | python SemanticScript\tools\sem.py eval -
+```
+
+`eval` auto-wraps a snippet (bare operation-body rows) in a minimal console
+program, JIT-runs it, and returns `sem.eval.v1`: captured stdout/stderr (string
+and line array), program exit code, execution timing (ns/µs, execution-only vs
+total), process peak working set, and `notes.linter` / `notes.compiler`. It runs
+in non-strict mode — a program with strict-blocking notes still runs and the
+notes are reported, not fatal. `ok` means the harness compiled and ran to
+completion; read `execution.exitCode` and `status`
+(`ok`/`nonzero-exit`/`crashed`/`compile-failed`/`timeout`). See
+`docs/toolchain/repl.md`.
+
 ## JSON Surface Rules
 
 Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
 `sem.readiness.v1`, `sem.context.v1`, `sem.symbols.v1`, `sem.check.v1`,
-`sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.explain.v1`,
-`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`, `sem.deps.v1`,
-and provisional `sem.doctor.v0`.
+`sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.docs.v1`,
+`sem.docsIndex.v1`, `sem.docsSearch.v1`, `sem.explain.v1`,
+`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`,
+`sem.eval.v1`, `sem.deps.v1`, and provisional `sem.doctor.v0`.
 
 Read `nextCommands` as machine-facing instructions. Prefer `argv` over
 `command`, honor `cwd`, and replay only entries where `replayable` is true.
@@ -200,12 +220,42 @@ import http standard.http
 import json standard.json
 import sqlite standard.sqlite
 import gui standard.gui
+import document standard.document
 ```
+
+`standard.document` is the browser DOM namespace and targets wasm only: its
+`ss_dom_*` runtimeBinding externs resolve against the emscripten js-library
+adapter (`std/document/native/ss_dom_runtime.js`), not a native build. Build and
+run DOM programs with `SemanticScript/tools/build_wasm.py` (it links the adapter
+and enables Asyncify for `document.nextEvent`); see
+`docs/toolchain/wasm-emscripten.md`.
 
 Common call targets include `console.writeLine`, `console.writeIntegerLine`,
 `math.addInt64`, `math.subtractInt64`, `math.multiplyInt64`, `math.divideInt64`,
 `math.equalInt64`, `math.lessThanInt64`, `math.addFloat64`, and `c.*` targets
 listed in `SemanticScript/compiler/libc_registry.py`.
+
+Use `python SemanticScript\tools\sem.py docs get OPERATION_OR_TARGET --json`
+before generating calls to standard-library APIs or compiler-owned targets whose
+effects, capabilities, failure modes, cleanup, or argument names are not already
+known. Apply
+`usage.failureHandling.rows` and `usage.cleanup.rows` when their `required`
+flags are true; satisfy `usage.preconditions` before the call when present.
+`usage.call.rows` alone are only the call-and-bind core.
+For non-exported std capabilities, use `usage.authorityRows` or the complete
+local declaration/use pairs in `usage.localCapabilityRows`; do not blindly copy
+std-internal capability names.
+Unexported helper operations report `visibility.apiTier: "helper"` and may carry
+`agentWarnings`; prefer exported APIs where available.
+For lookup over user/generated code, run `docs index --path PATH --db DB --json`
+and query it with `docs search QUERY --db DB --json`; MCP mode exposes the same
+docs list/get/search surfaces and can keep the path-scoped SQLite index fresh
+with its background docs worker. Docs indexing uses real sentence-transformer
+embeddings by default; install `requirements-docs.txt` before indexing. When
+creating a new project, suggest `sem new --enable-docs-index PATH` if the user
+wants local semantic API search; otherwise leave it off. Treat `docs search`
+results as discovery candidates and use `docs get`, `slice`, or `--include-docs`
+before generating calls.
 
 Avoid `c.malloc`/`c.free` in demo apps unless heap behavior is the point. If
 used, declare heap effects and capabilities, handle allocation failure, and emit
@@ -270,7 +320,7 @@ compiler/linter internals.
 Load matching rules:
   python SemanticScript\tools\sem.py --version --json
   python SemanticScript\tools\sem.py skills list --json
-  python SemanticScript\tools\sem.py skills get sem sem-agent --json
+  python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 
 `skills get --json` is summary-first; add `--full` when raw skill bodies are
 actually needed.
@@ -283,6 +333,7 @@ Iteration roles:
   check               prove current semantic state before/after edits
   graph summary/routes cheap map of the surface before deeper retrieval
   slice               one local semantic neighborhood to edit
+  docs                standard-library API guidance before generating calls
   explain             why a rule exists and what safe repairs look like
   fix --plan          derive candidate edits without mutating source
   patch               preview/apply a reviewed plan with stale-file protection
@@ -299,6 +350,8 @@ Check and inspect:
   python SemanticScript\tools\sem.py graph --kind summary --json PATH
   python SemanticScript\tools\sem.py graph --kind routes --json PATH
   python SemanticScript\tools\sem.py slice --operation NAME --json PATH
+  python SemanticScript\tools\sem.py docs list --module MODULE --json
+  python SemanticScript\tools\sem.py docs get OPERATION --json
   python SemanticScript\tools\sem.py explain SS3104 --json
 
 Lower-level fallback surfaces:
@@ -359,6 +412,9 @@ Current JSON surfaces:
   sem.graph.v1
   sem.slice.v1
   sem.size.v1
+  sem.docs.v1
+  sem.docsIndex.v1
+  sem.docsSearch.v1
   sem.explain.v1
   sem.fixPlan.v1
   sem.patch.v1

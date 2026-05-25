@@ -5,6 +5,8 @@ Documentation for compiler, linter, and editor tooling.
 ## Contents
 
 - `compiler.md` documents `semsc.py` behavior and CLI usage.
+- `repl.md` documents `sem eval`, the snippet/full-program JIT eval surface
+  (`sem.eval.v1`) and the compiler `--run-metrics` flag.
 - `llvm-compiler-install.md` documents LLVM/clang installation for native
   executable builds.
 - `agent-workflows.md` documents validation, graph inspection, generated-doc,

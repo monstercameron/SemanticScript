@@ -4,6 +4,8 @@ import contextlib
 import io
 import importlib.util
 import json
+import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -56,6 +58,15 @@ return error overflow
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
 AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
+
+
+def fake_semantic_embedding(text: str, model_name: str, *, query: bool = False, **kwargs) -> list[float]:
+    vector = [0.0] * sem.DOCS_DEFAULT_EMBEDDING_DIMENSIONS
+    for token in re.findall(r"[A-Za-z0-9]+", text.lower()):
+        bucket = sum(ord(char) for char in token) % sem.DOCS_DEFAULT_EMBEDDING_DIMENSIONS
+        vector[bucket] += 1.0
+    norm = sum(value * value for value in vector) ** 0.5
+    return [value / norm for value in vector] if norm else vector
 
 
 def load_sem_launcher():
@@ -120,6 +131,795 @@ class TestSemAgentPayloads(unittest.TestCase):
             [ret["variant"] for ret in operation["returns"]],
             ["value", "error"],
         )
+
+    def test_docs_list_reads_typed_comment_summaries(self) -> None:
+        payload = sem._docs_payload("list", module_name="http", summary_tag="rationale")
+
+        self.assertEqual(payload["schemaVersion"], "sem.docs.v1")
+        client_get = next(
+            operation for operation in payload["operations"]
+            if operation["name"] == "clientGet"
+        )
+        self.assertEqual(client_get["module"], "standard.http")
+        self.assertEqual(client_get["summarySource"], "comment:rationale")
+        self.assertIn("clientGet fixes the HTTP method to GET", client_get["summary"])
+        self.assertIn("host:String", client_get["signature"]["text"])
+
+    def test_docs_get_returns_operation_documentation(self) -> None:
+        payload = sem._docs_payload("get", operation_name="http.escapeHtml")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        operation = payload["operation"]
+        self.assertEqual(operation["fullName"], "standard.http.escapeHtml")
+        self.assertEqual(operation["purpose"], "Escape HTML special characters (& < > \" ') from input into the caller-provided scratch buffer; returns the bounded, null-terminated escaped string.")
+        self.assertIn("failure", operation["commentsByTag"])
+        self.assertIn("scratch", operation["commentsByTag"]["memory"][0]["text"])
+        self.assertEqual(operation["signature"]["outputs"][0]["type"], "String")
+        self.assertEqual(operation["capabilityDetails"][0]["resource"], "memory.buffer")
+        self.assertEqual(operation["capabilityDetails"][0]["action"], "readWrite")
+        self.assertIn("runtimeBindingPrecondition", operation["runtime"])
+        self.assertIn("capacity writable bytes", operation["runtime"]["runtimeBindingPrecondition"][0]["text"])
+        self.assertIn("call escapeHtmlCall http.escapeHtml", operation["usage"]["call"]["rows"])
+
+    def test_docs_get_includes_failure_and_cleanup_rows(self) -> None:
+        payload = sem._docs_payload("get", operation_name="http.clientGet")
+
+        operation = payload["operation"]
+        self.assertTrue(operation["usage"]["call"]["requiresFailureHandling"])
+        self.assertTrue(operation["usage"]["call"]["requiresCleanup"])
+        self.assertIn("branch if condition clientGetIsNull target <failureLabel>", operation["usage"]["failureHandling"]["rows"])
+        self.assertIn("argument clientGetNullCheckCall pointer OpaquePointer clientGetResult", operation["usage"]["failureHandling"]["rows"])
+        self.assertIn("call clientGetCleanupCall c.free", operation["usage"]["cleanup"]["rows"])
+        self.assertIn({"action": "free", "path": "heap"}, operation["usage"]["cleanup"]["requiredCallerEffects"])
+        self.assertIn("effect <callerOperation> free heap", operation["usage"]["cleanup"]["authorityRows"])
+
+    def test_docs_get_result_usage_uses_ok_and_error_binds(self) -> None:
+        payload = sem._docs_payload("get", operation_name="assert.requireConditionTrue")
+
+        self.assertTrue(payload["ok"])
+        rows = payload["operation"]["usage"]["call"]["rows"]
+        failure_rows = payload["operation"]["usage"]["failureHandling"]["rows"]
+        self.assertIn("bind ok requireConditionTrueResult Int32 requireConditionTrueCall", rows)
+        self.assertIn("bind error requireConditionTrueError AssertionError requireConditionTrueCall", failure_rows)
+        self.assertIn("branch error source requireConditionTrueCall target <errorLabel>", failure_rows)
+        self.assertNotIn("bind value requireConditionTrueResult Result requireConditionTrueCall", rows)
+
+    def test_docs_recommended_rows_do_not_duplicate_result_error_rows(self) -> None:
+        payload = sem._docs_payload("get", operation_name="json.createDocument")
+
+        usage = payload["target"]["usage"]
+        recommended_rows = usage["call"]["rows"] + usage["failureHandling"]["rows"] + usage["cleanup"]["rows"]
+        self.assertEqual(len(recommended_rows), len(set(recommended_rows)))
+        self.assertEqual(sum(1 for row in recommended_rows if row.startswith("bind error createDocumentError")), 1)
+        self.assertEqual(sum(1 for row in recommended_rows if row.startswith("branch error source createDocumentCall")), 1)
+
+    def test_docs_get_hides_internal_helpers_by_default(self) -> None:
+        payload = sem._docs_payload("get", operation_name="http.clientFetchNative")
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "not-found")
+
+        internal_payload = sem._docs_payload(
+            "get",
+            operation_name="http.clientFetchNative",
+            include_internal=True,
+        )
+        self.assertTrue(internal_payload["ok"])
+        self.assertTrue(internal_payload["operation"]["visibility"]["internal"])
+
+    def test_docs_list_includes_non_exported_public_operations(self) -> None:
+        payload = sem._docs_payload("list", module_name="math", summary_tag="purpose")
+
+        self.assertTrue(payload["ok"])
+        self.assertGreater(payload["summary"]["operationCount"], 0)
+        self.assertTrue(all(not item["visibility"]["internal"] for item in payload["operations"]))
+
+    def test_docs_next_commands_preserve_std_path(self) -> None:
+        std_root = (sem.ROOT / "std").resolve()
+        payload = sem._docs_payload("list", module_name="http", std_root=std_root)
+
+        argv = payload["nextCommands"][0]["argv"]
+        self.assertIn("--std-path", argv)
+        self.assertEqual(Path(argv[argv.index("--std-path") + 1]), std_root)
+        self.assertIn("--std-path", payload["nextCommands"][0]["command"])
+
+    def test_docs_invalid_std_path_is_tool_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_root = Path(temp_dir) / "missing-std"
+            payload = sem._docs_payload("list", module_name="http", std_root=missing_root)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "tool-error")
+        self.assertEqual(payload["operations"], [])
+        self.assertIn("standard-library root does not exist", payload["errors"][0])
+
+    def test_docs_module_filter_skips_unrelated_parse_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            std_root = Path(temp_dir)
+            http_dir = std_root / "http"
+            broken_dir = std_root / "broken"
+            http_dir.mkdir()
+            broken_dir.mkdir()
+            (http_dir / "main.sem").write_text(
+                "# rationale: HTTP docs fixture.\n"
+                "module standard.http\n"
+                "# rationale: Fixture operation.\n"
+                "operation fixtureHttpOperation\n"
+                "output operation fixtureHttpOperation Int32\n"
+                "purpose fixtureHttpOperation \"Return a fixture status\"\n"
+                "storage local immutable fixtureStatus Int32 0\n"
+                "return value fixtureStatus\n",
+                encoding="utf-8",
+            )
+            (broken_dir / "main.sem").write_text("operation \"unterminated\n", encoding="utf-8")
+
+            payload = sem._docs_payload("list", module_name="http", std_root=std_root)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["errors"], [])
+        self.assertEqual(payload["modules"], ["standard.http"])
+        self.assertEqual(payload["operations"][0]["name"], "fixtureHttpOperation")
+
+    def test_docs_get_reports_ambiguous_operation_names(self) -> None:
+        def operation_doc(module_name: str) -> dict:
+            module_short_name = module_name.rsplit(".", 1)[-1]
+            return {
+                "module": module_name,
+                "moduleName": module_short_name,
+                "name": "sharedName",
+                "qualifiedName": f"{module_short_name}.sharedName",
+                "fullName": f"{module_name}.sharedName",
+                "signature": {"text": "() -> Void", "inputs": [], "outputs": []},
+                "summary": "",
+                "summarySource": "",
+                "location": {},
+                "sourceFile": "",
+                "visibility": {"public": True, "internal": False, "exported": False, "reason": "operation"},
+                "purpose": "",
+                "invariants": [],
+                "effects": [],
+                "capabilityDetails": [],
+                "usage": {"failureMode": {}, "cleanup": {}},
+            }
+
+        inventory = ([operation_doc("standard.alpha"), operation_doc("standard.beta")], [], [], sem.ROOT / "std")
+        with mock.patch.object(sem, "_docs_inventory", return_value=inventory):
+            payload = sem._docs_payload("get", operation_name="sharedName")
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["status"], "ambiguous")
+        self.assertEqual(len(payload["matches"]), 2)
+        self.assertEqual(payload["nextCommands"][0]["requiredArgs"][0]["name"], "module")
+
+    def test_docs_get_module_call_target_returns_actionable_payload(self) -> None:
+        payload = sem._docs_payload("get", operation_name="gui.applicationCreate")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["summary"]["targetMatchCount"], 1)
+        target = payload["target"]
+        self.assertEqual(target["target"], "gui.applicationCreate")
+        self.assertEqual(target["visibility"]["apiTier"], "compiler-lowered")
+        self.assertEqual(target["signature"]["inputs"][0]["name"], "title")
+        self.assertIn({"action": "allocate", "path": "gui.application"}, target["usage"]["requiredCallerEffects"])
+        self.assertIn("effect <callerOperation> allocate gui.application", target["usage"]["effectRows"])
+        self.assertIn("authority <callerOperation> allocate gui.application", target["usage"]["authorityRows"])
+        self.assertIn("call applicationCreateCall gui.applicationCreate", target["usage"]["call"]["rows"])
+        self.assertIn("branch if condition applicationCreateIsNull target <failureLabel>", target["usage"]["failureHandling"]["rows"])
+        self.assertEqual(payload["moduleDocMode"], "compact")
+        self.assertNotIn("callTargets", payload["moduleDocs"][0])
+
+    def test_docs_gui_control_on_event_matches_linter_signature(self) -> None:
+        payload = sem._docs_payload("get", operation_name="gui.controlOnEvent")
+        semlint = sem._load_semlint_module()
+
+        target = payload["target"]
+        self.assertIn("argument controlOnEventCall handler GuiEventHandler <handler>", target["usage"]["call"]["rows"])
+        self.assertEqual(semlint.BUILTIN_TARGET_SIGNATURES["gui.controlOnEvent"], [
+            ("control", "GuiControl"),
+            ("eventKind", "GuiEventKind"),
+            ("handler", "GuiEventHandler"),
+        ])
+
+    def test_docs_static_target_signatures_match_linter(self) -> None:
+        _operations, modules, errors, _root = sem._docs_inventory()
+        semlint = sem._load_semlint_module()
+
+        self.assertEqual(errors, [])
+        docs_by_target = {
+            target["target"]: target
+            for module in modules
+            for target in module.get("callTargets", [])
+        }
+        for target, expected_signature in semlint.BUILTIN_TARGET_SIGNATURES.items():
+            if target not in docs_by_target:
+                continue
+            expected_inputs = [
+                (name, type_name)
+                for name, type_name in expected_signature
+                if name != "console"
+            ]
+            actual_inputs = [
+                (item["name"], item["type"])
+                for item in docs_by_target[target]["signature"]["inputs"]
+            ]
+            self.assertEqual(actual_inputs, expected_inputs, target)
+
+    def test_docs_get_compiler_owned_targets_returns_actionable_payload(self) -> None:
+        console_payload = sem._docs_payload("get", operation_name="console.writeLine")
+        math_payload = sem._docs_payload("get", operation_name="math.addInt64")
+        pointer_payload = sem._docs_payload("get", operation_name="pointer.isNull")
+        malloc_payload = sem._docs_payload("get", operation_name="c.malloc")
+        free_payload = sem._docs_payload("get", operation_name="c.free")
+        realloc_payload = sem._docs_payload("get", operation_name="c.realloc")
+
+        self.assertTrue(console_payload["ok"])
+        console_usage = console_payload["target"]["usage"]
+        self.assertFalse(console_usage["importRequired"])
+        self.assertEqual(console_usage["importRow"], "")
+        self.assertIn("effect <callerOperation> write console.stdout", console_usage["effectRows"])
+        self.assertIn("ignore ok source writeLineCall type Void", console_usage["call"]["rows"])
+        self.assertIn("bind error writeLineError Int32 writeLineCall", console_usage["failureHandling"]["rows"])
+
+        self.assertTrue(math_payload["ok"])
+        self.assertIn("bind value addInt64Result Int64 addInt64Call", math_payload["target"]["usage"]["call"]["rows"])
+        self.assertEqual(math_payload["target"]["usage"]["failureMode"], {"kind": "none", "text": "", "source": ""})
+
+        self.assertTrue(pointer_payload["ok"])
+        self.assertEqual(pointer_payload["target"]["signature"]["outputs"][0]["type"], "Bool")
+        self.assertIn("argument isNullCall pointer OpaquePointer <pointer>", pointer_payload["target"]["usage"]["call"]["rows"])
+
+        self.assertTrue(malloc_payload["ok"])
+        malloc_usage = malloc_payload["target"]["usage"]
+        self.assertIn({"action": "allocate", "path": "heap"}, malloc_usage["requiredCallerEffects"])
+        self.assertIn("branch if condition mallocIsNull target <failureLabel>", malloc_usage["failureHandling"]["rows"])
+        self.assertIn("call mallocCleanupCall c.free", malloc_usage["cleanup"]["rows"])
+        self.assertIn({"action": "free", "path": "heap"}, malloc_usage["cleanup"]["requiredCallerEffects"])
+
+        self.assertTrue(free_payload["ok"])
+        self.assertIn("ignore void source freeCall", free_payload["target"]["usage"]["call"]["rows"])
+        self.assertIn("effect <callerOperation> free heap", free_payload["target"]["usage"]["effectRows"])
+
+        self.assertTrue(realloc_payload["ok"])
+        self.assertEqual(realloc_payload["target"]["loweringStatus"], "partial")
+        self.assertFalse(realloc_payload["target"]["usage"]["availableForCodegen"])
+
+    def test_docs_index_and_search_user_generated_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "# rationale: Task API for creating task records from user text.\n"
+                "module examples.tasks\n"
+                "# rationale: Create one task and return its identifier.\n"
+                "# failure: The caller must validate title text before persisting.\n"
+                "operation createTask\n"
+                "input operation createTask title String\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task from a title and return its id\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=fake_semantic_embedding):
+                index_payload = sem._docs_index_payload(
+                    root,
+                    db_path=db_path,
+                    include_std=False,
+                    include_compiler=False,
+                )
+                search_payload = sem._docs_search_payload("create task from title", db_path=db_path, limit=3)
+                full_payload = sem._docs_search_payload("create task from title", db_path=db_path, limit=1, include_docs=True)
+            status_payload = sem._docs_index_status_payload(db_path)
+
+        self.assertTrue(index_payload["ok"])
+        self.assertEqual(index_payload["schemaVersion"], "sem.docsIndex.v1")
+        self.assertTrue(status_payload["ok"])
+        self.assertEqual(search_payload["schemaVersion"], "sem.docsSearch.v1")
+        self.assertTrue(search_payload["ok"])
+        self.assertGreaterEqual(len(search_payload["results"]), 1)
+        self.assertEqual(search_payload["results"][0]["qualifiedName"], "examples.tasks.createTask")
+        self.assertEqual(search_payload["results"][0]["sourceKind"], "project")
+        self.assertEqual(index_payload["features"]["embeddingProvider"], "sentence-transformers")
+        self.assertIn(search_payload["results"][0]["confidence"], {"exact", "strong", "medium", "weak"})
+        self.assertNotIn("doc", search_payload["results"][0])
+
+        self.assertIn("doc", full_payload["results"][0])
+
+    def test_docs_default_db_path_treats_missing_non_source_path_as_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            missing_project = root / "new-project"
+            missing_source = root / "new-project" / "main.sem"
+
+            project_db = sem._docs_default_db_path(missing_project)
+            source_db = sem._docs_default_db_path(missing_source)
+
+        self.assertEqual(project_db, (missing_project / ".sem" / "docs.sqlite").resolve())
+        self.assertEqual(source_db, (missing_project / ".sem" / "docs.sqlite").resolve())
+
+    def test_docs_index_default_provider_is_real_semantic_embedding(self) -> None:
+        parser = sem.build_parser()
+
+        args = parser.parse_args(["docs", "index", "--path", "apps"])
+
+        self.assertEqual(args.embedding_provider, "sentence-transformers")
+
+    def test_docs_index_rejects_removed_hash_embedding_provider(self) -> None:
+        parser = sem.build_parser()
+
+        with mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["docs", "index", "--embedding-provider", "hash"])
+
+    def test_docs_index_refresh_prunes_excluded_compiler_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+
+            first_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=False,
+                include_compiler=True,
+                embedding_provider="none",
+            )
+            first_search = sem._docs_search_payload("console.writeLine", db_path=db_path, limit=5)
+            second_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=False,
+                include_compiler=False,
+                embedding_provider="none",
+            )
+            second_search = sem._docs_search_payload("console.writeLine", db_path=db_path, limit=5)
+            status_payload = sem._docs_index_status_payload(db_path)
+
+        self.assertTrue(first_payload["ok"])
+        self.assertTrue(any(result["sourceKind"] == "compiler" for result in first_search["results"]))
+        self.assertTrue(second_payload["ok"])
+        self.assertEqual(status_payload["summary"]["sourceKinds"], ["project"])
+        self.assertEqual(second_search["results"], [])
+
+    def test_docs_search_returns_no_match_for_unrelated_fts_query(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False, embedding_provider="none")
+
+            search_payload = sem._docs_search_payload("zzzzqv unrelated phrase", db_path=db_path, limit=5)
+
+        self.assertTrue(search_payload["ok"])
+        self.assertEqual(search_payload["results"], [])
+        self.assertTrue(search_payload["summary"]["noConfidentMatches"])
+
+    def test_docs_search_validates_and_clamps_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "missing.sqlite"
+
+            invalid_payload = sem._docs_search_payload("anything", db_path=db_path, limit=-1)
+            clamped_payload = sem._docs_search_payload("anything", db_path=db_path, limit=999)
+
+        self.assertFalse(invalid_payload["ok"])
+        self.assertEqual(invalid_payload["status"], "invalid-arguments")
+        self.assertEqual(clamped_payload["status"], "index-missing")
+        self.assertEqual(clamped_payload["query"]["limit"], sem.DOCS_SEARCH_MAX_LIMIT)
+        self.assertEqual(clamped_payload["query"]["requestedLimit"], 999)
+
+    def test_docs_confidence_does_not_trust_vector_only_matches(self) -> None:
+        confidence = sem._docs_result_confidence(
+            exact_boost=0.0,
+            fts_score=0.0,
+            vector_score=0.95,
+            structured_boost=3.0,
+        )
+
+        self.assertEqual(confidence, "weak")
+
+    def test_docs_status_and_search_report_stale_schema_without_mutating_db(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "docs.sqlite"
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE docs_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("INSERT INTO docs_meta(key, value) VALUES ('schemaVersion', '1')")
+            conn.commit()
+            conn.close()
+
+            status_payload = sem._docs_index_status_payload(db_path)
+            search_payload = sem._docs_search_payload("anything", db_path=db_path)
+            conn = sqlite3.connect(db_path)
+            try:
+                tables = {
+                    row[0]
+                    for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+                }
+            finally:
+                conn.close()
+
+        self.assertFalse(status_payload["ok"])
+        self.assertEqual(status_payload["status"], "stale-schema")
+        self.assertFalse(search_payload["ok"])
+        self.assertEqual(search_payload["status"], "stale-schema")
+        self.assertEqual(tables, {"docs_meta"})
+
+    def test_docs_embedding_auto_requires_real_provider(self) -> None:
+        with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=ValueError("model unavailable")):
+            vector, status, detail = sem._docs_embedding(
+                "create task",
+                provider="auto",
+                model=sem.DOCS_DEFAULT_EMBEDDING_MODEL,
+            )
+            direct_vector, direct_status, direct_detail = sem._docs_embedding(
+                "create task",
+                provider="sentence-transformers",
+                model=sem.DOCS_DEFAULT_EMBEDDING_MODEL,
+            )
+
+        self.assertIsNone(vector)
+        self.assertEqual(status, "failed")
+        self.assertIn("model unavailable", detail)
+        self.assertIsNone(direct_vector)
+        self.assertEqual(direct_status, "failed")
+        self.assertIn("model unavailable", direct_detail)
+
+    def test_docs_index_reports_missing_real_embeddings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=ValueError("model unavailable")):
+                index_payload = sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False)
+
+        self.assertFalse(index_payload["ok"])
+        self.assertEqual(index_payload["status"], "embedding-error")
+        self.assertEqual(index_payload["features"]["embeddingProvider"], "sentence-transformers")
+        self.assertIn("real semantic embedding generation failed", index_payload["errors"][0])
+
+    def test_docs_search_uses_indexed_embedding_model_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=fake_semantic_embedding):
+                sem._docs_index_payload(
+                    root,
+                    db_path=db_path,
+                    include_std=False,
+                    include_compiler=False,
+                    embedding_model="custom-local-model",
+                )
+
+                search_payload = sem._docs_search_payload("create task", db_path=db_path, limit=5)
+
+        self.assertTrue(search_payload["ok"])
+        self.assertEqual(search_payload["query"]["embeddingModel"], "custom-local-model")
+
+    def test_docs_search_reports_corrupt_doc_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False, embedding_provider="none")
+            conn = sqlite3.connect(db_path)
+            conn.execute("UPDATE docs_entries SET doc_json = '{not json' WHERE qualified_name = 'examples.tasks.createTask'")
+            conn.commit()
+            conn.close()
+
+            search_payload = sem._docs_search_payload("createTask", db_path=db_path, limit=5)
+
+        self.assertFalse(search_payload["ok"])
+        self.assertEqual(search_payload["status"], "corrupt-index")
+        self.assertIn("result hydration failed", search_payload["errors"][0])
+
+    def test_docs_index_rebuilds_stale_owned_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            db_path.parent.mkdir()
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE docs_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("CREATE TABLE docs_entries(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            conn.execute("CREATE TABLE docs_documents(path TEXT PRIMARY KEY)")
+            conn.commit()
+            conn.close()
+
+            index_payload = sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False, embedding_provider="none")
+            status_payload = sem._docs_index_status_payload(db_path)
+            search_payload = sem._docs_search_payload("create task", db_path=db_path)
+
+        self.assertTrue(index_payload["ok"])
+        self.assertTrue(status_payload["ok"])
+        self.assertEqual(search_payload["results"][0]["qualifiedName"], "examples.tasks.createTask")
+
+    def test_docs_index_reports_corrupt_db_as_json_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            db_path.parent.mkdir()
+            source.write_text(
+                "module examples.tasks\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            db_path.write_text("not sqlite", encoding="utf-8")
+
+            index_payload = sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False)
+
+        self.assertFalse(index_payload["ok"])
+        self.assertEqual(index_payload["status"], "corrupt-index")
+
+    def test_docs_vector_search_falls_back_when_sqlite_vec_table_is_incomplete(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE docs_entries(id INTEGER PRIMARY KEY, embedding_status TEXT, embedding_provider TEXT, embedding_model TEXT, embedding BLOB)"
+        )
+        conn.execute("CREATE TABLE docs_vec(rowid INTEGER PRIMARY KEY, embedding BLOB)")
+        vector = fake_semantic_embedding("alpha task", sem.DOCS_DEFAULT_EMBEDDING_MODEL)
+        conn.execute(
+            "INSERT INTO docs_entries(id, embedding_status, embedding_provider, embedding_model, embedding) VALUES (1, 'fresh', 'sentence-transformers', ?, ?)",
+            (sem.DOCS_DEFAULT_EMBEDDING_MODEL, sem._docs_vector_to_blob(vector)),
+        )
+        conn.execute("INSERT INTO docs_vec(rowid, embedding) VALUES (999, ?)", (sem._docs_vector_to_blob(vector),))
+
+        with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=fake_semantic_embedding):
+            scores, backend = sem._docs_search_vectors(
+                conn,
+                "alpha task",
+                provider="sentence-transformers",
+                model=sem.DOCS_DEFAULT_EMBEDDING_MODEL,
+                limit=5,
+                sqlite_vec_available=True,
+                allow_model_download=False,
+            )
+
+        conn.close()
+        self.assertIn(1, scores)
+        self.assertIn("python cosine fallback", backend)
+
+    def test_docs_get_json_target_returns_cleanup_guidance(self) -> None:
+        payload = sem._docs_payload("get", operation_name="json.createDocument")
+
+        self.assertTrue(payload["ok"])
+        target = payload["target"]
+        self.assertEqual(target["signature"]["outputs"][0]["values"], ["Result", "JsonDocument", "JsonAccessError"])
+        self.assertIn("bind ok createDocumentResult JsonDocument createDocumentCall", target["usage"]["call"]["rows"])
+        self.assertIn("call createDocumentCleanupCall json.destroyDocument", target["usage"]["cleanup"]["rows"])
+        self.assertIn("argument createDocumentCleanupCall document JsonDocument createDocumentResult", target["usage"]["cleanup"]["rows"])
+        self.assertIn("ignore value source createDocumentCleanupCall type Int32", target["usage"]["cleanup"]["rows"])
+
+    def test_docs_failure_mode_distinguishes_null_preconditions(self) -> None:
+        payload = sem._docs_payload("get", operation_name="string.stringByteLength")
+
+        operation = payload["operation"]
+        self.assertEqual(operation["usage"]["failureMode"]["kind"], "caller-precondition")
+        self.assertTrue(operation["usage"]["preconditions"]["required"])
+        self.assertFalse(operation["usage"]["failureHandling"]["required"])
+        self.assertEqual(operation["visibility"]["apiTier"], "helper")
+        self.assertTrue(operation["agentWarnings"])
+
+    def test_docs_metadata_ownership_text_becomes_actionable(self) -> None:
+        payload = sem._docs_payload("get", operation_name="string.duplicateCStringIntoOwnedMemory")
+
+        usage = payload["operation"]["usage"]
+        self.assertEqual(usage["failureMode"]["kind"], "null-sentinel")
+        self.assertIn("branch if condition duplicateCStringIntoOwnedMemoryIsNull target <failureLabel>", usage["failureHandling"]["rows"])
+        self.assertTrue(usage["cleanup"]["required"])
+        self.assertIn("call duplicateCStringIntoOwnedMemoryCleanupCall c.free", usage["cleanup"]["rows"])
+        self.assertIn("authority <callerOperation> read memory.buffer", usage["authorityRows"])
+        self.assertIn("capability localMemoryBufferReadCapability memory.buffer read", usage["localCapabilityRows"])
+        self.assertIn("useCapability <callerOperation> localMemoryBufferReadCapability", usage["localCapabilityRows"])
+        self.assertNotIn("useCapability <callerOperation> memoryBufferReadCapability", usage["useCapabilityRows"])
+
+    def test_docs_reports_modules_without_operation_docs(self) -> None:
+        payload = sem._docs_payload("list", module_name="json", summary_tag="rationale")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["operations"], [])
+        self.assertEqual(payload["nextCommands"][0]["requiredArgs"][0]["name"], "target")
+        module_doc = payload["moduleDocs"][0]
+        self.assertEqual(module_doc["operationDocStatus"], "no-operation-docs")
+        self.assertIn("json.stringify", module_doc["summary"])
+        targets = {target["target"] for target in module_doc["callTargets"]}
+        self.assertIn("json.createDocument", targets)
+        self.assertIn("json.stringify.String", targets)
+
+    def test_docs_module_docs_include_gui_call_targets(self) -> None:
+        payload = sem._docs_payload("list", module_name="gui", summary_tag="rationale")
+
+        module_doc = payload["moduleDocs"][0]
+        targets = {target["target"] for target in module_doc["callTargets"]}
+        self.assertIn("gui.applicationCreate", targets)
+        self.assertIn("gui.applicationRun", targets)
+        create_target = next(target for target in module_doc["callTargets"] if target["target"] == "gui.applicationCreate")
+        self.assertEqual(create_target["signature"]["text"], "(title:GuiText) -> GuiApplication")
+        self.assertIn("construction targets create handles", create_target["invariants"][0])
+        reserved_target = next(target for target in module_doc["callTargets"] if target["target"] == "gui.eventKeyCode")
+        self.assertFalse(reserved_target["usage"]["availableForCodegen"])
+
+    def test_docs_std_library_uses_typed_comment_summaries(self) -> None:
+        operations, modules, errors, _root = sem._docs_inventory()
+
+        self.assertEqual(errors, [])
+        missing_operations = [
+            operation["fullName"]
+            for operation in operations
+            if operation["visibility"]["public"]
+            and not operation.get("summarySource", "").startswith("comment:")
+        ]
+        missing_modules = [
+            module["module"]
+            for module in modules
+            if not module.get("summarySource", "").startswith("comment:")
+        ]
+        self.assertEqual(missing_operations, [])
+        self.assertEqual(missing_modules, [])
+
+    def test_docs_static_intrinsic_targets_are_actionable(self) -> None:
+        sqlite_payload = sem._docs_payload("get", operation_name="sqlite.openDatabase")
+        bcrypt_payload = sem._docs_payload("get", operation_name="bcrypt.hashPassword")
+        net_payload = sem._docs_payload("get", operation_name="net.fetchText")
+
+        self.assertTrue(sqlite_payload["ok"])
+        self.assertEqual(sqlite_payload["target"]["signature"]["outputs"][0]["values"], [
+            "Result",
+            "SqliteDatabase",
+            "SqliteDatabaseOpenFailure",
+        ])
+        self.assertIn(
+            "ignore ok source openDatabaseCleanupCall type Int32",
+            sqlite_payload["target"]["usage"]["cleanup"]["rows"],
+        )
+        self.assertIn(
+            "bind error openDatabaseCleanupError SqliteDatabaseCloseFailure openDatabaseCleanupCall",
+            sqlite_payload["target"]["usage"]["cleanup"]["rows"],
+        )
+        self.assertIn(
+            "useCapability <callerOperation> sqliteDatabaseReadWriter",
+            sqlite_payload["target"]["usage"]["useCapabilityRows"],
+        )
+
+        self.assertTrue(bcrypt_payload["ok"])
+        self.assertEqual(bcrypt_payload["target"]["usage"]["failureHandling"]["kind"], "status-code")
+        self.assertIn(
+            "argument hashPasswordCall outBuffer BcryptHashBuffer <outBuffer>",
+            bcrypt_payload["target"]["usage"]["call"]["rows"],
+        )
+
+        self.assertTrue(net_payload["ok"])
+        self.assertIn(
+            "fieldGet fetchTextBody HttpClientBodyText fetchTextResult body",
+            net_payload["target"]["usage"]["cleanup"]["rows"],
+        )
+        self.assertIn({"action": "free", "path": "heap"}, net_payload["target"]["usage"]["cleanup"]["requiredCallerEffects"])
+        self.assertIn(
+            "bind error fetchTextError HttpClientErrorCode fetchTextCall",
+            net_payload["target"]["usage"]["failureHandling"]["rows"],
+        )
+
+    def test_docs_static_target_coverage_matches_known_runtime_sets(self) -> None:
+        _operations, modules, errors, _root = sem._docs_inventory()
+        semlint = sem._load_semlint_module()
+
+        self.assertEqual(errors, [])
+        targets = {target["target"] for module in modules for target in module.get("callTargets", [])}
+        self.assertEqual(sorted(semlint.ALL_NATIVE_HTTP_TARGETS - targets), [])
+        self.assertEqual(sorted(semlint.SUPPORTED_JSON_RUNTIME_TARGETS - targets), [])
+        self.assertEqual(sorted(semlint.SUPPORTED_JSON_PRIMITIVE_TARGETS - targets), [])
+        self.assertIn("bcrypt.hashPassword", targets)
+        self.assertIn("net.fetchText", targets)
+        self.assertIn("net.fetchBytes", targets)
+        self.assertIn("sqlite.openDatabase", targets)
+
+    def test_docs_static_target_edge_rows_are_not_misleading(self) -> None:
+        application_run = sem._docs_payload("get", operation_name="gui.applicationRun")["target"]
+        verify_password = sem._docs_payload("get", operation_name="bcrypt.verifyPassword")["target"]
+        create_builder = sem._docs_payload("get", operation_name="json.createBuilder")["target"]
+        response_text = sem._docs_payload("get", operation_name="http.responseText")["target"]
+        fetch_bytes = sem._docs_payload("get", operation_name="net.fetchBytes")["target"]
+
+        self.assertEqual(application_run["usage"]["failureHandling"]["kind"], "sentinel-value")
+        self.assertFalse(application_run["usage"]["failureHandling"]["required"])
+        self.assertEqual(verify_password["usage"]["failureHandling"]["kind"], "negative-status")
+        self.assertIn(
+            "call verifyPasswordNegativeStatusCheckCall math.lessThanInt32",
+            verify_password["usage"]["failureHandling"]["rows"],
+        )
+        self.assertIn("Legacy builder/finder target", create_builder["agentWarnings"][0])
+        self.assertIn(
+            "useCapability <callerOperation> httpResponseWriter",
+            response_text["usage"]["useCapabilityRows"],
+        )
+        self.assertFalse(fetch_bytes["usage"]["availableForCodegen"])
+        self.assertEqual(fetch_bytes["loweringStatus"], "partial")
+
+    def test_docs_sentinel_value_failure_is_domain_dependent(self) -> None:
+        payload = sem._docs_payload("get", operation_name="gui.listBoxSelectedIndex")
+
+        handling = payload["target"]["usage"]["failureHandling"]
+        self.assertEqual(handling["kind"], "sentinel-value")
+        self.assertFalse(handling["required"])
+        self.assertIn("domain-dependent", handling["agentWarnings"][0])
+        self.assertIn("domain-dependent", payload["target"]["agentWarnings"][0])
+
+    def test_docs_cli_get_json_uses_parser(self) -> None:
+        stdout = io.StringIO()
+        with mock.patch("sys.stdout", stdout):
+            result = sem.main(["docs", "get", "http.clientGet", "--json"])
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(result, 0)
+        self.assertEqual(payload["schemaVersion"], "sem.docs.v1")
+        self.assertEqual(payload["operation"]["usage"]["failureMode"]["kind"], "null-sentinel")
 
     def test_context_payload_declares_no_implicit_migration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -399,10 +1199,16 @@ class TestSemAgentPayloads(unittest.TestCase):
     def test_skill_registry_is_version_matched(self) -> None:
         payload = sem._skill_registry_payload()
         names = {item["name"] for item in payload}
+        self.assertIn("getting-started", names)
         self.assertIn("language-core", names)
         self.assertIn("errors-effects-capabilities", names)
+        start_skill = next(item for item in payload if item["name"] == "getting-started")
+        self.assertIn("sem-start", start_skill["aliases"])
         language_skill = next(item for item in payload if item["name"] == "language-core")
         self.assertIn("sem", language_skill["aliases"])
+        start_content = sem._skill_content("getting-started", include_full_content=True)
+        self.assertIsNotNone(start_content)
+        self.assertIn("Repository Map", start_content["content"])
         skill = sem._skill_content("language-core", include_full_content=True)
         self.assertIsNotNone(skill)
         self.assertIn("sem", skill["aliases"])
@@ -426,6 +1232,14 @@ class TestSemAgentPayloads(unittest.TestCase):
             kinds = [item["kind"] for item in payload["nextCommands"]]
             self.assertIn("skills", kinds)
             self.assertIn("check", kinds)
+            self.assertEqual(
+                payload["nextCommands"][0]["command"],
+                "sem skills get sem-start sem-agent --json",
+            )
+            self.assertEqual(
+                payload["nextCommands"][0]["argv"][-5:],
+                ["skills", "get", "sem-start", "sem-agent", "--json"],
+            )
             self.assertEqual(
                 payload["state"]["buildTape"], str((root / "build.sem").resolve()))
 
@@ -456,6 +1270,7 @@ class TestSemAgentPayloads(unittest.TestCase):
 
             gitignore_text = (root / ".gitignore").read_text(encoding="utf-8")
             self.assertIn(".semcache/", gitignore_text)
+            self.assertIn(".sem/docs.sqlite", gitignore_text)
             self.assertIn("!sem.lock", gitignore_text)  # lockfile stays committed
 
             build_text = (root / "build.sem").read_text(encoding="utf-8")
@@ -476,6 +1291,24 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(any(item["kind"] == "check" for item in payload["nextCommands"]))
             self.assertTrue(any(item["kind"] == "test" for item in payload["nextCommands"]))
             self.assertTrue(any(item["kind"] == "run" for item in payload["nextCommands"]))
+            self.assertFalse(payload["project"]["docsIndex"]["enabled"])
+
+    def test_new_payload_can_opt_in_to_semantic_docs_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            payload = sem._starter_project_payload(root, docs_index_opt_in=True)
+
+            self.assertTrue(payload["ok"])
+            self.assertTrue(payload["project"]["docsIndex"]["enabled"])
+            self.assertEqual(payload["project"]["docsIndex"]["embeddingProvider"], "sentence-transformers")
+            kinds = [item["kind"] for item in payload["nextCommands"]]
+            self.assertIn("docs-deps", kinds)
+            self.assertIn("docs-index", kinds)
+            docs_index_command = next(item for item in payload["nextCommands"] if item["kind"] == "docs-index")
+            self.assertIn("--allow-model-download", docs_index_command["argv"])
+            for kind in ("docs-deps", "docs-index", "docs-search"):
+                command = next(item for item in payload["nextCommands"] if item["kind"] == kind)
+                self.assertFalse(command["replayable"])
 
     def test_new_payload_refuses_nonempty_directory_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -538,6 +1371,8 @@ class TestSemAgentPayloads(unittest.TestCase):
                 force=False,
                 json=False,
                 github_url=None,
+                enable_docs_index=False,
+                no_docs_index=True,
             )
             with mock.patch.object(
                 sem,
@@ -549,6 +1384,24 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(code, 0)
             build_text = (root / "build.sem").read_text(encoding="utf-8")
             self.assertIn("modulePath helloWorld github.com/acme/hello-world", build_text)
+
+    def test_command_new_prompts_for_docs_index_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            args = argparse.Namespace(
+                path=str(root),
+                force=False,
+                json=False,
+                github_url="https://github.com/acme/hello-world",
+                enable_docs_index=False,
+                no_docs_index=False,
+            )
+            with mock.patch.object(sem, "_prompt_for_starter_docs_index_opt_in", return_value=True) as prompt:
+                with mock.patch("sys.stdout", new=io.StringIO()):
+                    code = sem.command_new(args)
+
+            self.assertEqual(code, 0)
+            prompt.assert_called_once()
 
     def test_new_starter_project_checks_and_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

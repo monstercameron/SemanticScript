@@ -29,7 +29,7 @@ OK_MODULES = [
     "random", "stddef", "iso646", "inttypes", "bit", "constants",
     "compare", "convert", "array", "buffer", "bytes", "slice", "list",
     "small_list", "map", "sort", "char", "numeric",
-    "signal_more", "errno_more", "event",
+    "signal_more", "errno_more", "event", "document",
 ]
 
 # Quarantined modules: run and reported, but their failures do NOT fail the

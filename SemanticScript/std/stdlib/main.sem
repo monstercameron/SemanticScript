@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.stdlib.
 
+# rationale: Canonical standard-library module for stdlib-style helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.stdlib
 purpose module standard.stdlib "Canonical standard-library module for stdlib-style helpers."
 moduleOwns standard.stdlib "The official import path `standard.stdlib` and this module's implementation body."
@@ -20,7 +22,7 @@ exportOperation standard.stdlib parseDecimalCStringToSignedInt64
 #   power, gcd, clamp). The refined surface returns natural values
 #   (Int64 / Bool) and reserves a `NumericParseError` /
 #   `NumericArithmeticError` domain for the operations that actually
-#   have failure cases â€” negative exponents on integer power, and
+#   have failure cases - negative exponents on integer power, and
 #   degenerate-input gcd. Most ops are total.
 #
 # invariant: parsers walk the input byte-by-byte and stop at the
@@ -83,6 +85,9 @@ domainLiteralTrust integerZeroBoundary trustedStaticLiteral
 
 # section stdlib.parsers
 
+# rationale: Parse a NUL-terminated decimal numeric string into an i64 (atoi/atol shape). Skips ASCII whitespace, accepts optional sign, accumulates digits until a non-digit byte.
+# invariant: Empty / junk inputs return 0; trailing non-digit text is silently discarded.
+# warning: No overflow detection - inputs longer than 18 decimal digits silently wrap Int64.
 operation parseDecimalCStringToSignedInt64
 input operation parseDecimalCStringToSignedInt64 inputText String
 output operation parseDecimalCStringToSignedInt64 Int64
@@ -91,7 +96,7 @@ memory parseDecimalCStringToSignedInt64 stack max 1024
 async parseDecimalCStringToSignedInt64 no
 purpose operation parseDecimalCStringToSignedInt64 "Parse a NUL-terminated decimal numeric string into an i64 (atoi/atol shape). Skips ASCII whitespace, accepts optional sign, accumulates digits until a non-digit byte."
 invariant operation parseDecimalCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-digit text is silently discarded."
-warning parseDecimalCStringToSignedInt64 "No overflow detection â€” inputs longer than 18 decimal digits silently wrap Int64."
+warning parseDecimalCStringToSignedInt64 "No overflow detection - inputs longer than 18 decimal digits silently wrap Int64."
 guarantee parseDecimalCStringToSignedInt64 "Total."
 label startParseDecimalCStringToSignedInt64
 memory parseDecimalCStringToSignedInt64 mutable decimalParseCursor Int64 0
@@ -210,6 +215,9 @@ run applyDecimalSignCall
 bind value signedDecimalResult Int64 applyDecimalSignCall
 return value signedDecimalResult
 
+# rationale: Parse a NUL-terminated hex numeric string into an i64 (strtol(s, NULL, 16) shape). Skips whitespace, accepts optional sign, accepts optional 0x / 0X prefix, accumulates hex digits.
+# invariant: Empty / junk inputs return 0; trailing non-hex text is silently discarded.
+# warning: No overflow detection - inputs longer than 15 hex digits silently wrap Int64.
 operation parseHexCStringToSignedInt64
 input operation parseHexCStringToSignedInt64 inputText String
 output operation parseHexCStringToSignedInt64 Int64
@@ -218,7 +226,7 @@ memory parseHexCStringToSignedInt64 stack max 1024
 async parseHexCStringToSignedInt64 no
 purpose operation parseHexCStringToSignedInt64 "Parse a NUL-terminated hex numeric string into an i64 (strtol(s, NULL, 16) shape). Skips whitespace, accepts optional sign, accepts optional 0x / 0X prefix, accumulates hex digits."
 invariant operation parseHexCStringToSignedInt64 "Empty / junk inputs return 0; trailing non-hex text is silently discarded."
-warning parseHexCStringToSignedInt64 "No overflow detection â€” inputs longer than 15 hex digits silently wrap Int64."
+warning parseHexCStringToSignedInt64 "No overflow detection - inputs longer than 15 hex digits silently wrap Int64."
 guarantee parseHexCStringToSignedInt64 "Total."
 label startParseHexCStringToSignedInt64
 memory parseHexCStringToSignedInt64 mutable hexParseCursor Int64 0
@@ -435,6 +443,8 @@ return value signedHexResult
 
 # section stdlib.totalIntegerHelpers
 
+# rationale: Returns |inputValue|.
+# warning: INT64_MIN negation overflows back to INT64_MIN (two's-complement).
 operation absoluteSignedInt64
 input operation absoluteSignedInt64 inputValue Int64
 output operation absoluteSignedInt64 Int64
@@ -459,6 +469,8 @@ run negateAbsoluteInputCall
 bind value negatedAbsoluteValue Int64 negateAbsoluteInputCall
 return value negatedAbsoluteValue
 
+# rationale: Returns the smaller of leftValue and rightValue.
+# invariant: Commutative.
 operation minimumSignedInt64
 input operation minimumSignedInt64 leftValue Int64
 input operation minimumSignedInt64 rightValue Int64
@@ -479,6 +491,8 @@ return value rightValue
 label returnMinLeft
 return value leftValue
 
+# rationale: Returns the larger of leftValue and rightValue.
+# invariant: Commutative.
 operation maximumSignedInt64
 input operation maximumSignedInt64 leftValue Int64
 input operation maximumSignedInt64 rightValue Int64
@@ -499,6 +513,10 @@ return value rightValue
 label returnMaxLeft
 return value leftValue
 
+# rationale: Returns baseValue^exponentValue via repeated multiplication.
+# invariant: exponent == 0 always returns 1 (including 0^0).
+# warning: Wraps modulo 2^64 on overflow.
+# failure: Returned for exponent < 0 (integer arithmetic can't represent fractions).
 operation powerSignedInt64
 input operation powerSignedInt64 baseValue Int64
 input operation powerSignedInt64 exponentValue Int64
@@ -545,6 +563,8 @@ label raiseNegativeExponentError
 makeError negativeExponentFailure NumericArithmeticError.NegativeExponentNotSupported
 return error negativeExponentFailure
 
+# rationale: Greatest common divisor via the Euclidean algorithm. Works on absolute values, so signs of inputs don't matter.
+# invariant: gcd(a, 0) == |a|; gcd(0, b) == |b|; gcd(0, 0) == 0 (mathematical convention).
 operation greatestCommonDivisorSignedInt64
 input operation greatestCommonDivisorSignedInt64 leftValue Int64
 input operation greatestCommonDivisorSignedInt64 rightValue Int64
@@ -585,6 +605,9 @@ jump target gcdEuclidLoop
 label returnGcd
 return value gcdDividend
 
+# rationale: Returns lowerBound if inputValue < lowerBound, upperBound if inputValue > upperBound, else inputValue.
+# invariant: Output is always in [lowerBound, upperBound] when lowerBound <= upperBound.
+# warning: If lowerBound > upperBound, the result is either bound depending on input - caller should pre-check.
 operation clampSignedInt64ToInclusiveRange
 input operation clampSignedInt64ToInclusiveRange inputValue Int64
 input operation clampSignedInt64ToInclusiveRange lowerBound Int64
@@ -594,7 +617,7 @@ memory clampSignedInt64ToInclusiveRange heap no
 async clampSignedInt64ToInclusiveRange no
 purpose operation clampSignedInt64ToInclusiveRange "Returns lowerBound if inputValue < lowerBound, upperBound if inputValue > upperBound, else inputValue."
 invariant operation clampSignedInt64ToInclusiveRange "Output is always in [lowerBound, upperBound] when lowerBound <= upperBound."
-warning clampSignedInt64ToInclusiveRange "If lowerBound > upperBound, the result is either bound depending on input â€” caller should pre-check."
+warning clampSignedInt64ToInclusiveRange "If lowerBound > upperBound, the result is either bound depending on input - caller should pre-check."
 guarantee clampSignedInt64ToInclusiveRange "Total."
 label startClampSignedInt64ToInclusiveRange
 call detectInputBelowLowerCall math.lessThanInt64

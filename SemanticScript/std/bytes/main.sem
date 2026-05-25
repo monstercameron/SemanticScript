@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.bytes.
 
+# rationale: Canonical standard-library module for read-only byte-buffer scans and predicates.
+# invariant: The standard byte-scanning entry point is this file; mutable byte-buffer edits live under `standard.buffer`.
 module standard.bytes
 purpose module standard.bytes "Canonical standard-library module for read-only byte-buffer scans and predicates."
 moduleOwns standard.bytes "The official import path `standard.bytes` and the executable `bytes.*` helper surface."
@@ -24,6 +26,9 @@ storage module immutable bytesTrueResult Bool true
 storage module immutable bytesFalseResult Bool false
 storage module immutable bytesZeroValue Int64 0
 
+# rationale: Returns the sum of byte values in the first byteCount bytes of byteBuffer (each byte treated as an unsigned 0..255 value).
+# invariant: Result is non-negative when byteCount fits within the buffer's allocation.
+# warning: Overflows silently when byteCount * 255 exceeds Int64.
 operation bytes.sum
 input operation bytes.sum byteBuffer OpaquePointer
 input operation bytes.sum byteCount ByteCount
@@ -74,6 +79,8 @@ jump target bytesSumLoop
 label bytesSumDone
 return value bufferRunningSum
 
+# rationale: Returns the smallest unsigned-byte value in [0, byteCount). For an empty buffer returns 256.
+# invariant: Result is in [0, 255] for non-empty input; 256 for empty input.
 operation bytes.min
 input operation bytes.min byteBuffer OpaquePointer
 input operation bytes.min byteCount ByteCount
@@ -128,6 +135,8 @@ jump target bytesMinLoop
 label bytesMinComplete
 return value runningMinimumValue
 
+# rationale: Returns the largest unsigned-byte value in [0, byteCount). For an empty buffer returns -1.
+# invariant: Result is in [0, 255] for non-empty input; -1 for empty input.
 operation bytes.max
 input operation bytes.max byteBuffer OpaquePointer
 input operation bytes.max byteCount ByteCount
@@ -182,6 +191,8 @@ jump target bytesMaxLoop
 label bytesMaxComplete
 return value runningMaximumValue
 
+# rationale: Returns true if any byte in [0, byteCount) of byteBuffer equals targetValue.
+# invariant: Returns true iff some byte in the scanned prefix [0, byteCount) equals targetValue.
 operation bytes.contains
 input operation bytes.contains byteBuffer OpaquePointer
 input operation bytes.contains byteCount ByteCount
@@ -233,6 +244,8 @@ return value bytesTrueResult
 label bytesContainsNotFound
 return value bytesFalseResult
 
+# rationale: Returns the number of bytes in [0, byteCount) that equal targetValue.
+# invariant: Result stays within [0, byteCount] for non-negative byteCount inputs.
 operation bytes.count
 input operation bytes.count byteBuffer OpaquePointer
 input operation bytes.count byteCount ByteCount
@@ -293,6 +306,7 @@ jump target bytesCountLoop
 label bytesCountComplete
 return value matchCounter
 
+# rationale: Returns the first matching byte offset, or -1 when targetValue is absent.
 operation bytes.indexOf
 input operation bytes.indexOf byteBuffer OpaquePointer
 input operation bytes.indexOf byteCount ByteCount
@@ -310,6 +324,7 @@ run delegateBytesIndexOfCall
 bind value bytesIndexOfResult Int64 delegateBytesIndexOfCall
 return value bytesIndexOfResult
 
+# rationale: Returns true when the first byteCount bytes of leftBuffer and rightBuffer compare equal.
 operation bytes.equal
 input operation bytes.equal leftBuffer OpaquePointer
 input operation bytes.equal rightBuffer OpaquePointer

@@ -14,6 +14,8 @@
 # capability contract for outbound HTTP client work. The source API is
 # intentionally backend-neutral: source code must not mention libuv or libcurl.
 
+# rationale: Standard-library namespace and prototype contracts for outbound network client intrinsics.
+# invariant: `net.fetch*` lowering belongs to the compiler/native_http_client/native_async boundary; runtime outbound HTTP must stay separate from build-time `dependencyFetch` source acquisition.
 module standard.net
 purpose module standard.net "Standard-library namespace and prototype contracts for outbound network client intrinsics."
 moduleOwns standard.net "The official import path `standard.net`, client-side network type aliases, reusable capabilities, and the compiler-owned `net.fetch*` intrinsic namespace contract."

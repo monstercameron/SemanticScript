@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.limits.
 
+# rationale: Canonical standard-library module for limits constants.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.limits
 purpose module standard.limits "Canonical standard-library module for limits constants."
 moduleOwns standard.limits "The official import path `standard.limits` and this module's implementation body."
@@ -19,19 +21,19 @@ storage module immutable limitsModuleVersionText String "standard.limits 0.1"
 #   pre-refined version exposed each bound as a zero-arg operation
 #   returning `Result Int64 Void`. The refined surface
 #   replaces the operations with module-scope `domainLiteral`
-#   constants â€” AST Â§2.12.5's purpose-built verb for typed
+#   constants - AST section 2.12.5's purpose-built verb for typed
 #   compile-time values. Every bound is constant-folded by LLVM
 #   and carries a `domainLiteralSource` pointer back to the ISO C
 #   spec for provenance.
 #
-# invariant: every limit matches ISO C99 Â§5.2.4.2.1 for its width
+# invariant: every limit matches ISO C99 section 5.2.4.2.1 for its width
 #   on a two's-complement target. SemanticScript targets two's
 #   complement exclusively (LLVM IR does not model sign-magnitude
 #   or one's-complement representations).
 #
 # security: pure constants. No effects. No allocation.
 #
-# timing: zero â€” every reference inlines.
+# timing: zero - every reference inlines.
 #
 # observability: nothing to observe at runtime.
 
@@ -91,7 +93,7 @@ domainLiteralValidation maximumSignedInt64Value trustedAbiConstant
 
 # warning: INT64_MIN (-9223372036854775808) cannot be expressed
 #   as a positive literal in any base-10 representation that fits
-#   inside an i64 â€” the parser would see 9223372036854775808 first,
+#   inside an i64 - the parser would see 9223372036854775808 first,
 #   which overflows. Callers needing INT64_MIN should compute it
 #   from maximumSignedInt64Value via `negate(max) - 1`.
 

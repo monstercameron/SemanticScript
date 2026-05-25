@@ -60,6 +60,7 @@ import os
 import re
 import shlex
 import sys
+import time
 from dataclasses import dataclass, field
 from llvmlite import ir
 import llvmlite.binding as llvm
@@ -4391,7 +4392,11 @@ class Codegen:
         self.runtime_checks = runtime_checks
         self.trace_events = trace_events
         self.module = ir.Module(name=prog.project_name or "semanticscript_module")
-        self.module.triple = llvm.get_default_triple()
+        # SEMSC_TRIPLE overrides the target triple so the same tape can be
+        # lowered for a non-host target (e.g. wasm32-unknown-emscripten). The
+        # triple gates platform-specific codegen such as the Windows SEH crash
+        # filter, so retargeting here skips host-only paths cleanly.
+        self.module.triple = os.environ.get("SEMSC_TRIPLE") or llvm.get_default_triple()
         self.provenance = CompilerProvenance(prog)
         self.strings = {}
         self._next_str_id = 0
@@ -19092,9 +19097,67 @@ def _resolve_persisted_ir_path(source_path: str, emit_exe: str = None,
     return None
 
 
+def _peak_working_set_bytes():
+    """Return ``(peak_bytes, source)`` for the current process.
+
+    Windows reads ``PeakWorkingSetSize`` via ``GetProcessMemoryInfo``; POSIX uses
+    ``getrusage(RUSAGE_SELF).ru_maxrss`` (KiB on Linux, bytes on macOS/BSD). This
+    is the whole-process peak (compiler + JIT + program), a proxy for program
+    memory rather than a program-only heap measurement. Returns
+    ``(None, "unavailable")`` when the platform query fails.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes.wintypes as wintypes
+
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            kernel32 = ctypes.WinDLL("kernel32")
+            psapi = ctypes.WinDLL("psapi")
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+                wintypes.DWORD,
+            ]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+            counters = PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+            handle = kernel32.GetCurrentProcess()
+            ok = psapi.GetProcessMemoryInfo(
+                handle, ctypes.byref(counters), counters.cb)
+            if ok:
+                return int(counters.PeakWorkingSetSize), "GetProcessMemoryInfo"
+        except Exception:
+            return None, "unavailable"
+        return None, "unavailable"
+    try:
+        import resource
+        max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports KiB; macOS/BSD report bytes.
+        if sys.platform == "darwin":
+            return int(max_rss), "getrusage"
+        return int(max_rss) * 1024, "getrusage"
+    except Exception:
+        return None, "unavailable"
+
+
 def jit_run(module_ir: str, opt_level: int = 2,
             emit_optimized_ir_to: str = None,
-            cpu_config: CpuBuildConfig = None) -> int:
+            cpu_config: CpuBuildConfig = None,
+            collect_execution_metrics: bool = False):
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
     mod = llvm.parse_assembly(module_ir)
@@ -19114,6 +19177,11 @@ def jit_run(module_ir: str, opt_level: int = 2,
     engine.run_static_constructors()
     addr = engine.get_function_address("main")
     cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
+    if collect_execution_metrics:
+        execute_start_ns = time.perf_counter_ns()
+        rc = cmain()
+        execute_ns = time.perf_counter_ns() - execute_start_ns
+        return rc, execute_ns
     return cmain()
 
 
@@ -20669,6 +20737,11 @@ def main():
                           "--emit-ir, yes writes a .ll sidecar when needed, "
                           "no disables IR persistence"))
     ap.add_argument("--run", action="store_true", help="JIT-execute main after compile")
+    ap.add_argument("--run-metrics", action="store_true",
+                    help=("with --run, time only program execution and capture "
+                          "peak working set, emitting a single "
+                          "`__SEM_RUN_METRICS__ {json}` line to stderr before "
+                          "exit. Program stdout is left untouched"))
     ap.add_argument("--trace", action="store_true",
                     help=("instrument generated LLVM IR to emit agent JSONL "
                           "trace events to stderr at runtime"))
@@ -21156,6 +21229,27 @@ def main():
         ))
 
     if args.run:
+        if getattr(args, "run_metrics", False):
+            rc, execute_ns = jit_run(
+                ir_text, opt_level=opt_level,
+                emit_optimized_ir_to=emit_optimized_ir_path,
+                cpu_config=cpu_config,
+                collect_execution_metrics=True)
+            peak_bytes, memory_source = _peak_working_set_bytes()
+            metrics = {
+                "executeNs": execute_ns,
+                "exitCode": rc,
+                "peakWorkingSetBytes": peak_bytes,
+                "memorySource": memory_source,
+                # A caller-supplied nonce lets the consumer distinguish this
+                # genuine end-of-run sentinel from any look-alike line the
+                # running program may have written to stderr.
+                "nonce": os.environ.get("SEM_RUN_METRICS_NONCE", ""),
+            }
+            sys.stdout.flush()
+            print("__SEM_RUN_METRICS__ " + json.dumps(metrics, sort_keys=True),
+                  file=sys.stderr, flush=True)
+            sys.exit(rc)
         rc = jit_run(ir_text, opt_level=opt_level,
                      emit_optimized_ir_to=emit_optimized_ir_path,
                      cpu_config=cpu_config)

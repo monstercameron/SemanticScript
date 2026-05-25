@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.bool.
 
+# rationale: Canonical standard-library module for boolean helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.bool
 purpose module standard.bool "Canonical standard-library module for boolean helpers."
 moduleOwns standard.bool "The official import path `standard.bool` and this module's implementation body."
@@ -21,7 +23,7 @@ storage module immutable boolModuleVersionText String "standard.bool 0.1"
 #   Two ABI-bridge ops translate between Bool and Int32 0/1
 #   for FFI calls that still expect the C contract.
 #
-# invariant: every operation in this module is total â€” no input
+# invariant: every operation in this module is total - no input
 #   combination produces a failure. That property is encoded in the
 #   `output op Bool` shape (no Result wrapper) and the absence of any
 #   `*Error` domain.
@@ -30,7 +32,7 @@ storage module immutable boolModuleVersionText String "standard.bool 0.1"
 #   no observable side channel beyond execution time, which is constant
 #   per call (no branches over secret-dependent data).
 #
-# timing: each combinator is O(1) â€” at most two LLVM `xor`/`and`/`or`
+# timing: each combinator is O(1) - at most two LLVM `xor`/`and`/`or`
 #   instructions on i1.
 #
 # observability: callers are responsible for any tracing; this module
@@ -51,31 +53,33 @@ storage module immutable boolModuleVersionText String "standard.bool 0.1"
 # consumed by other programs (notably std/bool/main.test.sem which
 # importModules it and runs the smoke). The project / target /
 # runtime / entry block is retained so the module can still be
-# linted standalone â€” the entry just points at the first exported
+# linted standalone - the entry just points at the first exported
 # operation rather than a `main` smoke.
 
 # Canonical Bool literal accessors declared as domain literals so
 # downstream code can `arg X value canonicalBooleanTrue` without
-# repeating the literal text. Kept at module scope per spec Â§11.
+# repeating the literal text. Kept at module scope per spec section 11.
 domainLiteral canonicalBooleanTrue Bool true
 domainLiteralTrust canonicalBooleanTrue trustedStaticLiteral
 domainLiteral canonicalBooleanFalse Bool false
 domainLiteralTrust canonicalBooleanFalse trustedStaticLiteral
 
 # section bool.core
-# rationale: total Boolâ†’Bool functions; no errors, no allocation.
+# rationale: total Bool->Bool functions; no errors, no allocation.
 
 # ----- negateBoolean -----
+# rationale: Returns the logical negation of valueToNegate (true->false, false->true).
+# invariant: Involutive: negateBoolean(negateBoolean(x)) == x for every Bool x.
 operation negateBoolean
 input operation negateBoolean valueToNegate Bool
 output operation negateBoolean Bool
 memory negateBoolean heap no
 async negateBoolean no
-purpose operation negateBoolean "Returns the logical negation of valueToNegate (trueâ†’false, falseâ†’true)."
+purpose operation negateBoolean "Returns the logical negation of valueToNegate (true->false, false->true)."
 invariant operation negateBoolean "Involutive: negateBoolean(negateBoolean(x)) == x for every Bool x."
 guarantee negateBoolean "Total: defined for every Bool input."
 # rationale: implemented as equality test against false, which the
-#   compiler lowers to a single `icmp eq i1 %v, 0` â€” the cheapest
+#   compiler lowers to a single `icmp eq i1 %v, 0` - the cheapest
 #   i1-level negation without branching on a secret-dependent bit.
 label startNegateBoolean
 storage module immutable falseSentinel Bool false
@@ -87,6 +91,8 @@ bind value isInputCurrentlyFalse Bool detectInputIsFalseCall
 return value isInputCurrentlyFalse
 
 # ----- andBooleans -----
+# rationale: Logical AND of two Bool operands.
+# invariant: Commutative: andBooleans(a, b) == andBooleans(b, a).
 operation andBooleans
 input operation andBooleans firstOperand Bool
 input operation andBooleans secondOperand Bool
@@ -98,7 +104,7 @@ invariant operation andBooleans "Commutative: andBooleans(a, b) == andBooleans(b
 invariant operation andBooleans "Associative: andBooleans(andBooleans(a, b), c) == andBooleans(a, andBooleans(b, c))."
 guarantee andBooleans "Total: defined for every (Bool, Bool) input pair."
 # warning: this lowering evaluates both operands. There is no
-#   short-circuit form at this layer â€” callers that need lazy
+#   short-circuit form at this layer - callers that need lazy
 #   evaluation should branch explicitly via `branchIf`.
 label startAndBooleans
 storage module immutable falseShortCircuit Bool false
@@ -108,6 +114,8 @@ label bothOperandsLiveBranch
 return value secondOperand
 
 # ----- orBooleans -----
+# rationale: Logical OR of two Bool operands.
+# invariant: Commutative: orBooleans(a, b) == orBooleans(b, a).
 operation orBooleans
 input operation orBooleans firstOperand Bool
 input operation orBooleans secondOperand Bool
@@ -127,6 +135,8 @@ label firstOperandTrueBranch
 return value trueShortCircuit
 
 # ----- exclusiveOrBooleans -----
+# rationale: Returns true when exactly one operand is true (logical XOR).
+# invariant: Self-inverse: exclusiveOrBooleans(x, x) == false.
 operation exclusiveOrBooleans
 input operation exclusiveOrBooleans firstOperand Bool
 input operation exclusiveOrBooleans secondOperand Bool
@@ -146,6 +156,8 @@ bind value operandsDiffer Bool detectDistinctOperandsCall
 return value operandsDiffer
 
 # ----- areBooleansEquivalent -----
+# rationale: Returns true when both operands hold the same value (logical equivalence / XNOR).
+# invariant: Reflexive: areBooleansEquivalent(x, x) == true.
 operation areBooleansEquivalent
 input operation areBooleansEquivalent firstOperand Bool
 input operation areBooleansEquivalent secondOperand Bool
@@ -168,6 +180,8 @@ return value operandsMatch
 # rationale: convert between Bool and the C-style 0/1 Int32 contract.
 
 # ----- convertBooleanToInt32 -----
+# rationale: Widen a Bool (i1) to the canonical C 0/1 Int32 result FFI callers expect.
+# invariant: Output is exactly 0 or 1; no other bit pattern is reachable.
 operation convertBooleanToInt32
 input operation convertBooleanToInt32 sourceBoolean Bool
 output operation convertBooleanToInt32 Int32
@@ -177,7 +191,7 @@ purpose operation convertBooleanToInt32 "Widen a Bool (i1) to the canonical C 0/
 invariant operation convertBooleanToInt32 "Output is exactly 0 or 1; no other bit pattern is reachable."
 guarantee convertBooleanToInt32 "Total: defined for every Bool input."
 # security: zero-extension (not sign-extension) so a true Bool widens
-#   to 1 not -1 â€” matches C `_Bool` ABI exactly and avoids the
+#   to 1 not -1 - matches C `_Bool` ABI exactly and avoids the
 #   sign-extension trap that bit a refined-syntax demo earlier in the
 #   project.
 label startConvertBooleanToInt32
@@ -189,6 +203,8 @@ label returnCanonicalOne
 return value oneInt32
 
 # ----- convertInt32ToBoolean -----
+# rationale: Narrow a C-style 0/non-zero Int32 to Bool; any non-zero input yields true.
+# invariant: Output is true iff sourceInt32Value is not equal to zero.
 operation convertInt32ToBoolean
 input operation convertInt32ToBoolean sourceInt32Value Int32
 output operation convertInt32ToBoolean Bool

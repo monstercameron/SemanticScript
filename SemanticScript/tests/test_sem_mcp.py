@@ -17,6 +17,7 @@ if MCP_AVAILABLE:
 
 EXPECTED_TOOLS = {
     "version",
+    "eval",
     "doctor",
     "check",
     "readiness",
@@ -33,6 +34,12 @@ EXPECTED_TOOLS = {
     "test",
     "dev",
     "deps",
+    "docs_list",
+    "docs_get",
+    "docs_watch",
+    "docs_reindex",
+    "docs_index_status",
+    "docs_search",
     "help",
 }
 
@@ -79,6 +86,19 @@ class TestSemMcpServer(unittest.TestCase):
         result = asyncio.run(sem_mcp.mcp.call_tool("explain", {"code": "SS3104"}))
         payload = _structured(result)
         self.assertEqual(payload["schemaVersion"], "sem.explain.v1")
+
+    def test_eval_tool_runs_a_snippet(self) -> None:
+        code = ('storage local immutable greeting String "mcp-eval"\n'
+                "call printCall console.writeLine\n"
+                "argument printCall text String greeting\n"
+                "run printCall\n")
+        result = asyncio.run(sem_mcp.mcp.call_tool("eval", {"code": code}))
+        payload = _structured(result)
+        self.assertEqual(payload["schemaVersion"], "sem.eval.v1")
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["output"]["stdout"], "mcp-eval\n")
+        self.assertEqual(payload["execution"]["exitCode"], 0)
+        self.assertIn("linter", payload["notes"])
 
 
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed")
@@ -183,6 +203,176 @@ class TestSemMcpWrapper(unittest.TestCase):
             sem_mcp.help(path="proj")
         self.assertEqual(recorded["args"], ["help", "--json", "proj"])
 
+    def test_docs_list_and_get_forward_docs_surface(self) -> None:
+        recorded: list[list[str]] = []
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded.append(sub_args)
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+            sem_mcp.docs_list(module="http", include_internal=True, std_path="std")
+            sem_mcp.docs_get(operation="http.clientGet", module="http", std_path="std")
+
+        self.assertEqual(
+            recorded[0],
+            ["docs", "list", "--json", "--module", "http", "--summary-tag", "rationale", "--all", "--std-path", "std"],
+        )
+        self.assertEqual(
+            recorded[1],
+            ["docs", "get", "--json", "--module", "http", "--std-path", "std", "http.clientGet"],
+        )
+
+    def test_docs_worker_key_includes_path_and_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first = sem_mcp._docs_worker_key(
+                path="project-a",
+                db=sem_mcp._docs_resolved_db("project-a", None, tmp),
+                cwd=tmp,
+                include_std=True,
+                embedding_provider=sem_mcp.DOCS_DEFAULT_EMBEDDING_PROVIDER,
+                embedding_model="model-a",
+            )
+            second = sem_mcp._docs_worker_key(
+                path="project-b",
+                db=sem_mcp._docs_resolved_db("project-b", None, tmp),
+                cwd=tmp,
+                include_std=True,
+                embedding_provider=sem_mcp.DOCS_DEFAULT_EMBEDDING_PROVIDER,
+                embedding_model="model-a",
+            )
+            third = sem_mcp._docs_worker_key(
+                path="project-a",
+                db=sem_mcp._docs_resolved_db("project-a", None, tmp),
+                cwd=tmp,
+                include_std=False,
+                embedding_provider=sem_mcp.DOCS_DEFAULT_EMBEDDING_PROVIDER,
+                embedding_model="model-a",
+            )
+
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(first, third)
+
+    def test_docs_worker_does_not_complete_snapshot_after_failed_payload(self) -> None:
+        worker = object.__new__(sem_mcp.DocsIndexWorker)
+        worker.path = "proj"
+        worker.db = "docs.sqlite"
+        worker.cwd = None
+        worker.include_std = True
+        worker.interval_seconds = 5.0
+        worker.embedding_provider = sem_mcp.DOCS_DEFAULT_EMBEDDING_PROVIDER
+        worker.embedding_model = sem_mcp.DOCS_DEFAULT_EMBEDDING_MODEL
+        worker.allow_model_download = False
+        worker.max_files = sem_mcp.DOCS_WATCH_MAX_FILES
+        worker._lock = sem_mcp.threading.Lock()
+        worker._last_snapshot = None
+        worker._last_payload = None
+        worker._last_error = ""
+        worker._last_started = 0.0
+        worker._last_finished = 0.0
+        worker._index_count = 0
+        worker._error_count = 0
+        worker._backoff_until = 0.0
+
+        with mock.patch.object(sem_mcp, "_run_sem", return_value={"ok": False, "errors": ["boom"]}):
+            failed = worker._index_once((("main.sem", 1, 1),))
+
+        self.assertFalse(failed)
+        self.assertIsNone(worker._last_snapshot)
+        self.assertIn("boom", worker._last_error)
+
+        with mock.patch.object(sem_mcp, "_run_sem", return_value={"ok": True}):
+            succeeded = worker._index_once((("main.sem", 1, 1),))
+
+        self.assertTrue(succeeded)
+        self.assertEqual(worker._last_snapshot, (("main.sem", 1, 1),))
+
+    def test_docs_reindex_foreground_uses_db_lock(self) -> None:
+        recorded: dict[str, list[str]] = {}
+        lock = mock.MagicMock()
+        lock.__enter__.return_value = None
+        lock.__exit__.return_value = None
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_docs_db_index_lock", return_value=lock) as lock_factory:
+            with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+                sem_mcp.docs_reindex(path="proj", db="docs.sqlite", background=False)
+
+        lock_factory.assert_called_once()
+        lock.__enter__.assert_called_once()
+        lock.__exit__.assert_called_once()
+        self.assertEqual(recorded["args"][:4], ["docs", "index", "--json", "--path"])
+
+    def test_docs_search_starts_worker_and_forwards_query(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True, "status": "ok", "results": []}
+
+        fake_worker = mock.Mock()
+        fake_worker.status.return_value = {"running": True}
+        with mock.patch.object(sem_mcp, "_ensure_docs_worker", return_value=fake_worker) as ensure:
+            with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+                sem_mcp.docs_search(query="write http response", path="proj", db="docs.sqlite", limit=3, watch=True)
+        ensure.assert_called_once()
+        self.assertEqual(recorded["args"][:6], ["docs", "search", "--json", "--path", "proj", "--db"])
+        self.assertEqual(Path(recorded["args"][6]).name, "docs.sqlite")
+        self.assertIn("write http response", recorded["args"])
+
+    def test_docs_search_uses_path_derived_default_db(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": False, "status": "index-missing", "results": []}
+
+        fake_worker = mock.Mock()
+        fake_worker.status.return_value = {"running": True}
+        with tempfile.TemporaryDirectory() as tmp:
+            expected_db = str((Path(tmp) / "proj" / ".sem" / "docs.sqlite").resolve())
+            with mock.patch.object(sem_mcp, "_ensure_docs_worker", return_value=fake_worker):
+                with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+                    payload = sem_mcp.docs_search(query="task", path="proj", db=None, cwd=tmp, watch=True)
+
+        self.assertEqual(recorded["args"][recorded["args"].index("--db") + 1], expected_db)
+        self.assertEqual(payload["worker"], {"running": True})
+
+    def test_docs_search_reuses_existing_worker_for_same_db(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True, "status": "ok", "results": []}
+
+        fake_worker = mock.Mock()
+        fake_worker.status.return_value = {"running": True, "db": str(Path("docs.sqlite").resolve())}
+        with mock.patch.object(sem_mcp, "_docs_find_worker_by_db", return_value=fake_worker):
+            with mock.patch.object(sem_mcp, "_ensure_docs_worker") as ensure:
+                with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+                    sem_mcp.docs_search(query="task", path="proj", db="docs.sqlite", include_std=True, watch=True)
+
+        ensure.assert_not_called()
+        fake_worker.trigger.assert_called_once()
+        self.assertIn("task", recorded["args"])
+
+    def test_docs_search_does_not_start_worker_by_default(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True, "status": "ok", "results": []}
+
+        with mock.patch.object(sem_mcp, "_ensure_docs_worker") as ensure:
+            with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+                sem_mcp.docs_search(query="task", path="proj", db="docs.sqlite")
+
+        ensure.assert_not_called()
+        self.assertIn("task", recorded["args"])
+
     def test_run_sem_timeout_envelope(self) -> None:
         with mock.patch(
             "SemanticScript.tools.sem_mcp.subprocess.run",
@@ -260,7 +450,7 @@ class TestSemMcpSubcommand(unittest.TestCase):
         # the same module object that command_mcp imports.
         import tools.sem_mcp  # noqa: F401
 
-        args = argparse.Namespace(transport="stdio", host=None, port=None, path=None)
+        args = argparse.Namespace(transport="stdio", host=None, port=None, path=None, docs_allow_model_download=False)
         with mock.patch("tools.sem_mcp.main") as fake_main:
             exit_code = sem.command_mcp(args)
 
@@ -268,11 +458,38 @@ class TestSemMcpSubcommand(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
     @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed")
+    def test_command_mcp_forwards_docs_worker_options(self) -> None:
+        import tools.sem_mcp  # noqa: F401
+
+        args = argparse.Namespace(
+            transport="stdio",
+            host=None,
+            port=None,
+            path=None,
+            docs_path="proj",
+            docs_db="docs.sqlite",
+            docs_watch_interval=1.5,
+            docs_allow_model_download=True,
+            no_docs_std=True,
+        )
+        with mock.patch("tools.sem_mcp.main") as fake_main:
+            sem.command_mcp(args)
+
+        fake_main.assert_called_once_with([
+            "--transport", "stdio",
+            "--docs-path", "proj",
+            "--docs-db", "docs.sqlite",
+            "--docs-watch-interval", "1.5",
+            "--docs-allow-model-download",
+            "--no-docs-std",
+        ])
+
+    @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed")
     def test_command_mcp_forwards_http_transport_options(self) -> None:
         import tools.sem_mcp  # noqa: F401
 
         args = argparse.Namespace(
-            transport="streamable-http", host="0.0.0.0", port=9000, path="/mcp"
+            transport="streamable-http", host="0.0.0.0", port=9000, path="/mcp", docs_allow_model_download=False
         )
         with mock.patch("tools.sem_mcp.main") as fake_main:
             sem.command_mcp(args)
@@ -285,9 +502,23 @@ class TestSemMcpSubcommand(unittest.TestCase):
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed")
 class TestSemMcpTransport(unittest.TestCase):
     def test_main_defaults_to_stdio(self) -> None:
-        with mock.patch.object(sem_mcp.mcp, "run") as run:
+        with mock.patch.object(sem_mcp.anyio, "run") as run:
             sem_mcp.main([])
-        run.assert_called_once_with(transport="stdio")
+        run.assert_called_once_with(sem_mcp._run_stdio_bom_tolerant_async)
+
+    def test_stdio_reader_strips_initial_utf8_bom(self) -> None:
+        raw = io.BytesIO(b'\xef\xbb\xbf{"jsonrpc":"2.0"}\n{"jsonrpc":"2.0"}\n')
+        reader = sem_mcp._stdio_text_reader(raw)
+
+        self.assertEqual(reader.readline(), '{"jsonrpc":"2.0"}\n')
+        self.assertEqual(reader.readline(), '{"jsonrpc":"2.0"}\n')
+
+    def test_stdio_initial_line_sanitizer_handles_powershell_bom_artifacts(self) -> None:
+        expected = '{"jsonrpc":"2.0"}'
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line(f"\ufeff{expected}"), expected)
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line(f"?{expected}"), expected)
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line(f"\ufffd{expected}"), expected)
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line("?not-json"), "?not-json")
 
     def test_main_configures_streamable_http(self) -> None:
         with mock.patch.object(sem_mcp.mcp, "run") as run:
@@ -339,6 +570,50 @@ class TestDistributionManifests(unittest.TestCase):
         ):
             text = (winget_dir / name).read_text(encoding="utf-8")
             self.assertIn(f"PackageVersion: {version}", text, name)
+
+    def test_pyinstaller_version_info_embeds_mcp_bootstrap_metadata(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        version = json.loads((root / "version.json").read_text(encoding="utf-8"))["version"]
+        helper_path = root / "packaging" / "pyinstaller" / "sem_version_info.py"
+        spec = importlib.util.spec_from_file_location("sem_version_info_test", helper_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        rendered = module.render_version_info(version)
+
+        self.assertIn(f"StringStruct('FileVersion', '{version}')", rendered)
+        self.assertIn("StringStruct('Comments', 'MCP stdio server: run sem.exe mcp.", rendered)
+        self.assertIn("First tool call: skills_get names sem-start sem sem-agent", rendered)
+        self.assertIn("StringStruct('McpServerCommand', 'sem.exe mcp')", rendered)
+        self.assertIn("StringStruct('McpServerTransport', 'stdio')", rendered)
+        self.assertIn(
+            'StringStruct(\'McpClientConfig\', \'{"command":"sem.exe","args":["mcp"],'
+            '"cwd":"<project-root>"}\')',
+            rendered,
+        )
+
+    def test_release_workflows_include_mcp_bootstrap_notes(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        required_fragments = (
+            "MCP bootstrap:",
+            "Copy this block into an MCP-aware agent",
+            "Start command: sem.exe mcp",
+            '"args": ["mcp"]',
+            '"cwd": "<project-root>"',
+            'skills_get with names ["sem-start", "sem", "sem-agent"]',
+            "$noteParts += $mcpBootstrapLines",
+        )
+
+        for workflow in (
+            root / ".github" / "workflows" / "release.yml",
+            root / ".github" / "workflows" / "compiler-exe.yml",
+        ):
+            text = workflow.read_text(encoding="utf-8")
+            for fragment in required_fragments:
+                self.assertIn(fragment, text, workflow)
+            self.assertNotIn("$mcpBootstrapLines,", text, workflow)
 
 
 if __name__ == "__main__":
