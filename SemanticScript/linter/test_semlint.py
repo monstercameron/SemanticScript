@@ -5372,6 +5372,891 @@ run widenCall
 
 
 # ==========================================================================
+# SS4308  typeIntegrity.divisionByConstantZero   (cause B6)
+# SS4309  typeIntegrity.shiftCountOutOfRange      (cause B5)
+# ==========================================================================
+
+class TestConstantDivisionOrShiftUb(unittest.TestCase):
+    # ---- SS4308: divide / modulo by a provable constant zero ----
+
+    def test_divide_by_inline_literal_zero_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 0
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4308")[0]
+        self.assertEqual(diagnostic.kind, "typeIntegrity.divisionByConstantZero")
+        self.assertEqual(diagnostic.severity, semlint.Severity.ERROR)
+        self.assertTrue(diagnostic.blocksCompile)
+        self.assertEqual(diagnostic.subjectName, "divideCall")
+
+    def test_modulo_by_inline_literal_zero_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call moduloCall math.moduloInt64
+argument moduloCall left Int64 numeratorValue
+argument moduloCall right Int64 0
+run moduloCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_divide_alias_modInt64_by_zero_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call modCall math.modInt64
+argument modCall left Int64 numeratorValue
+argument modCall right Int64 0
+run modCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_divide_by_domain_literal_zero_is_flagged(self) -> None:
+        # The divisor is a named module constant bound to 0 — resolution must
+        # see through `domainLiteral` exactly like the stdlib uses it.
+        diagnostics = _lint_source("""project Test
+domainLiteral integerZeroDivisor Int64 0
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 integerZeroDivisor
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_divide_by_const_zero_legacy_arg_form_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+const zeroDivisor Int64 0
+call divideCall math.divideInt64
+arg divideCall left numeratorValue
+arg divideCall right zeroDivisor
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_divide_by_nonzero_constant_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+domainLiteral integerTwoBaseValue Int64 2
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 integerTwoBaseValue
+run divideCall
+""")
+        self.assertNotIn("SS4308", _codes(diagnostics))
+
+    def test_divide_by_runtime_value_not_flagged(self) -> None:
+        # A non-constant divisor cannot be proven zero, so this floor pass stays
+        # silent (the dataflow-guard case is tracked separately).
+        diagnostics = _lint_source("""project Test
+operation main
+input operation main divisorInput Int64
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 divisorInput
+run divideCall
+""")
+        self.assertNotIn("SS4308", _codes(diagnostics))
+
+    def test_add_by_zero_not_flagged(self) -> None:
+        # Only sdiv/srem are UB on a zero operand; add/sub/mul are fine.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call addCall math.addInt64
+argument addCall left Int64 numeratorValue
+argument addCall right Int64 0
+run addCall
+""")
+        self.assertNotIn("SS4308", _codes(diagnostics))
+
+    # ---- SS4309: shift count proven outside [0, 63] ----
+
+    def test_shift_left_by_64_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftLeftInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 64
+run shiftCall
+""")
+        self.assertIn("SS4309", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4309")[0]
+        self.assertEqual(diagnostic.kind, "typeIntegrity.shiftCountOutOfRange")
+        self.assertTrue(diagnostic.blocksCompile)
+
+    def test_shift_right_logical_by_negative_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftRightLogicalInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 -1
+run shiftCall
+""")
+        self.assertIn("SS4309", _codes(diagnostics))
+
+    def test_shift_right_arithmetic_by_constant_128_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+domainLiteral shiftCountValue Int64 128
+operation main
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftRightArithmeticInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 shiftCountValue
+run shiftCall
+""")
+        self.assertIn("SS4309", _codes(diagnostics))
+
+    def test_shift_by_63_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftLeftInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 63
+run shiftCall
+""")
+        self.assertNotIn("SS4309", _codes(diagnostics))
+
+    def test_shift_by_zero_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftLeftInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 0
+run shiftCall
+""")
+        self.assertNotIn("SS4309", _codes(diagnostics))
+
+    def test_shift_by_runtime_count_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+input operation main bitIndex Int64
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftLeftInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 bitIndex
+run shiftCall
+""")
+        self.assertNotIn("SS4309", _codes(diagnostics))
+
+    # ---- scope soundness regressions (found in iteration-1 critique) ----
+
+    def test_constant_does_not_leak_across_operations(self) -> None:
+        # `countSlot` is a local immutable 64 in `alpha`; in `beta` the same
+        # name is a runtime input. The constant must not leak into `beta`.
+        diagnostics = _lint_source("""project Test
+operation alpha
+output alpha Void
+purpose alpha "smoke"
+const inputValueAlpha Int64 1
+storage local immutable countSlot Int64 8
+call shiftAlpha math.shiftLeftInt64
+argument shiftAlpha left Int64 inputValueAlpha
+argument shiftAlpha right Int64 countSlot
+run shiftAlpha
+operation beta
+input operation beta countSlot Int64
+output beta Void
+purpose beta "smoke"
+const inputValueBeta Int64 1
+call shiftBeta math.shiftLeftInt64
+argument shiftBeta left Int64 inputValueBeta
+argument shiftBeta right Int64 countSlot
+run shiftBeta
+""")
+        # alpha shifts by constant 8 (in range) -> no diagnostic; beta shifts by
+        # a runtime input -> must NOT be flagged via a leaked constant.
+        self.assertNotIn("SS4309", _codes(diagnostics))
+
+    def test_input_shadowing_module_constant_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable shiftAmount Int64 64
+operation main
+input operation main shiftAmount Int64
+output main Void
+purpose main "smoke"
+const inputValue Int64 1
+call shiftCall math.shiftLeftInt64
+argument shiftCall left Int64 inputValue
+argument shiftCall right Int64 shiftAmount
+run shiftCall
+""")
+        self.assertNotIn("SS4309", _codes(diagnostics))
+
+    def test_local_rebind_shadows_module_constant_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable divisorSlot Int64 0
+operation main
+input operation main userValue Int64
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+bind value divisorSlot Int64 userValue
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 divisorSlot
+run divideCall
+""")
+        self.assertNotIn("SS4308", _codes(diagnostics))
+
+    def test_storage_module_immutable_zero_divisor_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable zeroDivisor Int64 0
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 zeroDivisor
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_transitive_constant_zero_divisor_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+domainLiteral zeroBase Int64 0
+domainLiteral zeroAlias Int64 zeroBase
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 zeroAlias
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_modulo_by_domain_literal_zero_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+domainLiteral integerZeroDivisor Int64 0
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call moduloCall math.moduloInt64
+argument moduloCall left Int64 numeratorValue
+argument moduloCall right Int64 integerZeroDivisor
+run moduloCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_domain_typed_divide_by_zero_is_flagged(self) -> None:
+        # Idiomatic domain-typed arithmetic: `QuotaCount.divide` lowers to
+        # math.divideInt64, so a constant-zero divisor must still be caught.
+        diagnostics = _lint_source("""project Test
+type QuotaCount Int64
+domainLiteral zeroDivisor QuotaCount 0
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue QuotaCount 10
+call divideCall QuotaCount.divide
+argument divideCall left QuotaCount numeratorValue
+argument divideCall right QuotaCount zeroDivisor
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_shared_state_immutable_zero_divisor_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+sharedState module immutable configuredZero Int64 0
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 configuredZero
+run divideCall
+""")
+        self.assertIn("SS4308", _codes(diagnostics))
+
+    def test_shared_state_mutable_divisor_not_flagged(self) -> None:
+        # A mutable shared slot initialized to 0 is reassigned at runtime; its
+        # initializer is not its value at the divide site.
+        diagnostics = _lint_source("""project Test
+sharedState module mutable runningDivisor Int64 0
+operation main
+output main Void
+purpose main "smoke"
+const numeratorValue Int64 10
+call divideCall math.divideInt64
+argument divideCall left Int64 numeratorValue
+argument divideCall right Int64 runningDivisor
+run divideCall
+""")
+        self.assertNotIn("SS4308", _codes(diagnostics))
+
+
+# ==========================================================================
+# Generic semsc <-> semlint security-rule parity harness (capstone Rec 2)
+# ==========================================================================
+#
+# For each security rule, feed the SAME single-file program to BOTH the compiler
+# checks and the linter, and assert they agree — so future drift (like the
+# SS4604 const-chain parity break) is caught mechanically, not by a per-rule
+# spot test. Single-file programs avoid the (documented) cross-module
+# under-report on the import-less linter floor.
+
+class TestSecurityRuleParity(unittest.TestCase):
+    @staticmethod
+    def _compiler_security_codes(source: str) -> set:
+        import os
+        import re as _re
+        import sys as _sys
+        compilerDir = os.path.join(os.path.dirname(_LINTER_DIRECTORY), "compiler")
+        if compilerDir not in _sys.path:
+            _sys.path.insert(0, compilerDir)
+        import semsc  # noqa: E402
+        prog = semsc.parse(source)
+        prog.source_path = "parity_probe.sem"  # non-test path (no floor exemption)
+        diags: list = []
+        for checkName in (
+            "_check_strict_constant_division_or_shift",
+            "_check_strict_insecure_random",
+            "_check_strict_weak_password_hash_cost",
+            "_check_strict_command_string_is_constant",
+            "_check_strict_hardcoded_secret",
+            "_check_strict_sql_string_is_constant",
+            "_check_strict_format_string_is_constant",
+        ):
+            try:
+                getattr(semsc, checkName)(prog, diags)
+            except Exception:
+                pass
+        return {m.group(1) for _ln, msg in diags
+                if (m := _re.match(r"(SS\d+)", msg))}
+
+    # (label, source, code, dual_surface)
+    #   dual_surface=True  -> BOTH compiler and linter must flag it.
+    #   dual_surface=False -> compiler-only by design (no semlint floor rule),
+    #                         a DOCUMENTED asymmetry the harness pins.
+    CASES = [
+        ("divide-by-zero", "\n".join([
+            "project P", "operation main", "output operation main Int64",
+            "purpose operation main \"x\"",
+            "storage module immutable numeratorValue Int64 10",
+            "storage module immutable zeroDivisor Int64 0",
+            "call divideCall math.divideInt64",
+            "argument divideCall left Int64 numeratorValue",
+            "argument divideCall right Int64 zeroDivisor", "run divideCall",
+        ]), "SS4308", True),
+        ("shift-out-of-range", "\n".join([
+            "project P", "operation main", "output operation main Int64",
+            "purpose operation main \"x\"",
+            "storage module immutable inputValue Int64 1",
+            "storage module immutable shiftCountValue Int64 64",
+            "call shiftCall math.shiftLeftInt64",
+            "argument shiftCall left Int64 inputValue",
+            "argument shiftCall right Int64 shiftCountValue", "run shiftCall",
+        ]), "SS4309", True),
+        ("insecure-prng", "\n".join([
+            "project P", "operation main", "output operation main Void",
+            "purpose operation main \"x\"",
+            "call randomCall c.rand", "run randomCall",
+        ]), "SS4601", True),
+        ("weak-bcrypt-cost", "\n".join([
+            "project P", "operation registerUser",
+            "output operation registerUser Void",
+            "purpose operation registerUser \"x\"",
+            "storage local immutable plaintextValue String \"pw\"",
+            "storage module immutable weakCost Int32 4",
+            "call hashCall bcrypt.hashPassword",
+            "argument hashCall plaintext String plaintextValue",
+            "argument hashCall cost Int32 weakCost", "run hashCall",
+        ]), "SS4602", True),
+        ("command-injection", "\n".join([
+            "project P", "operation runShell",
+            "input operation runShell userCommand String",
+            "output operation runShell Void", "purpose operation runShell \"x\"",
+            "call systemCall c.system",
+            "argument systemCall command String userCommand", "run systemCall",
+        ]), "SS4603", True),
+        # Uses the CONST-CHAIN form (secret <- realSecret <- "literal"), not a
+        # direct literal — so this case genuinely guards the BUG-1 parity break
+        # (both surfaces must follow the chain, not just flag a quoted literal).
+        ("hard-coded-secret", "\n".join([
+            "project P", "type ApiKey String", "typeTrust ApiKey secret",
+            "storage module immutable realSecretValue String \"sk-live-abc123\"",
+            "storage module immutable serviceKey ApiKey realSecretValue",
+            "operation main", "output operation main Void",
+            "purpose operation main \"x\"",
+            "call writeCall console.writeLine", "run writeCall",
+        ]), "SS4604", True),
+        # Exercises BOTH resolvers at once: a type-alias of a secret type whose
+        # value is a const-chain to a literal. Must fire on both surfaces.
+        ("alias-secret-via-chain", "\n".join([
+            "project P", "type ApiKey String", "typeTrust ApiKey secret",
+            "type AppSecret ApiKey",
+            "storage module immutable realSecretValue String \"sk-live-xyz\"",
+            "storage module immutable appKey AppSecret realSecretValue",
+            "operation main", "output operation main Void",
+            "purpose operation main \"x\"",
+            "call writeCall console.writeLine", "run writeCall",
+        ]), "SS4604", True),
+        # Compiler-only (no semlint floor rule) — documented asymmetry:
+        ("dynamic-format", "\n".join([
+            "project P", "operation main", "output operation main Void",
+            "purpose operation main \"x\"",
+            "storage module mutable runtimeFormat String \"\"",
+            "call writeCall c.snprintf",
+            "argument writeCall format String runtimeFormat", "run writeCall",
+        ]), "SS3310", False),
+    ]
+
+    def test_compiler_and_linter_agree_per_rule(self) -> None:
+        for label, source, code, dualSurface in self.CASES:
+            compilerCodes = self._compiler_security_codes(source)
+            linterCodes = set(_codes(_lint_source(source)))
+            self.assertIn(code, compilerCodes,
+                          f"{label}: compiler must flag {code}")
+            if dualSurface:
+                self.assertIn(code, linterCodes,
+                              f"{label}: linter must flag {code} (semsc<->semlint parity)")
+            else:
+                self.assertNotIn(code, linterCodes,
+                                 f"{label}: {code} is compiler-only by design "
+                                 f"(no semlint floor rule) — update this harness "
+                                 f"if a linter rule is added")
+
+
+# ==========================================================================
+# SS4601  security.insecurePseudoRandom   (cause G2 / CWE-338)
+# ==========================================================================
+
+class TestInsecurePseudoRandom(unittest.TestCase):
+    def test_c_rand_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call randomCall c.rand
+run randomCall
+""")
+        self.assertIn("SS4601", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4601")[0]
+        self.assertEqual(diagnostic.kind, "security.insecurePseudoRandom")
+        self.assertEqual(diagnostic.severity, semlint.Severity.WARNING)
+        self.assertFalse(diagnostic.blocksCompile)
+        # Fix steers to the portable platform CSPRNG, not the Windows-only rand_s.
+        self.assertIn("bcrypt.randomBytes", diagnostic.fixCandidates[0].shape)
+
+    def test_c_srand_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+const seedValue UInt32 1
+call seedCall c.srand
+argument seedCall seed UInt32 seedValue
+run seedCall
+""")
+        self.assertIn("SS4601", _codes(diagnostics))
+
+    def test_c_random_posix_family_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call randomCall c.random
+run randomCall
+""")
+        self.assertIn("SS4601", _codes(diagnostics))
+
+    def test_csprng_rand_s_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call secureCall c.rand_s
+run secureCall
+""")
+        self.assertNotIn("SS4601", _codes(diagnostics))
+
+    def test_linter_and_compiler_insecure_random_sets_match(self) -> None:
+        # Parity guard: the advisory floor and the strict wall must flag exactly
+        # the same target set (an iteration-2/3 critique theme — wall/floor drift
+        # is a real bug class). Import the compiler set and compare.
+        import os
+        import sys
+        compilerDir = os.path.join(
+            os.path.dirname(_LINTER_DIRECTORY), "compiler")
+        if compilerDir not in sys.path:
+            sys.path.insert(0, compilerDir)
+        import semsc  # noqa: E402
+        self.assertEqual(
+            set(semlint.INSECURE_PSEUDORANDOM_TARGETS),
+            set(semsc._STRICT_INSECURE_RANDOM_TARGETS.keys()),
+        )
+
+    def test_no_random_call_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertNotIn("SS4601", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS4604  security.hardCodedSecret   (cause E6 / CWE-798)
+# ==========================================================================
+
+class TestHardCodedSecret(unittest.TestCase):
+    def test_secret_typed_literal_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+type ApiSecret String
+typeTrust ApiSecret secret
+storage module immutable serviceApiSecret ApiSecret "sk-live-abcdef123456"
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertIn("SS4604", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4604")[0]
+        self.assertEqual(diagnostic.kind, "security.hardCodedSecret")
+        self.assertEqual(diagnostic.severity, semlint.Severity.WARNING)
+        self.assertEqual(diagnostic.subjectName, "serviceApiSecret")
+
+    def test_mutable_secret_typed_literal_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+type SigningSecret String
+typeTrust SigningSecret secret
+storage module mutable cachedSecret SigningSecret "hardcoded-value"
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertIn("SS4604", _codes(diagnostics))
+
+    def test_empty_sentinel_not_flagged(self) -> None:
+        # The good pattern: empty sentinel filled from env at runtime.
+        diagnostics = _lint_source("""project Test
+type SigningSecret String
+typeTrust SigningSecret secret
+storage module mutable cachedSecret SigningSecret ""
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertNotIn("SS4604", _codes(diagnostics))
+
+    def test_non_secret_typed_literal_not_flagged(self) -> None:
+        # A plain String literal (no typeTrust secret) is not a credential.
+        diagnostics = _lint_source("""project Test
+storage module immutable fieldPassword String "password"
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertNotIn("SS4604", _codes(diagnostics))
+
+    def test_alias_of_secret_type_literal_is_flagged(self) -> None:
+        # `type AppSecret ApiKey` (alias of a secret type) must inherit
+        # secret-ness — closing the iteration-7 critique BUG 2 alias evasion.
+        diagnostics = _lint_source("""project Test
+type ApiKey String
+typeTrust ApiKey secret
+type AppSecret ApiKey
+storage module immutable leakedKey AppSecret "super-secret-prod-key-12345"
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertIn("SS4604", _codes(diagnostics))
+
+    def test_sharedstate_secret_typed_literal_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+type ApiKey String
+typeTrust ApiKey secret
+sharedState module mutable leakedKey ApiKey "hardcoded-shared-secret"
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertIn("SS4604", _codes(diagnostics))
+
+    def test_secret_via_const_chain_is_flagged(self) -> None:
+        # Parity with the compiler (capstone BUG 1): a secret bound to another
+        # constant that resolves to a non-empty literal is still hard-coded.
+        diagnostics = _lint_source("""project Test
+type ApiKey String
+typeTrust ApiKey secret
+storage module immutable realSecretValue String "super-secret-prod-key"
+storage module immutable apiSigningKey ApiKey realSecretValue
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertIn("SS4604", _codes(diagnostics))
+
+    def test_secret_bound_to_mutable_sentinel_by_name_not_flagged(self) -> None:
+        # A secret referencing a runtime-filled mutable sentinel by name is the
+        # good pattern (not a source literal) — must NOT be a false positive.
+        diagnostics = _lint_source("""project Test
+type ApiKey String
+typeTrust ApiKey secret
+storage module mutable runtimeFilledKey ApiKey ""
+storage module immutable aliasOfRuntimeKey ApiKey runtimeFilledKey
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertNotIn("SS4604", _codes(diagnostics))
+
+    def test_trusted_typed_literal_not_flagged(self) -> None:
+        # typeTrust other than `secret` must not be flagged.
+        diagnostics = _lint_source("""project Test
+type PublicToken String
+typeTrust PublicToken trusted
+storage module immutable publicToken PublicToken "pub-123"
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertNotIn("SS4604", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS4603  security.shellCommandNotConstant   (cause D2/D3 / CWE-78)
+# ==========================================================================
+
+class TestShellCommandNotConstant(unittest.TestCase):
+    def test_runtime_command_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation runShell
+input operation runShell userCommand String
+output runShell Void
+purpose runShell "smoke"
+call systemCall c.system
+argument systemCall command String userCommand
+run systemCall
+""")
+        self.assertIn("SS4603", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4603")[0]
+        self.assertEqual(diagnostic.kind, "security.shellCommandNotConstant")
+        self.assertEqual(diagnostic.severity, semlint.Severity.WARNING)
+
+    def test_bind_result_command_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation runShell
+output runShell Void
+purpose runShell "smoke"
+storage local immutable templateValue String "echo %s"
+storage local immutable userValue String "x"
+call buildCall string.format
+argument buildCall template String templateValue
+argument buildCall value String userValue
+run buildCall
+bind value builtCommand String buildCall
+call systemCall c.system
+argument systemCall command String builtCommand
+run systemCall
+""")
+        self.assertIn("SS4603", _codes(diagnostics))
+
+    def test_constant_command_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable listCommand String "ls -la"
+operation runShell
+output runShell Void
+purpose runShell "smoke"
+call systemCall c.system
+argument systemCall command String listCommand
+run systemCall
+""")
+        self.assertNotIn("SS4603", _codes(diagnostics))
+
+    def test_inline_literal_command_not_flagged(self) -> None:
+        # The canonical safe form `c.system("ls -la")` (inline string literal)
+        # must NOT be flagged (iteration-6 critique BUG #1).
+        diagnostics = _lint_source("""project Test
+operation runShell
+output runShell Void
+purpose runShell "smoke"
+call systemCall c.system
+argument systemCall command String "ls -la"
+run systemCall
+""")
+        self.assertNotIn("SS4603", _codes(diagnostics))
+
+    def test_no_system_call_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+call writeCall console.writeLine
+run writeCall
+""")
+        self.assertNotIn("SS4603", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS4602  security.weakPasswordHashCost   (cause G9 / CWE-916)
+# ==========================================================================
+
+class TestWeakPasswordHashCost(unittest.TestCase):
+    def _hash_with_cost(self, cost_decl: str, cost_ref: str) -> list:
+        return _codes(_lint_source(f"""project Test
+{cost_decl}
+operation registerUser
+output registerUser Void
+purpose registerUser "smoke"
+storage local immutable plaintextValue String "pw"
+storage local immutable bufferCapacity Int32 61
+call hashCall bcrypt.hashPassword
+argument hashCall plaintext String plaintextValue
+argument hashCall cost Int32 {cost_ref}
+argument hashCall outCapacity Int32 bufferCapacity
+run hashCall
+"""))
+
+    def test_constant_cost_four_is_flagged(self) -> None:
+        codes = self._hash_with_cost("storage module immutable weakCost Int32 4", "weakCost")
+        self.assertIn("SS4602", codes)
+
+    def test_inline_cost_below_floor_is_flagged(self) -> None:
+        # cost 9 is below the floor of 10
+        diagnostics = _lint_source("""project Test
+operation registerUser
+output registerUser Void
+purpose registerUser "smoke"
+storage local immutable plaintextValue String "pw"
+call hashCall bcrypt.hashPassword
+argument hashCall plaintext String plaintextValue
+argument hashCall cost Int32 9
+run hashCall
+""")
+        self.assertIn("SS4602", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4602")[0]
+        self.assertEqual(diagnostic.kind, "security.weakPasswordHashCost")
+        self.assertEqual(diagnostic.severity, semlint.Severity.WARNING)
+        self.assertIn("bcryptRecommendedCost", diagnostic.fixCandidates[0].shape)
+
+    def test_cost_at_floor_ten_not_flagged(self) -> None:
+        codes = self._hash_with_cost("storage module immutable okCost Int32 10", "okCost")
+        self.assertNotIn("SS4602", codes)
+
+    def test_recommended_cost_twelve_not_flagged(self) -> None:
+        codes = self._hash_with_cost("storage module immutable recCost Int32 12", "recCost")
+        self.assertNotIn("SS4602", codes)
+
+    def test_runtime_cost_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation registerUser
+input operation registerUser chosenCost Int32
+output registerUser Void
+purpose registerUser "smoke"
+storage local immutable plaintextValue String "pw"
+call hashCall bcrypt.hashPassword
+argument hashCall plaintext String plaintextValue
+argument hashCall cost Int32 chosenCost
+run hashCall
+""")
+        self.assertNotIn("SS4602", _codes(diagnostics))
+
+    def test_missing_cost_arg_is_flagged(self) -> None:
+        # Omitting `cost` must not slip past the check (CWE-916: unspecified
+        # work factor) — closes the iteration-4 critique evasion.
+        diagnostics = _lint_source("""project Test
+operation registerUser
+output registerUser Void
+purpose registerUser "smoke"
+storage local immutable plaintextValue String "pw"
+call hashCall bcrypt.hashPassword
+argument hashCall plaintext String plaintextValue
+run hashCall
+""")
+        self.assertIn("SS4602", _codes(diagnostics))
+        diagnostic = _diagnostics_with_code(diagnostics, "SS4602")[0]
+        self.assertEqual(diagnostic.intentSlogan, "bcrypt missing cost factor")
+
+    def test_user_op_named_hashPassword_not_misclassified(self) -> None:
+        # A user operation literally named `hashPassword` that takes a `cost`
+        # must NOT be treated as the bcrypt intrinsic (iteration-4 critique BUG 1).
+        diagnostics = _lint_source("""project Test
+operation hashPassword
+input operation hashPassword cost Int32
+output hashPassword Void
+purpose hashPassword "unrelated user op that happens to take a cost"
+storage local immutable noteValue String "x"
+operation caller
+output caller Void
+purpose caller "smoke"
+storage local immutable cheapCost Int32 3
+call doItCall hashPassword
+argument doItCall cost Int32 cheapCost
+run doItCall
+""")
+        self.assertNotIn("SS4602", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS4302  typeIntegrity.enumReturnUsesRawValue
 # ==========================================================================
 

@@ -4037,6 +4037,28 @@ _STRICT_FORBIDDEN_CALL_TARGETS_WITH_ADVICE = {
     ),
 }
 
+# Non-cryptographic pseudo-random sources (CWE-338). The libc PRNG family
+# (`rand`/`srand` and the POSIX `random`/`drand48` relatives) are deterministic
+# generators seeded from a small space — predictable, so never appropriate for
+# tokens, keys, nonces, salts, or session identifiers. The portable replacement
+# already ships in the std: `bcrypt.randomBytes` (BCryptGenRandom on Windows,
+# getrandom(2)/`/dev/urandom` on POSIX). Strict executable refuses these.
+#
+# Only `rand`/`srand` are wired in libc_registry today; the rest are listed so
+# that if any is added to the registry later it is automatically covered (a
+# target absent from the registry simply never reaches codegen). The advice is
+# uniform: route security-sensitive randomness through `bcrypt.randomBytes`.
+_INSECURE_RANDOM_ADVICE = ("use `bcrypt.randomBytes` (the platform CSPRNG that "
+                           "already ships in standard.bcrypt) for any "
+                           "security-sensitive value")
+# Derived from the single source of truth in libc_registry so adding a PRNG
+# symbol there automatically covers it here (closes the iteration-3 critique's
+# brittle-allowlist note). The semlint floor mirrors this set under a parity test.
+_STRICT_INSECURE_RANDOM_TARGETS = {
+    "c." + symbol: _INSECURE_RANDOM_ADVICE
+    for symbol in libc_registry.INSECURE_PRNG_SYMBOLS
+}
+
 _STRICT_CONSTANT_FORMAT_TARGETS = frozenset({
     "c.snprintf",
     "c.printf",
@@ -5851,6 +5873,7 @@ class Codegen:
 
     # ---------- entry ----------
     def compile(self):
+        validate_security_floor(self.prog)
         validate_strict_executable(self.prog)
         # Emit mutable module globals first so any operation body that
         # reads or writes one sees the LLVM global already in scope.
@@ -14422,6 +14445,320 @@ def _strict_raise_first_forbidden_target(prog: Program, diags) -> None:
     )
 
 
+def _check_strict_insecure_random(prog: Program, diags) -> None:
+    """SS4601 — reject non-cryptographic PRNG targets (c.rand/c.srand/c.random,
+    CWE-338). Predictable randomness must never back security-sensitive values."""
+    for op_name, op in prog.operations.items():
+        for verb, args, lineno in op.lines:
+            if verb != "call" or len(args) < 2:
+                continue
+            call_name, target = args[0], args[1]
+            canonical = _strict_target(prog, target)
+            advice = (_STRICT_INSECURE_RANDOM_TARGETS.get(canonical)
+                      or _STRICT_INSECURE_RANDOM_TARGETS.get(target))
+            if advice is None:
+                continue
+            diags.append((lineno,
+                f"SS4601 insecurePseudoRandom: operation `{op_name}` declares "
+                f"`call {call_name} {target}`, a non-cryptographic PRNG "
+                f"(CWE-338); {advice}"))
+
+
+def _strict_raise_first_insecure_random(prog: Program, diags) -> None:
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code="SS4601",
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable insecure-random validation",
+                span=span,
+                note=("`languageMode strictExecutable` forbids predictable "
+                      "pseudo-random sources for any value"),
+            ),
+        ],
+        direction=("Strict executable rejects the non-cryptographic libc PRNG "
+                   "family (rand/srand/random/drand48/...); predictable "
+                   "randomness is a CWE-338 vulnerability when it backs tokens, "
+                   "keys, nonces, or salts."),
+        suggested_fixes=["fill a buffer with `bcrypt.randomBytes` (platform "
+                         "CSPRNG) and derive the value from those bytes"],
+        agent_hint=("libc rand/srand/random are deterministic generators; use "
+                    "`bcrypt.randomBytes` for anything security-sensitive"),
+    ))
+
+
+# bcrypt password-hash work-factor floor (CWE-916). `bcrypt.hashPassword` is by
+# definition password hashing; a cost below this floor is brute-forceable. The
+# module's `bcryptRecommendedCost` is 12; the OWASP-ASVS floor is 10.
+#
+_STRICT_PASSWORD_HASH_TARGET = "bcrypt.hashPassword"
+_STRICT_SECURE_BCRYPT_COST_FLOOR = 10
+
+
+def _is_bcrypt_hash_target(prog: Program, raw_target: str) -> bool:
+    """True iff a call target is the bcrypt.hashPassword intrinsic, in either its
+    qualified (`bcrypt.hashPassword`) or singular-import-flattened (bare
+    `hashPassword`) spelling — but NOT a user operation literally named
+    `hashPassword` (which lives in `prog.operations`). Matching only the
+    qualified form (the iteration-4 false-positive fix) silently missed the bare
+    form that import flattening produces, leaving SS4602 inert on the normal
+    imported-bcrypt path; this restores it without re-introducing the FP."""
+    for candidate in (raw_target, _strict_target(prog, raw_target)):
+        if candidate == "bcrypt.hashPassword":
+            return True
+        if candidate == "hashPassword" and "hashPassword" not in prog.operations:
+            return True
+    return False
+
+
+def _check_strict_weak_password_hash_cost(prog: Program, diags) -> None:
+    """SS4602 — `bcrypt.hashPassword` must declare an explicit, adequate work
+    factor (CWE-916). Flags both a missing `cost` argument (which otherwise
+    slips past validation and only fails later as an opaque codegen error) and a
+    provable constant cost below the security floor."""
+    for op_name, op in prog.operations.items():
+        constants = _strict_operation_int_constants(prog, op)
+        call_targets = _strict_call_target_map(op)
+        cost_value_by_call = {}
+        cost_line_by_call = {}
+        for verb, args, lineno in op.lines:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is not None and arg_parts[1] == "cost":
+                cost_value_by_call[arg_parts[0]] = arg_parts[2]
+                cost_line_by_call[arg_parts[0]] = lineno
+        for call_name, (raw_target, call_line) in call_targets.items():
+            if not _is_bcrypt_hash_target(prog, raw_target):
+                continue
+            cost_value = cost_value_by_call.get(call_name)
+            if cost_value is None:
+                # Missing `cost` — closes the evasion where omitting the arg
+                # skipped this check entirely. (Codegen would still reject the
+                # malformed call with a coded SSCG002, but only after passing
+                # validation; this is the earlier, CWE-tagged security signal,
+                # and via the security floor it blocks the default build too.)
+                diags.append((call_line,
+                    f"SS4602 weakPasswordHashCost: in operation `{op_name}`, call "
+                    f"`{call_name}` (bcrypt.hashPassword) is missing the required "
+                    f"`cost` argument; bcrypt needs an explicit work factor "
+                    f"(use `bcryptRecommendedCost` = 12, CWE-916)."))
+                continue
+            resolved = _strict_resolve_int(cost_value, constants)
+            if resolved is None or resolved >= _STRICT_SECURE_BCRYPT_COST_FLOOR:
+                continue
+            diags.append((cost_line_by_call[call_name],
+                f"SS4602 weakPasswordHashCost: in operation `{op_name}`, call "
+                f"`{call_name}` (bcrypt.hashPassword) uses cost {resolved}, below "
+                f"the security floor of {_STRICT_SECURE_BCRYPT_COST_FLOOR} "
+                f"(CWE-916); use `bcryptRecommendedCost` (12)."))
+
+
+def _strict_raise_first_weak_password_hash_cost(prog: Program, diags) -> None:
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code="SS4602",
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable password-hash work-factor validation",
+                span=span,
+                note=("`languageMode strictExecutable` requires a production "
+                      "bcrypt work factor"),
+            ),
+        ],
+        direction=("Strict executable rejects a bcrypt cost below the security "
+                   "floor; a low work factor is a CWE-916 brute-force exposure."),
+        suggested_fixes=["set the cost to `bcryptRecommendedCost` (12), or a "
+                         "higher application-policy constant"],
+        agent_hint=("bcrypt cost is a work factor; production code must use "
+                    "bcryptRecommendedCost (12), not a low constant"),
+    ))
+
+
+# OS command-execution targets (CWE-78). `c.system` hands its argument to a
+# shell; if any part is runtime/untrusted data it is command injection. There is
+# no safe shell-parameterization in this toolchain, so the command must be a
+# compile-time-constant string (a module/op-local immutable) — never built from
+# input, a mutable slot, or a bind result. Mirrors the SQL-must-be-constant rule.
+_STRICT_COMMAND_EXEC_TARGETS = frozenset({"c.system"})
+
+
+def _check_strict_command_string_is_constant(prog: Program, diags) -> None:
+    """SS4603 — `c.system` (and any shell-exec target) must take a compile-time
+    constant command string; a runtime/untrusted command is OS command injection
+    (CWE-78)."""
+    for op_name, op in prog.operations.items():
+        constants = _strict_operation_int_constants(prog, op)  # immutable names in scope
+        call_targets = _strict_call_target_map(op)
+        arg_values: dict = {}
+        for verb, args, lineno in op.lines:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is not None:
+                arg_values.setdefault(arg_parts[0], []).append(
+                    (arg_parts[1], arg_parts[2], lineno))
+        for call_name, (raw_target, _line) in call_targets.items():
+            if _strict_target(prog, raw_target) not in _STRICT_COMMAND_EXEC_TARGETS:
+                continue
+            for arg_name, value, lineno in arg_values.get(call_name, []):
+                # An inline string/typed literal is represented as a tuple
+                # (e.g. ('str','ls -la')) — that IS a compile-time constant, so
+                # `c.system("ls -la")` is allowed. Only a bare name that is not a
+                # resolvable immutable constant (a runtime binding / input /
+                # written-mutable) is the injection risk.
+                if isinstance(value, tuple):
+                    continue
+                if value in constants:
+                    continue
+                diags.append((lineno,
+                    f"SS4603 shellCommandNotConstant: in operation `{op_name}`, "
+                    f"call `{call_name}` passes `{value}` to `c.system`; the "
+                    f"command must be a compile-time-constant string (a literal "
+                    f"or module/op-local immutable), never runtime/untrusted data "
+                    f"(OS command injection, CWE-78)."))
+                break
+
+
+def _strict_raise_first_command_injection(prog: Program, diags) -> None:
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code="SS4603",
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable command-injection validation",
+                span=span,
+                note=("`languageMode strictExecutable` forbids passing runtime "
+                      "data to a shell"),
+            ),
+        ],
+        direction=("Strict executable rejects a non-constant `c.system` command; "
+                   "untrusted data in a shell command is CWE-78. There is no safe "
+                   "shell-parameterization — keep the command a static constant."),
+        suggested_fixes=["declare the command as a `storage module immutable "
+                         "<name> String \"...\"` and pass that, or avoid c.system"],
+        agent_hint=("never build a shell command from input/runtime values; pass "
+                    "a compile-time-constant string to c.system, or do not shell out"),
+    ))
+
+
+def _strict_secret_trust_types(prog: Program) -> set:
+    """Types declared `typeTrust <T> secret` — values of these must never be
+    embedded as a source literal (CWE-798). Empty-string sentinels filled at
+    runtime (e.g. `storage module mutable cachedJwtSigningSecret JwtSecret ""`)
+    are the legitimate pattern and are allowed."""
+    return {
+        type_name
+        for type_name, meta in prog.type_metadata.items()
+        if "secret" in meta.get("trust", [])
+    }
+
+
+def _strict_type_chain_is_secret(prog: Program, type_name: str, base_secret: set) -> bool:
+    """True if `type_name`, or any type it aliases through, has typeTrust secret.
+    Walks `prog.type_aliases` step by step (NOT `resolve_alias`, which overshoots
+    to the primitive head and would miss an intermediate secret type). Closes the
+    `type AppSecret JwtSecret` alias evasion."""
+    seen: set = set()
+    current = type_name
+    while current is not None and current not in seen:
+        if current in base_secret:
+            return True
+        seen.add(current)
+        alias = prog.type_aliases.get(current)
+        current = alias[0] if alias else None
+    return False
+
+
+def _strict_resolve_const_chain(prog: Program, value):
+    """Follow a const-name chain to its ultimate compile-time value. A secret slot
+    bound to another constant (`secretB <- secretA <- "lit"`) is still hard-coded;
+    a slot bound to an empty sentinel resolves to "" and is correctly allowed."""
+    seen: set = set()
+    current = value
+    for _ in range(8):
+        if not isinstance(current, str) or current in seen:
+            return current
+        entry = prog.consts.get(current)
+        if entry is None:
+            return current
+        seen.add(current)
+        current = entry[1]
+    return current
+
+
+def _check_strict_hardcoded_secret(prog: Program, diags) -> None:
+    """SS4604 — a non-empty compile-time value bound to a secret-trust-typed
+    storage/sharedState/memory slot is a hard-coded credential (CWE-798). The
+    secret must come from the environment / secure config (`c.getenv` /
+    `process.environment`), not source. Iterating `prog.consts` covers all
+    declaration kinds (storage/sharedState/memory/domainLiteral) — not just the
+    `storage` verb."""
+    base_secret = _strict_secret_trust_types(prog)
+    if not base_secret:
+        return
+    line_by_name = {d["name"]: d["line"] for d in prog.storage_declarations}
+    for name, entry in prog.consts.items():
+        # Import flattening puts BOTH the qualified (`mod.secret`) and unqualified
+        # (`secret`) name into prog.consts; report only the unqualified twin so a
+        # single secret yields a single advisory (no double-fire).
+        if "." in name and name.rsplit(".", 1)[-1] in prog.consts:
+            continue
+        declared_type, value = entry[0], entry[1]
+        if not _strict_type_chain_is_secret(prog, declared_type, base_secret):
+            continue
+        resolved = _strict_resolve_const_chain(prog, value)
+        if not isinstance(resolved, str) or resolved == "":
+            continue  # empty sentinel filled at runtime — the good pattern
+        diags.append((line_by_name.get(name, 0),
+            f"SS4604 hardCodedSecret: `{name}` ({declared_type}, typeTrust "
+            f"secret) is bound to a non-empty compile-time value; a hard-coded "
+            f"credential is CWE-798. Load it from the environment (`c.getenv`) "
+            f"or secure config at runtime, never from source."))
+
+
+def _strict_raise_first_hardcoded_secret(prog: Program, diags) -> None:
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    span = _strict_span(prog, lineno)
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code="SS4604",
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable hard-coded-secret validation",
+                span=span,
+                note=("`languageMode strictExecutable` forbids embedding a "
+                      "secret-trust-typed value as a source literal"),
+            ),
+        ],
+        direction=("Strict executable rejects a hard-coded credential (CWE-798); "
+                   "a secret-trust-typed value must be loaded at runtime from the "
+                   "environment or secure config, never written in source."),
+        suggested_fixes=["declare an empty sentinel (`... <SecretType> \"\"`) and "
+                         "fill it at runtime from `c.getenv` / process.environment"],
+        agent_hint=("never put a real secret in source; read it from the "
+                    "environment into a secret-typed slot at runtime"),
+    ))
+
+
 def _check_strict_format_string_is_constant(prog: Program, diags) -> None:
     """SS3310 — c.snprintf / c.printf / c.fprintf / c.sprintf-family
     `format` arg must reference a `storage * immutable
@@ -15418,6 +15755,243 @@ def _strict_raise_first_shared_state(prog: Program, diags) -> None:
     )
 
 
+# Integer divide/modulo (sdiv/srem) and shift targets, plus short aliases.
+# These mirror the semlint SS4308/SS4309 floor; here they are *compile-blocking*
+# under `languageMode strictExecutable`.
+_STRICT_DIVISION_INT64_TARGETS = frozenset({
+    "math.divideInt64", "math.moduloInt64",
+    "math.divInt64", "math.modInt64",
+})
+_STRICT_SHIFT_INT64_TARGETS = frozenset({
+    "math.shiftLeftInt64",
+    "math.shiftRightLogicalInt64",
+    "math.shiftRightArithmeticInt64",
+})
+
+
+def _strict_is_int_literal(token: str) -> bool:
+    if not isinstance(token, str):
+        return False
+    stripped = token.lstrip("-")
+    return bool(stripped) and stripped.isdigit()
+
+
+def _strict_resolve_arith_target(prog: Program, raw_target: str) -> str:
+    """Resolve a call target to its underlying integer math primitive, including
+    domain-typed methods (`QuotaCount.divide` -> `math.divideInt64`) and enum
+    methods. Mirrors the codegen resolution in `_compile_body` so the strict
+    arithmetic-UB wall sees through the idiomatic domain-typed surface — without
+    this, `Type.divide` by a constant zero lowers to sdiv but evades SS4308."""
+    target = _strict_target(prog, raw_target)
+    if target in _BINOP_TO_LLVM or "." not in target or target.startswith("c."):
+        return target
+    type_part, method_part = target.split(".", 1)
+    enum_repr = enum_repr_type(prog, type_part)
+    if enum_repr is not None:
+        table = (_DOMAIN_METHOD_TO_Int64_PRIMITIVE if enum_repr == "Int64"
+                 else _DOMAIN_METHOD_TO_Int32_PRIMITIVE)
+        return table.get(method_part, target)
+    underlying = resolve_alias(prog, type_part)
+    if underlying == "Int64" and method_part in _DOMAIN_METHOD_TO_Int64_PRIMITIVE:
+        return _DOMAIN_METHOD_TO_Int64_PRIMITIVE[method_part]
+    if underlying == "Int32" and method_part in _DOMAIN_METHOD_TO_Int32_PRIMITIVE:
+        return _DOMAIN_METHOD_TO_Int32_PRIMITIVE[method_part]
+    # Float64 divide-by-zero is defined (inf/nan), not UB, so it is intentionally
+    # not mapped into the integer division target set here.
+    return target
+
+
+def _strict_arith_rebound_name(verb: str, args: list):
+    """The local name introduced/reassigned by this row (so a same-named module
+    constant must not be trusted inside the operation). Mirrors the semlint
+    resolver: `input` / `bind` / `set memory|storage` / mutable slot."""
+    if verb == "input":
+        if len(args) >= 4 and args[0] == "operation":
+            return args[2]
+        if len(args) >= 3:
+            return args[1]
+        return None
+    if verb == "bind":
+        if len(args) >= 4 and args[0] in ("value", "ok", "error"):
+            return args[1]
+        if len(args) >= 3:
+            return args[0]
+        return None
+    if verb in ("bindOk", "bindError") and len(args) >= 3:
+        return args[0]
+    if verb == "set" and len(args) >= 2 and args[0] in ("memory", "storage"):
+        return args[1]
+    if verb in ("storage", "memory") and len(args) >= 4 and args[1] == "mutable":
+        return args[2]
+    return None
+
+
+def _strict_program_written_names(prog: Program) -> set:
+    """Every name that is the target of a `set memory|storage|sharedState` row
+    anywhere in the program. A mutable global that is NEVER written is
+    effectively constant at its initializer — so it must be resolved like a
+    constant (closing the `storage module mutable X 0` never-written divide-by-
+    zero evasion). A mutable global that IS written is genuinely runtime.
+
+    Memoized per-Program: the security checks call this once per operation per
+    rule, but the answer is a whole-program property, so we compute the
+    O(lines) scan once per build instead of O(ops x rules) times.
+
+    INVARIANT (load-bearing for cache correctness): operation `.lines` are frozen
+    once parsing completes. The cache is populated at first validation (after
+    parse + import inlining) and reused through codegen, which only READS lines.
+    If a future lowering pass ever rewrites `operation.lines` in place, it MUST
+    invalidate `prog._written_names_cache` (or this returns a stale set and a
+    newly-written mutable divisor/cost could be misjudged as constant)."""
+    cached = getattr(prog, "_written_names_cache", None)
+    if cached is not None:
+        return cached
+    written: set = set()
+    for operation in prog.operations.values():
+        for verb, args, _lineno in operation.lines:
+            if verb == "set" and len(args) >= 2 and args[0] in (
+                    "memory", "storage", "sharedState"):
+                written.add(args[1])
+    try:
+        prog._written_names_cache = written
+    except Exception:
+        pass  # if Program forbids attrs, correctness is unaffected — just slower
+    return written
+
+
+def _strict_operation_int_constants(prog: Program, op: Operation) -> dict:
+    """name -> integer value for every *immutable* constant resolvable inside
+    this operation: module-scope `prog.consts` (minus mutable globals that are
+    actually written) plus the op's own immutable `storage`/`memory`/
+    `domainLiteral`/`const` rows, minus any name the op rebinds.
+
+    A mutable global that is never the target of a `set` is treated as the
+    constant it effectively is (so `storage module mutable X Int64 0` used as a
+    divisor is still caught). Mostly mirrors the semlint resolver, with one known
+    divergence: `prog.consts` already has *imported* `exportConstant`s inlined,
+    so the wall resolves e.g. an imported `bcryptMinimumCost`; the linter floor
+    scans only the file's own lines and conservatively misses imported constants
+    (an advisory under-report, never a false block). The wall is binding."""
+    written = _strict_program_written_names(prog)
+    constants: dict = {}
+    for name, (typ, value) in prog.consts.items():
+        if name in prog.mutable_globals and name in written:
+            continue  # genuinely runtime-mutated — not a constant
+        constants[name] = value
+    rebound = set()
+    for verb, args, _lineno in op.lines:
+        if verb in ("domainLiteral", "const", "literal") and len(args) >= 3:
+            constants[args[0]] = args[2]
+            continue
+        if verb == "storage" and len(args) >= 5 and args[1] == "immutable":
+            constants[args[2]] = args[4]
+            continue
+        if verb == "memory" and len(args) >= 5 and args[1] == "immutable":
+            constants[args[2]] = args[4]
+            continue
+        reboundName = _strict_arith_rebound_name(verb, args)
+        if reboundName is not None:
+            rebound.add(reboundName)
+    for name in rebound:
+        constants.pop(name, None)
+    return constants
+
+
+def _strict_resolve_int(value_name: str, constants: dict):
+    """Resolve an operand to a concrete int via a bounded constant alias chain,
+    or None when it is not a provable constant (runtime binding, opaque)."""
+    seen = set()
+    current = value_name
+    for _ in range(8):
+        if _strict_is_int_literal(current):
+            return int(current)
+        if current in seen or current not in constants:
+            return None
+        seen.add(current)
+        current = constants[current]
+    return None
+
+
+def _check_strict_constant_division_or_shift(prog: Program, diags) -> None:
+    """SS4308 / SS4309 — compile-blocking arithmetic UB:
+
+      * SS4308 divisionByConstantZero — `math.divideInt64`/`moduloInt64` whose
+        `right` divisor resolves to a provable constant 0 (sdiv/srem by 0 is UB).
+      * SS4309 shiftCountOutOfRange — a shift whose `right` count resolves to a
+        provable constant outside [0, 63] (LLVM poison).
+
+    Provable-constant only, so runtime/guarded operands are never flagged here.
+    """
+    for op_name, op in prog.operations.items():
+        constants = _strict_operation_int_constants(prog, op)
+        call_targets = _strict_call_target_map(op)
+        right_value_by_call = {}
+        right_line_by_call = {}
+        for verb, args, lineno in op.lines:
+            arg_parts = _strict_argument_parts(verb, args)
+            if arg_parts is not None and arg_parts[1] == "right":
+                right_value_by_call[arg_parts[0]] = arg_parts[2]
+                right_line_by_call[arg_parts[0]] = lineno
+        for call_name, (raw_target, _call_line) in call_targets.items():
+            divisor = right_value_by_call.get(call_name)
+            if divisor is None:
+                continue
+            target = _strict_resolve_arith_target(prog, raw_target)
+            resolved = _strict_resolve_int(divisor, constants)
+            lineno = right_line_by_call[call_name]
+            if target in _STRICT_DIVISION_INT64_TARGETS and resolved == 0:
+                diags.append((lineno,
+                    f"SS4308 divisionByConstantZero: in operation `{op_name}`, "
+                    f"call `{call_name}` (target `{target}`) divides by "
+                    f"`{divisor}` which is the constant 0; LLVM sdiv/srem by 0 "
+                    f"is undefined behavior. Guard the divisor or change it."))
+            elif (target in _STRICT_SHIFT_INT64_TARGETS and resolved is not None
+                  and not (0 <= resolved <= 63)):
+                diags.append((lineno,
+                    f"SS4309 shiftCountOutOfRange: in operation `{op_name}`, "
+                    f"call `{call_name}` (target `{target}`) shifts by "
+                    f"`{divisor}` = {resolved}; shift counts must be in [0, 63] "
+                    f"(a count outside that range is LLVM poison). Mask with & 63."))
+
+
+def _strict_raise_first_constant_arith_ub(prog: Program, diags) -> None:
+    if not diags:
+        return
+    lineno, message = sorted(diags)[0]
+    code_match = re.match(r"(SS\d+)", message)
+    code = code_match.group(1) if code_match else "SS4308"
+    span = _strict_span(prog, lineno)
+    if code == "SS4309":
+        fixes = ["mask the shift count into [0, 63] with "
+                 "`math.bitwiseAndInt64` against 63 before the shift"]
+        hint = ("an out-of-range constant shift count is undefined at the LLVM "
+                "level; keep the count in [0, 63]")
+    else:
+        fixes = ["guard the divide so it is unreachable when the divisor is 0, "
+                 "or change the divisor to a non-zero value"]
+        hint = ("a constant-zero divisor is always undefined behavior; it is "
+                "never an intended program")
+    raise CompilerDiagnosticError(CompilerDiagnostic(
+        code=code,
+        phase="semantic.strictExecutable",
+        message=message,
+        primary=span,
+        semantic_stack=[
+            DiagnosticFrame(
+                kind="strictExecutable arithmetic-UB validation",
+                span=span,
+                note=("`languageMode strictExecutable` refuses arithmetic whose "
+                      "operand is a compile-time-provable undefined value"),
+            ),
+        ],
+        direction=("Strict executable rejects integer divide/modulo by a "
+                   "constant zero and shifts by a constant outside [0, 63]; "
+                   "these are LLVM UB/poison, not wraps."),
+        suggested_fixes=fixes,
+        agent_hint=hint,
+    ))
+
+
 def _check_strict_checked_arithmetic(prog: Program, diags) -> None:
     """SS3402 — math.addInt64 / subtractInt64 / multiplyInt64 results that
     look like sizes, byte counts, offsets, or timestamps must use the
@@ -15616,6 +16190,85 @@ def _strict_validate_secret_zeroing(prog: Program, op: Operation,
         )
 
 
+def validate_security_floor(prog: Program) -> None:
+    """The always-on security floor: a small set of checks that block *every*
+    build regardless of `languageMode`, because the patterns they catch are
+    undefined behavior with NO legitimate use in any context (not even tests).
+
+    This is deliberately narrow. Only pure, context-free UB lives here:
+      * SS4308 — integer divide/modulo by a provable constant 0 (sdiv/srem UB).
+      * SS4309 — shift by a provable constant outside [0, 63] (LLVM poison).
+
+    Dual-use security rules (SS4601 insecure PRNG, SS4602 weak bcrypt cost) are
+    deliberately NOT here — they have legitimate non-security / test uses, so
+    they stay gated to `languageMode strictExecutable` plus an advisory lint
+    floor. The floor is the fence that makes the UB rules bind default builds;
+    without it those checks only fire under opt-in strict mode."""
+    arith_ub_diags = []
+    _check_strict_constant_division_or_shift(prog, arith_ub_diags)
+    _strict_raise_first_constant_arith_ub(prog, arith_ub_diags)
+    # Weak or missing bcrypt cost (CWE-916) has NO legitimate *production* use —
+    # a sub-floor or unspecified work factor is only ever defensible at test
+    # speed. So it blocks EVERY build, with one narrow exemption: `*.test.sem`
+    # sources (which legitimately hash at low cost for fast tests) get only the
+    # advisory. This is unlike the dual-use rules (insecure PRNG) that stay
+    # advisory-on-default — a weak password hash is never intended in production.
+    source_path = (getattr(prog, "source_path", "") or "")
+    if not source_path.endswith((".test.sem", ".test.sscript")):
+        weak_cost_diags = []
+        _check_strict_weak_password_hash_cost(prog, weak_cost_diags)
+        _strict_raise_first_weak_password_hash_cost(prog, weak_cost_diags)
+
+
+def collect_security_advisories(prog: Program) -> list:
+    """Run the SS46xx-family security checks (insecure PRNG, weak bcrypt cost,
+    command injection, hard-coded secret) as a NON-blocking advisory pass for
+    builds that have not opted into `languageMode strictExecutable`.
+
+    Under strict these are fatal (via validate_strict_executable); on a default
+    build the same findings are surfaced as warnings so an agent who never opts
+    into strict still sees CWE-338/916/78/798 issues. Returns sorted
+    (lineno, message) tuples; the caller prints them without exiting."""
+    diags: list = []
+    _check_strict_insecure_random(prog, diags)
+    _check_strict_command_string_is_constant(prog, diags)
+    _check_strict_weak_password_hash_cost(prog, diags)
+    _check_strict_hardcoded_secret(prog, diags)
+    # Injection floor consistency: SQL (D1) and format-string (J1) injection are
+    # equally severe to command injection (D3). These run here post-import-
+    # resolution (the program is fully built by main()), so the SqlText/format
+    # constant determination is accurate — unlike a single-file lint scan.
+    _check_strict_sql_string_is_constant(prog, diags)
+    _check_strict_format_string_is_constant(prog, diags)
+    return sorted(diags)
+
+
+# Per-code agent guidance for the default-build advisory printer, so a non-strict
+# warning is as actionable as the strict error (the strict raisers carry these;
+# the advisory collectors return only (lineno, message), so the printer looks the
+# guidance up here). Keyed by SS code -> (agent_hint, suggested_fix).
+_SECURITY_ADVISORY_GUIDANCE = {
+    "SS4601": ("libc rand/srand/random are deterministic generators",
+               "use `bcrypt.randomBytes` (platform CSPRNG) for any "
+               "security-sensitive value"),
+    "SS4602": ("bcrypt cost is a work factor; a missing/low cost is "
+               "brute-forceable",
+               "set `cost Int32 bcryptRecommendedCost` (12)"),
+    "SS4603": ("never build a shell command from input/runtime values",
+               "pass a compile-time-constant String to c.system, or avoid "
+               "shelling out"),
+    "SS4604": ("a typeTrust-secret value must never be a source literal",
+               "declare an empty `\"\"` sentinel and fill it at runtime from "
+               "`c.getenv` / secure config"),
+    "SS3911": ("untrusted data must not be concatenated into SQL",
+               "use a module-scope immutable `SqlText` constant + sqlite.bind* "
+               "for values"),
+    "SS3310": ("a runtime format string allows %n/%s injection",
+               "use a `storage * immutable String` format and pass values as "
+               "arguments"),
+}
+
+
 def validate_strict_executable(prog: Program) -> None:
     if not _strict_executable_is_active(prog):
         return
@@ -15631,10 +16284,22 @@ def validate_strict_executable(prog: Program) -> None:
     forbidden_call_diags = []
     _check_strict_forbidden_call_targets(prog, forbidden_call_diags)
     _strict_raise_first_forbidden_target(prog, forbidden_call_diags)
+    insecure_random_diags = []
+    _check_strict_insecure_random(prog, insecure_random_diags)
+    _strict_raise_first_insecure_random(prog, insecure_random_diags)
+    weak_hash_cost_diags = []
+    _check_strict_weak_password_hash_cost(prog, weak_hash_cost_diags)
+    _strict_raise_first_weak_password_hash_cost(prog, weak_hash_cost_diags)
     constant_string_diags = []
     _check_strict_format_string_is_constant(prog, constant_string_diags)
     _check_strict_sql_string_is_constant(prog, constant_string_diags)
     _strict_raise_first_constant_string_violation(prog, constant_string_diags)
+    command_injection_diags = []
+    _check_strict_command_string_is_constant(prog, command_injection_diags)
+    _strict_raise_first_command_injection(prog, command_injection_diags)
+    hardcoded_secret_diags = []
+    _check_strict_hardcoded_secret(prog, hardcoded_secret_diags)
+    _strict_raise_first_hardcoded_secret(prog, hardcoded_secret_diags)
     sql_usage_diags = []
     _check_sqlite_sql_body_usage(prog, sql_usage_diags)
     _check_sqlite_write_then_read_usage(prog, sql_usage_diags)
@@ -15672,6 +16337,9 @@ def validate_strict_executable(prog: Program) -> None:
     overflow_diags = []
     _check_strict_checked_arithmetic(prog, overflow_diags)
     _strict_raise_first_overflow(prog, overflow_diags)
+    # SS4308/SS4309 (constant divide-by-zero / out-of-range shift) are enforced
+    # unconditionally by validate_security_floor(), so they are not repeated
+    # here — they block every build, not just strict ones.
     for op in prog.operations.values():
         calls = _strict_collect_calls(prog, op)
         defers = _strict_collect_defers(op)
@@ -19855,6 +20523,9 @@ def main():
         prog.language_modes.append(forwarded_mode)
 
     try:
+        # The always-on security floor runs first and binds EVERY build,
+        # regardless of language mode; strict adds the broader executable wall.
+        validate_security_floor(prog)
         validate_strict_executable(prog)
     except CompilerDiagnosticError as e:
         print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
@@ -19862,6 +20533,35 @@ def main():
             import traceback as _tb
             _tb.print_exc(file=sys.stderr)
         sys.exit(3)
+
+    # Surface the SS46xx security rules on the DEFAULT (non-strict) build path so
+    # they reach agents who never opt into `--strict`. Non-blocking warnings;
+    # under strict these are already fatal above.
+    #
+    # Gated on `not --quiet` by design: the PRIMARY agent path — an interactive
+    # `sem build` / `sem run`, which do NOT pass --quiet — surfaces them, meeting
+    # the goal. `--quiet` builds (the std `*.test.sem` lane and CI smoke tests
+    # that legitimately hard-code TEST secrets / use throwaway values) stay quiet
+    # to avoid test-fixture noise; production CI that wants fatal enforcement
+    # should use `--strict`. (Critique GAP-3 weighed against the test-fixture
+    # noise of always-printing; the interactive default path is what matters.)
+    if not _strict_executable_is_active(prog) and not args.quiet:
+        for advisory_lineno, advisory_message in collect_security_advisories(prog):
+            code_match = re.match(r"(SS\d+)", advisory_message)
+            advisory_code = code_match.group(1) if code_match else "SS4600"
+            advisory_span = _strict_span(prog, advisory_lineno)
+            location = (f"{advisory_span.path}:{advisory_span.line}"
+                        if advisory_span else "<unknown>")
+            hint, fix = _SECURITY_ADVISORY_GUIDANCE.get(advisory_code, ("", ""))
+            lines = [f"warning {advisory_code}: {advisory_message}",
+                     f"  at {location}"]
+            if hint:
+                lines.append(f"  hint: {hint}")
+            if fix:
+                lines.append(f"  fix: {fix}")
+            lines.append("  non-blocking; `languageMode strictExecutable` / "
+                         "`--strict` makes security rules fatal")
+            print("\n".join(lines), file=sys.stderr)
 
     if args.lint or args.strict:
         lint(prog, strict=args.strict)

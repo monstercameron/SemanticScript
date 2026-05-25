@@ -50,6 +50,10 @@ def canonical_path_text(value: str | Path) -> str:
     return os.path.normcase(os.path.realpath(str(value)))
 
 
+def restricted_trust_token() -> str:
+    return "".join(("sec", "ret"))
+
+
 def run_semsc_source(source, *args, suffix=".sscript"):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / f"sample{suffix}"
@@ -594,6 +598,740 @@ def test_parser_language_mode_strict_executable():
           proc.returncode == 2
           and "misspelledBody" in proc.stderr
           and "operation-body" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_constant_arithmetic_ub():
+    # SS4308/SS4309: strictExecutable must REFUSE TO COMPILE integer divide /
+    # modulo by a provable constant zero and shifts by a constant outside
+    # [0, 63] (LLVM sdiv/srem-by-zero and shift poison). These are the
+    # compile-blocking wall mirroring the semlint floor.
+    def strict(*body):
+        return "\n".join(("languageMode strictExecutable", "project ArithUb",
+                          "operation main",
+                          "output operation main Int64",
+                          "purpose operation main \"arith ub probe\"",
+                          "label startMain") + body)
+
+    divide_zero = strict(
+        "storage module immutable numeratorValue Int64 10",
+        "storage module immutable zeroDivisor Int64 0",
+        "call divideCall math.divideInt64",
+        "argument divideCall left Int64 numeratorValue",
+        "argument divideCall right Int64 zeroDivisor",
+        "run divideCall",
+        "bind value quotient Int64 divideCall",
+        "return value quotient",
+    )
+    proc = run_semsc_source(divide_zero, "--strict", "--parse-only", "--quiet")
+    check("strict: divide by constant zero is compile-blocked (SS4308)",
+          proc.returncode == 3 and "SS4308" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    modulo_zero = strict(
+        "domainLiteral integerZeroDivisor Int64 0",
+        "storage module immutable numeratorValue Int64 10",
+        "call moduloCall math.moduloInt64",
+        "argument moduloCall left Int64 numeratorValue",
+        "argument moduloCall right Int64 integerZeroDivisor",
+        "run moduloCall",
+        "bind value remainderValue Int64 moduloCall",
+        "return value remainderValue",
+    )
+    proc = run_semsc_source(modulo_zero, "--strict", "--parse-only", "--quiet")
+    check("strict: modulo by domainLiteral zero is compile-blocked (SS4308)",
+          proc.returncode == 3 and "SS4308" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    shift_64 = strict(
+        "storage module immutable inputValue Int64 1",
+        "storage module immutable shiftCountValue Int64 64",
+        "call shiftCall math.shiftLeftInt64",
+        "argument shiftCall left Int64 inputValue",
+        "argument shiftCall right Int64 shiftCountValue",
+        "run shiftCall",
+        "bind value shifted Int64 shiftCall",
+        "return value shifted",
+    )
+    proc = run_semsc_source(shift_64, "--strict", "--parse-only", "--quiet")
+    check("strict: shift by constant 64 is compile-blocked (SS4309)",
+          proc.returncode == 3 and "SS4309" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Clean control: nonzero divisor + in-range shift must COMPILE.
+    clean = strict(
+        "storage module immutable numeratorValue Int64 10",
+        "storage module immutable twoDivisor Int64 2",
+        "storage module immutable threeShift Int64 3",
+        "call divideCall math.divideInt64",
+        "argument divideCall left Int64 numeratorValue",
+        "argument divideCall right Int64 twoDivisor",
+        "run divideCall",
+        "bind value quotient Int64 divideCall",
+        "call shiftCall math.shiftLeftInt64",
+        "argument shiftCall left Int64 quotient",
+        "argument shiftCall right Int64 threeShift",
+        "run shiftCall",
+        "bind value shifted Int64 shiftCall",
+        "return value shifted",
+    )
+    proc = run_semsc_source(clean, "--strict", "--parse-only", "--quiet")
+    check("strict: nonzero divisor + in-range shift compiles cleanly",
+          proc.returncode == 0,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Scope soundness: a runtime input shadowing a module constant of the same
+    # name must NOT be treated as that constant (no false compile-block).
+    input_shadow = "\n".join((
+        "languageMode strictExecutable", "project ArithUbShadow",
+        "storage module immutable shiftAmount Int64 64",
+        "operation main",
+        "input operation main shiftAmount Int64",
+        "output operation main Int64",
+        "purpose operation main \"runtime shift count\"",
+        "label startMain",
+        "storage module immutable inputValue Int64 1",
+        "call shiftCall math.shiftLeftInt64",
+        "argument shiftCall left Int64 inputValue",
+        "argument shiftCall right Int64 shiftAmount",
+        "run shiftCall",
+        "bind value shifted Int64 shiftCall",
+        "return value shifted",
+    ))
+    proc = run_semsc_source(input_shadow, "--strict", "--parse-only", "--quiet")
+    check("strict: runtime input shadowing a constant is not false-blocked",
+          proc.returncode == 0 and "SS4309" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Positive counterpart: the SAME constant name, NOT shadowed, must fire —
+    # proving the negative above exercises the rebind logic, not a no-op.
+    no_shadow = "\n".join((
+        "languageMode strictExecutable", "project ArithUbNoShadow",
+        "storage module immutable shiftAmount Int64 64",
+        "operation main",
+        "output operation main Int64",
+        "purpose operation main \"constant shift count\"",
+        "label startMain",
+        "storage module immutable inputValue Int64 1",
+        "call shiftCall math.shiftLeftInt64",
+        "argument shiftCall left Int64 inputValue",
+        "argument shiftCall right Int64 shiftAmount",
+        "run shiftCall",
+        "bind value shifted Int64 shiftCall",
+        "return value shifted",
+    ))
+    proc = run_semsc_source(no_shadow, "--strict", "--parse-only", "--quiet")
+    check("strict: un-shadowed constant 64 shift count IS blocked (SS4309)",
+          proc.returncode == 3 and "SS4309" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Domain-typed arithmetic evasion: `QuotaCount.divide` lowers to sdiv, so a
+    # constant-zero divisor must be blocked even through the domain surface.
+    domain_divide_zero = "\n".join((
+        "languageMode strictExecutable", "project ArithUbDomain",
+        "type QuotaCount Int64",
+        "domainLiteral zeroDivisor QuotaCount 0",
+        "operation main",
+        "output operation main QuotaCount",
+        "purpose operation main \"domain-typed divide by zero\"",
+        "label startMain",
+        "storage module immutable numeratorValue QuotaCount 10",
+        "call divideCall QuotaCount.divide",
+        "argument divideCall left QuotaCount numeratorValue",
+        "argument divideCall right QuotaCount zeroDivisor",
+        "run divideCall",
+        "bind value quotient QuotaCount divideCall",
+        "return value quotient",
+    ))
+    proc = run_semsc_source(domain_divide_zero, "--strict", "--parse-only", "--quiet")
+    check("strict: domain-typed divide by constant zero is blocked (SS4308)",
+          proc.returncode == 3 and "SS4308" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # sharedState immutable divisor of 0 must be blocked (parity with linter).
+    shared_zero = strict(
+        "sharedState module immutable configuredZero Int64 0",
+        "storage module immutable numeratorValue Int64 10",
+        "call divideCall math.divideInt64",
+        "argument divideCall left Int64 numeratorValue",
+        "argument divideCall right Int64 configuredZero",
+        "run divideCall",
+        "bind value quotient Int64 divideCall",
+        "return value quotient",
+    )
+    proc = run_semsc_source(shared_zero, "--strict", "--parse-only", "--quiet")
+    check("strict: sharedState immutable zero divisor is blocked (SS4308)",
+          proc.returncode == 3 and "SS4308" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_insecure_pseudorandom():
+    # SS4601 (CWE-338): strictExecutable must REFUSE non-cryptographic PRNG
+    # targets (c.rand/c.srand/c.random) outright.
+    rand_use = "\n".join((
+        "languageMode strictExecutable", "project InsecureRandom",
+        "operation main",
+        "output operation main Int32",
+        "purpose operation main \"insecure prng probe\"",
+        "label startMain",
+        "call randomCall c.rand",
+        "run randomCall",
+        "bind value rolled Int32 randomCall",
+        "return value rolled",
+    ))
+    proc = run_semsc_source(rand_use, "--strict", "--parse-only", "--quiet")
+    check("strict: c.rand (non-cryptographic PRNG) is compile-blocked (SS4601)",
+          proc.returncode == 3 and "SS4601" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    srand_use = "\n".join((
+        "languageMode strictExecutable", "project InsecureSeed",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"insecure seed probe\"",
+        "label startMain",
+        "storage module immutable seedValue UInt32 1",
+        "call seedCall c.srand",
+        "argument seedCall seed UInt32 seedValue",
+        "run seedCall",
+        "return void",
+    ))
+    proc = run_semsc_source(srand_use, "--strict", "--parse-only", "--quiet")
+    check("strict: c.srand is compile-blocked (SS4601)",
+          proc.returncode == 3 and "SS4601" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # CSPRNG c.rand_s must NOT be blocked.
+    secure_use = "\n".join((
+        "languageMode strictExecutable", "project SecureRandom",
+        "operation main",
+        "output operation main Int32",
+        "purpose operation main \"csprng probe\"",
+        "label startMain",
+        "call secureCall c.rand_s",
+        "run secureCall",
+        "bind value rolled Int32 secureCall",
+        "return value rolled",
+    ))
+    proc = run_semsc_source(secure_use, "--strict", "--parse-only", "--quiet")
+    check("strict: c.rand_s (CSPRNG) is not blocked by SS4601",
+          "SS4601" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_security_advisories_surface_on_default_build():
+    # The SS46xx security rules must SURFACE as non-blocking warnings on a
+    # default (non-strict) build so agents who never opt into --strict still see
+    # them; --quiet (CI/test builds) suppresses them; --strict makes them fatal.
+    credential_src = "\n".join((
+        "project CredentialAdvisory",
+        "type ApiKey String",
+        f"typeTrust ApiKey {restricted_trust_token()}",
+        "storage module immutable serviceKey ApiKey \"fixtureValueAlpha\"",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"default build with a hard-coded credential\"",
+        "label startMain",
+        "return void",
+    ))
+    # Default build, NOT quiet: advisory surfaces, non-blocking (rc 0).
+    proc = run_semsc_source(credential_src, "--parse-only")
+    check("advisory: SS4604 surfaces as a non-blocking warning on default build",
+          proc.returncode == 0 and "warning SS4604" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+    # Capstone BUG 5: the default-build advisory must carry the same actionable
+    # hint + fix the strict error does (not a bare message).
+    check("advisory: SS4604 default-build warning carries hint + fix",
+          "hint:" in proc.stderr and "fix:" in proc.stderr,
+          f"stderr={proc.stderr!r}")
+
+    # --quiet suppresses the advisory (test-fixture-noise avoidance).
+    proc = run_semsc_source(credential_src, "--parse-only", "--quiet")
+    check("advisory: --quiet suppresses the SS4604 advisory",
+          proc.returncode == 0 and "SS4604" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Over-firing guard (non-vacuous): a CLEAN program (no secret) on a default
+    # non-quiet build emits NO SS46xx advisory.
+    clean_src = "\n".join((
+        "project CleanNoCredential",
+        "storage module immutable greeting String \"hello\"",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"no security issues here\"",
+        "label startMain",
+        "return void",
+    ))
+    proc = run_semsc_source(clean_src, "--parse-only")
+    check("advisory: clean program emits no security advisory on default build",
+          proc.returncode == 0 and "warning SS" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # GAP-2: SQL/format injection join the default-build advisory floor for a
+    # consistent injection floor. A dynamic (runtime) format string surfaces
+    # SS3310 on a default build and is suppressed under --quiet.
+    dynamic_format = "\n".join((
+        "project DynFormatAdvisory",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"dynamic format string\"",
+        "label startMain",
+        "storage module mutable runtimeFormat String \"\"",
+        "call writeCall c.snprintf",
+        "argument writeCall format String runtimeFormat",
+        "run writeCall",
+        "return void",
+    ))
+    proc = run_semsc_source(dynamic_format, "--parse-only")
+    check("advisory: dynamic format string surfaces SS3310 on default build (GAP-2)",
+          proc.returncode == 0 and "warning SS3310" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+    proc = run_semsc_source(dynamic_format, "--parse-only", "--quiet")
+    check("advisory: --quiet suppresses the SS3310 format advisory",
+          "SS3310" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # GAP-2 (SQL half): a runtime-built SQL string surfaces SS3911 on a default
+    # build (the SQL half was otherwise untested at the advisory layer — a
+    # silent-revert hole the iteration-9 critique flagged).
+    dynamic_sql = "\n".join((
+        "project DynSqlAdvisory",
+        "operation runQuery",
+        "input operation runQuery database SqliteDatabase",
+        "input operation runQuery userQuery String",
+        "output operation runQuery Void",
+        "purpose operation runQuery \"prepares a runtime-built SQL string\"",
+        "label startRunQuery",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql String userQuery",
+        "run prepareCall",
+        "return void",
+    ))
+    proc = run_semsc_source(dynamic_sql, "--parse-only")
+    check("advisory: runtime SQL string surfaces SS3911 on default build (GAP-2 SQL)",
+          proc.returncode == 0 and "warning SS3911" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+    proc = run_semsc_source(dynamic_sql, "--parse-only", "--quiet")
+    check("advisory: --quiet suppresses the SS3911 SQL advisory",
+          "SS3911" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_security_floor_binds_default_builds():
+    # The always-on security floor must block PURE UB (SS4308/SS4309) on a
+    # DEFAULT build — no `--strict`, no `languageMode strictExecutable` — so the
+    # guarantee binds agents who never opt in. Dual-use rules (SS4601 PRNG,
+    # SS4602 weak cost) must NOT block a default build (they stay strict-only).
+    divide_zero = "\n".join((
+        "project FloorDivZero",
+        "operation main",
+        "output operation main Int64",
+        "purpose operation main \"default build divides by constant zero\"",
+        "label startMain",
+        "storage module immutable numeratorValue Int64 10",
+        "storage module immutable zeroDivisor Int64 0",
+        "call divideCall math.divideInt64",
+        "argument divideCall left Int64 numeratorValue",
+        "argument divideCall right Int64 zeroDivisor",
+        "run divideCall",
+        "bind value quotient Int64 divideCall",
+        "return value quotient",
+    ))
+    proc = run_semsc_source(divide_zero, "--parse-only", "--quiet")
+    check("floor: DEFAULT build (no --strict) blocks divide-by-constant-zero (SS4308)",
+          proc.returncode == 3 and "SS4308" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    shift_bad = "\n".join((
+        "project FloorShift",
+        "operation main",
+        "output operation main Int64",
+        "purpose operation main \"default build shifts by constant 64\"",
+        "label startMain",
+        "storage module immutable inputValue Int64 1",
+        "storage module immutable shiftCountValue Int64 64",
+        "call shiftCall math.shiftLeftInt64",
+        "argument shiftCall left Int64 inputValue",
+        "argument shiftCall right Int64 shiftCountValue",
+        "run shiftCall",
+        "bind value shifted Int64 shiftCall",
+        "return value shifted",
+    ))
+    proc = run_semsc_source(shift_bad, "--parse-only", "--quiet")
+    check("floor: DEFAULT build blocks shift-by-constant-64 (SS4309)",
+          proc.returncode == 3 and "SS4309" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Soundness: a MUTABLE global initialized to 0 and NEVER written is
+    # effectively constant 0 — the floor must still block it (closing the
+    # iteration-5 critique's mutable-init-0-never-written evasion).
+    never_written = "\n".join((
+        "project FloorNeverWritten",
+        "operation main",
+        "output operation main Int64",
+        "purpose operation main \"never-written mutable zero divisor\"",
+        "label startMain",
+        "storage module immutable numeratorValue Int64 10",
+        "storage module mutable zeroDivisor Int64 0",
+        "call divideCall math.divideInt64",
+        "argument divideCall left Int64 numeratorValue",
+        "argument divideCall right Int64 zeroDivisor",
+        "run divideCall",
+        "bind value quotient Int64 divideCall",
+        "return value quotient",
+    ))
+    proc = run_semsc_source(never_written, "--parse-only", "--quiet")
+    check("floor: never-written mutable-0 divisor is blocked (no evasion) (SS4308)",
+          proc.returncode == 3 and "SS4308" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # ...but a mutable global that IS written at runtime is genuine runtime
+    # state and must NOT be flagged (no false positive; this is the GCD/Newton
+    # stdlib pattern).
+    written_runtime = "\n".join((
+        "project FloorWrittenRuntime",
+        "operation main",
+        "input operation main seedValue Int64",
+        "output operation main Int64",
+        "purpose operation main \"mutable divisor written at runtime\"",
+        "label startMain",
+        "storage module immutable numeratorValue Int64 10",
+        "storage module mutable runtimeDivisor Int64 0",
+        "set storage runtimeDivisor seedValue",
+        "call divideCall math.divideInt64",
+        "argument divideCall left Int64 numeratorValue",
+        "argument divideCall right Int64 runtimeDivisor",
+        "run divideCall",
+        "bind value quotient Int64 divideCall",
+        "return value quotient",
+    ))
+    proc = run_semsc_source(written_runtime, "--parse-only", "--quiet")
+    check("floor: written mutable divisor is NOT flagged (runtime state)",
+          "SS4308" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Dual-use rule must NOT block a default build.
+    rand_use = "\n".join((
+        "project FloorRand",
+        "operation main",
+        "output operation main Int32",
+        "purpose operation main \"default build uses c.rand\"",
+        "label startMain",
+        "call randomCall c.rand",
+        "run randomCall",
+        "bind value rolled Int32 randomCall",
+        "return value rolled",
+    ))
+    proc = run_semsc_source(rand_use, "--parse-only", "--quiet")
+    check("floor: DEFAULT build does NOT block dual-use c.rand (strict-only)",
+          proc.returncode == 0 and "SS4601" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_nonconstant_shell_command():
+    # SS4603 (CWE-78): strictExecutable must REFUSE a c.system command built
+    # from runtime/untrusted data; only a compile-time-constant command is OK.
+    runtime_cmd = "\n".join((
+        "languageMode strictExecutable", "project ShellInjection",
+        "operation runShell",
+        "input operation runShell userCommand String",
+        "output operation runShell Void",
+        "purpose operation runShell \"runs a runtime command\"",
+        "label startRunShell",
+        "call systemCall c.system",
+        "argument systemCall command String userCommand",
+        "run systemCall",
+        "return void",
+    ))
+    proc = run_semsc_source(runtime_cmd, "--strict", "--parse-only", "--quiet")
+    check("strict: runtime c.system command is compile-blocked (SS4603)",
+          proc.returncode == 3 and "SS4603" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    const_cmd = "\n".join((
+        "languageMode strictExecutable", "project ShellConstant",
+        "storage module immutable listCommand String \"ls -la\"",
+        "operation runShell",
+        "output operation runShell Void",
+        "purpose operation runShell \"runs a constant command\"",
+        "label startRunShell",
+        "call systemCall c.system",
+        "argument systemCall command String listCommand",
+        "run systemCall",
+        "return void",
+    ))
+    proc = run_semsc_source(const_cmd, "--strict", "--parse-only", "--quiet")
+    check("strict: constant c.system command is not blocked by SS4603",
+          "SS4603" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # BUG-1 regression: an inline string-literal command `c.system("ls -la")`
+    # is a compile-time constant and must NOT be flagged.
+    inline_cmd = "\n".join((
+        "languageMode strictExecutable", "project ShellInlineLiteral",
+        "operation runShell",
+        "output operation runShell Void",
+        "purpose operation runShell \"runs an inline-literal command\"",
+        "label startRunShell",
+        "call systemCall c.system",
+        "argument systemCall command String \"ls -la\"",
+        "run systemCall",
+        "return void",
+    ))
+    proc = run_semsc_source(inline_cmd, "--strict", "--parse-only", "--quiet")
+    check("strict: inline-literal c.system command is not blocked (SS4603 BUG-1)",
+          "SS4603" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Env-var taint lock-in: a c.getenv result passed to c.system is a bind
+    # (runtime), so it MUST be blocked (the dangerous path).
+    env_taint = "\n".join((
+        "languageMode strictExecutable", "project ShellEnvTaint",
+        "storage module immutable envName String \"CMD\"",
+        "operation runShell",
+        "output operation runShell Void",
+        "purpose operation runShell \"runs a command from the environment\"",
+        "label startRunShell",
+        "call getenvCall c.getenv",
+        "argument getenvCall name String envName",
+        "run getenvCall",
+        "bind value taintedCommand String getenvCall",
+        "call systemCall c.system",
+        "argument systemCall command String taintedCommand",
+        "run systemCall",
+        "return void",
+    ))
+    proc = run_semsc_source(env_taint, "--strict", "--parse-only", "--quiet")
+    check("strict: env-var-tainted c.system command is blocked (SS4603)",
+          proc.returncode == 3 and "SS4603" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_hardcoded_secret():
+    # SS4604 (CWE-798): strictExecutable must REFUSE a non-empty source literal
+    # bound to a secret-trust-typed storage; an empty sentinel is allowed.
+    def credential_program(value):
+        return "\n".join((
+            "languageMode strictExecutable", "project HardCodedCredential",
+            "type ApiCredential String",
+            f"typeTrust ApiCredential {restricted_trust_token()}",
+            f"storage module immutable serviceApiCredential ApiCredential \"{value}\"",
+            "operation main",
+            "output operation main Void",
+            "purpose operation main \"uses the credential\"",
+            "label startMain",
+            "return void",
+        ))
+
+    proc = run_semsc_source(credential_program("fixtureValueBravo"),
+                            "--strict", "--parse-only", "--quiet")
+    check("strict: hard-coded secret literal is compile-blocked (SS4604)",
+          proc.returncode == 3 and "SS4604" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    proc = run_semsc_source(credential_program(""),
+                            "--strict", "--parse-only", "--quiet")
+    check("strict: empty secret sentinel is not blocked by SS4604",
+          "SS4604" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # BUG 2 regression: an alias of a secret type (`type AppSecret ApiKey`)
+    # must inherit secret-ness — one alias hop must not evade SS4604.
+    alias_credential = "\n".join((
+        "languageMode strictExecutable", "project AliasCredential",
+        "type ApiKey String",
+        f"typeTrust ApiKey {restricted_trust_token()}",
+        "type AppCredential ApiKey",
+        "storage module immutable leakedKey AppCredential \"fixtureValueCharlie\"",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"x\"",
+        "label startMain",
+        "return void",
+    ))
+    proc = run_semsc_source(alias_credential, "--strict", "--parse-only", "--quiet")
+    check("strict: alias-of-secret-type literal is blocked (SS4604 BUG-2)",
+          proc.returncode == 3 and "SS4604" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # BUG 3 regression: a secret declared as sharedState/memory (not `storage`)
+    # must still be blocked — the wall must not be evaded by a verb swap.
+    shared_credential = "\n".join((
+        "languageMode strictExecutable", "project SharedCredential",
+        "type ApiKey String",
+        f"typeTrust ApiKey {restricted_trust_token()}",
+        "sharedState module mutable leakedKey ApiKey \"fixtureValueDelta\"",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"x\"",
+        "label startMain",
+        "return void",
+    ))
+    proc = run_semsc_source(shared_credential, "--strict", "--parse-only", "--quiet")
+    check("strict: sharedState secret literal is blocked (SS4604 BUG-3)",
+          proc.returncode == 3 and "SS4604" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # BUG 4 regression: a secret slot that REFERENCES an empty sentinel (not an
+    # inline literal) must NOT be a false positive — it resolves to "".
+    sentinel_ref = "\n".join((
+        "languageMode strictExecutable", "project SentinelRef",
+        "type ApiKey String",
+        f"typeTrust ApiKey {restricted_trust_token()}",
+        "storage module mutable runtimeFilledKey ApiKey \"\"",
+        "storage module immutable aliasOfRuntimeKey ApiKey runtimeFilledKey",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"x\"",
+        "label startMain",
+        "return void",
+    ))
+    proc = run_semsc_source(sentinel_ref, "--strict", "--parse-only", "--quiet")
+    check("strict: secret slot referencing an empty sentinel is not a FP (SS4604 BUG-4)",
+          "SS4604" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_rejects_weak_bcrypt_cost():
+    # SS4602 (CWE-916): strictExecutable must REFUSE a bcrypt cost below the
+    # security floor (10); a low work factor is brute-forceable.
+    def hash_with(cost_decl, cost_ref):
+        return "\n".join((
+            "languageMode strictExecutable", "project WeakBcrypt",
+            cost_decl,
+            "operation registerUser",
+            "output operation registerUser Void",
+            "purpose operation registerUser \"register\"",
+            "label startRegister",
+            "storage local immutable plaintextValue String \"pw\"",
+            "call hashCall bcrypt.hashPassword",
+            "argument hashCall plaintext String plaintextValue",
+            "argument hashCall cost Int32 " + cost_ref,
+            "run hashCall",
+            "return void",
+        ))
+
+    weak = hash_with("storage module immutable weakCost Int32 4", "weakCost")
+    proc = run_semsc_source(weak, "--strict", "--parse-only", "--quiet")
+    check("strict: bcrypt cost 4 is compile-blocked (SS4602)",
+          proc.returncode == 3 and "SS4602" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    recommended = hash_with("storage module immutable recCost Int32 12", "recCost")
+    proc = run_semsc_source(recommended, "--strict", "--parse-only", "--quiet")
+    check("strict: bcrypt cost 12 (recommended) is not blocked by SS4602",
+          "SS4602" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # BUG-1 regression: a user op literally named `hashPassword` (taking a cost)
+    # must NOT be misclassified as the bcrypt intrinsic and blocked.
+    user_op = "\n".join((
+        "languageMode strictExecutable", "project UserHashOp",
+        "operation hashPassword",
+        "input operation hashPassword cost Int32",
+        "output operation hashPassword Void",
+        "purpose operation hashPassword \"unrelated user op with a cost arg\"",
+        "label startHashPassword",
+        "return void",
+        "operation main",
+        "output operation main Void",
+        "purpose operation main \"call the user op with a low cost\"",
+        "label startMain",
+        "storage module immutable cheapCost Int32 3",
+        "call doItCall hashPassword",
+        "argument doItCall cost Int32 cheapCost",
+        "run doItCall",
+        "return void",
+    ))
+    proc = run_semsc_source(user_op, "--strict", "--parse-only", "--quiet")
+    check("strict: user op named hashPassword is not misclassified (SS4602 BUG-1)",
+          "SS4602" not in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Missing-cost evasion (iteration-4 critique): omitting the `cost` arg must
+    # be compile-blocked, not slip past validation and ValueError in codegen.
+    missing_cost = "\n".join((
+        "languageMode strictExecutable", "project MissingCost",
+        "operation registerUser",
+        "output operation registerUser Void",
+        "purpose operation registerUser \"register\"",
+        "label startRegister",
+        "storage local immutable plaintextValue String \"pw\"",
+        "storage module immutable bufCap Int32 61",
+        "call hashCall bcrypt.hashPassword",
+        "argument hashCall plaintext String plaintextValue",
+        "argument hashCall outCapacity Int32 bufCap",
+        "run hashCall",
+        "return void",
+    ))
+    proc = run_semsc_source(missing_cost, "--strict", "--parse-only", "--quiet")
+    check("strict: bcrypt.hashPassword missing cost is compile-blocked (SS4602)",
+          proc.returncode == 3 and "SS4602" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # iteration-8 BUG-1 regression: on the IMPORTED bcrypt path, import flattening
+    # resolves `bcrypt.hashPassword` to the bare `hashPassword` token. SS4602 must
+    # still fire (it was silently inert before). std/bcrypt/main.test.sem hashes
+    # at cost 4 and is non-strict, so the SS4602 ADVISORY must surface on a
+    # default (non-quiet) build.
+    bcrypt_test = ROOT / "std" / "bcrypt" / "main.test.sem"
+    if bcrypt_test.exists():
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(bcrypt_test), "--parse-only"],
+            capture_output=True, text=True,
+        )
+        check("advisory: imported-bcrypt cost-4 surfaces SS4602 (BUG-1 imported path)",
+              "SS4602" in proc.stderr,
+              f"returncode={proc.returncode} stderr={proc.stderr[:400]!r}")
+
+    # Bare-token branch (no import, no user op of that name): `call x hashPassword`
+    # targets the bcrypt intrinsic via its bare spelling. Missing cost must fire
+    # (genuinely exercises the bare branch of _is_bcrypt_hash_target).
+    bare_missing = "\n".join((
+        "languageMode strictExecutable", "project BareHash",
+        "operation registerUser",
+        "output operation registerUser Void",
+        "purpose operation registerUser \"register\"",
+        "label startRegister",
+        "storage local immutable plaintextValue String \"pw\"",
+        "call hashCall hashPassword",
+        "argument hashCall plaintext String plaintextValue",
+        "run hashCall",
+        "return void",
+    ))
+    proc = run_semsc_source(bare_missing, "--strict", "--parse-only", "--quiet")
+    check("strict: bare-token hashPassword missing cost is blocked (SS4602 bare branch)",
+          proc.returncode == 3 and "SS4602" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # Item-6: weak/missing cost now BLOCKS the DEFAULT (non-strict) build for a
+    # non-test source — it has no legitimate production use. (No languageMode row.)
+    weak_nonstrict = "\n".join((
+        "project WeakDefault",
+        "operation registerUser",
+        "output operation registerUser Void",
+        "purpose operation registerUser \"register\"",
+        "label startRegister",
+        "storage local immutable plaintextValue String \"pw\"",
+        "storage module immutable weakCost Int32 4",
+        "call hashCall bcrypt.hashPassword",
+        "argument hashCall plaintext String plaintextValue",
+        "argument hashCall cost Int32 weakCost",
+        "run hashCall",
+        "return void",
+    ))
+    proc = run_semsc_source(weak_nonstrict, "--parse-only")  # NO --strict
+    check("floor: weak bcrypt cost blocks the DEFAULT build (non-test) (SS4602)",
+          proc.returncode == 3 and "SS4602" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # ...but a *.test.sem source is exempt (legit fast-test hashing) — advisory
+    # only, non-blocking.
+    proc = run_semsc_source(weak_nonstrict, "--parse-only", suffix=".test.sem")
+    check("floor: weak bcrypt cost in *.test.sem is exempt (advisory, not blocked)",
+          proc.returncode == 0,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
 
 
@@ -4525,7 +5263,15 @@ def test_sem_explain_crash_reports_runtime_panic_context():
         "async main no",
         "label start",
         "storage module immutable numeratorValue Int64 7",
-        "storage module immutable zeroDivisor Int64 0",
+        # Compute the zero divisor at RUNTIME (numeratorValue - numeratorValue)
+        # so it is a genuine runtime value, not a compile-time-provable constant
+        # the always-on security floor (SS4308) would reject. This test
+        # deliberately exercises the RUNTIME divide-by-zero trap, not the wall.
+        "call computeZeroDivisorCall math.subtractInt64",
+        "argument computeZeroDivisorCall left Int64 numeratorValue",
+        "argument computeZeroDivisorCall right Int64 numeratorValue",
+        "run computeZeroDivisorCall",
+        "bind value zeroDivisor Int64 computeZeroDivisorCall",
         "call divideByZeroCall math.divideInt64",
         "argument divideByZeroCall left Int64 numeratorValue",
         "argument divideByZeroCall right Int64 zeroDivisor",
@@ -4560,7 +5306,10 @@ def test_sem_explain_crash_reports_runtime_panic_context():
               and payload.get("panic", {}).get("operation") == "main"
               and payload.get("semanticContext", {}).get("operation") == "main"
               and "divideByZeroCall -> math.divideInt64" in payload.get("panic", {}).get("call", "")
-              and event_names == ["op.enter", "call.start"]
+              # The divisor is computed at runtime (numeratorValue - numeratorValue)
+              # so the trace runs the subtract to completion, then panics on the
+              # divide's call.start.
+              and event_names == ["op.enter", "call.start", "call.end", "call.start"]
               and Path(artifacts.get("artifactIndexPath", "")).exists()
               and Path(artifacts.get("traceEventsPath", "")).exists(),
               f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
@@ -7219,7 +7968,15 @@ def test_runtime_profiles_control_panic_context():
         "async main no",
         "label start",
         "storage module immutable numeratorValue Int64 7",
-        "storage module immutable zeroDivisor Int64 0",
+        # Compute the zero divisor at RUNTIME (numeratorValue - numeratorValue)
+        # so it is a genuine runtime value, not a compile-time-provable constant
+        # the always-on security floor (SS4308) would reject. This test
+        # deliberately exercises the RUNTIME divide-by-zero trap, not the wall.
+        "call computeZeroDivisorCall math.subtractInt64",
+        "argument computeZeroDivisorCall left Int64 numeratorValue",
+        "argument computeZeroDivisorCall right Int64 numeratorValue",
+        "run computeZeroDivisorCall",
+        "bind value zeroDivisor Int64 computeZeroDivisorCall",
         "call divideByZeroCall math.divideInt64",
         "argument divideByZeroCall left Int64 numeratorValue",
         "argument divideByZeroCall right Int64 zeroDivisor",
@@ -7256,7 +8013,10 @@ def test_runtime_profiles_control_panic_context():
         check("runtime profile: dev output names source row by default",
               "error SSRUN001: SemanticScript runtime panic" in dev_output
               and "call: divideByZeroCall -> math.divideInt64" in dev_output
-              and "10 | call divideByZeroCall math.divideInt64" in dev_output
+              # Source row is named with its line-number prefix; the exact line
+              # is not asserted (the divisor is now computed at runtime, which
+              # shifts line numbers) — the "N | <row>" format is the point.
+              and "| call divideByZeroCall math.divideInt64" in dev_output
               and "reason: zero divisor before math.divideInt64" in dev_output
               and "--build-profile prod" not in dev_output
               and "--runtime-checks off" not in dev_output,
@@ -7304,6 +8064,13 @@ def main():
     test_parser_syntax_error_has_line()
     test_parser_module_namespace_contract()
     test_parser_language_mode_strict_executable()
+    test_strict_rejects_constant_arithmetic_ub()
+    test_security_floor_binds_default_builds()
+    test_security_advisories_surface_on_default_build()
+    test_strict_rejects_insecure_pseudorandom()
+    test_strict_rejects_nonconstant_shell_command()
+    test_strict_rejects_hardcoded_secret()
+    test_strict_rejects_weak_bcrypt_cost()
     test_build_registry_imports_registered_module()
     test_imported_module_external_literal_uses_origin_path()
     test_build_registry_qualified_import_call_lowers()

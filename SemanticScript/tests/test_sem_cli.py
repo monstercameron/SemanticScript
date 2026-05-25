@@ -674,6 +674,18 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(payload["commonFixes"])
         self.assertTrue(payload["nextCommands"])
 
+    def test_explain_finds_every_security_rule(self) -> None:
+        # Capstone Rec 4: every security rule must be discoverable via
+        # `sem explain` (they previously returned "unknown"). Includes the
+        # compiler-only SS3911/SS3310, surfaced via docs/reference/security-rules.md.
+        for code in ("SS4308", "SS4309", "SS4601", "SS4602",
+                     "SS4603", "SS4604", "SS3310", "SS3911"):
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} not discoverable via sem explain")
+            self.assertTrue(payload["title"], f"{code} has no title")
+            self.assertTrue(payload["summary"], f"{code} has no summary")
+            self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+
     def test_fix_plan_generates_inline_authority_edit(self) -> None:
         source_text = """\
 module demo.agent
