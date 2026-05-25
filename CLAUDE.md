@@ -196,7 +196,13 @@ import http standard.http
 import json standard.json
 import sqlite standard.sqlite
 import gui standard.gui
+import document standard.document
 ```
+
+`standard.document` is the browser DOM namespace and targets wasm only (its
+`ss_dom_*` runtimeBinding externs resolve against the emscripten js-library
+adapter, not a native build). Build/run DOM programs with
+`SemanticScript/tools/build_wasm.py`; see `docs/toolchain/wasm-emscripten.md`.
 
 Common call targets include `console.writeLine`, `console.writeIntegerLine`,
 `math.addInt64`, `math.subtractInt64`, `math.multiplyInt64`, `math.divideInt64`,

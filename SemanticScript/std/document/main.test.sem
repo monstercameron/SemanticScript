@@ -1,0 +1,47 @@
+# SEMANTICSCRIPT STANDARD LIBRARY TESTS: document module contracts
+#
+# This self-test intentionally avoids importing standard.document: the module's
+# ss_dom_* runtimeBinding externs only resolve against the emscripten js-library
+# adapter in a wasm/browser build, so the native JIT/AOT stdlib harness cannot
+# execute it. Real executable coverage lives in
+# SemanticScript/tests/test_wasm_dom.py, which builds DOM programs to wasm and
+# runs them against jsdom (sync mutation, event payload, repeated/Asyncify-
+# suspended events, and the no-event blocking proof).
+
+project StandardDocumentSmoke
+target console
+runtime native 1
+entry console main
+
+module standard.document.test
+purpose module standard.document.test "Keep a stdlib self-test placeholder for standard.document without importing browser-only native runtime bindings in JIT mode."
+moduleOwns standard.document.test "A lightweight stdlib self-test placeholder that keeps the module's test-file convention present."
+moduleDoesNotOwn standard.document.test "Browser DOM runtime execution; the wasm/jsdom suite owns that coverage."
+invariant module standard.document.test "The test prints OK; standard.document DOM coverage lives in the wasm/jsdom integration suite."
+
+capability consoleStdoutWriter console.stdout write
+purpose operation consoleStdoutWriter "Authority to write the standard document smoke result to stdout."
+
+storage module immutable okText String "OK"
+storage module immutable successExitCode ExitCode 0
+
+operation main
+input operation main console Console
+output operation main ExitCode
+effect main write console.stdout
+memory main heap no
+async main no
+useCapability main consoleStdoutWriter
+purpose operation main "Print OK as the standard.document stdlib self-test placeholder."
+
+label startMain
+call writeOkCall console.writeLine
+argument writeOkCall console Console console
+argument writeOkCall text String okText
+run writeOkCall
+ignore void source writeOkCall
+bind error writeOkError Int32 writeOkCall
+branch error source writeOkCall target writeFailed
+return value successExitCode
+label writeFailed
+return value writeOkError

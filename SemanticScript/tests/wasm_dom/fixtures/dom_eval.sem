@@ -1,0 +1,31 @@
+project DomEval
+target console
+runtime native 1
+module examples.domEval
+
+import document standard.document
+dependency standard.document version 0.1 source standard
+
+entry console main
+
+capability mainScriptEvaluator document.script execute
+purpose operation mainScriptEvaluator "Authority to evaluate the escape-hatch script in the eval fixture."
+
+operation main
+output operation main ExitCode
+effect main execute document.script
+memory main heap no
+async main no
+useCapability main mainScriptEvaluator
+purpose operation main "Use the evalScript escape hatch to set body innerHTML, proving JavaScript evaluation reaches the page."
+
+label startMain
+
+storage local immutable scriptText DomScriptSource "document.body.innerHTML = '<span id=\"evaled\">ok</span>';"
+call evalCall document.evalScript
+argument evalCall script DomScriptSource scriptText
+run evalCall
+ignore value source evalCall type DomStatus
+
+storage local immutable okExit ExitCode 0
+return value okExit

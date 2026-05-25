@@ -1,0 +1,68 @@
+project DomMutation
+target console
+runtime native 1
+module examples.domMutation
+
+import document standard.document
+dependency standard.document version 0.1 source standard
+
+entry console main
+
+capability mainDomReader document.dom read
+purpose operation mainDomReader "Authority to read the DOM in the mutation fixture."
+capability mainDomWriter document.dom write
+purpose operation mainDomWriter "Authority to mutate the DOM in the mutation fixture."
+
+operation main
+output operation main ExitCode
+effect main read document.dom
+effect main write document.dom
+memory main heap no
+async main no
+useCapability main mainDomReader
+useCapability main mainDomWriter
+purpose operation main "Build a greeting div under document.body with text, an id, and a class to exercise sync DOM read and mutation through the wasm adapter."
+
+label startMain
+
+call bodyCall document.bodyElement
+run bodyCall
+bind value bodyHandle DomHandle bodyCall
+
+storage local immutable divTag DomTagName "div"
+call createCall document.createElement
+argument createCall tagName DomTagName divTag
+run createCall
+bind value divHandle DomHandle createCall
+
+storage local immutable greetingText DomText "hello-from-wasm"
+call setTextCall document.setTextContent
+argument setTextCall node DomHandle divHandle
+argument setTextCall text DomText greetingText
+run setTextCall
+ignore value source setTextCall type DomStatus
+
+storage local immutable idName DomAttributeName "id"
+storage local immutable idValue DomAttributeValue "greeting"
+call setAttrCall document.setAttribute
+argument setAttrCall node DomHandle divHandle
+argument setAttrCall name DomAttributeName idName
+argument setAttrCall value DomAttributeValue idValue
+run setAttrCall
+ignore value source setAttrCall type DomStatus
+
+storage local immutable className DomClassName "banner"
+call classCall document.classListAdd
+argument classCall node DomHandle divHandle
+argument classCall className DomClassName className
+run classCall
+ignore value source classCall type DomStatus
+
+call appendCall document.appendChild
+argument appendCall parent DomHandle bodyHandle
+argument appendCall child DomHandle divHandle
+run appendCall
+ignore value source appendCall type DomStatus
+
+storage local immutable okExit ExitCode 0
+return value okExit

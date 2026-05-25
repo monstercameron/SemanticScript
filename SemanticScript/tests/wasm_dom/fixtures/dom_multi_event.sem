@@ -1,0 +1,79 @@
+project DomMultiEvent
+target console
+runtime native 1
+module examples.domMultiEvent
+
+import document standard.document
+dependency standard.document version 0.1 source standard
+
+entry console main
+
+capability mainDomReader document.dom read
+purpose operation mainDomReader "Authority to read the DOM in the multi-event fixture."
+capability mainDomWriter document.dom write
+purpose operation mainDomWriter "Authority to mutate the DOM in the multi-event fixture."
+capability mainEventReader document.event read
+purpose operation mainEventReader "Authority to receive DOM events."
+capability mainEventController document.event close
+purpose operation mainEventController "Authority to remove DOM event subscriptions."
+
+operation main
+output operation main ExitCode
+effect main read document.dom
+effect main write document.dom
+effect main read document.event
+effect main close document.event
+memory main heap no
+async main no
+useCapability main mainDomReader
+useCapability main mainDomWriter
+useCapability main mainEventReader
+useCapability main mainEventController
+purpose operation main "Await two successive clicks on the same listener, marking the body after each, to prove the stream delivers repeated events and re-parks between them."
+
+label startMain
+
+storage local immutable buttonId DomElementId "btn"
+call findButtonCall document.getElementById
+argument findButtonCall elementId DomElementId buttonId
+run findButtonCall
+bind value buttonHandle DomHandle findButtonCall
+
+storage local immutable clickEventName DomEventName "click"
+call listenCall document.addEventListener
+argument listenCall node DomHandle buttonHandle
+argument listenCall eventName DomEventName clickEventName
+run listenCall
+bind value clickStream DomEventStreamHandle listenCall
+
+call awaitFirstCall document.nextEvent
+argument awaitFirstCall stream DomEventStreamHandle clickStream
+run awaitFirstCall
+ignore value source awaitFirstCall type DomStatus
+
+storage local immutable firstText DomText "first"
+call markFirstCall document.setTextContent
+argument markFirstCall node DomHandle buttonHandle
+argument markFirstCall text DomText firstText
+run markFirstCall
+ignore value source markFirstCall type DomStatus
+
+call awaitSecondCall document.nextEvent
+argument awaitSecondCall stream DomEventStreamHandle clickStream
+run awaitSecondCall
+ignore value source awaitSecondCall type DomStatus
+
+storage local immutable secondText DomText "second"
+call markSecondCall document.setTextContent
+argument markSecondCall node DomHandle buttonHandle
+argument markSecondCall text DomText secondText
+run markSecondCall
+ignore value source markSecondCall type DomStatus
+
+call unlistenCall document.removeEventListener
+argument unlistenCall stream DomEventStreamHandle clickStream
+run unlistenCall
+ignore value source unlistenCall type DomStatus
+
+storage local immutable okExit ExitCode 0
+return value okExit

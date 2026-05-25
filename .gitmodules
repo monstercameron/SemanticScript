@@ -2,3 +2,8 @@
 	path = third_party/h2o
 	url = https://github.com/h2o/h2o.git
 	shallow = true
+[submodule "third_party/emsdk"]
+	path = third_party/emsdk
+	url = https://github.com/emscripten-core/emsdk.git
+	shallow = true
+	update = none
