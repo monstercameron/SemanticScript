@@ -149,6 +149,10 @@ undeclared body effects
 unknown error variants
 dead stores
 allocation in loops
+loop-invariant pure calls (SS3208): a side-effect-free arithmetic/comparison
+  call inside a loop whose every argument is loop-invariant (not rebound or
+  `set`-mutated in the loop body), so it recomputes the same value each
+  iteration and should be hoisted above the loop header
 string accumulator appends in loops
 snprintf byte counts used as i64 offsets without explicit widening
 GUI selection handlers that also append list items

@@ -1,0 +1,171 @@
+project BenchStringLength
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import string standard.string
+
+error MainError
+errorCase MainError AllocationFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
+
+# section capability
+# rationale: main allocates a scratch buffer on the heap, seeds it via the
+# stdlib copy op (memory.buffer write), then times repeated stringByteLength
+# scans (memory.buffer read). The capability rows are redeclared here because
+# the linter does not trace cross-module imports.
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
+capability memoryBufferReadCapability memory.buffer read
+capability memoryBufferWriteCapability memory.buffer write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+useCapability main memoryBufferReadCapability
+useCapability main memoryBufferWriteCapability
+effect main read clock.cpu
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+effect main read memory.buffer
+memory main heap yes
+memoryAllocationSource main mallocCall
+memory main stack max 8KiB
+async main no
+
+# NOTE on what this measures: at --opt-level 2 LLVM's loop-idiom pass rewrites
+# stringByteLength's scalar byte scan into a `tail call @strlen`, so this case
+# does NOT exercise the stdlib's hand-written scan on the CPU -- it measures
+# call/inline/profile parity between an stdlib op and the equivalent C call,
+# both of which become @strlen. A benchmark that defeats the strlen idiom (so
+# the real scalar lowering runs) is tracked separately; see bench/README.md.
+purpose operation main "Benchmark standard.string.stringByteLength over a 31-byte buffer for 300M iterations and report elapsed CPU-clock ticks against glibc strlen (note: -O2 lowers both to @strlen)"
+invariant operation main "Each iteration writes a printable byte at offset 0 before the scan, so the measured length is constant and the length computation runs every iteration (not hoisted or constant-folded); accumulator == iterations*31 confirms this"
+invariant operation main "The scratch buffer is allocated via c.malloc before timing and freed via c.free after timing stops"
+
+label startMain
+
+storage module immutable iterationLimit Int64 300000000
+storage module immutable iterationStep Int64 1
+storage module immutable bufferSize ByteCount 64
+storage module immutable seedText String "abcdefghijklmnopqrstuvwxyz01234"
+storage module immutable printableModulus Int64 95
+storage module immutable printableBase Int64 32
+storage module immutable writeOffset ByteCount 0
+
+memory main mutable currentIteration Int64 0
+memory main mutable observationAccumulator Int64 0
+
+# Allocate and seed the scratch buffer (outside the timed region).
+call mallocCall c.malloc
+argument mallocCall size ByteCount bufferSize
+run mallocCall
+bind value benchmarkBuffer OpaquePointer mallocCall
+bind error mallocError Int32 mallocCall
+branch error source mallocCall target allocationFailed
+defer releaseBufferCall c.free benchmarkBuffer
+
+call seedCall copyCStringToDestinationBuffer
+argument seedCall dest OpaquePointer benchmarkBuffer
+argument seedCall src String seedText
+run seedCall
+ignore ok source seedCall type ByteCount
+
+# Start the CPU-clock counter.
+call startClockCall c.clock
+run startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
+
+label benchmarkLoopHead
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
+run shouldContinueCmpCall
+bind value benchmarkShouldContinue Bool shouldContinueCmpCall
+branch if condition benchmarkShouldContinue target benchmarkLoopBody
+branch else target benchmarkFinished
+
+label benchmarkLoopBody
+
+# Compute a printable byte (32..126) from the iteration counter and write it at
+# offset 0. This keeps the string length constant while making the buffer
+# contents depend on the loop counter, so the stringByteLength scan below
+# cannot be lifted out of the loop.
+call printableModCall math.moduloInt64
+argument printableModCall left Int64 currentIteration
+argument printableModCall right Int64 printableModulus
+run printableModCall
+bind value printableOffset Int64 printableModCall
+
+call printableByteCall math.addInt64
+argument printableByteCall left Int64 printableOffset
+argument printableByteCall right Int64 printableBase
+run printableByteCall
+bind value printableByte Int64 printableByteCall
+
+call storeByteCall pointer.storeByte
+argument storeByteCall buffer OpaquePointer benchmarkBuffer
+argument storeByteCall offset ByteCount writeOffset
+argument storeByteCall value Int64 printableByte
+run storeByteCall
+
+# Timed stdlib operation under test.
+call lengthCall stringByteLength
+argument lengthCall s OpaquePointer benchmarkBuffer
+run lengthCall
+bind ok measuredLength ByteCount lengthCall
+
+call observationAccumulateCall math.addInt64
+argument observationAccumulateCall left Int64 observationAccumulator
+argument observationAccumulateCall right Int64 measuredLength
+run observationAccumulateCall
+bind value nextObservation Int64 observationAccumulateCall
+set memory observationAccumulator nextObservation
+
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
+run incrementCall
+bind value nextIteration Int64 incrementCall
+set memory currentIteration nextIteration
+jump target benchmarkLoopHead
+
+label benchmarkFinished
+
+call endClockCall c.clock
+run endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
+
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
+run elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
+
+storage module immutable reportFormatText String "iterations=%lld accumulator=%lld clockTicks=%lld\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Int64 observationAccumulator
+argument reportCall ticks Int64 elapsedClockTicks
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label allocationFailed
+makeError allocationFailure MainError.AllocationFailed mallocError
+return error allocationFailure
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure

@@ -2656,6 +2656,238 @@ branchIf someCondition loopHeader
         self.assertNotIn("SS3202", _codes(diagnostics))
 
 
+class TestLoopInvariantPureCall(unittest.TestCase):
+    def test_pure_call_with_invariant_args_in_loop_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "sum of two constants recomputed each iteration"
+storage local immutable leftValue Int64 10
+storage local immutable rightValue Int64 20
+label loopHeader
+call sumCall math.addInt64
+arg sumCall left leftValue
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+jump target loopHeader
+""")
+        self.assertIn("SS3208", _codes(diagnostics))
+        matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS3208")[0]
+        self.assertEqual(matchingDiagnostic.subjectName, "sumCall")
+        self.assertEqual(matchingDiagnostic.gapEdge, "loopHoist")
+
+    def test_pure_call_with_set_mutated_arg_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "one operand is the mutated loop counter"
+storage local immutable rightValue Int64 20
+storage local mutable counter Int64 zeroValue
+label loopHeader
+call sumCall math.addInt64
+arg sumCall left counter
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+set local counter sumValue
+jump target loopHeader
+""")
+        self.assertNotIn("SS3208", _codes(diagnostics))
+
+    def test_pure_call_with_loop_bound_arg_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "left operand is rebound inside the loop"
+storage local immutable rightValue Int64 20
+label loopHeader
+call loadCall pointer.loadByte
+arg loadCall buffer someBuffer
+arg loadCall offset rightValue
+run loadCall
+bind value scannedByte Int64 loadCall
+call sumCall math.addInt64
+arg sumCall left scannedByte
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+jump target loopHeader
+""")
+        self.assertNotIn("SS3208", _codes(diagnostics))
+
+    def test_effectful_call_in_loop_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "strlen is not a pure-hoistable target"
+storage local immutable someText String "constant"
+label loopHeader
+call lenCall c.strlen
+arg lenCall text someText
+run lenCall
+bind value textLength Int64 lenCall
+jump target loopHeader
+""")
+        self.assertNotIn("SS3208", _codes(diagnostics))
+
+    def test_pure_call_outside_loop_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "constant sum computed once, before any loop"
+storage local immutable leftValue Int64 10
+storage local immutable rightValue Int64 20
+call sumCall math.addInt64
+arg sumCall left leftValue
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+label loopHeader
+jump target loopHeader
+""")
+        self.assertNotIn("SS3208", _codes(diagnostics))
+
+    def test_conditional_branch_back_edge_is_detected(self) -> None:
+        # Back-edge via the canonical `branch if condition C target L` form
+        # (target is args[4]); the ad-hoc parser used to miss this entirely.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "loop closes with a conditional branch back to the header"
+storage local immutable leftValue Int64 10
+storage local immutable rightValue Int64 20
+storage local immutable oneValue Int64 1
+storage local mutable counter Int64 zeroValue
+label loopHeader
+call sumCall math.addInt64
+arg sumCall left leftValue
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+call advanceCall math.addInt64
+arg advanceCall left counter
+arg advanceCall right oneValue
+run advanceCall
+bind value nextCounter Int64 advanceCall
+set local counter nextCounter
+call keepGoingCall math.lessThanInt64
+arg keepGoingCall left counter
+arg keepGoingCall right rightValue
+run keepGoingCall
+bind value keepGoing Bool keepGoingCall
+branch if condition keepGoing target loopHeader
+""")
+        self.assertIn("SS3208", _codes(diagnostics))
+        flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS3208")}
+        self.assertIn("sumCall", flagged)
+        # advanceCall/keepGoingCall both read the mutated counter — not invariant.
+        self.assertNotIn("advanceCall", flagged)
+        self.assertNotIn("keepGoingCall", flagged)
+
+    def test_set_memory_scope_mutation_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "operand mutated via set memory, not set local"
+storage local immutable rightValue Int64 20
+memory main mutable counter Int64 0
+label loopHeader
+call sumCall math.addInt64
+arg sumCall left counter
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+set memory counter sumValue
+jump target loopHeader
+""")
+        self.assertNotIn("SS3208", _codes(diagnostics))
+
+    def test_storage_redeclaration_in_loop_not_flagged(self) -> None:
+        # A `storage` row inside the loop redefines its name each iteration; if
+        # the initializer reads a mutated value the call is NOT invariant.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "derivedLeft is re-declared from the mutated counter each pass"
+storage local immutable rightValue Int64 20
+storage local mutable counter Int64 zeroValue
+label loopHeader
+storage local immutable derivedLeft Int64 counter
+call sumCall math.addInt64
+arg sumCall left derivedLeft
+arg sumCall right rightValue
+run sumCall
+bind value sumValue Int64 sumCall
+set local counter sumValue
+jump target loopHeader
+""")
+        self.assertNotIn("SS3208", _codes(diagnostics))
+
+    def test_nested_loop_inner_invariant_call_is_flagged(self) -> None:
+        # Mirrors std/sort bubble: a call in the INNER loop whose operands are
+        # mutated only in the OUTER loop is invariant w.r.t. the inner loop.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "smoke"
+invariant main "inner length recomputed each inner pass but only changes per outer pass"
+storage local immutable arrayLength Int64 64
+storage local immutable oneValue Int64 1
+storage local immutable zeroValue Int64 0
+memory main mutable outerIndex Int64 0
+memory main mutable innerIndex Int64 0
+label outerHead
+call outerDoneCall math.greaterThanOrEqualInt64
+arg outerDoneCall left outerIndex
+arg outerDoneCall right arrayLength
+run outerDoneCall
+bind value outerDone Bool outerDoneCall
+branch if condition outerDone target doneLabel
+set memory innerIndex zeroValue
+label innerHead
+call innerLengthCall math.subtractInt64
+arg innerLengthCall left arrayLength
+arg innerLengthCall right outerIndex
+run innerLengthCall
+bind value innerLength Int64 innerLengthCall
+call innerDoneCall math.greaterThanOrEqualInt64
+arg innerDoneCall left innerIndex
+arg innerDoneCall right innerLength
+run innerDoneCall
+bind value innerDone Bool innerDoneCall
+branch if condition innerDone target outerAdvance
+call advanceInnerCall math.addInt64
+arg advanceInnerCall left innerIndex
+arg advanceInnerCall right oneValue
+run advanceInnerCall
+bind value nextInner Int64 advanceInnerCall
+set memory innerIndex nextInner
+jump target innerHead
+label outerAdvance
+call advanceOuterCall math.addInt64
+arg advanceOuterCall left outerIndex
+arg advanceOuterCall right oneValue
+run advanceOuterCall
+bind value nextOuter Int64 advanceOuterCall
+set memory outerIndex nextOuter
+jump target outerHead
+label doneLabel
+""")
+        flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS3208")}
+        self.assertIn("innerLengthCall", flagged)
+        self.assertNotIn("advanceInnerCall", flagged)
+        self.assertNotIn("advanceOuterCall", flagged)
+
+
 class TestStringAccumulatorAppendInLoop(unittest.TestCase):
     def test_strcat_in_back_edge_loop_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test

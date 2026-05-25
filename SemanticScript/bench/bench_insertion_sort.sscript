@@ -1,0 +1,192 @@
+project BenchInsertionSort
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import sort standard.sort
+
+error MainError
+errorCase MainError AllocationFailed Int32
+errorCase MainError ConsoleWriteFailed Int32
+
+# section capability
+# rationale: main allocates a scratch buffer, then each iteration refills it
+# with a descending run and times standard.sort.sortBytesWithInsertionSortInPlace
+# over it. Insertion sort has no libc idiom and exercises data-dependent
+# branches + in-place mutable stores, so this benchmarks the stdlib's real sort
+# codegen against an identical C insertion sort. Capabilities are redeclared
+# because the linter does not trace cross-module imports.
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
+capability memoryBufferReadCapability memory.buffer read
+capability memoryBufferWriteCapability memory.buffer write
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+useCapability main memoryBufferReadCapability
+useCapability main memoryBufferWriteCapability
+effect main read clock.cpu
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+effect main read memory.buffer
+memory main heap yes
+memoryAllocationSource main mallocCall
+memory main stack max 8KiB
+async main no
+
+purpose operation main "Benchmark standard.sort.sortBytesWithInsertionSortInPlace over a 64-byte descending buffer for 3M iterations against an identical C insertion sort; exercises real stdlib sort codegen (data-dependent branches, in-place stores, no libc idiom)"
+invariant operation main "Each iteration refills the buffer with a descending run rotated by the iteration counter, so the sort does near-worst-case work, the result varies every iteration (not hoistable), and buf[0] is accumulated so the sort's effect is observed"
+invariant operation main "The scratch buffer is allocated via c.malloc before timing and freed via c.free after timing stops"
+
+label startMain
+
+storage module immutable iterationLimit Int64 3000000
+storage module immutable iterationStep Int64 1
+storage module immutable bufferSize ByteCount 64
+storage module immutable sortCount ByteCount 64
+storage module immutable countMinusOne Int64 63
+storage module immutable byteModulus Int64 256
+storage module immutable zeroInt64 Int64 0
+storage module immutable oneInt64 Int64 1
+storage module immutable readZeroOffset ByteCount 0
+
+memory main mutable currentIteration Int64 0
+memory main mutable observationAccumulator Int64 0
+memory main mutable fillIndex Int64 0
+
+call mallocCall c.malloc
+argument mallocCall size ByteCount bufferSize
+run mallocCall
+bind value benchmarkBuffer OpaquePointer mallocCall
+bind error mallocError Int32 mallocCall
+branch error source mallocCall target allocationFailed
+defer releaseBufferCall c.free benchmarkBuffer
+
+call startClockCall c.clock
+run startClockCall
+bind value startClockTicks CpuClockTicks startClockCall
+
+label benchmarkLoopHead
+call shouldContinueCmpCall math.lessThanInt64
+argument shouldContinueCmpCall left Int64 currentIteration
+argument shouldContinueCmpCall right Int64 iterationLimit
+run shouldContinueCmpCall
+bind value benchmarkShouldContinue Bool shouldContinueCmpCall
+branch if condition benchmarkShouldContinue target benchmarkLoopBody
+branch else target benchmarkFinished
+
+label benchmarkLoopBody
+
+# Refill the buffer with a descending run rotated by the iteration counter:
+# buffer[j] = (countMinusOne - j + currentIteration) % 256.
+set memory fillIndex zeroInt64
+label fillLoopHead
+call fillDoneCmpCall math.greaterThanOrEqualInt64
+argument fillDoneCmpCall left Int64 fillIndex
+argument fillDoneCmpCall right Int64 sortCount
+run fillDoneCmpCall
+bind value fillDone Bool fillDoneCmpCall
+branch if condition fillDone target fillLoopDone
+
+call fillDescendingBaseCall math.subtractInt64
+argument fillDescendingBaseCall left Int64 countMinusOne
+argument fillDescendingBaseCall right Int64 fillIndex
+run fillDescendingBaseCall
+bind value fillDescendingBase Int64 fillDescendingBaseCall
+
+call fillRotatedCall math.addInt64
+argument fillRotatedCall left Int64 fillDescendingBase
+argument fillRotatedCall right Int64 currentIteration
+run fillRotatedCall
+bind value fillRotated Int64 fillRotatedCall
+
+call fillByteValueCall math.moduloInt64
+argument fillByteValueCall left Int64 fillRotated
+argument fillByteValueCall right Int64 byteModulus
+run fillByteValueCall
+bind value fillByteValue Int64 fillByteValueCall
+
+call fillStoreCall pointer.storeByte
+argument fillStoreCall buffer OpaquePointer benchmarkBuffer
+argument fillStoreCall offset ByteCount fillIndex
+argument fillStoreCall value Int64 fillByteValue
+run fillStoreCall
+
+call fillAdvanceCall math.addInt64
+argument fillAdvanceCall left Int64 fillIndex
+argument fillAdvanceCall right Int64 oneInt64
+run fillAdvanceCall
+bind value fillNext Int64 fillAdvanceCall
+set memory fillIndex fillNext
+jump target fillLoopHead
+label fillLoopDone
+
+# Timed stdlib operation under test.
+call sortCall sortBytesWithInsertionSortInPlace
+argument sortCall byteBuffer OpaquePointer benchmarkBuffer
+argument sortCall byteCount ByteCount sortCount
+run sortCall
+ignore ok source sortCall type ByteCount
+
+# Observe the minimum (buffer[0]) so the sort cannot be elided.
+call observeLoadCall pointer.loadByte
+argument observeLoadCall buffer OpaquePointer benchmarkBuffer
+argument observeLoadCall offset ByteCount readZeroOffset
+run observeLoadCall
+bind value observedMinimumByte Int8 observeLoadCall
+
+call observationAccumulateCall math.addInt64
+argument observationAccumulateCall left Int64 observationAccumulator
+argument observationAccumulateCall right Int64 observedMinimumByte
+run observationAccumulateCall
+bind value nextObservation Int64 observationAccumulateCall
+set memory observationAccumulator nextObservation
+
+call incrementCall math.addInt64
+argument incrementCall left Int64 currentIteration
+argument incrementCall right Int64 iterationStep
+run incrementCall
+bind value nextIteration Int64 incrementCall
+set memory currentIteration nextIteration
+jump target benchmarkLoopHead
+
+label benchmarkFinished
+
+call endClockCall c.clock
+run endClockCall
+bind value endClockTicks CpuClockTicks endClockCall
+
+call elapsedTicksCall math.subtractInt64
+argument elapsedTicksCall left CpuClockTicks endClockTicks
+argument elapsedTicksCall right CpuClockTicks startClockTicks
+run elapsedTicksCall
+bind value elapsedClockTicks Int64 elapsedTicksCall
+
+storage module immutable reportFormatText String "iterations=%lld accumulator=%llu clockTicks=%lld\n"
+call reportCall c.printf
+argument reportCall format String reportFormatText
+argument reportCall iterations Int64 iterationLimit
+argument reportCall accumulator Int64 observationAccumulator
+argument reportCall ticks Int64 elapsedClockTicks
+run reportCall
+ignore void source reportCall
+bind error reportError Int32 reportCall
+branch error source reportCall target consoleWriteFailed
+
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode
+
+label allocationFailed
+makeError allocationFailure MainError.AllocationFailed mallocError
+return error allocationFailure
+
+label consoleWriteFailed
+makeError consoleWriteFailure MainError.ConsoleWriteFailed reportError
+return error consoleWriteFailure

@@ -3136,7 +3136,8 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3204 bindThenIgnore,
 #            SS3205 snprintfInt32OffsetWithoutWidening,
 #            SS3206 selectedListAppendInHandler,
-#            SS3207 rowCountMutationUnchecked
+#            SS3207 rowCountMutationUnchecked,
+#            SS3208 loopInvariantPureCall
 #   AS33xx — memory / resource discipline     (T3 refinement)
 #            SS3301 heapContradiction, SS3302 allocationSourceMissing,
 #            SS3303 allocateFreeUnpaired, SS3304 stackLimitOverrun,
@@ -6445,6 +6446,170 @@ def check_allocation_in_loop(facts: ExtendedFacts) -> List[Diagnostic]:
                     effort=Effort.LOCAL,
                     passProvenance="check_allocation_in_loop",
                     agentHint="allocating once and reusing avoids both allocator pressure and leak risk per-iteration",
+                ))
+    return diagnostics
+
+
+# Deterministic, side-effect-free arithmetic / comparison builtins. A call to
+# one of these is a pure function of its arguments, so when every argument is
+# loop-invariant the result is identical on every iteration and the call can be
+# hoisted above the loop header. The set is intentionally conservative — only
+# pure compute targets, never anything that reads or writes memory / effects —
+# so the SS3208 diagnostic stays high-precision (no false positives on calls
+# whose value legitimately changes per iteration).
+PURE_HOISTABLE_CALL_TARGETS: FrozenSet[str] = frozenset({
+    "math.addInt64", "math.subtractInt64", "math.multiplyInt64",
+    "math.divideInt64", "math.moduloInt64",
+    "math.equalInt64", "math.notEqualInt64",
+    "math.lessThanInt64", "math.lessThanOrEqualInt64",
+    "math.greaterThanInt64", "math.greaterThanOrEqualInt64",
+    "math.bitwiseAndInt64", "math.bitwiseOrInt64", "math.bitwiseXorInt64",
+    "math.bitwiseNotInt64",
+    "math.shiftLeftInt64", "math.shiftRightLogicalInt64",
+    "math.shiftRightArithmeticInt64",
+    "math.addInt32", "math.subtractInt32", "math.multiplyInt32",
+    "math.divideInt32", "math.moduloInt32",
+    "math.equalInt32", "math.notEqualInt32",
+    "math.lessThanInt32", "math.greaterThanInt32",
+    "math.addFloat64", "math.subtractFloat64", "math.multiplyFloat64",
+    "math.divideFloat64",
+    "math.equalFloat64", "math.notEqualFloat64",
+    "math.lessThanFloat64", "math.lessThanOrEqualFloat64",
+    "math.greaterThanFloat64", "math.greaterThanOrEqualFloat64",
+})
+
+
+def check_loop_invariant_pure_call(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3208 - a pure arithmetic/comparison call inside a loop body whose every
+    argument is loop-invariant computes the same value on every iteration and
+    can be hoisted above the loop header.
+
+    Conservative for precision: only fires when the target is a deterministic
+    side-effect-free builtin (PURE_HOISTABLE_CALL_TARGETS) and no argument is
+    rebound or `set memory`-mutated inside the loop body. The loop body is the
+    [labelIndex, backEdgeIndex] span of any back-edge — including unconditional
+    `jump target <earlierLabel>`, which the idiomatic loop tail uses."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        labelIndexByName: Dict[str, int] = {}
+        for lineIndex, sourceLine in enumerate(operation.lines):
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if sourceLine.verb == "label" and sourceLine.args:
+                labelIndexByName[sourceLine.args[0]] = lineIndex
+
+        loopBodyRanges: List[Tuple[int, int, str]] = []
+        for lineIndex, sourceLine in enumerate(operation.lines):
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            # Use the shared branch-target helper so every control-flow form is
+            # covered identically to the rest of the linter — crucially the
+            # canonical `branch if condition C target L` (target is args[4]),
+            # `branch else target L`, branchIf*, branchSelected, runChecked, and
+            # unconditional `jump target L`. A target whose label precedes this
+            # row is a back-edge, so [labelIndex, lineIndex] is a loop body.
+            for branchTarget in branch_target_names_from_row(sourceLine):
+                labelIndex = labelIndexByName.get(branchTarget)
+                if labelIndex is None or labelIndex >= lineIndex:
+                    # Forward branch/jump (or unknown label), not a back-edge.
+                    continue
+                loopBodyRanges.append((labelIndex, lineIndex, branchTarget))
+
+        # Dedup across overlapping / nested back-edge ranges so one `call` row
+        # is reported at most once.
+        flaggedCallLines: Set[int] = set()
+        for loopStart, loopEnd, loopLabel in loopBodyRanges:
+            bodyLines = operation.lines[loopStart:loopEnd]
+            # Names that change across iterations: anything (re)defined or
+            # mutated inside the loop body via any of the three write
+            # mechanisms — `bind`, `set <scope>`, or a `storage`/`sharedState`
+            # re-declaration that captures a mutated value.
+            loopVariantNames: Set[str] = set()
+            for bodyLine in bodyLines:
+                if is_comment(bodyLine) or not bodyLine.tokens:
+                    continue
+                bind = bind_parts(bodyLine)
+                if bind is not None:
+                    loopVariantNames.add(bind[1])
+                # `set <scope> <name> <value>` mutates <name>; scope may be
+                # memory / local / shared / module, so key on the slot name
+                # (args[1]) regardless of scope to avoid false positives.
+                if bodyLine.verb == "set" and len(bodyLine.args) >= 2:
+                    loopVariantNames.add(bodyLine.args[1])
+                # `storage <scope> <mutability> <name> <type> <init>` declared
+                # inside the loop redefines <name> (args[2]) each iteration; if
+                # its initializer reads a mutated value it is NOT invariant.
+                if bodyLine.verb == "storage" and len(bodyLine.args) >= 3:
+                    loopVariantNames.add(bodyLine.args[2])
+                # `sharedState <name> …` re-declaration similarly redefines it.
+                if bodyLine.verb == "sharedState" and len(bodyLine.args) >= 2:
+                    loopVariantNames.add(bodyLine.args[1])
+
+            # Argument value operands grouped by the call they belong to.
+            argOperandsByCall: Dict[str, List[str]] = {}
+            for bodyLine in bodyLines:
+                parts = argument_parts(bodyLine)
+                if parts is None:
+                    continue
+                callName, _param, _type, value = parts
+                argOperandsByCall.setdefault(callName, []).append(value)
+
+            for bodyLine in bodyLines:
+                if is_comment(bodyLine) or not bodyLine.tokens:
+                    continue
+                if bodyLine.verb != "call" or len(bodyLine.args) < 2:
+                    continue
+                callName = bodyLine.args[0]
+                target = bodyLine.args[1]
+                if target not in PURE_HOISTABLE_CALL_TARGETS:
+                    continue
+                operands = argOperandsByCall.get(callName, [])
+                if not operands:
+                    continue
+                # Hoistable only if EVERY operand is loop-invariant.
+                if any(value in loopVariantNames for value in operands):
+                    continue
+                if bodyLine.number in flaggedCallLines:
+                    continue
+                flaggedCallLines.add(bodyLine.number)
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3208",
+                    kind="performanceDiscipline.loopInvariantPureCall",
+                    severity=Severity.WARNING,
+                    subjectName=callName,
+                    subjectKind="call",
+                    gapEdge="loopHoist",
+                    intentSlogan="loop-invariant pure call recomputed every iteration",
+                    primary=span_of_line(bodyLine, "invariantPureCallInLoop"),
+                    related=[
+                        span_of_line(operation.lines[loopStart], "loopHeaderLabel"),
+                        span_of_line(operation.line, "enclosingOperation"),
+                    ],
+                    invariantRule=(
+                        f"`{target}` is side-effect-free and every argument of "
+                        f"`{callName}` is loop-invariant, so it yields the same "
+                        f"value each iteration; hoisting it above `label "
+                        f"{loopLabel}` makes the once-per-loop computation "
+                        f"explicit in the tape"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#call",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="hoistPureCallAboveLoop",
+                            shape=(
+                                f"# move `call {callName} {target}` and its arg "
+                                f"lines BEFORE `label {loopLabel}`"
+                            ),
+                            evidence=[span_of_line(bodyLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_loop_invariant_pure_call",
+                    agentHint="a source-clarity refinement: makes the once-per-loop computation explicit in the dataflow tape rather than leaving it to optimizer LICM; the native -O2 backend already hoists pure loop-invariant arithmetic, so expect little or no runtime change",
                 ))
     return diagnostics
 
@@ -19150,6 +19315,7 @@ CHECKERS = [
     # C-style discipline (AS32xx perf, AS33xx memory, AS34xx layout)
     check_dead_store,
     check_allocation_in_loop,
+    check_loop_invariant_pure_call,
     check_string_accumulator_append_in_loop,
     check_snprintf_i32_offset_without_widening,
     check_gui_selection_handler_appends_list_item,
