@@ -37,6 +37,31 @@ Current implementation status:
 This file describes the API shape implemented by the current adapter plus the
 nearby request/response gaps still needed for a fuller web runtime.
 
+## Concurrency Limits And Testing (read before load-testing)
+
+The default adapter is **blocking and single-threaded**: it serves one request
+to completion before accepting the next. Under concurrent or slow clients this
+bites in practice — firing several requests at once (especially with some
+hitting a timeout) can leave sockets stuck in `CLOSE_WAIT`/`ESTABLISHED` and the
+server stops answering *everything*, including `/health`. The process stays
+alive but deaf. Recovery is kill + restart, then one request at a time. This is
+expected for the current backend; a non-blocking/H2O backend is future work.
+
+Testing guidance (especially on Windows):
+
+- **Serialize requests** — issue one at a time with a generous timeout. Do not
+  fan out parallel requests against the blocking adapter.
+- **Use `curl`, not `Invoke-WebRequest`.** On Windows PowerShell 5.1,
+  `Invoke-WebRequest` may route `127.0.0.1` through a system proxy and report a
+  bare "Unable to connect" with no useful error. `curl --noproxy '*' http://127.0.0.1:PORT/...`
+  surfaces the real response (including a server-side fault on stdout).
+- **Start, request, and stop within one shell session.** A server spawned by a
+  shell is reaped when that shell exits, so it cannot be left running across
+  separate tool calls.
+- A crash on the first request looks like "connection refused" on every
+  subsequent connect (the process died). Check the first request's output for a
+  fault before assuming a port/bind problem.
+
 ## Server Shape
 
 MVP server metadata uses the existing line forms:
