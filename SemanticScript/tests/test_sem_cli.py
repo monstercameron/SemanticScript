@@ -756,6 +756,16 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(payload["summary"].strip(), f"{code} has empty summary")
             self.assertTrue(payload["commonFixes"], f"{code} has no commonFixes")
 
+    def test_starter_test_actually_asserts(self) -> None:
+        # The scaffolded test must exercise codegen and assert, not be a trivial
+        # `return value 0` that "passes" without proving anything.
+        with tempfile.TemporaryDirectory() as tmp:
+            meta = sem._starter_project_metadata(Path(tmp) / "demo")
+            text = sem._starter_test_sem_text(meta)
+            self.assertIn("math.equalInt64", text)
+            self.assertIn("branch if condition", text)
+            self.assertNotEqual(text.strip().splitlines()[-1].strip(), "return value 0")
+
     def test_explain_unknown_code_still_reports_not_found(self) -> None:
         payload = sem._diagnostic_explain_payload("SS9999")
         self.assertFalse(payload["found"])

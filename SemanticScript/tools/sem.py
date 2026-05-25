@@ -783,6 +783,11 @@ def _starter_main_sem_text(meta: dict) -> str:
 
 
 def _starter_test_sem_text(meta: dict) -> str:
+    # A real assertion, not `return value 0`: compute 2 + 2, check it equals 4,
+    # and exit 0 only when it does (exit 1 otherwise). This exercises codegen
+    # and fails loudly if arithmetic lowering regresses — unlike a constant
+    # return, which "passes" without proving anything. Replace it with a check
+    # of your own operation's behavior.
     return "\n".join([
         f"project {meta['projectTestName']}",
         "target console",
@@ -793,9 +798,27 @@ def _starter_test_sem_text(meta: dict) -> str:
         "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose operation main \"Keep the starter project green with one passing semantic smoke test.\"",
-        "invariant operation main \"The starter semantic smoke test remains side-effect free and exits with code 0.\"",
-        "return value 0",
+        "purpose operation main \"Assert a known identity (2 + 2 == 4) so a codegen regression fails this smoke test.\"",
+        "invariant operation main \"Exits 0 only when the asserted identity holds; any other result is a nonzero failing exit.\"",
+        "storage local immutable leftAddend Int64 2",
+        "storage local immutable rightAddend Int64 2",
+        "storage local immutable expectedSum Int64 4",
+        "call computeSumCall math.addInt64",
+        "argument computeSumCall left Int64 leftAddend",
+        "argument computeSumCall right Int64 rightAddend",
+        "run computeSumCall",
+        "bind value actualSum Int64 computeSumCall",
+        "call assertSumCall math.equalInt64",
+        "argument assertSumCall left Int64 actualSum",
+        "argument assertSumCall right Int64 expectedSum",
+        "run assertSumCall",
+        "bind value sumMatchesExpected Bool assertSumCall",
+        "branch if condition sumMatchesExpected target assertionHeld",
+        "storage local immutable assertionFailedExitCode ExitCode 1",
+        "return value assertionFailedExitCode",
+        "label assertionHeld",
+        "storage local immutable assertionPassedExitCode ExitCode 0",
+        "return value assertionPassedExitCode",
         "",
     ])
 
