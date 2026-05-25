@@ -716,6 +716,13 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(args.skills_command, "list")
         self.assertEqual(args.func, sem.command_skills)
 
+    def test_skills_bare_command_accepts_json_flag(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["skills", "--json"])
+        self.assertEqual(args.skills_command, "list")
+        self.assertTrue(args.json)
+        self.assertEqual(args.func, sem.command_skills)
+
     def test_skills_load_is_alias_for_get(self) -> None:
         parser = sem.build_parser()
         args = parser.parse_args(["skills", "load", "sem"])

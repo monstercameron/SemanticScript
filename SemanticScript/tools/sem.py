@@ -953,7 +953,11 @@ def _capture_compiler(source: Path, compiler_args: list[str],
                       timeout: int | None = None) -> subprocess.CompletedProcess:
     semsc_path = ROOT / "compiler" / "semsc.py"
     command = [sys.executable, str(semsc_path), str(source), *compiler_args]
+    # The compiler emits UTF-8 (diagnostics include non-ASCII like `§3`). Decode
+    # as UTF-8 explicitly so captured stderr isn't mojibake under the Windows
+    # locale codec; `errors="replace"` keeps capture robust to stray bytes.
     return subprocess.run(command, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace",
                           timeout=timeout)
 
 
@@ -6871,6 +6875,11 @@ def build_parser() -> argparse.ArgumentParser:
         "skills",
         help="list or load version-matched agent skills from the current repository",
     )
+    # Accept `--json` on the bare `skills` group too, so `sem skills --json`
+    # (the inventory in machine form) works without naming the `list`
+    # subcommand. Subcommands define their own `--json` for the qualified form.
+    skills.add_argument("--json", action="store_true",
+                        help="emit machine-readable skill inventory (bare `skills`)")
     skills_subparsers = skills.add_subparsers(dest="skills_command", required=False)
     skills_list = skills_subparsers.add_parser(
         "list",
