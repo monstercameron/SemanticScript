@@ -48,12 +48,20 @@ move with editor changes.
 
 Prefer the `sem` wrapper before using raw compiler or linter internals.
 
+MCP-capable agents can reach the same JSON surfaces through the built-in MCP
+server instead of shelling out: run `sem mcp` (stdio) and call the matching
+tool (`agent_docs`, `check`, `readiness`, `graph`, `slice`, `fix_plan` for
+`sem fix --plan`, `patch`, `test`, `eval`, etc.). The tools are thin wrappers
+over these same subcommands, so the loop below applies unchanged. See
+`docs/toolchain/compiler.md` ("MCP server").
+
 Load version-matched agent rules:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py agent-docs --json PATH
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
 ```
 
 Inspect before editing:
@@ -66,7 +74,7 @@ python SemanticScript\tools\sem.py deps list --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
 python SemanticScript\tools\sem.py graph --kind routes --json PATH
 python SemanticScript\tools\sem.py slice --operation NAME --json PATH
-python SemanticScript\tools\sem.py docs get OPERATION --json
+python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json
 python SemanticScript\tools\sem.py explain SS3104 --json
 ```
 
@@ -107,7 +115,7 @@ See `docs/toolchain/repl.md`.
 
 ## JSON Surface Rules
 
-Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
+Current public surfaces include `sem.version.v1`, `sem.agentDocs.v1`, `sem.skills.v1`,
 `sem.readiness.v1`, `sem.context.v1`, `sem.symbols.v1`, `sem.check.v1`,
 `sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.docs.v1`,
 `sem.docsIndex.v1`, `sem.docsSearch.v1`, `sem.explain.v1`,
@@ -115,7 +123,9 @@ Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
 `sem.deps.v1`, and provisional `sem.doctor.v0`.
 
 Read `nextCommands` as machine-facing instructions. Prefer `argv` over
-`command`, honor `cwd`, and replay only entries where `replayable` is true.
+`command`, honor `cwd`, and replay only entries where `replayable` is true. In
+MCP mode, prefer `mcpTool` and `mcpArgs` when present; the MCP repair-plan tool
+is `fix_plan`, while the CLI command remains `sem fix --plan`.
 
 ## Minimal Program Shape
 
@@ -225,10 +235,9 @@ Common call targets include `console.writeLine`, `console.writeIntegerLine`,
 `math.equalInt64`, `math.lessThanInt64`, `math.addFloat64`, and `c.*` targets
 listed in `SemanticScript/compiler/libc_registry.py`.
 
-Use `python SemanticScript\tools\sem.py docs get OPERATION_OR_TARGET --json`
-before generating calls to standard-library APIs or compiler-owned targets whose
-effects, capabilities, failure modes, cleanup, or argument names are not already
-known. Apply
+Use `python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json`
+before generating calls to standard-library APIs or compiler-owned targets, or
+when enum/type constants are not already known. Apply
 `usage.failureHandling.rows` and `usage.cleanup.rows` when their `required`
 flags are true; satisfy `usage.preconditions` before the call when present.
 `usage.call.rows` alone are only the call-and-bind core.

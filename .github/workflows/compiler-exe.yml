@@ -207,7 +207,7 @@ jobs:
             '    }',
             '  }',
             '}',
-            'After connecting, call skills_get with names ["sem-start", "sem", "sem-agent"] for version-matched startup instructions.',
+            'After connecting, call agent_docs with path "." to load project-local AGENTS.md / CLAUDE.md, then call skills_get with names ["sem-start", "sem", "sem-agent", "sem-syntax"] for version-matched startup instructions.',
             '```',
             ""
           )

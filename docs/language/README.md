@@ -68,7 +68,7 @@ runtime native 1
 entry console main
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main write console.stdout
 purpose main "Print one greeting and exit successfully"
 

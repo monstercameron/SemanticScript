@@ -4,7 +4,7 @@
   "display_name": "SemanticScript",
   "version": "0.0.1",
   "description": "Agent-first SemanticScript toolchain: compile, lint, and analyze .sem source through stable JSON surfaces.",
-  "long_description": "Exposes the SemanticScript `sem` CLI's stable JSON surfaces (check, readiness, context, symbols, graph, slice, explain, fix plan, patch, test, and more) as MCP tools, backed by the bundled single-file `sem` executable.",
+  "long_description": "Exposes the SemanticScript `sem` CLI's stable JSON surfaces (bootstrap, project agent docs, skills, help, docs_search/docs_get, check, readiness, context, symbols, graph, slice, explain, fix plan, patch, test, and more) as MCP tools, backed by the bundled single-file `sem` executable. First call agent_docs {\"path\":\".\"} when project instructions exist; then skills_get {\"names\":[\"sem-start\",\"sem\",\"sem-agent\",\"sem-syntax\"]}; then call help {\"path\":\".\"}; use docs_search for capability/API/type/syntax/runtime discovery before generating stdlib calls.",
   "author": {
     "name": "Earl Cameron",
     "url": "https://github.com/monstercameron"

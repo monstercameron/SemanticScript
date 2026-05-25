@@ -83,9 +83,9 @@ The first compiled handler ABI should be explicit pointer-in, status-out:
 
 ```semanticscript
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
@@ -113,7 +113,7 @@ Return values:
 Middleware operations use the same request/response input ABI but declare:
 
 ```semanticscript
-output tracingMiddleware MiddlewareControl
+output operation tracingMiddleware MiddlewareControl
 ```
 
 The compiler pre-registers `MiddlewareControl` as a `Int32`-backed enum
@@ -124,7 +124,7 @@ written by the middleware. A short-circuit middleware must write status, body,
 and content type before it returns; the runtime turns a short-circuit with no
 body into a visible 500 response instead of silently succeeding.
 
-Later syntax can allow `output OP HttpResponse`, but the first backend should
+Later syntax can allow `output operation OP HttpResponse`, but the first backend should
 not hide response ownership. Writing into an explicit response handle makes the
 LLVM ABI and response lifetime easier to inspect.
 
@@ -145,11 +145,12 @@ The first runtime calls should be direct and small:
 
 ```semanticscript
 storage local immutable healthBody String "ok\n"
+storage local immutable okStatus HttpStatusCode 200
 
 call writeHealthResponse http.responseText
 argument writeHealthResponse response HttpResponse response
-argument writeHealthResponse status HttpStatus HttpStatus.Ok
-argument writeHealthResponse body String healthBody
+argument writeHealthResponse status HttpStatusCode okStatus
+argument writeHealthResponse body HttpTextBody healthBody
 run writeHealthResponse
 bind value writeStatus Int32 writeHealthResponse
 return value writeStatus
@@ -159,12 +160,12 @@ Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
-| `http.responseHtml` | `response HttpResponse`, `status HttpStatus`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
-| `http.responseText` | `response HttpResponse`, `status HttpStatus`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
-| `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
-| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
+| `http.responseHtml` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
+| `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_text` |
+| `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body HttpByteBody`, `bodyLength HttpBodyLength`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_bytes` |
+| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event SseEventName`, `data SseEventData` | `Int32` | `ss_http_response_sse_event` |
 | `http.responseHeader` | `response HttpResponse`, `name String`, `value String` | `Int32` | `ss_http_response_header` |
-| `http.responseFile` | `response HttpResponse`, `status HttpStatus`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `rootDirectory String`, `requestedPath String` | `Int32` | `ss_http_response_file`; rejects traversal/absolute paths, sniffs content type by extension, and refuses files over 16 MiB |
 | `http.requestMethod` | `request HttpRequest` | `String` | `ss_http_request_method` |
 | `http.requestPath` | `request HttpRequest` | `String` | `ss_http_request_path` |
 | `http.requestPathParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_path_param` |
@@ -257,9 +258,9 @@ capability httpRequestReader http.request read
 capability httpResponseWriter http.response write
 
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 effect healthHandler read http.request.method
 effect healthHandler read http.request.path
 effect healthHandler write http.response
@@ -280,10 +281,11 @@ run pathReadCall
 bind value requestPath String pathReadCall
 
 storage local immutable healthBody String "ok\n"
+storage local immutable okStatus HttpStatusCode 200
 call responseWriteCall http.responseText
 argument responseWriteCall response HttpResponse response
-argument responseWriteCall status HttpStatus HttpStatus.Ok
-argument responseWriteCall body String healthBody
+argument responseWriteCall status HttpStatusCode okStatus
+argument responseWriteCall body HttpTextBody healthBody
 run responseWriteCall
 bind value responseWriteStatus Int32 responseWriteCall
 return value responseWriteStatus

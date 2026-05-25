@@ -117,6 +117,19 @@ sem mcp                          # stdio transport (default)
 claude mcp add semanticscript -- sem mcp
 ```
 
+First MCP calls:
+
+```json
+agent_docs {"path":"."}
+skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}
+help {"path":"."}
+docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}
+eval {"code":"error ConsoleWriteError\nerrorCase ConsoleWriteError ConsoleWriteFailed Int32\nstorage local immutable greetingText String \"semantic tools ready\"\ncall greetingWriteCall console.writeLine\nargument greetingWriteCall text String greetingText\nrun greetingWriteCall\nignore void source greetingWriteCall\nbind error greetingWriteError ConsoleWriteError greetingWriteCall\nbranch error source greetingWriteCall target greetingWriteFailed\njump target greetingDone\nlabel greetingWriteFailed\nmakeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError\nlabel greetingDone"}
+```
+
+Use `sem bootstrap --json` or `sem mcp --help` for the plain-executable startup
+contract.
+
 See [docs/toolchain/compiler.md](docs/toolchain/compiler.md) ("MCP server") for
 transports and the exposed tools. Manifest sources live under `packaging/`
 (`scoop/`, `winget/`, `mcpb/`, `registry/`).
@@ -134,9 +147,18 @@ Inspect the toolchain and available workflows:
 
 ```powershell
 sem version --json
+sem bootstrap --json
+sem help --json hello-world
+sem agent-docs --json hello-world
 sem skills list --json
-sem skills get sem-start --json
+sem skills get sem-start sem sem-agent sem-syntax --json
+sem docs index --path hello-world --include-std --embedding-provider none --json
+sem docs search "console write capability" --path hello-world --json
 ```
+
+`sem help --json PATH` includes workflow modes for scaffolding, dependency
+sync, language and runtime-feature discovery, inspection, validation, repair,
+build/run, test/dev, migration, and cleanup.
 
 For source checkout development, use the Python driver and test suite directly:
 

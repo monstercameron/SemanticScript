@@ -157,7 +157,7 @@ storage module immutable height GuiPixels 480
 storage module immutable resizable Int32 1
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main write gui.window
@@ -198,9 +198,9 @@ GUI ABI when a handler is wired into the runtime:
 
 ```semanticscript
 operation closeRequested
-input closeRequested session GuiSession
-input closeRequested event GuiEvent
-output closeRequested Int32
+input operation closeRequested session GuiSession
+input operation closeRequested event GuiEvent
+output operation closeRequested Int32
 ```
 
 Handler return `0` means success. Non-zero handler returns are reserved as
@@ -210,8 +210,8 @@ runtime-level event failures; the exact policy is a runtime concern.
 
 ```semanticscript
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 memory writeStandardOutputLine noHeapAllocation
 async writeStandardOutputLine no
@@ -282,8 +282,8 @@ errorCase MainError ConsoleWriteFailed
 capability stdoutWriteCapability console.stdout write
 
 operation main
-input main console Console
-output main Result ExitCode MainError
+input operation main console Console
+output operation main Result ExitCode MainError
 ...
 return ok exitOkCode
 ```
@@ -333,4 +333,3 @@ groupFailure requestValidation requestValidationFailure
 
 Use sections for broad document structure. Use groups for named attention and
 dataflow clusters that tooling can cite.
-

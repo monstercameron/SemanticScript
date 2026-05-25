@@ -1,5 +1,10 @@
 # SemanticScript
 
+> Historical design narrative. This file explains the language thesis and may
+> contain pre-cutover sketch examples. For current executable row syntax and
+> agent-facing guidance, use `sem skills get sem-start sem sem-agent sem-syntax
+> --json`, `docs/language/`, and `docs/reference/syntax-inventory.md`.
+
 > **SemanticScript**: a compiled application language for agent-authored software, competing with Node/Python at the app layer, but deploying more like Go. Its source is a flat, line-oriented, high-context semantic tape where every executable line is an atomic English-explicit semantic record.
 
 The point is not to make code short. The point is to make code **locally understandable inside an agent attention window**.

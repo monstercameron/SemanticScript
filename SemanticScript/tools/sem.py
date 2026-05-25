@@ -45,6 +45,61 @@ DOCS_DEFAULT_EMBEDDING_PROVIDER = "sentence-transformers"
 DOCS_DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD = False
 DOCS_SEARCH_MAX_LIMIT = 50
+MCP_BOOTSTRAP_SKILLS = ("sem-start", "sem", "sem-agent", "sem-syntax")
+MCP_BOOTSTRAP_EVAL_CODE = "\n".join((
+    "error ConsoleWriteError",
+    "errorCase ConsoleWriteError ConsoleWriteFailed Int32",
+    'storage local immutable greetingText String "semantic tools ready"',
+    "call greetingWriteCall console.writeLine",
+    "argument greetingWriteCall text String greetingText",
+    "run greetingWriteCall",
+    "ignore void source greetingWriteCall",
+    "bind error greetingWriteError ConsoleWriteError greetingWriteCall",
+    "branch error source greetingWriteCall target greetingWriteFailed",
+    "jump target greetingDone",
+    "label greetingWriteFailed",
+    "makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError",
+    "label greetingDone",
+))
+MCP_BOOTSTRAP_TOOL_CALL = "skills_get " + json.dumps({"names": list(MCP_BOOTSTRAP_SKILLS)}, separators=(",", ":"))
+MCP_BOOTSTRAP_AGENT_DOCS_CALL = 'agent_docs {"path":"."}'
+MCP_BOOTSTRAP_DOCS_SEARCH = 'docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}'
+MCP_BOOTSTRAP_EVAL_CALL = "eval " + json.dumps({"code": MCP_BOOTSTRAP_EVAL_CODE}, separators=(",", ":"))
+MCP_BOOTSTRAP_HELP = """MCP bootstrap:
+  Start stdio server:
+    sem.exe mcp
+  MCP client config:
+    {"command":"sem.exe","args":["mcp"],"cwd":"<project-root>"}
+  Load project agent docs:
+    """ + MCP_BOOTSTRAP_AGENT_DOCS_CALL + """
+  Then load versioned skills:
+    """ + MCP_BOOTSTRAP_TOOL_CALL + """
+  Then inspect the project:
+    help {"path":"."}
+  Capability/API/type/syntax/runtime discovery:
+    """ + MCP_BOOTSTRAP_DOCS_SEARCH + """
+  Optional language smoke:
+    """ + MCP_BOOTSTRAP_EVAL_CALL + """
+"""
+MCP_HANDSHAKE_INSTRUCTIONS = """SemanticScript MCP server ready.
+
+First load project-local AGENTS.md / CLAUDE.md instructions when present:
+""" + MCP_BOOTSTRAP_AGENT_DOCS_CALL + """
+
+Then load versioned skills:
+""" + MCP_BOOTSTRAP_TOOL_CALL + """
+
+`sem-start` resolves to the getting-started skill, and `sem-syntax` exposes the compact row/verb inventory. Then call:
+help {"path":"."}
+
+For standard-library/API/capability/type/syntax/runtime discovery before generating calls, use:
+""" + MCP_BOOTSTRAP_DOCS_SEARCH + """
+
+For exact usage rows after discovery, call docs_get for the selected operation, target, type, or enum.
+
+To prove the language/runtime surface works before opening a project, optionally call:
+""" + MCP_BOOTSTRAP_EVAL_CALL + """
+"""
 SYNTAX_INVENTORY_PATH = ROOT.parent / "docs" / "reference" / "syntax-inventory.md"
 CALL_DISPOSITION_VARIANTS = ("value", "ok", "error", "void")
 STD_DOC_COMMENT_TAGS = (
@@ -1147,6 +1202,194 @@ def _register_compiler_static_targets() -> None:
 _register_http_static_targets()
 _register_json_static_targets()
 _register_compiler_static_targets()
+STD_DOC_STATIC_TYPES = {
+    "standard.http": {
+        "HttpStatusCode": {
+            "kind": "typeAlias",
+            "underlyingType": "Int32",
+            "summary": "HTTP status-code role type used by native HTTP response writers.",
+            "usage": [
+                "Declare status constants as `HttpStatusCode` or `Int32` numeric values, then pass them to `status HttpStatusCode` arguments.",
+                "Use numeric HTTP codes such as 200, 404, and 500; do not use stale dotted values such as `HttpStatus.Ok`.",
+            ],
+            "exampleRows": [
+                "storage local immutable okStatus HttpStatusCode 200",
+                "argument responseWriteCall status HttpStatusCode okStatus",
+            ],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 33,
+        },
+        "HttpTextBody": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "HTTP text response body role type for `http.responseHtml` and `http.responseText`.",
+            "usage": ["Pass a String-compatible value to body slots declared as `HttpTextBody`."],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 37,
+        },
+        "HttpContentType": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "HTTP Content-Type header role type for response writers that accept explicit content types.",
+            "usage": ["Prefer exported constants such as `plainTextContentType`, `htmlContentType`, `jsonContentType`, or `sseContentType` when available."],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 36,
+        },
+        "HttpRequestValue": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Nullable request-derived string role returned by native HTTP request readers.",
+            "usage": ["Treat missing headers, cookies, path parameters, and query parameters as sentinel/empty request values according to the specific reader docs."],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 40,
+        },
+        "HttpByteBody": {
+            "kind": "typeAlias",
+            "underlyingType": "OpaquePointer",
+            "summary": "HTTP byte-body pointer role paired with `HttpBodyLength` for binary response writers.",
+            "usage": ["Pass an explicit byte length with every `HttpByteBody`; do not rely on string terminators for binary payloads."],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 38,
+        },
+        "HttpBodyLength": {
+            "kind": "typeAlias",
+            "underlyingType": "ByteCount",
+            "summary": "HTTP body byte-count role paired with `HttpByteBody`.",
+            "usage": ["Keep the byte count tied to the buffer lifetime and pass it to `bodyLength HttpBodyLength` slots."],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 39,
+        },
+    },
+    "standard.sqlite": {
+        "SqliteOpenMode": {
+            "kind": "enum",
+            "repr": "Int32",
+            "summary": "SQLite database open-mode enum for `sqlite.openDatabase`.",
+            "cases": [
+                {"name": "readOnlySqliteOpenMode", "value": 1},
+                {"name": "readWriteSqliteOpenMode", "value": 2},
+                {"name": "readWriteCreateSqliteOpenMode", "value": 6},
+                {"name": "inMemorySqliteOpenMode", "value": 14},
+            ],
+            "usage": [
+                "Use the named case constants where possible, for example `argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode`.",
+                "The values mirror SQLite open flags: READONLY=1, READWRITE=2, CREATE=4, MEMORY=8.",
+            ],
+            "exampleRows": [
+                "call openDatabaseCall sqlite.openDatabase",
+                "argument openDatabaseCall path String databasePath",
+                "argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode",
+                "run openDatabaseCall",
+            ],
+            "source": "built-in enum and standard.sqlite export",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 29,
+        },
+        "SqliteStepResult": {
+            "kind": "enum",
+            "repr": "Int32",
+            "summary": "SQLite statement step-result enum returned by `sqlite.stepStatement`.",
+            "cases": [
+                {"name": "rowSqliteStepResult", "value": 100},
+                {"name": "doneSqliteStepResult", "value": 101},
+            ],
+            "usage": ["Compare step results against the named cases to distinguish row availability from completion."],
+            "source": "built-in enum and standard.sqlite export",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 35,
+        },
+        "SqliteColumnType": {
+            "kind": "enum",
+            "repr": "Int32",
+            "summary": "SQLite column-type enum returned by `sqlite.columnType`.",
+            "cases": [
+                {"name": "integerSqliteColumnType", "value": 1},
+                {"name": "floatSqliteColumnType", "value": 2},
+                {"name": "textSqliteColumnType", "value": 3},
+                {"name": "blobSqliteColumnType", "value": 4},
+                {"name": "nullSqliteColumnType", "value": 5},
+            ],
+            "usage": ["Use column-type cases before selecting typed column readers when the schema is not already known."],
+            "source": "built-in enum and standard.sqlite export",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 39,
+        },
+        "SqlText": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Trusted SQL text role used by SQLite statement and exec operations.",
+            "usage": [
+                "Use `SqlText` for SQL constants and prefer `sql body NAME` rows in strict executable surfaces.",
+                "Bind dynamic values through sqlite bind operations instead of interpolating them into SQL text.",
+            ],
+            "source": "standard.sqlite type alias",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 24,
+        },
+        "SqliteDatabase": {
+            "kind": "typeAlias",
+            "underlyingType": "OpaquePointer",
+            "summary": "Opaque SQLite database handle returned by `sqlite.openDatabase` and closed by `sqlite.closeDatabase`.",
+            "usage": ["Close each successfully opened database on every ownership path."],
+            "source": "standard.sqlite type alias",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 21,
+        },
+        "SqliteStatement": {
+            "kind": "typeAlias",
+            "underlyingType": "OpaquePointer",
+            "summary": "Opaque SQLite prepared-statement handle returned by `sqlite.prepareStatement` and finalized by `sqlite.finalizeStatement`.",
+            "usage": ["Finalize each successfully prepared statement before closing the database."],
+            "source": "standard.sqlite type alias",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 22,
+        },
+    },
+    "standard.json": {
+        "JsonValueKind": {
+            "kind": "enum",
+            "repr": "Int32",
+            "summary": "JSON cursor-kind enum used by document reader and builder APIs.",
+            "cases": [
+                {"name": "objectJsonValueKind", "value": 0},
+                {"name": "arrayJsonValueKind", "value": 1},
+                {"name": "stringJsonValueKind", "value": 2},
+                {"name": "integerJsonValueKind", "value": 3},
+                {"name": "doubleJsonValueKind", "value": 4},
+                {"name": "booleanJsonValueKind", "value": 5},
+                {"name": "nullJsonValueKind", "value": 6},
+            ],
+            "usage": ["Use named cases instead of raw integers when selecting or checking JSON cursor kinds."],
+            "source": "standard.json enum",
+            "sourceFile": "SemanticScript/std/json/main.sem",
+            "line": 45,
+        },
+    },
+    "compiler.http": {
+        "MiddlewareControl": {
+            "kind": "enum",
+            "repr": "Int32",
+            "summary": "Built-in native HTTP middleware control enum.",
+            "cases": [
+                {"name": "continueMiddlewareControl", "value": 0},
+                {"name": "shortCircuitMiddlewareControl", "value": 1},
+            ],
+            "usage": [
+                "Route middleware operations must declare `output operation OP MiddlewareControl`.",
+                "`continueMiddlewareControl` allows the route handler to run; `shortCircuitMiddlewareControl` skips it after the middleware writes a response.",
+            ],
+            "source": "compiler built-in enum",
+            "sourceFile": "docs/reference/syntax-inventory.md",
+            "line": 334,
+        },
+    },
+}
 AUTHORITY_ACTIONS = frozenset({
     "allocate",
     "close",
@@ -1208,6 +1451,14 @@ SKILL_REGISTRY = (
         "files": (
             "docs/language/errors-effects-capabilities.md",
             "docs/language/concurrency-time-cleanup.md",
+        ),
+    },
+    {
+        "name": "syntax-reference",
+        "description": "Compact row, verb, and implementation-status reference for current SemanticScript syntax.",
+        "files": (
+            "docs/reference/verb-index.md",
+            "docs/reference/syntax-inventory.md",
         ),
     },
     {
@@ -1284,6 +1535,9 @@ SKILL_ALIASES = {
     "sem-getting-started": "getting-started",
     "sem-onboarding": "getting-started",
     "sem": "language-core",
+    "sem-syntax": "syntax-reference",
+    "sem-grammar": "syntax-reference",
+    "sem-verbs": "syntax-reference",
     "sem-agent": "graph-and-slice",
     "sem-language": "language-core",
     "sem-diagnostics": "patch-and-repair",
@@ -2131,7 +2385,7 @@ def _repo_root() -> Path:
     )
     if proc.returncode == 0 and proc.stdout.strip():
         return Path(proc.stdout.strip()).resolve()
-    return ROOT.parent.resolve()
+    return Path.cwd().resolve()
 
 
 def _is_under(path: Path, root: Path) -> bool:
@@ -2500,6 +2754,140 @@ def _runtime_feature_flags() -> dict:
         "vendoredSqlite": (third_party_root / "sqlite" / "sqlite3.c").exists(),
         "vendoredBcrypt": (third_party_root / "bcrypt").exists(),
     }
+
+
+def _runtime_feature_docs() -> list[dict]:
+    runtime_root = ROOT / "runtime"
+    third_party_root = ROOT.parent / "third_party"
+    specs = [
+        {
+            "name": "nativeHttpRuntime",
+            "summary": "Native HTTP/1.1 runtime adapter for routed target webServer programs.",
+            "path": runtime_root / "native_http" / "sem_http_runtime.c",
+            "terms": [
+                "target webServer", "route", "routeMiddleware", "HttpRequest",
+                "HttpResponse", "native HTTP runtime", "SSE", "multipart",
+                "cookies", "headers", "query parameters",
+            ],
+        },
+        {
+            "name": "nativeJsonRuntime",
+            "summary": "Native JSON parser/stringifier runtime used by json.parse and json.stringify targets.",
+            "path": runtime_root / "native_json" / "sem_json_runtime.c",
+            "terms": ["JSON runtime", "json.parse", "json.stringify", "JsonValueKind", "bounded scratch"],
+        },
+        {
+            "name": "nativeSqliteRuntime",
+            "summary": "Native SQLite runtime adapter for standard.sqlite database and statement operations.",
+            "path": runtime_root / "native_sqlite" / "sem_sqlite_runtime.c",
+            "terms": ["SQLite runtime", "sqlite.openDatabase", "SqliteDatabase", "SqliteStatement", "vendored sqlite"],
+        },
+        {
+            "name": "nativeWin32GuiRuntime",
+            "summary": "Native Win32 GUI bridge for target windowsGui programs that call standard.gui targets.",
+            "path": runtime_root / "native_win32_gui" / "sem_win32_gui_runtime.c",
+            "terms": ["Windows GUI runtime", "target windowsGui", "guiBackend win32", "standard.gui", "GuiSession", "GuiEvent"],
+        },
+        {
+            "name": "nativeWinui3GuiScaffold",
+            "summary": "WinUI 3 GUI backend scaffold headers; build integration is not a complete executable backend yet.",
+            "path": runtime_root / "native_winui3_gui" / "sem_winui3_gui_runtime.h",
+            "terms": ["WinUI 3 scaffold", "guiBackend winui3", "Windows App SDK", "partial GUI backend"],
+        },
+        {
+            "name": "nativeBcryptRuntime",
+            "summary": "Native bcrypt/password and random-byte runtime adapter.",
+            "path": runtime_root / "native_bcrypt" / "sem_bcrypt_runtime.c",
+            "terms": ["bcrypt runtime", "bcrypt.hashPassword", "bcrypt.verifyPassword", "randomBytes", "password hashing"],
+        },
+        {
+            "name": "vendoredSqlite",
+            "summary": "Vendored upstream SQLite source used by the native SQLite runtime.",
+            "path": third_party_root / "sqlite" / "sqlite3.c",
+            "terms": ["vendored sqlite", "third_party sqlite", "sqlite3.c"],
+        },
+        {
+            "name": "vendoredBcrypt",
+            "summary": "Vendored bcrypt implementation used by native bcrypt runtime support.",
+            "path": third_party_root / "bcrypt",
+            "terms": ["vendored bcrypt", "third_party bcrypt", "crypt_blowfish"],
+        },
+    ]
+    flags = _runtime_feature_flags()
+    docs: list[dict] = []
+    for spec in specs:
+        path = Path(spec["path"])
+        docs.append({
+            "name": spec["name"],
+            "qualifiedName": spec["name"],
+            "fullName": spec["name"],
+            "module": "runtime",
+            "moduleName": "runtime",
+            "summary": spec["summary"],
+            "availability": "available" if flags.get(spec["name"], False) else "missing",
+            "enabled": bool(flags.get(spec["name"], False)),
+            "terms": spec["terms"],
+            "usage": [
+                "Use docs_search/docs_get for the standard-library operations related to this feature before generating calls.",
+                "Use readiness or doctor to separate source diagnostics from environment/runtime availability.",
+            ],
+            "location": {
+                "path": str(path.resolve()) if path.exists() else str(path),
+                "line": 1,
+            },
+        })
+    return docs
+
+
+def _strip_markdown_inline(text: str) -> str:
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = re.sub(r"\*\*([^*]*)\*\*", r"\1", text)
+    return text.strip()
+
+
+def _syntax_feature_docs(limit: int | None = None) -> list[dict]:
+    try:
+        lines = SYNTAX_INVENTORY_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    docs: list[dict] = []
+    for line_number, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped.startswith("|") or stripped.startswith("|---") or "Implementation status" in stripped:
+            continue
+        cells = re.split(r"\s+\|\s+", stripped.strip("|").strip(), maxsplit=2)
+        if len(cells) != 3 or cells[0].strip().lower() == "syntax":
+            continue
+        syntax_raw = _strip_markdown_inline(cells[0])
+        description = _strip_markdown_inline(cells[1])
+        status = _strip_markdown_inline(cells[2]).strip()
+        if not syntax_raw:
+            continue
+        docs.append({
+            "name": syntax_raw,
+            "qualifiedName": f"syntax.{syntax_raw}",
+            "fullName": syntax_raw,
+            "module": "language.syntax",
+            "moduleName": "language.syntax",
+            "summary": description,
+            "status": status,
+            "implementationStatus": status,
+            "terms": [
+                "coding feature", "language feature", "syntax row", "verb",
+                "grammar", "strictExecutable", "refinedSyntax", syntax_raw.split(" ", 1)[0],
+            ],
+            "usage": [
+                "Load sem-syntax for the compact row inventory before editing syntax.",
+                "Parser, linter, docs, tests, and editor support must move together for syntax changes.",
+            ],
+            "location": {
+                "path": str(SYNTAX_INVENTORY_PATH.resolve()),
+                "line": line_number,
+            },
+        })
+        if limit is not None and len(docs) >= limit:
+            break
+    return docs
 
 
 def _build_context_payload(path: Path) -> dict:
@@ -3980,6 +4368,84 @@ def _target_list_item(target_doc: dict) -> dict:
     }
 
 
+def _type_doc_payload(module_name: str, type_name: str, type_doc: dict) -> dict:
+    source_file = type_doc.get("sourceFile", "")
+    location_path = ""
+    if source_file:
+        candidate = ROOT.parent / source_file
+        location_path = str(candidate.resolve() if candidate.exists() else candidate)
+    qualified_name = f"{_std_module_short_name(module_name)}.{type_name}"
+    return {
+        "kind": type_doc.get("kind", "type"),
+        "module": module_name,
+        "moduleName": _std_module_short_name(module_name),
+        "name": type_name,
+        "qualifiedName": qualified_name,
+        "fullName": f"{module_name}.{type_name}",
+        "summary": type_doc.get("summary", ""),
+        "representation": type_doc.get("repr") or type_doc.get("underlyingType", ""),
+        "repr": type_doc.get("repr", ""),
+        "underlyingType": type_doc.get("underlyingType", ""),
+        "cases": type_doc.get("cases", []),
+        "usage": type_doc.get("usage", []),
+        "exampleRows": type_doc.get("exampleRows", []),
+        "source": type_doc.get("source", "static-type-contract"),
+        "visibility": {
+            "exported": not module_name.startswith("compiler."),
+            "public": True,
+            "internal": False,
+            "apiTier": "type-contract",
+            "reason": type_doc.get("source", "static-type-contract"),
+        },
+        "location": {
+            "path": location_path,
+            "line": int(type_doc.get("line", 0) or 0),
+            "column": 1,
+        } if location_path else {},
+    }
+
+
+def _static_type_docs(module_name: str = "") -> list[dict]:
+    docs: list[dict] = []
+    for module, type_docs in sorted(STD_DOC_STATIC_TYPES.items()):
+        if not _std_module_matches(module, module_name):
+            continue
+        for type_name, type_doc in sorted(type_docs.items()):
+            docs.append(_type_doc_payload(module, type_name, type_doc))
+    return docs
+
+
+def _type_doc_matches(type_doc: dict, query: str) -> bool:
+    candidates = {
+        type_doc.get("name", ""),
+        type_doc.get("qualifiedName", ""),
+        type_doc.get("fullName", ""),
+    }
+    for case in type_doc.get("cases", []):
+        candidates.add(case.get("name", ""))
+    return query in candidates
+
+
+def _type_list_item(type_doc: dict) -> dict:
+    return {
+        "kind": type_doc.get("kind", "type"),
+        "module": type_doc.get("module", ""),
+        "moduleName": type_doc.get("moduleName", ""),
+        "name": type_doc.get("name", ""),
+        "qualifiedName": type_doc.get("qualifiedName", ""),
+        "fullName": type_doc.get("fullName", ""),
+        "summary": type_doc.get("summary", ""),
+        "representation": type_doc.get("representation", ""),
+        "repr": type_doc.get("repr", ""),
+        "underlyingType": type_doc.get("underlyingType", ""),
+        "cases": type_doc.get("cases", []),
+        "usage": type_doc.get("usage", []),
+        "exampleRows": type_doc.get("exampleRows", []),
+        "visibility": type_doc.get("visibility", {}),
+        "location": type_doc.get("location", {}),
+    }
+
+
 def _module_targets(modules: list[dict]) -> list[dict]:
     return [target for module in modules for target in module.get("callTargets", [])]
 
@@ -4402,9 +4868,29 @@ def _docs_next_commands(
         return [
             _next_command_entry(
                 "docs",
-                "list available documented APIs after a failed lookup",
+                "list available documented operations, call targets, and types after a failed lookup",
                 argv=argv,
-            )
+            ),
+            _next_command_entry(
+                "docs-search",
+                "search the indexed docs for nearby API, type, syntax, or runtime feature names before guessing",
+                argv=["sem", "docs", "search", operation_name or "<query>", "--path", ".", "--json"],
+                replayable=bool(operation_name),
+                mcp_tool="docs_search",
+                mcp_args={
+                    "query": operation_name or "<query>",
+                    "path": ".",
+                    "watch": True,
+                    "include_std": True,
+                },
+            ),
+            _next_command_entry(
+                "skills",
+                "load the syntax reference when the missing name may be a row, verb, type, or enum form",
+                argv=["sem", "skills", "get", "sem-syntax", "--json"],
+                mcp_tool="skills_get",
+                mcp_args={"names": ["sem-syntax"]},
+            ),
         ]
     if status == "ambiguous":
         return [
@@ -4453,9 +4939,12 @@ def _docs_payload(
             operation for operation in operations
             if operation["visibility"]["public"]
         ]
+        target_items = [_target_list_item(target) for target in _module_targets(modules)]
+        type_docs = _static_type_docs(module_name)
+        type_items = [_type_list_item(type_doc) for type_doc in type_docs]
         module_names = sorted({module["module"] for module in modules})
         items = [_std_doc_list_item(operation) for operation in visible_operations]
-        has_targets = any(module.get("callTargets") for module in modules)
+        has_targets = bool(target_items)
         status = "tool-error" if inventory_blocked else ("partial" if errors else "ok")
         return {
             **base,
@@ -4473,9 +4962,13 @@ def _docs_payload(
             "modules": module_names,
             "moduleDocs": modules,
             "operations": items,
+            "targets": target_items,
+            "types": type_items,
             "summary": {
                 "moduleCount": len(module_names),
                 "operationCount": len(items),
+                "targetCount": len(target_items),
+                "typeCount": len(type_items),
                 "scannedOperationCount": len(operations),
                 "moduleWithoutOperationDocsCount": sum(1 for module in modules if module["operationDocStatus"] == "no-operation-docs"),
             },
@@ -4486,13 +4979,15 @@ def _docs_payload(
     ]
     matches = [operation for operation in searchable_operations if _std_operation_matches(operation, operation_name)]
     target_matches = [] if matches else [target for target in _module_targets(modules) if _std_target_matches(target, operation_name)]
+    type_docs = _static_type_docs(module_name)
+    type_matches = [] if matches or target_matches else [type_doc for type_doc in type_docs if _type_doc_matches(type_doc, operation_name)]
     if inventory_blocked:
         status = "tool-error"
         ok = False
-    elif not matches and not target_matches:
+    elif not matches and not target_matches and not type_matches:
         status = "not-found"
         ok = False
-    elif len(matches) + len(target_matches) > 1:
+    elif len(matches) + len(target_matches) + len(type_matches) > 1:
         status = "ambiguous"
         ok = False
     elif errors:
@@ -4506,6 +5001,9 @@ def _docs_payload(
         payload_modules = [module for module in modules if module["module"] in matched_module_names]
     elif target_matches:
         matched_module_names = {target["module"] for target in target_matches}
+        payload_modules = [module for module in modules if module["module"] in matched_module_names]
+    elif type_matches:
+        matched_module_names = {type_doc["module"] for type_doc in type_matches}
         payload_modules = [module for module in modules if module["module"] in matched_module_names]
     elif module_name:
         payload_modules = modules
@@ -4524,15 +5022,22 @@ def _docs_payload(
         "nextCommands": _docs_next_commands("get", operation_name, next_module_name, status, std_root=root),
         "operation": matches[0] if len(matches) == 1 else {},
         "target": target_matches[0] if len(target_matches) == 1 else {},
-        "matches": [_std_doc_list_item(operation) for operation in matches] + [_target_list_item(target) for target in target_matches],
+        "type": type_matches[0] if len(type_matches) == 1 else {},
+        "matches": (
+            [_std_doc_list_item(operation) for operation in matches]
+            + [_target_list_item(target) for target in target_matches]
+            + [_type_list_item(type_doc) for type_doc in type_matches]
+        ),
         "moduleDocs": [_compact_module_doc(module) for module in payload_modules],
         "moduleDocMode": "compact",
         "summary": {
-            "matchCount": len(matches) + len(target_matches),
+            "matchCount": len(matches) + len(target_matches) + len(type_matches),
             "operationMatchCount": len(matches),
             "targetMatchCount": len(target_matches),
+            "typeMatchCount": len(type_matches),
             "searchedOperationCount": len(searchable_operations),
             "searchedTargetCount": len(_module_targets(modules)),
+            "searchedTypeCount": len(type_docs),
             "scannedOperationCount": len(operations),
         },
     }
@@ -4671,6 +5176,8 @@ def _docs_entry_search_text(payload: dict) -> str:
     for key in (
         "kind", "module", "moduleName", "name", "qualifiedName", "fullName",
         "target", "summary", "purpose", "invariants", "agentWarnings",
+        "representation", "repr", "underlyingType", "cases", "usage", "exampleRows",
+        "status", "implementationStatus", "availability", "enabled", "terms",
     ):
         add(payload.get(key))
     add(payload.get("signature", {}).get("text"))
@@ -4690,10 +5197,13 @@ def _docs_entry_search_text(payload: dict) -> str:
     add(payload.get("commentsByTag", {}))
     add(payload.get("metadata", {}))
     usage = payload.get("usage", {})
-    add(usage.get("failureMode", {}))
-    add(usage.get("failureHandling", {}))
-    add(usage.get("preconditions", {}))
-    add(usage.get("cleanup", {}))
+    if isinstance(usage, dict):
+        add(usage.get("failureMode", {}))
+        add(usage.get("failureHandling", {}))
+        add(usage.get("preconditions", {}))
+        add(usage.get("cleanup", {}))
+    else:
+        add(usage)
     return "\n".join(parts)
 
 
@@ -4796,6 +5306,20 @@ def _docs_collect_index_entries(
                     continue
                 operation = _docs_mark_source_kind(operation, "std", resolved_std_root)
                 entries.append(_docs_entry_from_payload("operation", operation, resolved_std_root, "std"))
+        for type_doc in _static_type_docs():
+            type_source_kind = "compiler" if type_doc.get("module", "").startswith("compiler.") else "std"
+            if type_source_kind == "std" and not include_std:
+                continue
+            if type_source_kind == "compiler" and not include_compiler:
+                continue
+            entries.append(_docs_entry_from_payload("type", type_doc, resolved_std_root, type_source_kind))
+        if include_compiler:
+            roots["syntax"] = str(SYNTAX_INVENTORY_PATH.parent.resolve())
+            roots["runtime"] = str((ROOT / "runtime").resolve())
+            for feature_doc in _syntax_feature_docs():
+                entries.append(_docs_entry_from_payload("syntaxFeature", feature_doc, ROOT.parent, "syntax"))
+            for feature_doc in _runtime_feature_docs():
+                entries.append(_docs_entry_from_payload("runtimeFeature", feature_doc, ROOT.parent, "runtime"))
     return entries, documents, errors, roots
 
 
@@ -5526,6 +6050,27 @@ def _docs_search_payload(
     db_path = db_path.resolve()
     requested_limit = limit
     limit, limit_errors = _docs_effective_search_limit(limit)
+
+    def index_next_commands() -> list[dict]:
+        return [
+            _next_command_entry(
+                "docs-index",
+                "build the local docs search index before searching from the CLI",
+                argv=[
+                    "sem", "docs", "index", "--path", ".", "--db", str(db_path),
+                    "--include-std", "--embedding-provider", "none", "--json",
+                ],
+                mcp_tool="docs_reindex",
+                mcp_args={
+                    "path": ".",
+                    "db": str(db_path),
+                    "include_std": True,
+                    "background": False,
+                    "embedding_provider": "none",
+                },
+            )
+        ]
+
     if limit_errors:
         return {
             "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
@@ -5547,6 +6092,7 @@ def _docs_search_payload(
             "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit},
             "results": [],
             "errors": [f"{db_path}: docs index does not exist; run sem docs index first"],
+            "nextCommands": index_next_commands(),
         }
     conn: sqlite3.Connection | None = None
     try:
@@ -5676,6 +6222,11 @@ def _docs_search_payload(
                 "location": {"file": row["path"], "line": row["line"]},
                 "freshness": row["embedding_status"],
             }
+            if row["kind"] == "syntaxFeature":
+                result["implementationStatus"] = doc.get("implementationStatus", "")
+            if row["kind"] == "runtimeFeature":
+                result["enabled"] = bool(doc.get("enabled", False))
+                result["availability"] = doc.get("availability", "")
             if include_docs:
                 result["doc"] = doc
             scored_results.append(result)
@@ -5706,7 +6257,12 @@ def _docs_search_payload(
         "results": results,
         "agentGuidance": {
             "codegenSafe": bool(include_docs),
-            "text": "Search results are discovery candidates. Use docs get, slice, or --include-docs before generating calls that depend on effects, failures, cleanup, capabilities, or preconditions.",
+            "text": (
+                "Search results are discovery candidates. Use docs get for API/type results, "
+                "slice for project anchors, or --include-docs for syntax/runtime feature results "
+                "before generating calls that depend on effects, failures, cleanup, capabilities, "
+                "preconditions, syntax support, or runtime availability."
+            ),
         },
         "summary": {
             "resultCount": len(results),
@@ -6061,12 +6617,160 @@ def _stringify_argv(argv: list[object]) -> list[str]:
 def _materialize_cli_argv(argv: list[str]) -> tuple[list[str], list[str]]:
     display_argv = list(argv)
     if display_argv and display_argv[0] == "sem":
+        if getattr(sys, "frozen", False):
+            return [sys.executable, *display_argv[1:]], display_argv
         return [sys.executable, str((ROOT / "tools" / "sem.py").resolve()), *display_argv[1:]], display_argv
     return display_argv, display_argv
 
 
 def _display_command(argv: list[str]) -> str:
     return subprocess.list2cmdline(argv)
+
+
+_MCP_VALUE_FLAGS = {
+    "check": {"--with-readiness": False, "--full": False, "--json": False},
+    "readiness": {"--json": False},
+    "graph": {"--kind": True, "--full": False, "--json": False},
+    "slice": {
+        "--operation": True,
+        "--route": True,
+        "--symbol": True,
+        "--effect": True,
+        "--capability": True,
+        "--type": True,
+        "--full": False,
+        "--json": False,
+    },
+    "explain": {"--json": False},
+    "fix": {"--plan": False, "--include-warnings": False, "--full": False, "--json": False},
+    "patch": {"--dry-run": False, "--apply": False, "--json": False},
+    "test": {
+        "--skip-python-harnesses": False,
+        "--allow-red-preflight-harnesses": False,
+        "--full": False,
+        "--json": False,
+    },
+    "dev": {"--trace": False, "--full": False, "--json": False},
+    "size": {"--json": False},
+    "help": {"--json": False},
+    "agent-docs": {"--json": False, "--max-bytes": True},
+    "skills": {"--json": False, "--all": False, "--full": False},
+}
+
+
+def _sem_argv_positionals(argv: list[str], command: str) -> list[str]:
+    value_flags = _MCP_VALUE_FLAGS.get(command, {})
+    positionals: list[str] = []
+    index = 2
+    while index < len(argv):
+        token = argv[index]
+        takes_value = value_flags.get(token)
+        if takes_value is True:
+            index += 2
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        positionals.append(token)
+        index += 1
+    return positionals
+
+
+def _sem_argv_flag_value(argv: list[str], flag: str) -> str | None:
+    try:
+        index = argv.index(flag)
+    except ValueError:
+        return None
+    next_index = index + 1
+    if next_index >= len(argv):
+        return None
+    value = argv[next_index]
+    if value.startswith("-"):
+        return None
+    return value
+
+
+def _infer_mcp_next_command(argv: list[str]) -> tuple[str | None, dict | None]:
+    if len(argv) < 2 or argv[0] != "sem":
+        return None, None
+    command = argv[1]
+    positionals = _sem_argv_positionals(argv, command)
+    path = positionals[-1] if positionals else "."
+
+    if command == "check":
+        return "check", {
+            "path": path,
+            "with_readiness": "--with-readiness" in argv,
+            "full": "--full" in argv,
+        }
+    if command == "readiness":
+        return "readiness", {"path": path}
+    if command == "graph":
+        return "graph", {
+            "path": path,
+            "kind": _sem_argv_flag_value(argv, "--kind") or "summary",
+            "full": "--full" in argv,
+        }
+    if command == "slice":
+        args: dict[str, object] = {"path": path, "full": "--full" in argv}
+        anchor_flags = {
+            "--operation": "operation",
+            "--route": "route",
+            "--symbol": "symbol",
+            "--effect": "effect",
+            "--capability": "capability",
+            "--type": "type_name",
+        }
+        for flag, key in anchor_flags.items():
+            value = _sem_argv_flag_value(argv, flag)
+            if value:
+                args[key] = value
+                break
+        return "slice", args
+    if command == "explain":
+        code = positionals[0] if positionals else ""
+        return "explain", {"code": code}
+    if command == "fix":
+        return "fix_plan", {
+            "path": path,
+            "include_warnings": "--include-warnings" in argv,
+            "full": "--full" in argv,
+        }
+    if command == "patch":
+        args = {"apply": "--apply" in argv}
+        if positionals:
+            args["plan_path"] = positionals[-1]
+        return "patch", args
+    if command == "test":
+        return "test", {
+            "path": path,
+            "skip_python_harnesses": "--skip-python-harnesses" in argv,
+            "allow_red_preflight_harnesses": "--allow-red-preflight-harnesses" in argv,
+            "full": "--full" in argv,
+        }
+    if command == "dev":
+        return "dev", {"path": path, "trace": "--trace" in argv, "full": "--full" in argv}
+    if command == "size":
+        return "size", {"path": path}
+    if command == "help":
+        return "help", {"path": path}
+    if command == "agent-docs":
+        return "agent_docs", {
+            "path": path,
+            "max_bytes": int(_sem_argv_flag_value(argv, "--max-bytes") or DEFAULT_AGENT_DOC_MAX_BYTES),
+        }
+    if command == "skills" and len(argv) >= 3:
+        subcommand = argv[2]
+        names = [item for item in positionals if item not in {"get", "list"}]
+        if subcommand == "list":
+            return "skills_list", {}
+        if subcommand == "get":
+            return "skills_get", {
+                "names": names,
+                "all_skills": "--all" in argv,
+                "full": "--full" in argv,
+            }
+    return None, None
 
 
 def _next_command_entry(
@@ -6079,6 +6783,8 @@ def _next_command_entry(
     replayable: bool | None = None,
     artifact_inputs: list[dict] | None = None,
     required_args: list[dict] | None = None,
+    mcp_tool: str | None = None,
+    mcp_args: dict | None = None,
 ) -> dict:
     entry = {
         "kind": kind,
@@ -6089,7 +6795,11 @@ def _next_command_entry(
         replay_argv, display_argv = _materialize_cli_argv(normalized_argv)
         entry["argv"] = replay_argv
         entry["command"] = command or _display_command(display_argv)
-        entry["cwd"] = cwd or str(ROOT.parent.resolve())
+        entry["cwd"] = cwd or str(Path.cwd().resolve())
+        if not mcp_tool:
+            inferred_mcp_tool, inferred_mcp_args = _infer_mcp_next_command(normalized_argv)
+            mcp_tool = inferred_mcp_tool
+            mcp_args = inferred_mcp_args
     elif command:
         entry["command"] = command
         if cwd:
@@ -6103,6 +6813,9 @@ def _next_command_entry(
         entry["artifactInputs"] = artifact_inputs
     if required_args:
         entry["requiredArgs"] = required_args
+    if mcp_tool:
+        entry["mcpTool"] = mcp_tool
+        entry["mcpArgs"] = mcp_args or {}
     return entry
 
 
@@ -6118,6 +6831,8 @@ def _append_next_command(
     replayable: bool | None = None,
     artifact_inputs: list[dict] | None = None,
     required_args: list[dict] | None = None,
+    mcp_tool: str | None = None,
+    mcp_args: dict | None = None,
 ) -> None:
     dedupe_key = json.dumps(
         {
@@ -6126,6 +6841,8 @@ def _append_next_command(
             "command": command,
             "artifactInputs": artifact_inputs or [],
             "requiredArgs": required_args or [],
+            "mcpTool": mcp_tool or "",
+            "mcpArgs": mcp_args or {},
         },
         sort_keys=True,
     )
@@ -6142,6 +6859,8 @@ def _append_next_command(
             replayable=replayable,
             artifact_inputs=artifact_inputs,
             required_args=required_args,
+            mcp_tool=mcp_tool,
+            mcp_args=mcp_args,
         )
     )
 
@@ -6428,18 +7147,7 @@ def _check_next_commands(path: Path, diagnostics: list[dict], status: str, *, in
             "inspect the local call graph before editing shared behavior"
         ),
     )
-    _append_next_command(
-        entries,
-        seen,
-        graph_entry["kind"],
-        graph_entry["command"],
-        graph_entry["reason"],
-        argv=graph_entry.get("argv"),
-        cwd=graph_entry.get("cwd"),
-        replayable=graph_entry.get("replayable"),
-        artifact_inputs=graph_entry.get("artifactInputs"),
-        required_args=graph_entry.get("requiredArgs"),
-    )
+    entries.append(graph_entry)
     if not include_readiness:
         _append_next_command(
             entries,
@@ -10304,6 +11012,281 @@ def command_deps(args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 1
 
 
+AGENT_DOC_FILENAMES = ("AGENTS.md", "CLAUDE.md")
+DEFAULT_AGENT_DOC_MAX_BYTES = 250_000
+
+
+def _agent_doc_search_start(path: Path) -> Path:
+    resolved = path.resolve()
+    if resolved.is_file() or resolved.suffix.lower() in {".sem", ".sscript"}:
+        return resolved.parent
+    if resolved.exists():
+        return resolved
+    return resolved.parent if resolved.parent.exists() else Path.cwd().resolve()
+
+
+def _find_agent_doc_paths(path: Path) -> tuple[Path, list[Path]]:
+    start = _agent_doc_search_start(path)
+    for directory in (start, *start.parents):
+        docs = [directory / filename for filename in AGENT_DOC_FILENAMES if (directory / filename).is_file()]
+        if docs:
+            return directory.resolve(), docs
+    return start.resolve(), []
+
+
+def _agent_docs_payload(path: Path, *, max_bytes: int = DEFAULT_AGENT_DOC_MAX_BYTES) -> dict:
+    root, docs = _find_agent_doc_paths(path)
+    safe_max_bytes = max(1, int(max_bytes))
+    documents = []
+    for doc_path in docs:
+        raw = doc_path.read_bytes()
+        truncated = len(raw) > safe_max_bytes
+        content = raw[:safe_max_bytes].decode("utf-8", errors="replace")
+        documents.append({
+            "name": doc_path.name,
+            "path": str(doc_path.resolve()),
+            "relativePath": doc_path.name,
+            "bytes": len(raw),
+            "truncated": truncated,
+            "content": content,
+        })
+    status = "found" if documents else "not-found"
+    return {
+        "schemaVersion": "sem.agentDocs.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "status": status,
+        "requestedPath": str(path),
+        "projectRoot": str(root),
+        "searchStart": str(_agent_doc_search_start(path)),
+        "readOrder": list(AGENT_DOC_FILENAMES),
+        "summary": (
+            "Apply project-local AGENTS.md / CLAUDE.md before editing; "
+            "then load version-matched sem skills for tool and language guidance."
+        ) if documents else (
+            "No project-local AGENTS.md or CLAUDE.md was found from the requested path upward; "
+            "fall back to version-matched sem skills."
+        ),
+        "documents": documents,
+        "nextCommands": [
+            _next_command_entry(
+                "skills",
+                "load version-matched SemanticScript guidance after project-local agent docs",
+                argv=["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--json"],
+                mcp_tool="skills_get",
+                mcp_args={"names": list(MCP_BOOTSTRAP_SKILLS)},
+            ),
+            _next_command_entry(
+                "help",
+                "inspect project state and available workflows",
+                argv=["sem", "help", "--json", str(path.resolve())],
+                mcp_tool="help",
+                mcp_args={"path": str(path.resolve())},
+            ),
+        ],
+    }
+
+
+def command_agent_docs(args: argparse.Namespace) -> int:
+    payload = _agent_docs_payload(Path(args.path), max_bytes=args.max_bytes)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(payload["summary"])
+    for document in payload["documents"]:
+        marker = " (truncated)" if document["truncated"] else ""
+        print(f"\n# {document['name']} ({document['path']}){marker}")
+        print(document["content"])
+    return 0
+
+
+def _project_workflows(path: Path) -> list[dict]:
+    resolved = str(path.resolve())
+    docs_db_path = str(_docs_default_db_path(path))
+
+    def step(
+        kind: str,
+        reason: str,
+        argv: list[object],
+        *,
+        command: str | None = None,
+        replayable: bool | None = None,
+        required_args: list[dict] | None = None,
+        artifact_inputs: list[dict] | None = None,
+        mcp_tool: str | None = None,
+        mcp_args: dict | None = None,
+    ) -> dict:
+        return _next_command_entry(
+            kind,
+            reason,
+            argv=argv,
+            command=command,
+            replayable=replayable,
+            required_args=required_args,
+            artifact_inputs=artifact_inputs,
+            mcp_tool=mcp_tool,
+            mcp_args=mcp_args,
+        )
+
+    return [
+        {
+            "id": "bootstrap-orient",
+            "title": "Bootstrap and orient",
+            "when": "Starting from a plain executable, a new checkout, or a cold MCP session.",
+            "goal": "Load version-matched rules, inspect project state, and prove the language tool path is alive.",
+            "steps": [
+                step("bootstrap", "load the plain-executable startup contract", ["sem", "bootstrap", "--json", resolved]),
+                step("agent-docs", "load project-local AGENTS.md / CLAUDE.md instructions", ["sem", "agent-docs", "--json", resolved], mcp_tool="agent_docs", mcp_args={"path": resolved}),
+                step("skills", "load getting-started, language, agent workflow, and syntax guidance", ["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--json"], mcp_tool="skills_get", mcp_args={"names": list(MCP_BOOTSTRAP_SKILLS)}),
+                step("help", "inspect state and ordered next steps for this path", ["sem", "help", "--json", resolved], mcp_tool="help", mcp_args={"path": resolved}),
+                step("eval", "run a zero-project smoke snippet when no project is open yet", ["sem", "eval", "--code", MCP_BOOTSTRAP_EVAL_CODE, "--json"], command="sem eval --code <semantic smoke snippet> --json", mcp_tool="eval", mcp_args={"code": MCP_BOOTSTRAP_EVAL_CODE}),
+            ],
+            "doneWhen": "The agent has loaded project docs and skills, knows the project path, and can call sem/MCP tools without guessing.",
+        },
+        {
+            "id": "create-project",
+            "title": "Create or scaffold a project",
+            "when": "Starting a new app or creating a minimal repro.",
+            "goal": "Create build.sem, source, tests, and optional docs-index setup from the supported starter shape.",
+            "steps": [
+                step("new", "create the starter SemanticScript project scaffold", ["sem", "new", "--json", "--enable-docs-index", "PROJECT_PATH"], command="sem new --json --enable-docs-index PROJECT_PATH", replayable=False, required_args=[{"name": "projectPath", "position": "final", "description": "new or empty target directory"}]),
+                step("help", "inspect the scaffolded project workflow", ["sem", "help", "--json", resolved], mcp_tool="help", mcp_args={"path": resolved}),
+                step("check", "prove the starter source contract is green", ["sem", "check", "--json", resolved], mcp_tool="check", mcp_args={"path": resolved}),
+                step("test", "run starter semantic and harness tests", ["sem", "test", "--json", resolved], mcp_tool="test", mcp_args={"path": resolved}),
+            ],
+            "doneWhen": "The scaffold checks and tests cleanly, and docs search is ready if enabled.",
+        },
+        {
+            "id": "learn-language-syntax",
+            "title": "Learn language and syntax features",
+            "when": "Writing rows, changing parser/linter/editor support, or checking if a syntax feature exists.",
+            "goal": "Resolve current row forms and implementation status before editing or inventing syntax.",
+            "steps": [
+                step("skills", "load the compact syntax and language rules", ["sem", "skills", "get", "sem", "sem-syntax", "--json"], mcp_tool="skills_get", mcp_args={"names": ["sem", "sem-syntax"]}),
+                step("docs-search", "search current syntax features and implementation status", ["sem", "docs", "search", "languageMode strictExecutable", "--path", resolved, "--db", docs_db_path, "--json"], mcp_tool="docs_search", mcp_args={"query": "languageMode strictExecutable", "path": resolved, "watch": True, "include_std": True}),
+                step("explain", "load rule guidance when diagnostics name the syntax problem", ["sem", "explain", "SEMSC_PARSE", "--json"], mcp_tool="explain", mcp_args={"code": "SEMSC_PARSE"}),
+            ],
+            "doneWhen": "The agent can cite the current row form and whether the feature is implemented, partial, or not implemented.",
+        },
+        {
+            "id": "discover-apis-capabilities-runtime",
+            "title": "Discover APIs, capabilities, types, and runtime features",
+            "when": "Calling stdlib/compiler targets, choosing runtime-backed features, or handling effects/cleanup.",
+            "goal": "Find exact argument names, result handling, capabilities, cleanup rows, type/enums, and runtime availability.",
+            "steps": [
+                step("docs-index", "refresh the local docs index for project, stdlib, syntax, and runtime features", ["sem", "docs", "index", "--path", resolved, "--db", docs_db_path, "--include-std", "--embedding-provider", "none", "--json"], mcp_tool="docs_reindex", mcp_args={"path": resolved, "db": docs_db_path, "include_std": True, "background": True, "embedding_provider": "none"}),
+                step("docs-search", "search for the capability, API, type, syntax, or runtime feature", ["sem", "docs", "search", "<capability, API, type, syntax, or runtime need>", "--path", resolved, "--db", docs_db_path, "--json"], command='sem docs search "<capability, API, type, syntax, or runtime need>" --path PATH --json', replayable=False, mcp_tool="docs_search", mcp_args={"query": "<capability, API, type, syntax, or runtime need>", "path": resolved, "watch": True, "include_std": True}),
+                step("docs", "hydrate exact rows for a selected API/type/enum result before generating calls", ["sem", "docs", "get", "OPERATION_TARGET_TYPE_OR_ENUM", "--json"], command="sem docs get OPERATION_TARGET_TYPE_OR_ENUM --json", replayable=False, required_args=[{"name": "operation", "position": "first", "description": "selected operation, call target, type, or enum from docs_search"}], mcp_tool="docs_get", mcp_args={"operation": "<selected operation, target, type, or enum>"}),
+                step("readiness", "separate source design from runtime/toolchain availability", ["sem", "readiness", "--json", resolved], mcp_tool="readiness", mcp_args={"path": resolved}),
+            ],
+            "doneWhen": "Generated code is based on docs rows, not guessed target names, capabilities, or runtime behavior.",
+        },
+        {
+            "id": "dependencies",
+            "title": "Resolve dependencies",
+            "when": "Imports reference external packages or build.sem declares dependency rows.",
+            "goal": "Materialize, verify, and lock dependencies before diagnosing source imports.",
+            "steps": [
+                step("deps", "list dependency state without network access", ["sem", "deps", "list", "--json", resolved], mcp_tool="deps", mcp_args={"action": "list", "path": resolved}),
+                step("deps", "sync declared dependencies when imports are pending", ["sem", "deps", "sync", "--json", resolved], mcp_tool="deps", mcp_args={"action": "sync", "path": resolved}),
+                step("deps", "verify cached dependency integrity", ["sem", "deps", "verify", "--json", resolved], mcp_tool="deps", mcp_args={"action": "verify", "path": resolved}),
+            ],
+            "doneWhen": "Dependency imports resolve and verification is clean or the payload names the external blocker.",
+        },
+        {
+            "id": "inspect-understand",
+            "title": "Inspect and understand existing code",
+            "when": "Before editing shared behavior, routes, effects, ownership, or unfamiliar files.",
+            "goal": "Use structured project facts instead of ad hoc file reading as the first pass.",
+            "steps": [
+                step("context", "load project roots, runtime flags, and supported syntax summary", ["sem", "context", "--json", resolved], mcp_tool="context", mcp_args={"path": resolved}),
+                step("symbols", "load source files, operations, calls, effects, and unresolved references", ["sem", "symbols", "--json", resolved], mcp_tool="symbols", mcp_args={"path": resolved}),
+                step("graph", "inspect compact architecture before drilling in", ["sem", "graph", "--kind", "summary", "--json", resolved], mcp_tool="graph", mcp_args={"path": resolved, "kind": "summary"}),
+                step("slice", "focus on one operation, route, symbol, effect, capability, or type", ["sem", "slice", "--operation", "OPERATION", "--json", resolved], command="sem slice --operation OPERATION --json PATH", replayable=False, required_args=[{"name": "operation", "position": "--operation", "description": "operation name from graph or symbols"}], mcp_tool="slice", mcp_args={"path": resolved, "operation": "<operation>"}),
+                step("size", "measure source/helper footprint before expensive retrieval", ["sem", "size", "--json", resolved], mcp_tool="size", mcp_args={"path": resolved}),
+            ],
+            "doneWhen": "The edit target and surrounding semantic neighborhood are known.",
+        },
+        {
+            "id": "author-edit-validate",
+            "title": "Author, format, and validate source",
+            "when": "After making or planning source changes.",
+            "goal": "Keep syntax, lint, formatting, and semantic preflight tight before runtime work.",
+            "steps": [
+                step("check", "parse and lint the current source/project state", ["sem", "check", "--json", resolved], mcp_tool="check", mcp_args={"path": resolved}),
+                step("fmt", "check formatting before committing or generating repair plans", ["sem", "fmt", "--check", resolved]),
+                step("graph", "confirm architecture changed where expected", ["sem", "graph", "--kind", "summary", "--json", resolved], mcp_tool="graph", mcp_args={"path": resolved, "kind": "summary"}),
+            ],
+            "doneWhen": "Check is ok or diagnostics are structured enough for repair planning.",
+        },
+        {
+            "id": "diagnose-repair",
+            "title": "Diagnose and repair",
+            "when": "check/test/build returns diagnostics or compiler errors.",
+            "goal": "Explain the rule, inspect the local semantic slice, generate a plan, preview, apply, and re-check.",
+            "steps": [
+                step("explain", "load diagnostic intent and safe repair guidance", ["sem", "explain", "CODE", "--json"], command="sem explain CODE --json", replayable=False, required_args=[{"name": "code", "position": "first", "description": "diagnostic code from check/test/build"}], mcp_tool="explain", mcp_args={"code": "<diagnostic code>"}),
+                step("fix", "generate a reviewable repair plan without mutating source", ["sem", "fix", "--plan", "--json", resolved], mcp_tool="fix_plan", mcp_args={"path": resolved}),
+                step("patch", "preview machine-applicable edits first", ["sem", "patch", "--dry-run", "--json", "PLAN.json"], command="sem patch --dry-run --json PLAN.json", replayable=False, required_args=[{"name": "planPath", "position": "final", "description": "saved full sem.fixPlan.v1 payload"}], mcp_tool="patch", mcp_args={"plan_path": "<plan path>", "apply": False}),
+                step("patch", "apply the reviewed repair plan", ["sem", "patch", "--apply", "--json", "PLAN.json"], command="sem patch --apply --json PLAN.json", replayable=False, required_args=[{"name": "planPath", "position": "final", "description": "saved full sem.fixPlan.v1 payload"}], mcp_tool="patch", mcp_args={"plan_path": "<plan path>", "apply": True}),
+                step("check", "recompute diagnostics after repair", ["sem", "check", "--json", resolved], mcp_tool="check", mcp_args={"path": resolved}),
+            ],
+            "doneWhen": "Diagnostics are resolved or remaining items are explicitly manual/non-patchable.",
+        },
+        {
+            "id": "build-run-debug",
+            "title": "Build, run, and debug runtime behavior",
+            "when": "Source preflight is clean and runtime behavior or native artifacts matter.",
+            "goal": "Prove readiness, compile/run, and inspect generated/runtime failures.",
+            "steps": [
+                step("readiness", "check compiler/runtime/adapter prerequisites separately from source", ["sem", "readiness", "--json", resolved], mcp_tool="readiness", mcp_args={"path": resolved}),
+                step("build", "compile the project or source through the public wrapper", ["sem", "build", resolved]),
+                step("run", "run through the JIT with structured crash triage when needed", ["sem", "run", "--json", "--explain-crash", resolved]),
+                step("eval", "try a focused snippet or repro without project scaffolding", ["sem", "eval", "--code", "<rows>", "--json"], command="sem eval --code <rows> --json", replayable=False, mcp_tool="eval", mcp_args={"code": "<rows>"}),
+                step("emit-ir", "inspect LLVM IR when debugging lowering/codegen", ["sem", "emit-ir", resolved]),
+            ],
+            "doneWhen": "The program builds/runs or the blocker is assigned to readiness, source diagnostics, or runtime/codegen.",
+        },
+        {
+            "id": "test-dev-loop",
+            "title": "Test and iterate",
+            "when": "Behavior should be verified repeatedly or watched during active work.",
+            "goal": "Use semantic preflight plus harnesses, then optional watch plans for fast iteration.",
+            "steps": [
+                step("test", "run semantic preflight and project harnesses", ["sem", "test", "--json", resolved], mcp_tool="test", mcp_args={"path": resolved}),
+                step("test", "collect runtime signal even while semantic preflight is red when useful", ["sem", "test", "--json", "--allow-red-preflight-harnesses", resolved], mcp_tool="test", mcp_args={"path": resolved, "allow_red_preflight_harnesses": True}),
+                step("dev", "emit an agent-first watch/restart plan", ["sem", "dev", "--json", resolved], mcp_tool="dev", mcp_args={"path": resolved}),
+            ],
+            "doneWhen": "Composite test status is green, or failures are classified as source, runtime harness, or environment.",
+        },
+        {
+            "id": "migrate-modernize",
+            "title": "Migrate or modernize syntax",
+            "when": "Old row names or legacy examples appear in source/docs.",
+            "goal": "Convert old syntax intentionally and verify parser/linter/docs/editor surfaces stay aligned.",
+            "steps": [
+                step("migrate-syntax", "rewrite supported legacy rows to current cutover forms", ["sem", "migrate-syntax", resolved, "--json"], command="sem migrate-syntax PATH --json"),
+                step("skills", "reload current syntax rules after migration", ["sem", "skills", "get", "sem-syntax", "--json"], mcp_tool="skills_get", mcp_args={"names": ["sem-syntax"]}),
+                step("check", "verify migrated source", ["sem", "check", "--json", resolved], mcp_tool="check", mcp_args={"path": resolved}),
+            ],
+            "doneWhen": "Legacy forms are gone and current parser/linter/docs agree.",
+        },
+        {
+            "id": "clean-profile-maintain",
+            "title": "Clean, profile, and maintain",
+            "when": "Preparing a branch, release, benchmark, or cleanup pass.",
+            "goal": "Remove ignored artifacts safely, inspect performance/profile outputs, and keep generated state out of reviews.",
+            "steps": [
+                step("clean", "preview generated artifacts before deletion", ["sem", "clean"]),
+                step("clean", "remove ignored SemanticScript artifacts after review", ["sem", "clean", "--force"]),
+                step("bench", "run benchmark harnesses when performance is the change surface", ["sem", "bench"]),
+                step("compare-profiles", "compare agent/runtime profile JSON files", ["sem", "compare-profiles", "BASELINE.json", "CANDIDATE.json"], command="sem compare-profiles BASELINE.json CANDIDATE.json", replayable=False, required_args=[{"name": "baseline", "position": "first", "description": "baseline profile JSON"}, {"name": "candidate", "position": "second", "description": "candidate profile JSON"}]),
+            ],
+            "doneWhen": "Artifacts are intentional, performance signal is captured when relevant, and review diffs are clean.",
+        },
+    ]
+
+
 def _help_payload(start: Path) -> dict:
     """Recommend the next step for an agent working on this project.
 
@@ -10320,11 +11303,51 @@ def _help_payload(start: Path) -> dict:
     }
     entries: list[dict] = []
     seen: set[str] = set()
+    start_skill_args = list(MCP_BOOTSTRAP_SKILLS)
+    _append_next_command(
+        entries, seen, "agent-docs",
+        f"sem agent-docs --json {resolved}",
+        "load project-local AGENTS.md / CLAUDE.md instructions before built-in skills",
+        argv=["sem", "agent-docs", "--json", resolved],
+        mcp_tool="agent_docs",
+        mcp_args={"path": resolved})
     _append_next_command(
         entries, seen, "skills",
-        "sem skills get sem-start sem-agent --json",
-        "load version-matched getting-started and agent workflow rules before editing",
-        argv=["sem", "skills", "get", "sem-start", "sem-agent", "--json"])
+        "sem skills get sem-start sem sem-agent sem-syntax --json",
+        "load version-matched getting-started, agent workflow, and syntax rules before editing",
+        argv=["sem", "skills", "get", *start_skill_args, "--json"],
+        mcp_tool="skills_get",
+        mcp_args={"names": start_skill_args})
+    docs_db_path = str(_docs_default_db_path(start))
+    _append_next_command(
+        entries, seen, "docs-index",
+        f"sem docs index --path {resolved} --db {docs_db_path} --include-std --embedding-provider none --json",
+        "build the local CLI docs search index without optional embedding dependencies",
+        argv=[
+            "sem", "docs", "index", "--path", resolved, "--db", docs_db_path,
+            "--include-std", "--embedding-provider", "none", "--json",
+        ],
+        mcp_tool="docs_reindex",
+        mcp_args={
+            "path": resolved,
+            "db": docs_db_path,
+            "include_std": True,
+            "background": True,
+            "embedding_provider": "none",
+        })
+    _append_next_command(
+        entries, seen, "docs-search",
+        f"sem docs search \"<capability, API, type, syntax, or runtime need>\" --path {resolved} --db {docs_db_path} --json",
+        "discover stdlib/project APIs, syntax rows, runtime features, argument names, capabilities, failures, and cleanup before generating calls",
+        argv=["sem", "docs", "search", "<capability, API, type, syntax, or runtime need>", "--path", resolved, "--db", docs_db_path, "--json"],
+        replayable=False,
+        mcp_tool="docs_search",
+        mcp_args={
+            "query": "<capability, API, type, syntax, or runtime need>",
+            "path": resolved,
+            "watch": True,
+            "include_std": True,
+        })
     if build_tape is not None:
         semdeps = _load_semdeps()
         try:
@@ -10340,32 +11363,41 @@ def _help_payload(start: Path) -> dict:
                     entries, seen, "deps-sync",
                     f"sem deps sync {resolved}",
                     "materialize declared external dependencies so imports resolve",
-                    argv=["sem", "deps", "sync", resolved])
+                    argv=["sem", "deps", "sync", resolved],
+                    mcp_tool="deps",
+                    mcp_args={"action": "sync", "path": resolved})
         except (OSError, semdeps.DependencyError):
             pass
     _append_next_command(
         entries, seen, "check",
         f"sem check --json {resolved}",
         "gate the project: parse, lint, and semantic checks",
-        argv=["sem", "check", "--json", resolved])
+        argv=["sem", "check", "--json", resolved],
+        mcp_tool="check",
+        mcp_args={"path": resolved})
     _append_next_command(
         entries, seen, "graph",
         f"sem graph --kind summary --json {resolved}",
         "inspect architecture: operations, calls, effects, and routes",
-        argv=["sem", "graph", "--kind", "summary", "--json", resolved])
+        argv=["sem", "graph", "--kind", "summary", "--json", resolved],
+        mcp_tool="graph",
+        mcp_args={"path": resolved, "kind": "summary"})
     _append_next_command(
         entries, seen, "test",
         f"sem test --json {resolved}",
         "run semantic preflight and harness tests once check is clean",
-        argv=["sem", "test", "--json", resolved])
+        argv=["sem", "test", "--json", resolved],
+        mcp_tool="test",
+        mcp_args={"path": resolved})
     return {
         "schemaVersion": "sem.help.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "summary": ("Recommended loop: skills -> (deps sync) -> check -> "
-                    "graph/slice -> explain -> fix -> patch -> test. Run the "
-                    "first nextCommand entry next."),
-        "loop": ["skills", "deps sync", "check", "graph/slice", "explain",
+        "summary": ("Recommended loop: skills -> docs_search/docs_get when APIs, types, syntax, runtime features, or capabilities are unknown -> "
+                    "(deps sync) -> check -> graph/slice -> explain -> fix -> patch -> test. "
+                    "Run the first nextCommand entry next."),
+        "loop": ["skills", "docs search/get", "deps sync", "check", "graph/slice", "explain",
                  "fix", "patch", "test"],
+        "workflows": _project_workflows(start),
         "state": state,
         "nextCommands": entries,
     }
@@ -10381,10 +11413,211 @@ def command_help(args: argparse.Namespace) -> int:
     if payload["state"]["pendingDependencies"]:
         print("unsynced dependencies: "
               + ", ".join(payload["state"]["pendingDependencies"]))
+    print("workflow modes:")
+    for workflow in payload.get("workflows", []):
+        print(f"- {workflow['id']}: {workflow['goal']}")
     print("next steps:")
     for item in payload["nextCommands"]:
         label = item.get("command") or " ".join(item.get("argv", []))
         print(f"- {label}\n    {item['reason']}")
+    return 0
+
+
+def _bootstrap_payload(start: Path | None = None) -> dict:
+    project_root = str((start or Path(".")).resolve())
+    source_sem = ["python", str((ROOT / "tools" / "sem.py").resolve())]
+    start_skill_args = list(MCP_BOOTSTRAP_SKILLS)
+    first_tool_calls = [
+        {
+            "tool": "agent_docs",
+            "args": {"path": "."},
+            "reason": "load project-local AGENTS.md / CLAUDE.md instructions from the MCP server cwd",
+        },
+        {
+            "tool": "skills_get",
+            "args": {"names": start_skill_args},
+            "reason": "load version-matched getting-started, language, agent workflow, and syntax rules",
+        },
+        {
+            "tool": "help",
+            "args": {"path": "."},
+            "reason": "inspect project state and get replayable next steps",
+        },
+        {
+            "tool": "docs_search",
+            "args": {
+                "query": "<capability, API, type, syntax, or runtime need>",
+                "path": ".",
+                "watch": True,
+                "include_std": True,
+            },
+            "reason": "discover stdlib/user APIs, capability rows, syntax rows, and runtime features before generating calls",
+        },
+        {
+            "tool": "eval",
+            "args": {"code": MCP_BOOTSTRAP_EVAL_CODE},
+            "reason": "optional zero-project smoke test for the language and runtime path",
+        },
+    ]
+    if getattr(sys, "frozen", False):
+        source_checkout = {
+            "available": False,
+            "note": "This is a frozen release executable; use releaseExecutable commands.",
+        }
+    else:
+        source_checkout = {
+            "available": True,
+            "serverCommand": f"{_display_command(source_sem)} mcp",
+            "versionCommand": f"{_display_command(source_sem)} --version --json",
+            "skillsCommand": f"{_display_command(source_sem)} skills get sem-start sem sem-agent sem-syntax --json",
+        }
+    next_commands = [
+        _next_command_entry(
+            "mcp",
+            "start the stdio MCP server from an installed release executable",
+            argv=["sem", "mcp"],
+            command="sem.exe mcp",
+        ),
+        _next_command_entry(
+            "agent-docs",
+            "load project-local AGENTS.md / CLAUDE.md instructions through CLI or MCP",
+            argv=["sem", "agent-docs", "--json", "."],
+            mcp_tool="agent_docs",
+            mcp_args={"path": "."},
+        ),
+        _next_command_entry(
+            "skills",
+            "load the same getting-started guidance through the CLI",
+            argv=["sem", "skills", "get", *start_skill_args, "--json"],
+            mcp_tool="skills_get",
+            mcp_args={"names": start_skill_args},
+        ),
+        _next_command_entry(
+            "docs-index",
+            "build the local CLI docs search index without optional embedding dependencies",
+            argv=[
+                "sem", "docs", "index", "--path", ".", "--include-std",
+                "--embedding-provider", "none", "--json",
+            ],
+            command="sem docs index --path . --include-std --embedding-provider none --json",
+            mcp_tool="docs_reindex",
+            mcp_args={
+                "path": ".",
+                "include_std": True,
+                "background": True,
+                "embedding_provider": "none",
+            },
+        ),
+        _next_command_entry(
+            "docs-search",
+            "search API/capability/type/syntax/runtime docs before generating stdlib calls",
+            argv=["sem", "docs", "search", "<capability, API, type, syntax, or runtime need>", "--path", ".", "--json"],
+            command='sem docs search "<capability, API, type, syntax, or runtime need>" --path . --json',
+            replayable=False,
+            mcp_tool="docs_search",
+            mcp_args={
+                "query": "<capability, API, type, syntax, or runtime need>",
+                "path": ".",
+                "watch": True,
+                "include_std": True,
+            },
+        ),
+        _next_command_entry(
+            "eval",
+            "run a zero-project SemanticScript smoke snippet",
+            argv=["sem", "eval", "--code", MCP_BOOTSTRAP_EVAL_CODE, "--json"],
+            command="sem eval --code <semantic smoke snippet> --json",
+            mcp_tool="eval",
+            mcp_args={"code": MCP_BOOTSTRAP_EVAL_CODE},
+        ),
+    ]
+    return {
+        "schemaVersion": "sem.bootstrap.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "status": "ok",
+        "summary": "Start MCP, load project agent docs, load sem-start/sem/sem-agent/sem-syntax, then use help and docs_search before editing or generating calls.",
+        "releaseExecutable": {
+            "serverCommand": "sem.exe mcp",
+            "versionCommand": "sem.exe version --json",
+            "agentDocsCommand": "sem.exe agent-docs --json .",
+            "skillsCommand": "sem.exe skills get sem-start sem sem-agent sem-syntax --json",
+        },
+        "sourceCheckout": source_checkout,
+        "mcp": {
+            "serverCommand": "sem.exe mcp",
+            "transport": "stdio",
+            "clientConfig": {
+                "command": "sem.exe",
+                "args": ["mcp"],
+                "cwd": "<project-root>",
+            },
+            "handshakeInstructions": MCP_HANDSHAKE_INSTRUCTIONS.strip(),
+            "firstToolCalls": first_tool_calls,
+        },
+        "projectAgentDocs": {
+            "tool": "agent_docs",
+            "args": {"path": "."},
+            "cli": "sem agent-docs --json .",
+            "purpose": "Load project-local AGENTS.md / CLAUDE.md into the MCP session before relying on built-in skills.",
+        },
+        "docs": {
+            "purpose": "Use docs_search for capability/API/type/syntax/runtime discovery and docs_get for exact usage rows before generating standard-library calls.",
+            "cliIndex": "sem docs index --path . --include-std --embedding-provider none --json",
+            "mcpSearch": {
+                "tool": "docs_search",
+                "args": {
+                    "query": "<capability, API, type, syntax, or runtime need>",
+                    "path": ".",
+                    "watch": True,
+                    "include_std": True,
+                },
+            },
+            "mcpGet": {"tool": "docs_get", "args": {"operation": "<selected operation, target, type, or enum>"}},
+            "cliSearch": 'sem docs search "<capability, API, type, syntax, or runtime need>" --path . --json',
+            "cliGet": "sem docs get OPERATION_TARGET_TYPE_OR_ENUM --json",
+            "freshInstallNote": "CLI docs search needs a SQLite index first; MCP docs_search with watch=true starts or reuses the background index worker.",
+        },
+        "languageSmoke": {
+            "mcp": {"tool": "eval", "args": {"code": MCP_BOOTSTRAP_EVAL_CODE}},
+            "cli": "sem eval --code <semantic smoke snippet> --json",
+            "expectedStdout": "semantic tools ready\n",
+        },
+        "skills": {
+            "start": start_skill_args,
+            "aliases": {
+                "sem-start": "getting-started",
+                "sem": "language-core",
+                "sem-agent": "graph-and-slice",
+                "sem-syntax": "syntax-reference",
+            },
+        },
+        "workflows": _project_workflows(start or Path(".")),
+        "projectRoot": project_root,
+        "nextCommands": next_commands,
+    }
+
+
+def command_bootstrap(args: argparse.Namespace) -> int:
+    payload = _bootstrap_payload(Path(args.path))
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(payload["summary"])
+    print()
+    print(MCP_BOOTSTRAP_HELP.rstrip())
+    source_checkout = payload["sourceCheckout"]
+    if source_checkout.get("available"):
+        print("Source checkout server:")
+        print(f"  {source_checkout['serverCommand']}")
+    else:
+        print("Source checkout server:")
+        print(f"  {source_checkout.get('note', 'not available from this executable')}")
+    print()
+    print("Exact CLI fallback:")
+    print("  sem.exe skills get sem-start sem sem-agent sem-syntax --json")
+    print("  sem.exe docs index --path . --include-std --embedding-provider none --json")
+    print('  sem.exe docs search "<capability, API, type, syntax, or runtime need>" --path . --json')
     return 0
 
 
@@ -10539,6 +11772,26 @@ def _print_std_doc_target(target: dict) -> None:
             print(f"- {row}")
 
 
+def _print_std_doc_type(type_doc: dict) -> None:
+    representation = type_doc.get("representation", "")
+    suffix = f" ({representation})" if representation else ""
+    print(f"{type_doc.get('fullName') or type_doc.get('name')}{suffix}")
+    if type_doc.get("summary"):
+        print(type_doc["summary"])
+    if type_doc.get("cases"):
+        print("cases:")
+        for case in type_doc["cases"]:
+            print(f"- {case['name']} = {case['value']}")
+    if type_doc.get("usage"):
+        print("usage:")
+        for row in type_doc["usage"]:
+            print(f"- {row}")
+    if type_doc.get("exampleRows"):
+        print("example rows:")
+        for row in type_doc["exampleRows"]:
+            print(f"- {row}")
+
+
 def command_docs(args: argparse.Namespace) -> int:
     if args.docs_command == "list":
         payload = _docs_payload(
@@ -10554,6 +11807,15 @@ def command_docs(args: argparse.Namespace) -> int:
             for operation in payload["operations"]:
                 summary = f" - {operation['summary']}" if operation.get("summary") else ""
                 print(f"{operation['fullName']}{operation['signature']['text']}{summary}")
+            for target in payload.get("targets", []):
+                signature = target.get("signature", {}).get("text", "")
+                summary = f" - {target['summary']}" if target.get("summary") else ""
+                print(f"{target['fullName']}{signature}{summary}")
+            for type_doc in payload.get("types", []):
+                representation = type_doc.get("representation", "")
+                suffix = f" ({representation})" if representation else ""
+                summary = f" - {type_doc['summary']}" if type_doc.get("summary") else ""
+                print(f"{type_doc['fullName']}{suffix}{summary}")
         return 0 if payload.get("ok") else 1
     if args.docs_command == "get":
         payload = _docs_payload(
@@ -10570,6 +11832,8 @@ def command_docs(args: argparse.Namespace) -> int:
             _print_std_doc_operation(payload["operation"])
         elif payload.get("status") == "ok" and payload.get("target"):
             _print_std_doc_target(payload["target"])
+        elif payload.get("status") == "ok" and payload.get("type"):
+            _print_std_doc_type(payload["type"])
         elif payload.get("status") == "ambiguous":
             print(f"docs get: {args.operation} is ambiguous; pass --module", file=sys.stderr)
             for match in payload.get("matches", []):
@@ -10811,6 +12075,15 @@ def command_patch(args: argparse.Namespace) -> int:
     return 0 if payload["ok"] else 1
 
 
+def _print_text_for_console(text: str) -> None:
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        print(safe)
+
+
 def command_skills(args: argparse.Namespace) -> int:
     if args.skills_command == "list":
         payload = {
@@ -10823,8 +12096,10 @@ def command_skills(args: argparse.Namespace) -> int:
             "nextCommands": [
                 _next_command_entry(
                     "skills",
-                    "load getting-started and core guidance from the current tool version",
-                    argv=["sem", "skills", "get", "sem-start", "sem", "sem-agent", "--json"],
+                    "load getting-started, core, agent workflow, and syntax guidance from the current tool version",
+                    argv=["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--json"],
+                    mcp_tool="skills_get",
+                    mcp_args={"names": list(MCP_BOOTSTRAP_SKILLS)},
                 )
             ],
         }
@@ -10872,6 +12147,8 @@ def command_skills(args: argparse.Namespace) -> int:
                     argv=["sem", "check", "--json"],
                     command="sem check --json PATH",
                     replayable=False,
+                    mcp_tool="check",
+                    mcp_args={"path": "<project file or directory>"},
                     required_args=[
                         {
                             "name": "path",
@@ -10887,7 +12164,7 @@ def command_skills(args: argparse.Namespace) -> int:
         else:
             for skill in entries:
                 print(f"== {skill['name']} ==")
-                print(skill["content"])
+                _print_text_for_console(skill["content"])
         return 0 if entries and not missing_names else 1
     print("sem skills requires a subcommand", file=sys.stderr)
     return 2
@@ -10943,6 +12220,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sem",
         description="SemanticScript project tool driver",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Bootstrap an MCP-capable agent:\n"
+            "  sem.exe mcp\n"
+            f"  Load project agent docs: {MCP_BOOTSTRAP_AGENT_DOCS_CALL}\n"
+            f"  Then load versioned skills: {MCP_BOOTSTRAP_TOOL_CALL}\n"
+            '  Then: help {"path":"."}\n'
+            f"  Capability/API/type/syntax/runtime discovery: {MCP_BOOTSTRAP_DOCS_SEARCH}\n"
+            f"  Optional language smoke: {MCP_BOOTSTRAP_EVAL_CALL}\n"
+            "\n"
+            "For the full startup contract, run: sem bootstrap --json"
+        ),
     )
     parser.add_argument("--version", action="version", version=f"sem {VERSION}")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -11004,6 +12293,31 @@ def build_parser() -> argparse.ArgumentParser:
     version.add_argument("--json", action="store_true",
                          help="emit machine-readable version facts")
     version.set_defaults(func=command_version)
+
+    bootstrap = subparsers.add_parser(
+        "bootstrap",
+        help="print the MCP and agent onboarding bootstrap contract",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=MCP_BOOTSTRAP_HELP,
+    )
+    bootstrap.add_argument("--json", action="store_true",
+                           help="emit machine-readable bootstrap guidance")
+    bootstrap.add_argument("path", nargs="?", default=".",
+                           help="project path used for path-relative examples")
+    bootstrap.set_defaults(func=command_bootstrap)
+
+    agent_docs = subparsers.add_parser(
+        "agent-docs",
+        help="load project-local AGENTS.md / CLAUDE.md instructions",
+    )
+    agent_docs.add_argument("--json", action="store_true",
+                            help="emit machine-readable project agent docs")
+    agent_docs.add_argument("--max-bytes", type=int,
+                            default=DEFAULT_AGENT_DOC_MAX_BYTES,
+                            help="maximum bytes to include per document")
+    agent_docs.add_argument("path", nargs="?", default=".",
+                            help="project path used to search upward for agent docs")
+    agent_docs.set_defaults(func=command_agent_docs)
 
     new = subparsers.add_parser(
         "new",
@@ -11209,7 +12523,7 @@ def build_parser() -> argparse.ArgumentParser:
     docs_get.add_argument("--all", action="store_true",
                           help="allow lookup of internal runtimeBinding helper operations")
     docs_get.add_argument("operation",
-                          help="operation, target, module.name, or full module-qualified name")
+                          help="operation, target, type, enum, module.name, or full module-qualified name")
     docs_get.set_defaults(func=command_docs)
 
     docs_index = docs_subparsers.add_parser(
@@ -11431,6 +12745,12 @@ def build_parser() -> argparse.ArgumentParser:
         "mcp",
         help="run the SemanticScript MCP server (Model Context Protocol); stdio by default, "
         "pass --transport streamable-http to serve over HTTP",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            MCP_BOOTSTRAP_HELP
+            + "\nMCP initialize instructions repeat these first calls for clients "
+            "that surface server guidance."
+        ),
     )
     mcp_server.add_argument(
         "--transport",

@@ -94,8 +94,8 @@ Module export rows are module-local metadata: `exportType`, `exportError`,
 |---|---|---|
 | `operation` | `operation NAME` | lowered |
 | `operationBody` | `operationBody OP KIND` | partial |
-| `input` | `input OP NAME TYPE` | lowered |
-| `output` | `output OP TYPE...` | lowered |
+| `input` | `input operation OP NAME TYPE` | lowered |
+| `output` | `output operation OP TYPE...` | lowered |
 | `effect` | `effect OP ACTION PATH` | checked metadata |
 | `memory` | `memory OP POLICY...` | checked metadata |
 | `async` | `async OP yes/no` | checked metadata |
@@ -279,9 +279,9 @@ and `guiButton` are historical design notes, not committed executable verbs.
 GUI handler operations use:
 
 ```text
-input HANDLER session GuiSession
-input HANDLER event GuiEvent
-output HANDLER Int32
+input operation HANDLER session GuiSession
+input operation HANDLER event GuiEvent
+output operation HANDLER Int32
 ```
 
 Reserved GUI opaque types are `GuiApplication`, `GuiSession`, `GuiEvent`,

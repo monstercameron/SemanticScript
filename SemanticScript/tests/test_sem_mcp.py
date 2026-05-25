@@ -18,6 +18,8 @@ if MCP_AVAILABLE:
 EXPECTED_TOOLS = {
     "version",
     "eval",
+    "bootstrap",
+    "agent_docs",
     "doctor",
     "check",
     "readiness",
@@ -81,6 +83,22 @@ class TestSemMcpServer(unittest.TestCase):
         result = asyncio.run(sem_mcp.mcp.call_tool("version", {}))
         payload = _structured(result)
         self.assertIn("compiler", payload)
+
+    def test_initialize_instructions_point_to_starting_skill_and_docs(self) -> None:
+        instructions = sem_mcp.mcp.instructions
+        self.assertIn('agent_docs {"path":"."}', instructions)
+        self.assertIn('skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}', instructions)
+        self.assertIn('help {"path":"."}', instructions)
+        self.assertIn("docs_search", instructions)
+        self.assertIn("eval", instructions)
+
+    def test_bootstrap_tool_returns_bootstrap_payload(self) -> None:
+        result = asyncio.run(sem_mcp.mcp.call_tool("bootstrap", {"path": "."}))
+        payload = _structured(result)
+        self.assertEqual(payload["schemaVersion"], "sem.bootstrap.v1")
+        self.assertEqual(payload["mcp"]["firstToolCalls"][0]["tool"], "agent_docs")
+        self.assertEqual(payload["mcp"]["firstToolCalls"][1]["tool"], "skills_get")
+        self.assertEqual(payload["languageSmoke"]["mcp"]["tool"], "eval")
 
     def test_explain_tool_returns_explain_schema(self) -> None:
         result = asyncio.run(sem_mcp.mcp.call_tool("explain", {"code": "SS3104"}))
@@ -202,6 +220,30 @@ class TestSemMcpWrapper(unittest.TestCase):
         with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
             sem_mcp.help(path="proj")
         self.assertEqual(recorded["args"], ["help", "--json", "proj"])
+
+    def test_bootstrap_forwards_path(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+            sem_mcp.bootstrap(path="proj")
+        self.assertEqual(recorded["args"], ["bootstrap", "--json", "proj"])
+
+    def test_agent_docs_forwards_path(self) -> None:
+        recorded: dict[str, list[str]] = {}
+
+        def fake_run(sub_args, cwd=None, timeout=sem_mcp.DEFAULT_TIMEOUT_SECONDS):
+            recorded["args"] = sub_args
+            recorded["cwd"] = cwd
+            return {"ok": True}
+
+        with mock.patch.object(sem_mcp, "_run_sem", side_effect=fake_run):
+            sem_mcp.agent_docs(path="proj", max_bytes=123, cwd="root")
+        self.assertEqual(recorded["args"], ["agent-docs", "--json", "--max-bytes", "123", "proj"])
+        self.assertEqual(recorded["cwd"], "root")
 
     def test_docs_list_and_get_forward_docs_surface(self) -> None:
         recorded: list[list[str]] = []
@@ -585,7 +627,8 @@ class TestDistributionManifests(unittest.TestCase):
 
         self.assertIn(f"StringStruct('FileVersion', '{version}')", rendered)
         self.assertIn("StringStruct('Comments', 'MCP stdio server: run sem.exe mcp.", rendered)
-        self.assertIn("First tool call: skills_get names sem-start sem sem-agent", rendered)
+        self.assertIn("Load project docs: agent_docs path dot", rendered)
+        self.assertIn("Then load versioned skills: skills_get names sem-start sem sem-agent sem-syntax", rendered)
         self.assertIn("StringStruct('McpServerCommand', 'sem.exe mcp')", rendered)
         self.assertIn("StringStruct('McpServerTransport', 'stdio')", rendered)
         self.assertIn(
@@ -602,7 +645,8 @@ class TestDistributionManifests(unittest.TestCase):
             "Start command: sem.exe mcp",
             '"args": ["mcp"]',
             '"cwd": "<project-root>"',
-            'skills_get with names ["sem-start", "sem", "sem-agent"]',
+            'agent_docs with path "."',
+            'skills_get with names ["sem-start", "sem", "sem-agent", "sem-syntax"]',
             "$noteParts += $mcpBootstrapLines",
         )
 

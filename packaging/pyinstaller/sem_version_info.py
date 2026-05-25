@@ -12,7 +12,9 @@ MCP_CLIENT_CONFIG = '{"command":"sem.exe","args":["mcp"],"cwd":"<project-root>"}
 MCP_COMMENTS = (
     'MCP stdio server: run sem.exe mcp. '
     'MCP client config: command sem.exe; args ["mcp"]; cwd project root. '
-    'First tool call: skills_get names sem-start sem sem-agent.'
+    'Load project docs: agent_docs path dot. '
+    'Then load versioned skills: skills_get names sem-start sem sem-agent sem-syntax. '
+    'Then call help path . and docs_search for API/capability/type/syntax/runtime discovery.'
 )
 
 

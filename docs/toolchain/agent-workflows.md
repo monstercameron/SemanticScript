@@ -9,7 +9,10 @@ linter internals.
 The intended semantic loop is:
 
 ```text
+bootstrap MCP or CLI
+load project agent docs
 load matching rules
+discover unknown APIs/capabilities
 check
 inspect graph or slice
 explain diagnostics
@@ -23,7 +26,28 @@ The corresponding semantic-loop commands are:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
+python SemanticScript\tools\sem.py bootstrap --json
+python SemanticScript\tools\sem.py agent-docs --json PATH
+$smoke = @'
+error ConsoleWriteError
+errorCase ConsoleWriteError ConsoleWriteFailed Int32
+storage local immutable greetingText String "semantic tools ready"
+call greetingWriteCall console.writeLine
+argument greetingWriteCall text String greetingText
+run greetingWriteCall
+ignore void source greetingWriteCall
+bind error greetingWriteError ConsoleWriteError greetingWriteCall
+branch error source greetingWriteCall target greetingWriteFailed
+jump target greetingDone
+label greetingWriteFailed
+makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError
+label greetingDone
+'@
+python SemanticScript\tools\sem.py eval --code $smoke --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
+python SemanticScript\tools\sem.py docs index --path PATH --include-std --embedding-provider none --json
+python SemanticScript\tools\sem.py docs search "capability, API, type, syntax, or runtime need" --path PATH --json
+python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json
 python SemanticScript\tools\sem.py deps sync --json PATH
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
@@ -35,8 +59,39 @@ python SemanticScript\tools\sem.py patch --apply --json PLAN.json
 python SemanticScript\tools\sem.py check --json PATH
 ```
 
+`sem help --json PATH` and `sem bootstrap --json PATH` also expose a
+`workflows` array for choosing the right action class. Use that before assuming
+the task is a diagnostic repair. The current modalities are:
+
+- bootstrap and orientation
+- new project scaffolding
+- language and syntax-feature discovery
+- API, type, capability, and runtime-feature discovery
+- dependency resolution
+- structured codebase inspection
+- author/format/validate
+- diagnose/repair/patch
+- build/run/runtime debugging
+- test/dev iteration
+- syntax migration
+- cleanup/profile/maintenance
+
+Each workflow step uses the same `nextCommands` entry shape and carries
+`mcpTool`/`mcpArgs` where an MCP-native surface exists.
+
+MCP clients should call `agent_docs {"path":"."}` before `skills_get` when the
+server cwd is the project root. It copies live project-local `AGENTS.md` /
+`CLAUDE.md` content into the session; skills remain version-matched tool and
+language guidance.
+
 `skills get --json` now returns a summary/index payload by default. Use
 `--full --json` only when an agent truly needs the raw skill source bodies.
+Use `docs search` before generating standard-library calls, capability rows,
+failure handling, or cleanup for APIs the agent has not already loaded.
+For CLI search on a fresh checkout, run `docs index --embedding-provider none`
+first to build the SQLite/FTS index without optional model dependencies.
+Then use `docs get` on the selected operation, target, type, or enum and apply the full usage
+payload, not just the call rows.
 Only auto-apply a patch plan after confirming `status: "actionable"` and
 `planUsable: true` from `sem fix --plan --json`. If the plan reports
 `status: "mixed"`, the machine edits only cover part of the surface; start
@@ -62,6 +117,13 @@ exist?" but "what uncertainty does each command remove?"
 
 - `skills get` removes rule uncertainty.
   It loads the repo-backed guidance for the exact tool version in use.
+- `eval` removes zero-project execution uncertainty.
+  It JIT-runs a snippet or full program and proves the parser, compiler, JIT,
+  and stdout path are alive before a project exists.
+- `docs search` / `docs get` remove API, type, enum, capability, syntax-feature, and runtime-feature uncertainty.
+  Search finds stdlib, compiler-owned, and indexed project APIs by intent;
+  get returns argument names, required effects/capabilities, failure handling,
+  cleanup, preconditions, and local capability rows.
 - `deps sync|verify|list|cache|purge` removes dependency-state uncertainty.
   It materializes external `dependency*` packages into the cache and lock so
   imports resolve, and is the full package lifecycle: `sync` creates/updates
@@ -100,7 +162,9 @@ exist?" but "what uncertainty does each command remove?"
 That is the intended order of work:
 
 ```text
+bootstrap if the agent only has an executable
 load rules
+discover unknown APIs/capabilities
 prove current source state
 map the surface cheaply
 pull one local neighborhood
@@ -140,8 +204,8 @@ validate the project.
 
 ```powershell
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem-start sem --json
-python SemanticScript\tools\sem.py skills get sem-agent sem-diagnostics --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
+python SemanticScript\tools\sem.py skills get sem-diagnostics --json
 ```
 
 The current public aliases map to canonical bundled skills:
@@ -152,6 +216,9 @@ The current public aliases map to canonical bundled skills:
 - `sem` -> `language-core`
 - `sem-agent` -> `graph-and-slice`
 - `sem-language` -> `language-core`
+- `sem-syntax` -> `syntax-reference`
+- `sem-grammar` -> `syntax-reference`
+- `sem-verbs` -> `syntax-reference`
 - `sem-diagnostics` -> `patch-and-repair`
 - `sem-stdlib` -> `sqlite-patterns`
 - `sem-builds` -> `patch-and-repair`
@@ -182,7 +249,28 @@ Primary agent-loop surfaces:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py bootstrap --json
+python SemanticScript\tools\sem.py agent-docs --json PATH
 python SemanticScript\tools\sem.py doctor --json
+$smoke = @'
+error ConsoleWriteError
+errorCase ConsoleWriteError ConsoleWriteFailed Int32
+storage local immutable greetingText String "semantic tools ready"
+call greetingWriteCall console.writeLine
+argument greetingWriteCall text String greetingText
+run greetingWriteCall
+ignore void source greetingWriteCall
+bind error greetingWriteError ConsoleWriteError greetingWriteCall
+branch error source greetingWriteCall target greetingWriteFailed
+jump target greetingDone
+label greetingWriteFailed
+makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError
+label greetingDone
+'@
+python SemanticScript\tools\sem.py eval --code $smoke --json
+python SemanticScript\tools\sem.py docs index --path PATH --include-std --embedding-provider none --json
+python SemanticScript\tools\sem.py docs search "capability, API, type, syntax, or runtime need" --path PATH --json
+python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json
 python SemanticScript\tools\sem.py readiness --json PATH
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
@@ -221,10 +309,15 @@ follow-up can also carry:
 - `requiredArgs` for missing user/project path inputs
 - `artifactInputs` for steps that depend on a saved prior payload such as a fix
   plan file
+- `mcpTool` and `mcpArgs` for MCP-native clients that should call a tool
+  instead of replaying CLI text. The CLI `sem fix --plan` command maps to the
+  MCP `fix_plan` tool.
 
 Current stable `v1` schema versions:
 
 - `sem.version.v1`
+- `sem.bootstrap.v1`
+- `sem.agentDocs.v1`
 - `sem.skills.v1`
 - `sem.readiness.v1`
 - `sem.context.v1`
@@ -339,7 +432,7 @@ For user/generated code lookup, build a SQLite docs cache and search it:
 
 ```powershell
 python SemanticScript\tools\sem.py docs index --path apps\my-app --db .sem\docs.sqlite --include-std --json
-python SemanticScript\tools\sem.py docs search "create task from title" --db .sem\docs.sqlite --json
+python SemanticScript\tools\sem.py docs search "create task from title" --path apps\my-app --db .sem\docs.sqlite --json
 ```
 
 The index stores structured docs plus FTS text and real semantic vector blobs.
@@ -357,6 +450,16 @@ user chooses the prompt.
 MCP mode exposes `docs_list`, `docs_get`, `docs_watch`, `docs_reindex`,
 `docs_index_status`, and `docs_search`; `docs_watch` keeps the path-derived
 SQLite cache refreshed from changed `.sem` files on a background thread.
+For MCP clients, prefer:
+
+```json
+docs_search {"query":"create task from title","path":".","watch":true,"include_std":true}
+docs_get {"operation":"http.responseText"}
+```
+
+`watch: true` starts or reuses the background index worker. Without `watch`,
+`docs_search` reports `index-missing` when no cache exists instead of doing
+background work implicitly.
 
 ## Repair And Patch
 

@@ -10,16 +10,51 @@ From a source checkout:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
+python SemanticScript\tools\sem.py bootstrap --json
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
 ```
 
 From an installed release executable:
 
 ```powershell
 sem.exe version --json
+sem.exe bootstrap --json
 sem.exe skills list --json
-sem.exe skills get sem-start sem sem-agent --json
+sem.exe skills get sem-start sem sem-agent sem-syntax --json
+```
+
+## MCP Bootstrap
+
+An MCP-capable agent starting from a plain installed executable should not need
+repo paths or prior docs. Start the stdio server:
+
+```powershell
+sem.exe mcp
+```
+
+Register it with an MCP client using this shape:
+
+```json
+{"command":"sem.exe","args":["mcp"],"cwd":"<project-root>"}
+```
+
+The MCP initialize handshake repeats the startup calls. If the client does not
+surface handshake instructions, call these tools manually:
+
+```json
+agent_docs {"path":"."}
+skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}
+help {"path":"."}
+```
+
+Use `sem mcp --help` or `sem bootstrap --json` when a client only exposes the
+executable and command-line help.
+
+Optional zero-project language smoke through MCP:
+
+```json
+eval {"code":"error ConsoleWriteError\nerrorCase ConsoleWriteError ConsoleWriteFailed Int32\nstorage local immutable greetingText String \"semantic tools ready\"\ncall greetingWriteCall console.writeLine\nargument greetingWriteCall text String greetingText\nrun greetingWriteCall\nignore void source greetingWriteCall\nbind error greetingWriteError ConsoleWriteError greetingWriteCall\nbranch error source greetingWriteCall target greetingWriteFailed\njump target greetingDone\nlabel greetingWriteFailed\nmakeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError\nlabel greetingDone"}
 ```
 
 ## Repository Map
@@ -71,6 +106,38 @@ Use `sem slice --operation NAME --json PATH` or
 `sem slice --route METHOD:/path --json PATH` once the graph identifies the
 local area to edit.
 
+## Capability And API Discovery
+
+When a call target, capability, failure mode, cleanup row, or argument name is
+not already known, ask the docs surface before generating source. `docs search`
+is for discovery; `docs get` is the authoritative usage payload.
+
+CLI:
+
+```powershell
+sem docs index --path PATH --include-std --embedding-provider none --json
+sem docs search "sqlite open database capability" --path PATH --json
+sem docs get sqlite.openDatabase --json
+sem docs get SqliteOpenMode --json
+```
+
+MCP:
+
+```json
+docs_search {"query":"sqlite open database capability","path":".","watch":true,"include_std":true}
+docs_get {"operation":"sqlite.openDatabase"}
+docs_get {"operation":"SqliteOpenMode"}
+```
+
+Prefer the returned `usage.call.rows`, `usage.failureHandling.rows`,
+`usage.cleanup.rows`, `usage.requiredCallerEffects`,
+`usage.requiredCapabilities`, and `usage.localCapabilityRows` over guessing
+from names.
+
+CLI `docs search` reads a SQLite index. If it reports `status:
+"index-missing"`, run `docs index` first. MCP `docs_search` with `watch: true`
+starts or reuses the background index worker.
+
 ## Skill Loading Order
 
 Use `sem-start` first for orientation, then load the narrow skill for the work:
@@ -80,6 +147,7 @@ Use `sem-start` first for orientation, then load the narrow skill for the work:
 | `sem-start` / `sem-getting-started` | `getting-started` | You need the project map and first commands. |
 | `sem` / `sem-language` | `language-core` | You are editing source rows, operations, calls, types, or dataflow. |
 | `sem-agent` / `sem-testing` | `graph-and-slice` | You need retrieval, graph, slice, check, and test workflow rules. |
+| `sem-syntax` / `sem-grammar` / `sem-verbs` | `syntax-reference` | You need the compact verb index, current row schemas, or implementation status table. |
 | `sem-diagnostics` / `sem-builds` | `patch-and-repair` | You are resolving diagnostics or applying repair plans. |
 | `sem-deps` / `sem-packages` | `package-dependencies` | You are working with `build.sem`, dependencies, cache, or lock files. |
 | `sem-stdlib` | `sqlite-patterns` | You need SQLite, records, JSON CRUD, or stdlib call-target context. |
