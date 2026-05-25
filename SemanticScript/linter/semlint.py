@@ -3362,8 +3362,24 @@ def check_unreachable_operation_rows(facts: ExtendedFacts) -> List[Diagnostic]:
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         reachableLineNumbers = source_line_reachable_numbers(operation)
+        # `branch else target L` rows attached to a preceding `branch if/error`
+        # are consumed by the CFG model as that branch's else-edge (see
+        # source_line_reachable_numbers / branch_else_targets_by_line), so the
+        # else ROW itself never lands in reachableLineNumbers even though it is a
+        # live control-flow edge. Exempt those rows; they are the idiomatic
+        # two-line conditional, not stale unreachable code.
+        attachedElseLineNumbers: Set[int] = set()
+        lines = operation.lines
+        for index in range(len(lines) - 1):
+            current = lines[index]
+            if current.verb == "branch" and current.args and current.args[0] in {"if", "error"}:
+                nextLine = lines[index + 1]
+                if nextLine.verb == "branch" and nextLine.args[:2] == ["else", "target"]:
+                    attachedElseLineNumbers.add(nextLine.number)
         for sourceLine in operation.lines:
             if sourceLine.number in reachableLineNumbers:
+                continue
+            if sourceLine.number in attachedElseLineNumbers:
                 continue
             if not _is_unreachable_operation_row_candidate(sourceLine):
                 continue
@@ -4566,7 +4582,22 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
     when a programmer binds out of habit but the value isn't consumed."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
-        bindDeclarations: List[Tuple[str, str, SourceLine, int]] = []
+        # Calls whose error condition is discharged by a `branch error source
+        # <call>` / `branchIfError <call>` row. For such a call, its
+        # `bind error <slot> <call>` slot is the structurally-required vehicle
+        # SS3106 demands — the branch consumes the error via the CALL name, so
+        # the typed SLOT name is legitimately never read. Exempt those slots
+        # from the unused-bind check rather than flagging the canonical
+        # error-handling idiom (which would contradict SS3106).
+        branchErrorDischargedCalls: Set[str] = set()
+        for sourceLine in operation.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            dischargedCall = branch_error_source(sourceLine)
+            if dischargedCall is not None:
+                branchErrorDischargedCalls.add(dischargedCall)
+
+        bindDeclarations: List[Tuple[str, str, SourceLine, int, str, str]] = []
         for lineIndex, sourceLine in enumerate(operation.lines):
             if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
@@ -4574,9 +4605,15 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
             if bind is not None:
                 bindDeclarations.append((
                     bind[1], f"bind {bind[0]}", sourceLine, lineIndex,
+                    bind[0], bind[3],
                 ))
 
-        for bindName, bindVerb, declarationLine, declarationIndex in bindDeclarations:
+        for (bindName, bindVerb, declarationLine, declarationIndex,
+                bindVariant, boundFromCall) in bindDeclarations:
+            # Error slot discharged by `branch error`/`branchIfError` on its
+            # call is part of the required idiom, not dead.
+            if bindVariant == "error" and boundFromCall in branchErrorDischargedCalls:
+                continue
             isReferenced = False
             for laterLine in operation.lines[declarationIndex + 1:]:
                 if is_comment(laterLine) or not laterLine.tokens:
@@ -4631,12 +4668,44 @@ def check_unused_bind_slots(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+# A `sqlite.bind*` row binds one parameter of a prepared statement; a bind
+# failure (SQLITE_RANGE/SQLITE_MISUSE/OOM) is realized and surfaced by the
+# subsequent step/exec on the same statement. When that statement lifecycle is
+# already error-handled in the operation, demanding a separate `bind error` +
+# `branch error` on every parameter bind is ~hundreds of low-value rows that
+# also spawn unused-bind (SS0106) churn. We therefore suppress SS3106 on
+# `sqlite.bind*` rows inside an operation whose prepare/step/exec is
+# error-handled. This is a deliberate, scoped softening (the bind's own status
+# is not independently checked) chosen over forcing per-bind error branches.
+_SQLITE_BIND_CALL_TARGETS: FrozenSet[str] = frozenset({
+    "sqlite.bindInt", "sqlite.bindInt64", "sqlite.bindDouble",
+    "sqlite.bindText", "sqlite.bindBlob", "sqlite.bindNull",
+})
+_SQLITE_STATEMENT_LIFECYCLE_TARGETS: FrozenSet[str] = frozenset({
+    "sqlite.prepareStatement", "sqlite.stepStatement",
+    "sqlite.exec", "sqlite.execStatus",
+})
+
+
 def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
-    """Known-fallible calls must expose their failure/status disposition."""
+    """Known-fallible calls must expose their failure/status disposition.
+
+    Exception: `sqlite.bind*` rows are not required to carry their own error
+    disposition when the enclosing operation already error-handles a sqlite
+    statement-lifecycle call (prepare/step/exec) — the bind's effect is
+    validated downstream by that step. See `_SQLITE_BIND_CALL_TARGETS`."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         operationCalls = collect_operation_calls(operation)
+        # Does this operation error-handle a sqlite statement lifecycle? A
+        # lifecycle call counts as handled when it branches on error or uses
+        # runChecked.
+        operationHasHandledSqliteLifecycle = any(
+            lifecycleCall.target in _SQLITE_STATEMENT_LIFECYCLE_TARGETS
+            and (lifecycleCall.branch_error_lines or lifecycleCall.run_checked_lines)
+            for lifecycleCall in operationCalls.values()
+        )
         lines = [
             sourceLine
             for sourceLine in operation.lines
@@ -4739,6 +4808,12 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
 
         for callFact in operationCalls.values():
             if callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+                continue
+            # Scoped exception: a parameter bind inside an error-handled sqlite
+            # transaction does not need its own error disposition (the step/exec
+            # surfaces the failure). See _SQLITE_BIND_CALL_TARGETS rationale.
+            if (callFact.target in _SQLITE_BIND_CALL_TARGETS
+                    and operationHasHandledSqliteLifecycle):
                 continue
             uncheckedExecutionLines = unchecked_execution_lines(callFact)
             if callFact.run_checked_lines and uncheckedExecutionLines:
@@ -5303,47 +5378,49 @@ def _normalize_set_target_name(setLine: SourceLine) -> Optional[str]:
     return args[0]
 
 
-def _branch_target_names(sourceLine: SourceLine) -> List[str]:
-    return branch_target_names_from_row(sourceLine)
-
-
-def _label_block_reads_name(
-    operation: OperationFact,
-    labelIndexByName: Dict[str, int],
-    labelName: str,
-    targetName: str,
-) -> bool:
-    labelIndex = labelIndexByName.get(labelName)
-    if labelIndex is None:
-        return False
-    for laterLine in operation.lines[labelIndex + 1:]:
-        if is_comment(laterLine) or not laterLine.tokens:
-            continue
-        if laterLine.verb == "label":
-            return False
-        if any(token.text == targetName for token in laterLine.tokens):
-            return True
-    return False
+# Verbs that end a straight-line basic block: control can transfer away (so a
+# prior `set`'s value may escape to a read on the taken path) or join from
+# elsewhere (a label reachable by branch). Across any of these, a later `set`
+# to the same slot is not a sound textual shadow of an earlier one.
+_DEAD_STORE_BLOCK_BOUNDARY_VERBS: FrozenSet[str] = frozenset({
+    "label",
+    "jump",
+    "return", "returnValue", "returnOk", "returnError", "returnVoid",
+    "branch", "branchIf", "branchIfError", "branchIfGroupError",
+    "branchIfChannelClosed", "branchSelected",
+    "await", "runChecked", "case", "done",
+})
 
 
 def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
     """`set X val1` followed by `set X val2` with no read of X between is a
-    dead store — the first write is overwritten before observation."""
+    dead store — the first write is overwritten before observation.
+
+    Only flagged within a single straight-line basic block: the tracker is
+    cleared at every control-flow boundary (see
+    `_DEAD_STORE_BLOCK_BOUNDARY_VERBS`) so two `set`s separated by a
+    `jump`/`branch`/`label` — which may lie on disjoint paths — are not
+    mistaken for a shadow."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
-        labelIndexByName: Dict[str, int] = {}
-        for lineIndex, sourceLine in enumerate(operation.lines):
-            if (not is_comment(sourceLine) and sourceLine.tokens
-                    and sourceLine.verb == "label" and sourceLine.args):
-                labelIndexByName[sourceLine.args[0]] = lineIndex
 
-        # Walk lines in order, track per-name (lastSetIndex, lastSetLine)
+        # Walk lines in order, track per-name (lastSetIndex, lastSetLine).
+        # Dead-store shadowing (`set X a` … `set X b` with no read of X between)
+        # is only sound WITHIN a straight-line basic block: across a control-flow
+        # boundary the two writes may sit on disjoint paths (an intervening
+        # `jump`/`branch` carries the first value to a read elsewhere, or the
+        # second `set` is in a branch the first never reaches). Clearing the
+        # tracker at every boundary keeps the analysis basic-block-local and
+        # avoids cross-branch false positives.
         lastSetSeen: Dict[str, Tuple[int, SourceLine]] = {}
         for lineIndex, sourceLine in enumerate(operation.lines):
             if is_comment(sourceLine) or not sourceLine.tokens:
                 continue
             verb = sourceLine.verb
+            if verb in _DEAD_STORE_BLOCK_BOUNDARY_VERBS:
+                lastSetSeen.clear()
+                continue
             if verb == "set":
                 targetName = _normalize_set_target_name(sourceLine)
                 if not targetName:
@@ -5353,22 +5430,12 @@ def check_dead_store(facts: ExtendedFacts) -> List[Diagnostic]:
                     priorIndex, priorLine = priorSet
                     # Check intervening lines for any read of targetName
                     intervening = operation.lines[priorIndex + 1:lineIndex]
+                    # Both sets are in the same straight-line block (the tracker
+                    # is cleared at every control-flow boundary), so a read is
+                    # simply any non-`set` row that mentions the slot name.
                     isReadBetween = any(
-                        (
-                            (
-                                laterLine.verb != "set"
-                                and any(token.text == targetName for token in laterLine.tokens)
-                            )
-                            or any(
-                                _label_block_reads_name(
-                                    operation,
-                                    labelIndexByName,
-                                    labelName,
-                                    targetName,
-                                )
-                                for labelName in _branch_target_names(laterLine)
-                            )
-                        )
+                        laterLine.verb != "set"
+                        and any(token.text == targetName for token in laterLine.tokens)
                         for laterLine in intervening
                         if not is_comment(laterLine) and laterLine.tokens
                     )

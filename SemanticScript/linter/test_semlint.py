@@ -150,6 +150,34 @@ return value failure
 """)
         self.assertNotIn("SS3630", _codes(diagnostics))
 
+    def test_attached_branch_else_row_is_not_flagged(self) -> None:
+        # The idiomatic two-line conditional: `branch if ... target L1` followed
+        # by `branch else target L2`. The CFG model consumes the else row as the
+        # branch-if's else edge, so it never lands in the reachable set — but it
+        # is a live edge, not stale unreachable code, and must not flag SS3630.
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+invariant main "idiomatic two-line conditional must not flag the else row"
+storage local immutable threshold Int64 5
+storage local immutable probe Int64 3
+storage module immutable lowExit ExitCode 0
+storage module immutable highExit ExitCode 1
+call condCall math.lessThanInt64
+arg condCall left probe
+arg condCall right threshold
+run condCall
+bind value cond Bool condCall
+branch if condition cond target lowPath
+branch else target highPath
+label lowPath
+return value lowExit
+label highPath
+return value highExit
+""")
+        self.assertNotIn("SS3630", _codes(diagnostics))
+
 
 # ==========================================================================
 # SS0103  unusedDeclaration.capability
@@ -1941,6 +1969,51 @@ returnValue computedSum
 """)
         self.assertNotIn("SS0106", _codes(diagnostics))
 
+    def test_error_slot_discharged_by_branch_error_not_flagged(self) -> None:
+        # `bind error <slot> <call>` is the vehicle SS3106 requires; when its
+        # call is discharged by `branch error source <call>`, the typed slot is
+        # legitimately never read (the branch consumes the error via the call
+        # name). It must NOT flag SS0106 — that would contradict SS3106.
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError DbFailure
+operation persistRow
+output persistRow Result Void MainError
+purpose persistRow "smoke"
+invariant persistRow "error is handled via branch; typed slot is the required vehicle"
+call prepareCall sqlite.prepareStatement
+arg prepareCall database database
+arg prepareCall sql someSql
+run prepareCall
+bind ok preparedStatement SqliteStatement prepareCall
+bind error prepareError SqlitePrepareFailure prepareCall
+branch error source prepareCall target dbFailed
+returnOk noResult
+label dbFailed
+makeError dbFailure MainError.DbFailure
+returnError dbFailure
+""")
+        flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS0106")}
+        self.assertNotIn("prepareError", flagged)
+
+    def test_unread_error_slot_without_branch_discharge_still_flagged(self) -> None:
+        # An error slot whose call is NOT branch-error-discharged and is never
+        # read is still a genuine unused bind (exemption must not over-apply).
+        diagnostics = _lint_source("""project Test
+operation persistRow
+output persistRow Void
+purpose persistRow "smoke"
+call prepareCall sqlite.prepareStatement
+arg prepareCall database database
+arg prepareCall sql someSql
+run prepareCall
+bind ok preparedStatement SqliteStatement prepareCall
+bind error prepareError SqlitePrepareFailure prepareCall
+ignore void source preparedStatement
+""")
+        flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS0106")}
+        self.assertIn("prepareError", flagged)
+
 
 # ==========================================================================
 # SS3106  errorPathCoverage.hiddenFailure
@@ -1986,6 +2059,55 @@ makeError writeLineFailure MainError.WriteFailure
 returnError writeLineFailure
 """)
         self.assertNotIn("SS3106", _codes(diagnostics))
+
+    def test_sqlite_bind_in_error_handled_transaction_not_flagged(self) -> None:
+        # A parameter bind discharged with `ignore void` is NOT flagged when the
+        # operation already error-handles the statement lifecycle (prepare here);
+        # the bind's failure surfaces at the handled step/exec.
+        diagnostics = _lint_source("""project Test
+error MainError
+errorCase MainError DbFailure
+operation persistRow
+output persistRow Result Void MainError
+purpose persistRow "smoke"
+invariant persistRow "statement lifecycle is error-handled; binds are best-effort"
+call prepareCall sqlite.prepareStatement
+arg prepareCall database database
+arg prepareCall sql someSql
+run prepareCall
+bind ok preparedStatement SqliteStatement prepareCall
+bind error prepareError SqlitePrepareFailure prepareCall
+branch error source prepareCall target dbFailed
+call bindValueCall sqlite.bindText
+arg bindValueCall statement preparedStatement
+arg bindValueCall parameterIndex oneIndex
+arg bindValueCall value someValue
+run bindValueCall
+ignore void source bindValueCall
+returnOk noResult
+label dbFailed
+makeError dbFailure MainError.DbFailure
+returnError dbFailure
+""")
+        flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS3106")}
+        self.assertNotIn("bindValueCall", flagged)
+
+    def test_sqlite_bind_without_handled_lifecycle_still_flagged(self) -> None:
+        # No error-handled lifecycle call in the operation -> the bind's own
+        # hidden failure is still flagged (suppression must not over-apply).
+        diagnostics = _lint_source("""project Test
+operation bindOnly
+output bindOnly Void
+purpose bindOnly "smoke"
+call bindValueCall sqlite.bindText
+arg bindValueCall statement preparedStatement
+arg bindValueCall parameterIndex oneIndex
+arg bindValueCall value someValue
+run bindValueCall
+ignore void source bindValueCall
+""")
+        flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS3106")}
+        self.assertIn("bindValueCall", flagged)
 
     def test_run_checked_counts_as_fallible_disposition(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -2618,6 +2740,75 @@ returnOk noResult
 label consoleWriteFailed
 makeError consoleWriteFailure MainError.WriteFailed lastConsoleWriteErrorCode
 returnError consoleWriteFailure
+""")
+        self.assertNotIn("SS3201", _codes(diagnostics))
+
+    def test_real_in_block_dead_store_still_flags(self) -> None:
+        # Guard the basic-block-local rewrite against over-clearing: a genuine
+        # straight-line dead store (two sets, no boundary, no read between) must
+        # still flag SS3201.
+        diagnostics = _lint_source("""project Test
+storage local mutable counter Int64 zeroValue
+operation main
+output main Void
+purpose main "smoke"
+invariant main "first counter write is overwritten before any read"
+storage local immutable firstValue Int64 1
+storage local immutable secondValue Int64 2
+set local counter firstValue
+set local counter secondValue
+returnValue counter
+""")
+        self.assertIn("SS3201", _codes(diagnostics))
+
+    def test_sets_on_disjoint_branches_not_flagged(self) -> None:
+        # The two `set cursorId` writes sit on mutually exclusive branches; the
+        # first jumps to the join before the second is reachable, so it is NOT
+        # shadowed. A textual set-set scan used to mis-flag this.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Int64
+purpose main "smoke"
+invariant main "cursorId is set on two disjoint branches that both reach the join"
+storage local mutable cursorId Int64 zeroValue
+storage local immutable firstValue Int64 1
+storage local immutable secondValue Int64 2
+storage local immutable threshold Int64 5
+storage local immutable probe Int64 3
+call condCall math.lessThanInt64
+arg condCall left probe
+arg condCall right threshold
+run condCall
+bind value cond Bool condCall
+branch if condition cond target altPath
+set local cursorId firstValue
+jump target joinPath
+label altPath
+set local cursorId secondValue
+jump target joinPath
+label joinPath
+returnValue cursorId
+""")
+        self.assertNotIn("SS3201", _codes(diagnostics))
+
+    def test_set_then_jump_to_reading_block_not_flagged(self) -> None:
+        # First set's value escapes via the jump to a block that reads it before
+        # the textually-later second set is reached.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Int64
+purpose main "smoke"
+invariant main "first write is read at the jump target before the later write"
+storage local mutable cursorId Int64 zeroValue
+storage local immutable firstValue Int64 1
+storage local immutable secondValue Int64 2
+set local cursorId firstValue
+jump target useCursor
+label resetCursor
+set local cursorId secondValue
+returnValue cursorId
+label useCursor
+returnValue cursorId
 """)
         self.assertNotIn("SS3201", _codes(diagnostics))
 
