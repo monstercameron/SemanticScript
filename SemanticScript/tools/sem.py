@@ -4609,7 +4609,44 @@ def _semantic_test_is_trivial(test_path: Path) -> bool:
     return not (has_call or has_branch)
 
 
-def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False) -> dict:
+def _execute_semantic_contract(test_path: Path, timeout: int = 20) -> dict:
+    """JIT-run a buildable semantic `.test.sem` and report whether its process
+    exit code signals an assertion failure.
+
+    `sem test`'s semantic lane is otherwise check-only — a `.test.sem` whose
+    `main` returns a nonzero ExitCode still "passes" because the exit code was
+    never observed. This executes the contract so a behavioral assertion can
+    actually fail the suite. A *clean* nonzero exit (no compiler-error stderr) is
+    an assertion failure. A run that can't compile/launch standalone (e.g. cross-
+    module or webServer context, or a timeout/hang) is reported as not-executed
+    rather than failed, so it never spuriously regresses a previously-green test.
+    """
+    try:
+        proc = _capture_compiler(test_path, ["--run"], timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"executed": False, "exitCode": None,
+                "reason": f"execution timed out after {timeout}s (not standalone-runnable, e.g. a server loop)"}
+    except OSError as exc:
+        return {"executed": False, "exitCode": None, "reason": f"could not launch: {exc}"}
+    stderr = proc.stderr or ""
+    # A compile/run-setup failure (parse-only passed but full codegen/link or
+    # import/entry resolution failed under --run — common for a contract fragment
+    # with no `entry`/`target`) is NOT an assertion failure. The compiler emits a
+    # structured diagnostic block for these; a real program run does not.
+    compile_failure_markers = (
+        "semsc:", "phase: codegen", "phase: backend", "phase: check",
+        "blocks_compile:", "error SSCG", "error SSBE", "error SEMSC",
+    )
+    if any(marker in stderr for marker in compile_failure_markers):
+        return {"executed": False, "exitCode": proc.returncode,
+                "reason": "not standalone-runnable under --run (no entry/context or codegen-only failure); check-validated only"}
+    if proc.returncode == 0:
+        return {"executed": True, "exitCode": 0, "reason": "exited 0"}
+    return {"executed": True, "exitCode": proc.returncode,
+            "reason": f"assertion failure - main returned nonzero exit code {proc.returncode}"}
+
+
+def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False, execute_contracts: bool = False) -> dict:
     preflight = _build_check_payload(path, [], include_readiness=False)
     preflight_ok = bool(preflight.get("ok", False))
     discovered = _discover_test_entries(path)
@@ -4661,34 +4698,51 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             semantic_contract_executed += 1
             payload = _build_check_payload(entry["path"], [])
             ok = bool(payload["ok"])
-            duration_ms = int((time.time() - start) * 1000)
             selected += 1
             trivial = _semantic_test_is_trivial(Path(entry["path"]))
             if trivial:
                 trivial_semantic_tests += 1
-            results.append({
+            # Opt-in: JIT-run non-trivial, buildable contracts so a behavioral
+            # assertion (main returning a nonzero ExitCode) actually fails the
+            # suite, instead of the check-only lane silently passing it.
+            execution = None
+            if execute_contracts and ok and not trivial:
+                execution = _execute_semantic_contract(Path(entry["path"]))
+            assertion_failed = bool(
+                execution and execution["executed"]
+                and execution["exitCode"] not in (0, None)
+            )
+            final_ok = ok and not assertion_failed
+            duration_ms = int((time.time() - start) * 1000)
+            result = {
                 "name": entry["name"],
                 "kind": entry["kind"],
                 "lane": "semantic-contract",
-                "executionModel": "semantic-check",
+                "executionModel": (
+                    "semantic-check+jit-run"
+                    if execution and execution["executed"] else "semantic-check"
+                ),
                 "path": str(entry["path"]),
-                "status": "passed" if ok else "failed",
+                "status": "passed" if final_ok else "failed",
                 "durationMs": duration_ms,
                 "summary": payload["summary"],
                 "checkStatus": payload["status"],
                 "diagnostics": payload["diagnostics"],
                 "checkCommand": f"sem check --json {entry['path']}",
-                # A semantic test is check-validated, not executed; if it has no
-                # calls/branches it asserts nothing — surfaced so a green run
-                # isn't mistaken for behavioral coverage.
+                # A semantic test is check-validated; unless executed it asserts
+                # nothing behaviorally. Surfaced so a green run isn't mistaken for
+                # behavioral coverage.
                 "exercisesAssertions": not trivial,
                 "warning": (
                     "test exercises no assertions (no call/branch rows) — it only "
                     "proves the file parses, checks, and is buildable"
                     if trivial else None
                 ),
-            })
-            if ok:
+            }
+            if execution is not None:
+                result["execution"] = execution
+            results.append(result)
+            if final_ok:
                 passed += 1
             else:
                 failed += 1
@@ -6738,6 +6792,7 @@ def command_test(args: argparse.Namespace) -> int:
         Path(args.path),
         include_python_harnesses=not args.skip_python_harnesses,
         allow_red_preflight_harnesses=bool(getattr(args, "allow_red_preflight_harnesses", False)),
+        execute_contracts=bool(getattr(args, "execute_contracts", False)),
     )
     if args.json:
         payload = _compact_test_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
@@ -7471,6 +7526,9 @@ def build_parser() -> argparse.ArgumentParser:
                       help="skip Python-based app harnesses and run only SemanticScript test files")
     test.add_argument("--allow-red-preflight-harnesses", action="store_true",
                       help="run Python harnesses even when semantic preflight diagnostics are still red")
+    test.add_argument("--execute-contracts", action="store_true",
+                      help="JIT-run non-trivial *.test.sem contracts and fail on a nonzero exit "
+                           "(behavioral assertion), instead of only check-validating them")
     test.add_argument("path", nargs="?", default=".")
     test.set_defaults(func=command_test)
 

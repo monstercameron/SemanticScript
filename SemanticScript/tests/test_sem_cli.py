@@ -1221,6 +1221,33 @@ return value 0
             updated = source.read_text(encoding="utf-8")
             self.assertIn('purpose operation main "demo"', updated)
 
+    def test_execute_semantic_contract_classification(self) -> None:
+        # The opt-in semantic-contract executor must distinguish a real
+        # assertion failure (clean nonzero exit) from a compile/run-setup failure
+        # (a contract fragment with no entry that can't lower standalone) and
+        # from a hang — only the first should fail the suite.
+        def proc(returncode, stderr=""):
+            return subprocess.CompletedProcess([], returncode, "", stderr)
+
+        cases = {
+            "clean zero": (proc(0), True, 0),
+            "clean nonzero is assertion failure": (proc(1), True, 1),
+            "codegen failure is not executed": (proc(3, "error SSCG001: main\nphase: codegen.lower"), False, 3),
+            "compiler driver error is not executed": (proc(2, "semsc: parse error in x"), False, 2),
+        }
+        for label, (completed, expect_executed, expect_code) in cases.items():
+            with mock.patch.object(sem, "_capture_compiler", return_value=completed):
+                result = sem._execute_semantic_contract(Path("x.test.sem"))
+            self.assertEqual(result["executed"], expect_executed, f"{label}: executed")
+            self.assertEqual(result["exitCode"], expect_code, f"{label}: exitCode")
+
+        # A hang (timeout) is reported as not-executed, never a failure.
+        with mock.patch.object(sem, "_capture_compiler",
+                               side_effect=subprocess.TimeoutExpired(cmd="x", timeout=20)):
+            timed_out = sem._execute_semantic_contract(Path("x.test.sem"))
+        self.assertFalse(timed_out["executed"])
+        self.assertIn("timed out", timed_out["reason"])
+
     def test_fix_plan_auto_applies_syntax_cutover(self) -> None:
         # The most common first-run failure (unqualified input/output/purpose
         # rows the compiler now rejects) must produce a machine-applicable plan,

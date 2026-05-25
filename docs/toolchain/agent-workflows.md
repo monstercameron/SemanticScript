@@ -55,6 +55,21 @@ python SemanticScript\tools\sem.py test --json PATH
 python SemanticScript\tools\sem.py dev --json PATH
 ```
 
+By default the semantic-contract lane (`*.test.sem`) is check-validated only —
+it proves the file parses, lints, and is buildable, but does NOT execute it, so
+a `.test.sem` whose `main` returns a nonzero `ExitCode` still passes. To make a
+behavioral assertion actually fail the suite, run a contract as a complete
+program (give it `entry console main`) and pass `--execute-contracts`:
+
+```powershell
+python SemanticScript\tools\sem.py test --json --execute-contracts PATH
+```
+
+This JIT-runs each non-trivial, buildable contract and fails it on a clean
+nonzero exit. A contract fragment that can't run standalone (no `entry`, a
+cross-module/server context, or a hang) is reported `executed: false` and stays
+check-validated only — it is never spuriously failed.
+
 ## Why Each Tool Exists
 
 For a long agent session, the important question is not only "what commands
