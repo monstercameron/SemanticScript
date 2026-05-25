@@ -6847,6 +6847,116 @@ def command_migrate_syntax(args: argparse.Namespace) -> int:
     return subprocess.call(command)
 
 
+def _repin_literals_in_text(text: str, base_dir: Path) -> tuple[str, list[dict], list[str]]:
+    """Recompute `literalBytes`/`literalDigest` rows from the current bytes of
+    each literal's `literalSource` file. Returns (new_text, changes, missing).
+    Only existing pin rows are updated (their value is rewritten in place);
+    rows are never inserted or removed, so formatting is preserved."""
+    lines = text.split("\n")
+    sources: dict[str, str] = {}
+    for line in lines:
+        parts = line.split(None, 2)
+        if len(parts) >= 3 and parts[0] == "literalSource":
+            sources[parts[1]] = parts[2].strip().strip('"')
+    computed: dict[str, tuple[int, str] | None] = {}
+    missing: list[str] = []
+    for name, raw_path in sources.items():
+        path = Path(raw_path) if os.path.isabs(raw_path) else (base_dir / raw_path)
+        try:
+            data = path.read_bytes()
+        except OSError:
+            computed[name] = None
+            missing.append(name)
+            continue
+        computed[name] = (len(data), hashlib.sha256(data).hexdigest())
+    changes: list[dict] = []
+    for index, line in enumerate(lines):
+        tokens = line.split()
+        if (len(tokens) >= 3 and tokens[0] == "literalBytes"
+                and computed.get(tokens[1])):
+            new_value = str(computed[tokens[1]][0])
+            if tokens[2] != new_value:
+                lines[index] = re.sub(
+                    r"^(\s*literalBytes\s+" + re.escape(tokens[1]) + r"\s+)\S+",
+                    lambda m: m.group(1) + new_value, line)
+                changes.append({"literal": tokens[1], "field": "literalBytes",
+                                "old": tokens[2], "new": new_value})
+        elif (len(tokens) >= 4 and tokens[0] == "literalDigest"
+                and tokens[2] == "sha256" and computed.get(tokens[1])):
+            new_hex = computed[tokens[1]][1]
+            if tokens[3] != new_hex:
+                lines[index] = re.sub(
+                    r"^(\s*literalDigest\s+" + re.escape(tokens[1]) + r"\s+sha256\s+)\S+",
+                    lambda m: m.group(1) + new_hex, line)
+                changes.append({"literal": tokens[1], "field": "literalDigest",
+                                "old": tokens[3], "new": new_hex})
+    return "\n".join(lines), changes, missing
+
+
+def command_literal_repin(args: argparse.Namespace) -> int:
+    """Recompute literalBytes/literalDigest pins from each literal's source
+    file. Preview by default; `--write` applies. Closes the manual repin loop
+    (a build-time-generated literalSource changes its bytes/hash every regen)."""
+    target = Path(args.path)
+    if target.is_dir():
+        files = sorted(target.rglob("*.sem")) + sorted(target.rglob("*.sscript"))
+    elif target.is_file():
+        files = [target]
+    else:
+        print(f"sem literal repin: path not found: {args.path}", file=sys.stderr)
+        return 2
+    write = bool(getattr(args, "write", False))
+    json_out = bool(getattr(args, "json", False))
+    file_reports: list[dict] = []
+    total_changes = 0
+    for source_file in files:
+        try:
+            text = source_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            file_reports.append({"file": str(source_file), "error": str(exc)})
+            continue
+        new_text, changes, missing = _repin_literals_in_text(text, source_file.parent)
+        if not changes and not missing:
+            continue
+        total_changes += len(changes)
+        if changes and write:
+            source_file.write_text(new_text, encoding="utf-8", newline="\n")
+        file_reports.append({
+            "file": str(source_file),
+            "changes": changes,
+            "missingSources": missing,
+            "applied": bool(changes and write),
+        })
+    payload = {
+        "schemaVersion": "sem.literalRepin.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "mode": "write" if write else "preview",
+        "totalChanges": total_changes,
+        "files": file_reports,
+    }
+    if json_out:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if not file_reports:
+        print("sem literal repin: all literal pins are up to date.")
+        return 0
+    verb = "repinned" if write else "would repin"
+    for report in file_reports:
+        if report.get("error"):
+            print(f"  {report['file']}: error: {report['error']}", file=sys.stderr)
+            continue
+        for change in report["changes"]:
+            print(f"  {report['file']}: {verb} {change['literal']} "
+                  f"{change['field']} {change['old']} -> {change['new']}")
+        for name in report["missingSources"]:
+            print(f"  {report['file']}: WARNING {name} literalSource file is "
+                  f"missing; cannot repin", file=sys.stderr)
+    if not write and total_changes:
+        print("\nrun with --write to apply these pin updates.")
+    return 0
+
+
 def command_mcp(args: argparse.Namespace) -> int:
     try:
         from tools import sem_mcp
@@ -7240,6 +7350,23 @@ def build_parser() -> argparse.ArgumentParser:
                                 help="emit machine-readable migration results")
     migrate_syntax.add_argument("paths", nargs="+")
     migrate_syntax.set_defaults(func=command_migrate_syntax)
+
+    literal = subparsers.add_parser(
+        "literal",
+        help="manage external-literal pins (literalBytes/literalDigest)",
+    )
+    literal_subparsers = literal.add_subparsers(dest="literal_command", required=True)
+    literal_repin = literal_subparsers.add_parser(
+        "repin",
+        help="recompute literalBytes/literalDigest from each literal's source file",
+    )
+    literal_repin.add_argument("path",
+                               help="a .sem file or a directory to scan")
+    literal_repin.add_argument("--write", action="store_true",
+                               help="apply the updated pins in place (default: preview)")
+    literal_repin.add_argument("--json", action="store_true",
+                               help="emit machine-readable repin results")
+    literal_repin.set_defaults(func=command_literal_repin)
 
     mcp_server = subparsers.add_parser(
         "mcp",

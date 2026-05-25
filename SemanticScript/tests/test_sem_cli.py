@@ -792,6 +792,42 @@ class TestSemAgentPayloads(unittest.TestCase):
             with self.assertRaises(OSError):
                 sem.main(["check", "x"])
 
+    def test_literal_repin_recomputes_pins(self) -> None:
+        import hashlib as _hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "assets").mkdir()
+            data = b"hello repin world"
+            (root / "assets" / "msg.txt").write_bytes(data)
+            sem_text = (
+                "project R\nmodule examples.r\n"
+                "literal greeting String\n"
+                "literalSource greeting \"assets/msg.txt\"\n"
+                "literalBytes greeting 999\n"
+                "literalDigest greeting sha256 deadbeef\n"
+            )
+            new_text, changes, missing = sem._repin_literals_in_text(sem_text, root)
+            self.assertEqual(missing, [])
+            self.assertEqual({c["field"] for c in changes},
+                             {"literalBytes", "literalDigest"})
+            self.assertIn(f"literalBytes greeting {len(data)}", new_text)
+            self.assertIn(
+                f"literalDigest greeting sha256 {_hashlib.sha256(data).hexdigest()}",
+                new_text)
+            # idempotent: re-running on the corrected text finds nothing.
+            _, changes2, _ = sem._repin_literals_in_text(new_text, root)
+            self.assertEqual(changes2, [])
+
+    def test_literal_repin_reports_missing_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sem_text = (
+                "literal x String\nliteralSource x \"nope.txt\"\n"
+                "literalBytes x 5\n")
+            _, changes, missing = sem._repin_literals_in_text(sem_text, root)
+            self.assertEqual(changes, [])
+            self.assertEqual(missing, ["x"])
+
     def test_parse_error_gets_actionable_help(self) -> None:
         # The bare parser tier ("SEMSC_PARSE") now carries message-specific help
         # + fix candidates. Both stderr shapes (with/without a line number).
