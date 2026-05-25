@@ -7975,6 +7975,43 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
           passed, "alias-typed const was wrongly flagged")
 
 
+def test_unknown_dotted_call_target_is_rejected_not_zeroed():
+    # `string.concat` is not a real target (std/string has no `concat`, and the
+    # program does not import it). It used to fall into the external-module
+    # fallback and lower to a dummy i64 0, which compiled cleanly then handed a
+    # garbage value to whatever consumed the bind (e.g. an html.hydrate hole),
+    # crashing at runtime. It must now be a clean codegen rejection.
+    src = "\n".join([
+        "project UnknownTarget",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "storage local immutable a String \"x\"",
+        "storage local immutable b String \"y\"",
+        "call joinCall string.concat",
+        "argument joinCall left String a",
+        "argument joinCall right String b",
+        "run joinCall",
+        "bind value joined String joinCall",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.Codegen(prog).compile()
+    except Exception as exc:  # CompilerDiagnosticError wraps the ValueError
+        raised = exc
+    message = str(getattr(raised, "diagnostic", raised) or "")
+    if hasattr(raised, "diagnostic"):
+        message = raised.diagnostic.message
+    check("codegen: unknown dotted call target rejected (not silently zeroed)",
+          raised is not None and "unsupported call target" in message
+          and "string.concat" in message,
+          message)
+
+
 def test_backend_diagnostic_detects_locked_output_binary():
     src = "\n".join([
         "project LockedOutput",
@@ -8383,6 +8420,7 @@ def main():
     test_json_parse_primitive_rejects_documented_negative_cases()
     test_parser_strips_utf8_bom()
     test_const_lowerability_surfaces_unknown_type_at_check()
+    test_unknown_dotted_call_target_is_rejected_not_zeroed()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_backend_diagnostic_detects_locked_output_binary()
     test_call_lowering_diagnostic_splits_overloaded_code()

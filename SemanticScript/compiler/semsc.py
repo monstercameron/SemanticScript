@@ -13497,7 +13497,28 @@ class Codegen:
         # so the surrounding control flow + bind chain still compiles. A real
         # runtime (when wired) would supply the implementation by linking
         # against the named module's exports.
-        if "." in target or target in self.prog.validators or target in self.prog.policies:
+        #
+        # This is deliberately NARROW: it fires only when the qualified target's
+        # prefix is a KNOWN import alias or declared abstraction. A dotted target
+        # whose prefix is unknown — a typo, or a non-existent builtin such as
+        # `string.concat` written without importing `standard.string` — is not a
+        # real call. Zeroing it used to compile and "build" cleanly, then hand a
+        # garbage value to whatever consumed the bind (e.g. an `html.hydrate`
+        # hole), which dereferenced it and crashed at runtime (SSRUN002). Reject
+        # it at codegen so it surfaces as a clear error instead.
+        prefix = target.split(".", 1)[0] if "." in target else target
+        known_external = (
+            prefix in self.prog.import_aliases
+            or prefix in self.prog.codecs
+            or prefix in self.prog.validators
+            or prefix in self.prog.policies
+            or prefix in self.prog.records
+            or prefix in self.prog.enums
+            or prefix in self.prog.type_aliases
+        )
+        if (known_external
+                or target in self.prog.validators
+                or target in self.prog.policies):
             zero = ir.Constant(Int64, 0)
             call["result"] = zero
             call["error_value"] = zero
