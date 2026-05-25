@@ -746,6 +746,16 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertIn("no build.sem found", msg)
             self.assertIn("not a lone source file", msg)
 
+    def test_every_curated_explainer_is_non_empty(self) -> None:
+        # Guards the "explain SS0003 returned just 'SS0003'" class: any code we
+        # curate must carry a real title, summary, and at least one fix.
+        for code, entry in sem.DIAGNOSTIC_EXPLAINERS.items():
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} curated but not found")
+            self.assertTrue(payload["title"].strip(), f"{code} has empty title")
+            self.assertTrue(payload["summary"].strip(), f"{code} has empty summary")
+            self.assertTrue(payload["commonFixes"], f"{code} has no commonFixes")
+
     def test_explain_unknown_code_still_reports_not_found(self) -> None:
         payload = sem._diagnostic_explain_payload("SS9999")
         self.assertFalse(payload["found"])
