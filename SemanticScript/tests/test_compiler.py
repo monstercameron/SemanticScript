@@ -7913,6 +7913,68 @@ def test_backend_diagnostic_maps_symbol_to_source_call():
           rendered)
 
 
+def test_parser_strips_utf8_bom():
+    bom = chr(0xFEFF)
+    src = bom + "\n".join([
+        "project BomTest",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    check("parser: leading UTF-8 BOM is stripped (project parses)",
+          "main" in prog.operations, list(prog.operations))
+
+
+def test_const_lowerability_surfaces_unknown_type_at_check():
+    # An undeclared const type used to pass `check` (parse/lint) and only fail
+    # at build with SSCG002/SSCG004. It must now be caught pre-codegen.
+    src = "\n".join([
+        "project ConstCheck",
+        "entry console main",
+        "storage module immutable okStatus HttpStatus 200",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.validate_const_lowerability(prog)
+    except semsc.CompilerDiagnosticError as exc:
+        raised = exc.diagnostic
+    check("const check: unknown const type is caught pre-codegen as SSCG004",
+          raised is not None and raised.code == "SSCG004"
+          and "HttpStatus" in raised.message,
+          raised.message if raised else "no diagnostic raised")
+
+    # A primitive alias const must still pass (HttpStatusCode -> Int32).
+    ok_src = "\n".join([
+        "project ConstCheckOk",
+        "entry console main",
+        "type HttpStatusCode Int32",
+        "storage module immutable okStatus HttpStatusCode 200",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value okStatus",
+    ])
+    ok_prog = semsc.parse(ok_src)
+    passed = True
+    try:
+        semsc.validate_const_lowerability(ok_prog)
+    except semsc.CompilerDiagnosticError:
+        passed = False
+    check("const check: primitive-alias const passes the lowerability gate",
+          passed, "alias-typed const was wrongly flagged")
+
+
 def test_backend_diagnostic_detects_locked_output_binary():
     src = "\n".join([
         "project LockedOutput",
@@ -8319,6 +8381,8 @@ def main():
     test_json_numeric_bool_stringify_uses_native_runtime_helpers()
     test_json_parse_primitive_rejects_malformed_and_trailing_junk()
     test_json_parse_primitive_rejects_documented_negative_cases()
+    test_parser_strips_utf8_bom()
+    test_const_lowerability_surfaces_unknown_type_at_check()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_backend_diagnostic_detects_locked_output_binary()
     test_call_lowering_diagnostic_splits_overloaded_code()

@@ -598,6 +598,7 @@ class Program:
         self.icon_groups = {}             # group_name -> dict(role, purpose, line)
         self.icon_images = {}             # image_name -> dict(group, path, format, width, height, scale, depth, platform, purpose, line)
         self.consts = {}              # name -> (type, value)
+        self.const_lines = {}         # module-const name -> source line (best-effort, for diagnostics)
         self.worker_pools = {}        # module-scope workerPool name -> line
         # Module-scope mutable storage (`storage module mutable` and
         # `sharedState <scope> mutable`). Tracked separately from consts so
@@ -2101,6 +2102,11 @@ def _finish_sql_body_literal(prog: Program, active_sql_body: dict) -> None:
 
 
 def parse(source: str) -> Program:
+    # Strip a leading UTF-8 BOM. Windows editors and PowerShell 5.1
+    # (`Set-Content -Encoding utf8`) prepend U+FEFF, which would otherwise be
+    # glued to the first token and reported as `unknown verb: 'project'`.
+    if source and ord(source[0]) == 0xFEFF:
+        source = source[1:]
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
     active_html_template = None
@@ -3488,6 +3494,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             prog.current_op.lines.append((verb, args, lineno))
         else:
             prog.consts[name] = (typ, value)
+            prog.const_lines.setdefault(name, lineno)
         return
 
     # ===== inside-an-operation verbs =====
@@ -3551,11 +3558,13 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                 prog.mutable_globals[name] = (typ, value)
             else:
                 prog.consts.setdefault(name, (typ, value))
+            prog.const_lines.setdefault(name, lineno)
         elif prog.current_op is not None:
             prog.current_op.consts[name] = (typ, value)
             prog.current_op.lines.append((verb, args, lineno))
         else:
             prog.consts.setdefault(name, (typ, value))
+            prog.const_lines.setdefault(name, lineno)
         return
     if verb == "domainLiteral" and len(args) >= 3:
         # `domainLiteral NAME TYPE VALUE` is structurally a const with a
@@ -16390,6 +16399,89 @@ _SECURITY_ADVISORY_GUIDANCE = {
 }
 
 
+def _const_type_is_lowerable(prog: Program, typ: str) -> bool:
+    """True when a constant's declared type is a *known* type.
+
+    The reported codegen failure ("unsupported const type: HttpStatus") is an
+    UNDECLARED type name reaching codegen. We flag exactly that: a type that is
+    neither a concrete/aliased primitive, an enum, a record, nor a declared
+    type alias. Record-typed consts are intentionally allowed here — they are
+    bound to `jsonBody`/`htmlBody` islands with their own codegen path, so
+    flagging them would be a false positive.
+    """
+    if typ in ("Void", "void"):
+        return True
+    if llvm_type_for(prog, typ) is not None:
+        return True  # primitive, primitive alias, enum, or opaque handle type
+    resolved = resolve_alias(prog, typ)
+    if typ in prog.records or resolved in prog.records:
+        return True
+    if typ in prog.enums or resolved in prog.enums:
+        return True
+    if typ in prog.type_aliases or resolved in prog.type_aliases:
+        return True
+    return False
+
+
+def validate_const_lowerability(prog: Program) -> None:
+    """SSCG004 at check time — a constant declared with a type the backend
+    cannot lower (an unknown type name, or a record/domain type) fails in
+    codegen with "unsupported const type". That gate previously only fired at
+    `build`, so a green `check` did not guarantee a buildable program. Running
+    it here (during `--parse-only --lint`) closes that gap: the same failure is
+    surfaced earlier with the same SSCG004 code.
+    """
+    def _check(name: str, typ: str, lineno: int) -> None:
+        if "." in name:
+            return  # qualified/imported const — owned by its source module
+        if _const_type_is_lowerable(prog, typ):
+            return
+        span = _strict_span(prog, lineno) if lineno else _strict_span(prog, 0)
+        raise CompilerDiagnosticError(CompilerDiagnostic(
+            code="SSCG004",
+            phase="check.const-lowerability",
+            message=(
+                f"unsupported const type: {typ} (constant `{name}` is declared "
+                f"with a type the backend cannot lower to an LLVM constant)"),
+            primary=span,
+            semantic_stack=[
+                DiagnosticFrame(
+                    kind="const lowerability validation",
+                    span=span,
+                    note=("only concrete primitives, primitive aliases, and "
+                          "enums lower to LLVM constants; unknown type names "
+                          "and record/domain types do not"),
+                ),
+            ],
+            direction=(
+                "Declare the constant with a concrete primitive type (for "
+                "example `Int32 200`). Enums lower via their repr width; if you "
+                "need a domain type at a call boundary, pass a primitive-typed "
+                "value and keep the domain type on the call's argument row."),
+            suggested_fixes=[
+                f"Change `{name}`'s type to a concrete primitive "
+                "(Int32/Int64/UInt*/Bool/Float64/String).",
+                "Confirm the type name exists — an unknown type name reaches "
+                "codegen as an unlowerable const.",
+            ],
+            agent_hint=(
+                "This is the codegen-time SSCG004 surfaced at check. Edit the "
+                "constant's declared type in source; do not edit generated IR."),
+        ))
+
+    for name, (typ, _value) in list(prog.consts.items()):
+        _check(name, typ, prog.const_lines.get(name, 0))
+    for op in prog.operations.values():
+        local_lines = {}
+        for verb, args, lineno in op.lines:
+            if verb == "const" and len(args) >= 2:
+                local_lines.setdefault(args[0], lineno)
+            elif verb == "storage" and len(args) >= 4:
+                local_lines.setdefault(args[2], lineno)
+        for name, (typ, _value) in list(op.consts.items()):
+            _check(name, typ, local_lines.get(name, op.decl_line))
+
+
 def validate_strict_executable(prog: Program) -> None:
     if not _strict_executable_is_active(prog):
         return
@@ -20648,6 +20740,9 @@ def main():
         # The always-on security floor runs first and binds EVERY build,
         # regardless of language mode; strict adds the broader executable wall.
         validate_security_floor(prog)
+        # Const lowerability is a codegen-time failure (SSCG004) lifted to the
+        # parse/check phase so a green `check` implies a buildable program.
+        validate_const_lowerability(prog)
         validate_strict_executable(prog)
     except CompilerDiagnosticError as e:
         print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
