@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import errno
 import functools
 import hashlib
 import importlib.util
@@ -7148,16 +7149,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_broken_pipe() -> int:
+    """A downstream consumer closed the pipe (e.g. `| head` or PowerShell
+    `Select-Object -First N`). The payload was being emitted successfully, so a
+    truncating reader is not a tool failure and must not surface as a nonzero
+    (e.g. 255) exit that would mislead a CI exit-code check. Redirect stdout to
+    devnull so the interpreter's shutdown flush can't raise a second
+    BrokenPipeError, then exit cleanly."""
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_streams()
     if argv is None:
         argv = sys.argv[1:]
-    if "--version" in argv and "--json" in argv and len(argv) == 2:
-        print(json.dumps(_version_payload(), indent=2, sort_keys=True))
-        return 0
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        if "--version" in argv and "--json" in argv and len(argv) == 2:
+            print(json.dumps(_version_payload(), indent=2, sort_keys=True))
+            return 0
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        return int(args.func(args))
+    except BrokenPipeError:
+        return _handle_broken_pipe()
+    except OSError as exc:
+        # Windows surfaces a closed stdout pipe as EINVAL/EPIPE rather than a
+        # BrokenPipeError; treat those identically. Re-raise anything else.
+        if exc.errno in (errno.EPIPE, errno.EINVAL):
+            return _handle_broken_pipe()
+        raise
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import errno
 import argparse
 import contextlib
 import io
@@ -755,6 +756,28 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(payload["title"].strip(), f"{code} has empty title")
             self.assertTrue(payload["summary"].strip(), f"{code} has empty summary")
             self.assertTrue(payload["commonFixes"], f"{code} has no commonFixes")
+
+    def test_broken_pipe_exits_zero_not_255(self) -> None:
+        # A downstream consumer closing the pipe (`| head`) must not turn a
+        # successful payload into a nonzero (255) exit. Patch os.dup2/os.open so
+        # the handler's stdout redirect doesn't clobber the test runner.
+        for exc in (BrokenPipeError(), OSError(errno.EINVAL, "Invalid"),
+                    OSError(errno.EPIPE, "Broken pipe")):
+            with mock.patch.object(sem, "build_parser") as build_parser, \
+                    mock.patch.object(sem.os, "dup2"), \
+                    mock.patch.object(sem.os, "open", return_value=3):
+                args = mock.Mock()
+                args.func = mock.Mock(side_effect=exc)
+                build_parser.return_value.parse_args.return_value = args
+                self.assertEqual(sem.main(["check", "x"]), 0)
+
+    def test_unrelated_oserror_still_propagates(self) -> None:
+        with mock.patch.object(sem, "build_parser") as build_parser:
+            args = mock.Mock()
+            args.func = mock.Mock(side_effect=OSError(errno.ENOENT, "missing"))
+            build_parser.return_value.parse_args.return_value = args
+            with self.assertRaises(OSError):
+                sem.main(["check", "x"])
 
     def test_starter_test_actually_asserts(self) -> None:
         # The scaffolded test must exercise codegen and assert, not be a trivial
