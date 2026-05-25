@@ -55,11 +55,18 @@ prerequisites.
 `sem mcp` runs a Model Context Protocol server that exposes the stable `sem`
 JSON surfaces (`check`, `readiness`, `context`, `symbols`, `graph`, `slice`,
 `size`, `explain`, `skills`, `fix`, `patch`, `test`, `dev`, `deps`, `docs`,
-`help`, plus `version` and `doctor`) as MCP tools, so MCP-capable agents and editors can call
+`eval`, `help`, plus `version` and `doctor`) as MCP tools, so MCP-capable agents and editors can call
 the toolchain natively instead of shelling out. `deps` resolves external
 dependencies (`sync`/`verify`/`list`/`cache`/`purge`, `sem.deps.v1`) and `help`
-returns the recommended next-step workflow (`sem.help.v1`). It is a thin wrapper
-over the same `sem` CLI, so behavior and versioning stay identical.
+returns the recommended next-step workflow (`sem.help.v1`). `eval` JIT-runs a
+snippet or full program and returns `sem.eval.v1` (captured output, exit code,
+execution timing, peak memory, and linter/compiler notes); see
+[`repl.md`](repl.md). It is a thin wrapper over the same `sem` CLI, so behavior
+and versioning stay identical.
+
+`eval` (like `test`) executes code, so over a non-loopback HTTP transport it is
+remote code execution; the server warns when bound beyond loopback. Keep it on
+stdio or a loopback host unless the network is trusted.
 The docs tools expose `docs_list`/`docs_get` for direct API guidance, and can
 start a background SQLite/FTS/vector index worker for local project APIs
 (`docs_watch`) and query it (`docs_search`) without blocking normal MCP

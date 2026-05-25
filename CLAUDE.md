@@ -89,13 +89,29 @@ patch.
 Use `--full` only when the compact JSON payload is not enough. Compact payloads
 from `check`, `fix`, `graph`, and `slice` are usually the right first hop.
 
+Quickly JIT-run a snippet without scaffolding a project:
+
+```powershell
+python SemanticScript\tools\sem.py eval --code "<rows>"
+python SemanticScript\tools\sem.py eval PATH
+```
+
+`eval` auto-wraps snippet body rows in a minimal console program (declarations
+like import/error/record/capability are hoisted; a stdout effect is added when
+the snippet uses `console.`), JIT-runs it, and returns `sem.eval.v1` with
+captured stdout/stderr, the program exit code, execution timing (ns/µs), process
+peak working set, and `notes.linter`/`notes.compiler`. It runs in non-strict
+mode: programs with strict-blocking notes still run and the notes are reported.
+A full program (declaring its own `project`/`operation`/`entry`) runs verbatim.
+See `docs/toolchain/repl.md`.
+
 ## JSON Surface Rules
 
 Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
 `sem.readiness.v1`, `sem.context.v1`, `sem.symbols.v1`, `sem.check.v1`,
 `sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.docs.v1`,
 `sem.docsIndex.v1`, `sem.docsSearch.v1`, `sem.explain.v1`,
-`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`,
+`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`, `sem.eval.v1`,
 `sem.deps.v1`, and provisional `sem.doctor.v0`.
 
 Read `nextCommands` as machine-facing instructions. Prefer `argv` over

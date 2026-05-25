@@ -17,6 +17,7 @@ if MCP_AVAILABLE:
 
 EXPECTED_TOOLS = {
     "version",
+    "eval",
     "doctor",
     "check",
     "readiness",
@@ -85,6 +86,19 @@ class TestSemMcpServer(unittest.TestCase):
         result = asyncio.run(sem_mcp.mcp.call_tool("explain", {"code": "SS3104"}))
         payload = _structured(result)
         self.assertEqual(payload["schemaVersion"], "sem.explain.v1")
+
+    def test_eval_tool_runs_a_snippet(self) -> None:
+        code = ('storage local immutable greeting String "mcp-eval"\n'
+                "call printCall console.writeLine\n"
+                "argument printCall text String greeting\n"
+                "run printCall\n")
+        result = asyncio.run(sem_mcp.mcp.call_tool("eval", {"code": code}))
+        payload = _structured(result)
+        self.assertEqual(payload["schemaVersion"], "sem.eval.v1")
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["output"]["stdout"], "mcp-eval\n")
+        self.assertEqual(payload["execution"]["exitCode"], 0)
+        self.assertIn("linter", payload["notes"])
 
 
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed")
