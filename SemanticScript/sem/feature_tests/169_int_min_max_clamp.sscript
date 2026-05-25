@@ -1,0 +1,55 @@
+# expect.stdout: 7\n8\n10\n
+# expect.exit: 0
+project IntMinMaxClamp
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError ConsoleWriteFailed ConsoleWriteError
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+effect main write console.stdout
+memory main heap no
+async main no
+purpose operation main "Exercise math.minInt64 / maxInt64 / clampInt64 intrinsics."
+invariant operation main "Prints min(8,7)=7, max(8,7)=8, clamp(15,0,10)=10."
+label startMain
+storage module immutable eightValue Int64 8
+storage module immutable sevenValue Int64 7
+storage module immutable fifteenValue Int64 15
+storage module immutable lowBound Int64 0
+storage module immutable highBound Int64 10
+call minCall math.minInt64
+argument minCall left Int64 eightValue
+argument minCall right Int64 sevenValue
+run minCall
+bind value minResult Int64 minCall
+call writeMinCall console.writeIntegerLine
+argument writeMinCall console Console console
+argument writeMinCall value Int64 minResult
+run writeMinCall
+ignore void source writeMinCall
+call maxCall math.maxInt64
+argument maxCall left Int64 eightValue
+argument maxCall right Int64 sevenValue
+run maxCall
+bind value maxResult Int64 maxCall
+call writeMaxCall console.writeIntegerLine
+argument writeMaxCall console Console console
+argument writeMaxCall value Int64 maxResult
+run writeMaxCall
+ignore void source writeMaxCall
+call clampCall math.clampInt64
+argument clampCall value Int64 fifteenValue
+argument clampCall low Int64 lowBound
+argument clampCall high Int64 highBound
+run clampCall
+bind value clampResult Int64 clampCall
+call writeClampCall console.writeIntegerLine
+argument writeClampCall console Console console
+argument writeClampCall value Int64 clampResult
+run writeClampCall
+ignore void source writeClampCall
+storage module immutable successfulExitCode ExitCode 0
+return ok successfulExitCode

@@ -47,6 +47,9 @@ External call targets:
   math.lessThanOrEqualInt64    -> i1                        (alias: math.leInt64)
   math.greaterThanInt64        -> i1                        (alias: math.gtInt64)
   math.greaterThanOrEqualInt64 -> i1                        (alias: math.geInt64)
+  math.minInt64                -> i64 (a < b ? a : b)
+  math.maxInt64                -> i64 (a > b ? a : b)
+  math.clampInt64              -> i64 (min(max(value, low), high))
 """
 
 import argparse
@@ -4304,6 +4307,16 @@ _CMP_Int32_TO_LLVM = {
     "math.lessThanOrEqualInt32":    "<=",
     "math.greaterThanInt32":        ">",
     "math.greaterThanOrEqualInt32": ">=",
+}
+
+# Signed integer min/max: select the operand satisfying the comparison.
+# `<` keeps the smaller (min), `>` keeps the larger (max). Lowered to
+# icmp+select so callers stop hand-rolling a two-branch min/max (a common
+# source of off-by-one control flow). `math.clampInt64` is handled separately
+# (3 operands: value, low, high).
+_INT_MINMAX_TO_LLVM = {
+    "math.minInt64": "<",
+    "math.maxInt64": ">",
 }
 
 
@@ -9846,6 +9859,7 @@ class Codegen:
         # without leaking the underlying integer width into source.
         if (target not in _BINOP_TO_LLVM and target not in _CMP_TO_LLVM
                 and target not in _CMP_Int32_TO_LLVM
+                and target not in _INT_MINMAX_TO_LLVM and target != "math.clampInt64"
                 and target not in _FBINOP_TO_LLVM and target not in _FCMP_TO_LLVM
                 and target not in ("console.writeLine", "console.writeIntegerLine",
                                    "console.writeFloatLine")
@@ -10962,6 +10976,38 @@ class Codegen:
             a = require_i32(a, f"{target} left operand")
             b = require_i32(b, f"{target} right operand")
             call["result"] = builder.icmp_signed(_CMP_Int32_TO_LLVM[target], a, b, name=f"{call_name}_res")
+            return
+
+        # Signed integer min/max: keep the operand satisfying the comparison.
+        if target in _INT_MINMAX_TO_LLVM:
+            a, b = operand_pair()
+            a = require_i64(a, f"{target} left operand")
+            b = require_i64(b, f"{target} right operand")
+            keep_left = builder.icmp_signed(_INT_MINMAX_TO_LLVM[target], a, b,
+                                            name=f"{call_name}_cmp")
+            call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
+            return
+
+        # `math.clampInt64 value low high` -> min(max(value, low), high).
+        if target == "math.clampInt64":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            if len(usable) != 3:
+                raise ValueError(
+                    f"{call_name}: math.clampInt64 needs 3 operands (value, low, high); "
+                    f"got {list(call['args'])}")
+            resolved = []
+            for arg_name, arg_value in usable:
+                value = resolve(arg_value)
+                if value is SENTINEL:
+                    raise ValueError(f"{call_name}: opaque-input as operand for {target}")
+                resolved.append(require_i64(coerce_declared_argument(arg_name, value),
+                                            f"math.clampInt64 {arg_name}"))
+            value, low, high = resolved
+            above_low = builder.icmp_signed(">", value, low, name=f"{call_name}_aboveLow")
+            lifted = builder.select(above_low, value, low, name=f"{call_name}_lifted")
+            below_high = builder.icmp_signed("<", lifted, high, name=f"{call_name}_belowHigh")
+            call["result"] = builder.select(below_high, lifted, high, name=f"{call_name}_res")
             return
 
         # Pointer-arithmetic primitives. `pointer.loadByte` reads a single
