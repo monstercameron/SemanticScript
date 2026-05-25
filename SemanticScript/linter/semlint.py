@@ -1294,6 +1294,33 @@ _C_ABI_WIDTH_ALIAS: Dict[str, str] = {
 }
 
 
+# Opaque domain-handle types: these lower to a raw pointer (i8*) but are NOT
+# interchangeable with String or with each other. Binding a String/scalar value
+# as one of these (or vice versa) is a provable type lie that the ABI hides —
+# the exact shape that turned `string.concat` (returns String) bound as
+# HtmlFragment into a runtime SIGSEGV when hydrated. See check_bind_return_type_domain.
+_OPAQUE_DOMAIN_HANDLE_TYPES: frozenset = frozenset({
+    "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
+    "JsonDocument", "JsonBuilder",
+})
+
+# Conservative return-type registry for the builtins where the bind-return
+# domain check is meaningful. Only targets whose return type is unambiguous are
+# listed; anything absent is skipped (false-negative over false-positive).
+BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
+    # Native HTTP response writers return an Int32 status, NOT a body handle.
+    "http.responseHtml":      "Int32",
+    "http.responseText":      "Int32",
+    "http.responseBytes":     "Int32",
+    "http.responseSseEvent":  "Int32",
+    "http.responseHeader":    "Int32",
+    "http.responseFile":      "Int32",
+    # Request readers return text.
+    "http.requestMethod":     "String",
+    "http.requestPath":       "String",
+}
+
+
 BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     # Console writes
     "console.writeLine":          [("console", "Console"), ("text", "String")],
@@ -10801,6 +10828,126 @@ def _enum_context(
     return enumReprs, enumCasesByType, enumCaseValuesByType, enumTypeByCase
 
 
+def _bind_return_domain(resolved_type: str) -> Optional[str]:
+    """Classify a resolved type into a coarse domain for the bind-return check:
+    "opaque" for the non-interchangeable domain handles, "scalar" for primitives
+    and String, or None when we can't classify it (so we skip rather than guess)."""
+    if resolved_type in _OPAQUE_DOMAIN_HANDLE_TYPES:
+        return "opaque"
+    if resolved_type == "String" or resolved_type in PRIMITIVE_CANONICAL_BY_TYPE:
+        return "scalar"
+    return None
+
+
+def check_bind_return_type_domain(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4302 — a `bind` declares a type whose DOMAIN contradicts the call
+    target's real return type. Catches the class of bug where everything lowers
+    to `i8*` so the type lie type-checks: e.g. binding a String/scalar-returning
+    call as an opaque `HtmlFragment`/`HtmlDocument`/`JsonDocument` handle (or
+    vice versa). Consuming that mislabeled value — feeding it to `html.hydrate`,
+    say — dereferences garbage and crashes at runtime. Only the opaque<->scalar
+    cross-domain case is flagged (high confidence); same-domain width/coercion
+    differences are left to other checks."""
+    diagnostics: List[Diagnostic] = []
+    typeAliases = dict(facts.base.type_aliases)
+
+    # Single-type return contract per user operation (skip Result/multi-type
+    # outputs — those are not a plain handle/scalar to compare).
+    userOpReturnType: Dict[str, str] = {}
+    for operation in facts.base.operations.values():
+        for sourceLine in operation.lines:
+            parsed = output_parts(sourceLine)
+            if parsed is not None and parsed[0] == operation.name:
+                # output_parts returns (op, firstTypeToken); a Result contract
+                # is `output operation OP Result OK ERR` — first token "Result".
+                if parsed[1] != "Result":
+                    userOpReturnType[operation.name] = parsed[1]
+                break
+
+    def return_type_of(target: str) -> Optional[str]:
+        if target.startswith("html.hydrate."):
+            return "HtmlDocument"  # an opaque HTML handle (doc or fragment)
+        if target in BUILTIN_TARGET_RETURN_TYPES:
+            return BUILTIN_TARGET_RETURN_TYPES[target]
+        # The `string.*` namespace operates on and returns text/scalars (bytes,
+        # counts, C-strings) — never an opaque HTML/JSON handle. Treating it as
+        # the scalar domain catches binding a String op's result as an
+        # HtmlFragment (the `string.concat`-as-fragment SIGSEGV class) at lint.
+        if target.startswith("string."):
+            return "String"
+        return userOpReturnType.get(target)
+
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        callTargetByCallName: Dict[str, str] = {}
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargetByCallName[sourceLine.args[0]] = sourceLine.args[1]
+
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            parsedBind = bind_parts(sourceLine)
+            if parsedBind is None:
+                continue
+            variant, boundName, declaredType, callName = parsedBind
+            if variant not in {"value", "ok"}:
+                continue
+            target = callTargetByCallName.get(callName)
+            if not target:
+                continue
+            returnType = return_type_of(target)
+            if returnType is None:
+                continue
+            declaredResolved = _resolve_type_alias_head(declaredType, typeAliases)
+            returnResolved = _resolve_type_alias_head(returnType, typeAliases)
+            declaredDomain = _bind_return_domain(declaredResolved)
+            returnDomain = _bind_return_domain(returnResolved)
+            if declaredDomain is None or returnDomain is None:
+                continue
+            if {declaredDomain, returnDomain} != {"opaque", "scalar"}:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4302",
+                kind="typeIntegrity.bindReturnDomainMismatch",
+                severity=Severity.ERROR,
+                subjectName=boundName,
+                subjectKind="bindSlot",
+                gapEdge="matchingReturnType",
+                intentSlogan="bind type contradicts call return type domain",
+                primary=span_of_line(sourceLine, "bindReturnDomainSite"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{boundName}` is bound as `{declaredType}` but `{target}` "
+                    f"returns `{returnType}` — an opaque domain handle and a "
+                    f"String/scalar are not interchangeable even though both "
+                    f"lower to a pointer. Consuming the mislabeled value (e.g. "
+                    f"hydrating it) dereferences garbage at runtime."
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#bind",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useActualReturnType",
+                        shape=f"bind {variant} {boundName} {returnType} {callName}",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_bind_return_type_domain",
+                agentHint=(
+                    "Bind the call's real return type. To build an HTML fragment "
+                    "from pieces, use the HTML fragment/template path "
+                    "(html.hydrate + HtmlFragment holes), not a String op."
+                ),
+            ))
+    return diagnostics
+
+
 def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
     """`arg CALL ARGNAME VALUE` where VALUE's declared type doesn't match
     the call target's expected type for ARGNAME. Looks up target signature
@@ -19124,6 +19271,7 @@ CHECKERS = [
     check_unresolved_references,
     check_branch_semantics,
     check_argument_type_mismatch,
+    check_bind_return_type_domain,
     check_removed_scalar_surface,
     check_scalar_literal_ranges,
     check_enum_return_uses_case,

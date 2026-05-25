@@ -8551,5 +8551,71 @@ class TestStdlibModuleNoSmokeMain(unittest.TestCase):
         self.assertNotIn("SS2515", _codes(diagnostics))
 
 
+# ==========================================================================
+# SS4302  typeIntegrity.bindReturnDomainMismatch
+# ==========================================================================
+
+class TestBindReturnDomainMismatch(unittest.TestCase):
+    _SERVER_HEAD = (
+        "project P\n"
+        "target webServer\n"
+        "module examples.p\n"
+        "webServer s\n"
+        "serverHost s \"127.0.0.1\"\n"
+        "serverPort s 8080\n"
+        "route s GET \"/\" h\n"
+        "routeTimeoutOptOut s \"/\" \"d\"\n"
+        "routeMiddlewareOptOut s \"/\" \"d\"\n"
+        "operation h\n"
+        "input operation h request HttpRequest\n"
+        "input operation h response HttpResponse\n"
+        "output operation h Int32\n"
+        "effect h write http.response\n"
+        "async h no\n"
+        "purpose operation h \"x\"\n"
+        "storage local immutable a String \"a\"\n"
+        "storage local immutable b String \"b\"\n"
+    )
+
+    def test_string_result_bound_as_html_fragment_is_flagged(self) -> None:
+        # The string.concat -> HtmlFragment SIGSEGV class, caught at lint.
+        diagnostics = _lint_source(self._SERVER_HEAD + (
+            "call joinCall string.concat\n"
+            "argument joinCall left String a\n"
+            "argument joinCall right String b\n"
+            "run joinCall\n"
+            "bind value cardsFragment HtmlFragment joinCall\n"
+            "return value 0\n"
+        ))
+        self.assertIn("SS4302", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS4302")[0]
+        self.assertEqual(diag.subjectName, "cardsFragment")
+        self.assertTrue(diag.blocksCompile)
+
+    def test_string_result_bound_as_string_is_clean(self) -> None:
+        diagnostics = _lint_source(self._SERVER_HEAD + (
+            "call joinCall string.concat\n"
+            "argument joinCall left String a\n"
+            "argument joinCall right String b\n"
+            "run joinCall\n"
+            "bind value joined String joinCall\n"
+            "return value 0\n"
+        ))
+        self.assertNotIn("SS4302", _codes(diagnostics))
+
+    def test_http_status_int_bound_as_html_fragment_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._SERVER_HEAD + (
+            "storage local immutable okStatus Int32 200\n"
+            "call writeCall http.responseText\n"
+            "argument writeCall response HttpResponse response\n"
+            "argument writeCall status HttpStatusCode okStatus\n"
+            "argument writeCall body String a\n"
+            "run writeCall\n"
+            "bind value frag HtmlFragment writeCall\n"
+            "return value 0\n"
+        ))
+        self.assertIn("SS4302", _codes(diagnostics))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -315,6 +315,18 @@ DIAGNOSTIC_EXPLAINERS = {
             "Or rewrite the single row to the shape shown in the diagnostic's fix candidate."
         ],
     },
+    "SS4302": {
+        "title": "bind type contradicts the call's return-type domain",
+        "summary": "A `bind` declares an opaque domain handle (HtmlFragment/HtmlDocument/JsonDocument/...) for a call that returns a String or scalar, or vice versa. Both lower to a pointer, so the type lie type-checks — but consuming the mislabeled value (e.g. hydrating it) dereferences garbage and crashes at runtime.",
+        "whyItMatters": [
+            "This is the exact shape behind the `string.concat` result bound as `HtmlFragment` SIGSEGV: a String op's result is not an HTML handle, but the shared i8* ABI hides it until runtime.",
+            "Opaque domain handles are produced only by their domain's constructors (html.hydrate.*, the JSON builder, user ops that return them) — never by String/scalar calls."
+        ],
+        "commonFixes": [
+            "Bind the call's real return type (the fix candidate shows it).",
+            "To assemble an HTML fragment from pieces, use the HTML fragment/template path (html.hydrate with HtmlFragment holes), not a string concatenation."
+        ],
+    },
     # ---- Codegen / backend family (SSCG* lowering, SSBE* native backend) ----
     "SSCG002": {
         "title": "call could not be lowered to LLVM IR",
