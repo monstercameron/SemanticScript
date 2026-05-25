@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.string.
 
+# rationale: Canonical standard-library module for C-string helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.string
 purpose module standard.string "Canonical standard-library module for C-string helpers."
 moduleOwns standard.string "The official import path `standard.string` and this module's implementation body."
@@ -19,14 +21,14 @@ exportOperation standard.string countInitialCStringBytesInAcceptSet
 #
 # rationale: every operation lowers to pointer.loadByte /
 #   pointer.storeByte plus math primitives. NO libc string call
-#   appears in the emitted IR â€” no strlen, strcmp, strchr, strstr,
+#   appears in the emitted IR - no strlen, strcmp, strchr, strstr,
 #   memcpy, etc. The point is a self-contained byte-string surface
 #   that does not depend on linking libc string.h.
 #
 # invariant: every operation walks the input forward, stops at the
 #   first NUL byte (or the explicit byteCount limit). Capacity
 #   enforcement on the destination buffer is the callers responsibility
-#   â€” there is no destinationCapacityBytes parameter at this layer.
+#   - there is no destinationCapacityBytes parameter at this layer.
 #
 # security: buffer-overflow risk on copy / append / duplicate ops
 #   when the caller misjudges destination size. A future revision
@@ -54,7 +56,7 @@ capability heapAllocationCapability heap allocate
 #
 # Every operation here is implemented in pure SemanticScript using
 # pointer.loadByte / pointer.storeByte + math primitives. There is NO
-# libc string call â€” stringByteLength / memcpy / compareCString / etc. do not appear in
+# libc string call - stringByteLength / memcpy / compareCString / etc. do not appear in
 # the emitted IR as externs.
 #
 # Operations:
@@ -69,6 +71,11 @@ capability heapAllocationCapability heap allocate
 # ============================================================
 
 # ---- stringByteLength(s) -> byte count up to NUL ----
+# rationale: use stringByteLength when a caller needs byte length of a
+#   NUL-terminated C string, not Unicode scalar count or grapheme count.
+# failure: no null-pointer or bounds check; invalid pointers and unterminated buffers are caller errors at this layer.
+# security: only pass trusted pointers or buffers known to contain a NUL terminator, because the loop reads until NUL.
+# invariant: Walks forward from offset 0 until the first NUL byte; returns that offset as the byte count.
 operation stringByteLength
 input operation stringByteLength inputText String
 output operation stringByteLength ByteCount
@@ -107,6 +114,8 @@ label strlenDone
 return value cursor
 
 # ---- compareCString(a, b) -> 0 if equal, signed diff otherwise ----
+# rationale: Pure-SemanticScript compareCString: returns 0 on equal C-strings, signed diff of first mismatching byte otherwise.
+# invariant: Walks both strings byte-by-byte; returns at the first differing byte or at the first NUL on either side.
 operation compareCString
 input operation compareCString leftValue String
 input operation compareCString rightValue String
@@ -164,6 +173,8 @@ label strcmpReturnEqual
 return value zeroInt64a
 
 # ---- compareCStringPrefixBytes(a, b, n) -> like compareCString but max n bytes ----
+# rationale: Pure-SemanticScript compareCStringPrefixBytes: compare up to n bytes of a and b. Returns 0 if equal-in-first-n-or-both-NUL, signed diff at first mismatch, 0 if n==0.
+# invariant: At most maxByteCount bytes inspected; equality on the prefix yields 0 even if the full strings differ beyond.
 operation compareCStringPrefixBytes
 input operation compareCStringPrefixBytes leftValue String
 input operation compareCStringPrefixBytes rightValue String
@@ -228,6 +239,8 @@ label strncmpReturnEqual
 return value zeroInt64b
 
 # ---- findFirstCharacterInCString(s, c) -> offset of first c, -1 if absent ----
+# rationale: Pure-SemanticScript findFirstCharacterInCString: find first byte equal to c; return offset or -1 if not found before NUL.
+# invariant: Walks forward from offset 0; returns the first offset where the byte equals targetCharacter, or -1.
 operation findFirstCharacterInCString
 input operation findFirstCharacterInCString inputText String
 input operation findFirstCharacterInCString characterCode Int32
@@ -276,6 +289,8 @@ label strchrNotFound
 return value negOneInt64c
 
 # ---- findLastCharacterInCString(s, c) -> offset of LAST c, -1 if absent ----
+# rationale: Pure-SemanticScript findLastCharacterInCString: track the last-seen offset of c while walking; return it (or -1).
+# invariant: Walks forward and remembers the most recent match; returns the last offset where the byte equals targetCharacter, or -1.
 operation findLastCharacterInCString
 input operation findLastCharacterInCString inputText String
 input operation findLastCharacterInCString characterCode Int32
@@ -327,6 +342,8 @@ label strrchrDone
 return value rcLastSeen
 
 # ---- findSubstringInCString(haystack, needle) -> offset of first needle occurrence ----
+# rationale: Pure-SemanticScript naive substring search. Returns offset of needle in haystack, or -1 if absent. Special case: needle empty -> 0.
+# invariant: For each starting offset in haystack, walks needle forward; returns the first start where every needle byte matches.
 operation findSubstringInCString
 input operation findSubstringInCString searchText String
 input operation findSubstringInCString targetSubstring String
@@ -436,6 +453,8 @@ label strstrNotFound
 return value negOneInt64e
 
 # ---- countInitialCStringBytesInAcceptSet(s, accept) -> length of leading run of bytes in accept ----
+# rationale: Length of the longest prefix of s consisting entirely of bytes that appear somewhere in accept. Pure SemanticScript: O(len(s) * len(accept)).
+# invariant: Walks forward while the current byte appears in acceptSet; stops at the first byte outside the set or NUL.
 operation countInitialCStringBytesInAcceptSet
 input operation countInitialCStringBytesInAcceptSet inputText String
 input operation countInitialCStringBytesInAcceptSet acceptedCharacters String
@@ -509,6 +528,8 @@ label spnDone
 return value sIdx
 
 # ---- copyCStringToDestinationBuffer(dest, src) -> bytes copied including NUL ----
+# rationale: Pure-SemanticScript strcpy: copy each byte of src to dest including the terminating NUL. Returns count of bytes written (= stringByteLength(src) + 1). Caller is responsible for dest being large enough.
+# invariant: Copies bytes (and the NUL terminator) from source to destination; returns the byte count not including the terminator.
 operation copyCStringToDestinationBuffer
 input operation copyCStringToDestinationBuffer destinationBuffer OpaquePointer
 input operation copyCStringToDestinationBuffer sourceBuffer String
@@ -566,6 +587,8 @@ return value cpFinal
 # ---- appendCStringToDestinationBuffer(dest, src) -> total bytes in dest after the append ----
 # Append src to the end of dest's existing NUL-terminated content.
 # Caller must ensure dest has enough room.
+# rationale: Pure-SemanticScript appendCStringToDestinationBuffer: find the NUL in dest, then copy src (including its NUL) starting at that offset. Returns the resulting length (= stringByteLength(dest)+stringByteLength(src)).
+# invariant: First walks destination to its NUL, then copies source bytes plus a new NUL at that offset; returns the destination byte count after the append.
 operation appendCStringToDestinationBuffer
 input operation appendCStringToDestinationBuffer destinationBuffer OpaquePointer
 input operation appendCStringToDestinationBuffer sourceBuffer String
@@ -656,6 +679,8 @@ return value catTotal
 # Copy at most n bytes from src to dest. If src is shorter than n, pad
 # with NUL up to n bytes (matching C copyCStringPrefixToDestinationBuffer semantics). Does NOT
 # guarantee NUL-termination if stringByteLength(src) >= n.
+# rationale: Pure-SemanticScript copyCStringPrefixToDestinationBuffer. Up to n bytes copied from src to dest; remainder NUL-padded. Returns n.
+# invariant: Copies up to byteCount bytes from source; pads with NUL bytes if source is shorter; matches strncpy semantics.
 operation copyCStringPrefixToDestinationBuffer
 input operation copyCStringPrefixToDestinationBuffer destinationBuffer OpaquePointer
 input operation copyCStringPrefixToDestinationBuffer sourceBuffer String
@@ -735,6 +760,8 @@ jump target ncpLoop
 label strncpyReturn
 return value maxByteCount
 
+# rationale: Length of leading prefix of s NOT containing any byte in reject. Pure SemanticScript: O(len(s) * len(reject)).
+# invariant: Walks forward while the current byte does NOT appear in rejectSet; stops at the first byte in the set or NUL.
 operation countInitialCStringBytesNotInRejectSet
 input operation countInitialCStringBytesNotInRejectSet inputText String
 input operation countInitialCStringBytesNotInRejectSet rejectedCharacters String
@@ -807,6 +834,8 @@ jump target cspnSLoop
 label cspnDone
 return value csIdx
 
+# rationale: Offset of the first byte of s that appears anywhere in accept, or -1 if absent before the NUL.
+# invariant: Walks forward and returns the first offset where the byte appears in acceptSet, or -1.
 operation findFirstCStringByteInAcceptSet
 input operation findFirstCStringByteInAcceptSet inputText String
 input operation findFirstCStringByteInAcceptSet acceptedCharacters String
@@ -882,6 +911,8 @@ return value pbIdx
 label pbNotFound
 return value negOnePb
 
+# rationale: Allocate a heap copy of s. Caller owns the returned pointer (must c.free). Returns NULL on allocation failure.
+# invariant: Computes source length, allocates length+1 bytes, copies bytes, writes the final NUL; returns the new buffer pointer (caller frees).
 operation duplicateCStringIntoOwnedMemory
 input operation duplicateCStringIntoOwnedMemory inputText String
 output operation duplicateCStringIntoOwnedMemory OpaquePointer
@@ -932,6 +963,8 @@ return value dest
 label strdupAllocationFailed
 return value duplicateCStringMallocError
 
+# rationale: Append at most n bytes from src to dest's existing NUL-terminated content. Always writes a NUL terminator after the appended bytes.
+# invariant: Walks destination to its NUL, then copies up to byteCount source bytes plus a final NUL; returns destination byte count after append.
 operation appendCStringPrefixToDestinationBuffer
 input operation appendCStringPrefixToDestinationBuffer destinationBuffer OpaquePointer
 input operation appendCStringPrefixToDestinationBuffer sourceBuffer String
@@ -1026,6 +1059,8 @@ run ncTotalCall
 bind value ncTotalRes ByteCount ncTotalCall
 return value ncTotalRes
 
+# rationale: 1 if s starts with prefix; 0 otherwise. Pure SemanticScript via byte-by-byte compare.
+# invariant: Returns true when every byte of prefixText matches the corresponding byte in inputText starting at offset 0.
 operation cstringBeginsWithPrefix
 input operation cstringBeginsWithPrefix inputText String
 input operation cstringBeginsWithPrefix prefixText String
@@ -1086,6 +1121,8 @@ return value trueBw
 label bwMismatch
 return value falseBw
 
+# rationale: 1 if s ends with suffix; 0 otherwise. Implemented as: stringByteLength(suffix) <= stringByteLength(s), then compare last stringByteLength(suffix) bytes of s with suffix.
+# invariant: Computes both lengths via stringByteLength, then matches suffixText against inputText starting at the offset (inputLength - suffixLength).
 operation cstringEndsWithSuffix
 input operation cstringEndsWithSuffix inputText String
 input operation cstringEndsWithSuffix suffixText String

@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.time.
 
+# rationale: Canonical standard-library module for time helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.time
 purpose module standard.time "Canonical standard-library module for time helpers."
 moduleOwns standard.time "The official import path `standard.time` and this module's implementation body."
@@ -38,7 +40,7 @@ storage module immutable timeModuleVersionText String "standard.time 0.1"
 # consumed by other programs (notably std/time/main.test.sem which
 # importModules it and runs the smoke). The project / target /
 # runtime / entry block is retained so the module can still be
-# linted standalone Ã¢â‚¬â€ the entry just points at the first exported
+# linted standalone - the entry just points at the first exported
 # operation rather than a `main` smoke.
 
 # CPU-clock and wall-clock reads are observable side effects that
@@ -73,6 +75,9 @@ domainLiteralTrust timeSlotByteSize trustedStaticLiteral
 
 # section time.clockReaders
 
+# rationale: Returns CPU clock ticks since the start of this process via libc clock(). Divide by CLOCKS_PER_SEC for seconds.
+# invariant: Monotonically non-decreasing within a single process run.
+# warning: Tick rate is platform-defined (CLOCKS_PER_SEC); do not compare across machines without conversion.
 operation readProcessCpuClockTicks
 output operation readProcessCpuClockTicks Int64
 useCapability readProcessCpuClockTicks clockCpuReadCapability
@@ -89,6 +94,9 @@ run libcClockCall
 bind value cpuClockTickCount Int64 libcClockCall
 return value cpuClockTickCount
 
+# rationale: Returns seconds since 1970-01-01 00:00:00 UTC via libc time(). Returns 0 on allocation failure of the libc time_t* output slot.
+# invariant: Monotonically non-decreasing per real-time clock; not guaranteed monotonic across clock adjustments.
+# warning: Wall-clock value is subject to NTP adjustments / DST / manual changes; for monotonic intervals use readProcessCpuClockTicks. A 0 return indicates allocation failure, not a 1970-01-01 timestamp.
 operation readCurrentUnixEpochSeconds
 output operation readCurrentUnixEpochSeconds Int64
 useCapability readCurrentUnixEpochSeconds clockRealTimeReadCapability
@@ -110,7 +118,7 @@ guarantee readCurrentUnixEpochSeconds "Always returns; never throws."
 #   via `defer` so any path through the function (including the
 #   allocation-failure leg) leaves the heap clean. We absorb the
 #   malloc failure as a 0 return rather than complicating the
-#   output type with Result encoding Ã¢â‚¬â€ the compiler can't
+#   output type with Result encoding - the compiler can't
 #   distinguish a "value 0" Result.OK from a Result.Err variant
 #   index 0 today, and unix time = 0 is a vanishingly rare value
 #   (1970-01-01 UTC) callers can flag separately if needed.
@@ -129,7 +137,7 @@ bind value currentUnixSeconds Int64 libcTimeCall
 return value currentUnixSeconds
 
 # Allocation-failure leg: c.malloc returned NULL. We surface the
-# bound error value (the pointer-as-i32 NULL = 0) as the return Ã¢â‚¬â€
+# bound error value (the pointer-as-i32 NULL = 0) as the return -
 # this both documents the failure cause in the IR via the
 # bindError line above and produces the documented 0 sentinel
 # (sign-extended from i32 to i64). We do NOT call c.free here
@@ -139,12 +147,14 @@ return value timeSlotAllocationError
 
 # section time.conversions
 
+# rationale: Returns secondCount / 3600 - the number of whole hours represented.
+# invariant: Floor-divides toward zero (LLVM sdiv) for non-negative inputs.
 operation convertSecondsToWholeHours
 input operation convertSecondsToWholeHours secondCount Int64
 output operation convertSecondsToWholeHours Int64
 memory convertSecondsToWholeHours heap no
 async convertSecondsToWholeHours no
-purpose operation convertSecondsToWholeHours "Returns secondCount / 3600 Ã¢â‚¬â€ the number of whole hours represented."
+purpose operation convertSecondsToWholeHours "Returns secondCount / 3600 - the number of whole hours represented."
 invariant operation convertSecondsToWholeHours "Floor-divides toward zero (LLVM sdiv) for non-negative inputs."
 guarantee convertSecondsToWholeHours "Total."
 label startConvertSecondsToWholeHours
@@ -155,12 +165,14 @@ run divideBySecondsPerHourCall
 bind value wholeHoursResult Int64 divideBySecondsPerHourCall
 return value wholeHoursResult
 
+# rationale: Returns secondCount / 60 - the number of whole minutes represented.
+# invariant: Floor-divides toward zero.
 operation convertSecondsToWholeMinutes
 input operation convertSecondsToWholeMinutes secondCount Int64
 output operation convertSecondsToWholeMinutes Int64
 memory convertSecondsToWholeMinutes heap no
 async convertSecondsToWholeMinutes no
-purpose operation convertSecondsToWholeMinutes "Returns secondCount / 60 Ã¢â‚¬â€ the number of whole minutes represented."
+purpose operation convertSecondsToWholeMinutes "Returns secondCount / 60 - the number of whole minutes represented."
 invariant operation convertSecondsToWholeMinutes "Floor-divides toward zero."
 guarantee convertSecondsToWholeMinutes "Total."
 label startConvertSecondsToWholeMinutes
@@ -171,6 +183,8 @@ run divideBySecondsPerMinuteCall
 bind value wholeMinutesResult Int64 divideBySecondsPerMinuteCall
 return value wholeMinutesResult
 
+# rationale: Returns minuteCount * 60 seconds.
+# invariant: Result wraps under multiplication overflow at Int64.
 operation convertMinutesToSeconds
 input operation convertMinutesToSeconds minuteCount Int64
 output operation convertMinutesToSeconds Int64
@@ -187,6 +201,8 @@ run multiplyMinutesBySixtyCall
 bind value secondsFromMinutesResult Int64 multiplyMinutesBySixtyCall
 return value secondsFromMinutesResult
 
+# rationale: Returns hourCount * 3600 seconds.
+# invariant: Result wraps under overflow.
 operation convertHoursToSeconds
 input operation convertHoursToSeconds hourCount Int64
 output operation convertHoursToSeconds Int64
@@ -203,6 +219,8 @@ run multiplyHoursBy3600Call
 bind value secondsFromHoursResult Int64 multiplyHoursBy3600Call
 return value secondsFromHoursResult
 
+# rationale: Returns whole days since 1970-01-01 from an epoch-seconds value.
+# invariant: Floor-divides toward zero.
 operation convertUnixEpochSecondsToDays
 input operation convertUnixEpochSecondsToDays epochSecondCount Int64
 output operation convertUnixEpochSecondsToDays Int64
@@ -221,6 +239,8 @@ return value daysSinceEpochResult
 
 # section time.calendar
 
+# rationale: Returns true when candidateYear is a Gregorian leap year (divisible by 4 AND (not divisible by 100 OR divisible by 400)).
+# invariant: Pure function of candidateYear; result depends only on the year value.
 operation isGregorianLeapYear
 input operation isGregorianLeapYear candidateYear Int64
 output operation isGregorianLeapYear Bool

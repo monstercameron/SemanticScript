@@ -1,0 +1,7 @@
+# Optional dependencies for real semantic docs embeddings used by
+# `python SemanticScript/tools/sem.py docs index`.
+sentence-transformers>=3,<6
+
+# Optional SQLite vector extension. Search falls back to in-process cosine over
+# the same sentence-transformer vectors when this extension is unavailable.
+sqlite-vec>=0.1.6

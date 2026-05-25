@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.slice.
 
+# rationale: Canonical standard-library module for slice-length and bounds helpers.
+# invariant: This module owns structural borrowed-slice helpers; slice storage is still caller-owned.
 module standard.slice
 purpose module standard.slice "Canonical standard-library module for slice-length and bounds helpers."
 moduleOwns standard.slice "The official import path `standard.slice` and the executable `slice.*` helper surface."
@@ -19,6 +21,7 @@ domainLiteralTrust sliceMissingIndexSentinel trustedStaticLiteral
 storage module immutable sliceTrue Bool true
 storage module immutable sliceFalse Bool false
 
+# rationale: Return the current logical length of a slice.
 operation slice.length
 input operation slice.length sliceLength Int64
 output operation slice.length Int64
@@ -27,6 +30,7 @@ async slice.length no
 purpose operation slice.length "Return the current logical length of a slice."
 return value sliceLength
 
+# rationale: Return true when sliceLength is zero.
 operation slice.isEmpty
 input operation slice.isEmpty sliceLength Int64
 output operation slice.isEmpty Bool
@@ -40,6 +44,7 @@ run sliceIsEmptyCall
 bind value sliceIsEmptyResult Bool sliceIsEmptyCall
 return value sliceIsEmptyResult
 
+# rationale: Return true when index is within [0, sliceLength).
 operation slice.containsIndex
 input operation slice.containsIndex sliceLength Int64
 input operation slice.containsIndex index Int64
@@ -63,6 +68,7 @@ return value sliceTrue
 label sliceContainsIndexFalse
 return value sliceFalse
 
+# rationale: Return sliceLength - 1 for a non-empty slice, otherwise -1.
 operation slice.lastIndex
 input operation slice.lastIndex sliceLength Int64
 output operation slice.lastIndex Int64
@@ -84,6 +90,7 @@ return value sliceLastIndexValue
 label sliceLastIndexMissing
 return value sliceMissingIndexSentinel
 
+# rationale: Return the bounded window length starting at startIndex, or 0 when startIndex is outside the slice.
 operation slice.windowLength
 input operation slice.windowLength sliceLength Int64
 input operation slice.windowLength startIndex Int64

@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.math_float.
 
+# rationale: Canonical standard-library module for floating-point math helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.math_float
 purpose module standard.math_float "Canonical standard-library module for floating-point math helpers."
 moduleOwns standard.math_float "The official import path `standard.math_float` and this module's implementation body."
@@ -16,12 +18,12 @@ storage module immutable mathFloatModuleVersionText String "standard.math_float 
 #
 # rationale: every operation lowers to math.{add,subtract,multiply,
 #   divide,less,greater,equal}Float64 plus branching. NO libm call appears
-#   in the emitted IR Ã¢â‚¬â€ no c.sqrt, c.exp, c.log, c.fabs, c.pow, c.sin,
+#   in the emitted IR - no c.sqrt, c.exp, c.log, c.fabs, c.pow, c.sin,
 #   c.cos, c.tan, etc. The point is a self-contained float surface
 #   that an SemanticScript program can ship without linking libm.
 #
 # invariant: every operation is total in the language-theory sense
-#   over its declared domain Ã¢â‚¬â€ Result wrappers are dropped because
+#   over its declared domain - Result wrappers are dropped because
 #   the existing implementations did not expose typed error variants.
 #   Out-of-domain inputs (negative sqrt argument, log of zero, etc.)
 #   return either 0.0 or an IEEE-754 sentinel; callers that need
@@ -39,7 +41,7 @@ storage module immutable mathFloatModuleVersionText String "standard.math_float 
 # consumed by other programs (notably std/math_float/main.test.sem
 # which importModules it and runs the smoke). The project / target /
 # runtime / entry block is retained so the module can still be
-# linted standalone â€” the entry just points at the first exported
+# linted standalone - the entry just points at the first exported
 # operation rather than a `main` smoke.
 
 # ============================================================
@@ -67,6 +69,7 @@ storage module immutable mathFloatModuleVersionText String "standard.math_float 
 # linking against libm.
 # ============================================================
 
+# rationale: |x| for double-precision x. Pure SemanticScript via comparison + multiply by -1.
 operation absoluteFloat64
 input operation absoluteFloat64 inputValue Float64
 output operation absoluteFloat64 Float64
@@ -92,12 +95,14 @@ run flipCall
 bind value flipped Float64 flipCall
 return value flipped
 
+# rationale: sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet - that needs IEEE special-value support).
+# invariant: Newton iteration: x_{n+1} = (x_n + value/x_n) / 2. Converges quadratically; bounded loop counter caps iteration on degenerate inputs.
 operation squareRootFloat64
 input operation squareRootFloat64 inputValue Float64
 output operation squareRootFloat64 Float64
 memory squareRootFloat64 heap no
 async squareRootFloat64 no
-purpose operation squareRootFloat64 "sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet Ã¢â‚¬â€ that needs IEEE special-value support)."
+purpose operation squareRootFloat64 "sqrt(x) for x >= 0 via Newton's method. Returns 0.0 for x <= 0 (no NaN here yet - that needs IEEE special-value support)."
 invariant operation squareRootFloat64 "Newton iteration: x_{n+1} = (x_n + value/x_n) / 2. Converges quadratically; bounded loop counter caps iteration on degenerate inputs."
 
 label startSquareRootFloat64
@@ -158,6 +163,8 @@ return value guess
 label sqrtZero
 return value zeroFS
 
+# rationale: e^x via Taylor series: sum_{k=0..29} x^k / k!. Accurate to ~12 decimals for |x| <= 2; degrades beyond that. No argument reduction yet.
+# invariant: Sums 30 Taylor terms; each term is the previous term * x / k. Negative inputs handled by computing 1 / e^|x|.
 operation exponentialBaseEFloat64
 input operation exponentialBaseEFloat64 inputValue Float64
 output operation exponentialBaseEFloat64 Float64
@@ -223,6 +230,7 @@ jump target expLoop
 label expReturn
 return value sumE
 
+# rationale: Truncate toward zero. Uses math.convertFloat64ToInt64 (fptosi) which already truncates, then converts back.
 operation truncateFloat64TowardZero
 input operation truncateFloat64TowardZero inputValue Float64
 output operation truncateFloat64TowardZero Float64
@@ -240,6 +248,7 @@ run backToFloatCall
 bind value backFloat Float64 backToFloatCall
 return value backFloat
 
+# rationale: Largest integer <= x. trunc(x) is identical to floor for x >= 0, but for negative non-integer x we have to step down by 1.
 operation floorFloat64
 input operation floorFloat64 inputValue Float64
 output operation floorFloat64 Float64
@@ -281,6 +290,7 @@ return value floored
 label floorIntegral
 return value truncated
 
+# rationale: Smallest integer >= x. Mirror image of floor: for x <= 0 trunc is the ceiling; for positive non-integer, ceil = trunc + 1.
 operation ceilingFloat64
 input operation ceilingFloat64 inputValue Float64
 output operation ceilingFloat64 Float64
@@ -319,6 +329,7 @@ return value ceiled
 label ceilIntegral
 return value cTruncated
 
+# rationale: Floating-point remainder of x/y, truncating toward zero. fmod(x, y) = x - trunc(x/y) * y. Caller must ensure y != 0; we don't return NaN here (no IEEE special-value handling yet).
 operation floatingRemainderFloat64
 input operation floatingRemainderFloat64 dividendValue Float64
 input operation floatingRemainderFloat64 divisorValue Float64
@@ -348,6 +359,8 @@ run remCall
 bind value rem Float64 remCall
 return value rem
 
+# rationale: Natural log of x for x > 0. Uses range reduction (ln(x) = ln(x / 2^k) + k * ln(2), where k is chosen so x/2^k is in [1, 2)) before Newton iteration on f(y) = exp(y) - x. exponentialBaseEFloat64 is accurate in [0, 2], so the reduced ln(scaled) computation stays in the convergent zone. Returns 0.0 for x <= 0.
+# invariant: Range-reduces x by repeated halving/doubling until in [1,2), then Newton-iterates on f(y) = exp(y) - x. Tracks the reduction factor k and re-applies via + k*ln(2) at the end.
 operation naturalLogFloat64
 input operation naturalLogFloat64 inputValue Float64
 output operation naturalLogFloat64 Float64
@@ -495,6 +508,7 @@ return value finalLn
 label lnReturnZero
 return value zeroLn
 
+# rationale: base^exponent for base > 0 via exp(exponent * ln(base)). Returns 1.0 for exponent == 0.
 operation powerFloat64
 input operation powerFloat64 baseValue Float64
 input operation powerFloat64 exponentValue Float64
@@ -528,6 +542,8 @@ return value powVal
 label powOne
 return value oneFw
 
+# rationale: sin(x) via Taylor series: x - x^3/3! + x^5/5! - x^7/7! + ... (20 terms). For best accuracy, caller should reduce x into [-pi, pi] beforehand. No argument reduction at this layer (yet).
+# invariant: Sums 20 Taylor terms with alternating sign; each iteration multiplies the running term by -x^2 / ((2k)(2k+1)).
 operation sineRadiansFloat64
 input operation sineRadiansFloat64 inputValue Float64
 output operation sineRadiansFloat64 Float64
@@ -569,7 +585,7 @@ argument negXSqCall right Float64 negOneSn
 run negXSqCall
 bind value negXSq Float64 negXSqCall
 
-# denominator: (2k)(2k+1) Ã¢â‚¬â€ both ints.
+# denominator: (2k)(2k+1) - both ints.
 storage module immutable twoIsn Int64 2
 call twoKCall math.multiplyInt64
 argument twoKCall left Int64 kSn
@@ -623,6 +639,8 @@ jump target sinLoop
 label sinReturn
 return value sumSn
 
+# rationale: cos(x) via Taylor series: 1 - x^2/2! + x^4/4! - ... (20 terms). Same range caveat as sineRadiansFloat64.
+# invariant: Sums 20 Taylor terms starting from 1.0; each iteration multiplies the running term by -x^2 / ((2k-1)(2k)).
 operation cosineRadiansFloat64
 input operation cosineRadiansFloat64 inputValue Float64
 output operation cosineRadiansFloat64 Float64
@@ -712,6 +730,7 @@ jump target cosLoop
 label cosReturn
 return value sumCs
 
+# rationale: tan(x) = sin(x) / cos(x). Inherits range caveats from sineRadiansFloat64 / cosineRadiansFloat64 (no argument reduction).
 operation tangentRadiansFloat64
 input operation tangentRadiansFloat64 inputValue Float64
 output operation tangentRadiansFloat64 Float64
@@ -734,6 +753,7 @@ run divTanCall
 bind value tanV Float64 divTanCall
 return value tanV
 
+# rationale: Hyperbolic sine: (exp(x) - exp(-x)) / 2.
 operation hyperbolicSineFloat64
 input operation hyperbolicSineFloat64 inputValue Float64
 output operation hyperbolicSineFloat64 Float64
@@ -768,6 +788,7 @@ run halveCall
 bind value sinhResult Float64 halveCall
 return value sinhResult
 
+# rationale: Hyperbolic cosine: (exp(x) + exp(-x)) / 2.
 operation hyperbolicCosineFloat64
 input operation hyperbolicCosineFloat64 inputValue Float64
 output operation hyperbolicCosineFloat64 Float64
@@ -802,6 +823,7 @@ run halveCcallCall
 bind value resC Float64 halveCcallCall
 return value resC
 
+# rationale: Hyperbolic tangent: sinh(x) / cosh(x).
 operation hyperbolicTangentFloat64
 input operation hyperbolicTangentFloat64 inputValue Float64
 output operation hyperbolicTangentFloat64 Float64
@@ -824,6 +846,7 @@ run divTanhCall
 bind value thV Float64 divTanhCall
 return value thV
 
+# rationale: Base-2 log: ln(x) / ln(2).
 operation logBaseTwoFloat64
 input operation logBaseTwoFloat64 inputValue Float64
 output operation logBaseTwoFloat64 Float64
@@ -843,6 +866,7 @@ run divLg2Call
 bind value l2V Float64 divLg2Call
 return value l2V
 
+# rationale: Base-10 log: ln(x) / ln(10).
 operation logBaseTenFloat64
 input operation logBaseTenFloat64 inputValue Float64
 output operation logBaseTenFloat64 Float64
@@ -862,6 +886,7 @@ run divLg10Call
 bind value l10V Float64 divLg10Call
 return value l10V
 
+# rationale: exp(x) - 1. Not loss-of-precision-aware at this layer; production libm uses a separate series for tiny x.
 operation exponentialMinusOneFloat64
 input operation exponentialMinusOneFloat64 inputValue Float64
 output operation exponentialMinusOneFloat64 Float64
@@ -881,6 +906,7 @@ run subOneCall
 bind value emV Float64 subOneCall
 return value emV
 
+# rationale: ln(1 + x). Same precision caveat as expm1.
 operation naturalLogOnePlusFloat64
 input operation naturalLogOnePlusFloat64 inputValue Float64
 output operation naturalLogOnePlusFloat64 Float64
@@ -900,6 +926,7 @@ run lnCallL1pCall
 bind ok l1pV Float64 lnCallL1pCall
 return value l1pV
 
+# rationale: sqrt(x^2 + y^2). Naive form may overflow for huge inputs; production libm scales first.
 operation hypotenuseFloat64
 input operation hypotenuseFloat64 firstLegValue Float64
 input operation hypotenuseFloat64 secondLegValue Float64
@@ -929,6 +956,8 @@ run sqrtHypCall
 bind ok hypotenuseResult Float64 sqrtHypCall
 return value hypotenuseResult
 
+# rationale: atan(x) via Taylor series for |x| <= 1; uses the identity atan(x) = sign(x)*pi/2 - atan(1/x) for |x| > 1.
+# invariant: For |x| <= 1, sums 50 Taylor terms with alternating sign. For |x| > 1, recurses on 1/x and reflects through sign(x) * pi/2.
 operation arctangentRadiansFloat64
 input operation arctangentRadiansFloat64 inputValue Float64
 output operation arctangentRadiansFloat64 Float64
@@ -979,7 +1008,7 @@ label atanSetPosPi
 set memory signedPi halfPiAt
 # Read signedPi between the two parallel sets so the linter's
 # flow-insensitive dead-store check sees an observation. The
-# compare-to-zero result is intentionally discarded Ã¢â‚¬â€ its only
+# compare-to-zero result is intentionally discarded - its only
 # purpose is to surface signedPi as a read between the two sets.
 call atanObservePositiveSignedPiCall math.equalFloat64
 argument atanObservePositiveSignedPiCall left Float64 signedPi
@@ -1103,6 +1132,7 @@ jump target atanLoop
 label atanReturn
 return value sumAt
 
+# rationale: asin(x) = atan(x / sqrt(1 - x^2)). Domain: [-1, 1].
 operation arcsineRadiansFloat64
 input operation arcsineRadiansFloat64 inputValue Float64
 output operation arcsineRadiansFloat64 Float64
@@ -1136,6 +1166,7 @@ run atanAsCall
 bind ok asV Float64 atanAsCall
 return value asV
 
+# rationale: acos(x) = pi/2 - asin(x). Domain: [-1, 1].
 operation arccosineRadiansFloat64
 input operation arccosineRadiansFloat64 inputValue Float64
 output operation arccosineRadiansFloat64 Float64
@@ -1155,6 +1186,7 @@ run subCall
 bind value acV Float64 subCall
 return value acV
 
+# rationale: Fused multiply-add: a*b + c. Not actually fused at this layer (libm fma uses a hardware FMA instruction); we just do the two ops in sequence with normal IEEE-754 rounding between them.
 operation fusedMultiplyAddFloat64
 input operation fusedMultiplyAddFloat64 multiplicandValue Float64
 input operation fusedMultiplyAddFloat64 multiplierValue Float64
@@ -1176,6 +1208,7 @@ run addCall
 bind value fmaResult Float64 addCall
 return value fmaResult
 
+# rationale: Max of a and b. Returns the non-NaN argument if exactly one is NaN; for both-NaN we don't detect (no isnan yet).
 operation maximumFloat64
 input operation maximumFloat64 leftValue Float64
 input operation maximumFloat64 rightValue Float64
@@ -1194,6 +1227,7 @@ return value rightValue
 label fmaxA
 return value leftValue
 
+# rationale: Min of a and b.
 operation minimumFloat64
 input operation minimumFloat64 leftValue Float64
 input operation minimumFloat64 rightValue Float64
@@ -1212,6 +1246,7 @@ return value rightValue
 label fminA
 return value leftValue
 
+# rationale: Positive difference: max(a - b, 0).
 operation positiveDifferenceFloat64
 input operation positiveDifferenceFloat64 leftValue Float64
 input operation positiveDifferenceFloat64 rightValue Float64
@@ -1236,6 +1271,7 @@ return value diff
 label fdimZero
 return value zeroFd
 
+# rationale: Returns |magnitude| with the sign of signSource. Doesn't yet preserve sign of zero (real libm copysign treats -0.0 specially; we don't have signed-zero detection without bit-level access).
 operation copySignFloat64
 input operation copySignFloat64 magnitudeValue Float64
 input operation copySignFloat64 signSourceValue Float64
@@ -1269,6 +1305,7 @@ run flipCall
 bind value flipped Float64 flipCall
 return value flipped
 
+# rationale: Returns -1.0 if x < 0, 1.0 if x > 0, 0.0 if x == 0.
 operation signOfFloat64
 input operation signOfFloat64 inputValue Float64
 output operation signOfFloat64 Float64
@@ -1297,6 +1334,7 @@ return value negOneSg
 label sgPos
 return value oneSg
 
+# rationale: Round half-away-from-zero to nearest integer (matching libm round, not lrint which uses banker's rounding).
 operation roundFloat64ToNearestInteger
 input operation roundFloat64ToNearestInteger inputValue Float64
 output operation roundFloat64ToNearestInteger Float64
@@ -1336,6 +1374,7 @@ run cCall
 bind ok rResN Float64 cCall
 return value rResN
 
+# rationale: Cube root: sign(x) * pow(|x|, 1/3). Handles negative inputs by computing on |x| and reattaching the sign.
 operation cubeRootFloat64
 input operation cubeRootFloat64 inputValue Float64
 output operation cubeRootFloat64 Float64
@@ -1378,6 +1417,7 @@ return value flippedCb
 label cbrtZero
 return value zeroCb
 
+# rationale: 2^x via pow(2.0, x).
 operation exponentialBaseTwoFloat64
 input operation exponentialBaseTwoFloat64 inputValue Float64
 output operation exponentialBaseTwoFloat64 Float64

@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.assert.
 
+# rationale: Canonical standard-library module for assertion helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.assert
 purpose module standard.assert "Canonical standard-library module for assertion helpers."
 moduleOwns standard.assert "The official import path `standard.assert` and this module's implementation body."
@@ -29,7 +31,7 @@ storage module immutable assertModuleVersionText String "standard.assert 0.1"
 #   writeAssertionByteToStandardOutput and returns an AssertionError
 #   variant carrying the structured failure reason.
 #
-# security: assertion messages are written to stdout â€” keep
+# security: assertion messages are written to stdout - keep
 #   sensitive values out of conditions when assertions might
 #   trigger in production.
 #
@@ -56,6 +58,8 @@ capability stdoutWriteCapability console.stdout write
 
 # section assert.diagnosticBytes
 
+# rationale: Single-byte writer wrapping c.putchar for assertion-failure diagnostics.
+# invariant: Writes exactly one byte; returns the libc putchar return value (the character on success, EOF / negative on error which we propagate to the caller).
 operation writeAssertionByteToStandardOutput
 input operation writeAssertionByteToStandardOutput characterCode Int32
 output operation writeAssertionByteToStandardOutput Int32
@@ -86,6 +90,8 @@ return value libcPutcharError
 
 # section assert.diagnosticHelpers
 
+# rationale: Emit the literal 'assert!\n' on stdout. Internal helper used by every assertion-failure path.
+# invariant: Exactly eight bytes written: 'a', 's', 's', 'e', 'r', 't', '!', '\n'.
 operation emitAssertionFailureBanner
 output operation emitAssertionFailureBanner Int32
 useCapability emitAssertionFailureBanner stdoutWriteCapability
@@ -141,6 +147,9 @@ return value bannerReturnCode
 
 # section assert.predicates
 
+# rationale: Succeeds when conditionValue is true; emits an 'assert!\n' banner and returns AssertionError.ConditionWasFalse otherwise.
+# invariant: Success returns 0; failure returns a typed AssertionError variant.
+# failure: Returned when conditionValue is false.
 operation requireConditionTrue
 input operation requireConditionTrue conditionValue Bool
 output operation requireConditionTrue Result Int32 AssertionError
@@ -152,7 +161,7 @@ async requireConditionTrue no
 purpose operation requireConditionTrue "Succeeds when conditionValue is true; emits an 'assert!\\n' banner and returns AssertionError.ConditionWasFalse otherwise."
 invariant operation requireConditionTrue "Success returns 0; failure returns a typed AssertionError variant."
 failure requireConditionTrue ConditionWasFalse "Returned when conditionValue is false."
-guarantee requireConditionTrue "Total â€” every input produces either an Ok or an Error."
+guarantee requireConditionTrue "Total - every input produces either an Ok or an Error."
 label startRequireConditionTrue
 branch if condition conditionValue target returnAssertionOk
 call emitBannerCall emitAssertionFailureBanner
@@ -164,6 +173,8 @@ label returnAssertionOk
 storage module immutable assertionOkCode Int32 0
 return ok assertionOkCode
 
+# rationale: Asserts leftValue == rightValue.
+# failure: Returned when the two Int64 inputs do not match.
 operation requireSignedInt64ValuesEqual
 input operation requireSignedInt64ValuesEqual leftValue Int64
 input operation requireSignedInt64ValuesEqual rightValue Int64
@@ -192,6 +203,8 @@ label returnEqualityOk
 storage module immutable equalityOkCode Int32 0
 return ok equalityOkCode
 
+# rationale: Asserts leftValue != rightValue.
+# failure: Returned when the two Int64 inputs are equal.
 operation requireSignedInt64ValuesNotEqual
 input operation requireSignedInt64ValuesNotEqual leftValue Int64
 input operation requireSignedInt64ValuesNotEqual rightValue Int64
@@ -220,6 +233,8 @@ label returnInequalityOk
 storage module immutable inequalityOkCode Int32 0
 return ok inequalityOkCode
 
+# rationale: Asserts leftValue > rightValue (strict).
+# failure: Returned when leftValue is not strictly greater than rightValue.
 operation requireSignedInt64LeftGreaterThanRight
 input operation requireSignedInt64LeftGreaterThanRight leftValue Int64
 input operation requireSignedInt64LeftGreaterThanRight rightValue Int64
@@ -247,6 +262,8 @@ label returnGreaterThanOk
 storage module immutable greaterThanOkCode Int32 0
 return ok greaterThanOkCode
 
+# rationale: Asserts leftValue < rightValue (strict).
+# failure: Returned when leftValue is not strictly less than rightValue.
 operation requireSignedInt64LeftLessThanRight
 input operation requireSignedInt64LeftLessThanRight leftValue Int64
 input operation requireSignedInt64LeftLessThanRight rightValue Int64
@@ -274,6 +291,8 @@ label returnLessThanOk
 storage module immutable lessThanOkCode Int32 0
 return ok lessThanOkCode
 
+# rationale: Asserts lowerBound <= inputValue <= upperBound (inclusive on both ends).
+# failure: Returned when inputValue lies outside the inclusive range.
 operation requireSignedInt64ValueWithinInclusiveRange
 input operation requireSignedInt64ValueWithinInclusiveRange inputValue Int64
 input operation requireSignedInt64ValueWithinInclusiveRange lowerBound Int64
@@ -308,6 +327,8 @@ ignore value source emitRangeBannerCall type Int32
 makeError rangeFailure AssertionError.OutOfRange
 return error rangeFailure
 
+# rationale: Asserts that pointerValue is not NULL.
+# failure: Returned when pointerValue is the NULL pointer.
 operation requireOpaquePointerNotNull
 input operation requireOpaquePointerNotNull pointerValue OpaquePointer
 output operation requireOpaquePointerNotNull Result Int32 AssertionError

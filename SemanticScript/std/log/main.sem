@@ -61,6 +61,9 @@
 # don't crash. Callers that need to assert "I really did write" can
 # observe the underlying c.fputs return value via a custom call.
 
+# rationale: Standard-library structured-logging package - single-file JSON-per-line audit trail backed by libc stdio. Pure SemanticScript implementation.
+# invariant: Single in-process FILE handle stored in `sharedLogFileHandle`; every writeLogLine fflushes so a crash loses at most one line; envelope helpers always emit a balanced JSON object terminated by '\n'.
+# security: JSON string escapes are applied to all caller-provided text via escapeJsonString so a log message can never break out of the message field and inject extra fields into the audit trail (log injection defence).
 module standard.log
 purpose module standard.log "Standard-library structured-logging package — single-file JSON-per-line audit trail backed by libc stdio. Pure SemanticScript implementation."
 moduleOwns standard.log "The official import path `standard.log`, the LogFile type alias, the canonical log status sentinels, and the openLogFile / writeLogLine / closeLogFile / logEventStructured / logInfo / logWarn / logError operation contracts."
@@ -168,6 +171,8 @@ purpose operation logHeapFree "Authority to c.free the per-line envelope buffer 
 # openLogFile — open the audit-trail file in append mode.
 # ============================================================
 
+# rationale: Open `filePath` in append mode and remember the FILE* in sharedLogFileHandle so subsequent writeLogLine calls have somewhere to write. Re-opening with the same or different path closes the prior handle first so the file table doesn't leak across re-init.
+# invariant: On success returns logStatusOk and sharedLogFileHandle holds a non-null FILE*. On c.fopen failure returns logStatusErrEngine and the handle stays as its prior value (NULL on first call) so writeLogLine continues to no-op silently rather than crashing.
 operation openLogFile
 input operation openLogFile filePath String
 output operation openLogFile Int32
@@ -240,6 +245,8 @@ return value logStatusErrEngine
 # closeLogFile — release the shared handle on shutdown.
 # ============================================================
 
+# rationale: Close sharedLogFileHandle and clear it back to NULL. Safe to call when no handle was ever opened - degrades to a no-op.
+# invariant: After a successful close the shared handle is NULL again so subsequent writeLogLine calls silently no-op until openLogFile is called again.
 operation closeLogFile
 output operation closeLogFile Int32
 effect closeLogFile close filesystem
@@ -277,6 +284,8 @@ return value logStatusOk
 # writeLogLine — append one pre-formatted line + '\n' + fflush.
 # ============================================================
 
+# rationale: Append `linePayload` followed by a single '\n' to sharedLogFileHandle and fflush. No handle and no payload are both silent no-ops returning logStatusOk so callers don't need to guard every log call.
+# invariant: fflush is always called after the put so a crash loses at most the in-flight line; the file is never left with a partial half-line that breaks downstream `jq -c` or grep tooling.
 operation writeLogLine
 input operation writeLogLine linePayload String
 output operation writeLogLine Int32
@@ -341,6 +350,8 @@ return value logStatusOk
 # field is the only consumer. Replacement-with-space is safe (never
 # breaks JSON parsing) and bounded (one byte in, one byte out).
 
+# rationale: Copy sourceText into destinationBuffer with `"` and `\` escaped. Stops cleanly when the destination would overflow so the buffer never gets a half-encoded escape sequence at its tail. Caller must size destinationCapacity >= worst-case `2 * len(sourceText) + 1`.
+# invariant: Output is always null-terminated; never writes past destinationCapacity - 1; control characters get folded to single spaces rather than \uXXXX (see module-level note).
 operation escapeJsonString
 input operation escapeJsonString sourceText String
 input operation escapeJsonString destinationBuffer OpaquePointer
@@ -585,6 +596,8 @@ return value logStatusOk
 # logEventStructured — wrap caller text in a JSON envelope.
 # ============================================================
 
+# rationale: Compose {"level":"<l>","event":"<e>","message":"<m>"} into a malloc'd buffer and hand it to writeLogLine. Caller fields are escaped via escapeJsonString so a message text containing `"` cannot break out of the message field.
+# invariant: Allocates two scratch buffers, frees both via defer regardless of which branch returns. The line buffer is sized by logLineMaximumByteCount so a runaway long message gets truncated by snprintf rather than corrupting the audit trail.
 operation logEventStructured
 input operation logEventStructured levelText String
 input operation logEventStructured eventText String
@@ -647,6 +660,8 @@ return value logEventWriteStatus
 # logInfo / logWarn / logError — convenience wrappers.
 # ============================================================
 
+# rationale: Shorthand for logEventStructured("info", "app", messageText).
+# invariant: Returns the status from logEventStructured untouched so callers can fan out to multiple loggers and still see I/O errors.
 operation logInfo
 input operation logInfo messageText String
 output operation logInfo Int32
@@ -671,6 +686,8 @@ run logInfoForwardCall
 bind value logInfoForwardStatus Int32 logInfoForwardCall
 return value logInfoForwardStatus
 
+# rationale: Shorthand for logEventStructured("warn", "app", messageText).
+# invariant: Returns the status from logEventStructured untouched.
 operation logWarn
 input operation logWarn messageText String
 output operation logWarn Int32
@@ -695,6 +712,8 @@ run logWarnForwardCall
 bind value logWarnForwardStatus Int32 logWarnForwardCall
 return value logWarnForwardStatus
 
+# rationale: Shorthand for logEventStructured("error", "app", messageText).
+# invariant: Returns the status from logEventStructured untouched.
 operation logError
 input operation logError messageText String
 output operation logError Int32

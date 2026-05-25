@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.errno.
 
+# rationale: Canonical standard-library module for errno constants and helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.errno
 purpose module standard.errno "Canonical standard-library module for errno constants and helpers."
 moduleOwns standard.errno "The official import path `standard.errno` and this module's implementation body."
@@ -35,7 +37,7 @@ storage module immutable errnoModuleVersionText String "standard.errno 0.1"
 # domainLiterals consumed by other programs (notably
 # std/errno/main.test.sem which importModules it and runs the
 # smoke). The project / target / runtime / entry block is retained
-# so the module can still be linted standalone â€” the entry just
+# so the module can still be linted standalone - the entry just
 # points at the first exported operation rather than a `main` smoke.
 
 # section errno.numbers
@@ -95,6 +97,8 @@ domainLiteralTrust resultOutOfRangeErrorNumber trustedStaticLiteral
 
 # section errno.messageLookup
 
+# rationale: Map a POSIX errno number to a short English text description; returns 'unknown error' for codes outside the known set.
+# invariant: Output is always non-empty NUL-terminated ASCII.
 operation lookupErrnoMessageCString
 input operation lookupErrnoMessageCString errorNumber Int32
 output operation lookupErrnoMessageCString String
@@ -102,8 +106,8 @@ memory lookupErrnoMessageCString heap no
 async lookupErrnoMessageCString no
 purpose operation lookupErrnoMessageCString "Map a POSIX errno number to a short English text description; returns 'unknown error' for codes outside the known set."
 invariant operation lookupErrnoMessageCString "Output is always non-empty NUL-terminated ASCII."
-guarantee lookupErrnoMessageCString "Total â€” every input produces some message."
-# rationale: pure-SemanticScript comparison chain â€” no libc strerror dependency
+guarantee lookupErrnoMessageCString "Total - every input produces some message."
+# rationale: pure-SemanticScript comparison chain - no libc strerror dependency
 #   (strerror is not thread-safe in all libcs and would pull in extra
 #   FFI metadata for one short helper).
 label startLookupErrnoMessageCString

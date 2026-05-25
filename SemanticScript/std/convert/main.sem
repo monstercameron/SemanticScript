@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.convert.
 
+# rationale: Canonical standard-library module for conversion helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.convert
 purpose module standard.convert "Canonical standard-library module for conversion helpers."
 moduleOwns standard.convert "The official import path `standard.convert` and this module's implementation body."
@@ -15,7 +17,7 @@ storage module immutable convertModuleVersionText String "standard.convert 0.1"
 # ============================================================
 #
 # rationale: width / sign / pointer conversions between the
-#   C-ABI numeric types. Every operation is total â€” no input
+#   C-ABI numeric types. Every operation is total - no input
 #   produces a failure, so the Result wrapper is dropped.
 #
 # invariant: lossy narrowing is documented per-op. Widening
@@ -36,6 +38,8 @@ domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
 
 # section convert.integers
 
+# rationale: Sign-extend an i32 to i64 through the explicit compiler conversion target.
+# invariant: Value-preserving: every Int32 fits in Int64.
 operation widenSignedInt32ToSignedInt64
 input operation widenSignedInt32ToSignedInt64 inputValue Int32
 output operation widenSignedInt32ToSignedInt64 Int64
@@ -51,6 +55,9 @@ run widenInputCall
 bind value widenedInput Int64 widenInputCall
 return value widenedInput
 
+# rationale: Truncate an i64 to i32. Discards the high 32 bits.
+# invariant: For inputs in [-2^31, 2^31-1] the result equals the input.
+# warning: Inputs outside the i32 range are silently truncated - caller must screen first to avoid surprise.
 operation narrowSignedInt64ToSignedInt32
 input operation narrowSignedInt64ToSignedInt32 inputValue Int64
 output operation narrowSignedInt64ToSignedInt32 Int32
@@ -58,7 +65,7 @@ memory narrowSignedInt64ToSignedInt32 heap no
 async narrowSignedInt64ToSignedInt32 no
 purpose operation narrowSignedInt64ToSignedInt32 "Truncate an i64 to i32. Discards the high 32 bits."
 invariant operation narrowSignedInt64ToSignedInt32 "For inputs in [-2^31, 2^31-1] the result equals the input."
-warning narrowSignedInt64ToSignedInt32 "Inputs outside the i32 range are silently truncated â€” caller must screen first to avoid surprise."
+warning narrowSignedInt64ToSignedInt32 "Inputs outside the i32 range are silently truncated - caller must screen first to avoid surprise."
 guarantee narrowSignedInt64ToSignedInt32 "Total."
 label startNarrowSignedInt64ToSignedInt32
 call narrowInputCall math.truncateInt64ToInt32
@@ -67,6 +74,8 @@ run narrowInputCall
 bind value narrowedInput Int32 narrowInputCall
 return value narrowedInput
 
+# rationale: Treat the low 8 bits of signExtendedByteValue as an unsigned byte in [0, 255].
+# invariant: Output always in [0, 255]; (byte + 256) % 256 produces 0..255 for all inputs.
 operation convertByteValueToUnsignedInt32
 input operation convertByteValueToUnsignedInt32 signExtendedByteValue Int32
 output operation convertByteValueToUnsignedInt32 Int32
@@ -102,6 +111,8 @@ return value unsignedByteValue
 
 # section convert.numericFloats
 
+# rationale: Convert a signed 64-bit integer to a double. Wraps math.convertInt64ToFloat64 (LLVM sitofp).
+# invariant: Loss-of-precision possible for magnitudes >= 2^53; otherwise round-trippable.
 operation convertSignedInt64ToFloat64
 input operation convertSignedInt64ToFloat64 inputValue Int64
 output operation convertSignedInt64ToFloat64 Float64
@@ -117,6 +128,9 @@ run sitoffpCall
 bind value asDoubleResult Float64 sitoffpCall
 return value asDoubleResult
 
+# rationale: Convert a double to a signed 64-bit integer by rounding toward zero. Wraps math.convertFloat64ToInt64 (LLVM fptosi).
+# invariant: For inputs in [-2^63, 2^63) the conversion is well-defined; outside that range the result is implementation-defined (LLVM fptosi).
+# warning: NaN inputs produce an unspecified i64 - caller must screen with c.isnan when defined behavior is required.
 operation convertFloat64ToSignedInt64
 input operation convertFloat64ToSignedInt64 inputValue Float64
 output operation convertFloat64ToSignedInt64 Int64
@@ -124,7 +138,7 @@ memory convertFloat64ToSignedInt64 heap no
 async convertFloat64ToSignedInt64 no
 purpose operation convertFloat64ToSignedInt64 "Convert a double to a signed 64-bit integer by rounding toward zero. Wraps math.convertFloat64ToInt64 (LLVM fptosi)."
 invariant operation convertFloat64ToSignedInt64 "For inputs in [-2^63, 2^63) the conversion is well-defined; outside that range the result is implementation-defined (LLVM fptosi)."
-warning convertFloat64ToSignedInt64 "NaN inputs produce an unspecified i64 â€” caller must screen with c.isnan when defined behavior is required."
+warning convertFloat64ToSignedInt64 "NaN inputs produce an unspecified i64 - caller must screen with c.isnan when defined behavior is required."
 guarantee convertFloat64ToSignedInt64 "Total over the in-range Float64 domain."
 label startConvertFloat64ToSignedInt64
 call fptosiCall math.convertFloat64ToInt64
@@ -135,6 +149,9 @@ return value asIntegerResult
 
 # section convert.pointers
 
+# rationale: Returns pointerValue - baseValue as a signed Int64 byte offset.
+# invariant: Result is meaningful only when both pointers point into the same allocation.
+# warning: Subtracting pointers from different allocations yields undefined values.
 operation calculateCStringPointerOffset
 input operation calculateCStringPointerOffset baseValue String
 input operation calculateCStringPointerOffset pointerValue String
@@ -144,7 +161,7 @@ async calculateCStringPointerOffset no
 purpose operation calculateCStringPointerOffset "Returns pointerValue - baseValue as a signed Int64 byte offset."
 invariant operation calculateCStringPointerOffset "Result is meaningful only when both pointers point into the same allocation."
 warning calculateCStringPointerOffset "Subtracting pointers from different allocations yields undefined values."
-guarantee calculateCStringPointerOffset "Total â€” never traps on valid String inputs."
+guarantee calculateCStringPointerOffset "Total - never traps on valid String inputs."
 label startCalculateCStringPointerOffset
 call computePointerDifferenceCall pointer.difference
 argument computePointerDifferenceCall left OpaquePointer pointerValue
@@ -153,6 +170,9 @@ run computePointerDifferenceCall
 bind value pointerDifferenceResult Int64 computePointerDifferenceCall
 return value pointerDifferenceResult
 
+# rationale: Returns baseValue + byteOffset as a new OpaquePointer (no dereference).
+# invariant: Pointer arithmetic only; the result is guaranteed not to dereference the input pointer.
+# warning: Caller is responsible for the result lying within an allocation before any subsequent load/store.
 operation advanceOpaquePointerByByteOffset
 input operation advanceOpaquePointerByByteOffset baseValue OpaquePointer
 input operation advanceOpaquePointerByByteOffset byteOffset ByteCount

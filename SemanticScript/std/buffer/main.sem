@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.buffer.
 
+# rationale: Canonical standard-library module for mutable byte-buffer operations.
+# invariant: The standard mutable byte-buffer entry point is this file; read-only scans live under `standard.bytes`.
 module standard.buffer
 purpose module standard.buffer "Canonical standard-library module for mutable byte-buffer operations."
 moduleOwns standard.buffer "The official import path `standard.buffer` and the executable `buffer.*` helper surface."
@@ -14,6 +16,7 @@ storage module immutable bufferModuleVersionText String "standard.buffer 0.2"
 domainLiteral integerOneStepValue Int64 1
 domainLiteralTrust integerOneStepValue trustedStaticLiteral
 
+# rationale: Copy byteCount bytes from sourceBuffer to destinationBuffer.
 operation buffer.copy
 input operation buffer.copy destinationBuffer OpaquePointer
 input operation buffer.copy sourceBuffer OpaquePointer
@@ -31,6 +34,7 @@ run delegateBufferCopyCall
 bind value bufferCopyResult ByteCount delegateBufferCopyCall
 return value bufferCopyResult
 
+# rationale: Move byteCount bytes from sourceBuffer to destinationBuffer, allowing overlap.
 operation buffer.move
 input operation buffer.move destinationBuffer OpaquePointer
 input operation buffer.move sourceBuffer OpaquePointer
@@ -48,6 +52,7 @@ run delegateBufferMoveCall
 bind value bufferMoveResult ByteCount delegateBufferMoveCall
 return value bufferMoveResult
 
+# rationale: Write byteCount copies of targetValue into byteBuffer.
 operation buffer.fill
 input operation buffer.fill byteBuffer OpaquePointer
 input operation buffer.fill targetValue Int32
@@ -65,6 +70,7 @@ run delegateBufferFillCall
 bind value bufferFillResult ByteCount delegateBufferFillCall
 return value bufferFillResult
 
+# rationale: Write byteCount zero bytes into byteBuffer.
 operation buffer.clear
 input operation buffer.clear byteBuffer OpaquePointer
 input operation buffer.clear byteCount ByteCount
@@ -80,6 +86,8 @@ run delegateBufferClearCall
 bind value bufferClearResult ByteCount delegateBufferClearCall
 return value bufferClearResult
 
+# rationale: Reverse the first byteCount bytes of byteBuffer in place.
+# invariant: Self-inverse: calling reverseInPlace twice restores the original buffer.
 operation buffer.reverseInPlace
 input operation buffer.reverseInPlace byteBuffer OpaquePointer
 input operation buffer.reverseInPlace byteCount ByteCount

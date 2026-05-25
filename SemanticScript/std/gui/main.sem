@@ -20,6 +20,20 @@
 # The compiler should not build GUI application graphs from custom top-level
 # keywords. This file is the human-readable contract layer.
 
+# rationale: import as `import gui standard.gui` for target windowsGui
+#   applications that build GUI handles and handle runtime events through
+#   gui.* calls.
+# invariant: GUI application setup follows applicationCreate,
+#   windowCreate/controlCreate, windowAddControl, controlOnEvent,
+#   applicationSetMainWindow, then applicationRun.
+# invariant: event handlers receive GuiSession and GuiEvent inputs and
+#   return guiHandlerSuccessStatus or guiHandlerFailureStatus.
+# invariant: GUI applications remain ordinary SemanticScript calls and
+#   dataflow; do not add custom top-level GUI keywords.
+# memory: handles are opaque runtime values scoped to the GUI runtime; live-state operations require GuiSession.
+# failure: gui.* calls return GuiRuntimeStatusCode or typed handles depending on target; non-zero status maps to GuiRuntimeStatus.
+# security: keep text values UTF-8/null-terminated and provide accessible names as the public vocabulary grows.
+
 module standard.gui
 purpose module standard.gui "Standard-library namespace and contracts for GUI application, window, control, event, and runtime-call functions."
 moduleOwns standard.gui "The official import path `standard.gui`, semantic GUI handle aliases, reusable GUI capabilities, closed GUI token sets, status-code names, and the compiler-lowered `gui.*` function namespace contract."
@@ -286,6 +300,11 @@ storage module immutable hiddenGuiKeywordToken GuiKeywordToken "hidden"
 # Runtime call target vocabulary. Construction calls create opaque handles.
 # Operations that touch live GUI state require a GuiSession argument;
 # event-reader operations require a GuiEvent argument.
+# invariant: construction targets create handles before applicationRun;
+#   state and event targets are valid only inside handlers with
+#   GuiSession and GuiEvent context.
+# rationale: target constants are for tooling, diagnostics, and generated
+#   docs; application code should call the dotted gui.* targets directly.
 storage module immutable guiApplicationCreateTarget GuiRuntimeTarget "gui.applicationCreate"
 storage module immutable guiWindowCreateTarget GuiRuntimeTarget "gui.windowCreate"
 storage module immutable guiTextLabelCreateTarget GuiRuntimeTarget "gui.textLabelCreate"

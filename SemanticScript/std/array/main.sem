@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.array.
 
+# rationale: Canonical standard-library module for fixed-array structural helpers.
+# invariant: This module owns structural helpers for fixed arrays; raw byte scans live under `standard.bytes` and mutable byte-buffer edits live under `standard.buffer`.
 module standard.array
 purpose module standard.array "Canonical standard-library module for fixed-array structural helpers."
 moduleOwns standard.array "The official import path `standard.array` and the executable `array.*` helper surface."
@@ -19,6 +21,7 @@ domainLiteralTrust arrayMissingIndexSentinel trustedStaticLiteral
 storage module immutable arrayTrue Bool true
 storage module immutable arrayFalse Bool false
 
+# rationale: Return the fixed logical length of an array.
 operation array.length
 input operation array.length arrayLength Int64
 output operation array.length Int64
@@ -28,6 +31,7 @@ purpose operation array.length "Return the fixed logical length of an array."
 guarantee array.length "Total."
 return value arrayLength
 
+# rationale: Return true when arrayLength is zero.
 operation array.isEmpty
 input operation array.isEmpty arrayLength Int64
 output operation array.isEmpty Bool
@@ -42,6 +46,7 @@ run arrayIsEmptyCheckCall
 bind value arrayIsEmptyResult Bool arrayIsEmptyCheckCall
 return value arrayIsEmptyResult
 
+# rationale: Return true when index is within [0, arrayLength).
 operation array.containsIndex
 input operation array.containsIndex arrayLength Int64
 input operation array.containsIndex index Int64
@@ -66,6 +71,7 @@ return value arrayTrue
 label arrayContainsIndexFalse
 return value arrayFalse
 
+# rationale: Return 0 for a non-empty array, otherwise -1.
 operation array.firstIndex
 input operation array.firstIndex arrayLength Int64
 output operation array.firstIndex Int64
@@ -83,6 +89,7 @@ return value arrayZeroValue
 label arrayFirstIndexMissing
 return value arrayMissingIndexSentinel
 
+# rationale: Return arrayLength - 1 for a non-empty array, otherwise -1.
 operation array.lastIndex
 input operation array.lastIndex arrayLength Int64
 output operation array.lastIndex Int64

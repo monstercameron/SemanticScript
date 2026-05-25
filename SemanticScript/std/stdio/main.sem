@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.stdio.
 
+# rationale: Canonical standard-library module for stdio-style helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.stdio
 purpose module standard.stdio "Canonical standard-library module for stdio-style helpers."
 moduleOwns standard.stdio "The official import path `standard.stdio` and this module's implementation body."
@@ -26,12 +28,12 @@ storage module immutable stdioModuleVersionText String "standard.stdio 0.1"
 #
 # invariant: ASCII-only at this layer. Multibyte / locale handling
 #   is intentionally out of scope. The byte-by-byte design means the
-#   library never buffers in user space â€” every byte is committed
+#   library never buffers in user space - every byte is committed
 #   through c.putchar before the next is issued.
 #
 # security: write-only effects to console.stdout. Sensitive values
 #   formatted by writeSignedInt64Decimal* / writeSignedInt64Hex* are
-#   visible to any process inspecting the terminal â€” callers handling
+#   visible to any process inspecting the terminal - callers handling
 #   secret data should avoid these helpers.
 #
 # timing: writeByteToStandardOutput is one libc call. Aggregate
@@ -81,6 +83,9 @@ domainLiteralTrust digitBufferByteSize trustedStaticLiteral
 
 # section stdio.bytePrimitive
 
+# rationale: Writes one byte to stdout via libc putchar. The only operation in std that crosses out to the host OS for I/O - every higher-level write bottoms out through here.
+# invariant: Returns the libc putchar return value (typically the character itself, or negative on EOF/error).
+# warning: Writes are unbuffered at the SemanticScript layer - every byte yields to libc immediately.
 operation writeByteToStandardOutput
 input operation writeByteToStandardOutput characterCode Int32
 output operation writeByteToStandardOutput Int32
@@ -89,9 +94,9 @@ effect writeByteToStandardOutput write console.stdout
 memory writeByteToStandardOutput heap no
 memory writeByteToStandardOutput stack max 1024
 async writeByteToStandardOutput no
-purpose operation writeByteToStandardOutput "Writes one byte to stdout via libc putchar. The only operation in std that crosses out to the host OS for I/O â€” every higher-level write bottoms out through here."
+purpose operation writeByteToStandardOutput "Writes one byte to stdout via libc putchar. The only operation in std that crosses out to the host OS for I/O - every higher-level write bottoms out through here."
 invariant operation writeByteToStandardOutput "Returns the libc putchar return value (typically the character itself, or negative on EOF/error)."
-warning writeByteToStandardOutput "Writes are unbuffered at the SemanticScript layer â€” every byte yields to libc immediately."
+warning writeByteToStandardOutput "Writes are unbuffered at the SemanticScript layer - every byte yields to libc immediately."
 guarantee writeByteToStandardOutput "Always returns; never throws."
 label startWriteByteToStandardOutput
 call libcPutcharCall c.putchar
@@ -109,6 +114,9 @@ return value libcPutcharErrorCodeError
 
 # section stdio.stringWriters
 
+# rationale: Writes every byte of inputText to stdout (byte-by-byte through writeByteToStandardOutput) until the NUL terminator is reached. Returns the byte count, NOT including the terminator.
+# invariant: Walks the string forward; stops at the first byte equal to 0.
+# warning: No length check - caller's responsibility to ensure inputText is properly NUL-terminated.
 operation writeStringToStandardOutput
 input operation writeStringToStandardOutput inputText String
 output operation writeStringToStandardOutput ByteCount
@@ -149,6 +157,8 @@ jump target writeCStringLoop
 label writeCStringComplete
 return value writeCStringCursor
 
+# rationale: Writes inputText followed by a newline to stdout. Returns the total byte count (string length + 1 for the LF).
+# invariant: Always emits exactly one trailing newline byte after the string contents.
 operation writeStringLineToStandardOutput
 input operation writeStringLineToStandardOutput inputText String
 output operation writeStringLineToStandardOutput ByteCount
@@ -178,6 +188,9 @@ return value totalLineByteCount
 
 # section stdio.integerFormatters
 
+# rationale: Pure-SemanticScript itoa-then-print. Extracts decimal digits from inputValue, buffers them in reverse on a 32-byte heap scratch, emits forward, then a newline. Negative inputs print with a leading '-'.
+# invariant: Output is the canonical decimal representation followed by exactly one newline byte.
+# warning: INT64_MIN negation overflows back to itself; this implementation does not specially handle that - output is platform-defined for INT64_MIN.
 operation writeSignedInt64DecimalToStandardOutput
 input operation writeSignedInt64DecimalToStandardOutput inputValue Int64
 output operation writeSignedInt64DecimalToStandardOutput ByteCount
@@ -193,7 +206,7 @@ memoryAllocationSource writeSignedInt64DecimalToStandardOutput allocateDecimalSc
 async writeSignedInt64DecimalToStandardOutput no
 purpose operation writeSignedInt64DecimalToStandardOutput "Pure-SemanticScript itoa-then-print. Extracts decimal digits from inputValue, buffers them in reverse on a 32-byte heap scratch, emits forward, then a newline. Negative inputs print with a leading '-'."
 invariant operation writeSignedInt64DecimalToStandardOutput "Output is the canonical decimal representation followed by exactly one newline byte."
-warning writeSignedInt64DecimalToStandardOutput "INT64_MIN negation overflows back to itself; this implementation does not specially handle that â€” output is platform-defined for INT64_MIN."
+warning writeSignedInt64DecimalToStandardOutput "INT64_MIN negation overflows back to itself; this implementation does not specially handle that - output is platform-defined for INT64_MIN."
 guarantee writeSignedInt64DecimalToStandardOutput "Total over the non-INT64_MIN domain."
 label startWriteSignedInt64DecimalToStandardOutput
 call allocateDecimalScratchCall c.malloc
@@ -329,6 +342,8 @@ return value decimalDigitCount
 label decimalScratchAllocationFailedReturn
 return value decimalScratchAllocationError
 
+# rationale: Print inputValue as an unsigned decimal integer (no sign), followed by a newline. Negative inputs print as their unsigned two's-complement interpretation.
+# invariant: No '-' sign is ever emitted; the high bit of negative inputs is interpreted unsigned.
 operation writeUnsignedInt64DecimalToStandardOutput
 input operation writeUnsignedInt64DecimalToStandardOutput inputValue Int64
 output operation writeUnsignedInt64DecimalToStandardOutput ByteCount
@@ -445,6 +460,9 @@ ignore value source emitUnsignedZeroNewlineCall type Int32
 storage module immutable unsignedZeroByteCount ByteCount 1
 return value unsignedZeroByteCount
 
+# rationale: Print inputValue in lowercase hexadecimal (no '0x' prefix, no leading zeros) followed by a newline.
+# invariant: Output digits are 0-9 / a-f only; never uppercase, never with a prefix.
+# warning: Negative inputs print sign-extended in two's complement (large positive-looking hex).
 operation writeSignedInt64HexToStandardOutput
 input operation writeSignedInt64HexToStandardOutput inputValue Int64
 output operation writeSignedInt64HexToStandardOutput ByteCount

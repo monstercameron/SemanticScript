@@ -67,6 +67,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -77,8 +79,288 @@ SEM_PY = Path(__file__).resolve().parent / "sem.py"
 # Most surfaces are fast; `test` can run harnesses, so it gets a larger budget.
 DEFAULT_TIMEOUT_SECONDS = 120
 TEST_TIMEOUT_SECONDS = 600
+DOCS_INDEX_TIMEOUT_SECONDS = 600
+DEFAULT_DOCS_WATCH_INTERVAL_SECONDS = 5.0
+DOCS_WATCH_MAX_FILES = 5000
+DOCS_DEFAULT_EMBEDDING_PROVIDER = "sentence-transformers"
+DOCS_DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 
 mcp = FastMCP("semanticscript")
+
+
+def _resolve_workspace_path(path: str, cwd: str | None = None) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute() and cwd is not None:
+        candidate = Path(cwd) / candidate
+    return candidate.resolve()
+
+
+def _docs_default_db(path: str, cwd: str | None = None) -> str:
+    root = _resolve_workspace_path(path, cwd)
+    if root.is_file() or root.suffix.lower() in {".sem", ".sscript"}:
+        root = root.parent
+    return str((root / ".sem" / "docs.sqlite").resolve())
+
+
+def _docs_resolved_db(path: str, db: str | None, cwd: str | None = None) -> str:
+    if db:
+        return str(_resolve_workspace_path(db, cwd))
+    return _docs_default_db(path, cwd)
+
+
+def _docs_snapshot(path: str, cwd: str | None = None, *, max_files: int = DOCS_WATCH_MAX_FILES) -> tuple[tuple[str, int, int], ...]:
+    root = _resolve_workspace_path(path, cwd)
+    if root.is_file():
+        stat = root.stat()
+        return ((str(root), stat.st_mtime_ns, stat.st_size),)
+    if not root.exists():
+        return tuple()
+    ignored = {".git", ".sem", ".claude", "build", "dist", "__pycache__"}
+    rows = []
+    for pattern in ("*.sem", "*.sscript"):
+        for source in root.rglob(pattern):
+            try:
+                relative = source.relative_to(root)
+            except ValueError:
+                relative = source
+            if any(part in ignored for part in relative.parts[:-1]):
+                continue
+            try:
+                stat = source.stat()
+            except OSError:
+                continue
+            rows.append((str(source.resolve()), stat.st_mtime_ns, stat.st_size))
+            if len(rows) > max_files:
+                raise RuntimeError(
+                    f"docs watcher saw more than {max_files} SemanticScript files under {root}; "
+                    "use a narrower docs path or run docs_reindex with background=false"
+                )
+    return tuple(sorted(rows))
+
+
+class DocsIndexWorker:
+    def __init__(
+        self,
+        *,
+        path: str,
+        db: str,
+        cwd: str | None,
+        include_std: bool,
+        interval_seconds: float,
+        embedding_provider: str,
+        embedding_model: str,
+        allow_model_download: bool = False,
+        max_files: int = DOCS_WATCH_MAX_FILES,
+    ) -> None:
+        self.path = path
+        self.db = db
+        self.cwd = cwd
+        self.include_std = include_std
+        self.interval_seconds = max(float(interval_seconds), 0.5)
+        self.embedding_provider = embedding_provider
+        self.embedding_model = embedding_model
+        self.allow_model_download = allow_model_download
+        self.max_files = max_files
+        self._trigger = threading.Event()
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._last_snapshot: tuple[tuple[str, int, int], ...] | None = None
+        self._last_payload: dict[str, Any] | None = None
+        self._last_error = ""
+        self._last_started = 0.0
+        self._last_finished = 0.0
+        self._index_count = 0
+        self._error_count = 0
+        self._backoff_until = 0.0
+        self._thread = threading.Thread(target=self._run, name="sem-docs-index", daemon=True)
+        self._thread.start()
+        self.trigger()
+
+    def trigger(self) -> None:
+        self._trigger.set()
+
+    def force_reindex(self) -> None:
+        with self._lock:
+            self._last_snapshot = None
+        self.trigger()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._trigger.set()
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "running": self._thread.is_alive(),
+                "path": self.path,
+                "db": self.db,
+                "cwd": self.cwd,
+                "includeStd": self.include_std,
+                "intervalSeconds": self.interval_seconds,
+                "embeddingProvider": self.embedding_provider,
+                "embeddingModel": self.embedding_model,
+                "allowModelDownload": self.allow_model_download,
+                "maxFiles": self.max_files,
+                "lastStarted": self._last_started,
+                "lastFinished": self._last_finished,
+                "indexCount": self._index_count,
+                "errorCount": self._error_count,
+                "backoffUntil": self._backoff_until,
+                "lastError": self._last_error,
+                "lastPayload": self._last_payload,
+            }
+
+    def _record_backoff(self, error: str) -> None:
+        backoff = min(self.interval_seconds * 2 ** min(self._error_count, 5), 60.0)
+        with self._lock:
+            self._last_error = error
+            self._last_finished = time.time()
+            self._error_count += 1
+            self._backoff_until = time.time() + backoff
+        self._stop.wait(backoff)
+
+    def _index_once(self, snapshot: tuple[tuple[str, int, int], ...]) -> bool:
+        args = _argv(
+            "docs",
+            "index",
+            "--json",
+            "--path",
+            self.path,
+            "--db",
+            self.db,
+            "--include-std" if self.include_std else None,
+            "--embedding-provider",
+            self.embedding_provider,
+            "--embedding-model",
+            self.embedding_model,
+            "--allow-model-download" if self.allow_model_download else None,
+        )
+        started = time.time()
+        with self._lock:
+            self._last_started = started
+            self._last_error = ""
+        with _docs_db_index_lock(self.db):
+            payload = _run_sem(args, cwd=self.cwd, timeout=DOCS_INDEX_TIMEOUT_SECONDS)
+        finished = time.time()
+        with self._lock:
+            self._last_finished = finished
+            self._last_payload = payload
+            self._index_count += 1
+            if payload.get("ok", False):
+                self._last_snapshot = snapshot
+                self._error_count = 0
+                self._backoff_until = 0.0
+                self._last_error = ""
+                return True
+            self._last_error = json.dumps(payload.get("errors") or payload.get("error") or payload, sort_keys=True)
+            return False
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self._trigger.wait(self.interval_seconds)
+            self._trigger.clear()
+            if self._stop.is_set():
+                break
+            try:
+                snapshot = _docs_snapshot(self.path, self.cwd, max_files=self.max_files)
+                if snapshot != self._last_snapshot:
+                    if not self._index_once(snapshot):
+                        self._record_backoff(self._last_error or "docs index failed")
+            except Exception as exc:  # keep background indexing from killing MCP
+                self._record_backoff(str(exc))
+
+
+_DOCS_WORKERS: dict[str, DocsIndexWorker] = {}
+_DOCS_WORKERS_LOCK = threading.Lock()
+_DOCS_DB_INDEX_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _docs_db_index_lock(db: str) -> threading.Lock:
+    resolved_db = str(_resolve_workspace_path(db, None))
+    with _DOCS_WORKERS_LOCK:
+        lock = _DOCS_DB_INDEX_LOCKS.get(resolved_db)
+        if lock is None:
+            lock = threading.Lock()
+            _DOCS_DB_INDEX_LOCKS[resolved_db] = lock
+        return lock
+
+
+def _docs_worker_key(
+    *,
+    path: str,
+    db: str,
+    cwd: str | None,
+    include_std: bool,
+    embedding_provider: str,
+    embedding_model: str,
+    allow_model_download: bool = False,
+) -> str:
+    return json.dumps(
+        {
+            "path": str(_resolve_workspace_path(path, cwd)),
+            "db": str(_resolve_workspace_path(db, cwd)),
+            "includeStd": include_std,
+            "embeddingProvider": embedding_provider,
+            "embeddingModel": embedding_model,
+            "allowModelDownload": allow_model_download,
+        },
+        sort_keys=True,
+    )
+
+
+def _docs_find_worker_by_db(db: str, cwd: str | None) -> DocsIndexWorker | None:
+    resolved_db = str(_resolve_workspace_path(db, cwd))
+    for worker in _DOCS_WORKERS.values():
+        if worker.status().get("db") == resolved_db:
+            return worker
+    return None
+
+
+def _ensure_docs_worker(
+    *,
+    path: str,
+    db: str | None = None,
+    cwd: str | None = None,
+    include_std: bool = True,
+    interval_seconds: float = DEFAULT_DOCS_WATCH_INTERVAL_SECONDS,
+    embedding_provider: str = DOCS_DEFAULT_EMBEDDING_PROVIDER,
+    embedding_model: str = DOCS_DEFAULT_EMBEDDING_MODEL,
+    allow_model_download: bool = False,
+    max_files: int = DOCS_WATCH_MAX_FILES,
+) -> DocsIndexWorker:
+    resolved_db = _docs_resolved_db(path, db, cwd)
+    key = _docs_worker_key(
+        path=path,
+        db=resolved_db,
+        cwd=cwd,
+        include_std=include_std,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+        allow_model_download=allow_model_download,
+    )
+    with _DOCS_WORKERS_LOCK:
+        worker = _DOCS_WORKERS.get(key)
+        if worker is None or not worker.status().get("running"):
+            for existing_key, existing_worker in list(_DOCS_WORKERS.items()):
+                if existing_key != key and existing_worker.status().get("db") == resolved_db:
+                    existing_worker.stop()
+                    del _DOCS_WORKERS[existing_key]
+            worker = DocsIndexWorker(
+                path=path,
+                db=resolved_db,
+                cwd=cwd,
+                include_std=include_std,
+                interval_seconds=interval_seconds,
+                embedding_provider=embedding_provider,
+                embedding_model=embedding_model,
+                allow_model_download=allow_model_download,
+                max_files=max_files,
+            )
+            _DOCS_WORKERS[key] = worker
+        else:
+            worker.interval_seconds = max(float(interval_seconds), 0.5)
+            worker.max_files = max_files
+        return worker
 
 
 def _sem_command(sub_args: list[str]) -> list[str]:
@@ -438,6 +720,192 @@ def deps(
 
 
 @mcp.tool()
+def docs_list(
+    module: str | None = None,
+    summary_tag: str = "rationale",
+    include_internal: bool = False,
+    std_path: str | None = None,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """List documented APIs and call targets (sem.docs.v1)."""
+    args = _argv(
+        "docs",
+        "list",
+        "--json",
+        "--module" if module else None, module,
+        "--summary-tag", summary_tag,
+        "--all" if include_internal else None,
+        "--std-path" if std_path else None, std_path,
+    )
+    return _run_sem(args, cwd=cwd)
+
+
+@mcp.tool()
+def docs_get(
+    operation: str,
+    module: str | None = None,
+    include_internal: bool = False,
+    std_path: str | None = None,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Get documentation for one API or call target (sem.docs.v1)."""
+    args = _argv(
+        "docs",
+        "get",
+        "--json",
+        "--module" if module else None, module,
+        "--all" if include_internal else None,
+        "--std-path" if std_path else None, std_path,
+        operation,
+    )
+    return _run_sem(args, cwd=cwd)
+
+
+@mcp.tool()
+def docs_watch(
+    path: str = ".",
+    db: str | None = None,
+    include_std: bool = True,
+    interval_seconds: float = DEFAULT_DOCS_WATCH_INTERVAL_SECONDS,
+    embedding_provider: str = DOCS_DEFAULT_EMBEDDING_PROVIDER,
+    embedding_model: str = DOCS_DEFAULT_EMBEDDING_MODEL,
+    allow_model_download: bool = False,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Start or reuse the background docs/vector index worker (sem.docsIndex.v1)."""
+    worker = _ensure_docs_worker(
+        path=path,
+        db=db,
+        cwd=cwd,
+        include_std=include_std,
+        interval_seconds=interval_seconds,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+        allow_model_download=allow_model_download,
+    )
+    worker.trigger()
+    return {"ok": True, "status": "watching", "worker": worker.status()}
+
+
+@mcp.tool()
+def docs_reindex(
+    path: str = ".",
+    db: str | None = None,
+    include_std: bool = True,
+    background: bool = True,
+    embedding_provider: str = DOCS_DEFAULT_EMBEDDING_PROVIDER,
+    embedding_model: str = DOCS_DEFAULT_EMBEDDING_MODEL,
+    allow_model_download: bool = False,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Refresh docs index now or queue a background refresh (sem.docsIndex.v1)."""
+    resolved_db = _docs_resolved_db(path, db, cwd)
+    if background:
+        worker = _ensure_docs_worker(
+            path=path,
+            db=resolved_db,
+            cwd=cwd,
+            include_std=include_std,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
+            allow_model_download=allow_model_download,
+        )
+        worker.force_reindex()
+        return {"ok": True, "status": "queued", "worker": worker.status()}
+    args = _argv(
+        "docs",
+        "index",
+        "--json",
+        "--path",
+        path,
+        "--db",
+        resolved_db,
+        "--include-std" if include_std else None,
+        "--embedding-provider",
+        embedding_provider,
+        "--embedding-model",
+        embedding_model,
+        "--allow-model-download" if allow_model_download else None,
+    )
+    with _docs_db_index_lock(resolved_db):
+        return _run_sem(args, cwd=cwd, timeout=DOCS_INDEX_TIMEOUT_SECONDS)
+
+
+@mcp.tool()
+def docs_index_status(
+    path: str = ".",
+    db: str | None = None,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Return docs index DB status plus background worker state (sem.docsIndex.v1)."""
+    resolved_db = _docs_resolved_db(path, db, cwd)
+    payload = _run_sem(_argv("docs", "status", "--json", "--path", path, "--db", resolved_db), cwd=cwd)
+    with _DOCS_WORKERS_LOCK:
+        worker = _docs_find_worker_by_db(resolved_db, cwd)
+    payload["worker"] = worker.status() if worker is not None else {"running": False}
+    return payload
+
+
+@mcp.tool()
+def docs_search(
+    query: str,
+    path: str = ".",
+    db: str | None = None,
+    limit: int = 10,
+    watch: bool = False,
+    include_std: bool = True,
+    embedding_provider: str = "auto",
+    embedding_model: str | None = None,
+    allow_model_download: bool = False,
+    include_docs: bool = False,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Search cached docs with hybrid FTS/vector ranking (sem.docsSearch.v1)."""
+    resolved_db = _docs_resolved_db(path, db, cwd)
+    worker: DocsIndexWorker | None = None
+    if watch:
+        with _DOCS_WORKERS_LOCK:
+            worker = _docs_find_worker_by_db(resolved_db, cwd)
+        if worker is not None:
+            worker.trigger()
+        else:
+            worker = _ensure_docs_worker(
+                path=path,
+                db=resolved_db,
+                cwd=cwd,
+                include_std=include_std,
+                embedding_provider=DOCS_DEFAULT_EMBEDDING_PROVIDER if embedding_provider == "auto" else embedding_provider,
+                embedding_model=embedding_model or DOCS_DEFAULT_EMBEDDING_MODEL,
+                allow_model_download=allow_model_download,
+            )
+    args = _argv(
+        "docs",
+        "search",
+        "--json",
+        "--path",
+        path,
+        "--db",
+        resolved_db,
+        "--limit",
+        str(limit),
+        "--embedding-provider",
+        embedding_provider,
+        "--embedding-model" if embedding_model else None,
+        embedding_model,
+        "--allow-model-download" if allow_model_download else None,
+        "--include-docs" if include_docs else None,
+        query,
+    )
+    payload = _run_sem(args, cwd=cwd)
+    if payload.get("status") == "index-missing" and watch:
+        if worker is None:
+            with _DOCS_WORKERS_LOCK:
+                worker = _docs_find_worker_by_db(resolved_db, cwd)
+        payload["worker"] = worker.status() if worker is not None else {"running": False}
+    return payload
+
+
+@mcp.tool()
 def help(path: str = ".", cwd: str | None = None) -> dict[str, Any]:
     """Recommend the next-step agent workflow for a project (sem.help.v1).
 
@@ -465,6 +933,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
     parser.add_argument("--path", help="HTTP route for the streamable-http transport")
+    parser.add_argument("--docs-path", help="start a background docs index worker for this project/source path")
+    parser.add_argument("--docs-db", help="SQLite docs index path for the background docs worker")
+    parser.add_argument("--docs-watch-interval", type=float, default=DEFAULT_DOCS_WATCH_INTERVAL_SECONDS, help="background docs polling interval in seconds")
+    parser.add_argument("--docs-allow-model-download", action="store_true", help="allow the docs worker to download the embedding model when it is not cached")
+    parser.add_argument("--no-docs-std", action="store_true", help="do not include std docs in the background docs index")
     args = parser.parse_args(argv)
 
     if args.host is not None:
@@ -473,6 +946,16 @@ def main(argv: list[str] | None = None) -> None:
         mcp.settings.port = args.port
     if args.path is not None:
         mcp.settings.streamable_http_path = args.path
+
+    if args.docs_path is not None:
+        _ensure_docs_worker(
+            path=args.docs_path,
+            db=args.docs_db,
+            cwd=None,
+            include_std=not args.no_docs_std,
+            interval_seconds=args.docs_watch_interval,
+            allow_model_download=args.docs_allow_model_download,
+        )
 
     # The server exposes file-mutating (patch) and code-executing (test) tools.
     # Over HTTP that is reachable by anything that can hit the bind address, so

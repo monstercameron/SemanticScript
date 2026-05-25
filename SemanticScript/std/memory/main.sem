@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.memory.
 
+# rationale: Canonical standard-library module for memory helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.memory
 purpose module standard.memory "Canonical standard-library module for memory helpers."
 moduleOwns standard.memory "The official import path `standard.memory` and this module's implementation body."
@@ -23,7 +25,7 @@ storage module immutable memoryModuleVersionText String "standard.memory 0.1"
 # invariant: all loops walk exactly byteCount bytes (or fewer
 #   on early return for find/compare). Caller is responsible for
 #   ensuring the source / destination buffers are at least
-#   byteCount bytes wide â€” no capacity contract is encoded at
+#   byteCount bytes wide - no capacity contract is encoded at
 #   this layer.
 #
 # security: copy / move / fill mutate the destination buffer in
@@ -53,6 +55,8 @@ domainLiteralSource fnvOneAPrime ietf.fnv1a.prime64
 
 # section memory.copy
 
+# rationale: Copies byteCount bytes from sourceBuffer to destinationBuffer (forward walk). Returns byteCount.
+# invariant: Forward copy - caller must guarantee non-overlapping regions; use moveMemoryBytesAllowOverlap when they may overlap.
 operation copyMemoryBytes
 input operation copyMemoryBytes destinationBuffer OpaquePointer
 input operation copyMemoryBytes sourceBuffer String
@@ -62,7 +66,7 @@ memory copyMemoryBytes heap no
 memory copyMemoryBytes stack max 1024
 async copyMemoryBytes no
 purpose operation copyMemoryBytes "Copies byteCount bytes from sourceBuffer to destinationBuffer (forward walk). Returns byteCount."
-invariant operation copyMemoryBytes "Forward copy â€” caller must guarantee non-overlapping regions; use moveMemoryBytesAllowOverlap when they may overlap."
+invariant operation copyMemoryBytes "Forward copy - caller must guarantee non-overlapping regions; use moveMemoryBytesAllowOverlap when they may overlap."
 guarantee copyMemoryBytes "Total."
 label startCopyMemoryBytes
 memory copyMemoryBytes mutable copyCursor Int64 0
@@ -93,6 +97,8 @@ jump target copyForwardLoop
 label copyComplete
 return value byteCount
 
+# rationale: Overlap-safe memmove. When destinationBuffer > sourceBuffer in memory, copies bytes backwards so overlapping regions don't clobber unread source bytes.
+# invariant: Equivalent in result to copyMemoryBytes when regions don't overlap; correct under overlap when they do.
 operation moveMemoryBytesAllowOverlap
 input operation moveMemoryBytesAllowOverlap destinationBuffer OpaquePointer
 input operation moveMemoryBytesAllowOverlap sourceBuffer String
@@ -173,6 +179,8 @@ return value byteCount
 
 # section memory.fill
 
+# rationale: Writes byteCount copies of targetValue into byteBuffer.
+# invariant: Writes exactly byteCount bytes; never reads from byteBuffer; the low 8 bits of targetValue are stored at each offset.
 operation fillMemoryBytesWithValue
 input operation fillMemoryBytesWithValue byteBuffer OpaquePointer
 input operation fillMemoryBytesWithValue targetValue Int32
@@ -208,6 +216,7 @@ jump target fillLoop
 label fillComplete
 return value byteCount
 
+# rationale: Writes byteCount zeros into byteBuffer (bzero shape). Delegates to fillMemoryBytesWithValue.
 operation zeroMemoryBytes
 input operation zeroMemoryBytes byteBuffer OpaquePointer
 input operation zeroMemoryBytes byteCount ByteCount
@@ -229,6 +238,8 @@ return value zeroFillResult
 
 # section memory.compareAndSearch
 
+# rationale: Compares the first byteCount bytes of two buffers; returns 0 on full match, otherwise the signed difference of the first mismatched pair (leftByte - rightByte).
+# invariant: Sign of the result matches the sign of the first byte difference.
 operation compareMemoryByteRanges
 input operation compareMemoryByteRanges leftBuffer String
 input operation compareMemoryByteRanges rightBuffer String
@@ -282,6 +293,8 @@ return value byteDifferenceValue
 label returnCompareEqual
 return value integerZeroBoundaryForMemory
 
+# rationale: Returns the offset of the first byte in [0, byteCount) that equals targetValue, or -1 if not present.
+# invariant: Result is in [-1, byteCount); -1 only when target is absent.
 operation findByteValueInMemoryRange
 input operation findByteValueInMemoryRange byteBuffer String
 input operation findByteValueInMemoryRange targetValue Int32
@@ -342,6 +355,9 @@ return value integerNegativeOneSentinel
 
 # section memory.hash
 
+# rationale: Approximate FNV-1a 64-bit hash. Walks every byte of byteBuffer, mixes via add+multiply (XOR is not natively available at this layer), produces a deterministic per-input value.
+# invariant: Deterministic on the input bytes; identical buffers produce identical hashes; no allocation.
+# warning: Not a bit-exact FNV-1a - useful for dispatch tables but NOT for cryptographic or interoperability purposes.
 operation hashMemoryBytesWithFnv1a
 input operation hashMemoryBytesWithFnv1a byteBuffer String
 input operation hashMemoryBytesWithFnv1a byteCount ByteCount
@@ -351,7 +367,7 @@ memory hashMemoryBytesWithFnv1a stack max 1024
 async hashMemoryBytesWithFnv1a no
 purpose operation hashMemoryBytesWithFnv1a "Approximate FNV-1a 64-bit hash. Walks every byte of byteBuffer, mixes via add+multiply (XOR is not natively available at this layer), produces a deterministic per-input value."
 invariant operation hashMemoryBytesWithFnv1a "Deterministic on the input bytes; identical buffers produce identical hashes; no allocation."
-warning hashMemoryBytesWithFnv1a "Not a bit-exact FNV-1a â€” useful for dispatch tables but NOT for cryptographic or interoperability purposes."
+warning hashMemoryBytesWithFnv1a "Not a bit-exact FNV-1a - useful for dispatch tables but NOT for cryptographic or interoperability purposes."
 guarantee hashMemoryBytesWithFnv1a "Total."
 label startHashMemoryBytesWithFnv1a
 memory hashMemoryBytesWithFnv1a mutable hashAccumulator Int64 0

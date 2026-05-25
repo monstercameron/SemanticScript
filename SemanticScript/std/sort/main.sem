@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.sort.
 
+# rationale: Canonical standard-library module for sort helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.sort
 purpose module standard.sort "Canonical standard-library module for sort helpers."
 moduleOwns standard.sort "The official import path `standard.sort` and this module's implementation body."
@@ -18,7 +20,7 @@ storage module immutable sortModuleVersionText String "standard.sort 0.1"
 #   as unsigned 0..255 values. Each byte loaded via pointer.loadByte
 #   is normalized through (raw + 256) % 256 to undo i8 sign-extension.
 #
-# invariant: sort operations are total â€” they mutate byteCount
+# invariant: sort operations are total - they mutate byteCount
 #   bytes in place and return byteCount. The Bool predicate
 #   areBytesSortedAscending returns Bool directly.
 #
@@ -41,6 +43,9 @@ domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
 
 # section sort.bubbleSort
 
+# rationale: In-place bubble sort of the first byteCount bytes of byteBuffer in non-decreasing order. Returns byteCount.
+# invariant: After return, areBytesSortedAscending(byteBuffer, byteCount) == true.
+# warning: O(byteCount^2) running time - not suitable for buffers larger than a few thousand bytes.
 operation sortBytesWithBubbleSortInPlace
 input operation sortBytesWithBubbleSortInPlace byteBuffer OpaquePointer
 input operation sortBytesWithBubbleSortInPlace byteCount ByteCount
@@ -49,7 +54,7 @@ memory sortBytesWithBubbleSortInPlace heap no
 async sortBytesWithBubbleSortInPlace no
 purpose operation sortBytesWithBubbleSortInPlace "In-place bubble sort of the first byteCount bytes of byteBuffer in non-decreasing order. Returns byteCount."
 invariant operation sortBytesWithBubbleSortInPlace "After return, areBytesSortedAscending(byteBuffer, byteCount) == true."
-warning sortBytesWithBubbleSortInPlace "O(byteCount^2) running time â€” not suitable for buffers larger than a few thousand bytes."
+warning sortBytesWithBubbleSortInPlace "O(byteCount^2) running time - not suitable for buffers larger than a few thousand bytes."
 guarantee sortBytesWithBubbleSortInPlace "Total."
 label startSortBytesWithBubbleSortInPlace
 memory sortBytesWithBubbleSortInPlace mutable bubbleOuterIndex Int64 0
@@ -168,6 +173,8 @@ return value byteCount
 
 # section sort.predicate
 
+# rationale: Returns true when every adjacent pair satisfies byteBuffer[i] <= byteBuffer[i+1]. Empty and single-element buffers are sorted.
+# invariant: Short-circuits on the first out-of-order pair; empty / single-element buffers return true.
 operation areBytesSortedAscending
 input operation areBytesSortedAscending byteBuffer String
 input operation areBytesSortedAscending byteCount ByteCount
@@ -254,6 +261,8 @@ return value isSortedFalseResult
 
 # section sort.insertionSort
 
+# rationale: In-place insertion sort. O(n) on nearly-sorted input; O(n^2) worst case.
+# invariant: After return, areBytesSortedAscending(byteBuffer, byteCount) == true.
 operation sortBytesWithInsertionSortInPlace
 input operation sortBytesWithInsertionSortInPlace byteBuffer OpaquePointer
 input operation sortBytesWithInsertionSortInPlace byteCount ByteCount

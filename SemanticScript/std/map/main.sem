@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.map.
 
+# rationale: Canonical standard-library module for map size/capacity bookkeeping helpers.
+# invariant: This module owns structural map helpers over entry counts, capacity, and known-key facts.
 module standard.map
 purpose module standard.map "Canonical standard-library module for map size/capacity bookkeeping helpers."
 moduleOwns standard.map "The official import path `standard.map` and the executable `map.*` helper surface."
@@ -19,6 +21,7 @@ domainLiteralTrust mapFailureSentinel trustedStaticLiteral
 storage module immutable mapTrue Bool true
 storage module immutable mapFalse Bool false
 
+# rationale: Return the current number of entries in the map.
 operation map.size
 input operation map.size entryCount Int64
 output operation map.size Int64
@@ -27,6 +30,7 @@ async map.size no
 purpose operation map.size "Return the current number of entries in the map."
 return value entryCount
 
+# rationale: Return true when entryCount is zero.
 operation map.isEmpty
 input operation map.isEmpty entryCount Int64
 output operation map.isEmpty Bool
@@ -40,6 +44,7 @@ run mapIsEmptyCall
 bind value mapIsEmptyResult Bool mapIsEmptyCall
 return value mapIsEmptyResult
 
+# rationale: Return max(entryCapacity - entryCount, 0).
 operation map.remainingCapacity
 input operation map.remainingCapacity entryCount Int64
 input operation map.remainingCapacity entryCapacity Int64
@@ -62,6 +67,7 @@ return value mapRemainingCapacityValue
 label mapRemainingCapacityZero
 return value mapZeroValue
 
+# rationale: Return true when entryCount is strictly less than entryCapacity.
 operation map.hasCapacityForNewEntry
 input operation map.hasCapacityForNewEntry entryCount Int64
 input operation map.hasCapacityForNewEntry entryCapacity Int64
@@ -76,6 +82,7 @@ run mapHasCapacityCall
 bind value mapHasCapacityResult Bool mapHasCapacityCall
 return value mapHasCapacityResult
 
+# rationale: Return true when the key is absent and the map has capacity for a new entry.
 operation map.canInsertNewEntry
 input operation map.canInsertNewEntry entryCount Int64
 input operation map.canInsertNewEntry entryCapacity Int64
@@ -94,6 +101,7 @@ return value mapHasCapacityForInsertResult
 label mapCanInsertFalse
 return value mapFalse
 
+# rationale: Return true when the key is already present.
 operation map.canUpdateExistingEntry
 input operation map.canUpdateExistingEntry keyPresent Bool
 output operation map.canUpdateExistingEntry Bool
@@ -102,6 +110,7 @@ async map.canUpdateExistingEntry no
 purpose operation map.canUpdateExistingEntry "Return true when the key is already present."
 return value keyPresent
 
+# rationale: Return true when the key is already present.
 operation map.canRemoveExistingEntry
 input operation map.canRemoveExistingEntry keyPresent Bool
 output operation map.canRemoveExistingEntry Bool
@@ -110,6 +119,7 @@ async map.canRemoveExistingEntry no
 purpose operation map.canRemoveExistingEntry "Return true when the key is already present."
 return value keyPresent
 
+# rationale: Return the resulting size after an insert-or-upsert, or -1 when inserting a new key would exceed capacity.
 operation map.sizeAfterInsert
 input operation map.sizeAfterInsert entryCount Int64
 input operation map.sizeAfterInsert entryCapacity Int64
@@ -136,6 +146,7 @@ run mapSizeAfterInsertValueCall
 bind value mapSizeAfterInsertValue Int64 mapSizeAfterInsertValueCall
 return value mapSizeAfterInsertValue
 
+# rationale: Return the resulting size after remove, or -1 when the key is absent.
 operation map.sizeAfterRemove
 input operation map.sizeAfterRemove entryCount Int64
 input operation map.sizeAfterRemove keyPresent Bool

@@ -1,5 +1,7 @@
 # SemanticScript standard-library canonical module: standard.math.
 
+# rationale: Canonical standard-library module for integer math helpers.
+# invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.math
 purpose module standard.math "Canonical standard-library module for integer math helpers."
 moduleOwns standard.math "The official import path `standard.math` and this module's implementation body."
@@ -14,26 +16,28 @@ storage module immutable mathModuleVersionText String "standard.math 0.1"
 # SEMANTICSCRIPT STANDARD LIBRARY: integer math helpers
 # ============================================================
 #
-# rationale: pure-SemanticScript integer math â€” sqrt, factorial, primality,
+# rationale: pure-SemanticScript integer math - sqrt, factorial, primality,
 #   power-of-two tests, bit counts. Every operation lowers to math.*
 #   primitives plus branching; no libc math.h dependency.
 #
 # invariant: every operation is total over its declared Int64
 #   domain. Predicates (isSignedInt64Prime / IsPowerOfTwo / IsEven /
-#   IsOdd / IsWithinInclusiveRange) return Bool directly â€” no more
+#   IsOdd / IsWithinInclusiveRange) return Bool directly - no more
 #   round-trips through "0 or 1 in a Int32".
 #
 # security: pure value-level computation. No I/O. No allocation.
 #
 # timing: integerSquareRoot is O(log n) (Newton iterations);
 #   factorial is O(n); isSignedInt64Prime is O(sqrt(n)); bit counts
-#   are O(64) â€” acceptable for tooling, not for hot loops.
+#   are O(64) - acceptable for tooling, not for hot loops.
 #
 # observability: no logs; consumers wrap when needed.
 
 # Pure-module file: smoke + extended tests live in
 # std/math/main.test.sem.
 
+# rationale: Returns floor(sqrt(inputValue)) for inputValue >= 0 via Newton iteration; returns 0 for inputValue <= 0.
+# invariant: For n >= 0, result*result <= n < (result+1)*(result+1).
 operation integerSquareRootSignedInt64
 input operation integerSquareRootSignedInt64 inputValue Int64
 output operation integerSquareRootSignedInt64 Int64
@@ -97,6 +101,9 @@ return value guess
 label intSqrtZero
 return value zeroInt64
 
+# rationale: Returns inputValue! by repeated multiplication. Defined for inputValue in [0, 20]; n > 20 overflows Int64 silently.
+# invariant: factorialSignedInt64(0) == 1 (convention).
+# warning: Wraps silently above 20! - no overflow error surfaced.
 operation factorialSignedInt64
 input operation factorialSignedInt64 inputValue Int64
 output operation factorialSignedInt64 Int64
@@ -105,7 +112,7 @@ memory factorialSignedInt64 stack max 1024
 async factorialSignedInt64 no
 purpose operation factorialSignedInt64 "Returns inputValue! by repeated multiplication. Defined for inputValue in [0, 20]; n > 20 overflows Int64 silently."
 invariant operation factorialSignedInt64 "factorialSignedInt64(0) == 1 (convention)."
-warning factorialSignedInt64 "Wraps silently above 20! â€” no overflow error surfaced."
+warning factorialSignedInt64 "Wraps silently above 20! - no overflow error surfaced."
 guarantee factorialSignedInt64 "Total over the Int64 domain (with overflow wrap)."
 
 label startFactorialSignedInt64
@@ -146,6 +153,8 @@ return value product
 label factorialOne
 return value oneFac
 
+# rationale: Returns true when inputValue is prime; n <= 1 returns false. Tests divisibility by 2 then odd numbers up to floor(sqrt(n)).
+# invariant: Exact for inputValue in [2, INT64_MAX/2]; uses integerSquareRootSignedInt64 to bound the trial-division loop.
 operation isSignedInt64Prime
 input operation isSignedInt64Prime inputValue Int64
 output operation isSignedInt64Prime Bool
@@ -228,6 +237,8 @@ return value falsePr
 label isPrimeTrue
 return value truePr
 
+# rationale: Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...), computed in O(1) as inputValue > 0 AND (inputValue AND (inputValue - 1)) == 0.
+# invariant: A positive power of two has exactly one set bit, so clearing the lowest set bit via (n & (n-1)) yields 0. Zero / negative inputs return false.
 operation isSignedInt64PowerOfTwo
 input operation isSignedInt64PowerOfTwo inputValue Int64
 output operation isSignedInt64PowerOfTwo Bool
@@ -235,7 +246,7 @@ memory isSignedInt64PowerOfTwo heap no
 async isSignedInt64PowerOfTwo no
 purpose operation isSignedInt64PowerOfTwo "Returns true when inputValue is a positive power of 2 (1, 2, 4, 8, ...), computed in O(1) as inputValue > 0 AND (inputValue AND (inputValue - 1)) == 0."
 invariant operation isSignedInt64PowerOfTwo "A positive power of two has exactly one set bit, so clearing the lowest set bit via (n & (n-1)) yields 0. Zero / negative inputs return false."
-guarantee isSignedInt64PowerOfTwo "Total. O(1) â€” one subtract, one and, two compares."
+guarantee isSignedInt64PowerOfTwo "Total. O(1) - one subtract, one and, two compares."
 
 label startIsSignedInt64PowerOfTwo
 storage module immutable zeroPt Int64 0
@@ -275,6 +286,8 @@ return value falsePt
 label isPowerOfTwoTrue
 return value truePt
 
+# rationale: Returns the smallest power of 2 >= inputValue (1 for inputValue <= 1).
+# invariant: Doubles a 1-seeded accumulator until it reaches or exceeds inputValue; inputs <= 1 short-circuit to 1.
 operation nextPowerOfTwoForSignedInt64
 input operation nextPowerOfTwoForSignedInt64 inputValue Int64
 output operation nextPowerOfTwoForSignedInt64 Int64
@@ -316,6 +329,8 @@ return value p
 label nextPowOne
 return value oneNp
 
+# rationale: Returns the count of decimal digits in |inputValue|. Returns 1 for inputValue == 0.
+# invariant: Divides the absolute value by 10 until the quotient is zero, counting iterations. Negative inputs are absolute-valued via multiplication by -1 first.
 operation countDecimalDigitsInSignedInt64
 input operation countDecimalDigitsInSignedInt64 inputValue Int64
 output operation countDecimalDigitsInSignedInt64 Int64
@@ -386,6 +401,7 @@ return value count
 label countDigitsOne
 return value oneCd
 
+# rationale: Returns true when inputValue % 2 == 0.
 operation isSignedInt64Even
 input operation isSignedInt64Even inputValue Int64
 output operation isSignedInt64Even Bool
@@ -413,6 +429,7 @@ return value falseE
 label isEvenTrue
 return value trueE
 
+# rationale: Returns true when inputValue % 2 != 0.
 operation isSignedInt64Odd
 input operation isSignedInt64Odd inputValue Int64
 output operation isSignedInt64Odd Bool
@@ -440,6 +457,8 @@ return value falseO
 label isOddTrue
 return value trueO
 
+# rationale: Returns the population count of inputValue (number of 1-bits in its full 64-bit two's-complement representation). Correct for negative inputs: countSetBitsInSignedInt64(-1) == 64.
+# invariant: For inputValue >= 0, inspects each bit via modulo-2 on a halving working value. For inputValue < 0, applies popcount(n) == 64 - popcount(-n - 1) so the sign-extension bits are counted (arithmetic divide-by-two toward zero would otherwise drop them).
 operation countSetBitsInSignedInt64
 input operation countSetBitsInSignedInt64 inputValue Int64
 output operation countSetBitsInSignedInt64 Int64
@@ -447,7 +466,7 @@ memory countSetBitsInSignedInt64 heap no
 async countSetBitsInSignedInt64 no
 purpose operation countSetBitsInSignedInt64 "Returns the population count of inputValue (number of 1-bits in its full 64-bit two's-complement representation). Correct for negative inputs: countSetBitsInSignedInt64(-1) == 64."
 invariant operation countSetBitsInSignedInt64 "For inputValue >= 0, inspects each bit via modulo-2 on a halving working value. For inputValue < 0, applies popcount(n) == 64 - popcount(-n - 1) so the sign-extension bits are counted (arithmetic divide-by-two toward zero would otherwise drop them)."
-guarantee countSetBitsInSignedInt64 "Total â€” in [0, 64]."
+guarantee countSetBitsInSignedInt64 "Total - in [0, 64]."
 label startCountSetBitsInSignedInt64
 storage module immutable zeroPc Int64 0
 storage module immutable onePc Int64 1
@@ -542,6 +561,8 @@ run pcFinalComplementCall
 bind value pcComplementedCount Int64 pcFinalComplementCall
 return value pcComplementedCount
 
+# rationale: Returns the count of trailing zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0 (matching GCC __builtin_ctzll).
+# invariant: Halves the value while the low bit is zero, counting iterations. Zero input short-circuits to 64.
 operation countTrailingZeroBitsInSignedInt64
 input operation countTrailingZeroBitsInSignedInt64 inputValue Int64
 output operation countTrailingZeroBitsInSignedInt64 Int64
@@ -595,13 +616,14 @@ return value tzCount
 label tzReturn64
 return value sixtyFourTz
 
+# rationale: Returns -1 when inputValue is negative, 1 when positive, 0 when zero.
 operation signOfSignedInt64
 input operation signOfSignedInt64 inputValue Int64
 output operation signOfSignedInt64 Int64
 memory signOfSignedInt64 heap no
 async signOfSignedInt64 no
 purpose operation signOfSignedInt64 "Returns -1 when inputValue is negative, 1 when positive, 0 when zero."
-guarantee signOfSignedInt64 "Total â€” result is always exactly -1, 0, or 1."
+guarantee signOfSignedInt64 "Total - result is always exactly -1, 0, or 1."
 label startSignOfSignedInt64
 storage module immutable zeroSi Int64 0
 storage module immutable oneSi Int64 1
@@ -624,6 +646,8 @@ return value negOneSi
 label siPos
 return value oneSi
 
+# rationale: Returns |leftValue - rightValue|.
+# invariant: Symmetric and non-negative.
 operation absoluteDifferenceBetweenSignedInt64Values
 input operation absoluteDifferenceBetweenSignedInt64Values leftValue Int64
 input operation absoluteDifferenceBetweenSignedInt64Values rightValue Int64
@@ -656,6 +680,8 @@ run absDiffFlipSignCall
 bind value absDiff Int64 absDiffFlipSignCall
 return value absDiff
 
+# rationale: Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0; returns 0 for negative values (sign bit 63 is set).
+# invariant: Probe descends from 2^62 (the largest power of two representable as a positive Int64). For positive inputs we add 1 to account for the unrepresentable sign bit 63 above the probe range.
 operation countLeadingZeroBitsInSignedInt64
 input operation countLeadingZeroBitsInSignedInt64 inputValue Int64
 output operation countLeadingZeroBitsInSignedInt64 Int64
@@ -663,7 +689,7 @@ memory countLeadingZeroBitsInSignedInt64 heap no
 async countLeadingZeroBitsInSignedInt64 no
 purpose operation countLeadingZeroBitsInSignedInt64 "Returns the count of leading zero bits in inputValue's 64-bit representation. Returns 64 for inputValue == 0; returns 0 for negative values (sign bit 63 is set)."
 invariant operation countLeadingZeroBitsInSignedInt64 "Probe descends from 2^62 (the largest power of two representable as a positive Int64). For positive inputs we add 1 to account for the unrepresentable sign bit 63 above the probe range."
-guarantee countLeadingZeroBitsInSignedInt64 "Total â€” in [0, 64]."
+guarantee countLeadingZeroBitsInSignedInt64 "Total - in [0, 64]."
 label startCountLeadingZeroBitsInSignedInt64
 storage module immutable zeroClz Int64 0
 storage module immutable oneClz Int64 1
@@ -727,6 +753,8 @@ return value sixtyFourClz
 label clzReturnZero
 return value zeroClz
 
+# rationale: Returns inputValue * inputValue.
+# warning: Wraps modulo 2^64 on overflow.
 operation squareSignedInt64
 input operation squareSignedInt64 inputValue Int64
 output operation squareSignedInt64 Int64
@@ -743,6 +771,8 @@ run sqCall
 bind value squareResult Int64 sqCall
 return value squareResult
 
+# rationale: Returns inputValue * inputValue * inputValue.
+# warning: Wraps modulo 2^64 on overflow.
 operation cubeSignedInt64
 input operation cubeSignedInt64 inputValue Int64
 output operation cubeSignedInt64 Int64
@@ -764,6 +794,7 @@ run cubeMultiplyStepCall
 bind value cubeResult Int64 cubeMultiplyStepCall
 return value cubeResult
 
+# rationale: Returns true when lowerBound <= inputValue <= upperBound.
 operation isSignedInt64WithinInclusiveRange
 input operation isSignedInt64WithinInclusiveRange inputValue Int64
 input operation isSignedInt64WithinInclusiveRange lowerBound Int64

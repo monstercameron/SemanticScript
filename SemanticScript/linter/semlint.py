@@ -1386,6 +1386,7 @@ GUI_RUNTIME_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "gui.controlOnEvent": [
         ("control", "GuiControl"),
         ("eventKind", "GuiEventKind"),
+        ("handler", "GuiEventHandler"),
     ],
     "gui.applicationSetMainWindow": [
         ("application", "GuiApplication"),
