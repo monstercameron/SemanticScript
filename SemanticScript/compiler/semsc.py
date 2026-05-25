@@ -13518,6 +13518,22 @@ class Codegen:
         # hole), which dereferenced it and crashed at runtime (SSRUN002). Reject
         # it at codegen so it surfaces as a clear error instead.
         prefix = target.split(".", 1)[0] if "." in target else target
+        # A call through an import alias that resolves to a `standard.*` module
+        # but reaches THIS fallback means the stdlib body was not inlined/linked
+        # for this target. Zero-lowering it produces the most damaging failure in
+        # the toolchain: the call "builds" cleanly but silently returns 0 at
+        # runtime (a constant clock, a zeroed DP cell), masquerading as a logic
+        # bug for hours. Make it a loud build error instead — the stdlib op is
+        # either unavailable for this target (use an intrinsic) or needs linking.
+        aliased_module = self.prog.import_aliases.get(prefix, "")
+        if aliased_module.startswith("standard."):
+            suffix = target.split(".", 1)[1] if "." in target else target
+            raise ValueError(
+                f"stdlib call target {target!r} ({aliased_module}.{suffix}) is not "
+                f"linked for this build target; it would silently return 0 at runtime. "
+                f"Use a compiler intrinsic (docs search shows intrinsics at source ':0') "
+                f"or a DSL form instead of the standard.* library call."
+            )
         known_external = (
             prefix in self.prog.import_aliases
             or prefix in self.prog.codecs

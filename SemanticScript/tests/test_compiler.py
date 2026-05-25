@@ -8037,6 +8037,44 @@ def test_unknown_dotted_call_target_is_rejected_not_zeroed():
           message)
 
 
+def test_unlinked_stdlib_call_is_rejected_not_zeroed():
+    # A `standard.*` library call that reaches codegen without its body being
+    # inlined/linked used to lower to a dummy i64 0 — the single most damaging
+    # failure mode (the call "builds" but silently returns 0 at runtime,
+    # masquerading as a logic bug). It must now be a loud build error naming the
+    # target, steering the author to an intrinsic.
+    src = "\n".join([
+        "project UnlinkedStdlib",
+        "entry console main",
+        "import string standard.string",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "storage local immutable a String \"hello\"",
+        "call lenCall string.stringByteLength",
+        "argument lenCall text String a",
+        "run lenCall",
+        "bind value n Int64 lenCall",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.Codegen(prog).compile()
+    except Exception as exc:
+        raised = exc
+    message = ""
+    if hasattr(raised, "diagnostic"):
+        message = raised.diagnostic.message
+    else:
+        message = str(raised or "")
+    check("codegen: unlinked standard.* call rejected (not silently zeroed)",
+          raised is not None and "not linked" in message
+          and "standard.string" in message,
+          message)
+
+
 def test_backend_diagnostic_detects_locked_output_binary():
     src = "\n".join([
         "project LockedOutput",
@@ -8446,6 +8484,7 @@ def main():
     test_parser_strips_utf8_bom()
     test_const_lowerability_surfaces_unknown_type_at_check()
     test_unknown_dotted_call_target_is_rejected_not_zeroed()
+    test_unlinked_stdlib_call_is_rejected_not_zeroed()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_backend_diagnostic_detects_locked_output_binary()
     test_call_lowering_diagnostic_splits_overloaded_code()
