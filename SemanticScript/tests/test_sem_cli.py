@@ -565,7 +565,14 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(check_proc.returncode, 0, check_proc.stderr)
             check_payload = json.loads(check_proc.stdout)
             self.assertEqual(check_payload["schemaVersion"], "sem.check.v1")
-            self.assertEqual(check_payload["status"], "ok")
+            # The default scaffold is buildable and free of blocking lint errors;
+            # its only finding is the SS2516 placeholder-modulePath nudge (the
+            # intended "set your real modulePath" reminder right after `sem new`).
+            self.assertIn(check_payload["status"], {"ok", "ok-with-warnings"})
+            self.assertTrue(check_payload["buildable"])
+            self.assertTrue(check_payload["noBlockingLintErrors"])
+            self.assertLessEqual(
+                {d["code"] for d in check_payload["diagnostics"]}, {"SS2516"})
 
             test_proc = subprocess.run(
                 [
