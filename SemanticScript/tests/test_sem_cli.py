@@ -759,17 +759,30 @@ class TestSemAgentPayloads(unittest.TestCase):
 
     def test_broken_pipe_exits_zero_not_255(self) -> None:
         # A downstream consumer closing the pipe (`| head`) must not turn a
-        # successful payload into a nonzero (255) exit. Patch os.dup2/os.open so
-        # the handler's stdout redirect doesn't clobber the test runner.
+        # successful payload into a nonzero (255) exit. EPIPE/BrokenPipeError are
+        # unconditional; EINVAL only counts when stdout is actually broken.
         for exc in (BrokenPipeError(), OSError(errno.EINVAL, "Invalid"),
                     OSError(errno.EPIPE, "Broken pipe")):
             with mock.patch.object(sem, "build_parser") as build_parser, \
                     mock.patch.object(sem.os, "dup2"), \
-                    mock.patch.object(sem.os, "open", return_value=3):
+                    mock.patch.object(sem.os, "open", return_value=3), \
+                    mock.patch.object(sem, "_stdout_pipe_is_broken",
+                                      return_value=True):
                 args = mock.Mock()
                 args.func = mock.Mock(side_effect=exc)
                 build_parser.return_value.parse_args.return_value = args
                 self.assertEqual(sem.main(["check", "x"]), 0)
+
+    def test_einval_with_healthy_stdout_propagates(self) -> None:
+        # An unrelated OSError(EINVAL) (e.g. a subprocess failure) must NOT be
+        # masked as a clean exit when stdout is fine.
+        with mock.patch.object(sem, "build_parser") as build_parser, \
+                mock.patch.object(sem, "_stdout_pipe_is_broken", return_value=False):
+            args = mock.Mock()
+            args.func = mock.Mock(side_effect=OSError(errno.EINVAL, "subprocess"))
+            build_parser.return_value.parse_args.return_value = args
+            with self.assertRaises(OSError):
+                sem.main(["check", "x"])
 
     def test_unrelated_oserror_still_propagates(self) -> None:
         with mock.patch.object(sem, "build_parser") as build_parser:

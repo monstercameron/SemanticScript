@@ -7149,6 +7149,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _stdout_pipe_is_broken() -> bool:
+    """Best-effort: is the stdout pipe actually broken/closed? Used to narrow the
+    Windows EINVAL case (a generic errno) so an unrelated OSError(EINVAL) from a
+    subprocess/file op is NOT misread as a broken pipe and silently swallowed."""
+    out = sys.stdout
+    if out is None or getattr(out, "closed", False):
+        return True
+    try:
+        out.flush()
+    except OSError:
+        return True
+    return False
+
+
 def _handle_broken_pipe() -> int:
     """A downstream consumer closed the pipe (e.g. `| head` or PowerShell
     `Select-Object -First N`). The payload was being emitted successfully, so a
@@ -7178,9 +7192,12 @@ def main(argv: list[str] | None = None) -> int:
     except BrokenPipeError:
         return _handle_broken_pipe()
     except OSError as exc:
-        # Windows surfaces a closed stdout pipe as EINVAL/EPIPE rather than a
-        # BrokenPipeError; treat those identically. Re-raise anything else.
-        if exc.errno in (errno.EPIPE, errno.EINVAL):
+        # EPIPE is an unambiguous broken pipe. Windows surfaces a closed stdout
+        # pipe as the generic EINVAL, so only treat EINVAL as a broken pipe when
+        # stdout is actually broken — otherwise an unrelated OSError(EINVAL)
+        # (e.g. a subprocess launch failure) would be masked as a clean exit.
+        if exc.errno == errno.EPIPE or (
+                exc.errno == errno.EINVAL and _stdout_pipe_is_broken()):
             return _handle_broken_pipe()
         raise
 
