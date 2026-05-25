@@ -15184,6 +15184,50 @@ def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_placeholder_module_path(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS2516 — advisory. `sem new` scaffolds `modulePath PROJECT
+    github.com/example/<name>` as a placeholder. Left unchanged it can resolve
+    imports/dependencies against a bogus origin, so nudge the author to set the
+    real module path before publishing or adding dependencies."""
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if (not sourceLine.tokens or is_comment(sourceLine)
+                or sourceLine.verb != "modulePath" or len(sourceLine.args) < 2):
+            continue
+        modulePath = sourceLine.args[1]
+        if "github.com/example/" not in modulePath:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS2516",
+            kind="buildTape.placeholderModulePath",
+            severity=Severity.WARNING,
+            subjectName=sourceLine.args[0],
+            subjectKind="project",
+            gapEdge="modulePath",
+            intentSlogan="placeholder modulePath from sem new",
+            primary=span_of_line(sourceLine, "modulePathDeclaration"),
+            invariantRule=(
+                f"`modulePath {sourceLine.args[0]} {modulePath}` is the scaffold "
+                f"placeholder; set the project's real module path so imports and "
+                f"dependency resolution use the correct origin."
+            ),
+            specAnchor="docs/reference/package-management.md",
+            fixCandidates=[
+                FixCandidate(
+                    name="setRealModulePath",
+                    shape=f"modulePath {sourceLine.args[0]} github.com/<owner>/<repo>",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_placeholder_module_path",
+            agentHint="replace the github.com/example/ placeholder with the real repository path",
+        ))
+    return diagnostics
+
+
 def check_duplicate_route(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3611 — two `route` rows on the same server with the same METHOD+path.
     The native dispatcher matches the first registration, so every later
@@ -19588,6 +19632,7 @@ CHECKERS = [
     check_invalid_route_method,
     check_duplicate_route,
     check_effect_under_declaration,
+    check_placeholder_module_path,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
     check_untrusted_http_html_hydration,

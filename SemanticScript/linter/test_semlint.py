@@ -8662,6 +8662,24 @@ class TestUnusedHtmlTemplate(unittest.TestCase):
 
 
 # ==========================================================================
+# SS2516  buildTape.placeholderModulePath
+# ==========================================================================
+
+class TestPlaceholderModulePath(unittest.TestCase):
+    def test_placeholder_module_path_is_flagged(self) -> None:
+        diagnostics = _lint_source_at("build.sem",
+            "project Demo\nmodulePath Demo github.com/example/demo\n")
+        self.assertIn("SS2516", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS2516")[0]
+        self.assertFalse(diag.blocksCompile)
+
+    def test_real_module_path_is_clean(self) -> None:
+        diagnostics = _lint_source_at("build.sem",
+            "project Demo\nmodulePath Demo github.com/acme/demo\n")
+        self.assertNotIn("SS2516", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS3611  webserver.duplicateRoute
 # ==========================================================================
 
