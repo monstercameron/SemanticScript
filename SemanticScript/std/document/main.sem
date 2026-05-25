@@ -13,6 +13,12 @@
 # wasm build (`SemanticScript/tools/build_wasm.py`) via `--js-library`. This
 # module therefore only links/runs under the wasm32-emscripten browser target.
 
+# rationale: import as `import document standard.document` for browser DOM read,
+#   mutation, event-stream, and script-evaluation operations in wasm32-emscripten builds.
+# invariant: DOM nodes and event streams are opaque integer handles owned by the
+#   JavaScript adapter; event operations require an Asyncify- or JSPI-enabled emcc build.
+# memory: callers own output buffers for DOM reads and must release transient
+#   handles in long-lived programs with document.releaseHandle.
 module standard.document
 purpose module standard.document "Standard-library namespace and contracts for browser DOM read, mutation, and event-stream operations on the wasm32-emscripten target."
 moduleOwns standard.document "The official import path `standard.document`, DOM handle types, status constants, reusable DOM capabilities, runtimeBinding operation wrappers, and the JavaScript runtime adapter declaration."
@@ -158,6 +164,7 @@ exportOperation standard.document evalScript
 # Node selection
 # ------------------------------------------------------------
 
+# rationale: Return a handle to document.body, or domHandleNone before the body parses.
 operation bodyElement
 output operation bodyElement DomHandle
 effect bodyElement read document.dom
@@ -169,6 +176,7 @@ purpose operation bodyElement "Return a handle to document.body, or domHandleNon
 runtimeBindingPrecondition bodyElement "The page document exists; called only on the wasm32-emscripten browser target."
 runtimeBinding bodyElement native.ss_dom_body
 
+# rationale: Return a handle to document.documentElement, the root html element.
 operation documentElement
 output operation documentElement DomHandle
 effect documentElement read document.dom
@@ -180,6 +188,7 @@ purpose operation documentElement "Return a handle to document.documentElement (
 runtimeBindingPrecondition documentElement "The page document exists; called only on the wasm32-emscripten browser target."
 runtimeBinding documentElement native.ss_dom_document_element
 
+# rationale: Return a handle to the element with the given id, or domHandleNone when no element matches.
 operation getElementById
 input operation getElementById elementId DomElementId
 output operation getElementById DomHandle
@@ -192,6 +201,7 @@ purpose operation getElementById "Return a handle to the element with the given 
 runtimeBindingPrecondition getElementById "elementId is a non-null null-terminated string."
 runtimeBinding getElementById native.ss_dom_get_element_by_id
 
+# rationale: Return a handle to the first element matching a CSS selector, or domHandleNone when none match.
 operation querySelector
 input operation querySelector selector DomSelector
 output operation querySelector DomHandle
@@ -208,6 +218,7 @@ runtimeBinding querySelector native.ss_dom_query_selector
 # Node creation and tree mutation
 # ------------------------------------------------------------
 
+# rationale: Create a detached element of the given tag name and return its handle.
 operation createElement
 input operation createElement tagName DomTagName
 output operation createElement DomHandle
@@ -220,6 +231,7 @@ purpose operation createElement "Create a detached element of the given tag name
 runtimeBindingPrecondition createElement "tagName is a non-null null-terminated valid HTML tag name."
 runtimeBinding createElement native.ss_dom_create_element
 
+# rationale: Create a detached text node with the given text and return its handle.
 operation createTextNode
 input operation createTextNode text DomText
 output operation createTextNode DomHandle
@@ -232,6 +244,7 @@ purpose operation createTextNode "Create a detached text node with the given tex
 runtimeBindingPrecondition createTextNode "text is a non-null null-terminated UTF-8 string."
 runtimeBinding createTextNode native.ss_dom_create_text_node
 
+# rationale: Append child to parent, returning domStatusOk or a negative status when either handle is detached.
 operation appendChild
 input operation appendChild parent DomHandle
 input operation appendChild child DomHandle
@@ -245,6 +258,7 @@ purpose operation appendChild "Append child to parent, returning domStatusOk or 
 runtimeBindingPrecondition appendChild "parent and child are live handles previously returned by this module."
 runtimeBinding appendChild native.ss_dom_append_child
 
+# rationale: Remove child from parent, returning domStatusOk or a negative status when the relationship is invalid.
 operation removeChild
 input operation removeChild parent DomHandle
 input operation removeChild child DomHandle
@@ -262,6 +276,7 @@ runtimeBinding removeChild native.ss_dom_remove_child
 # Content
 # ------------------------------------------------------------
 
+# rationale: Replace a node's textContent with text, returning domStatusOk or a negative status.
 operation setTextContent
 input operation setTextContent node DomHandle
 input operation setTextContent text DomText
@@ -275,6 +290,8 @@ purpose operation setTextContent "Replace a node's textContent with text, return
 runtimeBindingPrecondition setTextContent "node is a live handle and text is a non-null null-terminated UTF-8 string."
 runtimeBinding setTextContent native.ss_dom_set_text_content
 
+# rationale: Copy a node's textContent as null-terminated UTF-8 into a caller buffer
+#   and return the byte count, or domStatusBufferTooSmall.
 operation getTextContentInto
 input operation getTextContentInto node DomHandle
 input operation getTextContentInto outText DomOutputBuffer
@@ -290,6 +307,7 @@ purpose operation getTextContentInto "Copy a node's textContent as null-terminat
 runtimeBindingPrecondition getTextContentInto "node is a live handle; outText is writable with outTextCapacity bytes including the null terminator."
 runtimeBinding getTextContentInto native.ss_dom_get_text_content
 
+# rationale: Set the value property of a form control node, returning domStatusOk or a negative status.
 operation setValue
 input operation setValue node DomHandle
 input operation setValue text DomText
@@ -303,6 +321,8 @@ purpose operation setValue "Set the value property of a form control node, retur
 runtimeBindingPrecondition setValue "node is a live handle to a form control and text is a non-null null-terminated string."
 runtimeBinding setValue native.ss_dom_set_value
 
+# rationale: Copy a form control's value as null-terminated UTF-8 into a caller
+#   buffer and return the byte count, or domStatusBufferTooSmall.
 operation getValueInto
 input operation getValueInto node DomHandle
 input operation getValueInto outText DomOutputBuffer
@@ -318,6 +338,7 @@ purpose operation getValueInto "Copy a form control's value as null-terminated U
 runtimeBindingPrecondition getValueInto "node is a live handle to a form control; outText is writable with outTextCapacity bytes including the null terminator."
 runtimeBinding getValueInto native.ss_dom_get_value
 
+# rationale: Replace a node's innerHTML with markup, returning domStatusOk or a negative status.
 operation setInnerHtml
 input operation setInnerHtml node DomHandle
 input operation setInnerHtml markup DomHtmlMarkup
@@ -336,6 +357,7 @@ runtimeBinding setInnerHtml native.ss_dom_set_inner_html
 # Attributes, classes, styles
 # ------------------------------------------------------------
 
+# rationale: Set an attribute on a node, returning domStatusOk or a negative status.
 operation setAttribute
 input operation setAttribute node DomHandle
 input operation setAttribute name DomAttributeName
@@ -350,6 +372,8 @@ purpose operation setAttribute "Set an attribute on a node, returning domStatusO
 runtimeBindingPrecondition setAttribute "node is a live handle; name and value are non-null null-terminated strings."
 runtimeBinding setAttribute native.ss_dom_set_attribute
 
+# rationale: Copy a node attribute value as null-terminated UTF-8 into a caller
+#   buffer and return the byte count, domStatusNotFound when absent, or domStatusBufferTooSmall.
 operation getAttributeInto
 input operation getAttributeInto node DomHandle
 input operation getAttributeInto name DomAttributeName
@@ -366,6 +390,7 @@ purpose operation getAttributeInto "Copy a node attribute value as null-terminat
 runtimeBindingPrecondition getAttributeInto "node is a live handle; name is non-null null-terminated; outValue is writable with outValueCapacity bytes including the null terminator."
 runtimeBinding getAttributeInto native.ss_dom_get_attribute
 
+# rationale: Remove an attribute from a node, returning domStatusOk or a negative status.
 operation removeAttribute
 input operation removeAttribute node DomHandle
 input operation removeAttribute name DomAttributeName
@@ -379,6 +404,7 @@ purpose operation removeAttribute "Remove an attribute from a node, returning do
 runtimeBindingPrecondition removeAttribute "node is a live handle and name is a non-null null-terminated string."
 runtimeBinding removeAttribute native.ss_dom_remove_attribute
 
+# rationale: Add a single class token to a node's class list, returning domStatusOk or a negative status.
 operation classListAdd
 input operation classListAdd node DomHandle
 input operation classListAdd className DomClassName
@@ -392,6 +418,7 @@ purpose operation classListAdd "Add a single class token to a node's class list,
 runtimeBindingPrecondition classListAdd "node is a live handle and className is a non-null null-terminated single token with no whitespace."
 runtimeBinding classListAdd native.ss_dom_class_list_add
 
+# rationale: Remove a single class token from a node's class list, returning domStatusOk or a negative status.
 operation classListRemove
 input operation classListRemove node DomHandle
 input operation classListRemove className DomClassName
@@ -405,6 +432,8 @@ purpose operation classListRemove "Remove a single class token from a node's cla
 runtimeBindingPrecondition classListRemove "node is a live handle and className is a non-null null-terminated single token with no whitespace."
 runtimeBinding classListRemove native.ss_dom_class_list_remove
 
+# rationale: Toggle a single class token on a node's class list, returning 1 when
+#   present after toggle, 0 when absent, or a negative status.
 operation classListToggle
 input operation classListToggle node DomHandle
 input operation classListToggle className DomClassName
@@ -418,6 +447,7 @@ purpose operation classListToggle "Toggle a single class token on a node's class
 runtimeBindingPrecondition classListToggle "node is a live handle and className is a non-null null-terminated single token with no whitespace."
 runtimeBinding classListToggle native.ss_dom_class_list_toggle
 
+# rationale: Set an inline CSS property on a node, returning domStatusOk or a negative status.
 operation setStyleProperty
 input operation setStyleProperty node DomHandle
 input operation setStyleProperty property DomStyleProperty
@@ -436,6 +466,8 @@ runtimeBinding setStyleProperty native.ss_dom_set_style_property
 # Events (async-only, pull model over an adapter-owned queue)
 # ------------------------------------------------------------
 
+# rationale: Register a DOM event listener on a node and return an event-stream
+#   handle whose queued events are drained with document.nextEvent.
 operation addEventListener
 input operation addEventListener node DomHandle
 input operation addEventListener eventName DomEventName
@@ -450,6 +482,8 @@ invariant operation addEventListener "The returned handle is explicit caller-own
 runtimeBindingPrecondition addEventListener "node is a live handle and eventName is a non-null null-terminated DOM event type."
 runtimeBinding addEventListener native.ss_dom_add_event_listener
 
+# rationale: Block until the next queued event on an event-stream handle,
+#   returning domStatusOk on an event or domStatusStreamClosed when the stream is removed.
 operation nextEvent
 input operation nextEvent stream DomEventStreamHandle
 output operation nextEvent DomStatus
@@ -464,6 +498,8 @@ warning nextEvent "Requires an Asyncify- or JSPI-enabled emcc build. Without it 
 runtimeBindingPrecondition nextEvent "stream is a live event-stream handle returned by document.addEventListener."
 runtimeBinding nextEvent native.ss_dom_next_event
 
+# rationale: Return a handle to the target element of the event most recently
+#   delivered by document.nextEvent on this stream, or domHandleNone when none has been delivered.
 operation eventTarget
 input operation eventTarget stream DomEventStreamHandle
 output operation eventTarget DomHandle
@@ -476,6 +512,8 @@ purpose operation eventTarget "Return a handle to the target element of the even
 runtimeBindingPrecondition eventTarget "stream is a live event-stream handle on which document.nextEvent has returned at least one event."
 runtimeBinding eventTarget native.ss_dom_event_target
 
+# rationale: Copy a string property of the current event into a caller buffer
+#   and return the byte count, domStatusNotFound when absent, or domStatusBufferTooSmall.
 operation eventDetailInto
 input operation eventDetailInto stream DomEventStreamHandle
 input operation eventDetailInto property DomEventProperty
@@ -492,6 +530,8 @@ purpose operation eventDetailInto "Copy a string property (such as type, key, in
 runtimeBindingPrecondition eventDetailInto "stream has a delivered event; property is non-null null-terminated; outValue is writable with outValueCapacity bytes including the null terminator."
 runtimeBinding eventDetailInto native.ss_dom_event_detail
 
+# rationale: Detach the DOM listener for an event-stream handle and release its
+#   queue, returning domStatusOk or a negative status.
 operation removeEventListener
 input operation removeEventListener stream DomEventStreamHandle
 output operation removeEventListener DomStatus
@@ -504,6 +544,8 @@ purpose operation removeEventListener "Detach the DOM listener for an event-stre
 runtimeBindingPrecondition removeEventListener "stream is a live event-stream handle returned by document.addEventListener."
 runtimeBinding removeEventListener native.ss_dom_remove_event_listener
 
+# rationale: Release a node handle from the adapter handle table so it can be
+#   reclaimed, returning domStatusOk or domStatusDetached when the handle is already free.
 operation releaseHandle
 input operation releaseHandle node DomHandle
 output operation releaseHandle DomStatus
@@ -521,6 +563,8 @@ runtimeBinding releaseHandle native.ss_dom_release
 # Escape hatch
 # ------------------------------------------------------------
 
+# rationale: Evaluate JavaScript in the page global scope, returning domStatusOk
+#   or a negative status for DOM behavior not yet wrapped by a typed operation.
 operation evalScript
 input operation evalScript script DomScriptSource
 output operation evalScript DomStatus
