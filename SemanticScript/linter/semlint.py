@@ -1318,6 +1318,32 @@ BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
     # Request readers return text.
     "http.requestMethod":     "String",
     "http.requestPath":       "String",
+    # Integer arithmetic returns its width; comparisons return Bool. Binding any
+    # of these as an opaque HTML/JSON handle is a domain lie (caught by SS4302).
+    "math.addInt64":          "Int64",
+    "math.subtractInt64":     "Int64",
+    "math.multiplyInt64":     "Int64",
+    "math.divideInt64":       "Int64",
+    "math.moduloInt64":       "Int64",
+    "math.bitwiseAndInt64":   "Int64",
+    "math.bitwiseOrInt64":    "Int64",
+    "math.bitwiseXorInt64":   "Int64",
+    "math.shiftLeftInt64":    "Int64",
+    "math.shiftRightLogicalInt64":    "Int64",
+    "math.shiftRightArithmeticInt64": "Int64",
+    "math.equalInt64":            "Bool",
+    "math.notEqualInt64":         "Bool",
+    "math.lessThanInt64":         "Bool",
+    "math.lessThanOrEqualInt64":  "Bool",
+    "math.greaterThanInt64":      "Bool",
+    "math.greaterThanOrEqualInt64": "Bool",
+    "math.equalInt32":            "Bool",
+    "math.lessThanInt32":         "Bool",
+    "math.greaterThanInt32":      "Bool",
+    "math.addFloat64":        "Float64",
+    "math.subtractFloat64":   "Float64",
+    "math.multiplyFloat64":   "Float64",
+    "math.divideFloat64":     "Float64",
 }
 
 
