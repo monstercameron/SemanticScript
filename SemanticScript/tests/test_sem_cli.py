@@ -1221,6 +1221,33 @@ return value 0
             updated = source.read_text(encoding="utf-8")
             self.assertIn('purpose operation main "demo"', updated)
 
+    def test_reference_surfaces_grammar_forms(self) -> None:
+        # `sem reference` must surface the row-syntax grammar so an agent can
+        # look up a form instead of discovering it one parse error at a time.
+        rows = sem._syntax_inventory_rows()
+        self.assertGreater(len(rows), 50)
+        self.assertTrue(all({"syntax", "description", "status"} <= set(r) for r in rows))
+
+        args = argparse.Namespace(query="branch", status=None, json=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sem.command_reference(args)
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["schemaVersion"], "sem.reference.v1")
+        self.assertGreater(payload["matchCount"], 0)
+        self.assertLess(payload["matchCount"], payload["totalRows"])
+        blob = " ".join(r["syntax"] for r in payload["rows"])
+        self.assertIn("branch if condition", blob)
+
+        # A status filter narrows the result set.
+        args_status = argparse.Namespace(query=None, status="Impl'd", json=True)
+        buf2 = io.StringIO()
+        with contextlib.redirect_stdout(buf2):
+            sem.command_reference(args_status)
+        impld = json.loads(buf2.getvalue())
+        self.assertTrue(all("impl'd" in r["status"].lower() for r in impld["rows"]))
+
     def test_execute_semantic_contract_classification(self) -> None:
         # The opt-in semantic-contract executor must distinguish a real
         # assertion failure (clean nonzero exit) from a compile/run-setup failure

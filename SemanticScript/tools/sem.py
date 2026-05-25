@@ -6775,6 +6775,75 @@ def command_size(args: argparse.Namespace) -> int:
     return 0 if not payload.get("errors") else 1
 
 
+def _syntax_inventory_rows() -> list[dict]:
+    """Parse docs/reference/syntax-inventory.md's markdown table into
+    {syntax, description, status} rows. The grammar is otherwise only reachable
+    by reading the file; `sem reference` surfaces it so an agent can look up a
+    row form (e.g. how to write a branch) instead of discovering each one a parse
+    error at a time."""
+    try:
+        text = SYNTAX_INVENTORY_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    rows = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        syntax = cells[0]
+        status = cells[-1]
+        description = "|".join(cells[1:-1]).strip()  # tolerate pipes in prose
+        # Skip the header row and the |---|---|---| separator.
+        if syntax in ("Syntax", "") or set(syntax) <= {"-", ":", " "}:
+            continue
+        rows.append({"syntax": syntax, "description": description, "status": status})
+    return rows
+
+
+def command_reference(args: argparse.Namespace) -> int:
+    rows = _syntax_inventory_rows()
+    query = (getattr(args, "query", None) or "").strip().lower()
+    status_filter = (getattr(args, "status", None) or "").strip().lower()
+    matched = []
+    for row in rows:
+        haystack = f"{row['syntax']} {row['description']}".lower()
+        if query and query not in haystack:
+            continue
+        if status_filter and status_filter not in row["status"].lower():
+            continue
+        matched.append(row)
+    payload = {
+        "schemaVersion": "sem.reference.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "query": query or None,
+        "statusFilter": status_filter or None,
+        "totalRows": len(rows),
+        "matchCount": len(matched),
+        "rows": matched,
+        "source": str(SYNTAX_INVENTORY_PATH),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if rows else 1
+    if not rows:
+        print("sem reference: syntax inventory not found", file=sys.stderr)
+        return 1
+    if not matched:
+        print(f"no syntax rows match {query!r}"
+              + (f" with status ~ {status_filter!r}" if status_filter else ""))
+        print("try a broader term, e.g. `sem reference branch` or `sem reference set`")
+        return 0
+    for row in matched:
+        print(row["syntax"])
+        print(f"    {row['description']}  [{row['status']}]")
+    print(f"\n{len(matched)} of {len(rows)} rows"
+          + (f" matching {query!r}" if query else "") + "; use --json for structured output")
+    return 0
+
+
 def command_dev(args: argparse.Namespace) -> int:
     payload = _dev_payload(Path(args.path), bool(args.trace))
     if args.json:
@@ -7531,6 +7600,18 @@ def build_parser() -> argparse.ArgumentParser:
                            "(behavioral assertion), instead of only check-validating them")
     test.add_argument("path", nargs="?", default=".")
     test.set_defaults(func=command_test)
+
+    reference = subparsers.add_parser(
+        "reference",
+        help="look up SemanticScript row syntax forms (the grammar), so you don't "
+             "discover each one via a parse error",
+    )
+    reference.add_argument("query", nargs="?", default=None,
+                           help="substring to filter syntax forms (e.g. 'branch', 'set', 'authority')")
+    reference.add_argument("--status", default=None,
+                           help="filter by implementation status (Impl'd / Partial / ...)")
+    reference.add_argument("--json", action="store_true")
+    reference.set_defaults(func=command_reference)
 
     migrate_syntax = subparsers.add_parser(
         "migrate-syntax",
