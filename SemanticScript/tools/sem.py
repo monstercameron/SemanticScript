@@ -6927,17 +6927,21 @@ def command_literal_repin(args: argparse.Namespace) -> int:
             "missingSources": missing,
             "applied": bool(changes and write),
         })
+    had_error = any(report.get("error") for report in file_reports)
+    had_missing = any(report.get("missingSources") for report in file_reports)
     payload = {
         "schemaVersion": "sem.literalRepin.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "ok": True,
+        # `ok` reflects a clean repin: not ok when a source file was missing or a
+        # .sem file could not be read, so a CI/JSON consumer can gate on it.
+        "ok": not (had_error or had_missing),
         "mode": "write" if write else "preview",
         "totalChanges": total_changes,
         "files": file_reports,
     }
     if json_out:
         print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0
+        return 0 if payload["ok"] else 1
     if not file_reports:
         print("sem literal repin: all literal pins are up to date.")
         return 0
@@ -6954,7 +6958,7 @@ def command_literal_repin(args: argparse.Namespace) -> int:
                   f"missing; cannot repin", file=sys.stderr)
     if not write and total_changes:
         print("\nrun with --write to apply these pin updates.")
-    return 0
+    return 0 if payload["ok"] else 1
 
 
 def command_mcp(args: argparse.Namespace) -> int:
