@@ -83,9 +83,9 @@ The first compiled handler ABI should be explicit pointer-in, status-out:
 
 ```semanticscript
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
@@ -257,9 +257,9 @@ capability httpRequestReader http.request read
 capability httpResponseWriter http.response write
 
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 effect healthHandler read http.request.method
 effect healthHandler read http.request.path
 effect healthHandler write http.response

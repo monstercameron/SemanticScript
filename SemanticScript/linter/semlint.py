@@ -52,6 +52,7 @@ from shared.call_contracts import (
     is_supported_route_method,
 )
 from shared.repo_version import read_repo_version
+from shared.console_encoding import force_utf8_streams as _force_utf8_streams
 
 __version__ = read_repo_version()
 
@@ -996,7 +997,7 @@ def parse_file(path: Path) -> ProgramFacts:
             elif (verb in {"purpose", "invariant", "warning", "guarantee",
                            "failure", "security", "timing", "observability"}
                   and args):
-                owner = args[1] if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] in {"module", "operation"} else args[0]
+                owner = args[1] if len(args) >= 3 and ((verb == "purpose" and args[0] in PURPOSE_SUBJECT_KINDS) or (verb == "invariant" and args[0] in {"module", "operation"})) else args[0]
                 program.hard_metadata.setdefault(owner, set()).add(verb)
 
     return program
@@ -1036,6 +1037,16 @@ class Effort(str, Enum):
     LOCAL = "local"
     CROSS_FILE = "crossFile"
 
+
+# Subject kinds a `purpose` row may name. Mirrors `_PURPOSE_SUBJECT_KINDS` in
+# the compiler: operations and modules plus the contract-heavy abstractions the
+# `missingPurpose` advisory asks for. When `args[0]` is one of these, the owner
+# name is `args[1]`; otherwise the row is the legacy unqualified form.
+PURPOSE_SUBJECT_KINDS: frozenset = frozenset({
+    "module", "operation",
+    "capability", "webServer", "record",
+    "resource", "validator", "codec", "policy",
+})
 
 # Narrative attachments the linter recognises on operations. These are the
 # edges every diagnostic should CITE when bound to an operation, not just
@@ -2517,7 +2528,7 @@ def narrative_citations_for_operation(facts: ExtendedFacts, operationName: str) 
         if not narrativeLine:
             continue
         # `purpose foo "the text"` → args = ["foo", "the text"]
-        if edgeKind in {"purpose", "invariant"} and len(narrativeLine.args) >= 3 and narrativeLine.args[0] in {"module", "operation"}:
+        if len(narrativeLine.args) >= 3 and ((edgeKind == "purpose" and narrativeLine.args[0] in PURPOSE_SUBJECT_KINDS) or (edgeKind == "invariant" and narrativeLine.args[0] in {"module", "operation"})):
             text = narrativeLine.args[2]
         else:
             text = narrativeLine.args[1] if len(narrativeLine.args) >= 2 else ""
@@ -4136,10 +4147,11 @@ def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
                 "`output OP TYPE` was replaced by `output operation OP TYPE`",
                 "output operation <operation> <type>",
             ))
-        elif verb == "purpose" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
+        elif verb == "purpose" and not (len(args) >= 3 and args[0] in PURPOSE_SUBJECT_KINDS):
             diagnostics.append(_syntax_cutover_diagnostic(
                 sourceLine, "purpose", "purpose rows must name the subject kind",
-                "`purpose SUBJECT TEXT` was replaced by `purpose operation SUBJECT TEXT` or `purpose module SUBJECT TEXT`",
+                "`purpose SUBJECT TEXT` was replaced by `purpose <kind> SUBJECT TEXT` "
+                "(kind is one of: " + ", ".join(sorted(PURPOSE_SUBJECT_KINDS)) + ")",
                 "purpose operation <operation> \"...\"",
             ))
         elif verb == "invariant" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
@@ -10278,7 +10290,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             referencedSubjectName = parsedOutput[0]
         elif parsedMemory is not None:
             referencedSubjectName = parsedMemory[0]
-        elif sourceLine.verb in {"purpose", "invariant"} and len(sourceLine.args) >= 3 and sourceLine.args[0] in {"module", "operation"}:
+        elif len(sourceLine.args) >= 3 and ((sourceLine.verb == "purpose" and sourceLine.args[0] in PURPOSE_SUBJECT_KINDS) or (sourceLine.verb == "invariant" and sourceLine.args[0] in {"module", "operation"})):
             referencedSubjectName = sourceLine.args[1]
         else:
             referencedSubjectName = sourceLine.args[0]
@@ -19479,6 +19491,7 @@ def collect_paths(rawPaths: Sequence[str]) -> List[Path]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    _force_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="semlint",
         description=f"Refined SemanticScript linter — design playground. v{__version__}",

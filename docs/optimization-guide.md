@@ -877,9 +877,9 @@ job that belongs elsewhere.
 
 ```semanticscript
 operation tracingMiddleware
-input tracingMiddleware request HttpRequest
-input tracingMiddleware response HttpResponse
-output tracingMiddleware Int32
+input operation tracingMiddleware request HttpRequest
+input operation tracingMiddleware response HttpResponse
+output operation tracingMiddleware Int32
 effect tracingMiddleware read http.request.path
 effect tracingMiddleware write http.response    # SS3602 requires this
 memory tracingMiddleware arena request
@@ -1148,9 +1148,9 @@ between POST and PUT semantics), it MUST declare the matching effect:
 
 ```semanticscript
 operation methodAwareHandler
-input methodAwareHandler request HttpRequest
-input methodAwareHandler response HttpResponse
-output methodAwareHandler Int32
+input operation methodAwareHandler request HttpRequest
+input operation methodAwareHandler response HttpResponse
+output operation methodAwareHandler Int32
 effect methodAwareHandler read http.request.method  # required when inspecting method
 effect methodAwareHandler write http.response
 ```
@@ -1250,8 +1250,8 @@ to recognise the ABI quirk to reconcile them.
 
 ```semanticscript
 operation addCommonHeaders
-input addCommonHeaders response HttpResponse
-output addCommonHeaders Void
+input operation addCommonHeaders response HttpResponse
+output operation addCommonHeaders Void
 effect addCommonHeaders write http.response
 memory addCommonHeaders arena request
 async addCommonHeaders no

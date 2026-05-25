@@ -123,7 +123,7 @@ storage local immutable outputText String "hello world"
 call outputWriteCall console.writeLine
 argument outputWriteCall text String outputText
 run outputWriteCall
-ignore ok source outputWriteCall type Void
+ignore void source outputWriteCall
 bind error outputWriteError ConsoleWriteError outputWriteCall
 branch error source outputWriteCall target outputWriteFailed
 storage local immutable successExitCode ExitCode 0

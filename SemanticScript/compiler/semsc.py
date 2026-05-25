@@ -78,6 +78,7 @@ from shared.call_contracts import (
     is_supported_route_method,
 )
 from shared.repo_version import read_repo_version
+from shared.console_encoding import force_utf8_streams as _force_utf8_streams
 
 __version__ = read_repo_version()
 
@@ -352,6 +353,51 @@ class CompilerProvenance:
                     "changing user source."
                 ),
             )
+        # A locked or unwritable output binary is a linker *write* failure, not
+        # an IR-compile failure. The most common trigger on Windows is rebuilding
+        # while the previous executable is still running. Detect it explicitly so
+        # the headline points at the real cause instead of the generic
+        # "IR failed to compile" message.
+        lowered = stderr.lower()
+        write_failure = (
+            ("failed to write output" in lowered)
+            or ("permission denied" in lowered)
+            or ("cannot open output file" in lowered)
+            or ("lnk1104" in lowered)  # MSVC: cannot open file
+            or ("text file busy" in lowered)
+        )
+        if write_failure:
+            output_match = re.search(
+                r"(?:failed to write output|cannot open (?:output )?file)\s*'?\"?([^'\"\n]+)",
+                stderr,
+                re.IGNORECASE,
+            )
+            output_name = output_match.group(1).strip() if output_match else None
+            target_phrase = f"`{output_name}`" if output_name else "the output binary"
+            return CompilerDiagnostic(
+                code="SSBE002",
+                phase="backend.link",
+                message=(
+                    f"could not write the output binary ({output_name})"
+                    if output_name else
+                    "could not write the output binary"
+                ),
+                backend_excerpt=self._backend_excerpt(stderr),
+                direction=(
+                    f"The native linker compiled the IR but could not write {target_phrase}. "
+                    "On Windows this almost always means the previous build is still "
+                    "running and holds a lock on the file, or the path is read-only."
+                ),
+                suggested_fixes=[
+                    "Stop the running process that holds the output binary, then rebuild.",
+                    "Run the program from a copy, or build to a different output path.",
+                    "Confirm the output directory is writable and not synced/locked by another tool.",
+                ],
+                agent_hint=(
+                    "This is not an IR or source error — do not edit SemanticScript "
+                    "source. Release the file lock (kill the running binary) and rerun."
+                ),
+            )
         return CompilerDiagnostic(
             code="SSBE999",
             phase="backend.link",
@@ -604,6 +650,17 @@ class Program:
 
 # ---- verb dispatch tables ----
 
+# Subject kinds a `purpose` row may attach to. Operations and modules carry
+# purpose in their headers; the remaining kinds are the contract-heavy
+# abstractions that the `missingPurpose` advisory asks for, so the advisory is
+# satisfiable with the documented verb. Keep this in sync with the subjects
+# enumerated in `_check_purpose_on_abstractions`.
+_PURPOSE_SUBJECT_KINDS = frozenset({
+    "module", "operation",
+    "capability", "webServer", "record",
+    "resource", "validator", "codec", "policy",
+})
+
 # Body verbs whose lines codegen consumes directly.
 BODY_VERBS_CODEGEN = {
     "input", "output", "effect", "memory", "async",
@@ -783,11 +840,23 @@ def _canonicalize_syntax_row(verb, args, lineno):
                 f"line {lineno}: output requires: output operation OPERATION TYPE")
         return verb, [args[1], args[2]]
 
-    if verb in ("purpose", "invariant"):
+    if verb == "invariant":
         if len(args) < 3 or args[0] not in ("module", "operation"):
             raise SyntaxError(
-                f"line {lineno}: {verb} requires: "
-                f"{verb} module|operation SUBJECT \"TEXT\"")
+                f"line {lineno}: invariant requires: "
+                f"invariant module|operation SUBJECT \"TEXT\"")
+        return verb, [args[1], *args[2:]]
+
+    if verb == "purpose":
+        # `purpose` attaches to operations and modules, and also to the
+        # contract-heavy abstractions that the `missingPurpose` advisory asks
+        # for (capability, webServer, record, resource, validator, codec,
+        # policy). Accepting those subject kinds is what makes the advisory
+        # fixable with the documented verb instead of unsatisfiable.
+        if len(args) < 3 or args[0] not in _PURPOSE_SUBJECT_KINDS:
+            raise SyntaxError(
+                f"line {lineno}: purpose requires: "
+                f"purpose {'|'.join(sorted(_PURPOSE_SUBJECT_KINDS))} SUBJECT \"TEXT\"")
         return verb, [args[1], *args[2:]]
 
     if verb == "memory":
@@ -9599,12 +9668,65 @@ class Codegen:
     def _diagnostic_for_call_error(self, error: Exception, call) -> CompilerDiagnostic:
         message = str(error)
         frame = self.provenance.frame_from_call(call)
+        call_target = call.get("target", "") if isinstance(call, dict) else ""
+        is_html_hydrate = call_target.startswith(_HTML_HYDRATE_PREFIX)
+
+        # Default: a generic call-lowering failure.
+        code = "SSCG002"
         direction = (
             "The compiler failed while lowering this call to LLVM IR. Inspect "
             "the call row, its arg rows, and the target operation or builtin "
             "signature before changing unrelated source."
         )
-        if "unresolved symbol" in message:
+        fixes = [
+            "Inspect every `arg` row attached to this call name.",
+            "Confirm the call target's required inputs and supported types.",
+            "Run with --diagnostics-format json if an agent should consume this mechanically.",
+        ]
+        agent_hint = (
+            "Patch the SemanticScript source or the compiler lowering rule. "
+            "Do not edit generated LLVM IR; it is an output artifact."
+        )
+
+        if "unsupported const type" in message:
+            # A typed constant whose type has no LLVM lowering (e.g. an enum or
+            # domain type used directly as a `storage`/argument const). This is
+            # a distinct failure class from call dispatch, so it gets its own code.
+            code = "SSCG004"
+            direction = (
+                "A constant value was declared with a type the backend cannot "
+                "lower to an LLVM constant. Enum and domain types are not usable "
+                "as raw constants here; declare the value with a concrete "
+                "primitive type (for example `Int32 200` instead of "
+                "`HttpStatus HttpStatus.Ok`)."
+            )
+            fixes = [
+                "Use a concrete primitive type for the const (Int32/Int64/Bool/Float64/String).",
+                "If you need the enum member, compare against it at runtime rather than storing it as a const.",
+                "Run `sem check --json` first — this condition is also surfaced as SS4108 before build.",
+            ]
+            agent_hint = (
+                "Change the declared type of the constant in SemanticScript source. "
+                "Do not edit generated LLVM IR."
+            )
+        elif is_html_hydrate and "missing" in message and "arg" in message:
+            # A template hydrate that did not receive a value for one of its holes.
+            code = "SSCG005"
+            direction = (
+                "An `html.hydrate` call did not supply a value for one of the "
+                "template's holes. Every named hole in the htmlTemplate needs a "
+                "matching `argument` row at the hydrate call site."
+            )
+            fixes = [
+                "Add an `argument <hydrateCall> <holeName> <Type> <valueName>` row for the missing hole.",
+                "Confirm the hole name in the htmlTemplate matches the argument name exactly.",
+                "If the brace is literal JS/text rather than a hole, keep it inside a raw/script region so it is not scanned as a hole.",
+            ]
+            agent_hint = (
+                "Match hydrate arguments to the template's declared holes in source. "
+                "Do not edit generated LLVM IR."
+            )
+        elif "unresolved symbol" in message:
             direction = (
                 "One of this call's argument values does not resolve in the "
                 "current operation. Check the `arg` rows for typos, missing "
@@ -9624,7 +9746,7 @@ class Codegen:
                 "or replace the call with a supported target."
             )
         return CompilerDiagnostic(
-            code="SSCG002",
+            code=code,
             phase="codegen.call-lowering",
             message=message,
             primary=frame.span,
@@ -9635,15 +9757,8 @@ class Codegen:
                 "lowering stopped before native backend",
             ],
             direction=direction,
-            suggested_fixes=[
-                "Inspect every `arg` row attached to this call name.",
-                "Confirm the call target's required inputs and supported types.",
-                "Run with --diagnostics-format json if an agent should consume this mechanically.",
-            ],
-            agent_hint=(
-                "Patch the SemanticScript source or the compiler lowering rule. "
-                "Do not edit generated LLVM IR; it is an output artifact."
-            ),
+            suggested_fixes=fixes,
+            agent_hint=agent_hint,
         )
 
     # ---------- run dispatch ----------
@@ -20285,6 +20400,7 @@ def _write_agent_json_payload(payload: dict, output_path: str) -> None:
 
 
 def main():
+    _force_utf8_streams()
     ap = argparse.ArgumentParser(
         prog="semsc",
         description=f"SemanticScript compiler (LLVM backend) v{__version__}",

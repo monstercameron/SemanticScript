@@ -129,7 +129,7 @@ storage local immutable outputText String "hello world"
 call outputWriteCall console.writeLine
 argument outputWriteCall text String outputText
 run outputWriteCall
-ignore ok source outputWriteCall type Void
+ignore void source outputWriteCall
 bind error outputWriteError ConsoleWriteError outputWriteCall
 branch error source outputWriteCall target outputWriteFailed
 storage local immutable successExitCode ExitCode 0
@@ -413,7 +413,7 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   call outputWriteCall console.writeLine
   argument outputWriteCall text String outputText
   run outputWriteCall
-  ignore ok source outputWriteCall type Void
+  ignore void source outputWriteCall
   bind error outputWriteError ConsoleWriteError outputWriteCall
   branch error source outputWriteCall target outputWriteFailed
   storage local immutable successExitCode ExitCode 0
@@ -616,7 +616,7 @@ Fallible:
   call writeCall console.writeLine
   argument writeCall text String outputText
   run writeCall
-  ignore ok source writeCall type Void
+  ignore void source writeCall
   bind error writeError ConsoleWriteError writeCall
   branch error source writeCall target writeFailed
   storage local immutable successExitCode ExitCode 0

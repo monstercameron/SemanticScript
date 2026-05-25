@@ -446,12 +446,34 @@ def help(path: str = ".", cwd: str | None = None) -> dict[str, Any]:
     return _run_sem(_argv("help", "--json", path), cwd=cwd)
 
 
+def tool_catalog() -> list[dict[str, Any]]:
+    """Return the registered MCP tools as plain dicts.
+
+    Lets agents see the tool surface without scripting the JSON-RPC
+    ``initialize`` -> ``tools/list`` handshake. Uses the public async
+    ``FastMCP.list_tools`` API, driven synchronously here.
+    """
+    import asyncio
+
+    tools = asyncio.run(mcp.list_tools())
+    catalog = []
+    for tool in tools:
+        catalog.append({
+            "name": tool.name,
+            "description": (tool.description or "").strip(),
+            "inputSchema": getattr(tool, "inputSchema", None),
+        })
+    catalog.sort(key=lambda entry: entry["name"])
+    return catalog
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the MCP server.
 
     Defaults to the stdio transport (the form MCP desktop clients launch). Pass
     ``--transport streamable-http`` (with optional ``--host``/``--port``/``--path``)
-    to serve over HTTP for remote or multi-client use.
+    to serve over HTTP for remote or multi-client use. Pass ``--list-tools`` to
+    print the tool catalog as JSON and exit without serving.
     """
     import argparse
 
@@ -465,7 +487,22 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
     parser.add_argument("--path", help="HTTP route for the streamable-http transport")
+    parser.add_argument(
+        "--list-tools",
+        action="store_true",
+        help="print the MCP tool catalog as JSON and exit without serving",
+    )
     args = parser.parse_args(argv)
+
+    if args.list_tools:
+        catalog = tool_catalog()
+        print(json.dumps({
+            "schemaVersion": "sem.mcpTools.v1",
+            "server": "semanticscript",
+            "toolCount": len(catalog),
+            "tools": catalog,
+        }, indent=2, sort_keys=True))
+        return
 
     if args.host is not None:
         mcp.settings.host = args.host

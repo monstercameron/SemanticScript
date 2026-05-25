@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from shared.repo_version import read_repo_version
+from shared.console_encoding import force_utf8_streams as _force_utf8_streams
 
 VERSION = read_repo_version()
 STARTER_PROJECT_VERSION = "0.0.1"
@@ -202,16 +203,16 @@ DIAGNOSTIC_EXPLAINERS = {
         ],
     },
     "SS4105": {
-        "title": "private module import used across a context boundary",
-        "summary": "A module is reaching into a provider's private surface instead of importing an approved public contract.",
+        "title": "reference integrity: unresolved value or wrong attachment subject kind",
+        "summary": "A row references a value that is not declared in the current operation, or an operation-body verb is attached to a subject that is not an operation. Every argument value must be a named `storage`/`bind`/input value (or an integer / true / false literal) declared before use; inline enum members and string literals are rejected.",
         "whyItMatters": [
-            "Agents will keep coupling bounded contexts together if the import boundary is only implicit.",
-            "This usually means the semantic contract and the current package layout disagree about what is public."
+            "Argument values that are not declared names are the most common source of silent narrative drift during agent edits.",
+            "Inline literals (`HttpStatus.Ok`, `\"application/json\"`) read like other languages but bypass the explicit-dataflow contract, so the linter forces them into named declarations."
         ],
         "commonFixes": [
-            "Promote the provider operation or type to an explicit public import surface.",
-            "Move the shared behavior behind a wrapper module that both sides can import without using private names.",
-            "If the linter is out of sync with the intended module boundary, fix the contract instead of bypassing the import rule."
+            "Declare the value first, e.g. `storage local immutable contentType String \"application/json\"`, then reference `contentType` in the argument row.",
+            "For enum members, declare a typed value (`storage local immutable okStatus HttpStatus HttpStatus.Ok`) and reference the name.",
+            "When the diagnostic is `attachmentSubjectKindMismatch`, point the verb at an actual operation, or use a subject-flexible verb (`purpose`, `invariant`, `warning`)."
         ],
     },
     "SS2506": {
@@ -274,6 +275,68 @@ DIAGNOSTIC_EXPLAINERS = {
         "commonFixes": [
             "Inspect the cited source line and restore a valid current-row form from docs/reference/syntax-inventory.md or `sem skills get sem --json`.",
             "Run `sem check --json` again after fixing the malformed row so higher-level diagnostics are trustworthy."
+        ],
+    },
+    # ---- Codegen / backend family (SSCG* lowering, SSBE* native backend) ----
+    "SSCG002": {
+        "title": "call could not be lowered to LLVM IR",
+        "summary": "The compiler failed while lowering a specific call row to LLVM IR. The raw lowering error is in the message; the call's target, arg rows, or a referenced value is the place to look.",
+        "whyItMatters": [
+            "A call that parses and lints can still fail in codegen when an arg type, count, or target binding is wrong.",
+            "This is a lowering-phase failure, so the fix is in SemanticScript source or a compiler lowering rule, never in the generated IR."
+        ],
+        "commonFixes": [
+            "Inspect every `argument` row attached to the named call and confirm names/types match the target's inputs.",
+            "Confirm the call target exists and supports the argument types you passed.",
+        ],
+    },
+    "SSCG004": {
+        "title": "constant declared with an unlowerable type",
+        "summary": "A constant value (storage/argument) was declared with a type the backend cannot lower to an LLVM constant — typically an enum or domain type used directly as a raw const.",
+        "whyItMatters": [
+            "Enum and domain members are not usable as raw constants in codegen; only concrete primitives lower to LLVM constants.",
+            "This used to fail only at build time after a green `check`; it is now also surfaced as SS4108 before build."
+        ],
+        "commonFixes": [
+            "Declare the const with a concrete primitive type, e.g. `storage local immutable okStatus Int32 200` instead of `HttpStatus HttpStatus.Ok`.",
+            "If you need the enum member semantically, compare against it at runtime rather than storing it as a const.",
+        ],
+    },
+    "SSCG005": {
+        "title": "html.hydrate is missing a value for a template hole",
+        "summary": "An `html.hydrate` call did not provide an argument for one of its template's named holes.",
+        "whyItMatters": [
+            "Every named hole in an htmlTemplate must be hydrated, or the rendered output is structurally incomplete.",
+            "A single-identifier `{ name }` in raw markup/JS can be misread as a hole; keep literal braces inside a raw/script region."
+        ],
+        "commonFixes": [
+            "Add an `argument <hydrateCall> <holeName> <Type> <valueName>` row for each missing hole.",
+            "Confirm the hole name in the template matches the argument name exactly.",
+        ],
+    },
+    "SSBE002": {
+        "title": "output binary could not be written (locked or read-only)",
+        "summary": "The native linker compiled the IR successfully but could not write the output executable. The usual cause on Windows is rebuilding while the previous binary is still running and holds a file lock.",
+        "whyItMatters": [
+            "This is a link-time write failure, not an IR/source error, so editing SemanticScript source will not help.",
+            "It was previously reported under the generic SSBE999 (\"IR failed to compile\"), which sent agents toward the wrong diagnosis."
+        ],
+        "commonFixes": [
+            "Stop the running process that holds the output binary, then rebuild.",
+            "Run the program from a copy, or build to a different output path.",
+            "Confirm the output directory is writable and not locked by another tool.",
+        ],
+    },
+    "SS4108": {
+        "title": "constant type cannot be lowered to a runtime value",
+        "summary": "A `storage`/const declaration uses a type that the backend cannot emit as an LLVM constant (for example an enum or domain type). Surfaced at check time so a green `check` implies a buildable program.",
+        "whyItMatters": [
+            "Previously this only failed at build (as SSCG004) after `check` passed green, which broke the agent edit→check→build loop.",
+            "Catching it during check keeps the check gate honest and lets repair tooling see the problem."
+        ],
+        "commonFixes": [
+            "Use a concrete primitive type for the constant (Int32/Int64/UInt*/Bool/Float64/String).",
+            "For an enum-valued need, declare a primitive const of the enum's repr width, or compare the enum at runtime instead of storing it as a const.",
         ],
     },
     # ---- Security rule family (SS43xx arithmetic-UB + SS46xx security) ----
@@ -4745,7 +4808,7 @@ def _diagnostic_explain_payload(code: str) -> dict:
     index = _diagnostic_index_payload()
     entry = index.get(code)
     curated = DIAGNOSTIC_EXPLAINERS.get(code, {})
-    if entry is None:
+    if entry is None and not curated:
         return {
             "schemaVersion": "sem.explain.v1",
             "tool": {"name": "sem", "version": VERSION},
@@ -4753,13 +4816,33 @@ def _diagnostic_explain_payload(code: str) -> dict:
             "status": "not-found",
             "code": code,
             "found": False,
+            "title": "",
+            "summary": "",
+            "references": [],
+            "relatedCodes": [],
+            "whyItMatters": [],
+            "commonFixes": [],
+            "nextCommands": _explain_next_commands(code, repeatable=False),
+        }
+    if entry is None:
+        # No index reference yet, but we ship a curated explainer for this code
+        # (e.g. a newly added diagnostic). Treat the curated entry as a found
+        # explainer rather than reporting the code as unknown.
+        return {
+            "schemaVersion": "sem.explain.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": True,
+            "status": "ok",
+            "code": code,
+            "found": True,
             "title": curated.get("title", ""),
             "summary": curated.get("summary", ""),
             "references": [],
             "relatedCodes": [],
             "whyItMatters": curated.get("whyItMatters", []),
             "commonFixes": curated.get("commonFixes", []),
-            "nextCommands": _explain_next_commands(code, repeatable=False),
+            "note": "Curated explainer; no repository index reference recorded yet.",
+            "nextCommands": _explain_next_commands(code),
         }
     return {
         "schemaVersion": "sem.explain.v1",
@@ -6399,7 +6482,7 @@ def command_patch(args: argparse.Namespace) -> int:
 
 
 def command_skills(args: argparse.Namespace) -> int:
-    if args.skills_command == "list":
+    if args.skills_command in (None, "list"):
         payload = {
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
@@ -6421,7 +6504,7 @@ def command_skills(args: argparse.Namespace) -> int:
             for skill in payload["skills"]:
                 print(f"{skill['name']}: {skill['description']}")
         return 0
-    if args.skills_command == "get":
+    if args.skills_command in ("get", "load"):
         requested_names = list(args.names)
         names = [SKILL_ALIASES.get(name, name) for name in args.names]
         if args.all:
@@ -6505,6 +6588,9 @@ def command_mcp(args: argparse.Namespace) -> int:
             )
             return 2
         raise
+    if getattr(args, "list_tools", False):
+        sem_mcp.main(["--list-tools"])
+        return 0
     server_args = ["--transport", args.transport]
     if args.host is not None:
         server_args += ["--host", args.host]
@@ -6797,7 +6883,12 @@ def build_parser() -> argparse.ArgumentParser:
         "skills",
         help="list or load version-matched agent skills from the current repository",
     )
-    skills_subparsers = skills.add_subparsers(dest="skills_command", required=True)
+    # Bare `sem skills` defaults to the inventory rather than erroring on a
+    # missing subcommand — `list` is the discovery entry point agents reach for
+    # first. `json` is defaulted so the bare form has the attribute the handler
+    # reads.
+    skills.set_defaults(func=command_skills, skills_command="list", json=False)
+    skills_subparsers = skills.add_subparsers(dest="skills_command", required=False)
     skills_list = skills_subparsers.add_parser(
         "list",
         help="list built-in SemanticScript agent skills",
@@ -6806,8 +6897,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help="emit machine-readable skill inventory")
     skills_list.set_defaults(func=command_skills)
 
+    # `load` is accepted as an alias for `get`: it is the natural verb agents
+    # try first, and rejecting it was a documented onboarding snag.
     skills_get = skills_subparsers.add_parser(
         "get",
+        aliases=["load"],
         help="load one or more built-in SemanticScript agent skills",
     )
     skills_get.add_argument("--json", action="store_true",
@@ -6883,12 +6977,19 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_server.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
     mcp_server.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
     mcp_server.add_argument("--path", help="HTTP route for the streamable-http transport")
+    mcp_server.add_argument(
+        "--list-tools",
+        dest="list_tools",
+        action="store_true",
+        help="print the MCP tool catalog as JSON and exit without serving",
+    )
     mcp_server.set_defaults(func=command_mcp)
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_streams()
     if argv is None:
         argv = sys.argv[1:]
     if "--version" in argv and "--json" in argv and len(argv) == 2:
