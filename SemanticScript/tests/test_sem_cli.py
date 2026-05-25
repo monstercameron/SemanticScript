@@ -1263,6 +1263,53 @@ return value 0
             self.assertIn('purpose operation main "demo"', migrated)
             self.assertNotIn("input main request", migrated)
 
+    def test_fix_plan_does_not_corrupt_on_branch_reorder(self) -> None:
+        # The migrator can rewrite a `branchIf` + bare `branch` pair in a
+        # LINE-COUNT-NEUTRAL way that REORDERS rows: the bare `branch fallback`
+        # becomes `branch else target ...` emitted earlier, leaving a blank at
+        # the original `branch` line. A positional replaceLine sourced from
+        # after_lines[L-1] would then write "" over the branch row (silent
+        # corruption). Auto-apply must be declined for every non-cutover-verb
+        # row; only the in-place subject-qualifier rows may carry an edit.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(
+                "project Reorder\n"
+                "module examples.reorder\n"
+                "operation main\n"
+                'purpose main "x"\n'
+                "branchIf flag doWork\n"
+                "\n"
+                "branch fallback\n"
+                "label doWork\n"
+                "return value 0\n"
+                "label fallback\n"
+                "return value 1\n",
+                encoding="utf-8",
+            )
+            sem._migrated_file_lines.cache_clear()
+            plan = sem._build_fix_plan_payload(source, [], include_warnings=True)
+            edits = [edit for repair in plan["repairs"] for edit in repair.get("edits", [])]
+            for edit in edits:
+                text = edit.get("text", "")
+                self.assertTrue(text.strip(), f"empty replacement would delete a row: {edit}")
+                self.assertNotIn(text.split()[0], ("branch", "branchIf", "jump"),
+                                 f"auto-apply must not touch a branch row: {edit}")
+            # The safe in-place cutover row is still auto-applied.
+            self.assertTrue(any(e["text"] == 'purpose operation main "x"' for e in edits))
+
+    def test_is_inplace_cutover_rewrite_guard(self) -> None:
+        ok = sem._is_inplace_cutover_rewrite
+        self.assertTrue(ok("input main x Bool", "input operation main x Bool"))
+        self.assertTrue(ok('purpose main "demo text"', 'purpose operation main "demo text"'))
+        self.assertTrue(ok("output main ExitCode", "output operation main ExitCode"))
+        # Reorder hazards: verb not in the cutover set, or shape mismatch.
+        self.assertFalse(ok("branch fallback", ""))
+        self.assertFalse(ok("branch fallback", "branch else target fallback"))
+        self.assertFalse(ok("branchIf flag doWork", "branch if condition flag target doWork"))
+        # Same verb but tail changed (not a pure one-token insertion).
+        self.assertFalse(ok("input main x Bool", "input operation main y Bool"))
+
     def test_migrated_file_lines_skips_when_line_count_changes(self) -> None:
         # Auto-apply only when the migration is a per-line in-place rewrite. If
         # the migrator added/removed lines, a positional replaceLine could not

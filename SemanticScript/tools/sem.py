@@ -5114,6 +5114,35 @@ def _operation_insert_anchor(operation) -> int:
     return max(line_numbers) if line_numbers else operation.line.number
 
 
+# Verbs whose syntax cutover is a pure in-place subject-qualifier insertion
+# (`input main x` -> `input operation main x`). The migrator never reorders
+# these rows, so a positional `replaceLine` on their line is provably correct.
+# Other rewrites the migrator performs (notably `branch` else-arm synthesis) can
+# be line-count-neutral yet REORDER rows, which would make positional indexing
+# read the wrong line — those are deliberately excluded from auto-apply.
+_CUTOVER_AUTOFIX_VERBS = frozenset({"input", "output", "purpose", "invariant"})
+
+
+def _is_inplace_cutover_rewrite(before_line: str, after_line: str) -> bool:
+    """True only when `after_line` is `before_line` with exactly one subject-kind
+    token inserted right after the verb, and the verb is a known in-place cutover
+    verb. This rejects line-count-neutral reorders (e.g. a `branch` row whose
+    migrated content moved to a different line), where trusting `after[L-1]`
+    positionally would corrupt the file."""
+    before_tokens = before_line.split()
+    after_tokens = after_line.split()
+    if not before_tokens or not after_tokens:
+        return False
+    if before_tokens[0] not in _CUTOVER_AUTOFIX_VERBS:
+        return False
+    # Same verb, one extra token inserted at index 1, identical tail.
+    if after_tokens[0] != before_tokens[0]:
+        return False
+    if len(after_tokens) != len(before_tokens) + 1:
+        return False
+    return after_tokens[2:] == before_tokens[1:]
+
+
 @functools.lru_cache(maxsize=256)
 def _migrated_file_lines(file_path: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
     """Return (original_lines, migrated_lines) for a file via the authoritative
@@ -5121,7 +5150,10 @@ def _migrated_file_lines(file_path: str) -> tuple[tuple[str, ...], tuple[str, ..
     line count. The syntax cutover qualifies rows in place (`input` ->
     `input operation`, etc.), so equal line counts mean a per-line `replaceLine`
     reproduces the migrated row exactly. Returns None when the file can't be read
-    or the line count changed (then auto-apply is skipped — preview-only fix)."""
+    or the line count changed (then auto-apply is skipped — preview-only fix).
+    Even with equal line counts, callers must additionally confirm the specific
+    row is an in-place rewrite (see `_is_inplace_cutover_rewrite`) because the
+    migrator can reorder `branch` rows without changing the line count."""
     try:
         from tools import syntax_migration
     except ImportError:
@@ -5180,7 +5212,7 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, o
         if migrated_pair is not None and 0 < line_no <= len(migrated_pair[1]):
             before_line = migrated_pair[0][line_no - 1]
             after_line = migrated_pair[1][line_no - 1]
-            if before_line != after_line:
+            if before_line != after_line and _is_inplace_cutover_rewrite(before_line, after_line):
                 repair["fixSafety"] = "local-edit"
                 for suggestion in repair["suggestions"]:
                     if suggestion.get("name") in ("runMigrateSyntax", "rewriteToNewSyntax"):
