@@ -8,16 +8,20 @@ delegates to the reference tools without inventing a second build engine.
 from __future__ import annotations
 
 import argparse
+import array
 import copy
 import functools
 import hashlib
 import importlib.util
 import json
 import os
+import queue
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -31,6 +35,14 @@ VERSION = read_repo_version()
 STARTER_PROJECT_VERSION = "0.0.1"
 SYNTAX_PAYLOAD_VERSION = "sem.syntaxCutover.v1"
 DOCS_PAYLOAD_VERSION = "sem.docs.v1"
+DOCS_INDEX_PAYLOAD_VERSION = "sem.docsIndex.v1"
+DOCS_SEARCH_PAYLOAD_VERSION = "sem.docsSearch.v1"
+DOCS_INDEX_SCHEMA_VERSION = 1
+DOCS_DEFAULT_EMBEDDING_DIMENSIONS = 384
+DOCS_DEFAULT_EMBEDDING_PROVIDER = "sentence-transformers"
+DOCS_DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD = False
+DOCS_SEARCH_MAX_LIMIT = 50
 SYNTAX_INVENTORY_PATH = ROOT.parent / "docs" / "reference" / "syntax-inventory.md"
 CALL_DISPOSITION_VARIANTS = ("value", "ok", "error", "void")
 STD_DOC_COMMENT_TAGS = (
@@ -1641,6 +1653,19 @@ def _prompt_for_starter_github_url() -> str | None:
     return value or None
 
 
+def _prompt_for_starter_docs_index_opt_in() -> bool:
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return False
+    try:
+        value = input(
+            "Enable semantic docs index setup for this project? "
+            "This can download the BAAI/bge-small-en-v1.5 embedding model later. [y/N]: "
+        ).strip().lower()
+    except EOFError:
+        return False
+    return value in {"y", "yes"}
+
+
 def _starter_project_metadata(path: Path, github_repo: dict | None = None) -> dict:
     words = _starter_project_words(path)
     slug = "-".join(word.lower() for word in words)
@@ -1781,6 +1806,8 @@ def _starter_gitignore_text(meta: dict) -> str:
         "*.o",
         "*.pdb",
         "__pycache__/",
+        ".sem/docs.sqlite",
+        ".sem/docs.sqlite-*",
         "",
         "# Keep sem.lock committed: it pins resolved dependency versions and",
         "# checksums so `sem deps sync` is reproducible across machines.",
@@ -1841,7 +1868,13 @@ def _starter_ci_workflow_text(meta: dict) -> str:
     ])
 
 
-def _starter_project_payload(path: Path, *, force: bool = False, github_url: str | None = None) -> dict:
+def _starter_project_payload(
+    path: Path,
+    *,
+    force: bool = False,
+    github_url: str | None = None,
+    docs_index_opt_in: bool = False,
+) -> dict:
     root = path.resolve()
     github_repo = None
     if github_url:
@@ -1868,6 +1901,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
     test_path = root / meta["testFileName"]
     workflow_path = root / ".github" / "workflows" / "ci.yml"
     gitignore_path = root / ".gitignore"
+    docs_db_path = root / ".sem" / "docs.sqlite"
     files_created: list[str] = []
     files_overwritten: list[str] = []
     next_commands = [
@@ -1892,6 +1926,44 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             argv=["sem", "build", str(root), "--", "--emit-exe"],
         ),
     ]
+    docs_index = {
+        "enabled": bool(docs_index_opt_in),
+        "dbPath": str(docs_db_path),
+        "embeddingProvider": DOCS_DEFAULT_EMBEDDING_PROVIDER,
+        "embeddingModel": DOCS_DEFAULT_EMBEDDING_MODEL,
+        "requirementsFile": str((ROOT.parent / "requirements-docs.txt").resolve()),
+        "allowModelDownloadRequired": True,
+        "packagingNote": "Python CLI users install requirements-docs.txt; frozen sem.exe builds need the docs-embeddings packaging variant to run embeddings inside the executable.",
+    }
+    if docs_index_opt_in:
+        docs_deps_command = f"python -m pip install -r {docs_index['requirementsFile']}"
+        docs_deps_argv = None if getattr(sys, "frozen", False) else [sys.executable, "-m", "pip", "install", "-r", docs_index["requirementsFile"]]
+        next_commands.extend([
+            _next_command_entry(
+                "docs-deps",
+                "install optional dependencies for local semantic docs search",
+                argv=docs_deps_argv,
+                command=docs_deps_command,
+                replayable=False,
+            ),
+            _next_command_entry(
+                "docs-index",
+                "build the local semantic docs index for this starter project",
+                argv=[
+                    "sem", "docs", "index", "--path", str(root), "--db", str(docs_db_path),
+                    "--include-std", "--allow-model-download", "--json",
+                ],
+                command=f"sem docs index --path {root} --db {docs_db_path} --include-std --allow-model-download --json",
+                replayable=False,
+            ),
+            _next_command_entry(
+                "docs-search",
+                "try semantic docs search after the index is built",
+                argv=["sem", "docs", "search", "hello world console write", "--path", str(root), "--db", str(docs_db_path), "--json"],
+                command=f"sem docs search \"hello world console write\" --path {root} --db {docs_db_path} --json",
+                replayable=False,
+            ),
+        ])
     payload = {
         "schemaVersion": "sem.newProject.v1",
         "tool": {"name": "sem", "version": VERSION},
@@ -1913,6 +1985,7 @@ def _starter_project_payload(path: Path, *, force: bool = False, github_url: str
             "nativeOutput": meta["nativeOutput"],
             "githubRepoUrl": meta["githubRepoUrl"],
             "githubRepoSlug": meta["githubRepoSlug"],
+            "docsIndex": docs_index,
         },
         "filesCreated": files_created,
         "filesOverwritten": files_overwritten,
@@ -4446,6 +4519,1173 @@ def _docs_payload(
             "searchedOperationCount": len(searchable_operations),
             "searchedTargetCount": len(_module_targets(modules)),
             "scannedOperationCount": len(operations),
+        },
+    }
+
+
+def _docs_default_db_path(path: Path) -> Path:
+    root = path.parent if path.is_file() or path.suffix.lower() in {".sem", ".sscript"} else path
+    return (root / ".sem" / "docs.sqlite").resolve()
+
+
+def _docs_file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _docs_project_source_files(path: Path) -> tuple[list[Path], list[str]]:
+    requested = path.resolve()
+    if requested.is_file():
+        if requested.suffix.lower() in {".sem", ".sscript"} or requested.name.lower() in {"build.sem", "build.sscript"}:
+            return _symbol_source_files(requested)
+        return [], [f"{requested}: not a SemanticScript source file"]
+    build_tape = _find_build_tape(requested)
+    if build_tape is not None:
+        return _symbol_source_files(requested)
+    if not requested.exists():
+        return [], [f"{requested}: path does not exist"]
+    if not requested.is_dir():
+        return [], [f"{requested}: path is not a directory"]
+    ignored_parts = {".git", ".sem", ".claude", "build", "dist", "__pycache__"}
+    files = []
+    for source in sorted(requested.rglob("*.sem")):
+        if not source.is_file():
+            continue
+        if any(part in ignored_parts for part in source.relative_to(requested).parts[:-1]):
+            continue
+        files.append(source.resolve())
+    for source in sorted(requested.rglob("*.sscript")):
+        if not source.is_file():
+            continue
+        if any(part in ignored_parts for part in source.relative_to(requested).parts[:-1]):
+            continue
+        files.append(source.resolve())
+    deduped = []
+    seen = set()
+    for source in files:
+        if source in seen:
+            continue
+        seen.add(source)
+        deduped.append(source)
+    return deduped, []
+
+
+def _docs_mark_source_kind(payload: dict, source_kind: str, root: Path) -> dict:
+    payload = copy.deepcopy(payload)
+    payload["sourceKind"] = source_kind
+    payload["docsRoot"] = str(root.resolve())
+    return payload
+
+
+def _docs_module_doc_with_source_kind(module_doc: dict, source_kind: str, root: Path) -> dict:
+    module_doc = _docs_mark_source_kind(module_doc, source_kind, root)
+    module_doc["callTargets"] = [
+        _docs_mark_source_kind(target, source_kind, root)
+        for target in module_doc.get("callTargets", [])
+    ]
+    return module_doc
+
+
+def _docs_project_inventory(
+    path: Path,
+    module_name: str = "",
+    summary_tag: str = "rationale",
+) -> tuple[list[dict], list[dict], list[str], Path, list[Path]]:
+    semlint = _load_semlint_module()
+    root = path.resolve()
+    source_files, errors = _docs_project_source_files(root)
+    operations: list[dict] = []
+    modules: list[dict] = []
+    for source in source_files:
+        try:
+            facts = semlint.parse_file(source)
+        except (OSError, RuntimeError) as exc:
+            errors.append(f"{source}: {exc}")
+            continue
+        parsed_module_name = _row_value(facts, "module")
+        if not parsed_module_name and not facts.operations:
+            continue
+        if not _std_module_matches(parsed_module_name, module_name):
+            continue
+        module_operations = []
+        for operation in sorted(facts.operations.values(), key=lambda item: item.line.number):
+            operation_doc = _std_operation_doc_payload(facts, source, operation, summary_tag)
+            operation_doc = _docs_mark_source_kind(operation_doc, "project", root)
+            operations.append(operation_doc)
+            module_operations.append(operation_doc)
+        module_doc = _std_module_doc_payload(facts, source, module_operations, summary_tag)
+        modules.append(_docs_module_doc_with_source_kind(module_doc, "project", root))
+    return operations, modules, errors, root, source_files
+
+
+def _docs_json_compact(payload: dict) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _docs_entry_location(payload: dict) -> dict:
+    location = payload.get("location", {}) if isinstance(payload, dict) else {}
+    if location:
+        return location
+    return {}
+
+
+def _docs_entry_search_text(payload: dict) -> str:
+    parts: list[str] = []
+
+    def add(value) -> None:
+        if value is None:
+            return
+        if isinstance(value, str):
+            if value.strip():
+                parts.append(value.strip())
+            return
+        if isinstance(value, (int, float, bool)):
+            parts.append(str(value))
+            return
+        if isinstance(value, dict):
+            for item in value.values():
+                add(item)
+            return
+        if isinstance(value, list):
+            for item in value:
+                add(item)
+
+    for key in (
+        "kind", "module", "moduleName", "name", "qualifiedName", "fullName",
+        "target", "summary", "purpose", "invariants", "agentWarnings",
+    ):
+        add(payload.get(key))
+    add(payload.get("signature", {}).get("text"))
+    for item in payload.get("signature", {}).get("inputs", []):
+        add(item.get("name"))
+        add(item.get("type"))
+    for item in payload.get("signature", {}).get("outputs", []):
+        add(item.get("type"))
+        add(item.get("values"))
+    for effect in payload.get("effects", []):
+        add(effect.get("action"))
+        add(effect.get("path"))
+    for capability in payload.get("capabilityDetails", []):
+        add(capability.get("name"))
+        add(capability.get("resource"))
+        add(capability.get("action"))
+    add(payload.get("commentsByTag", {}))
+    add(payload.get("metadata", {}))
+    usage = payload.get("usage", {})
+    add(usage.get("failureMode", {}))
+    add(usage.get("failureHandling", {}))
+    add(usage.get("preconditions", {}))
+    add(usage.get("cleanup", {}))
+    return "\n".join(parts)
+
+
+def _docs_entry_from_payload(kind: str, payload: dict, root: Path, source_kind: str) -> dict:
+    location = _docs_entry_location(payload)
+    signature = payload.get("signature", {}) if isinstance(payload.get("signature", {}), dict) else {}
+    name = payload.get("name") or payload.get("target") or payload.get("module") or ""
+    qualified_name = payload.get("qualifiedName") or payload.get("target") or payload.get("module") or name
+    full_name = payload.get("fullName") or qualified_name
+    path = location.get("path") or location.get("file") or payload.get("sourceFile") or ""
+    line = int(location.get("line", 0) or 0)
+    search_text = _docs_entry_search_text({**payload, "kind": kind})
+    return {
+        "sourceKind": source_kind,
+        "kind": kind,
+        "module": payload.get("module", ""),
+        "moduleName": payload.get("moduleName", ""),
+        "name": name,
+        "qualifiedName": qualified_name,
+        "fullName": full_name,
+        "target": payload.get("target", ""),
+        "path": path,
+        "line": line,
+        "root": str(root.resolve()),
+        "summary": payload.get("summary", ""),
+        "signatureText": signature.get("text", ""),
+        "searchText": search_text,
+        "doc": payload,
+    }
+
+
+def _docs_collect_index_entries(
+    project_path: Path | None,
+    *,
+    include_project: bool = True,
+    include_std: bool = True,
+    include_compiler: bool = True,
+    summary_tag: str = "rationale",
+    std_root: Path | None = None,
+) -> tuple[list[dict], list[dict], list[str], dict]:
+    entries: list[dict] = []
+    documents: list[dict] = []
+    errors: list[str] = []
+    roots: dict[str, str] = {}
+
+    if include_project and project_path is not None:
+        project_operations, project_modules, project_errors, project_root, source_files = _docs_project_inventory(project_path, summary_tag=summary_tag)
+        errors.extend(project_errors)
+        roots["project"] = str(project_root.resolve())
+        for source in source_files:
+            if source.exists():
+                stat = source.stat()
+                documents.append({
+                    "path": str(source.resolve()),
+                    "root": str(project_root.resolve()),
+                    "sourceKind": "project",
+                    "hash": _docs_file_hash(source),
+                    "mtime": stat.st_mtime,
+                })
+        for operation in project_operations:
+            entries.append(_docs_entry_from_payload("operation", operation, project_root, "project"))
+        for module_doc in project_modules:
+            entries.append(_docs_entry_from_payload("module", module_doc, project_root, "project"))
+            for target in module_doc.get("callTargets", []):
+                entries.append(_docs_entry_from_payload("callTarget", target, project_root, "project"))
+
+    if include_std or include_compiler:
+        std_operations, std_modules, std_errors, resolved_std_root = _docs_inventory(summary_tag=summary_tag, std_root=std_root)
+        errors.extend(std_errors)
+        if include_std:
+            roots["std"] = str(resolved_std_root.resolve())
+        if include_compiler:
+            roots["compiler"] = str(resolved_std_root.resolve())
+        for module_doc in std_modules:
+            module_source_kind = "compiler" if module_doc.get("module", "").startswith("compiler.") else "std"
+            if module_source_kind == "std" and not include_std:
+                continue
+            if module_source_kind == "compiler" and not include_compiler:
+                continue
+            module_root = resolved_std_root
+            module_doc = _docs_module_doc_with_source_kind(module_doc, module_source_kind, module_root)
+            entries.append(_docs_entry_from_payload("module", module_doc, module_root, module_source_kind))
+            source_file = module_doc.get("sourceFile", "")
+            if source_file:
+                source_path = Path(source_file)
+                if source_path.exists():
+                    stat = source_path.stat()
+                    documents.append({
+                        "path": str(source_path.resolve()),
+                        "root": str(module_root.resolve()),
+                        "sourceKind": module_source_kind,
+                        "hash": _docs_file_hash(source_path),
+                        "mtime": stat.st_mtime,
+                    })
+            for target in module_doc.get("callTargets", []):
+                entries.append(_docs_entry_from_payload("callTarget", target, module_root, module_source_kind))
+        if include_std:
+            for operation in std_operations:
+                if operation.get("module", "").startswith("compiler."):
+                    continue
+                operation = _docs_mark_source_kind(operation, "std", resolved_std_root)
+                entries.append(_docs_entry_from_payload("operation", operation, resolved_std_root, "std"))
+    return entries, documents, errors, roots
+
+
+def _docs_connect_index(db_path: Path) -> sqlite3.Connection:
+    db_path = db_path.resolve()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.DatabaseError:
+        pass
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def _docs_connect_index_readonly(db_path: Path) -> sqlite3.Connection:
+    db_path = db_path.resolve()
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def _docs_sqlite_vec_load(conn: sqlite3.Connection) -> tuple[bool, str]:
+    try:
+        import sqlite_vec  # type: ignore
+    except Exception as exc:
+        return False, f"sqlite-vec unavailable: {exc}"
+    try:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        return True, "sqlite-vec loaded"
+    except Exception as exc:
+        try:
+            conn.enable_load_extension(False)
+        except Exception:
+            pass
+        return False, f"sqlite-vec load failed: {exc}"
+
+
+def _docs_ensure_index_schema(conn: sqlite3.Connection, *, enable_sqlite_vec: bool = True) -> dict:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS docs_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS docs_documents (
+            path TEXT PRIMARY KEY,
+            root TEXT NOT NULL,
+            source_kind TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            mtime REAL NOT NULL,
+            indexed_at REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS docs_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            root TEXT NOT NULL,
+            source_kind TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            module TEXT NOT NULL,
+            module_name TEXT NOT NULL,
+            name TEXT NOT NULL,
+            qualified_name TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            target TEXT NOT NULL,
+            path TEXT NOT NULL,
+            line INTEGER NOT NULL,
+            summary TEXT NOT NULL,
+            signature_text TEXT NOT NULL,
+            search_text TEXT NOT NULL,
+            doc_json TEXT NOT NULL,
+            embedding_provider TEXT NOT NULL,
+            embedding_model TEXT NOT NULL,
+            embedding_status TEXT NOT NULL,
+            embedding BLOB,
+            updated_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS docs_entries_lookup_idx ON docs_entries(qualified_name, full_name, target, name);
+        CREATE INDEX IF NOT EXISTS docs_entries_scope_idx ON docs_entries(root, source_kind, kind, module);
+        """
+    )
+    conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("schemaVersion", str(DOCS_INDEX_SCHEMA_VERSION)))
+    fts_available = True
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(name, module, summary, body, entry_id UNINDEXED)"
+        )
+    except sqlite3.DatabaseError:
+        fts_available = False
+    sqlite_vec_loaded = False
+    sqlite_vec_message = "disabled"
+    sqlite_vec_table = False
+    if enable_sqlite_vec:
+        sqlite_vec_loaded, sqlite_vec_message = _docs_sqlite_vec_load(conn)
+        if sqlite_vec_loaded:
+            try:
+                conn.execute(
+                    f"CREATE VIRTUAL TABLE IF NOT EXISTS docs_vec USING vec0(embedding float[{DOCS_DEFAULT_EMBEDDING_DIMENSIONS}])"
+                )
+                sqlite_vec_table = True
+            except sqlite3.DatabaseError as exc:
+                sqlite_vec_message = f"sqlite-vec table unavailable: {exc}"
+                sqlite_vec_table = False
+    return {
+        "ftsAvailable": fts_available,
+        "sqliteVecAvailable": sqlite_vec_loaded and sqlite_vec_table,
+        "sqliteVecMessage": sqlite_vec_message,
+    }
+
+
+def _docs_validate_index_schema(conn: sqlite3.Connection, *, enable_sqlite_vec: bool = True) -> tuple[dict, list[str]]:
+    errors: list[str] = []
+    expected_tables = {"docs_meta", "docs_documents", "docs_entries"}
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')")
+    }
+    missing = sorted(expected_tables - tables)
+    if missing:
+        errors.append(f"missing docs index tables: {', '.join(missing)}")
+    expected_entry_columns = {
+        "id", "root", "source_kind", "kind", "module", "module_name", "name",
+        "qualified_name", "full_name", "target", "path", "line", "summary",
+        "signature_text", "search_text", "doc_json", "embedding_provider",
+        "embedding_model", "embedding_status", "embedding", "updated_at",
+    }
+    if "docs_entries" in tables:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(docs_entries)")}
+        missing_columns = sorted(expected_entry_columns - columns)
+        if missing_columns:
+            errors.append(f"docs_entries missing columns: {', '.join(missing_columns)}")
+    expected_document_columns = {"path", "root", "source_kind", "hash", "mtime", "indexed_at"}
+    if "docs_documents" in tables:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(docs_documents)")}
+        missing_columns = sorted(expected_document_columns - columns)
+        if missing_columns:
+            errors.append(f"docs_documents missing columns: {', '.join(missing_columns)}")
+    meta = {}
+    if "docs_meta" in tables:
+        try:
+            meta = {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM docs_meta")}
+        except sqlite3.DatabaseError as exc:
+            errors.append(f"docs_meta unreadable: {exc}")
+    schema_version = meta.get("schemaVersion", "")
+    if schema_version and schema_version != str(DOCS_INDEX_SCHEMA_VERSION):
+        errors.append(f"docs index schema version {schema_version} is not supported by this tool")
+    fts_available = "docs_fts" in tables
+    sqlite_vec_available = False
+    sqlite_vec_message = "not indexed"
+    if enable_sqlite_vec and "docs_vec" in tables:
+        loaded, message = _docs_sqlite_vec_load(conn)
+        sqlite_vec_available = loaded
+        sqlite_vec_message = message
+    return {
+        "ftsAvailable": fts_available,
+        "sqliteVecAvailable": sqlite_vec_available,
+        "sqliteVecMessage": sqlite_vec_message,
+    }, errors
+
+
+def _docs_clear_index(conn: sqlite3.Connection, *, fts_available: bool, sqlite_vec_available: bool) -> None:
+    if fts_available:
+        try:
+            conn.execute("DELETE FROM docs_fts")
+        except sqlite3.DatabaseError:
+            pass
+    if sqlite_vec_available:
+        try:
+            conn.execute("DELETE FROM docs_vec")
+        except sqlite3.DatabaseError:
+            pass
+    conn.execute("DELETE FROM docs_entries")
+    conn.execute("DELETE FROM docs_documents")
+
+
+def _docs_rebuild_index_schema(conn: sqlite3.Connection) -> None:
+    for table_name in ("docs_vec", "docs_fts", "docs_entries", "docs_documents", "docs_meta"):
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+        except sqlite3.DatabaseError:
+            pass
+
+
+def _docs_tokens(text: str) -> list[str]:
+    return [token.lower() for token in re.findall(r"[A-Za-z0-9]+", text or "")]
+
+
+_DOCS_SENTENCE_TRANSFORMER_CACHE: dict[str, object] = {}
+
+
+def _docs_sentence_transformer_embedding(
+    text: str,
+    model_name: str,
+    *,
+    query: bool = False,
+    allow_model_download: bool = DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD,
+) -> list[float]:
+    try:
+        from sentence_transformers import SentenceTransformer  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"sentence-transformers unavailable: {exc}") from exc
+    model = _DOCS_SENTENCE_TRANSFORMER_CACHE.get(model_name)
+    if model is None:
+        model = SentenceTransformer(model_name, local_files_only=not allow_model_download)
+        _DOCS_SENTENCE_TRANSFORMER_CACHE[model_name] = model
+    prefix = "query: " if query else "passage: "
+    encoded = model.encode([prefix + text], normalize_embeddings=True)[0]
+    return [float(value) for value in encoded]
+
+
+def _docs_embedding(
+    text: str,
+    *,
+    provider: str,
+    model: str,
+    query: bool = False,
+    allow_model_download: bool = DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD,
+) -> tuple[list[float] | None, str, str]:
+    if provider == "none":
+        return None, "disabled", "embedding provider disabled"
+    if provider == "sentence-transformers":
+        try:
+            return _docs_sentence_transformer_embedding(
+                text,
+                model,
+                query=query,
+                allow_model_download=allow_model_download,
+            ), "fresh", "sentence-transformers"
+        except Exception as exc:
+            return None, "failed", str(exc)
+    if provider == "auto":
+        return _docs_embedding(
+            text,
+            provider="sentence-transformers",
+            model=model,
+            query=query,
+            allow_model_download=allow_model_download,
+        )
+    return None, "failed", f"unknown embedding provider {provider}"
+
+
+def _docs_vector_to_blob(vector: list[float] | None) -> bytes | None:
+    if vector is None:
+        return None
+    return array.array("f", vector).tobytes()
+
+
+def _docs_blob_to_vector(blob: bytes | None) -> list[float]:
+    if not blob:
+        return []
+    values = array.array("f")
+    values.frombytes(blob)
+    return [float(value) for value in values]
+
+
+def _docs_cosine(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    return sum(a * b for a, b in zip(left, right))
+
+
+def _docs_sqlite_vec_serialize(vector: list[float]) -> bytes:
+    try:
+        import sqlite_vec  # type: ignore
+        return sqlite_vec.serialize_float32(vector)
+    except Exception:
+        return _docs_vector_to_blob(vector) or b""
+
+
+def _docs_scope_delete(conn: sqlite3.Connection, root: str, source_kind: str, *, fts_available: bool, sqlite_vec_available: bool) -> None:
+    ids = [row[0] for row in conn.execute(
+        "SELECT id FROM docs_entries WHERE root = ? AND source_kind = ?",
+        (root, source_kind),
+    )]
+    if fts_available:
+        for entry_id in ids:
+            conn.execute("DELETE FROM docs_fts WHERE rowid = ?", (entry_id,))
+    if sqlite_vec_available:
+        for entry_id in ids:
+            try:
+                conn.execute("DELETE FROM docs_vec WHERE rowid = ?", (entry_id,))
+            except sqlite3.DatabaseError:
+                pass
+    conn.execute("DELETE FROM docs_entries WHERE root = ? AND source_kind = ?", (root, source_kind))
+    conn.execute("DELETE FROM docs_documents WHERE root = ? AND source_kind = ?", (root, source_kind))
+
+
+def _docs_insert_entry(
+    conn: sqlite3.Connection,
+    entry: dict,
+    *,
+    now: float,
+    provider: str,
+    model: str,
+    fts_available: bool,
+    sqlite_vec_available: bool,
+    allow_model_download: bool,
+) -> tuple[str, str, str]:
+    vector, embedding_status, embedding_detail = _docs_embedding(
+        entry["searchText"],
+        provider=provider,
+        model=model,
+        allow_model_download=allow_model_download,
+    )
+    stored_provider = "sentence-transformers" if provider == "auto" else provider
+    vector_blob = _docs_vector_to_blob(vector)
+    cursor = conn.execute(
+        """
+        INSERT INTO docs_entries(
+            root, source_kind, kind, module, module_name, name, qualified_name,
+            full_name, target, path, line, summary, signature_text, search_text,
+            doc_json, embedding_provider, embedding_model, embedding_status,
+            embedding, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            entry["root"], entry["sourceKind"], entry["kind"], entry["module"], entry["moduleName"],
+            entry["name"], entry["qualifiedName"], entry["fullName"], entry["target"], entry["path"],
+            entry["line"], entry["summary"], entry["signatureText"], entry["searchText"],
+            _docs_json_compact(entry["doc"]), stored_provider, model, embedding_status, vector_blob, now,
+        ),
+    )
+    entry_id = int(cursor.lastrowid)
+    if fts_available:
+        conn.execute(
+            "INSERT INTO docs_fts(rowid, name, module, summary, body, entry_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (entry_id, entry["name"], entry["module"], entry["summary"], entry["searchText"], entry_id),
+        )
+    if sqlite_vec_available and vector is not None and len(vector) == DOCS_DEFAULT_EMBEDDING_DIMENSIONS:
+        try:
+            conn.execute(
+                "INSERT INTO docs_vec(rowid, embedding) VALUES (?, ?)",
+                (entry_id, _docs_sqlite_vec_serialize(vector)),
+            )
+        except sqlite3.DatabaseError as exc:
+            embedding_detail = f"{embedding_detail}; sqlite-vec insert failed: {exc}" if embedding_detail else f"sqlite-vec insert failed: {exc}"
+    return embedding_status, embedding_detail, stored_provider
+
+
+def _docs_index_payload(
+    path: Path,
+    *,
+    db_path: Path | None = None,
+    include_std: bool = True,
+    include_compiler: bool = True,
+    summary_tag: str = "rationale",
+    std_root: Path | None = None,
+    embedding_provider: str = DOCS_DEFAULT_EMBEDDING_PROVIDER,
+    embedding_model: str = DOCS_DEFAULT_EMBEDDING_MODEL,
+    enable_sqlite_vec: bool = True,
+    allow_model_download: bool = DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD,
+) -> dict:
+    db_path = (db_path or _docs_default_db_path(path)).resolve()
+    entries, documents, errors, roots = _docs_collect_index_entries(
+        path,
+        include_project=True,
+        include_std=include_std,
+        include_compiler=include_compiler,
+        summary_tag=summary_tag,
+        std_root=std_root,
+    )
+    now = time.time()
+    embedding_counts: dict[str, int] = {}
+    embedding_messages: set[str] = set()
+    effective_embedding_providers: set[str] = set()
+    meta_embedding_provider = embedding_provider
+    try:
+        conn = _docs_connect_index(db_path)
+        try:
+            schema = _docs_ensure_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
+        except sqlite3.DatabaseError:
+            with conn:
+                _docs_rebuild_index_schema(conn)
+                schema = _docs_ensure_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
+        schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
+        if schema_errors:
+            with conn:
+                _docs_rebuild_index_schema(conn)
+                schema = _docs_ensure_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
+            schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
+            if schema_errors:
+                conn.close()
+                return {
+                    "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+                    "tool": {"name": "sem", "version": VERSION},
+                    "ok": False,
+                    "status": "stale-schema",
+                    "dbPath": str(db_path),
+                    "path": str(path.resolve()),
+                    "roots": roots,
+                    "errors": schema_errors,
+                    "summary": {"entryCount": 0, "documentCount": 0, "sourceKinds": [], "embeddingCounts": {}},
+                    "features": schema,
+                }
+        with conn:
+            _docs_clear_index(
+                conn,
+                fts_available=bool(schema["ftsAvailable"]),
+                sqlite_vec_available=bool(schema["sqliteVecAvailable"]),
+            )
+            for document in documents:
+                conn.execute(
+                    "INSERT OR REPLACE INTO docs_documents(path, root, source_kind, hash, mtime, indexed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (document["path"], document["root"], document["sourceKind"], document["hash"], document["mtime"], now),
+                )
+            for entry in entries:
+                status, detail, stored_provider = _docs_insert_entry(
+                    conn,
+                    entry,
+                    now=now,
+                    provider=embedding_provider,
+                    model=embedding_model,
+                    fts_available=bool(schema["ftsAvailable"]),
+                    sqlite_vec_available=bool(schema["sqliteVecAvailable"]),
+                    allow_model_download=allow_model_download,
+                )
+                embedding_counts[status] = embedding_counts.get(status, 0) + 1
+                effective_embedding_providers.add(stored_provider)
+                if detail:
+                    embedding_messages.add(detail)
+            conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("updatedAt", str(now)))
+            meta_embedding_provider = next(iter(effective_embedding_providers)) if len(effective_embedding_providers) == 1 else embedding_provider
+            conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("embeddingProvider", meta_embedding_provider))
+            conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("embeddingModel", embedding_model))
+            conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("includeStd", "true" if include_std else "false"))
+            conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("includeCompiler", "true" if include_compiler else "false"))
+        conn.close()
+    except (OSError, sqlite3.DatabaseError) as exc:
+        return {
+            "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "corrupt-index",
+            "dbPath": str(db_path),
+            "path": str(path.resolve()),
+            "roots": roots,
+            "errors": [f"{db_path}: docs index could not be written: {exc}"],
+            "summary": {"entryCount": 0, "documentCount": 0, "sourceKinds": [], "embeddingCounts": {}},
+            "features": {},
+        }
+    embedding_failed = embedding_provider != "none" and embedding_counts.get("failed", 0) > 0
+    all_errors = list(errors)
+    if embedding_failed:
+        all_errors.append(
+            "real semantic embedding generation failed for "
+            f"{embedding_counts.get('failed', 0)} docs entries; install sentence-transformers "
+            f"and ensure model {embedding_model} is available"
+        )
+    status = "ok"
+    if embedding_failed and errors:
+        status = "partial"
+    elif embedding_failed:
+        status = "embedding-error"
+    elif errors:
+        status = "partial"
+    return {
+        "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": not all_errors,
+        "status": status,
+        "dbPath": str(db_path),
+        "path": str(path.resolve()),
+        "roots": roots,
+        "errors": all_errors,
+        "summary": {
+            "entryCount": len(entries),
+            "documentCount": len(documents),
+            "sourceKinds": sorted({entry["sourceKind"] for entry in entries}),
+            "embeddingCounts": embedding_counts,
+        },
+        "features": {
+            **schema,
+            "embeddingProvider": meta_embedding_provider,
+            "embeddingModel": embedding_model,
+            "allowModelDownload": allow_model_download,
+            "embeddingMessages": sorted(embedding_messages),
+        },
+    }
+
+
+def _docs_index_status_payload(db_path: Path) -> dict:
+    db_path = db_path.resolve()
+    if not db_path.exists():
+        return {
+            "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "missing",
+            "dbPath": str(db_path),
+            "summary": {},
+            "features": {},
+        }
+    try:
+        conn = _docs_connect_index_readonly(db_path)
+        schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=True)
+        if schema_errors:
+            conn.close()
+            return {
+                "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+                "tool": {"name": "sem", "version": VERSION},
+                "ok": False,
+                "status": "stale-schema",
+                "dbPath": str(db_path),
+                "summary": {},
+                "features": schema,
+                "errors": schema_errors,
+            }
+        meta = {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM docs_meta")}
+        source_kinds = [row[0] for row in conn.execute("SELECT DISTINCT source_kind FROM docs_entries ORDER BY source_kind")]
+        embedding_counts = {row[0]: row[1] for row in conn.execute("SELECT embedding_status, COUNT(*) FROM docs_entries GROUP BY embedding_status")}
+        entry_count = int(conn.execute("SELECT COUNT(*) FROM docs_entries").fetchone()[0])
+        document_count = int(conn.execute("SELECT COUNT(*) FROM docs_documents").fetchone()[0])
+        conn.close()
+    except (OSError, sqlite3.DatabaseError) as exc:
+        return {
+            "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "corrupt-index",
+            "dbPath": str(db_path),
+            "summary": {},
+            "features": {},
+            "errors": [f"{db_path}: docs index is unreadable: {exc}"],
+        }
+    return {
+        "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "status": "ok",
+        "dbPath": str(db_path),
+        "summary": {
+            "entryCount": entry_count,
+            "documentCount": document_count,
+            "sourceKinds": source_kinds,
+            "embeddingCounts": embedding_counts,
+            "updatedAt": meta.get("updatedAt", ""),
+        },
+        "features": {
+            **schema,
+            "embeddingProvider": meta.get("embeddingProvider", ""),
+            "embeddingModel": meta.get("embeddingModel", ""),
+            "includeStd": meta.get("includeStd", ""),
+            "includeCompiler": meta.get("includeCompiler", ""),
+        },
+    }
+
+
+def _docs_search_fts(conn: sqlite3.Connection, query_text: str, limit: int) -> dict[int, float]:
+    tokens = _docs_tokens(query_text)
+    if not tokens:
+        return {}
+    fts_query = " OR ".join(tokens)
+    try:
+        rows = conn.execute(
+            "SELECT rowid, bm25(docs_fts) AS rank FROM docs_fts WHERE docs_fts MATCH ? ORDER BY rank LIMIT ?",
+            (fts_query, max(limit * 4, limit)),
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        rows = []
+    scores: dict[int, float] = {}
+    total = max(len(rows), 1)
+    for index, row in enumerate(rows):
+        scores[int(row[0])] = (total - index) / total
+    return scores
+
+
+def _docs_search_like(conn: sqlite3.Connection, query_text: str, limit: int) -> dict[int, float]:
+    tokens = _docs_tokens(query_text)
+    if not tokens:
+        return {}
+    pattern = "%" + "%".join(tokens) + "%"
+    rows = conn.execute(
+        "SELECT id FROM docs_entries WHERE lower(search_text) LIKE ? LIMIT ?",
+        (pattern, max(limit * 4, limit)),
+    ).fetchall()
+    total = max(len(rows), 1)
+    return {int(row[0]): (total - index) / total for index, row in enumerate(rows)}
+
+
+def _docs_vector_min_score(provider: str) -> float:
+    return 0.15
+
+
+def _docs_search_vectors(
+    conn: sqlite3.Connection,
+    query_text: str,
+    *,
+    provider: str,
+    model: str,
+    limit: int,
+    sqlite_vec_available: bool,
+    allow_model_download: bool,
+) -> tuple[dict[int, float], str]:
+    query_vector, status, detail = _docs_embedding(
+        query_text,
+        provider=provider,
+        model=model,
+        query=True,
+        allow_model_download=allow_model_download,
+    )
+    if query_vector is None:
+        return {}, detail or status
+    if provider == "auto" and "sentence-transformers" in detail:
+        effective_backend = "sentence-transformers"
+    else:
+        effective_backend = provider
+    min_score = _docs_vector_min_score(effective_backend)
+    if sqlite_vec_available and len(query_vector) == DOCS_DEFAULT_EMBEDDING_DIMENSIONS:
+        try:
+            vec_count = int(conn.execute("SELECT COUNT(*) FROM docs_vec").fetchone()[0])
+            embedding_count = int(conn.execute(
+                "SELECT COUNT(*) FROM docs_entries WHERE embedding_status = 'fresh' AND embedding IS NOT NULL "
+                "AND embedding_provider = ? AND embedding_model = ?",
+                (effective_backend, model),
+            ).fetchone()[0])
+            joined_count = int(conn.execute(
+                "SELECT COUNT(*) FROM docs_vec JOIN docs_entries ON docs_vec.rowid = docs_entries.id "
+                "WHERE docs_entries.embedding_status = 'fresh' AND docs_entries.embedding IS NOT NULL "
+                "AND docs_entries.embedding_provider = ? AND docs_entries.embedding_model = ?",
+                (effective_backend, model),
+            ).fetchone()[0])
+            if vec_count <= 0 or vec_count != embedding_count or joined_count != embedding_count:
+                raise sqlite3.DatabaseError(
+                    f"sqlite-vec row count {vec_count} / joined count {joined_count} does not match embedding row count {embedding_count}"
+                )
+            rows = conn.execute(
+                "SELECT rowid, distance FROM docs_vec WHERE embedding MATCH ? AND k = ?",
+                (_docs_sqlite_vec_serialize(query_vector), max(limit * 4, limit)),
+            ).fetchall()
+            scores = {
+                int(row[0]): score
+                for row in rows
+                for score in [1.0 / (1.0 + float(row[1]))]
+                if score >= min_score
+            }
+            return scores, f"sqlite-vec; effectiveBackend={effective_backend}"
+        except sqlite3.DatabaseError as exc:
+            detail = f"sqlite-vec query failed: {exc}; used python cosine fallback"
+    rows = conn.execute(
+        "SELECT id, embedding FROM docs_entries WHERE embedding_status = 'fresh' AND embedding IS NOT NULL "
+        "AND embedding_provider = ? AND embedding_model = ?",
+        (effective_backend, model),
+    ).fetchall()
+    scored: list[tuple[int, float]] = []
+    for row in rows:
+        vector = _docs_blob_to_vector(row["embedding"])
+        score = _docs_cosine(query_vector, vector)
+        if score >= min_score:
+            scored.append((int(row["id"]), score))
+    scored.sort(key=lambda item: item[1], reverse=True)
+    backend = f"python cosine; effectiveBackend={effective_backend}"
+    if detail:
+        backend = f"{detail}; {backend}"
+    return {entry_id: score for entry_id, score in scored[:max(limit * 4, limit)]}, backend
+
+
+def _docs_structured_boost(row: sqlite3.Row, query_tokens: list[str]) -> float:
+    haystacks = {
+        "name": row["name"].lower(),
+        "qualified": row["qualified_name"].lower(),
+        "module": row["module"].lower(),
+        "signature": row["signature_text"].lower(),
+    }
+    boost = 0.0
+    for token in query_tokens:
+        if token in haystacks["qualified"]:
+            boost += 2.0
+        elif token in haystacks["name"]:
+            boost += 1.5
+        elif token in haystacks["module"]:
+            boost += 1.0
+        elif token in haystacks["signature"]:
+            boost += 0.5
+    joined = " ".join(query_tokens)
+    if joined and joined in haystacks["qualified"]:
+        boost += 5.0
+    return boost
+
+
+def _docs_effective_search_limit(limit: int) -> tuple[int, list[str]]:
+    if limit < 1:
+        return limit, [f"docs search --limit must be at least 1, got {limit}"]
+    return min(limit, DOCS_SEARCH_MAX_LIMIT), []
+
+
+def _docs_result_confidence(
+    *,
+    exact_boost: float,
+    fts_score: float,
+    vector_score: float,
+    structured_boost: float,
+) -> str:
+    if exact_boost > 0:
+        return "exact"
+    if fts_score > 0 and structured_boost >= 2.0 and vector_score >= 0.25:
+        return "strong"
+    if fts_score > 0 and (structured_boost >= 1.0 or vector_score >= 0.25):
+        return "medium"
+    return "weak"
+
+
+def _docs_search_payload(
+    query_text: str,
+    *,
+    db_path: Path,
+    limit: int = 10,
+    embedding_provider: str = "auto",
+    embedding_model: str = "",
+    allow_model_download: bool = DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD,
+    include_docs: bool = False,
+) -> dict:
+    db_path = db_path.resolve()
+    requested_limit = limit
+    limit, limit_errors = _docs_effective_search_limit(limit)
+    if limit_errors:
+        return {
+            "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "invalid-arguments",
+            "dbPath": str(db_path),
+            "query": {"text": query_text, "limit": requested_limit, "requestedLimit": requested_limit},
+            "results": [],
+            "errors": limit_errors,
+        }
+    if not db_path.exists():
+        return {
+            "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "index-missing",
+            "dbPath": str(db_path),
+            "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit},
+            "results": [],
+            "errors": [f"{db_path}: docs index does not exist; run sem docs index first"],
+        }
+    try:
+        conn = _docs_connect_index_readonly(db_path)
+        schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=True)
+        if schema_errors:
+            conn.close()
+            return {
+                "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+                "tool": {"name": "sem", "version": VERSION},
+                "ok": False,
+                "status": "stale-schema",
+                "dbPath": str(db_path),
+                "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit},
+                "features": schema,
+                "results": [],
+                "errors": schema_errors,
+            }
+        meta = {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM docs_meta")}
+    except (OSError, sqlite3.DatabaseError) as exc:
+        return {
+            "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "corrupt-index",
+            "dbPath": str(db_path),
+            "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit},
+            "results": [],
+            "errors": [f"{db_path}: docs index is unreadable: {exc}"],
+        }
+    provider = embedding_provider
+    if provider == "auto":
+        provider = meta.get("embeddingProvider") or DOCS_DEFAULT_EMBEDDING_PROVIDER
+    model = embedding_model or meta.get("embeddingModel") or DOCS_DEFAULT_EMBEDDING_MODEL
+    try:
+        fts_scores = _docs_search_fts(conn, query_text, limit) if schema["ftsAvailable"] else _docs_search_like(conn, query_text, limit)
+        if not fts_scores:
+            fts_scores = _docs_search_like(conn, query_text, limit)
+        vector_scores, vector_backend = _docs_search_vectors(
+            conn,
+            query_text,
+            provider=provider,
+            model=model,
+            limit=limit,
+            sqlite_vec_available=bool(schema["sqliteVecAvailable"]),
+            allow_model_download=allow_model_download,
+        )
+        vector_candidate_ids = set(vector_scores)
+        candidate_ids = set(fts_scores) | vector_candidate_ids
+        query_tokens = _docs_tokens(query_text)
+        if query_tokens:
+            exact_rows = conn.execute(
+                "SELECT id FROM docs_entries WHERE lower(name) = ? OR lower(qualified_name) = ? OR lower(full_name) = ? OR lower(target) = ?",
+                (query_text.lower(), query_text.lower(), query_text.lower(), query_text.lower()),
+            ).fetchall()
+            candidate_ids.update(int(row[0]) for row in exact_rows)
+    except (OSError, sqlite3.DatabaseError, json.JSONDecodeError) as exc:
+        conn.close()
+        return {
+            "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "corrupt-index",
+            "dbPath": str(db_path),
+            "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit, "embeddingProvider": provider, "embeddingModel": model},
+            "features": schema,
+            "results": [],
+            "errors": [f"{db_path}: docs index query failed: {exc}"],
+        }
+    if not candidate_ids:
+        conn.close()
+        return {
+            "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": True,
+            "status": "ok",
+            "dbPath": str(db_path),
+            "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit, "embeddingProvider": provider, "embeddingModel": model},
+            "features": {**schema, "vectorBackend": vector_backend, "includeDocs": include_docs, "allowModelDownload": allow_model_download},
+            "results": [],
+            "summary": {"resultCount": 0, "candidateCount": 0, "noConfidentMatches": True, "confidenceCounts": {"exact": 0, "strong": 0, "medium": 0, "weak": 0}},
+        }
+    try:
+        placeholders = ",".join("?" for _ in candidate_ids)
+        rows = conn.execute(f"SELECT * FROM docs_entries WHERE id IN ({placeholders})", tuple(candidate_ids)).fetchall()
+        scored_results = []
+        for row in rows:
+            entry_id = int(row["id"])
+            fts_score = float(fts_scores.get(entry_id, 0.0))
+            vector_score = float(vector_scores.get(entry_id, 0.0))
+            structured_boost = _docs_structured_boost(row, query_tokens)
+            exact_boost = 20.0 if query_text.lower() in {
+                row["name"].lower(), row["qualified_name"].lower(), row["full_name"].lower(), row["target"].lower(),
+            } else 0.0
+            doc = json.loads(row["doc_json"])
+            visibility = doc.get("visibility", {}) if isinstance(doc.get("visibility", {}), dict) else {}
+            if visibility.get("internal"):
+                structured_boost -= 8.0
+            elif visibility.get("public"):
+                structured_boost += 2.0
+            if row["kind"] == "callTarget":
+                structured_boost += 1.0
+            score = exact_boost + structured_boost + (fts_score * 4.0) + (vector_score * 10.0)
+            confidence = _docs_result_confidence(
+                exact_boost=exact_boost,
+                fts_score=fts_score,
+                vector_score=vector_score,
+                structured_boost=structured_boost,
+            )
+            result = {
+                "score": score,
+                "confidence": confidence,
+                "ftsScore": fts_score,
+                "vectorScore": vector_score,
+                "structuredBoost": structured_boost,
+                "sourceKind": row["source_kind"],
+                "kind": row["kind"],
+                "module": row["module"],
+                "moduleName": row["module_name"],
+                "name": row["name"],
+                "qualifiedName": row["qualified_name"],
+                "fullName": row["full_name"],
+                "target": row["target"],
+                "summary": row["summary"],
+                "signature": row["signature_text"],
+                "location": {"file": row["path"], "line": row["line"]},
+                "freshness": row["embedding_status"],
+            }
+            if include_docs:
+                result["doc"] = doc
+            scored_results.append(result)
+        scored_results.sort(key=lambda item: item["score"], reverse=True)
+        results = scored_results[:limit]
+    except (OSError, sqlite3.DatabaseError, json.JSONDecodeError) as exc:
+        conn.close()
+        return {
+            "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "corrupt-index",
+            "dbPath": str(db_path),
+            "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit, "embeddingProvider": provider, "embeddingModel": model},
+            "features": schema,
+            "results": [],
+            "errors": [f"{db_path}: docs index result hydration failed: {exc}"],
+        }
+    conn.close()
+    return {
+        "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": True,
+        "status": "ok",
+        "dbPath": str(db_path),
+        "query": {"text": query_text, "limit": limit, "requestedLimit": requested_limit, "embeddingProvider": provider, "embeddingModel": model},
+        "features": {**schema, "vectorBackend": vector_backend, "includeDocs": include_docs, "allowModelDownload": allow_model_download},
+        "results": results,
+        "agentGuidance": {
+            "codegenSafe": bool(include_docs),
+            "text": "Search results are discovery candidates. Use docs get, slice, or --include-docs before generating calls that depend on effects, failures, cleanup, capabilities, or preconditions.",
+        },
+        "summary": {
+            "resultCount": len(results),
+            "candidateCount": len(candidate_ids),
+            "noConfidentMatches": not any(result.get("confidence") in {"exact", "strong", "medium"} for result in results),
+            "confidenceCounts": {
+                confidence: sum(1 for result in results if result.get("confidence") == confidence)
+                for confidence in ("exact", "strong", "medium", "weak")
+            },
         },
     }
 
@@ -8620,7 +9860,15 @@ def command_new(args: argparse.Namespace) -> int:
     github_url = getattr(args, "github_url", None)
     if not args.json and not github_url:
         github_url = _prompt_for_starter_github_url()
-    payload = _starter_project_payload(Path(args.path), force=bool(args.force), github_url=github_url)
+    docs_index_opt_in = bool(getattr(args, "enable_docs_index", False))
+    if not args.json and not docs_index_opt_in and not bool(getattr(args, "no_docs_index", False)):
+        docs_index_opt_in = _prompt_for_starter_docs_index_opt_in()
+    payload = _starter_project_payload(
+        Path(args.path),
+        force=bool(args.force),
+        github_url=github_url,
+        docs_index_opt_in=docs_index_opt_in,
+    )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -8632,6 +9880,8 @@ def command_new(args: argparse.Namespace) -> int:
                 print(f"- updated {path}")
             if payload["project"].get("githubRepoUrl"):
                 print(f"- github {payload['project']['githubRepoUrl']}")
+            if payload["project"].get("docsIndex", {}).get("enabled"):
+                print("- semantic docs index setup enabled")
             print("next:")
             for item in payload["nextCommands"]:
                 print(f"- {item['command']}")
@@ -8785,6 +10035,61 @@ def command_docs(args: argparse.Namespace) -> int:
                 print(f"- {match.get('fullName') or match.get('target')}", file=sys.stderr)
         else:
             print(f"docs get: no standard-library operation named {args.operation}", file=sys.stderr)
+        return 0 if payload.get("ok") else 1
+    if args.docs_command == "index":
+        path = Path(args.path)
+        db_path = Path(args.db) if args.db else _docs_default_db_path(path)
+        payload = _docs_index_payload(
+            path,
+            db_path=db_path,
+            include_std=bool(args.include_std),
+            include_compiler=not bool(args.no_compiler),
+            summary_tag=args.summary_tag,
+            std_root=Path(args.std_path) if args.std_path else None,
+            embedding_provider=args.embedding_provider,
+            embedding_model=args.embedding_model,
+            enable_sqlite_vec=not bool(args.no_sqlite_vec),
+            allow_model_download=bool(args.allow_model_download),
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"indexed {payload['summary']['entryCount']} docs entries into {payload['dbPath']}")
+            if payload.get("errors"):
+                print("errors:", file=sys.stderr)
+                for error in payload["errors"]:
+                    print(f"- {error}", file=sys.stderr)
+        return 0 if payload.get("ok") else 1
+    if args.docs_command == "search":
+        db_path = Path(args.db) if args.db else _docs_default_db_path(Path(args.path))
+        payload = _docs_search_payload(
+            args.query,
+            db_path=db_path,
+            limit=args.limit,
+            embedding_provider=args.embedding_provider,
+            embedding_model=args.embedding_model,
+            allow_model_download=bool(args.allow_model_download),
+            include_docs=bool(args.include_docs),
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            for result in payload.get("results", []):
+                location = result.get("location", {})
+                print(f"{result['score']:.3f} {result.get('confidence', 'weak')} {result['qualifiedName']} {location.get('file', '')}:{location.get('line', 0)}")
+                if result.get("summary"):
+                    print(f"  {result['summary']}")
+        return 0 if payload.get("ok") else 1
+    if args.docs_command == "status":
+        db_path = Path(args.db) if args.db else _docs_default_db_path(Path(args.path))
+        payload = _docs_index_status_payload(db_path)
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"status: {payload['status']}")
+            print(f"db: {payload['dbPath']}")
+            if payload.get("summary"):
+                print(f"entries: {payload['summary'].get('entryCount', 0)}")
         return 0 if payload.get("ok") else 1
     print(f"docs: unsupported command {args.docs_command}", file=sys.stderr)
     return 2
@@ -9079,6 +10384,16 @@ def command_mcp(args: argparse.Namespace) -> int:
         server_args += ["--port", str(args.port)]
     if args.path is not None:
         server_args += ["--path", args.path]
+    if getattr(args, "docs_path", None) is not None:
+        server_args += ["--docs-path", args.docs_path]
+    if getattr(args, "docs_db", None) is not None:
+        server_args += ["--docs-db", args.docs_db]
+    if getattr(args, "docs_watch_interval", None) is not None:
+        server_args += ["--docs-watch-interval", str(args.docs_watch_interval)]
+    if getattr(args, "docs_allow_model_download", False):
+        server_args += ["--docs-allow-model-download"]
+    if getattr(args, "no_docs_std", False):
+        server_args += ["--no-docs-std"]
     sem_mcp.main(server_args)
     return 0
 
@@ -9134,6 +10449,11 @@ def build_parser() -> argparse.ArgumentParser:
                      help="overwrite the starter scaffold files when the target directory already exists")
     new.add_argument("--github-url",
                      help="optional GitHub repository URL used to replace the placeholder modulePath during setup")
+    docs_index_group = new.add_mutually_exclusive_group()
+    docs_index_group.add_argument("--enable-docs-index", action="store_true",
+                                  help="add next steps for an opt-in local semantic docs index")
+    docs_index_group.add_argument("--no-docs-index", action="store_true",
+                                  help="skip the interactive semantic docs index prompt")
     new.add_argument("path")
     new.set_defaults(func=command_new)
 
@@ -9290,12 +10610,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     docs = subparsers.add_parser(
         "docs",
-        help="list or get standard-library API documentation from typed comments",
+        help="list, get, index, or search SemanticScript API documentation",
     )
     docs_subparsers = docs.add_subparsers(dest="docs_command", required=True)
     docs_list = docs_subparsers.add_parser(
         "list",
-        help="list standard-library operations with short summaries",
+        help="list documented operations and call targets with short summaries",
     )
     docs_list.add_argument("--json", action="store_true",
                            help="emit machine-readable docs inventory")
@@ -9312,7 +10632,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     docs_get = docs_subparsers.add_parser(
         "get",
-        help="get documentation for one standard-library operation/function",
+        help="get documentation for one operation or call target",
     )
     docs_get.add_argument("--json", action="store_true",
                           help="emit machine-readable operation documentation")
@@ -9323,8 +10643,75 @@ def build_parser() -> argparse.ArgumentParser:
     docs_get.add_argument("--all", action="store_true",
                           help="allow lookup of internal runtimeBinding helper operations")
     docs_get.add_argument("operation",
-                          help="operation name, module.name, or full standard.module.name")
+                          help="operation, target, module.name, or full module-qualified name")
     docs_get.set_defaults(func=command_docs)
+
+    docs_index = docs_subparsers.add_parser(
+        "index",
+        help="build or refresh a SQLite docs search index for project/std APIs",
+    )
+    docs_index.add_argument("--json", action="store_true",
+                            help="emit machine-readable index result")
+    docs_index.add_argument("--path", default=".",
+                            help="project/source path to index")
+    docs_index.add_argument("--db",
+                            help="SQLite index path; defaults to PATH/.sem/docs.sqlite")
+    docs_index.add_argument("--std-path",
+                            help="standard-library root to include when --include-std is set")
+    docs_index.add_argument("--include-std", action="store_true",
+                            help="also index standard-library docs")
+    docs_index.add_argument("--no-compiler", action="store_true",
+                            help="skip compiler-owned static target docs")
+    docs_index.add_argument("--summary-tag", default="rationale",
+                            choices=(*STD_DOC_COMMENT_TAGS, "purpose"),
+                            help="prefer this typed comment tag for summaries")
+    docs_index.add_argument("--embedding-provider", default=DOCS_DEFAULT_EMBEDDING_PROVIDER,
+                            choices=("none", "sentence-transformers", "auto"),
+                            help="real embedding provider for vector search rows")
+    docs_index.add_argument("--embedding-model", default=DOCS_DEFAULT_EMBEDDING_MODEL,
+                            help="embedding model name for sentence-transformers provider")
+    docs_index.add_argument("--allow-model-download", action="store_true",
+                            help="allow sentence-transformers to download the model if it is not already cached locally")
+    docs_index.add_argument("--no-sqlite-vec", action="store_true",
+                            help="disable optional sqlite-vec virtual-table integration")
+    docs_index.set_defaults(func=command_docs)
+
+    docs_search = docs_subparsers.add_parser(
+        "search",
+        help="search a SQLite docs index with hybrid FTS/vector ranking",
+    )
+    docs_search.add_argument("--json", action="store_true",
+                             help="emit machine-readable search results")
+    docs_search.add_argument("--path", default=".",
+                             help="project/source path used to infer default DB location")
+    docs_search.add_argument("--db",
+                             help="SQLite index path; defaults to PATH/.sem/docs.sqlite")
+    docs_search.add_argument("--limit", type=int, default=10,
+                             help="maximum results to return")
+    docs_search.add_argument("--embedding-provider", default="auto",
+                             choices=("none", "sentence-transformers", "auto"),
+                             help="query embedding provider; auto follows index metadata")
+    docs_search.add_argument("--embedding-model", default="",
+                               help="embedding model name for sentence-transformers provider")
+    docs_search.add_argument("--allow-model-download", action="store_true",
+                             help="allow sentence-transformers to download the query model if it is not already cached locally")
+    docs_search.add_argument("--include-docs", action="store_true",
+                             help="include full docs objects in each result; default search results are compact")
+    docs_search.add_argument("query",
+                             help="English, operation-like, or type/effect-oriented query")
+    docs_search.set_defaults(func=command_docs)
+
+    docs_status = docs_subparsers.add_parser(
+        "status",
+        help="inspect a SQLite docs search index",
+    )
+    docs_status.add_argument("--json", action="store_true",
+                             help="emit machine-readable index status")
+    docs_status.add_argument("--path", default=".",
+                             help="project/source path used to infer default DB location")
+    docs_status.add_argument("--db",
+                             help="SQLite index path; defaults to PATH/.sem/docs.sqlite")
+    docs_status.set_defaults(func=command_docs)
 
     graph = subparsers.add_parser(
         "graph",
@@ -9488,6 +10875,11 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_server.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
     mcp_server.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
     mcp_server.add_argument("--path", help="HTTP route for the streamable-http transport")
+    mcp_server.add_argument("--docs-path", help="start a background docs index worker for this project/source path")
+    mcp_server.add_argument("--docs-db", help="SQLite docs index path for the background docs worker")
+    mcp_server.add_argument("--docs-watch-interval", type=float, help="background docs polling interval in seconds")
+    mcp_server.add_argument("--docs-allow-model-download", action="store_true", help="allow the MCP docs worker to download the embedding model when it is not cached")
+    mcp_server.add_argument("--no-docs-std", action="store_true", help="do not include std docs in the MCP background docs index")
     mcp_server.set_defaults(func=command_mcp)
 
     return parser

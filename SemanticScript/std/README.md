@@ -109,6 +109,18 @@ with `docs get TARGET --json`. Compiler-owned modules use an empty
 carry `loweringStatus: "reserved"`; lowered targets report
 `visibility.apiTier: "compiler-lowered"`.
 
+The same docs objects can be cached for project/user code with
+`docs index --path PATH --db .sem/docs.sqlite --json` and searched with
+`docs search QUERY --db .sem/docs.sqlite --json`. The SQLite cache stores FTS
+text plus real sentence-transformer vector blobs; it uses `sqlite-vec` when
+available and otherwise falls back to in-process cosine ranking over the stored
+semantic vectors. Install `requirements-docs.txt` before indexing with the
+default embedding provider, then pre-cache `BAAI/bge-small-en-v1.5` or pass
+`--allow-model-download` on the first trusted-network index. New projects can opt in with
+`sem new --enable-docs-index PATH`; otherwise this stays off. MCP mode exposes
+the same list/get/search surfaces and can run a path-scoped background docs
+worker so changed `.sem` files are re-indexed without blocking search requests.
+
 This library tree intentionally has no `build.sem`. Add standard modules under
 `std/<module>/main.sem` and relay them from `std/module.sem`.
 

@@ -100,8 +100,9 @@ from `check`, `fix`, `graph`, and `slice` are usually the right first hop.
 Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
 `sem.readiness.v1`, `sem.context.v1`, `sem.symbols.v1`, `sem.check.v1`,
 `sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.docs.v1`,
-`sem.explain.v1`, `sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`,
-`sem.test.v1`, `sem.deps.v1`, and provisional `sem.doctor.v0`.
+`sem.docsIndex.v1`, `sem.docsSearch.v1`, `sem.explain.v1`,
+`sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`,
+`sem.deps.v1`, and provisional `sem.doctor.v0`.
 
 Read `nextCommands` as machine-facing instructions. Prefer `argv` over
 `command`, honor `cwd`, and replay only entries where `replayable` is true.
@@ -220,6 +221,15 @@ local declaration/use pairs in `usage.localCapabilityRows`; do not blindly copy
 std-internal capability names.
 Unexported helper operations report `visibility.apiTier: "helper"` and may carry
 `agentWarnings`; prefer exported APIs where available.
+For lookup over user/generated code, run `docs index --path PATH --db DB --json`
+and query it with `docs search QUERY --db DB --json`; MCP mode exposes the same
+docs list/get/search surfaces and can keep the path-scoped SQLite index fresh
+with its background docs worker. Docs indexing uses real sentence-transformer
+embeddings by default; install `requirements-docs.txt` before indexing. When
+creating a new project, suggest `sem new --enable-docs-index PATH` if the user
+wants local semantic API search; otherwise leave it off. Treat `docs search`
+results as discovery candidates and use `docs get`, `slice`, or `--include-docs`
+before generating calls.
 
 Avoid `c.malloc`/`c.free` in demo apps unless heap behavior is the point. If
 used, declare heap effects and capabilities, handle allocation failure, and emit
@@ -377,6 +387,8 @@ Current JSON surfaces:
   sem.slice.v1
   sem.size.v1
   sem.docs.v1
+  sem.docsIndex.v1
+  sem.docsSearch.v1
   sem.explain.v1
   sem.fixPlan.v1
   sem.patch.v1

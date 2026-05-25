@@ -230,6 +230,8 @@ Current stable `v1` schema versions:
 - `sem.slice.v1`
 - `sem.size.v1`
 - `sem.docs.v1`
+- `sem.docsIndex.v1`
+- `sem.docsSearch.v1`
 - `sem.explain.v1`
 - `sem.fixPlan.v1`
 - `sem.patch.v1`
@@ -328,6 +330,29 @@ target payload for lowered `gui.*`, known `json.*`, `console.*`, `math.*`,
 `usage.importRequired: false` and an empty `usage.importRow`. Get payloads keep
 `moduleDocs` compact; use `list` for the broad inventory. Reserved targets
 carry `loweringStatus: "reserved"` and should not be used for generated code.
+
+For user/generated code lookup, build a SQLite docs cache and search it:
+
+```powershell
+python SemanticScript\tools\sem.py docs index --path apps\my-app --db .sem\docs.sqlite --include-std --json
+python SemanticScript\tools\sem.py docs search "create task from title" --db .sem\docs.sqlite --json
+```
+
+The index stores structured docs plus FTS text and real semantic vector blobs.
+The default embedding provider is `sentence-transformers` using the local CPU
+model `BAAI/bge-small-en-v1.5`; install it with
+`python -m pip install -r requirements-docs.txt`, then either pre-cache the model
+or explicitly pass `--allow-model-download` on the first trusted-network index.
+The index command returns `status: "embedding-error"` instead of silently falling
+back to fake vectors when the model or provider is unavailable. When `sqlite-vec` is available, the indexer
+creates a vector virtual table; otherwise search uses the same stored semantic
+vectors with an in-process cosine fallback.
+`sem new --enable-docs-index PATH` is the opt-in starter-project path; plain
+`sem new PATH` leaves semantic indexing disabled and only suggests it when the
+user chooses the prompt.
+MCP mode exposes `docs_list`, `docs_get`, `docs_watch`, `docs_reindex`,
+`docs_index_status`, and `docs_search`; `docs_watch` keeps the path-derived
+SQLite cache refreshed from changed `.sem` files on a background thread.
 
 ## Repair And Patch
 

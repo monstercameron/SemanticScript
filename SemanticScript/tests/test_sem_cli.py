@@ -2,6 +2,8 @@ import argparse
 import io
 import importlib.util
 import json
+import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -53,6 +55,15 @@ return error overflow
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
 AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
+
+
+def fake_semantic_embedding(text: str, model_name: str, *, query: bool = False, **kwargs) -> list[float]:
+    vector = [0.0] * sem.DOCS_DEFAULT_EMBEDDING_DIMENSIONS
+    for token in re.findall(r"[A-Za-z0-9]+", text.lower()):
+        bucket = sum(ord(char) for char in token) % sem.DOCS_DEFAULT_EMBEDDING_DIMENSIONS
+        vector[bucket] += 1.0
+    norm = sum(value * value for value in vector) ** 0.5
+    return [value / norm for value in vector] if norm else vector
 
 
 def load_sem_launcher():
@@ -369,6 +380,364 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(realloc_payload["ok"])
         self.assertEqual(realloc_payload["target"]["loweringStatus"], "partial")
         self.assertFalse(realloc_payload["target"]["usage"]["availableForCodegen"])
+
+    def test_docs_index_and_search_user_generated_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "# rationale: Task API for creating task records from user text.\n"
+                "module examples.tasks\n"
+                "# rationale: Create one task and return its identifier.\n"
+                "# failure: The caller must validate title text before persisting.\n"
+                "operation createTask\n"
+                "input operation createTask title String\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task from a title and return its id\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=fake_semantic_embedding):
+                index_payload = sem._docs_index_payload(
+                    root,
+                    db_path=db_path,
+                    include_std=False,
+                    include_compiler=False,
+                )
+                search_payload = sem._docs_search_payload("create task from title", db_path=db_path, limit=3)
+                full_payload = sem._docs_search_payload("create task from title", db_path=db_path, limit=1, include_docs=True)
+            status_payload = sem._docs_index_status_payload(db_path)
+
+        self.assertTrue(index_payload["ok"])
+        self.assertEqual(index_payload["schemaVersion"], "sem.docsIndex.v1")
+        self.assertTrue(status_payload["ok"])
+        self.assertEqual(search_payload["schemaVersion"], "sem.docsSearch.v1")
+        self.assertTrue(search_payload["ok"])
+        self.assertGreaterEqual(len(search_payload["results"]), 1)
+        self.assertEqual(search_payload["results"][0]["qualifiedName"], "examples.tasks.createTask")
+        self.assertEqual(search_payload["results"][0]["sourceKind"], "project")
+        self.assertEqual(index_payload["features"]["embeddingProvider"], "sentence-transformers")
+        self.assertIn(search_payload["results"][0]["confidence"], {"exact", "strong", "medium", "weak"})
+        self.assertNotIn("doc", search_payload["results"][0])
+
+        self.assertIn("doc", full_payload["results"][0])
+
+    def test_docs_default_db_path_treats_missing_non_source_path_as_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            missing_project = root / "new-project"
+            missing_source = root / "new-project" / "main.sem"
+
+            project_db = sem._docs_default_db_path(missing_project)
+            source_db = sem._docs_default_db_path(missing_source)
+
+        self.assertEqual(project_db, (missing_project / ".sem" / "docs.sqlite").resolve())
+        self.assertEqual(source_db, (missing_project / ".sem" / "docs.sqlite").resolve())
+
+    def test_docs_index_default_provider_is_real_semantic_embedding(self) -> None:
+        parser = sem.build_parser()
+
+        args = parser.parse_args(["docs", "index", "--path", "apps"])
+
+        self.assertEqual(args.embedding_provider, "sentence-transformers")
+
+    def test_docs_index_rejects_removed_hash_embedding_provider(self) -> None:
+        parser = sem.build_parser()
+
+        with mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["docs", "index", "--embedding-provider", "hash"])
+
+    def test_docs_index_refresh_prunes_excluded_compiler_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+
+            first_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=False,
+                include_compiler=True,
+                embedding_provider="none",
+            )
+            first_search = sem._docs_search_payload("console.writeLine", db_path=db_path, limit=5)
+            second_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=False,
+                include_compiler=False,
+                embedding_provider="none",
+            )
+            second_search = sem._docs_search_payload("console.writeLine", db_path=db_path, limit=5)
+            status_payload = sem._docs_index_status_payload(db_path)
+
+        self.assertTrue(first_payload["ok"])
+        self.assertTrue(any(result["sourceKind"] == "compiler" for result in first_search["results"]))
+        self.assertTrue(second_payload["ok"])
+        self.assertEqual(status_payload["summary"]["sourceKinds"], ["project"])
+        self.assertEqual(second_search["results"], [])
+
+    def test_docs_search_returns_no_match_for_unrelated_fts_query(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False, embedding_provider="none")
+
+            search_payload = sem._docs_search_payload("zzzzqv unrelated phrase", db_path=db_path, limit=5)
+
+        self.assertTrue(search_payload["ok"])
+        self.assertEqual(search_payload["results"], [])
+        self.assertTrue(search_payload["summary"]["noConfidentMatches"])
+
+    def test_docs_search_validates_and_clamps_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "missing.sqlite"
+
+            invalid_payload = sem._docs_search_payload("anything", db_path=db_path, limit=-1)
+            clamped_payload = sem._docs_search_payload("anything", db_path=db_path, limit=999)
+
+        self.assertFalse(invalid_payload["ok"])
+        self.assertEqual(invalid_payload["status"], "invalid-arguments")
+        self.assertEqual(clamped_payload["status"], "index-missing")
+        self.assertEqual(clamped_payload["query"]["limit"], sem.DOCS_SEARCH_MAX_LIMIT)
+        self.assertEqual(clamped_payload["query"]["requestedLimit"], 999)
+
+    def test_docs_confidence_does_not_trust_vector_only_matches(self) -> None:
+        confidence = sem._docs_result_confidence(
+            exact_boost=0.0,
+            fts_score=0.0,
+            vector_score=0.95,
+            structured_boost=3.0,
+        )
+
+        self.assertEqual(confidence, "weak")
+
+    def test_docs_status_and_search_report_stale_schema_without_mutating_db(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "docs.sqlite"
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE docs_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("INSERT INTO docs_meta(key, value) VALUES ('schemaVersion', '1')")
+            conn.commit()
+            conn.close()
+
+            status_payload = sem._docs_index_status_payload(db_path)
+            search_payload = sem._docs_search_payload("anything", db_path=db_path)
+            tables = {
+                row[0]
+                for row in sqlite3.connect(db_path).execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+
+        self.assertFalse(status_payload["ok"])
+        self.assertEqual(status_payload["status"], "stale-schema")
+        self.assertFalse(search_payload["ok"])
+        self.assertEqual(search_payload["status"], "stale-schema")
+        self.assertEqual(tables, {"docs_meta"})
+
+    def test_docs_embedding_auto_requires_real_provider(self) -> None:
+        with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=ValueError("model unavailable")):
+            vector, status, detail = sem._docs_embedding(
+                "create task",
+                provider="auto",
+                model=sem.DOCS_DEFAULT_EMBEDDING_MODEL,
+            )
+            direct_vector, direct_status, direct_detail = sem._docs_embedding(
+                "create task",
+                provider="sentence-transformers",
+                model=sem.DOCS_DEFAULT_EMBEDDING_MODEL,
+            )
+
+        self.assertIsNone(vector)
+        self.assertEqual(status, "failed")
+        self.assertIn("model unavailable", detail)
+        self.assertIsNone(direct_vector)
+        self.assertEqual(direct_status, "failed")
+        self.assertIn("model unavailable", direct_detail)
+
+    def test_docs_index_reports_missing_real_embeddings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=ValueError("model unavailable")):
+                index_payload = sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False)
+
+        self.assertFalse(index_payload["ok"])
+        self.assertEqual(index_payload["status"], "embedding-error")
+        self.assertEqual(index_payload["features"]["embeddingProvider"], "sentence-transformers")
+        self.assertIn("real semantic embedding generation failed", index_payload["errors"][0])
+
+    def test_docs_search_uses_indexed_embedding_model_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=fake_semantic_embedding):
+                sem._docs_index_payload(
+                    root,
+                    db_path=db_path,
+                    include_std=False,
+                    include_compiler=False,
+                    embedding_model="custom-local-model",
+                )
+
+                search_payload = sem._docs_search_payload("create task", db_path=db_path, limit=5)
+
+        self.assertTrue(search_payload["ok"])
+        self.assertEqual(search_payload["query"]["embeddingModel"], "custom-local-model")
+
+    def test_docs_search_reports_corrupt_doc_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False, embedding_provider="none")
+            conn = sqlite3.connect(db_path)
+            conn.execute("UPDATE docs_entries SET doc_json = '{not json' WHERE qualified_name = 'examples.tasks.createTask'")
+            conn.commit()
+            conn.close()
+
+            search_payload = sem._docs_search_payload("createTask", db_path=db_path, limit=5)
+
+        self.assertFalse(search_payload["ok"])
+        self.assertEqual(search_payload["status"], "corrupt-index")
+        self.assertIn("result hydration failed", search_payload["errors"][0])
+
+    def test_docs_index_rebuilds_stale_owned_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            db_path.parent.mkdir()
+            source.write_text(
+                "module examples.tasks\n"
+                "# rationale: Create task records.\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE docs_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("CREATE TABLE docs_entries(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            conn.execute("CREATE TABLE docs_documents(path TEXT PRIMARY KEY)")
+            conn.commit()
+            conn.close()
+
+            index_payload = sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False, embedding_provider="none")
+            status_payload = sem._docs_index_status_payload(db_path)
+            search_payload = sem._docs_search_payload("create task", db_path=db_path)
+
+        self.assertTrue(index_payload["ok"])
+        self.assertTrue(status_payload["ok"])
+        self.assertEqual(search_payload["results"][0]["qualifiedName"], "examples.tasks.createTask")
+
+    def test_docs_index_reports_corrupt_db_as_json_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            db_path.parent.mkdir()
+            source.write_text(
+                "module examples.tasks\n"
+                "operation createTask\n"
+                "output operation createTask Int32\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            db_path.write_text("not sqlite", encoding="utf-8")
+
+            index_payload = sem._docs_index_payload(root, db_path=db_path, include_std=False, include_compiler=False)
+
+        self.assertFalse(index_payload["ok"])
+        self.assertEqual(index_payload["status"], "corrupt-index")
+
+    def test_docs_vector_search_falls_back_when_sqlite_vec_table_is_incomplete(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE docs_entries(id INTEGER PRIMARY KEY, embedding_status TEXT, embedding_provider TEXT, embedding_model TEXT, embedding BLOB)"
+        )
+        conn.execute("CREATE TABLE docs_vec(rowid INTEGER PRIMARY KEY, embedding BLOB)")
+        vector = fake_semantic_embedding("alpha task", sem.DOCS_DEFAULT_EMBEDDING_MODEL)
+        conn.execute(
+            "INSERT INTO docs_entries(id, embedding_status, embedding_provider, embedding_model, embedding) VALUES (1, 'fresh', 'sentence-transformers', ?, ?)",
+            (sem.DOCS_DEFAULT_EMBEDDING_MODEL, sem._docs_vector_to_blob(vector)),
+        )
+        conn.execute("INSERT INTO docs_vec(rowid, embedding) VALUES (999, ?)", (sem._docs_vector_to_blob(vector),))
+
+        with mock.patch.object(sem, "_docs_sentence_transformer_embedding", side_effect=fake_semantic_embedding):
+            scores, backend = sem._docs_search_vectors(
+                conn,
+                "alpha task",
+                provider="sentence-transformers",
+                model=sem.DOCS_DEFAULT_EMBEDDING_MODEL,
+                limit=5,
+                sqlite_vec_available=True,
+                allow_model_download=False,
+            )
+
+        conn.close()
+        self.assertIn(1, scores)
+        self.assertIn("python cosine fallback", backend)
 
     def test_docs_get_json_target_returns_cleanup_guidance(self) -> None:
         payload = sem._docs_payload("get", operation_name="json.createDocument")
@@ -880,6 +1249,7 @@ class TestSemAgentPayloads(unittest.TestCase):
 
             gitignore_text = (root / ".gitignore").read_text(encoding="utf-8")
             self.assertIn(".semcache/", gitignore_text)
+            self.assertIn(".sem/docs.sqlite", gitignore_text)
             self.assertIn("!sem.lock", gitignore_text)  # lockfile stays committed
 
             build_text = (root / "build.sem").read_text(encoding="utf-8")
@@ -900,6 +1270,24 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(any(item["kind"] == "check" for item in payload["nextCommands"]))
             self.assertTrue(any(item["kind"] == "test" for item in payload["nextCommands"]))
             self.assertTrue(any(item["kind"] == "run" for item in payload["nextCommands"]))
+            self.assertFalse(payload["project"]["docsIndex"]["enabled"])
+
+    def test_new_payload_can_opt_in_to_semantic_docs_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            payload = sem._starter_project_payload(root, docs_index_opt_in=True)
+
+            self.assertTrue(payload["ok"])
+            self.assertTrue(payload["project"]["docsIndex"]["enabled"])
+            self.assertEqual(payload["project"]["docsIndex"]["embeddingProvider"], "sentence-transformers")
+            kinds = [item["kind"] for item in payload["nextCommands"]]
+            self.assertIn("docs-deps", kinds)
+            self.assertIn("docs-index", kinds)
+            docs_index_command = next(item for item in payload["nextCommands"] if item["kind"] == "docs-index")
+            self.assertIn("--allow-model-download", docs_index_command["argv"])
+            for kind in ("docs-deps", "docs-index", "docs-search"):
+                command = next(item for item in payload["nextCommands"] if item["kind"] == kind)
+                self.assertFalse(command["replayable"])
 
     def test_new_payload_refuses_nonempty_directory_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -962,6 +1350,8 @@ class TestSemAgentPayloads(unittest.TestCase):
                 force=False,
                 json=False,
                 github_url=None,
+                enable_docs_index=False,
+                no_docs_index=True,
             )
             with mock.patch.object(
                 sem,
@@ -973,6 +1363,24 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(code, 0)
             build_text = (root / "build.sem").read_text(encoding="utf-8")
             self.assertIn("modulePath helloWorld github.com/acme/hello-world", build_text)
+
+    def test_command_new_prompts_for_docs_index_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "hello-world"
+            args = argparse.Namespace(
+                path=str(root),
+                force=False,
+                json=False,
+                github_url="https://github.com/acme/hello-world",
+                enable_docs_index=False,
+                no_docs_index=False,
+            )
+            with mock.patch.object(sem, "_prompt_for_starter_docs_index_opt_in", return_value=True) as prompt:
+                with mock.patch("sys.stdout", new=io.StringIO()):
+                    code = sem.command_new(args)
+
+            self.assertEqual(code, 0)
+            prompt.assert_called_once()
 
     def test_new_starter_project_checks_and_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
