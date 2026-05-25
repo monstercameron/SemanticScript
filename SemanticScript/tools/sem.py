@@ -17,10 +17,12 @@ import json
 import os
 import queue
 import re
+import secrets
 import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -2085,11 +2087,12 @@ def _run_compiler(source: Path, compiler_args: list[str]) -> int:
 
 
 def _capture_compiler(source: Path, compiler_args: list[str],
-                      timeout: int | None = None) -> subprocess.CompletedProcess:
+                      timeout: int | None = None,
+                      env: dict | None = None) -> subprocess.CompletedProcess:
     semsc_path = ROOT / "compiler" / "semsc.py"
     command = [sys.executable, str(semsc_path), str(source), *compiler_args]
     return subprocess.run(command, capture_output=True, text=True,
-                          timeout=timeout)
+                          timeout=timeout, env=env)
 
 
 def _extract_flag(args: list[str], flag: str) -> tuple[bool, list[str]]:
@@ -9460,6 +9463,517 @@ def command_run(args: argparse.Namespace) -> int:
     return _run_compiler(source, run_args)
 
 
+EVAL_PAYLOAD_VERSION = "sem.eval.v1"
+EVAL_WRAPPER_MODULE = "sem.eval.scratch"
+EVAL_DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024
+EVAL_DEFAULT_TIMEOUT_SECONDS = 30
+_RUN_METRICS_SENTINEL = "__SEM_RUN_METRICS__ "
+
+# Snippet verbs that declare module-level context rather than executable
+# operation-body steps. The wrapper hoists these above `operation main` so a
+# snippet can bring its own imports, error categories, records, and capabilities
+# while the rest of the rows stay inside the generated main body.
+_SNIPPET_MODULE_DECL_VERBS = frozenset({
+    "import", "error", "errorCase", "record", "field", "enum", "enumCase",
+    "capability", "type", "alias", "sharedState",
+})
+
+
+def _snippet_looks_like_full_program(text: str) -> bool:
+    """A snippet that declares its own ``project`` or ``operation`` header is a
+    complete program; pass it through verbatim instead of wrapping it."""
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        verb = stripped.split(None, 1)[0]
+        if verb in {"project", "operation", "entry"}:
+            return True
+    return False
+
+
+def _program_has_runtime_entrypoint(text: str) -> bool:
+    """True if a full-program source has something the compiler turns into a
+    real entrypoint: an explicit ``entry`` row, or a ``webServer`` with at least
+    one ``route`` (which emits a native HTTP entrypoint). Without either, the
+    compiler builds in library mode (a stub ``main`` that returns 0) and nothing
+    the author wrote executes.
+
+    This mirrors the compiler's gate, which keys on ``entry`` plus any declared
+    web server having routes (`active_servers`) — independent of the `target`
+    row — so a routed server under any target is correctly seen as runnable."""
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        verb = stripped.split(None, 1)[0]
+        if verb in {"entry", "route"}:
+            return True
+    return False
+
+
+def _split_snippet_rows(text: str) -> tuple[list[str], list[str], bool]:
+    """Partition snippet lines into hoisted module declarations and operation
+    body rows. Returns ``(header_lines, body_lines, has_top_level_return)``.
+
+    Comments and blank lines are attached to the next row's zone so in-source
+    rationale stays adjacent to what it documents.
+    """
+    header: list[str] = []
+    body: list[str] = []
+    has_return = False
+    pending: list[str] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            pending.append(line)
+            continue
+        tokens = stripped.split()
+        verb = tokens[0]
+        second = tokens[1] if len(tokens) > 1 else ""
+        is_header = verb in _SNIPPET_MODULE_DECL_VERBS or (
+            verb == "storage" and second == "module")
+        target = header if is_header else body
+        target.extend(pending)
+        pending = []
+        target.append(line)
+        if not is_header and verb == "return":
+            has_return = True
+    body.extend(pending)
+    return header, body, has_return
+
+
+def _wrap_snippet(text: str) -> tuple[str, int]:
+    """Wrap snippet body rows in the minimal console-program shape.
+
+    Returns ``(wrapped_source, body_line_offset)`` where ``body_line_offset`` is
+    the number of generated header lines that precede the first injected body
+    row, so diagnostics can be remapped to snippet-relative line numbers.
+    """
+    header_decls, body_rows, has_return = _split_snippet_rows(text)
+    uses_console = "console." in text
+    lines = [
+        "project SemScriptEval",
+        "target console",
+        "runtime native 1",
+        f"module {EVAL_WRAPPER_MODULE}",
+        "entry console main",
+        "",
+    ]
+    if header_decls:
+        lines += header_decls + [""]
+    lines += [
+        "operation main",
+        "output operation main ExitCode",
+    ]
+    if uses_console:
+        # The authority row satisfies the effect contract; no capability/error
+        # type is generated because the wrapper does not itself handle write
+        # failures — that is the snippet's contract to make explicit.
+        lines += [
+            "effect main write console.stdout",
+            "authority main write console.stdout",
+        ]
+    lines += [
+        "memory main heap no",
+        "async main no",
+        ("purpose operation main \"Evaluate a SemanticScript snippet through "
+         "the JIT and return a process exit code.\""),
+    ]
+    body_line_offset = len(lines)
+    lines += body_rows
+    if not has_return:
+        lines += [
+            "storage local immutable replSuccessExitCode ExitCode 0",
+            "return value replSuccessExitCode",
+        ]
+    return "\n".join(lines) + "\n", body_line_offset
+
+
+def _split_stream(text: str) -> tuple[str, list[str]]:
+    """Return ``(text, lines)`` for a captured stream. The trailing empty line
+    produced by a final newline is dropped so ``stdoutLines`` reflects emitted
+    lines rather than the terminator."""
+    if not text:
+        return "", []
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return text, lines
+
+
+def _cap_output(text: str, max_bytes: int) -> tuple[str, int, bool]:
+    """Cap a captured stream to ``max_bytes`` UTF-8 bytes. Returns
+    ``(text, byte_count, truncated)`` with truncation on a character boundary."""
+    encoded = text.encode("utf-8", errors="replace")
+    byte_count = len(encoded)
+    if byte_count <= max_bytes:
+        return text, byte_count, False
+    capped = encoded[:max_bytes].decode("utf-8", errors="ignore")
+    return capped, byte_count, True
+
+
+def _extract_run_metrics(stderr_text: str, expected_nonce: str) -> tuple[dict | None, str]:
+    """Pull the genuine ``__SEM_RUN_METRICS__`` sentinel out of compiler stderr.
+
+    Returns ``(metrics_or_none, remaining_stderr)``. Only a sentinel whose
+    embedded ``nonce`` matches ``expected_nonce`` is accepted, which rejects
+    accidental look-alikes and casual spoofing; the compiler emits its sentinel
+    last (after the program runs), so the last matching line wins. Non-matching
+    look-alike lines are left in the stream as the program output they are.
+
+    This is best-effort telemetry, not a security boundary: ``eval`` already runs
+    arbitrary native code, and the nonce is passed to the child's environment, so
+    a determined program with libc access could read it back and forge a line.
+    Only the cosmetic metrics would be affected; nothing security-sensitive
+    depends on them.
+    """
+    metrics = None
+    kept: list[str] = []
+    for line in stderr_text.splitlines():
+        if line.startswith(_RUN_METRICS_SENTINEL):
+            try:
+                parsed = json.loads(line[len(_RUN_METRICS_SENTINEL):])
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict) and parsed.get("nonce") == expected_nonce:
+                metrics = parsed  # genuine; last one wins. Strip from stderr.
+                continue
+        kept.append(line)
+    remaining = "\n".join(kept)
+    if stderr_text.endswith("\n") and remaining:
+        remaining += "\n"
+    return metrics, remaining
+
+
+def _remap_diagnostics(diagnostics: list[dict], mode: str, offset: int) -> list[dict]:
+    """Annotate wrapped-program diagnostics with snippet-relative line numbers.
+
+    Only applies to wrapped snippets; full-program input keeps its own lines.
+    Best-effort: rows hoisted to the header or moved across zones may not map
+    exactly, so the original ``line`` is preserved and ``snippetLine`` is added
+    alongside it.
+    """
+    if mode != "snippet":
+        return diagnostics
+    annotated = []
+    for diag in diagnostics:
+        diag = dict(diag)
+        span = diag.get("span")
+        if isinstance(span, dict) and isinstance(span.get("line"), int):
+            wrapped_line = span["line"]
+            span = dict(span)
+            span["wrappedLine"] = wrapped_line
+            if wrapped_line > offset:
+                span["snippetLine"] = wrapped_line - offset
+            diag["span"] = span
+        annotated.append(diag)
+    return annotated
+
+
+def _add_eval_advisory(payload: dict, code: str, message: str) -> None:
+    """Append an eval-sourced advisory note to the payload's diagnostics and
+    linter notes so a programmatically-detected caveat travels the same channel
+    as compiler/linter findings."""
+    note = {"code": code, "severity": "warning", "message": message,
+            "source": "eval", "blocksCompile": False}
+    payload.setdefault("diagnostics", []).append(note)
+    payload.setdefault("notes", {}).setdefault("linter", []).append(note)
+
+
+def _eval_next_commands(status: str, library_mode: bool) -> list[dict]:
+    """Machine-facing next steps keyed off the eval outcome.
+
+    Entries follow the repo-wide `nextCommands` shape (`_next_command_entry`):
+    each carries `kind`, `reason`, `command`, and an always-present `replayable`
+    flag. They are advisory hints, not literal replays — eval compiles ephemeral
+    source in a temp dir, so there is no persistent path to point `argv` at, and
+    every entry is therefore `replayable: false`.
+    """
+    commands: list[dict] = []
+    if library_mode:
+        commands.append(_next_command_entry(
+            "add-entry",
+            "no entry operation ran; add one so the program executes",
+            command="add an `entry console main` row, or pass snippet body rows",
+            replayable=False))
+    if status in {"compile-failed", "crashed"}:
+        commands.append(_next_command_entry(
+            "inspect-diagnostics",
+            "inspect the full diagnostics for this source",
+            command="sem check --json <source>",
+            replayable=False))
+    if status == "compile-failed":
+        commands.append(_next_command_entry(
+            "repair-plan",
+            "generate a structured repair plan for the blocking diagnostics",
+            command="sem fix --plan --json <source>",
+            replayable=False))
+    if status == "timeout":
+        commands.append(_next_command_entry(
+            "increase-timeout",
+            "the run exceeded the wall-clock budget; allow more time",
+            command="sem eval --timeout 120 <source>",
+            replayable=False))
+    return commands
+
+
+def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
+                  show_source: bool) -> dict:
+    """Compile and JIT-run a snippet (or full program), returning sem.eval.v1."""
+    mode = "program" if _snippet_looks_like_full_program(text) else "snippet"
+    if mode == "program":
+        wrapped, offset = text if text.endswith("\n") else text + "\n", 0
+    else:
+        wrapped, offset = _wrap_snippet(text)
+
+    # A full program with no runtime entrypoint compiles in library mode: a stub
+    # main returns 0 and nothing the author wrote runs. Flag it so an empty,
+    # exit-0 result is never silently mistaken for a successful run.
+    library_mode = mode == "program" and not _program_has_runtime_entrypoint(text)
+
+    payload: dict = {
+        "schemaVersion": EVAL_PAYLOAD_VERSION,
+        "tool": {"name": "sem", "version": VERSION},
+        "mode": mode,
+        "libraryMode": library_mode,
+        "lineOffset": offset,
+    }
+    if show_source:
+        payload["wrappedSource"] = wrapped
+
+    # ignore_cleanup_errors: a killed/crashed JIT child can leave a build file
+    # mapped on Windows; a cleanup PermissionError must not mask the result.
+    with tempfile.TemporaryDirectory(prefix="sem-eval-",
+                                     ignore_cleanup_errors=True) as tmp:
+        source_path = Path(tmp) / "snippet.sem"
+        source_path.write_text(wrapped, encoding="utf-8", newline="\n")
+        build_root = Path(tmp) / "build"
+
+        check = _build_check_payload(source_path, [])
+        diagnostics = _remap_diagnostics(
+            list(check.get("diagnostics", [])), mode, offset)
+        payload["diagnostics"] = diagnostics
+        # Non-strict mode runs even when notes exist, so surface them grouped by
+        # origin: `notes.linter` are agent-safety/style findings, `notes.compiler`
+        # are parser/codegen findings from the compiler probe. The merged
+        # `diagnostics` list is retained for callers that want one stream.
+        payload["notes"] = {
+            "linter": [d for d in diagnostics if d.get("source") == "linter"],
+            "compiler": [d for d in diagnostics if d.get("source") == "compiler"],
+        }
+        payload["summary"] = check.get("summary", {})
+        compile_blocking = int(check.get("summary", {}).get("compileBlocking", 0))
+
+        execution: dict = {
+            "ran": False,
+            "exitCode": None,
+            "timing": {},
+            "memory": {},
+        }
+        output = {
+            "stdout": "", "stdoutLines": [], "stderr": "", "stderrLines": [],
+            "byteCount": 0, "truncated": False,
+        }
+
+        # Always attempt the run rather than pre-gating on the linter's opinion.
+        # Some lint diagnostics are flagged compile-blocking but the backend
+        # tolerates them (e.g. deprecated rows), so the authoritative signal is
+        # whether codegen + JIT actually completed. Diagnostics are reported
+        # regardless; the outcome is classified from the run below.
+        run_args = ["--run", "--run-metrics", "--quiet",
+                    "--persist-llvm-ir", "no",
+                    "--build-root", str(build_root)]
+        # A per-run nonce, passed through the environment, lets us authenticate
+        # the compiler's end-of-run metrics sentinel against any look-alike line
+        # the running program might print.
+        nonce = secrets.token_hex(8)
+        run_env = dict(os.environ)
+        run_env["SEM_RUN_METRICS_NONCE"] = nonce
+        total_start = time.perf_counter_ns()
+        try:
+            proc = _capture_compiler(source_path, run_args,
+                                     timeout=timeout, env=run_env)
+        except subprocess.TimeoutExpired:
+            payload["ok"] = False
+            payload["status"] = "timeout"
+            execution["timeoutSeconds"] = timeout
+            payload["execution"] = execution
+            payload["output"] = output
+            payload["nextCommands"] = _eval_next_commands("timeout", library_mode)
+            return payload
+        total_ns = time.perf_counter_ns() - total_start
+
+        metrics, stderr_clean = _extract_run_metrics(proc.stderr or "", nonce)
+        stdout_text, stdout_byte_count, stdout_truncated = _cap_output(
+            proc.stdout or "", max_output_bytes)
+        stderr_text, stderr_byte_count, stderr_truncated = _cap_output(
+            stderr_clean, max_output_bytes)
+        stdout_str, stdout_lines = _split_stream(stdout_text)
+        stderr_str, stderr_lines = _split_stream(stderr_text)
+        output = {
+            "stdout": stdout_str,
+            "stdoutLines": stdout_lines,
+            "stderr": stderr_str,
+            "stderrLines": stderr_lines,
+            "byteCount": stdout_byte_count + stderr_byte_count,
+            "truncated": stdout_truncated or stderr_truncated,
+        }
+
+        payload["output"] = output
+
+        # The metrics sentinel is emitted only after cmain() returns normally.
+        # Its presence is the authoritative "ran to completion" signal.
+        ran_to_completion = metrics is not None
+        timing: dict = {
+            "totalNs": total_ns,
+            "totalUs": round(total_ns / 1000, 3),
+        }
+        if ran_to_completion:
+            execute_ns = metrics.get("executeNs")
+            peak_bytes = metrics.get("peakWorkingSetBytes")
+            memory_source = metrics.get("memorySource", "unavailable")
+            if isinstance(execute_ns, int):
+                timing["executeNs"] = execute_ns
+                timing["executeUs"] = round(execute_ns / 1000, 3)
+                timing["compileNs"] = max(total_ns - execute_ns, 0)
+            payload["execution"] = {
+                "ran": True,
+                "exitCode": proc.returncode,
+                "timing": timing,
+                "memory": {
+                    "peakWorkingSetBytes": peak_bytes,
+                    "peakWorkingSetKib": (round(peak_bytes / 1024)
+                                          if isinstance(peak_bytes, int) else None),
+                    "source": memory_source,
+                },
+            }
+            payload["ok"] = True
+            payload["status"] = "ok" if proc.returncode == 0 else "nonzero-exit"
+            if library_mode:
+                _add_eval_advisory(
+                    payload, "SSEVAL001",
+                    "no `entry` row: compiled in library mode, so the stub main "
+                    "returned 0 and no operation you wrote was executed")
+            payload["nextCommands"] = _eval_next_commands(
+                payload["status"], library_mode)
+            return payload
+
+        # No sentinel: the program never returned. A negative return code (POSIX
+        # signal) or an NTSTATUS-style Windows code (>= 0x80000000) is an abnormal
+        # termination — a runtime crash. Otherwise a compiler diagnostic on stderr
+        # (`SSCG...`/`semsc:`) or a blocking diagnostic with no output means codegen
+        # never produced a runnable program.
+        rc = proc.returncode
+        abnormal_termination = rc is not None and (rc < 0 or rc >= 0x80000000)
+        produced_output = bool((proc.stdout or "").strip())
+        compile_signature = ("SSCG" in stderr_clean) or ("semsc:" in stderr_clean)
+        execution["timing"] = timing
+        if not abnormal_termination and (
+                compile_signature or (compile_blocking > 0 and not produced_output)):
+            payload["ok"] = False
+            payload["status"] = "compile-failed"
+        else:
+            execution["ran"] = True
+            execution["exitCode"] = rc
+            payload["ok"] = False
+            payload["status"] = "crashed"
+        payload["execution"] = execution
+        payload["nextCommands"] = _eval_next_commands(payload["status"], library_mode)
+        return payload
+
+
+def _read_eval_source(args: argparse.Namespace) -> tuple[str | None, str | None]:
+    """Resolve snippet text from --code, a path, or stdin (`-`).
+
+    Returns ``(text, error)``; exactly one is non-None."""
+    code = getattr(args, "code", None)
+    if code is not None:
+        return code, None
+    path = getattr(args, "path", None)
+    if path in (None, "-"):
+        return sys.stdin.read(), None
+    try:
+        return Path(path).read_text(encoding="utf-8"), None
+    except OSError as exc:
+        return None, f"cannot read snippet: {exc}"
+
+
+def _emit_eval_input_error(message: str, human: bool) -> int:
+    if human:
+        print(f"sem eval: {message}", file=sys.stderr)
+    else:
+        print(json.dumps({
+            "schemaVersion": EVAL_PAYLOAD_VERSION,
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": False,
+            "status": "input-error",
+            "error": message,
+        }, indent=2, sort_keys=True))
+    return 2
+
+
+def command_eval(args: argparse.Namespace) -> int:
+    human = bool(getattr(args, "human", False))
+    text, error = _read_eval_source(args)
+    if error is not None:
+        return _emit_eval_input_error(error, human)
+
+    # A non-positive timeout would disable the wall-clock bound entirely (or
+    # break subprocess); that bound is a safety control for a surface that runs
+    # arbitrary compiled code, so require it.
+    timeout = getattr(args, "timeout", None)
+    timeout = int(EVAL_DEFAULT_TIMEOUT_SECONDS if timeout is None else timeout)
+    if timeout < 1:
+        return _emit_eval_input_error("--timeout must be at least 1 second", human)
+    max_output_bytes = getattr(args, "max_output_bytes", None)
+    max_output_bytes = int(EVAL_DEFAULT_MAX_OUTPUT_BYTES
+                           if max_output_bytes is None else max_output_bytes)
+    if max_output_bytes < 1:
+        return _emit_eval_input_error("--max-output-bytes must be at least 1", human)
+    payload = _eval_payload(
+        text,
+        max_output_bytes=max_output_bytes,
+        timeout=timeout,
+        show_source=bool(getattr(args, "show_source", False)),
+    )
+
+    if human:
+        _print_eval_human(payload)
+    else:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0 if payload.get("ok") else 1
+
+
+def _print_eval_human(payload: dict) -> None:
+    """Render a sem.eval.v1 payload for a human reader."""
+    status = payload.get("status", "")
+    if payload.get("output", {}).get("stdout"):
+        sys.stdout.write(payload["output"]["stdout"])
+        if not payload["output"]["stdout"].endswith("\n"):
+            sys.stdout.write("\n")
+    for diag in payload.get("diagnostics", []):
+        span = diag.get("span", {})
+        line = span.get("snippetLine", span.get("line", "?"))
+        print(f"{diag.get('severity', 'info')} {diag.get('code', '')} "
+              f"line {line}: {diag.get('message', '')}", file=sys.stderr)
+    execution = payload.get("execution", {})
+    if execution.get("ran"):
+        timing = execution.get("timing", {})
+        memory = execution.get("memory", {})
+        exec_us = timing.get("executeUs")
+        peak_kib = memory.get("peakWorkingSetKib")
+        detail = f"exit {execution.get('exitCode')}"
+        if exec_us is not None:
+            detail += f", execute {exec_us}µs"
+        if peak_kib is not None:
+            detail += f", peak {peak_kib}KiB ({memory.get('source')})"
+        print(f"[{status}] {detail}", file=sys.stderr)
+    else:
+        print(f"[{status}] did not run", file=sys.stderr)
+
+
 def command_check(args: argparse.Namespace) -> int:
     compiler_args = _strip_separator(list(args.compiler_args))
     trailing_json, compiler_args = _extract_flag(compiler_args, "--json")
@@ -10457,6 +10971,31 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("path", nargs="?", default=".")
     run.add_argument("compiler_args", nargs=argparse.REMAINDER)
     run.set_defaults(func=command_run)
+
+    eval_cmd = subparsers.add_parser(
+        "eval",
+        help=("JIT-run a SemanticScript snippet (auto-wrapped in a minimal "
+              "console program) or a full program and emit a sem.eval.v1 "
+              "run report with execution metrics and captured output"),
+    )
+    eval_cmd.add_argument("path", nargs="?", default=None,
+                          help="snippet/program file, or '-' / omitted for stdin")
+    eval_cmd.add_argument("--code", default=None,
+                          help="snippet source passed inline instead of a path")
+    eval_cmd.add_argument("--json", action="store_true",
+                          help="emit the sem.eval.v1 JSON payload (the default)")
+    eval_cmd.add_argument("--human", action="store_true",
+                          help="render program output and a status line instead of JSON")
+    eval_cmd.add_argument("--show-source", dest="show_source",
+                          action="store_true",
+                          help="include the wrapped program source in the payload")
+    eval_cmd.add_argument("--max-output-bytes", dest="max_output_bytes",
+                          type=int, default=EVAL_DEFAULT_MAX_OUTPUT_BYTES,
+                          help="cap captured stdout/stderr bytes (default 65536)")
+    eval_cmd.add_argument("--timeout", type=int,
+                          default=EVAL_DEFAULT_TIMEOUT_SECONDS,
+                          help="seconds before the run is abandoned (default 30)")
+    eval_cmd.set_defaults(func=command_eval)
 
     version = subparsers.add_parser(
         "version",

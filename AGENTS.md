@@ -50,9 +50,9 @@ Prefer the `sem` wrapper before using raw compiler or linter internals.
 
 MCP-capable agents can reach the same JSON surfaces through the built-in MCP
 server instead of shelling out: run `sem mcp` (stdio) and call the matching
-tool (`check`, `readiness`, `graph`, `slice`, `fix`, `patch`, `test`, etc.).
-The tools are thin wrappers over these same subcommands, so the loop below
-applies unchanged. See `docs/toolchain/compiler.md` ("MCP server").
+tool (`check`, `readiness`, `graph`, `slice`, `fix`, `patch`, `test`, `eval`,
+etc.). The tools are thin wrappers over these same subcommands, so the loop
+below applies unchanged. See `docs/toolchain/compiler.md` ("MCP server").
 
 Load version-matched agent rules:
 
@@ -95,6 +95,24 @@ patch.
 Use `--full` only when the compact JSON payload is not enough. Compact payloads
 from `check`, `fix`, `graph`, and `slice` are usually the right first hop.
 
+Quickly execute a snippet through the JIT without scaffolding a project:
+
+```powershell
+python SemanticScript\tools\sem.py eval --code "storage local immutable n Int64 42`ncall p console.writeIntegerLine`nargument p value Int64 n`nrun p"
+python SemanticScript\tools\sem.py eval PATH        # snippet or full program file
+type SNIPPET.txt | python SemanticScript\tools\sem.py eval -
+```
+
+`eval` auto-wraps a snippet (bare operation-body rows) in a minimal console
+program, JIT-runs it, and returns `sem.eval.v1`: captured stdout/stderr (string
+and line array), program exit code, execution timing (ns/µs, execution-only vs
+total), process peak working set, and `notes.linter` / `notes.compiler`. It runs
+in non-strict mode — a program with strict-blocking notes still runs and the
+notes are reported, not fatal. `ok` means the harness compiled and ran to
+completion; read `execution.exitCode` and `status`
+(`ok`/`nonzero-exit`/`crashed`/`compile-failed`/`timeout`). See
+`docs/toolchain/repl.md`.
+
 ## JSON Surface Rules
 
 Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
@@ -102,7 +120,7 @@ Current public surfaces include `sem.version.v1`, `sem.skills.v1`,
 `sem.graph.v1`, `sem.slice.v1`, `sem.size.v1`, `sem.docs.v1`,
 `sem.docsIndex.v1`, `sem.docsSearch.v1`, `sem.explain.v1`,
 `sem.fixPlan.v1`, `sem.patch.v1`, `sem.dev.v1`, `sem.test.v1`,
-`sem.deps.v1`, and provisional `sem.doctor.v0`.
+`sem.eval.v1`, `sem.deps.v1`, and provisional `sem.doctor.v0`.
 
 Read `nextCommands` as machine-facing instructions. Prefer `argv` over
 `command`, honor `cwd`, and replay only entries where `replayable` is true.

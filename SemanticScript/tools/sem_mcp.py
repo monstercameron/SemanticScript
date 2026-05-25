@@ -65,8 +65,10 @@ CLI, not to reimplement logic. To expose a new surface:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -530,6 +532,58 @@ def _argv(*args: str | None) -> list[str]:
 def version() -> dict[str, Any]:
     """Emit SemanticScript toolchain version facts (sem.version.v1)."""
     return _run_sem(["version", "--json"])
+
+
+@mcp.tool(name="eval")
+def eval_snippet(
+    code: str,
+    show_source: bool = False,
+    max_output_bytes: int = 65536,
+    timeout: int = 30,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """JIT-run a SemanticScript snippet or full program (sem.eval.v1).
+
+    A snippet (bare operation-body rows) is auto-wrapped in a minimal console
+    program: module-level declarations (import, error, errorCase, record, enum,
+    capability, type, sharedState, and `storage module`) are hoisted above a
+    generated `operation main`, and a stdout effect is added when the snippet
+    uses `console.`. A complete program (one that declares its own `project`,
+    `operation`, or `entry`) is compiled and run verbatim.
+
+    The payload reports diagnostics (with snippet-relative line numbers),
+    captured stdout/stderr as both a string and a line array, the program exit
+    code, execution time (ns and µs, execution-only vs total), and the process
+    peak working set. `ok` reflects harness success (compiled and ran to
+    completion); read `execution.exitCode` for the program's own exit code and
+    `status` for ok/nonzero-exit/crashed/compile-failed/timeout.
+
+    Args:
+        code: SemanticScript snippet rows or a full program.
+        show_source: Include the wrapped program source in the payload.
+        max_output_bytes: Cap captured stdout/stderr bytes (default 65536).
+        timeout: Seconds before the run is abandoned (default 30).
+        cwd: Working directory to run sem from.
+    """
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".sem", prefix="sem-eval-mcp-",
+        delete=False, encoding="utf-8", newline="\n")
+    try:
+        handle.write(code)
+        handle.close()
+        args = _argv(
+            "eval", "--json",
+            "--show-source" if show_source else None,
+            "--max-output-bytes", str(int(max_output_bytes)),
+            "--timeout", str(int(timeout)),
+            handle.name,
+        )
+        return _run_sem(args, cwd=cwd, timeout=int(timeout) + 15)
+    finally:
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
 
 
 @mcp.tool()
@@ -1044,9 +1098,10 @@ def main(argv: list[str] | None = None) -> None:
             allow_model_download=args.docs_allow_model_download,
         )
 
-    # The server exposes file-mutating (patch) and code-executing (test) tools.
-    # Over HTTP that is reachable by anything that can hit the bind address, so
-    # warn loudly when the effective bind host is beyond loopback. Checking the
+    # The server exposes file-mutating (patch) and code-executing (eval, test)
+    # tools. `eval` JIT-compiles and runs arbitrary SemanticScript, so over HTTP
+    # it is remote code execution for anything that can hit the bind address.
+    # Warn loudly when the effective bind host is beyond loopback. Checking the
     # effective host (not just an explicit --host) keeps the guard correct even
     # if the SDK's default host ever changes.
     if args.transport != "stdio":
@@ -1055,9 +1110,9 @@ def main(argv: list[str] | None = None) -> None:
         if effective_host is not None and effective_host not in loopback:
             print(
                 f"WARNING: serving MCP over {args.transport} on {effective_host} exposes "
-                "file-mutating (patch) and code-executing (test) tools to any client "
-                "that can reach this address. Bind a loopback host unless the network "
-                "is trusted.",
+                "file-mutating (patch) and code-executing (eval, test) tools to any "
+                "client that can reach this address; `eval` runs arbitrary compiled "
+                "code. Bind a loopback host unless the network is trusted.",
                 file=sys.stderr,
             )
 
