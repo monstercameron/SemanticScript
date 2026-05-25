@@ -203,6 +203,19 @@ DIAGNOSTIC_EXPLAINERS = {
             "Declare a reusable capability and attach it with `useCapability` when the same proof recurs."
         ],
     },
+    "SS3109": {
+        "title": "authority grant matches no declared effect",
+        "summary": "An operation has an `authority OP ACCESS PATH` grant whose access verb or path matches none of the operation's declared `effect` rows, so it authorizes nothing — and the effect it was meant to back is left unproven. SS3104 only checks that *some* authority row is present, so a transposed or mistyped grant slips through as 'covered'.",
+        "whyItMatters": [
+            "A grant that authorizes nothing gives a false sense of coverage: the effect looks proven but isn't.",
+            "The most common cause is access/path transposition (`authority OP read X` for a `write X` effect) or a stale path that no longer matches any effect."
+        ],
+        "commonFixes": [
+            "Align the grant to a declared effect: `authority OP <action> <path>` must use the same access verb and a path equal-or-broader than an `effect OP <action> <path>` row.",
+            "Remove the grant if the effect it referenced is gone.",
+            "Remember the order is access-first: `authority main write console.stdout`, mirroring `effect main write console.stdout`."
+        ],
+    },
     "SS4105": {
         "title": "reference integrity: unresolved value or wrong attachment subject kind",
         "summary": "A row references a value that is not declared in the current operation, or an operation-body verb is attached to a subject that is not an operation. Every argument value must be a named `storage`/`bind`/input value (or an integer / true / false literal) declared before use; inline enum members and string literals are rejected.",

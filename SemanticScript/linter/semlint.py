@@ -3192,6 +3192,7 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3104 capabilityCoverage, SS3105 unprotectedSharedState,
 #            SS3106 hiddenFailure, SS3107 siblingMetadataDrift,
 #            SS3108 unsupportedSharedStateScope,
+#            SS3109 authorityEffectMismatch,
 #            SS3111 undeclaredBodyEffect, SS3112 unknownErrorVariant
 #   AS32xx — performance discipline           (T3 refinement)
 #            SS3201 deadStore, SS3202 allocationInLoop,
@@ -4012,6 +4013,80 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
                 agentHint=(
                     f"if `{effectPath}` recurs across files, declare a shared `capability` "
                     f"at module scope and reuse it"
+                ),
+            ))
+    return diagnostics
+
+
+def _authority_path_related_to_effect(grantPath: str, effectPath: str) -> bool:
+    """True when an authority grant path and an effect path are on the same
+    hierarchical branch — equal, or one a dotted-segment prefix of the other.
+    A grant at `http.request` covers `http.request.method`; a narrower grant is
+    still treated as related (not flagged) to keep this advisory low-noise. Only
+    a genuinely unrelated path (or a mismatched access verb, checked separately)
+    is reported. Segment-aware so `database.account` does not match
+    `database.accountHistory`."""
+    if grantPath == effectPath:
+        return True
+    return effectPath.startswith(grantPath + ".") or grantPath.startswith(effectPath + ".")
+
+
+def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
+    """An inline `authority OP PATH ACCESS` grant should back a declared effect
+    on that operation. SS3104 treats the mere PRESENCE of an authority row as
+    coverage, so a grant whose access verb or path matches no declared effect (a
+    typo such as `read` for a `write` effect, or a stale path) silently passes as
+    'covered' while authorizing nothing — and the effect it was meant to back is
+    really unprotected. Flag the dead grant so the gap is visible."""
+    diagnostics: List[Diagnostic] = []
+    for operationName, authorityLines in facts.operationAuthority.items():
+        effectLines = facts.operationEffects.get(operationName, [])
+        effects = [(line.args[1], line.args[2]) for line in effectLines if len(line.args) >= 3]
+        if not effects:
+            # No declared effects to reconcile against — a different gap, not this one.
+            continue
+        for authorityLine in authorityLines:
+            authorityArgs = authorityLine.args
+            if len(authorityArgs) < 3:
+                continue
+            # Canonical grammar is `authority OP ACCESS PATH`, parallel to
+            # `effect OP ACCESS PATH` (access first, then the dotted path).
+            grantAccess, grantPath = authorityArgs[1], authorityArgs[2]
+            covers = any(
+                grantAccess == effectAction and _authority_path_related_to_effect(grantPath, effectPath)
+                for (effectAction, effectPath) in effects
+            )
+            if covers:
+                continue
+            fixCandidates = [
+                FixCandidate(
+                    name="alignAuthorityToEffect",
+                    shape=f"authority {operationName} {effectAction} {effectPath}",
+                )
+                for (effectAction, effectPath) in effects[:3]
+            ]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3109",
+                kind="capabilityCoverage.authorityEffectMismatch",
+                severity=Severity.WARNING,
+                subjectName=operationName,
+                subjectKind="operation",
+                gapEdge="authority",
+                intentSlogan="authority grant matches no declared effect",
+                primary=span_of_line(authorityLine, "authorityDeclaration"),
+                invariantRule="every inline authority grant must back a declared effect by access and path",
+                specAnchor="docs/language/errors-effects-capabilities.md#capabilities-and-authority",
+                citations=narrative_citations_for_operation(facts, operationName),
+                fixCandidates=fixCandidates,
+                confidence=Confidence.MEDIUM,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_authority_effect_mismatch",
+                agentHint=(
+                    f"`authority {operationName} {grantPath} {grantAccess}` authorizes nothing on "
+                    f"{operationName}; align its access verb and path to a declared "
+                    f"`effect {operationName} <action> <path>` row"
                 ),
             ))
     return diagnostics
@@ -19553,6 +19628,7 @@ CHECKERS = [
     check_shared_state_protection,
     check_supported_shared_state_scope,
     check_effect_without_capability,
+    check_authority_effect_mismatch,
     check_hidden_failure,
     check_sibling_metadata_drift,
     check_undeclared_body_effect,

@@ -1943,6 +1943,67 @@ returnValue computedSum
 
 
 # ==========================================================================
+# SS3109  capabilityCoverage.authorityEffectMismatch
+# ==========================================================================
+
+class TestAuthorityEffectMismatch(unittest.TestCase):
+    def test_authority_matching_effect_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main write console.stdout
+authority main write console.stdout
+""")
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+    def test_hierarchical_authority_covers_narrower_effect(self) -> None:
+        # A grant at `http.request` authorizes a narrower `http.request.method` read.
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main read http.request.method
+authority main read http.request
+""")
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+    def test_access_verb_mismatch_is_flagged(self) -> None:
+        # write effect, read grant — the grant authorizes nothing.
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main write database.account
+authority main read database.account
+""")
+        self.assertIn("SS3109", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3109")[0]
+        self.assertEqual(matching.subjectName, "main")
+        self.assertEqual(matching.gapEdge, "authority")
+
+    def test_unrelated_path_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main write database.account
+authority main write filesystem.config
+""")
+        self.assertIn("SS3109", _codes(diagnostics))
+
+    def test_operation_without_effects_not_flagged(self) -> None:
+        # No declared effects to reconcile against — a different gap, not SS3109.
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+authority main read database.account
+""")
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS3106  errorPathCoverage.hiddenFailure
 # ==========================================================================
 
