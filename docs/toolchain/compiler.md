@@ -76,6 +76,9 @@ transport that desktop clients launch:
 sem mcp
 ```
 
+The stdio transport accepts a leading UTF-8 BOM on the first frame, including
+the `?{...}` artifact produced by some PowerShell native-pipe probes.
+
 Register it with a client, for example Claude Code:
 
 ```bash

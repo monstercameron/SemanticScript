@@ -143,6 +143,15 @@ jobs:
           $null | & $sem mcp
           if ($LASTEXITCODE -ne 0) { throw "sem mcp failed to start with $LASTEXITCODE." }
 
+          # PowerShell-driven probes can prepend a UTF-8 BOM to the first
+          # stdin frame. The server accepts that on stdio so release smoke
+          # tests and real clients do not diverge.
+          $initializeMessage = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"sem-release-smoke","version":"0"}}}'
+          $mcpOutput = ([char]0xFEFF).ToString() + $initializeMessage | & $sem mcp
+          if ($LASTEXITCODE -ne 0) { throw "sem mcp BOM initialize smoke failed with $LASTEXITCODE." }
+          if (($mcpOutput -join "`n") -match "Invalid JSON") { throw "sem mcp rejected a BOM-prefixed initialize frame." }
+          if (($mcpOutput -join "`n") -notmatch '"result"') { throw "sem mcp BOM initialize smoke did not return an initialize result." }
+
       - name: Remove stale VSIX artifacts
         shell: pwsh
         run: |
@@ -291,6 +300,7 @@ jobs:
             "dist/sem.exe lint SemanticScript/tests/tiny.sem -- --summary",
             "dist/sem.exe emit-ir SemanticScript/tests/agent_cli_demo.test.sem --quiet",
             "dist/sem.exe run SemanticScript/tests/agent_cli_demo.test.sem",
+            "dist/sem.exe mcp BOM-prefixed initialize smoke",
             "npm --prefix vscode-semanticscript ci",
             "npm --prefix vscode-semanticscript run package:vsix"
           )
@@ -372,6 +382,28 @@ jobs:
               ""
             )
           }
+          $mcpBootstrapLines = @(
+            "MCP bootstrap:",
+            "Copy this block into an MCP-aware agent after downloading the Windows executable:",
+            "",
+            '```text',
+            "Use the SemanticScript Windows executable from this release as an MCP stdio server.",
+            "Executable asset: $releaseSemExeName",
+            "Start command: sem.exe mcp",
+            "MCP client config JSON:",
+            '{',
+            '  "mcpServers": {',
+            '    "semanticscript": {',
+            '      "command": "C:\\path\\to\\sem.exe",',
+            '      "args": ["mcp"],',
+            '      "cwd": "<project-root>"',
+            '    }',
+            '  }',
+            '}',
+            'After connecting, call skills_get with names ["sem-start", "sem", "sem-agent"] for version-matched startup instructions.',
+            '```',
+            ""
+          )
 
           $noteParts = @(
             "SemanticScript $releaseTag",
@@ -386,7 +418,10 @@ jobs:
             "- Compiler/toolchain download: $releaseSemExeName",
             "- VS Code extension download: $releaseVsixName",
             "- The Windows compiler/toolchain artifact is a single-file sem.exe package; it extracts an internal temporary payload at runtime.",
-            "",
+            ""
+          )
+          $noteParts += $mcpBootstrapLines
+          $noteParts += @(
             "Release commit:",
             "- $releaseShortSha - $releaseSubject",
             "- Full SHA: $releaseCommit",

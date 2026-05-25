@@ -23,7 +23,7 @@ The corresponding semantic-loop commands are:
 
 ```powershell
 python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 python SemanticScript\tools\sem.py deps sync --json PATH
 python SemanticScript\tools\sem.py check --json PATH
 python SemanticScript\tools\sem.py graph --kind summary --json PATH
@@ -140,19 +140,23 @@ validate the project.
 
 ```powershell
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem --json
+python SemanticScript\tools\sem.py skills get sem-start sem --json
 python SemanticScript\tools\sem.py skills get sem-agent sem-diagnostics --json
 ```
 
 The current public aliases map to canonical bundled skills:
 
+- `sem-start` -> `getting-started`
+- `sem-getting-started` -> `getting-started`
+- `sem-onboarding` -> `getting-started`
 - `sem` -> `language-core`
 - `sem-agent` -> `graph-and-slice`
 - `sem-language` -> `language-core`
 - `sem-diagnostics` -> `patch-and-repair`
 - `sem-stdlib` -> `sqlite-patterns`
 - `sem-builds` -> `patch-and-repair`
-- `sem-packages` -> `patch-and-repair`
+- `sem-packages` -> `package-dependencies`
+- `sem-deps` -> `package-dependencies`
 - `sem-testing` -> `graph-and-slice`
 
 Use `skills list --json` to discover the exact file set and alias index shipped

@@ -1182,6 +1182,15 @@ DEV_WATCH_FILE_WINDOW = 30
 DEV_INTERFACE_MODULE_WINDOW = 20
 SKILL_REGISTRY = (
     {
+        "name": "getting-started",
+        "description": "Project orientation: first commands, repository map, skill loading order, and change-surface rules.",
+        "files": (
+            "docs/getting-started.md",
+            "docs/overview.md",
+            "docs/README.md",
+        ),
+    },
+    {
         "name": "language-core",
         "description": "Core SemanticScript language shape: modules, operations, rows, types, and dataflow.",
         "files": (
@@ -1269,6 +1278,9 @@ DIAGNOSTIC_INDEX_PATHS = (
     "SemanticScript/linter/test_semlint.py",
 )
 SKILL_ALIASES = {
+    "sem-start": "getting-started",
+    "sem-getting-started": "getting-started",
+    "sem-onboarding": "getting-started",
     "sem": "language-core",
     "sem-agent": "graph-and-slice",
     "sem-language": "language-core",
@@ -9796,9 +9808,9 @@ def _help_payload(start: Path) -> dict:
     seen: set[str] = set()
     _append_next_command(
         entries, seen, "skills",
-        "sem skills get sem-agent --json",
-        "load version-matched agent workflow rules before editing",
-        argv=["sem", "skills", "get", "sem-agent", "--json"])
+        "sem skills get sem-start sem-agent --json",
+        "load version-matched getting-started and agent workflow rules before editing",
+        argv=["sem", "skills", "get", "sem-start", "sem-agent", "--json"])
     if build_tape is not None:
         semdeps = _load_semdeps()
         try:
@@ -10297,8 +10309,8 @@ def command_skills(args: argparse.Namespace) -> int:
             "nextCommands": [
                 _next_command_entry(
                     "skills",
-                    "load the language-core guidance from the current tool version",
-                    argv=["sem", "skills", "get", "sem", "--json"],
+                    "load getting-started and core guidance from the current tool version",
+                    argv=["sem", "skills", "get", "sem-start", "sem", "sem-agent", "--json"],
                 )
             ],
         }
