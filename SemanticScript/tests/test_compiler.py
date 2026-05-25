@@ -823,7 +823,7 @@ def test_security_advisories_surface_on_default_build():
         "project SecretAdvisory",
         "type ApiKey String",
         "typeTrust ApiKey secret",
-        "storage module immutable serviceKey ApiKey \"sk-live-hardcoded-12345\"",
+        "storage module immutable serviceKey ApiKey \"fixtureValueAlpha\"",
         "operation main",
         "output operation main Void",
         "purpose operation main \"default build with a hard-coded secret\"",
@@ -1120,7 +1120,7 @@ def test_strict_rejects_hardcoded_secret():
             "return void",
         ))
 
-    proc = run_semsc_source(secret_program("sk-live-abcdef123456"),
+    proc = run_semsc_source(secret_program("fixtureValueBravo"),
                             "--strict", "--parse-only", "--quiet")
     check("strict: hard-coded secret literal is compile-blocked (SS4604)",
           proc.returncode == 3 and "SS4604" in proc.stderr,
@@ -1139,7 +1139,7 @@ def test_strict_rejects_hardcoded_secret():
         "type ApiKey String",
         "typeTrust ApiKey secret",
         "type AppSecret ApiKey",
-        "storage module immutable leakedKey AppSecret \"super-secret-prod-key\"",
+        "storage module immutable leakedKey AppSecret \"fixtureValueCharlie\"",
         "operation main",
         "output operation main Void",
         "purpose operation main \"x\"",
@@ -1157,7 +1157,7 @@ def test_strict_rejects_hardcoded_secret():
         "languageMode strictExecutable", "project SharedSecret",
         "type ApiKey String",
         "typeTrust ApiKey secret",
-        "sharedState module mutable leakedKey ApiKey \"hardcoded-shared-secret\"",
+        "sharedState module mutable leakedKey ApiKey \"fixtureValueDelta\"",
         "operation main",
         "output operation main Void",
         "purpose operation main \"x\"",
