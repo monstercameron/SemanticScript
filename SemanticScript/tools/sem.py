@@ -4805,6 +4805,15 @@ def _docs_connect_index_readonly(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _docs_close_quietly(conn: sqlite3.Connection | None) -> None:
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except sqlite3.DatabaseError:
+        pass
+
+
 def _docs_sqlite_vec_load(conn: sqlite3.Connection) -> tuple[bool, str]:
     try:
         import sqlite_vec  # type: ignore
@@ -5150,6 +5159,7 @@ def _docs_index_payload(
     embedding_messages: set[str] = set()
     effective_embedding_providers: set[str] = set()
     meta_embedding_provider = embedding_provider
+    conn: sqlite3.Connection | None = None
     try:
         conn = _docs_connect_index(db_path)
         try:
@@ -5165,7 +5175,7 @@ def _docs_index_payload(
                 schema = _docs_ensure_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
             schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=enable_sqlite_vec)
             if schema_errors:
-                conn.close()
+                _docs_close_quietly(conn)
                 return {
                     "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
                     "tool": {"name": "sem", "version": VERSION},
@@ -5210,8 +5220,9 @@ def _docs_index_payload(
             conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("embeddingModel", embedding_model))
             conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("includeStd", "true" if include_std else "false"))
             conn.execute("INSERT OR REPLACE INTO docs_meta(key, value) VALUES (?, ?)", ("includeCompiler", "true" if include_compiler else "false"))
-        conn.close()
+        _docs_close_quietly(conn)
     except (OSError, sqlite3.DatabaseError) as exc:
+        _docs_close_quietly(conn)
         return {
             "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
             "tool": {"name": "sem", "version": VERSION},
@@ -5276,11 +5287,12 @@ def _docs_index_status_payload(db_path: Path) -> dict:
             "summary": {},
             "features": {},
         }
+    conn: sqlite3.Connection | None = None
     try:
         conn = _docs_connect_index_readonly(db_path)
         schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=True)
         if schema_errors:
-            conn.close()
+            _docs_close_quietly(conn)
             return {
                 "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
                 "tool": {"name": "sem", "version": VERSION},
@@ -5296,8 +5308,9 @@ def _docs_index_status_payload(db_path: Path) -> dict:
         embedding_counts = {row[0]: row[1] for row in conn.execute("SELECT embedding_status, COUNT(*) FROM docs_entries GROUP BY embedding_status")}
         entry_count = int(conn.execute("SELECT COUNT(*) FROM docs_entries").fetchone()[0])
         document_count = int(conn.execute("SELECT COUNT(*) FROM docs_documents").fetchone()[0])
-        conn.close()
+        _docs_close_quietly(conn)
     except (OSError, sqlite3.DatabaseError) as exc:
+        _docs_close_quietly(conn)
         return {
             "schemaVersion": DOCS_INDEX_PAYLOAD_VERSION,
             "tool": {"name": "sem", "version": VERSION},
@@ -5520,11 +5533,12 @@ def _docs_search_payload(
             "results": [],
             "errors": [f"{db_path}: docs index does not exist; run sem docs index first"],
         }
+    conn: sqlite3.Connection | None = None
     try:
         conn = _docs_connect_index_readonly(db_path)
         schema, schema_errors = _docs_validate_index_schema(conn, enable_sqlite_vec=True)
         if schema_errors:
-            conn.close()
+            _docs_close_quietly(conn)
             return {
                 "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
                 "tool": {"name": "sem", "version": VERSION},
@@ -5538,6 +5552,7 @@ def _docs_search_payload(
             }
         meta = {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM docs_meta")}
     except (OSError, sqlite3.DatabaseError) as exc:
+        _docs_close_quietly(conn)
         return {
             "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
             "tool": {"name": "sem", "version": VERSION},
@@ -5575,7 +5590,7 @@ def _docs_search_payload(
             ).fetchall()
             candidate_ids.update(int(row[0]) for row in exact_rows)
     except (OSError, sqlite3.DatabaseError, json.JSONDecodeError) as exc:
-        conn.close()
+        _docs_close_quietly(conn)
         return {
             "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
             "tool": {"name": "sem", "version": VERSION},
@@ -5588,7 +5603,7 @@ def _docs_search_payload(
             "errors": [f"{db_path}: docs index query failed: {exc}"],
         }
     if not candidate_ids:
-        conn.close()
+        _docs_close_quietly(conn)
         return {
             "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
             "tool": {"name": "sem", "version": VERSION},
@@ -5652,7 +5667,7 @@ def _docs_search_payload(
         scored_results.sort(key=lambda item: item["score"], reverse=True)
         results = scored_results[:limit]
     except (OSError, sqlite3.DatabaseError, json.JSONDecodeError) as exc:
-        conn.close()
+        _docs_close_quietly(conn)
         return {
             "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
             "tool": {"name": "sem", "version": VERSION},
@@ -5664,7 +5679,7 @@ def _docs_search_payload(
             "results": [],
             "errors": [f"{db_path}: docs index result hydration failed: {exc}"],
         }
-    conn.close()
+    _docs_close_quietly(conn)
     return {
         "schemaVersion": DOCS_SEARCH_PAYLOAD_VERSION,
         "tool": {"name": "sem", "version": VERSION},

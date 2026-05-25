@@ -548,10 +548,14 @@ class TestSemAgentPayloads(unittest.TestCase):
 
             status_payload = sem._docs_index_status_payload(db_path)
             search_payload = sem._docs_search_payload("anything", db_path=db_path)
-            tables = {
-                row[0]
-                for row in sqlite3.connect(db_path).execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-            }
+            conn = sqlite3.connect(db_path)
+            try:
+                tables = {
+                    row[0]
+                    for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+                }
+            finally:
+                conn.close()
 
         self.assertFalse(status_payload["ok"])
         self.assertEqual(status_payload["status"], "stale-schema")
