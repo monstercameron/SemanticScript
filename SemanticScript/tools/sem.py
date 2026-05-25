@@ -5708,10 +5708,28 @@ def _explain_crash(source: Path, compiler_args: list[str]) -> int:
 
 
 def command_build(args: argparse.Namespace) -> int:
-    build_tape = _find_build_tape(Path(args.path))
+    requested = Path(args.path)
+    build_tape = _find_build_tape(requested)
     if build_tape is None:
-        print(f"sem: no build.sem found from {args.path}", file=sys.stderr)
+        print(
+            f"sem build: no build.sem found from {args.path}. `sem build` builds "
+            f"a project (a directory with a build.sem tape), not a lone source "
+            f"file. Pass the project directory or add a build.sem; to compile a "
+            f"single file use `sem check {args.path}` or `sem run {args.path}`.",
+            file=sys.stderr,
+        )
         return 2
+
+    # A bare-file arg does NOT build that file: `sem build` resolves the nearest
+    # ancestor build.sem and builds that whole project. Silently ignoring the
+    # file arg was a documented surprise — make the redirect visible.
+    if (requested.is_file()
+            and requested.name.lower() not in {"build.sem", "build.sscript"}):
+        print(
+            f"sem build: building project tape {build_tape}; the `{requested.name}` "
+            f"argument selects that project, it is not built as a standalone file.",
+            file=sys.stderr,
+        )
 
     compiler_args = _strip_separator(list(args.compiler_args))
     if not _has_compiler_action(compiler_args):

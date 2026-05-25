@@ -733,6 +733,19 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertFalse(payload["buildable"])
             self.assertIn("build.sem", payload["toolErrors"][0])
 
+    def test_build_without_tape_reports_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "lone.sem"
+            src.write_text("project X\n", encoding="utf-8")
+            args = argparse.Namespace(path=str(src), compiler_args=[])
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = sem.command_build(args)
+            self.assertEqual(rc, 2)
+            msg = buf.getvalue()
+            self.assertIn("no build.sem found", msg)
+            self.assertIn("not a lone source file", msg)
+
     def test_explain_unknown_code_still_reports_not_found(self) -> None:
         payload = sem._diagnostic_explain_payload("SS9999")
         self.assertFalse(payload["found"])
