@@ -5114,6 +5114,33 @@ def _operation_insert_anchor(operation) -> int:
     return max(line_numbers) if line_numbers else operation.line.number
 
 
+@functools.lru_cache(maxsize=256)
+def _migrated_file_lines(file_path: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """Return (original_lines, migrated_lines) for a file via the authoritative
+    `syntax_migration.migrate_text`, but ONLY when the migration preserves the
+    line count. The syntax cutover qualifies rows in place (`input` ->
+    `input operation`, etc.), so equal line counts mean a per-line `replaceLine`
+    reproduces the migrated row exactly. Returns None when the file can't be read
+    or the line count changed (then auto-apply is skipped — preview-only fix)."""
+    try:
+        from tools import syntax_migration
+    except ImportError:
+        return None
+    try:
+        original = Path(file_path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    result = syntax_migration.migrate_text(original)
+    migrated = getattr(result, "text", None)
+    if migrated is None or migrated == original:
+        return None
+    before = original.splitlines()
+    after = migrated.splitlines()
+    if len(before) != len(after):
+        return None
+    return tuple(before), tuple(after)
+
+
 def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, operation_lookup: dict[str, tuple[Path, object, object]] | None = None) -> dict:
     lookup = operation_lookup if operation_lookup is not None else _facts_operation_lookup(bundle)
     code = diagnostic.get("code", "")
@@ -5140,6 +5167,31 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, o
             f"sem fmt --check {path}",
         ],
     }
+    if code in ("SS0002", "SS0003"):
+        # Syntax-cutover rows are rewritten deterministically by
+        # `sem migrate-syntax`. Reuse that migrator to produce the exact
+        # rewritten row and emit it as an auto-applicable `replaceLine` edit, so
+        # `sem fix`/`patch` can apply the single fix every new user hits first
+        # (previously gated as requires-human-review).
+        span = diagnostic.get("span", {})
+        file_path = span.get("file") or ""
+        line_no = int(span.get("line", 0) or 0)
+        migrated_pair = _migrated_file_lines(file_path) if file_path else None
+        if migrated_pair is not None and 0 < line_no <= len(migrated_pair[1]):
+            before_line = migrated_pair[0][line_no - 1]
+            after_line = migrated_pair[1][line_no - 1]
+            if before_line != after_line:
+                repair["fixSafety"] = "local-edit"
+                for suggestion in repair["suggestions"]:
+                    if suggestion.get("name") in ("runMigrateSyntax", "rewriteToNewSyntax"):
+                        suggestion["autoApplicable"] = True
+                repair["edits"].append({
+                    "op": "replaceLine",
+                    "file": file_path,
+                    "line": line_no,
+                    "text": after_line,
+                })
+        return repair
     if code == "SS3104":
         for suggestion in repair["suggestions"]:
             if suggestion.get("name") == "inlineAuthority":
@@ -5213,6 +5265,19 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str], *, include_war
         if repair.get("edits") and repair.get("fixSafety") not in {"safe", "local-edit"}:
             repair["reviewEdits"] = list(repair.get("edits", []))
             repair["edits"] = []
+    # Distinct diagnostics can target the same row (e.g. a cutover row trips both
+    # SS0002 arity and SS0003 syntax), each emitting the identical replaceLine
+    # edit. Collapse duplicates so the plan carries one edit per target line.
+    seen_edit_keys: set = set()
+    for repair in repairs:
+        deduped = []
+        for edit in repair.get("edits", []):
+            key = (edit.get("file"), edit.get("op"), edit.get("line"), edit.get("afterLine"))
+            if key in seen_edit_keys:
+                continue
+            seen_edit_keys.add(key)
+            deduped.append(edit)
+        repair["edits"] = deduped
     patchable_repairs = [repair for repair in repairs if repair.get("edits")]
     review_only_repairs = [repair for repair in repairs if repair.get("reviewEdits")]
     suggestion_only_repairs = [repair for repair in repairs if not repair.get("edits") and not repair.get("reviewEdits")]
@@ -5227,7 +5292,12 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str], *, include_war
                 file_hashes[str(target.resolve())] = _file_sha256(target)
     status = "actionable"
     if check_payload["status"] == "compiler-error":
-        status = "blocked"
+        # A compiler error normally means no machine-applicable plan — except
+        # when the blocking rows are themselves the thing we can fix in place
+        # (the syntax cutover blocks parsing yet has deterministic local edits).
+        # Report "mixed" so the plan stays usable, steering the caller through
+        # `sem patch --dry-run` (re-check) before `--apply`.
+        status = "mixed" if patchable_repairs else "blocked"
     elif not repairs:
         status = "no-repairs"
     elif not patchable_repairs:

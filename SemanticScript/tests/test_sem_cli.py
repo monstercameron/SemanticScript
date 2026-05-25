@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1219,6 +1220,64 @@ return value 0
             self.assertTrue(any(item["kind"] == "graph" for item in payload["nextCommands"]))
             updated = source.read_text(encoding="utf-8")
             self.assertIn('purpose operation main "demo"', updated)
+
+    def test_fix_plan_auto_applies_syntax_cutover(self) -> None:
+        # The most common first-run failure (unqualified input/output/purpose
+        # rows the compiler now rejects) must produce a machine-applicable plan,
+        # not a dead-end "blocked" status. fix --plan should emit replaceLine
+        # edits sourced from the authoritative migrator, and patch --apply should
+        # migrate the rows in place so a follow-up check is clean.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(
+                "project Cut\n"
+                "module examples.cut\n"
+                "operation main\n"
+                "input main request Console\n"
+                "output main ExitCode\n"
+                'purpose main "demo"\n'
+                "async main no\n"
+                "return value 0\n",
+                encoding="utf-8",
+            )
+            sem._migrated_file_lines.cache_clear()
+            plan = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+            self.assertEqual(plan["status"], "mixed")
+            self.assertTrue(plan["planUsable"])
+            edits = [edit for repair in plan["repairs"] for edit in repair.get("edits", [])]
+            # Deduped: one replaceLine per cutover row, even though each row trips
+            # both an arity (SS0002) and a syntax (SS0003) diagnostic.
+            replace_lines = {edit["line"]: edit["text"] for edit in edits if edit["op"] == "replaceLine"}
+            self.assertEqual(replace_lines[4], "input operation main request Console")
+            self.assertEqual(replace_lines[5], "output operation main ExitCode")
+            self.assertEqual(replace_lines[6], 'purpose operation main "demo"')
+            self.assertEqual(len([e for e in edits if e["op"] == "replaceLine" and e["line"] == 4]), 1)
+
+            sem._migrated_file_lines.cache_clear()
+            patch_payload = sem._execute_patch_plan(plan, "apply")
+            self.assertTrue(patch_payload["applied"])
+            migrated = source.read_text(encoding="utf-8")
+            self.assertIn("input operation main request Console", migrated)
+            self.assertIn("output operation main ExitCode", migrated)
+            self.assertIn('purpose operation main "demo"', migrated)
+            self.assertNotIn("input main request", migrated)
+
+    def test_migrated_file_lines_skips_when_line_count_changes(self) -> None:
+        # Auto-apply only when the migration is a per-line in-place rewrite. If
+        # the migrator added/removed lines, a positional replaceLine could not
+        # reproduce it, so the helper returns None (preview-only fallback).
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("project P\noperation main\nreturn value 0\n", encoding="utf-8")
+            sem._migrated_file_lines.cache_clear()
+            with mock.patch("tools.syntax_migration.migrate_text") as migrate:
+                migrate.return_value = types.SimpleNamespace(
+                    text="project P\noperation main\nextra inserted line\nreturn value 0\n",
+                    ok=True,
+                    issues=[],
+                )
+                self.assertIsNone(sem._migrated_file_lines(str(source)))
 
     def test_patch_plan_rejects_stale_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
