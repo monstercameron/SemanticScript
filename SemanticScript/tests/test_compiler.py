@@ -7976,10 +7976,13 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
     check("const check: primitive-alias const passes the lowerability gate",
           passed, "alias-typed const was wrongly flagged")
 
-    # Int-backed builtin aliases (HttpStatus/HttpStatusCode/SqliteOpenMode) must
-    # lower to i32 like the string-backed SqlText lowers to a String const — no
-    # more "declare Int32, carry the alias only in the arg slot" workaround.
-    for alias in ("HttpStatus", "HttpStatusCode", "SqliteOpenMode"):
+    # Int-backed builtin aliases that ACTUALLY EXIST (HttpStatusCode is
+    # `type ... Int32`; SqliteOpenMode is an `enum repr Int32`) must lower to i32
+    # like the string-backed SqlText lowers to a String const — no more "declare
+    # Int32, carry the alias only in the arg slot" workaround. `HttpStatus` (no
+    # `Code`) is intentionally excluded — it is not a declared type, so it must
+    # still fail SSCG004 (asserted below) rather than lower a typo silently.
+    for alias in ("HttpStatusCode", "SqliteOpenMode"):
         builtin_src = "\n".join([
             "project ConstCheckBuiltin",
             "entry console main",
@@ -7998,6 +8001,27 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
             builtin_ok = False
         check(f"const check: int-backed builtin alias `{alias}` const lowers",
               builtin_ok, f"{alias} const was wrongly flagged as unlowerable")
+
+    # `HttpStatus` (no `Code`) is a phantom type — not declared anywhere. A const
+    # of it must still fail the lowerability gate, not lower silently.
+    phantom_src = "\n".join([
+        "project ConstCheckPhantom",
+        "entry console main",
+        "storage module immutable okStatus HttpStatus 200",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value 0",
+    ])
+    phantom_prog = semsc.parse(phantom_src)
+    phantom_flagged = False
+    try:
+        semsc.validate_const_lowerability(phantom_prog)
+    except semsc.CompilerDiagnosticError:
+        phantom_flagged = True
+    check("const check: phantom `HttpStatus` const still fails SSCG004",
+          phantom_flagged, "undefined HttpStatus type was wrongly accepted")
 
 
 def test_unknown_dotted_call_target_is_rejected_not_zeroed():

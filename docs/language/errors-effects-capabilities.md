@@ -108,7 +108,7 @@ calls against declared effects. Current checks cover console writes and a set of
 capability consoleStdoutWriter console.stdout write
 useCapability writeStandardOutputLine consoleStdoutWriter
 
-authority updateAccount database.account write
+authority updateAccount write database.account
 ```
 
 Schemas:
@@ -116,8 +116,14 @@ Schemas:
 ```text
 capability NAME EFFECT_PATH ACCESS
 useCapability TARGET CAPABILITY
-authority TARGET EFFECT_PATH ACCESS
+authority TARGET ACCESS EFFECT_PATH
 ```
+
+Note the column order differs between the two grant forms: `capability` is
+path-first (`NAME EFFECT_PATH ACCESS`), while `authority` is access-first
+(`TARGET ACCESS EFFECT_PATH`) — matching the `effect TARGET ACCESS EFFECT_PATH`
+row it backs. `sem migrate-syntax` rewrites the old path-first `authority` form
+to access-first.
 
 Capabilities name grants. `useCapability` attaches a grant to an operation or
 use site. `authority` is an inline grant form. Compiler strict lint and
@@ -128,7 +134,7 @@ use site. `authority` is an inline grant form. Compiler strict lint and
 
 - a reusable **`capability` + `useCapability`** pair (declare the grant once,
   attach it to each operation that uses it), or
-- an inline **`authority OP EFFECT_PATH ACCESS`** row (a one-off grant on that
+- an inline **`authority OP ACCESS EFFECT_PATH`** row (a one-off grant on that
   operation).
 
 So `authority` is **not** required *in addition* to a capability — it is an

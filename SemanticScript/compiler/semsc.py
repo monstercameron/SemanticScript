@@ -3811,12 +3811,19 @@ _Int32_ROLE_TYPES = {
     # Int-backed builtin aliases for HTTP/SQLite numeric codes and flags. These
     # are semantically i32 and are passed as Int32 values into call arg slots, so
     # a module/local const of these types must lower to i32 the same way SqlText
-    # (a string-backed alias) lowers to a String const. Without these, a const
-    # like `storage module immutable okStatus HttpStatus 200` failed codegen with
+    # (a string-backed alias) lowers to a String const — even without importing
+    # the declaring stdlib module. Without these, a const like
+    # `storage module immutable okStatus HttpStatusCode 200` failed codegen with
     # SSCG002/SSCG004 "unsupported const type" while the string-backed siblings
     # built fine — an inconsistency that forced the non-obvious "declare Int32,
     # carry the alias only in the arg slot" workaround.
-    "HttpStatus",
+    #
+    # Only types that actually exist are listed: `HttpStatusCode` is
+    # `type HttpStatusCode Int32` (std/http) and `SqliteOpenMode` is an
+    # `enum repr Int32` (std/sqlite). `HttpStatus` (no `Code`) is deliberately
+    # NOT here — it is not a declared type anywhere; accepting it would let a
+    # typo lower silently and undercut SSCG004. The real status type is
+    # `HttpStatusCode`.
     "HttpStatusCode",
     "SqliteOpenMode",
 }

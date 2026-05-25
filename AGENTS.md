@@ -164,7 +164,7 @@ capability or authority row.
 effect main write console.stdout
 capability stdoutWriter console.stdout write
 useCapability main stdoutWriter
-authority main console.stdout write
+authority main write console.stdout
 ```
 
 Fallible calls need explicit success/error handling. Do not hide failures.
@@ -705,7 +705,7 @@ Loop:
   effect opName write console.stdout
   capability stdoutWriter console.stdout write
   useCapability opName stdoutWriter
-  authority opName console.stdout write
+  authority opName write console.stdout
 
   dependency databaseClient kind externalService
   dependencyEffect databaseClient read database.account

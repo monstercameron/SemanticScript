@@ -158,7 +158,7 @@ capability or authority row.
 effect main write console.stdout
 capability stdoutWriter console.stdout write
 useCapability main stdoutWriter
-authority main console.stdout write
+authority main write console.stdout
 ```
 
 Fallible calls need explicit success/error handling. Do not hide failures.

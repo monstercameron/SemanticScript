@@ -4084,9 +4084,10 @@ def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                 effort=Effort.LOCAL,
                 passProvenance="check_authority_effect_mismatch",
                 agentHint=(
-                    f"`authority {operationName} {grantPath} {grantAccess}` authorizes nothing on "
+                    f"`authority {operationName} {grantAccess} {grantPath}` authorizes nothing on "
                     f"{operationName}; align its access verb and path to a declared "
-                    f"`effect {operationName} <action> <path>` row"
+                    f"`effect {operationName} <action> <path>` row (order is access-first: "
+                    f"`authority OP ACCESS PATH`)"
                 ),
             ))
     return diagnostics
