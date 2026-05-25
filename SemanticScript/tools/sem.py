@@ -315,6 +315,17 @@ DIAGNOSTIC_EXPLAINERS = {
             "Or rewrite the single row to the shape shown in the diagnostic's fix candidate."
         ],
     },
+    "SS3640": {
+        "title": "operation under-declares an external effect it performs",
+        "summary": "An operation directly calls a builtin with a known external effect (writing console.stdout, writing the HTTP response) but declares no matching `effect` row. Advisory: declared effects are the machine-readable record of what an operation touches, and a missing one means a later edit can drop the call or the effect with nothing catching the drift.",
+        "whyItMatters": [
+            "The language's premise is that effects are explicit and checkable; an undeclared write to an observable resource breaks that contract.",
+            "Effect rows are what authority/capability coverage and review hang off — an inferred-but-undeclared effect is invisible to those checks."
+        ],
+        "commonFixes": [
+            "Add the effect row the fix candidate shows (e.g. `effect <op> write console.stdout`) and back it with a matching capability/authority.",
+        ],
+    },
     "SS3611": {
         "title": "duplicate route (same server, METHOD, and path)",
         "summary": "Two `route` rows register the same METHOD+path on one server. The native dispatcher matches the first, so every later duplicate is dead — its handler can never run.",

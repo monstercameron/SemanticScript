@@ -15154,6 +15154,83 @@ def check_duplicate_route(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+# Builtin call targets whose use implies an external, observable effect the
+# operation must declare. Conservative on purpose: only the unambiguous,
+# high-frequency external resources where the corpus already declares the
+# effect 100% of the time, so flagging an omission is pure signal. (Maps
+# call-target prefix -> (effect resource substring, human description).)
+_EFFECT_REQUIRED_BY_CALL_PREFIX: Tuple[Tuple[str, str, str], ...] = (
+    ("console.write", "console.stdout", "console.stdout"),
+    ("http.response", "http.response", "http.response"),
+)
+
+
+def check_effect_under_declaration(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3640 — advisory. An operation that directly calls a builtin with a
+    known external effect (writing console.stdout, writing the HTTP response)
+    must declare that effect. Cross-checks the operation's direct call targets
+    against its `effect` rows; a write to an observable resource with no matching
+    effect declaration breaks the "effects are explicit and checkable" contract
+    (§2) — a later edit could drop the call or the effect with nothing noticing."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        effectText: List[str] = []
+        callTargets: List[Tuple[str, SourceLine]] = []
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            if sourceLine.verb == "effect":
+                effectText.append(" ".join(sourceLine.args))
+            elif sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargets.append((sourceLine.args[1], sourceLine))
+        effectBlob = " ".join(effectText)
+        alreadyFlaggedResources: set = set()
+        for target, callLine in callTargets:
+            for prefix, resourceSubstring, humanResource in _EFFECT_REQUIRED_BY_CALL_PREFIX:
+                if not target.startswith(prefix):
+                    continue
+                if resourceSubstring in effectBlob:
+                    continue
+                if humanResource in alreadyFlaggedResources:
+                    continue
+                alreadyFlaggedResources.add(humanResource)
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3640",
+                    kind="effectIntegrity.underDeclaredEffect",
+                    severity=Severity.WARNING,
+                    subjectName=operation.name,
+                    subjectKind="operation",
+                    gapEdge="effectDeclaration",
+                    intentSlogan=f"undeclared effect on {humanResource}",
+                    primary=span_of_line(callLine, "effectfulCallSite"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        f"`{operation.name}` calls `{target}` (writes "
+                        f"`{humanResource}`) but declares no matching `effect "
+                        f"{operation.name} write {humanResource}` row; declared "
+                        f"effects must cover the operation's observable behavior."
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#effect",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="declareEffect",
+                            shape=f"effect {operation.name} write {humanResource}",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_effect_under_declaration",
+                    agentHint=(
+                        "add the effect row (and back it with a matching "
+                        "capability/authority); effects are the machine-readable "
+                        "record of what the operation touches"
+                    ),
+                ))
+    return diagnostics
+
+
 def check_middleware_missing_response_effect(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3602 — an operation bound via `routeMiddleware` must declare
     `effect OP write http.response*`. The native dispatcher invokes
@@ -19429,6 +19506,7 @@ CHECKERS = [
     check_idempotency_replay_uses_response_status,
     check_invalid_route_method,
     check_duplicate_route,
+    check_effect_under_declaration,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
     check_untrusted_http_html_hydration,

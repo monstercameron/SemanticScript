@@ -8648,5 +8648,39 @@ class TestDuplicateRoute(unittest.TestCase):
         self.assertNotIn("SS3611", _codes(diagnostics))
 
 
+# ==========================================================================
+# SS3640  effectIntegrity.underDeclaredEffect
+# ==========================================================================
+
+class TestEffectUnderDeclaration(unittest.TestCase):
+    _BODY = (
+        "project P\n"
+        "module examples.p\n"
+        "operation main\n"
+        "output operation main ExitCode\n"
+        "{EFFECTS}"
+        "async main no\n"
+        "purpose operation main \"x\"\n"
+        "storage local immutable t String \"hi\"\n"
+        "call wCall console.writeLine\n"
+        "argument wCall text String t\n"
+        "run wCall\n"
+        "ignore void source wCall\n"
+        "return value 0\n"
+    )
+
+    def test_console_write_without_effect_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._BODY.replace("{EFFECTS}", ""))
+        self.assertIn("SS3640", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS3640")[0]
+        self.assertEqual(diag.subjectName, "main")
+        self.assertFalse(diag.blocksCompile)
+
+    def test_console_write_with_effect_is_clean(self) -> None:
+        diagnostics = _lint_source(
+            self._BODY.replace("{EFFECTS}", "effect main write console.stdout\n"))
+        self.assertNotIn("SS3640", _codes(diagnostics))
+
+
 if __name__ == "__main__":
     unittest.main()
