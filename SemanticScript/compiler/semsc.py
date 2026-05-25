@@ -16458,9 +16458,23 @@ def validate_const_lowerability(prog: Program) -> None:
     it here (during `--parse-only --lint`) closes that gap: the same failure is
     surfaced earlier with the same SSCG004 code.
     """
+    # Types used as operation INPUT parameters are opaque/handle/context types
+    # (Console, RetryPolicy, MetricsRuntime, runtimeBinding handles, …). A const
+    # of such a type is an opaque handle (initialized to 0 and passed as an
+    # opaque input), which codegen lowers through the opaque-input path, NOT
+    # `emit_const_value`. Excluding them avoids a false positive on those
+    # handles while still catching scalar/return-position const types.
+    input_param_types = set()
+    for op in prog.operations.values():
+        for verb, args, _ln in op.lines:
+            if verb == "input" and len(args) >= 2:
+                input_param_types.add(args[-1])
+
     def _check(name: str, typ: str, lineno: int) -> None:
         if "." in name:
             return  # qualified/imported const — owned by its source module
+        if typ in input_param_types:
+            return  # opaque handle / context type, lowered via the input path
         if _const_type_is_lowerable(prog, typ):
             return
         span = _strict_span(prog, lineno) if lineno else _strict_span(prog, 0)
