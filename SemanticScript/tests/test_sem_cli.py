@@ -792,6 +792,18 @@ class TestSemAgentPayloads(unittest.TestCase):
             with self.assertRaises(OSError):
                 sem.main(["check", "x"])
 
+    def test_check_payload_exposes_noBlockingLintErrors_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "m.sem"
+            src.write_text(
+                "project M\nmodule examples.m\noperation main\n"
+                "output operation main ExitCode\nasync main no\n"
+                "purpose operation main \"x\"\nreturn value 0\n", encoding="utf-8")
+            payload = sem._build_check_payload(src, [])
+            self.assertIn("noBlockingLintErrors", payload)
+            self.assertIn("lintClean", payload)  # deprecated alias retained
+            self.assertEqual(payload["noBlockingLintErrors"], payload["lintClean"])
+
     def test_literal_repin_recomputes_pins(self) -> None:
         import hashlib as _hashlib
         with tempfile.TemporaryDirectory() as tmp:

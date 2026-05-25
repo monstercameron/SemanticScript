@@ -3471,6 +3471,12 @@ def _build_check_payload(path: Path, compiler_args: list[str], *, include_readin
         "ok": ok,
         "status": status,
         "buildable": buildable,
+        # `noBlockingLintErrors` is the clearer canonical name: it means "no
+        # COMPILE-BLOCKING lint errors", NOT "zero lint findings" — warnings
+        # (e.g. SS3604/SS4001) can still be present while this is true. Read
+        # summary.lintWarnings / the diagnostics list for the full picture.
+        # `lintClean` is retained as a deprecated alias for back-compat.
+        "noBlockingLintErrors": lint_clean,
         "lintClean": lint_clean,
         "scope": _payload_scope(
             path,
