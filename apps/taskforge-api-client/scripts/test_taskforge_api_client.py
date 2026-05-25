@@ -22,6 +22,7 @@ class FakeTaskForgeHandler(BaseHTTPRequestHandler):
         {"id": 2, "title": "Ship the client app", "body": "Fetched through proxy", "priority": 1, "done": 0},
     ]
     next_id = 3
+    last_cookie_header = ""
 
     def log_message(self, fmt: str, *args) -> None:
         return
@@ -43,12 +44,23 @@ class FakeTaskForgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authorized(self) -> bool:
-        return "session=fake-session" in self.headers.get("Cookie", "")
+        self.__class__.last_cookie_header = self.headers.get("Cookie", "")
+        return "session=fake-session" in self.__class__.last_cookie_header
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
         if path == "/api/version":
             self._send(200, {"app": "TaskForge", "version": "test"})
+            return
+        if path == "/api/malicious-headers":
+            body = b'{"ok":true}\n'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("X-Upstream-Trace", "should-not-forward")
+            self.send_header("Set-Cookie", "evil=attacker; Path=/; HttpOnly")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         if path == "/api/auth/me":
             if not self._authorized():
@@ -133,13 +145,15 @@ class TaskForgeApiClientTests(unittest.TestCase):
             {"id": 2, "title": "Ship the client app", "body": "Fetched through proxy", "priority": 1, "done": 0},
         ]
         FakeTaskForgeHandler.next_id = 3
+        FakeTaskForgeHandler.last_cookie_header = ""
         self.upstream = ThreadingHTTPServer(("127.0.0.1", 0), FakeTaskForgeHandler)
         start_server(self.upstream)
         api_origin = f"http://127.0.0.1:{self.upstream.server_address[1]}"
         self.proxy = dev_proxy.create_server("127.0.0.1", 0, api_origin, APP_ROOT)
         start_server(self.proxy)
         self.base = f"http://127.0.0.1:{self.proxy.server_address[1]}"
-        self.opener = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.cookiejar = http.cookiejar.CookieJar()
+        self.opener = build_opener(HTTPCookieProcessor(self.cookiejar))
 
     def tearDown(self) -> None:
         self.proxy.shutdown()
@@ -186,10 +200,14 @@ class TaskForgeApiClientTests(unittest.TestCase):
         status, payload = self.request("POST", "/api/auth/login", {"username": "demo", "password": "demo1234"})
         self.assertEqual(status, 200)
         self.assertEqual(payload["user"]["username"], "demo")
+        cookie_names = {cookie.name for cookie in self.cookiejar}
+        self.assertIn(dev_proxy.PROXY_SESSION_COOKIE_NAME, cookie_names)
+        self.assertNotIn("session", cookie_names)
 
         status, payload = self.request("GET", "/api/todos")
         self.assertEqual(status, 200)
         self.assertEqual(payload["count"], 2)
+        self.assertEqual(FakeTaskForgeHandler.last_cookie_header, "session=fake-session")
 
         status, payload = self.request("POST", "/api/todos", {"title": "Write client tests", "priority": 2})
         self.assertEqual(status, 201)
@@ -226,6 +244,15 @@ class TaskForgeApiClientTests(unittest.TestCase):
     def test_forwarded_headers_reject_line_breaks(self) -> None:
         self.assertIsNone(dev_proxy._safe_header_pair("X-Test", "ok\r\nX-Injected: yes"))
         self.assertIsNone(dev_proxy._safe_header_pair("X-Test\nInjected", "ok"))
+        self.assertIsNone(dev_proxy._upstream_session_from_set_cookie("session=bad\r\nX-Injected: yes"))
+
+    def test_proxy_does_not_forward_upstream_headers_or_non_session_cookies(self) -> None:
+        request = Request(self.base + "/api/malicious-headers", method="GET")
+        response = self.opener.open(request, timeout=10)
+        response.read()
+        self.assertIsNone(response.headers.get("X-Upstream-Trace"))
+        cookie_names = {cookie.name for cookie in self.cookiejar}
+        self.assertNotIn("evil", cookie_names)
 
 
 if __name__ == "__main__":
