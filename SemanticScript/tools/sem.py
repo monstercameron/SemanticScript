@@ -2385,20 +2385,86 @@ def _normalize_compiler_diagnostic(diagnostic: dict) -> dict:
     }
 
 
+def _parse_error_guidance(message: str) -> tuple[str, list[str]]:
+    """Map a bare parser message to actionable help + fix shapes. The parser
+    tier had no help/fix candidates (the "worse tier"); this recovers the most
+    common cases so an agent gets a concrete next step instead of a raw string."""
+    lower = message.lower()
+    if "references unknown htmltemplate" in lower or "references unknown template" in lower:
+        return (
+            "`html body template NAME` instantiates a template that must already "
+            "be declared with `html template NAME` earlier in the file. Add the "
+            "declaration first.",
+            ["html template <name>"],
+        )
+    if lower.startswith("html requires") or "html requires:" in lower:
+        return (
+            "Declare `html template NAME`, then open the body with `html body "
+            "template NAME` followed by the indented HTML island; {hole} "
+            "placeholders become typed hydrate arguments.",
+            ["html template <name>", "html body template <name>"],
+        )
+    if lower.startswith("unknown verb"):
+        if "<" in message:  # a markup line read as a verb
+            return (
+                "This looks like HTML/markup outside an island. Raw markup is only "
+                "valid inside an `html body template NAME` block (opened after "
+                "`html template NAME`). Open the island first, or quote the text.",
+                ["html template <name>", "html body template <name>"],
+            )
+        return (
+            "Unrecognized row verb. Check the spelling against the syntax "
+            "inventory; if this is pre-cutover syntax, run `sem migrate-syntax "
+            "--diff <file>` then `--write` to upgrade it.",
+            ["sem migrate-syntax --write <file>"],
+        )
+    if "requires: input operation" in lower or "requires: output operation" in lower:
+        return (
+            "Header rows are subject-qualified: `input operation OP NAME TYPE` / "
+            "`output operation OP TYPE`. Run `sem migrate-syntax --write <file>` "
+            "to insert the `operation` qualifier automatically.",
+            ["sem migrate-syntax --write <file>"],
+        )
+    if "purpose requires" in lower or "invariant requires" in lower:
+        return (
+            "`purpose`/`invariant` name their subject kind: e.g. `purpose "
+            "operation OP \"...\"`. `purpose` also accepts capability/webServer/"
+            "record/etc. Run `sem migrate-syntax --write <file>` for the cutover.",
+            ["purpose operation <op> \"...\""],
+        )
+    if "ignore" in lower and "void" in lower and "discard" in lower:
+        return (
+            "A Void result is discarded with `ignore void source CALL`, not "
+            "`ignore ok ... type Void`.",
+            ["ignore void source <call>"],
+        )
+    return (
+        "Inspect the source row named by the parser failure and re-run sem check "
+        "after correcting the syntax.",
+        [],
+    )
+
+
 def _normalize_compiler_parse_error(stderr_text: str) -> dict | None:
-    match = re.match(r"^semsc: parse error in (.+): line (\d+): (.+)$", stderr_text.strip(), re.DOTALL)
+    # Two shapes: with a line number ("... : line 12: msg") and without
+    # ("... : msg", e.g. the html-body template errors). Match both.
+    match = re.match(
+        r"^semsc: parse error in (.+?): (?:line (\d+): )?(.+)$",
+        stderr_text.strip(), re.DOTALL)
     if not match:
         return None
     path_text, line_text, message = match.groups()
+    message = message.strip()
+    help_text, fix_shapes = _parse_error_guidance(message)
     return {
         "code": "SEMSC_PARSE",
         "severity": "error",
         "source": "compiler",
         "kind": "parse",
-        "message": message.strip(),
+        "message": message,
         "span": {
             "file": str(Path(path_text).resolve()),
-            "line": int(line_text),
+            "line": int(line_text) if line_text else 0,
             "column": 1,
             "role": "compilerError",
         },
@@ -2406,15 +2472,18 @@ def _normalize_compiler_parse_error(stderr_text: str) -> dict | None:
         "subjectKind": "",
         "gapEdge": "",
         "expected": "valid SemanticScript syntax that the parser accepts",
-        "actual": message.strip(),
-        "help": "Inspect the source row named by the parser failure and re-run sem check after correcting the syntax.",
+        "actual": message,
+        "help": help_text,
         "invariantRule": "",
         "specAnchor": "",
         "blocksCompile": True,
         "confidence": "high",
         "effort": "unknown",
         "citations": [],
-        "fixCandidates": [],
+        "fixCandidates": [
+            {"name": f"parseFix{index}", "shape": shape, "autoApplicable": False}
+            for index, shape in enumerate(fix_shapes, start=1)
+        ],
         "repair": {
             "id": "",
             "safe": False,

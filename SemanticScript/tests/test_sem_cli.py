@@ -792,6 +792,26 @@ class TestSemAgentPayloads(unittest.TestCase):
             with self.assertRaises(OSError):
                 sem.main(["check", "x"])
 
+    def test_parse_error_gets_actionable_help(self) -> None:
+        # The bare parser tier ("SEMSC_PARSE") now carries message-specific help
+        # + fix candidates. Both stderr shapes (with/without a line number).
+        no_line = sem._normalize_compiler_parse_error(
+            "semsc: parse error in /x/main.sem: htmlBody references unknown htmlTemplate: page")
+        self.assertIsNotNone(no_line)
+        self.assertIn("html template", no_line["help"].lower())
+        self.assertTrue(no_line["fixCandidates"])
+        self.assertEqual(no_line["span"]["line"], 0)
+
+        with_line = sem._normalize_compiler_parse_error(
+            "semsc: parse error in /x/main.sem: line 7: unknown verb: '<p>hi</p>'")
+        self.assertIsNotNone(with_line)
+        self.assertEqual(with_line["span"]["line"], 7)
+        self.assertIn("island", with_line["help"].lower())
+
+        migrate = sem._normalize_compiler_parse_error(
+            "semsc: parse error in /x/main.sem: line 3: input requires: input operation OPERATION NAME TYPE")
+        self.assertIn("migrate-syntax", migrate["help"])
+
     def test_trivial_semantic_test_detection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             noop = Path(tmp) / "noop.test.sem"
