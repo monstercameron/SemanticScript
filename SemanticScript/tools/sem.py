@@ -4484,6 +4484,26 @@ def _discover_test_entries(path: Path) -> list[dict]:
     return sorted(discovered, key=lambda item: (item["kind"], str(item["path"]).lower()))
 
 
+def _semantic_test_is_trivial(test_path: Path) -> bool:
+    """True when a semantic test exercises no behavior — no `call` and no
+    `branch` rows, i.e. it just returns a constant. Such a test "passes" the
+    semantic-check lane without proving anything (false confidence), so `sem
+    test` flags it. Best-effort: any read/parse trouble => not trivial."""
+    try:
+        text = test_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    has_call = False
+    has_branch = False
+    for raw in text.splitlines():
+        verb = raw.strip().split(" ", 1)[0] if raw.strip() else ""
+        if verb == "call":
+            has_call = True
+        elif verb in ("branch", "branchIfError", "branchSelected"):
+            has_branch = True
+    return not (has_call or has_branch)
+
+
 def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False) -> dict:
     preflight = _build_check_payload(path, [], include_readiness=False)
     preflight_ok = bool(preflight.get("ok", False))
@@ -4512,6 +4532,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     semantic_contract_discovered = 0
     semantic_contract_executed = 0
     semantic_contract_failed = 0
+    trivial_semantic_tests = 0
     runtime_harness_discovered = 0
     runtime_harness_executed = 0
     runtime_harness_failed = 0
@@ -4537,6 +4558,9 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             ok = bool(payload["ok"])
             duration_ms = int((time.time() - start) * 1000)
             selected += 1
+            trivial = _semantic_test_is_trivial(Path(entry["path"]))
+            if trivial:
+                trivial_semantic_tests += 1
             results.append({
                 "name": entry["name"],
                 "kind": entry["kind"],
@@ -4549,6 +4573,15 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 "checkStatus": payload["status"],
                 "diagnostics": payload["diagnostics"],
                 "checkCommand": f"sem check --json {entry['path']}",
+                # A semantic test is check-validated, not executed; if it has no
+                # calls/branches it asserts nothing — surfaced so a green run
+                # isn't mistaken for behavioral coverage.
+                "exercisesAssertions": not trivial,
+                "warning": (
+                    "test exercises no assertions (no call/branch rows) — it only "
+                    "proves the file parses, checks, and is buildable"
+                    if trivial else None
+                ),
             })
             if ok:
                 passed += 1
@@ -4730,6 +4763,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             "semanticContractsDiscovered": semantic_contract_discovered,
             "semanticContractsExecuted": semantic_contract_executed,
             "semanticContractsFailed": semantic_contract_failed,
+            "trivialSemanticTests": trivial_semantic_tests,
             "runtimeHarnessesDiscovered": runtime_harness_discovered,
             "runtimeHarnessesExecuted": runtime_harness_executed,
             "runtimeHarnessesFailed": runtime_harness_failed,
@@ -4737,6 +4771,12 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         },
         "results": results,
     }
+    if trivial_semantic_tests:
+        payload["warnings"] = [
+            f"{trivial_semantic_tests} semantic test(s) exercise no assertions "
+            f"(no call/branch rows). A passing `sem test` for these only proves "
+            f"they parse, check, and build — not that any behavior is correct."
+        ]
     payload["nextCommands"] = _test_next_commands(
         path,
         failed,
@@ -6501,6 +6541,8 @@ def command_test(args: argparse.Namespace) -> int:
         print(f"passed: {payload['passedTests']}")
         print(f"failed: {payload['failedTests']}")
         print(f"skipped: {payload['skippedTests']}")
+        for warning in payload.get("warnings", []):
+            print(f"warning: {warning}", file=sys.stderr)
     return 0 if payload["ok"] else 1
 
 

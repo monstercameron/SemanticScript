@@ -792,6 +792,20 @@ class TestSemAgentPayloads(unittest.TestCase):
             with self.assertRaises(OSError):
                 sem.main(["check", "x"])
 
+    def test_trivial_semantic_test_detection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            noop = Path(tmp) / "noop.test.sem"
+            noop.write_text(
+                "project N\noperation main\noutput operation main ExitCode\n"
+                "return value 0\n", encoding="utf-8")
+            self.assertTrue(sem._semantic_test_is_trivial(noop))
+            real = Path(tmp) / "real.test.sem"
+            real.write_text(
+                "project R\noperation main\noutput operation main ExitCode\n"
+                "call cCall math.addInt64\nrun cCall\n"
+                "bind value s Int64 cCall\nreturn value 0\n", encoding="utf-8")
+            self.assertFalse(sem._semantic_test_is_trivial(real))
+
     def test_starter_test_actually_asserts(self) -> None:
         # The scaffolded test must exercise codegen and assert, not be a trivial
         # `return value 0` that "passes" without proving anything.
