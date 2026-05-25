@@ -8617,5 +8617,36 @@ class TestBindReturnDomainMismatch(unittest.TestCase):
         self.assertIn("SS4302", _codes(diagnostics))
 
 
+# ==========================================================================
+# SS3611  webserver.duplicateRoute
+# ==========================================================================
+
+class TestDuplicateRoute(unittest.TestCase):
+    _HEAD = (
+        "project P\n"
+        "target webServer\n"
+        "module examples.p\n"
+        "webServer s\n"
+        "serverHost s \"127.0.0.1\"\n"
+        "serverPort s 8080\n"
+    )
+
+    def test_duplicate_method_path_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._HEAD + (
+            "route s GET \"/health\" h1\n"
+            "route s GET \"/health\" h2\n"
+        ))
+        self.assertIn("SS3611", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS3611")[0]
+        self.assertTrue(diag.blocksCompile)
+
+    def test_distinct_method_is_clean(self) -> None:
+        diagnostics = _lint_source(self._HEAD + (
+            "route s GET \"/health\" h1\n"
+            "route s POST \"/health\" h2\n"
+        ))
+        self.assertNotIn("SS3611", _codes(diagnostics))
+
+
 if __name__ == "__main__":
     unittest.main()

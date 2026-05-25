@@ -315,6 +315,17 @@ DIAGNOSTIC_EXPLAINERS = {
             "Or rewrite the single row to the shape shown in the diagnostic's fix candidate."
         ],
     },
+    "SS3611": {
+        "title": "duplicate route (same server, METHOD, and path)",
+        "summary": "Two `route` rows register the same METHOD+path on one server. The native dispatcher matches the first, so every later duplicate is dead — its handler can never run.",
+        "whyItMatters": [
+            "A duplicate route is almost always a copy-paste bug; the second handler silently never executes.",
+            "Dead route bindings hide intent and drift from the actual served surface."
+        ],
+        "commonFixes": [
+            "Delete the duplicate route row, or give it a distinct method/path.",
+        ],
+    },
     "SS4302": {
         "title": "bind type contradicts the call's return-type domain",
         "summary": "A `bind` declares an opaque domain handle (HtmlFragment/HtmlDocument/JsonDocument/...) for a call that returns a String or scalar, or vice versa. Both lower to a pointer, so the type lie type-checks — but consuming the mislabeled value (e.g. hydrating it) dereferences garbage and crashes at runtime.",

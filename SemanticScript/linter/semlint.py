@@ -15104,6 +15104,56 @@ def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_duplicate_route(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3611 — two `route` rows on the same server with the same METHOD+path.
+    The native dispatcher matches the first registration, so every later
+    duplicate is dead: its handler can never run, and the collision is almost
+    always a copy-paste bug. Flagged on each duplicate after the first."""
+    diagnostics: List[Diagnostic] = []
+    seen: Dict[Tuple[str, str, str], RouteFact] = {}
+    for routeFact in facts.base.routes:
+        key = (routeFact.server, routeFact.method.upper(), routeFact.path)
+        first = seen.get(key)
+        if first is None:
+            seen[key] = routeFact
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS3611",
+            kind="webserver.duplicateRoute",
+            severity=Severity.ERROR,
+            subjectName=routeFact.path,
+            subjectKind="route",
+            gapEdge="route.uniqueMethodPath",
+            intentSlogan=f"duplicate route {routeFact.method} {routeFact.path}",
+            primary=span_of_line(routeFact.line, "routeDeclaration"),
+            related=[span_of_line(first.line, "firstRouteDeclaration")],
+            invariantRule=(
+                f"`route {routeFact.server} {routeFact.method} {routeFact.path} "
+                f"{routeFact.handler}` collides with an earlier route for the same "
+                f"METHOD+path (handler `{first.handler}`); the dispatcher matches "
+                f"the first, so this binding is dead."
+            ),
+            specAnchor="docs/reference/syntax-inventory.md#route",
+            fixCandidates=[
+                FixCandidate(
+                    name="removeDuplicateRoute",
+                    shape=f"# remove the duplicate `route {routeFact.server} {routeFact.method} {routeFact.path} {routeFact.handler}`",
+                ),
+                FixCandidate(
+                    name="distinguishPath",
+                    shape=f"route {routeFact.server} {routeFact.method} <different-path> {routeFact.handler}",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=True,
+            effort=Effort.LOCAL,
+            passProvenance="check_duplicate_route",
+            agentHint="give the second route a distinct path/method, or delete it if it is a copy-paste leftover",
+        ))
+    return diagnostics
+
+
 def check_middleware_missing_response_effect(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3602 — an operation bound via `routeMiddleware` must declare
     `effect OP write http.response*`. The native dispatcher invokes
@@ -19378,6 +19428,7 @@ CHECKERS = [
     check_repeated_request_time_reads,
     check_idempotency_replay_uses_response_status,
     check_invalid_route_method,
+    check_duplicate_route,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
     check_untrusted_http_html_hydration,
