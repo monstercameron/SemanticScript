@@ -488,9 +488,23 @@ class TestSemMcpSubcommand(unittest.TestCase):
 @unittest.skipUnless(MCP_AVAILABLE, "mcp SDK not installed")
 class TestSemMcpTransport(unittest.TestCase):
     def test_main_defaults_to_stdio(self) -> None:
-        with mock.patch.object(sem_mcp.mcp, "run") as run:
+        with mock.patch.object(sem_mcp.anyio, "run") as run:
             sem_mcp.main([])
-        run.assert_called_once_with(transport="stdio")
+        run.assert_called_once_with(sem_mcp._run_stdio_bom_tolerant_async)
+
+    def test_stdio_reader_strips_initial_utf8_bom(self) -> None:
+        raw = io.BytesIO(b'\xef\xbb\xbf{"jsonrpc":"2.0"}\n{"jsonrpc":"2.0"}\n')
+        reader = sem_mcp._stdio_text_reader(raw)
+
+        self.assertEqual(reader.readline(), '{"jsonrpc":"2.0"}\n')
+        self.assertEqual(reader.readline(), '{"jsonrpc":"2.0"}\n')
+
+    def test_stdio_initial_line_sanitizer_handles_powershell_bom_artifacts(self) -> None:
+        expected = '{"jsonrpc":"2.0"}'
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line(f"\ufeff{expected}"), expected)
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line(f"?{expected}"), expected)
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line(f"\ufffd{expected}"), expected)
+        self.assertEqual(sem_mcp._sanitize_initial_stdio_line("?not-json"), "?not-json")
 
     def test_main_configures_streamable_http(self) -> None:
         with mock.patch.object(sem_mcp.mcp, "run") as run:
@@ -542,6 +556,50 @@ class TestDistributionManifests(unittest.TestCase):
         ):
             text = (winget_dir / name).read_text(encoding="utf-8")
             self.assertIn(f"PackageVersion: {version}", text, name)
+
+    def test_pyinstaller_version_info_embeds_mcp_bootstrap_metadata(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        version = json.loads((root / "version.json").read_text(encoding="utf-8"))["version"]
+        helper_path = root / "packaging" / "pyinstaller" / "sem_version_info.py"
+        spec = importlib.util.spec_from_file_location("sem_version_info_test", helper_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        rendered = module.render_version_info(version)
+
+        self.assertIn(f"StringStruct('FileVersion', '{version}')", rendered)
+        self.assertIn("StringStruct('Comments', 'MCP stdio server: run sem.exe mcp.", rendered)
+        self.assertIn("First tool call: skills_get names sem-start sem sem-agent", rendered)
+        self.assertIn("StringStruct('McpServerCommand', 'sem.exe mcp')", rendered)
+        self.assertIn("StringStruct('McpServerTransport', 'stdio')", rendered)
+        self.assertIn(
+            'StringStruct(\'McpClientConfig\', \'{"command":"sem.exe","args":["mcp"],'
+            '"cwd":"<project-root>"}\')',
+            rendered,
+        )
+
+    def test_release_workflows_include_mcp_bootstrap_notes(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        required_fragments = (
+            "MCP bootstrap:",
+            "Copy this block into an MCP-aware agent",
+            "Start command: sem.exe mcp",
+            '"args": ["mcp"]',
+            '"cwd": "<project-root>"',
+            'skills_get with names ["sem-start", "sem", "sem-agent"]',
+            "$noteParts += $mcpBootstrapLines",
+        )
+
+        for workflow in (
+            root / ".github" / "workflows" / "release.yml",
+            root / ".github" / "workflows" / "compiler-exe.yml",
+        ):
+            text = workflow.read_text(encoding="utf-8")
+            for fragment in required_fragments:
+                self.assertIn(fragment, text, workflow)
+            self.assertNotIn("$mcpBootstrapLines,", text, workflow)
 
 
 if __name__ == "__main__":

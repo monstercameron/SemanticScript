@@ -135,6 +135,7 @@ Inspect the toolchain and available workflows:
 ```powershell
 sem version --json
 sem skills list --json
+sem skills get sem-start --json
 ```
 
 For source checkout development, use the Python driver and test suite directly:

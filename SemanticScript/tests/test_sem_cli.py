@@ -1196,10 +1196,16 @@ class TestSemAgentPayloads(unittest.TestCase):
     def test_skill_registry_is_version_matched(self) -> None:
         payload = sem._skill_registry_payload()
         names = {item["name"] for item in payload}
+        self.assertIn("getting-started", names)
         self.assertIn("language-core", names)
         self.assertIn("errors-effects-capabilities", names)
+        start_skill = next(item for item in payload if item["name"] == "getting-started")
+        self.assertIn("sem-start", start_skill["aliases"])
         language_skill = next(item for item in payload if item["name"] == "language-core")
         self.assertIn("sem", language_skill["aliases"])
+        start_content = sem._skill_content("getting-started", include_full_content=True)
+        self.assertIsNotNone(start_content)
+        self.assertIn("Repository Map", start_content["content"])
         skill = sem._skill_content("language-core", include_full_content=True)
         self.assertIsNotNone(skill)
         self.assertIn("sem", skill["aliases"])
@@ -1223,6 +1229,14 @@ class TestSemAgentPayloads(unittest.TestCase):
             kinds = [item["kind"] for item in payload["nextCommands"]]
             self.assertIn("skills", kinds)
             self.assertIn("check", kinds)
+            self.assertEqual(
+                payload["nextCommands"][0]["command"],
+                "sem skills get sem-start sem-agent --json",
+            )
+            self.assertEqual(
+                payload["nextCommands"][0]["argv"][-5:],
+                ["skills", "get", "sem-start", "sem-agent", "--json"],
+            )
             self.assertEqual(
                 payload["state"]["buildTape"], str((root / "build.sem").resolve()))
 

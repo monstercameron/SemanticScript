@@ -53,7 +53,7 @@ Load version-matched agent rules:
 ```powershell
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 ```
 
 Inspect before editing:

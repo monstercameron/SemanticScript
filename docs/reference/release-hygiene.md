@@ -60,6 +60,10 @@ attached to GitHub releases with artifact metadata and checksums. Commit a
 handwritten manifest only when a release owner explicitly needs a pre-publish
 source artifact for an external distribution process.
 
+Generated GitHub release notes must include the MCP bootstrap block for the
+Windows executable so users and agents can discover that the downloaded
+`sem.exe` also runs as an MCP stdio server with `sem.exe mcp`.
+
 Main-branch merge prereleases use generated, uncommitted manifests named
 `semanticscript-merge-release-manifest-main-<SHORT_SHA>.json`. The
 `compiler-exe.yml` workflow attaches those manifests to the matching

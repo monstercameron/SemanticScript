@@ -59,7 +59,7 @@ Load version-matched agent rules:
 ```powershell
 python SemanticScript\tools\sem.py --version --json
 python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem sem-agent --json
+python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 ```
 
 Inspect before editing:
@@ -294,7 +294,7 @@ compiler/linter internals.
 Load matching rules:
   python SemanticScript\tools\sem.py --version --json
   python SemanticScript\tools\sem.py skills list --json
-  python SemanticScript\tools\sem.py skills get sem sem-agent --json
+  python SemanticScript\tools\sem.py skills get sem-start sem sem-agent --json
 
 `skills get --json` is summary-first; add `--full` when raw skill bodies are
 actually needed.
