@@ -1,0 +1,535 @@
+# ============================================================
+# SEMANTICSCRIPT STANDARD LIBRARY: browser DOM namespace
+# ============================================================
+#
+# Import this module with:
+#
+#   import document standard.document
+#
+# The `document.*` operations are ordinary SemanticScript operation wrappers
+# over generic native runtimeBinding symbols (`native.ss_dom_*`). The compiler
+# does not special-case DOM call names. The runtime adapter is JavaScript, not
+# C: it is the emscripten js-library `native/ss_dom_runtime.js`, linked by the
+# wasm build (`SemanticScript/tools/build_wasm.py`) via `--js-library`. This
+# module therefore only links/runs under the wasm32-emscripten browser target.
+
+module standard.document
+purpose module standard.document "Standard-library namespace and contracts for browser DOM read, mutation, and event-stream operations on the wasm32-emscripten target."
+moduleOwns standard.document "The official import path `standard.document`, DOM handle types, status constants, reusable DOM capabilities, runtimeBinding operation wrappers, and the JavaScript runtime adapter declaration."
+moduleDoesNotOwn standard.document "Application markup structure, CSS, framework component models, server-side rendering, or compiler DOM-specific lowering."
+invariant module standard.document "Downstream modules import this module as alias `document`; DOM nodes are referenced by opaque integer handles owned by the JavaScript adapter; event operations are async-only and delegate through generic native runtimeBinding rows."
+moduleWarning standard.document "This module targets the browser only. The native adapter is the emscripten js-library native/ss_dom_runtime.js; a native (non-wasm) build leaves the ss_dom_* symbols unresolved by design. Event operations require an Asyncify- or JSPI-enabled emcc build so async await can yield to the browser event loop."
+
+# Handle into the adapter's node table. Zero is the explicit `no node` value
+# (null lookups, not-found queries). Handles are integers, not pointers, so the
+# same source is correct on ILP32 wasm32 and on a 64-bit host adapter.
+type DomHandle Int32
+type DomEventStreamHandle Int32
+type DomElementId String
+type DomSelector String
+type DomTagName String
+type DomText String
+type DomHtmlMarkup String
+type DomAttributeName String
+type DomAttributeValue String
+type DomClassName String
+type DomStyleProperty String
+type DomStyleValue String
+type DomEventName String
+type DomEventProperty String
+type DomScriptSource String
+type DomOutputBuffer OpaquePointer
+type DomBufferCapacity Int32
+type DomStatus Int32
+type DomByteCount Int32
+
+exportType standard.document DomHandle
+exportType standard.document DomEventStreamHandle
+exportType standard.document DomElementId
+exportType standard.document DomSelector
+exportType standard.document DomTagName
+exportType standard.document DomText
+exportType standard.document DomHtmlMarkup
+exportType standard.document DomAttributeName
+exportType standard.document DomAttributeValue
+exportType standard.document DomClassName
+exportType standard.document DomStyleProperty
+exportType standard.document DomStyleValue
+exportType standard.document DomEventName
+exportType standard.document DomEventProperty
+exportType standard.document DomScriptSource
+exportType standard.document DomOutputBuffer
+exportType standard.document DomBufferCapacity
+exportType standard.document DomStatus
+exportType standard.document DomByteCount
+
+typeInvariant DomHandle "Opaque non-negative node handle owned by the JavaScript adapter node table; zero means no node; negative values never appear as handles."
+typeTrust DomHandle trustedRuntimeHandle
+typeInvariant DomEventStreamHandle "Opaque non-negative event-stream handle returned by document.addEventListener and released by document.removeEventListener; zero means no stream."
+typeTrust DomEventStreamHandle trustedRuntimeHandle
+typeInvariant DomElementId "Null-terminated element id used with document.getElementById; matched verbatim with no leading selector punctuation."
+typeInvariant DomSelector "Null-terminated CSS selector string used with document.querySelector."
+typeInvariant DomTagName "Null-terminated HTML tag name such as div or button."
+typeInvariant DomText "Null-terminated UTF-8 text assigned to or read from a node's textContent or an input value."
+typeInvariant DomHtmlMarkup "Null-terminated UTF-8 HTML markup assigned with document.setInnerHtml; the caller owns sanitization of any untrusted substring."
+typeTrust DomHtmlMarkup trustedAfterCallerSanitization
+typeInvariant DomAttributeName "Null-terminated attribute name such as href or data-id."
+typeInvariant DomAttributeValue "Null-terminated attribute value string."
+typeInvariant DomClassName "Null-terminated single CSS class token with no whitespace."
+typeInvariant DomStyleProperty "Null-terminated CSS property name such as color or display."
+typeInvariant DomStyleValue "Null-terminated CSS property value string."
+typeInvariant DomEventName "Null-terminated DOM event type such as click, input, or submit."
+typeInvariant DomEventProperty "Null-terminated event property name read by document.eventDetailInto, such as type, key, inputType, or data."
+typeInvariant DomScriptSource "Null-terminated JavaScript source evaluated in the page global scope; the caller owns trust of this string."
+typeTrust DomScriptSource trustedAfterCallerReview
+typeInvariant DomOutputBuffer "Caller-owned writable byte buffer that receives a null-terminated string from a DOM read; null with zero capacity intentionally skips the read."
+typeInvariant DomBufferCapacity "Positive byte capacity of a DomOutputBuffer including space for the null terminator, or zero when the buffer is null."
+typeInvariant DomStatus "Zero on success or a negative DOM status code."
+typeInvariant DomByteCount "Non-negative number of bytes a DOM read produced (excluding the null terminator), or a negative DomStatus on failure."
+
+capability documentReader document.dom read
+purpose operation documentReader "Authority to read DOM structure, text, attributes, and values."
+capability documentWriter document.dom write
+purpose operation documentWriter "Authority to create nodes and mutate DOM structure, text, attributes, classes, and styles."
+capability documentEventSubscriber document.event read
+purpose operation documentEventSubscriber "Authority to subscribe to and receive DOM events as an async stream."
+capability documentEventController document.event close
+purpose operation documentEventController "Authority to remove DOM event subscriptions."
+capability documentScriptEvaluator document.script execute
+purpose operation documentScriptEvaluator "Authority to evaluate JavaScript in the page global scope via document.evalScript."
+
+exportCapability standard.document documentReader
+exportCapability standard.document documentWriter
+exportCapability standard.document documentEventSubscriber
+exportCapability standard.document documentEventController
+exportCapability standard.document documentScriptEvaluator
+
+storage module immutable documentModuleVersionText String "standard.document 0.1"
+storage module immutable domHandleNone DomHandle 0
+storage module immutable domStatusOk DomStatus 0
+storage module immutable domStatusError DomStatus -1
+storage module immutable domStatusNotFound DomStatus -2
+storage module immutable domStatusBufferTooSmall DomStatus -3
+storage module immutable domStatusDetached DomStatus -4
+storage module immutable domStatusNoEvent DomStatus 0
+storage module immutable domStatusStreamClosed DomStatus -6
+storage module immutable domStatusCancelled DomStatus -7
+
+exportConstant standard.document documentModuleVersionText
+exportConstant standard.document domHandleNone
+exportConstant standard.document domStatusOk
+exportConstant standard.document domStatusError
+exportConstant standard.document domStatusNotFound
+exportConstant standard.document domStatusBufferTooSmall
+exportConstant standard.document domStatusDetached
+exportConstant standard.document domStatusNoEvent
+exportConstant standard.document domStatusStreamClosed
+exportConstant standard.document domStatusCancelled
+
+exportOperation standard.document bodyElement
+exportOperation standard.document documentElement
+exportOperation standard.document getElementById
+exportOperation standard.document querySelector
+exportOperation standard.document createElement
+exportOperation standard.document createTextNode
+exportOperation standard.document appendChild
+exportOperation standard.document removeChild
+exportOperation standard.document setTextContent
+exportOperation standard.document getTextContentInto
+exportOperation standard.document setValue
+exportOperation standard.document getValueInto
+exportOperation standard.document setInnerHtml
+exportOperation standard.document setAttribute
+exportOperation standard.document getAttributeInto
+exportOperation standard.document removeAttribute
+exportOperation standard.document classListAdd
+exportOperation standard.document classListRemove
+exportOperation standard.document classListToggle
+exportOperation standard.document setStyleProperty
+exportOperation standard.document addEventListener
+exportOperation standard.document nextEvent
+exportOperation standard.document eventTarget
+exportOperation standard.document eventDetailInto
+exportOperation standard.document removeEventListener
+exportOperation standard.document releaseHandle
+exportOperation standard.document evalScript
+
+# ------------------------------------------------------------
+# Node selection
+# ------------------------------------------------------------
+
+operation bodyElement
+output operation bodyElement DomHandle
+effect bodyElement read document.dom
+memory bodyElement heap no
+async bodyElement no
+useCapability bodyElement documentReader
+operationBody bodyElement runtimeBinding
+purpose operation bodyElement "Return a handle to document.body, or domHandleNone before the body parses."
+runtimeBindingPrecondition bodyElement "The page document exists; called only on the wasm32-emscripten browser target."
+runtimeBinding bodyElement native.ss_dom_body
+
+operation documentElement
+output operation documentElement DomHandle
+effect documentElement read document.dom
+memory documentElement heap no
+async documentElement no
+useCapability documentElement documentReader
+operationBody documentElement runtimeBinding
+purpose operation documentElement "Return a handle to document.documentElement (the root html element)."
+runtimeBindingPrecondition documentElement "The page document exists; called only on the wasm32-emscripten browser target."
+runtimeBinding documentElement native.ss_dom_document_element
+
+operation getElementById
+input operation getElementById elementId DomElementId
+output operation getElementById DomHandle
+effect getElementById read document.dom
+memory getElementById heap no
+async getElementById no
+useCapability getElementById documentReader
+operationBody getElementById runtimeBinding
+purpose operation getElementById "Return a handle to the element with the given id, or domHandleNone when no element matches."
+runtimeBindingPrecondition getElementById "elementId is a non-null null-terminated string."
+runtimeBinding getElementById native.ss_dom_get_element_by_id
+
+operation querySelector
+input operation querySelector selector DomSelector
+output operation querySelector DomHandle
+effect querySelector read document.dom
+memory querySelector heap no
+async querySelector no
+useCapability querySelector documentReader
+operationBody querySelector runtimeBinding
+purpose operation querySelector "Return a handle to the first element matching a CSS selector, or domHandleNone when none match."
+runtimeBindingPrecondition querySelector "selector is a non-null null-terminated valid CSS selector string."
+runtimeBinding querySelector native.ss_dom_query_selector
+
+# ------------------------------------------------------------
+# Node creation and tree mutation
+# ------------------------------------------------------------
+
+operation createElement
+input operation createElement tagName DomTagName
+output operation createElement DomHandle
+effect createElement write document.dom
+memory createElement heap no
+async createElement no
+useCapability createElement documentWriter
+operationBody createElement runtimeBinding
+purpose operation createElement "Create a detached element of the given tag name and return its handle."
+runtimeBindingPrecondition createElement "tagName is a non-null null-terminated valid HTML tag name."
+runtimeBinding createElement native.ss_dom_create_element
+
+operation createTextNode
+input operation createTextNode text DomText
+output operation createTextNode DomHandle
+effect createTextNode write document.dom
+memory createTextNode heap no
+async createTextNode no
+useCapability createTextNode documentWriter
+operationBody createTextNode runtimeBinding
+purpose operation createTextNode "Create a detached text node with the given text and return its handle."
+runtimeBindingPrecondition createTextNode "text is a non-null null-terminated UTF-8 string."
+runtimeBinding createTextNode native.ss_dom_create_text_node
+
+operation appendChild
+input operation appendChild parent DomHandle
+input operation appendChild child DomHandle
+output operation appendChild DomStatus
+effect appendChild write document.dom
+memory appendChild heap no
+async appendChild no
+useCapability appendChild documentWriter
+operationBody appendChild runtimeBinding
+purpose operation appendChild "Append child to parent, returning domStatusOk or a negative status when either handle is detached."
+runtimeBindingPrecondition appendChild "parent and child are live handles previously returned by this module."
+runtimeBinding appendChild native.ss_dom_append_child
+
+operation removeChild
+input operation removeChild parent DomHandle
+input operation removeChild child DomHandle
+output operation removeChild DomStatus
+effect removeChild write document.dom
+memory removeChild heap no
+async removeChild no
+useCapability removeChild documentWriter
+operationBody removeChild runtimeBinding
+purpose operation removeChild "Remove child from parent, returning domStatusOk or a negative status when the relationship is invalid."
+runtimeBindingPrecondition removeChild "parent and child are live handles and child is a current child of parent."
+runtimeBinding removeChild native.ss_dom_remove_child
+
+# ------------------------------------------------------------
+# Content
+# ------------------------------------------------------------
+
+operation setTextContent
+input operation setTextContent node DomHandle
+input operation setTextContent text DomText
+output operation setTextContent DomStatus
+effect setTextContent write document.dom
+memory setTextContent heap no
+async setTextContent no
+useCapability setTextContent documentWriter
+operationBody setTextContent runtimeBinding
+purpose operation setTextContent "Replace a node's textContent with text, returning domStatusOk or a negative status."
+runtimeBindingPrecondition setTextContent "node is a live handle and text is a non-null null-terminated UTF-8 string."
+runtimeBinding setTextContent native.ss_dom_set_text_content
+
+operation getTextContentInto
+input operation getTextContentInto node DomHandle
+input operation getTextContentInto outText DomOutputBuffer
+input operation getTextContentInto outTextCapacity DomBufferCapacity
+output operation getTextContentInto DomByteCount
+effect getTextContentInto read document.dom
+effect getTextContentInto write memory.buffer
+memory getTextContentInto heap no
+async getTextContentInto no
+useCapability getTextContentInto documentReader
+operationBody getTextContentInto runtimeBinding
+purpose operation getTextContentInto "Copy a node's textContent as null-terminated UTF-8 into a caller buffer and return the byte count, or domStatusBufferTooSmall."
+runtimeBindingPrecondition getTextContentInto "node is a live handle; outText is writable with outTextCapacity bytes including the null terminator."
+runtimeBinding getTextContentInto native.ss_dom_get_text_content
+
+operation setValue
+input operation setValue node DomHandle
+input operation setValue text DomText
+output operation setValue DomStatus
+effect setValue write document.dom
+memory setValue heap no
+async setValue no
+useCapability setValue documentWriter
+operationBody setValue runtimeBinding
+purpose operation setValue "Set the value property of a form control node, returning domStatusOk or a negative status."
+runtimeBindingPrecondition setValue "node is a live handle to a form control and text is a non-null null-terminated string."
+runtimeBinding setValue native.ss_dom_set_value
+
+operation getValueInto
+input operation getValueInto node DomHandle
+input operation getValueInto outText DomOutputBuffer
+input operation getValueInto outTextCapacity DomBufferCapacity
+output operation getValueInto DomByteCount
+effect getValueInto read document.dom
+effect getValueInto write memory.buffer
+memory getValueInto heap no
+async getValueInto no
+useCapability getValueInto documentReader
+operationBody getValueInto runtimeBinding
+purpose operation getValueInto "Copy a form control's value as null-terminated UTF-8 into a caller buffer and return the byte count, or domStatusBufferTooSmall."
+runtimeBindingPrecondition getValueInto "node is a live handle to a form control; outText is writable with outTextCapacity bytes including the null terminator."
+runtimeBinding getValueInto native.ss_dom_get_value
+
+operation setInnerHtml
+input operation setInnerHtml node DomHandle
+input operation setInnerHtml markup DomHtmlMarkup
+output operation setInnerHtml DomStatus
+effect setInnerHtml write document.dom
+memory setInnerHtml heap no
+async setInnerHtml no
+useCapability setInnerHtml documentWriter
+operationBody setInnerHtml runtimeBinding
+purpose operation setInnerHtml "Replace a node's innerHTML with markup, returning domStatusOk or a negative status."
+invariant operation setInnerHtml "Markup sanitization is the caller's responsibility; this operation assigns the string verbatim."
+runtimeBindingPrecondition setInnerHtml "node is a live handle and markup is a non-null null-terminated string the caller has sanitized."
+runtimeBinding setInnerHtml native.ss_dom_set_inner_html
+
+# ------------------------------------------------------------
+# Attributes, classes, styles
+# ------------------------------------------------------------
+
+operation setAttribute
+input operation setAttribute node DomHandle
+input operation setAttribute name DomAttributeName
+input operation setAttribute value DomAttributeValue
+output operation setAttribute DomStatus
+effect setAttribute write document.dom
+memory setAttribute heap no
+async setAttribute no
+useCapability setAttribute documentWriter
+operationBody setAttribute runtimeBinding
+purpose operation setAttribute "Set an attribute on a node, returning domStatusOk or a negative status."
+runtimeBindingPrecondition setAttribute "node is a live handle; name and value are non-null null-terminated strings."
+runtimeBinding setAttribute native.ss_dom_set_attribute
+
+operation getAttributeInto
+input operation getAttributeInto node DomHandle
+input operation getAttributeInto name DomAttributeName
+input operation getAttributeInto outValue DomOutputBuffer
+input operation getAttributeInto outValueCapacity DomBufferCapacity
+output operation getAttributeInto DomByteCount
+effect getAttributeInto read document.dom
+effect getAttributeInto write memory.buffer
+memory getAttributeInto heap no
+async getAttributeInto no
+useCapability getAttributeInto documentReader
+operationBody getAttributeInto runtimeBinding
+purpose operation getAttributeInto "Copy a node attribute value as null-terminated UTF-8 into a caller buffer and return the byte count, domStatusNotFound when absent, or domStatusBufferTooSmall."
+runtimeBindingPrecondition getAttributeInto "node is a live handle; name is non-null null-terminated; outValue is writable with outValueCapacity bytes including the null terminator."
+runtimeBinding getAttributeInto native.ss_dom_get_attribute
+
+operation removeAttribute
+input operation removeAttribute node DomHandle
+input operation removeAttribute name DomAttributeName
+output operation removeAttribute DomStatus
+effect removeAttribute write document.dom
+memory removeAttribute heap no
+async removeAttribute no
+useCapability removeAttribute documentWriter
+operationBody removeAttribute runtimeBinding
+purpose operation removeAttribute "Remove an attribute from a node, returning domStatusOk or a negative status."
+runtimeBindingPrecondition removeAttribute "node is a live handle and name is a non-null null-terminated string."
+runtimeBinding removeAttribute native.ss_dom_remove_attribute
+
+operation classListAdd
+input operation classListAdd node DomHandle
+input operation classListAdd className DomClassName
+output operation classListAdd DomStatus
+effect classListAdd write document.dom
+memory classListAdd heap no
+async classListAdd no
+useCapability classListAdd documentWriter
+operationBody classListAdd runtimeBinding
+purpose operation classListAdd "Add a single class token to a node's class list, returning domStatusOk or a negative status."
+runtimeBindingPrecondition classListAdd "node is a live handle and className is a non-null null-terminated single token with no whitespace."
+runtimeBinding classListAdd native.ss_dom_class_list_add
+
+operation classListRemove
+input operation classListRemove node DomHandle
+input operation classListRemove className DomClassName
+output operation classListRemove DomStatus
+effect classListRemove write document.dom
+memory classListRemove heap no
+async classListRemove no
+useCapability classListRemove documentWriter
+operationBody classListRemove runtimeBinding
+purpose operation classListRemove "Remove a single class token from a node's class list, returning domStatusOk or a negative status."
+runtimeBindingPrecondition classListRemove "node is a live handle and className is a non-null null-terminated single token with no whitespace."
+runtimeBinding classListRemove native.ss_dom_class_list_remove
+
+operation classListToggle
+input operation classListToggle node DomHandle
+input operation classListToggle className DomClassName
+output operation classListToggle DomStatus
+effect classListToggle write document.dom
+memory classListToggle heap no
+async classListToggle no
+useCapability classListToggle documentWriter
+operationBody classListToggle runtimeBinding
+purpose operation classListToggle "Toggle a single class token on a node's class list, returning 1 when present after toggle, 0 when absent, or a negative status."
+runtimeBindingPrecondition classListToggle "node is a live handle and className is a non-null null-terminated single token with no whitespace."
+runtimeBinding classListToggle native.ss_dom_class_list_toggle
+
+operation setStyleProperty
+input operation setStyleProperty node DomHandle
+input operation setStyleProperty property DomStyleProperty
+input operation setStyleProperty value DomStyleValue
+output operation setStyleProperty DomStatus
+effect setStyleProperty write document.dom
+memory setStyleProperty heap no
+async setStyleProperty no
+useCapability setStyleProperty documentWriter
+operationBody setStyleProperty runtimeBinding
+purpose operation setStyleProperty "Set an inline CSS property on a node, returning domStatusOk or a negative status."
+runtimeBindingPrecondition setStyleProperty "node is a live handle; property and value are non-null null-terminated strings."
+runtimeBinding setStyleProperty native.ss_dom_set_style_property
+
+# ------------------------------------------------------------
+# Events (async-only, pull model over an adapter-owned queue)
+# ------------------------------------------------------------
+
+operation addEventListener
+input operation addEventListener node DomHandle
+input operation addEventListener eventName DomEventName
+output operation addEventListener DomEventStreamHandle
+effect addEventListener read document.event
+memory addEventListener heap no
+async addEventListener no
+useCapability addEventListener documentEventSubscriber
+operationBody addEventListener runtimeBinding
+purpose operation addEventListener "Register a DOM event listener on a node and return an event-stream handle whose queued events are drained with document.nextEvent."
+invariant operation addEventListener "The returned handle is explicit caller-owned lifecycle state; the listener must be released with document.removeEventListener; no hidden listener persists after removal."
+runtimeBindingPrecondition addEventListener "node is a live handle and eventName is a non-null null-terminated DOM event type."
+runtimeBinding addEventListener native.ss_dom_add_event_listener
+
+operation nextEvent
+input operation nextEvent stream DomEventStreamHandle
+output operation nextEvent DomStatus
+effect nextEvent read document.event
+memory nextEvent heap no
+async nextEvent no
+useCapability nextEvent documentEventSubscriber
+operationBody nextEvent runtimeBinding
+purpose operation nextEvent "Block until the next queued event on an event-stream handle, returning domStatusOk on an event or domStatusStreamClosed when the stream is removed."
+invariant operation nextEvent "Suspension is delegated to the emcc Asyncify/JSPI layer, not to the SemanticScript async-future runtime: the JavaScript adapter import is declared async, so the wasm stack unwinds to the browser event loop while waiting and rewinds when the event fires. From the tape's view this is an ordinary blocking call; it never busy-waits."
+warning nextEvent "Requires an Asyncify- or JSPI-enabled emcc build. Without it the call cannot suspend and will trap. There is no built-in timeout; pair long-lived listeners with document.removeEventListener on a shutdown path."
+runtimeBindingPrecondition nextEvent "stream is a live event-stream handle returned by document.addEventListener."
+runtimeBinding nextEvent native.ss_dom_next_event
+
+operation eventTarget
+input operation eventTarget stream DomEventStreamHandle
+output operation eventTarget DomHandle
+effect eventTarget read document.event
+memory eventTarget heap no
+async eventTarget no
+useCapability eventTarget documentEventSubscriber
+operationBody eventTarget runtimeBinding
+purpose operation eventTarget "Return a handle to the target element of the event most recently delivered by document.nextEvent on this stream, or domHandleNone when none has been delivered."
+runtimeBindingPrecondition eventTarget "stream is a live event-stream handle on which document.nextEvent has returned at least one event."
+runtimeBinding eventTarget native.ss_dom_event_target
+
+operation eventDetailInto
+input operation eventDetailInto stream DomEventStreamHandle
+input operation eventDetailInto property DomEventProperty
+input operation eventDetailInto outValue DomOutputBuffer
+input operation eventDetailInto outValueCapacity DomBufferCapacity
+output operation eventDetailInto DomByteCount
+effect eventDetailInto read document.event
+effect eventDetailInto write memory.buffer
+memory eventDetailInto heap no
+async eventDetailInto no
+useCapability eventDetailInto documentEventSubscriber
+operationBody eventDetailInto runtimeBinding
+purpose operation eventDetailInto "Copy a string property (such as type, key, inputType, or data) of the current event into a caller buffer and return the byte count, domStatusNotFound when the property is absent, or domStatusBufferTooSmall."
+runtimeBindingPrecondition eventDetailInto "stream has a delivered event; property is non-null null-terminated; outValue is writable with outValueCapacity bytes including the null terminator."
+runtimeBinding eventDetailInto native.ss_dom_event_detail
+
+operation removeEventListener
+input operation removeEventListener stream DomEventStreamHandle
+output operation removeEventListener DomStatus
+effect removeEventListener close document.event
+memory removeEventListener heap no
+async removeEventListener no
+useCapability removeEventListener documentEventController
+operationBody removeEventListener runtimeBinding
+purpose operation removeEventListener "Detach the DOM listener for an event-stream handle and release its queue, returning domStatusOk or a negative status."
+runtimeBindingPrecondition removeEventListener "stream is a live event-stream handle returned by document.addEventListener."
+runtimeBinding removeEventListener native.ss_dom_remove_event_listener
+
+operation releaseHandle
+input operation releaseHandle node DomHandle
+output operation releaseHandle DomStatus
+effect releaseHandle read document.dom
+memory releaseHandle heap no
+async releaseHandle no
+useCapability releaseHandle documentReader
+operationBody releaseHandle runtimeBinding
+purpose operation releaseHandle "Release a node handle from the adapter handle table so it can be reclaimed, returning domStatusOk or domStatusDetached when the handle is already free."
+invariant operation releaseHandle "Releasing only drops the wasm-side handle; it does not remove the node from the DOM. Release handles for transient query results in long-lived programs to bound the handle table."
+runtimeBindingPrecondition releaseHandle "node is a handle previously returned by this module; releasing domHandleNone is a no-op error."
+runtimeBinding releaseHandle native.ss_dom_release
+
+# ------------------------------------------------------------
+# Escape hatch
+# ------------------------------------------------------------
+
+operation evalScript
+input operation evalScript script DomScriptSource
+output operation evalScript DomStatus
+effect evalScript execute document.script
+memory evalScript heap no
+async evalScript no
+useCapability evalScript documentScriptEvaluator
+operationBody evalScript runtimeBinding
+purpose operation evalScript "Evaluate JavaScript in the page global scope, returning domStatusOk or a negative status. The escape hatch for DOM behavior not yet wrapped by a typed operation."
+invariant operation evalScript "Script trust is the caller's responsibility; prefer typed operations and reserve this for gaps in the wrapped surface."
+runtimeBindingPrecondition evalScript "script is a non-null null-terminated JavaScript source string the caller has reviewed."
+runtimeBinding evalScript native.ss_dom_eval_script

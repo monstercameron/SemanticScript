@@ -4248,7 +4248,11 @@ class Codegen:
         self.runtime_checks = runtime_checks
         self.trace_events = trace_events
         self.module = ir.Module(name=prog.project_name or "semanticscript_module")
-        self.module.triple = llvm.get_default_triple()
+        # SEMSC_TRIPLE overrides the target triple so the same tape can be
+        # lowered for a non-host target (e.g. wasm32-unknown-emscripten). The
+        # triple gates platform-specific codegen such as the Windows SEH crash
+        # filter, so retargeting here skips host-only paths cleanly.
+        self.module.triple = os.environ.get("SEMSC_TRIPLE") or llvm.get_default_triple()
         self.provenance = CompilerProvenance(prog)
         self.strings = {}
         self._next_str_id = 0
