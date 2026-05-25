@@ -77,7 +77,7 @@ python apps/taskforge-api-client/scripts/dev_proxy.py --api-origin http://127.0.
 
 ## Browser Harness Behavior
 
-- Signs in through `POST /api/auth/login` and stores the TaskForge session cookie on the client origin.
+- Signs in through `POST /api/auth/login`; the Python proxy stores the upstream TaskForge session server-side and gives the browser a proxy-owned session cookie on the client origin.
 - Fetches the current session user through `GET /api/auth/me`.
 - Fetches todos through `GET /api/todos`.
 - Creates todos through `POST /api/todos`.
