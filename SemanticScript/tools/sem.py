@@ -2448,9 +2448,15 @@ def _parse_error_guidance(message: str) -> tuple[str, list[str]]:
 def _normalize_compiler_parse_error(stderr_text: str) -> dict | None:
     # Two shapes: with a line number ("... : line 12: msg") and without
     # ("... : msg", e.g. the html-body template errors). Match both.
+    # Anchor the path to a source extension so a path containing ": " can't
+    # mis-split; fall back to a non-greedy path match if the extension differs.
     match = re.match(
-        r"^semsc: parse error in (.+?): (?:line (\d+): )?(.+)$",
+        r"^semsc: parse error in (.+?\.(?:sem|sscript|test\.sem)): (?:line (\d+): )?(.+)$",
         stderr_text.strip(), re.DOTALL)
+    if not match:
+        match = re.match(
+            r"^semsc: parse error in (.+?): (?:line (\d+): )?(.+)$",
+            stderr_text.strip(), re.DOTALL)
     if not match:
         return None
     path_text, line_text, message = match.groups()
