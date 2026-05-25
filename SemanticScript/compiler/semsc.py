@@ -2103,12 +2103,16 @@ def _finish_sql_body_literal(prog: Program, active_sql_body: dict) -> None:
     ))
 
 
+def _strip_leading_bom(text: str) -> str:
+    """Drop a leading UTF-8 BOM (U+FEFF). Windows editors and PowerShell 5.1
+    (`Set-Content -Encoding utf8`) prepend one, which would otherwise be glued
+    to the first token and reported as `unknown verb: 'project'`. Applied to
+    every source read (entry file, build tape, and imported modules)."""
+    return text[1:] if text and ord(text[0]) == 0xFEFF else text
+
+
 def parse(source: str) -> Program:
-    # Strip a leading UTF-8 BOM. Windows editors and PowerShell 5.1
-    # (`Set-Content -Encoding utf8`) prepend U+FEFF, which would otherwise be
-    # glued to the first token and reported as `unknown verb: 'project'`.
-    if source and ord(source[0]) == 0xFEFF:
-        source = source[1:]
+    source = _strip_leading_bom(source)
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
     active_html_template = None
@@ -19341,7 +19345,7 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
                         seen.add(path)
                         try:
                             with open(path, "r", encoding="utf-8") as f:
-                                imported = f.read()
+                                imported = _strip_leading_bom(f.read())
                         except OSError:
                             append_line(line, origin_path, origin_line,
                                         imported=not is_root)
@@ -19417,7 +19421,7 @@ def _load_external_literals(prog: Program, source_path: str) -> None:
             for candidate in candidates:
                 try:
                     with open(candidate, "r", encoding="utf-8") as f:
-                        loaded = f.read()
+                        loaded = _strip_leading_bom(f.read())
                     break
                 except (IOError, OSError, UnicodeDecodeError):
                     continue
