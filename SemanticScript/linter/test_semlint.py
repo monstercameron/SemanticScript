@@ -8618,6 +8618,50 @@ class TestBindReturnDomainMismatch(unittest.TestCase):
 
 
 # ==========================================================================
+# SS0109  unusedDeclaration.htmlTemplate
+# ==========================================================================
+
+class TestUnusedHtmlTemplate(unittest.TestCase):
+    def test_unhydrated_template_is_flagged(self) -> None:
+        diagnostics = _lint_source(
+            "project P\n"
+            "module examples.p\n"
+            "html template Orphan\n"
+            "html body template Orphan\n"
+            "    <p>{msg}</p>\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "async main no\n"
+            "purpose operation main \"x\"\n"
+            "return value 0\n"
+        )
+        self.assertIn("SS0109", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS0109")[0]
+        self.assertEqual(diag.subjectName, "Orphan")
+        self.assertFalse(diag.blocksCompile)
+
+    def test_hydrated_template_is_clean(self) -> None:
+        diagnostics = _lint_source(
+            "project P\n"
+            "module examples.p\n"
+            "html template Page\n"
+            "html body template Page\n"
+            "    <p>{msg}</p>\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "async main no\n"
+            "purpose operation main \"x\"\n"
+            "storage local immutable m String \"hi\"\n"
+            "call renderCall html.hydrate.Page\n"
+            "argument renderCall msg String m\n"
+            "run renderCall\n"
+            "bind value page HtmlDocument renderCall\n"
+            "return value 0\n"
+        )
+        self.assertNotIn("SS0109", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS3611  webserver.duplicateRoute
 # ==========================================================================
 

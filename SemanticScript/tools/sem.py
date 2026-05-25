@@ -315,6 +315,18 @@ DIAGNOSTIC_EXPLAINERS = {
             "Or rewrite the single row to the shape shown in the diagnostic's fix candidate."
         ],
     },
+    "SS0109": {
+        "title": "html template declared but never hydrated",
+        "summary": "An `html template NAME` (with its body) is declared but no `html.hydrate.NAME` call ever renders it. Like an unused call or label, the template markup is dead — usually a leftover or a typo'd hydrate target.",
+        "whyItMatters": [
+            "Dead template markup ships in source but never reaches a response, hiding intent.",
+            "A typo in the hydrate target (`html.hydrate.Naem`) silently leaves the real template unrendered; this surfaces that."
+        ],
+        "commonFixes": [
+            "Render it with `call <name>Call html.hydrate.<Template>` where the page is built.",
+            "Delete the `html template`/`html body template` rows if the template is a leftover.",
+        ],
+    },
     "SS3640": {
         "title": "operation under-declares an external effect it performs",
         "summary": "An operation directly calls a builtin with a known external effect (writing console.stdout, writing the HTTP response) but declares no matching `effect` row. Advisory: declared effects are the machine-readable record of what an operation touches, and a missing one means a later edit can drop the call or the effect with nothing catching the drift.",

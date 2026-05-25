@@ -4445,6 +4445,60 @@ def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
     return diagnostics
 
 
+def check_unused_html_template(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS0109 — an `html template NAME` that is never rendered by any
+    `html.hydrate.NAME` call is dead (mirrors the unused-call/label checks).
+    A declared-but-unhydrated template is usually a leftover or a typo'd hydrate
+    target; either way it ships markup that never reaches a response."""
+    diagnostics: List[Diagnostic] = []
+    if not facts.base.html_templates:
+        return diagnostics
+    hydrated: Set[str] = set()
+    prefix = "html.hydrate."
+    for operation in facts.base.operations.values():
+        for sourceLine in operation.lines:
+            if (sourceLine.tokens and not is_comment(sourceLine)
+                    and sourceLine.verb == "call" and len(sourceLine.args) >= 2
+                    and sourceLine.args[1].startswith(prefix)):
+                hydrated.add(sourceLine.args[1][len(prefix):])
+    for template in facts.base.html_templates.values():
+        if template.name in hydrated:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS0109",
+            kind="unusedDeclaration.htmlTemplate",
+            severity=Severity.WARNING,
+            subjectName=template.name,
+            subjectKind="htmlTemplate",
+            gapEdge="hydrationSite",
+            intentSlogan="html template never hydrated",
+            primary=span_of_line(template.line, "htmlTemplateDeclaration"),
+            invariantRule=(
+                f"`html template {template.name}` is declared but no "
+                f"`html.hydrate.{template.name}` call renders it; the template "
+                f"markup is dead."
+            ),
+            specAnchor="docs/reference/syntax-inventory.md#html",
+            fixCandidates=[
+                FixCandidate(
+                    name="hydrateTemplate",
+                    shape=f"call <name>Call html.hydrate.{template.name}",
+                ),
+                FixCandidate(
+                    name="removeTemplate",
+                    shape=f"# remove the unused `html template {template.name}` and its body",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_unused_html_template",
+            agentHint="hydrate the template where the page is rendered, or delete it if it is a leftover",
+        ))
+    return diagnostics
+
+
 def check_vague_names(facts: ExtendedFacts) -> List[Diagnostic]:
     """Enforce the descriptive-identifier rule:
       * call names must end in `Call`
@@ -19394,6 +19448,7 @@ CHECKERS = [
     # errors surface before any refinement-level diagnostic.
     check_syntax_cutover_rows,
     check_html_implicit_holes,
+    check_unused_html_template,
     check_argument_arity,
     check_unresolved_references,
     check_branch_semantics,
