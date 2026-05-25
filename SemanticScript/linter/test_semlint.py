@@ -358,14 +358,33 @@ useCapability main consoleCap
         self.assertNotIn("SS3104", _codes(diagnostics))
 
     def test_inline_authority_satisfies_check(self) -> None:
+        # Canonical authority order is access-first (`authority OP ACCESS PATH`),
+        # mirroring the `effect OP ACCESS PATH` it backs. A correctly-ordered
+        # grant satisfies SS3104 AND is not flagged by SS3109.
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 effect main write console.stdout
 purpose main "smoke"
-authority main console.stdout write
+authority main write console.stdout
 """)
         self.assertNotIn("SS3104", _codes(diagnostics))
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+    def test_capability_coverage_fix_candidate_authority_is_access_first(self) -> None:
+        # Regression: the SS3104 inlineAuthority fix once emitted a path-first
+        # `authority OP PATH ACCESS` row, which then tripped SS3109. The
+        # suggested grant must be access-first so applying it actually clears
+        # the effect and stays consistent.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+effect main write console.stdout
+purpose main "smoke"
+""")
+        ss3104 = _diagnostics_with_code(diagnostics, "SS3104")[0]
+        inline = next(c for c in ss3104.fixCandidates if c.name == "inlineAuthority")
+        self.assertEqual(inline.shape, "authority main write console.stdout")
 
 
 # ==========================================================================

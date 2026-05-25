@@ -3949,8 +3949,12 @@ def _build_capability_coverage_fix_candidates(
         evidence=[span_of_line(effectLine)],
     ))
     fixCandidates.append(FixCandidate(
+        # `authority` is access-first (`authority OP ACCESS PATH`), mirroring the
+        # `effect OP ACCESS PATH` row it backs — unlike `capability`, which is
+        # path-first. Emitting it path-first produced a grant that matched no
+        # effect and tripped SS3109.
         name="inlineAuthority",
-        shape=f"authority {operationName} {effectPath} {effectAction}",
+        shape=f"authority {operationName} {effectAction} {effectPath}",
         evidence=[span_of_line(effectLine)],
     ))
     return fixCandidates
@@ -5389,7 +5393,8 @@ def check_undeclared_body_effect(facts: ExtendedFacts) -> List[Diagnostic]:
                         name="addEffectDeclarationWithCapabilityProof",
                         shape=(
                             f"effect {operation.name} {impliedAction} {impliedPath}\n"
-                            f"authority {operation.name} {impliedPath} {impliedAction}"
+                            # access-first, mirroring the effect row (see SS3104)
+                            f"authority {operation.name} {impliedAction} {impliedPath}"
                         ),
                         evidence=[span_of_line(callFact.line)],
                     ),
