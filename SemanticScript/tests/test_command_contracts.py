@@ -17,6 +17,7 @@ TASKFORGE_PATH = REPO_ROOT / "apps" / "taskforge-web"
 TASKFORGE_MAIN_PATH = TASKFORGE_PATH / "main.sem"
 AUCTION_SERVER_PATH = REPO_ROOT / "experiments" / "realtime-auction-arena" / "server"
 AUCTION_SERVER_MAIN_PATH = AUCTION_SERVER_PATH / "src" / "main.sem"
+SEM_JSON_TIMEOUT_SECONDS = 300
 
 
 @lru_cache(maxsize=256)
@@ -26,7 +27,7 @@ def _sem_json_cached(*args: str) -> tuple[int, str]:
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=180,
+        timeout=SEM_JSON_TIMEOUT_SECONDS,
     )
     return proc.returncode, proc.stdout
 
