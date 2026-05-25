@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import importlib.util
 import os
 from pathlib import Path
 
@@ -7,6 +8,23 @@ from PyInstaller.utils.hooks import collect_all
 
 
 ROOT = Path(SPECPATH).resolve().parents[1]
+
+
+def _load_version_info_helper():
+    helper_path = ROOT / "packaging" / "pyinstaller" / "sem_version_info.py"
+    spec = importlib.util.spec_from_file_location("sem_version_info", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load version info helper: {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+sem_version_info = _load_version_info_helper()
+VERSION_INFO_PATH = sem_version_info.write_sem_version_info(
+    ROOT,
+    ROOT / "build" / "pyinstaller" / "sem_version_info.txt",
+)
 
 
 llvmlite_datas, llvmlite_binaries, llvmlite_hiddenimports = collect_all("llvmlite")
@@ -121,4 +139,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version=str(VERSION_INFO_PATH),
 )

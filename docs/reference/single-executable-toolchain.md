@@ -31,6 +31,29 @@ The output is:
 dist\sem.exe
 ```
 
+## Embedded Metadata
+
+The PyInstaller spec writes a Windows VERSIONINFO resource into `sem.exe`.
+`FileDescription` identifies the executable as the SemanticScript CLI and MCP
+server. `Comments` carries the minimum MCP bootstrap instruction:
+
+```text
+MCP stdio server: run sem.exe mcp.
+MCP client config: command sem.exe; args ["mcp"]; cwd project root.
+First tool call: skills_get names sem-start sem sem-agent.
+```
+
+The same resource also includes machine-readable custom string entries:
+
+```text
+McpServerCommand=sem.exe mcp
+McpServerTransport=stdio
+McpClientConfig={"command":"sem.exe","args":["mcp"],"cwd":"<project-root>"}
+```
+
+Windows Explorer usually shows the standard fields, while tools using
+`version.dll` `VerQueryValue` can read the custom MCP keys.
+
 Release CI copies that file to:
 
 ```text

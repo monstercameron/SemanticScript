@@ -69,9 +69,15 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 
+import anyio
+import anyio.lowlevel
+import mcp.types as types
+from mcp.shared.message import SessionMessage
 from mcp.server.fastmcp import FastMCP
 
 SEM_PY = Path(__file__).resolve().parent / "sem.py"
@@ -86,6 +92,87 @@ DOCS_DEFAULT_EMBEDDING_PROVIDER = "sentence-transformers"
 DOCS_DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 
 mcp = FastMCP("semanticscript")
+
+
+def _stdio_text_reader(binary_stream: Any) -> TextIOWrapper:
+    """Wrap stdio input as UTF-8 while accepting one leading UTF-8 BOM.
+
+    Some PowerShell-driven smoke probes prepend a BOM to the first stdin write.
+    Real MCP clients normally send clean UTF-8, but ``utf-8-sig`` is harmless
+    for clean input and strips only the start-of-stream marker before JSON-RPC
+    parsing sees the first line.
+    """
+    return TextIOWrapper(binary_stream, encoding="utf-8-sig", errors="replace")
+
+
+def _sanitize_initial_stdio_line(line: str) -> str:
+    """Remove BOM artifacts that can appear before the first JSON-RPC frame."""
+    if line.startswith("\ufeff"):
+        return line.removeprefix("\ufeff")
+    if len(line) >= 2 and line[0] in {"?", "\ufffd"} and line[1] in {"{", "["}:
+        return line[1:]
+    return line
+
+
+@asynccontextmanager
+async def _stdio_server_bom_tolerant(
+    stdin: anyio.AsyncFile[str] | None = None,
+    stdout: anyio.AsyncFile[str] | None = None,
+):
+    """Stdio transport variant that sanitizes only the first input line."""
+    if not stdin:
+        stdin = anyio.wrap_file(_stdio_text_reader(sys.stdin.buffer))
+    if not stdout:
+        stdout = anyio.wrap_file(TextIOWrapper(sys.stdout.buffer, encoding="utf-8"))
+
+    read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
+    write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
+
+    async def stdin_reader() -> None:
+        first_line = True
+        try:
+            async with read_stream_writer:
+                async for line in stdin:
+                    if first_line:
+                        line = _sanitize_initial_stdio_line(line)
+                        first_line = False
+                    try:
+                        message = types.JSONRPCMessage.model_validate_json(line)
+                    except Exception as exc:
+                        await read_stream_writer.send(exc)
+                        continue
+
+                    await read_stream_writer.send(SessionMessage(message))
+        except anyio.ClosedResourceError:  # pragma: no cover
+            await anyio.lowlevel.checkpoint()
+
+    async def stdout_writer() -> None:
+        try:
+            async with write_stream_reader:
+                async for session_message in write_stream_reader:
+                    output = session_message.message.model_dump_json(
+                        by_alias=True,
+                        exclude_none=True,
+                    )
+                    await stdout.write(output + "\n")
+                    await stdout.flush()
+        except anyio.ClosedResourceError:  # pragma: no cover
+            await anyio.lowlevel.checkpoint()
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(stdin_reader)
+        task_group.start_soon(stdout_writer)
+        yield read_stream, write_stream
+
+
+async def _run_stdio_bom_tolerant_async() -> None:
+    """Run stdio transport with stdin tolerant of a leading UTF-8 BOM."""
+    async with _stdio_server_bom_tolerant() as (read_stream, write_stream):
+        await mcp._mcp_server.run(
+            read_stream,
+            write_stream,
+            mcp._mcp_server.create_initialization_options(),
+        )
 
 
 def _resolve_workspace_path(path: str, cwd: str | None = None) -> Path:
@@ -974,7 +1061,10 @@ def main(argv: list[str] | None = None) -> None:
                 file=sys.stderr,
             )
 
-    mcp.run(transport=args.transport)
+    if args.transport == "stdio":
+        anyio.run(_run_stdio_bom_tolerant_async)
+    else:
+        mcp.run(transport=args.transport)
 
 
 if __name__ == "__main__":
