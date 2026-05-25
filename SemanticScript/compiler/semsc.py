@@ -20572,6 +20572,25 @@ def _write_agent_json_payload(payload: dict, output_path: str) -> None:
         output_file.write(text)
 
 
+def _translate_parse_error_location(message, source_origins, default_path):
+    """Map a flattened-source parse error back to its origin file+line.
+
+    `parse()` raises `SyntaxError("line N: msg")` with N relative to the
+    import-flattened source. `source_origins` maps each flattened line to its
+    real `{path, line}`. Returns `(path, message)` with the path/line rewritten
+    to the originating module when known, else the entry path and original
+    message unchanged. Without this, a parse error in an imported `mainFile`
+    (e.g. main.sem) was reported against the entry build tape at a bogus line.
+    """
+    match = re.match(r"line (\d+): (.*)", message, re.DOTALL)
+    if match and source_origins:
+        flattened_lineno = int(match.group(1))
+        origin = source_origins.get(flattened_lineno)
+        if origin and origin.get("path"):
+            return origin["path"], f"line {origin.get('line', flattened_lineno)}: {match.group(2)}"
+    return default_path, message
+
+
 def main():
     _force_utf8_streams()
     ap = argparse.ArgumentParser(
@@ -20749,6 +20768,7 @@ def main():
             f"languageMode {mode}\n" for mode in prelude_language_modes
         ) + source
 
+    source_origins = {}
     try:
         # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
         # lines reference module files. Build tapes resolve registered
@@ -20762,7 +20782,15 @@ def main():
         prog.source_origins = source_origins
     except SyntaxError as e:
         import traceback as _tb
-        print(f"semsc: parse error in {args.source}: {e}", file=sys.stderr)
+        # `parse()` reports a line number relative to the import-flattened
+        # source. Translate it back to the originating file+line via
+        # source_origins so a parse error in an imported module (e.g. the
+        # `mainFile` main.sem reached from a build tape) is attributed to that
+        # file, not to the entry tape. Without this, the offending row in
+        # main.sem was reported against build.sem at a past-EOF line number.
+        error_path, message = _translate_parse_error_location(
+            str(e), source_origins, args.source)
+        print(f"semsc: parse error in {error_path}: {message}", file=sys.stderr)
         if os.environ.get("SEMSC_TRACEBACK"):
             _tb.print_exc(file=sys.stderr)
         sys.exit(2)

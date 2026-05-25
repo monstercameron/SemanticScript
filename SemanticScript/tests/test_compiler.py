@@ -8061,6 +8061,29 @@ def test_unknown_dotted_call_target_is_rejected_not_zeroed():
           message)
 
 
+def test_parse_error_attributed_to_origin_file():
+    # A parse error in an imported module (the build tape's mainFile) must be
+    # attributed to THAT file+line, not to the entry tape at a flattened line
+    # number. The flattened-source line is mapped back via source_origins.
+    origins = {
+        35: {"path": "/proj/main.sem", "line": 18, "column": 1, "imported": True},
+    }
+    path, message = semsc._translate_parse_error_location(
+        "line 35: branch if requires: branch if condition CONDITION target LABEL",
+        origins, "/proj/build.sem")
+    check("parse error: attributed to origin file",
+          path == "/proj/main.sem", path)
+    check("parse error: line rewritten to origin line",
+          message.startswith("line 18:"), message)
+
+    # No origin mapping -> fall back to the entry path and original message.
+    path2, message2 = semsc._translate_parse_error_location(
+        "line 4: bad row", {}, "/proj/build.sem")
+    check("parse error: falls back to entry path when origin unknown",
+          path2 == "/proj/build.sem" and message2 == "line 4: bad row",
+          f"{path2} | {message2}")
+
+
 def test_unlinked_stdlib_call_is_rejected_not_zeroed():
     # A `standard.*` library call that reaches codegen without its body being
     # inlined/linked used to lower to a dummy i64 0 — the single most damaging
@@ -8508,6 +8531,7 @@ def main():
     test_parser_strips_utf8_bom()
     test_const_lowerability_surfaces_unknown_type_at_check()
     test_unknown_dotted_call_target_is_rejected_not_zeroed()
+    test_parse_error_attributed_to_origin_file()
     test_unlinked_stdlib_call_is_rejected_not_zeroed()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_backend_diagnostic_detects_locked_output_binary()
