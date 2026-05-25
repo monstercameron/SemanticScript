@@ -5603,7 +5603,7 @@ def test_sem_bench_json_reports_stable_deltas():
           and payload.get("schemaVersion") == "sem.benchmark.v0"
           and payload.get("summary", {}).get("benchmarkCount") == 1
           and "semanticToCRatio" in bench.get("delta", {})
-          and "semanticMinusCpuClockTicksTicks" in bench.get("delta", {})
+          and "semanticMinusCClockTicks" in bench.get("delta", {})
           and Path(bench.get("artifacts", {}).get("semanticExecutablePath", "")).exists(),
           f"rc={proc.returncode} stderr={proc.stderr!r} decode={decode_error!r} payload={payload}")
 
