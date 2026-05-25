@@ -339,6 +339,17 @@ DIAGNOSTIC_EXPLAINERS = {
             "Add the effect row the fix candidate shows (e.g. `effect <op> write console.stdout`) and back it with a matching capability/authority.",
         ],
     },
+    "SS2516": {
+        "title": "placeholder modulePath from sem new",
+        "summary": "The build tape still declares `modulePath PROJECT github.com/example/<name>`, the scaffold placeholder. Left unchanged it can resolve imports and dependency origins against a bogus path. Advisory (non-blocking).",
+        "whyItMatters": [
+            "Dependency resolution and import provenance key off modulePath; a placeholder origin can resolve oddly once you add dependencies or publish.",
+            "It is a one-line fix that is easy to forget after `sem new`."
+        ],
+        "commonFixes": [
+            "Set the project's real module path, e.g. `modulePath <project> github.com/<owner>/<repo>`.",
+        ],
+    },
     "SS3611": {
         "title": "duplicate route (same server, METHOD, and path)",
         "summary": "Two `route` rows register the same METHOD+path on one server. The native dispatcher matches the first, so every later duplicate is dead — its handler can never run.",
