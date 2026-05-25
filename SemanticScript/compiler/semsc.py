@@ -18822,7 +18822,8 @@ def _peak_working_set_bytes():
 
 def jit_run(module_ir: str, opt_level: int = 2,
             emit_optimized_ir_to: str = None,
-            cpu_config: CpuBuildConfig = None) -> int:
+            cpu_config: CpuBuildConfig = None,
+            collect_execution_metrics: bool = False):
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
     mod = llvm.parse_assembly(module_ir)
@@ -18842,6 +18843,11 @@ def jit_run(module_ir: str, opt_level: int = 2,
     engine.run_static_constructors()
     addr = engine.get_function_address("main")
     cmain = ctypes.CFUNCTYPE(ctypes.c_int)(addr)
+    if collect_execution_metrics:
+        execute_start_ns = time.perf_counter_ns()
+        rc = cmain()
+        execute_ns = time.perf_counter_ns() - execute_start_ns
+        return rc, execute_ns
     return cmain()
 
 
@@ -20858,11 +20864,11 @@ def main():
 
     if args.run:
         if getattr(args, "run_metrics", False):
-            execute_start_ns = time.perf_counter_ns()
-            rc = jit_run(ir_text, opt_level=opt_level,
-                         emit_optimized_ir_to=emit_optimized_ir_path,
-                         cpu_config=cpu_config)
-            execute_ns = time.perf_counter_ns() - execute_start_ns
+            rc, execute_ns = jit_run(
+                ir_text, opt_level=opt_level,
+                emit_optimized_ir_to=emit_optimized_ir_path,
+                cpu_config=cpu_config,
+                collect_execution_metrics=True)
             peak_bytes, memory_source = _peak_working_set_bytes()
             metrics = {
                 "executeNs": execute_ns,
