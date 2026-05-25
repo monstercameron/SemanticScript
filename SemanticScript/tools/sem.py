@@ -294,12 +294,12 @@ DIAGNOSTIC_EXPLAINERS = {
         "title": "constant declared with an unlowerable type",
         "summary": "A constant value (storage/argument) was declared with a type the backend cannot lower to an LLVM constant — typically an enum or domain type used directly as a raw const.",
         "whyItMatters": [
-            "Enum and domain members are not usable as raw constants in codegen; only concrete primitives lower to LLVM constants.",
-            "This used to fail only at build time after a green `check`; it is now also surfaced as SS4108 before build."
+            "Records and domain types with no LLVM lowering are not usable as raw constants in codegen; only concrete primitives and enums (via their repr width) lower to LLVM constants.",
+            "This surfaces at build time, so confirm a const's type is a lowerable primitive before relying on a green `check`."
         ],
         "commonFixes": [
-            "Declare the const with a concrete primitive type, e.g. `storage local immutable okStatus Int32 200` instead of `HttpStatus HttpStatus.Ok`.",
-            "If you need the enum member semantically, compare against it at runtime rather than storing it as a const.",
+            "Declare the const with a concrete primitive type, e.g. `storage local immutable okStatus Int32 200`.",
+            "If you need an enum member semantically, declare it with the enum type (enums lower via their repr width) or compare against it at runtime rather than storing a record/domain value as a const.",
         ],
     },
     "SSCG005": {
@@ -325,18 +325,6 @@ DIAGNOSTIC_EXPLAINERS = {
             "Stop the running process that holds the output binary, then rebuild.",
             "Run the program from a copy, or build to a different output path.",
             "Confirm the output directory is writable and not locked by another tool.",
-        ],
-    },
-    "SS4108": {
-        "title": "constant type cannot be lowered to a runtime value",
-        "summary": "A `storage`/const declaration uses a type that the backend cannot emit as an LLVM constant (for example an enum or domain type). Surfaced at check time so a green `check` implies a buildable program.",
-        "whyItMatters": [
-            "Previously this only failed at build (as SSCG004) after `check` passed green, which broke the agent edit→check→build loop.",
-            "Catching it during check keeps the check gate honest and lets repair tooling see the problem."
-        ],
-        "commonFixes": [
-            "Use a concrete primitive type for the constant (Int32/Int64/UInt*/Bool/Float64/String).",
-            "For an enum-valued need, declare a primitive const of the enum's repr width, or compare the enum at runtime instead of storing it as a const.",
         ],
     },
     # ---- Security rule family (SS43xx arithmetic-UB + SS46xx security) ----
@@ -6883,11 +6871,6 @@ def build_parser() -> argparse.ArgumentParser:
         "skills",
         help="list or load version-matched agent skills from the current repository",
     )
-    # Bare `sem skills` defaults to the inventory rather than erroring on a
-    # missing subcommand — `list` is the discovery entry point agents reach for
-    # first. `json` is defaulted so the bare form has the attribute the handler
-    # reads.
-    skills.set_defaults(func=command_skills, skills_command="list", json=False)
     skills_subparsers = skills.add_subparsers(dest="skills_command", required=False)
     skills_list = skills_subparsers.add_parser(
         "list",
@@ -6912,6 +6895,13 @@ def build_parser() -> argparse.ArgumentParser:
                             help="include full raw skill bodies instead of the summary-first JSON shape")
     skills_get.add_argument("names", nargs="*")
     skills_get.set_defaults(func=command_skills)
+
+    # Bare `sem skills` defaults to the inventory rather than erroring on a
+    # missing subcommand — `list` is the discovery entry point agents reach
+    # for first. Set after add_subparsers so it overrides the subparsers
+    # action's None default; `json` is defaulted so the bare form has the
+    # attribute the handler reads.
+    skills.set_defaults(func=command_skills, skills_command="list", json=False)
 
     size = subparsers.add_parser(
         "size",

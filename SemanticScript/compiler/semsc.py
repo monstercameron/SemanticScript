@@ -361,11 +361,17 @@ class CompilerProvenance:
         lowered = stderr.lower()
         write_failure = (
             ("failed to write output" in lowered)
-            or ("permission denied" in lowered)
             or ("cannot open output file" in lowered)
             or ("lnk1104" in lowered)  # MSVC: cannot open file
             or ("text file busy" in lowered)
         )
+        # "permission denied" alone is ambiguous (it can also come from an
+        # unreadable input library), so only treat it as an output-write
+        # failure when it co-occurs with an output/write/executable context.
+        if not write_failure and "permission denied" in lowered and (
+            "output" in lowered or "write" in lowered or ".exe" in lowered
+        ):
+            write_failure = True
         if write_failure:
             output_match = re.search(
                 r"(?:failed to write output|cannot open (?:output )?file)\s*'?\"?([^'\"\n]+)",
@@ -9702,8 +9708,8 @@ class Codegen:
             )
             fixes = [
                 "Use a concrete primitive type for the const (Int32/Int64/Bool/Float64/String).",
-                "If you need the enum member, compare against it at runtime rather than storing it as a const.",
-                "Run `sem check --json` first — this condition is also surfaced as SS4108 before build.",
+                "Enums lower via their repr width; records and domain types with no LLVM lowering cannot be raw constants.",
+                "If you need an enum member, declare the const with the enum type, or compare against it at runtime instead of storing it.",
             ]
             agent_hint = (
                 "Change the declared type of the constant in SemanticScript source. "

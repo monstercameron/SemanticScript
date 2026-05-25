@@ -115,9 +115,9 @@ capability stdoutWriter console.stdout write
 operation main
 output operation main ExitCode
 effect main write console.stdout
-memory main noHeapAllocation
+memory main heap no
 async main no
-purpose main "Write a line and return a process exit code"
+purpose operation main "Write a line and return a process exit code"
 useCapability main stdoutWriter
 storage local immutable outputText String "hello world"
 call outputWriteCall console.writeLine

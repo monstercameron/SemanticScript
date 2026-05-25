@@ -121,9 +121,9 @@ capability stdoutWriter console.stdout write
 operation main
 output operation main ExitCode
 effect main write console.stdout
-memory main noHeapAllocation
+memory main heap no
 async main no
-purpose main "Write a line and return a process exit code"
+purpose operation main "Write a line and return a process exit code"
 useCapability main stdoutWriter
 storage local immutable outputText String "hello world"
 call outputWriteCall console.writeLine
@@ -405,9 +405,9 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   operation main
   output operation main ExitCode
   effect main write console.stdout
-  memory main noHeapAllocation
+  memory main heap no
   async main no
-  purpose main "Do the thing exactly"
+  purpose operation main "Do the thing exactly"
   useCapability main stdoutWriter
   storage local immutable outputText String "hello world"
   call outputWriteCall console.writeLine
@@ -527,9 +527,9 @@ console environment process httpRequest databaseClient clock. Do not add
 only needs `argument callName text String valueName`.
 
 Minimum useful metadata:
-  purpose opName "specific intent"
-  invariant opName "condition preserved by edits"
-  memory opName noHeapAllocation
+  purpose operation opName "specific intent"
+  invariant operation opName "condition preserved by edits"
+  memory opName heap no
   async opName no
 
 Effect rule: declare effect only for external/observable resources (console,

@@ -7913,6 +7913,116 @@ def test_backend_diagnostic_maps_symbol_to_source_call():
           rendered)
 
 
+def test_backend_diagnostic_detects_locked_output_binary():
+    src = "\n".join([
+        "project LockedOutput",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    prog.source_path = "locked.sscript"
+    cg = semsc.Codegen(prog)
+
+    write_locked = cg.provenance.explain_backend_error(
+        "lld-link: error: failed to write output 'dashboard.exe': "
+        "Permission denied\n"
+    )
+    check("diagnostics: locked output binary reports SSBE002 not SSBE999",
+          write_locked.code == "SSBE002"
+          and "dashboard.exe" in write_locked.message,
+          write_locked.render("agent"))
+
+    # A bare "permission denied" with no output/write context must NOT be
+    # misclassified as a write failure — it stays the generic SSBE999.
+    ambiguous = cg.provenance.explain_backend_error(
+        "ld.lld: error: cannot open libfoo.a: Permission denied\n"
+    )
+    check("diagnostics: ambiguous permission-denied stays SSBE999",
+          ambiguous.code == "SSBE999",
+          ambiguous.render("agent"))
+
+
+def test_call_lowering_diagnostic_splits_overloaded_code():
+    src = "\n".join([
+        "project CodegenSplit",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    prog.source_path = "split.sscript"
+    cg = semsc.Codegen(prog)
+
+    const_call = {"name": "badConstCall", "operation": "main", "line": 4,
+                  "target": "math.addInt64"}
+    const_diag = cg._diagnostic_for_call_error(
+        ValueError("unsupported const type: TodoRecord"), const_call)
+    check("diagnostics: unsupported const type is SSCG004 not SSCG002",
+          const_diag.code == "SSCG004", const_diag.render("agent"))
+
+    hydrate_call = {"name": "renderCall", "operation": "main", "line": 4,
+                    "target": "html.hydrate.PageTemplate"}
+    hydrate_diag = cg._diagnostic_for_call_error(
+        ValueError("renderCall: missing required arg `title` for html.hydrate.PageTemplate"),
+        hydrate_call)
+    check("diagnostics: missing hydrate hole is SSCG005 not SSCG002",
+          hydrate_diag.code == "SSCG005", hydrate_diag.render("agent"))
+
+    generic_call = {"name": "addCall", "operation": "main", "line": 4,
+                    "target": "math.addInt64"}
+    generic_diag = cg._diagnostic_for_call_error(
+        ValueError("addCall: unresolved symbol leftValue"), generic_call)
+    check("diagnostics: generic call-lowering failure stays SSCG002",
+          generic_diag.code == "SSCG002", generic_diag.render("agent"))
+
+
+def test_purpose_accepts_abstraction_subject_kinds():
+    # `purpose capability X "..."` must parse and satisfy the missingPurpose
+    # advisory the compiler emits for contract-heavy abstractions.
+    src = "\n".join([
+        "project PurposeSubjects",
+        "entry console main",
+        "capability stdoutWriter console.stdout write",
+        "purpose capability stdoutWriter \"Authorize stdout writes\"",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"Return a success exit code\"",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    diags = []
+    semsc._check_purpose_on_abstractions(prog, diags)
+    capability_warnings = [m for _ln, m in diags if "stdoutWriter" in m]
+    check("language: purpose capability clears missingPurpose advisory",
+          not capability_warnings, diags)
+
+    # Without the purpose row the advisory must still fire (proves the row is
+    # what satisfies it, not a silently dropped check).
+    src_missing = "\n".join([
+        "project PurposeSubjects",
+        "entry console main",
+        "capability stdoutWriter console.stdout write",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"Return a success exit code\"",
+        "async main no",
+        "return value 0",
+    ])
+    prog_missing = semsc.parse(src_missing)
+    diags_missing = []
+    semsc._check_purpose_on_abstractions(prog_missing, diags_missing)
+    check("language: missingPurpose still fires for an unannotated capability",
+          any("stdoutWriter" in m for _ln, m in diags_missing), diags_missing)
+
+
 def test_policy_runtime_binding_is_compile_blocking():
     src = "\n".join([
         "project RuntimeBindingPolicyBoundary",
@@ -8210,6 +8320,9 @@ def main():
     test_json_parse_primitive_rejects_malformed_and_trailing_junk()
     test_json_parse_primitive_rejects_documented_negative_cases()
     test_backend_diagnostic_maps_symbol_to_source_call()
+    test_backend_diagnostic_detects_locked_output_binary()
+    test_call_lowering_diagnostic_splits_overloaded_code()
+    test_purpose_accepts_abstraction_subject_kinds()
     test_policy_runtime_binding_is_compile_blocking()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()

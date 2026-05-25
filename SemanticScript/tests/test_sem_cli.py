@@ -686,6 +686,49 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(payload["summary"], f"{code} has no summary")
             self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
 
+    def test_explain_ss4105_describes_reference_integrity(self) -> None:
+        # SS4105 is the linter's reference-integrity / unresolved-value code,
+        # not a private-import rule. The explainer text must match the lint site.
+        payload = sem._diagnostic_explain_payload("SS4105")
+        self.assertTrue(payload["found"])
+        blob = " ".join([payload["title"], payload["summary"],
+                         " ".join(payload["commonFixes"])]).lower()
+        self.assertIn("storage", blob)
+        self.assertNotIn("private", blob)
+
+    def test_explain_finds_new_codegen_and_backend_codes(self) -> None:
+        # Newly split / added diagnostics must be discoverable via sem explain
+        # even before they appear in the repository diagnostic index.
+        for code in ("SSCG002", "SSCG004", "SSCG005", "SSBE002"):
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} not discoverable via sem explain")
+            self.assertTrue(payload["title"], f"{code} has no title")
+            self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+
+    def test_explain_unknown_code_still_reports_not_found(self) -> None:
+        payload = sem._diagnostic_explain_payload("SS9999")
+        self.assertFalse(payload["found"])
+        self.assertEqual(payload["status"], "not-found")
+
+    def test_skills_bare_command_defaults_to_list(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["skills"])
+        self.assertEqual(args.skills_command, "list")
+        self.assertEqual(args.func, sem.command_skills)
+
+    def test_skills_load_is_alias_for_get(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["skills", "load", "sem"])
+        self.assertEqual(args.skills_command, "load")
+        self.assertEqual(args.names, ["sem"])
+        self.assertEqual(args.func, sem.command_skills)
+
+    def test_mcp_list_tools_flag_parses(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["mcp", "--list-tools"])
+        self.assertTrue(args.list_tools)
+        self.assertEqual(args.func, sem.command_mcp)
+
     def test_fix_plan_generates_inline_authority_edit(self) -> None:
         source_text = """\
 module demo.agent
