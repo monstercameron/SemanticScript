@@ -4069,6 +4069,10 @@ def _syntax_cutover_diagnostic(
         specAnchor="docs/reference/syntax-inventory.md#syntax-cutover",
         fixCandidates=[
             FixCandidate(
+                name="runMigrateSyntax",
+                shape="sem migrate-syntax --write <file>",
+            ),
+            FixCandidate(
                 name="rewriteToNewSyntax",
                 shape=shape,
             ),
@@ -4077,7 +4081,7 @@ def _syntax_cutover_diagnostic(
         blocksCompile=True,
         effort=Effort.TRIVIAL,
         passProvenance="check_syntax_cutover_rows",
-        agentHint="run the explicit syntax converter or rewrite this row; the linter no longer treats old syntax as source",
+        agentHint="run `sem migrate-syntax --diff <file>` to preview the upgrade then `--write` to apply it; this rewrites every cutover row mechanically. Or rewrite this row to the shape shown. The linter no longer treats old syntax as source.",
     )
 
 

@@ -3497,7 +3497,7 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
     bad_cases = [
         ("explicit html parameter row",
          "project Bad\nhtml parameter template MissingTemplate titleText String\n",
-         "html requires: html template NAME"),
+         "html requires:"),
         ("duplicate htmlTemplate",
          "project Bad\nhtml template Card\nhtml template Card\n",
          "already declared"),

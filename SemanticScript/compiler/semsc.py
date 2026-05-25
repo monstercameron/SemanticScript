@@ -817,8 +817,10 @@ def _canonicalize_syntax_row(verb, args, lineno):
         if len(args) == 3 and args[0] == "body" and args[1] == "template":
             return "htmlBody", [args[2]]
         raise SyntaxError(
-            f"line {lineno}: html requires: html template NAME, "
-            "html body template TEMPLATE")
+            f"line {lineno}: html requires: `html template NAME` to declare a "
+            "template, then `html body template NAME` (NAME must already be "
+            "declared) to open the indented HTML island. The body's "
+            "{holeName} placeholders become typed hydrate arguments.")
 
     if verb == "type":
         if len(args) >= 2 and args[1] == "Result":

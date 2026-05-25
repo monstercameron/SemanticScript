@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import io
 import importlib.util
 import json
@@ -704,6 +705,33 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(payload["found"], f"{code} not discoverable via sem explain")
             self.assertTrue(payload["title"], f"{code} has no title")
             self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+
+    def test_explain_fills_parser_phase_codes(self) -> None:
+        # Parser-phase codes used to return an empty envelope (title == code).
+        for code in ("SS0001", "SS0002", "SS0003"):
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} not discoverable")
+            self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+        ss0003 = sem._diagnostic_explain_payload("SS0003")
+        blob = " ".join(ss0003["commonFixes"]).lower()
+        self.assertIn("migrate-syntax", blob)
+
+    def test_check_directory_without_build_tape_reports_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "main.sem").write_text("project X\n", encoding="utf-8")
+            # No build.sem in the directory.
+            args = argparse.Namespace(
+                path=str(root), compiler_args=[], json=True,
+                full=False, with_readiness=False)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = sem.command_check(args)
+            self.assertEqual(rc, 2)
+            payload = json.loads(buf.getvalue())
+            self.assertEqual(payload["status"], "tool-error")
+            self.assertFalse(payload["buildable"])
+            self.assertIn("build.sem", payload["toolErrors"][0])
 
     def test_explain_unknown_code_still_reports_not_found(self) -> None:
         payload = sem._diagnostic_explain_payload("SS9999")

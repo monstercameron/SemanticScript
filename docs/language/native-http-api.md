@@ -145,26 +145,33 @@ The first runtime calls should be direct and small:
 
 ```semanticscript
 storage local immutable healthBody String "ok\n"
+storage local immutable okStatus Int32 200
 
-call writeHealthResponse http.responseText
-argument writeHealthResponse response HttpResponse response
-argument writeHealthResponse status HttpStatus HttpStatus.Ok
-argument writeHealthResponse body String healthBody
-run writeHealthResponse
-bind value writeStatus Int32 writeHealthResponse
+call writeHealthResponseCall http.responseText
+argument writeHealthResponseCall response HttpResponse response
+argument writeHealthResponseCall status HttpStatusCode okStatus
+argument writeHealthResponseCall body String healthBody
+run writeHealthResponseCall
+bind value writeStatus Int32 writeHealthResponseCall
 return value writeStatus
 ```
+
+The status is a plain `Int32` value (`200`) declared with `storage` and passed
+by name. There is no predeclared `HttpStatus.Ok` constant, and the status value
+must be a base type — only `Int32`/`Int64`/etc. lower as constants, so declare
+`okStatus Int32 200` rather than typing the const itself `HttpStatusCode`. The
+argument row still carries the contract type token (`HttpStatusCode`).
 
 Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
-| `http.responseHtml` | `response HttpResponse`, `status HttpStatus`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
-| `http.responseText` | `response HttpResponse`, `status HttpStatus`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
-| `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
-| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
+| `http.responseHtml` | `response HttpResponse`, `status HttpStatusCode`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
+| `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
+| `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
+| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
 | `http.responseHeader` | `response HttpResponse`, `name String`, `value String` | `Int32` | `ss_http_response_header` |
-| `http.responseFile` | `response HttpResponse`, `status HttpStatus`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
 | `http.requestMethod` | `request HttpRequest` | `String` | `ss_http_request_method` |
 | `http.requestPath` | `request HttpRequest` | `String` | `ss_http_request_path` |
 | `http.requestPathParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_path_param` |
@@ -267,7 +274,7 @@ memory healthHandler arena request
 async healthHandler no
 useCapability healthHandler httpRequestReader
 useCapability healthHandler httpResponseWriter
-purpose healthHandler "Return a plain health-check response"
+purpose operation healthHandler "Return a plain health-check response"
 
 call methodReadCall http.requestMethod
 argument methodReadCall request HttpRequest request
@@ -280,9 +287,10 @@ run pathReadCall
 bind value requestPath String pathReadCall
 
 storage local immutable healthBody String "ok\n"
+storage local immutable okStatus Int32 200
 call responseWriteCall http.responseText
 argument responseWriteCall response HttpResponse response
-argument responseWriteCall status HttpStatus HttpStatus.Ok
+argument responseWriteCall status HttpStatusCode okStatus
 argument responseWriteCall body String healthBody
 run responseWriteCall
 bind value responseWriteStatus Int32 responseWriteCall

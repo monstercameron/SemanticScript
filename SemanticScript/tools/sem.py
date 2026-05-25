@@ -277,6 +277,44 @@ DIAGNOSTIC_EXPLAINERS = {
             "Run `sem check --json` again after fixing the malformed row so higher-level diagnostics are trustworthy."
         ],
     },
+    # ---- Parser / grammar family (SS000x) ----
+    "SS0001": {
+        "title": "unknown verb (unrecognized row)",
+        "summary": "The first token of a row is not a known SemanticScript verb. Every row begins with a verb; indented foreign content (HTML/JSON/SQL islands) only opens after the matching body row.",
+        "whyItMatters": [
+            "A stray verb usually means a typo, a row that belongs inside an island that was not opened, or pre-cutover syntax the compiler no longer accepts.",
+            "Markup lines (e.g. `<p>...`) are only valid inside an `html body template NAME` island; outside one they are read as verbs."
+        ],
+        "commonFixes": [
+            "Check the verb spelling against the syntax inventory or `sem skills get language-core --json`.",
+            "If the line is HTML/JSON/SQL, make sure the island was opened first (`html body template NAME`, `jsonBody NAME`, `sqlBody NAME`).",
+            "If this is old syntax, run `sem migrate-syntax --diff <file>` then `--write`."
+        ],
+    },
+    "SS0002": {
+        "title": "row has too few arguments (arity)",
+        "summary": "A row does not carry the number of tokens its verb requires. Frequently the subject-qualified cutover forms: `input operation OP NAME TYPE`, `output operation OP TYPE`.",
+        "whyItMatters": [
+            "Header rows must be independently checkable, so they name their owning operation and subject kind explicitly.",
+            "Copying pre-cutover examples (`input HANDLER NAME TYPE`) is the most common cause."
+        ],
+        "commonFixes": [
+            "Add the missing token(s) to match the row's required shape.",
+            "For input/output/purpose/invariant rows, run `sem migrate-syntax --write <file>` to insert the `operation` subject qualifier automatically."
+        ],
+    },
+    "SS0003": {
+        "title": "syntax cutover: row uses a rejected pre-cutover form",
+        "summary": "The linter no longer accepts the old unqualified/legacy row form. Subject-qualified header rows (`input operation ...`, `output operation ...`, `purpose operation ...`, `invariant operation ...`) and a handful of other forms replaced the originals.",
+        "whyItMatters": [
+            "Skill/doc examples may still show the pre-cutover shape; the compiler enforces the new one, so copy-paste fails here.",
+            "The rewrite is 100% mechanical, which is why a dedicated converter exists."
+        ],
+        "commonFixes": [
+            "Run `sem migrate-syntax --diff <file>` to preview, then `sem migrate-syntax --write <file>` to upgrade every cutover row at once.",
+            "Or rewrite the single row to the shape shown in the diagnostic's fix candidate."
+        ],
+    },
     # ---- Codegen / backend family (SSCG* lowering, SSBE* native backend) ----
     "SSCG002": {
         "title": "call could not be lowered to LLVM IR",
@@ -5813,6 +5851,42 @@ def command_check(args: argparse.Namespace) -> int:
     json_output = bool(getattr(args, "json", False) or trailing_json)
     full_output = bool(getattr(args, "full", False) or trailing_full)
     include_readiness = bool(getattr(args, "with_readiness", False) or trailing_readiness)
+    # A directory with no build.sem is not a checkable surface — the compiler
+    # would try to open() the directory as a file and report a misleading
+    # "Permission denied" / "Is a directory" OS error. Detect it here and give
+    # the actionable guidance instead.
+    requested_path = Path(args.path)
+    sem_files = (sorted(p.name for p in requested_path.glob("*.sem"))
+                 if requested_path.is_dir() else [])
+    # Fire only when the directory clearly holds source (`.sem` files) but has
+    # no build tape. A tapeless dir with no `.sem` files is left to the normal
+    # path so this guard never pre-empts a project root that simply hasn't been
+    # scaffolded yet.
+    if (requested_path.is_dir() and sem_files
+            and _find_build_tape(requested_path) is None):
+        suggestion = (
+            f"pass a source file (e.g. `sem check {requested_path.as_posix()}/{sem_files[0]}`)"
+        )
+        message = (
+            f"no build.sem (or build.sscript) found in directory "
+            f"'{requested_path}'. Add a build tape to make it a project, or "
+            f"{suggestion}."
+        )
+        if json_output:
+            print(json.dumps({
+                "schemaVersion": "sem.check.v1",
+                "tool": {"name": "sem", "version": VERSION},
+                "ok": False,
+                "status": "tool-error",
+                "buildable": False,
+                "lintClean": False,
+                "diagnostics": [],
+                "errors": [message],
+                "toolErrors": [message],
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"sem check: {message}", file=sys.stderr)
+        return 2
     if json_output:
         payload = _build_check_payload(Path(args.path), compiler_args, include_readiness=include_readiness)
         if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
