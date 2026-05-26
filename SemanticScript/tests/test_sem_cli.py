@@ -4,6 +4,7 @@ import contextlib
 import io
 import importlib.util
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -309,6 +310,23 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(payload["moduleDocMode"], "compact")
         self.assertNotIn("callTargets", payload["moduleDocs"][0])
 
+    def test_docs_get_static_type_enum_returns_cases(self) -> None:
+        payload = sem._docs_payload("get", operation_name="SqliteOpenMode")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["summary"]["typeMatchCount"], 1)
+        type_doc = payload["type"]
+        self.assertEqual(type_doc["kind"], "enum")
+        self.assertEqual(type_doc["repr"], "Int32")
+        self.assertIn(
+            {"name": "readWriteCreateSqliteOpenMode", "value": 6},
+            type_doc["cases"],
+        )
+        self.assertIn(
+            "argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode",
+            type_doc["exampleRows"],
+        )
+
     def test_docs_gui_control_on_event_matches_linter_signature(self) -> None:
         payload = sem._docs_payload("get", operation_name="gui.controlOnEvent")
         semlint = sem._load_semlint_module()
@@ -529,6 +547,47 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(clamped_payload["status"], "index-missing")
         self.assertEqual(clamped_payload["query"]["limit"], sem.DOCS_SEARCH_MAX_LIMIT)
         self.assertEqual(clamped_payload["query"]["requestedLimit"], 999)
+        self.assertEqual(clamped_payload["nextCommands"][0]["mcpTool"], "docs_reindex")
+
+    def test_docs_search_indexes_syntax_and_runtime_features(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / ".sem" / "docs.sqlite"
+
+            index_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=False,
+                include_compiler=True,
+                embedding_provider="none",
+            )
+            syntax_payload = sem._docs_search_payload(
+                "languageMode strictExecutable",
+                db_path=db_path,
+                limit=10,
+            )
+            runtime_payload = sem._docs_search_payload(
+                "nativeHttpRuntime",
+                db_path=db_path,
+                limit=10,
+            )
+
+        self.assertTrue(index_payload["ok"])
+        self.assertIn("syntax", index_payload["summary"]["sourceKinds"])
+        self.assertIn("runtime", index_payload["summary"]["sourceKinds"])
+        syntax_matches = [
+            result for result in syntax_payload["results"]
+            if result["kind"] == "syntaxFeature" and result["name"] == "languageMode strictExecutable"
+        ]
+        self.assertTrue(syntax_matches)
+        self.assertEqual(syntax_matches[0]["implementationStatus"], "Impl'd")
+        runtime_matches = [
+            result for result in runtime_payload["results"]
+            if result["kind"] == "runtimeFeature" and result["name"] == "nativeHttpRuntime"
+        ]
+        self.assertTrue(runtime_matches)
+        self.assertTrue(runtime_matches[0]["enabled"])
+        self.assertEqual(runtime_matches[0]["availability"], "available")
 
     def test_docs_confidence_does_not_trust_vector_only_matches(self) -> None:
         confidence = sem._docs_result_confidence(
@@ -997,6 +1056,40 @@ class TestSemAgentPayloads(unittest.TestCase):
         fix_entry = next(item for item in entries if item["kind"] == "fix")
         self.assertIn("--include-warnings", fix_entry["command"])
 
+    def test_check_next_commands_include_mcp_repair_loop_metadata(self) -> None:
+        source = Path("SemanticScript/tests/tiny.sem")
+        entries = sem._check_next_commands(
+            source,
+            [{
+                "code": "SS3104",
+                "subjectKind": "operation",
+                "subjectName": "main",
+                "repair": {"id": "inlineAuthority"},
+            }],
+            "lint-diagnostics",
+            include_readiness=False,
+        )
+
+        explain_entry = next(item for item in entries if item["kind"] == "explain")
+        self.assertEqual(explain_entry["mcpTool"], "explain")
+        self.assertEqual(explain_entry["mcpArgs"], {"code": "SS3104"})
+
+        slice_entry = next(item for item in entries if item["kind"] == "slice")
+        self.assertEqual(slice_entry["mcpTool"], "slice")
+        self.assertEqual(slice_entry["mcpArgs"]["operation"], "main")
+        self.assertEqual(slice_entry["mcpArgs"]["path"], str(source.resolve()))
+
+        fix_entry = next(item for item in entries if item["kind"] == "fix")
+        self.assertEqual(fix_entry["mcpTool"], "fix_plan")
+        self.assertEqual(fix_entry["mcpArgs"]["path"], str(source.resolve()))
+        self.assertFalse(fix_entry["mcpArgs"]["include_warnings"])
+
+        graph_entry = next(item for item in entries if item["kind"] == "graph")
+        self.assertEqual(graph_entry["mcpTool"], "graph")
+
+        readiness_entry = next(item for item in entries if item["kind"] == "readiness")
+        self.assertEqual(readiness_entry["mcpTool"], "readiness")
+
     def test_check_next_commands_quote_paths_with_spaces(self) -> None:
         with tempfile.TemporaryDirectory(prefix="sem space ") as tmp:
             source = Path(tmp) / "main.sem"
@@ -1230,18 +1323,130 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(payload["schemaVersion"], "sem.help.v1")
             self.assertTrue(payload["nextCommands"])
             kinds = [item["kind"] for item in payload["nextCommands"]]
+            self.assertIn("agent-docs", kinds)
             self.assertIn("skills", kinds)
             self.assertIn("check", kinds)
             self.assertEqual(
-                payload["nextCommands"][0]["command"],
-                "sem skills get sem-start sem-agent --json",
+                payload["nextCommands"][1]["command"],
+                "sem skills get sem-start sem sem-agent sem-syntax --json",
             )
             self.assertEqual(
-                payload["nextCommands"][0]["argv"][-5:],
-                ["skills", "get", "sem-start", "sem-agent", "--json"],
+                payload["nextCommands"][1]["argv"][-7:],
+                ["skills", "get", "sem-start", "sem", "sem-agent", "sem-syntax", "--json"],
+            )
+            self.assertEqual(payload["nextCommands"][0]["mcpTool"], "agent_docs")
+            self.assertEqual(payload["nextCommands"][1]["mcpTool"], "skills_get")
+            self.assertEqual(
+                payload["nextCommands"][1]["mcpArgs"],
+                {"names": ["sem-start", "sem", "sem-agent", "sem-syntax"]},
             )
             self.assertEqual(
                 payload["state"]["buildTape"], str((root / "build.sem").resolve()))
+            workflow_ids = {workflow["id"] for workflow in payload["workflows"]}
+            self.assertTrue({
+                "bootstrap-orient",
+                "create-project",
+                "learn-language-syntax",
+                "discover-apis-capabilities-runtime",
+                "dependencies",
+                "inspect-understand",
+                "author-edit-validate",
+                "diagnose-repair",
+                "build-run-debug",
+                "test-dev-loop",
+                "migrate-modernize",
+                "clean-profile-maintain",
+            }.issubset(workflow_ids))
+            bootstrap = next(workflow for workflow in payload["workflows"] if workflow["id"] == "bootstrap-orient")
+            self.assertTrue(any(step.get("mcpTool") == "agent_docs" for step in bootstrap["steps"]))
+            discover = next(
+                workflow for workflow in payload["workflows"]
+                if workflow["id"] == "discover-apis-capabilities-runtime"
+            )
+            search_step = next(step for step in discover["steps"] if step["kind"] == "docs-search")
+            self.assertEqual(search_step["mcpTool"], "docs_search")
+            self.assertIn("syntax", search_step["mcpArgs"]["query"])
+            repair = next(workflow for workflow in payload["workflows"] if workflow["id"] == "diagnose-repair")
+            fix_step = next(step for step in repair["steps"] if step["kind"] == "fix")
+            self.assertEqual(fix_step["mcpTool"], "fix_plan")
+            build = next(workflow for workflow in payload["workflows"] if workflow["id"] == "build-run-debug")
+            self.assertTrue(any(step["kind"] == "build" for step in build["steps"]))
+            self.assertTrue(any(step["kind"] == "run" for step in build["steps"]))
+
+    def test_bootstrap_payload_recommends_plain_exe_mcp_start(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = sem._bootstrap_payload(Path(tmp))
+        self.assertEqual(payload["schemaVersion"], "sem.bootstrap.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["mcp"]["serverCommand"], "sem.exe mcp")
+        self.assertEqual(payload["mcp"]["clientConfig"]["args"], ["mcp"])
+        first_call = payload["mcp"]["firstToolCalls"][0]
+        self.assertEqual(first_call["tool"], "agent_docs")
+        self.assertEqual(payload["mcp"]["firstToolCalls"][1]["tool"], "skills_get")
+        self.assertEqual(payload["mcp"]["firstToolCalls"][1]["args"]["names"], ["sem-start", "sem", "sem-agent", "sem-syntax"])
+        self.assertIn("docs_search", payload["mcp"]["handshakeInstructions"])
+        self.assertIn("eval", payload["mcp"]["handshakeInstructions"])
+        self.assertEqual(payload["languageSmoke"]["expectedStdout"], "semantic tools ready\n")
+        self.assertEqual(payload["nextCommands"][1]["mcpTool"], "agent_docs")
+        self.assertEqual(payload["nextCommands"][2]["mcpTool"], "skills_get")
+        self.assertEqual(payload["nextCommands"][3]["mcpTool"], "docs_reindex")
+        self.assertEqual(payload["nextCommands"][4]["mcpTool"], "docs_search")
+        self.assertEqual(payload["nextCommands"][5]["mcpTool"], "eval")
+        self.assertIn("workflows", payload)
+        workflow_ids = {workflow["id"] for workflow in payload["workflows"]}
+        self.assertIn("create-project", workflow_ids)
+        self.assertIn("build-run-debug", workflow_ids)
+
+    def test_agent_docs_payload_reads_project_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "src"
+            nested.mkdir()
+            (root / "AGENTS.md").write_text("agent rules\n", encoding="utf-8")
+            (root / "CLAUDE.md").write_text("claude rules\n", encoding="utf-8")
+            payload = sem._agent_docs_payload(nested)
+
+        self.assertEqual(payload["schemaVersion"], "sem.agentDocs.v1")
+        self.assertEqual(payload["status"], "found")
+        self.assertEqual([document["name"] for document in payload["documents"]], ["AGENTS.md", "CLAUDE.md"])
+        self.assertEqual(payload["documents"][0]["content"].replace("\r\n", "\n"), "agent rules\n")
+        self.assertEqual(payload["nextCommands"][0]["mcpTool"], "skills_get")
+
+    def test_parser_help_surfaces_mcp_bootstrap(self) -> None:
+        parser = sem.build_parser()
+        text = parser.format_help()
+        self.assertIn("Bootstrap an MCP-capable agent", text)
+        self.assertIn('agent_docs {"path":"."}', text)
+        self.assertIn('skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}', text)
+        self.assertIn("Optional language smoke", text)
+        mcp_parser = next(
+            action.choices["mcp"]
+            for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        self.assertIn("MCP bootstrap:", mcp_parser.format_help())
+
+    def test_next_command_argv_uses_frozen_executable_without_temp_sem_py(self) -> None:
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            try:
+                with mock.patch.object(sem.sys, "frozen", True, create=True), \
+                     mock.patch.object(sem.sys, "executable", "C:/Tools/sem.exe"):
+                    entry = sem._next_command_entry(
+                        "skills",
+                        "load startup skills",
+                        argv=["sem", "skills", "get", "sem-start", "--json"],
+                    )
+            finally:
+                os.chdir(previous_cwd)
+        self.assertEqual(
+            entry["argv"],
+            ["C:/Tools/sem.exe", "skills", "get", "sem-start", "--json"],
+        )
+        self.assertNotIn("sem.py", " ".join(entry["argv"]))
+        self.assertEqual(entry["cwd"], str(Path(tmp).resolve()))
 
     def test_package_dependencies_skill_is_discoverable(self) -> None:
         self.assertEqual(sem.SKILL_ALIASES.get("sem-packages"), "package-dependencies")

@@ -336,7 +336,7 @@ storage module immutable height GuiPixels 480
 storage module immutable resizable Int32 1
 
 operation main
-output main ExitCode
+output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main write gui.window
@@ -566,7 +566,7 @@ Qualified names are resolved from provider export rows only:
 ```semanticscript
 import persistence app.todo.persistence
 call loadCall persistence.loadTodos
-input saveHandler todo persistence.TodoItem
+input operation saveHandler todo persistence.TodoItem
 useCapability saveHandler persistence.todoStoreReader
 argument limitCall max Int64 persistence.maxTodoCount
 ```
@@ -636,7 +636,7 @@ path, in its own source:
 import github app.net.github
 
 operation syncIssues
-output syncIssues Void
+output operation syncIssues Void
 effect syncIssues read github.api
 useCapability syncIssues githubApiReader
 

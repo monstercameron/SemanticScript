@@ -81,8 +81,8 @@ For a same-file user operation call:
 
 - parameter order comes from the callee's `input` lines;
 - opaque inputs are skipped at the LLVM boundary;
-- `output OP Result OK ERR` returns the OK payload type;
-- `output OP TYPE` returns `TYPE`;
+- `output operation OP Result OK ERR` returns the OK payload type;
+- `output operation OP TYPE` returns `TYPE`;
 - `Void` currently uses an `i32` zero sentinel in ABI positions that need a
   concrete value.
 

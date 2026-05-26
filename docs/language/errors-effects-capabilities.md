@@ -19,8 +19,8 @@ runtime value or failure category.
 
 ```semanticscript
 operation writeStandardOutputLine
-input writeStandardOutputLine text String
-output writeStandardOutputLine Result Void ConsoleWriteError
+input operation writeStandardOutputLine text String
+output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
 purpose writeStandardOutputLine "Write one line and surface console failures"
 ```

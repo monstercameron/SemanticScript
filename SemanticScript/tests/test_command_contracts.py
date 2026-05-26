@@ -116,11 +116,11 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertTrue(any(skill["name"] == "language-core" for skill in payload["skills"]))
         self.assertEqual(
             payload["nextCommands"][0]["command"],
-            "sem skills get sem-start sem sem-agent --json",
+            "sem skills get sem-start sem sem-agent sem-syntax --json",
         )
         self.assertEqual(
-            payload["nextCommands"][0]["argv"][-6:],
-            ["skills", "get", "sem-start", "sem", "sem-agent", "--json"],
+            payload["nextCommands"][0]["argv"][-7:],
+            ["skills", "get", "sem-start", "sem", "sem-agent", "sem-syntax", "--json"],
         )
 
     def test_skills_get_alias_contract(self) -> None:

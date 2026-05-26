@@ -54,15 +54,20 @@ prerequisites.
 
 `sem mcp` runs a Model Context Protocol server that exposes the stable `sem`
 JSON surfaces (`check`, `readiness`, `context`, `symbols`, `graph`, `slice`,
-`size`, `explain`, `skills`, `fix`, `patch`, `test`, `dev`, `deps`, `docs`,
-`eval`, `help`, plus `version` and `doctor`) as MCP tools, so MCP-capable agents and editors can call
-the toolchain natively instead of shelling out. `deps` resolves external
+`size`, `explain`, `skills`, `agent_docs`, `fix_plan` for `sem fix --plan`,
+`patch`, `test`, `dev`, `deps`, `docs`, `eval`, `bootstrap`, `help`, plus `version` and
+`doctor`) as MCP tools, so MCP-capable agents and editors can call the
+toolchain natively instead of shelling out. `deps` resolves external
 dependencies (`sync`/`verify`/`list`/`cache`/`purge`, `sem.deps.v1`) and `help`
 returns the recommended next-step workflow (`sem.help.v1`). `eval` JIT-runs a
 snippet or full program and returns `sem.eval.v1` (captured output, exit code,
 execution timing, peak memory, and linter/compiler notes); see
 [`repl.md`](repl.md). It is a thin wrapper over the same `sem` CLI, so behavior
 and versioning stay identical.
+`bootstrap` returns the plain-executable startup contract (`sem.bootstrap.v1`):
+how to launch `sem.exe mcp`, how to load project-local `AGENTS.md` / `CLAUDE.md`
+with `agent_docs`, which skills to load first, and how to discover capabilities
+and APIs through docs search.
 
 `eval` (like `test`) executes code, so over a non-loopback HTTP transport it is
 remote code execution; the server warns when bound beyond loopback. Keep it on
@@ -91,6 +96,29 @@ Register it with a client, for example Claude Code:
 ```bash
 claude mcp add semanticscript -- sem mcp
 ```
+
+Plain MCP client configuration:
+
+```json
+{"command":"sem.exe","args":["mcp"],"cwd":"<project-root>"}
+```
+
+The initialize handshake includes these first calls for clients that surface
+server instructions:
+
+```json
+agent_docs {"path":"."}
+skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}
+help {"path":"."}
+docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}
+```
+
+Use `agent_docs` before `skills_get` when a project has repo-local agent
+instructions.
+Use `bootstrap` or `sem bootstrap --json` when the client hides handshake
+instructions. Use `docs_search` for discovery, then `docs_get` for exact usage
+rows before generating standard-library calls, capability rows, failure
+handling, or cleanup.
 
 Pass `--transport streamable-http --host HOST --port PORT` to serve over HTTP for
 remote or multi-client use. Because the server exposes file-mutating (`patch`)
@@ -507,8 +535,8 @@ For each non-entry user operation:
 
 - inputs become function parameters in source order;
 - opaque inputs are dropped from the LLVM ABI;
-- `output OP Result OK ERR` returns `OK`;
-- `output OP TYPE` returns `TYPE`;
+- `output operation OP Result OK ERR` returns `OK`;
+- `output operation OP TYPE` returns `TYPE`;
 - missing, malformed, or unknown output contracts are compiler/lint errors;
 - `Void` success currently uses an `i32` zero sentinel where LLVM needs a
   concrete return slot.

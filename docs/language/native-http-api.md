@@ -156,7 +156,7 @@ Return values:
 Middleware operations use the same request/response input ABI but declare:
 
 ```semanticscript
-output tracingMiddleware MiddlewareControl
+output operation tracingMiddleware MiddlewareControl
 ```
 
 The compiler pre-registers `MiddlewareControl` as a `Int32`-backed enum
@@ -167,7 +167,7 @@ written by the middleware. A short-circuit middleware must write status, body,
 and content type before it returns; the runtime turns a short-circuit with no
 body into a visible 500 response instead of silently succeeding.
 
-Later syntax can allow `output OP HttpResponse`, but the first backend should
+Later syntax can allow `output operation OP HttpResponse`, but the first backend should
 not hide response ownership. Writing into an explicit response handle makes the
 LLVM ABI and response lifetime easier to inspect.
 
@@ -188,47 +188,45 @@ The first runtime calls should be direct and small:
 
 ```semanticscript
 storage local immutable healthBody String "ok\n"
-storage local immutable okStatus Int32 200
+storage local immutable okStatus HttpStatusCode 200
 
 call writeHealthResponseCall http.responseText
 argument writeHealthResponseCall response HttpResponse response
 argument writeHealthResponseCall status HttpStatusCode okStatus
-argument writeHealthResponseCall body String healthBody
+argument writeHealthResponseCall body HttpTextBody healthBody
 run writeHealthResponseCall
 bind value writeStatus Int32 writeHealthResponseCall
 return value writeStatus
 ```
 
-The status is a plain `Int32` value (`200`) declared with `storage` and passed
-by name. There is no predeclared `HttpStatus.Ok` constant, and the status value
-must be a base type — only `Int32`/`Int64`/etc. lower as constants, so declare
-`okStatus Int32 200` rather than typing the const itself `HttpStatusCode`. The
-argument row still carries the contract type token (`HttpStatusCode`).
+`HttpStatusCode` is an `Int32`-backed role alias exported by `standard.http`;
+`HttpTextBody` is a string-backed role alias. There is no predeclared
+`HttpStatus.Ok` constant, so declare concrete values with `storage` and pass them by name.
 
 Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
-| `http.responseHtml` | `response HttpResponse`, `status HttpStatusCode`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
-| `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
-| `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
-| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
-| `http.responseHeader` | `response HttpResponse`, `name String`, `value String` | `Int32` | `ss_http_response_header` |
-| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
-| `http.requestMethod` | `request HttpRequest` | `String` | `ss_http_request_method` |
-| `http.requestPath` | `request HttpRequest` | `String` | `ss_http_request_path` |
-| `http.requestPathParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_path_param` |
-| `http.requestHeader` | `request HttpRequest`, `name String` | `String` | `ss_http_request_header` |
-| `http.requestCookie` | `request HttpRequest`, `name String` | `String` | `ss_http_request_cookie` |
-| `http.requestQueryParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_query_param` |
-| `http.requestBodyText` | `request HttpRequest` | `String` | `ss_http_request_body_text` |
-| `http.requestBodyBytes` | `request HttpRequest` | `OpaquePointer` | `ss_http_request_body_bytes` |
-| `http.requestBodyLength` | `request HttpRequest` | `ByteCount` | `ss_http_request_body_length` |
-| `http.multipartPartText` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_text` |
-| `http.multipartPartBytes` | `request HttpRequest`, `name String` | `OpaquePointer` | `ss_http_multipart_part_bytes` |
-| `http.multipartPartLength` | `request HttpRequest`, `name String` | `ByteCount` | `ss_http_multipart_part_length` |
+| `http.responseHtml` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
+| `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_text` |
+| `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body HttpByteBody`, `bodyLength HttpBodyLength`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_bytes` |
+| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event SseEventName`, `data SseEventData` | `Int32` | `ss_http_response_sse_event` |
+| `http.responseHeader` | `response HttpResponse`, `name HttpHeaderName`, `value HttpHeaderValue` | `Int32` | `ss_http_response_header` |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `rootDirectory String`, `requestedPath String` | `Int32` | `ss_http_response_file`; rejects traversal/absolute paths, sniffs content type by extension, and refuses files over 16 MiB |
+| `http.requestMethod` | `request HttpRequest` | `HttpRequestValue` | `ss_http_request_method` |
+| `http.requestPath` | `request HttpRequest` | `HttpRequestValue` | `ss_http_request_path` |
+| `http.requestPathParam` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_path_param` |
+| `http.requestHeader` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_header` |
+| `http.requestCookie` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_cookie` |
+| `http.requestQueryParam` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_query_param` |
+| `http.requestBodyText` | `request HttpRequest` | `HttpTextBody` | `ss_http_request_body_text` |
+| `http.requestBodyBytes` | `request HttpRequest` | `HttpByteBody` | `ss_http_request_body_bytes` |
+| `http.requestBodyLength` | `request HttpRequest` | `HttpBodyLength` | `ss_http_request_body_length` |
+| `http.multipartPartText` | `request HttpRequest`, `name String` | `HttpTextBody` | `ss_http_multipart_part_text` |
+| `http.multipartPartBytes` | `request HttpRequest`, `name String` | `HttpByteBody` | `ss_http_multipart_part_bytes` |
+| `http.multipartPartLength` | `request HttpRequest`, `name String` | `HttpBodyLength` | `ss_http_multipart_part_length` |
 | `http.multipartPartFilename` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_filename` |
-| `http.multipartPartContentType` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_content_type` |
+| `http.multipartPartContentType` | `request HttpRequest`, `name String` | `HttpContentType` | `ss_http_multipart_part_content_type` |
 | `http.openSseStream` | `response HttpResponse`, `status HttpStatusCode` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_open` |
 | `http.writeSseEvent` | `response HttpResponse`, `event SseEventName`, `data SseEventData` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event` |
 | `http.writeSseEventWithId` | `response HttpResponse`, `id SseEventId`, `event SseEventName`, `data SseEventData` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event_with_id` |
@@ -330,11 +328,11 @@ run pathReadCall
 bind value requestPath String pathReadCall
 
 storage local immutable healthBody String "ok\n"
-storage local immutable okStatus Int32 200
+storage local immutable okStatus HttpStatusCode 200
 call responseWriteCall http.responseText
 argument responseWriteCall response HttpResponse response
 argument responseWriteCall status HttpStatusCode okStatus
-argument responseWriteCall body String healthBody
+argument responseWriteCall body HttpTextBody healthBody
 run responseWriteCall
 bind value responseWriteStatus Int32 responseWriteCall
 return value responseWriteStatus

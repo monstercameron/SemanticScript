@@ -92,8 +92,63 @@ DEFAULT_DOCS_WATCH_INTERVAL_SECONDS = 5.0
 DOCS_WATCH_MAX_FILES = 5000
 DOCS_DEFAULT_EMBEDDING_PROVIDER = "sentence-transformers"
 DOCS_DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+MCP_BOOTSTRAP_SKILLS = ("sem-start", "sem", "sem-agent", "sem-syntax")
+MCP_BOOTSTRAP_EVAL_CODE = "\n".join((
+    "error ConsoleWriteError",
+    "errorCase ConsoleWriteError ConsoleWriteFailed Int32",
+    'storage local immutable greetingText String "semantic tools ready"',
+    "call greetingWriteCall console.writeLine",
+    "argument greetingWriteCall text String greetingText",
+    "run greetingWriteCall",
+    "ignore void source greetingWriteCall",
+    "bind error greetingWriteError ConsoleWriteError greetingWriteCall",
+    "branch error source greetingWriteCall target greetingWriteFailed",
+    "jump target greetingDone",
+    "label greetingWriteFailed",
+    "makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError",
+    "label greetingDone",
+))
+MCP_BOOTSTRAP_TOOL_CALL = "skills_get " + json.dumps({"names": list(MCP_BOOTSTRAP_SKILLS)}, separators=(",", ":"))
+MCP_BOOTSTRAP_AGENT_DOCS_CALL = 'agent_docs {"path":"."}'
+MCP_BOOTSTRAP_DOCS_SEARCH = 'docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}'
+MCP_BOOTSTRAP_EVAL_CALL = "eval " + json.dumps({"code": MCP_BOOTSTRAP_EVAL_CODE}, separators=(",", ":"))
+MCP_HANDSHAKE_INSTRUCTIONS = """SemanticScript MCP server ready.
 
-mcp = FastMCP("semanticscript")
+First load project-local AGENTS.md / CLAUDE.md instructions when present:
+""" + MCP_BOOTSTRAP_AGENT_DOCS_CALL + """
+
+Then load versioned skills:
+""" + MCP_BOOTSTRAP_TOOL_CALL + """
+
+`sem-start` resolves to the getting-started skill, and `sem-syntax` exposes the compact row/verb inventory. Then call:
+help {"path":"."}
+
+For standard-library/API/capability/type/syntax/runtime discovery before generating calls, use:
+""" + MCP_BOOTSTRAP_DOCS_SEARCH + """
+
+For exact usage rows after discovery, call docs_get for the selected operation, target, type, or enum.
+
+To prove the language/runtime surface works before opening a project, optionally call:
+""" + MCP_BOOTSTRAP_EVAL_CALL + """
+"""
+MCP_BOOTSTRAP_HELP = """MCP bootstrap:
+  Start stdio server:
+    sem.exe mcp
+  MCP client config:
+    {"command":"sem.exe","args":["mcp"],"cwd":"<project-root>"}
+  Load project agent docs:
+    """ + MCP_BOOTSTRAP_AGENT_DOCS_CALL + """
+  Then load versioned skills:
+    """ + MCP_BOOTSTRAP_TOOL_CALL + """
+  Then inspect the project:
+    help {"path":"."}
+  Capability/API/type/syntax/runtime discovery:
+    """ + MCP_BOOTSTRAP_DOCS_SEARCH + """
+  Optional language smoke:
+    """ + MCP_BOOTSTRAP_EVAL_CALL + """
+"""
+
+mcp = FastMCP("semanticscript", instructions=MCP_HANDSHAKE_INSTRUCTIONS)
 
 
 def _stdio_text_reader(binary_stream: Any) -> TextIOWrapper:
@@ -587,6 +642,23 @@ def eval_snippet(
 
 
 @mcp.tool()
+def bootstrap(path: str = ".", cwd: str | None = None) -> dict[str, Any]:
+    """Emit the MCP and agent onboarding bootstrap contract (sem.bootstrap.v1)."""
+    return _run_sem(["bootstrap", "--json", path], cwd=cwd)
+
+
+@mcp.tool()
+def agent_docs(
+    path: str = ".",
+    max_bytes: int = 250_000,
+    cwd: str | None = None,
+) -> dict[str, Any]:
+    """Load project-local AGENTS.md / CLAUDE.md instructions (sem.agentDocs.v1)."""
+    args = _argv("agent-docs", "--json", "--max-bytes", str(int(max_bytes)), path)
+    return _run_sem(args, cwd=cwd)
+
+
+@mcp.tool()
 def doctor() -> dict[str, Any]:
     """Report toolchain health and environment readiness (sem.doctor.v0)."""
     return _run_sem(["doctor", "--json"])
@@ -889,7 +961,7 @@ def docs_get(
     std_path: str | None = None,
     cwd: str | None = None,
 ) -> dict[str, Any]:
-    """Get documentation for one API or call target (sem.docs.v1)."""
+    """Get documentation for one API, call target, type, or enum (sem.docs.v1)."""
     args = _argv(
         "docs",
         "get",
@@ -1004,6 +1076,24 @@ def docs_search(
     """Search cached docs with hybrid FTS/vector ranking (sem.docsSearch.v1)."""
     resolved_db = _docs_resolved_db(path, db, cwd)
     worker: DocsIndexWorker | None = None
+    index_payload: dict[str, Any] | None = None
+    cold_index_provider = (
+        "none"
+        if embedding_provider == "auto" and not allow_model_download
+        else embedding_provider
+    )
+    cold_index_model = embedding_model or DOCS_DEFAULT_EMBEDDING_MODEL
+    if watch and not Path(resolved_db).exists():
+        index_payload = docs_reindex(
+            path=path,
+            db=resolved_db,
+            include_std=include_std,
+            background=False,
+            embedding_provider=cold_index_provider,
+            embedding_model=cold_index_model,
+            allow_model_download=allow_model_download,
+            cwd=cwd,
+        )
     if watch:
         with _DOCS_WORKERS_LOCK:
             worker = _docs_find_worker_by_db(resolved_db, cwd)
@@ -1015,8 +1105,8 @@ def docs_search(
                 db=resolved_db,
                 cwd=cwd,
                 include_std=include_std,
-                embedding_provider=DOCS_DEFAULT_EMBEDDING_PROVIDER if embedding_provider == "auto" else embedding_provider,
-                embedding_model=embedding_model or DOCS_DEFAULT_EMBEDDING_MODEL,
+                embedding_provider=cold_index_provider,
+                embedding_model=cold_index_model,
                 allow_model_download=allow_model_download,
             )
     args = _argv(
@@ -1038,6 +1128,20 @@ def docs_search(
         query,
     )
     payload = _run_sem(args, cwd=cwd)
+    if payload.get("status") == "index-missing" and watch:
+        index_payload = docs_reindex(
+            path=path,
+            db=resolved_db,
+            include_std=include_std,
+            background=False,
+            embedding_provider=cold_index_provider,
+            embedding_model=cold_index_model,
+            allow_model_download=allow_model_download,
+            cwd=cwd,
+        )
+        payload = _run_sem(args, cwd=cwd)
+    if index_payload is not None:
+        payload["index"] = index_payload
     if payload.get("status") == "index-missing" and watch:
         if worker is None:
             with _DOCS_WORKERS_LOCK:
@@ -1086,7 +1190,16 @@ def main(argv: list[str] | None = None) -> None:
     """
     import argparse
 
-    parser = argparse.ArgumentParser(prog="sem mcp", add_help=True)
+    parser = argparse.ArgumentParser(
+        prog="sem mcp",
+        add_help=True,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            MCP_BOOTSTRAP_HELP
+            + "\nThe MCP initialize handshake also repeats the startup tool calls "
+            "for clients that surface server instructions."
+        ),
+    )
     parser.add_argument(
         "--transport",
         choices=("stdio", "streamable-http", "sse"),
