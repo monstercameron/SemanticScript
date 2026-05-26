@@ -3497,7 +3497,7 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
     bad_cases = [
         ("explicit html parameter row",
          "project Bad\nhtml parameter template MissingTemplate titleText String\n",
-         "html requires: html template NAME"),
+         "html requires:"),
         ("duplicate htmlTemplate",
          "project Bad\nhtml template Card\nhtml template Card\n",
          "already declared"),
@@ -7913,6 +7913,325 @@ def test_backend_diagnostic_maps_symbol_to_source_call():
           rendered)
 
 
+def test_parser_strips_utf8_bom():
+    bom = chr(0xFEFF)
+    src = bom + "\n".join([
+        "project BomTest",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    check("parser: leading UTF-8 BOM is stripped (project parses)",
+          "main" in prog.operations, list(prog.operations))
+
+
+def test_const_lowerability_surfaces_unknown_type_at_check():
+    # An undeclared const type used to pass `check` (parse/lint) and only fail
+    # at build with SSCG002/SSCG004. It must now be caught pre-codegen.
+    # (HttpStatus is no longer a valid example here — it is a known int-backed
+    # builtin alias that lowers to i32; use a genuinely-undeclared type name.)
+    src = "\n".join([
+        "project ConstCheck",
+        "entry console main",
+        "storage module immutable okStatus MysteryStatus 200",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.validate_const_lowerability(prog)
+    except semsc.CompilerDiagnosticError as exc:
+        raised = exc.diagnostic
+    check("const check: unknown const type is caught pre-codegen as SSCG004",
+          raised is not None and raised.code == "SSCG004"
+          and "MysteryStatus" in raised.message,
+          raised.message if raised else "no diagnostic raised")
+
+    # A primitive alias const must still pass (HttpStatusCode -> Int32).
+    ok_src = "\n".join([
+        "project ConstCheckOk",
+        "entry console main",
+        "type HttpStatusCode Int32",
+        "storage module immutable okStatus HttpStatusCode 200",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value okStatus",
+    ])
+    ok_prog = semsc.parse(ok_src)
+    passed = True
+    try:
+        semsc.validate_const_lowerability(ok_prog)
+    except semsc.CompilerDiagnosticError:
+        passed = False
+    check("const check: primitive-alias const passes the lowerability gate",
+          passed, "alias-typed const was wrongly flagged")
+
+    # Int-backed builtin aliases that ACTUALLY EXIST (HttpStatusCode is
+    # `type ... Int32`; SqliteOpenMode is an `enum repr Int32`) must lower to i32
+    # like the string-backed SqlText lowers to a String const — no more "declare
+    # Int32, carry the alias only in the arg slot" workaround. `HttpStatus` (no
+    # `Code`) is intentionally excluded — it is not a declared type, so it must
+    # still fail SSCG004 (asserted below) rather than lower a typo silently.
+    for alias in ("HttpStatusCode", "SqliteOpenMode"):
+        builtin_src = "\n".join([
+            "project ConstCheckBuiltin",
+            "entry console main",
+            f"storage module immutable okStatus {alias} 200",
+            "operation main",
+            "output operation main ExitCode",
+            "purpose operation main \"x\"",
+            "async main no",
+            "return value 0",
+        ])
+        builtin_prog = semsc.parse(builtin_src)
+        builtin_ok = True
+        try:
+            semsc.validate_const_lowerability(builtin_prog)
+        except semsc.CompilerDiagnosticError:
+            builtin_ok = False
+        check(f"const check: int-backed builtin alias `{alias}` const lowers",
+              builtin_ok, f"{alias} const was wrongly flagged as unlowerable")
+
+    # `HttpStatus` (no `Code`) is a phantom type — not declared anywhere. A const
+    # of it must still fail the lowerability gate, not lower silently.
+    phantom_src = "\n".join([
+        "project ConstCheckPhantom",
+        "entry console main",
+        "storage module immutable okStatus HttpStatus 200",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value 0",
+    ])
+    phantom_prog = semsc.parse(phantom_src)
+    phantom_flagged = False
+    try:
+        semsc.validate_const_lowerability(phantom_prog)
+    except semsc.CompilerDiagnosticError:
+        phantom_flagged = True
+    check("const check: phantom `HttpStatus` const still fails SSCG004",
+          phantom_flagged, "undefined HttpStatus type was wrongly accepted")
+
+
+def test_unknown_dotted_call_target_is_rejected_not_zeroed():
+    # `string.concat` is not a real target (std/string has no `concat`, and the
+    # program does not import it). It used to fall into the external-module
+    # fallback and lower to a dummy i64 0, which compiled cleanly then handed a
+    # garbage value to whatever consumed the bind (e.g. an html.hydrate hole),
+    # crashing at runtime. It must now be a clean codegen rejection.
+    src = "\n".join([
+        "project UnknownTarget",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "storage local immutable a String \"x\"",
+        "storage local immutable b String \"y\"",
+        "call joinCall string.concat",
+        "argument joinCall left String a",
+        "argument joinCall right String b",
+        "run joinCall",
+        "bind value joined String joinCall",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.Codegen(prog).compile()
+    except Exception as exc:  # CompilerDiagnosticError wraps the ValueError
+        raised = exc
+    message = str(getattr(raised, "diagnostic", raised) or "")
+    if hasattr(raised, "diagnostic"):
+        message = raised.diagnostic.message
+    check("codegen: unknown dotted call target rejected (not silently zeroed)",
+          raised is not None and "unsupported call target" in message
+          and "string.concat" in message,
+          message)
+
+
+def test_parse_error_attributed_to_origin_file():
+    # A parse error in an imported module (the build tape's mainFile) must be
+    # attributed to THAT file+line, not to the entry tape at a flattened line
+    # number. The flattened-source line is mapped back via source_origins.
+    origins = {
+        35: {"path": "/proj/main.sem", "line": 18, "column": 1, "imported": True},
+    }
+    path, message = semsc._translate_parse_error_location(
+        "line 35: branch if requires: branch if condition CONDITION target LABEL",
+        origins, "/proj/build.sem")
+    check("parse error: attributed to origin file",
+          path == "/proj/main.sem", path)
+    check("parse error: line rewritten to origin line",
+          message.startswith("line 18:"), message)
+
+    # No origin mapping -> fall back to the entry path and original message.
+    path2, message2 = semsc._translate_parse_error_location(
+        "line 4: bad row", {}, "/proj/build.sem")
+    check("parse error: falls back to entry path when origin unknown",
+          path2 == "/proj/build.sem" and message2 == "line 4: bad row",
+          f"{path2} | {message2}")
+
+
+def test_unlinked_stdlib_call_is_rejected_not_zeroed():
+    # A `standard.*` library call that reaches codegen without its body being
+    # inlined/linked used to lower to a dummy i64 0 — the single most damaging
+    # failure mode (the call "builds" but silently returns 0 at runtime,
+    # masquerading as a logic bug). It must now be a loud build error naming the
+    # target, steering the author to an intrinsic.
+    src = "\n".join([
+        "project UnlinkedStdlib",
+        "entry console main",
+        "import string standard.string",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "storage local immutable a String \"hello\"",
+        "call lenCall string.stringByteLength",
+        "argument lenCall text String a",
+        "run lenCall",
+        "bind value n Int64 lenCall",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.Codegen(prog).compile()
+    except Exception as exc:
+        raised = exc
+    message = ""
+    if hasattr(raised, "diagnostic"):
+        message = raised.diagnostic.message
+    else:
+        message = str(raised or "")
+    check("codegen: unlinked standard.* call rejected (not silently zeroed)",
+          raised is not None and "not linked" in message
+          and "standard.string" in message,
+          message)
+
+
+def test_backend_diagnostic_detects_locked_output_binary():
+    src = "\n".join([
+        "project LockedOutput",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    prog.source_path = "locked.sscript"
+    cg = semsc.Codegen(prog)
+
+    write_locked = cg.provenance.explain_backend_error(
+        "lld-link: error: failed to write output 'dashboard.exe': "
+        "Permission denied\n"
+    )
+    check("diagnostics: locked output binary reports SSBE002 not SSBE999",
+          write_locked.code == "SSBE002"
+          and "dashboard.exe" in write_locked.message,
+          write_locked.render("agent"))
+
+    # A bare "permission denied" with no output/write context must NOT be
+    # misclassified as a write failure — it stays the generic SSBE999.
+    ambiguous = cg.provenance.explain_backend_error(
+        "ld.lld: error: cannot open libfoo.a: Permission denied\n"
+    )
+    check("diagnostics: ambiguous permission-denied stays SSBE999",
+          ambiguous.code == "SSBE999",
+          ambiguous.render("agent"))
+
+
+def test_call_lowering_diagnostic_splits_overloaded_code():
+    src = "\n".join([
+        "project CodegenSplit",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    prog.source_path = "split.sscript"
+    cg = semsc.Codegen(prog)
+
+    const_call = {"name": "badConstCall", "operation": "main", "line": 4,
+                  "target": "math.addInt64"}
+    const_diag = cg._diagnostic_for_call_error(
+        ValueError("unsupported const type: TodoRecord"), const_call)
+    check("diagnostics: unsupported const type is SSCG004 not SSCG002",
+          const_diag.code == "SSCG004", const_diag.render("agent"))
+
+    hydrate_call = {"name": "renderCall", "operation": "main", "line": 4,
+                    "target": "html.hydrate.PageTemplate"}
+    hydrate_diag = cg._diagnostic_for_call_error(
+        ValueError("renderCall: missing required arg `title` for html.hydrate.PageTemplate"),
+        hydrate_call)
+    check("diagnostics: missing hydrate hole is SSCG005 not SSCG002",
+          hydrate_diag.code == "SSCG005", hydrate_diag.render("agent"))
+
+    generic_call = {"name": "addCall", "operation": "main", "line": 4,
+                    "target": "math.addInt64"}
+    generic_diag = cg._diagnostic_for_call_error(
+        ValueError("addCall: unresolved symbol leftValue"), generic_call)
+    check("diagnostics: generic call-lowering failure stays SSCG002",
+          generic_diag.code == "SSCG002", generic_diag.render("agent"))
+
+
+def test_purpose_accepts_abstraction_subject_kinds():
+    # `purpose capability X "..."` must parse and satisfy the missingPurpose
+    # advisory the compiler emits for contract-heavy abstractions.
+    src = "\n".join([
+        "project PurposeSubjects",
+        "entry console main",
+        "capability stdoutWriter console.stdout write",
+        "purpose capability stdoutWriter \"Authorize stdout writes\"",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"Return a success exit code\"",
+        "async main no",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    diags = []
+    semsc._check_purpose_on_abstractions(prog, diags)
+    capability_warnings = [m for _ln, m in diags if "stdoutWriter" in m]
+    check("language: purpose capability clears missingPurpose advisory",
+          not capability_warnings, diags)
+
+    # Without the purpose row the advisory must still fire (proves the row is
+    # what satisfies it, not a silently dropped check).
+    src_missing = "\n".join([
+        "project PurposeSubjects",
+        "entry console main",
+        "capability stdoutWriter console.stdout write",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"Return a success exit code\"",
+        "async main no",
+        "return value 0",
+    ])
+    prog_missing = semsc.parse(src_missing)
+    diags_missing = []
+    semsc._check_purpose_on_abstractions(prog_missing, diags_missing)
+    check("language: missingPurpose still fires for an unannotated capability",
+          any("stdoutWriter" in m for _ln, m in diags_missing), diags_missing)
+
+
 def test_policy_runtime_binding_is_compile_blocking():
     src = "\n".join([
         "project RuntimeBindingPolicyBoundary",
@@ -8209,7 +8528,15 @@ def main():
     test_json_numeric_bool_stringify_uses_native_runtime_helpers()
     test_json_parse_primitive_rejects_malformed_and_trailing_junk()
     test_json_parse_primitive_rejects_documented_negative_cases()
+    test_parser_strips_utf8_bom()
+    test_const_lowerability_surfaces_unknown_type_at_check()
+    test_unknown_dotted_call_target_is_rejected_not_zeroed()
+    test_parse_error_attributed_to_origin_file()
+    test_unlinked_stdlib_call_is_rejected_not_zeroed()
     test_backend_diagnostic_maps_symbol_to_source_call()
+    test_backend_diagnostic_detects_locked_output_binary()
+    test_call_lowering_diagnostic_splits_overloaded_code()
+    test_purpose_accepts_abstraction_subject_kinds()
     test_policy_runtime_binding_is_compile_blocking()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()

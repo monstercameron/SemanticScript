@@ -37,6 +37,49 @@ Current implementation status:
 This file describes the API shape implemented by the current adapter plus the
 nearby request/response gaps still needed for a fuller web runtime.
 
+## Concurrency Limits And Testing (read before load-testing)
+
+The default adapter is **blocking and single-threaded**: it accepts one
+connection, serves a single request on it (it always responds with
+`Connection: close`), closes, and only then accepts the next. Under concurrent
+or slow clients this bites in practice — firing several requests at once
+(especially with some hitting a timeout) can leave sockets lingering and the
+server stops answering *everything*, including `/health`. Recovery is kill +
+restart, then one request at a time. This is expected for the current backend; a
+non-blocking/H2O backend is future work.
+
+A dropped client connection no longer kills the server: the adapter ignores
+`SIGPIPE` on POSIX, so a client that closes/resets mid-response (keep-alive
+churn, a browser favicon probe, or a client that gives up on a slow handler)
+makes `send()` return an error and unwind cleanly instead of terminating the
+process. On Windows `send()` already returns `WSAECONNRESET` there. Even so, do
+not load-test the blocking adapter concurrently.
+
+Testing guidance (especially on Windows):
+
+- **Serialize requests** — one at a time, with `Connection: close` and a
+  generous timeout. Do not fan out parallel or keep-alive bursts against the
+  blocking adapter.
+- **Use `curl`, not `Invoke-WebRequest`.** On Windows PowerShell 5.1,
+  `Invoke-WebRequest` may route `127.0.0.1` through a system proxy and report a
+  bare "Unable to connect" with no useful error. `curl --noproxy '*' http://127.0.0.1:PORT/...`
+  surfaces the real response (including a server-side fault on stdout).
+- **Capture stdout/stderr** (`server.exe > out.txt 2>&1`) so a handler fault
+  (`SSRUN002`) is visible. A crash presents as "connection refused" on every
+  *subsequent* connect (the process died at the TCP layer looks identical to a
+  bind problem). Confirm liveness with `Get-Process` before chasing networking.
+- **Register `routeNotFound`** (and usually `routeMethodNotAllowed`). A browser
+  auto-requests `/favicon.ico` and other assets; without a not-found handler
+  those hit the default 404 path and add connection churn. An explicit handler
+  keeps unmatched paths cheap and predictable.
+- **Persisting a server across separate tool calls / agent steps.** A process a
+  tool shell spawns (`Start-Process`, `&`) is reaped when that shell exits, so
+  the server dies between calls. To keep one alive out-of-band on Windows,
+  launch it parented to the WMI service:
+  `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='C:\path\server.exe'}`.
+  The built exe is self-contained (assets are embedded at build time), so it
+  needs no particular working directory.
+
 ## Server Shape
 
 MVP server metadata uses the existing line forms:
@@ -147,14 +190,18 @@ The first runtime calls should be direct and small:
 storage local immutable healthBody String "ok\n"
 storage local immutable okStatus HttpStatusCode 200
 
-call writeHealthResponse http.responseText
-argument writeHealthResponse response HttpResponse response
-argument writeHealthResponse status HttpStatusCode okStatus
-argument writeHealthResponse body HttpTextBody healthBody
-run writeHealthResponse
-bind value writeStatus Int32 writeHealthResponse
+call writeHealthResponseCall http.responseText
+argument writeHealthResponseCall response HttpResponse response
+argument writeHealthResponseCall status HttpStatusCode okStatus
+argument writeHealthResponseCall body HttpTextBody healthBody
+run writeHealthResponseCall
+bind value writeStatus Int32 writeHealthResponseCall
 return value writeStatus
 ```
+
+`HttpStatusCode` is an `Int32`-backed role alias exported by `standard.http`;
+`HttpTextBody` is a string-backed role alias. There is no predeclared
+`HttpStatus.Ok` constant, so declare concrete values with `storage` and pass them by name.
 
 Initial call targets:
 
@@ -164,22 +211,22 @@ Initial call targets:
 | `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_text` |
 | `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body HttpByteBody`, `bodyLength HttpBodyLength`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_bytes` |
 | `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event SseEventName`, `data SseEventData` | `Int32` | `ss_http_response_sse_event` |
-| `http.responseHeader` | `response HttpResponse`, `name String`, `value String` | `Int32` | `ss_http_response_header` |
+| `http.responseHeader` | `response HttpResponse`, `name HttpHeaderName`, `value HttpHeaderValue` | `Int32` | `ss_http_response_header` |
 | `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `rootDirectory String`, `requestedPath String` | `Int32` | `ss_http_response_file`; rejects traversal/absolute paths, sniffs content type by extension, and refuses files over 16 MiB |
-| `http.requestMethod` | `request HttpRequest` | `String` | `ss_http_request_method` |
-| `http.requestPath` | `request HttpRequest` | `String` | `ss_http_request_path` |
-| `http.requestPathParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_path_param` |
-| `http.requestHeader` | `request HttpRequest`, `name String` | `String` | `ss_http_request_header` |
-| `http.requestCookie` | `request HttpRequest`, `name String` | `String` | `ss_http_request_cookie` |
-| `http.requestQueryParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_query_param` |
-| `http.requestBodyText` | `request HttpRequest` | `String` | `ss_http_request_body_text` |
-| `http.requestBodyBytes` | `request HttpRequest` | `OpaquePointer` | `ss_http_request_body_bytes` |
-| `http.requestBodyLength` | `request HttpRequest` | `ByteCount` | `ss_http_request_body_length` |
-| `http.multipartPartText` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_text` |
-| `http.multipartPartBytes` | `request HttpRequest`, `name String` | `OpaquePointer` | `ss_http_multipart_part_bytes` |
-| `http.multipartPartLength` | `request HttpRequest`, `name String` | `ByteCount` | `ss_http_multipart_part_length` |
+| `http.requestMethod` | `request HttpRequest` | `HttpRequestValue` | `ss_http_request_method` |
+| `http.requestPath` | `request HttpRequest` | `HttpRequestValue` | `ss_http_request_path` |
+| `http.requestPathParam` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_path_param` |
+| `http.requestHeader` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_header` |
+| `http.requestCookie` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_cookie` |
+| `http.requestQueryParam` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_query_param` |
+| `http.requestBodyText` | `request HttpRequest` | `HttpTextBody` | `ss_http_request_body_text` |
+| `http.requestBodyBytes` | `request HttpRequest` | `HttpByteBody` | `ss_http_request_body_bytes` |
+| `http.requestBodyLength` | `request HttpRequest` | `HttpBodyLength` | `ss_http_request_body_length` |
+| `http.multipartPartText` | `request HttpRequest`, `name String` | `HttpTextBody` | `ss_http_multipart_part_text` |
+| `http.multipartPartBytes` | `request HttpRequest`, `name String` | `HttpByteBody` | `ss_http_multipart_part_bytes` |
+| `http.multipartPartLength` | `request HttpRequest`, `name String` | `HttpBodyLength` | `ss_http_multipart_part_length` |
 | `http.multipartPartFilename` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_filename` |
-| `http.multipartPartContentType` | `request HttpRequest`, `name String` | `String` | `ss_http_multipart_part_content_type` |
+| `http.multipartPartContentType` | `request HttpRequest`, `name String` | `HttpContentType` | `ss_http_multipart_part_content_type` |
 | `http.openSseStream` | `response HttpResponse`, `status HttpStatusCode` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_open` |
 | `http.writeSseEvent` | `response HttpResponse`, `event SseEventName`, `data SseEventData` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event` |
 | `http.writeSseEventWithId` | `response HttpResponse`, `id SseEventId`, `event SseEventName`, `data SseEventData` | `Int32` | `standard.http` runtimeBinding wrapper over `ss_http_sse_write_event_with_id` |
@@ -268,7 +315,7 @@ memory healthHandler arena request
 async healthHandler no
 useCapability healthHandler httpRequestReader
 useCapability healthHandler httpResponseWriter
-purpose healthHandler "Return a plain health-check response"
+purpose operation healthHandler "Return a plain health-check response"
 
 call methodReadCall http.requestMethod
 argument methodReadCall request HttpRequest request

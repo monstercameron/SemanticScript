@@ -386,14 +386,33 @@ useCapability main consoleCap
         self.assertNotIn("SS3104", _codes(diagnostics))
 
     def test_inline_authority_satisfies_check(self) -> None:
+        # Canonical authority order is access-first (`authority OP ACCESS PATH`),
+        # mirroring the `effect OP ACCESS PATH` it backs. A correctly-ordered
+        # grant satisfies SS3104 AND is not flagged by SS3109.
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
 effect main write console.stdout
 purpose main "smoke"
-authority main console.stdout write
+authority main write console.stdout
 """)
         self.assertNotIn("SS3104", _codes(diagnostics))
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+    def test_capability_coverage_fix_candidate_authority_is_access_first(self) -> None:
+        # Regression: the SS3104 inlineAuthority fix once emitted a path-first
+        # `authority OP PATH ACCESS` row, which then tripped SS3109. The
+        # suggested grant must be access-first so applying it actually clears
+        # the effect and stays consistent.
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+effect main write console.stdout
+purpose main "smoke"
+""")
+        ss3104 = _diagnostics_with_code(diagnostics, "SS3104")[0]
+        inline = next(c for c in ss3104.fixCandidates if c.name == "inlineAuthority")
+        self.assertEqual(inline.shape, "authority main write console.stdout")
 
 
 # ==========================================================================
@@ -2013,6 +2032,156 @@ ignore void source preparedStatement
 """)
         flagged = {d.subjectName for d in _diagnostics_with_code(diagnostics, "SS0106")}
         self.assertIn("prepareError", flagged)
+
+
+# ==========================================================================
+# SS3109  capabilityCoverage.authorityEffectMismatch
+# ==========================================================================
+
+class TestAuthorityEffectMismatch(unittest.TestCase):
+    def test_authority_matching_effect_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main write console.stdout
+authority main write console.stdout
+""")
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+    def test_hierarchical_authority_covers_narrower_effect(self) -> None:
+        # A grant at `http.request` authorizes a narrower `http.request.method` read.
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main read http.request.method
+authority main read http.request
+""")
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+    def test_access_verb_mismatch_is_flagged(self) -> None:
+        # write effect, read grant — the grant authorizes nothing.
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main write database.account
+authority main read database.account
+""")
+        self.assertIn("SS3109", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3109")[0]
+        self.assertEqual(matching.subjectName, "main")
+        self.assertEqual(matching.gapEdge, "authority")
+
+    def test_unrelated_path_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+effect main write database.account
+authority main write filesystem.config
+""")
+        self.assertIn("SS3109", _codes(diagnostics))
+
+    def test_operation_without_effects_not_flagged(self) -> None:
+        # No declared effects to reconcile against — a different gap, not SS3109.
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "smoke"
+authority main read database.account
+""")
+        self.assertNotIn("SS3109", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3110  resourceLifetime.columnUseAfterFree
+# ==========================================================================
+
+class TestColumnUseAfterFree(unittest.TestCase):
+    _PREAMBLE = """project Kv
+operation getValue
+output operation getValue Int32
+purpose operation getValue "read a column then respond"
+effect getValue write http.response
+"""
+
+    def test_column_value_used_after_explicit_finalize_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call finalizeCall sqlite.finalizeStatement
+argument finalizeCall statement SqliteStatement selectStatement
+run finalizeCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertIn("SS3110", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3110")[0]
+        self.assertEqual(matching.subjectName, "storedValue")
+
+    def test_defer_release_is_not_flagged(self) -> None:
+        # `defer` runs the finalize at scope exit (after the response), so the
+        # column value is still valid when used — the idiomatic, safe form.
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+defer finalizeDefer sqlite.finalizeStatement selectStatement
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3110", _codes(diagnostics))
+
+    def test_finalize_of_other_statement_is_not_flagged(self) -> None:
+        # Finalizing a DIFFERENT statement does not free this value.
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call finalizeOtherCall sqlite.finalizeStatement
+argument finalizeOtherCall statement SqliteStatement otherStatement
+run finalizeOtherCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3110", _codes(diagnostics))
+
+    def test_use_before_finalize_is_not_flagged(self) -> None:
+        # Correct ordering: consume the column value, THEN finalize.
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String storedValue
+run writeCall
+bind value writeStatus Int32 writeCall
+call finalizeCall sqlite.finalizeStatement
+argument finalizeCall statement SqliteStatement selectStatement
+run finalizeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3110", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -8972,6 +9141,199 @@ class TestStdlibModuleNoSmokeMain(unittest.TestCase):
         )
         diagnostics = _lint_source_at("main.sem", moduleOnly)
         self.assertNotIn("SS2515", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS4302  typeIntegrity.bindReturnDomainMismatch
+# ==========================================================================
+
+class TestBindReturnDomainMismatch(unittest.TestCase):
+    _SERVER_HEAD = (
+        "project P\n"
+        "target webServer\n"
+        "module examples.p\n"
+        "webServer s\n"
+        "serverHost s \"127.0.0.1\"\n"
+        "serverPort s 8080\n"
+        "route s GET \"/\" h\n"
+        "routeTimeoutOptOut s \"/\" \"d\"\n"
+        "routeMiddlewareOptOut s \"/\" \"d\"\n"
+        "operation h\n"
+        "input operation h request HttpRequest\n"
+        "input operation h response HttpResponse\n"
+        "output operation h Int32\n"
+        "effect h write http.response\n"
+        "async h no\n"
+        "purpose operation h \"x\"\n"
+        "storage local immutable a String \"a\"\n"
+        "storage local immutable b String \"b\"\n"
+    )
+
+    def test_string_result_bound_as_html_fragment_is_flagged(self) -> None:
+        # The string.concat -> HtmlFragment SIGSEGV class, caught at lint.
+        diagnostics = _lint_source(self._SERVER_HEAD + (
+            "call joinCall string.concat\n"
+            "argument joinCall left String a\n"
+            "argument joinCall right String b\n"
+            "run joinCall\n"
+            "bind value cardsFragment HtmlFragment joinCall\n"
+            "return value 0\n"
+        ))
+        self.assertIn("SS4302", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS4302")[0]
+        self.assertEqual(diag.subjectName, "cardsFragment")
+        self.assertTrue(diag.blocksCompile)
+
+    def test_string_result_bound_as_string_is_clean(self) -> None:
+        diagnostics = _lint_source(self._SERVER_HEAD + (
+            "call joinCall string.concat\n"
+            "argument joinCall left String a\n"
+            "argument joinCall right String b\n"
+            "run joinCall\n"
+            "bind value joined String joinCall\n"
+            "return value 0\n"
+        ))
+        self.assertNotIn("SS4302", _codes(diagnostics))
+
+    def test_http_status_int_bound_as_html_fragment_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._SERVER_HEAD + (
+            "storage local immutable okStatus Int32 200\n"
+            "call writeCall http.responseText\n"
+            "argument writeCall response HttpResponse response\n"
+            "argument writeCall status HttpStatusCode okStatus\n"
+            "argument writeCall body String a\n"
+            "run writeCall\n"
+            "bind value frag HtmlFragment writeCall\n"
+            "return value 0\n"
+        ))
+        self.assertIn("SS4302", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS0109  unusedDeclaration.htmlTemplate
+# ==========================================================================
+
+class TestUnusedHtmlTemplate(unittest.TestCase):
+    def test_unhydrated_template_is_flagged(self) -> None:
+        diagnostics = _lint_source(
+            "project P\n"
+            "module examples.p\n"
+            "html template Orphan\n"
+            "html body template Orphan\n"
+            "    <p>{msg}</p>\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "async main no\n"
+            "purpose operation main \"x\"\n"
+            "return value 0\n"
+        )
+        self.assertIn("SS0109", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS0109")[0]
+        self.assertEqual(diag.subjectName, "Orphan")
+        self.assertFalse(diag.blocksCompile)
+
+    def test_hydrated_template_is_clean(self) -> None:
+        diagnostics = _lint_source(
+            "project P\n"
+            "module examples.p\n"
+            "html template Page\n"
+            "html body template Page\n"
+            "    <p>{msg}</p>\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "async main no\n"
+            "purpose operation main \"x\"\n"
+            "storage local immutable m String \"hi\"\n"
+            "call renderCall html.hydrate.Page\n"
+            "argument renderCall msg String m\n"
+            "run renderCall\n"
+            "bind value page HtmlDocument renderCall\n"
+            "return value 0\n"
+        )
+        self.assertNotIn("SS0109", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS2516  buildTape.placeholderModulePath
+# ==========================================================================
+
+class TestPlaceholderModulePath(unittest.TestCase):
+    def test_placeholder_module_path_is_flagged(self) -> None:
+        diagnostics = _lint_source_at("build.sem",
+            "project Demo\nmodulePath Demo github.com/example/demo\n")
+        self.assertIn("SS2516", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS2516")[0]
+        self.assertFalse(diag.blocksCompile)
+
+    def test_real_module_path_is_clean(self) -> None:
+        diagnostics = _lint_source_at("build.sem",
+            "project Demo\nmodulePath Demo github.com/acme/demo\n")
+        self.assertNotIn("SS2516", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3611  webserver.duplicateRoute
+# ==========================================================================
+
+class TestDuplicateRoute(unittest.TestCase):
+    _HEAD = (
+        "project P\n"
+        "target webServer\n"
+        "module examples.p\n"
+        "webServer s\n"
+        "serverHost s \"127.0.0.1\"\n"
+        "serverPort s 8080\n"
+    )
+
+    def test_duplicate_method_path_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._HEAD + (
+            "route s GET \"/health\" h1\n"
+            "route s GET \"/health\" h2\n"
+        ))
+        self.assertIn("SS3611", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS3611")[0]
+        self.assertTrue(diag.blocksCompile)
+
+    def test_distinct_method_is_clean(self) -> None:
+        diagnostics = _lint_source(self._HEAD + (
+            "route s GET \"/health\" h1\n"
+            "route s POST \"/health\" h2\n"
+        ))
+        self.assertNotIn("SS3611", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3640  effectIntegrity.underDeclaredEffect
+# ==========================================================================
+
+class TestEffectUnderDeclaration(unittest.TestCase):
+    _BODY = (
+        "project P\n"
+        "module examples.p\n"
+        "operation main\n"
+        "output operation main ExitCode\n"
+        "{EFFECTS}"
+        "async main no\n"
+        "purpose operation main \"x\"\n"
+        "storage local immutable t String \"hi\"\n"
+        "call wCall console.writeLine\n"
+        "argument wCall text String t\n"
+        "run wCall\n"
+        "ignore void source wCall\n"
+        "return value 0\n"
+    )
+
+    def test_console_write_without_effect_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._BODY.replace("{EFFECTS}", ""))
+        self.assertIn("SS3640", _codes(diagnostics))
+        diag = _diagnostics_with_code(diagnostics, "SS3640")[0]
+        self.assertEqual(diag.subjectName, "main")
+        self.assertFalse(diag.blocksCompile)
+
+    def test_console_write_with_effect_is_clean(self) -> None:
+        diagnostics = _lint_source(
+            self._BODY.replace("{EFFECTS}", "effect main write console.stdout\n"))
+        self.assertNotIn("SS3640", _codes(diagnostics))
 
 
 if __name__ == "__main__":

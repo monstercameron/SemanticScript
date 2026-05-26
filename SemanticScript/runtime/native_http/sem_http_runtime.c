@@ -116,6 +116,16 @@ static BOOL WINAPI http_console_ctrl_handler(DWORD ctrl_type) {
 static void install_http_shutdown_handlers(void) {
     signal(SIGINT, request_http_shutdown_from_signal);
     signal(SIGTERM, request_http_shutdown_from_signal);
+#ifndef _WIN32
+    /* Ignore SIGPIPE: a client that closes/resets the connection mid-response
+     * (the common case under keep-alive bursts, browser favicon probes, or a
+     * client that gives up on a slow handler) would otherwise raise SIGPIPE on
+     * the next send(), whose default disposition TERMINATES the process. With
+     * it ignored, send() returns an error instead and send_all() unwinds
+     * cleanly, so a dropped client connection can no longer kill the server.
+     * (Windows has no SIGPIPE; send() there already returns WSAECONNRESET.) */
+    signal(SIGPIPE, SIG_IGN);
+#endif
 #ifdef _WIN32
     SetConsoleCtrlHandler(http_console_ctrl_handler, TRUE);
 #endif

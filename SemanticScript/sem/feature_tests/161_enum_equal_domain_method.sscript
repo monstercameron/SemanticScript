@@ -26,6 +26,7 @@ errorCase MainError Placeholder Int32
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
+effect main write console.stdout
 memory main heap no
 async main no
 purpose operation main "Verify enum.equal dispatch for both Int32 and Int64 reprs."

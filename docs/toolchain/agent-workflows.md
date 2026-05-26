@@ -110,6 +110,41 @@ python SemanticScript\tools\sem.py test --json PATH
 python SemanticScript\tools\sem.py dev --json PATH
 ```
 
+By default the semantic-contract lane (`*.test.sem`) is check-validated only —
+it proves the file parses, lints, and is buildable, but does NOT execute it, so
+a `.test.sem` whose `main` returns a nonzero `ExitCode` still passes. To make a
+behavioral assertion actually fail the suite, run a contract as a complete
+program (give it `entry console main`) and pass `--execute-contracts`:
+
+```powershell
+python SemanticScript\tools\sem.py test --json --execute-contracts PATH
+```
+
+This JIT-runs each non-trivial, buildable contract and fails it on a clean
+nonzero exit. A contract fragment that can't run standalone (no `entry`, a
+cross-module/server context, or a hang) is reported `executed: false` and stays
+check-validated only — it is never spuriously failed.
+
+## Utilities: prefer compiler intrinsics and `c.*` over `standard.*`
+
+In a native/`webServer` build, `standard.*` library *calls* are not linked —
+they resolve but their bodies never run. As of the unlinked-stdlib guard they
+fail the build loudly instead of silently returning 0, but the fix is to reach
+for a primitive that actually executes:
+
+- **Arithmetic / comparisons / min-max-clamp**: `math.*` intrinsics, including
+  `math.minInt64`, `math.maxInt64`, and `math.clampInt64`.
+- **String / memory utilities**: the `c.*` libc externs, e.g. `c.strlen`,
+  `c.snprintf`, `c.memcpy`, `c.malloc`/`c.free`. These link directly.
+- **Composition**: the compiler-lowered DSLs (`sql body`, `jsonBody`,
+  `html template` + `html.hydrate`) work in every target.
+
+Rule of thumb: in `docs search` results, a source location of `:0` is a
+compiler-owned intrinsic that executes; a real `…/std/…/main.sem` path is
+SemanticScript stdlib that won't link in a native build. (`standard.map` is a
+capacity calculator over `entryCount`/`keyPresent`, not a container — implement
+your own storage.)
+
 ## Why Each Tool Exists
 
 For a long agent session, the important question is not only "what commands

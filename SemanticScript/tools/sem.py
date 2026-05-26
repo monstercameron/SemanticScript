@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import array
 import copy
+import errno
 import functools
 import hashlib
 import importlib.util
@@ -32,6 +33,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from shared.repo_version import read_repo_version
+from shared.console_encoding import force_utf8_streams as _force_utf8_streams
 
 VERSION = read_repo_version()
 STARTER_PROJECT_VERSION = "0.0.1"
@@ -1582,17 +1584,43 @@ DIAGNOSTIC_EXPLAINERS = {
             "Declare a reusable capability and attach it with `useCapability` when the same proof recurs."
         ],
     },
-    "SS4105": {
-        "title": "private module import used across a context boundary",
-        "summary": "A module is reaching into a provider's private surface instead of importing an approved public contract.",
+    "SS3109": {
+        "title": "authority grant matches no declared effect",
+        "summary": "An operation has an `authority OP ACCESS PATH` grant whose access verb or path matches none of the operation's declared `effect` rows, so it authorizes nothing — and the effect it was meant to back is left unproven. SS3104 only checks that *some* authority row is present, so a transposed or mistyped grant slips through as 'covered'.",
         "whyItMatters": [
-            "Agents will keep coupling bounded contexts together if the import boundary is only implicit.",
-            "This usually means the semantic contract and the current package layout disagree about what is public."
+            "A grant that authorizes nothing gives a false sense of coverage: the effect looks proven but isn't.",
+            "The most common cause is access/path transposition (`authority OP read X` for a `write X` effect) or a stale path that no longer matches any effect."
         ],
         "commonFixes": [
-            "Promote the provider operation or type to an explicit public import surface.",
-            "Move the shared behavior behind a wrapper module that both sides can import without using private names.",
-            "If the linter is out of sync with the intended module boundary, fix the contract instead of bypassing the import rule."
+            "Align the grant to a declared effect: `authority OP <action> <path>` must use the same access verb and a path equal-or-broader than an `effect OP <action> <path>` row.",
+            "Remove the grant if the effect it referenced is gone.",
+            "Remember the order is access-first: `authority main write console.stdout`, mirroring `effect main write console.stdout`."
+        ],
+    },
+    "SS3110": {
+        "title": "column memory used after finalize/close (use-after-free)",
+        "summary": "A value read from sqlite.columnText/columnBlob/columnName points into the prepared statement's own memory. Using it after an explicit `run` of finalizeStatement (same statement) or closeDatabase frees that memory first — the program builds and checks cleanly, then SIGSEGVs at runtime when the response writer dereferences the freed pointer.",
+        "whyItMatters": [
+            "This crash is invisible to both `check` and `build`; it only appears when the program runs and the response writer reads freed memory.",
+            "Column pointers are owned by the statement, so their lifetime ends at finalize/close — not at the end of the operation."
+        ],
+        "commonFixes": [
+            "Release with `defer <name> sqlite.finalizeStatement <statement>` so cleanup runs at scope exit, after the response is written.",
+            "Or reorder: write the response (consume the column value) BEFORE the finalize/close rows.",
+            "Copy the bytes out of the column value before finalize if you must finalize early."
+        ],
+    },
+    "SS4105": {
+        "title": "reference integrity: unresolved value or wrong attachment subject kind",
+        "summary": "A row references a value that is not declared in the current operation, or an operation-body verb is attached to a subject that is not an operation. Every argument value must be a named `storage`/`bind`/input value (or an integer / true / false literal) declared before use; inline enum members and string literals are rejected.",
+        "whyItMatters": [
+            "Argument values that are not declared names are the most common source of silent narrative drift during agent edits.",
+            "Inline literals (`HttpStatus.Ok`, `\"application/json\"`) read like other languages but bypass the explicit-dataflow contract, so the linter forces them into named declarations."
+        ],
+        "commonFixes": [
+            "Declare the value first, e.g. `storage local immutable contentType String \"application/json\"`, then reference `contentType` in the argument row.",
+            "For enum members, declare a typed value (`storage local immutable okStatus HttpStatus HttpStatus.Ok`) and reference the name.",
+            "When the diagnostic is `attachmentSubjectKindMismatch`, point the verb at an actual operation, or use a subject-flexible verb (`purpose`, `invariant`, `warning`)."
         ],
     },
     "SS2506": {
@@ -1655,6 +1683,151 @@ DIAGNOSTIC_EXPLAINERS = {
         "commonFixes": [
             "Inspect the cited source line and restore a valid current-row form from docs/reference/syntax-inventory.md or `sem skills get sem --json`.",
             "Run `sem check --json` again after fixing the malformed row so higher-level diagnostics are trustworthy."
+        ],
+    },
+    # ---- Parser / grammar family (SS000x) ----
+    "SS0001": {
+        "title": "unknown verb (unrecognized row)",
+        "summary": "The first token of a row is not a known SemanticScript verb. Every row begins with a verb; indented foreign content (HTML/JSON/SQL islands) only opens after the matching body row.",
+        "whyItMatters": [
+            "A stray verb usually means a typo, a row that belongs inside an island that was not opened, or pre-cutover syntax the compiler no longer accepts.",
+            "Markup lines (e.g. `<p>...`) are only valid inside an `html body template NAME` island; outside one they are read as verbs."
+        ],
+        "commonFixes": [
+            "Check the verb spelling against the syntax inventory or `sem skills get language-core --json`.",
+            "If the line is HTML/JSON/SQL, make sure the island was opened first (`html body template NAME`, `jsonBody NAME`, `sqlBody NAME`).",
+            "If this is old syntax, run `sem migrate-syntax --diff <file>` then `--write`."
+        ],
+    },
+    "SS0002": {
+        "title": "row has too few arguments (arity)",
+        "summary": "A row does not carry the number of tokens its verb requires. Frequently the subject-qualified cutover forms: `input operation OP NAME TYPE`, `output operation OP TYPE`.",
+        "whyItMatters": [
+            "Header rows must be independently checkable, so they name their owning operation and subject kind explicitly.",
+            "Copying pre-cutover examples (`input HANDLER NAME TYPE`) is the most common cause."
+        ],
+        "commonFixes": [
+            "Add the missing token(s) to match the row's required shape.",
+            "For input/output/purpose/invariant rows, run `sem migrate-syntax --write <file>` to insert the `operation` subject qualifier automatically."
+        ],
+    },
+    "SS0003": {
+        "title": "syntax cutover: row uses a rejected pre-cutover form",
+        "summary": "The linter no longer accepts the old unqualified/legacy row form. Subject-qualified header rows (`input operation ...`, `output operation ...`, `purpose operation ...`, `invariant operation ...`) and a handful of other forms replaced the originals.",
+        "whyItMatters": [
+            "Skill/doc examples may still show the pre-cutover shape; the compiler enforces the new one, so copy-paste fails here.",
+            "The rewrite is 100% mechanical, which is why a dedicated converter exists."
+        ],
+        "commonFixes": [
+            "Run `sem migrate-syntax --diff <file>` to preview, then `sem migrate-syntax --write <file>` to upgrade every cutover row at once.",
+            "Or rewrite the single row to the shape shown in the diagnostic's fix candidate."
+        ],
+    },
+    "SS0109": {
+        "title": "html template declared but never hydrated",
+        "summary": "An `html template NAME` (with its body) is declared but no `html.hydrate.NAME` call ever renders it. Like an unused call or label, the template markup is dead — usually a leftover or a typo'd hydrate target.",
+        "whyItMatters": [
+            "Dead template markup ships in source but never reaches a response, hiding intent.",
+            "A typo in the hydrate target (`html.hydrate.Naem`) silently leaves the real template unrendered; this surfaces that."
+        ],
+        "commonFixes": [
+            "Render it with `call <name>Call html.hydrate.<Template>` where the page is built.",
+            "Delete the `html template`/`html body template` rows if the template is a leftover.",
+        ],
+    },
+    "SS3640": {
+        "title": "operation under-declares an external effect it performs",
+        "summary": "An operation directly calls a builtin with a known external effect (writing console.stdout, writing the HTTP response) but declares no matching `effect` row. Advisory: declared effects are the machine-readable record of what an operation touches, and a missing one means a later edit can drop the call or the effect with nothing catching the drift.",
+        "whyItMatters": [
+            "The language's premise is that effects are explicit and checkable; an undeclared write to an observable resource breaks that contract.",
+            "Effect rows are what authority/capability coverage and review hang off — an inferred-but-undeclared effect is invisible to those checks."
+        ],
+        "commonFixes": [
+            "Add the effect row the fix candidate shows (e.g. `effect <op> write console.stdout`) and back it with a matching capability/authority.",
+        ],
+    },
+    "SS2516": {
+        "title": "placeholder modulePath from sem new",
+        "summary": "The build tape still declares `modulePath PROJECT github.com/example/<name>`, the scaffold placeholder. Left unchanged it can resolve imports and dependency origins against a bogus path. Advisory (non-blocking).",
+        "whyItMatters": [
+            "Dependency resolution and import provenance key off modulePath; a placeholder origin can resolve oddly once you add dependencies or publish.",
+            "It is a one-line fix that is easy to forget after `sem new`."
+        ],
+        "commonFixes": [
+            "Set the project's real module path, e.g. `modulePath <project> github.com/<owner>/<repo>`.",
+        ],
+    },
+    "SS3611": {
+        "title": "duplicate route (same server, METHOD, and path)",
+        "summary": "Two `route` rows register the same METHOD+path on one server. The native dispatcher matches the first, so every later duplicate is dead — its handler can never run.",
+        "whyItMatters": [
+            "A duplicate route is almost always a copy-paste bug; the second handler silently never executes.",
+            "Dead route bindings hide intent and drift from the actual served surface."
+        ],
+        "commonFixes": [
+            "Delete the duplicate route row, or give it a distinct method/path.",
+        ],
+    },
+    "SS4302": {
+        "title": "bind type contradicts the call's return-type domain",
+        "summary": "A `bind` declares an opaque domain handle (HtmlFragment/HtmlDocument/JsonDocument/...) for a call that returns a String or scalar, or vice versa. Both lower to a pointer, so the type lie type-checks — but consuming the mislabeled value (e.g. hydrating it) dereferences garbage and crashes at runtime.",
+        "whyItMatters": [
+            "This is the exact shape behind the `string.concat` result bound as `HtmlFragment` SIGSEGV: a String op's result is not an HTML handle, but the shared i8* ABI hides it until runtime.",
+            "Opaque domain handles are produced only by their domain's constructors (html.hydrate.*, the JSON builder, user ops that return them) — never by String/scalar calls."
+        ],
+        "commonFixes": [
+            "Bind the call's real return type (the fix candidate shows it).",
+            "To assemble an HTML fragment from pieces, use the HTML fragment/template path (html.hydrate with HtmlFragment holes), not a string concatenation."
+        ],
+    },
+    # ---- Codegen / backend family (SSCG* lowering, SSBE* native backend) ----
+    "SSCG002": {
+        "title": "call could not be lowered to LLVM IR",
+        "summary": "The compiler failed while lowering a specific call row to LLVM IR. The raw lowering error is in the message; the call's target, arg rows, or a referenced value is the place to look.",
+        "whyItMatters": [
+            "A call that parses and lints can still fail in codegen when an arg type, count, or target binding is wrong.",
+            "This is a lowering-phase failure, so the fix is in SemanticScript source or a compiler lowering rule, never in the generated IR."
+        ],
+        "commonFixes": [
+            "Inspect every `argument` row attached to the named call and confirm names/types match the target's inputs.",
+            "Confirm the call target exists and supports the argument types you passed.",
+        ],
+    },
+    "SSCG004": {
+        "title": "constant declared with an unlowerable type",
+        "summary": "A constant value (storage/argument) was declared with a type the backend cannot lower to an LLVM constant — typically an enum or domain type used directly as a raw const.",
+        "whyItMatters": [
+            "Records and domain types with no LLVM lowering are not usable as raw constants in codegen; only concrete primitives and enums (via their repr width) lower to LLVM constants.",
+            "This surfaces at build time, so confirm a const's type is a lowerable primitive before relying on a green `check`."
+        ],
+        "commonFixes": [
+            "Declare the const with a concrete primitive type, e.g. `storage local immutable okStatus Int32 200`.",
+            "If you need an enum member semantically, declare it with the enum type (enums lower via their repr width) or compare against it at runtime rather than storing a record/domain value as a const.",
+        ],
+    },
+    "SSCG005": {
+        "title": "html.hydrate is missing a value for a template hole",
+        "summary": "An `html.hydrate` call did not provide an argument for one of its template's named holes.",
+        "whyItMatters": [
+            "Every named hole in an htmlTemplate must be hydrated, or the rendered output is structurally incomplete.",
+            "A single-identifier `{ name }` in raw markup/JS can be misread as a hole; keep literal braces inside a raw/script region."
+        ],
+        "commonFixes": [
+            "Add an `argument <hydrateCall> <holeName> <Type> <valueName>` row for each missing hole.",
+            "Confirm the hole name in the template matches the argument name exactly.",
+        ],
+    },
+    "SSBE002": {
+        "title": "output binary could not be written (locked or read-only)",
+        "summary": "The native linker compiled the IR successfully but could not write the output executable. The usual cause on Windows is rebuilding while the previous binary is still running and holds a file lock.",
+        "whyItMatters": [
+            "This is a link-time write failure, not an IR/source error, so editing SemanticScript source will not help.",
+            "It was previously reported under the generic SSBE999 (\"IR failed to compile\"), which sent agents toward the wrong diagnosis."
+        ],
+        "commonFixes": [
+            "Stop the running process that holds the output binary, then rebuild.",
+            "Run the program from a copy, or build to a different output path.",
+            "Confirm the output directory is writable and not locked by another tool.",
         ],
     },
     # ---- Security rule family (SS43xx arithmetic-UB + SS46xx security) ----
@@ -2042,6 +2215,11 @@ def _starter_main_sem_text(meta: dict) -> str:
 
 
 def _starter_test_sem_text(meta: dict) -> str:
+    # A real assertion, not `return value 0`: compute 2 + 2, check it equals 4,
+    # and exit 0 only when it does (exit 1 otherwise). This exercises codegen
+    # and fails loudly if arithmetic lowering regresses — unlike a constant
+    # return, which "passes" without proving anything. Replace it with a check
+    # of your own operation's behavior.
     return "\n".join([
         f"project {meta['projectTestName']}",
         "target console",
@@ -2052,9 +2230,27 @@ def _starter_test_sem_text(meta: dict) -> str:
         "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "purpose operation main \"Keep the starter project green with one passing semantic smoke test.\"",
-        "invariant operation main \"The starter semantic smoke test remains side-effect free and exits with code 0.\"",
-        "return value 0",
+        "purpose operation main \"Assert a known identity (2 + 2 == 4) so a codegen regression fails this smoke test.\"",
+        "invariant operation main \"Exits 0 only when the asserted identity holds; any other result is a nonzero failing exit.\"",
+        "storage local immutable leftAddend Int64 2",
+        "storage local immutable rightAddend Int64 2",
+        "storage local immutable expectedSum Int64 4",
+        "call computeSumCall math.addInt64",
+        "argument computeSumCall left Int64 leftAddend",
+        "argument computeSumCall right Int64 rightAddend",
+        "run computeSumCall",
+        "bind value actualSum Int64 computeSumCall",
+        "call assertSumCall math.equalInt64",
+        "argument assertSumCall left Int64 actualSum",
+        "argument assertSumCall right Int64 expectedSum",
+        "run assertSumCall",
+        "bind value sumMatchesExpected Bool assertSumCall",
+        "branch if condition sumMatchesExpected target assertionHeld",
+        "storage local immutable assertionFailedExitCode ExitCode 1",
+        "return value assertionFailedExitCode",
+        "label assertionHeld",
+        "storage local immutable assertionPassedExitCode ExitCode 0",
+        "return value assertionPassedExitCode",
         "",
     ])
 
@@ -2345,7 +2541,11 @@ def _capture_compiler(source: Path, compiler_args: list[str],
                       env: dict | None = None) -> subprocess.CompletedProcess:
     semsc_path = ROOT / "compiler" / "semsc.py"
     command = [sys.executable, str(semsc_path), str(source), *compiler_args]
+    # The compiler emits UTF-8 (diagnostics include non-ASCII like `§3`). Decode
+    # as UTF-8 explicitly so captured stderr isn't mojibake under the Windows
+    # locale codec; `errors="replace"` keeps capture robust to stray bytes.
     return subprocess.run(command, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace",
                           timeout=timeout, env=env)
 
 
@@ -6511,20 +6711,92 @@ def _normalize_compiler_diagnostic(diagnostic: dict) -> dict:
     }
 
 
+def _parse_error_guidance(message: str) -> tuple[str, list[str]]:
+    """Map a bare parser message to actionable help + fix shapes. The parser
+    tier had no help/fix candidates (the "worse tier"); this recovers the most
+    common cases so an agent gets a concrete next step instead of a raw string."""
+    lower = message.lower()
+    if "references unknown htmltemplate" in lower or "references unknown template" in lower:
+        return (
+            "`html body template NAME` instantiates a template that must already "
+            "be declared with `html template NAME` earlier in the file. Add the "
+            "declaration first.",
+            ["html template <name>"],
+        )
+    if lower.startswith("html requires") or "html requires:" in lower:
+        return (
+            "Declare `html template NAME`, then open the body with `html body "
+            "template NAME` followed by the indented HTML island; {hole} "
+            "placeholders become typed hydrate arguments.",
+            ["html template <name>", "html body template <name>"],
+        )
+    if lower.startswith("unknown verb"):
+        if "<" in message:  # a markup line read as a verb
+            return (
+                "This looks like HTML/markup outside an island. Raw markup is only "
+                "valid inside an `html body template NAME` block (opened after "
+                "`html template NAME`). Open the island first, or quote the text.",
+                ["html template <name>", "html body template <name>"],
+            )
+        return (
+            "Unrecognized row verb. Check the spelling against the syntax "
+            "inventory; if this is pre-cutover syntax, run `sem migrate-syntax "
+            "--diff <file>` then `--write` to upgrade it.",
+            ["sem migrate-syntax --write <file>"],
+        )
+    if "requires: input operation" in lower or "requires: output operation" in lower:
+        return (
+            "Header rows are subject-qualified: `input operation OP NAME TYPE` / "
+            "`output operation OP TYPE`. Run `sem migrate-syntax --write <file>` "
+            "to insert the `operation` qualifier automatically.",
+            ["sem migrate-syntax --write <file>"],
+        )
+    if "purpose requires" in lower or "invariant requires" in lower:
+        return (
+            "`purpose`/`invariant` name their subject kind: e.g. `purpose "
+            "operation OP \"...\"`. `purpose` also accepts capability/webServer/"
+            "record/etc. Run `sem migrate-syntax --write <file>` for the cutover.",
+            ["purpose operation <op> \"...\""],
+        )
+    if "ignore" in lower and "void" in lower and "discard" in lower:
+        return (
+            "A Void result is discarded with `ignore void source CALL`, not "
+            "`ignore ok ... type Void`.",
+            ["ignore void source <call>"],
+        )
+    return (
+        "Inspect the source row named by the parser failure and re-run sem check "
+        "after correcting the syntax.",
+        [],
+    )
+
+
 def _normalize_compiler_parse_error(stderr_text: str) -> dict | None:
-    match = re.match(r"^semsc: parse error in (.+): line (\d+): (.+)$", stderr_text.strip(), re.DOTALL)
+    # Two shapes: with a line number ("... : line 12: msg") and without
+    # ("... : msg", e.g. the html-body template errors). Match both.
+    # Anchor the path to a source extension so a path containing ": " can't
+    # mis-split; fall back to a non-greedy path match if the extension differs.
+    match = re.match(
+        r"^semsc: parse error in (.+?\.(?:sem|sscript|test\.sem)): (?:line (\d+): )?(.+)$",
+        stderr_text.strip(), re.DOTALL)
+    if not match:
+        match = re.match(
+            r"^semsc: parse error in (.+?): (?:line (\d+): )?(.+)$",
+            stderr_text.strip(), re.DOTALL)
     if not match:
         return None
     path_text, line_text, message = match.groups()
+    message = message.strip()
+    help_text, fix_shapes = _parse_error_guidance(message)
     return {
         "code": "SEMSC_PARSE",
         "severity": "error",
         "source": "compiler",
         "kind": "parse",
-        "message": message.strip(),
+        "message": message,
         "span": {
             "file": str(Path(path_text).resolve()),
-            "line": int(line_text),
+            "line": int(line_text) if line_text else 0,
             "column": 1,
             "role": "compilerError",
         },
@@ -6532,15 +6804,18 @@ def _normalize_compiler_parse_error(stderr_text: str) -> dict | None:
         "subjectKind": "",
         "gapEdge": "",
         "expected": "valid SemanticScript syntax that the parser accepts",
-        "actual": message.strip(),
-        "help": "Inspect the source row named by the parser failure and re-run sem check after correcting the syntax.",
+        "actual": message,
+        "help": help_text,
         "invariantRule": "",
         "specAnchor": "",
         "blocksCompile": True,
         "confidence": "high",
         "effort": "unknown",
         "citations": [],
-        "fixCandidates": [],
+        "fixCandidates": [
+            {"name": f"parseFix{index}", "shape": shape, "autoApplicable": False}
+            for index, shape in enumerate(fix_shapes, start=1)
+        ],
         "repair": {
             "id": "",
             "safe": False,
@@ -7674,6 +7949,12 @@ def _build_check_payload(path: Path, compiler_args: list[str], *, include_readin
         "ok": ok,
         "status": status,
         "buildable": buildable,
+        # `noBlockingLintErrors` is the clearer canonical name: it means "no
+        # COMPILE-BLOCKING lint errors", NOT "zero lint findings" — warnings
+        # (e.g. SS3604/SS4001) can still be present while this is true. Read
+        # summary.lintWarnings / the diagnostics list for the full picture.
+        # `lintClean` is retained as a deprecated alias for back-compat.
+        "noBlockingLintErrors": lint_clean,
         "lintClean": lint_clean,
         "scope": _payload_scope(
             path,
@@ -8762,7 +9043,64 @@ def _discover_test_entries(path: Path) -> list[dict]:
     return sorted(discovered, key=lambda item: (item["kind"], str(item["path"]).lower()))
 
 
-def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False) -> dict:
+def _semantic_test_is_trivial(test_path: Path) -> bool:
+    """True when a semantic test exercises no behavior — no `call` and no
+    `branch` rows, i.e. it just returns a constant. Such a test "passes" the
+    semantic-check lane without proving anything (false confidence), so `sem
+    test` flags it. Best-effort: any read/parse trouble => not trivial."""
+    try:
+        text = test_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    has_call = False
+    has_branch = False
+    for raw in text.splitlines():
+        verb = raw.strip().split(" ", 1)[0] if raw.strip() else ""
+        if verb == "call":
+            has_call = True
+        elif verb in ("branch", "branchIfError", "branchSelected"):
+            has_branch = True
+    return not (has_call or has_branch)
+
+
+def _execute_semantic_contract(test_path: Path, timeout: int = 20) -> dict:
+    """JIT-run a buildable semantic `.test.sem` and report whether its process
+    exit code signals an assertion failure.
+
+    `sem test`'s semantic lane is otherwise check-only — a `.test.sem` whose
+    `main` returns a nonzero ExitCode still "passes" because the exit code was
+    never observed. This executes the contract so a behavioral assertion can
+    actually fail the suite. A *clean* nonzero exit (no compiler-error stderr) is
+    an assertion failure. A run that can't compile/launch standalone (e.g. cross-
+    module or webServer context, or a timeout/hang) is reported as not-executed
+    rather than failed, so it never spuriously regresses a previously-green test.
+    """
+    try:
+        proc = _capture_compiler(test_path, ["--run"], timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"executed": False, "exitCode": None,
+                "reason": f"execution timed out after {timeout}s (not standalone-runnable, e.g. a server loop)"}
+    except OSError as exc:
+        return {"executed": False, "exitCode": None, "reason": f"could not launch: {exc}"}
+    stderr = proc.stderr or ""
+    # A compile/run-setup failure (parse-only passed but full codegen/link or
+    # import/entry resolution failed under --run — common for a contract fragment
+    # with no `entry`/`target`) is NOT an assertion failure. The compiler emits a
+    # structured diagnostic block for these; a real program run does not.
+    compile_failure_markers = (
+        "semsc:", "phase: codegen", "phase: backend", "phase: check",
+        "blocks_compile:", "error SSCG", "error SSBE", "error SEMSC",
+    )
+    if any(marker in stderr for marker in compile_failure_markers):
+        return {"executed": False, "exitCode": proc.returncode,
+                "reason": "not standalone-runnable under --run (no entry/context or codegen-only failure); check-validated only"}
+    if proc.returncode == 0:
+        return {"executed": True, "exitCode": 0, "reason": "exited 0"}
+    return {"executed": True, "exitCode": proc.returncode,
+            "reason": f"assertion failure - main returned nonzero exit code {proc.returncode}"}
+
+
+def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False, execute_contracts: bool = False) -> dict:
     preflight = _build_check_payload(path, [], include_readiness=False)
     preflight_ok = bool(preflight.get("ok", False))
     discovered = _discover_test_entries(path)
@@ -8790,6 +9128,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     semantic_contract_discovered = 0
     semantic_contract_executed = 0
     semantic_contract_failed = 0
+    trivial_semantic_tests = 0
     runtime_harness_discovered = 0
     runtime_harness_executed = 0
     runtime_harness_failed = 0
@@ -8813,22 +9152,51 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             semantic_contract_executed += 1
             payload = _build_check_payload(entry["path"], [])
             ok = bool(payload["ok"])
-            duration_ms = int((time.time() - start) * 1000)
             selected += 1
-            results.append({
+            trivial = _semantic_test_is_trivial(Path(entry["path"]))
+            if trivial:
+                trivial_semantic_tests += 1
+            # Opt-in: JIT-run non-trivial, buildable contracts so a behavioral
+            # assertion (main returning a nonzero ExitCode) actually fails the
+            # suite, instead of the check-only lane silently passing it.
+            execution = None
+            if execute_contracts and ok and not trivial:
+                execution = _execute_semantic_contract(Path(entry["path"]))
+            assertion_failed = bool(
+                execution and execution["executed"]
+                and execution["exitCode"] not in (0, None)
+            )
+            final_ok = ok and not assertion_failed
+            duration_ms = int((time.time() - start) * 1000)
+            result = {
                 "name": entry["name"],
                 "kind": entry["kind"],
                 "lane": "semantic-contract",
-                "executionModel": "semantic-check",
+                "executionModel": (
+                    "semantic-check+jit-run"
+                    if execution and execution["executed"] else "semantic-check"
+                ),
                 "path": str(entry["path"]),
-                "status": "passed" if ok else "failed",
+                "status": "passed" if final_ok else "failed",
                 "durationMs": duration_ms,
                 "summary": payload["summary"],
                 "checkStatus": payload["status"],
                 "diagnostics": payload["diagnostics"],
                 "checkCommand": f"sem check --json {entry['path']}",
-            })
-            if ok:
+                # A semantic test is check-validated; unless executed it asserts
+                # nothing behaviorally. Surfaced so a green run isn't mistaken for
+                # behavioral coverage.
+                "exercisesAssertions": not trivial,
+                "warning": (
+                    "test exercises no assertions (no call/branch rows) — it only "
+                    "proves the file parses, checks, and is buildable"
+                    if trivial else None
+                ),
+            }
+            if execution is not None:
+                result["execution"] = execution
+            results.append(result)
+            if final_ok:
                 passed += 1
             else:
                 failed += 1
@@ -9008,6 +9376,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             "semanticContractsDiscovered": semantic_contract_discovered,
             "semanticContractsExecuted": semantic_contract_executed,
             "semanticContractsFailed": semantic_contract_failed,
+            "trivialSemanticTests": trivial_semantic_tests,
             "runtimeHarnessesDiscovered": runtime_harness_discovered,
             "runtimeHarnessesExecuted": runtime_harness_executed,
             "runtimeHarnessesFailed": runtime_harness_failed,
@@ -9015,6 +9384,12 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         },
         "results": results,
     }
+    if trivial_semantic_tests:
+        payload["warnings"] = [
+            f"{trivial_semantic_tests} semantic test(s) exercise no assertions "
+            f"(no call/branch rows). A passing `sem test` for these only proves "
+            f"they parse, check, and build — not that any behavior is correct."
+        ]
     payload["nextCommands"] = _test_next_commands(
         path,
         failed,
@@ -9186,7 +9561,7 @@ def _diagnostic_explain_payload(code: str) -> dict:
     index = _diagnostic_index_payload()
     entry = index.get(code)
     curated = DIAGNOSTIC_EXPLAINERS.get(code, {})
-    if entry is None:
+    if entry is None and not curated:
         return {
             "schemaVersion": "sem.explain.v1",
             "tool": {"name": "sem", "version": VERSION},
@@ -9194,13 +9569,33 @@ def _diagnostic_explain_payload(code: str) -> dict:
             "status": "not-found",
             "code": code,
             "found": False,
+            "title": "",
+            "summary": "",
+            "references": [],
+            "relatedCodes": [],
+            "whyItMatters": [],
+            "commonFixes": [],
+            "nextCommands": _explain_next_commands(code, repeatable=False),
+        }
+    if entry is None:
+        # No index reference yet, but we ship a curated explainer for this code
+        # (e.g. a newly added diagnostic). Treat the curated entry as a found
+        # explainer rather than reporting the code as unknown.
+        return {
+            "schemaVersion": "sem.explain.v1",
+            "tool": {"name": "sem", "version": VERSION},
+            "ok": True,
+            "status": "ok",
+            "code": code,
+            "found": True,
             "title": curated.get("title", ""),
             "summary": curated.get("summary", ""),
             "references": [],
             "relatedCodes": [],
             "whyItMatters": curated.get("whyItMatters", []),
             "commonFixes": curated.get("commonFixes", []),
-            "nextCommands": _explain_next_commands(code, repeatable=False),
+            "note": "Curated explainer; no repository index reference recorded yet.",
+            "nextCommands": _explain_next_commands(code),
         }
     return {
         "schemaVersion": "sem.explain.v1",
@@ -9240,6 +9635,65 @@ def _operation_insert_anchor(operation) -> int:
     return max(line_numbers) if line_numbers else operation.line.number
 
 
+# Verbs whose syntax cutover is a pure in-place subject-qualifier insertion
+# (`input main x` -> `input operation main x`). The migrator never reorders
+# these rows, so a positional `replaceLine` on their line is provably correct.
+# Other rewrites the migrator performs (notably `branch` else-arm synthesis) can
+# be line-count-neutral yet REORDER rows, which would make positional indexing
+# read the wrong line — those are deliberately excluded from auto-apply.
+_CUTOVER_AUTOFIX_VERBS = frozenset({"input", "output", "purpose", "invariant"})
+
+
+def _is_inplace_cutover_rewrite(before_line: str, after_line: str) -> bool:
+    """True only when `after_line` is `before_line` with exactly one subject-kind
+    token inserted right after the verb, and the verb is a known in-place cutover
+    verb. This rejects line-count-neutral reorders (e.g. a `branch` row whose
+    migrated content moved to a different line), where trusting `after[L-1]`
+    positionally would corrupt the file."""
+    before_tokens = before_line.split()
+    after_tokens = after_line.split()
+    if not before_tokens or not after_tokens:
+        return False
+    if before_tokens[0] not in _CUTOVER_AUTOFIX_VERBS:
+        return False
+    # Same verb, one extra token inserted at index 1, identical tail.
+    if after_tokens[0] != before_tokens[0]:
+        return False
+    if len(after_tokens) != len(before_tokens) + 1:
+        return False
+    return after_tokens[2:] == before_tokens[1:]
+
+
+@functools.lru_cache(maxsize=256)
+def _migrated_file_lines(file_path: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """Return (original_lines, migrated_lines) for a file via the authoritative
+    `syntax_migration.migrate_text`, but ONLY when the migration preserves the
+    line count. The syntax cutover qualifies rows in place (`input` ->
+    `input operation`, etc.), so equal line counts mean a per-line `replaceLine`
+    reproduces the migrated row exactly. Returns None when the file can't be read
+    or the line count changed (then auto-apply is skipped — preview-only fix).
+    Even with equal line counts, callers must additionally confirm the specific
+    row is an in-place rewrite (see `_is_inplace_cutover_rewrite`) because the
+    migrator can reorder `branch` rows without changing the line count."""
+    try:
+        from tools import syntax_migration
+    except ImportError:
+        return None
+    try:
+        original = Path(file_path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    result = syntax_migration.migrate_text(original)
+    migrated = getattr(result, "text", None)
+    if migrated is None or migrated == original:
+        return None
+    before = original.splitlines()
+    after = migrated.splitlines()
+    if len(before) != len(after):
+        return None
+    return tuple(before), tuple(after)
+
+
 def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, operation_lookup: dict[str, tuple[Path, object, object]] | None = None) -> dict:
     lookup = operation_lookup if operation_lookup is not None else _facts_operation_lookup(bundle)
     code = diagnostic.get("code", "")
@@ -9266,6 +9720,31 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, o
             f"sem fmt --check {path}",
         ],
     }
+    if code in ("SS0002", "SS0003"):
+        # Syntax-cutover rows are rewritten deterministically by
+        # `sem migrate-syntax`. Reuse that migrator to produce the exact
+        # rewritten row and emit it as an auto-applicable `replaceLine` edit, so
+        # `sem fix`/`patch` can apply the single fix every new user hits first
+        # (previously gated as requires-human-review).
+        span = diagnostic.get("span", {})
+        file_path = span.get("file") or ""
+        line_no = int(span.get("line", 0) or 0)
+        migrated_pair = _migrated_file_lines(file_path) if file_path else None
+        if migrated_pair is not None and 0 < line_no <= len(migrated_pair[1]):
+            before_line = migrated_pair[0][line_no - 1]
+            after_line = migrated_pair[1][line_no - 1]
+            if before_line != after_line and _is_inplace_cutover_rewrite(before_line, after_line):
+                repair["fixSafety"] = "local-edit"
+                for suggestion in repair["suggestions"]:
+                    if suggestion.get("name") in ("runMigrateSyntax", "rewriteToNewSyntax"):
+                        suggestion["autoApplicable"] = True
+                repair["edits"].append({
+                    "op": "replaceLine",
+                    "file": file_path,
+                    "line": line_no,
+                    "text": after_line,
+                })
+        return repair
     if code == "SS3104":
         for suggestion in repair["suggestions"]:
             if suggestion.get("name") == "inlineAuthority":
@@ -9339,6 +9818,19 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str], *, include_war
         if repair.get("edits") and repair.get("fixSafety") not in {"safe", "local-edit"}:
             repair["reviewEdits"] = list(repair.get("edits", []))
             repair["edits"] = []
+    # Distinct diagnostics can target the same row (e.g. a cutover row trips both
+    # SS0002 arity and SS0003 syntax), each emitting the identical replaceLine
+    # edit. Collapse duplicates so the plan carries one edit per target line.
+    seen_edit_keys: set = set()
+    for repair in repairs:
+        deduped = []
+        for edit in repair.get("edits", []):
+            key = (edit.get("file"), edit.get("op"), edit.get("line"), edit.get("afterLine"))
+            if key in seen_edit_keys:
+                continue
+            seen_edit_keys.add(key)
+            deduped.append(edit)
+        repair["edits"] = deduped
     patchable_repairs = [repair for repair in repairs if repair.get("edits")]
     review_only_repairs = [repair for repair in repairs if repair.get("reviewEdits")]
     suggestion_only_repairs = [repair for repair in repairs if not repair.get("edits") and not repair.get("reviewEdits")]
@@ -9353,7 +9845,12 @@ def _build_fix_plan_payload(path: Path, compiler_args: list[str], *, include_war
                 file_hashes[str(target.resolve())] = _file_sha256(target)
     status = "actionable"
     if check_payload["status"] == "compiler-error":
-        status = "blocked"
+        # A compiler error normally means no machine-applicable plan — except
+        # when the blocking rows are themselves the thing we can fix in place
+        # (the syntax cutover blocks parsing yet has deterministic local edits).
+        # Report "mixed" so the plan stays usable, steering the caller through
+        # `sem patch --dry-run` (re-check) before `--apply`.
+        status = "mixed" if patchable_repairs else "blocked"
     elif not repairs:
         status = "no-repairs"
     elif not patchable_repairs:
@@ -10024,10 +10521,28 @@ def _explain_crash(source: Path, compiler_args: list[str]) -> int:
 
 
 def command_build(args: argparse.Namespace) -> int:
-    build_tape = _find_build_tape(Path(args.path))
+    requested = Path(args.path)
+    build_tape = _find_build_tape(requested)
     if build_tape is None:
-        print(f"sem: no build.sem found from {args.path}", file=sys.stderr)
+        print(
+            f"sem build: no build.sem found from {args.path}. `sem build` builds "
+            f"a project (a directory with a build.sem tape), not a lone source "
+            f"file. Pass the project directory or add a build.sem; to compile a "
+            f"single file use `sem check {args.path}` or `sem run {args.path}`.",
+            file=sys.stderr,
+        )
         return 2
+
+    # A bare-file arg does NOT build that file: `sem build` resolves the nearest
+    # ancestor build.sem and builds that whole project. Silently ignoring the
+    # file arg was a documented surprise — make the redirect visible.
+    if (requested.is_file()
+            and requested.name.lower() not in {"build.sem", "build.sscript"}):
+        print(
+            f"sem build: building project tape {build_tape}; the `{requested.name}` "
+            f"argument selects that project, it is not built as a standalone file.",
+            file=sys.stderr,
+        )
 
     compiler_args = _strip_separator(list(args.compiler_args))
     if not _has_compiler_action(compiler_args):
@@ -10690,6 +11205,42 @@ def command_check(args: argparse.Namespace) -> int:
     json_output = bool(getattr(args, "json", False) or trailing_json)
     full_output = bool(getattr(args, "full", False) or trailing_full)
     include_readiness = bool(getattr(args, "with_readiness", False) or trailing_readiness)
+    # A directory with no build.sem is not a checkable surface — the compiler
+    # would try to open() the directory as a file and report a misleading
+    # "Permission denied" / "Is a directory" OS error. Detect it here and give
+    # the actionable guidance instead.
+    requested_path = Path(args.path)
+    sem_files = (sorted(p.name for p in requested_path.glob("*.sem"))
+                 if requested_path.is_dir() else [])
+    # Fire only when the directory clearly holds source (`.sem` files) but has
+    # no build tape. A tapeless dir with no `.sem` files is left to the normal
+    # path so this guard never pre-empts a project root that simply hasn't been
+    # scaffolded yet.
+    if (requested_path.is_dir() and sem_files
+            and _find_build_tape(requested_path) is None):
+        suggestion = (
+            f"pass a source file (e.g. `sem check {requested_path.as_posix()}/{sem_files[0]}`)"
+        )
+        message = (
+            f"no build.sem (or build.sscript) found in directory "
+            f"'{requested_path}'. Add a build tape to make it a project, or "
+            f"{suggestion}."
+        )
+        if json_output:
+            print(json.dumps({
+                "schemaVersion": "sem.check.v1",
+                "tool": {"name": "sem", "version": VERSION},
+                "ok": False,
+                "status": "tool-error",
+                "buildable": False,
+                "lintClean": False,
+                "diagnostics": [],
+                "errors": [message],
+                "toolErrors": [message],
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"sem check: {message}", file=sys.stderr)
+        return 2
     if json_output:
         payload = _build_check_payload(Path(args.path), compiler_args, include_readiness=include_readiness)
         if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
@@ -11914,6 +12465,75 @@ def command_size(args: argparse.Namespace) -> int:
     return 0 if not payload.get("errors") else 1
 
 
+def _syntax_inventory_rows() -> list[dict]:
+    """Parse docs/reference/syntax-inventory.md's markdown table into
+    {syntax, description, status} rows. The grammar is otherwise only reachable
+    by reading the file; `sem reference` surfaces it so an agent can look up a
+    row form (e.g. how to write a branch) instead of discovering each one a parse
+    error at a time."""
+    try:
+        text = SYNTAX_INVENTORY_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    rows = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if len(cells) < 3:
+            continue
+        syntax = cells[0]
+        status = cells[-1]
+        description = "|".join(cells[1:-1]).strip()  # tolerate pipes in prose
+        # Skip the header row and the |---|---|---| separator.
+        if syntax in ("Syntax", "") or set(syntax) <= {"-", ":", " "}:
+            continue
+        rows.append({"syntax": syntax, "description": description, "status": status})
+    return rows
+
+
+def command_reference(args: argparse.Namespace) -> int:
+    rows = _syntax_inventory_rows()
+    query = (getattr(args, "query", None) or "").strip().lower()
+    status_filter = (getattr(args, "status", None) or "").strip().lower()
+    matched = []
+    for row in rows:
+        haystack = f"{row['syntax']} {row['description']}".lower()
+        if query and query not in haystack:
+            continue
+        if status_filter and status_filter not in row["status"].lower():
+            continue
+        matched.append(row)
+    payload = {
+        "schemaVersion": "sem.reference.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "query": query or None,
+        "statusFilter": status_filter or None,
+        "totalRows": len(rows),
+        "matchCount": len(matched),
+        "rows": matched,
+        "source": str(SYNTAX_INVENTORY_PATH),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if rows else 1
+    if not rows:
+        print("sem reference: syntax inventory not found", file=sys.stderr)
+        return 1
+    if not matched:
+        print(f"no syntax rows match {query!r}"
+              + (f" with status ~ {status_filter!r}" if status_filter else ""))
+        print("try a broader term, e.g. `sem reference branch` or `sem reference set`")
+        return 0
+    for row in matched:
+        print(row["syntax"])
+        print(f"    {row['description']}  [{row['status']}]")
+    print(f"\n{len(matched)} of {len(rows)} rows"
+          + (f" matching {query!r}" if query else "") + "; use --json for structured output")
+    return 0
+
+
 def command_dev(args: argparse.Namespace) -> int:
     payload = _dev_payload(Path(args.path), bool(args.trace))
     if args.json:
@@ -11931,6 +12551,7 @@ def command_test(args: argparse.Namespace) -> int:
         Path(args.path),
         include_python_harnesses=not args.skip_python_harnesses,
         allow_red_preflight_harnesses=bool(getattr(args, "allow_red_preflight_harnesses", False)),
+        execute_contracts=bool(getattr(args, "execute_contracts", False)),
     )
     if args.json:
         payload = _compact_test_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
@@ -11941,6 +12562,8 @@ def command_test(args: argparse.Namespace) -> int:
         print(f"passed: {payload['passedTests']}")
         print(f"failed: {payload['failedTests']}")
         print(f"skipped: {payload['skippedTests']}")
+        for warning in payload.get("warnings", []):
+            print(f"warning: {warning}", file=sys.stderr)
     return 0 if payload["ok"] else 1
 
 
@@ -12085,7 +12708,7 @@ def _print_text_for_console(text: str) -> None:
 
 
 def command_skills(args: argparse.Namespace) -> int:
-    if args.skills_command == "list":
+    if args.skills_command in (None, "list"):
         payload = {
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
@@ -12109,7 +12732,7 @@ def command_skills(args: argparse.Namespace) -> int:
             for skill in payload["skills"]:
                 print(f"{skill['name']}: {skill['description']}")
         return 0
-    if args.skills_command == "get":
+    if args.skills_command in ("get", "load"):
         requested_names = list(args.names)
         names = [SKILL_ALIASES.get(name, name) for name in args.names]
         if args.all:
@@ -12183,6 +12806,120 @@ def command_migrate_syntax(args: argparse.Namespace) -> int:
     return subprocess.call(command)
 
 
+def _repin_literals_in_text(text: str, base_dir: Path) -> tuple[str, list[dict], list[str]]:
+    """Recompute `literalBytes`/`literalDigest` rows from the current bytes of
+    each literal's `literalSource` file. Returns (new_text, changes, missing).
+    Only existing pin rows are updated (their value is rewritten in place);
+    rows are never inserted or removed, so formatting is preserved."""
+    lines = text.split("\n")
+    sources: dict[str, str] = {}
+    for line in lines:
+        parts = line.split(None, 2)
+        if len(parts) >= 3 and parts[0] == "literalSource":
+            sources[parts[1]] = parts[2].strip().strip('"')
+    computed: dict[str, tuple[int, str] | None] = {}
+    missing: list[str] = []
+    for name, raw_path in sources.items():
+        path = Path(raw_path) if os.path.isabs(raw_path) else (base_dir / raw_path)
+        try:
+            data = path.read_bytes()
+        except OSError:
+            computed[name] = None
+            missing.append(name)
+            continue
+        computed[name] = (len(data), hashlib.sha256(data).hexdigest())
+    changes: list[dict] = []
+    for index, line in enumerate(lines):
+        tokens = line.split()
+        if (len(tokens) >= 3 and tokens[0] == "literalBytes"
+                and computed.get(tokens[1])):
+            new_value = str(computed[tokens[1]][0])
+            if tokens[2] != new_value:
+                lines[index] = re.sub(
+                    r"^(\s*literalBytes\s+" + re.escape(tokens[1]) + r"\s+)\S+",
+                    lambda m: m.group(1) + new_value, line)
+                changes.append({"literal": tokens[1], "field": "literalBytes",
+                                "old": tokens[2], "new": new_value})
+        elif (len(tokens) >= 4 and tokens[0] == "literalDigest"
+                and tokens[2] == "sha256" and computed.get(tokens[1])):
+            new_hex = computed[tokens[1]][1]
+            if tokens[3] != new_hex:
+                lines[index] = re.sub(
+                    r"^(\s*literalDigest\s+" + re.escape(tokens[1]) + r"\s+sha256\s+)\S+",
+                    lambda m: m.group(1) + new_hex, line)
+                changes.append({"literal": tokens[1], "field": "literalDigest",
+                                "old": tokens[3], "new": new_hex})
+    return "\n".join(lines), changes, missing
+
+
+def command_literal_repin(args: argparse.Namespace) -> int:
+    """Recompute literalBytes/literalDigest pins from each literal's source
+    file. Preview by default; `--write` applies. Closes the manual repin loop
+    (a build-time-generated literalSource changes its bytes/hash every regen)."""
+    target = Path(args.path)
+    if target.is_dir():
+        files = sorted(target.rglob("*.sem")) + sorted(target.rglob("*.sscript"))
+    elif target.is_file():
+        files = [target]
+    else:
+        print(f"sem literal repin: path not found: {args.path}", file=sys.stderr)
+        return 2
+    write = bool(getattr(args, "write", False))
+    json_out = bool(getattr(args, "json", False))
+    file_reports: list[dict] = []
+    total_changes = 0
+    for source_file in files:
+        try:
+            text = source_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            file_reports.append({"file": str(source_file), "error": str(exc)})
+            continue
+        new_text, changes, missing = _repin_literals_in_text(text, source_file.parent)
+        if not changes and not missing:
+            continue
+        total_changes += len(changes)
+        if changes and write:
+            source_file.write_text(new_text, encoding="utf-8", newline="\n")
+        file_reports.append({
+            "file": str(source_file),
+            "changes": changes,
+            "missingSources": missing,
+            "applied": bool(changes and write),
+        })
+    had_error = any(report.get("error") for report in file_reports)
+    had_missing = any(report.get("missingSources") for report in file_reports)
+    payload = {
+        "schemaVersion": "sem.literalRepin.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        # `ok` reflects a clean repin: not ok when a source file was missing or a
+        # .sem file could not be read, so a CI/JSON consumer can gate on it.
+        "ok": not (had_error or had_missing),
+        "mode": "write" if write else "preview",
+        "totalChanges": total_changes,
+        "files": file_reports,
+    }
+    if json_out:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if payload["ok"] else 1
+    if not file_reports:
+        print("sem literal repin: all literal pins are up to date.")
+        return 0
+    verb = "repinned" if write else "would repin"
+    for report in file_reports:
+        if report.get("error"):
+            print(f"  {report['file']}: error: {report['error']}", file=sys.stderr)
+            continue
+        for change in report["changes"]:
+            print(f"  {report['file']}: {verb} {change['literal']} "
+                  f"{change['field']} {change['old']} -> {change['new']}")
+        for name in report["missingSources"]:
+            print(f"  {report['file']}: WARNING {name} literalSource file is "
+                  f"missing; cannot repin", file=sys.stderr)
+    if not write and total_changes:
+        print("\nrun with --write to apply these pin updates.")
+    return 0 if payload["ok"] else 1
+
+
 def command_mcp(args: argparse.Namespace) -> int:
     try:
         from tools import sem_mcp
@@ -12195,6 +12932,9 @@ def command_mcp(args: argparse.Namespace) -> int:
             )
             return 2
         raise
+    if getattr(args, "list_tools", False):
+        sem_mcp.main(["--list-tools"])
+        return 0
     server_args = ["--transport", args.transport]
     if args.host is not None:
         server_args += ["--host", args.host]
@@ -12669,7 +13409,12 @@ def build_parser() -> argparse.ArgumentParser:
         "skills",
         help="list or load version-matched agent skills from the current repository",
     )
-    skills_subparsers = skills.add_subparsers(dest="skills_command", required=True)
+    # Accept `--json` on the bare `skills` group too, so `sem skills --json`
+    # (the inventory in machine form) works without naming the `list`
+    # subcommand. Subcommands define their own `--json` for the qualified form.
+    skills.add_argument("--json", action="store_true",
+                        help="emit machine-readable skill inventory (bare `skills`)")
+    skills_subparsers = skills.add_subparsers(dest="skills_command", required=False)
     skills_list = skills_subparsers.add_parser(
         "list",
         help="list built-in SemanticScript agent skills",
@@ -12678,8 +13423,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help="emit machine-readable skill inventory")
     skills_list.set_defaults(func=command_skills)
 
+    # `load` is accepted as an alias for `get`: it is the natural verb agents
+    # try first, and rejecting it was a documented onboarding snag.
     skills_get = skills_subparsers.add_parser(
         "get",
+        aliases=["load"],
         help="load one or more built-in SemanticScript agent skills",
     )
     skills_get.add_argument("--json", action="store_true",
@@ -12690,6 +13438,13 @@ def build_parser() -> argparse.ArgumentParser:
                             help="include full raw skill bodies instead of the summary-first JSON shape")
     skills_get.add_argument("names", nargs="*")
     skills_get.set_defaults(func=command_skills)
+
+    # Bare `sem skills` defaults to the inventory rather than erroring on a
+    # missing subcommand — `list` is the discovery entry point agents reach
+    # for first. Set after add_subparsers so it overrides the subparsers
+    # action's None default; `json` is defaulted so the bare form has the
+    # attribute the handler reads.
+    skills.set_defaults(func=command_skills, skills_command="list", json=False)
 
     size = subparsers.add_parser(
         "size",
@@ -12725,8 +13480,23 @@ def build_parser() -> argparse.ArgumentParser:
                       help="skip Python-based app harnesses and run only SemanticScript test files")
     test.add_argument("--allow-red-preflight-harnesses", action="store_true",
                       help="run Python harnesses even when semantic preflight diagnostics are still red")
+    test.add_argument("--execute-contracts", action="store_true",
+                      help="JIT-run non-trivial *.test.sem contracts and fail on a nonzero exit "
+                           "(behavioral assertion), instead of only check-validating them")
     test.add_argument("path", nargs="?", default=".")
     test.set_defaults(func=command_test)
+
+    reference = subparsers.add_parser(
+        "reference",
+        help="look up SemanticScript row syntax forms (the grammar), so you don't "
+             "discover each one via a parse error",
+    )
+    reference.add_argument("query", nargs="?", default=None,
+                           help="substring to filter syntax forms (e.g. 'branch', 'set', 'authority')")
+    reference.add_argument("--status", default=None,
+                           help="filter by implementation status (Impl'd / Partial / ...)")
+    reference.add_argument("--json", action="store_true")
+    reference.set_defaults(func=command_reference)
 
     migrate_syntax = subparsers.add_parser(
         "migrate-syntax",
@@ -12740,6 +13510,23 @@ def build_parser() -> argparse.ArgumentParser:
                                 help="emit machine-readable migration results")
     migrate_syntax.add_argument("paths", nargs="+")
     migrate_syntax.set_defaults(func=command_migrate_syntax)
+
+    literal = subparsers.add_parser(
+        "literal",
+        help="manage external-literal pins (literalBytes/literalDigest)",
+    )
+    literal_subparsers = literal.add_subparsers(dest="literal_command", required=True)
+    literal_repin = literal_subparsers.add_parser(
+        "repin",
+        help="recompute literalBytes/literalDigest from each literal's source file",
+    )
+    literal_repin.add_argument("path",
+                               help="a .sem file or a directory to scan")
+    literal_repin.add_argument("--write", action="store_true",
+                               help="apply the updated pins in place (default: preview)")
+    literal_repin.add_argument("--json", action="store_true",
+                               help="emit machine-readable repin results")
+    literal_repin.set_defaults(func=command_literal_repin)
 
     mcp_server = subparsers.add_parser(
         "mcp",
@@ -12761,6 +13548,12 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_server.add_argument("--host", help="bind host for HTTP transports (default: 127.0.0.1)")
     mcp_server.add_argument("--port", type=int, help="bind port for HTTP transports (default: 8000)")
     mcp_server.add_argument("--path", help="HTTP route for the streamable-http transport")
+    mcp_server.add_argument(
+        "--list-tools",
+        dest="list_tools",
+        action="store_true",
+        help="print the MCP tool catalog as JSON and exit without serving",
+    )
     mcp_server.add_argument("--docs-path", help="start a background docs index worker for this project/source path")
     mcp_server.add_argument("--docs-db", help="SQLite docs index path for the background docs worker")
     mcp_server.add_argument("--docs-watch-interval", type=float, help="background docs polling interval in seconds")
@@ -12771,15 +13564,57 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _stdout_pipe_is_broken() -> bool:
+    """Best-effort: is the stdout pipe actually broken/closed? Used to narrow the
+    Windows EINVAL case (a generic errno) so an unrelated OSError(EINVAL) from a
+    subprocess/file op is NOT misread as a broken pipe and silently swallowed."""
+    out = sys.stdout
+    if out is None or getattr(out, "closed", False):
+        return True
+    try:
+        out.flush()
+    except OSError:
+        return True
+    return False
+
+
+def _handle_broken_pipe() -> int:
+    """A downstream consumer closed the pipe (e.g. `| head` or PowerShell
+    `Select-Object -First N`). The payload was being emitted successfully, so a
+    truncating reader is not a tool failure and must not surface as a nonzero
+    (e.g. 255) exit that would mislead a CI exit-code check. Redirect stdout to
+    devnull so the interpreter's shutdown flush can't raise a second
+    BrokenPipeError, then exit cleanly."""
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_streams()
     if argv is None:
         argv = sys.argv[1:]
-    if "--version" in argv and "--json" in argv and len(argv) == 2:
-        print(json.dumps(_version_payload(), indent=2, sort_keys=True))
-        return 0
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        if "--version" in argv and "--json" in argv and len(argv) == 2:
+            print(json.dumps(_version_payload(), indent=2, sort_keys=True))
+            return 0
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        return int(args.func(args))
+    except BrokenPipeError:
+        return _handle_broken_pipe()
+    except OSError as exc:
+        # EPIPE is an unambiguous broken pipe. Windows surfaces a closed stdout
+        # pipe as the generic EINVAL, so only treat EINVAL as a broken pipe when
+        # stdout is actually broken — otherwise an unrelated OSError(EINVAL)
+        # (e.g. a subprocess launch failure) would be masked as a clean exit.
+        if exc.errno == errno.EPIPE or (
+                exc.errno == errno.EINVAL and _stdout_pipe_is_broken()):
+            return _handle_broken_pipe()
+        raise
 
 
 if __name__ == "__main__":

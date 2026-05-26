@@ -108,7 +108,7 @@ calls against declared effects. Current checks cover console writes and a set of
 capability consoleStdoutWriter console.stdout write
 useCapability writeStandardOutputLine consoleStdoutWriter
 
-authority updateAccount database.account write
+authority updateAccount write database.account
 ```
 
 Schemas:
@@ -116,12 +116,34 @@ Schemas:
 ```text
 capability NAME EFFECT_PATH ACCESS
 useCapability TARGET CAPABILITY
-authority TARGET EFFECT_PATH ACCESS
+authority TARGET ACCESS EFFECT_PATH
 ```
+
+Note the column order differs between the two grant forms: `capability` is
+path-first (`NAME EFFECT_PATH ACCESS`), while `authority` is access-first
+(`TARGET ACCESS EFFECT_PATH`) — matching the `effect TARGET ACCESS EFFECT_PATH`
+row it backs. `sem migrate-syntax` rewrites the old path-first `authority` form
+to access-first.
 
 Capabilities name grants. `useCapability` attaches a grant to an operation or
 use site. `authority` is an inline grant form. Compiler strict lint and
 `semlint.py` check for effect sites without capability coverage.
+
+**Which one, and is `authority` required?** Every declared `effect` needs
+*exactly one* backing grant — and either form satisfies it:
+
+- a reusable **`capability` + `useCapability`** pair (declare the grant once,
+  attach it to each operation that uses it), or
+- an inline **`authority OP ACCESS EFFECT_PATH`** row (a one-off grant on that
+  operation).
+
+So `authority` is **not** required *in addition* to a capability — it is an
+*alternative* to one. An operation that declares `effect OP write console.stdout`
+and a matching `useCapability` does **not** also need an `authority` row, and one
+that uses an `authority` row does not need a capability. Use a shared
+`capability` when the same grant recurs across operations; use an inline
+`authority` for a single operation's one-off grant. An effect with *neither* is
+the gap the coverage check (SS3104) flags.
 
 Capability paths are hierarchical. A capability declared at `http.request read`
 authorizes narrower reads such as `http.request.method`, `http.request.path`,

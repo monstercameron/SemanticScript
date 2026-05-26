@@ -47,6 +47,9 @@ External call targets:
   math.lessThanOrEqualInt64    -> i1                        (alias: math.leInt64)
   math.greaterThanInt64        -> i1                        (alias: math.gtInt64)
   math.greaterThanOrEqualInt64 -> i1                        (alias: math.geInt64)
+  math.minInt64                -> i64 (a < b ? a : b)
+  math.maxInt64                -> i64 (a > b ? a : b)
+  math.clampInt64              -> i64 (min(max(value, low), high))
 """
 
 import argparse
@@ -79,6 +82,7 @@ from shared.call_contracts import (
     is_supported_route_method,
 )
 from shared.repo_version import read_repo_version
+from shared.console_encoding import force_utf8_streams as _force_utf8_streams
 
 __version__ = read_repo_version()
 
@@ -353,6 +357,57 @@ class CompilerProvenance:
                     "changing user source."
                 ),
             )
+        # A locked or unwritable output binary is a linker *write* failure, not
+        # an IR-compile failure. The most common trigger on Windows is rebuilding
+        # while the previous executable is still running. Detect it explicitly so
+        # the headline points at the real cause instead of the generic
+        # "IR failed to compile" message.
+        lowered = stderr.lower()
+        write_failure = (
+            ("failed to write output" in lowered)
+            or ("cannot open output file" in lowered)
+            or ("lnk1104" in lowered)  # MSVC: cannot open file
+            or ("text file busy" in lowered)
+        )
+        # "permission denied" alone is ambiguous (it can also come from an
+        # unreadable input library), so only treat it as an output-write
+        # failure when it co-occurs with an output/write/executable context.
+        if not write_failure and "permission denied" in lowered and (
+            "output" in lowered or "write" in lowered or ".exe" in lowered
+        ):
+            write_failure = True
+        if write_failure:
+            output_match = re.search(
+                r"(?:failed to write output|cannot open (?:output )?file)\s*'?\"?([^'\"\n]+)",
+                stderr,
+                re.IGNORECASE,
+            )
+            output_name = output_match.group(1).strip() if output_match else None
+            target_phrase = f"`{output_name}`" if output_name else "the output binary"
+            return CompilerDiagnostic(
+                code="SSBE002",
+                phase="backend.link",
+                message=(
+                    f"could not write the output binary ({output_name})"
+                    if output_name else
+                    "could not write the output binary"
+                ),
+                backend_excerpt=self._backend_excerpt(stderr),
+                direction=(
+                    f"The native linker compiled the IR but could not write {target_phrase}. "
+                    "On Windows this almost always means the previous build is still "
+                    "running and holds a lock on the file, or the path is read-only."
+                ),
+                suggested_fixes=[
+                    "Stop the running process that holds the output binary, then rebuild.",
+                    "Run the program from a copy, or build to a different output path.",
+                    "Confirm the output directory is writable and not synced/locked by another tool.",
+                ],
+                agent_hint=(
+                    "This is not an IR or source error — do not edit SemanticScript "
+                    "source. Release the file lock (kill the running binary) and rerun."
+                ),
+            )
         return CompilerDiagnostic(
             code="SSBE999",
             phase="backend.link",
@@ -547,6 +602,7 @@ class Program:
         self.icon_groups = {}             # group_name -> dict(role, purpose, line)
         self.icon_images = {}             # image_name -> dict(group, path, format, width, height, scale, depth, platform, purpose, line)
         self.consts = {}              # name -> (type, value)
+        self.const_lines = {}         # module-const name -> source line (best-effort, for diagnostics)
         self.worker_pools = {}        # module-scope workerPool name -> line
         # Module-scope mutable storage (`storage module mutable` and
         # `sharedState <scope> mutable`). Tracked separately from consts so
@@ -604,6 +660,17 @@ class Program:
 
 
 # ---- verb dispatch tables ----
+
+# Subject kinds a `purpose` row may attach to. Operations and modules carry
+# purpose in their headers; the remaining kinds are the contract-heavy
+# abstractions that the `missingPurpose` advisory asks for, so the advisory is
+# satisfiable with the documented verb. Keep this in sync with the subjects
+# enumerated in `_check_purpose_on_abstractions`.
+_PURPOSE_SUBJECT_KINDS = frozenset({
+    "module", "operation",
+    "capability", "webServer", "record",
+    "resource", "validator", "codec", "policy",
+})
 
 # Body verbs whose lines codegen consumes directly.
 BODY_VERBS_CODEGEN = {
@@ -754,8 +821,10 @@ def _canonicalize_syntax_row(verb, args, lineno):
         if len(args) == 3 and args[0] == "body" and args[1] == "template":
             return "htmlBody", [args[2]]
         raise SyntaxError(
-            f"line {lineno}: html requires: html template NAME, "
-            "html body template TEMPLATE")
+            f"line {lineno}: html requires: `html template NAME` to declare a "
+            "template, then `html body template NAME` (NAME must already be "
+            "declared) to open the indented HTML island. The body's "
+            "{holeName} placeholders become typed hydrate arguments.")
 
     if verb == "type":
         if len(args) >= 2 and args[1] == "Result":
@@ -784,11 +853,23 @@ def _canonicalize_syntax_row(verb, args, lineno):
                 f"line {lineno}: output requires: output operation OPERATION TYPE")
         return verb, [args[1], args[2]]
 
-    if verb in ("purpose", "invariant"):
+    if verb == "invariant":
         if len(args) < 3 or args[0] not in ("module", "operation"):
             raise SyntaxError(
-                f"line {lineno}: {verb} requires: "
-                f"{verb} module|operation SUBJECT \"TEXT\"")
+                f"line {lineno}: invariant requires: "
+                f"invariant module|operation SUBJECT \"TEXT\"")
+        return verb, [args[1], *args[2:]]
+
+    if verb == "purpose":
+        # `purpose` attaches to operations and modules, and also to the
+        # contract-heavy abstractions that the `missingPurpose` advisory asks
+        # for (capability, webServer, record, resource, validator, codec,
+        # policy). Accepting those subject kinds is what makes the advisory
+        # fixable with the documented verb instead of unsatisfiable.
+        if len(args) < 3 or args[0] not in _PURPOSE_SUBJECT_KINDS:
+            raise SyntaxError(
+                f"line {lineno}: purpose requires: "
+                f"purpose {'|'.join(sorted(_PURPOSE_SUBJECT_KINDS))} SUBJECT \"TEXT\"")
         return verb, [args[1], *args[2:]]
 
     if verb == "memory":
@@ -2026,7 +2107,16 @@ def _finish_sql_body_literal(prog: Program, active_sql_body: dict) -> None:
     ))
 
 
+def _strip_leading_bom(text: str) -> str:
+    """Drop a leading UTF-8 BOM (U+FEFF). Windows editors and PowerShell 5.1
+    (`Set-Content -Encoding utf8`) prepend one, which would otherwise be glued
+    to the first token and reported as `unknown verb: 'project'`. Applied to
+    every source read (entry file, build tape, and imported modules)."""
+    return text[1:] if text and ord(text[0]) == 0xFEFF else text
+
+
 def parse(source: str) -> Program:
+    source = _strip_leading_bom(source)
     prog = Program()
     _register_builtin_middleware_control_enum(prog)
     active_html_template = None
@@ -3414,6 +3504,7 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             prog.current_op.lines.append((verb, args, lineno))
         else:
             prog.consts[name] = (typ, value)
+            prog.const_lines.setdefault(name, lineno)
         return
 
     # ===== inside-an-operation verbs =====
@@ -3477,11 +3568,13 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
                 prog.mutable_globals[name] = (typ, value)
             else:
                 prog.consts.setdefault(name, (typ, value))
+            prog.const_lines.setdefault(name, lineno)
         elif prog.current_op is not None:
             prog.current_op.consts[name] = (typ, value)
             prog.current_op.lines.append((verb, args, lineno))
         else:
             prog.consts.setdefault(name, (typ, value))
+            prog.const_lines.setdefault(name, lineno)
         return
     if verb == "domainLiteral" and len(args) >= 3:
         # `domainLiteral NAME TYPE VALUE` is structurally a const with a
@@ -3719,6 +3812,24 @@ _Int32_ROLE_TYPES = {
     "GuiEventDimensionPixels",
     "GuiHandlerStatus",
     "GuiRuntimeStatusCode",
+    # Int-backed builtin aliases for HTTP/SQLite numeric codes and flags. These
+    # are semantically i32 and are passed as Int32 values into call arg slots, so
+    # a module/local const of these types must lower to i32 the same way SqlText
+    # (a string-backed alias) lowers to a String const — even without importing
+    # the declaring stdlib module. Without these, a const like
+    # `storage module immutable okStatus HttpStatusCode 200` failed codegen with
+    # SSCG002/SSCG004 "unsupported const type" while the string-backed siblings
+    # built fine — an inconsistency that forced the non-obvious "declare Int32,
+    # carry the alias only in the arg slot" workaround.
+    #
+    # Only types that actually exist are listed: `HttpStatusCode` is
+    # `type HttpStatusCode Int32` (std/http) and `SqliteOpenMode` is an
+    # `enum repr Int32` (std/sqlite). `HttpStatus` (no `Code`) is deliberately
+    # NOT here — it is not a declared type anywhere; accepting it would let a
+    # typo lower silently and undercut SSCG004. The real status type is
+    # `HttpStatusCode`.
+    "HttpStatusCode",
+    "SqliteOpenMode",
 }
 
 _U32_ROLE_TYPES = {
@@ -4197,6 +4308,16 @@ _CMP_Int32_TO_LLVM = {
     "math.lessThanOrEqualInt32":    "<=",
     "math.greaterThanInt32":        ">",
     "math.greaterThanOrEqualInt32": ">=",
+}
+
+# Signed integer min/max: select the operand satisfying the comparison.
+# `<` keeps the smaller (min), `>` keeps the larger (max). Lowered to
+# icmp+select so callers stop hand-rolling a two-branch min/max (a common
+# source of off-by-one control flow). `math.clampInt64` is handled separately
+# (3 operands: value, low, high).
+_INT_MINMAX_TO_LLVM = {
+    "math.minInt64": "<",
+    "math.maxInt64": ">",
 }
 
 
@@ -9604,12 +9725,65 @@ class Codegen:
     def _diagnostic_for_call_error(self, error: Exception, call) -> CompilerDiagnostic:
         message = str(error)
         frame = self.provenance.frame_from_call(call)
+        call_target = call.get("target", "") if isinstance(call, dict) else ""
+        is_html_hydrate = call_target.startswith(_HTML_HYDRATE_PREFIX)
+
+        # Default: a generic call-lowering failure.
+        code = "SSCG002"
         direction = (
             "The compiler failed while lowering this call to LLVM IR. Inspect "
             "the call row, its arg rows, and the target operation or builtin "
             "signature before changing unrelated source."
         )
-        if "unresolved symbol" in message:
+        fixes = [
+            "Inspect every `arg` row attached to this call name.",
+            "Confirm the call target's required inputs and supported types.",
+            "Run with --diagnostics-format json if an agent should consume this mechanically.",
+        ]
+        agent_hint = (
+            "Patch the SemanticScript source or the compiler lowering rule. "
+            "Do not edit generated LLVM IR; it is an output artifact."
+        )
+
+        if "unsupported const type" in message:
+            # A typed constant whose type has no LLVM lowering (e.g. an enum or
+            # domain type used directly as a `storage`/argument const). This is
+            # a distinct failure class from call dispatch, so it gets its own code.
+            code = "SSCG004"
+            direction = (
+                "A constant value was declared with a type the backend cannot "
+                "lower to an LLVM constant. Enum and domain types are not usable "
+                "as raw constants here; declare the value with a concrete "
+                "primitive type (for example `Int32 200` instead of "
+                "`HttpStatus HttpStatus.Ok`)."
+            )
+            fixes = [
+                "Use a concrete primitive type for the const (Int32/Int64/Bool/Float64/String).",
+                "Enums lower via their repr width; records and domain types with no LLVM lowering cannot be raw constants.",
+                "If you need an enum member, declare the const with the enum type, or compare against it at runtime instead of storing it.",
+            ]
+            agent_hint = (
+                "Change the declared type of the constant in SemanticScript source. "
+                "Do not edit generated LLVM IR."
+            )
+        elif is_html_hydrate and "missing" in message and "arg" in message:
+            # A template hydrate that did not receive a value for one of its holes.
+            code = "SSCG005"
+            direction = (
+                "An `html.hydrate` call did not supply a value for one of the "
+                "template's holes. Every named hole in the htmlTemplate needs a "
+                "matching `argument` row at the hydrate call site."
+            )
+            fixes = [
+                "Add an `argument <hydrateCall> <holeName> <Type> <valueName>` row for the missing hole.",
+                "Confirm the hole name in the htmlTemplate matches the argument name exactly.",
+                "If the brace is literal JS/text rather than a hole, keep it inside a raw/script region so it is not scanned as a hole.",
+            ]
+            agent_hint = (
+                "Match hydrate arguments to the template's declared holes in source. "
+                "Do not edit generated LLVM IR."
+            )
+        elif "unresolved symbol" in message:
             direction = (
                 "One of this call's argument values does not resolve in the "
                 "current operation. Check the `arg` rows for typos, missing "
@@ -9629,7 +9803,7 @@ class Codegen:
                 "or replace the call with a supported target."
             )
         return CompilerDiagnostic(
-            code="SSCG002",
+            code=code,
             phase="codegen.call-lowering",
             message=message,
             primary=frame.span,
@@ -9640,15 +9814,8 @@ class Codegen:
                 "lowering stopped before native backend",
             ],
             direction=direction,
-            suggested_fixes=[
-                "Inspect every `arg` row attached to this call name.",
-                "Confirm the call target's required inputs and supported types.",
-                "Run with --diagnostics-format json if an agent should consume this mechanically.",
-            ],
-            agent_hint=(
-                "Patch the SemanticScript source or the compiler lowering rule. "
-                "Do not edit generated LLVM IR; it is an output artifact."
-            ),
+            suggested_fixes=fixes,
+            agent_hint=agent_hint,
         )
 
     # ---------- run dispatch ----------
@@ -9697,6 +9864,7 @@ class Codegen:
         # without leaking the underlying integer width into source.
         if (target not in _BINOP_TO_LLVM and target not in _CMP_TO_LLVM
                 and target not in _CMP_Int32_TO_LLVM
+                and target not in _INT_MINMAX_TO_LLVM and target != "math.clampInt64"
                 and target not in _FBINOP_TO_LLVM and target not in _FCMP_TO_LLVM
                 and target not in ("console.writeLine", "console.writeIntegerLine",
                                    "console.writeFloatLine")
@@ -10813,6 +10981,38 @@ class Codegen:
             a = require_i32(a, f"{target} left operand")
             b = require_i32(b, f"{target} right operand")
             call["result"] = builder.icmp_signed(_CMP_Int32_TO_LLVM[target], a, b, name=f"{call_name}_res")
+            return
+
+        # Signed integer min/max: keep the operand satisfying the comparison.
+        if target in _INT_MINMAX_TO_LLVM:
+            a, b = operand_pair()
+            a = require_i64(a, f"{target} left operand")
+            b = require_i64(b, f"{target} right operand")
+            keep_left = builder.icmp_signed(_INT_MINMAX_TO_LLVM[target], a, b,
+                                            name=f"{call_name}_cmp")
+            call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
+            return
+
+        # `math.clampInt64 value low high` -> min(max(value, low), high).
+        if target == "math.clampInt64":
+            usable = [(k, v) for k, v in call["args"].items()
+                      if v not in opaque_inputs]
+            if len(usable) != 3:
+                raise ValueError(
+                    f"{call_name}: math.clampInt64 needs 3 operands (value, low, high); "
+                    f"got {list(call['args'])}")
+            resolved = []
+            for arg_name, arg_value in usable:
+                value = resolve(arg_value)
+                if value is SENTINEL:
+                    raise ValueError(f"{call_name}: opaque-input as operand for {target}")
+                resolved.append(require_i64(coerce_declared_argument(arg_name, value),
+                                            f"math.clampInt64 {arg_name}"))
+            value, low, high = resolved
+            above_low = builder.icmp_signed(">", value, low, name=f"{call_name}_aboveLow")
+            lifted = builder.select(above_low, value, low, name=f"{call_name}_lifted")
+            below_high = builder.icmp_signed("<", lifted, high, name=f"{call_name}_belowHigh")
+            call["result"] = builder.select(below_high, lifted, high, name=f"{call_name}_res")
             return
 
         # Pointer-arithmetic primitives. `pointer.loadByte` reads a single
@@ -13366,7 +13566,44 @@ class Codegen:
         # so the surrounding control flow + bind chain still compiles. A real
         # runtime (when wired) would supply the implementation by linking
         # against the named module's exports.
-        if "." in target or target in self.prog.validators or target in self.prog.policies:
+        #
+        # This is deliberately NARROW: it fires only when the qualified target's
+        # prefix is a KNOWN import alias or declared abstraction. A dotted target
+        # whose prefix is unknown — a typo, or a non-existent builtin such as
+        # `string.concat` written without importing `standard.string` — is not a
+        # real call. Zeroing it used to compile and "build" cleanly, then hand a
+        # garbage value to whatever consumed the bind (e.g. an `html.hydrate`
+        # hole), which dereferenced it and crashed at runtime (SSRUN002). Reject
+        # it at codegen so it surfaces as a clear error instead.
+        prefix = target.split(".", 1)[0] if "." in target else target
+        # A call through an import alias that resolves to a `standard.*` module
+        # but reaches THIS fallback means the stdlib body was not inlined/linked
+        # for this target. Zero-lowering it produces the most damaging failure in
+        # the toolchain: the call "builds" cleanly but silently returns 0 at
+        # runtime (a constant clock, a zeroed DP cell), masquerading as a logic
+        # bug for hours. Make it a loud build error instead — the stdlib op is
+        # either unavailable for this target (use an intrinsic) or needs linking.
+        aliased_module = self.prog.import_aliases.get(prefix, "")
+        if aliased_module.startswith("standard."):
+            suffix = target.split(".", 1)[1] if "." in target else target
+            raise ValueError(
+                f"stdlib call target {target!r} ({aliased_module}.{suffix}) is not "
+                f"linked for this build target; it would silently return 0 at runtime. "
+                f"Use a compiler intrinsic (docs search shows intrinsics at source ':0') "
+                f"or a DSL form instead of the standard.* library call."
+            )
+        known_external = (
+            prefix in self.prog.import_aliases
+            or prefix in self.prog.codecs
+            or prefix in self.prog.validators
+            or prefix in self.prog.policies
+            or prefix in self.prog.records
+            or prefix in self.prog.enums
+            or prefix in self.prog.type_aliases
+        )
+        if (known_external
+                or target in self.prog.validators
+                or target in self.prog.policies):
             zero = ir.Constant(Int64, 0)
             call["result"] = zero
             call["error_value"] = zero
@@ -16272,6 +16509,103 @@ _SECURITY_ADVISORY_GUIDANCE = {
                "use a `storage * immutable String` format and pass values as "
                "arguments"),
 }
+
+
+def _const_type_is_lowerable(prog: Program, typ: str) -> bool:
+    """True when a constant's declared type is a *known* type.
+
+    The reported codegen failure ("unsupported const type: HttpStatus") is an
+    UNDECLARED type name reaching codegen. We flag exactly that: a type that is
+    neither a concrete/aliased primitive, an enum, a record, nor a declared
+    type alias. Record-typed consts are intentionally allowed here — they are
+    bound to `jsonBody`/`htmlBody` islands with their own codegen path, so
+    flagging them would be a false positive.
+    """
+    if typ in ("Void", "void"):
+        return True
+    if llvm_type_for(prog, typ) is not None:
+        return True  # primitive, primitive alias, enum, or opaque handle type
+    resolved = resolve_alias(prog, typ)
+    if typ in prog.records or resolved in prog.records:
+        return True
+    if typ in prog.enums or resolved in prog.enums:
+        return True
+    if typ in prog.type_aliases or resolved in prog.type_aliases:
+        return True
+    return False
+
+
+def validate_const_lowerability(prog: Program) -> None:
+    """SSCG004 at check time — a constant declared with a type the backend
+    cannot lower (an unknown type name, or a record/domain type) fails in
+    codegen with "unsupported const type". That gate previously only fired at
+    `build`, so a green `check` did not guarantee a buildable program. Running
+    it here (during `--parse-only --lint`) closes that gap: the same failure is
+    surfaced earlier with the same SSCG004 code.
+    """
+    # Types used as operation INPUT parameters are opaque/handle/context types
+    # (Console, RetryPolicy, MetricsRuntime, runtimeBinding handles, …). A const
+    # of such a type is an opaque handle (initialized to 0 and passed as an
+    # opaque input), which codegen lowers through the opaque-input path, NOT
+    # `emit_const_value`. Excluding them avoids a false positive on those
+    # handles while still catching scalar/return-position const types.
+    input_param_types = set()
+    for op in prog.operations.values():
+        for verb, args, _ln in op.lines:
+            if verb == "input" and len(args) >= 2:
+                input_param_types.add(args[-1])
+
+    def _check(name: str, typ: str, lineno: int) -> None:
+        if "." in name:
+            return  # qualified/imported const — owned by its source module
+        if typ in input_param_types:
+            return  # opaque handle / context type, lowered via the input path
+        if _const_type_is_lowerable(prog, typ):
+            return
+        span = _strict_span(prog, lineno) if lineno else _strict_span(prog, 0)
+        raise CompilerDiagnosticError(CompilerDiagnostic(
+            code="SSCG004",
+            phase="check.const-lowerability",
+            message=(
+                f"unsupported const type: {typ} (constant `{name}` is declared "
+                f"with a type the backend cannot lower to an LLVM constant)"),
+            primary=span,
+            semantic_stack=[
+                DiagnosticFrame(
+                    kind="const lowerability validation",
+                    span=span,
+                    note=("only concrete primitives, primitive aliases, and "
+                          "enums lower to LLVM constants; unknown type names "
+                          "and record/domain types do not"),
+                ),
+            ],
+            direction=(
+                "Declare the constant with a concrete primitive type (for "
+                "example `Int32 200`). Enums lower via their repr width; if you "
+                "need a domain type at a call boundary, pass a primitive-typed "
+                "value and keep the domain type on the call's argument row."),
+            suggested_fixes=[
+                f"Change `{name}`'s type to a concrete primitive "
+                "(Int32/Int64/UInt*/Bool/Float64/String).",
+                "Confirm the type name exists — an unknown type name reaches "
+                "codegen as an unlowerable const.",
+            ],
+            agent_hint=(
+                "This is the codegen-time SSCG004 surfaced at check. Edit the "
+                "constant's declared type in source; do not edit generated IR."),
+        ))
+
+    for name, (typ, _value) in list(prog.consts.items()):
+        _check(name, typ, prog.const_lines.get(name, 0))
+    for op in prog.operations.values():
+        local_lines = {}
+        for verb, args, lineno in op.lines:
+            if verb == "const" and len(args) >= 2:
+                local_lines.setdefault(args[0], lineno)
+            elif verb == "storage" and len(args) >= 4:
+                local_lines.setdefault(args[2], lineno)
+        for name, (typ, _value) in list(op.consts.items()):
+            _check(name, typ, local_lines.get(name, op.decl_line))
 
 
 def validate_strict_executable(prog: Program) -> None:
@@ -19194,7 +19528,7 @@ def _resolve_imports(source: str, source_path: str, explicit_std_paths=None,
                         seen.add(path)
                         try:
                             with open(path, "r", encoding="utf-8") as f:
-                                imported = f.read()
+                                imported = _strip_leading_bom(f.read())
                         except OSError:
                             append_line(line, origin_path, origin_line,
                                         imported=not is_root)
@@ -19270,7 +19604,7 @@ def _load_external_literals(prog: Program, source_path: str) -> None:
             for candidate in candidates:
                 try:
                     with open(candidate, "r", encoding="utf-8") as f:
-                        loaded = f.read()
+                        loaded = _strip_leading_bom(f.read())
                     break
                 except (IOError, OSError, UnicodeDecodeError):
                     continue
@@ -20352,7 +20686,27 @@ def _write_agent_json_payload(payload: dict, output_path: str) -> None:
         output_file.write(text)
 
 
+def _translate_parse_error_location(message, source_origins, default_path):
+    """Map a flattened-source parse error back to its origin file+line.
+
+    `parse()` raises `SyntaxError("line N: msg")` with N relative to the
+    import-flattened source. `source_origins` maps each flattened line to its
+    real `{path, line}`. Returns `(path, message)` with the path/line rewritten
+    to the originating module when known, else the entry path and original
+    message unchanged. Without this, a parse error in an imported `mainFile`
+    (e.g. main.sem) was reported against the entry build tape at a bogus line.
+    """
+    match = re.match(r"line (\d+): (.*)", message, re.DOTALL)
+    if match and source_origins:
+        flattened_lineno = int(match.group(1))
+        origin = source_origins.get(flattened_lineno)
+        if origin and origin.get("path"):
+            return origin["path"], f"line {origin.get('line', flattened_lineno)}: {match.group(2)}"
+    return default_path, message
+
+
 def main():
+    _force_utf8_streams()
     ap = argparse.ArgumentParser(
         prog="semsc",
         description=f"SemanticScript compiler (LLVM backend) v{__version__}",
@@ -20533,6 +20887,7 @@ def main():
             f"languageMode {mode}\n" for mode in prelude_language_modes
         ) + source
 
+    source_origins = {}
     try:
         # Resolve cross-file imports. `importModule DOTTED.PATH [as ALIAS]`
         # lines reference module files. Build tapes resolve registered
@@ -20546,7 +20901,15 @@ def main():
         prog.source_origins = source_origins
     except SyntaxError as e:
         import traceback as _tb
-        print(f"semsc: parse error in {args.source}: {e}", file=sys.stderr)
+        # `parse()` reports a line number relative to the import-flattened
+        # source. Translate it back to the originating file+line via
+        # source_origins so a parse error in an imported module (e.g. the
+        # `mainFile` main.sem reached from a build tape) is attributed to that
+        # file, not to the entry tape. Without this, the offending row in
+        # main.sem was reported against build.sem at a past-EOF line number.
+        error_path, message = _translate_parse_error_location(
+            str(e), source_origins, args.source)
+        print(f"semsc: parse error in {error_path}: {message}", file=sys.stderr)
         if os.environ.get("SEMSC_TRACEBACK"):
             _tb.print_exc(file=sys.stderr)
         sys.exit(2)
@@ -20599,6 +20962,9 @@ def main():
         # The always-on security floor runs first and binds EVERY build,
         # regardless of language mode; strict adds the broader executable wall.
         validate_security_floor(prog)
+        # Const lowerability is a codegen-time failure (SSCG004) lifted to the
+        # parse/check phase so a green `check` implies a buildable program.
+        validate_const_lowerability(prog)
         validate_strict_executable(prog)
     except CompilerDiagnosticError as e:
         print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
