@@ -7,8 +7,8 @@
 #   whether those operations can be IMPORTED into a separate
 #   program via `importModule` and called from outside. It pulls
 #   in a stochastic sample of seven modules spanning the major
-#   library tiers (logic, ordering, predicates, integer math,
-#   float math, byte strings, time) and exercises one operation
+#   library tiers (logic, ordering, predicates, math,
+#   byte strings, time) and exercises one operation
 #   from each.
 #
 # invariant: every imported operation under test must return its
@@ -47,7 +47,6 @@ import compare compare
 import ctype ctype
 import numeric numeric
 import math math
-import math_float math_float
 import string string
 import time time
 
@@ -124,9 +123,9 @@ call assertConvertUppercaseCall convertAsciiLetterCodeToUppercase
 argument assertConvertUppercaseCall characterCode Int32 lowercaseHForConvertImport
 run assertConvertUppercaseCall
 bind value convertUppercaseResult Int32 assertConvertUppercaseCall
-call checkConvertUppercaseCall math.equalInt64
+call checkConvertUppercaseCall math.equalInt32
 argument checkConvertUppercaseCall left Int32 convertUppercaseResult
-argument checkConvertUppercaseCall right Int64 uppercaseHExpectedImport
+argument checkConvertUppercaseCall right Int32 uppercaseHExpectedImport
 run checkConvertUppercaseCall
 bind value convertUppercaseOk Bool checkConvertUppercaseCall
 branch if condition convertUppercaseOk target convertUppercaseHolds
@@ -191,7 +190,7 @@ branch if condition primeImportResult target primeImportHolds
 branch else target stdlibImportAssertionFailed
 label primeImportHolds
 
-# ---- math_float: absoluteFloat64(-2.5) == 2.5 ----
+# ---- math: absoluteFloat64(-2.5) == 2.5 ----
 storage module immutable negativeTwoPointFiveImport Float64 -2.5
 storage module immutable twoPointFiveExpectedImport Float64 2.5
 call assertAbsoluteFloatCall absoluteFloat64
@@ -207,16 +206,16 @@ branch if condition absoluteFloatOk target absoluteFloatHolds
 branch else target stdlibImportAssertionFailed
 label absoluteFloatHolds
 
-# ---- string: stringByteLength("semanticscript") == 11 ----
+# ---- string: stringByteLength("semanticscript") == 14 ----
 storage module immutable semanticscriptLiteralForLengthImport String "semanticscript"
-storage module immutable elevenBytesExpectedImport ByteCount 11
+storage module immutable fourteenBytesExpectedImport Int64 14
 call assertStringByteLengthCall stringByteLength
 argument assertStringByteLengthCall inputText String semanticscriptLiteralForLengthImport
 run assertStringByteLengthCall
 bind value stringByteLengthResult ByteCount assertStringByteLengthCall
 call checkStringByteLengthCall math.equalInt64
-argument checkStringByteLengthCall left ByteCount stringByteLengthResult
-argument checkStringByteLengthCall right Int64 elevenBytesExpectedImport
+argument checkStringByteLengthCall left Int64 stringByteLengthResult
+argument checkStringByteLengthCall right Int64 fourteenBytesExpectedImport
 run checkStringByteLengthCall
 bind value stringByteLengthOk Bool checkStringByteLengthCall
 branch if condition stringByteLengthOk target stringByteLengthHolds
@@ -252,10 +251,9 @@ label convertHoursHolds
 # All assertions held — emit OK and exit 0.
 storage module immutable stdlibImportSuccessMessage String "OK"
 call writeStdlibImportSuccessCall console.writeLine
-argument writeStdlibImportSuccessCall console Console console
 argument writeStdlibImportSuccessCall text String stdlibImportSuccessMessage
 run writeStdlibImportSuccessCall
-ignore ok source writeStdlibImportSuccessCall type Int32
+ignore void source writeStdlibImportSuccessCall
 bind error stdlibImportConsoleWriteError Int32 writeStdlibImportSuccessCall
 branch error source writeStdlibImportSuccessCall target stdlibImportConsoleWriteFailed
 storage module immutable stdlibImportExitOk ExitCode 0

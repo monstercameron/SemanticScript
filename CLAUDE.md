@@ -233,7 +233,11 @@ adapter, not a native build). Build/run DOM programs with
 Common call targets include `console.writeLine`, `console.writeIntegerLine`,
 `math.addInt64`, `math.subtractInt64`, `math.multiplyInt64`, `math.divideInt64`,
 `math.equalInt64`, `math.lessThanInt64`, `math.addFloat64`, and `c.*` targets
-listed in `SemanticScript/compiler/libc_registry.py`.
+listed in `SemanticScript/compiler/libc_registry.py`. Treat raw `c.*` as a
+compiler interop escape hatch: before generating it, run `sem docs get c.NAME
+--json` and read `target.wrapperPolicy`. Prefer the named `standard.*` wrapper
+when `wrapperPolicy.decision` is `stdlib-wrapper-planned`; do not generate app
+code for `no-public-wrapper` or `abi-blocked` targets.
 
 Use `python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json`
 before generating calls to standard-library APIs or compiler-owned targets, or
@@ -256,9 +260,10 @@ wants local semantic API search; otherwise leave it off. Treat `docs search`
 results as discovery candidates and use `docs get`, `slice`, or `--include-docs`
 before generating calls.
 
-Avoid `c.malloc`/`c.free` in demo apps unless heap behavior is the point. If
-used, declare heap effects and capabilities, handle allocation failure, and emit
-explicit cleanup on every ownership path.
+Prefer `standard.memory` allocation wrappers in demo apps. Avoid raw
+`c.malloc`/`c.free` unless heap interop is the point; if used, declare heap
+effects and capabilities, handle allocation failure, and emit explicit cleanup
+on every ownership path.
 
 ## Records, JSON, And Trust Boundaries
 

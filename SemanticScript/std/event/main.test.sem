@@ -33,7 +33,6 @@ invariant operation main "Do not import standard.event here until JIT unresolved
 useCapability main consoleStdoutWriter
 
 call printOkCall console.writeLine
-argument printOkCall console Console console
 argument printOkCall text String okText
 run printOkCall
 ignore void source printOkCall

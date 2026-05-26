@@ -36,7 +36,6 @@ purpose operation main "Print OK as the standard.document stdlib self-test place
 
 label startMain
 call writeOkCall console.writeLine
-argument writeOkCall console Console console
 argument writeOkCall text String okText
 run writeOkCall
 ignore void source writeOkCall

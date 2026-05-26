@@ -1106,7 +1106,7 @@ SIBLING_METADATA_EDGES: Tuple[str, ...] = (
 # Heap-allocating call targets. Distinct from KNOWN_FALLIBLE_CALL_TARGETS
 # because some (c.free) don't allocate but still relate to memory discipline.
 HEAP_ALLOCATION_CALL_TARGETS: frozenset = frozenset({
-    "c.malloc", "c.calloc", "c.realloc",
+    "c.malloc", "c.calloc", "c.realloc", "c.alignedAlloc", "c.aligned_alloc",
 })
 
 HEAP_DEALLOCATION_CALL_TARGETS: frozenset = frozenset({
@@ -1181,6 +1181,8 @@ CALL_TARGET_IMPLIED_EFFECTS: Dict[str, Tuple[str, str]] = {
     "c.malloc":                  ("allocate", "heap"),
     "c.calloc":                  ("allocate", "heap"),
     "c.realloc":                 ("allocate", "heap"),
+    "c.alignedAlloc":            ("allocate", "heap"),
+    "c.aligned_alloc":           ("allocate", "heap"),
     "c.free":                    ("free",     "heap"),
     # Process lifecycle
     "c.exit":                    ("write", "process.lifecycle"),
@@ -1418,6 +1420,8 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "c.malloc":                   [("size", "ByteCount")],
     "c.calloc":                   [("count", "ByteCount"), ("size", "ByteCount")],
     "c.realloc":                  [("ptr", "OpaquePointer"), ("size", "ByteCount")],
+    "c.alignedAlloc":             [("alignment", "ByteCount"), ("size", "ByteCount")],
+    "c.aligned_alloc":            [("alignment", "ByteCount"), ("size", "ByteCount")],
     "c.free":                     [("ptr", "OpaquePointer")],
     "c.exit":                     [("code", "Int32")],
     "c.abort":                    [],
@@ -1801,7 +1805,7 @@ OPERATION_ATTACHMENT_VERBS: frozenset = frozenset({
 # both in lockstep is the linter's job over time.
 KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Project structure
-    "project", "target", "runtime", "entry", "module", "mode",
+    "project", "target", "runtime", "entry", "module", "mode", "languageMode",
     "buildProject", "modulePath", "languageVersion", "sourceRoot",
     "mainFile", "mainOperation", "testPattern", "dependency", "dependencySource",
     "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
@@ -1896,6 +1900,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # Web
     "webServer", "serverHost", "serverPort", "route",
     "routeNotFound", "routeMethodNotAllowed",
+    "webServerStartup", "webServerShutdown",
     "routeTimeout", "routeMiddleware",
     "html", "htmlTemplate", "htmlArg", "htmlBody", "jsonBody", "sql", "sqlBody",
     # SS3604 coverage opt-outs — declare a route's intentional omission
@@ -2894,6 +2899,29 @@ def operation_input_types(operation: OperationFact) -> Dict[str, str]:
     return inputs
 
 
+def operation_declares_result_output(operation: OperationFact, program: ProgramFacts) -> bool:
+    for sourceLine in operation.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        parsed = output_parts(sourceLine)
+        if parsed is None or parsed[0] != operation.name:
+            continue
+        if parsed[1] == "Result":
+            return True
+        alias_target = program.type_aliases.get(parsed[1])
+        if alias_target == "result":
+            return True
+    return False
+
+
+def result_returning_operation_names(program: ProgramFacts) -> Set[str]:
+    return {
+        operation.name
+        for operation in program.operations.values()
+        if operation_declares_result_output(operation, program)
+    }
+
+
 def call_arg_values(callFact: CallFact) -> Dict[str, List[str]]:
     values: Dict[str, List[str]] = {}
     for argLine in callFact.arg_lines:
@@ -3272,6 +3300,9 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3615 responseBodyForwarderMissing (user-op wrappers around
 #                   http.responseText/Bytes/SSE must declare the forwarded
 #                   body input so SS3603 remains transitive),
+#            SS3617 lifecycleHookContract (webServerStartup /
+#                   webServerShutdown handlers must exist, take no inputs,
+#                   and return Int32),
 #            SS3620 unguardedJsonAccess, SS3621 staleJsonCursor,
 #            SS3622 malformedJsonPath, SS3623 unescapedJsonStringInterpolation,
 #            SS3624 deprecatedJsonBuilderCall,
@@ -5024,6 +5055,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
     statement-lifecycle call (prepare/step/exec) — the bind's effect is
     validated downstream by that step. See `_SQLITE_BIND_CALL_TARGETS`."""
     diagnostics: List[Diagnostic] = []
+    resultReturningUserOps = result_returning_operation_names(facts.base)
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
         operationCalls = collect_operation_calls(operation)
@@ -5136,7 +5168,8 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
             )
 
         for callFact in operationCalls.values():
-            if callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+            if (callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS
+                    and callFact.target not in resultReturningUserOps):
                 continue
             # Scoped exception: a parameter bind inside an error-handled sqlite
             # transaction does not need its own error disposition (the step/exec
@@ -7583,18 +7616,22 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
             # is a pointer/handle surface that transfers ownership.
             outputLine = None
             for line in operation.lines:
-                if line.verb == "output" and line.args and line.args[0] == operation.name:
+                if line.verb != "output" or not line.args:
+                    continue
+                if line.args[0] == operation.name:
                     outputLine = line
                     break
-            if outputLine and len(outputLine.args) >= 2:
-                outputTypeName = outputLine.args[1]
-                if outputTypeName in {"OpaquePointer", "String", "FileHandle",
-                                      "OpaquePointer", "String", "FileHandle"}:
+                if len(line.args) >= 2 and line.args[0] == "operation" and line.args[1] == operation.name:
+                    outputLine = line
+                    break
+            if outputLine:
+                outputArgs = outputLine.args[2:] if outputLine.args[0] == "operation" else outputLine.args[1:]
+                outputTypeName = outputArgs[0] if outputArgs else ""
+                if outputTypeName in {"OpaquePointer", "String", "FileHandle"}:
                     # Likely an allocator wrapper — caller owns the lifetime.
                     continue
-                if outputTypeName == "Result" and len(outputLine.args) >= 3:
-                    if outputLine.args[2] in {"OpaquePointer", "String", "FileHandle",
-                                              "OpaquePointer", "String", "FileHandle"}:
+                if outputTypeName == "Result" and len(outputArgs) >= 2:
+                    if outputArgs[1] in {"OpaquePointer", "String", "FileHandle"}:
                         continue
             diagnostics.append(Diagnostic(
                 tier=Tier.T3_REFINEMENT,
@@ -10994,6 +11031,7 @@ def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
     physicalByLine: Dict[int, SourceLine] = {
         sourceLine.number: sourceLine for sourceLine in facts.base.lines
     }
+    resultReturningUserOps = result_returning_operation_names(facts.base)
     for operation in facts.base.operations.values():
         operationCalls = collect_operation_calls(operation)
         valueTypes = _operation_value_types(facts, operation)
@@ -11038,19 +11076,19 @@ def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
             if sourceLine.verb == "branch" and len(args) == 5 and args[0] == "error":
                 callName = args[2]
                 callFact = operationCalls.get(callName)
-                # A user operation whose `output` row declares `Result TYPE ERR`
-                # is a valid fallible call target — allow branch error source for it.
-                _target_op = facts.base.operations.get(callFact.target) if callFact else None
-                _is_user_result_op = False
-                if _target_op is not None:
-                    for _opline in _target_op.lines:
-                        _parts = output_parts(_opline)
-                        if (_parts is not None
-                                and _parts[0] == _target_op.name
-                                and _parts[1] == "Result"):
-                            _is_user_result_op = True
-                            break
-                if callFact is not None and callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS and not _is_user_result_op:
+                if callFact is None:
+                    continue
+                knownBranchTarget = (
+                    callFact.target in BUILTIN_TARGET_SIGNATURES
+                    or callFact.target in BUILTIN_TARGET_RETURN_TYPES
+                    or callFact.target in KNOWN_FALLIBLE_CALL_TARGETS
+                    or callFact.target in facts.base.operations
+                    or callFact.target in resultReturningUserOps
+                )
+                if not knownBranchTarget:
+                    continue
+                if (callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS
+                        and callFact.target not in resultReturningUserOps):
                     diagnostics.append(Diagnostic(
                         tier=Tier.T1_SPEC,
                         code="SS4107",
@@ -11889,6 +11927,20 @@ def _is_integer_literal(token: str) -> bool:
     return bool(stripped) and stripped.isdigit()
 
 
+_FLOAT_LITERAL_TOKEN_RE = re.compile(
+    r"^-?(?:(?:\d+\.\d*)|(?:\.\d+)|(?:\d+))(?:[eE][+-]?\d+)?$"
+)
+_IDENTIFIER_TOKEN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+
+
+def _is_float_literal_token(token: str) -> bool:
+    return bool(_FLOAT_LITERAL_TOKEN_RE.match(token))
+
+
+def _is_identifier_token(token: str) -> bool:
+    return bool(_IDENTIFIER_TOKEN_RE.match(token))
+
+
 INTEGER_LITERAL_RANGES: Dict[str, Tuple[int, int]] = {
     "Int2": (-2, 1),
     "UInt2": (0, 3),
@@ -11956,9 +12008,11 @@ def _parse_char_literal(token: str) -> Optional[int]:
 
 
 def _validate_scalar_literal(typeName: str, token: str) -> Optional[str]:
-    resolvedType = PRIMITIVE_CANONICAL_BY_TYPE.get(typeName, typeName)
+    resolvedType = typeName
     if resolvedType == "Bool":
         if token.lower() in {"true", "false", "yes", "no", "1", "0"}:
+            return None
+        if _is_identifier_token(token):
             return None
         return "Bool literals must be one of true/false/yes/no/1/0"
     if resolvedType == "Char":
@@ -11969,6 +12023,8 @@ def _validate_scalar_literal(typeName: str, token: str) -> Optional[str]:
             rawValue = int(token, 10)
             if rawValue < 0 or rawValue > 0x10FFFF or 0xD800 <= rawValue <= 0xDFFF:
                 return "Char literals must be Unicode scalar values"
+            return None
+        if _is_identifier_token(token):
             return None
         return "Char literals must be a Unicode scalar integer or a single-quoted character literal"
     integerRange = INTEGER_LITERAL_RANGES.get(resolvedType)
@@ -11982,7 +12038,7 @@ def _validate_scalar_literal(typeName: str, token: str) -> Optional[str]:
         return None
     packFormat = FLOAT_LITERAL_PACK_FORMAT.get(resolvedType)
     if packFormat is not None:
-        if not any(marker in token for marker in (".", "e", "E")) and not _is_integer_literal(token):
+        if not _is_float_literal_token(token):
             return None
         try:
             parsed = float(token)
@@ -15241,6 +15297,7 @@ NULLABLE_HTTP_REQUEST_READS: frozenset = frozenset({
     "http.multipartPartBytes",
     "http.multipartPartFilename",
     "http.multipartPartContentType",
+    "http.formField",
 })
 
 HTTP_REQUEST_READER_TARGETS: frozenset = (
@@ -15281,6 +15338,8 @@ HTTP_RESPONSE_OTHER_WRITERS: frozenset = frozenset({
 HTTP_UTILITY_TARGETS: frozenset = frozenset({
     "http.nowMillis",
     "http.ensureDirectory",
+    "http.urlDecode",
+    "http.urlEncode",
 })
 
 # The union the drift test compares against semsc.py's dispatch block.
@@ -16545,6 +16604,171 @@ def check_main_file_must_exist(facts: ExtendedFacts) -> List[Diagnostic]:
                 "`resolvedFile` shows exactly where the resolver looked."
             ),
         ))
+    return diagnostics
+
+
+def _operation_output_type_and_line(
+    operation: OperationFact,
+) -> Tuple[Optional[str], Optional[SourceLine]]:
+    for sourceLine in operation.lines:
+        if is_comment(sourceLine) or not sourceLine.tokens:
+            continue
+        parsed = output_parts(sourceLine)
+        if parsed is not None and parsed[0] == operation.name:
+            return parsed[1], sourceLine
+    return None, None
+
+
+def check_webserver_lifecycle_hook_contract(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3617 - webServerStartup/webServerShutdown hooks must be validated
+    during sem check, before codegen rejects the native HTTP entrypoint."""
+    diagnostics: List[Diagnostic] = []
+    declaredServers = {
+        name for name, abstraction in facts.base.abstractions.items()
+        if abstraction.kind == "webServer"
+    }
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb not in {"webServerStartup", "webServerShutdown"}
+                or len(sourceLine.args) < 2):
+            continue
+        hookVerb = sourceLine.verb
+        serverName = sourceLine.args[0]
+        handlerName = sourceLine.args[1]
+        if serverName not in declaredServers:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3617",
+                kind="webserver.lifecycleHookUnknownServer",
+                severity=Severity.ERROR,
+                subjectName=serverName,
+                subjectKind="webServer",
+                gapEdge="webServer",
+                intentSlogan=f"{hookVerb} references unknown webServer `{serverName}`",
+                primary=span_of_line(sourceLine, "webServerLifecycleHook"),
+                invariantRule=(
+                    f"`{hookVerb} SERVER HANDLER` must name a declared "
+                    "`webServer SERVER` row before native HTTP codegen can "
+                    "place the lifecycle hook in the server entrypoint"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#webServerStartup",
+                fixCandidates=[
+                    FixCandidate(
+                        name="declareWebServer",
+                        shape=f"webServer {serverName}",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_webserver_lifecycle_hook_contract",
+            ))
+
+        operation = facts.base.operations.get(handlerName)
+        if operation is None:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3617",
+                kind="webserver.lifecycleHookUndefinedHandler",
+                severity=Severity.ERROR,
+                subjectName=handlerName,
+                subjectKind="operation",
+                gapEdge="operation",
+                intentSlogan=f"{hookVerb} handler `{handlerName}` is not defined",
+                primary=span_of_line(sourceLine, "webServerLifecycleHook"),
+                invariantRule=(
+                    f"`{hookVerb} {serverName} {handlerName}` must name an "
+                    "operation that exists in the resolved source stream"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#webServerStartup",
+                fixCandidates=[
+                    FixCandidate(
+                        name="defineLifecycleOperation",
+                        shape=(
+                            f"operation {handlerName}\n"
+                            f"output operation {handlerName} Int32\n"
+                            f"memory {handlerName} heap no\n"
+                            f"async {handlerName} no\n"
+                            f"purpose operation {handlerName} \"Run the {hookVerb} lifecycle hook.\"\n"
+                            f"storage local immutable successStatus Int32 0\n"
+                            f"return value successStatus"
+                        ),
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_webserver_lifecycle_hook_contract",
+            ))
+            continue
+
+        inputLines = [
+            opLine for opLine in operation.lines
+            if input_parts(opLine) is not None
+            and input_parts(opLine)[0] == operation.name
+        ]
+        if inputLines:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3617",
+                kind="webserver.lifecycleHookHasInputs",
+                severity=Severity.ERROR,
+                subjectName=handlerName,
+                subjectKind="operation",
+                gapEdge="input",
+                intentSlogan=f"{hookVerb} handler `{handlerName}` declares inputs",
+                primary=span_of_line(inputLines[0], "lifecycleHandlerInput"),
+                related=[span_of_line(sourceLine, "webServerLifecycleHook")],
+                invariantRule=(
+                    f"`{hookVerb}` handlers run outside a request context and "
+                    "must declare no `input operation` rows; only route and "
+                    "middleware handlers receive HttpRequest/HttpResponse ABI inputs"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#webServerStartup",
+                fixCandidates=[
+                    FixCandidate(
+                        name="removeLifecycleInputs",
+                        shape=f"# remove input rows from operation {handlerName}",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_webserver_lifecycle_hook_contract",
+            ))
+
+        outputType, outputLine = _operation_output_type_and_line(operation)
+        if outputType != "Int32":
+            primaryLine = outputLine if outputLine is not None else operation.line
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS3617",
+                kind="webserver.lifecycleHookOutputMustBeInt32",
+                severity=Severity.ERROR,
+                subjectName=handlerName,
+                subjectKind="operation",
+                gapEdge="output",
+                intentSlogan=f"{hookVerb} handler `{handlerName}` must return Int32",
+                primary=span_of_line(primaryLine, "lifecycleHandlerOutput"),
+                related=[span_of_line(sourceLine, "webServerLifecycleHook")],
+                invariantRule=(
+                    f"`{hookVerb}` handlers are called directly by the native "
+                    "HTTP entrypoint and must declare `output operation "
+                    f"{handlerName} Int32`; Result-shaped or non-Int32 outputs "
+                    "do not match the lifecycle ABI"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#webServerStartup",
+                fixCandidates=[
+                    FixCandidate(
+                        name="declareLifecycleInt32Output",
+                        shape=f"output operation {handlerName} Int32",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_webserver_lifecycle_hook_contract",
+            ))
     return diagnostics
 
 
@@ -18626,8 +18850,10 @@ def build_import_contract_index(facts: ExtendedFacts) -> ImportContractIndex:
     index = ImportContractIndex()
     buildFacts = _nearest_build_facts(facts.base.path)
     if buildFacts is None:
-        return index
-    registeredModules, mainFiles = _collect_registered_modules(buildFacts)
+        registeredModules: Dict[str, Tuple[SourceLine, str]] = {}
+        mainFiles: List[str] = []
+    else:
+        registeredModules, mainFiles = _collect_registered_modules(buildFacts)
 
     for importFact in facts.base.module_imports:
         alias = _import_alias_for_module(importFact)
@@ -18639,10 +18865,12 @@ def build_import_contract_index(facts: ExtendedFacts) -> ImportContractIndex:
                 importFact.module_name, facts.base.path)
             if providerPath is None:
                 continue
-        else:
+        elif buildFacts is not None:
             _registrationLine, rawPath = registration
             providerPath = _resolve_registered_module_source(
                 importFact.module_name, rawPath, buildFacts.path, mainFiles)
+        else:
+            providerPath = None
         if providerPath is None or providerPath == facts.base.path.resolve():
             continue
         try:
@@ -20087,6 +20315,7 @@ CHECKERS = [
     check_idempotency_replay_uses_response_status,
     check_invalid_route_method,
     check_duplicate_route,
+    check_webserver_lifecycle_hook_contract,
     check_effect_under_declaration,
     check_placeholder_module_path,
     check_middleware_missing_response_effect,

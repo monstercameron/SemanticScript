@@ -41,14 +41,14 @@ errorCase MainError ByteWriteFailedDuringSmoke
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
-useCapability main stdoutWriteCapability
-useCapability main heapAllocationCapability
-useCapability main heapFreeCapability
 effect main write console.stdout
 effect main allocate heap
 effect main free heap
+authority main write console.stdout
+authority main allocate heap
+authority main free heap
 memory main heap yes
-memoryStackLimit main 16384
+memory main stack max 16384
 # The decimal/hex formatters are the heap-allocators; we name one
 # of them as the canonical allocation source for tooling.
 memoryAllocationSource main emitFortyTwoCall
@@ -65,10 +65,9 @@ label startMain
 # through the byte-level writers under test.
 storage module immutable helloSemanticScriptStdlibBanner String "Hello, SemanticScript stdlib!"
 call emitHelloBannerCall console.writeLine
-argument emitHelloBannerCall console Console console
 argument emitHelloBannerCall text String helloSemanticScriptStdlibBanner
 run emitHelloBannerCall
-ignore ok source emitHelloBannerCall type Int32
+ignore void source emitHelloBannerCall
 bind error emitHelloBannerError Int32 emitHelloBannerCall
 branch error source emitHelloBannerCall target byteWriteFailedDuringSmokeHandler
 

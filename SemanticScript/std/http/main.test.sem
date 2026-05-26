@@ -22,7 +22,7 @@ purpose operation main "Smoke-test the canonical standard.http import path, resp
 call writeCall console.writeLine
 argument writeCall text String okText
 run writeCall
-ignore ok source writeCall type Int32
+ignore void source writeCall
 bind error writeCallError Int32 writeCall
 branch error source writeCall target writeFailed
 

@@ -39,6 +39,7 @@ const declarationVerbs = new Set([
   'enum', 'enumCase', 'error',
   'errorCase', 'operation', 'webServer', 'serverHost', 'serverPort', 'route',
   'routeNotFound', 'routeMethodNotAllowed',
+  'webServerStartup', 'webServerShutdown',
   'routeTimeout', 'routeMiddleware', 'routeTimeoutOptOut', 'routeMiddlewareOptOut',
   'storage', 'sharedState', 'domainLiteral', 'json', 'jsonBody', 'sql', 'sqlBody',
   'literal', 'listLiteral', 'html', 'htmlTemplate', 'jsonCodec', 'policy', 'errorPolicy',
@@ -938,6 +939,8 @@ const verbHoverText = new Map([
   ['route', 'Web server route: route SERVER METHOD PATH HANDLER_OPERATION.'],
   ['routeNotFound', 'Web server fallback handler: routeNotFound SERVER HANDLER_OPERATION. Runs when no declared route matches the request path.'],
   ['routeMethodNotAllowed', 'Web server method fallback: routeMethodNotAllowed SERVER HANDLER_OPERATION. Runs when a path matches but the HTTP method does not.'],
+  ['webServerStartup', 'Web server startup hook: webServerStartup SERVER HANDLER_OPERATION. Runs once before the native listener starts; handler has no inputs and returns Int32.'],
+  ['webServerShutdown', 'Web server shutdown hook: webServerShutdown SERVER HANDLER_OPERATION. Runs once after the native listener returns; handler has no inputs and returns Int32.'],
   ['routeTimeout', 'Web server route timeout metadata keyed by exact route path. Parsed today; preemptive enforcement is future runtime work.'],
   ['routeMiddleware', 'Web server route middleware metadata keyed by exact route path. Native codegen invokes the middleware before the handler.'],
   ['routeTimeoutOptOut', 'Web server route timeout opt-out: routeTimeoutOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
@@ -1831,6 +1834,8 @@ const operationHoverReferencePositions = new Map([
   ['operation', 1],
   ['entry', 2],
   ['route', 4],
+  ['webServerStartup', 2],
+  ['webServerShutdown', 2],
   ['routeMiddleware', 3],
   ['trustBoundaryValidator', 2],
   ['jsonCodecDecodeTarget', 2],
@@ -3701,6 +3706,8 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'errorCase':
     case 'webServer':
     case 'route':
+    case 'webServerStartup':
+    case 'webServerShutdown':
     case 'routeTimeout':
     case 'routeMiddleware':
     case 'capability':

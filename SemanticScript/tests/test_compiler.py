@@ -33,6 +33,7 @@ HELLO_GUI_DIR = APP_DIR / "desktop-window-smoke"
 
 sys.path.insert(0, str(COMPILER_DIR))
 import semsc  # noqa: E402
+import libc_registry  # noqa: E402
 
 
 FAILURES = []
@@ -2270,6 +2271,42 @@ def test_strict_executable_rejects_heap_allocation_without_free():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_executable_tracks_aligned_alloc_as_heap_owner():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictOwnedAlignedAllocMissingFree",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "operation main",
+        "output operation main Result Void MainError",
+        "effect main allocate heap",
+        "purpose operation main \"strict aligned allocation must have executable free\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable allocationAlignment ByteCount 16",
+        "storage module immutable allocationSize ByteCount 64",
+        "call allocationCall c.alignedAlloc",
+        "argument allocationCall alignment ByteCount allocationAlignment",
+        "argument allocationCall size ByteCount allocationSize",
+        "run allocationCall",
+        "bind ok heapBuffer OpaquePointer allocationCall",
+        "bind error allocationError MainError allocationCall",
+        "branch error source allocationCall target allocationFailed",
+        "return ok noResult",
+        "label allocationFailed",
+        "return error allocationError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: alignedAlloc missing heap free fails",
+          proc.returncode == 3
+          and "SS3303" in proc.stderr
+          and "c.free" in proc.stderr
+          and "c.alignedAlloc" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_executable_rejects_double_heap_free():
     src = "\n".join([
         "languageMode strictExecutable",
@@ -3326,6 +3363,63 @@ def test_compile_hello_world_to_ir():
           "no puts in IR")
 
 
+def test_user_result_operation_error_channel_uses_return_variant_status():
+    def source_for(return_error: bool) -> str:
+        body = [
+            "project UserResultBranchProbe",
+            "target console",
+            "runtime AgentRuntime 0.1",
+            "entry console main",
+            "error ProbeError",
+            "errorCase ProbeError Failed Int32",
+            "operation maybeFail",
+            "output operation maybeFail Result Int64 ProbeError",
+            "memory maybeFail heap no",
+            "async maybeFail no",
+            "purpose operation maybeFail \"Return through a user Result channel.\"",
+        ]
+        if return_error:
+            body.extend([
+                "storage local immutable rawCode Int32 9",
+                "makeError failure ProbeError.Failed rawCode",
+                "return error failure",
+            ])
+        else:
+            body.extend([
+                "storage local immutable resultValue Int64 7",
+                "return ok resultValue",
+            ])
+        body.extend([
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "purpose operation main \"Branch over a local user operation Result channel.\"",
+            "call maybeFailCall maybeFail",
+            "run maybeFailCall",
+            "bind ok okValue Int64 maybeFailCall",
+            "bind error failValue ProbeError maybeFailCall",
+            "branch error source maybeFailCall target failed",
+            "storage local immutable successExit ExitCode 0",
+            "return value successExit",
+            "label failed",
+            "storage local immutable failedExit ExitCode 1",
+            "return value failedExit",
+        ])
+        return "\n".join(body)
+
+    for label, source, expected_exit in (
+        ("ok", source_for(False), 0),
+        ("error", source_for(True), 1),
+    ):
+        prog = semsc.parse(source)
+        mod = semsc.Codegen(prog).compile()
+        rc = semsc.jit_run(str(mod), opt_level=0)
+        check(f"compile: user Result operation {label} branch status",
+              rc == expected_exit,
+              f"expected {expected_exit}, got {rc}")
+
+
 def test_compile_i32_comparison_to_i32_ir():
     source = "\n".join([
         "project Int32Compare",
@@ -4026,7 +4120,7 @@ def test_standard_library_module_relay_exposes_standard_modules():
     canonical_modules = (
         "array", "assert", "bit", "bool", "char", "compare", "constants",
         "convert", "ctype", "errno", "errno_more", "event", "gui", "html", "http",
-        "inttypes", "iso646", "json", "limits", "math", "math_float",
+        "inttypes", "iso646", "json", "limits", "math",
         "memory", "numeric", "process", "random", "signal", "signal_more",
         "sqlite", "sort", "stddef", "stdio", "stdlib", "string", "time",
     )
@@ -5040,6 +5134,59 @@ def test_inspect_ir_reports_http_abi_and_runtime_link_inputs():
     check("inspect-ir: reports native HTTP runtime link inputs",
           "native_http" in components and "runtime.linkInput" in site_kinds,
           f"components={components} siteKinds={site_kinds}")
+
+
+def test_console_http_url_helper_links_native_http_runtime():
+    src = "\n".join([
+        "project HttpUrlHelperLink",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write memory.buffer",
+        "authority main write memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"Exercise compiler-lowered HTTP URL helpers from a console target.\"",
+        "storage module immutable encodedValue String \"hello%20world\"",
+        "storage module immutable nullScratch OpaquePointer 0",
+        "storage module immutable scratchCapacity ByteCount 0",
+        "call decodeCall http.urlDecode",
+        "argument decodeCall value String encodedValue",
+        "argument decodeCall scratch OpaquePointer nullScratch",
+        "argument decodeCall scratchCapacity ByteCount scratchCapacity",
+        "run decodeCall",
+        "bind value decodedValue String decodeCall",
+        "storage module immutable successExit ExitCode 0",
+        "return value successExit",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_url_helper.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--inspect-ir"],
+            capture_output=True, text=True,
+        )
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = {}
+    components = {
+        item.get("component")
+        for item in payload.get("runtimeLink", {}).get("components", [])
+    }
+    symbols = {
+        item.get("symbol")
+        for item in payload.get("llvm", {}).get("runtimeSymbols", [])
+    }
+    check("inspect-ir: console http.urlDecode lowers",
+          proc.returncode == 0 and "ss_http_url_decode" in symbols,
+          f"rc={proc.returncode} stderr={proc.stderr!r} symbols={symbols}")
+    check("inspect-ir: console http.urlDecode links native HTTP runtime",
+          "native_http" in components,
+          f"components={components}")
 
 
 def test_inspect_ir_preserves_imported_source_origins():
@@ -6307,6 +6454,70 @@ def test_web_codegen_response_html_sets_fixed_content_type():
           "text/html; charset=utf-8" in ir_text, ir_text)
 
 
+def test_webserver_lifecycle_hooks_lower_around_server_run():
+    src = "\n".join([
+        "project LifecycleHooks",
+        "target webServer",
+        "runtime native 1",
+        "module fixture",
+        "webServer fixtureServer",
+        "purpose webServer fixtureServer \"Exercise startup and shutdown hook lowering.\"",
+        "serverHost fixtureServer \"127.0.0.1\"",
+        "serverPort fixtureServer 18082",
+        "webServerStartup fixtureServer startup",
+        "webServerShutdown fixtureServer shutdown",
+        "route fixtureServer GET \"/\" healthHandler",
+        "storage module immutable successStatus Int32 0",
+        "operation startup",
+        "output operation startup Int32",
+        "memory startup heap no",
+        "async startup no",
+        "purpose operation startup \"Run before the HTTP listener starts.\"",
+        "return value successStatus",
+        "operation shutdown",
+        "output operation shutdown Int32",
+        "memory shutdown heap no",
+        "async shutdown no",
+        "purpose operation shutdown \"Run after the HTTP listener returns.\"",
+        "return value successStatus",
+        "operation healthHandler",
+        "input operation healthHandler request HttpRequest",
+        "input operation healthHandler response HttpResponse",
+        "output operation healthHandler Int32",
+        "memory healthHandler arena request",
+        "async healthHandler no",
+        "purpose operation healthHandler \"Return a health status.\"",
+        "return value successStatus",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "lifecycle_hooks.sscript"
+        ir_path = Path(tmpdir) / "lifecycle_hooks.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    main_start = ir_text.find("define i32 @\"main\"")
+    if main_start < 0:
+        main_start = ir_text.find("define i32 @main")
+    main_ir = ir_text[main_start:] if main_start >= 0 else ir_text
+    startup_index = main_ir.find("call i32 @\"startup\"")
+    if startup_index < 0:
+        startup_index = main_ir.find("call i32 @startup")
+    run_index = main_ir.find("ss_http_server_run")
+    shutdown_index = main_ir.find("call i32 @\"shutdown\"")
+    if shutdown_index < 0:
+        shutdown_index = main_ir.find("call i32 @shutdown")
+    check("web codegen: lifecycle hook IR emits",
+          proc.returncode == 0 and bool(main_ir),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("web codegen: startup runs before server and shutdown after",
+          0 <= startup_index < run_index < shutdown_index,
+          main_ir)
+
+
 def test_webserver_hydrated_html_response_headers_escaping_and_failure():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
         port_socket.bind(("127.0.0.1", 0))
@@ -6454,12 +6665,14 @@ def test_webserver_standard_http_sse_stream_wrappers():
         "route sseServer GET \"/events\" eventsHandler",
         "storage module immutable okStatus HttpStatusCode 200",
         "storage module immutable eventName SseEventName \"auction.tick\"",
+        "storage module immutable eventId SseEventId 7",
         "storage module immutable eventData SseEventData \"{\\\"ok\\\":true}\"",
         "storage module immutable heartbeatComment SseHeartbeatComment \"heartbeat\"",
         "operation eventsHandler",
         "input operation eventsHandler request HttpRequest",
         "input operation eventsHandler response HttpResponse",
         "output operation eventsHandler Int32",
+        "effect eventsHandler read http.response",
         "effect eventsHandler write http.response",
         "memory eventsHandler arena request",
         "async eventsHandler no",
@@ -6475,12 +6688,23 @@ def test_webserver_standard_http_sse_stream_wrappers():
         "argument heartbeatCall comment SseHeartbeatComment heartbeatComment",
         "run heartbeatCall",
         "ignore value source heartbeatCall type Int32",
+        "call disconnectCheckCall http.clientDisconnected",
+        "argument disconnectCheckCall response HttpResponse response",
+        "run disconnectCheckCall",
+        "ignore value source disconnectCheckCall type Bool",
         "call eventCall http.writeSseEvent",
         "argument eventCall response HttpResponse response",
         "argument eventCall event SseEventName eventName",
         "argument eventCall data SseEventData eventData",
         "run eventCall",
         "ignore value source eventCall type Int32",
+        "call identifiedEventCall http.writeSseEventWithId",
+        "argument identifiedEventCall response HttpResponse response",
+        "argument identifiedEventCall id SseEventId eventId",
+        "argument identifiedEventCall event SseEventName eventName",
+        "argument identifiedEventCall data SseEventData eventData",
+        "run identifiedEventCall",
+        "ignore value source identifiedEventCall type Int32",
         "call closeCall http.closeSseStream",
         "argument closeCall response HttpResponse response",
         "run closeCall",
@@ -6552,7 +6776,7 @@ def test_webserver_standard_http_sse_stream_wrappers():
                   and headers.get("x-accel-buffering") == "no",
                   headers)
             check("webserver SSE: std wrapper emits heartbeat and event",
-                  body == ": heartbeat\n\nevent: auction.tick\ndata: {\"ok\":true}\n\n",
+                  body == ": heartbeat\n\nevent: auction.tick\ndata: {\"ok\":true}\n\nid: 7\nevent: auction.tick\ndata: {\"ok\":true}\n\n",
                   body)
         finally:
             if server_proc.poll() is None:
@@ -6754,6 +6978,202 @@ def test_sqlite_codegen_emits_runtime_externs_and_calls():
           "no statementSlot alloca emitted for sqlite.prepareStatement")
 
 
+def test_sqlite_extended_intrinsic_surface_lowers():
+    src = "\n".join([
+        "project SqliteExtendedIntrinsicCoverage",
+        "target console",
+        "runtime native 1",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "storage module immutable databasePath String \":memory:\"",
+        "storage module immutable createTableSql SqlText \"CREATE TABLE coverage(i INTEGER, d REAL, b BLOB, n INTEGER)\"",
+        "storage module immutable insertSql SqlText \"INSERT INTO coverage(i, d, b, n) VALUES (?1, ?2, ?3, ?4)\"",
+        "storage module immutable selectSql SqlText \"SELECT i AS int_col, d AS double_col, b AS blob_col, n AS null_col FROM coverage\"",
+        "storage module immutable firstParameterIndex Int32 1",
+        "storage module immutable secondParameterIndex Int32 2",
+        "storage module immutable thirdParameterIndex Int32 3",
+        "storage module immutable fourthParameterIndex Int32 4",
+        "storage module immutable integerColumnIndex Int32 0",
+        "storage module immutable doubleColumnIndex Int32 1",
+        "storage module immutable blobColumnIndex Int32 2",
+        "storage module immutable intBindValue Int64 42",
+        "storage module immutable doubleBindValue Float64 2.5",
+        "storage module immutable nullBlobValue SqliteBlob 0",
+        "storage module immutable emptyBlobLength SqliteByteCount 0",
+        "capability sqliteCoverageDatabaseReadWriter database readWrite",
+        "purpose operation sqliteCoverageDatabaseReadWriter \"Authority to exercise SQLite read/write intrinsic lowering\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main read database",
+        "effect main readWrite database",
+        "memory main heap yes",
+        "async main no",
+        "useCapability main sqliteCoverageDatabaseReadWriter",
+        "authority main read database",
+        "purpose operation main \"exercise every standard.sqlite intrinsic lowering that is not already covered by the syntax sample\"",
+        "label start",
+        "call versionCall sqlite.libraryVersion",
+        "run versionCall",
+        "bind value sqliteVersionText SqliteText versionCall",
+        "call openCall sqlite.openDatabase",
+        "argument openCall path String databasePath",
+        "argument openCall mode SqliteOpenMode inMemorySqliteOpenMode",
+        "run openCall",
+        "bind ok database SqliteDatabase openCall",
+        "branch error source openCall target sqliteFailure",
+        "call errorMessageCall sqlite.errorMessage",
+        "argument errorMessageCall database SqliteDatabase database",
+        "run errorMessageCall",
+        "bind value initialErrorMessage SqliteText errorMessageCall",
+        "call createStatusCall sqlite.execStatus",
+        "argument createStatusCall database SqliteDatabase database",
+        "argument createStatusCall sql SqlText createTableSql",
+        "run createStatusCall",
+        "bind value createStatus Int32 createStatusCall",
+        "call changedRowCountCall sqlite.changedRowCount",
+        "argument changedRowCountCall database SqliteDatabase database",
+        "run changedRowCountCall",
+        "bind value changedRows Int32 changedRowCountCall",
+        "call prepareInsertCall sqlite.prepareStatement",
+        "argument prepareInsertCall database SqliteDatabase database",
+        "argument prepareInsertCall sql SqlText insertSql",
+        "run prepareInsertCall",
+        "bind ok insertStatement SqliteStatement prepareInsertCall",
+        "branch error source prepareInsertCall target sqliteFailure",
+        "call bindInt64Call sqlite.bindInt64",
+        "argument bindInt64Call statement SqliteStatement insertStatement",
+        "argument bindInt64Call parameterIndex Int32 firstParameterIndex",
+        "argument bindInt64Call value Int64 intBindValue",
+        "run bindInt64Call",
+        "ignore void source bindInt64Call",
+        "branch error source bindInt64Call target sqliteFailure",
+        "call bindDoubleCall sqlite.bindDouble",
+        "argument bindDoubleCall statement SqliteStatement insertStatement",
+        "argument bindDoubleCall parameterIndex Int32 secondParameterIndex",
+        "argument bindDoubleCall value Float64 doubleBindValue",
+        "run bindDoubleCall",
+        "ignore void source bindDoubleCall",
+        "branch error source bindDoubleCall target sqliteFailure",
+        "call bindBlobCall sqlite.bindBlob",
+        "argument bindBlobCall statement SqliteStatement insertStatement",
+        "argument bindBlobCall parameterIndex Int32 thirdParameterIndex",
+        "argument bindBlobCall value SqliteBlob nullBlobValue",
+        "argument bindBlobCall valueLength SqliteByteCount emptyBlobLength",
+        "run bindBlobCall",
+        "ignore void source bindBlobCall",
+        "branch error source bindBlobCall target sqliteFailure",
+        "call bindNullCall sqlite.bindNull",
+        "argument bindNullCall statement SqliteStatement insertStatement",
+        "argument bindNullCall parameterIndex Int32 fourthParameterIndex",
+        "run bindNullCall",
+        "ignore void source bindNullCall",
+        "branch error source bindNullCall target sqliteFailure",
+        "call stepInsertCall sqlite.stepStatement",
+        "argument stepInsertCall statement SqliteStatement insertStatement",
+        "run stepInsertCall",
+        "ignore ok source stepInsertCall type SqliteStepResult",
+        "branch error source stepInsertCall target sqliteFailure",
+        "call resetInsertCall sqlite.resetStatement",
+        "argument resetInsertCall statement SqliteStatement insertStatement",
+        "run resetInsertCall",
+        "ignore void source resetInsertCall",
+        "branch error source resetInsertCall target sqliteFailure",
+        "call finalizeInsertCall sqlite.finalizeStatement",
+        "argument finalizeInsertCall statement SqliteStatement insertStatement",
+        "run finalizeInsertCall",
+        "ignore void source finalizeInsertCall",
+        "branch error source finalizeInsertCall target sqliteFailure",
+        "call prepareSelectCall sqlite.prepareStatement",
+        "argument prepareSelectCall database SqliteDatabase database",
+        "argument prepareSelectCall sql SqlText selectSql",
+        "run prepareSelectCall",
+        "bind ok selectStatement SqliteStatement prepareSelectCall",
+        "branch error source prepareSelectCall target sqliteFailure",
+        "call stepSelectCall sqlite.stepStatement",
+        "argument stepSelectCall statement SqliteStatement selectStatement",
+        "run stepSelectCall",
+        "ignore ok source stepSelectCall type SqliteStepResult",
+        "branch error source stepSelectCall target sqliteFailure",
+        "call columnCountCall sqlite.columnCount",
+        "argument columnCountCall statement SqliteStatement selectStatement",
+        "run columnCountCall",
+        "bind value selectedColumnCount Int32 columnCountCall",
+        "call columnTypeCall sqlite.columnType",
+        "argument columnTypeCall statement SqliteStatement selectStatement",
+        "argument columnTypeCall columnIndex Int32 integerColumnIndex",
+        "run columnTypeCall",
+        "bind value selectedColumnType SqliteColumnType columnTypeCall",
+        "call columnNameCall sqlite.columnName",
+        "argument columnNameCall statement SqliteStatement selectStatement",
+        "argument columnNameCall columnIndex Int32 integerColumnIndex",
+        "run columnNameCall",
+        "bind value selectedColumnName SqliteText columnNameCall",
+        "call columnDoubleCall sqlite.columnDouble",
+        "argument columnDoubleCall statement SqliteStatement selectStatement",
+        "argument columnDoubleCall columnIndex Int32 doubleColumnIndex",
+        "run columnDoubleCall",
+        "bind value selectedDoubleValue Float64 columnDoubleCall",
+        "call columnBlobCall sqlite.columnBlob",
+        "argument columnBlobCall statement SqliteStatement selectStatement",
+        "argument columnBlobCall columnIndex Int32 blobColumnIndex",
+        "run columnBlobCall",
+        "bind value selectedBlobValue SqliteBlob columnBlobCall",
+        "call columnByteCountCall sqlite.columnByteCount",
+        "argument columnByteCountCall statement SqliteStatement selectStatement",
+        "argument columnByteCountCall columnIndex Int32 blobColumnIndex",
+        "run columnByteCountCall",
+        "bind value selectedBlobByteCount SqliteByteCount columnByteCountCall",
+        "call finalizeSelectCall sqlite.finalizeStatement",
+        "argument finalizeSelectCall statement SqliteStatement selectStatement",
+        "run finalizeSelectCall",
+        "ignore void source finalizeSelectCall",
+        "branch error source finalizeSelectCall target sqliteFailure",
+        "call closeCall sqlite.closeDatabase",
+        "argument closeCall database SqliteDatabase database",
+        "run closeCall",
+        "ignore void source closeCall",
+        "branch error source closeCall target sqliteFailure",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+        "label sqliteFailure",
+        "storage local immutable fail ExitCode 1",
+        "return value fail",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "sqlite_extended_intrinsics.sem"
+        ir_path = Path(tmpdir) / "sqlite_extended_intrinsics.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("sqlite extended lowering: codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    for symbol in (
+        "ss_sqlite_database_errmsg",
+        "ss_sqlite_database_changes",
+        "ss_sqlite_exec",
+        "ss_sqlite_statement_reset",
+        "ss_sqlite_statement_bind_int64",
+        "ss_sqlite_statement_bind_double",
+        "ss_sqlite_statement_bind_blob",
+        "ss_sqlite_statement_bind_null",
+        "ss_sqlite_statement_column_count",
+        "ss_sqlite_statement_column_type",
+        "ss_sqlite_statement_column_name",
+        "ss_sqlite_statement_column_double",
+        "ss_sqlite_statement_column_blob",
+        "ss_sqlite_statement_column_bytes",
+        "ss_sqlite_library_version",
+    ):
+        check(f"sqlite extended lowering: IR calls @{symbol}",
+              f"@\"{symbol}\"" in ir_text or f"@{symbol}" in ir_text,
+              f"missing {symbol}")
+
+
 def test_sqlite_codegen_rejects_unsupported_target():
     """If a `sqlite.*` call name isn't in the dispatch block the
     compiler must fail loudly rather than fall through to the
@@ -6949,6 +7369,14 @@ def test_standard_event_lowers_through_generic_runtime_bindings():
         "bind value appendedEvent EventId appendCall",
         "await receiveCall",
         "bind value receivedEvent EventId receiveCall",
+        "call acknowledgeCall event.acknowledgeEvent",
+        "argument acknowledgeCall subscription EventSubscriptionHandle subscription",
+        "argument acknowledgeCall eventId EventId receivedEvent",
+        "timeout acknowledgeCall 1000ms",
+        "cancelOn acknowledgeCall cancellationToken",
+        "start acknowledgeCall",
+        "await acknowledgeCall",
+        "bind value acknowledgeStatus EventStatusCode acknowledgeCall",
         "call closeSubscriptionCall event.closeSubscription",
         "argument closeSubscriptionCall subscription EventSubscriptionHandle subscription",
         "timeout closeSubscriptionCall 1000ms",
@@ -7040,6 +7468,9 @@ def test_standard_event_lowers_through_generic_runtime_bindings():
         "ss_event_receive",
         "ss_event_receive_start",
         "ss_event_receive_await",
+        "ss_event_acknowledge",
+        "ss_event_acknowledge_start",
+        "ss_event_acknowledge_await",
         "ss_event_close_subscription",
         "ss_event_close_subscription_start",
         "ss_event_close_subscription_await",
@@ -7098,6 +7529,69 @@ def test_standard_event_runtime_bindings_reject_run_rows():
     check("standard.event: run rows are rejected for async-only runtimeBinding ops",
           proc.returncode != 0 and "async-only runtimeBinding" in proc.stderr,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_standard_http_client_post_lowers_through_generic_runtime_binding():
+    src = "\n".join([
+        "project StandardHttpClientPostRuntime",
+        "import http standard.http",
+        "entry console main",
+        "storage module immutable postHost String \"127.0.0.1\"",
+        "storage module immutable postPort Int32 1",
+        "storage module immutable postPath String \"/echo\"",
+        "storage module immutable postHeaderLine String \"Content-Type: application/json\"",
+        "storage module immutable postBody String \"{}\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main read http.client",
+        "memory main heap yes",
+        "async main no",
+        "authority main read http.client",
+        "purpose operation main \"exercise standard.http clientPost generic runtimeBinding lowering\"",
+        "label start",
+        "call postCall http.clientPost",
+        "argument postCall host String postHost",
+        "argument postCall port Int32 postPort",
+        "argument postCall path String postPath",
+        "argument postCall headerLine String postHeaderLine",
+        "argument postCall body String postBody",
+        "run postCall",
+        "bind value postResponseBody HttpClientResponseBody postCall",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_client_post_runtime.sem"
+        ir_path = Path(tmpdir) / "http_client_post_runtime.ll"
+        inspect_path = Path(tmpdir) / "http_client_post_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    declared_native = components.get("declared_native", {})
+    declared_sources = {Path(source).name for source in declared_native.get("sources", [])}
+    check("standard.http clientPost: generic runtimeBinding codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("standard.http clientPost: IR calls native client fetch ABI",
+          "ss_http_client_fetch" in ir_text,
+          "missing ss_http_client_fetch")
+    check("standard.http clientPost: native adapter is linked by declared metadata",
+          "sem_http_runtime.c" in declared_sources
+          and declared_native.get("owner") == "standard-library/runtimeBinding",
+          f"declared_native={declared_native!r}")
 
 
 def test_standard_http_shutdown_lowers_through_generic_runtime_binding():
@@ -7237,6 +7731,59 @@ def test_stdlib_intrinsic_contracts_have_runtime_status_coverage():
     check("stdlib intrinsic status: modules name their target family",
           not target_mentions,
           f"missing target family mentions={target_mentions!r}")
+
+
+def test_libc_wrapper_policy_covers_registry():
+    coverage = libc_registry.c_wrapper_policy_coverage()
+    registry_symbols = set(libc_registry.ALL_FUNCTIONS)
+    valid_decisions = {
+        libc_registry.C_WRAPPER_STDLIB_PLANNED,
+        libc_registry.C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+        libc_registry.C_WRAPPER_COMPILER_RUNTIME_OWNED,
+        libc_registry.C_WRAPPER_NO_PUBLIC_WRAPPER,
+        libc_registry.C_WRAPPER_ABI_BLOCKED,
+    }
+
+    missing = sorted(registry_symbols - set(coverage))
+    extra = sorted(set(coverage) - registry_symbols)
+    malformed = sorted(
+        symbol for symbol, policy in coverage.items()
+        if policy.get("decision") not in valid_decisions
+        or not policy.get("module")
+        or not policy.get("reason")
+    )
+    alias_missing = sorted(
+        alias for alias, symbol in libc_registry.SEMANTICSCRIPT_FACING_ALIASES.items()
+        if symbol in registry_symbols and not libc_registry.c_wrapper_policy_for(f"c.{alias}")
+    )
+
+    check("libc wrapper policy: every registry symbol is classified",
+          not missing and not extra,
+          f"missing={missing!r} extra={extra!r}")
+    check("libc wrapper policy: every entry has decision/module/reason",
+          not malformed,
+          f"malformed={malformed!r}")
+    check("libc wrapper policy: SemanticScript aliases resolve to decisions",
+          not alias_missing,
+          f"alias_missing={alias_missing!r}")
+
+    expected = {
+        "c.malloc": (libc_registry.C_WRAPPER_STDLIB_PLANNED, "standard.memory"),
+        "c.alignedAlloc": (libc_registry.C_WRAPPER_STDLIB_PLANNED, "standard.memory"),
+        "c.snprintf": (libc_registry.C_WRAPPER_NATIVE_ADAPTER_REQUIRED, "standard.format/standard.stdio"),
+        "c.sprintf": (libc_registry.C_WRAPPER_NO_PUBLIC_WRAPPER, "standard.stdio"),
+        "c.setjmp": (libc_registry.C_WRAPPER_ABI_BLOCKED, "standard.control"),
+        "c.cabs": (libc_registry.C_WRAPPER_ABI_BLOCKED, "standard.complex"),
+        "c.threadCreate": (libc_registry.C_WRAPPER_NATIVE_ADAPTER_REQUIRED, "standard.concurrency"),
+    }
+    mismatches = []
+    for target, (decision, module) in expected.items():
+        policy = libc_registry.c_wrapper_policy_for(target)
+        if policy.get("decision") != decision or policy.get("module") != module:
+            mismatches.append((target, policy))
+    check("libc wrapper policy: high-risk targets have pinned decisions",
+          not mismatches,
+          f"mismatches={mismatches!r}")
 
 
 def test_sqlite_syntax_sample_runs_end_to_end():
@@ -8418,6 +8965,7 @@ def main():
     test_strict_rejects_missing_status_for_fallible_http_response_write()
     test_strict_executable_rejects_heap_allocation_without_oom_branch()
     test_strict_executable_rejects_heap_allocation_without_free()
+    test_strict_executable_tracks_aligned_alloc_as_heap_owner()
     test_strict_executable_rejects_double_heap_free()
     test_strict_executable_accepts_explicit_heap_free()
     test_strict_executable_rejects_sqlite_open_setup_failure_without_close()
@@ -8443,6 +8991,7 @@ def main():
     test_strict_executable_rejects_large_local_static_literal()
     test_strict_executable_rejects_unreachable_operation_rows()
     test_compile_hello_world_to_ir()
+    test_user_result_operation_error_channel_uses_return_variant_status()
     test_compile_i32_comparison_to_i32_ir()
     test_compile_rejects_implicit_i32_to_i64_math()
     test_compile_explicit_i32_to_i64_conversion_lowers_to_sext()
@@ -8474,6 +9023,7 @@ def main():
     test_cli_emit_trace_map_sidecar()
     test_sem_inspect_ir_command()
     test_inspect_ir_reports_http_abi_and_runtime_link_inputs()
+    test_console_http_url_helper_links_native_http_runtime()
     test_inspect_ir_preserves_imported_source_origins()
     test_sem_run_trace_emits_agent_jsonl_events()
     test_sem_profile_json_writes_agent_artifacts_and_deltas()
@@ -8503,16 +9053,21 @@ def main():
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
     test_web_codegen_response_html_sets_fixed_content_type()
+    test_webserver_lifecycle_hooks_lower_around_server_run()
     test_webserver_hydrated_html_response_headers_escaping_and_failure()
     test_webserver_standard_http_sse_stream_wrappers()
     test_webserver_module_state_persists_across_sequential_requests()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
+    test_sqlite_extended_intrinsic_surface_lowers()
     test_sqlite_codegen_rejects_unsupported_target()
     test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()
     test_standard_event_lowers_through_generic_runtime_bindings()
+    test_standard_event_runtime_bindings_reject_run_rows()
+    test_standard_http_client_post_lowers_through_generic_runtime_binding()
     test_standard_http_shutdown_lowers_through_generic_runtime_binding()
     test_native_runtime_link_registry_is_unique_and_owned()
     test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
+    test_libc_wrapper_policy_covers_registry()
     test_sqlite_syntax_sample_runs_end_to_end()
     test_json_runtime_health_demo_runs_clean()
     test_json_codegen_emits_runtime_externs_and_calls()

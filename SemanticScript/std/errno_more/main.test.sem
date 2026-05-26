@@ -20,6 +20,8 @@ runtime AgentRuntime 0.1
 entry console main
 
 import errno_more standard.errno_more
+importConstant tryAgainErrorNumber errno_more tryAgainErrorNumber
+importConstant readOnlyFileSystemErrorNumber errno_more readOnlyFileSystemErrorNumber
 error MainError
 errorCase MainError ErrnoMoreSmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -66,10 +68,9 @@ label erofsHolds
 
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

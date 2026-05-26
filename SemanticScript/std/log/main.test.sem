@@ -31,20 +31,44 @@ errorCase MainError MemoryAllocationFailed
 errorCase MainError ConsoleWriteFailed
 
 capability stdoutWriteCapability console.stdout write
+purpose operation stdoutWriteCapability "Authority to print the standard.log smoke result."
 capability heapAllocationCapability heap allocate
+purpose operation heapAllocationCapability "Authority to allocate scratch buffers for the standard.log smoke."
+capability filesystemReadWriteCapability filesystem readWrite
+purpose operation filesystemReadWriteCapability "Authority to append and flush the temporary standard.log smoke file."
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to read and write standard.log formatting scratch buffers."
 
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 useCapability main heapAllocationCapability
+useCapability main filesystemReadWriteCapability
+useCapability main memoryBufferReadWriteCapability
 effect main write console.stdout
+effect main open filesystem
+effect main open file
+effect main close filesystem
+effect main close file
+effect main read filesystem
+effect main write filesystem
+effect main readWrite filesystem
+effect main readWrite memory.buffer
 effect main allocate heap
 effect main free heap
+authority main open filesystem
+authority main open file
+authority main close filesystem
+authority main close file
+authority main read filesystem
+authority main write filesystem
+authority main allocate heap
+authority main free heap
 memory main heap auto
 async main no
-purpose operation main "Verify escapeJsonString escapes a quote and a backslash."
-invariant operation main "escape({ '\"', '\\' }) == { '\\', '\"', '\\', '\\' }."
+purpose operation main "Verify escapeJsonString and the standard.log writer/envelope helpers."
+invariant operation main "escape({ '\"', '\\' }) == { '\\', '\"', '\\', '\\' }; log writer helpers return status codes without corrupting the success path."
 
 label startMain
 
@@ -154,12 +178,55 @@ branch if condition escapedThreeOk target escapedThreeHolds
 branch else target smokeAssertionFailed
 label escapedThreeHolds
 
+storage module immutable logFilePathText String "std-log-smoke.log"
+call openLogFileCall openLogFile
+argument openLogFileCall filePath String logFilePathText
+run openLogFileCall
+ignore value source openLogFileCall type Int32
+
+storage module immutable rawLogLineText String "raw smoke line"
+call writeLogLineCall writeLogLine
+argument writeLogLineCall linePayload String rawLogLineText
+run writeLogLineCall
+ignore value source writeLogLineCall type Int32
+
+storage module immutable structuredLevelText String "debug"
+storage module immutable structuredEventText String "smoke"
+storage module immutable structuredMessageText String "structured smoke message"
+call logEventStructuredCall logEventStructured
+argument logEventStructuredCall levelText String structuredLevelText
+argument logEventStructuredCall eventText String structuredEventText
+argument logEventStructuredCall messageText String structuredMessageText
+run logEventStructuredCall
+ignore value source logEventStructuredCall type Int32
+
+storage module immutable infoMessageText String "info smoke message"
+call logInfoCall logInfo
+argument logInfoCall messageText String infoMessageText
+run logInfoCall
+ignore value source logInfoCall type Int32
+
+storage module immutable warnMessageText String "warn smoke message"
+call logWarnCall logWarn
+argument logWarnCall messageText String warnMessageText
+run logWarnCall
+ignore value source logWarnCall type Int32
+
+storage module immutable errorMessageText String "error smoke message"
+call logErrorCall logError
+argument logErrorCall messageText String errorMessageText
+run logErrorCall
+ignore value source logErrorCall type Int32
+
+call closeLogFileCall closeLogFile
+run closeLogFileCall
+ignore value source closeLogFileCall type Int32
+
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

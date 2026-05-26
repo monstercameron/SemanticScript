@@ -9,6 +9,7 @@ moduleDoesNotOwn standard.iso646 "App-specific wrappers, compatibility aliases, 
 invariant module standard.iso646 "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.iso646 iso646ModuleVersionText
+exportConstant standard.iso646 integerZeroBoundaryValue
 storage module immutable iso646ModuleVersionText String "standard.iso646 0.1"
 
 # Canonical standard-library implementation body.

@@ -30,6 +30,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEMSC = REPO_ROOT / "SemanticScript" / "compiler" / "semsc.py"
 STD_ROOT = REPO_ROOT / "SemanticScript" / "std"
+TEST_ROOT = REPO_ROOT / "SemanticScript" / "tests"
 
 # Modules whose runtime is exercised as a native executable (not JIT) and are
 # therefore registered in test_native_stdlib_smoke.py rather than test_stdlib.py.
@@ -57,6 +58,27 @@ def _registered_modules() -> set[str]:
     jit_counted = set(OK_MODULES) | {"stdio"}
     quarantined = set(QUARANTINED_MODULES)
     return jit_counted | quarantined | NATIVE_SMOKE_MODULES
+
+
+def _exported_operations() -> list[tuple[str, str]]:
+    operations: list[tuple[str, str]] = []
+    for source in STD_ROOT.glob("*/main.sem"):
+        module = source.parent.name
+        for line in source.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) == 3 and parts[0] == "exportOperation":
+                operations.append((module, parts[2]))
+    return operations
+
+
+def _operation_coverage_text() -> str:
+    chunks: list[str] = []
+    for source in TEST_ROOT.rglob("*"):
+        if source.suffix in {".py", ".sem", ".sscript"}:
+            chunks.append(source.read_text(encoding="utf-8", errors="ignore"))
+    for source in STD_ROOT.glob("*/main.test.sem"):
+        chunks.append(source.read_text(encoding="utf-8", errors="ignore"))
+    return "\n".join(chunks)
 
 
 class TestStdlibCoverageGuard(unittest.TestCase):
@@ -105,6 +127,21 @@ class TestStdlibCoverageGuard(unittest.TestCase):
                         f"{module} has no main.test.sem and is not a documented "
                         "exemption; add a self-test or record why it cannot have one.",
                     )
+
+    def test_exported_operations_have_test_coverage(self) -> None:
+        coverage_text = _operation_coverage_text()
+        missing = [
+            f"{module}.{operation}"
+            for module, operation in _exported_operations()
+            if operation not in coverage_text
+            and f"{module}.{operation}" not in coverage_text
+        ]
+        self.assertEqual(
+            [], missing,
+            "exported stdlib operation(s) are not mentioned by any stdlib "
+            "self-test, Python harness, or fixture under SemanticScript/tests: "
+            f"{missing}",
+        )
 
 
 if __name__ == "__main__":

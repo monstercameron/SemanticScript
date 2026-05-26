@@ -114,10 +114,9 @@ label listLengthAfterRemoveHolds
 
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

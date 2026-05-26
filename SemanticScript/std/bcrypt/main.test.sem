@@ -109,12 +109,53 @@ branch if condition verifyWrongRejected target verifyWrongHolds
 branch else target smokeAssertionFailed
 label verifyWrongHolds
 
+# issueSessionToken: a fresh CSPRNG token must encode with status 0.
+storage module immutable sessionRandomByteCount ByteCount 32
+call allocSessionRandomCall c.malloc
+argument allocSessionRandomCall size ByteCount sessionRandomByteCount
+run allocSessionRandomCall
+bind value sessionRandomBuffer BcryptRandomBuffer allocSessionRandomCall
+bind error sessionRandomAllocError Int32 allocSessionRandomCall
+branch error source allocSessionRandomCall target sessionAllocFailedHandler
+defer releaseSessionRandomDefer c.free sessionRandomBuffer
+storage module immutable sessionTokenByteCount ByteCount 44
+call allocSessionTokenCall c.malloc
+argument allocSessionTokenCall size ByteCount sessionTokenByteCount
+run allocSessionTokenCall
+bind value sessionTokenBuffer Base64UrlBuffer allocSessionTokenCall
+bind error sessionTokenAllocError Int32 allocSessionTokenCall
+branch error source allocSessionTokenCall target sessionAllocFailedHandler
+defer releaseSessionTokenDefer c.free sessionTokenBuffer
+storage module immutable sessionLengthByteCount ByteCount 8
+call allocSessionLengthCall c.malloc
+argument allocSessionLengthCall size ByteCount sessionLengthByteCount
+run allocSessionLengthCall
+bind value sessionLengthBuffer OpaquePointer allocSessionLengthCall
+bind error sessionLengthAllocError Int32 allocSessionLengthCall
+branch error source allocSessionLengthCall target sessionAllocFailedHandler
+defer releaseSessionLengthDefer c.free sessionLengthBuffer
+storage module immutable sessionTokenCapacityInt Int32 44
+call issueSessionTokenCall bcrypt.issueSessionToken
+argument issueSessionTokenCall randomScratch BcryptRandomBuffer sessionRandomBuffer
+argument issueSessionTokenCall tokenBuffer Base64UrlBuffer sessionTokenBuffer
+argument issueSessionTokenCall tokenCapacity Int32 sessionTokenCapacityInt
+argument issueSessionTokenCall tokenLengthOut OpaquePointer sessionLengthBuffer
+run issueSessionTokenCall
+bind value issueSessionTokenStatus Int32 issueSessionTokenCall
+call checkIssueStatusCall math.equalInt32
+argument checkIssueStatusCall left Int32 issueSessionTokenStatus
+argument checkIssueStatusCall right Int32 bcryptStatusOk
+run checkIssueStatusCall
+bind value issueStatusOk Bool checkIssueStatusCall
+branch if condition issueStatusOk target issueStatusHolds
+branch else target smokeAssertionFailed
+label issueStatusHolds
+
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
@@ -129,3 +170,6 @@ return error heapAllocationFailure
 label smokeAssertionFailed
 makeError bcryptSmokeFailure MainError.BcryptSmokeAssertionFailed
 return error bcryptSmokeFailure
+label sessionAllocFailedHandler
+makeError sessionAllocFailure MainError.MemoryAllocationFailed
+return error sessionAllocFailure

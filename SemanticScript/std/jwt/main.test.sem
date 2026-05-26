@@ -280,7 +280,6 @@ label refreshEnvelopeFormatted
 
 storage local immutable successMarker String "stdJwtRuntimeSmokeOk"
 call writeMarkerCall console.writeLine
-argument writeMarkerCall console Console console
 argument writeMarkerCall text String successMarker
 run writeMarkerCall
 ignore void source writeMarkerCall

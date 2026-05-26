@@ -160,8 +160,8 @@ fixed-capacity row mutations without unchanged-count branches
 bind-then-ignore
 memory heap contradictions
 missing allocation sources
-unchecked heap allocation disposition for c.malloc/c.calloc/c.realloc
-unpaired allocate/free calls, accepting defer metadata or explicit c.free
+unchecked heap allocation disposition for c.malloc/c.calloc/c.realloc/c.alignedAlloc
+unpaired allocate/free calls, accepting defer metadata, `memory.releaseMemoryBytes`, or explicit c.free
 stack-limit overruns
 record alignment
 zero-length arrays

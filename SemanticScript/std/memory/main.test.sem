@@ -8,7 +8,7 @@
 #   boundary cases (empty buffer, not-found, overlap, determinism).
 #
 # invariant: success prints "OK\n" and exits 0; assertion failures
-#   surface MainError.MemorySmokeAssertionFailed; heap allocation
+#   surface MainError.MemorySmokeAssertionFailed; standard.memory allocation
 #   failure surfaces MainError.MemoryAllocationFailed.
 #
 # # pattern: this is the canonical main.test.sem form â€” same directory
@@ -30,7 +30,7 @@ errorCase MainError MemoryAllocationFailed
 # section capability
 # rationale: smoke-test main writes a single OK line to stdout.
 capability stdoutWriteCapability console.stdout write
-# Smoke-test main allocates and frees a working buffer via libc.
+# Smoke-test main allocates and frees a working buffer via standard.memory.
 capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
@@ -48,21 +48,21 @@ effect main allocate heap
 effect main free heap
 effect main write console.stdout
 memory main heap yes
-memoryStackLimit main 4096
+memory main stack max 4096
 memoryAllocationSource main allocateBufferCall
 async main no
 purpose operation main "Smoke-test copy / fill / compare / find on a heap-allocated buffer."
-invariant operation main "Smoke fails closed: malloc failure surfaces MemoryAllocationFailed; any assertion failure surfaces MemorySmokeAssertionFailed."
+invariant operation main "Smoke fails closed: allocation failure surfaces MemoryAllocationFailed; any assertion failure surfaces MemorySmokeAssertionFailed."
 
 label startMain
 storage module immutable allocSize ByteCount 16
-call allocateBufferCall c.malloc
-argument allocateBufferCall size ByteCount allocSize
+call allocateBufferCall memory.allocateMemoryBytes
+argument allocateBufferCall byteCount ByteCount allocSize
 run allocateBufferCall
-bind value workBuffer OpaquePointer allocateBufferCall
-bind error heapAllocationError Int32 allocateBufferCall
+bind ok workBuffer OpaquePointer allocateBufferCall
+bind error heapAllocationError MemoryAllocationError allocateBufferCall
 branch error source allocateBufferCall target heapAllocationFailedHandler
-defer releaseAllocateBufferCall c.free workBuffer
+defer releaseAllocateBufferCall memory.releaseMemoryBytes workBuffer
 
 storage module immutable upperALetterCode Int32 65
 storage module immutable fiveByteCount ByteCount 5
@@ -322,10 +322,9 @@ label findHighByteHolds
 
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0
@@ -341,10 +340,9 @@ label smokeAssertionFailed
 makeError memorySmokeFailure MainError.MemorySmokeAssertionFailed
 return error memorySmokeFailure
 
-# Heap-allocation failure leg: c.malloc returned NULL. Surface the
-# typed MemoryAllocationFailed variant with the raw negative status
-# as the cause. The deferred c.free does not fire here because the
-# defer was registered AFTER this branch's branchIfError.
+# Heap-allocation failure leg: standard.memory returned an allocation error.
+# The deferred releaseMemoryBytes does not fire here because the defer was
+# registered AFTER this branch's branchIfError.
 label heapAllocationFailedHandler
 makeError heapAllocationFailure MainError.MemoryAllocationFailed heapAllocationError
 return error heapAllocationFailure

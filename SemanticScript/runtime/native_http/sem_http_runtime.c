@@ -991,6 +991,76 @@ static int hex_to_nibble(char c, int *out) {
     return 0;
 }
 
+const char *ss_http_url_decode(
+    const char *input,
+    char *scratch_buffer,
+    size_t scratch_capacity
+) {
+    if (input == NULL || scratch_buffer == NULL || scratch_capacity == 0) {
+        return NULL;
+    }
+    size_t written = 0;
+    const char *src = input;
+    while (*src != '\0') {
+        if (written + 1 >= scratch_capacity) return NULL;
+        char c = *src;
+        if (c == '+') {
+            scratch_buffer[written++] = ' ';
+            ++src;
+        } else if (c == '%' && src[1] != '\0' && src[2] != '\0') {
+            int hi = 0, lo = 0;
+            if (!hex_to_nibble(src[1], &hi)) return NULL;
+            if (!hex_to_nibble(src[2], &lo)) return NULL;
+            scratch_buffer[written++] = (char)((hi << 4) | lo);
+            src += 3;
+        } else if (c == '%') {
+            return NULL;
+        } else {
+            scratch_buffer[written++] = c;
+            ++src;
+        }
+    }
+    scratch_buffer[written] = '\0';
+    return scratch_buffer;
+}
+
+static int is_url_unreserved(unsigned char c) {
+    return ((c >= 'A' && c <= 'Z')
+            || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9')
+            || c == '-' || c == '.' || c == '_' || c == '~');
+}
+
+static char hex_digit(unsigned char value) {
+    return (value < 10) ? (char)('0' + value) : (char)('A' + (value - 10));
+}
+
+const char *ss_http_url_encode(
+    const char *input,
+    char *scratch_buffer,
+    size_t scratch_capacity
+) {
+    if (input == NULL || scratch_buffer == NULL || scratch_capacity == 0) {
+        return NULL;
+    }
+    size_t written = 0;
+    const unsigned char *src = (const unsigned char *)input;
+    while (*src != '\0') {
+        unsigned char c = *src++;
+        if (is_url_unreserved(c)) {
+            if (written + 1 >= scratch_capacity) return NULL;
+            scratch_buffer[written++] = (char)c;
+        } else {
+            if (written + 3 >= scratch_capacity) return NULL;
+            scratch_buffer[written++] = '%';
+            scratch_buffer[written++] = hex_digit((unsigned char)(c >> 4));
+            scratch_buffer[written++] = hex_digit((unsigned char)(c & 0x0F));
+        }
+    }
+    scratch_buffer[written] = '\0';
+    return scratch_buffer;
+}
+
 const char *ss_http_form_find_field(
     const char *body_text,
     const char *field_name,

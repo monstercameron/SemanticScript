@@ -9,6 +9,10 @@ moduleDoesNotOwn standard.char "App-specific wrappers, compatibility aliases, or
 invariant module standard.char "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.char charModuleVersionText
+exportConstant standard.char asciiNullCharacterCode
+exportConstant standard.char asciiNewlineCharacterCode
+exportConstant standard.char asciiDeleteCharacterCode
+exportConstant standard.char asciiSpaceCharacterCode
 storage module immutable charModuleVersionText String "standard.char 0.1"
 
 # Canonical standard-library implementation body.

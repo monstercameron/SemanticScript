@@ -24,7 +24,7 @@ PERFORMANCE_BUDGET_SECONDS = 5.0
 
 OK_MODULES = [
     "gui", "html", "json", "sqlite",
-    "string", "ctype", "stdlib", "memory", "math", "math_float",
+    "string", "ctype", "stdlib", "memory", "math",
     "assert", "limits", "errno", "time", "signal", "process", "bool",
     "random", "stddef", "iso646", "inttypes", "bit", "constants",
     "compare", "convert", "array", "buffer", "bytes", "slice", "list",

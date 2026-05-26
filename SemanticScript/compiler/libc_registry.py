@@ -703,6 +703,273 @@ STDIO_STREAMS = ("stdin", "stdout", "stderr")
 ERRNO_ACCESSOR = ("errnoGet", "Int32", [])
 
 
+# ---- SemanticScript public-wrapper policy ----
+#
+# Raw `c.*` remains a compiler interop escape hatch while the stdlib grows real
+# SemanticScript contracts. This policy is the machine-readable coverage map for
+# that migration: every registry symbol must either have a planned semantic
+# wrapper, require a native adapter, be owned by a compiler/runtime surface, or
+# be deliberately blocked from a public wrapper.
+C_WRAPPER_STDLIB_PLANNED = "stdlib-wrapper-planned"
+C_WRAPPER_NATIVE_ADAPTER_REQUIRED = "native-adapter-required"
+C_WRAPPER_COMPILER_RUNTIME_OWNED = "compiler-runtime-owned"
+C_WRAPPER_NO_PUBLIC_WRAPPER = "no-public-wrapper"
+C_WRAPPER_ABI_BLOCKED = "abi-blocked"
+
+_C_WRAPPER_POLICY_BY_SYMBOL = {}
+
+
+def _register_c_wrapper_policy(symbols, decision, module, reason):
+    for symbol in symbols:
+        previous = _C_WRAPPER_POLICY_BY_SYMBOL.get(symbol)
+        entry = {
+            "decision": decision,
+            "module": module,
+            "reason": reason,
+        }
+        if previous is not None and previous != entry:
+            raise ValueError(f"conflicting c-wrapper policy for {symbol}")
+        _C_WRAPPER_POLICY_BY_SYMBOL[symbol] = entry
+
+
+_STDIO_UNSAFE_NO_WRAPPER = frozenset({
+    "gets_s", "sprintf", "tmpnam", "vsprintf",
+})
+_STDIO_FORMAT_ADAPTERS = frozenset({
+    "fprintf", "fscanf", "printf", "scanf", "snprintf", "sscanf",
+    "vfprintf", "vfscanf", "vprintf", "vscanf", "vsnprintf", "vsscanf",
+})
+_STDIO_STREAM_WRAPPERS = frozenset(STDIO) - _STDIO_UNSAFE_NO_WRAPPER - _STDIO_FORMAT_ADAPTERS
+
+_register_c_wrapper_policy(
+    _STDIO_STREAM_WRAPPERS,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.stdio/standard.file",
+    "stream/file operations need explicit FileHandle ownership, effects, and status handling",
+)
+_register_c_wrapper_policy(
+    _STDIO_FORMAT_ADAPTERS,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.format/standard.stdio",
+    "varargs formatting/scanning needs typed bounded adapters rather than raw C varargs",
+)
+_register_c_wrapper_policy(
+    _STDIO_UNSAFE_NO_WRAPPER,
+    C_WRAPPER_NO_PUBLIC_WRAPPER,
+    "standard.stdio",
+    "unsafe or obsolete C APIs should be replaced by bounded SemanticScript operations",
+)
+
+_register_c_wrapper_policy(
+    CONIO,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.terminal",
+    "console key reads are platform adapters, not app-level raw C calls",
+)
+_register_c_wrapper_policy(
+    SEM_TERMINAL,
+    C_WRAPPER_COMPILER_RUNTIME_OWNED,
+    "standard.terminal",
+    "ss_terminal_* symbols are SemanticScript native runtime adapter entry points",
+)
+
+_STDLIB_ALLOCATORS = frozenset({
+    "aligned_alloc", "calloc", "free", "malloc", "realloc",
+})
+_STDLIB_PROCESS = frozenset({
+    "_Exit", "abort", "exit", "quick_exit",
+})
+_STDLIB_CALLBACKS = frozenset({
+    "at_quick_exit", "atexit", "bsearch", "qsort", "qsort_s",
+})
+_STDLIB_NUMERIC = frozenset({
+    "abs", "div", "imaxabs", "imaxdiv", "labs", "ldiv", "llabs", "lldiv",
+})
+_STDLIB_CONVERSION = frozenset({
+    "atof", "atoi", "atol", "atoll", "mblen", "mbstowcs", "mbtowc",
+    "strtod", "strtof", "strtoimax", "strtol", "strtold", "strtoll",
+    "strtoul", "strtoull", "strtoumax", "wcstombs", "wctomb",
+})
+_STDLIB_ENVIRONMENT = frozenset({"getenv", "getenv_s"})
+_STDLIB_RANDOM_OR_SHELL = frozenset({"rand", "rand_s", "srand", "system"})
+
+_register_c_wrapper_policy(
+    _STDLIB_ALLOCATORS,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.memory",
+    "heap ownership must be represented by typed allocation/free contracts",
+)
+_register_c_wrapper_policy(
+    _STDLIB_PROCESS,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.process",
+    "process termination needs explicit process effects and non-returning semantics",
+)
+_register_c_wrapper_policy(
+    _STDLIB_CALLBACKS,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.sort/standard.process",
+    "callback-taking C APIs need SemanticScript operation-pointer adapters",
+)
+_register_c_wrapper_policy(
+    _STDLIB_NUMERIC,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.numeric/standard.stdlib",
+    "numeric helpers can be exposed as pure SemanticScript operations",
+)
+_register_c_wrapper_policy(
+    _STDLIB_CONVERSION,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.convert/standard.text",
+    "conversion APIs need typed parse/result semantics instead of raw libc defaults",
+)
+_register_c_wrapper_policy(
+    _STDLIB_ENVIRONMENT,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.process",
+    "environment reads need process.environment authority and secret-handling rules",
+)
+_register_c_wrapper_policy(
+    _STDLIB_RANDOM_OR_SHELL,
+    C_WRAPPER_NO_PUBLIC_WRAPPER,
+    "standard.bcrypt/standard.process",
+    "libc PRNG and shell execution are security-sensitive escape hatches, not public std APIs",
+)
+
+_STRING_UNSAFE_NO_WRAPPER = frozenset({
+    "strcat", "strcpy", "strncat", "strtok",
+})
+_STRING_ADAPTERS = frozenset({
+    "strcat_s", "strcpy_s", "strerror", "strerror_s", "strerrorlen_s",
+    "strncat_s", "strnlen_s", "strtok_s",
+})
+_STRING_MEMORY_WRAPPERS = frozenset({
+    "memchr", "memcmp", "memcpy", "memcpy_s", "memmove", "memmove_s",
+    "memset", "memset_s",
+})
+_STRING_TEXT_WRAPPERS = frozenset(STRING) - _STRING_UNSAFE_NO_WRAPPER - _STRING_ADAPTERS - _STRING_MEMORY_WRAPPERS
+
+_register_c_wrapper_policy(
+    _STRING_MEMORY_WRAPPERS,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.memory",
+    "bulk memory operations need explicit buffer/capacity preconditions",
+)
+_register_c_wrapper_policy(
+    _STRING_TEXT_WRAPPERS,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.string",
+    "string operations need null-termination and ownership contracts in source",
+)
+_register_c_wrapper_policy(
+    _STRING_ADAPTERS,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.string",
+    "Annex-K/stateful string APIs need portable adapters before public use",
+)
+_register_c_wrapper_policy(
+    _STRING_UNSAFE_NO_WRAPPER,
+    C_WRAPPER_NO_PUBLIC_WRAPPER,
+    "standard.string",
+    "unbounded/stateful string APIs should be replaced by bounded SemanticScript builders",
+)
+
+_register_c_wrapper_policy(
+    MATH,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.math/standard.numeric",
+    "math functions need documented NaN/domain/error behavior at the SemanticScript layer",
+)
+_register_c_wrapper_policy(
+    CTYPE,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.ctype",
+    "character classification can be exposed as pure typed helpers",
+)
+
+_TIME_DIRECT_WRAPPERS = frozenset({"clock", "difftime", "time"})
+_TIME_STRUCT_ADAPTERS = frozenset(TIME) - _TIME_DIRECT_WRAPPERS
+_register_c_wrapper_policy(
+    _TIME_DIRECT_WRAPPERS,
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.time",
+    "time scalars need clock effects and typed role aliases",
+)
+_register_c_wrapper_policy(
+    _TIME_STRUCT_ADAPTERS,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.time",
+    "struct tm/time-spec APIs need owned adapter records instead of raw pointers",
+)
+
+_register_c_wrapper_policy(
+    SETJMP,
+    C_WRAPPER_ABI_BLOCKED,
+    "standard.control",
+    "setjmp/longjmp are macro/control-flow ABI surfaces and do not fit explicit SemanticScript control flow",
+)
+_register_c_wrapper_policy(
+    {"raise"},
+    C_WRAPPER_STDLIB_PLANNED,
+    "standard.signal",
+    "signal delivery needs explicit process/signal effects",
+)
+_register_c_wrapper_policy(
+    {"signal"},
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.signal",
+    "handler registration needs an operation-pointer adapter and lifecycle policy",
+)
+_register_c_wrapper_policy(
+    LOCALE,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.locale",
+    "locale APIs carry process-global state and struct layouts that need adapters",
+)
+_register_c_wrapper_policy(
+    WCHAR | WCTYPE | UCHAR,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.text",
+    "wide/multibyte APIs need target-aware encoding and object-size contracts",
+)
+_register_c_wrapper_policy(
+    FENV,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.numeric",
+    "floating-point environment state needs scoped adapter operations",
+)
+_register_c_wrapper_policy(
+    COMPLEX,
+    C_WRAPPER_ABI_BLOCKED,
+    "standard.complex",
+    "C complex ABI is not represented by the current scalar LLVM lowering",
+)
+_register_c_wrapper_policy(
+    THREADS,
+    C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+    "standard.concurrency",
+    "C11 threading needs SemanticScript task/mutex/channel semantics, not raw thread handles",
+)
+
+
+def c_wrapper_policy_for(semantic_name: str) -> dict:
+    """Return the public wrapper policy for a `c.*` target or raw symbol."""
+    name = semantic_name[2:] if semantic_name.startswith("c.") else semantic_name
+    symbol = resolve_c_symbol(name)
+    policy = _C_WRAPPER_POLICY_BY_SYMBOL.get(symbol)
+    if policy is None:
+        return {}
+    result = dict(policy)
+    result["symbol"] = symbol
+    result["semanticName"] = name
+    return result
+
+
+def c_wrapper_policy_coverage() -> dict:
+    """Return canonical C symbol -> public-wrapper policy entries."""
+    return {symbol: dict(policy) for symbol, policy in _C_WRAPPER_POLICY_BY_SYMBOL.items()}
+
+
 def coverage_summary() -> dict:
     """Return a {header: count} map summarizing the registry's coverage."""
     return {

@@ -539,6 +539,8 @@ class WebServer:
         self.timeouts = {}        # route_name -> duration_value
         self.not_found_handler = None
         self.method_not_allowed_handler = None
+        self.startup_handler = None
+        self.shutdown_handler = None
 
 
 class HtmlTemplate:
@@ -3350,6 +3352,22 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             raise SyntaxError(f"routeMethodNotAllowed references unknown webServer: {args[0]}")
         ws.method_not_allowed_handler = args[1]
         return
+    if verb == "webServerStartup":
+        if len(args) < 2:
+            raise SyntaxError("webServerStartup requires: webServerStartup SERVER HANDLER_OPERATION")
+        ws = prog.web_servers.get(args[0])
+        if ws is None:
+            raise SyntaxError(f"webServerStartup references unknown webServer: {args[0]}")
+        ws.startup_handler = args[1]
+        return
+    if verb == "webServerShutdown":
+        if len(args) < 2:
+            raise SyntaxError("webServerShutdown requires: webServerShutdown SERVER HANDLER_OPERATION")
+        ws = prog.web_servers.get(args[0])
+        if ws is None:
+            raise SyntaxError(f"webServerShutdown references unknown webServer: {args[0]}")
+        ws.shutdown_handler = args[1]
+        return
     if verb == "routeTimeout":
         ws = prog.web_servers[args[0]]
         ws.timeouts[args[1]] = args[2]
@@ -4009,6 +4027,8 @@ class OutputContract:
     line: int
     tokens: list
     ok_type: str = ""
+    error_type: str = ""
+    is_result: bool = False
     llvm_type: object = None
     problem: str = ""
     message: str = ""
@@ -4036,6 +4056,8 @@ def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
                         "declares `Result` output without both OK and ERROR "
                         "types"))
             ok_type = tokens[1]
+            error_type = tokens[2]
+            is_result = True
         elif len(tokens) == 1:
             full = resolve_alias_full(prog, tokens[0])
             if full and full[0] == "Result":
@@ -4047,14 +4069,22 @@ def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
                             f"declares result alias `{tokens[0]}` without both "
                             "OK and ERROR types"))
                 ok_type = full[1]
+                error_type = full[2]
+                is_result = True
             else:
                 ok_type = tokens[0]
+                error_type = ""
+                is_result = False
         else:
             ok_type = tokens[0]
+            error_type = ""
+            is_result = False
 
         resolved_ok = resolve_alias(prog, ok_type)
         if resolved_ok in ("Void", "Void"):
-            return OutputContract(lineno, tokens, ok_type=ok_type, llvm_type=Int32)
+            return OutputContract(
+                lineno, tokens, ok_type=ok_type, error_type=error_type,
+                is_result=is_result, llvm_type=Int32)
         llty = llvm_type_for(prog, ok_type)
         if llty is None:
             return OutputContract(
@@ -4063,7 +4093,9 @@ def _operation_output_contract(prog: Program, op: Operation) -> OutputContract:
                     f"unknownOutputType: operation `{op.name}` declares output "
                     f"type `{ok_type}`, but semsc cannot lower it to a known "
                     "SemanticScript/LLVM type"))
-        return OutputContract(lineno, tokens, ok_type=ok_type, llvm_type=llty)
+        return OutputContract(
+            lineno, tokens, ok_type=ok_type, error_type=error_type,
+            is_result=is_result, llvm_type=llty)
 
     line = op.decl_line or (op.lines[0][2] if op.lines else 0)
     return OutputContract(
@@ -4141,6 +4173,8 @@ _STRICT_HEAP_ALLOCATION_TARGETS = frozenset({
     "c.malloc",
     "c.calloc",
     "c.realloc",
+    "c.alignedAlloc",
+    "c.aligned_alloc",
 })
 
 _STRICT_HEAP_CLEANUP_TARGETS = frozenset({
@@ -4252,6 +4286,13 @@ HTTP_INTRINSIC_TARGETS = (
         "http.responseFile",
         "http.nowMillis",
         "http.ensureDirectory",
+        # urlencoded form/url helpers: compiler-owned intrinsics lowered in the
+        # call-lowering block below. They must be exempt from the
+        # exported-operation import check here too, or `http.urlDecode` etc.
+        # resolve as a missing standard.http operation and never reach codegen.
+        "http.formField",
+        "http.urlDecode",
+        "http.urlEncode",
     })
 )
 
@@ -6170,6 +6211,13 @@ class Codegen:
         fn = ir.Function(self.module, fnty, name=op.name)
         for i, (pname, _, _) in enumerate(params):
             fn.args[i].name = pname
+        result_status = None
+        if contract.is_result:
+            safe_op_name = re.sub(r"[^A-Za-z0-9_]", "_", op.name)
+            result_status = ir.GlobalVariable(
+                self.module, Int32, name=f"__sem_result_status_{safe_op_name}")
+            result_status.linkage = "internal"
+            result_status.initializer = ir.Constant(Int32, 0)
         async_native_start = None
         async_native_await = None
         for verb, args, _ln in op.lines:
@@ -6182,6 +6230,9 @@ class Codegen:
             "params": params,
             "return_type": return_type,
             "return_type_name": return_type_name,
+            "is_result": contract.is_result,
+            "error_type_name": contract.error_type,
+            "result_status": result_status,
             "async_native_start": async_native_start,
             "async_native_await": async_native_await,
         }
@@ -6438,6 +6489,21 @@ class Codegen:
             raise ValueError(
                 f"route {server_name} {method} {path}: handler `{handler_name}` must return Int32")
 
+    def _validate_web_lifecycle_handler(self, server_name: str, hook_kind: str, handler_name: str):
+        if handler_name not in self.prog.operations:
+            raise ValueError(
+                f"{hook_kind} {server_name}: handler `{handler_name}` is not defined")
+        op_info = self._user_ops.get(handler_name)
+        if op_info is None:
+            raise ValueError(
+                f"{hook_kind} {server_name}: handler `{handler_name}` was not compiled")
+        if op_info["params"]:
+            raise ValueError(
+                f"{hook_kind} {server_name}: handler `{handler_name}` must declare no native ABI inputs")
+        if op_info["return_type"] != Int32:
+            raise ValueError(
+                f"{hook_kind} {server_name}: handler `{handler_name}` must return Int32")
+
     def _emit_webserver_main(self, server: WebServer):
         if server.host is None:
             raise ValueError(f"webServer `{server.name}` is missing serverHost")
@@ -6451,6 +6517,12 @@ class Codegen:
         if server.method_not_allowed_handler is not None:
             self._validate_web_route_handler(
                 server.name, "METHOD_NOT_ALLOWED", "*", server.method_not_allowed_handler)
+        if server.startup_handler is not None:
+            self._validate_web_lifecycle_handler(
+                server.name, "webServerStartup", server.startup_handler)
+        if server.shutdown_handler is not None:
+            self._validate_web_lifecycle_handler(
+                server.name, "webServerShutdown", server.shutdown_handler)
         middleware_by_path = {}
         for path, middleware_name in server.middleware:
             route_path = _unwrap(path)
@@ -6545,7 +6617,27 @@ class Codegen:
         builder.store(mna_ptr, builder.gep(
             config_slot, [zero_i32, ir.Constant(Int32, 5)], inbounds=True))
 
+        if server.startup_handler is not None:
+            startup_fn = self._user_ops[server.startup_handler]["fn"]
+            startup_rc = builder.call(startup_fn, [], name="ss_http_startup_status")
+            startup_failed = builder.icmp_signed(
+                "!=", startup_rc, ir.Constant(Int32, 0),
+                name="ss_http_startup_failed")
+            run_block = fn.append_basic_block("ss_http_run")
+            startup_failed_block = fn.append_basic_block("ss_http_startup_failed")
+            builder.cbranch(startup_failed, startup_failed_block, run_block)
+            builder.position_at_end(startup_failed_block)
+            builder.ret(startup_rc)
+            builder.position_at_end(run_block)
+
         rc = builder.call(server_run, [config_slot], name="ss_http_server_status")
+        if server.shutdown_handler is not None:
+            shutdown_fn = self._user_ops[server.shutdown_handler]["fn"]
+            shutdown_rc = builder.call(shutdown_fn, [], name="ss_http_shutdown_status")
+            shutdown_failed = builder.icmp_signed(
+                "!=", shutdown_rc, ir.Constant(Int32, 0),
+                name="ss_http_shutdown_failed")
+            rc = builder.select(shutdown_failed, shutdown_rc, rc, name="ss_http_final_status")
         builder.ret(rc)
 
     # ---------- shared body compilation ----------
@@ -9608,6 +9700,21 @@ class Codegen:
                 val = resolve(value_name)
                 if val is SENTINEL:
                     raise ValueError(f"return {return_variant}: cannot return opaque input")
+                result_status = self._user_ops.get(op.name, {}).get("result_status")
+                if result_status is not None and return_variant in ("ok", "error"):
+                    if return_variant == "ok":
+                        status_value = ir.Constant(Int32, 0)
+                    elif isinstance(val.type, ir.IntType):
+                        if val.type.width < 32:
+                            extend = builder.zext if val.type.width == 1 else builder.sext
+                            status_value = extend(val, Int32)
+                        elif val.type.width > 32:
+                            status_value = builder.trunc(val, Int32)
+                        else:
+                            status_value = val
+                    else:
+                        status_value = ir.Constant(Int32, 1)
+                    builder.store(status_value, result_status)
                 target_type = fn.function_type.return_type
                 if val.type != target_type:
                     # Integer-to-integer: sext or trunc as appropriate.
@@ -9884,15 +9991,28 @@ class Codegen:
         target = _TARGET_ALIASES.get(source_target, source_target)
         target = self.prog.operation_aliases.get(target, target)
         qualified_parts = source_target.split(".", 1)
+        # This guard catches `alias.member` where `alias` is an imported module
+        # that exports operations but `member` is not one of them (a typo'd
+        # module-operation call). It must NOT fire for the standard library:
+        # std modules deliberately MIX compiler builtins (math.lessThanOrEqualInt64,
+        # json.*, http.urlDecode, ...) with exported `.sem` operations, so the
+        # moment a std module gains ANY exported op (e.g. std/math's composed
+        # helpers) every builtin in that namespace would be falsely rejected.
+        # Per-namespace allowlists (HTTP_INTRINSIC_TARGETS / `sqlite.`) were the
+        # incomplete whack-a-mole version of this; exempting `standard.*`
+        # wholesale fixes the class — codegen dispatch remains the backstop that
+        # reports a genuinely unknown std target.
+        imported_module = self.prog.import_aliases.get(qualified_parts[0], "")
         if (len(qualified_parts) == 2
                 and qualified_parts[0] in self.prog.import_aliases
                 and _exported_symbols_for(
                     self.prog,
-                    self.prog.import_aliases[qualified_parts[0]],
+                    imported_module,
                     "operation")
                 and source_target not in self.prog.operation_aliases
                 and target not in HTTP_INTRINSIC_TARGETS
-                and not source_target.startswith("sqlite.")):
+                and not source_target.startswith("sqlite.")
+                and not imported_module.startswith("standard.")):
             raise ValueError(
                 f"{call_name}: qualified import target `{source_target}` is "
                 "not an exported operation")
@@ -10030,10 +10150,15 @@ class Codegen:
             call["error_cond"] = ir.Constant(I1, 0)
 
         def mark_high_level_json_status(status, error_code=1):
-            call["error_value"] = ir.Constant(Int32, error_code)
-            call["error_cond"] = builder.icmp_signed(
+            if status.type != Int32:
+                status = high_json_i32(status)
+            failed = builder.icmp_signed(
                 "!=", status, ir.Constant(Int32, 0),
                 name=f"{call_name}_isJsonError")
+            call["error_value"] = builder.select(
+                failed, ir.Constant(Int32, error_code), ir.Constant(Int32, 0),
+                name=f"{call_name}_jsonErrorValue")
+            call["error_cond"] = failed
 
         def target_type_is_json_text(name: str) -> bool:
             seen = set()
@@ -11533,6 +11658,14 @@ class Codegen:
                                   name=f"{call_name}_res")
             self._emit_crash_frame_pop(builder)
             call["result"] = result
+            result_status = op_info.get("result_status")
+            if result_status is not None:
+                status = builder.load(result_status, name=f"{call_name}_status")
+                call["error_value"] = status
+                call["error_cond"] = builder.icmp_signed(
+                    "!=", status, ir.Constant(Int32, 0),
+                    name=f"{call_name}_isErr")
+                return
             # User-defined operations may return either a libc-style
             # negative error code (when they propagate a primitive's error
             # via returnError) OR a positive makeError variant index. The
@@ -11609,7 +11742,14 @@ class Codegen:
                     stringify_fn,
                     [n, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
-                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                # Tie the result to `buf_ptr` (the buffer we passed in, which the
+                # runtime returns as *out on success) instead of load(out_slot):
+                # the opaque out-slot write loses LLVM's provenance link to `buf`,
+                # so StackColoring can reuse buf's slot while the result String is
+                # still live, silently corrupting it in larger programs (the
+                # convert round-trip regression). Referencing buf_ptr keeps buf
+                # live across every use of the result.
+                call["result"] = buf_ptr
                 mark_high_level_json_status(status, 3)
                 return
             buf_size = 32
@@ -11649,7 +11789,14 @@ class Codegen:
                     stringify_fn,
                     [bool_i32, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
-                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                # Tie the result to `buf_ptr` (the buffer we passed in, which the
+                # runtime returns as *out on success) instead of load(out_slot):
+                # the opaque out-slot write loses LLVM's provenance link to `buf`,
+                # so StackColoring can reuse buf's slot while the result String is
+                # still live, silently corrupting it in larger programs (the
+                # convert round-trip regression). Referencing buf_ptr keeps buf
+                # live across every use of the result.
+                call["result"] = buf_ptr
                 mark_high_level_json_status(status, 3)
                 return
             true_str = self._i8p(builder, "true")
@@ -11684,7 +11831,14 @@ class Codegen:
                     stringify_fn,
                     [v, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
-                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                # Tie the result to `buf_ptr` (the buffer we passed in, which the
+                # runtime returns as *out on success) instead of load(out_slot):
+                # the opaque out-slot write loses LLVM's provenance link to `buf`,
+                # so StackColoring can reuse buf's slot while the result String is
+                # still live, silently corrupting it in larger programs (the
+                # convert round-trip regression). Referencing buf_ptr keeps buf
+                # live across every use of the result.
+                call["result"] = buf_ptr
                 mark_high_level_json_status(status, 3)
                 return
             buf_size = 32
@@ -11821,7 +11975,14 @@ class Codegen:
                     stringify_fn,
                     [v, buf_ptr, ir.Constant(Int64, buf_size), out_slot],
                     name=f"{call_name}_jsonStatus")
-                call["result"] = builder.load(out_slot, name=f"{call_name}_encoded")
+                # Tie the result to `buf_ptr` (the buffer we passed in, which the
+                # runtime returns as *out on success) instead of load(out_slot):
+                # the opaque out-slot write loses LLVM's provenance link to `buf`,
+                # so StackColoring can reuse buf's slot while the result String is
+                # still live, silently corrupting it in larger programs (the
+                # convert round-trip regression). Referencing buf_ptr keeps buf
+                # live across every use of the result.
+                call["result"] = buf_ptr
                 mark_high_level_json_status(status, 3)
                 return
             # JSON-encoding a string requires quoting + escape handling
@@ -12679,9 +12840,18 @@ class Codegen:
                 input_buffer = builder.inttoptr(input_buffer, Int8P)
             if isinstance(output_buffer.type, ir.IntType):
                 output_buffer = builder.inttoptr(output_buffer, Int8P)
+            length_out_ptr_type = Int32.as_pointer()
             if isinstance(output_length_out.type, ir.IntType):
                 output_length_out = builder.inttoptr(
-                    output_length_out, Int32.as_pointer())
+                    output_length_out, length_out_ptr_type)
+            elif (isinstance(output_length_out.type, ir.PointerType)
+                    and output_length_out.type != length_out_ptr_type):
+                # A caller-owned OpaquePointer (i8*) is the natural .sem surface
+                # for the length-out buffer; the runtime writes a 32-bit length,
+                # so retype the pointer to i32* rather than rejecting it
+                # (SSCG002) and leaving base64UrlEncode unusable from source.
+                output_length_out = builder.bitcast(
+                    output_length_out, length_out_ptr_type)
             if isinstance(input_count.type, ir.IntType) and input_count.type.width != 32:
                 input_count = (builder.trunc(input_count, Int32)
                                if input_count.type.width > 32
@@ -13001,6 +13171,38 @@ class Codegen:
             request_body_length = self._runtime_func("ss_http_request_body_length", Int64, [Int8P])
             self.provenance.record_external("ss_http_request_body_length", call)
             call["result"] = builder.call(request_body_length, [request], name=f"{call_name}_res")
+            return
+
+        if target in {"http.formField", "http.urlDecode", "http.urlEncode"}:
+            if target == "http.formField":
+                body = arg_val_named("bodyText")
+                field_name = arg_val_named("fieldName")
+                scratch = arg_val_named("scratch")
+                scratch_capacity = arg_val_named("scratchCapacity")
+                runtime_name = "ss_http_form_find_field"
+                runtime_args = [body, field_name, scratch, scratch_capacity]
+                runtime_types = [Int8P, Int8P, Int8P, Int64]
+            else:
+                value = arg_val_named("value")
+                scratch = arg_val_named("scratch")
+                scratch_capacity = arg_val_named("scratchCapacity")
+                runtime_name = (
+                    "ss_http_url_decode" if target == "http.urlDecode"
+                    else "ss_http_url_encode"
+                )
+                runtime_args = [value, scratch, scratch_capacity]
+                runtime_types = [Int8P, Int8P, Int64]
+            coerced_args = []
+            for value, expected_type in zip(runtime_args, runtime_types):
+                if expected_type == Int8P and isinstance(value.type, ir.IntType):
+                    value = builder.inttoptr(value, Int8P)
+                elif expected_type == Int64 and isinstance(value.type, ir.IntType) and value.type.width != 64:
+                    value = (builder.zext(value, Int64) if value.type.width < 64
+                             else builder.trunc(value, Int64))
+                coerced_args.append(value)
+            fn = self._runtime_func(runtime_name, Int8P, runtime_types)
+            self.provenance.record_external(runtime_name, call)
+            call["result"] = builder.call(fn, coerced_args, name=f"{call_name}_res")
             return
 
         if target in {
@@ -16669,6 +16871,66 @@ def validate_const_lowerability(prog: Program) -> None:
             _check(name, typ, local_lines.get(name, op.decl_line))
 
 
+def validate_webserver_targets(prog: Program) -> None:
+    """SSCG001 at check time — a `target webServer` program whose server is
+    missing `serverHost`/`serverPort` only fails at codegen
+    (`_emit_webserver_main` raises), so a green `check` did NOT imply a
+    buildable program (FRICTION A3: "check says buildable:true but build fails
+    SSCG001 missing serverHost"). Lift the same structural requirement into the
+    parse/check phase so `buildable` predicts `build`.
+
+    Validate every webServer that declares ROUTES, regardless of whether a
+    `target webServer` row is present in THIS file. The canonical project layout
+    declares the build target in build.sem (often via a record-based BuildPlan,
+    not a literal `target webServer` row), so gating on `prog.targets` skipped
+    the preflight for a bare `sem check main.sem` and let `buildable: true` lie
+    while the project build failed SSCG001. A webServer that declares routes is
+    always lowered through `_emit_webserver_main` when the project builds, so it
+    must carry serverHost/serverPort; a routeless declaration is never lowered
+    and is left alone.
+    """
+    for server in prog.web_servers.values():
+        if not server.routes:
+            continue
+        missing = None
+        if server.host is None:
+            missing = "serverHost"
+        elif server.port is None:
+            missing = "serverPort"
+        if missing is None:
+            continue
+        span = _strict_span(prog, 0)
+        raise CompilerDiagnosticError(CompilerDiagnostic(
+            code="SSCG001",
+            phase="check.webserver-config",
+            message=(
+                f"webServer `{server.name}` is missing {missing}; a "
+                f"`target webServer` build requires both a `serverHost {server.name} "
+                f"\"host\"` and a `serverPort {server.name} <port>` row before "
+                f"codegen can lower the server."),
+            primary=span,
+            semantic_stack=[
+                DiagnosticFrame(
+                    kind="webserver config validation",
+                    span=span,
+                    note=("serverHost and serverPort are required for any "
+                          "webServer that declares routes"),
+                ),
+            ],
+            direction=(
+                f"Add the missing row: `serverHost {server.name} \"127.0.0.1\"` "
+                f"(a host string literal) and `serverPort {server.name} 8080` "
+                f"(an integer literal)."),
+            suggested_fixes=[
+                f"{missing} {server.name} "
+                + ("\"127.0.0.1\"" if missing == "serverHost" else "8080"),
+            ],
+            agent_hint=(
+                "This is the codegen-time SSCG001 surfaced at check; add the "
+                "serverHost/serverPort rows in source."),
+        ))
+
+
 def validate_strict_executable(prog: Program) -> None:
     if not _strict_executable_is_active(prog):
         return
@@ -18567,6 +18829,48 @@ def _compile_windows_resource(prog: Program, exe_path: str,
     return res_path, temp_files
 
 
+def _free_exe_output_path(exe_path: str) -> None:
+    """Make `exe_path` writable even if a previous build's exe is still running.
+
+    On Windows an executable cannot be overwritten or deleted while a process is
+    running from it, but it CAN be renamed. So the inner dev loop used to fail
+    ("file in use") whenever you rebuilt without first killing the server. Here
+    we move any existing file at the target aside to a unique `.old.exe`
+    sidecar so the linker can write a fresh canonical exe; the running old
+    process keeps executing from the renamed image. Stale sidecars from
+    already-exited processes are swept best-effort on each build.
+
+    Keeping the OUTPUT name stable (rather than emitting `<name>.<hash>.exe`)
+    means `sem run` and any scripts still point at one predictable path."""
+    if not os.path.exists(exe_path):
+        return
+    directory = os.path.dirname(os.path.abspath(exe_path)) or "."
+    stem = os.path.basename(exe_path)
+    sidecar_suffix = ".old.exe"
+    try:
+        for name in os.listdir(directory):
+            if name.startswith(stem + ".") and name.endswith(sidecar_suffix):
+                try:
+                    os.unlink(os.path.join(directory, name))
+                except OSError:
+                    pass  # still held by a live process — leave it
+    except OSError:
+        pass
+    try:
+        os.unlink(exe_path)
+        return
+    except OSError:
+        pass  # locked by a running process — rename it aside instead
+    token = f"{os.getpid():x}{os.urandom(3).hex()}"
+    sidecar = os.path.join(directory, f"{stem}.{token}{sidecar_suffix}")
+    try:
+        os.replace(exe_path, sidecar)
+    except OSError:
+        # Could not free the path; let the linker run and surface its own
+        # clear error rather than masking it here.
+        pass
+
+
 def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
                     provenance: CompilerProvenance = None,
                     diagnostics_format: str = "agent",
@@ -18650,6 +18954,9 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
             cmd.extend(extra_sources)
         if extra_link_args:
             cmd.extend(extra_link_args)
+        # Free the target path first so a still-running previous build does not
+        # block the link with a Windows "file in use" error.
+        _free_exe_output_path(exe_path)
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             if provenance is not None:
@@ -19377,12 +19684,148 @@ def _peak_working_set_bytes():
         return None, "unavailable"
 
 
+_JIT_RUNTIME_CALLBACKS = []
+_JIT_RUNTIME_SYMBOLS_REGISTERED = False
+
+
+def _register_jit_runtime_symbols():
+    """Register runtime shims needed by MCJIT-only execution.
+
+    Native executable builds link runtime C adapters. The in-process JIT does
+    not, so primitive json.stringify/json.parse aliases need process-local
+    symbols or external calls resolve to address 0.
+    """
+    global _JIT_RUNTIME_SYMBOLS_REGISTERED
+    if _JIT_RUNTIME_SYMBOLS_REGISTERED:
+        return
+
+    def _write_bytes(scratch, scratch_capacity, out_ptr, payload: bytes) -> int:
+        if not scratch or not out_ptr or int(scratch_capacity) < 1:
+            return 7
+        if len(payload) + 1 > int(scratch_capacity):
+            try:
+                ctypes.memset(scratch, 0, 1)
+            except Exception:
+                pass
+            return 8
+        ctypes.memmove(scratch, payload, len(payload))
+        ctypes.memset(int(scratch) + len(payload), 0, 1)
+        out_ptr[0] = int(scratch)
+        return 0
+
+    def _read_c_string(ptr) -> str:
+        if not ptr:
+            raise ValueError("null string")
+        return ctypes.string_at(ptr).decode("utf-8")
+
+    def _json_stringify_int64(value, scratch, scratch_capacity, out_ptr):
+        return _write_bytes(
+            scratch, scratch_capacity, out_ptr,
+            str(int(value)).encode("ascii"))
+
+    def _json_stringify_double(value, scratch, scratch_capacity, out_ptr):
+        text = format(float(value), ".17g")
+        return _write_bytes(
+            scratch, scratch_capacity, out_ptr, text.encode("ascii"))
+
+    def _json_stringify_bool(value, scratch, scratch_capacity, out_ptr):
+        return _write_bytes(
+            scratch, scratch_capacity, out_ptr,
+            b"true" if int(value) != 0 else b"false")
+
+    def _json_stringify_string(value, scratch, scratch_capacity, out_ptr):
+        try:
+            text = _read_c_string(value)
+            payload = json.dumps(
+                text, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except Exception:
+            return 1
+        return _write_bytes(scratch, scratch_capacity, out_ptr, payload)
+
+    def _json_parse_int64(json_text, out_ptr):
+        if not json_text or not out_ptr:
+            return 7
+        try:
+            value = json.loads(_read_c_string(json_text))
+        except Exception:
+            return 1
+        if isinstance(value, bool) or not isinstance(value, int):
+            return 2
+        out_ptr[0] = int(value)
+        return 0
+
+    def _json_parse_double(json_text, out_ptr):
+        if not json_text or not out_ptr:
+            return 7
+        try:
+            value = json.loads(_read_c_string(json_text))
+        except Exception:
+            return 1
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return 2
+        out_ptr[0] = float(value)
+        return 0
+
+    def _json_parse_bool(json_text, out_ptr):
+        if not json_text or not out_ptr:
+            return 7
+        try:
+            value = json.loads(_read_c_string(json_text))
+        except Exception:
+            return 1
+        if not isinstance(value, bool):
+            return 2
+        out_ptr[0] = 1 if value else 0
+        return 0
+
+    string_out_sig = ctypes.POINTER(ctypes.c_void_p)
+    callbacks = {
+        "ss_json_stringify_int64": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_longlong, ctypes.c_void_p,
+            ctypes.c_longlong, string_out_sig)(_json_stringify_int64),
+        "ss_json_stringify_double": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_double, ctypes.c_void_p,
+            ctypes.c_longlong, string_out_sig)(_json_stringify_double),
+        "ss_json_stringify_bool": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+            ctypes.c_longlong, string_out_sig)(_json_stringify_bool),
+        "ss_json_stringify_string": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.c_longlong, string_out_sig)(_json_stringify_string),
+        "ss_json_parse_int64": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_longlong))(_json_parse_int64),
+        "ss_json_parse_double": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_double))(_json_parse_double),
+        "ss_json_parse_bool": ctypes.CFUNCTYPE(
+            ctypes.c_int, ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_int))(_json_parse_bool),
+    }
+    for symbol, callback in callbacks.items():
+        llvm.add_symbol(symbol, ctypes.cast(callback, ctypes.c_void_p).value)
+    _JIT_RUNTIME_CALLBACKS.extend(callbacks.values())
+    _JIT_RUNTIME_SYMBOLS_REGISTERED = True
+
+
 def jit_run(module_ir: str, opt_level: int = 2,
             emit_optimized_ir_to: str = None,
             cpu_config: CpuBuildConfig = None,
             collect_execution_metrics: bool = False):
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
+    _register_jit_runtime_symbols()
+    if '@"ss_http_' in module_ir or "@ss_http_" in module_ir:
+        # The native HTTP runtime (form/url/SSE/response intrinsics) is linked
+        # only into native builds. The in-process JIT cannot resolve these
+        # symbols, so an http.* call would jump to address 0 and hard-crash.
+        # Refuse with a clear, actionable message instead of the silent crash.
+        sys.stderr.write(
+            "error: http.* intrinsics require a native build; they are not "
+            "available under the in-process JIT (sem eval / sem run / --run). "
+            "Build and run a native executable instead "
+            "(sem build <project>, or semsc <file> --emit-exe <out>).\n")
+        raise SystemExit(3)
     mod = llvm.parse_assembly(module_ir)
     mod.verify()
     target = llvm.Target.from_default_triple()
@@ -19838,9 +20281,14 @@ def _load_external_literals(prog: Program, source_path: str) -> None:
 
 
 def _native_http_link_inputs(prog: Program):
-    if "webServer" not in prog.targets:
+    uses_http_call = any(
+        verb == "call" and len(args) >= 2 and args[1].startswith("http.")
+        for op in prog.operations.values()
+        for verb, args, _lineno in op.lines
+    )
+    if "webServer" not in prog.targets and not uses_http_call:
         return [], []
-    if not any(server.routes for server in prog.web_servers.values()):
+    if "webServer" in prog.targets and not any(server.routes for server in prog.web_servers.values()) and not uses_http_call:
         return [], []
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -20982,6 +21430,10 @@ def main():
                           "multiple times."))
     ap.add_argument("--parse-only", action="store_true",
                     help="parse the source, run lint (if requested), and exit without codegen")
+    ap.add_argument("--lower-check", action="store_true",
+                    help="run the full codegen lowering as a preflight (surfaces "
+                         "every SSCG/SSBE error) but emit nothing; used by `sem "
+                         "check` so `buildable` predicts `build`")
     ap.add_argument("--opt-level", type=int, default=None,
                     help=("LLVM optimization level for JIT/AOT (0..3); "
                           "default 2 or optLevel from build.sem"))
@@ -21216,6 +21668,9 @@ def main():
         # Const lowerability is a codegen-time failure (SSCG004) lifted to the
         # parse/check phase so a green `check` implies a buildable program.
         validate_const_lowerability(prog)
+        # webServer serverHost/serverPort are codegen-time (SSCG001) requirements
+        # lifted to check so a green `check` implies a buildable webServer.
+        validate_webserver_targets(prog)
         validate_strict_executable(prog)
     except CompilerDiagnosticError as e:
         print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
@@ -21379,6 +21834,28 @@ def main():
             _tb.print_exc(file=sys.stderr)
         sys.exit(3)
     ir_text = str(mod)
+
+    if getattr(args, "lower_check", False):
+        # Codegen preflight for `sem check`: cg.compile() above ran the full
+        # lowering and raised SSCG/SSBE on any codegen error (caught above ->
+        # exit 3). Reaching here means the program lowers cleanly. Also run the
+        # native-runtime link-input validation (it raises on a few codegen-class
+        # contract errors), then stop before any emit/link/run. This lets check
+        # make `buildable` predict `build` for ALL codegen errors, not just the
+        # structural webServer/const prerequisites.
+        try:
+            _native_runtime_link_inputs(prog)
+        except CompilerDiagnosticError as e:
+            print(e.diagnostic.render(args.diagnostics_format), file=sys.stderr)
+            if os.environ.get("SEMSC_TRACEBACK"):
+                import traceback as _tb
+                _tb.print_exc(file=sys.stderr)
+            sys.exit(3)
+        if not args.quiet:
+            print(_render_success_message(
+                "SSOK000", "SemanticScript lowering preflight complete",
+                args.source, details=[("phase", "codegen.preflight")]))
+        return
 
     try:
         runtime_sources, runtime_link_args, runtime_link_components = (

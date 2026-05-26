@@ -42,14 +42,16 @@ capability heapAllocationCapability heap allocate
 capability heapFreeCapability heap free
 
 # ----- imports under test (different stochastic sample of seven modules) -----
-import bytes bytes
-import sort sort
-import memory memory
-import inttypes inttypes
-import stdlib stdlib
-import random random
-import limits limits
-import signal signal
+import bytes standard.bytes
+import sort standard.sort
+import memory standard.memory
+import inttypes standard.inttypes
+import stdlib standard.stdlib
+import random standard.random
+import limits standard.limits
+import signal standard.signal
+importConstant importedMaximumSignedInt32Value limits maximumSignedInt32Value
+importConstant importedInterruptSignalNumber signal interruptSignalNumber
 
 operation stdlibImportSmokeBuffersMain
 input operation stdlibImportSmokeBuffersMain console Console
@@ -109,11 +111,11 @@ bind error sortBufferAllocError Int32 allocateSortBufferImportCall
 branch error source allocateSortBufferImportCall target sortBufferAllocFailed
 defer releaseAllocateSortBufferImportCall c.free sortBufferImport
 
-storage module immutable byteFiveLiteralImport Int32 5
-storage module immutable byteTwoLiteralImport Int32 2
-storage module immutable byteEightLiteralImport Int32 8
-storage module immutable byteOneLiteralImport Int32 1
-storage module immutable byteNineLiteralImport Int32 9
+storage module immutable byteFiveLiteralImport Int64 5
+storage module immutable byteTwoLiteralImport Int64 2
+storage module immutable byteEightLiteralImport Int64 8
+storage module immutable byteOneLiteralImport Int64 1
+storage module immutable byteNineLiteralImport Int64 9
 storage module immutable offsetZeroByte ByteCount 0
 storage module immutable offsetOneByte ByteCount 1
 storage module immutable offsetTwoByte ByteCount 2
@@ -124,27 +126,27 @@ storage module immutable totalSortLength ByteCount 5
 call storeByteZeroForSortImportCall pointer.storeByte
 argument storeByteZeroForSortImportCall buffer OpaquePointer sortBufferImport
 argument storeByteZeroForSortImportCall offset ByteCount offsetZeroByte
-argument storeByteZeroForSortImportCall value Int32 byteFiveLiteralImport
+argument storeByteZeroForSortImportCall value Int64 byteFiveLiteralImport
 run storeByteZeroForSortImportCall
 call storeByteOneForSortImportCall pointer.storeByte
 argument storeByteOneForSortImportCall buffer OpaquePointer sortBufferImport
 argument storeByteOneForSortImportCall offset ByteCount offsetOneByte
-argument storeByteOneForSortImportCall value Int32 byteTwoLiteralImport
+argument storeByteOneForSortImportCall value Int64 byteTwoLiteralImport
 run storeByteOneForSortImportCall
 call storeByteTwoForSortImportCall pointer.storeByte
 argument storeByteTwoForSortImportCall buffer OpaquePointer sortBufferImport
 argument storeByteTwoForSortImportCall offset ByteCount offsetTwoByte
-argument storeByteTwoForSortImportCall value Int32 byteEightLiteralImport
+argument storeByteTwoForSortImportCall value Int64 byteEightLiteralImport
 run storeByteTwoForSortImportCall
 call storeByteThreeForSortImportCall pointer.storeByte
 argument storeByteThreeForSortImportCall buffer OpaquePointer sortBufferImport
 argument storeByteThreeForSortImportCall offset ByteCount offsetThreeByte
-argument storeByteThreeForSortImportCall value Int32 byteOneLiteralImport
+argument storeByteThreeForSortImportCall value Int64 byteOneLiteralImport
 run storeByteThreeForSortImportCall
 call storeByteFourForSortImportCall pointer.storeByte
 argument storeByteFourForSortImportCall buffer OpaquePointer sortBufferImport
 argument storeByteFourForSortImportCall offset ByteCount offsetFourByte
-argument storeByteFourForSortImportCall value Int32 byteNineLiteralImport
+argument storeByteFourForSortImportCall value Int64 byteNineLiteralImport
 run storeByteFourForSortImportCall
 
 call runImportedBubbleSortCall sortBytesWithBubbleSortInPlace
@@ -175,27 +177,27 @@ defer releaseAllocateExpectedSortedImportCall c.free expectedSortedBufferImport
 call storeExpectedByteZeroCall pointer.storeByte
 argument storeExpectedByteZeroCall buffer OpaquePointer expectedSortedBufferImport
 argument storeExpectedByteZeroCall offset ByteCount offsetZeroByte
-argument storeExpectedByteZeroCall value Int32 byteOneLiteralImport
+argument storeExpectedByteZeroCall value Int64 byteOneLiteralImport
 run storeExpectedByteZeroCall
 call storeExpectedByteOneCall pointer.storeByte
 argument storeExpectedByteOneCall buffer OpaquePointer expectedSortedBufferImport
 argument storeExpectedByteOneCall offset ByteCount offsetOneByte
-argument storeExpectedByteOneCall value Int32 byteTwoLiteralImport
+argument storeExpectedByteOneCall value Int64 byteTwoLiteralImport
 run storeExpectedByteOneCall
 call storeExpectedByteTwoCall pointer.storeByte
 argument storeExpectedByteTwoCall buffer OpaquePointer expectedSortedBufferImport
 argument storeExpectedByteTwoCall offset ByteCount offsetTwoByte
-argument storeExpectedByteTwoCall value Int32 byteFiveLiteralImport
+argument storeExpectedByteTwoCall value Int64 byteFiveLiteralImport
 run storeExpectedByteTwoCall
 call storeExpectedByteThreeCall pointer.storeByte
 argument storeExpectedByteThreeCall buffer OpaquePointer expectedSortedBufferImport
 argument storeExpectedByteThreeCall offset ByteCount offsetThreeByte
-argument storeExpectedByteThreeCall value Int32 byteEightLiteralImport
+argument storeExpectedByteThreeCall value Int64 byteEightLiteralImport
 run storeExpectedByteThreeCall
 call storeExpectedByteFourCall pointer.storeByte
 argument storeExpectedByteFourCall buffer OpaquePointer expectedSortedBufferImport
 argument storeExpectedByteFourCall offset ByteCount offsetFourByte
-argument storeExpectedByteFourCall value Int32 byteNineLiteralImport
+argument storeExpectedByteFourCall value Int64 byteNineLiteralImport
 run storeExpectedByteFourCall
 storage module immutable zeroSentinelForCompareImport Int64 0
 call assertCompareAfterSortCall compareMemoryByteRanges
@@ -273,7 +275,7 @@ ignore value source releaseLcgStateImportCall type Int32
 # ---- limits: maximumSignedInt32Value == 2147483647 ----
 storage module immutable expectedMaximumSignedInt32 Int64 2147483647
 call checkImportedLimitMaxInt32Call math.equalInt64
-argument checkImportedLimitMaxInt32Call left Int64 maximumSignedInt32Value
+argument checkImportedLimitMaxInt32Call left Int64 importedMaximumSignedInt32Value
 argument checkImportedLimitMaxInt32Call right Int64 expectedMaximumSignedInt32
 run checkImportedLimitMaxInt32Call
 bind value importedLimitMaxInt32Ok Bool checkImportedLimitMaxInt32Call
@@ -283,9 +285,9 @@ label importedLimitMaxInt32Holds
 
 # ---- signal: interruptSignalNumber == 2 ----
 storage module immutable expectedInterruptSignalNumber Int32 2
-call checkImportedInterruptCall math.equalInt64
-argument checkImportedInterruptCall left Int64 interruptSignalNumber
-argument checkImportedInterruptCall right Int64 expectedInterruptSignalNumber
+call checkImportedInterruptCall math.equalInt32
+argument checkImportedInterruptCall left Int32 importedInterruptSignalNumber
+argument checkImportedInterruptCall right Int32 expectedInterruptSignalNumber
 run checkImportedInterruptCall
 bind value importedInterruptOk Bool checkImportedInterruptCall
 branch if condition importedInterruptOk target importedInterruptHolds
@@ -295,10 +297,9 @@ label importedInterruptHolds
 # All imported assertions held.
 storage module immutable buffersImportSuccessMessage String "OK"
 call writeBuffersImportSuccessCall console.writeLine
-argument writeBuffersImportSuccessCall console Console console
 argument writeBuffersImportSuccessCall text String buffersImportSuccessMessage
 run writeBuffersImportSuccessCall
-ignore ok source writeBuffersImportSuccessCall type Int32
+ignore void source writeBuffersImportSuccessCall
 bind error buffersImportConsoleWriteError Int32 writeBuffersImportSuccessCall
 branch error source writeBuffersImportSuccessCall target buffersImportConsoleWriteFailed
 storage module immutable buffersImportExitOk ExitCode 0
