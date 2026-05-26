@@ -34,7 +34,7 @@ output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
 effect main write console.stdout
 memory main heap no
-memoryStackLimit main 1024
+memory main stack max 1024
 async main no
 purpose operation main "Smoke-test every classifier and case mapper; print OK on success, returnError otherwise."
 invariant operation main "Every predicate asserted is satisfied or the assertion-failure path runs."
@@ -373,10 +373,9 @@ label propRoundTripHolds
 
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

@@ -244,23 +244,33 @@ label leap2400Holds
 call exerciseCpuClockCall readProcessCpuClockTicks
 run exerciseCpuClockCall
 bind value cpuClockTicksObserved Int64 exerciseCpuClockCall
-branch if condition cpuClockTicksObserved target cpuClockExercised
+storage module immutable observedClockZero Int64 0
+call cpuClockObservedCall math.greaterThanOrEqualInt64
+argument cpuClockObservedCall left Int64 cpuClockTicksObserved
+argument cpuClockObservedCall right Int64 observedClockZero
+run cpuClockObservedCall
+bind value cpuClockObserved Bool cpuClockObservedCall
+branch if condition cpuClockObserved target cpuClockExercised
 branch else target cpuClockExercised
 label cpuClockExercised
 
 call exerciseUnixTimeCall readCurrentUnixEpochSeconds
 run exerciseUnixTimeCall
 bind value unixEpochSecondsObserved Int64 exerciseUnixTimeCall
-branch if condition unixEpochSecondsObserved target unixTimeExercised
+call unixTimeObservedCall math.greaterThanOrEqualInt64
+argument unixTimeObservedCall left Int64 unixEpochSecondsObserved
+argument unixTimeObservedCall right Int64 observedClockZero
+run unixTimeObservedCall
+bind value unixTimeObserved Bool unixTimeObservedCall
+branch if condition unixTimeObserved target unixTimeExercised
 branch else target unixTimeExercised
 label unixTimeExercised
 
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

@@ -218,6 +218,23 @@ maintainable source. The current compiler dispatches by callee input order.
 ## C Standard Library
 
 `c.<function>` routes through `SemanticScript/compiler/libc_registry.py`.
+Raw `c.*` is a compiler interop escape hatch, not the target shape agents should
+grow in application code. Every registry entry carries a machine-readable
+wrapper policy in `libc_registry.c_wrapper_policy_for()` and `sem docs get c.*`
+under `target.wrapperPolicy`.
+
+For heap allocation in new app code, prefer `standard.memory` wrappers:
+
+```semanticscript
+import memory standard.memory
+call allocateBufferCall memory.allocateMemoryBytes
+argument allocateBufferCall byteCount ByteCount requestedByteCount
+run allocateBufferCall
+bind ok allocatedBuffer OpaquePointer allocateBufferCall
+bind error allocationError MemoryAllocationError allocateBufferCall
+branch error source allocateBufferCall target allocationFailed
+defer releaseBufferDefer memory.releaseMemoryBytes allocatedBuffer
+```
 
 ```semanticscript
 storage local immutable byteCount ByteCount 64
@@ -242,3 +259,15 @@ c.timespecGet       -> timespec_get
 
 Varargs are supported for registry entries that declare `var_args=True`, such
 as `c.printf`.
+
+Wrapper-policy decisions:
+
+- `stdlib-wrapper-planned`: add or prefer a real `standard.*` SemanticScript
+  operation with effects, capabilities, failure handling, and cleanup rows.
+- `native-adapter-required`: expose only after a portable native adapter owns
+  the ABI shape; do not generate raw calls for normal app code.
+- `compiler-runtime-owned`: use the owning standard module rather than calling
+  adapter symbols directly.
+- `no-public-wrapper`: intentionally unsafe or obsolete C API; keep behind the
+  escape hatch and prefer a safer SemanticScript design.
+- `abi-blocked`: current lowering cannot represent the ABI safely.

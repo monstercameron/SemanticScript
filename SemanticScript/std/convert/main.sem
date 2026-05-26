@@ -8,8 +8,39 @@ moduleOwns standard.convert "The official import path `standard.convert` and thi
 moduleDoesNotOwn standard.convert "App-specific wrappers, compatibility aliases, or generated build artifacts."
 invariant module standard.convert "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
+import json standard.json
+import memory standard.memory
+import string standard.string
+
 exportConstant standard.convert convertModuleVersionText
+exportError standard.convert ConversionError
+exportOperation standard.convert widenSignedInt32ToSignedInt64
+exportOperation standard.convert narrowSignedInt64ToSignedInt32
+exportOperation standard.convert convertByteValueToUnsignedInt32
+exportOperation standard.convert convertSignedInt64ToFloat64
+exportOperation standard.convert convertFloat64ToSignedInt64
+exportOperation standard.convert convertBoolToSignedInt64
+exportOperation standard.convert convertSignedInt64ToBool
+exportOperation standard.convert convertSignedInt64ToString
+exportOperation standard.convert convertSignedInt32ToString
+exportOperation standard.convert convertFloat64ToString
+exportOperation standard.convert convertBoolToString
+exportOperation standard.convert parseStringToSignedInt64
+exportOperation standard.convert parseStringToSignedInt32
+exportOperation standard.convert parseStringToFloat64
+exportOperation standard.convert parseStringToBool
+exportOperation standard.convert calculateCStringPointerOffset
+exportOperation standard.convert advanceOpaquePointerByByteOffset
 storage module immutable convertModuleVersionText String "standard.convert 0.1"
+
+error ConversionError
+errorCase ConversionError TextEncodeFailed Int32
+errorCase ConversionError TextAllocationFailed Int32
+errorCase ConversionError TextDecodeFailed Int32
+
+capability conversionHeapAllocationCapability heap allocate
+capability conversionMemoryBufferReadCapability memory.buffer read
+capability conversionMemoryBufferWriteCapability memory.buffer write
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -35,6 +66,8 @@ storage module immutable convertModuleVersionText String "standard.convert 0.1"
 
 domainLiteral byteRoleAdjustmentValue Int64 256
 domainLiteralTrust byteRoleAdjustmentValue trustedStaticLiteral
+domainLiteral textTerminatorByteCount Int64 1
+domainLiteralTrust textTerminatorByteCount trustedStaticLiteral
 
 # section convert.integers
 
@@ -123,7 +156,7 @@ invariant operation convertSignedInt64ToFloat64 "Loss-of-precision possible for 
 guarantee convertSignedInt64ToFloat64 "Total."
 label startConvertSignedInt64ToFloat64
 call sitoffpCall math.convertInt64ToFloat64
-argument sitoffpCall value Int64 inputValue
+argument sitoffpCall inputValue Int64 inputValue
 run sitoffpCall
 bind value asDoubleResult Float64 sitoffpCall
 return value asDoubleResult
@@ -142,10 +175,344 @@ warning convertFloat64ToSignedInt64 "NaN inputs produce an unspecified i64 - cal
 guarantee convertFloat64ToSignedInt64 "Total over the in-range Float64 domain."
 label startConvertFloat64ToSignedInt64
 call fptosiCall math.convertFloat64ToInt64
-argument fptosiCall value Float64 inputValue
+argument fptosiCall inputValue Float64 inputValue
 run fptosiCall
 bind value asIntegerResult Int64 fptosiCall
 return value asIntegerResult
+
+# section convert.primitiveBooleans
+
+# rationale: Convert false to 0 and true to 1.
+# invariant: Output is always 0 or 1.
+operation convertBoolToSignedInt64
+input operation convertBoolToSignedInt64 inputValue Bool
+output operation convertBoolToSignedInt64 Int64
+memory convertBoolToSignedInt64 heap no
+async convertBoolToSignedInt64 no
+purpose operation convertBoolToSignedInt64 "Convert false to 0 and true to 1."
+invariant operation convertBoolToSignedInt64 "Output is always 0 or 1."
+guarantee convertBoolToSignedInt64 "Total."
+label startConvertBoolToSignedInt64
+storage module immutable boolAsInt64Zero Int64 0
+storage module immutable boolAsInt64One Int64 1
+branch if condition inputValue target boolToInt64True
+return value boolAsInt64Zero
+label boolToInt64True
+return value boolAsInt64One
+
+# rationale: Convert zero to false and every non-zero Int64 to true.
+# invariant: Equivalent to inputValue != 0.
+operation convertSignedInt64ToBool
+input operation convertSignedInt64ToBool inputValue Int64
+output operation convertSignedInt64ToBool Bool
+memory convertSignedInt64ToBool heap no
+async convertSignedInt64ToBool no
+purpose operation convertSignedInt64ToBool "Convert zero to false and every non-zero Int64 to true."
+invariant operation convertSignedInt64ToBool "Equivalent to inputValue != 0."
+guarantee convertSignedInt64ToBool "Total."
+label startConvertSignedInt64ToBool
+storage module immutable int64ToBoolZero Int64 0
+storage module immutable int64ToBoolFalse Bool false
+storage module immutable int64ToBoolTrue Bool true
+call int64ToBoolZeroCall math.equalInt64
+argument int64ToBoolZeroCall left Int64 inputValue
+argument int64ToBoolZeroCall right Int64 int64ToBoolZero
+run int64ToBoolZeroCall
+bind value int64ToBoolIsZero Bool int64ToBoolZeroCall
+branch if condition int64ToBoolIsZero target int64ToBoolReturnFalse
+return value int64ToBoolTrue
+label int64ToBoolReturnFalse
+return value int64ToBoolFalse
+
+# section convert.text
+
+# rationale: Copy transient formatter text into caller-owned heap memory so the returned String survives this operation's stack frame.
+# invariant: OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes.
+operation copyTransientTextToOwnedString
+input operation copyTransientTextToOwnedString transientText String
+output operation copyTransientTextToOwnedString Result String ConversionError
+useCapability copyTransientTextToOwnedString conversionHeapAllocationCapability
+useCapability copyTransientTextToOwnedString conversionMemoryBufferReadCapability
+useCapability copyTransientTextToOwnedString conversionMemoryBufferWriteCapability
+effect copyTransientTextToOwnedString allocate heap
+effect copyTransientTextToOwnedString read memory.buffer
+effect copyTransientTextToOwnedString write memory.buffer
+memory copyTransientTextToOwnedString heap yes
+memoryAllocationSource copyTransientTextToOwnedString allocateOwnedStringCall
+async copyTransientTextToOwnedString no
+purpose operation copyTransientTextToOwnedString "Copy transient formatter text into caller-owned heap memory."
+invariant operation copyTransientTextToOwnedString "OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes."
+failure copyTransientTextToOwnedString TextAllocationFailed "The heap allocation for the owned string failed."
+label startCopyTransientTextToOwnedString
+call transientTextLengthCall stringByteLength
+argument transientTextLengthCall inputText String transientText
+run transientTextLengthCall
+bind value transientTextByteCount ByteCount transientTextLengthCall
+call ownedStringSizeCall math.addInt64
+argument ownedStringSizeCall left Int64 transientTextByteCount
+argument ownedStringSizeCall right Int64 textTerminatorByteCount
+run ownedStringSizeCall
+bind value ownedStringByteCount ByteCount ownedStringSizeCall
+call allocateOwnedStringCall memory.allocateMemoryBytes
+argument allocateOwnedStringCall byteCount ByteCount ownedStringByteCount
+run allocateOwnedStringCall
+bind ok ownedStringBuffer String allocateOwnedStringCall
+bind error ownedStringAllocationError MemoryAllocationError allocateOwnedStringCall
+branch error source allocateOwnedStringCall target ownedStringAllocationFailed
+call copyOwnedStringCall copyCStringToDestinationBuffer
+argument copyOwnedStringCall destinationBuffer OpaquePointer ownedStringBuffer
+argument copyOwnedStringCall sourceBuffer String transientText
+run copyOwnedStringCall
+ignore value source copyOwnedStringCall type ByteCount
+return ok ownedStringBuffer
+label ownedStringAllocationFailed
+makeError ownedStringAllocationFailure ConversionError.TextAllocationFailed ownedStringAllocationError
+return error ownedStringAllocationFailure
+
+# rationale: Format an Int64 as null-terminated decimal text using the JSON primitive formatter intrinsic.
+# invariant: OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes.
+operation convertSignedInt64ToString
+input operation convertSignedInt64ToString inputValue Int64
+output operation convertSignedInt64ToString Result String ConversionError
+useCapability convertSignedInt64ToString conversionHeapAllocationCapability
+useCapability convertSignedInt64ToString conversionMemoryBufferReadCapability
+useCapability convertSignedInt64ToString conversionMemoryBufferWriteCapability
+effect convertSignedInt64ToString allocate heap
+effect convertSignedInt64ToString read memory.buffer
+effect convertSignedInt64ToString write memory.buffer
+memory convertSignedInt64ToString heap yes
+async convertSignedInt64ToString no
+purpose operation convertSignedInt64ToString "Format an Int64 as null-terminated decimal text."
+invariant operation convertSignedInt64ToString "OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes."
+failure convertSignedInt64ToString TextEncodeFailed "The runtime formatter could not encode the number."
+failure convertSignedInt64ToString TextAllocationFailed "The heap allocation for the owned string failed."
+label startConvertSignedInt64ToString
+call stringifySignedInt64Call json.stringify.Int64
+argument stringifySignedInt64Call value Int64 inputValue
+run stringifySignedInt64Call
+bind ok signedInt64TransientText String stringifySignedInt64Call
+bind error signedInt64StringError JsonEncodeError stringifySignedInt64Call
+branch error source stringifySignedInt64Call target convertSignedInt64ToStringFailed
+call ownSignedInt64StringCall copyTransientTextToOwnedString
+argument ownSignedInt64StringCall transientText String signedInt64TransientText
+run ownSignedInt64StringCall
+bind ok signedInt64StringResult String ownSignedInt64StringCall
+bind error signedInt64OwnedStringError ConversionError ownSignedInt64StringCall
+branch error source ownSignedInt64StringCall target convertSignedInt64ToStringOwnedFailed
+return ok signedInt64StringResult
+label convertSignedInt64ToStringOwnedFailed
+return error signedInt64OwnedStringError
+label convertSignedInt64ToStringFailed
+makeError signedInt64StringFailure ConversionError.TextEncodeFailed signedInt64StringError
+return error signedInt64StringFailure
+
+# rationale: Format an Int32 as null-terminated decimal text after explicit sign extension.
+# invariant: OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes.
+operation convertSignedInt32ToString
+input operation convertSignedInt32ToString inputValue Int32
+output operation convertSignedInt32ToString Result String ConversionError
+useCapability convertSignedInt32ToString conversionHeapAllocationCapability
+useCapability convertSignedInt32ToString conversionMemoryBufferReadCapability
+useCapability convertSignedInt32ToString conversionMemoryBufferWriteCapability
+effect convertSignedInt32ToString allocate heap
+effect convertSignedInt32ToString read memory.buffer
+effect convertSignedInt32ToString write memory.buffer
+memory convertSignedInt32ToString heap yes
+async convertSignedInt32ToString no
+purpose operation convertSignedInt32ToString "Format an Int32 as null-terminated decimal text after explicit sign extension."
+invariant operation convertSignedInt32ToString "OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes."
+failure convertSignedInt32ToString TextEncodeFailed "The runtime formatter could not encode the number."
+failure convertSignedInt32ToString TextAllocationFailed "The heap allocation for the owned string failed."
+label startConvertSignedInt32ToString
+call widenSignedInt32ForStringCall math.signExtendInt32ToInt64
+argument widenSignedInt32ForStringCall inputValue Int32 inputValue
+run widenSignedInt32ForStringCall
+bind value signedInt32StringValue64 Int64 widenSignedInt32ForStringCall
+call stringifySignedInt32Call json.stringify.Int64
+argument stringifySignedInt32Call value Int64 signedInt32StringValue64
+run stringifySignedInt32Call
+bind ok signedInt32TransientText String stringifySignedInt32Call
+bind error signedInt32StringError JsonEncodeError stringifySignedInt32Call
+branch error source stringifySignedInt32Call target convertSignedInt32ToStringFailed
+call ownSignedInt32StringCall copyTransientTextToOwnedString
+argument ownSignedInt32StringCall transientText String signedInt32TransientText
+run ownSignedInt32StringCall
+bind ok signedInt32StringResult String ownSignedInt32StringCall
+bind error signedInt32OwnedStringError ConversionError ownSignedInt32StringCall
+branch error source ownSignedInt32StringCall target convertSignedInt32ToStringOwnedFailed
+return ok signedInt32StringResult
+label convertSignedInt32ToStringOwnedFailed
+return error signedInt32OwnedStringError
+label convertSignedInt32ToStringFailed
+makeError signedInt32StringFailure ConversionError.TextEncodeFailed signedInt32StringError
+return error signedInt32StringFailure
+
+# rationale: Format a Float64 as null-terminated decimal text using the JSON primitive formatter intrinsic.
+# invariant: OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes.
+operation convertFloat64ToString
+input operation convertFloat64ToString inputValue Float64
+output operation convertFloat64ToString Result String ConversionError
+useCapability convertFloat64ToString conversionHeapAllocationCapability
+useCapability convertFloat64ToString conversionMemoryBufferReadCapability
+useCapability convertFloat64ToString conversionMemoryBufferWriteCapability
+effect convertFloat64ToString allocate heap
+effect convertFloat64ToString read memory.buffer
+effect convertFloat64ToString write memory.buffer
+memory convertFloat64ToString heap yes
+async convertFloat64ToString no
+purpose operation convertFloat64ToString "Format a Float64 as null-terminated decimal text."
+invariant operation convertFloat64ToString "OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes."
+failure convertFloat64ToString TextEncodeFailed "The runtime formatter could not encode the number."
+failure convertFloat64ToString TextAllocationFailed "The heap allocation for the owned string failed."
+label startConvertFloat64ToString
+call stringifyFloat64Call json.stringify.Float64
+argument stringifyFloat64Call value Float64 inputValue
+run stringifyFloat64Call
+bind ok float64TransientText String stringifyFloat64Call
+bind error float64StringError JsonEncodeError stringifyFloat64Call
+branch error source stringifyFloat64Call target convertFloat64ToStringFailed
+call ownFloat64StringCall copyTransientTextToOwnedString
+argument ownFloat64StringCall transientText String float64TransientText
+run ownFloat64StringCall
+bind ok float64StringResult String ownFloat64StringCall
+bind error float64OwnedStringError ConversionError ownFloat64StringCall
+branch error source ownFloat64StringCall target convertFloat64ToStringOwnedFailed
+return ok float64StringResult
+label convertFloat64ToStringOwnedFailed
+return error float64OwnedStringError
+label convertFloat64ToStringFailed
+makeError float64StringFailure ConversionError.TextEncodeFailed float64StringError
+return error float64StringFailure
+
+# rationale: Format a Bool as the null-terminated token true or false.
+# invariant: OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes.
+operation convertBoolToString
+input operation convertBoolToString inputValue Bool
+output operation convertBoolToString Result String ConversionError
+useCapability convertBoolToString conversionHeapAllocationCapability
+useCapability convertBoolToString conversionMemoryBufferReadCapability
+useCapability convertBoolToString conversionMemoryBufferWriteCapability
+effect convertBoolToString allocate heap
+effect convertBoolToString read memory.buffer
+effect convertBoolToString write memory.buffer
+memory convertBoolToString heap yes
+async convertBoolToString no
+purpose operation convertBoolToString "Format a Bool as the null-terminated token true or false."
+invariant operation convertBoolToString "OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes."
+failure convertBoolToString TextEncodeFailed "The runtime formatter could not encode the bool token."
+failure convertBoolToString TextAllocationFailed "The heap allocation for the owned string failed."
+label startConvertBoolToString
+call stringifyBoolCall json.stringify.Bool
+argument stringifyBoolCall value Bool inputValue
+run stringifyBoolCall
+bind ok boolTransientText String stringifyBoolCall
+bind error boolStringError JsonEncodeError stringifyBoolCall
+branch error source stringifyBoolCall target convertBoolToStringFailed
+call ownBoolStringCall copyTransientTextToOwnedString
+argument ownBoolStringCall transientText String boolTransientText
+run ownBoolStringCall
+bind ok boolStringResult String ownBoolStringCall
+bind error boolOwnedStringError ConversionError ownBoolStringCall
+branch error source ownBoolStringCall target convertBoolToStringOwnedFailed
+return ok boolStringResult
+label convertBoolToStringOwnedFailed
+return error boolOwnedStringError
+label convertBoolToStringFailed
+makeError boolStringFailure ConversionError.TextEncodeFailed boolStringError
+return error boolStringFailure
+
+# rationale: Parse null-terminated decimal text into Int64 using the strict JSON primitive parser.
+# invariant: Rejects malformed tokens and trailing junk instead of silently returning partial data.
+operation parseStringToSignedInt64
+input operation parseStringToSignedInt64 inputText String
+output operation parseStringToSignedInt64 Result Int64 ConversionError
+memory parseStringToSignedInt64 heap no
+async parseStringToSignedInt64 no
+purpose operation parseStringToSignedInt64 "Parse null-terminated decimal text into Int64 using the strict JSON primitive parser."
+invariant operation parseStringToSignedInt64 "Rejects malformed tokens and trailing junk instead of silently returning partial data."
+failure parseStringToSignedInt64 TextDecodeFailed "The input text was not a valid Int64 token."
+label startParseStringToSignedInt64
+call parseSignedInt64Call json.parse.Int64
+argument parseSignedInt64Call jsonText JsonText inputText
+run parseSignedInt64Call
+bind ok parsedSignedInt64Result Int64 parseSignedInt64Call
+bind error parseSignedInt64Error JsonDecodeError parseSignedInt64Call
+branch error source parseSignedInt64Call target parseStringToSignedInt64Failed
+return ok parsedSignedInt64Result
+label parseStringToSignedInt64Failed
+makeError parseSignedInt64Failure ConversionError.TextDecodeFailed parseSignedInt64Error
+return error parseSignedInt64Failure
+
+# rationale: Parse null-terminated decimal text into Int32 by strict Int64 parse followed by explicit narrowing.
+# invariant: In-range values round-trip exactly; out-of-range values are narrowed the same way as narrowSignedInt64ToSignedInt32.
+operation parseStringToSignedInt32
+input operation parseStringToSignedInt32 inputText String
+output operation parseStringToSignedInt32 Result Int32 ConversionError
+memory parseStringToSignedInt32 heap no
+async parseStringToSignedInt32 no
+purpose operation parseStringToSignedInt32 "Parse null-terminated decimal text into Int32 by strict Int64 parse followed by explicit narrowing."
+invariant operation parseStringToSignedInt32 "In-range values round-trip exactly; out-of-range values are narrowed the same way as narrowSignedInt64ToSignedInt32."
+warning parseStringToSignedInt32 "No range error is raised after the Int64 parse; values outside Int32 range are truncated."
+failure parseStringToSignedInt32 TextDecodeFailed "The input text was not a valid integer token."
+label startParseStringToSignedInt32
+call parseSignedInt32BaseCall json.parse.Int64
+argument parseSignedInt32BaseCall jsonText JsonText inputText
+run parseSignedInt32BaseCall
+bind ok parsedSignedInt32BaseValue Int64 parseSignedInt32BaseCall
+bind error parseSignedInt32Error JsonDecodeError parseSignedInt32BaseCall
+branch error source parseSignedInt32BaseCall target parseStringToSignedInt32Failed
+call narrowParsedSignedInt32Call math.truncateInt64ToInt32
+argument narrowParsedSignedInt32Call inputValue Int64 parsedSignedInt32BaseValue
+run narrowParsedSignedInt32Call
+bind value parsedSignedInt32Result Int32 narrowParsedSignedInt32Call
+return ok parsedSignedInt32Result
+label parseStringToSignedInt32Failed
+makeError parseSignedInt32Failure ConversionError.TextDecodeFailed parseSignedInt32Error
+return error parseSignedInt32Failure
+
+# rationale: Parse null-terminated decimal text into Float64 using the strict JSON primitive parser.
+# invariant: Rejects malformed tokens and trailing junk instead of silently returning partial data.
+operation parseStringToFloat64
+input operation parseStringToFloat64 inputText String
+output operation parseStringToFloat64 Result Float64 ConversionError
+memory parseStringToFloat64 heap no
+async parseStringToFloat64 no
+purpose operation parseStringToFloat64 "Parse null-terminated decimal text into Float64 using the strict JSON primitive parser."
+invariant operation parseStringToFloat64 "Rejects malformed tokens and trailing junk instead of silently returning partial data."
+failure parseStringToFloat64 TextDecodeFailed "The input text was not a valid Float64 token."
+label startParseStringToFloat64
+call parseFloat64Call json.parse.Float64
+argument parseFloat64Call jsonText JsonText inputText
+run parseFloat64Call
+bind ok parsedFloat64Result Float64 parseFloat64Call
+bind error parseFloat64Error JsonDecodeError parseFloat64Call
+branch error source parseFloat64Call target parseStringToFloat64Failed
+return ok parsedFloat64Result
+label parseStringToFloat64Failed
+makeError parseFloat64Failure ConversionError.TextDecodeFailed parseFloat64Error
+return error parseFloat64Failure
+
+# rationale: Parse null-terminated text into Bool using the strict JSON primitive parser.
+# invariant: Accepts only the JSON tokens true and false.
+operation parseStringToBool
+input operation parseStringToBool inputText String
+output operation parseStringToBool Result Bool ConversionError
+memory parseStringToBool heap no
+async parseStringToBool no
+purpose operation parseStringToBool "Parse null-terminated text into Bool using the strict JSON primitive parser."
+invariant operation parseStringToBool "Accepts only the JSON tokens true and false."
+failure parseStringToBool TextDecodeFailed "The input text was not a valid Bool token."
+label startParseStringToBool
+call parseBoolCall json.parse.Bool
+argument parseBoolCall jsonText JsonText inputText
+run parseBoolCall
+bind ok parsedBoolResult Bool parseBoolCall
+bind error parseBoolError JsonDecodeError parseBoolCall
+branch error source parseBoolCall target parseStringToBoolFailed
+return ok parsedBoolResult
+label parseStringToBoolFailed
+makeError parseBoolFailure ConversionError.TextDecodeFailed parseBoolError
+return error parseBoolFailure
 
 # section convert.pointers
 
@@ -185,7 +552,7 @@ warning advanceOpaquePointerByByteOffset "Caller is responsible for the result l
 guarantee advanceOpaquePointerByByteOffset "Total."
 label startAdvanceOpaquePointerByByteOffset
 call applyPointerOffsetCall pointer.offset
-argument applyPointerOffsetCall base String baseValue
+argument applyPointerOffsetCall buffer OpaquePointer baseValue
 argument applyPointerOffsetCall offset ByteCount byteOffset
 run applyPointerOffsetCall
 bind value offsetPointerResult OpaquePointer applyPointerOffsetCall

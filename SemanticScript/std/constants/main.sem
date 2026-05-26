@@ -9,6 +9,8 @@ moduleDoesNotOwn standard.constants "App-specific wrappers, compatibility aliase
 invariant module standard.constants "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.constants constantsModuleVersionText
+exportConstant standard.constants mathematicalPiFloat64
+exportConstant standard.constants mathematicalEulerNumberFloat64
 storage module immutable constantsModuleVersionText String "standard.constants 0.1"
 
 # Canonical standard-library implementation body.

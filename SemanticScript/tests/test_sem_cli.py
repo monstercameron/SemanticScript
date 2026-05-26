@@ -368,15 +368,20 @@ class TestSemAgentPayloads(unittest.TestCase):
         math_payload = sem._docs_payload("get", operation_name="math.addInt64")
         pointer_payload = sem._docs_payload("get", operation_name="pointer.isNull")
         malloc_payload = sem._docs_payload("get", operation_name="c.malloc")
+        aligned_alloc_payload = sem._docs_payload("get", operation_name="c.alignedAlloc")
+        snprintf_payload = sem._docs_payload("get", operation_name="c.snprintf")
+        setjmp_payload = sem._docs_payload("get", operation_name="c.setjmp")
         free_payload = sem._docs_payload("get", operation_name="c.free")
         realloc_payload = sem._docs_payload("get", operation_name="c.realloc")
+        thread_create_payload = sem._docs_payload("get", operation_name="c.threadCreate")
+        memcpy_payload = sem._docs_payload("get", operation_name="c.memcpy")
 
         self.assertTrue(console_payload["ok"])
         console_usage = console_payload["target"]["usage"]
         self.assertFalse(console_usage["importRequired"])
         self.assertEqual(console_usage["importRow"], "")
         self.assertIn("effect <callerOperation> write console.stdout", console_usage["effectRows"])
-        self.assertIn("ignore ok source writeLineCall type Void", console_usage["call"]["rows"])
+        self.assertIn("ignore void source writeLineCall", console_usage["call"]["rows"])
         self.assertIn("bind error writeLineError Int32 writeLineCall", console_usage["failureHandling"]["rows"])
 
         self.assertTrue(math_payload["ok"])
@@ -389,10 +394,29 @@ class TestSemAgentPayloads(unittest.TestCase):
 
         self.assertTrue(malloc_payload["ok"])
         malloc_usage = malloc_payload["target"]["usage"]
+        self.assertEqual(malloc_payload["target"]["wrapperPolicy"]["decision"], "stdlib-wrapper-planned")
+        self.assertEqual(malloc_payload["target"]["wrapperPolicy"]["module"], "standard.memory")
         self.assertIn({"action": "allocate", "path": "heap"}, malloc_usage["requiredCallerEffects"])
         self.assertIn("branch if condition mallocIsNull target <failureLabel>", malloc_usage["failureHandling"]["rows"])
         self.assertIn("call mallocCleanupCall c.free", malloc_usage["cleanup"]["rows"])
         self.assertIn({"action": "free", "path": "heap"}, malloc_usage["cleanup"]["requiredCallerEffects"])
+
+        self.assertTrue(aligned_alloc_payload["ok"])
+        self.assertEqual(aligned_alloc_payload["target"]["wrapperPolicy"]["decision"], "stdlib-wrapper-planned")
+        self.assertIn("argument alignedAllocCall alignment ByteCount <alignment>", aligned_alloc_payload["target"]["usage"]["call"]["rows"])
+        self.assertIn("call alignedAllocCleanupCall c.free", aligned_alloc_payload["target"]["usage"]["cleanup"]["rows"])
+
+        self.assertTrue(snprintf_payload["ok"])
+        self.assertEqual(snprintf_payload["target"]["wrapperPolicy"]["decision"], "native-adapter-required")
+        self.assertEqual(snprintf_payload["target"]["wrapperPolicy"]["module"], "standard.format/standard.stdio")
+        self.assertFalse(snprintf_payload["target"]["visibility"]["public"])
+        self.assertFalse(snprintf_payload["target"]["usage"]["availableForCodegen"])
+        self.assertIn("native-adapter-required", snprintf_payload["target"]["usage"]["reason"])
+
+        self.assertTrue(setjmp_payload["ok"])
+        self.assertEqual(setjmp_payload["target"]["wrapperPolicy"]["decision"], "abi-blocked")
+        self.assertFalse(setjmp_payload["target"]["visibility"]["public"])
+        self.assertFalse(setjmp_payload["target"]["usage"]["availableForCodegen"])
 
         self.assertTrue(free_payload["ok"])
         self.assertIn("ignore void source freeCall", free_payload["target"]["usage"]["call"]["rows"])
@@ -401,6 +425,67 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(realloc_payload["ok"])
         self.assertEqual(realloc_payload["target"]["loweringStatus"], "partial")
         self.assertFalse(realloc_payload["target"]["usage"]["availableForCodegen"])
+
+        self.assertTrue(thread_create_payload["ok"])
+        self.assertEqual(thread_create_payload["target"]["wrapperPolicy"]["decision"], "native-adapter-required")
+        self.assertFalse(thread_create_payload["target"]["visibility"]["public"])
+        self.assertFalse(thread_create_payload["target"]["usage"]["availableForCodegen"])
+
+        self.assertTrue(memcpy_payload["ok"])
+        memcpy_target = memcpy_payload["target"]
+        memcpy_usage = memcpy_target["usage"]
+        self.assertEqual(memcpy_target["wrapperPolicy"]["decision"], "stdlib-wrapper-planned")
+        self.assertIn({"action": "read", "path": "memory.buffer"}, memcpy_usage["requiredCallerEffects"])
+        self.assertIn({"action": "write", "path": "memory.buffer"}, memcpy_usage["requiredCallerEffects"])
+        self.assertTrue(memcpy_usage["preconditions"]["required"])
+        self.assertIn("argument memcpyCall destination OpaquePointer <destination>", memcpy_usage["call"]["rows"])
+
+    def test_docs_registry_covers_every_libc_target(self) -> None:
+        registry = sem._libc_registry()
+        symbol_to_alias = {
+            c_symbol: alias
+            for alias, c_symbol in registry.SEMANTICSCRIPT_FACING_ALIASES.items()
+        }
+        missing = []
+        missing_policy = []
+        unsafe_codegen = []
+
+        for c_symbol in sorted(registry.ALL_FUNCTIONS):
+            semantic_name = symbol_to_alias.get(c_symbol, c_symbol)
+            target_name = f"c.{semantic_name}"
+            target_doc = sem._libc_target_doc(target_name)
+            if target_doc is None:
+                missing.append(target_name)
+                continue
+            wrapper_policy = target_doc.get("wrapperPolicy") or {}
+            if not wrapper_policy.get("decision") or not wrapper_policy.get("module"):
+                missing_policy.append(target_name)
+            if wrapper_policy.get("decision") in {"native-adapter-required", "no-public-wrapper", "abi-blocked"}:
+                usage = target_doc.get("usage") or {}
+                if usage.get("availableForCodegen", True):
+                    unsafe_codegen.append(target_name)
+
+        self.assertEqual(missing, [])
+        self.assertEqual(missing_policy, [])
+        self.assertEqual(unsafe_codegen, [])
+
+    def test_docs_get_standard_memory_allocation_wrappers_are_actionable(self) -> None:
+        allocate_payload = sem._docs_payload("get", operation_name="allocateMemoryBytes")
+        release_payload = sem._docs_payload("get", operation_name="releaseMemoryBytes")
+
+        self.assertTrue(allocate_payload["ok"])
+        allocate_operation = allocate_payload["operation"]
+        self.assertEqual(allocate_operation["qualifiedName"], "memory.allocateMemoryBytes")
+        self.assertTrue(allocate_operation["visibility"]["public"])
+        self.assertIn("bind error allocateMemoryBytesError MemoryAllocationError allocateMemoryBytesCall", allocate_operation["usage"]["failureHandling"]["rows"])
+        self.assertEqual(allocate_operation["usage"]["cleanup"]["callTarget"], "memory.releaseMemoryBytes")
+        self.assertIn("argument allocateMemoryBytesCleanupCall memoryBuffer OpaquePointer allocateMemoryBytesResult", allocate_operation["usage"]["cleanup"]["rows"])
+
+        self.assertTrue(release_payload["ok"])
+        release_operation = release_payload["operation"]
+        self.assertEqual(release_operation["qualifiedName"], "memory.releaseMemoryBytes")
+        self.assertFalse(release_operation["usage"]["cleanup"]["required"])
+        self.assertIn("ignore void source releaseMemoryBytesCall", release_operation["usage"]["call"]["rows"])
 
     def test_docs_index_and_search_user_generated_code(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -823,7 +908,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(operation["usage"]["failureMode"]["kind"], "caller-precondition")
         self.assertTrue(operation["usage"]["preconditions"]["required"])
         self.assertFalse(operation["usage"]["failureHandling"]["required"])
-        self.assertEqual(operation["visibility"]["apiTier"], "helper")
+        self.assertEqual(operation["visibility"]["apiTier"], "exported")
         self.assertTrue(operation["agentWarnings"])
 
     def test_docs_metadata_ownership_text_becomes_actionable(self) -> None:
@@ -1001,7 +1086,9 @@ class TestSemAgentPayloads(unittest.TestCase):
 
         self.assertEqual(result, 0)
         compiler_args = run_compiler.call_args.args[1]
-        self.assertEqual(compiler_args[:2], ["--parse-only", "--lint"])
+        # human `sem check` is codegen-honest: it runs the lowering preflight
+        # (`--lower-check`) plus the linter, rather than the cheap parse probe.
+        self.assertEqual(compiler_args[:2], ["--lower-check", "--lint"])
         self.assertNotIn("migrate", " ".join(compiler_args).lower())
         self.assertNotIn("convert", " ".join(compiler_args).lower())
 
@@ -1032,7 +1119,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(all("replayable" in item for item in payload["nextCommands"]))
 
     def test_check_command_with_readiness_fails_when_embedded_readiness_is_not_ok(self) -> None:
-        args = argparse.Namespace(json=True, full=False, with_readiness=True, path=".", compiler_args=[])
+        args = argparse.Namespace(json=True, full=False, with_readiness=True, path="SemanticScript/tests/tiny.sem", compiler_args=[])
         payload = {
             "ok": True,
             "status": "ok",
@@ -1515,6 +1602,28 @@ class TestSemAgentPayloads(unittest.TestCase):
                 command = next(item for item in payload["nextCommands"] if item["kind"] == kind)
                 self.assertFalse(command["replayable"])
 
+    def test_new_payload_creates_web_starter_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "health-api"
+            payload = sem._starter_project_payload(root, template="web")
+
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["project"]["template"], "web")
+            build_text = (root / "build.sem").read_text(encoding="utf-8")
+            main_text = (root / "main.sem").read_text(encoding="utf-8")
+            workflow_text = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+            self.assertIn("target webServer", build_text)
+            self.assertIn("targetRuntime healthApi webServer", build_text)
+            self.assertIn("webServerStartup appServer startup", main_text)
+            self.assertIn("webServerShutdown appServer shutdown", main_text)
+            self.assertIn("routeTimeoutOptOut appServer \"/health\"", main_text)
+            self.assertIn("routeMiddlewareOptOut appServer \"/health\"", main_text)
+            self.assertIn("http.responseText", main_text)
+            self.assertIn("sem.py build . -- --emit-exe", workflow_text)
+            self.assertNotIn("sem.py run .", workflow_text)
+            self.assertFalse(any(item["kind"] == "run" for item in payload["nextCommands"]))
+            self.assertTrue(any(item["kind"] == "dev" for item in payload["nextCommands"]))
+
     def test_new_payload_refuses_nonempty_directory_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "hello-world"
@@ -1663,6 +1772,47 @@ class TestSemAgentPayloads(unittest.TestCase):
             )
             self.assertEqual(run_proc.returncode, 0, run_proc.stderr)
             self.assertEqual(run_proc.stdout, "Hello, world!\n")
+
+    def test_new_web_starter_checks_and_run_reports_long_running(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "health-api"
+            payload = sem._starter_project_payload(root, template="web")
+            self.assertTrue(payload["ok"])
+
+            check_proc = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "SemanticScript" / "tools" / "sem.py"), "check", "--json", str(root)],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(check_proc.returncode, 0, check_proc.stderr)
+            check_payload = json.loads(check_proc.stdout)
+            self.assertIn(check_payload["status"], {"ok", "ok-with-warnings"})
+            self.assertTrue(check_payload["buildable"])
+            self.assertLessEqual(
+                {d["code"] for d in check_payload["diagnostics"]}, {"SS2516"})
+
+            run_proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "SemanticScript" / "tools" / "sem.py"),
+                    "run",
+                    "--json",
+                    str(root),
+                ],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            self.assertEqual(run_proc.returncode, 2, run_proc.stderr)
+            run_payload = json.loads(run_proc.stdout)
+            self.assertEqual(run_payload["schemaVersion"], "sem.run.v1")
+            self.assertEqual(run_payload["status"], "long-running-target")
+            self.assertEqual(run_payload["targetKind"], "webServer")
+            self.assertEqual(run_payload["baseUrl"], "http://127.0.0.1:8080")
+            self.assertFalse(run_payload["execution"]["ran"])
 
     def test_markdown_heading_index_ignores_indented_example_comments(self) -> None:
         headings = sem._markdown_heading_index(

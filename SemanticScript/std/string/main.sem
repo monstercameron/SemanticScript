@@ -11,8 +11,22 @@ invariant module standard.string "The standard module entry is this file; tests 
 exportConstant standard.string stringModuleVersionText
 storage module immutable stringModuleVersionText String "standard.string 0.1"
 
+exportOperation standard.string stringByteLength
+exportOperation standard.string compareCString
+exportOperation standard.string compareCStringPrefixBytes
 exportOperation standard.string findFirstCharacterInCString
+exportOperation standard.string findLastCharacterInCString
+exportOperation standard.string findSubstringInCString
 exportOperation standard.string countInitialCStringBytesInAcceptSet
+exportOperation standard.string copyCStringToDestinationBuffer
+exportOperation standard.string appendCStringToDestinationBuffer
+exportOperation standard.string copyCStringPrefixToDestinationBuffer
+exportOperation standard.string countInitialCStringBytesNotInRejectSet
+exportOperation standard.string findFirstCStringByteInAcceptSet
+exportOperation standard.string duplicateCStringIntoOwnedMemory
+exportOperation standard.string appendCStringPrefixToDestinationBuffer
+exportOperation standard.string cstringBeginsWithPrefix
+exportOperation standard.string cstringEndsWithSuffix
 
 # Canonical standard-library implementation body.
 # ============================================================

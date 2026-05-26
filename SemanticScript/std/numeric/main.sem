@@ -9,6 +9,17 @@ moduleDoesNotOwn standard.numeric "App-specific wrappers, compatibility aliases,
 invariant module standard.numeric "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.numeric numericModuleVersionText
+exportOperation standard.numeric incrementSignedInt64
+exportOperation standard.numeric decrementSignedInt64
+exportOperation standard.numeric doubleSignedInt64
+exportOperation standard.numeric halveSignedInt64
+exportOperation standard.numeric negateSignedInt64
+exportOperation standard.numeric reciprocalFloat64
+exportOperation standard.numeric sumSignedInt64OneThroughN
+exportOperation standard.numeric sumSignedInt64SquaresOneThroughN
+exportOperation standard.numeric sumSignedInt64CubesOneThroughN
+exportOperation standard.numeric triangularNumberSignedInt64
+exportOperation standard.numeric leastCommonMultipleSignedInt64
 storage module immutable numericModuleVersionText String "standard.numeric 0.1"
 
 # Canonical standard-library implementation body.

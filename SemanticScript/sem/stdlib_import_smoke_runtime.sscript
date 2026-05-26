@@ -91,9 +91,9 @@ call assertByteCoerceCall convertByteValueToUnsignedInt32
 argument assertByteCoerceCall signExtendedByteValue Int32 negativeOneAsSignedInt32Import
 run assertByteCoerceCall
 bind value byteCoerceResult Int32 assertByteCoerceCall
-call checkByteCoerceCall math.equalInt64
+call checkByteCoerceCall math.equalInt32
 argument checkByteCoerceCall left Int32 byteCoerceResult
-argument checkByteCoerceCall right Int64 expectedTwoFiftyFiveForByteCoerceImport
+argument checkByteCoerceCall right Int32 expectedTwoFiftyFiveForByteCoerceImport
 run checkByteCoerceCall
 bind value byteCoerceOk Bool checkByteCoerceCall
 branch if condition byteCoerceOk target byteCoerceHolds
@@ -134,13 +134,13 @@ branch error source assertImportedRequireEqualCall target stdlibImportRuntimeAss
 # ---- stdio: writeSignedInt64DecimalToStandardOutput(12345) writes the digits + newline.
 # The byte count we get back should be 5 (digit count, not including newline).
 storage module immutable twelveThousandThreeHundredFortyFiveForStdioImport Int64 12345
-storage module immutable fiveExpectedDigitCountForStdioImport ByteCount 5
+storage module immutable fiveExpectedDigitCountForStdioImport Int64 5
 call assertStdioWriteIntegerCall writeSignedInt64DecimalToStandardOutput
 argument assertStdioWriteIntegerCall inputValue Int64 twelveThousandThreeHundredFortyFiveForStdioImport
 run assertStdioWriteIntegerCall
 bind value stdioWriteIntegerResult ByteCount assertStdioWriteIntegerCall
 call checkStdioWriteIntegerCall math.equalInt64
-argument checkStdioWriteIntegerCall left ByteCount stdioWriteIntegerResult
+argument checkStdioWriteIntegerCall left Int64 stdioWriteIntegerResult
 argument checkStdioWriteIntegerCall right Int64 fiveExpectedDigitCountForStdioImport
 run checkStdioWriteIntegerCall
 bind value stdioWriteIntegerOk Bool checkStdioWriteIntegerCall
@@ -168,10 +168,9 @@ label stdioWriteIntegerPostProcess
 
 storage module immutable runtimeImportSuccessMessage String "OK"
 call writeRuntimeImportSuccessCall console.writeLine
-argument writeRuntimeImportSuccessCall console Console console
 argument writeRuntimeImportSuccessCall text String runtimeImportSuccessMessage
 run writeRuntimeImportSuccessCall
-ignore ok source writeRuntimeImportSuccessCall type Int32
+ignore void source writeRuntimeImportSuccessCall
 bind error runtimeImportConsoleWriteError Int32 writeRuntimeImportSuccessCall
 branch error source writeRuntimeImportSuccessCall target runtimeImportConsoleWriteFailed
 storage module immutable runtimeImportExitOk ExitCode 0

@@ -96,3 +96,56 @@ exportOperation standard.bcrypt hashPassword
 exportOperation standard.bcrypt verifyPassword
 exportOperation standard.bcrypt randomBytes
 exportOperation standard.bcrypt base64UrlEncode
+exportOperation standard.bcrypt issueSessionToken
+
+# rationale: Issue a fresh URL-safe session token by composing the two CSPRNG
+#   primitives apps previously wired by hand. Field experience shows callers
+#   misusing the manual path (e.g. hashing an email as a "token"); this gives
+#   one correct call from raw entropy to a 43-char base64url SessionToken.
+# invariant: On success returns 0; tokenBuffer holds a null-terminated 43-char
+#   base64url token and tokenLengthOut receives its length. randomScratch needs
+#   >= sessionTokenEntropyByteCount (32) bytes; tokenBuffer needs
+#   >= sessionTokenBufferRequiredBytes (44) bytes.
+# security: All token entropy comes from bcrypt.randomBytes (platform CSPRNG);
+#   never derive a session token from user input or any predictable source.
+operation issueSessionToken
+input operation issueSessionToken randomScratch BcryptRandomBuffer
+input operation issueSessionToken tokenBuffer Base64UrlBuffer
+input operation issueSessionToken tokenCapacity Int32
+input operation issueSessionToken tokenLengthOut OpaquePointer
+output operation issueSessionToken Int32
+effect issueSessionToken read system.random
+effect issueSessionToken write memory.buffer
+effect issueSessionToken read memory.buffer
+authority issueSessionToken read system.random
+authority issueSessionToken write memory.buffer
+authority issueSessionToken read memory.buffer
+memory issueSessionToken heap no
+async issueSessionToken no
+purpose operation issueSessionToken "Compose bcrypt.randomBytes + bcrypt.base64UrlEncode into one call that fills tokenBuffer with a fresh 43-char base64url session token."
+invariant operation issueSessionToken "On success returns 0 and tokenBuffer holds a null-terminated 43-char base64url token; randomScratch must be >= sessionTokenEntropyByteCount bytes and tokenBuffer >= sessionTokenBufferRequiredBytes bytes."
+security issueSessionToken "Token entropy comes only from bcrypt.randomBytes (platform CSPRNG); never derive a session token from user input or a predictable source."
+label startIssueSessionToken
+call sessionTokenRandomCall bcrypt.randomBytes
+argument sessionTokenRandomCall outBuffer BcryptRandomBuffer randomScratch
+argument sessionTokenRandomCall byteCount Int32 sessionTokenEntropyByteCount
+run sessionTokenRandomCall
+bind value sessionTokenRandomStatus Int32 sessionTokenRandomCall
+storage local immutable sessionTokenStatusOk Int32 0
+call sessionTokenRandomOkCall math.equalInt32
+argument sessionTokenRandomOkCall left Int32 sessionTokenRandomStatus
+argument sessionTokenRandomOkCall right Int32 sessionTokenStatusOk
+run sessionTokenRandomOkCall
+bind value sessionTokenRandomOk Bool sessionTokenRandomOkCall
+branch if condition sessionTokenRandomOk target sessionTokenEncodeStep
+return value sessionTokenRandomStatus
+label sessionTokenEncodeStep
+call sessionTokenEncodeCall bcrypt.base64UrlEncode
+argument sessionTokenEncodeCall inputBuffer BcryptRandomBuffer randomScratch
+argument sessionTokenEncodeCall inputCount Int32 sessionTokenEntropyByteCount
+argument sessionTokenEncodeCall outputBuffer Base64UrlBuffer tokenBuffer
+argument sessionTokenEncodeCall outputCapacity Int32 tokenCapacity
+argument sessionTokenEncodeCall outputLengthOut OpaquePointer tokenLengthOut
+run sessionTokenEncodeCall
+bind value sessionTokenEncodeStatus Int32 sessionTokenEncodeCall
+return value sessionTokenEncodeStatus

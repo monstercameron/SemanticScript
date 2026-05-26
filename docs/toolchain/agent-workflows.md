@@ -134,8 +134,12 @@ for a primitive that actually executes:
 
 - **Arithmetic / comparisons / min-max-clamp**: `math.*` intrinsics, including
   `math.minInt64`, `math.maxInt64`, and `math.clampInt64`.
-- **String / memory utilities**: the `c.*` libc externs, e.g. `c.strlen`,
-  `c.snprintf`, `c.memcpy`, `c.malloc`/`c.free`. These link directly.
+- **String / memory utilities**: prefer exported `standard.*` operations when
+  they are executable in the current target. For heap buffers, use
+  `memory.allocateMemoryBytes` and `memory.releaseMemoryBytes`. Raw `c.*` libc externs such as `c.strlen`,
+  `c.snprintf`, `c.memcpy`, and allocator calls are escape hatches; inspect
+  `sem docs get c.<name> --json` and read `target.wrapperPolicy` before
+  generating them.
 - **Composition**: the compiler-lowered DSLs (`sql body`, `jsonBody`,
   `html template` + `html.hydrate`) work in every target.
 
@@ -144,6 +148,10 @@ compiler-owned intrinsic that executes; a real `…/std/…/main.sem` path is
 SemanticScript stdlib that won't link in a native build. (`standard.map` is a
 capacity calculator over `entryCount`/`keyPresent`, not a container — implement
 your own storage.)
+
+For `c.*`, `wrapperPolicy.decision` is the migration signal. Generate raw calls
+only when the policy and target constraints justify the escape hatch; otherwise
+prefer the named `wrapperPolicy.module` surface or add that wrapper first.
 
 ## Why Each Tool Exists
 
@@ -450,8 +458,8 @@ includes `purpose`, `invariants`, `usage.call.rows`,
 `usage.call.rows` as call-and-bind rows, not the whole safe integration; append
 `usage.failureHandling.rows` and `usage.cleanup.rows` whenever their `required`
 flags are true, and satisfy `usage.preconditions` before the call when present.
-Cleanup payloads for `c.free` include required heap-free effect and authority
-guidance. When a required capability is not exported, prefer
+Cleanup payloads for `c.free` and `memory.releaseMemoryBytes` include required
+heap-free effect and authority guidance. When a required capability is not exported, prefer
 `usage.authorityRows` or the complete local declaration/use pairs in
 `usage.localCapabilityRows` over std-internal capability names. Public lookup hides runtimeBinding helpers by default; pass `--all`
 only when intentionally inspecting std internals. Modules that expose

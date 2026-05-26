@@ -16,6 +16,7 @@ runtime AgentRuntime 0.1
 entry console main
 
 import convert standard.convert
+import memory standard.memory
 error MainError
 errorCase MainError ConvertSmokeAssertionFailed
 errorCase MainError ConsoleWriteFailed
@@ -23,6 +24,8 @@ errorCase MainError ConsoleWriteFailed
 # section capability
 # rationale: smoke-test main writes a single OK line to stdout.
 capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
 
 # ============================================================
 # Smoke test
@@ -32,8 +35,12 @@ operation main
 input operation main console Console
 output operation main Result ExitCode MainError
 useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
 effect main write console.stdout
-memory main heap no
+effect main allocate heap
+effect main free heap
+memory main heap yes
 async main no
 purpose operation main "Smoke-test the conversion operations."
 invariant operation main "widen(-1) == -1; convertByteValueToUnsignedInt32(-1) == 255; convertFloat64ToSignedInt64(3.7) == 3."
@@ -256,12 +263,158 @@ branch if condition byteMidOk target byteMidHolds
 branch else target smokeAssertionFailed
 label byteMidHolds
 
+# convertBoolToSignedInt64(true) == 1
+storage module immutable trueForConvert Bool true
+storage module immutable oneAsSignedInt64 Int64 1
+call boolToInt64Call convertBoolToSignedInt64
+argument boolToInt64Call inputValue Bool trueForConvert
+run boolToInt64Call
+bind value boolToInt64Result Int64 boolToInt64Call
+call boolToInt64CheckCall math.equalInt64
+argument boolToInt64CheckCall left Int64 boolToInt64Result
+argument boolToInt64CheckCall right Int64 oneAsSignedInt64
+run boolToInt64CheckCall
+bind value boolToInt64Ok Bool boolToInt64CheckCall
+branch if condition boolToInt64Ok target boolToInt64Holds
+branch else target smokeAssertionFailed
+label boolToInt64Holds
+
+# convertSignedInt64ToBool(0) == false
+call int64ZeroToBoolCall convertSignedInt64ToBool
+argument int64ZeroToBoolCall inputValue Int64 zeroSigned
+run int64ZeroToBoolCall
+bind value int64ZeroToBoolResult Bool int64ZeroToBoolCall
+branch if condition int64ZeroToBoolResult target smokeAssertionFailed
+
+# Int64 -> String -> Int64 round-trip.
+storage module immutable negativeFortyTwoForText Int64 -42
+call int64ToStringCall convertSignedInt64ToString
+argument int64ToStringCall inputValue Int64 negativeFortyTwoForText
+run int64ToStringCall
+bind ok int64StringText String int64ToStringCall
+bind error int64StringError ConversionError int64ToStringCall
+branch error source int64ToStringCall target smokeAssertionFailed
+call parseInt64StringCall parseStringToSignedInt64
+argument parseInt64StringCall inputText String int64StringText
+run parseInt64StringCall
+bind ok parsedInt64StringValue Int64 parseInt64StringCall
+bind error parsedInt64StringError ConversionError parseInt64StringCall
+call releaseInt64StringCall memory.releaseMemoryBytes
+argument releaseInt64StringCall memoryBuffer OpaquePointer int64StringText
+run releaseInt64StringCall
+ignore void source releaseInt64StringCall
+branch error source parseInt64StringCall target smokeAssertionFailed
+call checkInt64StringRoundTripCall math.equalInt64
+argument checkInt64StringRoundTripCall left Int64 parsedInt64StringValue
+argument checkInt64StringRoundTripCall right Int64 negativeFortyTwoForText
+run checkInt64StringRoundTripCall
+bind value int64StringRoundTripOk Bool checkInt64StringRoundTripCall
+branch if condition int64StringRoundTripOk target int64StringRoundTripHolds
+branch else target smokeAssertionFailed
+label int64StringRoundTripHolds
+
+# Int32 -> String -> Int32 round-trip.
+storage module immutable negativeSevenAsInt32 Int32 -7
+call int32ToStringCall convertSignedInt32ToString
+argument int32ToStringCall inputValue Int32 negativeSevenAsInt32
+run int32ToStringCall
+bind ok int32StringText String int32ToStringCall
+bind error int32StringError ConversionError int32ToStringCall
+branch error source int32ToStringCall target smokeAssertionFailed
+call parseInt32StringCall parseStringToSignedInt32
+argument parseInt32StringCall inputText String int32StringText
+run parseInt32StringCall
+bind ok parsedInt32StringValue Int32 parseInt32StringCall
+bind error parsedInt32StringError ConversionError parseInt32StringCall
+call releaseInt32StringCall memory.releaseMemoryBytes
+argument releaseInt32StringCall memoryBuffer OpaquePointer int32StringText
+run releaseInt32StringCall
+ignore void source releaseInt32StringCall
+branch error source parseInt32StringCall target smokeAssertionFailed
+call checkInt32StringRoundTripCall math.equalInt32
+argument checkInt32StringRoundTripCall left Int32 parsedInt32StringValue
+argument checkInt32StringRoundTripCall right Int32 negativeSevenAsInt32
+run checkInt32StringRoundTripCall
+bind value int32StringRoundTripOk Bool checkInt32StringRoundTripCall
+branch if condition int32StringRoundTripOk target int32StringRoundTripHolds
+branch else target smokeAssertionFailed
+label int32StringRoundTripHolds
+
+# Float64 -> String -> Float64 round-trip within formatter precision.
+storage module immutable threePointFiveForText Float64 3.5
+call float64ToStringCall convertFloat64ToString
+argument float64ToStringCall inputValue Float64 threePointFiveForText
+run float64ToStringCall
+bind ok float64StringText String float64ToStringCall
+bind error float64StringError ConversionError float64ToStringCall
+branch error source float64ToStringCall target smokeAssertionFailed
+call parseFloat64StringCall parseStringToFloat64
+argument parseFloat64StringCall inputText String float64StringText
+run parseFloat64StringCall
+bind ok parsedFloat64StringValue Float64 parseFloat64StringCall
+bind error parsedFloat64StringError ConversionError parseFloat64StringCall
+call releaseFloat64StringCall memory.releaseMemoryBytes
+argument releaseFloat64StringCall memoryBuffer OpaquePointer float64StringText
+run releaseFloat64StringCall
+ignore void source releaseFloat64StringCall
+branch error source parseFloat64StringCall target smokeAssertionFailed
+call float64StringDiffCall math.subtractFloat64
+argument float64StringDiffCall left Float64 parsedFloat64StringValue
+argument float64StringDiffCall right Float64 threePointFiveForText
+run float64StringDiffCall
+bind value float64StringDiff Float64 float64StringDiffCall
+call float64StringLowerCall math.greaterThanFloat64
+argument float64StringLowerCall left Float64 float64StringDiff
+argument float64StringLowerCall right Float64 negFloatCvtTol
+run float64StringLowerCall
+bind value float64StringAboveLower Bool float64StringLowerCall
+call float64StringUpperCall math.lessThanFloat64
+argument float64StringUpperCall left Float64 float64StringDiff
+argument float64StringUpperCall right Float64 floatCvtTol
+run float64StringUpperCall
+bind value float64StringBelowUpper Bool float64StringUpperCall
+branch if condition float64StringAboveLower target float64StringCheckUpper
+branch else target smokeAssertionFailed
+label float64StringCheckUpper
+branch if condition float64StringBelowUpper target float64StringRoundTripHolds
+branch else target smokeAssertionFailed
+label float64StringRoundTripHolds
+
+# Bool -> String -> Bool round-trip.
+call boolToStringCall convertBoolToString
+argument boolToStringCall inputValue Bool trueForConvert
+run boolToStringCall
+bind ok boolStringText String boolToStringCall
+bind error boolStringError ConversionError boolToStringCall
+branch error source boolToStringCall target smokeAssertionFailed
+call parseBoolStringCall parseStringToBool
+argument parseBoolStringCall inputText String boolStringText
+run parseBoolStringCall
+bind ok parsedBoolStringValue Bool parseBoolStringCall
+bind error parsedBoolStringError ConversionError parseBoolStringCall
+call releaseBoolStringCall memory.releaseMemoryBytes
+argument releaseBoolStringCall memoryBuffer OpaquePointer boolStringText
+run releaseBoolStringCall
+ignore void source releaseBoolStringCall
+branch error source parseBoolStringCall target smokeAssertionFailed
+branch if condition parsedBoolStringValue target boolStringRoundTripHolds
+branch else target smokeAssertionFailed
+label boolStringRoundTripHolds
+
+storage module immutable falseTextLiteral String "false"
+call parseFalseStringCall parseStringToBool
+argument parseFalseStringCall inputText String falseTextLiteral
+run parseFalseStringCall
+bind ok parsedFalseStringValue Bool parseFalseStringCall
+bind error parsedFalseStringError ConversionError parseFalseStringCall
+branch error source parseFalseStringCall target smokeAssertionFailed
+branch if condition parsedFalseStringValue target smokeAssertionFailed
+
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

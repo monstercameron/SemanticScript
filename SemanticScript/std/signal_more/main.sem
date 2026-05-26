@@ -9,6 +9,8 @@ moduleDoesNotOwn standard.signal_more "App-specific wrappers, compatibility alia
 invariant module standard.signal_more "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.signal_more signalMoreModuleVersionText
+exportConstant standard.signal_more hangupSignalNumber
+exportConstant standard.signal_more killSignalNumber
 storage module immutable signalMoreModuleVersionText String "standard.signal_more 0.1"
 
 # Canonical standard-library implementation body.

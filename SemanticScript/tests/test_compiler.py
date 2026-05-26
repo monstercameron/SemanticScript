@@ -33,6 +33,7 @@ HELLO_GUI_DIR = APP_DIR / "desktop-window-smoke"
 
 sys.path.insert(0, str(COMPILER_DIR))
 import semsc  # noqa: E402
+import libc_registry  # noqa: E402
 
 
 FAILURES = []
@@ -2270,6 +2271,42 @@ def test_strict_executable_rejects_heap_allocation_without_free():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_executable_tracks_aligned_alloc_as_heap_owner():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictOwnedAlignedAllocMissingFree",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError OutOfMemory",
+        "operation main",
+        "output operation main Result Void MainError",
+        "effect main allocate heap",
+        "purpose operation main \"strict aligned allocation must have executable free\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable allocationAlignment ByteCount 16",
+        "storage module immutable allocationSize ByteCount 64",
+        "call allocationCall c.alignedAlloc",
+        "argument allocationCall alignment ByteCount allocationAlignment",
+        "argument allocationCall size ByteCount allocationSize",
+        "run allocationCall",
+        "bind ok heapBuffer OpaquePointer allocationCall",
+        "bind error allocationError MainError allocationCall",
+        "branch error source allocationCall target allocationFailed",
+        "return ok noResult",
+        "label allocationFailed",
+        "return error allocationError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable owned resources: alignedAlloc missing heap free fails",
+          proc.returncode == 3
+          and "SS3303" in proc.stderr
+          and "c.free" in proc.stderr
+          and "c.alignedAlloc" in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_executable_rejects_double_heap_free():
     src = "\n".join([
         "languageMode strictExecutable",
@@ -3326,6 +3363,63 @@ def test_compile_hello_world_to_ir():
           "no puts in IR")
 
 
+def test_user_result_operation_error_channel_uses_return_variant_status():
+    def source_for(return_error: bool) -> str:
+        body = [
+            "project UserResultBranchProbe",
+            "target console",
+            "runtime AgentRuntime 0.1",
+            "entry console main",
+            "error ProbeError",
+            "errorCase ProbeError Failed Int32",
+            "operation maybeFail",
+            "output operation maybeFail Result Int64 ProbeError",
+            "memory maybeFail heap no",
+            "async maybeFail no",
+            "purpose operation maybeFail \"Return through a user Result channel.\"",
+        ]
+        if return_error:
+            body.extend([
+                "storage local immutable rawCode Int32 9",
+                "makeError failure ProbeError.Failed rawCode",
+                "return error failure",
+            ])
+        else:
+            body.extend([
+                "storage local immutable resultValue Int64 7",
+                "return ok resultValue",
+            ])
+        body.extend([
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "purpose operation main \"Branch over a local user operation Result channel.\"",
+            "call maybeFailCall maybeFail",
+            "run maybeFailCall",
+            "bind ok okValue Int64 maybeFailCall",
+            "bind error failValue ProbeError maybeFailCall",
+            "branch error source maybeFailCall target failed",
+            "storage local immutable successExit ExitCode 0",
+            "return value successExit",
+            "label failed",
+            "storage local immutable failedExit ExitCode 1",
+            "return value failedExit",
+        ])
+        return "\n".join(body)
+
+    for label, source, expected_exit in (
+        ("ok", source_for(False), 0),
+        ("error", source_for(True), 1),
+    ):
+        prog = semsc.parse(source)
+        mod = semsc.Codegen(prog).compile()
+        rc = semsc.jit_run(str(mod), opt_level=0)
+        check(f"compile: user Result operation {label} branch status",
+              rc == expected_exit,
+              f"expected {expected_exit}, got {rc}")
+
+
 def test_compile_i32_comparison_to_i32_ir():
     source = "\n".join([
         "project Int32Compare",
@@ -4026,7 +4120,7 @@ def test_standard_library_module_relay_exposes_standard_modules():
     canonical_modules = (
         "array", "assert", "bit", "bool", "char", "compare", "constants",
         "convert", "ctype", "errno", "errno_more", "event", "gui", "html", "http",
-        "inttypes", "iso646", "json", "limits", "math", "math_float",
+        "inttypes", "iso646", "json", "limits", "math",
         "memory", "numeric", "process", "random", "signal", "signal_more",
         "sqlite", "sort", "stddef", "stdio", "stdlib", "string", "time",
     )
@@ -5040,6 +5134,59 @@ def test_inspect_ir_reports_http_abi_and_runtime_link_inputs():
     check("inspect-ir: reports native HTTP runtime link inputs",
           "native_http" in components and "runtime.linkInput" in site_kinds,
           f"components={components} siteKinds={site_kinds}")
+
+
+def test_console_http_url_helper_links_native_http_runtime():
+    src = "\n".join([
+        "project HttpUrlHelperLink",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write memory.buffer",
+        "authority main write memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"Exercise compiler-lowered HTTP URL helpers from a console target.\"",
+        "storage module immutable encodedValue String \"hello%20world\"",
+        "storage module immutable nullScratch OpaquePointer 0",
+        "storage module immutable scratchCapacity ByteCount 0",
+        "call decodeCall http.urlDecode",
+        "argument decodeCall value String encodedValue",
+        "argument decodeCall scratch OpaquePointer nullScratch",
+        "argument decodeCall scratchCapacity ByteCount scratchCapacity",
+        "run decodeCall",
+        "bind value decodedValue String decodeCall",
+        "storage module immutable successExit ExitCode 0",
+        "return value successExit",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_url_helper.sem"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--inspect-ir"],
+            capture_output=True, text=True,
+        )
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = {}
+    components = {
+        item.get("component")
+        for item in payload.get("runtimeLink", {}).get("components", [])
+    }
+    symbols = {
+        item.get("symbol")
+        for item in payload.get("llvm", {}).get("runtimeSymbols", [])
+    }
+    check("inspect-ir: console http.urlDecode lowers",
+          proc.returncode == 0 and "ss_http_url_decode" in symbols,
+          f"rc={proc.returncode} stderr={proc.stderr!r} symbols={symbols}")
+    check("inspect-ir: console http.urlDecode links native HTTP runtime",
+          "native_http" in components,
+          f"components={components}")
 
 
 def test_inspect_ir_preserves_imported_source_origins():
@@ -6307,6 +6454,70 @@ def test_web_codegen_response_html_sets_fixed_content_type():
           "text/html; charset=utf-8" in ir_text, ir_text)
 
 
+def test_webserver_lifecycle_hooks_lower_around_server_run():
+    src = "\n".join([
+        "project LifecycleHooks",
+        "target webServer",
+        "runtime native 1",
+        "module fixture",
+        "webServer fixtureServer",
+        "purpose webServer fixtureServer \"Exercise startup and shutdown hook lowering.\"",
+        "serverHost fixtureServer \"127.0.0.1\"",
+        "serverPort fixtureServer 18082",
+        "webServerStartup fixtureServer startup",
+        "webServerShutdown fixtureServer shutdown",
+        "route fixtureServer GET \"/\" healthHandler",
+        "storage module immutable successStatus Int32 0",
+        "operation startup",
+        "output operation startup Int32",
+        "memory startup heap no",
+        "async startup no",
+        "purpose operation startup \"Run before the HTTP listener starts.\"",
+        "return value successStatus",
+        "operation shutdown",
+        "output operation shutdown Int32",
+        "memory shutdown heap no",
+        "async shutdown no",
+        "purpose operation shutdown \"Run after the HTTP listener returns.\"",
+        "return value successStatus",
+        "operation healthHandler",
+        "input operation healthHandler request HttpRequest",
+        "input operation healthHandler response HttpResponse",
+        "output operation healthHandler Int32",
+        "memory healthHandler arena request",
+        "async healthHandler no",
+        "purpose operation healthHandler \"Return a health status.\"",
+        "return value successStatus",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "lifecycle_hooks.sscript"
+        ir_path = Path(tmpdir) / "lifecycle_hooks.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    main_start = ir_text.find("define i32 @\"main\"")
+    if main_start < 0:
+        main_start = ir_text.find("define i32 @main")
+    main_ir = ir_text[main_start:] if main_start >= 0 else ir_text
+    startup_index = main_ir.find("call i32 @\"startup\"")
+    if startup_index < 0:
+        startup_index = main_ir.find("call i32 @startup")
+    run_index = main_ir.find("ss_http_server_run")
+    shutdown_index = main_ir.find("call i32 @\"shutdown\"")
+    if shutdown_index < 0:
+        shutdown_index = main_ir.find("call i32 @shutdown")
+    check("web codegen: lifecycle hook IR emits",
+          proc.returncode == 0 and bool(main_ir),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("web codegen: startup runs before server and shutdown after",
+          0 <= startup_index < run_index < shutdown_index,
+          main_ir)
+
+
 def test_webserver_hydrated_html_response_headers_escaping_and_failure():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
         port_socket.bind(("127.0.0.1", 0))
@@ -7237,6 +7448,59 @@ def test_stdlib_intrinsic_contracts_have_runtime_status_coverage():
     check("stdlib intrinsic status: modules name their target family",
           not target_mentions,
           f"missing target family mentions={target_mentions!r}")
+
+
+def test_libc_wrapper_policy_covers_registry():
+    coverage = libc_registry.c_wrapper_policy_coverage()
+    registry_symbols = set(libc_registry.ALL_FUNCTIONS)
+    valid_decisions = {
+        libc_registry.C_WRAPPER_STDLIB_PLANNED,
+        libc_registry.C_WRAPPER_NATIVE_ADAPTER_REQUIRED,
+        libc_registry.C_WRAPPER_COMPILER_RUNTIME_OWNED,
+        libc_registry.C_WRAPPER_NO_PUBLIC_WRAPPER,
+        libc_registry.C_WRAPPER_ABI_BLOCKED,
+    }
+
+    missing = sorted(registry_symbols - set(coverage))
+    extra = sorted(set(coverage) - registry_symbols)
+    malformed = sorted(
+        symbol for symbol, policy in coverage.items()
+        if policy.get("decision") not in valid_decisions
+        or not policy.get("module")
+        or not policy.get("reason")
+    )
+    alias_missing = sorted(
+        alias for alias, symbol in libc_registry.SEMANTICSCRIPT_FACING_ALIASES.items()
+        if symbol in registry_symbols and not libc_registry.c_wrapper_policy_for(f"c.{alias}")
+    )
+
+    check("libc wrapper policy: every registry symbol is classified",
+          not missing and not extra,
+          f"missing={missing!r} extra={extra!r}")
+    check("libc wrapper policy: every entry has decision/module/reason",
+          not malformed,
+          f"malformed={malformed!r}")
+    check("libc wrapper policy: SemanticScript aliases resolve to decisions",
+          not alias_missing,
+          f"alias_missing={alias_missing!r}")
+
+    expected = {
+        "c.malloc": (libc_registry.C_WRAPPER_STDLIB_PLANNED, "standard.memory"),
+        "c.alignedAlloc": (libc_registry.C_WRAPPER_STDLIB_PLANNED, "standard.memory"),
+        "c.snprintf": (libc_registry.C_WRAPPER_NATIVE_ADAPTER_REQUIRED, "standard.format/standard.stdio"),
+        "c.sprintf": (libc_registry.C_WRAPPER_NO_PUBLIC_WRAPPER, "standard.stdio"),
+        "c.setjmp": (libc_registry.C_WRAPPER_ABI_BLOCKED, "standard.control"),
+        "c.cabs": (libc_registry.C_WRAPPER_ABI_BLOCKED, "standard.complex"),
+        "c.threadCreate": (libc_registry.C_WRAPPER_NATIVE_ADAPTER_REQUIRED, "standard.concurrency"),
+    }
+    mismatches = []
+    for target, (decision, module) in expected.items():
+        policy = libc_registry.c_wrapper_policy_for(target)
+        if policy.get("decision") != decision or policy.get("module") != module:
+            mismatches.append((target, policy))
+    check("libc wrapper policy: high-risk targets have pinned decisions",
+          not mismatches,
+          f"mismatches={mismatches!r}")
 
 
 def test_sqlite_syntax_sample_runs_end_to_end():
@@ -8418,6 +8682,7 @@ def main():
     test_strict_rejects_missing_status_for_fallible_http_response_write()
     test_strict_executable_rejects_heap_allocation_without_oom_branch()
     test_strict_executable_rejects_heap_allocation_without_free()
+    test_strict_executable_tracks_aligned_alloc_as_heap_owner()
     test_strict_executable_rejects_double_heap_free()
     test_strict_executable_accepts_explicit_heap_free()
     test_strict_executable_rejects_sqlite_open_setup_failure_without_close()
@@ -8443,6 +8708,7 @@ def main():
     test_strict_executable_rejects_large_local_static_literal()
     test_strict_executable_rejects_unreachable_operation_rows()
     test_compile_hello_world_to_ir()
+    test_user_result_operation_error_channel_uses_return_variant_status()
     test_compile_i32_comparison_to_i32_ir()
     test_compile_rejects_implicit_i32_to_i64_math()
     test_compile_explicit_i32_to_i64_conversion_lowers_to_sext()
@@ -8474,6 +8740,7 @@ def main():
     test_cli_emit_trace_map_sidecar()
     test_sem_inspect_ir_command()
     test_inspect_ir_reports_http_abi_and_runtime_link_inputs()
+    test_console_http_url_helper_links_native_http_runtime()
     test_inspect_ir_preserves_imported_source_origins()
     test_sem_run_trace_emits_agent_jsonl_events()
     test_sem_profile_json_writes_agent_artifacts_and_deltas()
@@ -8503,6 +8770,7 @@ def main():
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
     test_web_codegen_response_html_sets_fixed_content_type()
+    test_webserver_lifecycle_hooks_lower_around_server_run()
     test_webserver_hydrated_html_response_headers_escaping_and_failure()
     test_webserver_standard_http_sse_stream_wrappers()
     test_webserver_module_state_persists_across_sequential_requests()
@@ -8513,6 +8781,7 @@ def main():
     test_standard_http_shutdown_lowers_through_generic_runtime_binding()
     test_native_runtime_link_registry_is_unique_and_owned()
     test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
+    test_libc_wrapper_policy_covers_registry()
     test_sqlite_syntax_sample_runs_end_to_end()
     test_json_runtime_health_demo_runs_clean()
     test_json_codegen_emits_runtime_externs_and_calls()

@@ -1423,7 +1423,7 @@ returnValue okCode
         canonicalModules = (
             "array", "assert", "bit", "bool", "char", "compare", "constants",
             "convert", "ctype", "errno", "errno_more", "gui", "html", "http",
-            "inttypes", "iso646", "json", "limits", "math", "math_float",
+            "inttypes", "iso646", "json", "limits", "math",
             "memory", "numeric", "process", "random", "signal", "signal_more",
             "sqlite", "sort", "stddef", "stdio", "stdlib", "string", "time",
         )
@@ -1769,6 +1769,32 @@ returnError providerError
         self.assertNotIn("SS2533", codes)
         self.assertNotIn("SS2534", codes)
         self.assertNotIn("SS4103", codes)
+        self.assertNotIn("SS4105", codes)
+        self.assertNotIn("SS4301", codes)
+
+    def test_standard_constant_imports_resolve_without_build_tape(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            consumerPath = Path(tempDir) / "main.sem"
+            consumerPath.write_text("""module app.consumer
+import char standard.char
+importConstant importedAsciiNewline char asciiNewlineCharacterCode
+storage module immutable expectedNewline Int32 10
+operation main
+output main Void
+purpose main "consumer"
+call compareNewlineCall math.equalInt32
+argument compareNewlineCall left Int32 importedAsciiNewline
+argument compareNewlineCall right Int32 expectedNewline
+run compareNewlineCall
+ignore value source compareNewlineCall type Bool
+returnVoid
+""", encoding="utf-8")
+            facts = semlint.gather_extended(semlint.parse_file(consumerPath))
+            index = semlint.build_import_contract_index(facts)
+            diagnostics = semlint.lint_path(consumerPath)
+        codes = _codes(diagnostics)
+        self.assertIn("char.asciiNewlineCharacterCode", index.qualifiedSymbols)
+        self.assertIn("importedAsciiNewline", index.singularSymbols)
         self.assertNotIn("SS4105", codes)
         self.assertNotIn("SS4301", codes)
 
@@ -3685,6 +3711,29 @@ returnValue allocatedBuffer
 """)
         self.assertNotIn("SS3303", _codes(diagnostics))
 
+    def test_allocator_returning_result_pointer_new_output_shape_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+error AllocationError
+errorCase AllocationError Failed Int32
+operation allocateBuffer
+output operation allocateBuffer Result OpaquePointer AllocationError
+purpose operation allocateBuffer "allocator"
+effect allocateBuffer allocate heap
+memory allocateBuffer heap yes
+memoryAllocationSource allocateBuffer allocationCall
+call allocationCall c.malloc
+argument allocationCall size ByteCount requestedByteCount
+run allocationCall
+bind value allocatedBuffer OpaquePointer allocationCall
+bind error allocationError Int32 allocationCall
+branch error source allocationCall target allocationFailed
+return ok allocatedBuffer
+label allocationFailed
+makeError allocationFailure AllocationError.Failed allocationError
+return error allocationFailure
+""")
+        self.assertNotIn("SS3303", _codes(diagnostics))
+
 
 class TestStackLimitOverrun(unittest.TestCase):
     def test_tiny_stack_limit_with_many_binds_flagged(self) -> None:
@@ -5446,6 +5495,31 @@ label failed
 return void
 """)
         self.assertIn("SS4107", _codes(diagnostics))
+
+    def test_branch_error_accepts_user_result_operation(self) -> None:
+        diagnostics = _lint_source("""project Test
+error ProbeError
+errorCase ProbeError Failed Int32
+operation maybeFail
+output operation maybeFail Result Int64 ProbeError
+purpose operation maybeFail "smoke"
+storage local immutable resultValue Int64 7
+return ok resultValue
+operation main
+output operation main ExitCode
+purpose operation main "smoke"
+call maybeFailCall maybeFail
+run maybeFailCall
+bind ok okValue Int64 maybeFailCall
+bind error failValue ProbeError maybeFailCall
+branch error source maybeFailCall target failed
+storage local immutable successExit ExitCode 0
+return value successExit
+label failed
+storage local immutable failedExit ExitCode 1
+return value failedExit
+""")
+        self.assertNotIn("SS4107", _codes(diagnostics))
 
     def test_branch_else_must_be_physically_adjacent(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -8241,6 +8315,102 @@ returnValue writeStatus
             'routeMiddlewareOptOut testServer "/probe" "no middleware"\n'
         ))
         self.assertEqual(_diagnostics_with_code(diagnostics, "SS3604"), [])
+
+
+# ==========================================================================
+# SS3617  webserver.lifecycleHookContract
+# ==========================================================================
+
+class TestWebserverLifecycleHookContract(unittest.TestCase):
+    def _program(self, hookRows: str, hookOperation: str) -> str:
+        return f"""project WebLifecycleTest
+target webServer
+runtime native 1
+webServer testServer
+serverHost testServer "127.0.0.1"
+serverPort testServer 18099
+{hookRows}
+route testServer GET "/probe" probeHandler
+routeTimeoutOptOut testServer "/probe" "no budget"
+routeMiddlewareOptOut testServer "/probe" "no middleware"
+
+operation probeHandler
+input operation probeHandler request HttpRequest
+input operation probeHandler response HttpResponse
+output operation probeHandler Int32
+memory probeHandler arena request
+async probeHandler no
+purpose operation probeHandler "smoke handler"
+storage local immutable okStatus Int32 0
+return value okStatus
+
+{hookOperation}
+"""
+
+    def test_lifecycle_hook_handler_must_exist(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "webServerStartup testServer missingStartup",
+            "",
+        ))
+        lifecycleKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3617")
+        }
+        self.assertIn("webserver.lifecycleHookUndefinedHandler", lifecycleKinds)
+
+    def test_lifecycle_hook_handler_must_not_take_inputs(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "webServerStartup testServer startup",
+            """operation startup
+input operation startup request HttpRequest
+output operation startup Int32
+memory startup heap no
+async startup no
+purpose operation startup "bad startup"
+storage local immutable okStatus Int32 0
+return value okStatus
+""",
+        ))
+        lifecycleKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3617")
+        }
+        self.assertIn("webserver.lifecycleHookHasInputs", lifecycleKinds)
+
+    def test_lifecycle_hook_handler_must_return_int32(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "webServerShutdown testServer shutdown",
+            """operation shutdown
+output operation shutdown ExitCode
+memory shutdown heap no
+async shutdown no
+purpose operation shutdown "bad shutdown"
+storage local immutable okStatus ExitCode 0
+return value okStatus
+""",
+        ))
+        lifecycleKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3617")
+        }
+        self.assertIn("webserver.lifecycleHookOutputMustBeInt32", lifecycleKinds)
+
+    def test_valid_lifecycle_hooks_are_clean(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "webServerStartup testServer startup\nwebServerShutdown testServer shutdown",
+            """storage module immutable successStatus Int32 0
+operation startup
+output operation startup Int32
+memory startup heap no
+async startup no
+purpose operation startup "good startup"
+return value successStatus
+operation shutdown
+output operation shutdown Int32
+memory shutdown heap no
+async shutdown no
+purpose operation shutdown "good shutdown"
+return value successStatus
+""",
+        ))
+        self.assertEqual(_diagnostics_with_code(diagnostics, "SS3617"), [])
 
 
 # ==========================================================================

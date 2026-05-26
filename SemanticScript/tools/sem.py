@@ -19,6 +19,7 @@ import os
 import queue
 import re
 import secrets
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -759,6 +760,31 @@ def _register_http_static_targets() -> None:
             failure_kind="null-sentinel",
             failure_text="Returns null when the named request value is absent or overflows native request scratch.",
         )
+    http_docs["http.formField"] = _static_target_contract(
+        "Parse an application/x-www-form-urlencoded body for one named field, URL-decode the value, and write it into caller-owned scratch memory.",
+        inputs=_static_inputs(("bodyText", "HttpTextBody"), ("fieldName", "String"), ("scratch", "OpaquePointer"), ("scratchCapacity", "ByteCount")),
+        outputs=_static_value_output("HttpRequestValue"),
+        effects=request_effect + [{"action": "write", "path": "memory.buffer"}],
+        capabilities=["httpRequestReader"],
+        failure_kind="null-sentinel",
+        failure_text="Returns null when the field is absent, the body is null, percent escapes are malformed, or scratch is too small. Repeated keys return the first matching field.",
+    )
+    http_docs["http.urlDecode"] = _static_target_contract(
+        "URL-decode one form/query component into caller-owned scratch memory.",
+        inputs=_static_inputs(("value", "String"), ("scratch", "OpaquePointer"), ("scratchCapacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "write", "path": "memory.buffer"}],
+        failure_kind="null-sentinel",
+        failure_text="Returns null when input or scratch is null, a percent escape is malformed, or scratch is too small. `+` decodes to a space for form-compatible decoding.",
+    )
+    http_docs["http.urlEncode"] = _static_target_contract(
+        "Percent-encode one string component into caller-owned scratch memory.",
+        inputs=_static_inputs(("value", "String"), ("scratch", "OpaquePointer"), ("scratchCapacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "write", "path": "memory.buffer"}],
+        failure_kind="null-sentinel",
+        failure_text="Returns null when input or scratch is null or scratch is too small. Unreserved RFC 3986 bytes pass through; spaces encode as %20.",
+    )
     for target, output_type, summary in (
         ("http.requestBodyText", "HttpTextBody", "Read the request body as text."),
         ("http.requestBodyBytes", "HttpByteBody", "Read the request body as bytes."),
@@ -811,6 +837,13 @@ def _register_json_static_targets() -> None:
         "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds", "Bool", "Float64", "Float32", "String",
     ]
     for type_name in primitive_types:
+        json_docs.setdefault(f"json.stringify.{type_name}", _static_target_contract(
+            f"Encode one {type_name} value as JSON text using the high-level Result-shaped stringify alias.",
+            inputs=_static_inputs(("value", type_name)),
+            outputs=_static_result_output("JsonText", "JsonEncodeError"),
+            failure_kind="result",
+            failure_text="JsonEncodeError reports output-capacity, invalid input, or serialization failure. Use `bind ok`, `bind error`, and `branch error`.",
+        ))
         json_docs.setdefault(f"json.encode.{type_name}", _static_target_contract(
             f"Encode one {type_name} value as JSON text using the legacy primitive encoder.",
             inputs=_static_inputs(("value", type_name)),
@@ -818,6 +851,13 @@ def _register_json_static_targets() -> None:
             agent_warnings=json_deprecated_warning,
         ))
         if type_name != "String":
+            json_docs.setdefault(f"json.parse.{type_name}", _static_target_contract(
+                f"Parse a JSON {type_name} literal using the high-level Result-shaped parse alias.",
+                inputs=_static_inputs(("jsonText", "JsonText")),
+                outputs=_static_result_output(type_name, "JsonDecodeError"),
+                failure_kind="result",
+                failure_text="JsonDecodeError reports malformed, truncated, or wrong-type input. Use `bind ok`, `bind error`, and `branch error`.",
+            ))
             json_docs.setdefault(f"json.decode.{type_name}", _static_target_contract(
                 f"Decode one JSON primitive literal as {type_name} using the legacy primitive decoder.",
                 inputs=_static_inputs(("value", "JsonText")),
@@ -1147,7 +1187,7 @@ def _register_compiler_static_targets() -> None:
             failure_kind="null-sentinel",
             failure_text="Returns null when the allocation fails.",
             cleanup=heap_cleanup,
-            agent_warnings=["Prefer std/domain allocators over raw c.malloc unless heap ownership is the point of the code."],
+            agent_warnings=["Prefer standard.memory.allocateMemoryBytes plus standard.memory.releaseMemoryBytes over raw c.malloc in new app code."],
         ),
         "c.calloc": _static_target_contract(
             "Allocate zero-initialized heap memory for count elements of size bytes; release with c.free.",
@@ -1157,6 +1197,16 @@ def _register_compiler_static_targets() -> None:
             failure_kind="null-sentinel",
             failure_text="Returns null when the allocation fails or count * size cannot be allocated.",
             cleanup=heap_cleanup,
+        ),
+        "c.alignedAlloc": _static_target_contract(
+            "Allocate size bytes with the requested alignment; release with c.free.",
+            inputs=_static_inputs(("alignment", "ByteCount"), ("size", "ByteCount")),
+            outputs=_static_value_output("OpaquePointer"),
+            effects=[{"action": "allocate", "path": "heap"}],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when allocation fails or alignment/size preconditions are not satisfied by the host C runtime.",
+            cleanup=heap_cleanup,
+            agent_warnings=["Prefer a portable standard.memory wrapper once one exists; raw aligned allocation still requires caller-specific alignment and size preconditions."],
         ),
         "c.realloc": _static_target_contract(
             "Resize a heap allocation; success transfers ownership to the returned pointer, while failure leaves the input pointer owned by the caller.",
@@ -1197,6 +1247,79 @@ def _register_compiler_static_targets() -> None:
             effects=[{"action": "write", "path": "console.stdout"}],
             failure_kind="negative-status",
             failure_text="A negative return status reports EOF or write failure.",
+        ),
+        "c.snprintf": _static_target_contract(
+            "Format into a caller-owned bounded buffer using a compile-time constant format string.",
+            inputs=_static_inputs(("buffer", "String"), ("bufferSize", "ByteCount"), ("format", "String")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "write", "path": "memory.buffer"}],
+            failure_kind="snprintf-status",
+            failure_text="A negative return reports formatting failure; a return value greater than or equal to bufferSize means truncation. Extra varargs follow the format argument.",
+            agent_warnings=["The linter requires format to reference a module-scope immutable String. Never pass request/runtime data as the format string."],
+        ),
+        "c.strlen": _static_target_contract(
+            "Return the byte length of a null-terminated string, excluding the terminator.",
+            inputs=_static_inputs(("s", "String")),
+            outputs=_static_value_output("ByteCount"),
+            effects=[{"action": "read", "path": "memory.buffer"}],
+            failure_kind="caller-precondition",
+            failure_text="Caller must pass a non-null, null-terminated string.",
+        ),
+        "c.strcpy": _static_target_contract(
+            "Copy a null-terminated string into a destination buffer.",
+            inputs=_static_inputs(("destination", "String"), ("source", "String")),
+            outputs=_static_value_output("String"),
+            effects=[{"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "memory.buffer"}],
+            failure_kind="caller-precondition",
+            failure_text="Caller must prove destination capacity is greater than source length plus the null terminator.",
+            lowering_status="lowered",
+            agent_warnings=["Prefer c.strcpySafe or c.snprintf when capacity is known; unbounded strcpy is rejected by strict safety checks in generated app code."],
+        ),
+        "c.strcat": _static_target_contract(
+            "Append a null-terminated source string to a destination string.",
+            inputs=_static_inputs(("destination", "String"), ("source", "String")),
+            outputs=_static_value_output("String"),
+            effects=[{"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "memory.buffer"}],
+            failure_kind="caller-precondition",
+            failure_text="Caller must prove destination has enough remaining capacity for both strings and the null terminator.",
+            agent_warnings=["Avoid generated c.strcat in web apps; prefer tracked write offsets plus c.snprintf or a bounded domain formatter."],
+        ),
+        "c.strcpySafe": _static_target_contract(
+            "Copy a string into a caller-owned buffer with an explicit destination capacity.",
+            inputs=_static_inputs(("destination", "String"), ("destinationSize", "ByteCount"), ("source", "String")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "memory.buffer"}],
+            failure_kind="status-code",
+            failure_text="Non-zero status reports null pointers, insufficient capacity, or platform runtime constraint failure.",
+            lowering_status="partial",
+            agent_warnings=["Availability follows the host C runtime; prefer c.snprintf for portable formatting when possible."],
+        ),
+        "c.strcatSafe": _static_target_contract(
+            "Append a string into a caller-owned buffer with an explicit destination capacity.",
+            inputs=_static_inputs(("destination", "String"), ("destinationSize", "ByteCount"), ("source", "String")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "memory.buffer"}],
+            failure_kind="status-code",
+            failure_text="Non-zero status reports null pointers, insufficient capacity, or platform runtime constraint failure.",
+            lowering_status="partial",
+            agent_warnings=["Availability follows the host C runtime; prefer tracked offsets plus c.snprintf for portable generated code."],
+        ),
+        "c.fopen": _static_target_contract(
+            "Open a file with a C runtime mode string; close the returned handle with c.fclose.",
+            inputs=_static_inputs(("path", "String"), ("mode", "String")),
+            outputs=_static_value_output("FileHandle"),
+            effects=[{"action": "open", "path": "file"}],
+            failure_kind="null-sentinel",
+            failure_text="Returns null when the file cannot be opened.",
+            cleanup={"required": True, "strategy": "call c.fclose on every non-null ownership path", "callTarget": "c.fclose", "argumentName": "stream", "argumentType": "FileHandle", "resultType": "Int32"},
+        ),
+        "c.fclose": _static_target_contract(
+            "Close a C FileHandle previously returned by c.fopen.",
+            inputs=_static_inputs(("stream", "FileHandle")),
+            outputs=_static_value_output("Int32"),
+            effects=[{"action": "close", "path": "file"}],
+            failure_kind="status-code",
+            failure_text="Zero means success; EOF/non-zero reports close or flush failure.",
         ),
     })
 
@@ -1623,6 +1746,58 @@ DIAGNOSTIC_EXPLAINERS = {
             "When the diagnostic is `attachmentSubjectKindMismatch`, point the verb at an actual operation, or use a subject-flexible verb (`purpose`, `invariant`, `warning`)."
         ],
     },
+    "SS4107": {
+        "title": "branch error source is not a fallible call",
+        "summary": "`branch error source CALL target LABEL` requires CALL to expose a real error channel. Valid sources include known Result-shaped std/runtime calls and user operations declared `output operation OP Result OK ERROR`. Ordinary value calls use explicit Bool/status checks instead.",
+        "whyItMatters": [
+            "Branching off a call with no error channel is control-flow drift: the failure label can never be reached correctly, or older toolchains may route it from the wrong value.",
+            "Result-shaped calls need both success and error disposition rows so the source states how each leg is handled."
+        ],
+        "commonFixes": [
+            "If the target operation is intended to be fallible, declare `output operation OP Result OkType ErrorType` and use `bind ok`, `bind error`, then `branch error source CALL target LABEL`.",
+            "For ordinary status/sentinel calls, bind the returned value and branch with an explicit comparison.",
+            "Remove the `branch error source` row when the target truly cannot fail."
+        ],
+    },
+    "SS3617": {
+        "title": "web server lifecycle hook contract mismatch",
+        "summary": "`webServerStartup SERVER HANDLER` and `webServerShutdown SERVER HANDLER` handlers must name an existing operation, declare no inputs, and return bare `Int32`.",
+        "whyItMatters": [
+            "Lifecycle hooks run outside a request context, so there is no HttpRequest or HttpResponse ABI to pass.",
+            "The native HTTP entrypoint calls the hook directly and uses the Int32 status to abort startup or override shutdown status."
+        ],
+        "commonFixes": [
+            "Define the named hook operation if it is missing.",
+            "Remove all `input operation HOOK ...` rows from startup and shutdown hook operations.",
+            "Declare `output operation HOOK Int32` and return zero for success or a nonzero status for failure."
+        ],
+    },
+    "SSCG001": {
+        "title": "codegen lowering failed after check passed",
+        "summary": "A `codegen.lower` failure: the program parsed and may have passed `sem check`, but a requirement enforced only at native lowering was unmet (for example a `webServer` target missing its `serverHost`/`serverPort` rows, or a `submitWork`/dispatch target that is not a real user operation). `sem check` does not run the full lowering preflight, so `buildable: true` does not guarantee codegen succeeds.",
+        "whyItMatters": [
+            "This is the 'check is not build' gap: a green `check` can still fail at `build`. Treat `sem build` (plus a runtime smoke) as the authoritative compile gate.",
+            "The message names the primary source row and operation; the missing requirement is almost always an operation-local declaration."
+        ],
+        "commonFixes": [
+            "Read the primary source row in the message and add the declaration codegen needs (e.g. add `serverHost`/`serverPort` rows for a `webServer` target).",
+            "Ensure dispatch/call targets (`submitWork`, etc.) name a real user `operation`, not a value or builtin.",
+            "Run `sem build PATH` rather than relying on `sem check`; check is advisory and does not lower."
+        ],
+    },
+    "SS3627": {
+        "title": "invalid sql body island",
+        "summary": "`sql body NAME` islands are indentation-sensitive and brace-sensitive. A literal `{` or `}` inside the island is parsed as a dynamic interpolation hole and rejected; dynamic values must use `?` placeholders plus `sqlite.bind*` rows, never string interpolation. The island must be indented under a `sql body NAME` line whose NAME matches a `storage ... SqlText` declaration.",
+        "whyItMatters": [
+            "Brace interpolation into SQL is exactly how injection bugs get in; the parser bans it so untrusted values can only enter through bound `?` parameters.",
+            "A stray `{}` in DDL (e.g. `DEFAULT '{}'` for a JSON column) is the usual trigger and is a pure parse error, not a runtime issue."
+        ],
+        "commonFixes": [
+            "Replace brace defaults in DDL with a brace-free literal (e.g. `DEFAULT ''`).",
+            "For dynamic values, use a `?` placeholder in the SQL and a `sqlite.bindText`/`bindInt64` row — never an interpolated value.",
+            "Declare `storage module immutable NAME SqlText` and put the statement, indented, under `sql body NAME`."
+        ],
+    },
     "SS2506": {
         "title": "unresolved or out-of-scope symbol reference",
         "summary": "A row references a symbol that is not in the current operation or module scope under the active SemanticScript rules.",
@@ -1646,6 +1821,19 @@ DIAGNOSTIC_EXPLAINERS = {
         "commonFixes": [
             "Wire the error case into the intended failure path.",
             "Remove the dead variant only if the domain truly no longer uses it."
+        ],
+    },
+    "SS0106": {
+        "title": "bind value bound but never read",
+        "summary": "A `bind value`/`bind ok`/`bind error` slot was declared but never referenced on a later row. The bind names a result that nothing consumes — usually a dropped data-flow edge (a result you meant to thread onward) rather than harmless clutter. This is one of the highest-frequency advisories in real projects.",
+        "whyItMatters": [
+            "An unread bound value is often an omitted step: the result you meant to pass into the next call, comparison, or return was silently dropped.",
+            "Because it fires often, triaging it quickly (use it, ignore it, or delete it) keeps `check` output signal-rich instead of noisy."
+        ],
+        "commonFixes": [
+            "Reference the bound name on a later row — pass it as an `argument`, compare it, or return it.",
+            "If the call is only for its side effect, use the matching `ignore` row (`ignore value`/`ignore ok`/`ignore void source`) instead of binding a value you won't read.",
+            "Delete the bind only when the value is genuinely unused."
         ],
     },
     "SSRUN001": {
@@ -2107,7 +2295,7 @@ def _prompt_for_starter_docs_index_opt_in() -> bool:
     return value in {"y", "yes"}
 
 
-def _starter_project_metadata(path: Path, github_repo: dict | None = None) -> dict:
+def _starter_project_metadata(path: Path, github_repo: dict | None = None, template: str = "console") -> dict:
     words = _starter_project_words(path)
     slug = "-".join(word.lower() for word in words)
     project_name = "".join(word[:1].upper() + word[1:] for word in words)
@@ -2134,10 +2322,35 @@ def _starter_project_metadata(path: Path, github_repo: dict | None = None) -> di
         "testFileName": "main.test.sem",
         "githubRepoUrl": (github_repo or {}).get("githubRepoUrl", ""),
         "githubRepoSlug": (github_repo or {}).get("githubRepoSlug", ""),
+        "template": template,
     }
 
 
 def _starter_build_sem_text(meta: dict) -> str:
+    if meta.get("template") == "web":
+        return "\n".join([
+            f"buildProject {meta['buildProject']}",
+            f"project {meta['projectName']}",
+            f"modulePath {meta['buildProject']} {meta['modulePath']}",
+            f"languageVersion {meta['buildProject']} \"1.0\"",
+            f"projectVersion {meta['buildProject']} \"{meta['projectVersion']}\"",
+            f"projectLicense {meta['buildProject']} MIT",
+            f"sourceRoot {meta['buildProject']} \".\"",
+            f"registerModule {meta['buildProject']} {meta['moduleName']} \".\"",
+            f"mainFile {meta['buildProject']} \"main.sem\"",
+            f"testRoot {meta['buildProject']} \".\"",
+            f"testPattern {meta['buildProject']} \"*.test.sem\"",
+            "target webServer",
+            "runtime native 1",
+            f"targetRuntime {meta['buildProject']} webServer",
+            f"buildProfile {meta['buildProject']} dev",
+            f"optLevel {meta['buildProject']} 2",
+            f"runtimeChecks {meta['buildProject']} panic",
+            f"persistLlvmIr {meta['buildProject']} auto",
+            f"nativeOutput {meta['buildProject']} \"{meta['nativeOutput']}\"",
+            f"import {meta['moduleAlias']} {meta['moduleName']}",
+            "",
+        ])
     return "\n".join([
         f"buildProject {meta['buildProject']}",
         f"project {meta['projectName']}",
@@ -2175,6 +2388,68 @@ def _starter_build_sem_text(meta: dict) -> str:
 
 
 def _starter_main_sem_text(meta: dict) -> str:
+    if meta.get("template") == "web":
+        return "\n".join([
+            f"module {meta['moduleName']}",
+            f"purpose module {meta['moduleName']} \"Starter web module for {meta['projectName']}.\"",
+            f"moduleOwns {meta['moduleName']} \"The routed HTTP health endpoint and server lifecycle hooks.\"",
+            f"moduleDoesNotOwn {meta['moduleName']} \"Project registration and artifact policy; build.sem owns those rows.\"",
+            f"invariant module {meta['moduleName']} \"The health route returns a plain-text 200 response when the native HTTP adapter accepts the write.\"",
+            f"exportOperation {meta['moduleName']} healthHandler",
+            f"exportOperation {meta['moduleName']} startup",
+            f"exportOperation {meta['moduleName']} shutdown",
+            "",
+            "import http standard.http",
+            "",
+            "webServer appServer",
+            "purpose webServer appServer \"Serve the starter HTTP health endpoint.\"",
+            "serverHost appServer \"127.0.0.1\"",
+            "serverPort appServer 8080",
+            "webServerStartup appServer startup",
+            "webServerShutdown appServer shutdown",
+            "route appServer GET \"/health\" healthHandler",
+            "routeTimeoutOptOut appServer \"/health\" \"starter health check is a bounded in-process response\"",
+            "routeMiddlewareOptOut appServer \"/health\" \"public starter health check has no cross-cutting middleware yet\"",
+            "",
+            "storage module immutable healthBody HttpTextBody \"ok\"",
+            "storage module immutable plainTextContentType HttpContentType \"text/plain; charset=utf-8\"",
+            "storage module immutable okStatus HttpStatusCode 200",
+            "storage module immutable successStatus Int32 0",
+            "",
+            "operation startup",
+            "output operation startup Int32",
+            "memory startup heap no",
+            "async startup no",
+            "purpose operation startup \"Run startup initialization before the HTTP listener starts.\"",
+            "return value successStatus",
+            "",
+            "operation shutdown",
+            "output operation shutdown Int32",
+            "memory shutdown heap no",
+            "async shutdown no",
+            "purpose operation shutdown \"Run shutdown cleanup after the HTTP listener returns.\"",
+            "return value successStatus",
+            "",
+            "operation healthHandler",
+            "input operation healthHandler request HttpRequest",
+            "input operation healthHandler response HttpResponse",
+            "output operation healthHandler Int32",
+            "effect healthHandler write http.response",
+            "authority healthHandler write http.response",
+            "memory healthHandler heap no",
+            "async healthHandler no",
+            "purpose operation healthHandler \"Write the health-check response body.\"",
+            "invariant operation healthHandler \"The route writes exactly one text/plain response and returns the native response status.\"",
+            "call responseWriteCall http.responseText",
+            "argument responseWriteCall response HttpResponse response",
+            "argument responseWriteCall status HttpStatusCode okStatus",
+            "argument responseWriteCall body HttpTextBody healthBody",
+            "argument responseWriteCall contentType HttpContentType plainTextContentType",
+            "run responseWriteCall",
+            "bind value responseStatus Int32 responseWriteCall",
+            "return value responseStatus",
+            "",
+        ])
     return "\n".join([
         f"module {meta['moduleName']}",
         f"purpose module {meta['moduleName']} \"Starter console module for {meta['projectName']}.\"",
@@ -2281,7 +2556,7 @@ def _starter_gitignore_text(meta: dict) -> str:
 
 
 def _starter_ci_workflow_text(meta: dict) -> str:
-    return "\n".join([
+    lines = [
         "name: CI",
         "",
         "on:",
@@ -2326,10 +2601,14 @@ def _starter_ci_workflow_text(meta: dict) -> str:
         "      - name: Build native executable",
         "        run: python SemanticScript/SemanticScript/tools/sem.py build . -- --emit-exe",
         "",
-        "      - name: Smoke run hello world",
-        "        run: python SemanticScript/SemanticScript/tools/sem.py run .",
-        "",
-    ])
+    ]
+    if meta.get("template") != "web":
+        lines.extend([
+            "      - name: Smoke run hello world",
+            "        run: python SemanticScript/SemanticScript/tools/sem.py run .",
+            "",
+        ])
+    return "\n".join(lines)
 
 
 def _starter_project_payload(
@@ -2338,6 +2617,7 @@ def _starter_project_payload(
     force: bool = False,
     github_url: str | None = None,
     docs_index_opt_in: bool = False,
+    template: str = "console",
 ) -> dict:
     root = path.resolve()
     github_repo = None
@@ -2359,7 +2639,7 @@ def _starter_project_payload(
                 "filesOverwritten": [],
                 "nextCommands": [],
             }
-    meta = _starter_project_metadata(root, github_repo=github_repo)
+    meta = _starter_project_metadata(root, github_repo=github_repo, template=template)
     build_path = root / "build.sem"
     main_path = root / "main.sem"
     test_path = root / meta["testFileName"]
@@ -2380,16 +2660,23 @@ def _starter_project_payload(
             argv=["sem", "test", "--json", str(root), "--skip-python-harnesses"],
         ),
         _next_command_entry(
-            "run",
-            "run the starter project through the JIT and confirm the hello-world output",
-            argv=["sem", "run", str(root)],
-        ),
-        _next_command_entry(
             "build",
             "emit the native executable for the starter project",
             argv=["sem", "build", str(root), "--", "--emit-exe"],
         ),
     ]
+    if template == "web":
+        next_commands.append(_next_command_entry(
+            "dev",
+            "start the generated web server with the watch/restart dev loop",
+            argv=["sem", "dev", str(root), "--json"],
+        ))
+    else:
+        next_commands.insert(2, _next_command_entry(
+            "run",
+            "run the starter project through the JIT and confirm the hello-world output",
+            argv=["sem", "run", str(root)],
+        ))
     docs_index = {
         "enabled": bool(docs_index_opt_in),
         "dbPath": str(docs_db_path),
@@ -2449,6 +2736,7 @@ def _starter_project_payload(
             "nativeOutput": meta["nativeOutput"],
             "githubRepoUrl": meta["githubRepoUrl"],
             "githubRepoSlug": meta["githubRepoSlug"],
+            "template": template,
             "docsIndex": docs_index,
         },
         "filesCreated": files_created,
@@ -2558,6 +2846,112 @@ def _extract_flag(args: list[str], flag: str) -> tuple[bool, list[str]]:
             continue
         kept.append(arg)
     return found, kept
+
+
+def _split_sem_row(line: str) -> list[str]:
+    try:
+        return shlex.split(line, comments=True, posix=True)
+    except ValueError:
+        return line.strip().split()
+
+
+def _scan_run_target_facts(source: Path) -> dict:
+    files: list[Path] = [source]
+    build_tape = source if source.name.lower() in {"build.sem", "build.sscript"} else None
+    if build_tape is not None and build_tape.exists():
+        try:
+            build_text = build_tape.read_text(encoding="utf-8")
+        except OSError:
+            build_text = ""
+        for raw in build_text.splitlines():
+            tokens = _split_sem_row(raw.strip())
+            if len(tokens) >= 3 and tokens[0] == "mainFile":
+                main_path = Path(tokens[2])
+                if not main_path.is_absolute():
+                    main_path = build_tape.parent / main_path
+                files.append(main_path)
+    facts = {
+        "target": "",
+        "targetRuntime": "",
+        "webServers": {},
+        "routes": [],
+        "sourceFiles": [str(path.resolve()) for path in files if path.exists()],
+    }
+    for path in files:
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for raw in text.splitlines():
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            tokens = _split_sem_row(stripped)
+            if not tokens:
+                continue
+            verb = tokens[0]
+            args = tokens[1:]
+            if verb == "target" and args:
+                facts["target"] = args[0]
+            elif verb == "targetRuntime" and len(args) >= 2:
+                facts["targetRuntime"] = args[1]
+            elif verb == "webServer" and args:
+                facts["webServers"].setdefault(args[0], {"host": "", "port": "", "routes": []})
+            elif verb == "serverHost" and len(args) >= 2:
+                facts["webServers"].setdefault(args[0], {"host": "", "port": "", "routes": []})["host"] = args[1]
+            elif verb == "serverPort" and len(args) >= 2:
+                facts["webServers"].setdefault(args[0], {"host": "", "port": "", "routes": []})["port"] = args[1]
+            elif verb == "route" and len(args) >= 4:
+                route = {
+                    "server": args[0],
+                    "method": args[1],
+                    "path": args[2],
+                    "handler": args[3],
+                }
+                facts["routes"].append(route)
+                facts["webServers"].setdefault(args[0], {"host": "", "port": "", "routes": []})["routes"].append(route)
+    return facts
+
+
+def _run_not_executed_payload(source: Path, facts: dict, status: str, reason: str) -> dict:
+    web_servers = facts.get("webServers", {})
+    first_server = next(iter(web_servers.values()), {})
+    host = first_server.get("host", "127.0.0.1") or "127.0.0.1"
+    port = first_server.get("port", "") or ""
+    base_url = f"http://{host}:{port}" if port else ""
+    return {
+        "schemaVersion": "sem.run.v1",
+        "tool": {"name": "sem", "version": VERSION},
+        "ok": False,
+        "status": status,
+        "source": {"path": str(source.resolve())},
+        "targetKind": facts.get("targetRuntime") or facts.get("target") or "",
+        "baseUrl": base_url,
+        "routes": facts.get("routes", []),
+        "target": {
+            "kind": facts.get("targetRuntime") or facts.get("target") or "",
+            "target": facts.get("target", ""),
+            "targetRuntime": facts.get("targetRuntime", ""),
+            "webServers": web_servers,
+            "routes": facts.get("routes", []),
+            "baseUrl": base_url,
+        },
+        "execution": {"ran": False, "reason": reason},
+        "nextCommands": [
+            _next_command_entry(
+                "build",
+                "emit the native executable for this long-running target",
+                argv=["sem", "build", str(source.parent if source.name.lower() in {"build.sem", "build.sscript"} else source), "--", "--emit-exe"],
+            ),
+            _next_command_entry(
+                "dev",
+                "use the dev loop for long-running webServer targets",
+                argv=["sem", "dev", str(source.parent if source.name.lower() in {"build.sem", "build.sscript"} else source), "--json"],
+            ),
+        ],
+    }
 
 
 def _project_surface_path(path: Path) -> Path:
@@ -3139,7 +3533,7 @@ def _build_context_payload(path: Path) -> dict:
         "supportedSyntax": {
             "inventoryPath": str(SYNTAX_INVENTORY_PATH.resolve()),
             "statusCounts": syntax_counts,
-            "languageModes": ["strictExecutable", "refinedSyntax"],
+            "languageModes": ["strictExecutable", "refinedSyntax", "permissiveExecutable"],
             "schemaVersion": SYNTAX_PAYLOAD_VERSION,
             "normalCommandsAutoMigrateOldSyntax": False,
             "currentRows": {
@@ -4123,7 +4517,7 @@ def _usage_call_template_for_target(target: str, call_base_name: str, inputs: li
         ok_type = output_values[1] if len(output_values) > 1 else "OK_TYPE"
         error_type = output_values[2] if len(output_values) > 2 else "ERROR_TYPE"
         if ok_type == "Void":
-            result_rows.append(f"ignore ok source {call_name} type Void")
+            result_rows.append(f"ignore void source {call_name}")
             result_value_name = ""
         else:
             result_rows.append(f"bind ok {result_name} {ok_type} {call_name}")
@@ -4225,7 +4619,7 @@ def _cleanup_rows(call: dict, cleanup: dict) -> list[str]:
 def _augment_cleanup_guidance(cleanup: dict) -> dict:
     cleanup = dict(cleanup or {})
     cleanup.setdefault("agentWarnings", [])
-    if cleanup.get("callTarget") in {"c.free", "net.freeTextBody"}:
+    if cleanup.get("callTarget") in {"c.free", "net.freeTextBody", "memory.releaseMemoryBytes", "standard.memory.releaseMemoryBytes"}:
         cleanup["requiredCallerEffects"] = [{"action": "free", "path": "heap"}]
         cleanup["authorityRows"] = [
             "effect <callerOperation> free heap",
@@ -4291,6 +4685,33 @@ def _failure_handling_rows(call: dict, outputs: list[dict], failure_mode: dict) 
             f"bind value {failed_flag} Bool {status_check_call}",
             f"branch if condition {failed_flag} target <failureLabel>",
         ]
+    if kind == "snprintf-status" and result_name:
+        negative_check_call = f"{call_base_name}NegativeStatusCheckCall"
+        zero_status = f"{call_base_name}ZeroStatus"
+        failed_flag = f"{call_base_name}Failed"
+        result_width_call = f"{call_base_name}ResultLengthCall"
+        result_length = f"{call_base_name}ResultLength"
+        truncation_check_call = f"{call_base_name}TruncationCheckCall"
+        truncated_flag = f"{call_base_name}Truncated"
+        return [
+            f"storage local immutable {zero_status} Int32 0",
+            f"call {negative_check_call} math.lessThanInt32",
+            f"argument {negative_check_call} left Int32 {result_name}",
+            f"argument {negative_check_call} right Int32 {zero_status}",
+            f"run {negative_check_call}",
+            f"bind value {failed_flag} Bool {negative_check_call}",
+            f"branch if condition {failed_flag} target <formatFailureLabel>",
+            f"call {result_width_call} math.signExtendInt32ToInt64",
+            f"argument {result_width_call} inputValue Int32 {result_name}",
+            f"run {result_width_call}",
+            f"bind value {result_length} Int64 {result_width_call}",
+            f"call {truncation_check_call} math.greaterThanOrEqualInt64",
+            f"argument {truncation_check_call} left Int64 {result_length}",
+            f"argument {truncation_check_call} right Int64 <bufferSize>",
+            f"run {truncation_check_call}",
+            f"bind value {truncated_flag} Bool {truncation_check_call}",
+            f"branch if condition {truncated_flag} target <truncationLabel>",
+        ]
     return []
 
 
@@ -4342,18 +4763,26 @@ def _usage_cleanup(comments_by_tag: dict[str, list[dict]], text_rows: dict[str, 
     metadata_text = _metadata_text(text_rows)
     output_type = outputs[0].get("type", "") if outputs else ""
     lowered_memory = f"{memory_text} {metadata_text}".lower()
-    heap_output = any(row.get("policy") == ["heap", "yes"] for row in memory_rows) and output_type not in {"", "Void"}
-    requires_free = "c.free" in lowered_memory or "heap-owned" in lowered_memory or heap_output
+    returns_value = output_type not in {"", "Void"}
+    heap_output = any(row.get("policy") == ["heap", "yes"] for row in memory_rows) and returns_value
+    requires_free = returns_value and ("c.free" in lowered_memory or "heap-owned" in lowered_memory or "releasememorybytes" in lowered_memory or heap_output)
     cleanup = {
         "required": requires_free,
         "text": memory_text or (metadata_text if requires_free else ""),
         "source": "comment:memory" if memory_text else ("metadata" if requires_free and metadata_text else ("memory" if heap_output else "")),
     }
     if requires_free:
+        cleanup_target = ""
+        if "releasememorybytes" in lowered_memory:
+            cleanup_target = "memory.releaseMemoryBytes"
+        elif "c.free" in lowered_memory:
+            cleanup_target = "c.free"
         cleanup.update({
             "strategy": "release returned non-null heap-owned value on every ownership path",
-            "callTarget": "c.free" if "c.free" in lowered_memory else "",
+            "callTarget": cleanup_target,
         })
+        if cleanup_target == "memory.releaseMemoryBytes":
+            cleanup.update({"argumentName": "memoryBuffer", "argumentType": "OpaquePointer", "resultType": "Void"})
     return cleanup
 
 
@@ -4545,7 +4974,7 @@ def _std_target_matches(target_doc: dict, query: str) -> bool:
 
 
 def _target_list_item(target_doc: dict) -> dict:
-    return {
+    item = {
         "kind": "callTarget",
         "module": target_doc.get("module", ""),
         "moduleName": target_doc.get("moduleName", ""),
@@ -4566,6 +4995,9 @@ def _target_list_item(target_doc: dict) -> dict:
         "failureMode": target_doc.get("failureMode", {}),
         "cleanup": target_doc.get("cleanup", {}),
     }
+    if target_doc.get("wrapperPolicy"):
+        item["wrapperPolicy"] = target_doc.get("wrapperPolicy")
+    return item
 
 
 def _type_doc_payload(module_name: str, type_name: str, type_doc: dict) -> dict:
@@ -4834,6 +5266,38 @@ def _target_doc_payload(
         agent_warnings.append(f"Target loweringStatus is {lowering_status}; do not generate calls without backend support.")
     if failure_mode.get("kind") == "sentinel-value":
         agent_warnings.append("Sentinel-value handling is domain-dependent; compare against the documented sentinel when absence is not acceptable.")
+    wrapper_policy = _libc_wrapper_policy_payload(target)
+    if wrapper_policy:
+        policy_decision = wrapper_policy.get("decision", "")
+        policy_module = wrapper_policy.get("module", "")
+        if policy_decision == "stdlib-wrapper-planned":
+            agent_warnings.append(
+                f"Raw {target} is an escape hatch. Prefer the {policy_module} wrapper when available; new app code should not grow direct c.* usage."
+            )
+        elif policy_decision == "native-adapter-required":
+            agent_warnings.append(
+                f"Raw {target} needs a native adapter before it becomes a normal SemanticScript API; do not generate app-level calls to it."
+            )
+            usage = {
+                "availableForCodegen": False,
+                "reason": f"wrapperPolicy.decision is {policy_decision}; use a standard-library adapter instead",
+            }
+            target_visibility["public"] = False
+            target_visibility["apiTier"] = policy_decision
+        elif policy_decision in {"no-public-wrapper", "abi-blocked"}:
+            agent_warnings.append(
+                f"Raw {target} is classified as {policy_decision}; do not generate app-level calls to it."
+            )
+            usage = {
+                "availableForCodegen": False,
+                "reason": f"wrapperPolicy.decision is {policy_decision}; use a safer standard-library API or adapter instead",
+            }
+            target_visibility["public"] = False
+            target_visibility["apiTier"] = policy_decision
+        elif policy_decision == "compiler-runtime-owned":
+            agent_warnings.append(
+                f"Raw {target} is owned by a compiler/runtime surface; use the owning standard module instead of calling the adapter symbol directly."
+            )
     return {
         "kind": "callTarget",
         "module": module_name,
@@ -4857,6 +5321,7 @@ def _target_doc_payload(
         "capabilityDetails": capability_details,
         "failureMode": failure_mode,
         "cleanup": cleanup,
+        "wrapperPolicy": wrapper_policy,
         "usage": usage,
         "comments": comments,
         "location": _location_or_empty(location_source),
@@ -5109,6 +5574,195 @@ def _docs_next_commands(
     return []
 
 
+@functools.lru_cache(maxsize=1)
+def _libc_registry():
+    """Load the compiler's libc registry as a standalone module.
+
+    `sem.py` puts `SemanticScript/` on sys.path, but the registry lives under
+    `SemanticScript/compiler/`, so load it directly by path. The registry is the
+    single source of truth for `c.*` call targets; reusing it keeps `sem docs
+    get c.<fn>` in lockstep with what the compiler will actually lower."""
+    spec = importlib.util.spec_from_file_location(
+        "libc_registry", str(ROOT / "compiler" / "libc_registry.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _libc_wrapper_policy_payload(operation_name: str) -> dict:
+    name = (operation_name or "").strip()
+    if not name.startswith("c.") or len(name) <= 2:
+        return {}
+    try:
+        registry = _libc_registry()
+    except OSError:
+        return {}
+    policy_for = getattr(registry, "c_wrapper_policy_for", None)
+    if not callable(policy_for):
+        return {}
+    policy = policy_for(name)
+    if not policy:
+        return {}
+    return {
+        "decision": policy.get("decision", ""),
+        "module": policy.get("module", ""),
+        "reason": policy.get("reason", ""),
+        "symbol": policy.get("symbol", ""),
+        "semanticName": policy.get("semanticName", ""),
+    }
+
+
+def _libc_memory_contract_payload(c_symbol: str, inputs: list[dict]) -> tuple[list[dict], list[dict], dict, list[str]]:
+    """Return safer fallback docs for raw libc memory-buffer targets."""
+    memory_input_names = {
+        "memcpy": ["destination", "source", "byteCount"],
+        "wmemcpy": ["destination", "source", "byteCount"],
+        "memmove": ["destination", "source", "byteCount"],
+        "wmemmove": ["destination", "source", "byteCount"],
+        "memcmp": ["leftBuffer", "rightBuffer", "byteCount"],
+        "wmemcmp": ["leftBuffer", "rightBuffer", "byteCount"],
+        "memset": ["destination", "value", "byteCount"],
+        "wmemset": ["destination", "value", "byteCount"],
+        "memcpy_s": ["destination", "destinationSize", "source", "byteCount"],
+        "memmove_s": ["destination", "destinationSize", "source", "byteCount"],
+        "memset_s": ["destination", "destinationSize", "value", "byteCount"],
+    }
+    names = memory_input_names.get(c_symbol)
+    if not names:
+        return inputs, [], {"kind": "none", "text": "", "source": ""}, []
+    renamed_inputs = [
+        {**item, "name": names[index] if index < len(names) else item.get("name", f"arg{index}")}
+        for index, item in enumerate(inputs)
+    ]
+    reads_buffer = "source" in names or "leftBuffer" in names or "rightBuffer" in names
+    writes_buffer = "destination" in names and c_symbol not in {"memcmp", "wmemcmp"}
+    effects = []
+    if reads_buffer:
+        effects.append({"action": "read", "path": "memory.buffer"})
+    if writes_buffer:
+        effects.append({"action": "write", "path": "memory.buffer"})
+    if c_symbol in {"memcpy_s", "memmove_s", "memset_s"}:
+        failure_mode = {
+            "kind": "status-code",
+            "text": "A non-zero status reports invalid pointers, invalid sizes, overlap violations, or runtime constraint failure.",
+            "source": "libc-memory-contract",
+        }
+    else:
+        failure_mode = {
+            "kind": "caller-precondition",
+            "text": "Caller must ensure every buffer pointer is non-null and each readable or writable range covers byteCount bytes; use memmove for overlapping ranges.",
+            "source": "libc-memory-contract",
+        }
+    warnings = [
+        f"Raw c.{c_symbol} is a memory-buffer escape hatch. Prefer standard.memory wrappers with explicit capacity and overlap policy."
+    ]
+    return renamed_inputs, effects, failure_mode, warnings
+
+
+def _libc_target_doc(operation_name: str) -> dict | None:
+    """Build a docs target for a `c.<fn>` libc call from the libc registry.
+
+    Returns None when the name is not a `c.*` target or is not a known libc
+    function, so the caller can fall through to its normal not-found handling.
+    Previously `sem docs get c.strlen` returned NO MATCH even though the symbol
+    exists in the registry and lowers correctly — discovery was trial-and-error."""
+    name = (operation_name or "").strip()
+    if not name.startswith("c.") or len(name) <= 2:
+        return None
+    semantic_name = name[2:]
+    try:
+        registry = _libc_registry()
+    except OSError:
+        return None
+    c_symbol = registry.resolve_c_symbol(semantic_name)
+    signature = registry.ALL_FUNCTIONS.get(c_symbol)
+    if signature is None:
+        return None
+    return_type, param_types, var_args = signature
+    inputs = [
+        {"name": f"arg{index}", "type": param_type}
+        for index, param_type in enumerate(param_types)
+    ]
+    outputs = [] if return_type == "Void" else [{"type": return_type, "values": [return_type]}]
+    inputs, effects, failure_mode, contract_warnings = _libc_memory_contract_payload(c_symbol, inputs)
+    signature_text = _signature_text(inputs, outputs)
+    if var_args:
+        signature_text = signature_text.replace(") ->", ", ...) ->", 1)
+    call_base = _target_call_base_name(name)
+    summary = f"C standard library `{c_symbol}` exposed as the `{name}` call target."
+    if c_symbol != semantic_name:
+        summary += f" `{name}` is the spec-legal camelCase alias for the C symbol `{c_symbol}`."
+    agent_warnings = []
+    wrapper_policy = _libc_wrapper_policy_payload(name)
+    if var_args:
+        summary += (
+            " Variadic: after the fixed parameters, append one `argument` row per "
+            "conversion in the format string, in order. Variadic arguments are passed "
+            "positionally with C default promotions, so a mismatch between the format "
+            "string and the argument rows is undefined behavior and can crash at "
+            "runtime (this is the known c.snprintf sharp edge)."
+        )
+        agent_warnings.append(
+            "Variadic libc target: argument rows after the format string are "
+            "positional and unchecked; a format/argument mismatch is undefined behavior."
+        )
+    if wrapper_policy:
+        decision = wrapper_policy.get("decision", "")
+        module = wrapper_policy.get("module", "")
+        if decision == "stdlib-wrapper-planned":
+            agent_warnings.append(
+                f"Raw {name} is an escape hatch. Prefer the {module} wrapper when available."
+            )
+        elif decision == "native-adapter-required":
+            agent_warnings.append(
+                f"Raw {name} needs a native adapter before it becomes a normal SemanticScript API."
+            )
+        elif decision in {"no-public-wrapper", "abi-blocked"}:
+            agent_warnings.append(
+                f"Raw {name} is classified as {decision}; do not generate app-level calls to it."
+            )
+    agent_warnings.extend(contract_warnings)
+    cleanup = {"required": False, "source": "", "text": ""}
+    usage = _target_usage_payload("compiler.c", name, inputs, outputs, effects, [], [], failure_mode, cleanup)
+    public = True
+    api_tier = "compiler-lowered"
+    if wrapper_policy.get("decision") in {"native-adapter-required", "no-public-wrapper", "abi-blocked"}:
+        public = False
+        api_tier = wrapper_policy.get("decision", api_tier)
+        usage = {
+            "availableForCodegen": False,
+            "reason": f"wrapperPolicy.decision is {wrapper_policy.get('decision')}; use a safer standard-library API or adapter instead",
+        }
+    return {
+        "kind": "callTarget",
+        "module": "libc",
+        "moduleName": "c",
+        "name": call_base,
+        "type": "",
+        "target": name,
+        "qualifiedName": name,
+        "fullName": name,
+        "exported": False,
+        "visibility": {
+            "exported": False, "internal": False, "public": public,
+            "apiTier": api_tier, "reason": "libc-registry",
+        },
+        "agentWarnings": agent_warnings,
+        "source": "libc-registry",
+        "loweringStatus": "lowered",
+        "summary": summary,
+        "invariants": [],
+        "signature": {"inputs": inputs, "outputs": outputs, "text": signature_text},
+        "effects": effects,
+        "capabilities": [],
+        "capabilityDetails": [],
+        "failureMode": failure_mode,
+        "cleanup": cleanup,
+        "wrapperPolicy": wrapper_policy,
+        "usage": usage,
+    }
+
+
 def _docs_payload(
     command: str,
     *,
@@ -5181,6 +5835,33 @@ def _docs_payload(
     target_matches = [] if matches else [target for target in _module_targets(modules) if _std_target_matches(target, operation_name)]
     type_docs = _static_type_docs(module_name)
     type_matches = [] if matches or target_matches else [type_doc for type_doc in type_docs if _type_doc_matches(type_doc, operation_name)]
+    if not matches and not target_matches and not type_matches and not inventory_blocked:
+        libc_target = _libc_target_doc(operation_name)
+        if libc_target is not None:
+            libc_status = "partial" if errors else "ok"
+            next_module = operation_name.split(".", 1)[0] if "." in operation_name else module_name
+            return {
+                **base,
+                "ok": not errors,
+                "status": libc_status,
+                "nextCommands": _docs_next_commands("get", operation_name, next_module, libc_status, std_root=root),
+                "operation": {},
+                "target": libc_target,
+                "type": {},
+                "matches": [_target_list_item(libc_target)],
+                "moduleDocs": [],
+                "moduleDocMode": "compact",
+                "summary": {
+                    "matchCount": 1,
+                    "operationMatchCount": 0,
+                    "targetMatchCount": 1,
+                    "typeMatchCount": 0,
+                    "searchedOperationCount": len(searchable_operations),
+                    "searchedTargetCount": len(_module_targets(modules)),
+                    "searchedTypeCount": len(type_docs),
+                    "scannedOperationCount": len(operations),
+                },
+            }
     if inventory_blocked:
         status = "tool-error"
         ok = False
@@ -6659,6 +7340,35 @@ def _compiler_check_probe(source: Path, compiler_args: list[str]) -> dict:
     }
 
 
+def _compiler_lower_check_probe(source: Path, compiler_args: list[str]) -> dict:
+    """Run the compiler's full codegen lowering as a preflight (`--lower-check`)
+    and report whether it succeeds. This surfaces every codegen-phase error
+    (SSCG*/SSBE*) that `--parse-only` cannot, so `check` can make `buildable`
+    predict `build`. Slower than the parse probe (it runs codegen), so callers
+    should only invoke it when the parse/lint probe is already clean."""
+    try:
+        proc = _capture_compiler(
+            source,
+            ["--lower-check", "--quiet", "--diagnostics-format", "json", *compiler_args],
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "attempted": True,
+            "ok": False,
+            "returnCode": 2,
+            "stdout": "",
+            "stderr": str(exc),
+        }
+    return {
+        "attempted": True,
+        "ok": proc.returncode == 0,
+        "returnCode": int(proc.returncode),
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+    }
+
+
 def _normalize_compiler_diagnostic(diagnostic: dict) -> dict:
     primary = diagnostic.get("primary", {}) or {}
     suggested_fixes = list(diagnostic.get("suggestedFixes", []))
@@ -7900,7 +8610,7 @@ def _size_next_commands(path: Path) -> list[dict]:
     ]
 
 
-def _build_check_payload(path: Path, compiler_args: list[str], *, include_readiness: bool = False) -> dict:
+def _build_check_payload(path: Path, compiler_args: list[str], *, include_readiness: bool = False, lower_check: bool = False) -> dict:
     context = _build_context_payload(path)
     symbols = _symbol_graph_payload(path)
     lint_diagnostics, lint_errors = _collect_lint_diagnostics(path)
@@ -7908,6 +8618,30 @@ def _build_check_payload(path: Path, compiler_args: list[str], *, include_readin
     compiler_source = build_tape if build_tape is not None else path
     compiler = _compiler_check_probe(compiler_source, compiler_args)
     compiler_diagnostics, compiler_errors = _collect_compiler_diagnostics(compiler)
+    # Universal codegen preflight (opt-in via `lower_check`, set by `sem check`):
+    # if parse + semantic + the compiler's own lint are clean, run the full
+    # lowering (`--lower-check`) so `buildable` reflects whether codegen actually
+    # succeeds — closing the A3 gap ("check says buildable:true but build fails
+    # SSCGxxxx") for EVERY codegen error, not just the structural webServer/const
+    # prerequisites. Off by default so internal callers (fix-plan, patch, test,
+    # dev) keep the cheap parse-level probe; skipped for already-broken programs
+    # so the fast path stays fast and we never codegen garbage.
+    if lower_check:
+        _probe_compiler_errors = sum(
+            1 for item in compiler_diagnostics
+            if item.get("severity") == "error" or item.get("blocksCompile"))
+        if compiler["ok"] and _probe_compiler_errors == 0 and not compiler_errors:
+            lower = _compiler_lower_check_probe(compiler_source, compiler_args)
+            if not lower["ok"]:
+                lower_diagnostics, lower_errors = _collect_compiler_diagnostics(lower)
+                compiler_diagnostics = list(compiler_diagnostics) + list(lower_diagnostics)
+                compiler_errors = list(compiler_errors) + list(lower_errors)
+                if not lower_diagnostics and not lower_errors:
+                    # Codegen failed but emitted no parseable diagnostic; record a
+                    # transport error so `buildable` still flips false (fail closed).
+                    compiler_errors = list(compiler_errors) + [
+                        f"lowering preflight failed (rc={lower.get('returnCode')}) "
+                        "with no parseable diagnostic"]
     diagnostics = list(lint_diagnostics) + list(compiler_diagnostics)
     severity_rank = {"error": 0, "warning": 1, "info": 2}
     diagnostics.sort(key=lambda item: (
@@ -9103,6 +9837,13 @@ def _execute_semantic_contract(test_path: Path, timeout: int = 20) -> dict:
 def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False, execute_contracts: bool = False) -> dict:
     preflight = _build_check_payload(path, [], include_readiness=False)
     preflight_ok = bool(preflight.get("ok", False))
+    # A test run's pass/fail must reflect whether the project COMPILES and whether
+    # the selected tests pass — not whether the linter is silent. `preflight.ok`
+    # is False for any non-blocking advisory, so gating the overall result on it
+    # made a buildable project with passing tests report ok:false /
+    # status:diagnostics. Gate on `buildable` instead; advisories stay visible via
+    # `compositeStatus` and the per-test diagnostics.
+    preflight_buildable = bool(preflight.get("buildable", preflight_ok))
     discovered = _discover_test_entries(path)
     build_tape = _find_build_tape(path)
     requested = path.resolve()
@@ -9330,7 +10071,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         "none"
     )
     status = "passed"
-    if not preflight_ok:
+    if not preflight_buildable:
         status = "diagnostics"
     elif selected == 0:
         status = "no-tests"
@@ -9340,7 +10081,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         "schemaVersion": "sem.test.v1",
         "tool": {"name": "sem", "version": VERSION},
         "inputPath": str(path.resolve()),
-        "ok": status == "passed" and preflight_ok,
+        "ok": status == "passed" and preflight_buildable,
         "status": status,
         "compositeStatus": (
             f"{preflight.get('status', 'ok')}/runtime-{runtime_harness_status}"
@@ -10545,6 +11286,10 @@ def command_build(args: argparse.Namespace) -> int:
         )
 
     compiler_args = _strip_separator(list(args.compiler_args))
+    trailing_strict, compiler_args = _extract_flag(compiler_args, "--strict")
+    if (bool(getattr(args, "strict", False)) or trailing_strict) and "--strict" not in compiler_args:
+        # CI ratchet: gate the native build on the strict executable wall too.
+        compiler_args = list(compiler_args) + ["--strict"]
     if not _has_compiler_action(compiler_args):
         compiler_args = ["--emit-exe", *compiler_args]
     return _run_compiler(build_tape, compiler_args)
@@ -10565,6 +11310,32 @@ def command_run(args: argparse.Namespace) -> int:
 
     if explain_crash:
         return _explain_crash(source, compiler_args)
+
+    target_facts = _scan_run_target_facts(source)
+    target_kind = target_facts.get("targetRuntime") or target_facts.get("target")
+    if target_kind in {"webServer", "windowsGui"} and not profile:
+        reason = (
+            "webServer targets are long-running native executables; `sem run` "
+            "does not start them through the in-process JIT. Build the executable "
+            "or use `sem dev` for the watch/restart loop."
+            if target_kind == "webServer"
+            else "windowsGui targets are non-console native executables; build them with `sem build`."
+        )
+        payload = _run_not_executed_payload(
+            source,
+            target_facts,
+            "long-running-target" if target_kind == "webServer" else "non-console-target",
+            reason,
+        )
+        if json_output:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"sem run: {reason}", file=sys.stderr)
+            base_url = payload.get("target", {}).get("baseUrl")
+            if base_url:
+                print(f"target URL: {base_url}", file=sys.stderr)
+            print("next: sem build PATH -- --emit-exe", file=sys.stderr)
+        return 2
 
     if profile:
         artifact_dir = _artifact_run_dir(source, "profile")
@@ -11117,10 +11888,23 @@ def _read_eval_source(args: argparse.Namespace) -> tuple[str | None, str | None]
     path = getattr(args, "path", None)
     if path in (None, "-"):
         return sys.stdin.read(), None
-    try:
-        return Path(path).read_text(encoding="utf-8"), None
-    except OSError as exc:
-        return None, f"cannot read snippet: {exc}"
+    candidate = Path(path)
+    if candidate.exists():
+        try:
+            return candidate.read_text(encoding="utf-8"), None
+        except OSError as exc:
+            return None, f"cannot read snippet: {exc}"
+    # The positional did not resolve to a file. If it looks like inline
+    # SemanticScript source (multi-token or multi-line), treat it as code so
+    # `sem eval "operation main ..."` works without --code — the common reach
+    # for a quick probe. A bare path-like token (no whitespace) still reports a
+    # clear file error rather than silently compiling a mistyped filename.
+    if "\n" in path or " " in path.strip():
+        return path, None
+    return None, (
+        f"cannot read snippet: {path}: no such file "
+        "(pass an existing path, use --code for inline source, or '-' for stdin)"
+    )
 
 
 def _emit_eval_input_error(message: str, human: bool) -> int:
@@ -11242,7 +12026,7 @@ def command_check(args: argparse.Namespace) -> int:
             print(f"sem check: {message}", file=sys.stderr)
         return 2
     if json_output:
-        payload = _build_check_payload(Path(args.path), compiler_args, include_readiness=include_readiness)
+        payload = _build_check_payload(Path(args.path), compiler_args, include_readiness=include_readiness, lower_check=True)
         if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
             payload["ok"] = False
             if payload["status"] in {"ok", "ok-with-warnings"}:
@@ -11252,7 +12036,10 @@ def command_check(args: argparse.Namespace) -> int:
         return 0 if payload["ok"] else 1
     build_tape = _find_build_tape(Path(args.path))
     source = build_tape if build_tape is not None else Path(args.path)
-    return _run_compiler(source, ["--parse-only", "--lint", *compiler_args])
+    # `--lower-check` (not `--parse-only`) so human `sem check` agrees with the
+    # `--json` `buildable` field: both run the codegen preflight and report
+    # SSCG/SSBE codegen errors, so a green check predicts a green build.
+    return _run_compiler(source, ["--lower-check", "--lint", *compiler_args])
 
 
 def command_emit_ir(args: argparse.Namespace) -> int:
@@ -12193,6 +12980,7 @@ def command_new(args: argparse.Namespace) -> int:
         force=bool(args.force),
         github_url=github_url,
         docs_index_opt_in=docs_index_opt_in,
+        template=getattr(args, "template", "console"),
     )
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -12310,6 +13098,18 @@ def _print_std_doc_target(target: dict) -> None:
     print(f"{target['target']}{target['signature']['text']}")
     if target.get("summary"):
         print(target["summary"])
+    # Surface the return/failure contract. For status-code targets this is the
+    # only place the success value is stated (e.g. bcrypt.verifyPassword returns
+    # 1 on match, 0 on mismatch) — guessing it (0 == success, the C idiom) can
+    # silently invert authentication, so it must be visible in the human output.
+    failure_mode = target.get("failureMode") or {}
+    if failure_mode.get("text"):
+        print(f"returns: {failure_mode['text']}")
+    # Agent warnings carry the sharp-edge hazards (e.g. the c.snprintf
+    # format-string crash) — the reader who would hit them is exactly the one
+    # reading the human view, so surface them here, not only in --json.
+    for warning in target.get("agentWarnings") or []:
+        print(f"warning: {warning}")
     if target.get("loweringStatus") and target.get("loweringStatus") != "lowered":
         print(f"loweringStatus: {target['loweringStatus']}")
     usage = target.get("usage", {})
@@ -12614,9 +13414,29 @@ def command_explain(args: argparse.Namespace) -> int:
     print(f"{payload['code']}: {payload['title']}")
     if payload.get("summary"):
         print(payload["summary"])
+    if payload.get("whyItMatters"):
+        print("why it matters:")
+        for item in payload["whyItMatters"]:
+            print(f"- {item}")
+    if payload.get("commonFixes"):
+        print("common fixes:")
+        for fix in payload["commonFixes"]:
+            print(f"- {fix}")
     if payload.get("relatedCodes"):
         print(f"related: {', '.join(payload['relatedCodes'])}")
-    for reference in payload.get("references", [])[:8]:
+    # Drop linter test-suite references: an agent reading `explain` wants the
+    # rule's real definition or a use site, not the linter's own test fixtures.
+    # Surfacing `test_*.py` grep hits as "references" was noise — and for an
+    # uncurated code it looked like the only content the command had.
+    references = [
+        reference for reference in payload.get("references", [])
+        if "test" not in os.path.basename(reference.get("path", "")).lower()
+        and "/tests/" not in reference.get("path", "").replace("\\", "/").lower()
+    ]
+    if not payload.get("whyItMatters") and not payload.get("commonFixes"):
+        print("note: no curated guidance for this code yet — showing its rule "
+              "kind and any source references.")
+    for reference in references[:8]:
         print(f"- {reference['path']}:{reference['line']}  {reference['excerpt']}")
     return 0
 
@@ -12980,6 +13800,9 @@ def build_parser() -> argparse.ArgumentParser:
         "build",
         help="discover build.sem and compile the project",
     )
+    build.add_argument("--strict", action="store_true",
+                       help="gate the build on the strict executable wall "
+                            "(fallible-contract, effect/authority, SS3xxx rules)")
     build.add_argument("path", nargs="?", default=".")
     build.add_argument("compiler_args", nargs=argparse.REMAINDER)
     build.set_defaults(func=command_build)
@@ -13008,7 +13831,7 @@ def build_parser() -> argparse.ArgumentParser:
               "run report with execution metrics and captured output"),
     )
     eval_cmd.add_argument("path", nargs="?", default=None,
-                          help="snippet/program file, or '-' / omitted for stdin")
+                          help="snippet/program file, inline source, or '-' / omitted for stdin")
     eval_cmd.add_argument("--code", default=None,
                           help="snippet source passed inline instead of a path")
     eval_cmd.add_argument("--json", action="store_true",
@@ -13061,7 +13884,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     new = subparsers.add_parser(
         "new",
-        help="create a starter SemanticScript console project with source, test, and CI scaffold files",
+        help="create a starter SemanticScript project with source, test, and CI scaffold files",
     )
     new.add_argument("--json", action="store_true",
                      help="emit machine-readable scaffold results")
@@ -13069,6 +13892,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="overwrite the starter scaffold files when the target directory already exists")
     new.add_argument("--github-url",
                      help="optional GitHub repository URL used to replace the placeholder modulePath during setup")
+    new.add_argument("--template", choices=("console", "web"), default="console",
+                     help="starter project template to create")
     docs_index_group = new.add_mutually_exclusive_group()
     docs_index_group.add_argument("--enable-docs-index", action="store_true",
                                   help="add next steps for an opt-in local semantic docs index")

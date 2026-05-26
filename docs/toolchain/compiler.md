@@ -429,7 +429,7 @@ Compiler-owned call-target boundary:
 
 | target family | owning layer | compiler responsibility |
 | --- | --- | --- |
-| `c.*` | temporary backend interop / libc registry | Validate signatures and lower ABI calls while stdlib replacements mature. No app policy belongs here. |
+| `c.*` | temporary backend interop / libc registry | Validate signatures and lower ABI calls while stdlib replacements mature. Every registry symbol must carry a public-wrapper policy (`stdlib-wrapper-planned`, `native-adapter-required`, `compiler-runtime-owned`, `no-public-wrapper`, or `abi-blocked`) so agents know whether to prefer a `standard.*` operation, wait for an adapter, or avoid the target. No app policy belongs in raw `c.*`. |
 | `console.*` | compiler runtime surface | Lower process stdout/stderr helpers and keep effects explicit. |
 | `math.*` / `pointer.*` | compiler primitive operations | Emit arithmetic, conversion, and pointer IR only. Domain rules should call these from `.sem` bodies. |
 | `html.hydrate.*` / `jsonBody` | compiler syntax island plus `standard.html` / `standard.json` contracts | Generate structural glue and enforce source syntax; escaping/parsing belongs to the HTML/JSON helpers. |

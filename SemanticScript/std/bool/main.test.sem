@@ -17,6 +17,8 @@ runtime AgentRuntime 0.1
 entry console main
 
 import bool standard.bool
+importConstant canonicalBooleanTrue bool canonicalBooleanTrue
+importConstant canonicalBooleanFalse bool canonicalBooleanFalse
 # Typed error domain used only by this smoke test. The library
 # operations themselves are total and declare no errors.
 error MainError
@@ -285,10 +287,9 @@ label roundTripBoolHolds
 # All assertions hold. Emit OK\n and exit 0.
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

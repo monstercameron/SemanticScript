@@ -8,9 +8,10 @@ linker/import entry at `std/<module>/main.sem`.
 Most helper logic is written in SemanticScript: byte loops, classifiers,
 integer math, float helpers, memory walks, table lookups, and small container
 algorithms. A few operations intentionally bottom out in host C calls where
-there is no useful pure-SemanticScript substitute yet, such as `c.putchar`, `c.malloc`,
-`c.free`, `c.clock`, `c.time`, `c.getenv`, `c.exit`, `c.abort`, and
-`c.raise`.
+there is no useful pure-SemanticScript substitute yet, such as `c.putchar`,
+`c.clock`, `c.time`, `c.getenv`, `c.exit`, `c.abort`, and `c.raise`. Generic
+heap buffers should use `standard.memory` allocation/release wrappers instead
+of direct `c.malloc` / `c.free` in new source.
 
 ## Contents
 
@@ -92,7 +93,8 @@ rows, and failure-mode guidance. `usage.call.rows` are the call-and-bind core;
 also apply `usage.failureHandling.rows` and `usage.cleanup.rows` when their
 `required` flags are true. If `usage.preconditions.required` is true, validate
 the named caller precondition before emitting the call. Cleanup payloads for
-`c.free` include the caller's required heap-free effect and authority guidance.
+`c.free` and `memory.releaseMemoryBytes` include the caller's required heap-free
+effect and authority guidance.
 For non-exported capabilities, `usage.useCapabilityRows` stays empty and the
 payload provides `usage.authorityRows` plus complete local
 `usage.localCapabilityRows` declaration/use pairs instead of encouraging
@@ -166,7 +168,7 @@ Each file can also be run directly:
 
 ```powershell
 python compiler/semsc.py std/string/main.test.sem --run --quiet
-python compiler/semsc.py std/math_float/main.test.sem --run --quiet
+python compiler/semsc.py std/math/main.test.sem --run --quiet
 python compiler/semsc.py std/stdio/main.test.sem --run --quiet
 ```
 

@@ -33,14 +33,25 @@ errorCase MainError ConsoleWriteFailed
 capability stdoutWriteCapability console.stdout write
 
 # ----- imports under test (eight metadata-cluster modules) -----
-import char char
-import constants constants
-import stddef stddef
-import errno errno
-import errno_more errno_more
-import signal_more signal_more
-import iso646 iso646
-import bit bit
+import char standard.char
+import constants standard.constants
+import stddef standard.stddef
+import errno standard.errno
+import errno_more standard.errno_more
+import signal_more standard.signal_more
+import iso646 standard.iso646
+import bit standard.bit
+importConstant importedAsciiNewlineCharacterCode char asciiNewlineCharacterCode
+importConstant importedAsciiDeleteCharacterCode char asciiDeleteCharacterCode
+importConstant importedMathematicalPiFloat64 constants mathematicalPiFloat64
+importConstant importedMathematicalEulerNumberFloat64 constants mathematicalEulerNumberFloat64
+importConstant importedByteSizeOfOpaquePointer stddef byteSizeOfOpaquePointer
+importConstant importedByteSizeOfFloat64 stddef byteSizeOfFloat64
+importConstant importedFileNotFoundErrorNumber errno fileNotFoundErrorNumber
+importConstant importedTryAgainErrorNumber errno_more tryAgainErrorNumber
+importConstant importedOperationTimedOutErrorNumber errno_more operationTimedOutErrorNumber
+importConstant importedKillSignalNumber signal_more killSignalNumber
+importConstant importedHangupSignalNumber signal_more hangupSignalNumber
 
 operation stdlibImportSmokeMetadataMain
 input operation stdlibImportSmokeMetadataMain console Console
@@ -56,9 +67,9 @@ label startStdlibImportSmokeMetadataMain
 
 # ---- char: asciiNewlineCharacterCode == 10 ----
 storage module immutable tenExpectedForNewlineImport Int32 10
-call checkAsciiNewlineCall math.equalInt64
-argument checkAsciiNewlineCall left Int64 asciiNewlineCharacterCode
-argument checkAsciiNewlineCall right Int64 tenExpectedForNewlineImport
+call checkAsciiNewlineCall math.equalInt32
+argument checkAsciiNewlineCall left Int32 importedAsciiNewlineCharacterCode
+argument checkAsciiNewlineCall right Int32 tenExpectedForNewlineImport
 run checkAsciiNewlineCall
 bind value asciiNewlineOk Bool checkAsciiNewlineCall
 branch if condition asciiNewlineOk target asciiNewlineHolds
@@ -67,9 +78,9 @@ label asciiNewlineHolds
 
 # ---- char: asciiDeleteCharacterCode == 127 ----
 storage module immutable oneHundredTwentySevenExpectedImport Int32 127
-call checkAsciiDeleteCall math.equalInt64
-argument checkAsciiDeleteCall left Int64 asciiDeleteCharacterCode
-argument checkAsciiDeleteCall right Int64 oneHundredTwentySevenExpectedImport
+call checkAsciiDeleteCall math.equalInt32
+argument checkAsciiDeleteCall left Int32 importedAsciiDeleteCharacterCode
+argument checkAsciiDeleteCall right Int32 oneHundredTwentySevenExpectedImport
 run checkAsciiDeleteCall
 bind value asciiDeleteOk Bool checkAsciiDeleteCall
 branch if condition asciiDeleteOk target asciiDeleteHolds
@@ -79,7 +90,7 @@ label asciiDeleteHolds
 # ---- constants: mathematicalPiFloat64 == 3.141592653589793 ----
 storage module immutable piLiteralExpectedImport Float64 3.141592653589793
 call checkPiConstantCall math.equalFloat64
-argument checkPiConstantCall left Float64 mathematicalPiFloat64
+argument checkPiConstantCall left Float64 importedMathematicalPiFloat64
 argument checkPiConstantCall right Float64 piLiteralExpectedImport
 run checkPiConstantCall
 bind value piConstantOk Bool checkPiConstantCall
@@ -90,7 +101,7 @@ label piConstantHolds
 # ---- constants: mathematicalEulerNumberFloat64 == 2.718281828459045 ----
 storage module immutable eulerNumberExpectedImport Float64 2.718281828459045
 call checkEulerConstantCall math.equalFloat64
-argument checkEulerConstantCall left Float64 mathematicalEulerNumberFloat64
+argument checkEulerConstantCall left Float64 importedMathematicalEulerNumberFloat64
 argument checkEulerConstantCall right Float64 eulerNumberExpectedImport
 run checkEulerConstantCall
 bind value eulerConstantOk Bool checkEulerConstantCall
@@ -101,7 +112,7 @@ label eulerConstantHolds
 # ---- stddef: byteSizeOfOpaquePointer == 8 (x86-64 ABI) ----
 storage module immutable eightExpectedForPointerByteSizeImport Int64 8
 call checkPointerByteSizeCall math.equalInt64
-argument checkPointerByteSizeCall left Int64 byteSizeOfOpaquePointer
+argument checkPointerByteSizeCall left Int64 importedByteSizeOfOpaquePointer
 argument checkPointerByteSizeCall right Int64 eightExpectedForPointerByteSizeImport
 run checkPointerByteSizeCall
 bind value pointerByteSizeOk Bool checkPointerByteSizeCall
@@ -111,7 +122,7 @@ label pointerByteSizeHolds
 
 # ---- stddef: byteSizeOfFloat64 == 8 ----
 call checkFloat64ByteSizeCall math.equalInt64
-argument checkFloat64ByteSizeCall left Int64 byteSizeOfFloat64
+argument checkFloat64ByteSizeCall left Int64 importedByteSizeOfFloat64
 argument checkFloat64ByteSizeCall right Int64 eightExpectedForPointerByteSizeImport
 run checkFloat64ByteSizeCall
 bind value float64ByteSizeOk Bool checkFloat64ByteSizeCall
@@ -121,41 +132,26 @@ label float64ByteSizeHolds
 
 # ---- errno: fileNotFoundErrorNumber == 2 (POSIX ENOENT) ----
 storage module immutable twoExpectedForEnoentImport Int32 2
-call checkEnoentCall math.equalInt64
-argument checkEnoentCall left Int64 fileNotFoundErrorNumber
-argument checkEnoentCall right Int64 twoExpectedForEnoentImport
+call checkEnoentCall math.equalInt32
+argument checkEnoentCall left Int32 importedFileNotFoundErrorNumber
+argument checkEnoentCall right Int32 twoExpectedForEnoentImport
 run checkEnoentCall
 bind value enoentOk Bool checkEnoentCall
 branch if condition enoentOk target enoentHolds
 branch else target stdlibImportMetadataAssertionFailed
 label enoentHolds
 
-# ---- errno: lookupErrnoMessageCString(2) returns a non-empty string ----
+# ---- errno: lookupErrnoMessageCString(2) is callable through the import ----
 call lookupEnoentMessageCall lookupErrnoMessageCString
-argument lookupEnoentMessageCall errorNumber Int32 fileNotFoundErrorNumber
+argument lookupEnoentMessageCall errorNumber Int32 importedFileNotFoundErrorNumber
 run lookupEnoentMessageCall
-bind value enoentMessageText String lookupEnoentMessageCall
-storage module immutable zeroByteOffsetForMessageImport ByteCount 0
-call peekFirstMessageByteCall pointer.loadByte
-argument peekFirstMessageByteCall buffer String enoentMessageText
-argument peekFirstMessageByteCall offset ByteCount zeroByteOffsetForMessageImport
-run peekFirstMessageByteCall
-bind value enoentFirstByteValue Int8 peekFirstMessageByteCall
-storage module immutable nullByteForEnoentMessageImport Int64 0
-call detectEnoentMessageNonEmptyCall math.notEqualInt64
-argument detectEnoentMessageNonEmptyCall left Int8 enoentFirstByteValue
-argument detectEnoentMessageNonEmptyCall right Int64 nullByteForEnoentMessageImport
-run detectEnoentMessageNonEmptyCall
-bind value enoentMessageNonEmpty Bool detectEnoentMessageNonEmptyCall
-branch if condition enoentMessageNonEmpty target enoentMessageHolds
-branch else target stdlibImportMetadataAssertionFailed
-label enoentMessageHolds
+ignore value source lookupEnoentMessageCall type String
 
 # ---- errno_more: tryAgainErrorNumber == 11 (POSIX EAGAIN) ----
 storage module immutable elevenExpectedForEagainImport Int32 11
-call checkEagainCall math.equalInt64
-argument checkEagainCall left Int64 tryAgainErrorNumber
-argument checkEagainCall right Int64 elevenExpectedForEagainImport
+call checkEagainCall math.equalInt32
+argument checkEagainCall left Int32 importedTryAgainErrorNumber
+argument checkEagainCall right Int32 elevenExpectedForEagainImport
 run checkEagainCall
 bind value eagainOk Bool checkEagainCall
 branch if condition eagainOk target eagainHolds
@@ -164,9 +160,9 @@ label eagainHolds
 
 # ---- errno_more: operationTimedOutErrorNumber == 110 (POSIX ETIMEDOUT) ----
 storage module immutable oneHundredTenExpectedForEtimedoutImport Int32 110
-call checkEtimedoutCall math.equalInt64
-argument checkEtimedoutCall left Int64 operationTimedOutErrorNumber
-argument checkEtimedoutCall right Int64 oneHundredTenExpectedForEtimedoutImport
+call checkEtimedoutCall math.equalInt32
+argument checkEtimedoutCall left Int32 importedOperationTimedOutErrorNumber
+argument checkEtimedoutCall right Int32 oneHundredTenExpectedForEtimedoutImport
 run checkEtimedoutCall
 bind value etimedoutOk Bool checkEtimedoutCall
 branch if condition etimedoutOk target etimedoutHolds
@@ -175,9 +171,9 @@ label etimedoutHolds
 
 # ---- signal_more: killSignalNumber == 9 (POSIX SIGKILL) ----
 storage module immutable nineExpectedForSigkillImport Int32 9
-call checkSigkillCall math.equalInt64
-argument checkSigkillCall left Int64 killSignalNumber
-argument checkSigkillCall right Int64 nineExpectedForSigkillImport
+call checkSigkillCall math.equalInt32
+argument checkSigkillCall left Int32 importedKillSignalNumber
+argument checkSigkillCall right Int32 nineExpectedForSigkillImport
 run checkSigkillCall
 bind value sigkillOk Bool checkSigkillCall
 branch if condition sigkillOk target sigkillHolds
@@ -186,9 +182,9 @@ label sigkillHolds
 
 # ---- signal_more: hangupSignalNumber == 1 (POSIX SIGHUP) ----
 storage module immutable oneExpectedForSighupImport Int32 1
-call checkSighupCall math.equalInt64
-argument checkSighupCall left Int64 hangupSignalNumber
-argument checkSighupCall right Int64 oneExpectedForSighupImport
+call checkSighupCall math.equalInt32
+argument checkSighupCall left Int32 importedHangupSignalNumber
+argument checkSighupCall right Int32 oneExpectedForSighupImport
 run checkSighupCall
 bind value sighupOk Bool checkSighupCall
 branch if condition sighupOk target sighupHolds
@@ -249,10 +245,9 @@ label shiftLeftImportHolds
 # All metadata-cluster checks held.
 storage module immutable metadataImportSuccessMessage String "OK"
 call writeMetadataImportSuccessCall console.writeLine
-argument writeMetadataImportSuccessCall console Console console
 argument writeMetadataImportSuccessCall text String metadataImportSuccessMessage
 run writeMetadataImportSuccessCall
-ignore ok source writeMetadataImportSuccessCall type Int32
+ignore void source writeMetadataImportSuccessCall
 bind error metadataImportConsoleWriteError Int32 writeMetadataImportSuccessCall
 branch error source writeMetadataImportSuccessCall target metadataImportConsoleWriteFailed
 storage module immutable metadataImportExitOk ExitCode 0

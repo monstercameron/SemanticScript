@@ -9,6 +9,9 @@ moduleDoesNotOwn standard.stddef "App-specific wrappers, compatibility aliases, 
 invariant module standard.stddef "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.stddef stddefModuleVersionText
+exportConstant standard.stddef byteSizeOfOpaquePointer
+exportConstant standard.stddef byteSizeOfSignedInt32
+exportConstant standard.stddef byteSizeOfFloat64
 storage module immutable stddefModuleVersionText String "standard.stddef 0.1"
 
 # Canonical standard-library implementation body.

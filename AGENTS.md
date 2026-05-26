@@ -237,7 +237,11 @@ and enables Asyncify for `document.nextEvent`); see
 Common call targets include `console.writeLine`, `console.writeIntegerLine`,
 `math.addInt64`, `math.subtractInt64`, `math.multiplyInt64`, `math.divideInt64`,
 `math.equalInt64`, `math.lessThanInt64`, `math.addFloat64`, and `c.*` targets
-listed in `SemanticScript/compiler/libc_registry.py`.
+listed in `SemanticScript/compiler/libc_registry.py`. Treat raw `c.*` as a
+compiler interop escape hatch: before generating it, run `sem docs get c.NAME
+--json` and read `target.wrapperPolicy`. Prefer the named `standard.*` wrapper
+when `wrapperPolicy.decision` is `stdlib-wrapper-planned`; do not generate app
+code for `no-public-wrapper` or `abi-blocked` targets.
 
 Use `python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json`
 before generating calls to standard-library APIs or compiler-owned targets, or
@@ -260,9 +264,10 @@ wants local semantic API search; otherwise leave it off. Treat `docs search`
 results as discovery candidates and use `docs get`, `slice`, or `--include-docs`
 before generating calls.
 
-Avoid `c.malloc`/`c.free` in demo apps unless heap behavior is the point. If
-used, declare heap effects and capabilities, handle allocation failure, and emit
-explicit cleanup on every ownership path.
+Prefer `standard.memory` allocation wrappers in demo apps. Avoid raw
+`c.malloc`/`c.free` unless heap interop is the point; if used, declare heap
+effects and capabilities, handle allocation failure, and emit explicit cleanup
+on every ownership path.
 
 ## Records, JSON, And Trust Boundaries
 
@@ -802,21 +807,15 @@ c.*:
 c.* signatures: compiler/libc_registry.py. Prefer SemanticScript camelCase aliases for C
 names with underscores.
 
-Heap edge: avoid c.malloc/c.free in demo apps unless the user asks for heap.
-If used, declare effect allocate heap, effect free heap, memoryHeap OP yes,
-memoryAllocationSource OP ALLOC_CALL, capabilities for heap allocate/free, and
-handle c.malloc as fallible with `bind error` + `branch error`. For executable code,
-emit an explicit `call ... c.free` cleanup on every ownership path. A
-`defer NAME c.free allocatedPointer` row is useful cleanup metadata, but current
-compiler lowering treats non-user-op defer targets as metadata, so do not claim
-that row alone proves runtime leak freedom. Linters should accept either a
-defer row or an explicit cleanup call that consumes the bound allocation.
-There is no general stdlib free wrapper today; std/README explicitly says
-c.free is one of the host C calls with no useful pure-SemanticScript substitute. Prefer a
-domain-specific stdlib release op when the matching allocator provides one
-(example: createDeterministicRandomState -> releaseDeterministicRandomState).
-For generic heap buffers or duplicateCStringIntoOwnedMemory output, current
-stdlib examples still use c.free / defer NAME c.free POINTER.
+Heap edge: prefer `memory.allocateMemoryBytes` and cleanup with
+`memory.releaseMemoryBytes` from `standard.memory`. Avoid raw c.malloc/c.free in
+demo apps unless the user asks for heap interop. If raw c.* is used, declare
+effect allocate heap, effect free heap, memoryHeap OP yes, memoryAllocationSource
+OP ALLOC_CALL, capabilities for heap allocate/free, and handle c.malloc as
+fallible with `bind error` + `branch error`. For executable code, emit explicit
+cleanup on every ownership path. A `defer NAME memory.releaseMemoryBytes
+allocatedPointer` row runs as a user-op defer; raw `defer NAME c.free
+allocatedPointer` is metadata-only in the current compiler.
 
 Domain method:
   type CountdownValue Int64

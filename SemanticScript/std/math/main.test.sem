@@ -30,6 +30,32 @@ capability stdoutWriteCapability console.stdout write
 # Smoke test
 # ============================================================
 
+operation floatWithinTolerance
+input operation floatWithinTolerance actualValue Float64
+input operation floatWithinTolerance expectedValue Float64
+input operation floatWithinTolerance toleranceValue Float64
+output operation floatWithinTolerance Bool
+memory floatWithinTolerance heap no
+async floatWithinTolerance no
+purpose operation floatWithinTolerance "Return true when two Float64 values are closer than the supplied tolerance."
+invariant operation floatWithinTolerance "Uses absolute difference so callers do not depend on approximation direction."
+
+call toleranceDifferenceCall math.subtractFloat64
+argument toleranceDifferenceCall left Float64 actualValue
+argument toleranceDifferenceCall right Float64 expectedValue
+run toleranceDifferenceCall
+bind value toleranceDifference Float64 toleranceDifferenceCall
+call toleranceMagnitudeCall absoluteFloat64
+argument toleranceMagnitudeCall inputValue Float64 toleranceDifference
+run toleranceMagnitudeCall
+bind value toleranceMagnitude Float64 toleranceMagnitudeCall
+call toleranceCompareCall math.lessThanFloat64
+argument toleranceCompareCall left Float64 toleranceMagnitude
+argument toleranceCompareCall right Float64 toleranceValue
+run toleranceCompareCall
+bind value isWithinTolerance Bool toleranceCompareCall
+return value isWithinTolerance
+
 operation main
 input operation main console Console
 output operation main Result ExitCode MainError
@@ -770,12 +796,119 @@ branch if condition roundTripSquareSqrtOk target roundTripSquareSqrtHolds
 branch else target smokeAssertionFailed
 label roundTripSquareSqrtHolds
 
+# Float helpers moved into standard.math.
+storage module immutable negativeTwoPointFiveForFloatMath Float64 -2.5
+storage module immutable positiveTwoPointFiveForFloatMath Float64 2.5
+call absoluteFloatMathCall absoluteFloat64
+argument absoluteFloatMathCall inputValue Float64 negativeTwoPointFiveForFloatMath
+run absoluteFloatMathCall
+bind value absoluteFloatMathResult Float64 absoluteFloatMathCall
+call checkAbsoluteFloatMathCall math.equalFloat64
+argument checkAbsoluteFloatMathCall left Float64 absoluteFloatMathResult
+argument checkAbsoluteFloatMathCall right Float64 positiveTwoPointFiveForFloatMath
+run checkAbsoluteFloatMathCall
+bind value absoluteFloatMathOk Bool checkAbsoluteFloatMathCall
+branch if condition absoluteFloatMathOk target absoluteFloatMathHolds
+branch else target smokeAssertionFailed
+label absoluteFloatMathHolds
+
+storage module immutable oneHundredFortyFourFloatMath Float64 144.0
+storage module immutable twelveFloatMathExpected Float64 12.0
+storage module immutable floatMathTolerance Float64 0.0001
+call squareRootFloatMathCall squareRootFloat64
+argument squareRootFloatMathCall inputValue Float64 oneHundredFortyFourFloatMath
+run squareRootFloatMathCall
+bind value squareRootFloatMathResult Float64 squareRootFloatMathCall
+call squareRootFloatMathDiffCall math.subtractFloat64
+argument squareRootFloatMathDiffCall left Float64 squareRootFloatMathResult
+argument squareRootFloatMathDiffCall right Float64 twelveFloatMathExpected
+run squareRootFloatMathDiffCall
+bind value squareRootFloatMathDiff Float64 squareRootFloatMathDiffCall
+call squareRootFloatMathAbsCall absoluteFloat64
+argument squareRootFloatMathAbsCall inputValue Float64 squareRootFloatMathDiff
+run squareRootFloatMathAbsCall
+bind value squareRootFloatMathAbs Float64 squareRootFloatMathAbsCall
+call checkSquareRootFloatMathCall math.lessThanFloat64
+argument checkSquareRootFloatMathCall left Float64 squareRootFloatMathAbs
+argument checkSquareRootFloatMathCall right Float64 floatMathTolerance
+run checkSquareRootFloatMathCall
+bind value squareRootFloatMathOk Bool checkSquareRootFloatMathCall
+branch if condition squareRootFloatMathOk target squareRootFloatMathHolds
+branch else target smokeAssertionFailed
+label squareRootFloatMathHolds
+
+storage module immutable oneFloatMathInput Float64 1.0
+storage module immutable eulerFloatMathExpected Float64 2.718281828
+storage module immutable eulerFloatMathTolerance Float64 0.001
+call exponentialFloatMathCall exponentialBaseEFloat64
+argument exponentialFloatMathCall inputValue Float64 oneFloatMathInput
+run exponentialFloatMathCall
+bind value exponentialFloatMathResult Float64 exponentialFloatMathCall
+call exponentialFloatMathDiffCall math.subtractFloat64
+argument exponentialFloatMathDiffCall left Float64 exponentialFloatMathResult
+argument exponentialFloatMathDiffCall right Float64 eulerFloatMathExpected
+run exponentialFloatMathDiffCall
+bind value exponentialFloatMathDiff Float64 exponentialFloatMathDiffCall
+call exponentialFloatMathAbsCall absoluteFloat64
+argument exponentialFloatMathAbsCall inputValue Float64 exponentialFloatMathDiff
+run exponentialFloatMathAbsCall
+bind value exponentialFloatMathAbs Float64 exponentialFloatMathAbsCall
+call checkExponentialFloatMathCall math.lessThanFloat64
+argument checkExponentialFloatMathCall left Float64 exponentialFloatMathAbs
+argument checkExponentialFloatMathCall right Float64 eulerFloatMathTolerance
+run checkExponentialFloatMathCall
+bind value exponentialFloatMathOk Bool checkExponentialFloatMathCall
+branch if condition exponentialFloatMathOk target exponentialFloatMathHolds
+branch else target smokeAssertionFailed
+label exponentialFloatMathHolds
+
+storage module immutable negativeTwoPointThreeForFloor Float64 -2.3
+storage module immutable negativeThreeForFloor Float64 -3.0
+call floorFloatMathCall floorFloat64
+argument floorFloatMathCall inputValue Float64 negativeTwoPointThreeForFloor
+run floorFloatMathCall
+bind value floorFloatMathResult Float64 floorFloatMathCall
+call checkFloorFloatMathCall math.equalFloat64
+argument checkFloorFloatMathCall left Float64 floorFloatMathResult
+argument checkFloorFloatMathCall right Float64 negativeThreeForFloor
+run checkFloorFloatMathCall
+bind value floorFloatMathOk Bool checkFloorFloatMathCall
+branch if condition floorFloatMathOk target floorFloatMathHolds
+branch else target smokeAssertionFailed
+label floorFloatMathHolds
+
+storage module immutable twoFloatMathInput Float64 2.0
+storage module immutable tenFloatMathInput Float64 10.0
+storage module immutable powerFloatMathExpected Float64 1024.0
+storage module immutable powerFloatMathTolerance Float64 5.0
+call powerFloatMathCall powerFloat64
+argument powerFloatMathCall baseValue Float64 twoFloatMathInput
+argument powerFloatMathCall exponentValue Float64 tenFloatMathInput
+run powerFloatMathCall
+bind value powerFloatMathResult Float64 powerFloatMathCall
+call powerFloatMathDiffCall math.subtractFloat64
+argument powerFloatMathDiffCall left Float64 powerFloatMathResult
+argument powerFloatMathDiffCall right Float64 powerFloatMathExpected
+run powerFloatMathDiffCall
+bind value powerFloatMathDiff Float64 powerFloatMathDiffCall
+call powerFloatMathAbsCall absoluteFloat64
+argument powerFloatMathAbsCall inputValue Float64 powerFloatMathDiff
+run powerFloatMathAbsCall
+bind value powerFloatMathAbs Float64 powerFloatMathAbsCall
+call checkPowerFloatMathCall math.lessThanFloat64
+argument checkPowerFloatMathCall left Float64 powerFloatMathAbs
+argument checkPowerFloatMathCall right Float64 powerFloatMathTolerance
+run checkPowerFloatMathCall
+bind value powerFloatMathOk Bool checkPowerFloatMathCall
+branch if condition powerFloatMathOk target powerFloatMathHolds
+branch else target smokeAssertionFailed
+label powerFloatMathHolds
+
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine
-argument writeSuccessLineCall console Console console
 argument writeSuccessLineCall text String successMessageText
 run writeSuccessLineCall
-ignore ok source writeSuccessLineCall type Int32
+ignore void source writeSuccessLineCall
 bind error consoleWriteResultError Int32 writeSuccessLineCall
 branch error source writeSuccessLineCall target consoleWriteFailedHandler
 storage module immutable exitOkCode ExitCode 0

@@ -50,6 +50,46 @@ MIDDLEWARE_CONTROL_CASES: tuple[tuple[str, int], ...] = (
     ("shortCircuitMiddlewareControl", 1),
 )
 
+JSON_STRINGIFY_RESULT_ALIAS_TARGETS: frozenset[str] = frozenset({
+    "json.stringify.Int64",
+    "json.stringify.UInt64",
+    "json.stringify.Int32",
+    "json.stringify.UInt32",
+    "json.stringify.Int16",
+    "json.stringify.UInt16",
+    "json.stringify.Int8",
+    "json.stringify.UInt8",
+    "json.stringify.DurationMilliseconds",
+    "json.stringify.MonotonicMilliseconds",
+    "json.stringify.UtcMilliseconds",
+    "json.stringify.Bool",
+    "json.stringify.Float64",
+    "json.stringify.Float32",
+    "json.stringify.String",
+    "json.stringify.JsonText",
+})
+
+JSON_PARSE_RESULT_ALIAS_TARGETS: frozenset[str] = frozenset({
+    "json.parse.Int64",
+    "json.parse.UInt64",
+    "json.parse.Int32",
+    "json.parse.UInt32",
+    "json.parse.Int16",
+    "json.parse.UInt16",
+    "json.parse.Int8",
+    "json.parse.UInt8",
+    "json.parse.DurationMilliseconds",
+    "json.parse.MonotonicMilliseconds",
+    "json.parse.UtcMilliseconds",
+    "json.parse.Bool",
+    "json.parse.Float64",
+    "json.parse.Float32",
+    "json.parse.JsonText",
+})
+
+JSON_RESULT_ALIAS_TARGETS: frozenset[str] = (
+    JSON_STRINGIFY_RESULT_ALIAS_TARGETS | JSON_PARSE_RESULT_ALIAS_TARGETS
+)
 
 RESULT_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "console.writeLine",
@@ -57,6 +97,8 @@ RESULT_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "console.writeInteger",
     "console.writeFloatLine",
     "math.checkedMultiplyInt64",
+    "memory.allocateMemoryBytes",
+    "standard.memory.allocateMemoryBytes",
     "sqlite.openDatabase",
     "sqlite.closeDatabase",
     "sqlite.exec",
@@ -121,7 +163,7 @@ RESULT_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({
     "net.fetchBytes",
     "fetchText",
     "fetchBytes",
-})
+}) | JSON_RESULT_ALIAS_TARGETS
 
 
 EXPLICIT_DISPOSITION_FALLIBLE_CALL_TARGETS: frozenset[str] = frozenset({

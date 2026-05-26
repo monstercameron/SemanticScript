@@ -9,6 +9,7 @@ moduleDoesNotOwn standard.errno "App-specific wrappers, compatibility aliases, o
 invariant module standard.errno "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.errno errnoModuleVersionText
+exportConstant standard.errno fileNotFoundErrorNumber
 storage module immutable errnoModuleVersionText String "standard.errno 0.1"
 
 # Canonical standard-library implementation body.

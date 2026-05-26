@@ -247,6 +247,24 @@ const char *ss_http_form_find_field(
     size_t scratch_capacity
 );
 
+/*
+ * URL-decode / URL-encode one component into caller-owned scratch memory.
+ * Decode uses form-compatible semantics (`+` -> space) and rejects malformed
+ * percent escapes. Encode passes RFC 3986 unreserved bytes through and writes
+ * spaces as %20. Both return NULL on bad arguments or insufficient scratch.
+ */
+const char *ss_http_url_decode(
+    const char *input,
+    char *scratch_buffer,
+    size_t scratch_capacity
+);
+
+const char *ss_http_url_encode(
+    const char *input,
+    char *scratch_buffer,
+    size_t scratch_capacity
+);
+
 const char *ss_http_multipart_part_text(SSHttpRequest *request, const char *name);
 const void *ss_http_multipart_part_bytes(SSHttpRequest *request, const char *name);
 size_t ss_http_multipart_part_length(SSHttpRequest *request, const char *name);

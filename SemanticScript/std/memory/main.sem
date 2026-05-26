@@ -9,7 +9,23 @@ moduleDoesNotOwn standard.memory "App-specific wrappers, compatibility aliases, 
 invariant module standard.memory "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 exportConstant standard.memory memoryModuleVersionText
+exportError standard.memory MemoryAllocationError
+exportOperation standard.memory allocateMemoryBytes
+exportOperation standard.memory releaseMemoryBytes
+exportOperation standard.memory copyMemoryBytes
+exportOperation standard.memory moveMemoryBytesAllowOverlap
+exportOperation standard.memory fillMemoryBytesWithValue
+exportOperation standard.memory zeroMemoryBytes
+exportOperation standard.memory compareMemoryByteRanges
+exportOperation standard.memory findByteValueInMemoryRange
+exportOperation standard.memory hashMemoryBytesWithFnv1a
 storage module immutable memoryModuleVersionText String "standard.memory 0.1"
+
+error MemoryAllocationError
+errorCase MemoryAllocationError AllocationFailed Int32
+
+capability memoryHeapAllocationCapability heap allocate
+capability memoryHeapFreeCapability heap free
 
 # Canonical standard-library implementation body.
 # ============================================================
@@ -52,6 +68,55 @@ domainLiteralSource fnvOneAOffsetBasis ietf.fnv1a.offsetBasis64
 domainLiteral fnvOneAPrime Int64 1099511628211
 domainLiteralTrust fnvOneAPrime trustedStaticLiteral
 domainLiteralSource fnvOneAPrime ietf.fnv1a.prime64
+
+# section memory.allocation
+
+# rationale: Allocate byteCount bytes of uninitialized heap memory and return a typed allocation result.
+# invariant: OK result is a non-null pointer owned by the caller until releaseMemoryBytes consumes it.
+# failure: AllocationFailed when the host allocator returns null.
+operation allocateMemoryBytes
+input operation allocateMemoryBytes byteCount ByteCount
+output operation allocateMemoryBytes Result OpaquePointer MemoryAllocationError
+useCapability allocateMemoryBytes memoryHeapAllocationCapability
+effect allocateMemoryBytes allocate heap
+memory allocateMemoryBytes heap yes
+memoryAllocationSource allocateMemoryBytes allocateMemoryBytesCall
+async allocateMemoryBytes no
+purpose operation allocateMemoryBytes "Allocate byteCount bytes of uninitialized heap memory and return a typed allocation result."
+invariant operation allocateMemoryBytes "OK result is a non-null pointer owned by the caller until releaseMemoryBytes consumes it."
+failure allocateMemoryBytes AllocationFailed "AllocationFailed when the host allocator returns null."
+guarantee allocateMemoryBytes "Returns OK with a non-null pointer, or Err with AllocationFailed."
+label startAllocateMemoryBytes
+call allocateMemoryBytesCall c.malloc
+argument allocateMemoryBytesCall size ByteCount byteCount
+run allocateMemoryBytesCall
+bind value allocatedMemoryBuffer OpaquePointer allocateMemoryBytesCall
+bind error rawAllocationError Int32 allocateMemoryBytesCall
+branch error source allocateMemoryBytesCall target memoryAllocationFailed
+return ok allocatedMemoryBuffer
+label memoryAllocationFailed
+makeError memoryAllocationFailure MemoryAllocationError.AllocationFailed rawAllocationError
+return error memoryAllocationFailure
+
+# rationale: Release a heap pointer returned by allocateMemoryBytes.
+# invariant: Caller must pass null or a live allocation pointer that has not already been released.
+operation releaseMemoryBytes
+input operation releaseMemoryBytes memoryBuffer OpaquePointer
+output operation releaseMemoryBytes Void
+useCapability releaseMemoryBytes memoryHeapFreeCapability
+effect releaseMemoryBytes free heap
+memory releaseMemoryBytes heap yes
+memoryAllocationSource releaseMemoryBytes releaseMemoryBytesCall
+async releaseMemoryBytes no
+purpose operation releaseMemoryBytes "Release a heap pointer returned by allocateMemoryBytes."
+invariant operation releaseMemoryBytes "Caller must pass null or a live allocation pointer that has not already been released."
+guarantee releaseMemoryBytes "Returns after c.free accepts the pointer."
+label startReleaseMemoryBytes
+call releaseMemoryBytesCall c.free
+argument releaseMemoryBytesCall ptr OpaquePointer memoryBuffer
+run releaseMemoryBytesCall
+ignore void source releaseMemoryBytesCall
+return void
 
 # section memory.copy
 

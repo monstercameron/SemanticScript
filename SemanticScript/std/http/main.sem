@@ -126,6 +126,9 @@ storage module immutable sseAccelBufferingHeaderValue HttpHeaderValue "no"
 storage module immutable sseDefaultHeartbeatComment SseHeartbeatComment "heartbeat"
 storage module immutable disconnectedCode Int32 1
 storage module immutable shuttingDownCode Int32 1
+storage module immutable httpClientMethodGet String "GET"
+storage module immutable httpClientMethodPost String "POST"
+storage module immutable httpClientEmptyBody String ""
 
 # rationale: SSE handlers openSseStream first, then loop while not
 #   clientDisconnected and not serverIsShuttingDown, then write events or
@@ -394,10 +397,6 @@ runtimeBinding serverIsShuttingDownNative native.ss_http_server_is_shutting_down
 # owns only the minimal socket primitive (ss_http_client_fetch); these wrappers
 # provide the typed, ergonomic GET/POST surface. Returned bodies are heap-owned
 # by the caller (free via c.free) and are null on transport error or non-2xx.
-
-storage module immutable httpClientMethodGet String "GET"
-storage module immutable httpClientMethodPost String "POST"
-storage module immutable httpClientEmptyBody String ""
 
 # rationale: clientGet fixes the HTTP method to GET. Pass an empty
 #   headerLine when no extra single-line header is needed.

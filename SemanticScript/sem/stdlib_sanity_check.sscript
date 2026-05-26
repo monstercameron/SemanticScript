@@ -48,18 +48,19 @@ invariant operation putString "At putStringLoop, cursorIndex bytes have already 
 label startPutString
 storage module immutable zeroIndex ByteCount 0
 storage module immutable oneIndex ByteCount 1
+storage module immutable zeroByte Int32 0
 memory putString mutable cursorIndex ByteCount zeroIndex
 
 label putStringLoop
 call loadByteCall pointer.loadByte
-argument loadByteCall buffer String sourceText
+argument loadByteCall buffer OpaquePointer sourceText
 argument loadByteCall offset ByteCount cursorIndex
 run loadByteCall
-bind value currentByte Int8 loadByteCall
+bind value currentByte Int32 loadByteCall
 
-call isNulCall math.equalInt64
-argument isNulCall left Int8 currentByte
-argument isNulCall right Int64 zeroIndex
+call isNulCall math.equalInt32
+argument isNulCall left Int32 currentByte
+argument isNulCall right Int32 zeroByte
 run isNulCall
 bind value reachedNul Bool isNulCall
 branch if condition reachedNul target putStringDone
@@ -195,12 +196,12 @@ call digitToAsciiCall math.addInt64
 argument digitToAsciiCall left Int64 digitValue
 argument digitToAsciiCall right Int64 asciiZeroOffset
 run digitToAsciiCall
-bind value digitAsciiByte Int32 digitToAsciiCall
+bind value digitAsciiByte Int64 digitToAsciiCall
 
 call storeDigitCall pointer.storeByte
 argument storeDigitCall buffer OpaquePointer digitBuffer
 argument storeDigitCall offset ByteCount digitCount
-argument storeDigitCall value Int32 digitAsciiByte
+argument storeDigitCall value Int64 digitAsciiByte
 run storeDigitCall
 
 call incrementCountCall math.addInt64
@@ -247,15 +248,15 @@ set memory emitCursor digitCount
 
 label emitNextDigit
 call cursorAtZeroCall math.equalInt64
-argument cursorAtZeroCall left ByteCount emitCursor
+argument cursorAtZeroCall left Int64 emitCursor
 argument cursorAtZeroCall right Int64 zeroValue
 run cursorAtZeroCall
 bind value cursorIsZero Bool cursorAtZeroCall
 branch if condition cursorIsZero target emitDone
 
 call decrementCursorCall math.subtractInt64
-argument decrementCursorCall left ByteCount emitCursor
-argument decrementCursorCall right ByteCount oneIndexDec
+argument decrementCursorCall left Int64 emitCursor
+argument decrementCursorCall right Int64 oneIndexDec
 run decrementCursorCall
 bind value decrementedCursor ByteCount decrementCursorCall
 set memory emitCursor decrementedCursor
@@ -264,7 +265,7 @@ call loadDigitByteCall pointer.loadByte
 argument loadDigitByteCall buffer OpaquePointer digitBuffer
 argument loadDigitByteCall offset ByteCount decrementedCursor
 run loadDigitByteCall
-bind value digitByteToEmit Int8 loadDigitByteCall
+bind value digitByteToEmit Int32 loadDigitByteCall
 
 call putDigitByteCall putByte
 argument putDigitByteCall byteValue Int32 digitByteToEmit
@@ -292,18 +293,19 @@ invariant operation strlen "At strlenLoop, cursorByteCount equals the number of 
 label startStrlen
 storage module immutable zeroByteCount ByteCount 0
 storage module immutable oneByteCount ByteCount 1
+storage module immutable zeroByteValue Int32 0
 memory strlen mutable cursorByteCount ByteCount zeroByteCount
 
 label strlenLoop
 call probeByteCall pointer.loadByte
-argument probeByteCall buffer String sourceText
+argument probeByteCall buffer OpaquePointer sourceText
 argument probeByteCall offset ByteCount cursorByteCount
 run probeByteCall
-bind value probedByte Int8 probeByteCall
+bind value probedByte Int32 probeByteCall
 
-call probeIsNulCall math.equalInt64
-argument probeIsNulCall left Int8 probedByte
-argument probeIsNulCall right Int64 zeroByteCount
+call probeIsNulCall math.equalInt32
+argument probeIsNulCall left Int32 probedByte
+argument probeIsNulCall right Int32 zeroByteValue
 run probeIsNulCall
 bind value probeReachedNul Bool probeIsNulCall
 branch if condition probeReachedNul target strlenDone
