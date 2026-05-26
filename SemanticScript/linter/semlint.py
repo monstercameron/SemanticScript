@@ -11038,7 +11038,19 @@ def check_branch_semantics(facts: ExtendedFacts) -> List[Diagnostic]:
             if sourceLine.verb == "branch" and len(args) == 5 and args[0] == "error":
                 callName = args[2]
                 callFact = operationCalls.get(callName)
-                if callFact is not None and callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS:
+                # A user operation whose `output` row declares `Result TYPE ERR`
+                # is a valid fallible call target — allow branch error source for it.
+                _target_op = facts.base.operations.get(callFact.target) if callFact else None
+                _is_user_result_op = False
+                if _target_op is not None:
+                    for _opline in _target_op.lines:
+                        _parts = output_parts(_opline)
+                        if (_parts is not None
+                                and _parts[0] == _target_op.name
+                                and _parts[1] == "Result"):
+                            _is_user_result_op = True
+                            break
+                if callFact is not None and callFact.target not in KNOWN_FALLIBLE_CALL_TARGETS and not _is_user_result_op:
                     diagnostics.append(Diagnostic(
                         tier=Tier.T1_SPEC,
                         code="SS4107",
