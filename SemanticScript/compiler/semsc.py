@@ -6636,6 +6636,12 @@ class Codegen:
             raise ValueError(f"unsupported const type: {typ}")
 
         def resolve(tok):
+            # String literals from the parser arrive as ('str', value) tuples.
+            # Emit them as interned i8* constants so fieldSet, argument, and
+            # other verb sites can accept inline quoted strings without first
+            # binding them to a named storage slot.
+            if isinstance(tok, tuple) and tok and tok[0] == "str":
+                return self._i8p(builder, tok[1])
             if isinstance(tok, str):
                 stripped = tok.lstrip("-")
                 if stripped.isdigit():
@@ -10729,6 +10735,25 @@ class Codegen:
                 "!=", call["error_value"], ir.Constant(Int32, 0),
                 name=f"{call_name}_isError")
 
+        # json.encode.<RecordType> / json.decode.<RecordType> — structural codecs.
+        # These are the natural verb-form aliases for the high-level record
+        # serializer/deserializer. Primitive types (Int64, String, etc.) fall
+        # through to the existing json.encode.* primitive handlers below;
+        # record types are routed to the fully-implemented structural codec.
+        if target.startswith("json.encode.") or target.startswith("json.decode."):
+            _is_stringify = target.startswith("json.encode.")
+            _pfx = "json.encode." if _is_stringify else "json.decode."
+            _type_name = target[len(_pfx):]
+            _resolved_type = resolve_alias(self.prog, _type_name)
+            _record_type = _type_name if _type_name in self.prog.records else _resolved_type
+            if _record_type in self.prog.records:
+                if _is_stringify:
+                    high_json_emit_record_stringify(_record_type)
+                else:
+                    high_json_emit_record_parse(_record_type)
+                return
+            # Not a record type — fall through to json.encode.*/json.decode.* primitive handlers.
+
         if target.startswith("json.stringify.") or target.startswith("json.parse."):
             is_stringify = target.startswith("json.stringify.")
             prefix = "json.stringify." if is_stringify else "json.parse."
@@ -11517,10 +11542,9 @@ class Codegen:
         # representation (decimal digits, "true"/"false", scientific
         # notation) — implementable without a full codec runtime by
         # formatting into a per-call-site stack buffer via libc snprintf.
-        # Record-typed `json.encode.TypeName` still falls through to the
-        # external-module fallback because that requires walking record
-        # fields and emitting a structural encoder, which is the real
-        # codec runtime work tracked under docs/reference/syntax-inventory.md's Partial row.
+        # Record-typed `json.encode.TypeName` is handled above by the structural
+        # codec guard that routes to high_json_emit_record_stringify; only
+        # primitive targets reach this handler.
         if target in (
             "json.encode.Int64", "json.encode.UInt64",
             "json.encode.Int32", "json.encode.UInt32",
@@ -18046,13 +18070,22 @@ def _check_result_contract(prog: Program, diags):
 
 
 def _optimize(mod, tm, opt_level: int):
-    """Run the LLVM new-pass-manager optimization pipeline."""
-    pto = llvm.create_pipeline_tuning_options(speed_level=opt_level, size_level=0)
-    pto.loop_vectorization = True
-    pto.slp_vectorization = True
-    pb = llvm.create_pass_builder(tm, pto)
-    mpm = pb.getModulePassManager()
-    mpm.run(mod, pb)
+    """Run the LLVM optimization pipeline (new-pass-manager when available, else legacy PMB)."""
+    if hasattr(llvm, "create_pipeline_tuning_options"):
+        pto = llvm.create_pipeline_tuning_options(speed_level=opt_level, size_level=0)
+        pto.loop_vectorization = True
+        pto.slp_vectorization = True
+        pb = llvm.create_pass_builder(tm, pto)
+        mpm = pb.getModulePassManager()
+        mpm.run(mod, pb)
+    else:
+        pmb = llvm.create_pass_manager_builder()
+        pmb.opt_level = opt_level
+        pmb.loop_vectorize = True
+        pmb.slp_vectorize = True
+        pm = llvm.create_module_pass_manager()
+        pmb.populate(pm)
+        pm.run(mod)
 
 
 def _merge_build_file(prog: Program, build_path: str, explicit_std_paths=None) -> None:
@@ -19874,20 +19907,21 @@ def _program_uses_json_runtime(prog: Program) -> bool:
                 return True
             if verb == "call" and len(args) >= 2:
                 target = args[1]
-                if target.startswith("json.stringify.") or target.startswith("json.parse."):
+                if (target.startswith("json.stringify.") or target.startswith("json.parse.")
+                        or target.startswith("json.encode.") or target.startswith("json.decode.")):
                     type_name = target.split(".", 2)[2]
                     resolved_type = resolve_alias(prog, type_name)
-                    if target.startswith("json.parse.") and (
+                    if (target.startswith("json.parse.") or target.startswith("json.decode.")) and (
                         type_name in _JSON_PARSE_PRIMITIVE_TARGETS
                         or resolved_type in _JSON_PARSE_PRIMITIVE_TARGETS
                     ):
                         return True
-                    if target.startswith("json.stringify.") and (
+                    if (target.startswith("json.stringify.") or target.startswith("json.encode.")) and (
                         type_name in _JSON_STRINGIFY_PRIMITIVE_TARGETS
                         or resolved_type in _JSON_STRINGIFY_PRIMITIVE_TARGETS
                     ):
                         return True
-                    if target.startswith("json.parse.") and target_is_json_text(type_name):
+                    if (target.startswith("json.parse.") or target.startswith("json.decode.")) and target_is_json_text(type_name):
                         return True
                     if type_name in prog.records or resolved_type in prog.records:
                         return True
