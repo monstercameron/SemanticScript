@@ -13524,7 +13524,8 @@ def _validate_json_body_record_lint(
         _json_body_lint_key(facts, record_name, field_name): (field_name, field_type)
         for field_name, field_type in fields
     }
-    unknown = sorted(set(value.keys()) - set(expected_keys.keys()))
+    extension_keys = {"platforms"} if record_name == "BuildTarget" else set()
+    unknown = sorted(set(value.keys()) - set(expected_keys.keys()) - extension_keys)
     if unknown:
         return (
             "jsonBodyUnknownField",

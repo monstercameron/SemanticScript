@@ -14,7 +14,7 @@ from urllib.request import urlopen
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = APP_ROOT.parents[1]
-BACKEND_EXE = REPO_ROOT / "apps" / "taskforge-web" / "build" / "taskforge_web.exe"
+BACKEND_EXE = REPO_ROOT / "apps" / "taskforge-web" / "build" / "taskforge-web.exe"
 ASYNC_TEST_BUILD_ROOT = APP_ROOT / "build" / "real_async_test"
 IR_ASSERT_PATH = APP_ROOT / "build" / "async_assert" / "main.ll"
 GENERIC_IR_ASSERT_PATH = APP_ROOT / "build" / "async_assert" / "generic-main.ll"

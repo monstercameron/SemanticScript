@@ -47,7 +47,7 @@ From the repository root:
 ```powershell
 python -m SemanticScript.compiler.semsc apps/taskforge-web/build.sem --lint --parse-only
 python -m SemanticScript.compiler.semsc apps/taskforge-web/build.sem --emit-exe --quiet
-.\apps\taskforge-web\build\taskforge_web.exe
+.\apps\taskforge-web\build\taskforge-web.exe
 ```
 
 The server listens on `http://127.0.0.1:18090` and writes `taskforge_web.db`, logs, copied assets, and future image uploads under `build/`.

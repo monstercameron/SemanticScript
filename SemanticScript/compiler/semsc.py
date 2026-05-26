@@ -19071,15 +19071,25 @@ def _find_clang_for_platform(os_token: str, arch_token: str) -> "tuple[list[str]
         base_clang = [clang_env] if os.path.exists(clang_env) else shlex.split(
             clang_env, posix=os.name != "nt")
     if not base_clang:
-        resolved = which("clang")
-        if resolved:
-            base_clang = [resolved]
+        for candidate in ("clang", "C:/Program Files/LLVM/bin/clang.exe"):
+            if os.path.isabs(candidate):
+                if os.path.exists(candidate):
+                    base_clang = [candidate]
+                    break
+            else:
+                resolved = which(candidate)
+                if resolved:
+                    base_clang = [resolved]
+                    break
 
     # Native host — use base clang as-is.
     if os_token == host_os and arch_token == host_arch:
-        if not base_clang:
-            return None, "clang not found on PATH and SEMSC_CLANG not set"
-        return base_clang, ""
+        if base_clang:
+            return base_clang, ""
+        zig = which("zig")
+        if zig:
+            return [zig, "cc"], ""
+        return None, "could not find clang or zig cc; set SEMSC_CLANG=/path/to/clang"
 
     # macOS cross-arch: Apple clang supports -arch arm64 / -arch x86_64 natively.
     if host_os == "macos" and os_token == "macos":
@@ -21416,7 +21426,7 @@ def main():
         did_output = True
         outputs.append(("llvm ir", persisted_ir_path))
 
-    if _platform_specs and emit_exe_path is not None:
+    if _platform_specs and args.emit_exe == "":
         # ---- Multi-platform build loop ------------------------------------
         # Each platform entry re-compiles (IR is triple-dependent) and links
         # with the appropriate clang command.  Platforms whose toolchain is

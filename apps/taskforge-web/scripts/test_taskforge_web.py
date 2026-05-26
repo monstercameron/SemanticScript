@@ -45,7 +45,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BUILD_TAPE = REPO_ROOT / "apps" / "taskforge-web" / "build.sem"
 BUILD_DIR = REPO_ROOT / "apps" / "taskforge-web" / "build"
-EXE_PATH = BUILD_DIR / "taskforge_web.exe"
+EXE_PATH = BUILD_DIR / "taskforge-web.exe"
 DB_PATH = BUILD_DIR / "taskforge_web.db"
 ASSET_SOURCE_DIR = REPO_ROOT / "apps" / "taskforge-web" / "assets"
 BUILD_ASSET_DIR = BUILD_DIR / "assets"
