@@ -10073,6 +10073,8 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     status = "passed"
     if not preflight_buildable:
         status = "diagnostics"
+    elif not preflight_ok and selected == 0 and skipped:
+        status = "diagnostics"
     elif selected == 0:
         status = "no-tests"
     elif failed:

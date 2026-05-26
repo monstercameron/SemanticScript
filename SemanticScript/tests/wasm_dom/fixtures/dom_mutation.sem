@@ -29,11 +29,40 @@ call bodyCall document.bodyElement
 run bodyCall
 bind value bodyHandle DomHandle bodyCall
 
+call rootCall document.documentElement
+run rootCall
+bind value rootHandle DomHandle rootCall
+
 storage local immutable divTag DomTagName "div"
 call createCall document.createElement
 argument createCall tagName DomTagName divTag
 run createCall
 bind value divHandle DomHandle createCall
+
+storage local immutable temporaryMarkup DomHtmlMarkup "<span>temporary</span>"
+call setInnerHtmlCall document.setInnerHtml
+argument setInnerHtmlCall node DomHandle divHandle
+argument setInnerHtmlCall markup DomHtmlMarkup temporaryMarkup
+run setInnerHtmlCall
+ignore value source setInnerHtmlCall type DomStatus
+
+storage local immutable temporaryText DomText "temporary"
+call createTextNodeCall document.createTextNode
+argument createTextNodeCall text DomText temporaryText
+run createTextNodeCall
+bind value textNodeHandle DomHandle createTextNodeCall
+
+call appendTextNodeCall document.appendChild
+argument appendTextNodeCall parent DomHandle divHandle
+argument appendTextNodeCall child DomHandle textNodeHandle
+run appendTextNodeCall
+ignore value source appendTextNodeCall type DomStatus
+
+call removeTextNodeCall document.removeChild
+argument removeTextNodeCall parent DomHandle divHandle
+argument removeTextNodeCall child DomHandle textNodeHandle
+run removeTextNodeCall
+ignore value source removeTextNodeCall type DomStatus
 
 storage local immutable greetingText DomText "hello-from-wasm"
 call setTextCall document.setTextContent
@@ -41,6 +70,15 @@ argument setTextCall node DomHandle divHandle
 argument setTextCall text DomText greetingText
 run setTextCall
 ignore value source setTextCall type DomStatus
+
+storage local immutable emptyDomOutputBuffer DomOutputBuffer 0
+storage local immutable zeroDomBufferCapacity DomBufferCapacity 0
+call readTextCall document.getTextContentInto
+argument readTextCall node DomHandle divHandle
+argument readTextCall outText DomOutputBuffer emptyDomOutputBuffer
+argument readTextCall outTextCapacity DomBufferCapacity zeroDomBufferCapacity
+run readTextCall
+ignore value source readTextCall type DomByteCount
 
 storage local immutable idName DomAttributeName "id"
 storage local immutable idValue DomAttributeValue "greeting"
@@ -51,6 +89,27 @@ argument setAttrCall value DomAttributeValue idValue
 run setAttrCall
 ignore value source setAttrCall type DomStatus
 
+call readAttrCall document.getAttributeInto
+argument readAttrCall node DomHandle divHandle
+argument readAttrCall name DomAttributeName idName
+argument readAttrCall outValue DomOutputBuffer emptyDomOutputBuffer
+argument readAttrCall outValueCapacity DomBufferCapacity zeroDomBufferCapacity
+run readAttrCall
+ignore value source readAttrCall type DomByteCount
+
+call removeAttrCall document.removeAttribute
+argument removeAttrCall node DomHandle divHandle
+argument removeAttrCall name DomAttributeName idName
+run removeAttrCall
+ignore value source removeAttrCall type DomStatus
+
+call restoreAttrCall document.setAttribute
+argument restoreAttrCall node DomHandle divHandle
+argument restoreAttrCall name DomAttributeName idName
+argument restoreAttrCall value DomAttributeValue idValue
+run restoreAttrCall
+ignore value source restoreAttrCall type DomStatus
+
 storage local immutable className DomClassName "banner"
 call classCall document.classListAdd
 argument classCall node DomHandle divHandle
@@ -58,11 +117,67 @@ argument classCall className DomClassName className
 run classCall
 ignore value source classCall type DomStatus
 
+call removeClassCall document.classListRemove
+argument removeClassCall node DomHandle divHandle
+argument removeClassCall className DomClassName className
+run removeClassCall
+ignore value source removeClassCall type DomStatus
+
+call toggleClassCall document.classListToggle
+argument toggleClassCall node DomHandle divHandle
+argument toggleClassCall className DomClassName className
+run toggleClassCall
+ignore value source toggleClassCall type DomStatus
+
+storage local immutable stylePropertyName DomStyleProperty "color"
+storage local immutable stylePropertyValue DomStyleValue "red"
+call setStyleCall document.setStyleProperty
+argument setStyleCall node DomHandle divHandle
+argument setStyleCall property DomStyleProperty stylePropertyName
+argument setStyleCall value DomStyleValue stylePropertyValue
+run setStyleCall
+ignore value source setStyleCall type DomStatus
+
+storage local immutable inputTag DomTagName "input"
+call createInputCall document.createElement
+argument createInputCall tagName DomTagName inputTag
+run createInputCall
+bind value inputHandle DomHandle createInputCall
+
+storage local immutable inputValueText DomText "typed"
+call setInputValueCall document.setValue
+argument setInputValueCall node DomHandle inputHandle
+argument setInputValueCall text DomText inputValueText
+run setInputValueCall
+ignore value source setInputValueCall type DomStatus
+
+call readInputValueCall document.getValueInto
+argument readInputValueCall node DomHandle inputHandle
+argument readInputValueCall outText DomOutputBuffer emptyDomOutputBuffer
+argument readInputValueCall outTextCapacity DomBufferCapacity zeroDomBufferCapacity
+run readInputValueCall
+ignore value source readInputValueCall type DomByteCount
+
+call releaseInputHandleCall document.releaseHandle
+argument releaseInputHandleCall node DomHandle inputHandle
+run releaseInputHandleCall
+ignore value source releaseInputHandleCall type DomStatus
+
 call appendCall document.appendChild
 argument appendCall parent DomHandle bodyHandle
 argument appendCall child DomHandle divHandle
 run appendCall
 ignore value source appendCall type DomStatus
+
+call releaseRootHandleCall document.releaseHandle
+argument releaseRootHandleCall node DomHandle rootHandle
+run releaseRootHandleCall
+ignore value source releaseRootHandleCall type DomStatus
+
+call releaseTextNodeHandleCall document.releaseHandle
+argument releaseTextNodeHandleCall node DomHandle textNodeHandle
+run releaseTextNodeHandleCall
+ignore value source releaseTextNodeHandleCall type DomStatus
 
 storage local immutable okExit ExitCode 0
 return value okExit

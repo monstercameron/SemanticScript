@@ -51,6 +51,17 @@ argument awaitClickCall stream DomEventStreamHandle clickStream
 run awaitClickCall
 ignore value source awaitClickCall type DomStatus
 
+storage local immutable emptyEventDetailBuffer DomOutputBuffer 0
+storage local immutable zeroEventDetailCapacity DomBufferCapacity 0
+storage local immutable eventTypeProperty DomEventProperty "type"
+call eventDetailCall document.eventDetailInto
+argument eventDetailCall stream DomEventStreamHandle clickStream
+argument eventDetailCall property DomEventProperty eventTypeProperty
+argument eventDetailCall outValue DomOutputBuffer emptyEventDetailBuffer
+argument eventDetailCall outValueCapacity DomBufferCapacity zeroEventDetailCapacity
+run eventDetailCall
+ignore value source eventDetailCall type DomByteCount
+
 call targetCall document.eventTarget
 argument targetCall stream DomEventStreamHandle clickStream
 run targetCall

@@ -6665,12 +6665,14 @@ def test_webserver_standard_http_sse_stream_wrappers():
         "route sseServer GET \"/events\" eventsHandler",
         "storage module immutable okStatus HttpStatusCode 200",
         "storage module immutable eventName SseEventName \"auction.tick\"",
+        "storage module immutable eventId SseEventId 7",
         "storage module immutable eventData SseEventData \"{\\\"ok\\\":true}\"",
         "storage module immutable heartbeatComment SseHeartbeatComment \"heartbeat\"",
         "operation eventsHandler",
         "input operation eventsHandler request HttpRequest",
         "input operation eventsHandler response HttpResponse",
         "output operation eventsHandler Int32",
+        "effect eventsHandler read http.response",
         "effect eventsHandler write http.response",
         "memory eventsHandler arena request",
         "async eventsHandler no",
@@ -6686,12 +6688,23 @@ def test_webserver_standard_http_sse_stream_wrappers():
         "argument heartbeatCall comment SseHeartbeatComment heartbeatComment",
         "run heartbeatCall",
         "ignore value source heartbeatCall type Int32",
+        "call disconnectCheckCall http.clientDisconnected",
+        "argument disconnectCheckCall response HttpResponse response",
+        "run disconnectCheckCall",
+        "ignore value source disconnectCheckCall type Bool",
         "call eventCall http.writeSseEvent",
         "argument eventCall response HttpResponse response",
         "argument eventCall event SseEventName eventName",
         "argument eventCall data SseEventData eventData",
         "run eventCall",
         "ignore value source eventCall type Int32",
+        "call identifiedEventCall http.writeSseEventWithId",
+        "argument identifiedEventCall response HttpResponse response",
+        "argument identifiedEventCall id SseEventId eventId",
+        "argument identifiedEventCall event SseEventName eventName",
+        "argument identifiedEventCall data SseEventData eventData",
+        "run identifiedEventCall",
+        "ignore value source identifiedEventCall type Int32",
         "call closeCall http.closeSseStream",
         "argument closeCall response HttpResponse response",
         "run closeCall",
@@ -6763,7 +6776,7 @@ def test_webserver_standard_http_sse_stream_wrappers():
                   and headers.get("x-accel-buffering") == "no",
                   headers)
             check("webserver SSE: std wrapper emits heartbeat and event",
-                  body == ": heartbeat\n\nevent: auction.tick\ndata: {\"ok\":true}\n\n",
+                  body == ": heartbeat\n\nevent: auction.tick\ndata: {\"ok\":true}\n\nid: 7\nevent: auction.tick\ndata: {\"ok\":true}\n\n",
                   body)
         finally:
             if server_proc.poll() is None:
@@ -6965,6 +6978,202 @@ def test_sqlite_codegen_emits_runtime_externs_and_calls():
           "no statementSlot alloca emitted for sqlite.prepareStatement")
 
 
+def test_sqlite_extended_intrinsic_surface_lowers():
+    src = "\n".join([
+        "project SqliteExtendedIntrinsicCoverage",
+        "target console",
+        "runtime native 1",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "storage module immutable databasePath String \":memory:\"",
+        "storage module immutable createTableSql SqlText \"CREATE TABLE coverage(i INTEGER, d REAL, b BLOB, n INTEGER)\"",
+        "storage module immutable insertSql SqlText \"INSERT INTO coverage(i, d, b, n) VALUES (?1, ?2, ?3, ?4)\"",
+        "storage module immutable selectSql SqlText \"SELECT i AS int_col, d AS double_col, b AS blob_col, n AS null_col FROM coverage\"",
+        "storage module immutable firstParameterIndex Int32 1",
+        "storage module immutable secondParameterIndex Int32 2",
+        "storage module immutable thirdParameterIndex Int32 3",
+        "storage module immutable fourthParameterIndex Int32 4",
+        "storage module immutable integerColumnIndex Int32 0",
+        "storage module immutable doubleColumnIndex Int32 1",
+        "storage module immutable blobColumnIndex Int32 2",
+        "storage module immutable intBindValue Int64 42",
+        "storage module immutable doubleBindValue Float64 2.5",
+        "storage module immutable nullBlobValue SqliteBlob 0",
+        "storage module immutable emptyBlobLength SqliteByteCount 0",
+        "capability sqliteCoverageDatabaseReadWriter database readWrite",
+        "purpose operation sqliteCoverageDatabaseReadWriter \"Authority to exercise SQLite read/write intrinsic lowering\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main read database",
+        "effect main readWrite database",
+        "memory main heap yes",
+        "async main no",
+        "useCapability main sqliteCoverageDatabaseReadWriter",
+        "authority main read database",
+        "purpose operation main \"exercise every standard.sqlite intrinsic lowering that is not already covered by the syntax sample\"",
+        "label start",
+        "call versionCall sqlite.libraryVersion",
+        "run versionCall",
+        "bind value sqliteVersionText SqliteText versionCall",
+        "call openCall sqlite.openDatabase",
+        "argument openCall path String databasePath",
+        "argument openCall mode SqliteOpenMode inMemorySqliteOpenMode",
+        "run openCall",
+        "bind ok database SqliteDatabase openCall",
+        "branch error source openCall target sqliteFailure",
+        "call errorMessageCall sqlite.errorMessage",
+        "argument errorMessageCall database SqliteDatabase database",
+        "run errorMessageCall",
+        "bind value initialErrorMessage SqliteText errorMessageCall",
+        "call createStatusCall sqlite.execStatus",
+        "argument createStatusCall database SqliteDatabase database",
+        "argument createStatusCall sql SqlText createTableSql",
+        "run createStatusCall",
+        "bind value createStatus Int32 createStatusCall",
+        "call changedRowCountCall sqlite.changedRowCount",
+        "argument changedRowCountCall database SqliteDatabase database",
+        "run changedRowCountCall",
+        "bind value changedRows Int32 changedRowCountCall",
+        "call prepareInsertCall sqlite.prepareStatement",
+        "argument prepareInsertCall database SqliteDatabase database",
+        "argument prepareInsertCall sql SqlText insertSql",
+        "run prepareInsertCall",
+        "bind ok insertStatement SqliteStatement prepareInsertCall",
+        "branch error source prepareInsertCall target sqliteFailure",
+        "call bindInt64Call sqlite.bindInt64",
+        "argument bindInt64Call statement SqliteStatement insertStatement",
+        "argument bindInt64Call parameterIndex Int32 firstParameterIndex",
+        "argument bindInt64Call value Int64 intBindValue",
+        "run bindInt64Call",
+        "ignore void source bindInt64Call",
+        "branch error source bindInt64Call target sqliteFailure",
+        "call bindDoubleCall sqlite.bindDouble",
+        "argument bindDoubleCall statement SqliteStatement insertStatement",
+        "argument bindDoubleCall parameterIndex Int32 secondParameterIndex",
+        "argument bindDoubleCall value Float64 doubleBindValue",
+        "run bindDoubleCall",
+        "ignore void source bindDoubleCall",
+        "branch error source bindDoubleCall target sqliteFailure",
+        "call bindBlobCall sqlite.bindBlob",
+        "argument bindBlobCall statement SqliteStatement insertStatement",
+        "argument bindBlobCall parameterIndex Int32 thirdParameterIndex",
+        "argument bindBlobCall value SqliteBlob nullBlobValue",
+        "argument bindBlobCall valueLength SqliteByteCount emptyBlobLength",
+        "run bindBlobCall",
+        "ignore void source bindBlobCall",
+        "branch error source bindBlobCall target sqliteFailure",
+        "call bindNullCall sqlite.bindNull",
+        "argument bindNullCall statement SqliteStatement insertStatement",
+        "argument bindNullCall parameterIndex Int32 fourthParameterIndex",
+        "run bindNullCall",
+        "ignore void source bindNullCall",
+        "branch error source bindNullCall target sqliteFailure",
+        "call stepInsertCall sqlite.stepStatement",
+        "argument stepInsertCall statement SqliteStatement insertStatement",
+        "run stepInsertCall",
+        "ignore ok source stepInsertCall type SqliteStepResult",
+        "branch error source stepInsertCall target sqliteFailure",
+        "call resetInsertCall sqlite.resetStatement",
+        "argument resetInsertCall statement SqliteStatement insertStatement",
+        "run resetInsertCall",
+        "ignore void source resetInsertCall",
+        "branch error source resetInsertCall target sqliteFailure",
+        "call finalizeInsertCall sqlite.finalizeStatement",
+        "argument finalizeInsertCall statement SqliteStatement insertStatement",
+        "run finalizeInsertCall",
+        "ignore void source finalizeInsertCall",
+        "branch error source finalizeInsertCall target sqliteFailure",
+        "call prepareSelectCall sqlite.prepareStatement",
+        "argument prepareSelectCall database SqliteDatabase database",
+        "argument prepareSelectCall sql SqlText selectSql",
+        "run prepareSelectCall",
+        "bind ok selectStatement SqliteStatement prepareSelectCall",
+        "branch error source prepareSelectCall target sqliteFailure",
+        "call stepSelectCall sqlite.stepStatement",
+        "argument stepSelectCall statement SqliteStatement selectStatement",
+        "run stepSelectCall",
+        "ignore ok source stepSelectCall type SqliteStepResult",
+        "branch error source stepSelectCall target sqliteFailure",
+        "call columnCountCall sqlite.columnCount",
+        "argument columnCountCall statement SqliteStatement selectStatement",
+        "run columnCountCall",
+        "bind value selectedColumnCount Int32 columnCountCall",
+        "call columnTypeCall sqlite.columnType",
+        "argument columnTypeCall statement SqliteStatement selectStatement",
+        "argument columnTypeCall columnIndex Int32 integerColumnIndex",
+        "run columnTypeCall",
+        "bind value selectedColumnType SqliteColumnType columnTypeCall",
+        "call columnNameCall sqlite.columnName",
+        "argument columnNameCall statement SqliteStatement selectStatement",
+        "argument columnNameCall columnIndex Int32 integerColumnIndex",
+        "run columnNameCall",
+        "bind value selectedColumnName SqliteText columnNameCall",
+        "call columnDoubleCall sqlite.columnDouble",
+        "argument columnDoubleCall statement SqliteStatement selectStatement",
+        "argument columnDoubleCall columnIndex Int32 doubleColumnIndex",
+        "run columnDoubleCall",
+        "bind value selectedDoubleValue Float64 columnDoubleCall",
+        "call columnBlobCall sqlite.columnBlob",
+        "argument columnBlobCall statement SqliteStatement selectStatement",
+        "argument columnBlobCall columnIndex Int32 blobColumnIndex",
+        "run columnBlobCall",
+        "bind value selectedBlobValue SqliteBlob columnBlobCall",
+        "call columnByteCountCall sqlite.columnByteCount",
+        "argument columnByteCountCall statement SqliteStatement selectStatement",
+        "argument columnByteCountCall columnIndex Int32 blobColumnIndex",
+        "run columnByteCountCall",
+        "bind value selectedBlobByteCount SqliteByteCount columnByteCountCall",
+        "call finalizeSelectCall sqlite.finalizeStatement",
+        "argument finalizeSelectCall statement SqliteStatement selectStatement",
+        "run finalizeSelectCall",
+        "ignore void source finalizeSelectCall",
+        "branch error source finalizeSelectCall target sqliteFailure",
+        "call closeCall sqlite.closeDatabase",
+        "argument closeCall database SqliteDatabase database",
+        "run closeCall",
+        "ignore void source closeCall",
+        "branch error source closeCall target sqliteFailure",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+        "label sqliteFailure",
+        "storage local immutable fail ExitCode 1",
+        "return value fail",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "sqlite_extended_intrinsics.sem"
+        ir_path = Path(tmpdir) / "sqlite_extended_intrinsics.ll"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("sqlite extended lowering: codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    for symbol in (
+        "ss_sqlite_database_errmsg",
+        "ss_sqlite_database_changes",
+        "ss_sqlite_exec",
+        "ss_sqlite_statement_reset",
+        "ss_sqlite_statement_bind_int64",
+        "ss_sqlite_statement_bind_double",
+        "ss_sqlite_statement_bind_blob",
+        "ss_sqlite_statement_bind_null",
+        "ss_sqlite_statement_column_count",
+        "ss_sqlite_statement_column_type",
+        "ss_sqlite_statement_column_name",
+        "ss_sqlite_statement_column_double",
+        "ss_sqlite_statement_column_blob",
+        "ss_sqlite_statement_column_bytes",
+        "ss_sqlite_library_version",
+    ):
+        check(f"sqlite extended lowering: IR calls @{symbol}",
+              f"@\"{symbol}\"" in ir_text or f"@{symbol}" in ir_text,
+              f"missing {symbol}")
+
+
 def test_sqlite_codegen_rejects_unsupported_target():
     """If a `sqlite.*` call name isn't in the dispatch block the
     compiler must fail loudly rather than fall through to the
@@ -7160,6 +7369,14 @@ def test_standard_event_lowers_through_generic_runtime_bindings():
         "bind value appendedEvent EventId appendCall",
         "await receiveCall",
         "bind value receivedEvent EventId receiveCall",
+        "call acknowledgeCall event.acknowledgeEvent",
+        "argument acknowledgeCall subscription EventSubscriptionHandle subscription",
+        "argument acknowledgeCall eventId EventId receivedEvent",
+        "timeout acknowledgeCall 1000ms",
+        "cancelOn acknowledgeCall cancellationToken",
+        "start acknowledgeCall",
+        "await acknowledgeCall",
+        "bind value acknowledgeStatus EventStatusCode acknowledgeCall",
         "call closeSubscriptionCall event.closeSubscription",
         "argument closeSubscriptionCall subscription EventSubscriptionHandle subscription",
         "timeout closeSubscriptionCall 1000ms",
@@ -7251,6 +7468,9 @@ def test_standard_event_lowers_through_generic_runtime_bindings():
         "ss_event_receive",
         "ss_event_receive_start",
         "ss_event_receive_await",
+        "ss_event_acknowledge",
+        "ss_event_acknowledge_start",
+        "ss_event_acknowledge_await",
         "ss_event_close_subscription",
         "ss_event_close_subscription_start",
         "ss_event_close_subscription_await",
@@ -7309,6 +7529,69 @@ def test_standard_event_runtime_bindings_reject_run_rows():
     check("standard.event: run rows are rejected for async-only runtimeBinding ops",
           proc.returncode != 0 and "async-only runtimeBinding" in proc.stderr,
           f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_standard_http_client_post_lowers_through_generic_runtime_binding():
+    src = "\n".join([
+        "project StandardHttpClientPostRuntime",
+        "import http standard.http",
+        "entry console main",
+        "storage module immutable postHost String \"127.0.0.1\"",
+        "storage module immutable postPort Int32 1",
+        "storage module immutable postPath String \"/echo\"",
+        "storage module immutable postHeaderLine String \"Content-Type: application/json\"",
+        "storage module immutable postBody String \"{}\"",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main read http.client",
+        "memory main heap yes",
+        "async main no",
+        "authority main read http.client",
+        "purpose operation main \"exercise standard.http clientPost generic runtimeBinding lowering\"",
+        "label start",
+        "call postCall http.clientPost",
+        "argument postCall host String postHost",
+        "argument postCall port Int32 postPort",
+        "argument postCall path String postPath",
+        "argument postCall headerLine String postHeaderLine",
+        "argument postCall body String postBody",
+        "run postCall",
+        "bind value postResponseBody HttpClientResponseBody postCall",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_client_post_runtime.sem"
+        ir_path = Path(tmpdir) / "http_client_post_runtime.ll"
+        inspect_path = Path(tmpdir) / "http_client_post_runtime.inspect.json"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path),
+             "--inspect-ir", str(inspect_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        try:
+            inspect_payload = json.loads(inspect_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            inspect_payload = {}
+    components = {
+        item.get("component"): item
+        for item in inspect_payload.get("runtimeLink", {}).get("components", [])
+    }
+    declared_native = components.get("declared_native", {})
+    declared_sources = {Path(source).name for source in declared_native.get("sources", [])}
+    check("standard.http clientPost: generic runtimeBinding codegen succeeds",
+          proc.returncode == 0 and bool(ir_text),
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("standard.http clientPost: IR calls native client fetch ABI",
+          "ss_http_client_fetch" in ir_text,
+          "missing ss_http_client_fetch")
+    check("standard.http clientPost: native adapter is linked by declared metadata",
+          "sem_http_runtime.c" in declared_sources
+          and declared_native.get("owner") == "standard-library/runtimeBinding",
+          f"declared_native={declared_native!r}")
 
 
 def test_standard_http_shutdown_lowers_through_generic_runtime_binding():
@@ -8775,9 +9058,12 @@ def main():
     test_webserver_standard_http_sse_stream_wrappers()
     test_webserver_module_state_persists_across_sequential_requests()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
+    test_sqlite_extended_intrinsic_surface_lowers()
     test_sqlite_codegen_rejects_unsupported_target()
     test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()
     test_standard_event_lowers_through_generic_runtime_bindings()
+    test_standard_event_runtime_bindings_reject_run_rows()
+    test_standard_http_client_post_lowers_through_generic_runtime_binding()
     test_standard_http_shutdown_lowers_through_generic_runtime_binding()
     test_native_runtime_link_registry_is_unique_and_owned()
     test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
