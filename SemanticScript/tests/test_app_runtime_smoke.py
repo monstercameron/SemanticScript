@@ -39,7 +39,7 @@ class TestAppRuntimeSmoke(unittest.TestCase):
             "--emit-exe",
             "--quiet",
         ])
-        self.assertTrue((APPS_ROOT / "desktop-window-smoke" / "build" / "desktop_window_smoke.exe").exists())
+        self.assertTrue((APPS_ROOT / "desktop-window-smoke" / "build" / "desktop-window-smoke.exe").exists())
 
     def test_html_template_lab_builds_and_runs(self) -> None:
         run_command([
@@ -67,7 +67,7 @@ class TestAppRuntimeSmoke(unittest.TestCase):
         env["SEM_TERMINAL_TEST_KEYS"] = chr(27)
         with tempfile.TemporaryDirectory(prefix="ss_todo_tui_") as temp_dir:
             result = subprocess.run(
-                [str(APPS_ROOT / "taskforge-tui" / "build" / "taskforge_tui.exe")],
+                [str(APPS_ROOT / "taskforge-tui" / "build" / "taskforge-tui.exe")],
                 cwd=temp_dir,
                 env=env,
                 stdout=subprocess.PIPE,

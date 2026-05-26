@@ -28,7 +28,7 @@ python SemanticScript\compiler\semsc.py apps\taskforge-tui\build.sem --emit-exe
 
 ```powershell
 Push-Location apps\taskforge-tui\build
-.\taskforge_tui.exe
+.\taskforge-tui.exe
 Pop-Location
 ```
 

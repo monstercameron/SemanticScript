@@ -60,6 +60,13 @@ field WindowsVersionInfo originalFilename String
 field WindowsVersionInfo comments String
 field WindowsVersionInfo metadata WindowsVersionMetadata
 
+record BuildPlatform
+field BuildPlatform os String
+field BuildPlatform arch String
+field BuildPlatform cpuBaseline String
+field BuildPlatform cpuTune String
+field BuildPlatform nativeOutput String
+
 record BuildPlan
 field BuildPlan project BuildProject
 field BuildPlan module BuildModule
@@ -104,7 +111,10 @@ jsonBody desktopWindowSmokeBuildPlan
       "formatterLineWidth": 100,
       "linterMaxTier": "T4",
       "docsOutput": "docs",
-      "nativeOutput": "desktop_window_smoke.exe"
+      "nativeOutput": "desktop_window_smoke.exe",
+      "platforms": [
+          { "os": "windows", "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "desktop-window-smoke.exe" }
+      ]
     },
     "versionInfo": {
       "version": "0.1.0.0",
