@@ -1261,6 +1261,35 @@ _CPU_BASELINE_CLANG_MARCH = {
     "arm64_v8_2": "armv8.2-a",
 }
 
+# ---- Multi-platform build support ----------------------------------------
+# Platform tokens accepted in build.sem "platforms" array entries.
+_PLATFORM_OS_TOKENS = {"macos", "windows", "linux"}
+_PLATFORM_ARCH_TOKENS = {"arm64", "x86_64", "riscv64"}
+
+# LLVM triple per (os, arch). The darwin version suffix is intentionally
+# omitted so Apple clang fills in the correct SDK version at link time.
+_PLATFORM_TRIPLES = {
+    ("macos",   "arm64"):   "arm64-apple-darwin",
+    ("macos",   "x86_64"):  "x86_64-apple-darwin",
+    ("linux",   "x86_64"):  "x86_64-pc-linux-gnu",
+    ("linux",   "arm64"):   "aarch64-pc-linux-gnu",
+    ("linux",   "riscv64"): "riscv64-pc-linux-gnu",
+    ("windows", "x86_64"):  "x86_64-pc-windows-gnu",
+    ("windows", "arm64"):   "aarch64-pc-windows-gnu",
+}
+
+# Sensible cpuBaseline when the platform entry does not set one explicitly.
+_PLATFORM_DEFAULT_BASELINE = {
+    ("macos",   "arm64"):   "native",
+    ("macos",   "x86_64"):  "x86_64_v2",
+    ("linux",   "x86_64"):  "x86_64_v2",
+    ("linux",   "arm64"):   "arm64_generic",
+    ("linux",   "riscv64"): "generic",
+    ("windows", "x86_64"):  "x86_64_v2",
+    ("windows", "arm64"):   "arm64_generic",
+}
+# --------------------------------------------------------------------------
+
 # Recognised icon role tokens. The taxonomy is fixed so a typo can't
 # silently declare a new role no emitter knows about.
 _ICON_ROLES_RECOGNIZED = frozenset({
@@ -1792,7 +1821,11 @@ def _validate_json_record_value(
     record = prog.records[record_type]
     expected_keys = {_json_record_key(record, field_name): field_name
                      for field_name, _field_type in record.fields}
-    unknown_keys = sorted(set(value.keys()) - set(expected_keys.keys()))
+    # Keys recognized by the build-plan reader but not declared as typed record
+    # fields (e.g. array extensions consumed by the compiler directly).
+    _BUILD_TARGET_EXTENSION_KEYS = {"platforms"} if record_type == "BuildTarget" else set()
+    unknown_keys = sorted(
+        set(value.keys()) - set(expected_keys.keys()) - _BUILD_TARGET_EXTENSION_KEYS)
     if unknown_keys:
         key = unknown_keys[0]
         raise SyntaxError(
@@ -1848,6 +1881,11 @@ def _validate_json_record_value(
                 f"line {decl_line}: jsonBodyWrongType: `{field_path}` "
                 f"expected integer, got {_json_kind_name(field_value)}")
         fields[field_name] = field_value
+    # Pass raw values for extension keys through so callers such as
+    # _regular_build_plan_fields can access them without re-parsing the source.
+    for _ext_key in _BUILD_TARGET_EXTENSION_KEYS:
+        if _ext_key in value:
+            fields[_ext_key] = value[_ext_key]
     return fields
 
 
@@ -4428,16 +4466,15 @@ _DOMAIN_METHOD_TO_Int32_PRIMITIVE = {
 
 class Codegen:
     def __init__(self, prog: Program, runtime_checks: str = "off",
-                 trace_events: bool = False):
+                 trace_events: bool = False, triple: str = None):
         self.prog = prog
         self.runtime_checks = runtime_checks
         self.trace_events = trace_events
         self.module = ir.Module(name=prog.project_name or "semanticscript_module")
-        # SEMSC_TRIPLE overrides the target triple so the same tape can be
-        # lowered for a non-host target (e.g. wasm32-unknown-emscripten). The
-        # triple gates platform-specific codegen such as the Windows SEH crash
-        # filter, so retargeting here skips host-only paths cleanly.
-        self.module.triple = os.environ.get("SEMSC_TRIPLE") or llvm.get_default_triple()
+        # `triple` (explicit per-platform override) > SEMSC_TRIPLE env var >
+        # host default. The triple gates platform-specific codegen such as the
+        # Windows SEH crash filter, so retargeting here skips host-only paths.
+        self.module.triple = triple or os.environ.get("SEMSC_TRIPLE") or llvm.get_default_triple()
         self.provenance = CompilerProvenance(prog)
         self.strings = {}
         self._next_str_id = 0
@@ -18841,7 +18878,8 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
                     extra_link_args=None,
                     link_work_dir: str = None,
                     link_ir_path: str = None,
-                    cpu_config=None) -> None:
+                    cpu_config=None,
+                    clang_cmd_override=None) -> None:
     """Ahead-of-time compile SemanticScript IR to a native executable.
 
     The SemanticScript runtime depends only on libc, so the same toolchain that
@@ -18849,36 +18887,44 @@ def emit_executable(module_ir: str, exe_path: str, opt_level: int = 2,
     invoke clang (or whatever `SEMSC_CLANG` resolves to), and let it produce
     a standalone exe. JIT overhead (MCJIT trampolines, PLT-style indirection)
     is removed entirely, which is what closes the gap with native C on tight
-    inner loops."""
+    inner loops.
+
+    ``clang_cmd_override``: when provided (a list of strings), skip toolchain
+    discovery entirely and use this command verbatim. Used by the multi-platform
+    build loop to inject cross-compilers (e.g. ``["clang", "-arch", "x86_64"]``
+    or ``["zig", "cc", "--target=x86_64-pc-linux-gnu"]``)."""
     import subprocess
     import tempfile
 
-    clang_env = os.environ.get("SEMSC_CLANG")
-    clang_cmd = []
-    if clang_env:
-        clang_cmd = [clang_env] if os.path.exists(clang_env) else shlex.split(
-            clang_env, posix=os.name != "nt")
-    if not clang_cmd:
-        # Try common Windows install locations + PATH lookup.
-        for candidate in ("clang", "C:/Program Files/LLVM/bin/clang.exe"):
-            if os.path.isabs(candidate):
-                if os.path.exists(candidate):
-                    clang_cmd = [candidate]
-                    break
-            else:
-                from shutil import which
-                resolved = which(candidate)
-                if resolved:
-                    clang_cmd = [resolved]
-                    break
+    if clang_cmd_override:
+        clang_cmd = list(clang_cmd_override)
+    else:
+        clang_env = os.environ.get("SEMSC_CLANG")
+        clang_cmd = []
+        if clang_env:
+            clang_cmd = [clang_env] if os.path.exists(clang_env) else shlex.split(
+                clang_env, posix=os.name != "nt")
         if not clang_cmd:
-            from shutil import which
-            zig = which("zig")
-            if zig:
-                clang_cmd = [zig, "cc"]
-    if not clang_cmd:
-        raise RuntimeError(
-            "could not find clang or zig cc; set SEMSC_CLANG=/path/to/clang")
+            # Try common Windows install locations + PATH lookup.
+            for candidate in ("clang", "C:/Program Files/LLVM/bin/clang.exe"):
+                if os.path.isabs(candidate):
+                    if os.path.exists(candidate):
+                        clang_cmd = [candidate]
+                        break
+                else:
+                    from shutil import which
+                    resolved = which(candidate)
+                    if resolved:
+                        clang_cmd = [resolved]
+                        break
+            if not clang_cmd:
+                from shutil import which
+                zig = which("zig")
+                if zig:
+                    clang_cmd = [zig, "cc"]
+        if not clang_cmd:
+            raise RuntimeError(
+                "could not find clang or zig cc; set SEMSC_CLANG=/path/to/clang")
 
     remove_link_ir = link_ir_path is None
     if link_ir_path is not None:
@@ -19211,6 +19257,17 @@ class CpuBuildConfig:
         return " ".join(parts)
 
 
+@dataclass
+class PlatformBuildSpec:
+    """One entry from the build.sem ``platforms`` array inside ``target``."""
+    os: str            # "macos" | "windows" | "linux"
+    arch: str          # "arm64" | "x86_64"
+    cpu_baseline: str  # resolved cpuBaseline for this platform
+    cpu_tune: str      # resolved cpuTune for this platform
+    native_output: str  # output filename (empty → use _default_exe_name_for_platform)
+    triple: str        # LLVM target triple string
+
+
 def _normalize_cpu_feature(feature_name: str) -> str:
     feature_name = str(feature_name).strip().lower()
     if not _CPU_FEATURE_RE.match(feature_name):
@@ -19250,6 +19307,135 @@ def _host_cpu_name() -> str:
     return str(name or "")
 
 
+def _default_triple_is_apple() -> bool:
+    """Return True when the host LLVM triple targets Apple Darwin."""
+    try:
+        return "apple" in llvm.get_default_triple()
+    except Exception:
+        return sys.platform == "darwin"
+
+
+# ---- Multi-platform helpers -----------------------------------------------
+
+def _host_os() -> str:
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform == "win32":
+        return "windows"
+    return "linux"
+
+
+def _host_arch() -> str:
+    import platform as _platform
+    m = _platform.machine().lower()
+    if m in ("arm64", "aarch64"):
+        return "arm64"
+    if m in ("riscv64",):
+        return "riscv64"
+    return "x86_64"
+
+
+def _parse_platform_specs(platforms_raw: list, base_target: dict) -> "list[PlatformBuildSpec]":
+    """Parse the platforms array from the target JSON into PlatformBuildSpec objects."""
+    base_baseline = base_target.get("cpuBaseline") or ""
+    base_tune = base_target.get("cpuTune") or "generic"
+    specs = []
+    for entry in platforms_raw:
+        if not isinstance(entry, dict):
+            raise ValueError(f"platforms: each entry must be a JSON object, got {type(entry).__name__}")
+        os_token = str(entry.get("os", "")).lower()
+        arch_token = str(entry.get("arch", "")).lower()
+        if os_token not in _PLATFORM_OS_TOKENS:
+            raise ValueError(
+                f"platforms: unrecognized os={os_token!r}; "
+                f"expected one of {sorted(_PLATFORM_OS_TOKENS)}")
+        if arch_token not in _PLATFORM_ARCH_TOKENS:
+            raise ValueError(
+                f"platforms: unrecognized arch={arch_token!r}; "
+                f"expected one of {sorted(_PLATFORM_ARCH_TOKENS)}")
+        cpu_baseline = (entry.get("cpuBaseline") or base_baseline
+                        or _PLATFORM_DEFAULT_BASELINE.get((os_token, arch_token), "generic"))
+        cpu_tune = entry.get("cpuTune") or base_tune
+        native_output = entry.get("nativeOutput") or ""
+        triple = _PLATFORM_TRIPLES.get((os_token, arch_token), "")
+        specs.append(PlatformBuildSpec(
+            os=os_token, arch=arch_token,
+            cpu_baseline=cpu_baseline, cpu_tune=cpu_tune,
+            native_output=native_output, triple=triple,
+        ))
+    return specs
+
+
+def _find_clang_for_platform(os_token: str, arch_token: str) -> "tuple[list[str] | None, str]":
+    """Return (clang_cmd_list, skip_reason). skip_reason is empty string on success."""
+    from shutil import which
+    host_os = _host_os()
+    host_arch = _host_arch()
+
+    clang_env = os.environ.get("SEMSC_CLANG")
+    base_clang = None
+    if clang_env:
+        base_clang = [clang_env] if os.path.exists(clang_env) else shlex.split(
+            clang_env, posix=os.name != "nt")
+    if not base_clang:
+        for candidate in ("clang", "C:/Program Files/LLVM/bin/clang.exe"):
+            if os.path.isabs(candidate):
+                if os.path.exists(candidate):
+                    base_clang = [candidate]
+                    break
+            else:
+                resolved = which(candidate)
+                if resolved:
+                    base_clang = [resolved]
+                    break
+
+    # Native host — use base clang as-is.
+    if os_token == host_os and arch_token == host_arch:
+        if base_clang:
+            return base_clang, ""
+        zig = which("zig")
+        if zig:
+            return [zig, "cc"], ""
+        return None, "could not find clang or zig cc; set SEMSC_CLANG=/path/to/clang"
+
+    # macOS cross-arch: Apple clang supports -arch arm64 / -arch x86_64 natively.
+    if host_os == "macos" and os_token == "macos":
+        if not base_clang:
+            return None, "clang not found; install Xcode Command Line Tools"
+        clang_arch = "x86_64" if arch_token == "x86_64" else "arm64"
+        return base_clang + ["-arch", clang_arch], ""
+
+    # Cross-OS: prefer zig cc (portable cross-compiler).
+    zig = which("zig")
+    if zig:
+        target_triple = _PLATFORM_TRIPLES.get((os_token, arch_token), "")
+        if target_triple:
+            return [zig, "cc", f"--target={target_triple}"], ""
+
+    triple_str = _PLATFORM_TRIPLES.get((os_token, arch_token), f"{os_token}/{arch_token}")
+    return None, (
+        f"no cross-compiler found for {os_token}/{arch_token} "
+        f"(target triple {triple_str}); "
+        f"install zig (https://ziglang.org) or point SEMSC_CLANG to a "
+        f"compiler that can target {triple_str}"
+    )
+
+
+def _default_exe_name_for_platform(prog: "Program", source_path: str,
+                                   spec: "PlatformBuildSpec") -> str:
+    """Like _default_exe_name but appends .exe only for Windows platform targets."""
+    base = _default_exe_name(prog, source_path)
+    # Strip any existing extension injected for the host OS, then re-apply.
+    root, ext = os.path.splitext(base)
+    if ext.lower() == ".exe" and spec.os != "windows":
+        base = root
+    elif ext.lower() != ".exe" and spec.os == "windows":
+        base = base + ".exe"
+    return base
+
+# --------------------------------------------------------------------------
+
+
 def _resolve_cpu_build_config(prog: Program,
                               cpu_baseline: str = None,
                               cpu_tune: str = None,
@@ -19258,7 +19444,11 @@ def _resolve_cpu_build_config(prog: Program,
     baseline = cpu_baseline
     if baseline is None:
         baseline = _build_metadata_value(prog, "cpuBaseline")
-    baseline = baseline or "generic"
+    if not baseline:
+        # On Apple Darwin default to native so the compiler uses the actual
+        # host CPU name and passes -march=native to clang, producing a
+        # properly tuned Mach-O binary rather than a generic ARM64 one.
+        baseline = "native" if _default_triple_is_apple() else "generic"
     if baseline not in _BUILD_TAPE_CHOICES["cpuBaseline"]:
         raise ValueError(
             f"cpuBaseline: `{baseline}` is not valid; expected one of "
@@ -21319,6 +21509,12 @@ def main():
                           "traps=llvm.trap only, panic=static SemanticScript "
                           "message then llvm.trap. Defaults to panic for "
                           "--build-profile dev and traps for --build-profile prod"))
+    ap.add_argument("--platform-filter", default=None,
+                    help=("comma-separated platform tokens to build from the "
+                          "build.sem `platforms` array. Accepts os tokens "
+                          "(macos, linux, windows) and/or os/arch pairs "
+                          "(macos/arm64, linux/x86_64). When absent, all "
+                          "declared platforms are attempted."))
     args = ap.parse_args()
 
     if not args.source:
@@ -21356,6 +21552,27 @@ def main():
         except SyntaxError as e:
             print(f"semsc: build-tape error in {args.source}: {e}", file=sys.stderr)
             sys.exit(2)
+
+    # Extract multi-platform specs early, before the source is mutated by
+    # language-mode injection.  Non-fatal: if the JSON can't be read here
+    # (e.g. mid-edit state) we fall through to single-platform build.
+    _platform_specs: "list[PlatformBuildSpec]" = []
+    if is_build_tape_source and _looks_like_regular_build_plan(source):
+        try:
+            _raw_fields = _regular_build_plan_fields(source, args.source)
+            _raw_platforms = _raw_fields.get("target", {}).get("platforms") or []
+            if _raw_platforms:
+                _platform_specs = _parse_platform_specs(
+                    _raw_platforms, _raw_fields.get("target", {}))
+        except Exception:
+            pass  # non-fatal; fall back to single-platform build
+
+    if _platform_specs and args.platform_filter:
+        _filter_tokens = {t.strip().lower() for t in args.platform_filter.split(",")}
+        _platform_specs = [
+            p for p in _platform_specs
+            if p.os in _filter_tokens or f"{p.os}/{p.arch}" in _filter_tokens
+        ]
 
     prelude_language_modes = []
     if is_build_tape_source and not _declares_language_mode(source):
@@ -21686,7 +21903,88 @@ def main():
         did_output = True
         outputs.append(("llvm ir", persisted_ir_path))
 
-    if emit_exe_path:
+    if _platform_specs and args.emit_exe == "":
+        # ---- Multi-platform build loop ------------------------------------
+        # Each platform entry re-compiles (IR is triple-dependent) and links
+        # with the appropriate clang command.  Platforms whose toolchain is
+        # not available are skipped; a summary is printed at the end.
+        _platform_results = []  # list of (spec, ok, exe_path, reason)
+        for _spec in _platform_specs:
+            _p_clang_cmd, _p_skip_reason = _find_clang_for_platform(
+                _spec.os, _spec.arch)
+            if _p_skip_reason:
+                _platform_results.append((_spec, False, "", _p_skip_reason))
+                continue
+            try:
+                _p_triple = _spec.triple or None
+                # Disable host CPU feature checks for cross-compilation targets:
+                # the host CPU won't have the target ISA features, but those
+                # features will be present on the actual target hardware.
+                _p_is_cross = (
+                    _spec.os != _host_os() or _spec.arch != _host_arch())
+                _p_cpu_config = _resolve_cpu_build_config(
+                    prog,
+                    cpu_baseline=_spec.cpu_baseline,
+                    cpu_tune=_spec.cpu_tune,
+                    cpu_feature_check="off" if _p_is_cross else None)
+                _p_cg = Codegen(prog, runtime_checks=runtime_checks,
+                                trace_events=args.trace, triple=_p_triple)
+                _p_mod = _p_cg.compile()
+                _p_ir = str(_p_mod)
+                _p_native_output = (
+                    _spec.native_output
+                    or _default_exe_name_for_platform(prog, args.source, _spec))
+                _p_exe_path = _resolve_build_output_path(
+                    args.source, build_dir, _p_native_output)
+                _p_resource_path, _p_resource_temps = _compile_windows_resource(
+                    prog, _p_exe_path,
+                    resource_dir=_resolve_resource_dir(
+                        prog, args.source, build_dir,
+                        args.keep_resources, args.resource_dir))
+                _p_extra_sources = list(runtime_sources)
+                _p_extra_link_args = list(runtime_link_args)
+                if _p_resource_path is not None:
+                    _p_extra_sources.append(_p_resource_path)
+                try:
+                    emit_executable(
+                        _p_ir, _p_exe_path, opt_level=opt_level,
+                        provenance=_p_cg.provenance,
+                        diagnostics_format=args.diagnostics_format,
+                        extra_sources=_p_extra_sources,
+                        extra_link_args=_p_extra_link_args,
+                        link_work_dir=build_dir,
+                        cpu_config=_p_cpu_config,
+                        clang_cmd_override=_p_clang_cmd)
+                finally:
+                    for _p in _p_resource_temps:
+                        try:
+                            os.unlink(_p)
+                        except OSError:
+                            pass
+                _platform_results.append((_spec, True, _p_exe_path, ""))
+                outputs.append((f"executable ({_spec.os}/{_spec.arch})", _p_exe_path))
+                did_output = True
+            except (CompilerDiagnosticError, RuntimeError, Exception) as _p_err:
+                _p_reason = (
+                    _p_err.diagnostic.render("raw")
+                    if isinstance(_p_err, CompilerDiagnosticError)
+                    else str(_p_err))
+                _platform_results.append((_spec, False, "", _p_reason))
+
+        if not args.quiet and not wrote_stdout_json:
+            _built = [(s, p) for s, ok, p, _ in _platform_results if ok]
+            _skipped = [(s, r) for s, ok, _, r in _platform_results if not ok]
+            if _built:
+                print(f"  platforms built ({len(_built)}):")
+                for _s, _p in _built:
+                    print(f"    {_s.os}/{_s.arch}  ->  {_p}")
+            if _skipped:
+                print(f"  platforms skipped ({len(_skipped)}):")
+                for _s, _r in _skipped:
+                    print(f"    {_s.os}/{_s.arch}  skipped: {_r}")
+        # ------------------------------------------------------------------
+
+    elif emit_exe_path:
         try:
             extra_sources = list(runtime_sources)
             extra_link_args = list(runtime_link_args)

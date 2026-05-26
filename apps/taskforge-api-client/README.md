@@ -10,7 +10,7 @@ Start the existing TaskForge API first:
 
 ```powershell
 python -m SemanticScript.compiler.semsc apps/taskforge-web/build.sem --emit-exe --quiet
-.\apps\taskforge-web\build\taskforge_web.exe
+.\apps\taskforge-web\build\taskforge-web.exe
 ```
 
 Then inspect or compile the SemanticScript client:

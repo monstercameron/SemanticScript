@@ -11294,6 +11294,8 @@ def command_build(args: argparse.Namespace) -> int:
         compiler_args = list(compiler_args) + ["--strict"]
     if not _has_compiler_action(compiler_args):
         compiler_args = ["--emit-exe", *compiler_args]
+    if getattr(args, "platform", None):
+        compiler_args = [f"--platform-filter={args.platform}", *compiler_args]
     return _run_compiler(build_tape, compiler_args)
 
 
@@ -13806,6 +13808,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help="gate the build on the strict executable wall "
                             "(fallible-contract, effect/authority, SS3xxx rules)")
     build.add_argument("path", nargs="?", default=".")
+    build.add_argument(
+        "--platform", default=None,
+        help=("filter which platforms to build from the build.sem `platforms` "
+              "array. Accepts os tokens (macos, linux, windows) and/or os/arch "
+              "pairs (macos/arm64, linux/x86_64), comma-separated."))
     build.add_argument("compiler_args", nargs=argparse.REMAINDER)
     build.set_defaults(func=command_build)
 

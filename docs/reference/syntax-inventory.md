@@ -104,6 +104,7 @@ blocks, dynamic object or array literals, and legacy replacement rows such as
 | `cpuFeature PROJECT FEATURE on\|off` | Adds or disables one CPU feature for LLVM/clang lowering. Required `on` features are checked against the host unless `cpuFeatureCheck off` is used. | Impl'd |
 | `cpuFeatureCheck PROJECT auto\|off\|warn\|require` | Controls the build-time host CPU feature check. `auto` fails local builds that request unavailable features; `off` is only for known non-host targets. | Impl'd |
 | `nativeOutput PROJECT "PATH"` | Declares the native executable output path for project-mode builds. A basename resolves into the compiler-managed `build/` artifact directory. | Partial |
+| `platforms PROJECT [...]` | JSON array of per-platform build entries inside a `target` object. Each entry inherits the base `target` fields and may override `os`, `arch`, `cpuBaseline`, `cpuTune`, and `nativeOutput`. Valid `os` tokens: `macos`, `linux`, `windows`. Valid `arch` tokens: `arm64`, `x86_64`, `riscv64`. When present, `sem build` compiles one binary per declared platform, skipping platforms for which no toolchain is available and printing a per-platform summary. When absent, the single-build path is used unchanged. | Impl'd |
 | `nativeHttpHost PROJECT "HOST"` | Declares the default native HTTP bind host for web-server project builds. | Partial |
 | `nativeHttpPort PROJECT PORT` | Declares the default native HTTP bind port for web-server project builds. | Partial |
 | `formatterSetting PROJECT KEY VALUE` | Records a project-level formatter setting. | Partial |

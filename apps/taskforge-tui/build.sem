@@ -68,6 +68,13 @@ field BuildConstant value String
 
 record BuildConstants
 
+record BuildPlatform
+field BuildPlatform os String
+field BuildPlatform arch String
+field BuildPlatform cpuBaseline String
+field BuildPlatform cpuTune String
+field BuildPlatform nativeOutput String
+
 record BuildPlan
 field BuildPlan project BuildProject
 field BuildPlan modules BuildModules
@@ -110,13 +117,20 @@ jsonBody taskForgeTuiBuildPlan
           "emitLlvmIr": "auto",
           "emitOptimizedLlvmIr": false,
           "buildFolderName": "build",
-          "cpuBaseline": "generic",
+          "cpuBaseline": "native",
           "cpuTune": "generic",
           "cpuFeatureCheck": "auto",
           "formatterLineWidth": 100,
           "linterMaxTier": "T4",
           "docsOutput": "docs",
-          "nativeOutput": "taskforge_tui.exe",
+          "nativeOutput": "taskforge-tui",
+          "platforms": [
+              { "os": "macos",   "arch": "arm64",  "cpuBaseline": "native",    "cpuTune": "generic", "nativeOutput": "taskforge-tui" },
+              { "os": "macos",   "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "taskforge-tui-x86_64" },
+              { "os": "linux",   "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "taskforge-tui-linux" },
+              { "os": "linux",   "arch": "riscv64","cpuBaseline": "generic",   "cpuTune": "generic", "nativeOutput": "taskforge-tui-riscv64" },
+              { "os": "windows", "arch": "x86_64", "cpuBaseline": "x86_64_v2", "cpuTune": "generic", "nativeOutput": "taskforge-tui.exe" }
+          ],
           "keepResources": false,
           "comptimeOperation": "configureTaskForgeTuiBuild"
       },

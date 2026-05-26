@@ -2,13 +2,13 @@
 # build.sem owns project identity, runtime target, executable metadata, and
 # the module registry. This file owns the app module contract, imports,
 # exports, and executable source. Run from apps/taskforge-tui/build so todos.json lives
-# beside taskforge_tui.exe.
+# beside taskforge-tui.exe.
 module app.taskforge_tui
 purpose module app.taskforge_tui "Keyboard-driven console todo app with heap-backed todo storage and JSON persistence."
 moduleOwns app.taskforge_tui "Terminal TUI lifecycle, keyboard handling, in-memory todo arrays, todos.json load/save, and process-local app state."
 moduleDoesNotOwn app.taskforge_tui "Reusable standard library abstractions, native console primitive implementation, or cross-project package management."
 moduleWarning app.taskforge_tui "This module is intentionally monolithic while the project-layout model is being prototyped; future refactors can split TUI, persistence, and domain operations into folder modules."
-invariant module app.taskforge_tui "main.sem is the default executable entry selected by build.sem, and taskforge_tui.exe must be run from apps/taskforge-tui/build so todos.json resolves beside the executable."
+invariant module app.taskforge_tui "main.sem is the default executable entry selected by build.sem, and taskforge-tui.exe must be run from apps/taskforge-tui/build so todos.json resolves beside the executable."
 
 # Explicit public surface carried from the module contract. Exports are not
 # inferred; every symbol below is declared in this module source.
@@ -1610,7 +1610,7 @@ storage local immutable listFullText String "Todo array is full."
 storage local immutable noTodoText String "No todo selected."
 storage local immutable canceledText String "Edit canceled."
 storage local immutable ignoredKeyText String "No action for that key."
-storage local immutable goodbyeText String "\n  TaskForge TUI session saved.\n\n  todos.json is up to date.\n  Run taskforge_tui.exe from apps/taskforge-tui/build to reopen.\n"
+storage local immutable goodbyeText String "\n  TaskForge TUI session saved.\n\n  todos.json is up to date.\n  Run taskforge-tui.exe from apps/taskforge-tui/build to reopen.\n"
 storage local immutable quitSaveFailedText String "\n  TaskForge TUI session ended.\n\n  Save failed; todos.json may be stale.\n  Check file permissions and disk state before relying on it.\n"
 storage local immutable allocationFailedText String "Could not allocate todo arrays."
 storage local mutable todoCount Int64 zeroValue

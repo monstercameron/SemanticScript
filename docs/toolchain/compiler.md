@@ -158,6 +158,7 @@ CLI flags:
 | `--std-path PATH` | Add an explicit standard-library root. May be repeated. Accepts a `std` root containing `module.sem`, a `SemanticScript` root containing `std/`, or a repo root containing `SemanticScript/std`. |
 | `--keep-resources` | Retain the intermediate Windows resource files (`.rc` / `.res` / `.ico`) next to the executable for debugging. Default behavior writes them to a tempdir and deletes after linking — the bytes survive only inside the `.exe`'s PE resource section. Overrides `keepResources PROJECT no` in the build tape. |
 | `--resource-dir PATH` | Explicit directory for intermediate resource files. Implies `--keep-resources`. Path resolves relative to the source file's directory unless absolute. Overrides `resourcesDir PROJECT "path"` in the build tape. |
+| `--platform-filter TOKENS` | Comma-separated platform tokens to build when the source is a `build.sem` with a `platforms` array (e.g. `macos`, `linux`, `macos/arm64`). Entries not matching any token are skipped for this invocation. |
 | `--quiet` | Suppress success messages. |
 
 Set `SEMSC_CLANG` to override the clang executable used by `--emit-exe`.
@@ -167,6 +168,76 @@ Set `SEMANTICSCRIPT_STD_PATH` or `SEMSC_STD_PATH` to one or more std roots
 separated by the platform path separator when the standard library is installed
 outside the compiler bundle. Set `SEMSC_TRACEBACK=1` to print Python
 tracebacks for parse/codegen failures.
+
+## Multi-platform builds
+
+A `build.sem` file may declare a `platforms` array inside its `target` JSON
+object. Each entry inherits the base `target` fields and overrides only what
+differs for that platform:
+
+```json
+"target": {
+  "runtime": "nativeExe",
+  "cpuBaseline": "native",
+  "nativeOutput": "myapp",
+  "platforms": [
+    { "os": "macos",   "arch": "arm64",   "cpuBaseline": "native",    "nativeOutput": "myapp" },
+    { "os": "macos",   "arch": "x86_64",  "cpuBaseline": "x86_64_v2", "nativeOutput": "myapp-x86_64" },
+    { "os": "linux",   "arch": "x86_64",  "cpuBaseline": "x86_64_v2", "nativeOutput": "myapp-linux" },
+    { "os": "linux",   "arch": "riscv64", "cpuBaseline": "generic",   "nativeOutput": "myapp-riscv64" },
+    { "os": "windows", "arch": "x86_64",  "cpuBaseline": "x86_64_v2", "nativeOutput": "myapp.exe" }
+  ]
+}
+```
+
+Valid `os` tokens: `macos`, `linux`, `windows`.
+Valid `arch` tokens: `arm64`, `x86_64`, `riscv64`.
+
+When `platforms` is present, `sem build` (and `semsc.py` directly) compiles
+one binary per declared entry, skipping any platform for which no suitable
+toolchain is found, and prints a per-platform summary on completion.
+When `platforms` is absent, the existing single-build path is unchanged.
+
+### Toolchain discovery
+
+The compiler selects a toolchain for each platform in order:
+
+1. **Native host** — uses `SEMSC_CLANG` or `clang` on `PATH`.
+2. **macOS cross-arch** — on a macOS host, Apple clang already supports both
+   `arm64` and `x86_64`; the compiler passes `-arch arm64` or `-arch x86_64`
+   and the matching LLVM triple automatically.
+3. **Cross-OS** — looks for `zig` on `PATH` and invokes `zig cc --target=TRIPLE`.
+   Install [Zig](https://ziglang.org) to enable Linux and Windows cross builds
+   from a macOS or Linux host.
+
+If no toolchain is found for a given platform, that entry is skipped with a
+one-line reason in the build summary. Other platforms in the same build run
+are unaffected.
+
+### Filtering platforms
+
+Pass `--platform-filter` (compiler) or `--platform` (`sem build`) to restrict
+a multi-platform build to a subset of the declared entries:
+
+```sh
+# build only macOS targets
+sem build apps/myapp/build.sem --platform macos
+
+# build only the arm64 Linux target
+sem build apps/myapp/build.sem --platform linux/arm64
+
+# comma-separated tokens
+sem build apps/myapp/build.sem --platform macos,linux
+```
+
+Tokens are matched against the `os` field or the `os/arch` pair.
+
+### Output naming
+
+The `.exe` suffix is added only for Windows platform entries. All other
+platforms use the bare `nativeOutput` basename (or the project name when
+`nativeOutput` is absent). This matches the default behavior on macOS and
+Linux where executables carry no extension.
 
 ## Strictness and Safe Defaults
 
