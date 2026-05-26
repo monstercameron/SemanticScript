@@ -9,6 +9,7 @@ errorCase MainError DeliberateFailureForTest Int32
 operation printCleanupOnOk
 input operation printCleanupOnOk console Console
 output operation printCleanupOnOk Int32
+effect printCleanupOnOk write console.stdout
 storage module immutable okCleanupMessage String "cleanupOnOk"
 call writeOkCleanupCall console.writeLine
 argument writeOkCleanupCall console Console console
@@ -20,6 +21,7 @@ return value okCleanupExit
 operation printCleanupOnError
 input operation printCleanupOnError console Console
 output operation printCleanupOnError Int32
+effect printCleanupOnError write console.stdout
 storage module immutable errorCleanupMessage String "cleanupOnError"
 call writeErrorCleanupCall console.writeLine
 argument writeErrorCleanupCall console Console console

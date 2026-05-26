@@ -56,9 +56,9 @@ Compiler lowering:
 
 ```text
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 ```
 
 Unlike console/library mode, `HttpRequest` and `HttpResponse` are not dropped as

@@ -1,4 +1,6 @@
+import errno
 import argparse
+import contextlib
 import io
 import importlib.util
 import json
@@ -7,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1416,7 +1419,14 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(check_proc.returncode, 0, check_proc.stderr)
             check_payload = json.loads(check_proc.stdout)
             self.assertEqual(check_payload["schemaVersion"], "sem.check.v1")
-            self.assertEqual(check_payload["status"], "ok")
+            # The default scaffold is buildable and free of blocking lint errors;
+            # its only finding is the SS2516 placeholder-modulePath nudge (the
+            # intended "set your real modulePath" reminder right after `sem new`).
+            self.assertIn(check_payload["status"], {"ok", "ok-with-warnings"})
+            self.assertTrue(check_payload["buildable"])
+            self.assertTrue(check_payload["noBlockingLintErrors"])
+            self.assertLessEqual(
+                {d["code"] for d in check_payload["diagnostics"]}, {"SS2516"})
 
             test_proc = subprocess.run(
                 [
@@ -1538,6 +1548,233 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(payload["title"], f"{code} has no title")
             self.assertTrue(payload["summary"], f"{code} has no summary")
             self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+
+    def test_explain_ss4105_describes_reference_integrity(self) -> None:
+        # SS4105 is the linter's reference-integrity / unresolved-value code,
+        # not a private-import rule. The explainer text must match the lint site.
+        payload = sem._diagnostic_explain_payload("SS4105")
+        self.assertTrue(payload["found"])
+        blob = " ".join([payload["title"], payload["summary"],
+                         " ".join(payload["commonFixes"])]).lower()
+        self.assertIn("storage", blob)
+        self.assertNotIn("private", blob)
+
+    def test_explain_finds_new_codegen_and_backend_codes(self) -> None:
+        # Newly split / added diagnostics must be discoverable via sem explain
+        # even before they appear in the repository diagnostic index.
+        for code in ("SSCG002", "SSCG004", "SSCG005", "SSBE002"):
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} not discoverable via sem explain")
+            self.assertTrue(payload["title"], f"{code} has no title")
+            self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+
+    def test_explain_fills_parser_phase_codes(self) -> None:
+        # Parser-phase codes used to return an empty envelope (title == code).
+        for code in ("SS0001", "SS0002", "SS0003"):
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} not discoverable")
+            self.assertTrue(payload["commonFixes"], f"{code} has no fixes")
+        ss0003 = sem._diagnostic_explain_payload("SS0003")
+        blob = " ".join(ss0003["commonFixes"]).lower()
+        self.assertIn("migrate-syntax", blob)
+
+    def test_check_directory_without_build_tape_reports_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "main.sem").write_text("project X\n", encoding="utf-8")
+            # No build.sem in the directory.
+            args = argparse.Namespace(
+                path=str(root), compiler_args=[], json=True,
+                full=False, with_readiness=False)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = sem.command_check(args)
+            self.assertEqual(rc, 2)
+            payload = json.loads(buf.getvalue())
+            self.assertEqual(payload["status"], "tool-error")
+            self.assertFalse(payload["buildable"])
+            self.assertIn("build.sem", payload["toolErrors"][0])
+
+    def test_build_without_tape_reports_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "lone.sem"
+            src.write_text("project X\n", encoding="utf-8")
+            args = argparse.Namespace(path=str(src), compiler_args=[])
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = sem.command_build(args)
+            self.assertEqual(rc, 2)
+            msg = buf.getvalue()
+            self.assertIn("no build.sem found", msg)
+            self.assertIn("not a lone source file", msg)
+
+    def test_every_curated_explainer_is_non_empty(self) -> None:
+        # Guards the "explain SS0003 returned just 'SS0003'" class: any code we
+        # curate must carry a real title, summary, and at least one fix.
+        for code, entry in sem.DIAGNOSTIC_EXPLAINERS.items():
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} curated but not found")
+            self.assertTrue(payload["title"].strip(), f"{code} has empty title")
+            self.assertTrue(payload["summary"].strip(), f"{code} has empty summary")
+            self.assertTrue(payload["commonFixes"], f"{code} has no commonFixes")
+
+    def test_broken_pipe_exits_zero_not_255(self) -> None:
+        # A downstream consumer closing the pipe (`| head`) must not turn a
+        # successful payload into a nonzero (255) exit. EPIPE/BrokenPipeError are
+        # unconditional; EINVAL only counts when stdout is actually broken.
+        for exc in (BrokenPipeError(), OSError(errno.EINVAL, "Invalid"),
+                    OSError(errno.EPIPE, "Broken pipe")):
+            with mock.patch.object(sem, "build_parser") as build_parser, \
+                    mock.patch.object(sem.os, "dup2"), \
+                    mock.patch.object(sem.os, "open", return_value=3), \
+                    mock.patch.object(sem, "_stdout_pipe_is_broken",
+                                      return_value=True):
+                args = mock.Mock()
+                args.func = mock.Mock(side_effect=exc)
+                build_parser.return_value.parse_args.return_value = args
+                self.assertEqual(sem.main(["check", "x"]), 0)
+
+    def test_einval_with_healthy_stdout_propagates(self) -> None:
+        # An unrelated OSError(EINVAL) (e.g. a subprocess failure) must NOT be
+        # masked as a clean exit when stdout is fine.
+        with mock.patch.object(sem, "build_parser") as build_parser, \
+                mock.patch.object(sem, "_stdout_pipe_is_broken", return_value=False):
+            args = mock.Mock()
+            args.func = mock.Mock(side_effect=OSError(errno.EINVAL, "subprocess"))
+            build_parser.return_value.parse_args.return_value = args
+            with self.assertRaises(OSError):
+                sem.main(["check", "x"])
+
+    def test_unrelated_oserror_still_propagates(self) -> None:
+        with mock.patch.object(sem, "build_parser") as build_parser:
+            args = mock.Mock()
+            args.func = mock.Mock(side_effect=OSError(errno.ENOENT, "missing"))
+            build_parser.return_value.parse_args.return_value = args
+            with self.assertRaises(OSError):
+                sem.main(["check", "x"])
+
+    def test_check_payload_exposes_noBlockingLintErrors_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "m.sem"
+            src.write_text(
+                "project M\nmodule examples.m\noperation main\n"
+                "output operation main ExitCode\nasync main no\n"
+                "purpose operation main \"x\"\nreturn value 0\n", encoding="utf-8")
+            payload = sem._build_check_payload(src, [])
+            self.assertIn("noBlockingLintErrors", payload)
+            self.assertIn("lintClean", payload)  # deprecated alias retained
+            self.assertEqual(payload["noBlockingLintErrors"], payload["lintClean"])
+
+    def test_literal_repin_recomputes_pins(self) -> None:
+        import hashlib as _hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "assets").mkdir()
+            data = b"hello repin world"
+            (root / "assets" / "msg.txt").write_bytes(data)
+            sem_text = (
+                "project R\nmodule examples.r\n"
+                "literal greeting String\n"
+                "literalSource greeting \"assets/msg.txt\"\n"
+                "literalBytes greeting 999\n"
+                "literalDigest greeting sha256 deadbeef\n"
+            )
+            new_text, changes, missing = sem._repin_literals_in_text(sem_text, root)
+            self.assertEqual(missing, [])
+            self.assertEqual({c["field"] for c in changes},
+                             {"literalBytes", "literalDigest"})
+            self.assertIn(f"literalBytes greeting {len(data)}", new_text)
+            self.assertIn(
+                f"literalDigest greeting sha256 {_hashlib.sha256(data).hexdigest()}",
+                new_text)
+            # idempotent: re-running on the corrected text finds nothing.
+            _, changes2, _ = sem._repin_literals_in_text(new_text, root)
+            self.assertEqual(changes2, [])
+
+    def test_literal_repin_reports_missing_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sem_text = (
+                "literal x String\nliteralSource x \"nope.txt\"\n"
+                "literalBytes x 5\n")
+            _, changes, missing = sem._repin_literals_in_text(sem_text, root)
+            self.assertEqual(changes, [])
+            self.assertEqual(missing, ["x"])
+
+    def test_parse_error_gets_actionable_help(self) -> None:
+        # The bare parser tier ("SEMSC_PARSE") now carries message-specific help
+        # + fix candidates. Both stderr shapes (with/without a line number).
+        no_line = sem._normalize_compiler_parse_error(
+            "semsc: parse error in /x/main.sem: htmlBody references unknown htmlTemplate: page")
+        self.assertIsNotNone(no_line)
+        self.assertIn("html template", no_line["help"].lower())
+        self.assertTrue(no_line["fixCandidates"])
+        self.assertEqual(no_line["span"]["line"], 0)
+
+        with_line = sem._normalize_compiler_parse_error(
+            "semsc: parse error in /x/main.sem: line 7: unknown verb: '<p>hi</p>'")
+        self.assertIsNotNone(with_line)
+        self.assertEqual(with_line["span"]["line"], 7)
+        self.assertIn("island", with_line["help"].lower())
+
+        migrate = sem._normalize_compiler_parse_error(
+            "semsc: parse error in /x/main.sem: line 3: input requires: input operation OPERATION NAME TYPE")
+        self.assertIn("migrate-syntax", migrate["help"])
+
+    def test_trivial_semantic_test_detection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            noop = Path(tmp) / "noop.test.sem"
+            noop.write_text(
+                "project N\noperation main\noutput operation main ExitCode\n"
+                "return value 0\n", encoding="utf-8")
+            self.assertTrue(sem._semantic_test_is_trivial(noop))
+            real = Path(tmp) / "real.test.sem"
+            real.write_text(
+                "project R\noperation main\noutput operation main ExitCode\n"
+                "call cCall math.addInt64\nrun cCall\n"
+                "bind value s Int64 cCall\nreturn value 0\n", encoding="utf-8")
+            self.assertFalse(sem._semantic_test_is_trivial(real))
+
+    def test_starter_test_actually_asserts(self) -> None:
+        # The scaffolded test must exercise codegen and assert, not be a trivial
+        # `return value 0` that "passes" without proving anything.
+        with tempfile.TemporaryDirectory() as tmp:
+            meta = sem._starter_project_metadata(Path(tmp) / "demo")
+            text = sem._starter_test_sem_text(meta)
+            self.assertIn("math.equalInt64", text)
+            self.assertIn("branch if condition", text)
+            self.assertNotEqual(text.strip().splitlines()[-1].strip(), "return value 0")
+
+    def test_explain_unknown_code_still_reports_not_found(self) -> None:
+        payload = sem._diagnostic_explain_payload("SS9999")
+        self.assertFalse(payload["found"])
+        self.assertEqual(payload["status"], "not-found")
+
+    def test_skills_bare_command_defaults_to_list(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["skills"])
+        self.assertEqual(args.skills_command, "list")
+        self.assertEqual(args.func, sem.command_skills)
+
+    def test_skills_bare_command_accepts_json_flag(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["skills", "--json"])
+        self.assertEqual(args.skills_command, "list")
+        self.assertTrue(args.json)
+        self.assertEqual(args.func, sem.command_skills)
+
+    def test_skills_load_is_alias_for_get(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["skills", "load", "sem"])
+        self.assertEqual(args.skills_command, "load")
+        self.assertEqual(args.names, ["sem"])
+        self.assertEqual(args.func, sem.command_skills)
+
+    def test_mcp_list_tools_flag_parses(self) -> None:
+        parser = sem.build_parser()
+        args = parser.parse_args(["mcp", "--list-tools"])
+        self.assertTrue(args.list_tools)
+        self.assertEqual(args.func, sem.command_mcp)
 
     def test_fix_plan_generates_inline_authority_edit(self) -> None:
         source_text = """\
@@ -1836,6 +2073,165 @@ return value 0
             self.assertTrue(any(item["kind"] == "graph" for item in payload["nextCommands"]))
             updated = source.read_text(encoding="utf-8")
             self.assertIn('purpose operation main "demo"', updated)
+
+    def test_reference_surfaces_grammar_forms(self) -> None:
+        # `sem reference` must surface the row-syntax grammar so an agent can
+        # look up a form instead of discovering it one parse error at a time.
+        rows = sem._syntax_inventory_rows()
+        self.assertGreater(len(rows), 50)
+        self.assertTrue(all({"syntax", "description", "status"} <= set(r) for r in rows))
+
+        args = argparse.Namespace(query="branch", status=None, json=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sem.command_reference(args)
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["schemaVersion"], "sem.reference.v1")
+        self.assertGreater(payload["matchCount"], 0)
+        self.assertLess(payload["matchCount"], payload["totalRows"])
+        blob = " ".join(r["syntax"] for r in payload["rows"])
+        self.assertIn("branch if condition", blob)
+
+        # A status filter narrows the result set.
+        args_status = argparse.Namespace(query=None, status="Impl'd", json=True)
+        buf2 = io.StringIO()
+        with contextlib.redirect_stdout(buf2):
+            sem.command_reference(args_status)
+        impld = json.loads(buf2.getvalue())
+        self.assertTrue(all("impl'd" in r["status"].lower() for r in impld["rows"]))
+
+    def test_execute_semantic_contract_classification(self) -> None:
+        # The opt-in semantic-contract executor must distinguish a real
+        # assertion failure (clean nonzero exit) from a compile/run-setup failure
+        # (a contract fragment with no entry that can't lower standalone) and
+        # from a hang — only the first should fail the suite.
+        def proc(returncode, stderr=""):
+            return subprocess.CompletedProcess([], returncode, "", stderr)
+
+        cases = {
+            "clean zero": (proc(0), True, 0),
+            "clean nonzero is assertion failure": (proc(1), True, 1),
+            "codegen failure is not executed": (proc(3, "error SSCG001: main\nphase: codegen.lower"), False, 3),
+            "compiler driver error is not executed": (proc(2, "semsc: parse error in x"), False, 2),
+        }
+        for label, (completed, expect_executed, expect_code) in cases.items():
+            with mock.patch.object(sem, "_capture_compiler", return_value=completed):
+                result = sem._execute_semantic_contract(Path("x.test.sem"))
+            self.assertEqual(result["executed"], expect_executed, f"{label}: executed")
+            self.assertEqual(result["exitCode"], expect_code, f"{label}: exitCode")
+
+        # A hang (timeout) is reported as not-executed, never a failure.
+        with mock.patch.object(sem, "_capture_compiler",
+                               side_effect=subprocess.TimeoutExpired(cmd="x", timeout=20)):
+            timed_out = sem._execute_semantic_contract(Path("x.test.sem"))
+        self.assertFalse(timed_out["executed"])
+        self.assertIn("timed out", timed_out["reason"])
+
+    def test_fix_plan_auto_applies_syntax_cutover(self) -> None:
+        # The most common first-run failure (unqualified input/output/purpose
+        # rows the compiler now rejects) must produce a machine-applicable plan,
+        # not a dead-end "blocked" status. fix --plan should emit replaceLine
+        # edits sourced from the authoritative migrator, and patch --apply should
+        # migrate the rows in place so a follow-up check is clean.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(
+                "project Cut\n"
+                "module examples.cut\n"
+                "operation main\n"
+                "input main request Console\n"
+                "output main ExitCode\n"
+                'purpose main "demo"\n'
+                "async main no\n"
+                "return value 0\n",
+                encoding="utf-8",
+            )
+            sem._migrated_file_lines.cache_clear()
+            plan = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+            self.assertEqual(plan["status"], "mixed")
+            self.assertTrue(plan["planUsable"])
+            edits = [edit for repair in plan["repairs"] for edit in repair.get("edits", [])]
+            # Deduped: one replaceLine per cutover row, even though each row trips
+            # both an arity (SS0002) and a syntax (SS0003) diagnostic.
+            replace_lines = {edit["line"]: edit["text"] for edit in edits if edit["op"] == "replaceLine"}
+            self.assertEqual(replace_lines[4], "input operation main request Console")
+            self.assertEqual(replace_lines[5], "output operation main ExitCode")
+            self.assertEqual(replace_lines[6], 'purpose operation main "demo"')
+            self.assertEqual(len([e for e in edits if e["op"] == "replaceLine" and e["line"] == 4]), 1)
+
+            sem._migrated_file_lines.cache_clear()
+            patch_payload = sem._execute_patch_plan(plan, "apply")
+            self.assertTrue(patch_payload["applied"])
+            migrated = source.read_text(encoding="utf-8")
+            self.assertIn("input operation main request Console", migrated)
+            self.assertIn("output operation main ExitCode", migrated)
+            self.assertIn('purpose operation main "demo"', migrated)
+            self.assertNotIn("input main request", migrated)
+
+    def test_fix_plan_does_not_corrupt_on_branch_reorder(self) -> None:
+        # The migrator can rewrite a `branchIf` + bare `branch` pair in a
+        # LINE-COUNT-NEUTRAL way that REORDERS rows: the bare `branch fallback`
+        # becomes `branch else target ...` emitted earlier, leaving a blank at
+        # the original `branch` line. A positional replaceLine sourced from
+        # after_lines[L-1] would then write "" over the branch row (silent
+        # corruption). Auto-apply must be declined for every non-cutover-verb
+        # row; only the in-place subject-qualifier rows may carry an edit.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(
+                "project Reorder\n"
+                "module examples.reorder\n"
+                "operation main\n"
+                'purpose main "x"\n'
+                "branchIf flag doWork\n"
+                "\n"
+                "branch fallback\n"
+                "label doWork\n"
+                "return value 0\n"
+                "label fallback\n"
+                "return value 1\n",
+                encoding="utf-8",
+            )
+            sem._migrated_file_lines.cache_clear()
+            plan = sem._build_fix_plan_payload(source, [], include_warnings=True)
+            edits = [edit for repair in plan["repairs"] for edit in repair.get("edits", [])]
+            for edit in edits:
+                text = edit.get("text", "")
+                self.assertTrue(text.strip(), f"empty replacement would delete a row: {edit}")
+                self.assertNotIn(text.split()[0], ("branch", "branchIf", "jump"),
+                                 f"auto-apply must not touch a branch row: {edit}")
+            # The safe in-place cutover row is still auto-applied.
+            self.assertTrue(any(e["text"] == 'purpose operation main "x"' for e in edits))
+
+    def test_is_inplace_cutover_rewrite_guard(self) -> None:
+        ok = sem._is_inplace_cutover_rewrite
+        self.assertTrue(ok("input main x Bool", "input operation main x Bool"))
+        self.assertTrue(ok('purpose main "demo text"', 'purpose operation main "demo text"'))
+        self.assertTrue(ok("output main ExitCode", "output operation main ExitCode"))
+        # Reorder hazards: verb not in the cutover set, or shape mismatch.
+        self.assertFalse(ok("branch fallback", ""))
+        self.assertFalse(ok("branch fallback", "branch else target fallback"))
+        self.assertFalse(ok("branchIf flag doWork", "branch if condition flag target doWork"))
+        # Same verb but tail changed (not a pure one-token insertion).
+        self.assertFalse(ok("input main x Bool", "input operation main y Bool"))
+
+    def test_migrated_file_lines_skips_when_line_count_changes(self) -> None:
+        # Auto-apply only when the migration is a per-line in-place rewrite. If
+        # the migrator added/removed lines, a positional replaceLine could not
+        # reproduce it, so the helper returns None (preview-only fallback).
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("project P\noperation main\nreturn value 0\n", encoding="utf-8")
+            sem._migrated_file_lines.cache_clear()
+            with mock.patch("tools.syntax_migration.migrate_text") as migrate:
+                migrate.return_value = types.SimpleNamespace(
+                    text="project P\noperation main\nextra inserted line\nreturn value 0\n",
+                    ok=True,
+                    issues=[],
+                )
+                self.assertIsNone(sem._migrated_file_lines(str(source)))
 
     def test_patch_plan_rejects_stale_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

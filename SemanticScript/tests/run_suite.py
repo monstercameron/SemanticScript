@@ -278,6 +278,12 @@ COMMANDS: tuple[TestCommand, ...] = (
         py("-m", "unittest", "SemanticScript.tests.test_asan", "-v"),
     ),
     TestCommand(
+        "build.integration",
+        "check<->build consistency: codegen lowering, webServer entry generation, and a gated native exe build+run",
+        "integration",
+        py("-m", "unittest", "SemanticScript.tests.test_build_integration", "-v"),
+    ),
+    TestCommand(
         "golden.e2e",
         "E2E golden-output: compile programs to native exe + assert verified expected stdout",
         "e2e",

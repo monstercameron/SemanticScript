@@ -194,7 +194,7 @@ blocks, dynamic object or array literals, and legacy replacement rows such as
 | `memoryAllocationSource OP CALL` | Identifies the call that may allocate. | Impl'd |
 | `memoryStackLimit OP SIZE` | Declares stack memory budget. | Impl'd |
 | `async getAccountBalanceWithRetry yes` | Declares whether operation behavior is asynchronous. | Impl'd |
-| `purpose OP "text"` | Describes operation intent. | Impl'd |
+| `purpose KIND SUBJECT "text"` | Describes intent. `KIND` is one of `module`, `operation`, `capability`, `webServer`, `record`, `resource`, `validator`, `codec`, `policy` — matching the subjects the `missingPurpose` advisory asks for. | Impl'd |
 | `invariant OP "text"` | Records behavior that should remain true through edits. | Impl'd |
 | `warning OP "text"` | Describes operation risk or constraint text. | Impl'd |
 | `precondition OP "text"` | Records a caller-side proof obligation the operation body does not enforce (e.g. `selectedIndex < todoCount`). Structured replacement for the legacy `invariant OP "Caller guarantees X"` prose pattern; metadata-only at codegen so existing programs do not regress, but linters and agents read it to check call sites and to surface the operation contract. | Impl'd |

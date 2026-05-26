@@ -133,15 +133,15 @@ capability stdoutWriter console.stdout write
 operation main
 output operation main ExitCode
 effect main write console.stdout
-memory main noHeapAllocation
+memory main heap no
 async main no
-purpose main "Write a line and return a process exit code"
+purpose operation main "Write a line and return a process exit code"
 useCapability main stdoutWriter
 storage local immutable outputText String "hello world"
 call outputWriteCall console.writeLine
 argument outputWriteCall text String outputText
 run outputWriteCall
-ignore ok source outputWriteCall type Void
+ignore void source outputWriteCall
 bind error outputWriteError ConsoleWriteError outputWriteCall
 branch error source outputWriteCall target outputWriteFailed
 storage local immutable successExitCode ExitCode 0
@@ -176,7 +176,7 @@ capability or authority row.
 effect main write console.stdout
 capability stdoutWriter console.stdout write
 useCapability main stdoutWriter
-authority main console.stdout write
+authority main write console.stdout
 ```
 
 Fallible calls need explicit success/error handling. Do not hide failures.

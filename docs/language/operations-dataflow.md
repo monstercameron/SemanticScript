@@ -8,9 +8,9 @@ another operation or when compiling library-style files.
 
 ```semanticscript
 operation addInvoiceAmounts
-input addInvoiceAmounts invoiceSubtotal Int64
-input addInvoiceAmounts taxAmount Int64
-output addInvoiceAmounts Int64
+input operation addInvoiceAmounts invoiceSubtotal Int64
+input operation addInvoiceAmounts taxAmount Int64
+output operation addInvoiceAmounts Int64
 effect addInvoiceAmounts read memory.none
 memory addInvoiceAmounts noHeapAllocation
 async addInvoiceAmounts no
@@ -159,9 +159,9 @@ serialize through caller-owned scratch storage.
 
 ```semanticscript
 operation renameFirstTodoHandler
-input renameFirstTodoHandler requestBody JsonText
-input renameFirstTodoHandler scratch JsonScratchBuffer
-output renameFirstTodoHandler Result JsonText JsonAccessError
+input operation renameFirstTodoHandler requestBody JsonText
+input operation renameFirstTodoHandler scratch JsonScratchBuffer
+output operation renameFirstTodoHandler Result JsonText JsonAccessError
 effect renameFirstTodoHandler read json.document.tree
 effect renameFirstTodoHandler write json.document.tree
 

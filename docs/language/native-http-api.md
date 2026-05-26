@@ -37,6 +37,49 @@ Current implementation status:
 This file describes the API shape implemented by the current adapter plus the
 nearby request/response gaps still needed for a fuller web runtime.
 
+## Concurrency Limits And Testing (read before load-testing)
+
+The default adapter is **blocking and single-threaded**: it accepts one
+connection, serves a single request on it (it always responds with
+`Connection: close`), closes, and only then accepts the next. Under concurrent
+or slow clients this bites in practice — firing several requests at once
+(especially with some hitting a timeout) can leave sockets lingering and the
+server stops answering *everything*, including `/health`. Recovery is kill +
+restart, then one request at a time. This is expected for the current backend; a
+non-blocking/H2O backend is future work.
+
+A dropped client connection no longer kills the server: the adapter ignores
+`SIGPIPE` on POSIX, so a client that closes/resets mid-response (keep-alive
+churn, a browser favicon probe, or a client that gives up on a slow handler)
+makes `send()` return an error and unwind cleanly instead of terminating the
+process. On Windows `send()` already returns `WSAECONNRESET` there. Even so, do
+not load-test the blocking adapter concurrently.
+
+Testing guidance (especially on Windows):
+
+- **Serialize requests** — one at a time, with `Connection: close` and a
+  generous timeout. Do not fan out parallel or keep-alive bursts against the
+  blocking adapter.
+- **Use `curl`, not `Invoke-WebRequest`.** On Windows PowerShell 5.1,
+  `Invoke-WebRequest` may route `127.0.0.1` through a system proxy and report a
+  bare "Unable to connect" with no useful error. `curl --noproxy '*' http://127.0.0.1:PORT/...`
+  surfaces the real response (including a server-side fault on stdout).
+- **Capture stdout/stderr** (`server.exe > out.txt 2>&1`) so a handler fault
+  (`SSRUN002`) is visible. A crash presents as "connection refused" on every
+  *subsequent* connect (the process died at the TCP layer looks identical to a
+  bind problem). Confirm liveness with `Get-Process` before chasing networking.
+- **Register `routeNotFound`** (and usually `routeMethodNotAllowed`). A browser
+  auto-requests `/favicon.ico` and other assets; without a not-found handler
+  those hit the default 404 path and add connection churn. An explicit handler
+  keeps unmatched paths cheap and predictable.
+- **Persisting a server across separate tool calls / agent steps.** A process a
+  tool shell spawns (`Start-Process`, `&`) is reaped when that shell exits, so
+  the server dies between calls. To keep one alive out-of-band on Windows,
+  launch it parented to the WMI service:
+  `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='C:\path\server.exe'}`.
+  The built exe is self-contained (assets are embedded at build time), so it
+  needs no particular working directory.
+
 ## Server Shape
 
 MVP server metadata uses the existing line forms:
@@ -83,9 +126,9 @@ The first compiled handler ABI should be explicit pointer-in, status-out:
 
 ```semanticscript
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 effect healthHandler write http.response
 memory healthHandler arena request
 async healthHandler no
@@ -145,26 +188,33 @@ The first runtime calls should be direct and small:
 
 ```semanticscript
 storage local immutable healthBody String "ok\n"
+storage local immutable okStatus Int32 200
 
-call writeHealthResponse http.responseText
-argument writeHealthResponse response HttpResponse response
-argument writeHealthResponse status HttpStatus HttpStatus.Ok
-argument writeHealthResponse body String healthBody
-run writeHealthResponse
-bind value writeStatus Int32 writeHealthResponse
+call writeHealthResponseCall http.responseText
+argument writeHealthResponseCall response HttpResponse response
+argument writeHealthResponseCall status HttpStatusCode okStatus
+argument writeHealthResponseCall body String healthBody
+run writeHealthResponseCall
+bind value writeStatus Int32 writeHealthResponseCall
 return value writeStatus
 ```
+
+The status is a plain `Int32` value (`200`) declared with `storage` and passed
+by name. There is no predeclared `HttpStatus.Ok` constant, and the status value
+must be a base type — only `Int32`/`Int64`/etc. lower as constants, so declare
+`okStatus Int32 200` rather than typing the const itself `HttpStatusCode`. The
+argument row still carries the contract type token (`HttpStatusCode`).
 
 Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
-| `http.responseHtml` | `response HttpResponse`, `status HttpStatus`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
-| `http.responseText` | `response HttpResponse`, `status HttpStatus`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
-| `http.responseBytes` | `response HttpResponse`, `status HttpStatus`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
-| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatus`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
+| `http.responseHtml` | `response HttpResponse`, `status HttpStatusCode`, `body String` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
+| `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body String`, optional `contentType String` | `Int32` | `ss_http_response_text` |
+| `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body OpaquePointer`, `bodyLength ByteCount`, optional `contentType String` | `Int32` | `ss_http_response_bytes` |
+| `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event String`, `data String` | `Int32` | `ss_http_response_sse_event` |
 | `http.responseHeader` | `response HttpResponse`, `name String`, `value String` | `Int32` | `ss_http_response_header` |
-| `http.responseFile` | `response HttpResponse`, `status HttpStatus`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `path String`, optional `contentType String` | `Int32` | `ss_http_response_file` |
 | `http.requestMethod` | `request HttpRequest` | `String` | `ss_http_request_method` |
 | `http.requestPath` | `request HttpRequest` | `String` | `ss_http_request_path` |
 | `http.requestPathParam` | `request HttpRequest`, `name String` | `String` | `ss_http_request_path_param` |
@@ -257,9 +307,9 @@ capability httpRequestReader http.request read
 capability httpResponseWriter http.response write
 
 operation healthHandler
-input healthHandler request HttpRequest
-input healthHandler response HttpResponse
-output healthHandler Int32
+input operation healthHandler request HttpRequest
+input operation healthHandler response HttpResponse
+output operation healthHandler Int32
 effect healthHandler read http.request.method
 effect healthHandler read http.request.path
 effect healthHandler write http.response
@@ -267,7 +317,7 @@ memory healthHandler arena request
 async healthHandler no
 useCapability healthHandler httpRequestReader
 useCapability healthHandler httpResponseWriter
-purpose healthHandler "Return a plain health-check response"
+purpose operation healthHandler "Return a plain health-check response"
 
 call methodReadCall http.requestMethod
 argument methodReadCall request HttpRequest request
@@ -280,9 +330,10 @@ run pathReadCall
 bind value requestPath String pathReadCall
 
 storage local immutable healthBody String "ok\n"
+storage local immutable okStatus Int32 200
 call responseWriteCall http.responseText
 argument responseWriteCall response HttpResponse response
-argument responseWriteCall status HttpStatus HttpStatus.Ok
+argument responseWriteCall status HttpStatusCode okStatus
 argument responseWriteCall body String healthBody
 run responseWriteCall
 bind value responseWriteStatus Int32 responseWriteCall

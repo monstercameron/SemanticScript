@@ -52,6 +52,7 @@ from shared.call_contracts import (
     is_supported_route_method,
 )
 from shared.repo_version import read_repo_version
+from shared.console_encoding import force_utf8_streams as _force_utf8_streams
 
 __version__ = read_repo_version()
 
@@ -996,7 +997,7 @@ def parse_file(path: Path) -> ProgramFacts:
             elif (verb in {"purpose", "invariant", "warning", "guarantee",
                            "failure", "security", "timing", "observability"}
                   and args):
-                owner = args[1] if verb in {"purpose", "invariant"} and len(args) >= 3 and args[0] in {"module", "operation"} else args[0]
+                owner = args[1] if len(args) >= 3 and ((verb == "purpose" and args[0] in PURPOSE_SUBJECT_KINDS) or (verb == "invariant" and args[0] in {"module", "operation"})) else args[0]
                 program.hard_metadata.setdefault(owner, set()).add(verb)
 
     return program
@@ -1036,6 +1037,16 @@ class Effort(str, Enum):
     LOCAL = "local"
     CROSS_FILE = "crossFile"
 
+
+# Subject kinds a `purpose` row may name. Mirrors `_PURPOSE_SUBJECT_KINDS` in
+# the compiler: operations and modules plus the contract-heavy abstractions the
+# `missingPurpose` advisory asks for. When `args[0]` is one of these, the owner
+# name is `args[1]`; otherwise the row is the legacy unqualified form.
+PURPOSE_SUBJECT_KINDS: frozenset = frozenset({
+    "module", "operation",
+    "capability", "webServer", "record",
+    "resource", "validator", "codec", "policy",
+})
 
 # Narrative attachments the linter recognises on operations. These are the
 # edges every diagnostic should CITE when bound to an operation, not just
@@ -1283,6 +1294,62 @@ _C_ABI_WIDTH_ALIAS: Dict[str, str] = {
 }
 
 
+# Opaque domain-handle types: these lower to a raw pointer (i8*) but are NOT
+# interchangeable with String or with each other. Binding a String/scalar value
+# as one of these (or vice versa) is a provable type lie that the ABI hides —
+# the exact shape that turned `string.concat` (returns String) bound as
+# HtmlFragment into a runtime SIGSEGV when hydrated. See check_bind_return_type_domain.
+_OPAQUE_DOMAIN_HANDLE_TYPES: frozenset = frozenset({
+    "HtmlFragment", "HtmlTrustedFragment", "HtmlDocument",
+    "JsonDocument", "JsonBuilder",
+})
+
+# Conservative return-type registry for the builtins where the bind-return
+# domain check is meaningful. Only targets whose return type is unambiguous are
+# listed; anything absent is skipped (false-negative over false-positive).
+BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
+    # Native HTTP response writers return an Int32 status, NOT a body handle.
+    "http.responseHtml":      "Int32",
+    "http.responseText":      "Int32",
+    "http.responseBytes":     "Int32",
+    "http.responseSseEvent":  "Int32",
+    "http.responseHeader":    "Int32",
+    "http.responseFile":      "Int32",
+    # Request readers return text.
+    "http.requestMethod":     "String",
+    "http.requestPath":       "String",
+    # Integer arithmetic returns its width; comparisons return Bool. Binding any
+    # of these as an opaque HTML/JSON handle is a domain lie (caught by SS4302).
+    "math.addInt64":          "Int64",
+    "math.subtractInt64":     "Int64",
+    "math.multiplyInt64":     "Int64",
+    "math.divideInt64":       "Int64",
+    "math.moduloInt64":       "Int64",
+    "math.minInt64":          "Int64",
+    "math.maxInt64":          "Int64",
+    "math.clampInt64":        "Int64",
+    "math.bitwiseAndInt64":   "Int64",
+    "math.bitwiseOrInt64":    "Int64",
+    "math.bitwiseXorInt64":   "Int64",
+    "math.shiftLeftInt64":    "Int64",
+    "math.shiftRightLogicalInt64":    "Int64",
+    "math.shiftRightArithmeticInt64": "Int64",
+    "math.equalInt64":            "Bool",
+    "math.notEqualInt64":         "Bool",
+    "math.lessThanInt64":         "Bool",
+    "math.lessThanOrEqualInt64":  "Bool",
+    "math.greaterThanInt64":      "Bool",
+    "math.greaterThanOrEqualInt64": "Bool",
+    "math.equalInt32":            "Bool",
+    "math.lessThanInt32":         "Bool",
+    "math.greaterThanInt32":      "Bool",
+    "math.addFloat64":        "Float64",
+    "math.subtractFloat64":   "Float64",
+    "math.multiplyFloat64":   "Float64",
+    "math.divideFloat64":     "Float64",
+}
+
+
 BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     # Console writes
     "console.writeLine":          [("console", "Console"), ("text", "String")],
@@ -1295,6 +1362,9 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "math.multiplyInt64":           [("left", "Int64"), ("right", "Int64")],
     "math.divideInt64":             [("left", "Int64"), ("right", "Int64")],
     "math.moduloInt64":             [("left", "Int64"), ("right", "Int64")],
+    "math.minInt64":                [("left", "Int64"), ("right", "Int64")],
+    "math.maxInt64":                [("left", "Int64"), ("right", "Int64")],
+    "math.clampInt64":              [("value", "Int64"), ("low", "Int64"), ("high", "Int64")],
     "math.equalInt64":              [("left", "Int64"), ("right", "Int64")],
     "math.notEqualInt64":           [("left", "Int64"), ("right", "Int64")],
     "math.lessThanInt64":           [("left", "Int64"), ("right", "Int64")],
@@ -2518,7 +2588,7 @@ def narrative_citations_for_operation(facts: ExtendedFacts, operationName: str) 
         if not narrativeLine:
             continue
         # `purpose foo "the text"` → args = ["foo", "the text"]
-        if edgeKind in {"purpose", "invariant"} and len(narrativeLine.args) >= 3 and narrativeLine.args[0] in {"module", "operation"}:
+        if len(narrativeLine.args) >= 3 and ((edgeKind == "purpose" and narrativeLine.args[0] in PURPOSE_SUBJECT_KINDS) or (edgeKind == "invariant" and narrativeLine.args[0] in {"module", "operation"})):
             text = narrativeLine.args[2]
         else:
             text = narrativeLine.args[1] if len(narrativeLine.args) >= 2 else ""
@@ -3129,6 +3199,8 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3104 capabilityCoverage, SS3105 unprotectedSharedState,
 #            SS3106 hiddenFailure, SS3107 siblingMetadataDrift,
 #            SS3108 unsupportedSharedStateScope,
+#            SS3109 authorityEffectMismatch,
+#            SS3110 columnUseAfterFree,
 #            SS3111 undeclaredBodyEffect, SS3112 unknownErrorVariant
 #   AS32xx — performance discipline           (T3 refinement)
 #            SS3201 deadStore, SS3202 allocationInLoop,
@@ -3895,8 +3967,12 @@ def _build_capability_coverage_fix_candidates(
         evidence=[span_of_line(effectLine)],
     ))
     fixCandidates.append(FixCandidate(
+        # `authority` is access-first (`authority OP ACCESS PATH`), mirroring the
+        # `effect OP ACCESS PATH` row it backs — unlike `capability`, which is
+        # path-first. Emitting it path-first produced a grant that matched no
+        # effect and tripped SS3109.
         name="inlineAuthority",
-        shape=f"authority {operationName} {effectPath} {effectAction}",
+        shape=f"authority {operationName} {effectAction} {effectPath}",
         evidence=[span_of_line(effectLine)],
     ))
     return fixCandidates
@@ -3968,6 +4044,200 @@ def check_effect_without_capability(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"at module scope and reuse it"
                 ),
             ))
+    return diagnostics
+
+
+def _authority_path_related_to_effect(grantPath: str, effectPath: str) -> bool:
+    """True when an authority grant path and an effect path are on the same
+    hierarchical branch — equal, or one a dotted-segment prefix of the other.
+    A grant at `http.request` covers `http.request.method`; a narrower grant is
+    still treated as related (not flagged) to keep this advisory low-noise. Only
+    a genuinely unrelated path (or a mismatched access verb, checked separately)
+    is reported. Segment-aware so `database.account` does not match
+    `database.accountHistory`."""
+    if grantPath == effectPath:
+        return True
+    return effectPath.startswith(grantPath + ".") or grantPath.startswith(effectPath + ".")
+
+
+def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
+    """An inline `authority OP PATH ACCESS` grant should back a declared effect
+    on that operation. SS3104 treats the mere PRESENCE of an authority row as
+    coverage, so a grant whose access verb or path matches no declared effect (a
+    typo such as `read` for a `write` effect, or a stale path) silently passes as
+    'covered' while authorizing nothing — and the effect it was meant to back is
+    really unprotected. Flag the dead grant so the gap is visible."""
+    diagnostics: List[Diagnostic] = []
+    for operationName, authorityLines in facts.operationAuthority.items():
+        effectLines = facts.operationEffects.get(operationName, [])
+        effects = [(line.args[1], line.args[2]) for line in effectLines if len(line.args) >= 3]
+        if not effects:
+            # No declared effects to reconcile against — a different gap, not this one.
+            continue
+        for authorityLine in authorityLines:
+            authorityArgs = authorityLine.args
+            if len(authorityArgs) < 3:
+                continue
+            # Canonical grammar is `authority OP ACCESS PATH`, parallel to
+            # `effect OP ACCESS PATH` (access first, then the dotted path).
+            grantAccess, grantPath = authorityArgs[1], authorityArgs[2]
+            covers = any(
+                grantAccess == effectAction and _authority_path_related_to_effect(grantPath, effectPath)
+                for (effectAction, effectPath) in effects
+            )
+            if covers:
+                continue
+            fixCandidates = [
+                FixCandidate(
+                    name="alignAuthorityToEffect",
+                    shape=f"authority {operationName} {effectAction} {effectPath}",
+                )
+                for (effectAction, effectPath) in effects[:3]
+            ]
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3109",
+                kind="capabilityCoverage.authorityEffectMismatch",
+                severity=Severity.WARNING,
+                subjectName=operationName,
+                subjectKind="operation",
+                gapEdge="authority",
+                intentSlogan="authority grant matches no declared effect",
+                primary=span_of_line(authorityLine, "authorityDeclaration"),
+                invariantRule="every inline authority grant must back a declared effect by access and path",
+                specAnchor="docs/language/errors-effects-capabilities.md#capabilities-and-authority",
+                citations=narrative_citations_for_operation(facts, operationName),
+                fixCandidates=fixCandidates,
+                confidence=Confidence.MEDIUM,
+                blocksCompile=False,
+                effort=Effort.LOCAL,
+                passProvenance="check_authority_effect_mismatch",
+                agentHint=(
+                    f"`authority {operationName} {grantAccess} {grantPath}` authorizes nothing on "
+                    f"{operationName}; align its access verb and path to a declared "
+                    f"`effect {operationName} <action> <path>` row (order is access-first: "
+                    f"`authority OP ACCESS PATH`)"
+                ),
+            ))
+    return diagnostics
+
+
+_OWNED_COLUMN_SOURCES = frozenset({
+    "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
+})
+_STATEMENT_RELEASE_TARGETS = frozenset({"sqlite.finalizeStatement"})
+_DATABASE_RELEASE_TARGETS = frozenset({"sqlite.closeDatabase"})
+
+
+def _sqlite_statement_argument(call_fact) -> Optional[str]:
+    """The value bound to a call's `SqliteStatement`-typed argument, if any."""
+    for arg_line in call_fact.arg_lines:
+        parts = argument_parts(arg_line)
+        if parts and parts[2] == "SqliteStatement":
+            return parts[3]
+    return None
+
+
+def check_column_memory_use_after_free(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3110 — a value read from `sqlite.columnText`/`columnBlob`/`columnName`
+    points into the prepared statement's own memory. Using it after that
+    statement is finalized or the database is closed is a use-after-free: it
+    builds and checks cleanly, then SIGSEGVs at runtime when the response writer
+    dereferences freed memory (the devlog's hardest bug — invisible to check AND
+    build). Flag a column value consumed as a call argument that linearly
+    follows an EXPLICIT `run` of `finalizeStatement` (same statement) or
+    `closeDatabase`, within the same straight-line block. `defer`-based release
+    runs at scope exit (after the use) and is correctly NOT flagged — which is
+    exactly the idiomatic fix."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        calls = collect_operation_calls(operation)
+
+        # column value -> (owning statement value, bind line number)
+        column_values: Dict[str, Tuple[Optional[str], int]] = {}
+        for call_fact in calls.values():
+            if call_fact.target not in _OWNED_COLUMN_SOURCES:
+                continue
+            statement = _sqlite_statement_argument(call_fact)
+            for bind_line in call_fact.bind_lines:
+                bind = bind_parts(bind_line)
+                if bind and bind[0] == "value":
+                    column_values[bind[1]] = (statement, bind_line.number)
+        if not column_values:
+            continue
+
+        # release points: (statement value or None == closes everything, run line)
+        releases: List[Tuple[Optional[str], int]] = []
+        for call_fact in calls.values():
+            if call_fact.target in _STATEMENT_RELEASE_TARGETS:
+                statement = _sqlite_statement_argument(call_fact)
+                releases.extend((statement, run_line.number) for run_line in call_fact.run_lines)
+            elif call_fact.target in _DATABASE_RELEASE_TARGETS:
+                releases.extend((None, run_line.number) for run_line in call_fact.run_lines)
+        if not releases:
+            continue
+
+        label_lines = sorted(
+            line.number for line in operation.lines
+            if line.tokens and not is_comment(line) and line.verb == "label"
+        )
+
+        for use_line in operation.lines:
+            if is_comment(use_line) or not use_line.tokens:
+                continue
+            parts = argument_parts(use_line)
+            if parts is None or parts[3] not in column_values:
+                continue
+            used_value = parts[3]
+            owning_statement, bind_line_number = column_values[used_value]
+            for release_statement, release_line in releases:
+                if not (bind_line_number < release_line < use_line.number):
+                    continue
+                # finalize of a DIFFERENT statement does not free this value;
+                # closeDatabase (release_statement is None) frees everything.
+                if (release_statement is not None and owning_statement is not None
+                        and release_statement != owning_statement):
+                    continue
+                # A label between the release and the use means they may be on
+                # different control-flow paths — stay conservative (no FP).
+                if any(release_line < ln < use_line.number for ln in label_lines):
+                    continue
+                release_kind = "the database is closed" if release_statement is None else \
+                    f"statement `{owning_statement or release_statement}` is finalized"
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3110",
+                    kind="resourceLifetime.columnUseAfterFree",
+                    severity=Severity.WARNING,
+                    subjectName=used_value,
+                    subjectKind="value",
+                    gapEdge="defer",
+                    intentSlogan="column memory used after finalize/close",
+                    primary=span_of_line(use_line, "columnValueUse"),
+                    invariantRule="a sqlite.column* value must be consumed before its statement is finalized or its database closed",
+                    specAnchor="docs/reference/syntax-inventory.md#defer",
+                    citations=narrative_citations_for_operation(facts, operation.name),
+                    fixCandidates=[
+                        FixCandidate(
+                            name="releaseWithDefer",
+                            shape=f"defer <name> sqlite.finalizeStatement {owning_statement or '<statement>'}",
+                        ),
+                        FixCandidate(
+                            name="writeResponseBeforeRelease",
+                            shape="# move the response/use rows above the finalize/close rows",
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_column_memory_use_after_free",
+                    agentHint=(
+                        f"`{used_value}` points into statement memory freed at line {release_line} "
+                        f"({release_kind}); consume it before that row, or release with `defer` "
+                        f"so cleanup runs at scope exit"
+                    ),
+                ))
+                break  # one diagnostic per use site
     return diagnostics
 
 
@@ -4076,6 +4346,10 @@ def _syntax_cutover_diagnostic(
         specAnchor="docs/reference/syntax-inventory.md#syntax-cutover",
         fixCandidates=[
             FixCandidate(
+                name="runMigrateSyntax",
+                shape="sem migrate-syntax --write <file>",
+            ),
+            FixCandidate(
                 name="rewriteToNewSyntax",
                 shape=shape,
             ),
@@ -4084,7 +4358,7 @@ def _syntax_cutover_diagnostic(
         blocksCompile=True,
         effort=Effort.TRIVIAL,
         passProvenance="check_syntax_cutover_rows",
-        agentHint="run the explicit syntax converter or rewrite this row; the linter no longer treats old syntax as source",
+        agentHint="run `sem migrate-syntax --diff <file>` to preview the upgrade then `--write` to apply it; this rewrites every cutover row mechanically. Or rewrite this row to the shape shown. The linter no longer treats old syntax as source.",
     )
 
 
@@ -4154,10 +4428,11 @@ def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
                 "`output OP TYPE` was replaced by `output operation OP TYPE`",
                 "output operation <operation> <type>",
             ))
-        elif verb == "purpose" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
+        elif verb == "purpose" and not (len(args) >= 3 and args[0] in PURPOSE_SUBJECT_KINDS):
             diagnostics.append(_syntax_cutover_diagnostic(
                 sourceLine, "purpose", "purpose rows must name the subject kind",
-                "`purpose SUBJECT TEXT` was replaced by `purpose operation SUBJECT TEXT` or `purpose module SUBJECT TEXT`",
+                "`purpose SUBJECT TEXT` was replaced by `purpose <kind> SUBJECT TEXT` "
+                "(kind is one of: " + ", ".join(sorted(PURPOSE_SUBJECT_KINDS)) + ")",
                 "purpose operation <operation> \"...\"",
             ))
         elif verb == "invariant" and not (len(args) >= 3 and args[0] in {"module", "operation"}):
@@ -4417,6 +4692,60 @@ def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
                     rule=f"`html.hydrate.{templateName}` has no hole root `{extra}`",
                     shape=f"# remove argument {callFact.name} {extra} ...",
                 ))
+    return diagnostics
+
+
+def check_unused_html_template(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS0109 — an `html template NAME` that is never rendered by any
+    `html.hydrate.NAME` call is dead (mirrors the unused-call/label checks).
+    A declared-but-unhydrated template is usually a leftover or a typo'd hydrate
+    target; either way it ships markup that never reaches a response."""
+    diagnostics: List[Diagnostic] = []
+    if not facts.base.html_templates:
+        return diagnostics
+    hydrated: Set[str] = set()
+    prefix = "html.hydrate."
+    for operation in facts.base.operations.values():
+        for sourceLine in operation.lines:
+            if (sourceLine.tokens and not is_comment(sourceLine)
+                    and sourceLine.verb == "call" and len(sourceLine.args) >= 2
+                    and sourceLine.args[1].startswith(prefix)):
+                hydrated.add(sourceLine.args[1][len(prefix):])
+    for template in facts.base.html_templates.values():
+        if template.name in hydrated:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS0109",
+            kind="unusedDeclaration.htmlTemplate",
+            severity=Severity.WARNING,
+            subjectName=template.name,
+            subjectKind="htmlTemplate",
+            gapEdge="hydrationSite",
+            intentSlogan="html template never hydrated",
+            primary=span_of_line(template.line, "htmlTemplateDeclaration"),
+            invariantRule=(
+                f"`html template {template.name}` is declared but no "
+                f"`html.hydrate.{template.name}` call renders it; the template "
+                f"markup is dead."
+            ),
+            specAnchor="docs/reference/syntax-inventory.md#html",
+            fixCandidates=[
+                FixCandidate(
+                    name="hydrateTemplate",
+                    shape=f"call <name>Call html.hydrate.{template.name}",
+                ),
+                FixCandidate(
+                    name="removeTemplate",
+                    shape=f"# remove the unused `html template {template.name}` and its body",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.LOCAL,
+            passProvenance="check_unused_html_template",
+            agentHint="hydrate the template where the page is rendered, or delete it if it is a leftover",
+        ))
     return diagnostics
 
 
@@ -5141,7 +5470,8 @@ def check_undeclared_body_effect(facts: ExtendedFacts) -> List[Diagnostic]:
                         name="addEffectDeclarationWithCapabilityProof",
                         shape=(
                             f"effect {operation.name} {impliedAction} {impliedPath}\n"
-                            f"authority {operation.name} {impliedPath} {impliedAction}"
+                            # access-first, mirroring the effect row (see SS3104)
+                            f"authority {operation.name} {impliedAction} {impliedPath}"
                         ),
                         evidence=[span_of_line(callFact.line)],
                     ),
@@ -10511,7 +10841,7 @@ def check_unresolved_references(facts: ExtendedFacts) -> List[Diagnostic]:
             referencedSubjectName = parsedOutput[0]
         elif parsedMemory is not None:
             referencedSubjectName = parsedMemory[0]
-        elif sourceLine.verb in {"purpose", "invariant"} and len(sourceLine.args) >= 3 and sourceLine.args[0] in {"module", "operation"}:
+        elif len(sourceLine.args) >= 3 and ((sourceLine.verb == "purpose" and sourceLine.args[0] in PURPOSE_SUBJECT_KINDS) or (sourceLine.verb == "invariant" and sourceLine.args[0] in {"module", "operation"})):
             referencedSubjectName = sourceLine.args[1]
         else:
             referencedSubjectName = sourceLine.args[0]
@@ -11016,6 +11346,126 @@ def _enum_context(
             nextValueByEnum[enumName] = caseValue + 1
 
     return enumReprs, enumCasesByType, enumCaseValuesByType, enumTypeByCase
+
+
+def _bind_return_domain(resolved_type: str) -> Optional[str]:
+    """Classify a resolved type into a coarse domain for the bind-return check:
+    "opaque" for the non-interchangeable domain handles, "scalar" for primitives
+    and String, or None when we can't classify it (so we skip rather than guess)."""
+    if resolved_type in _OPAQUE_DOMAIN_HANDLE_TYPES:
+        return "opaque"
+    if resolved_type == "String" or resolved_type in PRIMITIVE_CANONICAL_BY_TYPE:
+        return "scalar"
+    return None
+
+
+def check_bind_return_type_domain(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS4302 — a `bind` declares a type whose DOMAIN contradicts the call
+    target's real return type. Catches the class of bug where everything lowers
+    to `i8*` so the type lie type-checks: e.g. binding a String/scalar-returning
+    call as an opaque `HtmlFragment`/`HtmlDocument`/`JsonDocument` handle (or
+    vice versa). Consuming that mislabeled value — feeding it to `html.hydrate`,
+    say — dereferences garbage and crashes at runtime. Only the opaque<->scalar
+    cross-domain case is flagged (high confidence); same-domain width/coercion
+    differences are left to other checks."""
+    diagnostics: List[Diagnostic] = []
+    typeAliases = dict(facts.base.type_aliases)
+
+    # Single-type return contract per user operation (skip Result/multi-type
+    # outputs — those are not a plain handle/scalar to compare).
+    userOpReturnType: Dict[str, str] = {}
+    for operation in facts.base.operations.values():
+        for sourceLine in operation.lines:
+            parsed = output_parts(sourceLine)
+            if parsed is not None and parsed[0] == operation.name:
+                # output_parts returns (op, firstTypeToken); a Result contract
+                # is `output operation OP Result OK ERR` — first token "Result".
+                if parsed[1] != "Result":
+                    userOpReturnType[operation.name] = parsed[1]
+                break
+
+    def return_type_of(target: str) -> Optional[str]:
+        if target.startswith("html.hydrate."):
+            return "HtmlDocument"  # an opaque HTML handle (doc or fragment)
+        if target in BUILTIN_TARGET_RETURN_TYPES:
+            return BUILTIN_TARGET_RETURN_TYPES[target]
+        # The `string.*` namespace operates on and returns text/scalars (bytes,
+        # counts, C-strings) — never an opaque HTML/JSON handle. Treating it as
+        # the scalar domain catches binding a String op's result as an
+        # HtmlFragment (the `string.concat`-as-fragment SIGSEGV class) at lint.
+        if target.startswith("string."):
+            return "String"
+        return userOpReturnType.get(target)
+
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        callTargetByCallName: Dict[str, str] = {}
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargetByCallName[sourceLine.args[0]] = sourceLine.args[1]
+
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            parsedBind = bind_parts(sourceLine)
+            if parsedBind is None:
+                continue
+            variant, boundName, declaredType, callName = parsedBind
+            if variant not in {"value", "ok"}:
+                continue
+            target = callTargetByCallName.get(callName)
+            if not target:
+                continue
+            returnType = return_type_of(target)
+            if returnType is None:
+                continue
+            declaredResolved = _resolve_type_alias_head(declaredType, typeAliases)
+            returnResolved = _resolve_type_alias_head(returnType, typeAliases)
+            declaredDomain = _bind_return_domain(declaredResolved)
+            returnDomain = _bind_return_domain(returnResolved)
+            if declaredDomain is None or returnDomain is None:
+                continue
+            if {declaredDomain, returnDomain} != {"opaque", "scalar"}:
+                continue
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS4302",
+                kind="typeIntegrity.bindReturnDomainMismatch",
+                severity=Severity.ERROR,
+                subjectName=boundName,
+                subjectKind="bindSlot",
+                gapEdge="matchingReturnType",
+                intentSlogan="bind type contradicts call return type domain",
+                primary=span_of_line(sourceLine, "bindReturnDomainSite"),
+                related=[span_of_line(operation.line, "enclosingOperation")],
+                invariantRule=(
+                    f"`{boundName}` is bound as `{declaredType}` but `{target}` "
+                    f"returns `{returnType}` — an opaque domain handle and a "
+                    f"String/scalar are not interchangeable even though both "
+                    f"lower to a pointer. Consuming the mislabeled value (e.g. "
+                    f"hydrating it) dereferences garbage at runtime."
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#bind",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="useActualReturnType",
+                        shape=f"bind {variant} {boundName} {returnType} {callName}",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                blocksCompile=True,
+                effort=Effort.LOCAL,
+                passProvenance="check_bind_return_type_domain",
+                agentHint=(
+                    "Bind the call's real return type. To build an HTML fragment "
+                    "from pieces, use the HTML fragment/template path "
+                    "(html.hydrate + HtmlFragment holes), not a String op."
+                ),
+            ))
+    return diagnostics
 
 
 def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
@@ -15171,6 +15621,177 @@ def check_invalid_route_method(facts: ExtendedFacts) -> List[Diagnostic]:
                 "is not currently supported by the native dispatcher"
             ),
         ))
+    return diagnostics
+
+
+def check_placeholder_module_path(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS2516 — advisory. `sem new` scaffolds `modulePath PROJECT
+    github.com/example/<name>` as a placeholder. Left unchanged it can resolve
+    imports/dependencies against a bogus origin, so nudge the author to set the
+    real module path before publishing or adding dependencies."""
+    diagnostics: List[Diagnostic] = []
+    for sourceLine in facts.base.lines:
+        if (not sourceLine.tokens or is_comment(sourceLine)
+                or sourceLine.verb != "modulePath" or len(sourceLine.args) < 2):
+            continue
+        modulePath = sourceLine.args[1]
+        if "github.com/example/" not in modulePath:
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T3_REFINEMENT,
+            code="SS2516",
+            kind="buildTape.placeholderModulePath",
+            severity=Severity.WARNING,
+            subjectName=sourceLine.args[0],
+            subjectKind="project",
+            gapEdge="modulePath",
+            intentSlogan="placeholder modulePath from sem new",
+            primary=span_of_line(sourceLine, "modulePathDeclaration"),
+            invariantRule=(
+                f"`modulePath {sourceLine.args[0]} {modulePath}` is the scaffold "
+                f"placeholder; set the project's real module path so imports and "
+                f"dependency resolution use the correct origin."
+            ),
+            specAnchor="docs/reference/package-management.md",
+            fixCandidates=[
+                FixCandidate(
+                    name="setRealModulePath",
+                    shape=f"modulePath {sourceLine.args[0]} github.com/<owner>/<repo>",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=False,
+            effort=Effort.TRIVIAL,
+            passProvenance="check_placeholder_module_path",
+            agentHint="replace the github.com/example/ placeholder with the real repository path",
+        ))
+    return diagnostics
+
+
+def check_duplicate_route(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3611 — two `route` rows on the same server with the same METHOD+path.
+    The native dispatcher matches the first registration, so every later
+    duplicate is dead: its handler can never run, and the collision is almost
+    always a copy-paste bug. Flagged on each duplicate after the first."""
+    diagnostics: List[Diagnostic] = []
+    seen: Dict[Tuple[str, str, str], RouteFact] = {}
+    for routeFact in facts.base.routes:
+        key = (routeFact.server, routeFact.method.upper(), routeFact.path)
+        first = seen.get(key)
+        if first is None:
+            seen[key] = routeFact
+            continue
+        diagnostics.append(Diagnostic(
+            tier=Tier.T1_SPEC,
+            code="SS3611",
+            kind="webserver.duplicateRoute",
+            severity=Severity.ERROR,
+            subjectName=routeFact.path,
+            subjectKind="route",
+            gapEdge="route.uniqueMethodPath",
+            intentSlogan=f"duplicate route {routeFact.method} {routeFact.path}",
+            primary=span_of_line(routeFact.line, "routeDeclaration"),
+            related=[span_of_line(first.line, "firstRouteDeclaration")],
+            invariantRule=(
+                f"`route {routeFact.server} {routeFact.method} {routeFact.path} "
+                f"{routeFact.handler}` collides with an earlier route for the same "
+                f"METHOD+path (handler `{first.handler}`); the dispatcher matches "
+                f"the first, so this binding is dead."
+            ),
+            specAnchor="docs/reference/syntax-inventory.md#route",
+            fixCandidates=[
+                FixCandidate(
+                    name="removeDuplicateRoute",
+                    shape=f"# remove the duplicate `route {routeFact.server} {routeFact.method} {routeFact.path} {routeFact.handler}`",
+                ),
+                FixCandidate(
+                    name="distinguishPath",
+                    shape=f"route {routeFact.server} {routeFact.method} <different-path> {routeFact.handler}",
+                ),
+            ],
+            confidence=Confidence.HIGH,
+            blocksCompile=True,
+            effort=Effort.LOCAL,
+            passProvenance="check_duplicate_route",
+            agentHint="give the second route a distinct path/method, or delete it if it is a copy-paste leftover",
+        ))
+    return diagnostics
+
+
+# Builtin call targets whose use implies an external, observable effect the
+# operation must declare. Conservative on purpose: only the unambiguous,
+# high-frequency external resources where the corpus already declares the
+# effect 100% of the time, so flagging an omission is pure signal. (Maps
+# call-target prefix -> (effect resource substring, human description).)
+_EFFECT_REQUIRED_BY_CALL_PREFIX: Tuple[Tuple[str, str, str], ...] = (
+    ("console.write", "console.stdout", "console.stdout"),
+    ("http.response", "http.response", "http.response"),
+)
+
+
+def check_effect_under_declaration(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3640 — advisory. An operation that directly calls a builtin with a
+    known external effect (writing console.stdout, writing the HTTP response)
+    must declare that effect. Cross-checks the operation's direct call targets
+    against its `effect` rows; a write to an observable resource with no matching
+    effect declaration breaks the "effects are explicit and checkable" contract
+    (§2) — a later edit could drop the call or the effect with nothing noticing."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        effectText: List[str] = []
+        callTargets: List[Tuple[str, SourceLine]] = []
+        for sourceLine in operation.lines:
+            if not sourceLine.tokens or is_comment(sourceLine):
+                continue
+            if sourceLine.verb == "effect":
+                effectText.append(" ".join(sourceLine.args))
+            elif sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargets.append((sourceLine.args[1], sourceLine))
+        effectBlob = " ".join(effectText)
+        alreadyFlaggedResources: set = set()
+        for target, callLine in callTargets:
+            for prefix, resourceSubstring, humanResource in _EFFECT_REQUIRED_BY_CALL_PREFIX:
+                if not target.startswith(prefix):
+                    continue
+                if resourceSubstring in effectBlob:
+                    continue
+                if humanResource in alreadyFlaggedResources:
+                    continue
+                alreadyFlaggedResources.add(humanResource)
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3640",
+                    kind="effectIntegrity.underDeclaredEffect",
+                    severity=Severity.WARNING,
+                    subjectName=operation.name,
+                    subjectKind="operation",
+                    gapEdge="effectDeclaration",
+                    intentSlogan=f"undeclared effect on {humanResource}",
+                    primary=span_of_line(callLine, "effectfulCallSite"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        f"`{operation.name}` calls `{target}` (writes "
+                        f"`{humanResource}`) but declares no matching `effect "
+                        f"{operation.name} write {humanResource}` row; declared "
+                        f"effects must cover the operation's observable behavior."
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#effect",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="declareEffect",
+                            shape=f"effect {operation.name} write {humanResource}",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.TRIVIAL,
+                    passProvenance="check_effect_under_declaration",
+                    agentHint=(
+                        "add the effect row (and back it with a matching "
+                        "capability/authority); effects are the machine-readable "
+                        "record of what the operation touches"
+                    ),
+                ))
     return diagnostics
 
 
@@ -19337,10 +19958,12 @@ CHECKERS = [
     # errors surface before any refinement-level diagnostic.
     check_syntax_cutover_rows,
     check_html_implicit_holes,
+    check_unused_html_template,
     check_argument_arity,
     check_unresolved_references,
     check_branch_semantics,
     check_argument_type_mismatch,
+    check_bind_return_type_domain,
     check_removed_scalar_surface,
     check_scalar_literal_ranges,
     check_enum_return_uses_case,
@@ -19370,6 +19993,8 @@ CHECKERS = [
     check_shared_state_protection,
     check_supported_shared_state_scope,
     check_effect_without_capability,
+    check_authority_effect_mismatch,
+    check_column_memory_use_after_free,
     check_hidden_failure,
     check_sibling_metadata_drift,
     check_undeclared_body_effect,
@@ -19448,6 +20073,9 @@ CHECKERS = [
     check_repeated_request_time_reads,
     check_idempotency_replay_uses_response_status,
     check_invalid_route_method,
+    check_duplicate_route,
+    check_effect_under_declaration,
+    check_placeholder_module_path,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
     check_untrusted_http_html_hydration,
@@ -19713,6 +20341,7 @@ def collect_paths(rawPaths: Sequence[str]) -> List[Path]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    _force_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="semlint",
         description=f"Refined SemanticScript linter — design playground. v{__version__}",

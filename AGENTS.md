@@ -141,15 +141,15 @@ capability stdoutWriter console.stdout write
 operation main
 output operation main ExitCode
 effect main write console.stdout
-memory main noHeapAllocation
+memory main heap no
 async main no
-purpose main "Write a line and return a process exit code"
+purpose operation main "Write a line and return a process exit code"
 useCapability main stdoutWriter
 storage local immutable outputText String "hello world"
 call outputWriteCall console.writeLine
 argument outputWriteCall text String outputText
 run outputWriteCall
-ignore ok source outputWriteCall type Void
+ignore void source outputWriteCall
 bind error outputWriteError ConsoleWriteError outputWriteCall
 branch error source outputWriteCall target outputWriteFailed
 storage local immutable successExitCode ExitCode 0
@@ -184,7 +184,7 @@ capability or authority row.
 effect main write console.stdout
 capability stdoutWriter console.stdout write
 useCapability main stdoutWriter
-authority main console.stdout write
+authority main write console.stdout
 ```
 
 Fallible calls need explicit success/error handling. Do not hide failures.
@@ -461,15 +461,15 @@ Prefer: accountLookupCall validatedTaskTitle consoleStdoutWriter.
   operation main
   output operation main ExitCode
   effect main write console.stdout
-  memory main noHeapAllocation
+  memory main heap no
   async main no
-  purpose main "Do the thing exactly"
+  purpose operation main "Do the thing exactly"
   useCapability main stdoutWriter
   storage local immutable outputText String "hello world"
   call outputWriteCall console.writeLine
   argument outputWriteCall text String outputText
   run outputWriteCall
-  ignore ok source outputWriteCall type Void
+  ignore void source outputWriteCall
   bind error outputWriteError ConsoleWriteError outputWriteCall
   branch error source outputWriteCall target outputWriteFailed
   storage local immutable successExitCode ExitCode 0
@@ -583,9 +583,9 @@ console environment process httpRequest databaseClient clock. Do not add
 only needs `argument callName text String valueName`.
 
 Minimum useful metadata:
-  purpose opName "specific intent"
-  invariant opName "condition preserved by edits"
-  memory opName noHeapAllocation
+  purpose operation opName "specific intent"
+  invariant operation opName "condition preserved by edits"
+  memory opName heap no
   async opName no
 
 Effect rule: declare effect only for external/observable resources (console,
@@ -672,7 +672,7 @@ Fallible:
   call writeCall console.writeLine
   argument writeCall text String outputText
   run writeCall
-  ignore ok source writeCall type Void
+  ignore void source writeCall
   bind error writeError ConsoleWriteError writeCall
   branch error source writeCall target writeFailed
   storage local immutable successExitCode ExitCode 0
@@ -761,7 +761,7 @@ Loop:
   effect opName write console.stdout
   capability stdoutWriter console.stdout write
   useCapability opName stdoutWriter
-  authority opName console.stdout write
+  authority opName write console.stdout
 
   dependency databaseClient kind externalService
   dependencyEffect databaseClient read database.account
