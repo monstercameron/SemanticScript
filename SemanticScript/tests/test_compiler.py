@@ -8913,6 +8913,59 @@ def test_runtime_profiles_control_panic_context():
               f"ir={prod_ir_text!r}\noutput={prod_output!r}")
 
 
+def test_jit_run_refuses_native_runtime_programs():
+    # Native runtime adapters (HTTP, SQLite) link only into --emit-exe builds;
+    # the in-process JIT cannot resolve their externals. Without a guard, such
+    # a program jumps to address 0 and crashes with no output (exit -1). The
+    # driver must instead refuse with a clear, actionable message and exit 3.
+    # HTTP already had this guard; SQLite is the structurally identical sibling.
+    feature_dir = ROOT / "sem" / "feature_tests"
+
+    sqlite_source = (
+        feature_dir / "162_sqlite_round_trip.sscript"
+    ).read_text(encoding="utf-8")
+    proc = run_semsc_source(sqlite_source, "--run", "--quiet")
+    check("jit run: sqlite.* program refused with clear native-build message",
+          proc.returncode == 3
+          and "native runtime intrinsics (sqlite.*)" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    # The JSON document/builder/cursor API is the in-language JSON-object path
+    # the docs recommend; it links only into native builds, so it must be
+    # refused (not silently segfault) under the JIT just like sqlite/http.
+    json_doc_source = (
+        feature_dir / "164_json_document_crud_round_trip.sscript"
+    ).read_text(encoding="utf-8")
+    json_doc_proc = run_semsc_source(json_doc_source, "--run", "--quiet")
+    check("jit run: json document API refused with clear native-build message",
+          json_doc_proc.returncode == 3
+          and "native runtime intrinsics" in json_doc_proc.stderr
+          and "json" in json_doc_proc.stderr,
+          f"returncode={json_doc_proc.returncode} "
+          f"stderr={json_doc_proc.stderr!r}")
+
+    # The json.stringify/parse PRIMITIVE aliases are JIT-shimmed and must keep
+    # running under the JIT — the guard must not refuse them (false positive).
+    json_prim_source = (
+        feature_dir / "163_json_stringify_parse_primitive_aliases.sscript"
+    ).read_text(encoding="utf-8")
+    json_prim_proc = run_semsc_source(json_prim_source, "--run", "--quiet")
+    check("jit run: json primitive aliases still execute (no false positive)",
+          json_prim_proc.returncode == 0
+          and "native runtime intrinsics" not in json_prim_proc.stderr,
+          f"returncode={json_prim_proc.returncode} "
+          f"stderr={json_prim_proc.stderr!r}")
+
+    # A program that uses no native runtime still runs under the JIT (the guard
+    # must not produce a false positive).
+    hello_source = (ROOT / "sem" / "hello.sscript").read_text(encoding="utf-8")
+    hello_proc = run_semsc_source(hello_source, "--run", "--quiet")
+    check("jit run: pure program still executes (no false positive)",
+          hello_proc.returncode == 0
+          and "native runtime intrinsics" not in hello_proc.stderr,
+          f"returncode={hello_proc.returncode} stderr={hello_proc.stderr!r}")
+
+
 # ============================================================
 # Driver
 # ============================================================
@@ -9095,6 +9148,7 @@ def main():
     test_policy_runtime_binding_is_compile_blocking()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
+    test_jit_run_refuses_native_runtime_programs()
 
     print("=" * 60)
     if FAILURES:

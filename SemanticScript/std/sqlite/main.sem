@@ -91,6 +91,7 @@ exportOperation standard.sqlite columnBlob
 exportOperation standard.sqlite columnByteCount
 exportOperation standard.sqlite libraryVersion
 exportOperation standard.sqlite execStatus
+exportOperation standard.sqlite exec
 typeInvariant SqliteDatabase "Opaque SQLite database handle created by sqlite.openDatabase and closed by sqlite.closeDatabase."
 typeInvariant SqliteStatement "Opaque prepared-statement handle created by sqlite.prepareStatement and finalized by sqlite.finalizeStatement."
 typeInvariant SqliteRowId "Signed 64-bit row identifier returned by sqlite.lastInsertRowId and column readers."
