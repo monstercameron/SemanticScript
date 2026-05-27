@@ -227,6 +227,70 @@ returnError mainFailure
 
 
 # ==========================================================================
+# semlint-allow  — per-line advisory suppression with rationale
+# ==========================================================================
+
+class TestLintSuppression(unittest.TestCase):
+    BASE = """project Test
+error MainError
+errorCase MainError NeverRaisedVariant
+"""
+
+    def test_allow_suppresses_targeted_advisory(self) -> None:
+        # The unused errorCase is SS0104 (a non-blocking advisory); a
+        # semlint-allow with rationale on the line above removes it.
+        annotated = """project Test
+error MainError
+# semlint-allow SS0104: variant reserved for an upcoming failure path
+errorCase MainError NeverRaisedVariant
+"""
+        self.assertIn("SS0104", _codes(_lint_source(self.BASE)))
+        self.assertNotIn("SS0104", _codes(_lint_source(annotated)))
+
+    def test_allow_requires_a_rationale(self) -> None:
+        # No rationale → annotation is ignored, so the advisory still fires
+        # (a forgotten reason must never silently hide a finding).
+        no_rationale = """project Test
+error MainError
+# semlint-allow SS0104
+errorCase MainError NeverRaisedVariant
+"""
+        self.assertIn("SS0104", _codes(_lint_source(no_rationale)))
+
+    def test_allow_only_affects_the_named_code(self) -> None:
+        # Suppressing a different code (SS3104, which does not fire here) leaves
+        # SS0104 in place — an allow is scoped to exactly its named code.
+        other_code = """project Test
+error MainError
+# semlint-allow SS3104: unrelated code does not suppress SS0104
+errorCase MainError NeverRaisedVariant
+"""
+        self.assertIn("SS0104", _codes(_lint_source(other_code)))
+
+    def test_allow_cannot_suppress_compile_blocking_diagnostic(self) -> None:
+        # Duplicate export is a compile-blocking error (SS2507). semlint-allow
+        # must NOT be able to hide it — only advisories are suppressible.
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject blk
+registerModule blk app.todo "."
+mainFile blk "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.todo
+# semlint-allow SS2507: attempting (and required to fail) to hide a real error
+exportOperation app.todo main
+exportOperation app.todo main
+operation main
+output main Void
+purpose main "smoke"
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertIn("SS2507", _codes(diagnostics))
+
+
+# ==========================================================================
 # SS0105  unusedDeclaration.mutableStorage
 # ==========================================================================
 
@@ -1477,6 +1541,121 @@ returnVoid
         self.assertNotIn("SS2504", codes)
         self.assertNotIn("SS2534", codes)
 
+    def test_standard_sqlite_import_allows_exec_intrinsic_target(self) -> None:
+        # Regression: sqlite.exec is fully lowered by the compiler (the
+        # Result-returning DDL form) and is recommended by the linter's own
+        # transaction fix hints, but was missing from standard.sqlite's export
+        # tape, so qualified calls were rejected with SS2534. execStatus and
+        # exec must both resolve from the official export tape.
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject sqliteImports
+registerModule sqliteImports app.sqlite_imports "main.sem"
+mainFile sqliteImports "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.sqlite_imports
+importModule sqlite standard.sqlite
+importConstant inMemoryMode sqlite inMemorySqliteOpenMode
+storage module immutable dbPath String ":memory:"
+storage module immutable createSql SqlText
+sql body createSql
+  CREATE TABLE t (a TEXT)
+operation main
+output main Void
+purpose main "prove sqlite.exec intrinsic target resolves from the official export tape"
+call openCall sqlite.openDatabase
+arg openCall path dbPath
+arg openCall mode inMemoryMode
+run openCall
+bind openedDb SqliteDatabase openCall
+call execCall sqlite.exec
+arg execCall database openedDb
+arg execCall sql createSql
+run execCall
+ignoreValue execCall Int32
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertNotIn("SS2534", _codes(diagnostics))
+
+    def test_standard_json_import_allows_stringify_and_parse_targets(self) -> None:
+        # Regression: qualified json.stringify.<T> / json.parse.<T> calls are
+        # compiler-owned intrinsics lowered identically to json.encode.* /
+        # json.decode.* (and treated equivalently elsewhere in the linter), but
+        # the SS2534 allowlist only listed the encode./decode. verb forms, so
+        # the stringify./parse. forms were wrongly rejected as private symbols
+        # in module-form projects (project-form .sscript files never hit this
+        # import path, which is why the existing json tests missed it).
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject jsonStringify
+registerModule jsonStringify app.json_stringify "main.sem"
+mainFile jsonStringify "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.json_stringify
+importModule json standard.json
+storage module immutable sampleValue Int64 42
+operation main
+output main Void
+purpose main "prove qualified json.stringify/parse resolve like json.encode/decode"
+call encodeCall json.encode.Int64
+arg encodeCall value sampleValue
+run encodeCall
+ignoreValue encodeCall JsonText
+call stringifyCall json.stringify.Int64
+arg stringifyCall value sampleValue
+run stringifyCall
+ignoreValue stringifyCall JsonText
+call parseCall json.parse.Int64
+arg parseCall text sampleValue
+run parseCall
+ignoreValue parseCall Int64
+returnVoid
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        self.assertNotIn("SS2534", _codes(diagnostics))
+
+    def test_standard_json_import_allows_record_stringify_target(self) -> None:
+        # Regression for the exact blocker the dashboard hit: a qualified
+        # json.stringify.<Record> call (the verb-form alias of json.encode.
+        # <Record>) was rejected with SS2534, and the diagnostic's own fix
+        # suggestion (`exportOperation standard.json stringify.<Record>`) sent
+        # the author down a dead end. The compiler lowers it to a real
+        # structural codec, so neither SS2534 nor the stale SS3802 should fire.
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text("""buildProject jsonRecord
+registerModule jsonRecord app.json_record "main.sem"
+mainFile jsonRecord "main.sem"
+""", encoding="utf-8")
+            modulePath = root / "main.sem"
+            modulePath.write_text("""module app.json_record
+importModule json standard.json
+record SummaryMetrics layout row align 8
+purpose operation SummaryMetrics "dashboard metrics"
+field SummaryMetrics activeProjects Int64
+field SummaryMetrics openTasks Int64
+operation main
+output main Void
+purpose main "stringify and parse a record via the high-level verb aliases"
+new metrics SummaryMetrics
+fieldSet metrics activeProjects activeCount
+call stringifyCall json.stringify.SummaryMetrics
+arg stringifyCall value metrics
+run stringifyCall
+bind encoded JsonText stringifyCall
+call parseCall json.parse.SummaryMetrics
+arg parseCall value encoded
+run parseCall
+bind decoded SummaryMetrics parseCall
+""", encoding="utf-8")
+            diagnostics = semlint.lint_path(modulePath)
+        codes = _codes(diagnostics)
+        self.assertNotIn("SS2534", codes)
+        self.assertNotIn("SS3802", codes)
+
     def test_missing_registered_module_source_is_flagged(self) -> None:
         with TemporaryDirectory() as tempDir:
             buildPath = Path(tempDir) / "build.sem"
@@ -2208,6 +2387,115 @@ run finalizeCall
 return value writeStatus
 """)
         self.assertNotIn("SS3110", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3113  resourceLifetime.columnTextOverwrittenBeforeUse
+# ==========================================================================
+
+class TestColumnTextOverwrittenBeforeUse(unittest.TestCase):
+    _PREAMBLE = """project Kv
+operation getRow
+output operation getRow Int32
+purpose operation getRow "read two text columns then respond"
+effect getRow write http.response
+call titleCall sqlite.columnText
+argument titleCall statement SqliteStatement selectStatement
+argument titleCall columnIndex Int32 columnIndexZero
+run titleCall
+bind value titleValue String titleCall
+"""
+
+    def test_column_value_used_after_next_same_statement_read_is_flagged(self) -> None:
+        # Reading column 1 overwrites the buffer column 0's pointer aliases, so
+        # using titleValue AFTER the second columnText corrupts output.
+        diagnostics = _lint_source(self._PREAMBLE + """call projectCall sqlite.columnText
+argument projectCall statement SqliteStatement selectStatement
+argument projectCall columnIndex Int32 columnIndexOne
+run projectCall
+bind value projectValue String projectCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String titleValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertIn("SS3113", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3113")[0]
+        self.assertEqual(matching.subjectName, "titleValue")
+
+    def test_consume_before_next_read_is_not_flagged(self) -> None:
+        # The idiomatic fix: use/copy titleValue BEFORE the second columnText.
+        diagnostics = _lint_source(self._PREAMBLE + """call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String titleValue
+run writeCall
+bind value writeStatus Int32 writeCall
+call projectCall sqlite.columnText
+argument projectCall statement SqliteStatement selectStatement
+argument projectCall columnIndex Int32 columnIndexOne
+run projectCall
+bind value projectValue String projectCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3113", _codes(diagnostics))
+
+    def test_read_of_a_different_statement_does_not_flag(self) -> None:
+        # A columnText on a DIFFERENT statement does not overwrite this buffer.
+        diagnostics = _lint_source(self._PREAMBLE + """call otherCall sqlite.columnText
+argument otherCall statement SqliteStatement otherStatement
+argument otherCall columnIndex Int32 columnIndexZero
+run otherCall
+bind value otherValue String otherCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String titleValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3113", _codes(diagnostics))
+
+
+# ==========================================================================
+# --strict gates on substance, not T4 style/naming advisories (SS4001-SS4004)
+# ==========================================================================
+
+class TestStrictExemptsStyleTier(unittest.TestCase):
+    # A call name lacking the `Call` suffix yields the T4 SS4001 advisory; the
+    # unused errorCase/bind yield T3 advisories.
+    _SRC = """project Test
+error MainError
+errorCase MainError NeverRaised
+operation main
+output operation main Void
+purpose operation main "mixed-tier diagnostics for the strict gate"
+storage module immutable leftAddend Int64 1
+storage module immutable rightAddend Int64 2
+label startMain
+call addThem math.addInt64
+argument addThem left Int64 leftAddend
+argument addThem right Int64 rightAddend
+run addThem
+bind value sumValue Int64 addThem
+return void
+"""
+
+    def test_t4_style_only_does_not_fail_strict(self) -> None:
+        diagnostics = _lint_source(self._SRC)
+        styleOnly = [d for d in diagnostics if d.tier == semlint.Tier.T4_STYLE]
+        self.assertTrue(styleOnly, "expected at least one T4 style advisory (SS4001)")
+        self.assertIn("SS4001", [d.code for d in styleOnly])
+        self.assertFalse(semlint._strict_run_failed(styleOnly))
+
+    def test_substantive_diagnostics_still_fail_strict(self) -> None:
+        diagnostics = _lint_source(self._SRC)
+        substantive = [d for d in diagnostics if d.tier != semlint.Tier.T4_STYLE]
+        self.assertTrue(substantive, "expected at least one non-style diagnostic")
+        self.assertTrue(semlint._strict_run_failed(substantive))
+        # The full mixed set fails strict because it contains substance.
+        self.assertTrue(semlint._strict_run_failed(diagnostics))
 
 
 # ==========================================================================
@@ -4461,6 +4749,51 @@ call decodeIntegerCall json.decode.Int64
 arg decodeIntegerCall value rawNumber
 run decodeIntegerCall
 bind decodedInteger Int64 decodeIntegerCall
+""")
+        self.assertNotIn("SS3802", _codes(diagnostics))
+
+    def test_declared_record_json_codec_not_flagged(self) -> None:
+        # Regression: a json codec target whose type is a declared `record`
+        # lowers to a real structural codec (ss_json_document_* /
+        # ss_json_set_object_field_*), so SS3802's "runtime missing" warning is
+        # stale and must NOT fire — it previously misled authors into believing
+        # record JSON was unimplemented and hand-rolling serialization.
+        diagnostics = _lint_source("""project Test
+record Point layout row align 8
+purpose operation Point "A 2D point."
+field Point x Int64
+field Point y Int64
+operation main
+output main Void
+purpose main "smoke"
+new myPoint Point
+fieldSet myPoint x xVal
+call encodePointCall json.encode.Point
+arg encodePointCall value myPoint
+run encodePointCall
+bind encodedPoint JsonText encodePointCall
+""")
+        self.assertNotIn("SS3802", _codes(diagnostics))
+
+    def test_alias_of_record_json_codec_not_flagged(self) -> None:
+        # The compiler resolves type aliases before routing, so a `type` alias
+        # of a record (`type Coordinate Point`) also lowers to the real codec.
+        # The SS3802 skip must resolve the alias head too, or the false positive
+        # survives one indirection away.
+        diagnostics = _lint_source("""project Test
+record Point layout row align 8
+purpose operation Point "A 2D point."
+field Point x Int64
+type Coordinate Point
+operation main
+output main Void
+purpose main "smoke"
+new myPoint Point
+fieldSet myPoint x xVal
+call encodeCoordCall json.encode.Coordinate
+arg encodeCoordCall value myPoint
+run encodeCoordCall
+bind encodedCoord JsonText encodeCoordCall
 """)
         self.assertNotIn("SS3802", _codes(diagnostics))
 

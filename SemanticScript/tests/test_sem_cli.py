@@ -487,6 +487,25 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertFalse(release_operation["usage"]["cleanup"]["required"])
         self.assertIn("ignore void source releaseMemoryBytesCall", release_operation["usage"]["call"]["rows"])
 
+    def test_docs_get_unknown_name_redirects_to_reference_and_search(self) -> None:
+        # `docs get` resolves call targets / curated enums / operations, not
+        # type aliases or syntax forms. A miss must not dead-end as "no
+        # operation named X" (the query may be a type) — it must point at
+        # `sem reference` (which resolves aliases) and the model-free
+        # `sem docs search`, mirroring the discovery path that actually works.
+        args = argparse.Namespace(
+            docs_command="get", operation="JsonCapacityBytes", module=None,
+            all=False, std_path=None, json=False)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = sem.command_docs(args)
+        message = err.getvalue()
+        self.assertEqual(rc, 1)
+        self.assertIn("sem reference JsonCapacityBytes", message)
+        self.assertIn("docs search", message)
+        # It must not mislabel a type query as strictly an "operation".
+        self.assertNotIn("no standard-library operation named", message)
+
     def test_docs_index_and_search_user_generated_code(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -530,6 +549,55 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertNotIn("doc", search_payload["results"][0])
 
         self.assertIn("doc", full_payload["results"][0])
+
+    def test_docs_keyword_search_works_without_embedding_model(self) -> None:
+        # The frozen sem.exe cannot load the embedding model, but keyword
+        # (FTS/BM25) search must still work: `docs index`/`docs search` with
+        # embedding-provider "none" build and query a model-free index. The
+        # released-exe agent wrongly concluded `docs search` was unusable.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.sem"
+            db_path = root / ".sem" / "docs.sqlite"
+            source.write_text(
+                "# rationale: Task API for creating task records from user text.\n"
+                "module examples.tasks\n"
+                "# rationale: Create one task and return its identifier.\n"
+                "operation createTask\n"
+                "input operation createTask title String\n"
+                "output operation createTask Int32\n"
+                "purpose createTask \"Create a task from a title and return its id\"\n"
+                "storage local immutable createdTaskId Int32 1\n"
+                "return value createdTaskId\n",
+                encoding="utf-8",
+            )
+            index_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=False,
+                include_compiler=False,
+                embedding_provider="none",
+                enable_sqlite_vec=False,
+            )
+            search_payload = sem._docs_search_payload(
+                "create task from title",
+                db_path=db_path,
+                limit=3,
+                embedding_provider="none",
+            )
+
+        self.assertTrue(index_payload["ok"])
+        # No embeddings were generated, yet the FTS index is fully populated.
+        self.assertTrue(index_payload["features"]["ftsAvailable"])
+        self.assertEqual(
+            index_payload["summary"]["embeddingCounts"].get("disabled", 0),
+            index_payload["summary"]["entryCount"],
+        )
+        # Keyword search returns the relevant operation with no model loaded.
+        self.assertTrue(search_payload["ok"])
+        self.assertGreaterEqual(len(search_payload["results"]), 1)
+        self.assertEqual(
+            search_payload["results"][0]["qualifiedName"], "examples.tasks.createTask")
 
     def test_docs_default_db_path_treats_missing_non_source_path_as_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2455,6 +2523,29 @@ return value 0
             sem.command_reference(args_status)
         impld = json.loads(buf2.getvalue())
         self.assertTrue(all("impl'd" in r["status"].lower() for r in impld["rows"]))
+
+    def test_reference_points_operation_queries_at_docs(self) -> None:
+        # `sem reference` indexes syntax forms only; standard-library operations
+        # like memory.allocateMemoryBytes / string.appendCStringToDestinationBuffer
+        # are NOT in it. An agent querying for one (the failure mode behind the
+        # B1/A1 "can't find it" reports) must be pointed at the docs surface,
+        # where keyword `docs search` (no model) and `docs get` resolve them.
+        args = argparse.Namespace(query="allocate", status=None, json=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            sem.command_reference(args)
+        payload = json.loads(buf.getvalue())
+        hint = payload["operationLookup"].lower()
+        self.assertIn("docs search", hint)
+        self.assertIn("docs get", hint)
+
+        # The human-readable no-match path also redirects to docs.
+        args_human = argparse.Namespace(query="concat", status=None, json=False)
+        human = io.StringIO()
+        with contextlib.redirect_stdout(human):
+            sem.command_reference(args_human)
+        text = human.getvalue().lower()
+        self.assertIn("docs search", text)
 
     def test_execute_semantic_contract_classification(self) -> None:
         # The opt-in semantic-contract executor must distinguish a real

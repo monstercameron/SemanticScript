@@ -2668,7 +2668,9 @@ def _starter_project_payload(
     if template == "web":
         next_commands.append(_next_command_entry(
             "dev",
-            "start the generated web server with the watch/restart dev loop",
+            "print the watch/rerun plan for the web server (files to watch + the "
+            "build/run commands to rerun on change); it emits the plan, it does "
+            "not run a watcher",
             argv=["sem", "dev", str(root), "--json"],
         ))
     else:
@@ -2678,12 +2680,28 @@ def _starter_project_payload(
             argv=["sem", "run", str(root)],
         ))
     docs_index = {
+        # `enabled` reports whether THIS scaffold opted into building a docs
+        # index now — NOT whether `docs search` works. Keyword search works on
+        # any built index with no model (see keywordSearch below); you can run
+        # `sem docs index` / `sem docs search` at any time.
         "enabled": bool(docs_index_opt_in),
         "dbPath": str(docs_db_path),
         "embeddingProvider": DOCS_DEFAULT_EMBEDDING_PROVIDER,
         "embeddingModel": DOCS_DEFAULT_EMBEDDING_MODEL,
         "requirementsFile": str((ROOT.parent / "requirements-docs.txt").resolve()),
+        # The embedding model is required ONLY for semantic (vector) ranking.
+        # Keyword (FTS/BM25) search needs no model and works on the frozen exe.
         "allowModelDownloadRequired": True,
+        "semanticSearchRequiresModel": True,
+        "keywordSearch": {
+            "available": True,
+            "requiresModel": False,
+            "note": (
+                "`sem docs index --embedding-provider none` builds a model-free "
+                "keyword index, and `sem docs search --embedding-provider none` "
+                "queries it via FTS/BM25 — no embedding model or download needed."
+            ),
+        },
         "packagingNote": "Python CLI users install requirements-docs.txt; frozen sem.exe builds need the docs-embeddings packaging variant to run embeddings inside the executable.",
     }
     if docs_index_opt_in:
@@ -2947,7 +2965,9 @@ def _run_not_executed_payload(source: Path, facts: dict, status: str, reason: st
             ),
             _next_command_entry(
                 "dev",
-                "use the dev loop for long-running webServer targets",
+                "print the watch/rerun plan for long-running webServer targets "
+                "(emits files-to-watch + commands-to-rerun; it does not run a "
+                "watcher itself)",
                 argv=["sem", "dev", str(source.parent if source.name.lower() in {"build.sem", "build.sscript"} else source), "--json"],
             ),
         ],
@@ -10226,6 +10246,19 @@ def _skill_content(name: str, *, include_full_content: bool = False) -> dict | N
         }
         if include_full_content:
             payload["content"] = "\n".join(sections).strip() + ("\n" if sections else "")
+        else:
+            # Summary mode returns `files` as filesystem paths. In the packaged
+            # sem.exe those resolve into a PyInstaller `_MEI*` extraction dir
+            # that is deleted when the process exits, so the paths are not
+            # re-readable later. Tell the caller to use --full for durable
+            # inline bodies instead of chasing ephemeral paths.
+            payload["pathsEphemeral"] = bool(getattr(sys, "frozen", False))
+            payload["contentHint"] = (
+                "`files` are filesystem paths, not bodies; in the packaged "
+                "sem.exe they resolve into a temporary extraction directory "
+                "removed on process exit. Pass --full (contentMode=full) to "
+                "receive durable inline bodies."
+            )
         return payload
     return None
 
@@ -13194,7 +13227,16 @@ def command_docs(args: argparse.Namespace) -> int:
             for match in payload.get("matches", []):
                 print(f"- {match.get('fullName') or match.get('target')}", file=sys.stderr)
         else:
-            print(f"docs get: no standard-library operation named {args.operation}", file=sys.stderr)
+            # `docs get` resolves call targets, curated enums, and operations.
+            # Type aliases / syntax forms live in `sem reference`, and keyword
+            # `sem docs search` (no embedding model needed) covers everything —
+            # point there instead of a dead end, since the query may be a type.
+            print(
+                f"docs get: no operation, call target, or curated type named "
+                f"{args.operation}. If it is a type alias or syntax form, try "
+                f"`sem reference {args.operation}`; for a broad lookup use "
+                f"`sem docs search \"{args.operation}\"` (no model needed).",
+                file=sys.stderr)
         return 0 if payload.get("ok") else 1
     if args.docs_command == "index":
         path = Path(args.path)
@@ -13318,6 +13360,15 @@ def command_reference(args: argparse.Namespace) -> int:
         "matchCount": len(matched),
         "rows": matched,
         "source": str(SYNTAX_INVENTORY_PATH),
+        # `reference` indexes language SYNTAX FORMS only. Standard-library
+        # operations (e.g. memory.allocateMemoryBytes, string.appendCStringTo
+        # DestinationBuffer) are NOT here — find them with `docs search <need>`
+        # (keyword search needs no embedding model) or `docs get <target>`.
+        "operationLookup": (
+            "This index covers language syntax forms only. For standard-library "
+            "operations/APIs use `sem docs search \"<capability or need>\"` "
+            "(keyword search works with no model) or `sem docs get <target>`."
+        ),
     }
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -13329,6 +13380,11 @@ def command_reference(args: argparse.Namespace) -> int:
         print(f"no syntax rows match {query!r}"
               + (f" with status ~ {status_filter!r}" if status_filter else ""))
         print("try a broader term, e.g. `sem reference branch` or `sem reference set`")
+        # reference is a syntax-form index; standard-library operations live in
+        # the docs surface, so point a likely operation/API query there.
+        print("for a standard-library operation or API (e.g. allocate a buffer, "
+              "append a string), use `sem docs search \"<need>\"` "
+              "(no model needed) or `sem docs get <target>`")
         return 0
     for row in matched:
         print(row["syntax"])

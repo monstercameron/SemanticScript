@@ -4272,6 +4272,113 @@ def check_column_memory_use_after_free(facts: ExtendedFacts) -> List[Diagnostic]
     return diagnostics
 
 
+# A live `columnText`/`columnBlob`/`columnName` pointer is invalidated by the
+# NEXT pointer-returning column read, or by step/reset, on the SAME statement —
+# even before the statement is finalized (which is SS3110's separate case). The
+# SQLite contract: the pointer is valid only until the next such call.
+_COLUMN_TEXT_INVALIDATORS = frozenset({
+    "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
+    "sqlite.stepStatement", "sqlite.resetStatement",
+})
+
+
+def check_column_text_overwritten_before_use(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3113 — a `sqlite.columnText`/`columnBlob`/`columnName` value points into
+    a per-statement buffer that the NEXT pointer-returning column read (or a
+    step/reset) on the same statement overwrites. Reading a second text column,
+    then using the first, yields CORRUPT OUTPUT — not an error — at runtime
+    (the devlog's documented footgun). The idiomatic fix is to consume/copy each
+    column value (e.g. hydrate it into a template) before reading the next one.
+    Flag a column value used as a call argument that linearly follows an
+    invalidating call on the same statement, within one straight-line block."""
+    diagnostics: List[Diagnostic] = []
+    for operation in facts.base.operations.values():
+        calls = collect_operation_calls(operation)
+
+        # transient column value -> (owning statement value, bind line number)
+        column_values: Dict[str, Tuple[Optional[str], int]] = {}
+        for call_fact in calls.values():
+            if call_fact.target not in _OWNED_COLUMN_SOURCES:
+                continue
+            statement = _sqlite_statement_argument(call_fact)
+            for bind_line in call_fact.bind_lines:
+                bind = bind_parts(bind_line)
+                if bind and bind[0] == "value":
+                    column_values[bind[1]] = (statement, bind_line.number)
+        if not column_values:
+            continue
+
+        # invalidation points: (statement value, run line) for every column
+        # read / step / reset on a statement.
+        invalidations: List[Tuple[Optional[str], int]] = []
+        for call_fact in calls.values():
+            if call_fact.target not in _COLUMN_TEXT_INVALIDATORS:
+                continue
+            statement = _sqlite_statement_argument(call_fact)
+            invalidations.extend(
+                (statement, run_line.number) for run_line in call_fact.run_lines)
+        if not invalidations:
+            continue
+
+        label_lines = sorted(
+            line.number for line in operation.lines
+            if line.tokens and not is_comment(line) and line.verb == "label"
+        )
+
+        for use_line in operation.lines:
+            if is_comment(use_line) or not use_line.tokens:
+                continue
+            parts = argument_parts(use_line)
+            if parts is None or parts[3] not in column_values:
+                continue
+            used_value = parts[3]
+            owning_statement, bind_line_number = column_values[used_value]
+            for invalidation_statement, invalidation_line in invalidations:
+                # The value's own producing read sits at its bind line; only a
+                # LATER call on the SAME statement overwrites the buffer.
+                if not (bind_line_number < invalidation_line < use_line.number):
+                    continue
+                if (invalidation_statement is not None and owning_statement is not None
+                        and invalidation_statement != owning_statement):
+                    continue
+                # A label between the invalidation and the use means they may be
+                # on different control-flow paths — stay conservative (no FP).
+                if any(invalidation_line < ln < use_line.number for ln in label_lines):
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3113",
+                    kind="resourceLifetime.columnTextOverwrittenBeforeUse",
+                    severity=Severity.WARNING,
+                    subjectName=used_value,
+                    subjectKind="value",
+                    gapEdge="columnConsumeOrder",
+                    intentSlogan="column value used after a later same-statement read overwrote it",
+                    primary=span_of_line(use_line, "columnValueUse"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule="a sqlite.columnText/columnBlob/columnName pointer is valid only until the next column read or step/reset on the same statement; consume or copy it first",
+                    specAnchor="docs/reference/syntax-inventory.md#sqlite",
+                    citations=narrative_citations_for_operation(facts, operation.name),
+                    fixCandidates=[
+                        FixCandidate(
+                            name="consumeBeforeNextRead",
+                            shape="# copy/hydrate this column value before the next sqlite.column* read on the same statement",
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_column_text_overwritten_before_use",
+                    agentHint=(
+                        f"`{used_value}` points into statement `{owning_statement or '<statement>'}`'s "
+                        f"buffer, which was overwritten at line {invalidation_line} by a later column "
+                        f"read/step; consume or copy `{used_value}` before that row"
+                    ),
+                ))
+                break  # one diagnostic per use site
+    return diagnostics
+
+
 def check_unknown_verbs(facts: ExtendedFacts) -> List[Diagnostic]:
     """Verbs not in `KNOWN_AGENT_SCRIPT_VERBS` are grammar gaps — either a
     typo, or a docs/reference/syntax-inventory.md row landed without updating this set. Reported as
@@ -10404,6 +10511,20 @@ def _is_generated_json_codec_target(targetName: str) -> bool:
     return targetName.startswith("json.encode.") or targetName.startswith("json.decode.")
 
 
+_JSON_CODEC_TARGET_PREFIXES = (
+    "json.encode.", "json.decode.", "json.stringify.", "json.parse.",
+)
+
+
+def _json_codec_target_type_name(targetName: str) -> Optional[str]:
+    """The type portion of a high-level json codec target, e.g.
+    `json.encode.Point` -> `Point`; None if not a codec target."""
+    for prefix in _JSON_CODEC_TARGET_PREFIXES:
+        if targetName.startswith(prefix):
+            return targetName[len(prefix):]
+    return None
+
+
 def _collection_type_name_from_target(targetName: str) -> Optional[str]:
     if "." not in targetName:
         return None
@@ -10425,6 +10546,21 @@ def check_runtime_backing_missing(facts: ExtendedFacts) -> List[Diagnostic]:
             targetName = callFact.target
             if targetName in SUPPORTED_JSON_PRIMITIVE_TARGETS:
                 continue
+
+            # A json codec target whose type is a declared `record` lowers to a
+            # real structural codec (ss_json_document_* / set_object_field_*),
+            # not the zero-stub external fallback. Warning that it is "runtime
+            # missing" is stale and misleads authors into hand-rolling JSON; only
+            # non-record (fallback) codec targets are a genuine gap. Resolve type
+            # aliases first, matching the compiler's resolve_alias routing, so a
+            # `type Coordinate Point` alias of a record is treated as the record.
+            codecTypeName = _json_codec_target_type_name(targetName)
+            if codecTypeName is not None:
+                resolvedCodecType = _resolve_type_alias_head(
+                    codecTypeName, facts.base.type_aliases)
+                if (codecTypeName in facts.base.records
+                        or resolvedCodecType in facts.base.records):
+                    continue
 
             if _is_generated_json_codec_target(targetName):
                 related: List[Span] = [span_of_line(operation.line, "enclosingOperation")]
@@ -20071,7 +20207,9 @@ def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
                         and (intrinsicTarget in SUPPORTED_JSON_PRIMITIVE_TARGETS
                              or intrinsicTarget in SUPPORTED_JSON_RUNTIME_TARGETS
                              or targetParts[1].startswith("encode.")
-                             or targetParts[1].startswith("decode."))):
+                             or targetParts[1].startswith("decode.")
+                             or targetParts[1].startswith("stringify.")
+                             or targetParts[1].startswith("parse."))):
                     continue
                 if (moduleContract.moduleName == "standard.gui"
                         and intrinsicTarget in SUPPORTED_GUI_RUNTIME_TARGETS):
@@ -20236,6 +20374,7 @@ CHECKERS = [
     check_effect_without_capability,
     check_authority_effect_mismatch,
     check_column_memory_use_after_free,
+    check_column_text_overwritten_before_use,
     check_hidden_failure,
     check_sibling_metadata_drift,
     check_undeclared_body_effect,
@@ -20336,12 +20475,69 @@ CHECKERS = [
 ]
 
 
+# A `# semlint-allow SSxxxx: rationale` comment on the line immediately above a
+# flagged row acknowledges a single advisory at that site and removes it from
+# the linter's output. The rationale is required (an annotation without one is
+# ignored, so a forgotten reason never silently hides a finding). Compile-
+# blocking diagnostics are NEVER suppressible — see _apply_lint_suppressions —
+# so this can only quiet advisory noise (e.g. the SS3635 writes-without-
+# transaction WARNING and the SS4002/SS4003 error-naming advisories on patterns
+# the static check can't see through), never a real error. Scope note: this
+# filters `semlint` diagnostics only; advisories raised by the compiler under
+# `--strict` (semsc.py) are a separate surface and are unaffected.
+_LINT_SUPPRESSION_RE = re.compile(
+    r"#\s*semlint-allow\s+(SS\d{4})\b[:\s]+(\S.*?)\s*$")
+
+
+def _collect_lint_suppressions(baseFacts: ProgramFacts) -> Dict[Tuple[str, int], str]:
+    """Map (code, targetLine) -> rationale for every well-formed
+    `# semlint-allow` annotation, where targetLine is the next source row after
+    the annotation (the row the advisory is expected to point at)."""
+    annotations: List[Tuple[str, int, str]] = []
+    codeLineNumbers: List[int] = []
+    for sourceLine in baseFacts.lines:
+        if is_comment(sourceLine):
+            match = _LINT_SUPPRESSION_RE.search(sourceLine.raw)
+            if match:
+                annotations.append(
+                    (match.group(1), sourceLine.number, match.group(2).strip()))
+        elif sourceLine.tokens:
+            codeLineNumbers.append(sourceLine.number)
+    suppressions: Dict[Tuple[str, int], str] = {}
+    for code, annotationLine, rationale in annotations:
+        if not rationale:
+            continue
+        targetLine = min(
+            (number for number in codeLineNumbers if number > annotationLine),
+            default=None)
+        if targetLine is not None:
+            suppressions[(code, targetLine)] = rationale
+    return suppressions
+
+
+def _apply_lint_suppressions(
+    diagnostics: List[Diagnostic],
+    suppressions: Dict[Tuple[str, int], str],
+) -> List[Diagnostic]:
+    if not suppressions:
+        return diagnostics
+    return [
+        diagnostic for diagnostic in diagnostics
+        # Compile-blocking diagnostics are never suppressible: a `semlint-allow`
+        # can quiet an advisory, but it must not be able to hide a real error.
+        if diagnostic.blocksCompile
+        or (diagnostic.code, diagnostic.primary.line) not in suppressions
+    ]
+
+
 def lint_path(filePath: Path) -> List[Diagnostic]:
     baseFacts = parse_file_base(filePath)
     facts = gather_extended(baseFacts)
     diagnostics: List[Diagnostic] = []
     for checker in CHECKERS:
         diagnostics.extend(checker(facts))
+    diagnostics = _apply_lint_suppressions(
+        diagnostics, _collect_lint_suppressions(baseFacts))
     return sorted(diagnostics, key=_diagnostic_sort_key)
 
 
@@ -20582,11 +20778,30 @@ def collect_paths(rawPaths: Sequence[str]) -> List[Path]:
     return collected
 
 
+def _strict_run_failed(diagnostics: Sequence[Diagnostic]) -> bool:
+    """Whether `--strict` should fail the run. Strict gates on substance, not
+    pure style: T4_STYLE naming advisories (SS4001 `Call` suffix, SS4002/SS4003
+    bind/error naming, SS4004 vague names) never make a build fail — so reaching
+    a clean strict build does not require mechanically renaming every call site.
+    Any T0–T3 diagnostic (or a compile blocker, handled separately) still fails."""
+    return any(d.tier != Tier.T4_STYLE for d in diagnostics)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     _force_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="semlint",
         description=f"Refined SemanticScript linter — design playground. v{__version__}",
+        epilog=(
+            "Suppress a single advisory by placing a comment on the line "
+            "directly above the row the diagnostic's `primary` points at:\n"
+            "    # semlint-allow SS3635: BEGIN/COMMIT run through the runStatement helper\n"
+            "A rationale is required; compile-blocking errors can never be "
+            "suppressed this way; and the comment must sit on the line "
+            "immediately above the flagged row (check the diagnostic's "
+            "primary line) or it has no effect."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("paths", nargs="+")
     parser.add_argument(
@@ -20605,7 +20820,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument(
         "--strict", action="store_true",
-        help="Exit non-zero on any diagnostic.",
+        help="Exit non-zero on any diagnostic except T4 style/naming advisories "
+             "(SS4001-SS4004), which never gate a build.",
     )
     parser.add_argument(
         "--summary", action="store_true",
@@ -20677,7 +20893,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     blockerCount = sum(1 for d in allDiagnostics if d.blocksCompile)
     if blockerCount:
         return 1
-    if args.strict and allDiagnostics:
+    if args.strict and _strict_run_failed(allDiagnostics):
         return 1
     return 0
 

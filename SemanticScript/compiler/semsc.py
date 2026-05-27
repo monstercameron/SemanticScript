@@ -1421,6 +1421,7 @@ _SQLITE_INTRINSIC_EXPORT_NAMES = frozenset({
     "columnByteCount",
     "libraryVersion",
     "execStatus",
+    "exec",
 })
 
 
@@ -19687,6 +19688,83 @@ def _peak_working_set_bytes():
 _JIT_RUNTIME_CALLBACKS = []
 _JIT_RUNTIME_SYMBOLS_REGISTERED = False
 
+# The only native-runtime (`ss_*`) externals the in-process JIT can resolve:
+# the primitive json.stringify/json.parse aliases shimmed by
+# _register_jit_runtime_symbols. Every other `ss_*` symbol is linked only into
+# native executable builds, so a JIT run that reaches one jumps to address 0
+# and crashes with no output. _refuse_jit_for_native_runtime uses this set to
+# turn that silent crash into a clear diagnostic; keep it in sync with the
+# callbacks registered below (asserted at registration time).
+_JIT_RESOLVABLE_NATIVE_SYMBOLS = frozenset({
+    "ss_json_stringify_int64",
+    "ss_json_stringify_double",
+    "ss_json_stringify_bool",
+    "ss_json_stringify_string",
+    "ss_json_parse_int64",
+    "ss_json_parse_double",
+    "ss_json_parse_bool",
+})
+
+# Maps a native-runtime symbol prefix to the source-language namespace that
+# emits it, so the refusal diagnostic can name the feature the program reached
+# for. Order matters: the first matching prefix wins (longest/most specific
+# first). Symbols with no match are reported by their raw name.
+_NATIVE_RUNTIME_SYMBOL_NAMESPACES = (
+    ("ss_http_client_", "http client (net.fetch*)"),
+    ("ss_http_", "http.*"),
+    ("ss_sqlite_", "sqlite.*"),
+    ("ss_json_", "json.* document/builder/cursor"),
+    ("ss_bcrypt_", "bcrypt.*"),
+    ("ss_gui_", "gui.*"),
+    ("ss_terminal_", "terminal.*"),
+    ("ss_async_", "async runtime"),
+    ("ss_event_", "event runtime"),
+    ("ss_random_", "random.*"),
+)
+
+
+def _native_runtime_namespaces_for(symbols):
+    """Return a sorted, human-readable list of the source namespaces behind a
+    set of unresolved native-runtime symbols (falling back to raw names)."""
+    labels = []
+    seen = set()
+    for symbol in sorted(symbols):
+        label = next(
+            (namespace for prefix, namespace in _NATIVE_RUNTIME_SYMBOL_NAMESPACES
+             if symbol.startswith(prefix)),
+            symbol,
+        )
+        if label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return labels
+
+
+def _unresolved_native_runtime_symbols(module_ir: str):
+    """External `ss_*` symbols declared in the IR that the JIT cannot resolve.
+
+    Only `declare` lines are scanned, so module-internal `define`d helpers that
+    happen to share the `ss_` prefix are never misreported as missing."""
+    declared = set(re.findall(
+        r'declare\b[^\n]*?@"?(ss_[A-Za-z0-9_]+)"?\s*\(', module_ir))
+    return sorted(declared - _JIT_RESOLVABLE_NATIVE_SYMBOLS)
+
+
+def _refuse_jit_for_native_runtime(module_ir: str) -> None:
+    """Refuse a JIT run that needs a native-only runtime, with a clear message
+    instead of the silent address-0 crash that would otherwise occur."""
+    unresolved = _unresolved_native_runtime_symbols(module_ir)
+    if not unresolved:
+        return
+    namespaces = ", ".join(_native_runtime_namespaces_for(unresolved))
+    sys.stderr.write(
+        f"error: this program uses native runtime intrinsics ({namespaces}) "
+        "that are linked only into native executables; they are not available "
+        "under the in-process JIT (sem eval / sem run / --run). Build and run "
+        "a native executable instead (sem build <project>, or semsc <file> "
+        "--emit-exe <out>).\n")
+    raise SystemExit(3)
+
 
 def _register_jit_runtime_symbols():
     """Register runtime shims needed by MCJIT-only execution.
@@ -19802,6 +19880,12 @@ def _register_jit_runtime_symbols():
             ctypes.c_int, ctypes.c_void_p,
             ctypes.POINTER(ctypes.c_int))(_json_parse_bool),
     }
+    # Keep the refusal allowlist honest: the set of symbols actually shimmed
+    # here must exactly match _JIT_RESOLVABLE_NATIVE_SYMBOLS, or the guard would
+    # either refuse a runnable program or let a silent crash through.
+    assert set(callbacks) == _JIT_RESOLVABLE_NATIVE_SYMBOLS, (
+        "JIT runtime shim set drifted from _JIT_RESOLVABLE_NATIVE_SYMBOLS: "
+        f"{set(callbacks) ^ _JIT_RESOLVABLE_NATIVE_SYMBOLS}")
     for symbol, callback in callbacks.items():
         llvm.add_symbol(symbol, ctypes.cast(callback, ctypes.c_void_p).value)
     _JIT_RUNTIME_CALLBACKS.extend(callbacks.values())
@@ -19815,17 +19899,12 @@ def jit_run(module_ir: str, opt_level: int = 2,
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
     _register_jit_runtime_symbols()
-    if '@"ss_http_' in module_ir or "@ss_http_" in module_ir:
-        # The native HTTP runtime (form/url/SSE/response intrinsics) is linked
-        # only into native builds. The in-process JIT cannot resolve these
-        # symbols, so an http.* call would jump to address 0 and hard-crash.
-        # Refuse with a clear, actionable message instead of the silent crash.
-        sys.stderr.write(
-            "error: http.* intrinsics require a native build; they are not "
-            "available under the in-process JIT (sem eval / sem run / --run). "
-            "Build and run a native executable instead "
-            "(sem build <project>, or semsc <file> --emit-exe <out>).\n")
-        raise SystemExit(3)
+    # Native runtime adapters (HTTP, SQLite, the JSON document/builder/cursor
+    # API, bcrypt, GUI, ...) are linked only into native executable builds. The
+    # in-process JIT resolves only the json.stringify/parse primitive shims, so
+    # a call to any other `ss_*` intrinsic would jump to address 0 and crash
+    # with no output. Refuse with a clear, actionable message instead.
+    _refuse_jit_for_native_runtime(module_ir)
     mod = llvm.parse_assembly(module_ir)
     mod.verify()
     target = llvm.Target.from_default_triple()
