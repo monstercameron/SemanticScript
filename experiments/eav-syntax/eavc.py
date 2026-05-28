@@ -197,6 +197,28 @@ ISLAND_PREDICATE = "body"
 # underscores/hyphens/leading digits.
 _IDENT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9]*\Z")
 
+# Numeric literal grammar (README ss2/ss33.1). A single `_` may separate digits
+# (no leading/trailing/doubled). Decimal rejects octal/0-prefixed forms.
+_INT_DEC_RE = re.compile(r"(0|[1-9](_?[0-9])*)\Z")
+_INT_HEX_RE = re.compile(r"0x[0-9a-fA-F](_?[0-9a-fA-F])*\Z")
+_INT_BIN_RE = re.compile(r"0b[01](_?[01])*\Z")
+
+
+def _validate_int_literal(tok: str, line: int) -> None:
+    """Validate an integer literal token (README ss2/ss33.1). Caller has already
+    decided `tok` is a literal attempt (digit-led, no `.`, no sign)."""
+    if tok.startswith("0x") or tok.startswith("0b"):
+        rx = _INT_HEX_RE if tok[1] == "x" else _INT_BIN_RE
+        if not rx.match(tok):
+            raise EavError(f"malformed integer literal {tok!r} (README ss33.1)", line)
+        return
+    if not _INT_DEC_RE.match(tok):
+        raise EavError(
+            f"malformed integer literal {tok!r}: no octal/0-prefix, no "
+            f"leading/trailing/doubled `_` (README ss2)",
+            line,
+        )
+
 # Reserved words (README ss2). May not be used as entity, variable, or type
 # names. Arg-slot/field/variant *labels* are payload tokens and are exempt
 # (they are never validated against this set).
@@ -347,6 +369,17 @@ class Program:
             if k == norm:
                 out.append(ent)
         return out
+
+
+def _validate_value_literal(tok: str, line: int) -> None:
+    """Validate a `let`/`arg` value token if it is a numeric literal attempt.
+
+    Identifiers (binding refs), strings, bool/enum tokens are skipped. A token
+    led by a digit is an integer literal (README ss2/ss33.1)."""
+    if not tok:
+        return
+    if tok[0].isdigit() and "." not in tok:
+        _validate_int_literal(tok, line)
 
 
 def _check_unique_labels(ent: Entity, predicate: str, what: str, cite: str) -> None:
@@ -551,6 +584,12 @@ def _validate_program(program: Program) -> None:
                         f"name (README ss2)",
                         row.line,
                     )
+                if len(row.payload) > 3:
+                    _validate_value_literal(row.payload[3], row.line)
+        if ent.kind in ("call", "task"):
+            for row in ent.facts("arg"):
+                if len(row.payload) > 2:
+                    _validate_value_literal(row.payload[2], row.line)
         for row in ent.facts("out"):
             if row.payload and row.payload[0] == "Result" and len(row.payload) != 3:
                 raise EavError(

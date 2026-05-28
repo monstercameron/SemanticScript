@@ -61,7 +61,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1A. Lexer (§2, §33.1–33.2)
 - [x] WS1-001 Tokenizer: whitespace-split, trim, ignore blank lines. →test: row tokenization goldens. §2 _(eavc: `test_tokenize_basic_row`, `test_tokenize_string_keeps_spaces_and_quotes`)_
 - [x] WS1-002 Identifiers `[a-zA-Z][a-zA-Z0-9]*`; reject `_`/`-`/leading-digit in names. →test: invalid-name corpus rejects. §2 _(eavc: `_IDENT_RE` on `is`-row subjects; `test_parse_invalid_entity_names_rejected`, `test_parse_valid_camelcase_name_ok`)_
-- [ ] WS1-003 Integer literals: decimal, `0x`, `0b`, `_` separator; reject octal/`0`-prefix; leading/trailing/doubled `_` error. →test: each base parses; bad-separator rejects. §2/§33.1
+- [x] WS1-003 Integer literals: decimal, `0x`, `0b`, `_` separator; reject octal/`0`-prefix; leading/trailing/doubled `_` error. →test: each base parses; bad-separator rejects. §2/§33.1 _(eavc: `_validate_int_literal` via `_validate_value_literal`; `test_int_literal_accepts`, `test_int_literal_rejects`)_
 - [ ] WS1-004 Float `[0-9]+\.[0-9]+`; no leading/trailing dot. →test: `1.5` ok, `.5`/`5.` reject. §2
 - [ ] WS1-005 Negative literals `-N`/`-N.N`, no space after `-`; only in let-init/arg. →test: `-42` ok, `- 42` reject. §2
 - [x] WS1-006 String literals + escapes `\" \\ \n \t \xNN`; reject `\r \0`; `\u{}` reserved-deferred error. →test: escape table; banned escapes reject. §2/§33.1 _(eavc: `test_tokenize_supported_escapes`, `test_tokenize_hex_escape_ok`, `test_tokenize_banned_escapes_reject`, `test_tokenize_unicode_escape_deferred`)_

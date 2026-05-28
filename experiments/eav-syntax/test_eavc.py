@@ -272,6 +272,21 @@ def test_parse_record_fields_keep_doc_order():
     assert fields == ["id", "title", "done"]
 
 
+@pytest.mark.parametrize("good", ["0", "42", "1_000", "0xFF", "0xFF_FF", "0b1010"])
+def test_int_literal_accepts(good):
+    prog = eavc.parse(
+        f"main is operation\nmain let n immutable Int64 {good}\n"
+    )
+    assert prog.entities["main"].fact("let").payload[3] == good
+
+
+@pytest.mark.parametrize("bad", ["007", "1__0", "1_", "0xGG", "0b12"])
+def test_int_literal_rejects(bad):
+    # README ss2/ss33.1: no octal/0-prefix; no leading/trailing/doubled `_`.
+    with pytest.raises(eavc.EavError):
+        eavc.parse(f"main is operation\nmain let n immutable Int64 {bad}\n")
+
+
 def test_parse_island_body_strips_common_indent():
     src = (
         "q is storage\n"
