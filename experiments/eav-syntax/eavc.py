@@ -380,17 +380,28 @@ def _validate_value_literal(tok: str, line: int) -> None:
     led by a digit is an integer literal (README ss2/ss33.1)."""
     if not tok:
         return
-    if tok[0].isdigit():
-        if "." in tok:
-            if not _FLOAT_RE.match(tok):
+    core = tok
+    if tok[0] == "-":
+        # Negative literal `-N`/`-N.N` (README ss2). No space after `-` (a bare
+        # `-` token means the author wrote `- 42`); digits must follow the sign.
+        core = tok[1:]
+        if not core or not core[0].isdigit():
+            raise EavError(
+                f"malformed negative literal {tok!r}: write `-N`/`-N.N` with no "
+                f"space after `-` and digits after the sign (README ss2)",
+                line,
+            )
+    if core[0].isdigit():
+        if "." in core:
+            if not _FLOAT_RE.match(core):
                 raise EavError(
                     f"malformed float literal {tok!r}: use [0-9]+.[0-9]+, no "
                     f"trailing dot (README ss2)",
                     line,
                 )
         else:
-            _validate_int_literal(tok, line)
-    elif tok[0] == ".":
+            _validate_int_literal(core, line)
+    elif core[0] == ".":
         raise EavError(
             f"malformed float literal {tok!r}: no leading dot (README ss2)", line
         )

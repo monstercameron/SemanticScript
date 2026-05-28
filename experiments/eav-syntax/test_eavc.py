@@ -287,6 +287,24 @@ def test_int_literal_rejects(bad):
         eavc.parse(f"main is operation\nmain let n immutable Int64 {bad}\n")
 
 
+@pytest.mark.parametrize("good", ["-42", "-1.5"])
+def test_negative_literal_accepts(good):
+    prog = eavc.parse(f"main is operation\nmain let n immutable Int64 {good}\n")
+    assert prog.entities["main"].fact("let").payload[3] == good
+
+
+def test_negative_literal_space_after_sign_rejected():
+    # README ss2: `- 42` (space after sign) is a parse error (bare `-` token).
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("main is operation\nmain let n immutable Int64 - 42\n")
+    assert "negative literal" in exc.value.message
+
+
+def test_negative_literal_leading_dot_rejected():
+    with pytest.raises(eavc.EavError):
+        eavc.parse("main is operation\nmain let r immutable Float64 -.5\n")
+
+
 def test_float_literal_accepts():
     prog = eavc.parse("main is operation\nmain let r immutable Float64 1.5\n")
     assert prog.entities["main"].fact("let").payload[3] == "1.5"
