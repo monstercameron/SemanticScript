@@ -287,6 +287,18 @@ def test_int_literal_rejects(bad):
         eavc.parse(f"main is operation\nmain let n immutable Int64 {bad}\n")
 
 
+def test_float_literal_accepts():
+    prog = eavc.parse("main is operation\nmain let r immutable Float64 1.5\n")
+    assert prog.entities["main"].fact("let").payload[3] == "1.5"
+
+
+@pytest.mark.parametrize("bad", [".5", "5.", "1.2.3"])
+def test_float_literal_rejects(bad):
+    # README ss2: no leading/trailing dot.
+    with pytest.raises(eavc.EavError):
+        eavc.parse(f"main is operation\nmain let r immutable Float64 {bad}\n")
+
+
 def test_parse_island_body_strips_common_indent():
     src = (
         "q is storage\n"

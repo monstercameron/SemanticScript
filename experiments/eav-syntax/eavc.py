@@ -202,6 +202,8 @@ _IDENT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9]*\Z")
 _INT_DEC_RE = re.compile(r"(0|[1-9](_?[0-9])*)\Z")
 _INT_HEX_RE = re.compile(r"0x[0-9a-fA-F](_?[0-9a-fA-F])*\Z")
 _INT_BIN_RE = re.compile(r"0b[01](_?[01])*\Z")
+# Float literal (README ss2): decimal float only; no leading/trailing dot.
+_FLOAT_RE = re.compile(r"[0-9]+\.[0-9]+\Z")
 
 
 def _validate_int_literal(tok: str, line: int) -> None:
@@ -378,8 +380,20 @@ def _validate_value_literal(tok: str, line: int) -> None:
     led by a digit is an integer literal (README ss2/ss33.1)."""
     if not tok:
         return
-    if tok[0].isdigit() and "." not in tok:
-        _validate_int_literal(tok, line)
+    if tok[0].isdigit():
+        if "." in tok:
+            if not _FLOAT_RE.match(tok):
+                raise EavError(
+                    f"malformed float literal {tok!r}: use [0-9]+.[0-9]+, no "
+                    f"trailing dot (README ss2)",
+                    line,
+                )
+        else:
+            _validate_int_literal(tok, line)
+    elif tok[0] == ".":
+        raise EavError(
+            f"malformed float literal {tok!r}: no leading dot (README ss2)", line
+        )
 
 
 def _check_unique_labels(ent: Entity, predicate: str, what: str, cite: str) -> None:
