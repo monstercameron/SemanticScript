@@ -10307,6 +10307,89 @@ def check_sqlite_statement_finalize_missing(facts: ExtendedFacts) -> List[Diagno
     return diagnostics
 
 
+def check_sqlite_mutation_effect_unchecked(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3641 — advisory. An operation that runs a targeted UPDATE/DELETE (one
+    with a WHERE clause, e.g. `UPDATE tasks SET status=? WHERE id=?`) but never
+    reads the affected-row count is the silent-no-op trap the field log ranked a
+    top trust-killer: a toggle / delete / logout against an id that matches no
+    row returns success with zero rows changed and no signal, so a passing
+    status hides a write that never happened.
+
+    Conservative by design — fires only when the operation DIRECTLY execs a
+    static WHERE-mutation and reads no affected-row count anywhere. Helper-
+    composed mutations and unconditional bulk writes (`DELETE FROM t` with no
+    WHERE, which intentionally clear a table) do not fire. Confirm the effect
+    with `sqlite.changedRowCount`, or suppress with
+    `# semlint-allow SS3641: <why zero rows is fine>` when that is acceptable.
+    """
+    diagnostics: List[Diagnostic] = []
+    sqlTexts = _local_sql_body_texts(facts)
+    for operation in facts.base.operations.values():
+        operationCalls = collect_operation_calls(operation)
+        readsRowCount = any(
+            call.target in {"sqlite.changedRowCount", "changedRowCount"}
+            for call in operationCalls.values()
+        )
+        if readsRowCount:
+            continue
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        flaggedOperation = False
+        for call in operationCalls.values():
+            if flaggedOperation:
+                break
+            if call.target not in {"sqlite.exec", "sqlite.execStatus"}:
+                continue
+            for argLine in call.arg_lines:
+                parts = argument_parts(argLine)
+                if parts is None:
+                    continue
+                sqlText = sqlTexts.get(parts[3])
+                if sqlText is None:
+                    continue
+                if _sql_first_verb_lint(sqlText) not in ("UPDATE", "DELETE"):
+                    continue
+                if "WHERE" not in sqlText.upper():
+                    continue
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3641",
+                    kind="resourceLifecycle.sqliteMutationEffectUnchecked",
+                    severity=Severity.WARNING,
+                    subjectName=call.name,
+                    subjectKind="call",
+                    gapEdge="sqlite.changedRowCount",
+                    intentSlogan="targeted UPDATE/DELETE effect unchecked",
+                    primary=span_of_line(call.line, "sqliteExecCall"),
+                    related=[span_of_line(operation.line, "enclosingOperation")],
+                    invariantRule=(
+                        "a WHERE-clause UPDATE/DELETE can match zero rows and "
+                        "still succeed; read `sqlite.changedRowCount` after the "
+                        "exec to confirm the mutation took effect, or suppress "
+                        "with `# semlint-allow SS3641: <why zero rows is fine>`"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#sqlite",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="readChangedRowCount",
+                            shape="call changedRowCountCall sqlite.changedRowCount",
+                            evidence=[span_of_line(call.line)],
+                        ),
+                    ],
+                    confidence=Confidence.MEDIUM,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_sqlite_mutation_effect_unchecked",
+                    agentHint=(
+                        "the toggle/delete/logout silent-no-op class: success "
+                        "with zero rows changed looks identical to a real write "
+                        "unless you check the affected-row count"
+                    ),
+                ))
+                flaggedOperation = True
+                break
+    return diagnostics
+
+
 def check_guard_token_source_without_release(facts: ExtendedFacts) -> List[Diagnostic]:
     """`guardTokenSource TOKEN CALL` declares an acquisition site; every
     such token must also have a matching `guardTokenRelease TOKEN OP` row."""
@@ -20467,6 +20550,7 @@ CHECKERS = [
     check_file_handle_not_closed,
     check_sqlite_database_failure_cleanup_missing,
     check_sqlite_statement_finalize_missing,
+    check_sqlite_mutation_effect_unchecked,
     check_guard_token_source_without_release,
     check_guard_token_protects_shared_state_access,
     check_circular_type_alias,

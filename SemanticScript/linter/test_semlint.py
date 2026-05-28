@@ -4591,6 +4591,52 @@ returnError schemaError
         self.assertNotIn("SS3905", _codes(diagnostics))
 
 
+class TestSqliteMutationEffectUnchecked(unittest.TestCase):
+    def _program(self, sqlBody: str, tail: str = "") -> str:
+        return f"""project Test
+storage module immutable mutateSql SqlText
+sql body mutateSql
+  {sqlBody}
+operation applyMutation
+input applyMutation database SqliteDatabase
+output applyMutation Void
+purpose applyMutation "apply a mutation"
+call execCall sqlite.exec
+arg execCall database database
+arg execCall sql mutateSql
+run execCall
+ignoreOk execCall Void
+{tail}returnVoid
+"""
+
+    def test_targeted_update_without_row_count_check_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "UPDATE tasks SET status = ? WHERE id = ?"))
+        self.assertIn("SS3641", _codes(diagnostics))
+
+    def test_targeted_delete_without_row_count_check_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "DELETE FROM sessions WHERE token = ?"))
+        self.assertIn("SS3641", _codes(diagnostics))
+
+    def test_row_count_check_silences_the_nudge(self) -> None:
+        diagnostics = _lint_source(self._program(
+            "UPDATE tasks SET status = ? WHERE id = ?",
+            tail=(
+                "call rowsCall sqlite.changedRowCount\n"
+                "arg rowsCall database database\n"
+                "run rowsCall\n"
+                "bind changedRows Int64 rowsCall\n"
+            )))
+        self.assertNotIn("SS3641", _codes(diagnostics))
+
+    def test_unconditional_bulk_delete_is_not_flagged(self) -> None:
+        # `DELETE FROM t` with no WHERE intentionally clears the table; zero
+        # affected rows is not a silent-no-op surprise, so do not nudge.
+        diagnostics = _lint_source(self._program("DELETE FROM tasks"))
+        self.assertNotIn("SS3641", _codes(diagnostics))
+
+
 class TestSqliteStatementFinalizeMissing(unittest.TestCase):
     def test_prepare_without_finalize_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
