@@ -161,6 +161,21 @@ def test_parse_legal_predicate_sets_accepted():
     assert prog.entities["A"].fact("for").payload == ["Int32"]
 
 
+def test_parse_record_duplicate_field_rejected():
+    # README ss10: duplicate field names within one record are a hard error.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("T is record\nT field id Int64\nT field id Int32\n")
+    assert "duplicate field name" in exc.value.message
+
+
+def test_parse_record_fields_keep_doc_order():
+    prog = eavc.parse(
+        "T is record\nT field id Int64\nT field title String\nT field done Bool\n"
+    )
+    fields = [r.payload[0] for r in prog.entities["T"].facts("field")]
+    assert fields == ["id", "title", "done"]
+
+
 def test_parse_island_body_strips_common_indent():
     src = (
         "q is storage\n"

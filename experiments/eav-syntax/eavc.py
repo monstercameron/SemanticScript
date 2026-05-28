@@ -301,6 +301,20 @@ class Program:
         return out
 
 
+def _check_unique_labels(ent: Entity, predicate: str, what: str, cite: str) -> None:
+    seen: set[str] = set()
+    for row in ent.facts(predicate):
+        if not row.payload:
+            continue
+        name = row.payload[0]
+        if name in seen:
+            raise EavError(
+                f"duplicate {what} {name!r} in {ent.kind} {ent.name!r} ({cite})",
+                row.line,
+            )
+        seen.add(name)
+
+
 def _predicate_allowed(kind: str, predicate: str) -> bool:
     if predicate in UNIVERSAL_PREDICATES:
         return True
@@ -451,7 +465,21 @@ def parse(source_text: str) -> Program:
         entity.rows.append(Row(subject, predicate, payload, lineno))
         i += 1
 
+    _validate_program(program)
     return program
+
+
+def _validate_program(program: Program) -> None:
+    """Post-parse structural validation for hard-error invariants (README ss10).
+
+    Lint-tier checks live in eavlint.py; this pass enforces only rules the spec
+    marks as a *hard error* during parsing.
+    """
+    for ent in (program.entities[name] for name in program.order):
+        if ent.kind == "record":
+            _check_unique_labels(
+                ent, "field", "field name", "README ss10/ss17 #29"
+            )
 
 
 # --------------------------------------------------------------------------
