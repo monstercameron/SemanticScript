@@ -142,7 +142,13 @@ def tokenize_line(text: str) -> list[str]:
         j = i
         while j < n and text[j] not in ' \t"#':
             j += 1
-        tokens.append(text[i:j])
+        bare = text[i:j]
+        if "=" in bare:
+            raise EavError(
+                "`=` is not used in EAV-Steps; `let` rows are positional "
+                "(`let NAME mutable|immutable TYPE VALUE`) (README ss2/ss12)"
+            )
+        tokens.append(bare)
         i = j
     return tokens
 

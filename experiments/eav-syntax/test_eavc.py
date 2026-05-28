@@ -76,6 +76,19 @@ def test_tokenize_unicode_escape_deferred():
         eavc.tokenize_line(r'x let s immutable String "\u{1F600}"')
 
 
+def test_tokenize_equals_rejected_with_hint():
+    # README ss2/ss12: `=` is not used; let is positional.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.tokenize_line("main let x Int64 = 5")
+    assert "positional" in exc.value.message
+
+
+def test_equals_in_string_is_literal():
+    # `=` inside a string is fine (e.g. SQL-ish text).
+    toks = eavc.tokenize_line('q let s immutable String "a = b"')
+    assert toks[-1] == '"a = b"'
+
+
 def test_tokenize_unterminated_string():
     with pytest.raises(eavc.EavError):
         eavc.tokenize_line('x let s immutable String "open')
