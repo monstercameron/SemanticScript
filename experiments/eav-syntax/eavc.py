@@ -457,6 +457,9 @@ def parse(source_text: str) -> Program:
     """
 
     program = Program()
+    # README ss33.2: UTF-8 with no BOM; CRLF/CR normalize to LF.
+    if source_text.startswith("﻿"):
+        source_text = source_text[1:]
     raw_lines = source_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
     i = 0

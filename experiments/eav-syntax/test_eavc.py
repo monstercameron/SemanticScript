@@ -108,6 +108,20 @@ def test_parse_entity_kinds_and_rows():
     assert len(prog.entities["bar"].rows) == 1
 
 
+def test_crlf_normalizes_identically():
+    # README ss33.2: CRLF files lex identically to LF.
+    lf = "main is operation\nmain out ExitCode\nmain async no\n"
+    crlf = lf.replace("\n", "\r\n")
+    a, b = eavc.parse(lf), eavc.parse(crlf)
+    assert list(a.entities) == list(b.entities)
+    assert a.entities["main"].fact("out").payload == b.entities["main"].fact("out").payload
+
+
+def test_leading_bom_stripped():
+    prog = eavc.parse("﻿main is operation\nmain out ExitCode\n")
+    assert "main" in prog.entities
+
+
 def test_parse_first_row_must_be_is():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse("main do writeHello\n")

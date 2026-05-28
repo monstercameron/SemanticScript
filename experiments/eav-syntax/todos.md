@@ -69,7 +69,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-008 Repo-path / semver `v…` / `sha256 <64hex>` tokens — manifest positions only. →test: accepted in build.sem, rejected as names. §2/§28
 - [x] WS1-009 Comments: `#` full-line + trailing; typed-comment tags (`# rationale:` …); `#` literal inside strings. →test: trailing-comment preserved; `#`-in-string not a comment. §2 _(eavc: `test_tokenize_full_line_comment_is_empty`, `test_tokenize_trailing_comment_stripped`, `test_tokenize_hash_inside_string_is_literal`; typed-comment classification treated as plain comments for now)_
 - [x] WS1-010 Punctuation gate: allow `"… # . / - _ +` (per position); **reject `=`** with "let is positional" hint; `->` unused. →test: `let x T = v` errors. §2/§12 _(eavc: tokenizer rejects `=` in bare tokens; `=` in strings/islands stays literal; `test_tokenize_equals_rejected_with_hint`, `test_equals_in_string_is_literal`)_
-- [ ] WS1-011 Source format: UTF-8 no BOM; CRLF→LF normalize. →test: CRLF file lexes identically. §33.2
+- [x] WS1-011 Source format: UTF-8 no BOM; CRLF→LF normalize. →test: CRLF file lexes identically. §33.2 _(eavc: BOM strip + CRLF/CR→LF in `parse`; `test_crlf_normalizes_identically`, `test_leading_bom_stripped`)_
 - [x] WS1-012 Island indentation: spaces-only (tab = hard error), common-prefix strip, dedent at column-1 token row, mixed = error. →test: tab-indent island rejects; dedent boundary golden. §16/§33.2 _(eavc: `test_parse_island_body_strips_common_indent`, `test_parse_tab_indent_island_rejected`; mixed-indent error not yet tested)_
 
 ## 1B. Parser & row model (§1, §5)
