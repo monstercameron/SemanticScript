@@ -50,6 +50,7 @@ External call targets:
   math.minInt64                -> i64 (a < b ? a : b)
   math.maxInt64                -> i64 (a > b ? a : b)
   math.clampInt64              -> i64 (min(max(value, low), high))
+  math.min/max/clamp Int32, UInt32, UInt64, Float64 variants lower directly
 """
 
 import argparse
@@ -232,6 +233,26 @@ class CompilerDiagnosticError(Exception):
         self.diagnostic = diagnostic
 
 
+def _origin_aware_span(prog, lineno: int, role: str = "primary") -> DiagnosticSpan:
+    line_number = int(lineno or 0)
+    origin = getattr(prog, "source_origins", {}).get(line_number)
+    if isinstance(origin, dict) and origin.get("path"):
+        return DiagnosticSpan(
+            path=origin.get("path") or getattr(prog, "source_path", "") or "<source>",
+            line=int(origin.get("line") or line_number),
+            column=int(origin.get("column") or 1),
+            raw=origin.get("raw") or getattr(prog, "source_lines", {}).get(line_number, ""),
+            role=role,
+        )
+    return DiagnosticSpan(
+        path=getattr(prog, "source_path", "") or "<source>",
+        line=line_number,
+        column=1,
+        raw=getattr(prog, "source_lines", {}).get(line_number, ""),
+        role=role,
+    )
+
+
 class CompilerProvenance:
     def __init__(self, prog):
         self.prog = prog
@@ -239,9 +260,7 @@ class CompilerProvenance:
         self.call_edges = {}      # caller operation -> list[(callee, frame)]
 
     def span(self, lineno: int, role: str = "primary") -> DiagnosticSpan:
-        path = self.prog.source_path or "<source>"
-        raw = self.prog.source_lines.get(lineno, "")
-        return DiagnosticSpan(path=path, line=lineno or 0, column=1, raw=raw, role=role)
+        return _origin_aware_span(self.prog, lineno, role)
 
     def frame_from_call(self, call, kind: str = "SemanticScript call",
                         note: str = "") -> DiagnosticFrame:
@@ -535,6 +554,7 @@ class WebServer:
         self.host = None
         self.port = None
         self.routes = []          # list[(method, path, handler_op)]
+        self.static_routes = []   # list[(url_prefix, root_directory)]
         self.middleware = []      # list[(route_name, middleware_op)]
         self.timeouts = {}        # route_name -> duration_value
         self.not_found_handler = None
@@ -719,6 +739,11 @@ BODY_VERBS_RESERVED_SOFT = {
     # writer (or another forwarder), making it part of the transitive
     # response-body-writer set. Replaces a `body` arg-name string match.
     "responseBodyForwarder",
+    # `sqliteSqlForwarder OP sqlArgName` — declares that an operation forwards
+    # its `sqlArgName` input to sqlite.prepareStatement/sqlite.exec or another
+    # declared SQLite SQL forwarder. This lets strict SQL checks follow
+    # runStatement-style helpers without guessing from operation names.
+    "sqliteSqlForwarder",
     # `rationale CALL "text"` — operation-body counterpart to the
     # `# rationale:` typed comment; explicitly attaches a rationale to a
     # specific call site so SS3603 (and other rules) can cite it without
@@ -826,7 +851,7 @@ def _canonicalize_syntax_row(verb, args, lineno):
             f"line {lineno}: html requires: `html template NAME` to declare a "
             "template, then `html body template NAME` (NAME must already be "
             "declared) to open the indented HTML island. The body's "
-            "{holeName} placeholders become typed hydrate arguments.")
+            "{{holeName}} placeholders become typed hydrate arguments.")
 
     if verb == "type":
         if len(args) >= 2 and args[1] == "Result":
@@ -1029,8 +1054,10 @@ _INCOMPATIBLE_LANGUAGE_MODES = {
 
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 _HTML_HOLE_REFERENCE_RE = re.compile(
-    r"\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}")
-_HTML_BRACE_CONTENT_RE = re.compile(r"\{([^{}\n]*)\}")
+    r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}")
+_HTML_DOUBLE_BRACE_CONTENT_RE = re.compile(r"\{\{([^{}\n]*)\}\}")
+_HTML_LEGACY_HOLE_REFERENCE_RE = re.compile(
+    r"(?<!\{)\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}(?!\})")
 _HTML_RAW_TEXT_RE = re.compile(
     r"<(style|script)\b[^>]*>.*?</\1\s*>",
     re.IGNORECASE | re.DOTALL,
@@ -1063,6 +1090,10 @@ _HTML_TRUST_TYPES = {
 }
 _HTML_STRING_TYPES = {
     "String",
+    "HtmlSafeUrl",
+}
+_HTML_SAFE_URL_TYPES = {
+    "HtmlSafeUrl",
 }
 _HTML_FRAGMENT_TYPES = {
     "HtmlFragment",
@@ -1100,6 +1131,7 @@ _BUILD_TAPE_PROJECT_VERBS = frozenset({
     "asyncRuntime", "guiBackend",
     "nativeOutput", "keepResources", "resourcesDir",
     "nativeHttpHost", "nativeHttpPort",
+    "sqliteJournalMode",
     "formatterSetting", "linterSetting", "docsOutput",
     "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
@@ -1126,6 +1158,7 @@ _BUILD_TAPE_SINGLETON_VERBS = frozenset({
     "buildProfile", "runtimeChecks", "persistLlvmIr", "nativeOutput",
     "asyncRuntime", "guiBackend",
     "keepResources", "resourcesDir", "nativeHttpHost", "nativeHttpPort",
+    "sqliteJournalMode",
     "docsOutput", "optLevel", "emitLlvmIr", "llvmIrOutput",
     "emitOptimizedLlvmIr", "optimizedLlvmIrOutput",
     "buildDir", "buildRoot", "buildFolderName", "comptimeOperation",
@@ -1176,6 +1209,7 @@ _BUILD_TAPE_CHOICES = {
         "arm64_generic", "arm64_v8_2",
     },
     "cpuFeatureCheck": {"auto", "off", "warn", "require"},
+    "sqliteJournalMode": {"default", "wal"},
 }
 
 _CPU_FEATURE_STATES = frozenset({"on", "off"})
@@ -1402,6 +1436,8 @@ _SQLITE_INTRINSIC_EXPORT_NAMES = frozenset({
     "errorMessage",
     "lastInsertRowId",
     "changedRowCount",
+    "queryScalarInt64",
+    "enableWalMode",
     "prepareStatement",
     "finalizeStatement",
     "resetStatement",
@@ -1422,6 +1458,9 @@ _SQLITE_INTRINSIC_EXPORT_NAMES = frozenset({
     "libraryVersion",
     "execStatus",
     "exec",
+    "beginImmediateTransaction",
+    "commitTransaction",
+    "rollbackTransaction",
 })
 
 
@@ -1698,6 +1737,63 @@ def _scan_sql_text(sql_text: str):
     return placeholder_count, statement_count, None
 
 
+def _find_sql_dynamic_hole(sql_text: str):
+    """Return (start, end, text) for a `{hole}` outside SQL literals/comments."""
+    index = 0
+    length = len(sql_text)
+    while index < length:
+        ch = sql_text[index]
+        next_ch = sql_text[index + 1] if index + 1 < length else ""
+        if ch == "-" and next_ch == "-":
+            newline = sql_text.find("\n", index + 2)
+            index = length if newline == -1 else newline + 1
+            continue
+        if ch == "/" and next_ch == "*":
+            end = sql_text.find("*/", index + 2)
+            index = length if end == -1 else end + 2
+            continue
+        if ch == "'":
+            index += 1
+            while index < length:
+                if sql_text[index] == "'":
+                    if index + 1 < length and sql_text[index + 1] == "'":
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if ch == '"':
+            index += 1
+            while index < length:
+                if sql_text[index] == '"':
+                    if index + 1 < length and sql_text[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if ch == "`":
+            index += 1
+            while index < length and sql_text[index] != "`":
+                index += 1
+            index += 1 if index < length else 0
+            continue
+        if ch == "[":
+            index += 1
+            while index < length and sql_text[index] != "]":
+                index += 1
+            index += 1 if index < length else 0
+            continue
+        if ch == "{":
+            match = _SQL_HOLE_RE.match(sql_text, index)
+            if match is not None:
+                return match.start(), match.end(), match.group(0)
+        index += 1
+    return None
+
+
 _SQL_REDUNDANT_CASE_RE = re.compile(
     r"\bCASE\s+WHEN\s+.+?\s+THEN\s+(?P<then>.*?)\s+ELSE\s+(?P<else>.*?)\s+END\b",
     re.IGNORECASE,
@@ -1915,7 +2011,7 @@ def _parse_json_body(name: str, body_lines: list, decl_line: int):
         if 1 <= exc.lineno <= len(body_lines):
             source_line = body_lines[exc.lineno - 1][1]
         raise SyntaxError(
-            f"line {decl_line}: invalidJsonBody: jsonBody `{name}` contains "
+            f"line {source_line}: invalidJsonBody: jsonBody `{name}` contains "
             f"invalid JSON at island line {exc.lineno} column {exc.colno} "
             f"(source line {source_line}): {exc.msg}") from exc
     except ValueError as exc:
@@ -2090,36 +2186,81 @@ def _start_sql_body_literal(prog: Program, name: str, lineno: int) -> dict:
         f"targets `{type_name}`, expected SqlText")
 
 
+def _sql_body_first_nonblank_source_line(body_lines: list, default_line: int) -> int:
+    for text, line_number in body_lines:
+        if text.strip():
+            return line_number
+    return default_line
+
+
+def _sql_body_source_line_matching(body_lines: list, pattern, default_line: int) -> int:
+    for text, line_number in body_lines:
+        if pattern.search(text):
+            return line_number
+    return default_line
+
+
+def _sql_body_source_line_for_offset(body_lines: list, offset: int, default_line: int) -> int:
+    cursor = 0
+    for text, line_number in body_lines:
+        line_end = cursor + len(text)
+        if cursor <= offset <= line_end:
+            return line_number
+        cursor = line_end + 1
+    return default_line
+
+
+def _sql_body_problem_source_line(
+    body_lines: list,
+    scan_problem: str,
+    default_line: int,
+) -> int:
+    if "block comment" in scan_problem:
+        return _sql_body_source_line_matching(body_lines, re.compile(r"/\*"), default_line)
+    if "quoted text" in scan_problem:
+        return _sql_body_source_line_matching(body_lines, re.compile(r"['\"`]"), default_line)
+    if "bracket identifier" in scan_problem:
+        return _sql_body_source_line_matching(body_lines, re.compile(r"\["), default_line)
+    return _sql_body_first_nonblank_source_line(body_lines, default_line)
+
+
 def _parse_sql_body(name: str, body_lines: list, decl_line: int):
-    raw_lines = [text for text, _line in body_lines]
-    while raw_lines and not raw_lines[0].strip():
-        raw_lines.pop(0)
-    while raw_lines and not raw_lines[-1].strip():
-        raw_lines.pop()
-    if not raw_lines or not any(text.strip() for text in raw_lines):
+    trimmed_body_lines = list(body_lines)
+    while trimmed_body_lines and not trimmed_body_lines[0][0].strip():
+        trimmed_body_lines.pop(0)
+    while trimmed_body_lines and not trimmed_body_lines[-1][0].strip():
+        trimmed_body_lines.pop()
+    if not trimmed_body_lines or not any(text.strip() for text, _line in trimmed_body_lines):
         raise SyntaxError(
             f"line {decl_line}: emptySqlBody: sql body `{name}` requires "
             "at least one indented SQL line")
-    sql_text = "\n".join(raw_lines).rstrip()
+    sql_text = "\n".join(text for text, _line in trimmed_body_lines).rstrip()
     if "\0" in sql_text:
+        source_line = _sql_body_source_line_matching(
+            trimmed_body_lines, re.compile("\0"), decl_line)
         raise SyntaxError(
-            f"line {decl_line}: invalidSqlBody: sql body `{name}` contains "
+            f"line {source_line}: invalidSqlBody: sql body `{name}` contains "
             "a NUL byte")
-    dynamic_hole = _SQL_HOLE_RE.search(sql_text)
+    dynamic_hole = _find_sql_dynamic_hole(sql_text)
     if dynamic_hole is not None:
+        source_line = _sql_body_source_line_for_offset(
+            trimmed_body_lines, dynamic_hole[0], decl_line)
         raise SyntaxError(
-            f"line {decl_line}: sqlBodyDynamicHole: sql body `{name}` "
-            f"contains `{dynamic_hole.group(0)}`; use `?` placeholders "
+            f"line {source_line}: sqlBodyDynamicHole: sql body `{name}` "
+            f"contains `{dynamic_hole[2]}`; use `?` placeholders "
             "and sqlite.bind* rows for dynamic values")
     statement_kind = _sql_first_verb(sql_text)
     if statement_kind is None:
+        source_line = _sql_body_first_nonblank_source_line(trimmed_body_lines, decl_line)
         raise SyntaxError(
-            f"line {decl_line}: invalidSqlBody: sql body `{name}` does not "
+            f"line {source_line}: invalidSqlBody: sql body `{name}` does not "
             "start with a SQL statement verb")
     placeholder_count, statement_count, scan_problem = _scan_sql_text(sql_text)
     if scan_problem is not None:
+        source_line = _sql_body_problem_source_line(
+            trimmed_body_lines, scan_problem, decl_line)
         raise SyntaxError(
-            f"line {decl_line}: invalidSqlBody: sql body `{name}` contains "
+            f"line {source_line}: invalidSqlBody: sql body `{name}` contains "
             f"invalid SQL text: {scan_problem}")
     return sql_text, statement_kind, placeholder_count, statement_count
 
@@ -2611,6 +2752,7 @@ def _regular_build_plan_compat_source(source: str, source_path: str) -> str:
         ("asyncRuntime", "asyncRuntime"),
         ("guiBackend", "guiBackend"),
         ("nativeHttpHost", "nativeHttpHost"),
+        ("sqliteJournalMode", "sqliteJournalMode"),
         ("resourcesDir", "resourcesDir"),
         ("buildDir", "buildDir"),
         ("buildRoot", "buildRoot"),
@@ -2699,6 +2841,11 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
     singleton_seen = {}
     source_roots = {}
     target_runtime_by_project = {}
+    source_only_verbs = {
+        "webServer", "serverHost", "serverPort", "route", "staticRoute",
+        "routeTimeout", "routeMiddleware", "routeNotFound",
+        "routeMethodNotAllowed", "webServerStartup", "webServerShutdown",
+    }
     allowed_non_project_verbs = (
         {"buildProject", "project", "target", "runtime", "entry", "import",
          "moduleFolder", "languageMode"}
@@ -2729,6 +2876,11 @@ def _validate_build_tape_source(source: str, source_path: str) -> None:
             continue
         if verb not in _BUILD_TAPE_PROJECT_VERBS:
             if verb not in allowed_non_project_verbs:
+                if verb in source_only_verbs:
+                    raise SyntaxError(
+                        f"line {lineno}: `{verb}` is a source-module row, "
+                        "not a build-tape row; move webServer/route/lifecycle "
+                        "declarations into the .sem source module")
                 raise SyntaxError(
                     f"line {lineno}: unknown build-tape row `{verb}`")
             continue
@@ -3336,6 +3488,17 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
             raise SyntaxError(f"route references unknown webServer: {args[0]}")
         ws.routes.append((args[1], _unwrap(args[2]), args[3]))
         return
+    if verb == "staticRoute":
+        # staticRoute SERVER URL_PREFIX ROOT_DIRECTORY
+        if len(args) < 3:
+            raise SyntaxError("staticRoute requires: staticRoute SERVER URL_PREFIX ROOT_DIRECTORY")
+        ws = prog.web_servers.get(args[0])
+        if ws is None:
+            raise SyntaxError(f"staticRoute references unknown webServer: {args[0]}")
+        ws.static_routes.append((_unwrap(args[1]), _unwrap(args[2])))
+        prog.hard_metadata.setdefault(args[0], {}).setdefault("staticRoute", []).append(
+            [_unwrap(args[1]), _unwrap(args[2])])
+        return
     if verb == "routeNotFound":
         if len(args) < 2:
             raise SyntaxError("routeNotFound requires: routeNotFound SERVER HANDLER_OPERATION")
@@ -3722,6 +3885,9 @@ HEADER_VERBS_WITH_OWNERSHIP = {
     # `responseBodyForwarder OP bodyArgName` — first arg is the owning
     # operation that forwards its body input.
     "responseBodyForwarder",
+    # `sqliteSqlForwarder OP sqlArgName` — first arg is the owning operation
+    # that forwards its SqlText input.
+    "sqliteSqlForwarder",
 }
 
 
@@ -3812,6 +3978,25 @@ def resolve_alias(prog: Program, name: str) -> str:
         # legacy bare-string alias
         name = next_target
     return name
+
+
+def type_alias_chain_contains(prog: Program, name: str, target: str) -> bool:
+    seen = set()
+    current = name
+    while current not in seen:
+        if current == target:
+            return True
+        seen.add(current)
+        next_target = prog.type_aliases.get(current)
+        if not next_target:
+            return False
+        if isinstance(next_target, (list, tuple)):
+            if not next_target:
+                return False
+            current = next_target[0]
+        else:
+            current = next_target
+    return False
 
 
 def resolve_alias_full(prog: Program, name: str) -> list:
@@ -3921,6 +4106,7 @@ _TEXT_TYPES = {
     "HtmlTrustedFragment",
     "HtmlDocument",
     "HtmlTemplate",
+    "HtmlSafeUrl",
 }
 
 _POINTER_TYPES = {
@@ -4268,12 +4454,23 @@ _STRICT_SQL_STRING_TARGETS = frozenset({
     "sqlite.prepareStatement",
     "sqlite.exec",
     "sqlite.execStatus",
+    "sqlite.queryScalarInt64",
 })
 
 _STRICT_SQL_ARG_SLOTS = frozenset({"sql"})
 
 _STRICT_SQL_PREPARE_TARGETS = frozenset({"sqlite.prepareStatement"})
-_STRICT_SQL_EXEC_TARGETS = frozenset({"sqlite.exec", "sqlite.execStatus"})
+_STRICT_SQL_EXEC_TARGETS = frozenset({
+    "sqlite.exec",
+    "sqlite.execStatus",
+    "sqlite.queryScalarInt64",
+})
+_STRICT_SQL_TRANSACTION_BEGIN_TARGETS = frozenset({
+    "sqlite.beginImmediateTransaction",
+})
+_STRICT_SQL_TRANSACTION_COMMIT_TARGETS = frozenset({
+    "sqlite.commitTransaction",
+})
 
 _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
     "http.responseHtml",
@@ -4281,6 +4478,7 @@ _STRICT_RESPONSE_WRITER_TARGETS = frozenset({
     "http.responseBytes",
     "http.responseSseEvent",
     "http.responseFile",
+    "http.redirect",
 })
 
 HTTP_INTRINSIC_TARGETS = (
@@ -4290,9 +4488,12 @@ HTTP_INTRINSIC_TARGETS = (
         "http.requestMethod",
         "http.requestPath",
         "http.requestBodyLength",
+        "http.requestValueLength",
+        "http.requestValueIsEmpty",
         "http.multipartPartLength",
         "http.responseHeader",
         "http.responseFile",
+        "http.redirect",
         "http.nowMillis",
         "http.ensureDirectory",
         # urlencoded form/url helpers: compiler-owned intrinsics lowered in the
@@ -4398,15 +4599,43 @@ _CMP_Int32_TO_LLVM = {
     "math.greaterThanOrEqualInt32": ">=",
 }
 
-# Signed integer min/max: select the operand satisfying the comparison.
-# `<` keeps the smaller (min), `>` keeps the larger (max). Lowered to
-# icmp+select so callers stop hand-rolling a two-branch min/max (a common
-# source of off-by-one control flow). `math.clampInt64` is handled separately
-# (3 operands: value, low, high).
-_INT_MINMAX_TO_LLVM = {
+# Min/max helpers: select the operand satisfying the comparison. `<` keeps
+# the smaller (min), `>` keeps the larger (max). Lowered to cmp+select so
+# callers stop hand-rolling two-branch min/max flow.
+_SIGNED_INT64_MINMAX_TO_LLVM = {
     "math.minInt64": "<",
     "math.maxInt64": ">",
 }
+_SIGNED_INT32_MINMAX_TO_LLVM = {
+    "math.minInt32": "<",
+    "math.maxInt32": ">",
+}
+_UNSIGNED_INT64_MINMAX_TO_LLVM = {
+    "math.minUInt64": "<",
+    "math.maxUInt64": ">",
+}
+_UNSIGNED_INT32_MINMAX_TO_LLVM = {
+    "math.minUInt32": "<",
+    "math.maxUInt32": ">",
+}
+_FLOAT64_MINMAX_TO_LLVM = {
+    "math.minFloat64": "<",
+    "math.maxFloat64": ">",
+}
+_CLAMP_TARGETS = {
+    "math.clampInt64": ("Int64", "signed"),
+    "math.clampInt32": ("Int32", "signed"),
+    "math.clampUInt64": ("UInt64", "unsigned"),
+    "math.clampUInt32": ("UInt32", "unsigned"),
+    "math.clampFloat64": ("Float64", "float"),
+}
+_ALL_MINMAX_TARGETS = (
+    set(_SIGNED_INT64_MINMAX_TO_LLVM)
+    | set(_SIGNED_INT32_MINMAX_TO_LLVM)
+    | set(_UNSIGNED_INT64_MINMAX_TO_LLVM)
+    | set(_UNSIGNED_INT32_MINMAX_TO_LLVM)
+    | set(_FLOAT64_MINMAX_TO_LLVM)
+)
 
 
 # Domain-typed methods. A call target of the form `TypeName.methodName`
@@ -5613,14 +5842,25 @@ class Codegen:
             (match.start(), match.end())
             for match in _HTML_HOLE_REFERENCE_RE.finditer(masked)
         }
-        for match in _HTML_BRACE_CONTENT_RE.finditer(masked):
+        for match in _HTML_LEGACY_HOLE_REFERENCE_RE.finditer(masked):
+            legacy_text = match.group(0)
+            raise ValueError(
+                f"htmlBody {template.name}: legacy HTML hole "
+                f"{legacy_text}; use {{{{{match.group(1)}}}}}")
+        for match in _HTML_DOUBLE_BRACE_CONTENT_RE.finditer(masked):
             if (match.start(), match.end()) in html_hole_spans:
                 continue
             content = match.group(1).strip()
             if not content:
                 continue
+            if content.startswith("#each") or content.startswith("/each"):
+                raise ValueError(
+                    f"htmlBody {template.name}: template repetition "
+                    f"`{{{{{content}}}}}` is not implemented; hydrate repeated "
+                    "item fragments in ordinary SemanticScript control flow "
+                    "and fold them with `html.fragmentConcat`")
             raise ValueError(
-                f"htmlBody {template.name}: dynamic hole `{{{content}}}` "
+                f"htmlBody {template.name}: dynamic hole `{{{{{content}}}}}` "
                 "must be a bare name or dotted field path")
 
     def _html_hole_context_from_tag(self, body: str, tag_start: int,
@@ -5761,10 +6001,15 @@ class Codegen:
                 f"`{attr_name}` hole `{arg_name}` is rejected; boolean "
                 "attribute presence must be static")
         if attr_name in _HTML_URL_ATTRS:
-            raise ValueError(
-                f"htmlBody {template.name}: dynamic `{attr_name}` attribute "
-                f"hole `{arg_name}` is rejected; URL-bearing attributes must "
-                "be static until a dedicated safe-url contract exists")
+            is_safe_url = (
+                any(type_alias_chain_contains(self.prog, type_name, safe_type)
+                    for safe_type in _HTML_SAFE_URL_TYPES)
+                or resolved in _HTML_SAFE_URL_TYPES
+            )
+            if not is_safe_url:
+                raise ValueError(
+                    f"htmlBody {template.name}: dynamic `{attr_name}` attribute "
+                    f"hole `{arg_name}` requires HtmlSafeUrl, got `{type_name}`")
         if not is_string_like:
             raise ValueError(
                 f"htmlBody {template.name}: attribute hole "
@@ -6451,7 +6696,7 @@ class Codegen:
         self._user_ops = {}
         active_servers = [
             server for server in self.prog.web_servers.values()
-            if server.routes
+            if server.routes or server.static_routes
         ]
         self._web_route_handler_names = {
             handler for server in active_servers
@@ -6513,6 +6758,14 @@ class Codegen:
             raise ValueError(
                 f"{hook_kind} {server_name}: handler `{handler_name}` must return Int32")
 
+    def _validate_static_route(self, server_name: str, prefix: str, root_directory: str):
+        if not prefix.startswith("/"):
+            raise ValueError(
+                f"staticRoute {server_name}: URL_PREFIX `{prefix}` must start with `/`")
+        if not root_directory:
+            raise ValueError(
+                f"staticRoute {server_name} {prefix}: ROOT_DIRECTORY must be non-empty")
+
     def _emit_webserver_main(self, server: WebServer):
         if server.host is None:
             raise ValueError(f"webServer `{server.name}` is missing serverHost")
@@ -6520,6 +6773,8 @@ class Codegen:
             raise ValueError(f"webServer `{server.name}` is missing serverPort")
         for method, path, handler_name in server.routes:
             self._validate_web_route_handler(server.name, method, path, handler_name)
+        for prefix, root_directory in server.static_routes:
+            self._validate_static_route(server.name, prefix, root_directory)
         if server.not_found_handler is not None:
             self._validate_web_route_handler(
                 server.name, "NOT_FOUND", "*", server.not_found_handler)
@@ -6541,10 +6796,22 @@ class Codegen:
         handler_fnty = ir.FunctionType(Int32, [Int8P, Int8P])
         handler_ptr_ty = handler_fnty.as_pointer()
         route_ty = ir.LiteralStructType([Int8P, Int8P, handler_ptr_ty, handler_ptr_ty])
-        # Trailing fields are optional fallback function pointers.
+        static_route_ty = ir.LiteralStructType([Int8P, Int8P])
+        # Trailing fields are optional fallback function pointers and
+        # declarative static-file route table state.
         config_ty = ir.LiteralStructType(
-            [Int8P, Int16, route_ty.as_pointer(), Int64, handler_ptr_ty, handler_ptr_ty])
+            [
+                Int8P,
+                Int16,
+                route_ty.as_pointer(),
+                Int64,
+                handler_ptr_ty,
+                handler_ptr_ty,
+                static_route_ty.as_pointer(),
+                Int64,
+            ])
         server_run = self._runtime_func("ss_http_server_run", Int32, [config_ty.as_pointer()])
+        set_cwd_to_exe_dir = self._runtime_func("ss_http_set_cwd_to_executable_dir", Int32, [])
 
         fnty = ir.FunctionType(Int32, [])
         fn = ir.Function(self.module, fnty, name="main")
@@ -6552,43 +6819,67 @@ class Codegen:
         builder = ir.IRBuilder(entry_bb)
         self._install_crash_handler(builder)
         self._emit_crash_frame_push(builder, "operation main (entry)")
+        builder.call(set_cwd_to_exe_dir, [], name="ss_http_cwd_status")
 
         route_count = len(server.routes)
-        routes_ty = ir.ArrayType(route_ty, route_count)
-        routes_slot = builder.alloca(routes_ty, name="ss_routes")
         zero_i32 = ir.Constant(Int32, 0)
+        first_route_ptr = ir.Constant(route_ty.as_pointer(), None)
 
-        for index, (method, path, handler_name) in enumerate(server.routes):
-            route_ptr = builder.gep(
-                routes_slot,
-                [zero_i32, ir.Constant(Int32, index)],
-                inbounds=True,
-                name=f"ss_route_{index}"
-            )
-            method_ptr = self._i8p(builder, method.upper())
-            path_ptr = self._i8p(builder, path)
-            handler_fn = self._user_ops[handler_name]["fn"]
-            handler_ptr = handler_fn
-            middleware_ptr = ir.Constant(handler_ptr_ty, None)
-            middleware_name = middleware_by_path.get(path)
-            if middleware_name is not None:
-                middleware_ptr = self._user_ops[middleware_name]["fn"]
-                if middleware_ptr.type != handler_ptr_ty:
-                    middleware_ptr = builder.bitcast(middleware_ptr, handler_ptr_ty)
-            if handler_ptr.type != handler_ptr_ty:
-                handler_ptr = builder.bitcast(handler_ptr, handler_ptr_ty)
+        if route_count:
+            routes_ty = ir.ArrayType(route_ty, route_count)
+            routes_slot = builder.alloca(routes_ty, name="ss_routes")
+            first_route_ptr = builder.gep(routes_slot, [zero_i32, zero_i32], inbounds=True)
 
-            builder.store(method_ptr, builder.gep(
-                route_ptr, [zero_i32, zero_i32], inbounds=True))
-            builder.store(path_ptr, builder.gep(
-                route_ptr, [zero_i32, ir.Constant(Int32, 1)], inbounds=True))
-            builder.store(handler_ptr, builder.gep(
-                route_ptr, [zero_i32, ir.Constant(Int32, 2)], inbounds=True))
-            builder.store(middleware_ptr, builder.gep(
-                route_ptr, [zero_i32, ir.Constant(Int32, 3)], inbounds=True))
+            for index, (method, path, handler_name) in enumerate(server.routes):
+                route_ptr = builder.gep(
+                    routes_slot,
+                    [zero_i32, ir.Constant(Int32, index)],
+                    inbounds=True,
+                    name=f"ss_route_{index}"
+                )
+                method_ptr = self._i8p(builder, method.upper())
+                path_ptr = self._i8p(builder, path)
+                handler_fn = self._user_ops[handler_name]["fn"]
+                handler_ptr = handler_fn
+                middleware_ptr = ir.Constant(handler_ptr_ty, None)
+                middleware_name = middleware_by_path.get(path)
+                if middleware_name is not None:
+                    middleware_ptr = self._user_ops[middleware_name]["fn"]
+                    if middleware_ptr.type != handler_ptr_ty:
+                        middleware_ptr = builder.bitcast(middleware_ptr, handler_ptr_ty)
+                if handler_ptr.type != handler_ptr_ty:
+                    handler_ptr = builder.bitcast(handler_ptr, handler_ptr_ty)
+
+                builder.store(method_ptr, builder.gep(
+                    route_ptr, [zero_i32, zero_i32], inbounds=True))
+                builder.store(path_ptr, builder.gep(
+                    route_ptr, [zero_i32, ir.Constant(Int32, 1)], inbounds=True))
+                builder.store(handler_ptr, builder.gep(
+                    route_ptr, [zero_i32, ir.Constant(Int32, 2)], inbounds=True))
+                builder.store(middleware_ptr, builder.gep(
+                    route_ptr, [zero_i32, ir.Constant(Int32, 3)], inbounds=True))
+
+        static_route_count = len(server.static_routes)
+        first_static_route_ptr = ir.Constant(static_route_ty.as_pointer(), None)
+        if static_route_count:
+            static_routes_ty = ir.ArrayType(static_route_ty, static_route_count)
+            static_routes_slot = builder.alloca(static_routes_ty, name="ss_static_routes")
+            first_static_route_ptr = builder.gep(
+                static_routes_slot, [zero_i32, zero_i32], inbounds=True)
+
+            for index, (prefix, root_directory) in enumerate(server.static_routes):
+                static_route_ptr = builder.gep(
+                    static_routes_slot,
+                    [zero_i32, ir.Constant(Int32, index)],
+                    inbounds=True,
+                    name=f"ss_static_route_{index}"
+                )
+                builder.store(self._i8p(builder, prefix), builder.gep(
+                    static_route_ptr, [zero_i32, zero_i32], inbounds=True))
+                builder.store(self._i8p(builder, root_directory), builder.gep(
+                    static_route_ptr, [zero_i32, ir.Constant(Int32, 1)], inbounds=True))
 
         config_slot = builder.alloca(config_ty, name="ss_server_config")
-        first_route_ptr = builder.gep(routes_slot, [zero_i32, zero_i32], inbounds=True)
         builder.store(self._i8p(builder, server.host), builder.gep(
             config_slot, [zero_i32, zero_i32], inbounds=True))
         builder.store(ir.Constant(Int16, int(server.port)), builder.gep(
@@ -6625,6 +6916,10 @@ class Codegen:
                 mna_ptr = builder.bitcast(mna_ptr, handler_ptr_ty)
         builder.store(mna_ptr, builder.gep(
             config_slot, [zero_i32, ir.Constant(Int32, 5)], inbounds=True))
+        builder.store(first_static_route_ptr, builder.gep(
+            config_slot, [zero_i32, ir.Constant(Int32, 6)], inbounds=True))
+        builder.store(ir.Constant(Int64, static_route_count), builder.gep(
+            config_slot, [zero_i32, ir.Constant(Int32, 7)], inbounds=True))
 
         if server.startup_handler is not None:
             startup_fn = self._user_ops[server.startup_handler]["fn"]
@@ -8042,6 +8337,129 @@ class Codegen:
                 return True
             return False
 
+        def source_label_exit_path(label_name):
+            in_label = False
+            for row_verb, row_args, _row_ln in op.lines:
+                if row_verb == "label":
+                    if in_label:
+                        return None
+                    in_label = bool(row_args and row_args[0] == label_name)
+                    continue
+                if not in_label:
+                    continue
+                if row_verb == "return":
+                    if row_args:
+                        return f"return {row_args[0]}"
+                    return "return value"
+                if row_verb == "returnVoid":
+                    return "return void"
+                if row_verb == "returnOk":
+                    return "return ok"
+                if row_verb == "returnError":
+                    return "return error"
+            return None
+
+        def precompute_exit_label_edge_defers():
+            """Find forward exit-label edges that need path-local cleanup.
+
+            A shared failure/exit label can have predecessors both before and
+            after a defer registration. The label body itself can only emit the
+            defers common to every predecessor; any defer active on just this
+            predecessor must run on an edge trampoline before the branch enters
+            the shared label.
+            """
+            label_common = {}
+            edge_active = {}
+            active = []
+            reachable = True
+
+            def merge(existing, incoming):
+                incoming_names = {d["name"] for d in incoming}
+                return [d for d in existing if d["name"] in incoming_names]
+
+            def record(label_name, incoming):
+                if label_name in label_common:
+                    label_common[label_name] = merge(
+                        label_common[label_name], incoming)
+                else:
+                    label_common[label_name] = list(incoming)
+
+            for row_verb, row_args, row_ln in op.lines:
+                if row_verb in {"__typedComment__", "__groupAnchor__"}:
+                    continue
+                if row_verb == "label":
+                    label_name = row_args[0] if row_args else ""
+                    if reachable and label_name:
+                        record(label_name, active)
+                    if label_name in label_common:
+                        active = list(label_common[label_name])
+                    elif not reachable:
+                        active = []
+                    reachable = True
+                    continue
+                if not reachable:
+                    continue
+                if row_verb in {"defer", "deferLog", "deferAwaitLog"} and row_args:
+                    d = defer_by_name.get(row_args[0])
+                    if d is not None and d not in active:
+                        active.append(d)
+                    continue
+                if row_verb == "deferWhenExitLog" and row_args:
+                    d = defer_by_name.get(row_args[0])
+                    if d is not None and d not in active:
+                        active.append(d)
+                    continue
+
+                targets = source_branch_targets_with_attached_else(
+                    row_verb, row_args, row_ln)
+                for target_label in targets:
+                    edge_active[(row_ln, target_label)] = list(active)
+                    record(target_label, active)
+
+                terminates = source_row_terminates_before_next_label(
+                    row_verb, row_args)
+                if (row_verb == "branch" and row_ln in branch_else_by_line):
+                    terminates = True
+                if row_verb == "branchIf" and len(row_args) >= 3:
+                    terminates = True
+                if terminates:
+                    active = []
+                    reachable = False
+
+            edge_extra = {}
+            for (row_ln, target_label), incoming in edge_active.items():
+                decl_line = declared_label_lines.get(target_label)
+                if decl_line is None or decl_line <= row_ln:
+                    continue
+                if source_label_exit_path(target_label) is None:
+                    continue
+                common = label_common.get(target_label, [])
+                common_names = {d["name"] for d in common}
+                extra = [d for d in incoming if d["name"] not in common_names]
+                if extra:
+                    edge_extra[(row_ln, target_label)] = extra
+            return edge_extra
+
+        edge_extra_defers = precompute_exit_label_edge_defers()
+        edge_defer_block_counter = 0
+
+        def edge_target_block(target_label, source_lineno):
+            extra = edge_extra_defers.get((source_lineno, target_label))
+            if not extra:
+                return get_block(target_label)
+            nonlocal edge_defer_block_counter
+            edge_defer_block_counter += 1
+            source_block = builder.block
+            edge_bb = fn.append_basic_block(
+                f"defer_edge_{edge_defer_block_counter}_{target_label}")
+            builder.position_at_end(edge_bb)
+            emit_defers(
+                source_label_exit_path(target_label) or "fallthrough",
+                active=extra)
+            builder.branch(get_block(target_label))
+            builder.position_at_end(source_block)
+            return edge_bb
+
         def source_call_result_reference(row_verb, row_args):
             if row_verb == "bind" and len(row_args) >= 4 and row_args[0] in {"value", "ok", "error"}:
                 return row_args[3]
@@ -8820,7 +9238,10 @@ class Codegen:
                     consumed,
                     name=f"{block_prefix}_{call_name}_all_consumed")
             record_label_defers(done_label, active_defers)
-            builder.cbranch(all_consumed, get_block(done_label), case_blocks[0])
+            builder.cbranch(
+                all_consumed,
+                edge_target_block(done_label, done_lineno or lineno),
+                case_blocks[0])
 
             for index, (call_name, target_label, _case_lineno) in enumerate(cases):
                 builder.position_at_end(case_blocks[index])
@@ -8858,7 +9279,7 @@ class Codegen:
                 self._emit_trace_event(
                     builder, "branch.decision", "branch", op.name,
                     wait_name, target_label, lineno)
-                builder.branch(get_block(target_label))
+                builder.branch(edge_target_block(target_label, _case_lineno))
 
             builder.position_at_end(poll_block)
             loop = ensure_async_loop()
@@ -9230,7 +9651,7 @@ class Codegen:
                 cont = builder.function.append_basic_block(
                     f"after_{call_name}_checked")
                 record_label_defers(fail_label, active_defers)
-                builder.cbranch(err_cond, get_block(fail_label), cont)
+                builder.cbranch(err_cond, edge_target_block(fail_label, _ln), cont)
                 builder.position_at_end(cont)
                 continue
 
@@ -9597,11 +10018,14 @@ class Codegen:
                     call_name, fail_label if else_label is None else f"{fail_label}|{else_label}", _ln)
                 if else_label is None:
                     cont = builder.function.append_basic_block(f"after_{call_name}")
-                    builder.cbranch(err_cond, get_block(fail_label), cont)
+                    builder.cbranch(err_cond, edge_target_block(fail_label, _ln), cont)
                     builder.position_at_end(cont)
                 else:
                     record_label_defers(else_label, active_defers)
-                    builder.cbranch(err_cond, get_block(fail_label), get_block(else_label))
+                    builder.cbranch(
+                        err_cond,
+                        edge_target_block(fail_label, _ln),
+                        edge_target_block(else_label, _ln))
                     dead = builder.function.append_basic_block(f"after_branch_error_{call_name}")
                     builder.position_at_end(dead)
                     active_defers = []
@@ -9620,11 +10044,14 @@ class Codegen:
                     cond_name, t_label if else_label is None else f"{t_label}|{else_label}", _ln)
                 if else_label is None:
                     cont = builder.function.append_basic_block(f"after_branch_if_{cond_name}")
-                    builder.cbranch(cond_val, get_block(t_label), cont)
+                    builder.cbranch(cond_val, edge_target_block(t_label, _ln), cont)
                     builder.position_at_end(cont)
                 else:
                     record_label_defers(else_label, active_defers)
-                    builder.cbranch(cond_val, get_block(t_label), get_block(else_label))
+                    builder.cbranch(
+                        cond_val,
+                        edge_target_block(t_label, _ln),
+                        edge_target_block(else_label, _ln))
                     dead = builder.function.append_basic_block(f"after_branch_if_{cond_name}")
                     builder.position_at_end(dead)
                     active_defers = []
@@ -9645,7 +10072,7 @@ class Codegen:
                 self._emit_trace_event(
                     builder, "branch.decision", "branch", op.name,
                     "jump", target_label, _ln)
-                builder.branch(get_block(target_label))
+                builder.branch(edge_target_block(target_label, _ln))
                 dead = builder.function.append_basic_block(f"after_jump_{target_label}")
                 builder.position_at_end(dead)
                 active_defers = []
@@ -10036,7 +10463,7 @@ class Codegen:
         # without leaking the underlying integer width into source.
         if (target not in _BINOP_TO_LLVM and target not in _CMP_TO_LLVM
                 and target not in _CMP_Int32_TO_LLVM
-                and target not in _INT_MINMAX_TO_LLVM and target != "math.clampInt64"
+                and target not in _ALL_MINMAX_TARGETS and target not in _CLAMP_TARGETS
                 and target not in _FBINOP_TO_LLVM and target not in _FCMP_TO_LLVM
                 and target not in ("console.writeLine", "console.writeIntegerLine",
                                    "console.writeFloatLine")
@@ -11179,36 +11606,81 @@ class Codegen:
             call["result"] = builder.icmp_signed(_CMP_Int32_TO_LLVM[target], a, b, name=f"{call_name}_res")
             return
 
-        # Signed integer min/max: keep the operand satisfying the comparison.
-        if target in _INT_MINMAX_TO_LLVM:
+        # Numeric min/max: keep the operand satisfying the comparison.
+        if target in _SIGNED_INT64_MINMAX_TO_LLVM:
             a, b = operand_pair()
             a = require_i64(a, f"{target} left operand")
             b = require_i64(b, f"{target} right operand")
-            keep_left = builder.icmp_signed(_INT_MINMAX_TO_LLVM[target], a, b,
+            keep_left = builder.icmp_signed(_SIGNED_INT64_MINMAX_TO_LLVM[target], a, b,
                                             name=f"{call_name}_cmp")
             call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
             return
+        if target in _SIGNED_INT32_MINMAX_TO_LLVM:
+            a, b = operand_pair()
+            a = require_i32(a, f"{target} left operand")
+            b = require_i32(b, f"{target} right operand")
+            keep_left = builder.icmp_signed(_SIGNED_INT32_MINMAX_TO_LLVM[target], a, b,
+                                            name=f"{call_name}_cmp")
+            call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
+            return
+        if target in _UNSIGNED_INT64_MINMAX_TO_LLVM:
+            a, b = operand_pair()
+            a = require_i64(a, f"{target} left operand")
+            b = require_i64(b, f"{target} right operand")
+            keep_left = builder.icmp_unsigned(_UNSIGNED_INT64_MINMAX_TO_LLVM[target], a, b,
+                                              name=f"{call_name}_cmp")
+            call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
+            return
+        if target in _UNSIGNED_INT32_MINMAX_TO_LLVM:
+            a, b = operand_pair()
+            a = require_i32(a, f"{target} left operand")
+            b = require_i32(b, f"{target} right operand")
+            keep_left = builder.icmp_unsigned(_UNSIGNED_INT32_MINMAX_TO_LLVM[target], a, b,
+                                              name=f"{call_name}_cmp")
+            call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
+            return
+        if target in _FLOAT64_MINMAX_TO_LLVM:
+            a, b = operand_pair()
+            a = require_f64(a, f"{target} left operand")
+            b = require_f64(b, f"{target} right operand")
+            keep_left = builder.fcmp_ordered(_FLOAT64_MINMAX_TO_LLVM[target], a, b,
+                                             name=f"{call_name}_cmp")
+            call["result"] = builder.select(keep_left, a, b, name=f"{call_name}_res")
+            return
 
-        # `math.clampInt64 value low high` -> min(max(value, low), high).
-        if target == "math.clampInt64":
+        # `math.clamp* value low high` -> min(max(value, low), high).
+        if target in _CLAMP_TARGETS:
             usable = [(k, v) for k, v in call["args"].items()
                       if v not in opaque_inputs]
             if len(usable) != 3:
                 raise ValueError(
-                    f"{call_name}: math.clampInt64 needs 3 operands (value, low, high); "
+                    f"{call_name}: {target} needs 3 operands (value, low, high); "
                     f"got {list(call['args'])}")
             resolved = []
+            target_type, mode = _CLAMP_TARGETS[target]
             for arg_name, arg_value in usable:
                 value = resolve(arg_value)
                 if value is SENTINEL:
                     raise ValueError(f"{call_name}: opaque-input as operand for {target}")
-                resolved.append(require_i64(coerce_declared_argument(arg_name, value),
-                                            f"math.clampInt64 {arg_name}"))
+                coerced = coerce_declared_argument(arg_name, value)
+                if target_type in {"Int64", "UInt64"}:
+                    resolved.append(require_i64(coerced, f"{target} {arg_name}"))
+                elif target_type in {"Int32", "UInt32"}:
+                    resolved.append(require_i32(coerced, f"{target} {arg_name}"))
+                else:
+                    resolved.append(require_f64(coerced, f"{target} {arg_name}"))
             value, low, high = resolved
-            above_low = builder.icmp_signed(">", value, low, name=f"{call_name}_aboveLow")
+            if mode == "float":
+                above_low = builder.fcmp_ordered(">", value, low, name=f"{call_name}_aboveLow")
+                below_high = lambda lifted: builder.fcmp_ordered("<", lifted, high, name=f"{call_name}_belowHigh")
+            elif mode == "unsigned":
+                above_low = builder.icmp_unsigned(">", value, low, name=f"{call_name}_aboveLow")
+                below_high = lambda lifted: builder.icmp_unsigned("<", lifted, high, name=f"{call_name}_belowHigh")
+            else:
+                above_low = builder.icmp_signed(">", value, low, name=f"{call_name}_aboveLow")
+                below_high = lambda lifted: builder.icmp_signed("<", lifted, high, name=f"{call_name}_belowHigh")
             lifted = builder.select(above_low, value, low, name=f"{call_name}_lifted")
-            below_high = builder.icmp_signed("<", lifted, high, name=f"{call_name}_belowHigh")
-            call["result"] = builder.select(below_high, lifted, high, name=f"{call_name}_res")
+            call["result"] = builder.select(below_high(lifted), lifted, high, name=f"{call_name}_res")
             return
 
         # Pointer-arithmetic primitives. `pointer.loadByte` reads a single
@@ -11383,6 +11855,41 @@ class Codegen:
             call["result"] = c3_buffer
             return
 
+        # html.fragmentConcat left:HtmlFragment right:HtmlFragment
+        #                     buffer:OpaquePointer capacity:ByteCount -> HtmlFragment
+        # The typed sibling of text.concat for HTML fragments. Same compiler-
+        # owned `"%s%s"` snprintf lowering (so it links in every target and
+        # carries no format-string-injection risk), but inputs/output are typed
+        # HtmlFragment so the bind passes SS4302 (the rule that catches a
+        # String op's result mislabelled as an opaque HTML handle and crashing
+        # html.hydrate at runtime). The field log flagged "no HTML fragment-join
+        # primitive" as the keystone gap behind the nested-hydration
+        # accumulator idiom (the ~6-row per-list boilerplate every SSR list
+        # needed); this is that primitive — two fragments fold to one in a
+        # caller-owned buffer, iterable inside an ordinary loop.
+        if target == "html.fragmentConcat":
+            args_map = call["args"]
+
+            def _frag_concat_arg(arg_name):
+                arg_sym = args_map.get(arg_name)
+                if arg_sym is None:
+                    raise ValueError(
+                        f"{call_name}: html.fragmentConcat requires args left, "
+                        f"right, buffer, capacity (missing `{arg_name}`)")
+                return resolve(arg_sym)
+
+            frag_left = self._coerce_for_libc(builder, _frag_concat_arg("left"), "OpaquePointer")
+            frag_right = self._coerce_for_libc(builder, _frag_concat_arg("right"), "OpaquePointer")
+            frag_buffer = self._coerce_for_libc(builder, _frag_concat_arg("buffer"), "OpaquePointer")
+            frag_capacity = self._coerce_for_libc(builder, _frag_concat_arg("capacity"), "Int64")
+            frag_snprintf = self._libc_func("snprintf")
+            frag_fmt = self._i8p(builder, "%s%s")
+            builder.call(frag_snprintf,
+                         [frag_buffer, frag_capacity, frag_fmt, frag_left, frag_right])
+            self.provenance.record_external("snprintf", call)
+            call["result"] = frag_buffer
+            return
+
         # text.length value:String -> Int64
         # Compiler-lowered strlen. Replaces the hand-written pointer.loadByte
         # empty-check boilerplate (length == 0 means empty) and links everywhere.
@@ -11414,6 +11921,144 @@ class Codegen:
             cmp_result = builder.call(strcmp_fn, [eq_left, eq_right], name=f"{call_name}_cmp")
             call["result"] = builder.icmp_signed(
                 "==", cmp_result, ir.Constant(cmp_result.type, 0), name=f"{call_name}_eq")
+            return
+
+        # text.contains haystack:String needle:String -> Bool
+        # Compiler-lowered strstr(haystack, needle) != NULL. Native substring
+        # search that links everywhere — for "does this body contain field=",
+        # "does this path start with /api" (with a leading-anchored needle), etc.,
+        # without a stdlib op (SSCG002) or a hand-rolled byte scan.
+        if target == "text.contains":
+            ct_args = call["args"]
+            ct_hay_sym = ct_args.get("haystack")
+            ct_needle_sym = ct_args.get("needle")
+            if ct_hay_sym is None or ct_needle_sym is None:
+                raise ValueError(f"{call_name}: text.contains requires args `haystack` and `needle`")
+            ct_hay = self._coerce_for_libc(builder, resolve(ct_hay_sym), "OpaquePointer")
+            ct_needle = self._coerce_for_libc(builder, resolve(ct_needle_sym), "OpaquePointer")
+            strstr_fn = self._libc_func("strstr")
+            self.provenance.record_external("strstr", call)
+            found_ptr = builder.call(strstr_fn, [ct_hay, ct_needle], name=f"{call_name}_find")
+            if found_ptr.type != Int8P:
+                found_ptr = builder.bitcast(found_ptr, Int8P)
+            call["result"] = builder.icmp_unsigned(
+                "!=", found_ptr, ir.Constant(Int8P, None), name=f"{call_name}_contains")
+            return
+
+        # text.substring value:String start:Int64 length:Int64
+        #                 buffer:OpaquePointer capacity:ByteCount -> String
+        # Compiler-lowered bounded substring extraction: copies `length` bytes from
+        # value+start into buffer, null-terminates, returns the buffer. Truncates
+        # to capacity-1 if length exceeds it (so the result is always bounded).
+        # Pairs with text.indexOf for "extract before/after delimiter" parsing
+        # (e.g. split `key=value` at the `=` offset). Links in every target.
+        if target == "text.substring":
+            ss_args = call["args"]
+            for required in ("value", "start", "length", "buffer", "capacity"):
+                if required not in ss_args:
+                    raise ValueError(
+                        f"{call_name}: text.substring requires args value, start, "
+                        f"length, buffer, capacity (missing `{required}`)")
+            ss_val = self._coerce_for_libc(builder, resolve(ss_args["value"]), "OpaquePointer")
+            ss_start = self._coerce_for_libc(builder, resolve(ss_args["start"]), "Int64")
+            ss_len = self._coerce_for_libc(builder, resolve(ss_args["length"]), "Int64")
+            ss_buf = self._coerce_for_libc(builder, resolve(ss_args["buffer"]), "OpaquePointer")
+            ss_cap = self._coerce_for_libc(builder, resolve(ss_args["capacity"]), "Int64")
+            # Bounded copy length: min(length, capacity - 1) — leave room for NUL.
+            ss_one = ir.Constant(Int64, 1)
+            ss_cap_minus_one = builder.sub(ss_cap, ss_one, name=f"{call_name}_capM1")
+            ss_len_fits = builder.icmp_signed("<=", ss_len, ss_cap_minus_one,
+                                              name=f"{call_name}_fits")
+            ss_n = builder.select(ss_len_fits, ss_len, ss_cap_minus_one,
+                                  name=f"{call_name}_n")
+            ss_src = builder.gep(ss_val, [ss_start], inbounds=True, name=f"{call_name}_src")
+            ss_memcpy = self._libc_func("memcpy")
+            self.provenance.record_external("memcpy", call)
+            builder.call(ss_memcpy, [ss_buf, ss_src, ss_n])
+            ss_term_ptr = builder.gep(ss_buf, [ss_n], inbounds=True,
+                                      name=f"{call_name}_termPtr")
+            builder.store(ir.Constant(Int8, 0), ss_term_ptr)
+            call["result"] = ss_buf
+            return
+
+        # text.indexOf haystack:String needle:String -> Int64
+        # Compiler-lowered strstr position: returns the byte offset of the first
+        # occurrence of `needle` in `haystack`, or -1 if not found. Useful for
+        # tokenizing (find `=` in `key=value`) where text.contains (Bool) is
+        # not enough. Branchless: select(strstr == NULL, -1, strstr - haystack).
+        if target == "text.indexOf":
+            io_args = call["args"]
+            io_hay_sym = io_args.get("haystack")
+            io_needle_sym = io_args.get("needle")
+            if io_hay_sym is None or io_needle_sym is None:
+                raise ValueError(f"{call_name}: text.indexOf requires args `haystack` and `needle`")
+            io_hay = self._coerce_for_libc(builder, resolve(io_hay_sym), "OpaquePointer")
+            io_needle = self._coerce_for_libc(builder, resolve(io_needle_sym), "OpaquePointer")
+            io_strstr = self._libc_func("strstr")
+            self.provenance.record_external("strstr", call)
+            io_found = builder.call(io_strstr, [io_hay, io_needle], name=f"{call_name}_find")
+            if io_found.type != Int8P:
+                io_found = builder.bitcast(io_found, Int8P)
+            io_found_i = builder.ptrtoint(io_found, Int64, name=f"{call_name}_foundI")
+            io_hay_i = builder.ptrtoint(io_hay, Int64, name=f"{call_name}_hayI")
+            io_offset = builder.sub(io_found_i, io_hay_i, name=f"{call_name}_off")
+            io_not_null = builder.icmp_unsigned(
+                "!=", io_found, ir.Constant(Int8P, None), name=f"{call_name}_hit")
+            io_minus_one = ir.Constant(Int64, -1)
+            call["result"] = builder.select(
+                io_not_null, io_offset, io_minus_one, name=f"{call_name}_indexOf")
+            return
+
+        # text.startsWith value:String prefix:String -> Bool
+        # Compiler-lowered strncmp(value, prefix, strlen(prefix)) == 0. Anchored
+        # prefix match for routing (`path` starts with `/api/`) — unlike
+        # text.contains, which matches anywhere. Links in every target.
+        if target == "text.startsWith":
+            sw_args = call["args"]
+            sw_val_sym = sw_args.get("value")
+            sw_prefix_sym = sw_args.get("prefix")
+            if sw_val_sym is None or sw_prefix_sym is None:
+                raise ValueError(f"{call_name}: text.startsWith requires args `value` and `prefix`")
+            sw_val = self._coerce_for_libc(builder, resolve(sw_val_sym), "OpaquePointer")
+            sw_prefix = self._coerce_for_libc(builder, resolve(sw_prefix_sym), "OpaquePointer")
+            strlen_fn = self._libc_func("strlen")
+            strncmp_fn = self._libc_func("strncmp")
+            self.provenance.record_external("strlen", call)
+            self.provenance.record_external("strncmp", call)
+            sw_prefix_len = builder.call(strlen_fn, [sw_prefix], name=f"{call_name}_plen")
+            sw_cmp = builder.call(strncmp_fn, [sw_val, sw_prefix, sw_prefix_len], name=f"{call_name}_cmp")
+            call["result"] = builder.icmp_signed(
+                "==", sw_cmp, ir.Constant(sw_cmp.type, 0), name=f"{call_name}_startsWith")
+            return
+
+        # text.endsWith value:String suffix:String -> Bool
+        # Compiler-lowered branchless suffix match. Computes len_v = strlen(value),
+        # len_s = strlen(suffix); offset = (len_s <= len_v ? len_v - len_s : 0)
+        # so tail_ptr = value + offset stays in-bounds even when suffix is longer
+        # than value. Result is (len_s <= len_v) AND (strncmp(tail, suffix, len_s) == 0).
+        # Used for content-type/extension routing (does this path end with `.css`).
+        if target == "text.endsWith":
+            ew_args = call["args"]
+            ew_val_sym = ew_args.get("value")
+            ew_suffix_sym = ew_args.get("suffix")
+            if ew_val_sym is None or ew_suffix_sym is None:
+                raise ValueError(f"{call_name}: text.endsWith requires args `value` and `suffix`")
+            ew_val = self._coerce_for_libc(builder, resolve(ew_val_sym), "OpaquePointer")
+            ew_suffix = self._coerce_for_libc(builder, resolve(ew_suffix_sym), "OpaquePointer")
+            ew_strlen = self._libc_func("strlen")
+            ew_strncmp = self._libc_func("strncmp")
+            self.provenance.record_external("strlen", call)
+            self.provenance.record_external("strncmp", call)
+            ew_len_v = builder.call(ew_strlen, [ew_val], name=f"{call_name}_vlen")
+            ew_len_s = builder.call(ew_strlen, [ew_suffix], name=f"{call_name}_slen")
+            ew_fits = builder.icmp_signed("<=", ew_len_s, ew_len_v, name=f"{call_name}_fits")
+            ew_diff = builder.sub(ew_len_v, ew_len_s, name=f"{call_name}_diff")
+            ew_zero = ir.Constant(ew_len_v.type, 0)
+            ew_offset = builder.select(ew_fits, ew_diff, ew_zero, name=f"{call_name}_off")
+            ew_tail = builder.gep(ew_val, [ew_offset], inbounds=True, name=f"{call_name}_tail")
+            ew_cmp = builder.call(ew_strncmp, [ew_tail, ew_suffix, ew_len_s], name=f"{call_name}_cmp")
+            ew_eq = builder.icmp_signed("==", ew_cmp, ir.Constant(ew_cmp.type, 0), name=f"{call_name}_eq")
+            call["result"] = builder.and_(ew_fits, ew_eq, name=f"{call_name}_endsWith")
             return
 
         # text.fromInt64 value:Int64 buffer:OpaquePointer capacity:ByteCount -> String
@@ -12903,8 +13548,24 @@ class Codegen:
         # _native_bcrypt_link_inputs).
         # ------------------------------------------------------------
 
-        if target in ("bcrypt.hashPassword", "hashPassword"):
-            plaintext = arg_val_named("plaintext")
+        def bcrypt_status_as_result(status_value, success_name):
+            zero = ir.Constant(Int32, 0)
+            call["result"] = builder.icmp_signed(
+                "==", status_value, zero, name=success_name)
+            call["error_value"] = status_value
+            call["error_cond"] = builder.icmp_signed(
+                "<", status_value, zero, name=f"{call_name}_isError")
+
+        if target in (
+            "bcrypt.hashPassword", "hashPassword",
+            "bcrypt.hashPasswordResult", "hashPasswordResult",
+            "bcrypt.hashSessionTokenResult", "hashSessionTokenResult",
+        ):
+            plaintext = (
+                arg_val_named("token")
+                if target in ("bcrypt.hashSessionTokenResult", "hashSessionTokenResult")
+                else arg_val_named("plaintext")
+            )
             cost = arg_val_named("cost")
             out_buffer = arg_val_named("outBuffer")
             out_capacity = arg_val_named("outCapacity")
@@ -12922,13 +13583,28 @@ class Codegen:
             fn = self._runtime_func(
                 "ss_bcrypt_hash", Int32, [Int8P, Int32, Int8P, Int32])
             self.provenance.record_external("ss_bcrypt_hash", call)
-            call["result"] = builder.call(
+            status = builder.call(
                 fn, [plaintext, cost, out_buffer, out_capacity],
                 name=f"{call_name}_status")
+            if target in (
+                "bcrypt.hashPasswordResult", "hashPasswordResult",
+                "bcrypt.hashSessionTokenResult", "hashSessionTokenResult",
+            ):
+                bcrypt_status_as_result(status, f"{call_name}_ok")
+            else:
+                call["result"] = status
             return
 
-        if target in ("bcrypt.verifyPassword", "verifyPassword"):
-            plaintext = arg_val_named("plaintext")
+        if target in (
+            "bcrypt.verifyPassword", "verifyPassword",
+            "bcrypt.verifyPasswordResult", "verifyPasswordResult",
+            "bcrypt.verifySessionTokenResult", "verifySessionTokenResult",
+        ):
+            plaintext = (
+                arg_val_named("token")
+                if target in ("bcrypt.verifySessionTokenResult", "verifySessionTokenResult")
+                else arg_val_named("plaintext")
+            )
             expected_hash = arg_val_named("expectedHash")
             if isinstance(plaintext.type, ir.IntType):
                 plaintext = builder.inttoptr(plaintext, Int8P)
@@ -12937,12 +13613,28 @@ class Codegen:
             fn = self._runtime_func(
                 "ss_bcrypt_verify", Int32, [Int8P, Int8P])
             self.provenance.record_external("ss_bcrypt_verify", call)
-            call["result"] = builder.call(
+            status = builder.call(
                 fn, [plaintext, expected_hash],
                 name=f"{call_name}_matchOrErr")
+            if target in (
+                "bcrypt.verifyPasswordResult", "verifyPasswordResult",
+                "bcrypt.verifySessionTokenResult", "verifySessionTokenResult",
+            ):
+                call["result"] = builder.icmp_signed(
+                    "==", status, ir.Constant(Int32, 1),
+                    name=f"{call_name}_matched")
+                call["error_value"] = status
+                call["error_cond"] = builder.icmp_signed(
+                    "<", status, ir.Constant(Int32, 0),
+                    name=f"{call_name}_isError")
+            else:
+                call["result"] = status
             return
 
-        if target in ("bcrypt.randomBytes", "randomBytes"):
+        if target in (
+            "bcrypt.randomBytes", "randomBytes",
+            "bcrypt.randomBytesResult", "randomBytesResult",
+        ):
             out_buffer = arg_val_named("outBuffer")
             byte_count = arg_val_named("byteCount")
             if isinstance(out_buffer.type, ir.IntType):
@@ -12954,12 +13646,19 @@ class Codegen:
             fn = self._runtime_func(
                 "ss_random_bytes", Int32, [Int8P, Int32])
             self.provenance.record_external("ss_random_bytes", call)
-            call["result"] = builder.call(
+            status = builder.call(
                 fn, [out_buffer, byte_count],
                 name=f"{call_name}_status")
+            if target in ("bcrypt.randomBytesResult", "randomBytesResult"):
+                bcrypt_status_as_result(status, f"{call_name}_ok")
+            else:
+                call["result"] = status
             return
 
-        if target in ("bcrypt.base64UrlEncode", "base64UrlEncode"):
+        if target in (
+            "bcrypt.base64UrlEncode", "base64UrlEncode",
+            "bcrypt.base64UrlEncodeResult", "base64UrlEncodeResult",
+        ):
             input_buffer = arg_val_named("inputBuffer")
             input_count = arg_val_named("inputCount")
             output_buffer = arg_val_named("outputBuffer")
@@ -12993,9 +13692,52 @@ class Codegen:
                 "ss_base64url_encode", Int32,
                 [Int8P, Int32, Int8P, Int32, Int32.as_pointer()])
             self.provenance.record_external("ss_base64url_encode", call)
-            call["result"] = builder.call(
+            status = builder.call(
                 fn, [input_buffer, input_count, output_buffer,
                      output_capacity, output_length_out],
+                name=f"{call_name}_status")
+            if target in ("bcrypt.base64UrlEncodeResult", "base64UrlEncodeResult"):
+                bcrypt_status_as_result(status, f"{call_name}_ok")
+            else:
+                call["result"] = status
+            return
+
+        if target in (
+            "bcrypt.issueSessionToken", "issueSessionToken",
+            "bcrypt.issueCsrfToken", "issueCsrfToken",
+        ):
+            random_scratch = arg_val_named("randomScratch")
+            token_buffer = arg_val_named("tokenBuffer")
+            token_capacity = arg_val_named("tokenCapacity")
+            token_length_out = arg_val_named("tokenLengthOut")
+            if isinstance(random_scratch.type, ir.IntType):
+                random_scratch = builder.inttoptr(random_scratch, Int8P)
+            if isinstance(token_buffer.type, ir.IntType):
+                token_buffer = builder.inttoptr(token_buffer, Int8P)
+            length_out_ptr_type = Int32.as_pointer()
+            if isinstance(token_length_out.type, ir.IntType):
+                token_length_out = builder.inttoptr(
+                    token_length_out, length_out_ptr_type)
+            elif (isinstance(token_length_out.type, ir.PointerType)
+                    and token_length_out.type != length_out_ptr_type):
+                token_length_out = builder.bitcast(
+                    token_length_out, length_out_ptr_type)
+            if isinstance(token_capacity.type, ir.IntType) and token_capacity.type.width != 32:
+                token_capacity = (builder.trunc(token_capacity, Int32)
+                                  if token_capacity.type.width > 32
+                                  else builder.sext(token_capacity, Int32))
+            runtime_symbol = (
+                "ss_issue_csrf_token"
+                if target in ("bcrypt.issueCsrfToken", "issueCsrfToken")
+                else "ss_issue_session_token"
+            )
+            fn = self._runtime_func(
+                runtime_symbol, Int32,
+                [Int8P, Int8P, Int32, Int32.as_pointer()])
+            self.provenance.record_external(runtime_symbol, call)
+            call["result"] = builder.call(
+                fn,
+                [random_scratch, token_buffer, token_capacity, token_length_out],
                 name=f"{call_name}_status")
             return
 
@@ -13067,6 +13809,40 @@ class Codegen:
             call["result"] = builder.call(
                 response_text,
                 [response, status, body, content_type],
+                name=f"{call_name}_res"
+            )
+            return
+
+        if target == "http.redirect":
+            response = arg_val_named("response")
+            status = arg_val_named("status")
+            location = arg_val_named("location")
+            if isinstance(status.type, ir.IntType) and status.type.width != 32:
+                status = builder.trunc(status, Int32) if status.type.width > 32 else builder.sext(status, Int32)
+            if isinstance(response.type, ir.IntType):
+                response = builder.inttoptr(response, Int8P)
+            if isinstance(location.type, ir.IntType):
+                location = builder.inttoptr(location, Int8P)
+            response_header = self._runtime_func(
+                "ss_http_response_header",
+                Int32,
+                [Int8P, Int8P, Int8P]
+            )
+            response_text = self._runtime_func(
+                "ss_http_response_text",
+                Int32,
+                [Int8P, Int32, Int8P, Int8P]
+            )
+            self.provenance.record_external("ss_http_response_header", call)
+            self.provenance.record_external("ss_http_response_text", call)
+            builder.call(
+                response_header,
+                [response, self._i8p(builder, "Location"), location],
+                name=f"{call_name}_location"
+            )
+            call["result"] = builder.call(
+                response_text,
+                [response, status, self._i8p(builder, ""), self._i8p(builder, "text/plain; charset=utf-8")],
                 name=f"{call_name}_res"
             )
             return
@@ -13229,6 +14005,27 @@ class Codegen:
             self.provenance.record_external("ss_http_request_cookie", call)
             call["result"] = builder.call(
                 fn, [request, cookie_name], name=f"{call_name}_res")
+            return
+
+        if target in {"http.requestValueLength", "http.requestValueIsEmpty"}:
+            value = arg_val_named("value")
+            if isinstance(value.type, ir.IntType):
+                value = builder.inttoptr(value, Int8P)
+            if target == "http.requestValueLength":
+                fn = self._runtime_func(
+                    "ss_http_request_value_length", Int64, [Int8P])
+                self.provenance.record_external(
+                    "ss_http_request_value_length", call)
+                call["result"] = builder.call(
+                    fn, [value], name=f"{call_name}_length")
+            else:
+                fn = self._runtime_func(
+                    "ss_http_request_value_is_empty", Int32, [Int8P])
+                self.provenance.record_external(
+                    "ss_http_request_value_is_empty", call)
+                raw = builder.call(fn, [value], name=f"{call_name}_emptyRaw")
+                call["result"] = builder.icmp_signed(
+                    "!=", raw, ir.Constant(Int32, 0), name=f"{call_name}_isEmpty")
             return
 
         if target == "http.responseFile":
@@ -13419,12 +14216,43 @@ class Codegen:
             status = builder.call(
                 open_fn, [path, mode, db_slot], name=f"{call_name}_status")
             handle = builder.load(db_slot, name=f"{call_name}_database")
+            combined_status = status
+            sqlite_journal_mode = (
+                _build_metadata_value(self.prog, "sqliteJournalMode") or "default"
+            ).lower()
+            if sqlite_journal_mode == "wal":
+                wal_fn = self._runtime_func(
+                    "ss_sqlite_database_enable_wal", Int32, [Int8P])
+                self.provenance.record_external(
+                    "ss_sqlite_database_enable_wal", call)
+                wal_status = builder.call(
+                    wal_fn, [handle], name=f"{call_name}_walStatus")
+                open_failed = builder.icmp_signed(
+                    "!=", status, ir.Constant(Int32, 0),
+                    name=f"{call_name}_openFailed")
+                combined_status = builder.select(
+                    open_failed, status, wal_status,
+                    name=f"{call_name}_configuredStatus")
             call["result"] = handle
-            call["error_value"] = status
-            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            call["error_value"] = combined_status
+            call["error_cond"] = _sqlite_simple_status_error_cond(combined_status)
             # Stash the slot so the bind handler can route it to
             # bind_slots, where emit_defers will find it.
             call["handle_slot"] = db_slot
+            return
+
+        if target in ("sqlite.enableWalMode", "enableWalMode"):
+            database = arg_val_named("database")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, Int8P)
+            wal_fn = self._runtime_func(
+                "ss_sqlite_database_enable_wal", Int32, [Int8P])
+            self.provenance.record_external("ss_sqlite_database_enable_wal", call)
+            status = builder.call(
+                wal_fn, [database], name=f"{call_name}_status")
+            call["result"] = ir.Constant(Int32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
             return
 
         if target in ("sqlite.closeDatabase", "closeDatabase"):
@@ -13502,6 +14330,58 @@ class Codegen:
             self.provenance.record_external("ss_sqlite_exec", call)
             status = builder.call(
                 exec_fn, [database, sql], name=f"{call_name}_status")
+            call["result"] = ir.Constant(Int32, 0)
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target in ("sqlite.queryScalarInt64", "queryScalarInt64"):
+            database = arg_val_named("database")
+            sql = arg_val_named("sql")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, Int8P)
+            if isinstance(sql.type, ir.IntType):
+                sql = builder.inttoptr(sql, Int8P)
+            with builder.goto_entry_block():
+                value_slot = builder.alloca(
+                    Int64, name=f"{call_name}_valueSlot")
+                builder.store(ir.Constant(Int64, 0), value_slot)
+            query_fn = self._runtime_func(
+                "ss_sqlite_query_scalar_int64", Int32,
+                [Int8P, Int8P, Int64.as_pointer()])
+            self.provenance.record_external(
+                "ss_sqlite_query_scalar_int64", call)
+            status = builder.call(
+                query_fn, [database, sql, value_slot],
+                name=f"{call_name}_status")
+            call["result"] = builder.load(value_slot, name=f"{call_name}_value")
+            call["error_value"] = status
+            call["error_cond"] = _sqlite_simple_status_error_cond(status)
+            return
+
+        if target in (
+            "sqlite.beginImmediateTransaction",
+            "beginImmediateTransaction",
+            "sqlite.commitTransaction",
+            "commitTransaction",
+            "sqlite.rollbackTransaction",
+            "rollbackTransaction",
+        ):
+            database = arg_val_named("database")
+            if isinstance(database.type, ir.IntType):
+                database = builder.inttoptr(database, Int8P)
+            runtime_name = {
+                "sqlite.beginImmediateTransaction": "ss_sqlite_transaction_begin_immediate",
+                "beginImmediateTransaction": "ss_sqlite_transaction_begin_immediate",
+                "sqlite.commitTransaction": "ss_sqlite_transaction_commit",
+                "commitTransaction": "ss_sqlite_transaction_commit",
+                "sqlite.rollbackTransaction": "ss_sqlite_transaction_rollback",
+                "rollbackTransaction": "ss_sqlite_transaction_rollback",
+            }[target]
+            transaction_fn = self._runtime_func(runtime_name, Int32, [Int8P])
+            self.provenance.record_external(runtime_name, call)
+            status = builder.call(
+                transaction_fn, [database], name=f"{call_name}_status")
             call["result"] = ir.Constant(Int32, 0)
             call["error_value"] = status
             call["error_cond"] = _sqlite_simple_status_error_cond(status)
@@ -14057,6 +14937,72 @@ def _declared_response_body_forwarders(prog: Program) -> dict:
     return forwarders
 
 
+def _declared_sql_forwarders(prog: Program) -> dict:
+    forwarders = {}
+    for op in prog.operations.values():
+        for verb, args, lineno in op.lines:
+            if (verb == "sqliteSqlForwarder" and len(args) >= 2
+                    and args[0] == op.name):
+                forwarders[op.name] = {"arg": args[1], "line": lineno}
+    return forwarders
+
+
+def _sqlite_sql_forwarder_targets(prog: Program) -> dict:
+    declared = _declared_sql_forwarders(prog)
+    targets_by_op = {op_name: set() for op_name in declared}
+    for _ in range(len(declared) + 1):
+        changed = False
+        for op_name, claim in declared.items():
+            op = prog.operations.get(op_name)
+            if op is None:
+                continue
+            calls = _strict_collect_calls(prog, op)
+            for call_info in calls.values():
+                target = call_info["target"]
+                if (target in _STRICT_SQL_STRING_TARGETS
+                        and _strict_call_arg_value(call_info, "sql") == claim["arg"]):
+                    if target not in targets_by_op[op_name]:
+                        targets_by_op[op_name].add(target)
+                        changed = True
+                    continue
+                callee_claim = declared.get(target)
+                if not callee_claim:
+                    continue
+                if _strict_call_arg_value(call_info, callee_claim["arg"]) != claim["arg"]:
+                    continue
+                for forwarded_target in targets_by_op.get(target, set()):
+                    if forwarded_target not in targets_by_op[op_name]:
+                        targets_by_op[op_name].add(forwarded_target)
+                        changed = True
+        if not changed:
+            break
+    return {
+        op_name: {
+            "arg": declared[op_name]["arg"],
+            "line": declared[op_name]["line"],
+            "targets": frozenset(targets),
+        }
+        for op_name, targets in targets_by_op.items()
+        if targets
+    }
+
+
+def _strict_forwarded_sql_usages(
+    prog: Program,
+    calls: dict,
+    sql_forwarders: dict,
+):
+    for call_info in calls.values():
+        forwarder = sql_forwarders.get(call_info["target"])
+        if not forwarder:
+            continue
+        sql_name = _strict_call_arg_value(call_info, forwarder["arg"])
+        if sql_name is None:
+            continue
+        for target in sorted(forwarder["targets"]):
+            yield call_info, target, sql_name
+
+
 def _operation_is_response_runtime_binding(op: Operation) -> bool:
     has_runtime_binding_body = False
     has_response_write_effect = False
@@ -14355,13 +15301,7 @@ def _strict_raise_first_fallible_contract(prog: Program, diags):
 
 
 def _strict_span(prog: Program, lineno: int, role: str = "primary") -> DiagnosticSpan:
-    return DiagnosticSpan(
-        path=prog.source_path or "<source>",
-        line=lineno or 0,
-        column=1,
-        raw=prog.source_lines.get(lineno, ""),
-        role=role,
-    )
+    return _origin_aware_span(prog, lineno, role)
 
 
 def _strict_target(prog: Program, target: str) -> str:
@@ -15131,7 +16071,11 @@ def _strict_raise_first_insecure_random(prog: Program, diags) -> None:
 # definition password hashing; a cost below this floor is brute-forceable. The
 # module's `bcryptRecommendedCost` is 12; the OWASP-ASVS floor is 10.
 #
-_STRICT_PASSWORD_HASH_TARGET = "bcrypt.hashPassword"
+_STRICT_PASSWORD_HASH_TARGETS = frozenset({
+    "bcrypt.hashPassword",
+    "bcrypt.hashPasswordResult",
+    "bcrypt.hashSessionTokenResult",
+})
 _STRICT_SECURE_BCRYPT_COST_FLOOR = 10
 
 
@@ -15144,9 +16088,11 @@ def _is_bcrypt_hash_target(prog: Program, raw_target: str) -> bool:
     form that import flattening produces, leaving SS4602 inert on the normal
     imported-bcrypt path; this restores it without re-introducing the FP."""
     for candidate in (raw_target, _strict_target(prog, raw_target)):
-        if candidate == "bcrypt.hashPassword":
+        if candidate in _STRICT_PASSWORD_HASH_TARGETS:
             return True
-        if candidate == "hashPassword" and "hashPassword" not in prog.operations:
+        if candidate in {
+            "hashPassword", "hashPasswordResult", "hashSessionTokenResult",
+        } and candidate not in prog.operations:
             return True
     return False
 
@@ -15430,6 +16376,7 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
     a module-scope immutable SqlText value backed by a sql body island or
     a trusted external literalSource asset. Forces parameterised statements:
     dynamic values go through sqlite.bind*, not into the SQL text itself."""
+    sql_forwarders = _sqlite_sql_forwarder_targets(prog)
     for op_name, op in prog.operations.items():
         call_targets = _strict_call_target_map(op)
         for verb, args, lineno in op.lines:
@@ -15447,6 +16394,11 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
                 continue
             const = _strict_sql_const(prog, value_name)
             if const is None:
+                forwarder = sql_forwarders.get(op_name)
+                if (forwarder
+                        and value_name == forwarder["arg"]
+                        and target in forwarder["targets"]):
+                    continue
                 diags.append((lineno,
                     f"SS3911 sqlMustBeStaticSqlText: in operation `{op_name}`, "
                     f"call `{call_name}` (target `{target}`) uses "
@@ -15476,6 +16428,43 @@ def _check_strict_sql_string_is_constant(prog: Program, diags) -> None:
                 "in strictExecutable mode. Use `storage module immutable "
                 "NAME SqlText` plus `sql body NAME`, or a `literal NAME "
                 "SqlText` with `literalSource` for external .sql assets"))
+
+        calls = _strict_collect_calls(prog, op)
+        for call_info, target, value_name in _strict_forwarded_sql_usages(
+                prog, calls, sql_forwarders):
+            const = _strict_sql_const(prog, value_name)
+            if const is None:
+                diags.append((call_info["line"],
+                    f"SS3911 sqlMustBeStaticSqlText: in operation `{op_name}`, "
+                    f"call `{call_info['name']}` (target `{call_info['target']}`, "
+                    f"forwarded to `{target}`) uses `{value_name}` as `sql`, "
+                    "but that name is not a module-scope SQL constant"))
+                continue
+            typ, _value = const
+            if not _strict_is_sql_text_type(prog, typ):
+                diags.append((call_info["line"],
+                    f"SS3911 sqlMustBeSqlText: in operation `{op_name}`, "
+                    f"call `{call_info['name']}` (target `{call_info['target']}`, "
+                    f"forwarded to `{target}`) uses `{value_name}` as `sql`; "
+                    "SQL text must be typed `SqlText`, not `String`"))
+                continue
+            if any(name in prog.mutable_globals for name in _strict_sql_names_for(value_name)):
+                diags.append((call_info["line"],
+                    f"SS3911 sqlMustBeImmutable: in operation `{op_name}`, "
+                    f"call `{call_info['name']}` (target `{call_info['target']}`, "
+                    f"forwarded to `{target}`) uses mutable `{value_name}` as "
+                    "`sql`; SQL text must be immutable"))
+                continue
+            if _strict_sql_source_is_body_or_external_literal(prog, value_name):
+                continue
+            diags.append((call_info["line"],
+                f"SS3916 sqlMustUseBodyOrLiteralSource: in operation `{op_name}`, "
+                f"call `{call_info['name']}` (target `{call_info['target']}`, "
+                f"forwarded to `{target}`) uses `{value_name}` as `sql`; "
+                "inline SQL strings are rejected in strictExecutable mode. Use "
+                "`storage module immutable NAME SqlText` plus `sql body NAME`, "
+                "or a `literal NAME SqlText` with `literalSource` for external "
+                ".sql assets"))
 
 
 def _strict_sql_names_for(value_name: str) -> list:
@@ -15533,6 +16522,7 @@ def _is_sql_constant_type(prog: Program, typ: str) -> bool:
 
 
 def _sql_constant_usage(prog: Program):
+    sql_forwarders = _sqlite_sql_forwarder_targets(prog)
     for op_name, op in prog.operations.items():
         call_targets = _strict_call_target_map(op)
         for verb, args, lineno in op.lines:
@@ -15547,6 +16537,10 @@ def _sql_constant_usage(prog: Program):
             if target not in _STRICT_SQL_STRING_TARGETS or arg_name not in _STRICT_SQL_ARG_SLOTS:
                 continue
             yield op_name, op, call_name, target, value_name, lineno
+        calls = _strict_collect_calls(prog, op)
+        for call_info, target, value_name in _strict_forwarded_sql_usages(
+                prog, calls, sql_forwarders):
+            yield op_name, op, call_info["name"], target, value_name, call_info["line"]
 
 
 def _strict_sqlite_statement_has_column_reads(
@@ -15671,6 +16665,7 @@ def _strict_sql_is_write_statement(sql_text: str) -> bool:
 
 
 def _check_sqlite_multiple_writes_have_transaction(prog: Program, diags) -> None:
+    sql_forwarders = _sqlite_sql_forwarder_targets(prog)
     for op_name, op in prog.operations.items():
         calls = _strict_collect_calls(prog, op)
         write_steps = []
@@ -15692,6 +16687,14 @@ def _check_sqlite_multiple_writes_have_transaction(prog: Program, diags) -> None
                 if _strict_call_arg_value(step_call, "statement") not in statement_names:
                     continue
                 write_steps.append((prepare_call, step_call, sql_name))
+        for call_info, target, sql_name in _strict_forwarded_sql_usages(
+                prog, calls, sql_forwarders):
+            if target != "sqlite.prepareStatement":
+                continue
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None or not _strict_sql_is_write_statement(sql_text):
+                continue
+            write_steps.append((call_info, call_info, sql_name))
 
         if len(write_steps) < 2:
             continue
@@ -15699,11 +16702,27 @@ def _check_sqlite_multiple_writes_have_transaction(prog: Program, diags) -> None
         has_begin = False
         has_commit = False
         for call_info in calls.values():
+            if call_info["target"] in _STRICT_SQL_TRANSACTION_BEGIN_TARGETS:
+                has_begin = True
+                continue
+            if call_info["target"] in _STRICT_SQL_TRANSACTION_COMMIT_TARGETS:
+                has_commit = True
+                continue
             if call_info["target"] not in _STRICT_SQL_EXEC_TARGETS:
                 continue
             sql_name = _strict_call_arg_value(call_info, "sql")
             if sql_name is None:
                 continue
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None:
+                continue
+            verb = _sql_first_verb(sql_text)
+            if verb in {"BEGIN", "SAVEPOINT"}:
+                has_begin = True
+            elif verb in {"COMMIT", "RELEASE"}:
+                has_commit = True
+        for _call_info, _target, sql_name in _strict_forwarded_sql_usages(
+                prog, calls, sql_forwarders):
             sql_text = _strict_sql_text_for_name(prog, sql_name)
             if sql_text is None:
                 continue
@@ -15758,6 +16777,9 @@ def _check_sqlite_returning_statement_drained_before_commit(
 
         commit_calls = []
         for call_info in calls.values():
+            if call_info["target"] in _STRICT_SQL_TRANSACTION_COMMIT_TARGETS:
+                commit_calls.append(call_info)
+                continue
             if call_info["target"] not in _STRICT_SQL_EXEC_TARGETS:
                 continue
             sql_name = _strict_call_arg_value(call_info, "sql")
@@ -16124,7 +17146,8 @@ def _check_sqlite_sql_body_usage(prog: Program, diags) -> None:
                 f"SS3914 execSqlCannotUsePlaceholders: in operation "
                 f"`{op_name}`, call `{call_name}` uses SQL constant "
                 f"`{value_name}` containing {placeholder_count} bind "
-                "placeholder(s), but sqlite.exec / sqlite.execStatus have no "
+                "placeholder(s), but sqlite.exec / sqlite.execStatus / "
+                "sqlite.queryScalarInt64 have no "
                 "sqlite.bind* path; use sqlite.prepareStatement for "
                 "parameterized SQL"))
 
@@ -16947,11 +17970,102 @@ def validate_const_lowerability(prog: Program) -> None:
             if verb == "input" and len(args) >= 2:
                 input_param_types.add(args[-1])
 
-    def _check(name: str, typ: str, lineno: int) -> None:
+    def _const_scalar_literal_is_parseable(typ: str, value) -> bool:
+        if not isinstance(value, str):
+            return True
+        if value in prog.consts:
+            return True
+        resolved = resolve_alias(prog, typ)
+        enum_repr = enum_repr_type(prog, resolved)
+        if enum_repr is not None:
+            enum_case = enum_case_values(prog).get(value)
+            if enum_case is not None and enum_case[0] == resolved:
+                return True
+        llty = llvm_type_for(prog, typ)
+        if llty is None or llty == Int8P:
+            return True
+        if isinstance(llty, ir.IntType):
+            if llty.width == 1 and value.lower() in ("true", "yes", "false", "no"):
+                return True
+            try:
+                int(value, 0)
+                return True
+            except (TypeError, ValueError):
+                return False
+        if isinstance(llty, (ir.FloatType, ir.DoubleType)):
+            try:
+                float(value)
+                return True
+            except (TypeError, ValueError):
+                return False
+        return True
+
+    def _looks_like_dotted_literal(value) -> bool:
+        if not isinstance(value, str) or "." not in value:
+            return False
+        parts = value.split(".")
+        return len(parts) == 2 and all(part for part in parts)
+
+    def _dotted_literal_message(typ: str, value: str) -> tuple[str, list[str]]:
+        enum_name = resolve_alias(prog, typ)
+        fixes = [
+            f"Replace `{value}` with a numeric literal or a previously declared constant.",
+            "For enum constants, use the bare exported case name, not `Enum.Case` dotted syntax.",
+        ]
+        if value.startswith("HttpStatus."):
+            fixes.insert(
+                0,
+                "For HTTP statuses, declare numeric HttpStatusCode constants such as `storage local immutable okStatus HttpStatusCode 200`.",
+            )
+        elif enum_repr_type(prog, enum_name) is not None:
+            cases = [case_name for case_name, _raw in prog.enums[enum_name].cases]
+            if cases:
+                fixes.insert(0, f"For `{enum_name}`, use a bare case such as `{cases[0]}`.")
+        return (
+            f"unsupported const value: dotted literal `{value}` is not a SemanticScript value literal for type `{typ}`",
+            fixes,
+        )
+
+    def _raise_dotted_literal(name: str, typ: str, value: str, lineno: int) -> None:
+        span = _strict_span(prog, lineno) if lineno else _strict_span(prog, 0)
+        message, fixes = _dotted_literal_message(typ, value)
+        raise CompilerDiagnosticError(CompilerDiagnostic(
+            code="SSCG004",
+            phase="check.const-lowerability",
+            message=f"{message} (constant `{name}`)",
+            primary=span,
+            semantic_stack=[
+                DiagnosticFrame(
+                    kind="const value lowerability validation",
+                    span=span,
+                    note=(
+                        "dotted enum-style values are not part of SemanticScript's "
+                        "constant syntax; unresolved scalar constants otherwise "
+                        "reach codegen's integer/float fallback path"
+                    ),
+                ),
+            ],
+            direction=(
+                "Declare the constant as explicit source data. For HTTP status "
+                "codes, use a numeric `HttpStatusCode` value such as 200. For "
+                "declared enums, use the bare exported case constant such as "
+                "`readWriteCreateSqliteOpenMode`, not `Enum.Case`."
+            ),
+            suggested_fixes=fixes,
+            agent_hint=(
+                "Do not generate stale dotted enum literals like `HttpStatus.Ok`. "
+                "Use a numeric HttpStatusCode constant or the bare enum case name "
+                "that `sem docs get TYPENAME --json` reports."
+            ),
+        ))
+
+    def _check(name: str, typ: str, value, lineno: int) -> None:
         if "." in name:
             return  # qualified/imported const — owned by its source module
         if typ in input_param_types:
             return  # opaque handle / context type, lowered via the input path
+        if _looks_like_dotted_literal(value) and not _const_scalar_literal_is_parseable(typ, value):
+            _raise_dotted_literal(name, typ, value, lineno)
         if _const_type_is_lowerable(prog, typ):
             return
         span = _strict_span(prog, lineno) if lineno else _strict_span(prog, 0)
@@ -16987,8 +18101,8 @@ def validate_const_lowerability(prog: Program) -> None:
                 "constant's declared type in source; do not edit generated IR."),
         ))
 
-    for name, (typ, _value) in list(prog.consts.items()):
-        _check(name, typ, prog.const_lines.get(name, 0))
+    for name, (typ, value) in list(prog.consts.items()):
+        _check(name, typ, value, prog.const_lines.get(name, 0))
     for op in prog.operations.values():
         local_lines = {}
         for verb, args, lineno in op.lines:
@@ -16996,8 +18110,8 @@ def validate_const_lowerability(prog: Program) -> None:
                 local_lines.setdefault(args[0], lineno)
             elif verb == "storage" and len(args) >= 4:
                 local_lines.setdefault(args[2], lineno)
-        for name, (typ, _value) in list(op.consts.items()):
-            _check(name, typ, local_lines.get(name, op.decl_line))
+        for name, (typ, value) in list(op.consts.items()):
+            _check(name, typ, value, local_lines.get(name, op.decl_line))
 
 
 def validate_webserver_targets(prog: Program) -> None:
@@ -17019,7 +18133,7 @@ def validate_webserver_targets(prog: Program) -> None:
     and is left alone.
     """
     for server in prog.web_servers.values():
-        if not server.routes:
+        if not server.routes and not server.static_routes:
             continue
         missing = None
         if server.host is None:
@@ -17187,14 +18301,16 @@ def _check_defer_dominates_exit_labels(op: Operation, diags) -> None:
     later failure branches to a SHARED reject/fail label — but that same label
     is ALSO reached from a failure branch BEFORE the resource was acquired (the
     acquisition's own failure edge). The defer therefore does not dominate the
-    label: codegen cannot prove the resource is live there, so the cleanup is
-    skipped on the post-acquisition path and the handle/lock leaks.
+    label. Older lowering collapsed the label to the common defer snapshot and
+    skipped cleanup on the post-acquisition path.
 
-    The safe idiom is to give the pre-acquisition failure its OWN exit label so
-    the shared cleanup label is dominated by the defer (or to scope the defer
-    with `deferRunOn`). We fire when a label is targeted both strictly before
-    and strictly after an all-paths defer, the label is declared after the
-    defer (a forward exit handler), and its body returns.
+    Codegen now emits a path-local edge cleanup block for lowered defers in
+    this exact forward-exit-label shape. The warning still nudges authors
+    toward the clearer idiom: give the pre-acquisition failure its OWN exit
+    label so the shared cleanup label is dominated by the defer (or scope the
+    defer with `deferRunOn`). We fire when a label is targeted both strictly
+    before and strictly after an all-paths defer, the label is declared after
+    the defer (a forward exit handler), and its body returns.
     """
     defers = _strict_collect_defers(op)
     if not defers:
@@ -17230,11 +18346,12 @@ def _check_defer_dominates_exit_labels(op: Operation, diags) -> None:
             reported.add(lbl)
             earlier = min(ln for l2, ln in transfers if l2 == lbl and ln < d_line)
             diags.append((d_line,
-                f"deferNotDominated: defer `{defer_info['name']}` may be skipped at "
-                f"label `{lbl}`, which is also reached before the resource is "
-                f"acquired (line {earlier}); the cleanup does not dominate that exit "
-                f"so the resource can leak. Give the pre-acquisition failure its own "
-                f"exit label, or scope the defer with `deferRunOn`."))
+                f"deferNotDominated: defer `{defer_info['name']}` reaches shared "
+                f"exit label `{lbl}`, which is also reached before the resource is "
+                f"acquired (line {earlier}); lowered code inserts path-local edge "
+                f"cleanup for this forward exit shape, but split the pre-acquisition "
+                f"failure into its own exit label, or scope the defer with "
+                f"`deferRunOn`, to make the lifetime explicit."))
 
 
 def _branch_label_names_a_role(label: str) -> bool:
@@ -18125,12 +19242,21 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
     not exec a BEGIN/COMMIT pair, warn about the atomicity gap.
     Without the transaction, a step failure on the second write leaves the
     first write committed, producing partial state."""
+    sql_forwarders = _sqlite_sql_forwarder_targets(prog)
     for op_name, op in prog.operations.items():
         write_step_count = 0
-        opened_transaction = False
+        has_begin = False
+        has_commit = False
+        calls = _strict_collect_calls(prog, op)
         call_targets = _strict_call_target_map(op)
         for call_name, (target, _line) in call_targets.items():
             canonical = _strict_target(prog, target)
+            if canonical in _STRICT_SQL_TRANSACTION_BEGIN_TARGETS:
+                has_begin = True
+                continue
+            if canonical in _STRICT_SQL_TRANSACTION_COMMIT_TARGETS:
+                has_commit = True
+                continue
             if canonical == "sqlite.stepStatement":
                 # Find the matching prepareStatement's sql arg
                 prep_sql = _operation_step_call_to_sql(prog, op, call_name)
@@ -18149,6 +19275,18 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
             elif canonical in _STRICT_SQL_EXEC_TARGETS:
                 # If any sqlite.exec arg's sql is a BEGIN/COMMIT/etc.
                 pass
+        for _call_info, target, sql_name in _strict_forwarded_sql_usages(
+                prog, calls, sql_forwarders):
+            sql_text = _strict_sql_text_for_name(prog, sql_name)
+            if sql_text is None:
+                continue
+            if target == "sqlite.prepareStatement" and _LINT_WRITE_VERB_RE.match(sql_text):
+                write_step_count += 1
+            transaction_match = _LINT_TRANSACTION_VERB_RE.match(sql_text)
+            if transaction_match and transaction_match.group(1).upper() in {"BEGIN", "SAVEPOINT"}:
+                has_begin = True
+            if transaction_match and transaction_match.group(1).upper() in {"COMMIT", "RELEASE"}:
+                has_commit = True
         for verb, args, _lineno in op.lines:
             arg_parts = _strict_argument_parts(verb, args)
             if arg_parts is None:
@@ -18167,14 +19305,18 @@ def _check_multiple_writes_without_transaction(prog: Program, diags):
             if not _is_sql_constant_type(prog, const[0]):
                 continue
             value = const[1]
-            if isinstance(value, str) and _LINT_TRANSACTION_VERB_RE.match(value):
-                opened_transaction = True
-        if write_step_count >= 2 and not opened_transaction:
+            if isinstance(value, str):
+                transaction_match = _LINT_TRANSACTION_VERB_RE.match(value)
+                if transaction_match and transaction_match.group(1).upper() in {"BEGIN", "SAVEPOINT"}:
+                    has_begin = True
+                if transaction_match and transaction_match.group(1).upper() in {"COMMIT", "RELEASE"}:
+                    has_commit = True
+        if write_step_count >= 2 and not (has_begin and has_commit):
             diags.append((op.decl_line,
                 f"SS3411 multipleWritesWithoutTransaction: operation "
                 f"`{op_name}` executes {write_step_count} write "
                 f"statements (INSERT/UPDATE/DELETE) without an "
-                f"enclosing `sqlite.exec BEGIN` / `sqlite.exec COMMIT` "
+                f"enclosing SQLite BEGIN / COMMIT "
                 f"pair. A failure between the writes leaves earlier "
                 f"writes committed and later ones rolled back — "
                 f"consistency hazard. Wrap the writes in a SQLite "
@@ -18242,6 +19384,7 @@ def _check_dead_sql_constant(prog: Program, diags):
     if not sql_constants:
         return
     referenced = set()
+    sql_forwarders = _sqlite_sql_forwarder_targets(prog)
     for op in prog.operations.values():
         call_targets = _strict_call_target_map(op)
         for verb, args, _lineno in op.lines:
@@ -18264,11 +19407,16 @@ def _check_dead_sql_constant(prog: Program, diags):
                 if _strict_target(prog, args[1]) in _STRICT_SQL_EXEC_TARGETS:
                     # args = [NAME, sqlite.exec, DATABASE, SQL, ...]
                     referenced.add(args[3])
+        calls = _strict_collect_calls(prog, op)
+        for _call_info, _target, sql_name in _strict_forwarded_sql_usages(
+                prog, calls, sql_forwarders):
+            referenced.add(sql_name)
     for name in sorted(set(sql_constants) - referenced):
         diags.append((0,
             f"SS3415 deadSqlConstant: SQL constant `{name}` is declared "
             f"but never referenced by `sqlite.prepareStatement`, "
-            f"`sqlite.exec`, or `sqlite.execStatus`. Either delete the "
+            f"`sqlite.exec`, `sqlite.execStatus`, or "
+            f"`sqlite.queryScalarInt64`. Either delete the "
             f"declaration or wire it "
             f"into the handler it was meant for"))
 
@@ -19243,13 +20391,7 @@ def _diagnostic_from_codegen_error(prog: Program, error: Exception) -> CompilerD
     line_match = re.search(r"\bline\s+(\d+)\b", message)
     if line_match:
         line = int(line_match.group(1))
-        primary = DiagnosticSpan(
-            path=prog.source_path or "<source>",
-            line=line,
-            column=1,
-            raw=prog.source_lines.get(line, ""),
-            role="sourceError",
-        )
+        primary = _origin_aware_span(prog, line, role="sourceError")
 
     call_match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*:", message)
     call_name = call_match.group(1) if call_match else ""
@@ -19263,13 +20405,7 @@ def _diagnostic_from_codegen_error(prog: Program, error: Exception) -> CompilerD
                     call_target = args[1]
                     break
             if call_line is not None:
-                primary = DiagnosticSpan(
-                    path=prog.source_path or "<source>",
-                    line=call_line,
-                    column=1,
-                    raw=prog.source_lines.get(call_line, ""),
-                    role="callSite",
-                )
+                primary = _origin_aware_span(prog, call_line, role="callSite")
                 semantic_stack.append(DiagnosticFrame(
                     kind="SemanticScript call",
                     operation=op.name,
@@ -20629,7 +21765,11 @@ def _native_http_link_inputs(prog: Program):
     )
     if "webServer" not in prog.targets and not uses_http_call:
         return [], []
-    if "webServer" in prog.targets and not any(server.routes for server in prog.web_servers.values()) and not uses_http_call:
+    has_routed_server = any(
+        server.routes or server.static_routes
+        for server in prog.web_servers.values()
+    )
+    if "webServer" in prog.targets and not has_routed_server and not uses_http_call:
         return [], []
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -20666,13 +21806,7 @@ def _build_metadata_span(prog: Program, key: str, value: str = None) -> Diagnost
         if value is not None:
             if len(args) < 2 or str(_unwrap(args[1])) != value:
                 continue
-        return DiagnosticSpan(
-            path=prog.source_path or "<source>",
-            line=lineno or 0,
-            column=1,
-            raw=raw,
-            role="buildMetadata",
-        )
+        return _origin_aware_span(prog, lineno, role="buildMetadata")
     return DiagnosticSpan(
         path=prog.source_path or "<source>",
         line=0,
@@ -20976,13 +22110,29 @@ def _native_terminal_link_inputs(prog: Program):
 
 _NATIVE_BCRYPT_TARGETS = frozenset({
     "bcrypt.hashPassword",
+    "bcrypt.hashPasswordResult",
+    "bcrypt.hashSessionTokenResult",
     "bcrypt.verifyPassword",
+    "bcrypt.verifyPasswordResult",
+    "bcrypt.verifySessionTokenResult",
     "bcrypt.randomBytes",
+    "bcrypt.randomBytesResult",
     "bcrypt.base64UrlEncode",
+    "bcrypt.base64UrlEncodeResult",
+    "bcrypt.issueSessionToken",
+    "bcrypt.issueCsrfToken",
     "hashPassword",
+    "hashPasswordResult",
+    "hashSessionTokenResult",
     "verifyPassword",
+    "verifyPasswordResult",
+    "verifySessionTokenResult",
     "randomBytes",
+    "randomBytesResult",
     "base64UrlEncode",
+    "base64UrlEncodeResult",
+    "issueSessionToken",
+    "issueCsrfToken",
 })
 
 

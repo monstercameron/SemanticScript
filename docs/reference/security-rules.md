@@ -34,7 +34,7 @@ rule × layer × CWE matrix.
 | SS4603 | non-constant `c.system` command | CWE-78 | — | ✅ | ✅ | ✅ |
 | SS4604 | hard-coded secret (`typeTrust secret`) | CWE-798 | — | ✅ | ✅ | ✅ |
 | SS3911 | non-constant SQL text | CWE-89 | — | ✅ | ✅ | (adjacent SS3628) |
-| SS3310 | non-constant format string | CWE-134 | — | ✅ | ✅ | — |
+| SS3310 | non-constant format string | CWE-134 | — | ✅ | ✅ | ✅ |
 
 Legend: ✅ = enforced on that layer; — = not on that layer (by design).
 

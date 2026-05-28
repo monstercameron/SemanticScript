@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -133,6 +134,39 @@ class TestSemAgentPayloads(unittest.TestCase):
             ["value", "error"],
         )
 
+    def test_symbols_and_slice_payloads_include_enum_cases(self) -> None:
+        source_text = "\n".join([
+            "module demo.enums",
+            "enum JobStatus repr Int32",
+            "enumCase JobStatus queuedJobStatus 1",
+            "enumCase JobStatus runningJobStatus",
+            "enumCase JobStatus failedJobStatus 5",
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(source_text, encoding="utf-8")
+
+            symbols = sem._symbol_graph_payload(source)
+            type_slice = sem._slice_type_payload(source, "JobStatus")
+
+        self.assertEqual(symbols["summary"]["enumCount"], 1)
+        self.assertEqual(symbols["summary"]["enumCaseCount"], 3)
+        enum_payload = symbols["files"][0]["enums"][0]
+        self.assertEqual(enum_payload["name"], "JobStatus")
+        self.assertEqual(enum_payload["repr"], "Int32")
+        case_values = {case["name"]: case["value"] for case in enum_payload["cases"]}
+        self.assertEqual(case_values, {
+            "queuedJobStatus": 1,
+            "runningJobStatus": 2,
+            "failedJobStatus": 5,
+        })
+        self.assertTrue(type_slice["ok"])
+        self.assertEqual(type_slice["enumDeclarations"][0]["repr"], "Int32")
+        self.assertEqual(
+            {case["name"]: case["value"] for case in type_slice["enumCases"]},
+            case_values,
+        )
+
     def test_docs_list_reads_typed_comment_summaries(self) -> None:
         payload = sem._docs_payload("list", module_name="http", summary_tag="rationale")
 
@@ -182,6 +216,20 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(native_op["nativeLinkability"]["linksInNativeBuild"])
         self.assertFalse(any("SSCG002" in w for w in native_op["agentWarnings"]))
 
+    def test_docs_get_standard_map_warns_bookkeeping_only(self) -> None:
+        payload = sem._docs_payload("get", operation_name="map.size")
+        operation = payload["operation"]
+        self.assertEqual(operation["visibility"]["apiTier"], "exported")
+        self.assertTrue(any(
+            "structural bookkeeping only" in warning
+            for warning in operation["agentWarnings"]
+        ))
+        module_payload = sem._docs_payload("list", module_name="map")
+        self.assertTrue(any(
+            row["tag"] == "moduleWarning" and "does not store keys or values" in row["text"]
+            for row in module_payload["moduleDocs"][0]["metadata"].get("moduleWarning", [])
+        ))
+
     def test_docs_get_returns_record_fields_and_enum_members(self) -> None:
         # docs get TYPENAME must expose the type's shape so agents stop guessing
         # magic numbers / field names. Enum members were already covered; record
@@ -190,12 +238,25 @@ class TestSemAgentPayloads(unittest.TestCase):
         record_type = record["type"]
         self.assertEqual(record["status"], "ok")
         self.assertEqual(record_type.get("kind"), "record")
+        self.assertEqual(record_type["statusTaxonomy"]["category"], "metadata")
         field_names = {f["name"] for f in record_type.get("fields", [])}
         self.assertIn("timeoutMillis", field_names)
 
         enum = sem._docs_payload("get", operation_name="SqliteOpenMode")
         case_values = {c["name"]: c["value"] for c in enum["type"].get("cases", [])}
         self.assertEqual(case_values.get("readWriteCreateSqliteOpenMode"), 6)
+
+    def test_docs_get_html_safe_url_guidance(self) -> None:
+        payload = sem._docs_payload("get", operation_name="HtmlSafeUrl")
+
+        self.assertTrue(payload["ok"])
+        html_safe_url = payload["type"]
+        self.assertEqual(html_safe_url["fullName"], "standard.html.HtmlSafeUrl")
+        self.assertEqual(html_safe_url["representation"], "String")
+        usage = "\n".join(html_safe_url.get("usage", []))
+        self.assertIn("href", usage)
+        self.assertIn("formaction", usage)
+        self.assertIn("plain `String` is rejected", usage)
 
     def test_docs_get_includes_failure_and_cleanup_rows(self) -> None:
         payload = sem._docs_payload("get", operation_name="http.clientGet")
@@ -352,6 +413,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         type_doc = payload["type"]
         self.assertEqual(type_doc["kind"], "enum")
         self.assertEqual(type_doc["repr"], "Int32")
+        self.assertEqual(type_doc["statusTaxonomy"]["category"], "metadata")
         self.assertIn(
             {"name": "readWriteCreateSqliteOpenMode", "value": 6},
             type_doc["cases"],
@@ -360,6 +422,67 @@ class TestSemAgentPayloads(unittest.TestCase):
             "argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode",
             type_doc["exampleRows"],
         )
+
+        status_payload = sem._docs_payload("get", operation_name="HttpStatusCode")
+        status_usage = " ".join(status_payload["type"].get("usage", []))
+        self.assertIn("numeric HTTP codes", status_usage)
+        self.assertIn("HttpStatus.Ok", status_usage)
+
+    def test_docs_get_bcrypt_role_aliases_explain_argument_coercion(self) -> None:
+        plaintext = sem._docs_payload("get", operation_name="BcryptPlaintextPassword")
+        self.assertTrue(plaintext["ok"])
+        plaintext_type = plaintext["type"]
+        self.assertEqual(plaintext_type["underlyingType"], "String")
+        self.assertTrue(any("String-backed role" in row for row in plaintext_type["usage"]))
+        self.assertTrue(any("HttpRequestValue" in row for row in plaintext_type["usage"]))
+        self.assertIn(
+            "argument hashPasswordCall plaintext BcryptPlaintextPassword passwordText",
+            plaintext_type["exampleRows"],
+        )
+        self.assertIn(
+            "argument hashPasswordCall plaintext BcryptPlaintextPassword passwordValue",
+            plaintext_type["exampleRows"],
+        )
+
+        hash_buffer = sem._docs_payload("get", operation_name="BcryptHashBuffer")
+        self.assertTrue(hash_buffer["ok"])
+        buffer_type = hash_buffer["type"]
+        self.assertEqual(buffer_type["underlyingType"], "OpaquePointer")
+        self.assertTrue(any("OpaquePointer-backed role" in row for row in buffer_type["usage"]))
+
+        session_hash = sem._docs_payload("get", operation_name="SessionTokenHash")
+        self.assertTrue(session_hash["ok"])
+        session_hash_type = session_hash["type"]
+        self.assertEqual(session_hash_type["underlyingType"], "String")
+        self.assertTrue(any("hashSessionTokenResult" in row for row in session_hash_type["usage"]))
+        self.assertIn(
+            "argument verifySessionTokenCall expectedHash SessionTokenHash storedSessionTokenHash",
+            session_hash_type["exampleRows"],
+        )
+
+        csrf_token = sem._docs_payload("get", operation_name="CsrfToken")
+        self.assertTrue(csrf_token["ok"])
+        csrf_token_type = csrf_token["type"]
+        self.assertEqual(csrf_token_type["underlyingType"], "String")
+        self.assertTrue(any("issueCsrfToken" in row for row in csrf_token_type["usage"]))
+
+        csrf_buffer = sem._docs_payload("get", operation_name="CsrfTokenBuffer")
+        self.assertTrue(csrf_buffer["ok"])
+        csrf_buffer_type = csrf_buffer["type"]
+        self.assertEqual(csrf_buffer_type["underlyingType"], "OpaquePointer")
+        self.assertTrue(any("csrfTokenBufferRequiredBytes" in row for row in csrf_buffer_type["usage"]))
+
+        csrf_op = sem._docs_payload("get", operation_name="issueCsrfToken")
+        self.assertTrue(csrf_op["ok"])
+        self.assertEqual(csrf_op["operation"]["name"], "issueCsrfToken")
+        self.assertIn("CSRF token", csrf_op["operation"]["summary"])
+        self.assertTrue(csrf_op["operation"]["nativeLinkability"]["linksInNativeBuild"])
+        self.assertTrue(csrf_op["operation"]["usage"]["failureHandling"]["required"])
+
+        session_op = sem._docs_payload("get", operation_name="bcrypt.issueSessionToken")
+        self.assertTrue(session_op["ok"])
+        self.assertTrue(session_op["operation"]["nativeLinkability"]["linksInNativeBuild"])
+        self.assertTrue(session_op["operation"]["usage"]["failureHandling"]["required"])
 
     def test_docs_gui_control_on_event_matches_linter_signature(self) -> None:
         payload = sem._docs_payload("get", operation_name="gui.controlOnEvent")
@@ -400,6 +523,7 @@ class TestSemAgentPayloads(unittest.TestCase):
     def test_docs_get_compiler_owned_targets_returns_actionable_payload(self) -> None:
         console_payload = sem._docs_payload("get", operation_name="console.writeLine")
         math_payload = sem._docs_payload("get", operation_name="math.addInt64")
+        clamp_payload = sem._docs_payload("get", operation_name="math.clampUInt32")
         pointer_payload = sem._docs_payload("get", operation_name="pointer.isNull")
         malloc_payload = sem._docs_payload("get", operation_name="c.malloc")
         aligned_alloc_payload = sem._docs_payload("get", operation_name="c.alignedAlloc")
@@ -412,6 +536,8 @@ class TestSemAgentPayloads(unittest.TestCase):
 
         self.assertTrue(console_payload["ok"])
         console_usage = console_payload["target"]["usage"]
+        self.assertIn("lowered", console_payload["statusTaxonomyLegend"])
+        self.assertEqual(console_payload["target"]["statusTaxonomy"]["category"], "lowered")
         self.assertFalse(console_usage["importRequired"])
         self.assertEqual(console_usage["importRow"], "")
         self.assertIn("effect <callerOperation> write console.stdout", console_usage["effectRows"])
@@ -421,6 +547,12 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(math_payload["ok"])
         self.assertIn("bind value addInt64Result Int64 addInt64Call", math_payload["target"]["usage"]["call"]["rows"])
         self.assertEqual(math_payload["target"]["usage"]["failureMode"], {"kind": "none", "text": "", "source": ""})
+        self.assertTrue(clamp_payload["ok"])
+        self.assertEqual(clamp_payload["target"]["signature"]["outputs"][0]["type"], "UInt32")
+        self.assertIn(
+            "argument clampUInt32Call value UInt32 <value>",
+            clamp_payload["target"]["usage"]["call"]["rows"],
+        )
 
         self.assertTrue(pointer_payload["ok"])
         self.assertEqual(pointer_payload["target"]["signature"]["outputs"][0]["type"], "Bool")
@@ -428,8 +560,11 @@ class TestSemAgentPayloads(unittest.TestCase):
 
         self.assertTrue(malloc_payload["ok"])
         malloc_usage = malloc_payload["target"]["usage"]
+        self.assertEqual(malloc_payload["target"]["statusTaxonomy"]["category"], "lowered")
         self.assertEqual(malloc_payload["target"]["wrapperPolicy"]["decision"], "stdlib-wrapper-planned")
         self.assertEqual(malloc_payload["target"]["wrapperPolicy"]["module"], "standard.memory")
+        self.assertTrue(malloc_usage["availableForCodegen"])
+        self.assertIn("codegen support", malloc_usage["reason"])
         self.assertIn({"action": "allocate", "path": "heap"}, malloc_usage["requiredCallerEffects"])
         self.assertIn("branch if condition mallocIsNull target <failureLabel>", malloc_usage["failureHandling"]["rows"])
         self.assertIn("call mallocCleanupCall c.free", malloc_usage["cleanup"]["rows"])
@@ -458,6 +593,7 @@ class TestSemAgentPayloads(unittest.TestCase):
 
         self.assertTrue(realloc_payload["ok"])
         self.assertEqual(realloc_payload["target"]["loweringStatus"], "partial")
+        self.assertEqual(realloc_payload["target"]["statusTaxonomy"]["category"], "partial")
         self.assertFalse(realloc_payload["target"]["usage"]["availableForCodegen"])
 
         self.assertTrue(thread_create_payload["ok"])
@@ -482,6 +618,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         }
         missing = []
         missing_policy = []
+        missing_codegen_flag = []
         unsafe_codegen = []
 
         for c_symbol in sorted(registry.ALL_FUNCTIONS):
@@ -494,13 +631,16 @@ class TestSemAgentPayloads(unittest.TestCase):
             wrapper_policy = target_doc.get("wrapperPolicy") or {}
             if not wrapper_policy.get("decision") or not wrapper_policy.get("module"):
                 missing_policy.append(target_name)
+            usage = target_doc.get("usage") or {}
+            if "availableForCodegen" not in usage:
+                missing_codegen_flag.append(target_name)
             if wrapper_policy.get("decision") in {"native-adapter-required", "no-public-wrapper", "abi-blocked"}:
-                usage = target_doc.get("usage") or {}
                 if usage.get("availableForCodegen", True):
                     unsafe_codegen.append(target_name)
 
         self.assertEqual(missing, [])
         self.assertEqual(missing_policy, [])
+        self.assertEqual(missing_codegen_flag, [])
         self.assertEqual(unsafe_codegen, [])
 
     def test_docs_get_standard_memory_allocation_wrappers_are_actionable(self) -> None:
@@ -510,6 +650,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(allocate_payload["ok"])
         allocate_operation = allocate_payload["operation"]
         self.assertEqual(allocate_operation["qualifiedName"], "memory.allocateMemoryBytes")
+        self.assertEqual(allocate_operation["statusTaxonomy"]["category"], "lowered")
         self.assertTrue(allocate_operation["visibility"]["public"])
         self.assertIn("bind error allocateMemoryBytesError MemoryAllocationError allocateMemoryBytesCall", allocate_operation["usage"]["failureHandling"]["rows"])
         self.assertEqual(allocate_operation["usage"]["cleanup"]["callTarget"], "memory.releaseMemoryBytes")
@@ -632,6 +773,38 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertGreaterEqual(len(search_payload["results"]), 1)
         self.assertEqual(
             search_payload["results"][0]["qualifiedName"], "examples.tasks.createTask")
+
+    def test_docs_search_surfaces_sqlite_generated_id_returning_guide(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / ".sem" / "docs.sqlite"
+            index_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=True,
+                include_compiler=True,
+                embedding_provider="none",
+                enable_sqlite_vec=False,
+            )
+            search_payload = sem._docs_search_payload(
+                "insert returning generated id sqlite",
+                db_path=db_path,
+                limit=5,
+                embedding_provider="none",
+                include_docs=True,
+            )
+
+        self.assertTrue(index_payload["ok"])
+        self.assertTrue(search_payload["ok"])
+        qualified_names = [result["qualifiedName"] for result in search_payload["results"]]
+        self.assertIn("language.guide.sqliteInsertReturningGeneratedId", qualified_names)
+        guide = next(
+            result for result in search_payload["results"]
+            if result["qualifiedName"] == "language.guide.sqliteInsertReturningGeneratedId"
+        )
+        self.assertIn("INSERT ... RETURNING id", guide["summary"])
+        self.assertIn("call readGeneratedIdCall sqlite.columnInt64", guide["doc"]["exampleRows"])
+        self.assertTrue(any("activity-log" in row for row in guide["doc"]["usage"]))
 
     def test_docs_default_db_path_treats_missing_non_source_path_as_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -758,8 +931,24 @@ class TestSemAgentPayloads(unittest.TestCase):
                 db_path=db_path,
                 limit=10,
             )
+            h2o_payload = sem._docs_search_payload(
+                "HTTP/2 H2O",
+                db_path=db_path,
+                limit=10,
+            )
+            concurrency_payload = sem._docs_search_payload(
+                "concurrent dispatch slow handler",
+                db_path=db_path,
+                limit=10,
+            )
+            loop_payload = sem._docs_search_payload(
+                "how do I loop",
+                db_path=db_path,
+                limit=10,
+            )
 
         self.assertTrue(index_payload["ok"])
+        self.assertIn("language", index_payload["summary"]["sourceKinds"])
         self.assertIn("syntax", index_payload["summary"]["sourceKinds"])
         self.assertIn("runtime", index_payload["summary"]["sourceKinds"])
         syntax_matches = [
@@ -775,6 +964,26 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(runtime_matches)
         self.assertTrue(runtime_matches[0]["enabled"])
         self.assertEqual(runtime_matches[0]["availability"], "available")
+        h2o_matches = [
+            result for result in h2o_payload["results"]
+            if result["kind"] == "runtimeFeature" and result["name"] == "nativeHttpH2oBackend"
+        ]
+        self.assertTrue(h2o_matches)
+        self.assertFalse(h2o_matches[0]["enabled"])
+        self.assertEqual(h2o_matches[0]["availability"], "unavailable-staged")
+        concurrency_matches = [
+            result for result in concurrency_payload["results"]
+            if result["kind"] == "runtimeFeature" and result["name"] == "nativeHttpConcurrentDispatch"
+        ]
+        self.assertTrue(concurrency_matches)
+        self.assertFalse(concurrency_matches[0]["enabled"])
+        self.assertEqual(concurrency_matches[0]["availability"], "unavailable-staged")
+        loop_matches = [
+            result for result in loop_payload["results"]
+            if result["kind"] == "languageGuide" and result["name"] == "howDoILoop"
+        ]
+        self.assertTrue(loop_matches)
+        self.assertEqual(loop_matches[0]["sourceKind"], "language")
 
     def test_docs_confidence_does_not_trust_vector_only_matches(self) -> None:
         confidence = sem._docs_result_confidence(
@@ -1072,7 +1281,24 @@ class TestSemAgentPayloads(unittest.TestCase):
 
     def test_docs_static_intrinsic_targets_are_actionable(self) -> None:
         sqlite_payload = sem._docs_payload("get", operation_name="sqlite.openDatabase")
+        sqlite_type_payload = sem._docs_payload("get", operation_name="SqliteDatabase")
+        sqlite_scalar_payload = sem._docs_payload("get", operation_name="sqlite.queryScalarInt64")
+        sqlite_wal_payload = sem._docs_payload("get", operation_name="sqlite.enableWalMode")
+        sqlite_begin_payload = sem._docs_payload("get", operation_name="sqlite.beginImmediateTransaction")
+        sqlite_last_rowid_payload = sem._docs_payload("get", operation_name="sqlite.lastInsertRowId")
+        sqlite_column_text_payload = sem._docs_payload("get", operation_name="sqlite.columnText")
         bcrypt_payload = sem._docs_payload("get", operation_name="bcrypt.hashPassword")
+        bcrypt_result_payload = sem._docs_payload("get", operation_name="bcrypt.verifyPasswordResult")
+        session_result_payload = sem._docs_payload("get", operation_name="bcrypt.hashSessionTokenResult")
+        response_header_payload = sem._docs_payload("get", operation_name="http.responseHeader")
+        response_file_payload = sem._docs_payload("get", operation_name="http.responseFile")
+        form_field_payload = sem._docs_payload("get", operation_name="http.formField")
+        request_body_payload = sem._docs_payload("get", operation_name="http.requestBodyText")
+        request_value_payload = sem._docs_payload("get", operation_name="http.requestValueIsEmpty")
+        multipart_payload = sem._docs_payload("get", operation_name="http.multipartPartText")
+        header_value_payload = sem._docs_payload("get", operation_name="HttpHeaderValue")
+        session_ttl_payload = sem._docs_payload("get", operation_name="SessionTtlMillis")
+        session_expiry_payload = sem._docs_payload("get", operation_name="sessionIsExpired")
         net_payload = sem._docs_payload("get", operation_name="net.fetchText")
 
         self.assertTrue(sqlite_payload["ok"])
@@ -1093,12 +1319,169 @@ class TestSemAgentPayloads(unittest.TestCase):
             "useCapability <callerOperation> sqliteDatabaseReadWriter",
             sqlite_payload["target"]["usage"]["useCapabilityRows"],
         )
+        sqlite_warnings = " ".join(sqlite_payload["target"]["agentWarnings"])
+        self.assertIn("webServerStartup", sqlite_warnings)
+        self.assertIn("webServerShutdown", sqlite_warnings)
+        self.assertIn("not a connection pool", sqlite_warnings)
+        self.assertTrue(sqlite_type_payload["ok"])
+        self.assertTrue(any(
+            "process-lifetime" in row and "webServerStartup" in row
+            for row in sqlite_type_payload["type"]["usage"]
+        ))
+        self.assertTrue(sqlite_scalar_payload["ok"])
+        self.assertEqual(
+            sqlite_scalar_payload["target"]["signature"]["outputs"][0]["values"],
+            ["Result", "Int64", "SqliteQueryFailure"],
+        )
+        self.assertIn(
+            "bind ok queryScalarInt64Result Int64 queryScalarInt64Call",
+            sqlite_scalar_payload["target"]["usage"]["call"]["rows"],
+        )
+        self.assertTrue(any(
+            "prepare/step/column/finalize" in warning
+            for warning in sqlite_scalar_payload["target"]["agentWarnings"]
+        ))
+        self.assertTrue(sqlite_wal_payload["ok"])
+        self.assertEqual(
+            sqlite_wal_payload["target"]["signature"]["outputs"][0]["values"],
+            ["Result", "Int32", "SqliteJournalModeFailure"],
+        )
+        self.assertIn("PRAGMA journal_mode = WAL", sqlite_wal_payload["target"]["summary"])
+        self.assertTrue(any(
+            "sqliteJournalMode PROJECT wal" in warning
+            for warning in sqlite_wal_payload["target"]["agentWarnings"]
+        ))
+        self.assertTrue(sqlite_begin_payload["ok"])
+        self.assertEqual(
+            sqlite_begin_payload["target"]["signature"]["outputs"][0]["values"],
+            ["Result", "Int32", "SqliteTransactionFailure"],
+        )
+        self.assertIn("BEGIN IMMEDIATE", sqlite_begin_payload["target"]["summary"])
+        self.assertTrue(any(
+            "rollbackTransaction" in warning
+            for warning in sqlite_begin_payload["target"]["agentWarnings"]
+        ))
+        self.assertTrue(sqlite_last_rowid_payload["ok"])
+        last_rowid_target = sqlite_last_rowid_payload["target"]
+        self.assertFalse(last_rowid_target["usage"]["availableForCodegen"])
+        self.assertIn("INSERT ... RETURNING id", last_rowid_target["summary"])
+        self.assertIn("SS3639", " ".join(last_rowid_target["agentWarnings"]))
+        migration = last_rowid_target["usage"]["migration"]
+        self.assertTrue(migration["nativeSafe"])
+        self.assertTrue(migration["webServerSafe"])
+        self.assertIn(
+            "call readGeneratedIdCall sqlite.columnInt64",
+            migration["rows"],
+        )
+        self.assertIn(
+            "call prepareActivityLogCall sqlite.prepareStatement",
+            migration["rows"],
+        )
+        self.assertTrue(any("doneSqliteStepResult" in row for row in migration["rows"]))
+        self.assertTrue(any("rollbackTransaction" in row for row in migration["rows"]))
+        self.assertTrue(sqlite_column_text_payload["ok"])
+        sqlite_column_text = sqlite_column_text_payload["target"]
+        self.assertIn(
+            "same statement's next pointer-returning column read",
+            sqlite_column_text["failureMode"]["text"],
+        )
+        self.assertTrue(any(
+            "SS3113" in warning and "same-statement" in warning
+            for warning in sqlite_column_text["agentWarnings"]
+        ))
 
         self.assertTrue(bcrypt_payload["ok"])
         self.assertEqual(bcrypt_payload["target"]["usage"]["failureHandling"]["kind"], "status-code")
         self.assertIn(
             "argument hashPasswordCall outBuffer BcryptHashBuffer <outBuffer>",
             bcrypt_payload["target"]["usage"]["call"]["rows"],
+        )
+        self.assertTrue(bcrypt_result_payload["ok"])
+        self.assertEqual(
+            bcrypt_result_payload["target"]["signature"]["outputs"][0]["values"],
+            ["Result", "Bool", "Int32"],
+        )
+        self.assertIn(
+            "bind ok verifyPasswordResultResult Bool verifyPasswordResultCall",
+            bcrypt_result_payload["target"]["usage"]["call"]["rows"],
+        )
+        self.assertIn(
+            "bind error verifyPasswordResultError Int32 verifyPasswordResultCall",
+            bcrypt_result_payload["target"]["usage"]["failureHandling"]["rows"],
+        )
+        self.assertTrue(session_result_payload["ok"])
+        self.assertEqual(
+            session_result_payload["target"]["signature"]["outputs"][0]["values"],
+            ["Result", "Bool", "Int32"],
+        )
+        self.assertIn(
+            "argument hashSessionTokenResultCall token SessionToken <token>",
+            session_result_payload["target"]["usage"]["call"]["rows"],
+        )
+
+        self.assertTrue(response_header_payload["ok"])
+        self.assertTrue(any(
+            "X-Forwarded-Proto" in warning and "Secure" in warning
+            for warning in response_header_payload["target"]["agentWarnings"]
+        ))
+        self.assertTrue(response_file_payload["ok"])
+        self.assertIn("ETag", response_file_payload["target"]["summary"])
+        self.assertIn("If-Modified-Since", response_file_payload["target"]["summary"])
+        self.assertTrue(form_field_payload["ok"])
+        self.assertTrue(any(
+            "memory.allocateMemoryBytes" in warning and "pointer.isNull" in warning
+            for warning in form_field_payload["target"]["agentWarnings"]
+        ))
+        self.assertTrue(any(
+            "multipart/form-data" in warning and "http.multipartPart" in warning
+            for warning in form_field_payload["target"]["agentWarnings"]
+        ))
+        self.assertIn(
+            "authority <callerOperation> write memory.buffer",
+            form_field_payload["target"]["usage"]["authorityRows"],
+        )
+        self.assertTrue(request_body_payload["ok"])
+        self.assertIn("JSON credential POST", request_body_payload["target"]["summary"])
+        self.assertTrue(any(
+            "json.createDocument" in warning and "json.cursorString" in warning
+            for warning in request_body_payload["target"]["agentWarnings"]
+        ))
+        self.assertTrue(request_value_payload["ok"])
+        self.assertEqual(
+            request_value_payload["target"]["signature"]["outputs"][0]["values"],
+            ["Bool"],
+        )
+        self.assertIn("null or an empty string", request_value_payload["target"]["summary"])
+        self.assertTrue(multipart_payload["ok"])
+        self.assertTrue(any(
+            "application/x-www-form-urlencoded" in warning and "http.formField" in warning
+            for warning in multipart_payload["target"]["agentWarnings"]
+        ))
+        self.assertFalse(any(
+            row.startswith("authority <callerOperation> write memory.buffer")
+            for row in multipart_payload["target"]["usage"]["authorityRows"]
+        ))
+        self.assertTrue(header_value_payload["ok"])
+        self.assertTrue(any(
+            "forwardedProtoHttpsValue" in row and "Secure" in row
+            for row in header_value_payload["type"]["usage"]
+        ))
+        self.assertTrue(any(
+            "ifNoneMatchHeaderName" in row and "304" in row
+            for row in header_value_payload["type"]["usage"]
+        ))
+
+        self.assertTrue(session_ttl_payload["ok"])
+        self.assertEqual(session_ttl_payload["type"]["underlyingType"], "Int64")
+        self.assertTrue(any("sessionDefaultTtlMillis" in row for row in session_ttl_payload["type"]["usage"]))
+        self.assertTrue(session_expiry_payload["ok"])
+        self.assertEqual(session_expiry_payload["operation"]["name"], "sessionIsExpired")
+        self.assertIn("nowMillis > expiresAtMillis", session_expiry_payload["operation"]["invariants"][0])
+        self.assertTrue(session_expiry_payload["operation"]["nativeLinkability"]["linksInNativeBuild"])
+        self.assertFalse(any("SSCG002" in warning for warning in session_expiry_payload["operation"]["agentWarnings"]))
+        self.assertIn(
+            "call sessionIsExpiredCall http.sessionIsExpired",
+            session_expiry_payload["operation"]["usage"]["call"]["rows"],
         )
 
         self.assertTrue(net_payload["ok"])
@@ -1118,10 +1501,22 @@ class TestSemAgentPayloads(unittest.TestCase):
 
         self.assertEqual(errors, [])
         targets = {target["target"] for module in modules for target in module.get("callTargets", [])}
+        list_payload = sem._docs_payload("list", summary_tag="rationale")
+        list_targets = {target["target"] for target in list_payload["targets"]}
+        static_targets = {
+            target
+            for target_docs in sem.STD_DOC_STATIC_TARGETS.values()
+            for target in target_docs
+        }
+        self.assertEqual(sorted(targets - list_targets), [])
+        self.assertEqual(sorted(static_targets - list_targets), [])
         self.assertEqual(sorted(semlint.ALL_NATIVE_HTTP_TARGETS - targets), [])
         self.assertEqual(sorted(semlint.SUPPORTED_JSON_RUNTIME_TARGETS - targets), [])
         self.assertEqual(sorted(semlint.SUPPORTED_JSON_PRIMITIVE_TARGETS - targets), [])
         self.assertIn("bcrypt.hashPassword", targets)
+        self.assertIn("bcrypt.verifyPasswordResult", targets)
+        self.assertIn("bcrypt.hashSessionTokenResult", targets)
+        self.assertIn("bcrypt.verifySessionTokenResult", targets)
         self.assertIn("net.fetchText", targets)
         self.assertIn("net.fetchBytes", targets)
         self.assertIn("sqlite.openDatabase", targets)
@@ -1496,6 +1891,16 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertIn("sem-start", start_skill["aliases"])
         language_skill = next(item for item in payload if item["name"] == "language-core")
         self.assertIn("sem", language_skill["aliases"])
+        agent_skill = next(item for item in payload if item["name"] == "graph-and-slice")
+        self.assertIn("sem-agent", agent_skill["aliases"])
+        syntax_skill = next(item for item in payload if item["name"] == "syntax-reference")
+        self.assertIn("sem-syntax", syntax_skill["aliases"])
+        discoverable_names = names | {
+            alias
+            for item in payload
+            for alias in item.get("aliases", [])
+        }
+        self.assertEqual(sorted(set(sem.MCP_BOOTSTRAP_SKILLS) - discoverable_names), [])
         start_content = sem._skill_content("getting-started", include_full_content=True)
         self.assertIsNotNone(start_content)
         self.assertIn("Repository Map", start_content["content"])
@@ -1511,6 +1916,39 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertNotIn("content", skill)
         self.assertTrue(skill["fileSummaries"])
         self.assertTrue(skill["sectionIndex"])
+        self.assertIn("--full", skill["contentHint"])
+
+    def test_skill_content_flags_packaged_paths_as_ephemeral(self) -> None:
+        with mock.patch.object(sem.sys, "frozen", True, create=True):
+            registry = sem._skill_registry_payload()
+            skill = sem._skill_content("language-core")
+        self.assertTrue(registry[0]["pathsEphemeral"])
+        self.assertIn("--full", registry[0]["contentHint"])
+        self.assertTrue(skill["pathsEphemeral"])
+        self.assertIn("temporary extraction directory", skill["contentHint"])
+
+    def test_skills_get_preserves_requested_alias_names(self) -> None:
+        stdout = io.StringIO()
+        with mock.patch("sys.stdout", stdout):
+            result = sem.main(["skills", "get", "--json", "--full", "sem"])
+        payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(result, 0)
+        self.assertEqual(payload["requestedNames"], ["sem"])
+        self.assertEqual(payload["resolvedNames"], ["language-core"])
+        self.assertEqual(payload["requestMap"], [{"requested": "sem", "resolved": "language-core"}])
+        skill = payload["skills"][0]
+        self.assertEqual(skill["requestedName"], "sem")
+        self.assertEqual(skill["resolvedName"], "language-core")
+        self.assertEqual(skill["name"], "language-core")
+        self.assertEqual(skill["contentMode"], "full")
+        self.assertIn("program-structure", skill["content"])
+
+        text_stdout = io.StringIO()
+        with mock.patch("sys.stdout", text_stdout):
+            text_result = sem.main(["skills", "get", "--full", "sem"])
+        self.assertEqual(text_result, 0)
+        self.assertTrue(text_stdout.getvalue().startswith("== sem (language-core) =="))
 
     def test_help_payload_recommends_next_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1525,20 +1963,28 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertIn("check", kinds)
             self.assertEqual(
                 payload["nextCommands"][1]["command"],
-                "sem skills get sem-start sem sem-agent sem-syntax --json",
+                "sem skills get sem-start sem sem-agent sem-syntax --full --json",
             )
             self.assertEqual(
-                payload["nextCommands"][1]["argv"][-7:],
-                ["skills", "get", "sem-start", "sem", "sem-agent", "sem-syntax", "--json"],
+                payload["nextCommands"][1]["argv"][-8:],
+                ["skills", "get", "sem-start", "sem", "sem-agent", "sem-syntax", "--full", "--json"],
             )
             self.assertEqual(payload["nextCommands"][0]["mcpTool"], "agent_docs")
             self.assertEqual(payload["nextCommands"][1]["mcpTool"], "skills_get")
             self.assertEqual(
                 payload["nextCommands"][1]["mcpArgs"],
-                {"names": ["sem-start", "sem", "sem-agent", "sem-syntax"]},
+                {"names": ["sem-start", "sem", "sem-agent", "sem-syntax"], "full": True},
             )
+            docs_index = next(command for command in payload["nextCommands"] if command["kind"] == "docs-index")
+            self.assertIn("--embedding-provider", docs_index["argv"])
+            self.assertIn("none", docs_index["argv"])
+            self.assertEqual(docs_index["mcpArgs"]["embedding_provider"], "none")
             self.assertEqual(
                 payload["state"]["buildTape"], str((root / "build.sem").resolve()))
+            web_pointer = next(pointer for pointer in payload["goalPointers"] if pointer["goal"] == "build a web app")
+            self.assertIn("http-html-patterns", web_pointer["skills"])
+            self.assertIn("sqlite.openDatabase", web_pointer["docsGet"])
+            self.assertTrue(any("--template web" in command for command in web_pointer["startCommands"]))
             workflow_ids = {workflow["id"] for workflow in payload["workflows"]}
             self.assertTrue({
                 "bootstrap-orient",
@@ -1580,16 +2026,33 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(payload["mcp"]["clientConfig"]["args"], ["mcp"])
         first_call = payload["mcp"]["firstToolCalls"][0]
         self.assertEqual(first_call["tool"], "agent_docs")
+        self.assertEqual(first_call["cli"], "sem agent-docs --json .")
         self.assertEqual(payload["mcp"]["firstToolCalls"][1]["tool"], "skills_get")
-        self.assertEqual(payload["mcp"]["firstToolCalls"][1]["args"]["names"], ["sem-start", "sem", "sem-agent", "sem-syntax"])
+        self.assertEqual(payload["mcp"]["firstToolCalls"][1]["args"], {
+            "names": ["sem-start", "sem", "sem-agent", "sem-syntax"],
+            "full": True,
+        })
+        self.assertEqual(
+            payload["mcp"]["firstToolCalls"][1]["cli"],
+            "sem skills get sem-start sem sem-agent sem-syntax --full --json",
+        )
+        self.assertIn("docs search", payload["mcp"]["firstToolCalls"][3]["cli"])
         self.assertIn("docs_search", payload["mcp"]["handshakeInstructions"])
         self.assertIn("eval", payload["mcp"]["handshakeInstructions"])
         self.assertEqual(payload["languageSmoke"]["expectedStdout"], "semantic tools ready\n")
+        self.assertIn("explicit console write error branch", payload["languageSmoke"]["explanation"])
+        self.assertIn("write one line", payload["languageSmoke"]["rowSummary"])
         self.assertEqual(payload["nextCommands"][1]["mcpTool"], "agent_docs")
         self.assertEqual(payload["nextCommands"][2]["mcpTool"], "skills_get")
         self.assertEqual(payload["nextCommands"][3]["mcpTool"], "docs_reindex")
+        self.assertIn("--embedding-provider", payload["nextCommands"][3]["argv"])
+        self.assertIn("none", payload["nextCommands"][3]["argv"])
+        self.assertEqual(payload["nextCommands"][3]["mcpArgs"]["embedding_provider"], "none")
         self.assertEqual(payload["nextCommands"][4]["mcpTool"], "docs_search")
         self.assertEqual(payload["nextCommands"][5]["mcpTool"], "eval")
+        self.assertTrue(payload["docs"]["modelFreeDefault"])
+        self.assertIn("--embedding-provider none", payload["docs"]["cliIndex"])
+        self.assertIn("model-free SQLite index", payload["docs"]["freshInstallNote"])
         self.assertIn("workflows", payload)
         workflow_ids = {workflow["id"] for workflow in payload["workflows"]}
         self.assertIn("create-project", workflow_ids)
@@ -1610,13 +2073,26 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertEqual(payload["documents"][0]["content"].replace("\r\n", "\n"), "agent rules\n")
         self.assertEqual(payload["nextCommands"][0]["mcpTool"], "skills_get")
 
+    def test_agent_docs_payload_marks_absence_as_expected_for_fresh_projects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "fresh"
+            root.mkdir()
+            payload = sem._agent_docs_payload(root)
+
+        self.assertEqual(payload["status"], "not-found")
+        self.assertTrue(payload["emptyIsExpected"])
+        self.assertEqual(payload["severity"], "info")
+        self.assertIn("Fresh `sem new` projects do not scaffold", payload["absenceMeaning"])
+        self.assertEqual(payload["documents"], [])
+
     def test_parser_help_surfaces_mcp_bootstrap(self) -> None:
         parser = sem.build_parser()
         text = parser.format_help()
         self.assertIn("Bootstrap an MCP-capable agent", text)
         self.assertIn('agent_docs {"path":"."}', text)
-        self.assertIn('skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}', text)
+        self.assertIn('skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"],"full":true}', text)
         self.assertIn("Optional language smoke", text)
+        self.assertIn("writes one line", text)
         mcp_parser = next(
             action.choices["mcp"]
             for action in parser._actions
@@ -1850,14 +2326,11 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(check_payload["schemaVersion"], "sem.check.v1")
             # The default scaffold is buildable and check-clean out of the box:
             # SS2516 (placeholder modulePath) is gated on the project declaring a
-            # dependency, so a fresh `sem new` with no deps has no findings. The
-            # subset assertion below stays tolerant of the SS2516 nudge for the
-            # case where a scaffold variant ships with a dependency.
-            self.assertIn(check_payload["status"], {"ok", "ok-with-warnings"})
+            # dependency, so a fresh `sem new` with no deps has no findings.
+            self.assertEqual(check_payload["status"], "ok")
             self.assertTrue(check_payload["buildable"])
             self.assertTrue(check_payload["noBlockingLintErrors"])
-            self.assertLessEqual(
-                {d["code"] for d in check_payload["diagnostics"]}, {"SS2516"})
+            self.assertEqual(check_payload["diagnostics"], [])
 
             test_proc = subprocess.run(
                 [
@@ -2009,12 +2482,30 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(payload["commonFixes"])
         self.assertTrue(payload["nextCommands"])
 
+    def test_explain_ss3639_points_to_returning_migration(self) -> None:
+        payload = sem._diagnostic_explain_payload("SS3639")
+
+        self.assertTrue(payload["found"])
+        blob = " ".join([
+            payload["title"],
+            payload["summary"],
+            " ".join(payload["whyItMatters"]),
+            " ".join(payload["commonFixes"]),
+        ])
+        self.assertIn("INSERT ... RETURNING id", blob)
+        self.assertIn("activity-log", blob)
+        self.assertIn("sqlite.columnInt64", blob)
+        command_text = " ".join(command["command"] for command in payload["nextCommands"])
+        self.assertIn("docs get sqlite.lastInsertRowId", command_text)
+        self.assertIn("docs search", command_text)
+
     def test_explain_covers_defer_and_role_suffix_lints(self) -> None:
         # The named (non-SS-coded) lints an agent meets while writing handlers
         # must be discoverable via `sem explain` — they previously returned
         # "unknown", undercutting the linter's precision.
         codes = ("deferNotDominated", "roleSuffixMismatch",
                  "SS3113", "SS3635", "SS3201", "SS3630", "SS3106",
+                 "SS3624", "SS3625",
                  "SS4001", "SS4002", "SS4003", "SS0106")
         for code in codes:
             payload = sem._diagnostic_explain_payload(code)
@@ -2023,6 +2514,19 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertTrue(payload["summary"], f"{code} has no summary")
             self.assertTrue(payload["whyItMatters"], f"{code} has no whyItMatters")
             self.assertTrue(payload["commonFixes"], f"{code} has no commonFixes")
+
+    def test_explain_json_deprecation_lints_name_replacements(self) -> None:
+        builder = sem._diagnostic_explain_payload("SS3624")
+        builder_blob = " ".join([builder["summary"], " ".join(builder["commonFixes"])])
+        self.assertIn("json.stringify.<TypeName>", builder_blob)
+        self.assertIn("json.createEmptyDocument", builder_blob)
+        self.assertIn("json.serializeDocument", builder_blob)
+
+        finder = sem._diagnostic_explain_payload("SS3625")
+        finder_blob = " ".join([finder["summary"], " ".join(finder["commonFixes"])])
+        self.assertIn("json.createDocument", finder_blob)
+        self.assertIn("json.cursorAtPath", finder_blob)
+        self.assertIn("json.cursorString", finder_blob)
 
     def test_explain_finds_every_security_rule(self) -> None:
         # Capstone Rec 4: every security rule must be discoverable via
@@ -2044,7 +2548,10 @@ class TestSemAgentPayloads(unittest.TestCase):
         blob = " ".join([payload["title"], payload["summary"],
                          " ".join(payload["commonFixes"])]).lower()
         self.assertIn("storage", blob)
+        self.assertIn("bare enum case", blob)
+        self.assertIn("httpstatuscode 200", blob)
         self.assertNotIn("private", blob)
+        self.assertNotIn("okstatus httpstatus httpstatus.ok", blob)
 
     def test_explain_finds_new_codegen_and_backend_codes(self) -> None:
         # Newly split / added diagnostics must be discoverable via sem explain
@@ -2094,6 +2601,33 @@ class TestSemAgentPayloads(unittest.TestCase):
             msg = buf.getvalue()
             self.assertIn("no build.sem found", msg)
             self.assertIn("not a lone source file", msg)
+
+    def test_build_file_argument_warns_when_using_ancestor_build_tape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            build_tape = root / "build.sem"
+            source = root / "src" / "main.sem"
+            source.parent.mkdir()
+            build_tape.write_text("buildProject demo\n", encoding="utf-8")
+            source.write_text("project Demo\n", encoding="utf-8")
+            args = argparse.Namespace(
+                path=str(source),
+                compiler_args=[],
+                standalone=False,
+                strict=False,
+                platform=None,
+            )
+            err = io.StringIO()
+            with mock.patch.object(sem, "_run_compiler", return_value=0) as run_compiler:
+                with contextlib.redirect_stderr(err):
+                    rc = sem.command_build(args)
+            self.assertEqual(rc, 0)
+            run_compiler.assert_called_once()
+            self.assertEqual(run_compiler.call_args.args[0], build_tape.resolve())
+            self.assertEqual(run_compiler.call_args.args[1], ["--emit-exe"])
+            msg = err.getvalue()
+            self.assertIn("building project tape", msg)
+            self.assertIn("not built as a standalone file", msg)
 
     def test_every_curated_explainer_is_non_empty(self) -> None:
         # Guards the "explain SS0003 returned just 'SS0003'" class: any code we
@@ -2250,6 +2784,21 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(args.json)
         self.assertEqual(args.func, sem.command_skills)
 
+    def test_skills_list_recommends_full_bootstrap_skill_load(self) -> None:
+        stdout = io.StringIO()
+        with mock.patch("sys.stdout", stdout):
+            result = sem.main(["skills", "list", "--json"])
+        payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(result, 0)
+        self.assertEqual(payload["recommendedFirstNames"], list(sem.MCP_BOOTSTRAP_SKILLS))
+        command = payload["nextCommands"][0]
+        self.assertIn("--full", command["argv"])
+        self.assertEqual(command["mcpArgs"], {
+            "names": ["sem-start", "sem", "sem-agent", "sem-syntax"],
+            "full": True,
+        })
+
     def test_skills_load_is_alias_for_get(self) -> None:
         parser = sem.build_parser()
         args = parser.parse_args(["skills", "load", "sem"])
@@ -2353,6 +2902,83 @@ return value okExitCode
             s for s in repair["suggestions"] if s["name"] == "renameToDescriptive"
         )
         self.assertTrue(rename_suggestion["autoApplicable"])
+
+    def test_fix_plan_renames_vague_bind_error_with_error_suffix(self) -> None:
+        source_text = """\
+project SS4002Codemod
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError AllocationFailed Int32
+capability heapAllocationCapability heap allocate
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main heapAllocationCapability
+effect main allocate heap
+memory main heap no
+async main no
+purpose operation main "exercise SS4002 vague bind error name."
+invariant operation main "returns a Result exit code."
+storage module immutable defaultCapacity ByteCount 16
+storage module immutable okExitCode ExitCode 0
+call allocationCall memory.allocateMemoryBytes
+argument allocationCall byteCount ByteCount defaultCapacity
+run allocationCall
+bind ok scratchBuffer String allocationCall
+bind error allocationStatus MainError allocationCall
+branch error source allocationCall target allocationFailed
+return ok okExitCode
+label allocationFailed
+makeError allocationFailure MainError.AllocationFailed allocationStatus
+return error allocationFailure
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(source_text, encoding="utf-8")
+            payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+        repair = next(r for r in payload["repairs"] if r["diagnostic"] == "SS4002")
+        self.assertEqual(repair["subjectName"], "allocationStatus")
+        self.assertEqual(repair["fixSafety"], "local-edit")
+        edited_lines = [edit["text"] for edit in repair["edits"]]
+        self.assertIn("bind error allocationStatusError MainError allocationCall", edited_lines)
+        self.assertIn("makeError allocationFailure MainError.AllocationFailed allocationStatusError", edited_lines)
+        self.assertTrue(any(s.get("autoApplicable") for s in repair["suggestions"]))
+
+    def test_fix_plan_renames_vague_make_error_with_failure_suffix(self) -> None:
+        source_text = """\
+project SS4003Codemod
+target console
+runtime AgentRuntime 0.1
+entry console main
+error MainError
+errorCase MainError AllocationFailed Int32
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+memory main heap no
+async main no
+purpose operation main "exercise SS4003 vague makeError name."
+invariant operation main "returns a Result exit code."
+storage module immutable okExitCode ExitCode 0
+storage local immutable allocationError MainError 1
+makeError allocation MainError.AllocationFailed allocationError
+return error allocation
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(source_text, encoding="utf-8")
+            payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+        repair = next(r for r in payload["repairs"] if r["diagnostic"] == "SS4003")
+        self.assertEqual(repair["subjectName"], "allocation")
+        self.assertEqual(repair["fixSafety"], "local-edit")
+        edited_lines = [edit["text"] for edit in repair["edits"]]
+        self.assertIn("makeError allocationFailure MainError.AllocationFailed allocationError", edited_lines)
+        self.assertIn("return error allocationFailure", edited_lines)
+        self.assertTrue(any(s.get("autoApplicable") for s in repair["suggestions"]))
 
     def test_fix_plan_marks_metadata_repairs_as_human_review(self) -> None:
         source_text = """\
@@ -2622,15 +3248,33 @@ return value 0
         # look up a form instead of discovering it one parse error at a time.
         rows = sem._syntax_inventory_rows()
         self.assertGreater(len(rows), 50)
-        self.assertTrue(all({"syntax", "description", "status"} <= set(r) for r in rows))
+        self.assertTrue(all(
+            {"syntax", "description", "status", "statusCategory"} <= set(r)
+            for r in rows))
+        syntax_blob = "\n".join(row["syntax"] for row in rows)
+        self.assertIn("`set storage lookupAttemptIndex nextLookupAttemptIndex`", syntax_blob)
+        self.assertIn("`authority OP ACTION PATH`", syntax_blob)
+        self.assertIn("`input operation OP NAME TYPE`", syntax_blob)
+        self.assertIn("`output operation OP TYPE...`", syntax_blob)
+        self.assertNotIn("`authority OP EFFECT_PATH ACCESS`", syntax_blob)
+        self.assertNotIn("`set module NAME VALUE ownedBy OWNER`", syntax_blob)
+        self.assertNotIn("`set local NAME VALUE`", syntax_blob)
+        self.assertNotIn("`input OP NAME TYPE`", syntax_blob)
 
         args = argparse.Namespace(query="branch", status=None, json=True)
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             rc = sem.command_reference(args)
         self.assertEqual(rc, 0)
+        reference_json = buf.getvalue()
+        reference_json.encode("cp1252")
+        self.assertNotIn("→", reference_json)
         payload = json.loads(buf.getvalue())
         self.assertEqual(payload["schemaVersion"], "sem.reference.v1")
+        self.assertIn("partial", payload["statusLegend"])
+        self.assertIn("diagnosticIndex", payload)
+        self.assertIn("diagnosticLookup", payload)
+        self.assertTrue(any("--status Partial" in example["command"] for example in payload["examples"]))
         self.assertGreater(payload["matchCount"], 0)
         self.assertLess(payload["matchCount"], payload["totalRows"])
         blob = " ".join(r["syntax"] for r in payload["rows"])
@@ -2643,6 +3287,83 @@ return value 0
             sem.command_reference(args_status)
         impld = json.loads(buf2.getvalue())
         self.assertTrue(all("impl'd" in r["status"].lower() for r in impld["rows"]))
+
+        # Escaped pipes in syntax cells must stay inside the row, not split the
+        # markdown table into malformed reference entries.
+        args_set = argparse.Namespace(query="storage local|module", status=None, json=True)
+        buf3 = io.StringIO()
+        with contextlib.redirect_stdout(buf3):
+            sem.command_reference(args_set)
+        storage_rows = json.loads(buf3.getvalue())["rows"]
+        self.assertTrue(any(
+            "`storage local|module immutable|mutable NAME TYPE VALUE`" == row["syntax"]
+            for row in storage_rows))
+
+        args_partial = argparse.Namespace(query=None, status="Partial", json=True)
+        buf4 = io.StringIO()
+        with contextlib.redirect_stdout(buf4):
+            sem.command_reference(args_partial)
+        partial = json.loads(buf4.getvalue())
+        self.assertTrue(partial["rows"])
+        self.assertTrue(all(row["statusCategory"] == "partial" for row in partial["rows"]))
+        self.assertTrue(all(row.get("unfinishedDetails") for row in partial["rows"]))
+
+        args_diag = argparse.Namespace(query="SS3104", status=None, json=True)
+        buf5 = io.StringIO()
+        with contextlib.redirect_stdout(buf5):
+            sem.command_reference(args_diag)
+        diagnostic_payload = json.loads(buf5.getvalue())
+        ss3104_entry = next(
+            entry for entry in diagnostic_payload["diagnosticIndex"]
+            if entry["code"] == "SS3104"
+        )
+        self.assertGreater(ss3104_entry["rowCount"], 0)
+        self.assertEqual(ss3104_entry["url"], "docs/reference/diagnostic-codes.md#ss3104")
+        diagnostic_blob = " ".join(row["syntax"] for row in diagnostic_payload["rows"])
+        self.assertIn("`effect OP ACTION PATH`", diagnostic_blob)
+        self.assertTrue(any("SS3104" in row.get("diagnosticCodes", []) for row in diagnostic_payload["rows"]))
+        self.assertIn("sem explain CODE --json", diagnostic_payload["diagnosticLookup"])
+
+    def test_agent_payload_commands_keep_json_surfaces(self) -> None:
+        parser = sem.build_parser()
+        subparsers = next(
+            action for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        json_surface_commands = {
+            "agent-docs",
+            "bench",
+            "bootstrap",
+            "check",
+            "context",
+            "deps",
+            "dev",
+            "doctor",
+            "eval",
+            "explain",
+            "fix",
+            "graph",
+            "help",
+            "new",
+            "patch",
+            "readiness",
+            "reference",
+            "run",
+            "self",
+            "size",
+            "skills",
+            "slice",
+            "symbols",
+            "test",
+            "version",
+        }
+
+        missing = [
+            name for name in sorted(json_surface_commands)
+            if "--json" not in subparsers.choices[name].format_help()
+        ]
+
+        self.assertEqual(missing, [])
 
     def test_reference_points_operation_queries_at_docs(self) -> None:
         # `sem reference` indexes syntax forms only; standard-library operations
@@ -2660,12 +3381,25 @@ return value 0
         self.assertIn("docs get", hint)
 
         # The human-readable no-match path also redirects to docs.
-        args_human = argparse.Namespace(query="concat", status=None, json=False)
+        args_human = argparse.Namespace(query="definitelyNotAReferenceSyntaxOperation", status=None, json=False)
         human = io.StringIO()
         with contextlib.redirect_stdout(human):
             sem.command_reference(args_human)
         text = human.getvalue().lower()
         self.assertIn("docs search", text)
+        self.assertIn("syntax", text)
+
+        # The matched human path must also warn that `reference` is syntax-only;
+        # operation-looking syntax hits such as concat should not hide docs
+        # search/get guidance.
+        args_matched_human = argparse.Namespace(query="concat", status=None, json=False)
+        matched_human = io.StringIO()
+        with contextlib.redirect_stdout(matched_human):
+            sem.command_reference(args_matched_human)
+        matched_text = matched_human.getvalue().lower()
+        self.assertIn("syntax-only", matched_text)
+        self.assertIn("docs search", matched_text)
+        self.assertIn("docs get", matched_text)
 
     def test_execute_semantic_contract_classification(self) -> None:
         # The opt-in semantic-contract executor must distinguish a real
@@ -2956,6 +3690,41 @@ return value 0
         self.assertIn("coordinates", payload["error"])
         self.assertIn("outside", payload["details"][0])
 
+    def test_patch_plan_dry_run_skips_format_and_check_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text("module demo.agent\noperation main\nreturn void\n", encoding="utf-8")
+            plan = {
+                "schemaVersion": "sem.fixPlan.v1",
+                "status": "actionable",
+                "planUsable": True,
+                "inputPath": str(source),
+                "repairs": [
+                    {
+                        "diagnostic": "SSTEST",
+                        "edits": [
+                            {
+                                "op": "replaceLine",
+                                "file": str(source),
+                                "line": 3,
+                                "text": "return void",
+                            }
+                        ],
+                    }
+                ],
+            }
+            with mock.patch.object(sem, "_build_check_payload") as check_mock, mock.patch.object(
+                sem.subprocess, "run"
+            ) as run_mock:
+                payload = sem._execute_patch_plan(plan, "dry-run")
+
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["applied"])
+        self.assertIsNone(payload["verification"]["formatOk"])
+        self.assertIsNone(payload["verification"]["checkOk"])
+        check_mock.assert_not_called()
+        run_mock.assert_not_called()
+
     def test_load_plan_accepts_utf8_bom(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             plan_path = Path(tmp) / "plan.json"
@@ -3072,6 +3841,87 @@ return value 0
         self.assertEqual(result["cwd"], str(root.resolve()))
         self.assertEqual(result["lane"], "runtime-harness")
 
+    def test_test_payload_uses_real_python_for_harnesses_when_frozen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            harness = root / "tests" / "runtime_probe.py"
+            harness.parent.mkdir()
+            harness.write_text("print('ok')\n", encoding="utf-8")
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "ok": False,
+                "status": "lint-diagnostics",
+                "buildable": True,
+                "summary": {"errors": 0, "warnings": 1},
+                "scope": {"diagnosticsScope": "project"},
+                "diagnostics": [],
+            }), mock.patch.object(sem, "_discover_test_entries", return_value=[
+                {"name": "runtime_probe", "kind": "python", "path": harness}
+            ]), mock.patch.object(sys, "frozen", True, create=True), mock.patch.dict(
+                os.environ, {"SEM_TEST_PYTHON": "", "PYTHON": ""}
+            ), mock.patch.object(
+                sem.shutil, "which", side_effect=lambda name: r"C:\Python310\python.exe" if name == "python" else None
+            ), mock.patch.object(sem.subprocess, "run") as run_mock:
+                run_mock.return_value = mock.Mock(returncode=0, stdout="ok\n", stderr="")
+                payload = sem._run_test_payload(root, allow_red_preflight_harnesses=True)
+
+        self.assertEqual(payload["runtimeHarnessStatus"], "passed")
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[0], r"C:\Python310\python.exe")
+        self.assertNotEqual(Path(command[0]).name.lower(), "sem.exe")
+        self.assertEqual(payload["results"][0]["pythonInterpreterSource"], "path")
+
+    def test_test_payload_reports_missing_python_for_frozen_harnesses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            harness = root / "tests" / "runtime_probe.py"
+            harness.parent.mkdir()
+            harness.write_text("print('ok')\n", encoding="utf-8")
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "ok": True,
+                "status": "ok",
+                "buildable": True,
+                "summary": {"errors": 0, "warnings": 0},
+                "scope": {"diagnosticsScope": "project"},
+                "diagnostics": [],
+            }), mock.patch.object(sem, "_discover_test_entries", return_value=[
+                {"name": "runtime_probe", "kind": "python", "path": harness}
+            ]), mock.patch.object(sys, "frozen", True, create=True), mock.patch.dict(
+                os.environ, {"SEM_TEST_PYTHON": "", "PYTHON": ""}
+            ), mock.patch.object(sem.shutil, "which", return_value=None), mock.patch.object(
+                sem.subprocess, "run"
+            ) as run_mock:
+                payload = sem._run_test_payload(root, include_python_harnesses=True)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["runtimeHarnessStatus"], "failed")
+        self.assertEqual(payload["results"][0]["status"], "error")
+        self.assertIn("SEM_TEST_PYTHON", payload["results"][0]["error"])
+        run_mock.assert_not_called()
+
+    def test_test_payload_can_pass_with_nonblocking_preflight_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            harness = root / "tests" / "runtime_probe.py"
+            harness.parent.mkdir()
+            harness.write_text("print('ok')\n", encoding="utf-8")
+            with mock.patch.object(sem, "_build_check_payload", return_value={
+                "ok": False,
+                "status": "ok-with-warnings",
+                "buildable": True,
+                "summary": {"errors": 0, "warnings": 1},
+                "scope": {"diagnosticsScope": "project"},
+                "diagnostics": [{"severity": "warning", "code": "SS4001"}],
+            }), mock.patch.object(sem, "_discover_test_entries", return_value=[
+                {"name": "runtime_probe", "kind": "python", "path": harness}
+            ]), mock.patch.object(sem.subprocess, "run") as run_mock:
+                run_mock.return_value = mock.Mock(returncode=0, stdout="ok\n", stderr="")
+                payload = sem._run_test_payload(root, include_python_harnesses=True)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "passed")
+        self.assertEqual(payload["compositeStatus"], "ok-with-warnings/runtime-passed")
+        self.assertEqual(payload["passedTests"], 1)
+
     def test_test_payload_runs_semantic_tests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "demo.test.sem"
@@ -3132,6 +3982,119 @@ return value 0
         self.assertEqual(gated["failedTests"], 1, "failing assertion must gate under execute_contracts")
         self.assertEqual(checkonly["failedTests"], 0, "check-only must not observe the exit code")
         self.assertEqual(checkonly["passedTests"], 1)
+
+    def test_execute_contracts_runs_native_required_semantic_test_as_exe(self) -> None:
+        source_text = (
+            "# harness note: this smoke is BUILT AND RUN AS A NATIVE EXE rather than via the JIT path.\n"
+            "project NativeContract\n"
+            "target console\n"
+            "runtime AgentRuntime 0.1\n"
+            "entry console main\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "memory main heap no\n"
+            "async main no\n"
+            "purpose operation main \"native smoke\"\n"
+            "invariant operation main \"native exe returns zero\"\n"
+            "storage local immutable leftValue Int64 1\n"
+            "storage local immutable rightValue Int64 1\n"
+            "call equalCall math.equalInt64\n"
+            "argument equalCall left Int64 leftValue\n"
+            "argument equalCall right Int64 rightValue\n"
+            "run equalCall\n"
+            "bind value valuesEqual Bool equalCall\n"
+            "branch if condition valuesEqual target success\n"
+            "storage local immutable failCode ExitCode 1\n"
+            "return value failCode\n"
+            "label success\n"
+            "storage local immutable okCode ExitCode 0\n"
+            "return value okCode\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "native.test.sem"
+            source.write_text(source_text, encoding="utf-8")
+            with mock.patch.object(sem, "_execute_semantic_contract") as jit_mock, mock.patch.object(
+                sem,
+                "_execute_native_semantic_contract",
+                return_value={
+                    "attempted": True,
+                    "built": True,
+                    "executed": True,
+                    "exitCode": 0,
+                    "status": "passed",
+                    "reason": "native executable exited 0",
+                },
+            ) as native_mock:
+                payload = sem._run_test_payload(source, include_python_harnesses=False, execute_contracts=True)
+
+        jit_mock.assert_not_called()
+        native_mock.assert_called_once()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["runtimeHarnessStatus"], "passed")
+        self.assertEqual(payload["coverageSummary"]["sourceChecksExecuted"], 1)
+        self.assertEqual(payload["coverageSummary"]["nativeHarnessesExecuted"], 1)
+        result = payload["results"][0]
+        self.assertEqual(result["executionModel"], "semantic-check+native-exe")
+        self.assertEqual(result["runtimeCoverage"], "native-runtime-exercised")
+        self.assertEqual(result["jitExecution"]["status"], "not-attempted")
+        self.assertEqual(result["nativeExecution"]["status"], "passed")
+
+    def test_execute_contracts_reports_native_harness_unsupported_without_jit_crash(self) -> None:
+        source_text = (
+            "project NativeUnavailableContract\n"
+            "target console\n"
+            "runtime AgentRuntime 0.1\n"
+            "entry console main\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "memory main heap no\n"
+            "async main no\n"
+            "purpose operation main \"native unavailable smoke\"\n"
+            "invariant operation main \"source still checks\"\n"
+            "storage local immutable leftValue Int64 1\n"
+            "storage local immutable rightValue Int64 1\n"
+            "call equalCall math.equalInt64\n"
+            "argument equalCall left Int64 leftValue\n"
+            "argument equalCall right Int64 rightValue\n"
+            "run equalCall\n"
+            "bind value valuesEqual Bool equalCall\n"
+            "branch if condition valuesEqual target success\n"
+            "storage local immutable failCode ExitCode 1\n"
+            "return value failCode\n"
+            "label success\n"
+            "storage local immutable okCode ExitCode 0\n"
+            "return value okCode\n"
+        )
+        jit_unavailable = {
+            "executed": False,
+            "exitCode": 3,
+            "reason": "uses native runtime intrinsics not available under the in-process JIT",
+        }
+        native_unsupported = {
+            "attempted": True,
+            "built": False,
+            "executed": False,
+            "exitCode": 4,
+            "status": "unsupported",
+            "reason": "native executable build failed; runtime harness unsupported",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "native-unavailable.test.sem"
+            source.write_text(source_text, encoding="utf-8")
+            with mock.patch.object(sem, "_execute_semantic_contract", return_value=jit_unavailable), mock.patch.object(
+                sem, "_execute_native_semantic_contract", return_value=native_unsupported
+            ):
+                payload = sem._run_test_payload(source, include_python_harnesses=False, execute_contracts=True)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["runtimeHarnessStatus"], "unsupported")
+        self.assertEqual(payload["coverageSummary"]["jitContractsUnavailable"], 1)
+        self.assertEqual(payload["coverageSummary"]["nativeHarnessesUnsupported"], 1)
+        result = payload["results"][0]
+        self.assertEqual(result["executionModel"], "semantic-check+native-exe-unsupported")
+        self.assertEqual(result["runtimeCoverage"], "native-runtime-unsupported")
+        self.assertEqual(result["jitExecution"]["status"], "unavailable")
+        self.assertEqual(result["nativeExecution"]["status"], "unsupported")
 
     def test_test_payload_tracks_selected_and_skipped_harnesses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3300,6 +4263,35 @@ return value 0
         self.assertIn("status", payload)
         self.assertIn("completeContext", payload)
 
+    def test_eval_positional_inline_source_and_missing_file_guidance(self) -> None:
+        inline = "storage local immutable n Int64 42"
+
+        text, error = sem._read_eval_source(argparse.Namespace(code=None, path=inline))
+        missing_text, missing_error = sem._read_eval_source(argparse.Namespace(code=None, path="missingSnippet.sem"))
+
+        self.assertEqual(text, inline)
+        self.assertIsNone(error)
+        self.assertIsNone(missing_text)
+        self.assertIn("--code", missing_error)
+        self.assertIn("no such file", missing_error)
+
+    def test_command_dev_plain_output_says_watch_plan_only(self) -> None:
+        payload = {
+            "status": "ok",
+            "watch": {
+                "files": ["main.sem"],
+                "rerun": ["sem check --json main.sem"],
+            },
+        }
+        args = argparse.Namespace(path=".", trace=False, json=False, full=False)
+        buffer = io.StringIO()
+
+        with mock.patch.object(sem, "_dev_payload", return_value=payload), contextlib.redirect_stdout(buffer):
+            code = sem.command_dev(args)
+
+        self.assertEqual(code, 0)
+        self.assertIn("watch plan only", buffer.getvalue())
+
     def test_main_supports_version_json(self) -> None:
         with mock.patch("sys.stdout") as stdout:
             result = sem.main(["version", "--json"])
@@ -3324,6 +4316,120 @@ return value 0
         self.assertIn(f"sem {sem.VERSION}", out)
         self.assertIn("native runtimes:", out)
         self.assertIn("syntax cutover:", out)
+
+    def test_version_payload_surfaces_packaging_release_facts(self) -> None:
+        payload = sem._version_payload()
+
+        packaging = payload["packaging"]
+        self.assertEqual(packaging["selfHostedNative"], False)
+        self.assertIn(packaging["kind"], {"source-python", "pyinstaller-onefile"})
+        self.assertEqual(packaging["releaseRepository"], sem.DEFAULT_RELEASE_REPOSITORY)
+        self.assertEqual(packaging["releaseArtifacts"][0]["platform"], "windows-x64")
+        self.assertEqual(packaging["tempExtraction"]["directoryPattern"], "_MEI*")
+        self.assertIn("sem clean --pyinstaller-temp", packaging["tempExtraction"]["cleanupCommand"])
+        self.assertIn("sem.check.v1", payload["emittedSchemas"])
+        self.assertIn("sem.self.v1", payload["emittedSchemas"])
+        self.assertIn("sem.doctor.v0", payload["schemaManifest"]["provisional"])
+        self.assertEqual(payload["schemaManifest"]["policy"], "docs/reference/contract-stability.md")
+        self.assertEqual(payload["compiler"]["pathKind"], "source-file")
+
+    def test_version_payload_uses_logical_component_paths_when_packaged(self) -> None:
+        with mock.patch.object(sem.sys, "frozen", True, create=True):
+            payload = sem._version_payload()
+
+        for component in ("compiler", "linter", "formatter"):
+            self.assertEqual(payload[component]["pathKind"], "packaged-logical")
+            self.assertFalse(payload[component]["pathsEphemeral"])
+            self.assertTrue(payload[component]["path"].startswith("packaged://SemanticScript/"))
+            self.assertNotIn("_MEI", payload[component]["path"])
+
+    def test_self_latest_uses_releases_api_and_published_at_order(self) -> None:
+        releases = [
+            {
+                "tag_name": "main-old",
+                "name": "old",
+                "prerelease": True,
+                "draft": False,
+                "published_at": "2026-01-01T00:00:00Z",
+                "assets": [{"name": "sem.exe", "size": 1, "browser_download_url": "https://example.test/old.exe"}],
+            },
+            {
+                "tag_name": "main-new",
+                "name": "new",
+                "prerelease": True,
+                "draft": False,
+                "published_at": "2026-02-01T00:00:00Z",
+                "assets": [{"name": "sem.exe", "size": 2, "browser_download_url": "https://example.test/new.exe"}],
+            },
+        ]
+
+        payload = sem._self_release_payload_from_releases(
+            releases,
+            repository="owner/repo",
+            channel="prerelease",
+            platform="windows-x64",
+        )
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["release"]["tag"], "main-new")
+        self.assertEqual(payload["asset"]["browserDownloadUrl"], "https://example.test/new.exe")
+        self.assertFalse(payload["latestEndpointUsed"])
+        self.assertEqual(payload["apiUrl"], "https://api.github.com/repos/owner/repo/releases")
+        self.assertNotIn("/latest", payload["apiUrl"])
+
+    def test_self_download_dry_run_reports_selected_artifact_without_download(self) -> None:
+        latest_payload = {
+            "schemaVersion": sem.SELF_PAYLOAD_VERSION,
+            "ok": True,
+            "status": "ok",
+            "release": {"tag": "main-new"},
+            "asset": {"name": "sem.exe", "browserDownloadUrl": "https://example.test/sem.exe"},
+        }
+        args = argparse.Namespace(
+            repo="owner/repo",
+            channel="prerelease",
+            platform="windows-x64",
+            output="downloaded-sem.exe",
+            dry_run=True,
+        )
+
+        with mock.patch.object(sem, "_self_latest_payload", return_value=latest_payload), mock.patch.object(
+            sem, "_download_release_asset"
+        ) as download:
+            payload = sem._self_download_payload(args, update_mode=False)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "preview")
+        self.assertFalse(payload["applied"])
+        self.assertTrue(payload["outputPath"].endswith("downloaded-sem.exe"))
+        download.assert_not_called()
+
+    def test_clean_pyinstaller_temp_collects_only_stale_mei_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            temp_root = Path(tmp)
+            stale = temp_root / "_MEI12345"
+            fresh = temp_root / "_MEI67890"
+            unrelated = temp_root / "not-mei"
+            stale.mkdir()
+            fresh.mkdir()
+            unrelated.mkdir()
+            (stale / "payload.bin").write_bytes(b"abc")
+            old_time = time.time() - 7200
+            os.utime(stale, (old_time, old_time))
+
+            root, targets = sem._collect_pyinstaller_temp_targets(temp_root, min_age_seconds=3600)
+
+        self.assertEqual(root, temp_root.resolve())
+        self.assertEqual([Path(item["path"]).name for item in targets], ["_MEI12345"])
+        self.assertEqual(targets[0]["sizeBytes"], 3)
+
+    def test_clean_parser_accepts_pyinstaller_temp_mode(self) -> None:
+        parser = sem.build_parser()
+
+        args = parser.parse_args(["clean", "--pyinstaller-temp", "--min-age-seconds", "0"])
+
+        self.assertTrue(args.pyinstaller_temp)
+        self.assertEqual(args.min_age_seconds, 0)
 
     def test_release_launcher_routes_internal_tool_script_paths(self) -> None:
         launcher = load_sem_launcher()

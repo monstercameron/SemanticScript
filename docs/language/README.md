@@ -67,10 +67,15 @@ target console
 runtime native 1
 entry console main
 
+capability stdoutWriter console.stdout write
+
 operation main
 output operation main ExitCode
 effect main write console.stdout
-purpose main "Print one greeting and exit successfully"
+memory main heap no
+async main no
+purpose operation main "Print one greeting and exit successfully"
+useCapability main stdoutWriter
 
 storage local immutable greetingText String "hello from SemanticScript"
 call writeGreetingCall console.writeLine

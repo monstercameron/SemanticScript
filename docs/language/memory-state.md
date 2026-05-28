@@ -33,22 +33,22 @@ Current compiler behavior:
 ## Mutation
 
 ```semanticscript
-set local currentRevision nextRevision
-set module lastRevision nextRevision ownedBy moduleStateOwner
-set sharedState failureCount nextFailureCount protectedBy failureCountGuardToken
+set storage currentRevision nextRevision
+set storage lastRevision nextRevision
 ```
 
 Schema:
 
 ```text
-set local NAME VALUE
-set module NAME VALUE [ownedBy OWNER]
-set sharedState NAME VALUE [protectedBy TOKEN]
+set storage NAME VALUE
+set memory NAME VALUE
 ```
 
-The `ownedBy` and `protectedBy` tails are accepted as metadata. Current codegen
-stores into local slots, module globals, or shared-state globals when the target
-is known.
+The parser accepts only `set storage|memory NAME VALUE` today. It resolves the
+slot by name, so the same row form writes either local mutable storage or module
+mutable storage. Scope-explicit `set local`, `set module`, `set sharedState`,
+and `ownedBy` / `protectedBy` tails are rejected rather than silently treated as
+metadata.
 
 ## Shared State
 

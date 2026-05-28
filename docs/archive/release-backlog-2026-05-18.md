@@ -2152,9 +2152,9 @@ product".
         inside HTML dynamic holes.
   - [x] Type-check dynamic holes by core HTML sink context: text nodes, quoted
         attributes, class values, URL attributes, fragments, and full documents.
-  - [x] Escape `HtmlText` during hydration for text and attribute sinks.
-  - [x] Define first-class HTML trust types such as `HtmlText`, `HtmlClass`,
-        `SafeUrl`, `HtmlFragment`, `HtmlTrustedFragment`, and `HtmlDocument`.
+  - [x] Escape `String` during hydration for text and non-URL quoted attribute sinks.
+  - [x] Define first-class HTML trust types such as `HtmlSafeUrl`,
+        `HtmlFragment`, `HtmlTrustedFragment`, and `HtmlDocument`.
   - [x] Lower template hydration through generated targets such as
         `html.hydrate.TodoPageTemplate`.
   - [x] Add `standard.html` as the official standard-library import module for

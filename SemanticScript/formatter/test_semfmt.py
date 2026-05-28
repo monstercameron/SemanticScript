@@ -144,7 +144,7 @@ class TestFormatSource(unittest.TestCase):
             "html   template   CardTemplate\n"
             "html   body   template   CardTemplate\n"
             "  <article class=\"card\">\n"
-            "    <h1>{titleText}</h1>\n"
+            "    <h1>{{titleText}}</h1>\n"
             "  </article>\n"
             "operation   main\n"
         )
@@ -152,7 +152,7 @@ class TestFormatSource(unittest.TestCase):
             "html template CardTemplate\n"
             "html body template CardTemplate\n"
             "  <article class=\"card\">\n"
-            "    <h1>{titleText}</h1>\n"
+            "    <h1>{{titleText}}</h1>\n"
             "  </article>\n"
             "operation main\n"
         )

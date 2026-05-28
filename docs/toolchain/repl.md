@@ -94,6 +94,7 @@ line); `lineOffset` is the number of generated header lines.
 | `nonzero-exit`  | ran to completion, program chose a non-zero exit code          |
 | `crashed`       | launched but never returned (runtime fault in the JIT)         |
 | `compile-failed`| codegen failed; see `output.stderr` and `notes`                |
+| `native-runtime-unavailable` | refused before launch because the snippet calls a native runtime adapter not linked by eval |
 | `timeout`       | abandoned after `--timeout` seconds                            |
 | `input-error`   | the snippet/path could not be read                             |
 
@@ -106,6 +107,21 @@ output.
 For non-`ok` outcomes the payload carries `nextCommands` (e.g. `sem check` /
 `sem fix` for `compile-failed`, a larger `--timeout` for `timeout`), following
 the same machine-facing convention as other `sem` surfaces.
+
+`sem eval` is the JIT runner, not the native target pipeline. It refuses obvious
+native-runtime adapter calls such as `sqlite.*`, `http.*`, `bcrypt.*`, `json.*`,
+`net.*`, `event.*`, and `gui.*` before launch with
+`status: "native-runtime-unavailable"` and `execution.ran: false`. Build those
+programs with `sem build ... -- --emit-exe` instead.
+
+`sem test --json` reports this split explicitly for `.test.sem` files. Each
+semantic result includes `sourceCheck`, `jitExecution`, `nativeExecution`, and
+`runtimeCoverage`; the top-level `coverageSummary` counts source checks, JIT
+contract attempts, and native runtime harness attempts separately. Test files
+whose metadata says they are built and run as a native exe are not JIT-run first;
+`sem test` builds the executable, runs it when supported, or reports
+`runtimeHarnessStatus: "unsupported"` with the native build reason instead of
+classifying a JIT crash as a semantic assertion failure.
 
 ## Execution metrics
 

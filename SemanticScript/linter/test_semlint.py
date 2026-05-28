@@ -84,6 +84,16 @@ run writeLineCall
             fixturePath.write_text("project Alias\n", encoding="utf-8")
             self.assertEqual(semlint.collect_paths([str(fixturePath)]), [fixturePath])
 
+    def test_collect_paths_skips_sem_suffix_directories(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            semDirectory = root / ".sem"
+            semDirectory.mkdir()
+            fixturePath = root / "fixture.sem"
+            fixturePath.write_text("project Alias\n", encoding="utf-8")
+
+            self.assertEqual(semlint.collect_paths([str(root)]), [fixturePath])
+
 
 # ==========================================================================
 # SS0102  unusedDeclaration.label   (entry-anchor convention suppressed)
@@ -288,6 +298,21 @@ returnVoid
 """, encoding="utf-8")
             diagnostics = semlint.lint_path(modulePath)
         self.assertIn("SS2507", _codes(diagnostics))
+
+    def test_allow_mixed_with_advisory_still_cannot_hide_blocker(self) -> None:
+        annotated = """project Test
+error MainError
+# semlint-allow SS0104: variant reserved for an upcoming failure path
+errorCase MainError NeverRaisedVariant
+operation main
+# semlint-allow SS0003: old output form is intentionally still an error
+output main Void
+purpose operation main "smoke"
+return void
+"""
+        codes = _codes(_lint_source(annotated))
+        self.assertNotIn("SS0104", codes)
+        self.assertIn("SS0003", codes)
 
 
 # ==========================================================================
@@ -738,11 +763,11 @@ class TestHtmlSyntaxIsland(unittest.TestCase):
         diagnostics = _lint_source("""project HtmlLint
 html template CardTemplate
 html body template CardTemplate
-  <section class="{cardClassName}">
+  <section class="{{cardClassName}}">
     <style>
       .meter { width: 100%; content: "{literal-braces-stay-static}"; }
     </style>
-    <h1>{titleText}</h1>
+    <h1>{{titleText}}</h1>
   </section>
 operation main
 output operation main Void
@@ -750,6 +775,7 @@ purpose operation main "html lint smoke"
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
         self.assertNotIn("SS0002", _codes(diagnostics))
+        self.assertNotIn("SS3520", _codes(diagnostics))
 
     def test_html_body_can_continue_through_blank_lines_and_eof(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
@@ -757,7 +783,7 @@ html template CardTemplate
 html body template CardTemplate
   <section>
 
-    <h1>{titleText}</h1>
+    <h1>{{titleText}}</h1>
   </section>
 """)
         self.assertNotIn("SS0001", _codes(diagnostics))
@@ -767,7 +793,7 @@ html body template CardTemplate
         diagnostics = _lint_source("""project HtmlLint
 html template CardTemplate
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 operation main
 output main Void
 purpose main "html lint smoke"
@@ -791,7 +817,7 @@ purpose main "html lint smoke"
 html template CardTemplate
 html parameter template CardTemplate titleText String
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 """)
         self.assertIn("SS0003", _codes(diagnostics))
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0003")[0]
@@ -807,30 +833,81 @@ html body template
         matchingDiagnostic = _diagnostics_with_code(diagnostics, "SS0003")[0]
         self.assertEqual(matchingDiagnostic.subjectName, "html")
 
-    def test_html_hydrate_requires_exact_inferred_hole_roots(self) -> None:
+    def test_html_hydrate_reports_missing_double_brace_hole_arg(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
 html template CardTemplate
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 operation main
 output operation main Void
 purpose operation main "html lint smoke"
 call hydrateCardCall html.hydrate.CardTemplate
-argument hydrateCardCall extraText String extraText
 run hydrateCardCall
 return void
 """)
-        codes = _codes(diagnostics)
-        self.assertIn("SS3520", codes)
-        messages = [diagnostic.invariantRule for diagnostic in diagnostics if diagnostic.code == "SS3520"]
-        self.assertTrue(any("titleText" in message for message in messages))
-        self.assertTrue(any("extraText" in message for message in messages))
+        matching = [
+            diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3520")
+            if diagnostic.intentSlogan == "hydrate arg missing"
+        ]
+        self.assertEqual(1, len(matching))
+        self.assertIn("titleText", matching[0].invariantRule)
+
+    def test_html_hydrate_reports_extra_arg(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <h1>{{titleText}}</h1>
+operation main
+output operation main Void
+purpose operation main "html lint smoke"
+storage local immutable titleValue String "Title"
+storage local immutable extraValue String "Extra"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall titleText String titleValue
+argument hydrateCardCall extraText String extraValue
+run hydrateCardCall
+return void
+""")
+        matching = [
+            diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3520")
+            if diagnostic.intentSlogan == "hydrate arg extra"
+        ]
+        self.assertEqual(1, len(matching))
+        self.assertIn("extraText", matching[0].invariantRule)
+
+    def test_html_legacy_single_brace_hole_blocks_with_migration_text(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <h1>{titleText}</h1>
+""")
+        matching = [
+            diagnostic for diagnostic in diagnostics
+            if diagnostic.code == "SS3520"
+            and diagnostic.intentSlogan == "legacy HTML hole delimiter rejected"
+        ][0]
+        self.assertTrue(matching.blocksCompile)
+        self.assertIn("{{titleText}}", matching.invariantRule)
+
+    def test_html_literal_js_and_css_braces_are_not_holes(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <style>
+    .meter { width: 100%; color: red; }
+  </style>
+  <script>
+    const state = { open: true, count: 1 };
+    import { initHTMLeX } from "/assets/app.js";
+  </script>
+""")
+        self.assertNotIn("SS3520", _codes(diagnostics))
 
     def test_html_record_field_hole_root_is_the_required_argument(self) -> None:
         diagnostics = _lint_source("""project HtmlLint
 html template CardTemplate
 html body template CardTemplate
-  <h1>{profile.titleText}</h1>
+  <h1>{{profile.titleText}}</h1>
 operation main
 output operation main Void
 purpose operation main "html lint smoke"
@@ -845,7 +922,7 @@ return void
         diagnostics = _lint_source("""project HtmlLint
 html template CardTemplate
 html body template CardTemplate
-  <section>{bodyHtml}</section>
+  <section>{{bodyHtml}}</section>
 operation unsafeHandler
 input operation unsafeHandler request HttpRequest
 output operation unsafeHandler Void
@@ -869,7 +946,7 @@ return void
         diagnostics = _lint_source("""project HtmlLint
 html template CardTemplate
 html body template CardTemplate
-  <section>{bodyText}</section>
+  <section>{{bodyText}}</section>
 operation safeHandler
 input operation safeHandler request HttpRequest
 output operation safeHandler Void
@@ -885,6 +962,44 @@ ignore value source hydrateCardCall type HtmlDocument
 return void
 """)
         self.assertNotIn("SS3616", _codes(diagnostics))
+
+    def test_href_dynamic_string_hole_requires_safe_url(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+html template CardTemplate
+html body template CardTemplate
+  <a href="{{plainString}}">open</a>
+operation main
+output operation main Void
+purpose operation main "html safe url lint smoke"
+storage local immutable linkText String "/unsafe"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall plainString String linkText
+run hydrateCardCall
+return void
+""")
+        matching = [
+            diagnostic for diagnostic in _diagnostics_with_code(diagnostics, "SS3520")
+            if diagnostic.intentSlogan == "URL hydrate arg must be HtmlSafeUrl"
+        ]
+        self.assertEqual(1, len(matching))
+        self.assertIn("HtmlSafeUrl", matching[0].invariantRule)
+
+    def test_href_dynamic_safe_url_hole_is_accepted(self) -> None:
+        diagnostics = _lint_source("""project HtmlLint
+type HtmlSafeUrl String
+html template CardTemplate
+html body template CardTemplate
+  <a href="{{safeUrl}}">open</a>
+operation main
+output operation main Void
+purpose operation main "html safe url lint smoke"
+storage local immutable linkText HtmlSafeUrl "/safe"
+call hydrateCardCall html.hydrate.CardTemplate
+argument hydrateCardCall safeUrl HtmlSafeUrl linkText
+run hydrateCardCall
+return void
+""")
+        self.assertNotIn("SS3520", _codes(diagnostics))
 
 
 class TestGuiRuntimeContracts(unittest.TestCase):
@@ -1414,7 +1529,7 @@ mainFile taskForgeTui "main.sem"
 importModule html standard.html
 html template CardTemplate
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 storage module immutable titleText String "Title"
 operation main
 output main HtmlDocument
@@ -2332,6 +2447,26 @@ return value writeStatus
         matching = _diagnostics_with_code(diagnostics, "SS3110")[0]
         self.assertEqual(matching.subjectName, "storedValue")
 
+    def test_column_value_used_after_database_close_in_response_html_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call readValueCall sqlite.columnText
+argument readValueCall statement SqliteStatement selectStatement
+argument readValueCall columnIndex Int32 columnIndexZero
+run readValueCall
+bind value storedValue String readValueCall
+call closeCall sqlite.closeDatabase
+argument closeCall database SqliteDatabase database
+run closeCall
+call writeHtmlCall http.responseHtml
+argument writeHtmlCall response HttpResponse response
+argument writeHtmlCall body HtmlFragment storedValue
+run writeHtmlCall
+bind value writeStatus Int32 writeHtmlCall
+return value writeStatus
+""")
+        self.assertIn("SS3110", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3110")[0]
+        self.assertEqual(matching.subjectName, "storedValue")
+
     def test_defer_release_is_not_flagged(self) -> None:
         # `defer` runs the finalize at scope exit (after the response), so the
         # column value is still valid when used — the idiomatic, safe form.
@@ -2456,6 +2591,145 @@ bind value writeStatus Int32 writeCall
 return value writeStatus
 """)
         self.assertNotIn("SS3113", _codes(diagnostics))
+
+    def test_step_on_same_statement_invalidates_before_use(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call nextRowCall sqlite.stepStatement
+argument nextRowCall statement SqliteStatement selectStatement
+run nextRowCall
+bind ok nextRowResult SqliteStepResult nextRowCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String titleValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertIn("SS3113", _codes(diagnostics))
+
+    def test_reset_of_a_different_statement_does_not_flag(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call resetOtherCall sqlite.resetStatement
+argument resetOtherCall statement SqliteStatement otherStatement
+run resetOtherCall
+bind ok resetOtherResult Int32 resetOtherCall
+call writeCall http.responseText
+argument writeCall response HttpResponse response
+argument writeCall body String titleValue
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+""")
+        self.assertNotIn("SS3113", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3114  resourceLifetime.httpBodyFreedBeforeWrite
+# ==========================================================================
+
+class TestHttpResponseBodyFreedBeforeWrite(unittest.TestCase):
+    _PREAMBLE = """project Server
+operation handle
+input operation handle response HttpResponse
+output operation handle Int32
+purpose operation handle "allocate a response body and write it"
+effect handle allocate heap
+effect handle free heap
+effect handle write http.response
+memory handle heap yes
+memoryAllocationSource handle allocationCall
+storage local immutable allocationSize ByteCount 16
+storage local immutable okStatus HttpStatusCode 200
+storage local immutable contentType HttpContentType "application/octet-stream"
+storage local immutable failureStatus Int32 500
+call allocationCall c.malloc
+arg allocationCall size allocationSize
+runChecked allocationCall ok allocatedBuffer OpaquePointer error allocationError Int32 else allocationFailed
+"""
+
+    _WRITE_RESPONSE = """call writeCall http.responseBytes
+argument writeCall response HttpResponse response
+argument writeCall status HttpStatusCode okStatus
+argument writeCall body HttpByteBody allocatedBuffer
+argument writeCall bodyLength HttpBodyLength allocationSize
+argument writeCall contentType HttpContentType contentType
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+label allocationFailed
+return value failureStatus
+"""
+
+    def test_explicit_free_before_response_write_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call freeCall c.free
+arg freeCall ptr allocatedBuffer
+run freeCall
+ignoreValue freeCall Void
+""" + self._WRITE_RESPONSE)
+        self.assertIn("SS3114", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3114")[0]
+        self.assertEqual(matching.subjectName, "allocatedBuffer")
+
+    def test_response_write_before_explicit_free_is_not_flagged(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """call writeCall http.responseBytes
+argument writeCall response HttpResponse response
+argument writeCall status HttpStatusCode okStatus
+argument writeCall body HttpByteBody allocatedBuffer
+argument writeCall bodyLength HttpBodyLength allocationSize
+argument writeCall contentType HttpContentType contentType
+run writeCall
+bind value writeStatus Int32 writeCall
+call freeCall c.free
+arg freeCall ptr allocatedBuffer
+run freeCall
+ignoreValue freeCall Void
+return value writeStatus
+label allocationFailed
+return value failureStatus
+""")
+        self.assertNotIn("SS3114", _codes(diagnostics))
+
+    def test_defer_release_before_response_write_is_not_flagged(self) -> None:
+        diagnostics = _lint_source(self._PREAMBLE + """defer releaseAllocationCall c.free allocatedBuffer
+""" + self._WRITE_RESPONSE)
+        self.assertNotIn("SS3114", _codes(diagnostics))
+
+    def test_memory_release_before_response_write_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Server
+operation handle
+input operation handle response HttpResponse
+output operation handle Int32
+purpose operation handle "allocate a response body and write it"
+effect handle allocate heap
+effect handle free heap
+effect handle write http.response
+memory handle heap yes
+memoryAllocationSource handle allocationCall
+storage local immutable allocationSize ByteCount 16
+storage local immutable okStatus HttpStatusCode 200
+storage local immutable contentType HttpContentType "application/octet-stream"
+storage local immutable failureStatus Int32 500
+call allocationCall memory.allocateMemoryBytes
+argument allocationCall byteCount ByteCount allocationSize
+run allocationCall
+bind ok allocatedBuffer OpaquePointer allocationCall
+bind error allocationError MemoryAllocationError allocationCall
+branch error source allocationCall target allocationFailed
+call releaseCall memory.releaseMemoryBytes
+argument releaseCall memoryBuffer OpaquePointer allocatedBuffer
+run releaseCall
+ignore void source releaseCall
+call writeCall http.responseBytes
+argument writeCall response HttpResponse response
+argument writeCall status HttpStatusCode okStatus
+argument writeCall body HttpByteBody allocatedBuffer
+argument writeCall bodyLength HttpBodyLength allocationSize
+argument writeCall contentType HttpContentType contentType
+run writeCall
+bind value writeStatus Int32 writeCall
+return value writeStatus
+label allocationFailed
+return value failureStatus
+""")
+        self.assertIn("SS3114", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -5113,6 +5387,10 @@ returnVoid
         matching = _diagnostics_with_code(diagnostics, "SS3624")[0]
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.subjectName, "createBuilderCall")
+        self.assertEqual(matching.fixCandidates[0].name, "migrateToJsonCrudApi")
+        self.assertIn("json.stringify.<TypeName>", matching.fixCandidates[0].shape)
+        self.assertIn("json.createEmptyDocument", matching.fixCandidates[0].shape)
+        self.assertIn("document mutator API", matching.agentHint)
 
     def test_deprecated_json_finder_call_blocks_compile(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5131,6 +5409,10 @@ returnVoid
         matching = _diagnostics_with_code(diagnostics, "SS3625")[0]
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.subjectName, "findTitleCall")
+        self.assertEqual(matching.fixCandidates[0].name, "migrateToJsonCrudApi")
+        self.assertIn("json.createDocument", matching.fixCandidates[0].shape)
+        self.assertIn("json.cursorAtPath", matching.fixCandidates[0].shape)
+        self.assertIn("typed cursor accessor", matching.agentHint)
 
     def test_json_body_invalid_json_blocks_compile(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5142,6 +5424,8 @@ jsonBody payload
         matching = _diagnostics_with_code(diagnostics, "SS3626")[0]
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.kind, "json.invalidJsonBody")
+        self.assertEqual(matching.primary.line, 4)
+        self.assertEqual(matching.primary.role, "jsonBodyLine")
 
     def test_json_body_valid_json_text_is_silent(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5221,6 +5505,15 @@ argument prepareCall sql SqlText selectSql
         self.assertNotIn("SS4105", codes)
         self.assertNotIn("SS4301", codes)
 
+    def test_sql_body_string_literal_braces_are_not_holes(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable createSql SqlText
+sql body createSql
+  CREATE TABLE events (payload TEXT DEFAULT '{}')
+""")
+        self.assertNotIn("SS3627", _codes(diagnostics))
+
     def test_sql_body_dynamic_hole_blocks_compile(self) -> None:
         diagnostics = _lint_source("""project Test
 storage module immutable selectSql SqlText
@@ -5231,6 +5524,8 @@ sql body selectSql
         matching = _diagnostics_with_code(diagnostics, "SS3627")[0]
         self.assertTrue(matching.blocksCompile)
         self.assertEqual(matching.kind, "sql.sqlBodyDynamicHole")
+        self.assertEqual(matching.primary.line, 4)
+        self.assertEqual(matching.primary.role, "sqlBodyLine")
 
     def test_inline_sql_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5262,6 +5557,9 @@ sql body insertEventSql
         matching = _diagnostics_with_code(diagnostics, "SS3639")[0]
         self.assertEqual(matching.kind, "sql.lastInsertRowidFunction")
         self.assertEqual(matching.subjectName, "insertEventSql")
+        self.assertIn("INSERT ... RETURNING id", matching.agentHint)
+        self.assertIn("sqlite.columnInt64", matching.fixCandidates[0].shape)
+        self.assertIn("activity-log INSERT", matching.fixCandidates[0].shape)
 
     def test_native_last_insert_rowid_call_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5279,6 +5577,8 @@ bind value insertedRowId SqliteRowId rowidCall
         matching = _diagnostics_with_code(diagnostics, "SS3639")[0]
         self.assertEqual(matching.kind, "sqlite.lastInsertRowIdCall")
         self.assertEqual(matching.subjectName, "rowidCall")
+        self.assertIn("beginImmediateTransaction/commit", matching.agentHint)
+        self.assertIn("doneSqliteStepResult", matching.fixCandidates[0].shape)
 
     def test_sql_body_returning_generated_id_is_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5514,6 +5814,105 @@ argument commitTxCall database SqliteDatabase databaseHandle
 argument commitTxCall sql SqlText commitSql
 run commitTxCall
 ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3635", _codes(diagnostics))
+
+    def test_multiple_sql_writes_with_transaction_helpers_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call beginTxCall sqlite.beginImmediateTransaction
+argument beginTxCall database SqliteDatabase databaseHandle
+run beginTxCall
+ignore void source beginTxCall
+call prepareAuditCall sqlite.prepareStatement
+argument prepareAuditCall database SqliteDatabase databaseHandle
+argument prepareAuditCall sql SqlText insertAuditSql
+run prepareAuditCall
+bind ok auditStatement SqliteStatement prepareAuditCall
+call stepAuditCall sqlite.stepStatement
+argument stepAuditCall statement SqliteStatement auditStatement
+run stepAuditCall
+ignore ok source stepAuditCall type Int32
+call prepareRequestLogCall sqlite.prepareStatement
+argument prepareRequestLogCall database SqliteDatabase databaseHandle
+argument prepareRequestLogCall sql SqlText insertRequestLogSql
+run prepareRequestLogCall
+bind ok requestLogStatement SqliteStatement prepareRequestLogCall
+call stepRequestLogCall sqlite.stepStatement
+argument stepRequestLogCall statement SqliteStatement requestLogStatement
+run stepRequestLogCall
+ignore ok source stepRequestLogCall type Int32
+call commitTxCall sqlite.commitTransaction
+argument commitTxCall database SqliteDatabase databaseHandle
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3635", _codes(diagnostics))
+
+    def test_multiple_sql_writes_via_declared_sql_forwarder_transaction_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable beginSql SqlText
+sql body beginSql
+  BEGIN IMMEDIATE
+storage module immutable commitSql SqlText
+sql body commitSql
+  COMMIT
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation runStatement
+input operation runStatement databaseHandle SqliteDatabase
+input operation runStatement sql SqlText
+output operation runStatement Void
+purpose operation runStatement "smoke"
+sqliteSqlForwarder runStatement sql
+call prepareCall sqlite.prepareStatement
+argument prepareCall database SqliteDatabase databaseHandle
+argument prepareCall sql SqlText sql
+run prepareCall
+bind ok preparedStatement SqliteStatement prepareCall
+call stepCall sqlite.stepStatement
+argument stepCall statement SqliteStatement preparedStatement
+run stepCall
+ignore ok source stepCall type Int32
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call beginCall runStatement
+argument beginCall databaseHandle SqliteDatabase databaseHandle
+argument beginCall sql SqlText beginSql
+run beginCall
+ignore void source beginCall
+call auditCall runStatement
+argument auditCall databaseHandle SqliteDatabase databaseHandle
+argument auditCall sql SqlText insertAuditSql
+run auditCall
+ignore void source auditCall
+call requestLogCall runStatement
+argument requestLogCall databaseHandle SqliteDatabase databaseHandle
+argument requestLogCall sql SqlText insertRequestLogSql
+run requestLogCall
+ignore void source requestLogCall
+call commitCall runStatement
+argument commitCall databaseHandle SqliteDatabase databaseHandle
+argument commitCall sql SqlText commitSql
+run commitCall
+ignore void source commitCall
 """)
         self.assertNotIn("SS3635", _codes(diagnostics))
 
@@ -5786,7 +6185,7 @@ errorCase MainError Failed
 storage module immutable okCode ExitCode 0
 html template CardTemplate
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 operation main
 input operation main console Console
 output operation main MainResult
@@ -5821,7 +6220,7 @@ memoryHeap main no
 htmlTemplate CardTemplate
 htmlArg CardTemplate titleText String
 htmlBody CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 arg callName param value
 bind result Int64 callName
 bindOk ok Int64 callName
@@ -5850,6 +6249,41 @@ ignoreError callName
         self.assertIn("branchIf", cutoverSubjects)
         self.assertIn("returnVoid", cutoverSubjects)
         self.assertIn("ignoreError", cutoverSubjects)
+
+    def test_set_storage_is_canonical_mutation_form(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module mutable requestCount Int64 0
+operation main
+output operation main Void
+purpose operation main "canonical set storage fixture"
+storage local immutable nextCount Int64 1
+set storage requestCount nextCount
+return void
+""")
+        self.assertNotIn("SS0003", _codes(diagnostics))
+
+    def test_set_local_and_set_module_ownedby_emit_cutover_error(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output operation main Void
+purpose operation main "stale set forms fixture"
+storage local immutable nextCount Int64 1
+set local requestCount nextCount
+set module requestCount nextCount ownedBy moduleOwner
+return void
+""")
+        cutover = _diagnostics_with_code(diagnostics, "SS0003")
+        self.assertEqual(len(cutover), 2)
+        self.assertTrue(all(diagnostic.subjectName == "set" for diagnostic in cutover))
+        self.assertTrue(any("set local" in diagnostic.intentSlogan for diagnostic in cutover))
+        self.assertTrue(any("ownedBy" in diagnostic.invariantRule for diagnostic in cutover))
+        fixShapes = [
+            fix.shape
+            for diagnostic in cutover
+            for fix in diagnostic.fixCandidates
+            if fix.name == "rewriteToNewSyntax"
+        ]
+        self.assertIn("set storage requestCount nextCount", fixShapes)
 
     def test_branch_if_condition_must_be_bool(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5895,6 +6329,53 @@ branch error source maybeFailCall target failed
 storage local immutable successExit ExitCode 0
 return value successExit
 label failed
+storage local immutable failedExit ExitCode 1
+return value failedExit
+""")
+        self.assertNotIn("SS4107", _codes(diagnostics))
+
+    def test_branch_error_accepts_nested_user_result_operations(self) -> None:
+        diagnostics = _lint_source("""project Test
+error ProbeError
+errorCase ProbeError Failed Int32
+operation leafHelper
+output operation leafHelper Result Int64 ProbeError
+purpose operation leafHelper "smoke"
+storage local immutable resultValue Int64 7
+return ok resultValue
+operation middleHelper
+output operation middleHelper Result Int64 ProbeError
+purpose operation middleHelper "smoke"
+call leafCall leafHelper
+run leafCall
+bind ok leafOkValue Int64 leafCall
+bind error leafError ProbeError leafCall
+branch error source leafCall target leafFailed
+return ok leafOkValue
+label leafFailed
+return error leafError
+operation outerHelper
+output operation outerHelper Result Int64 ProbeError
+purpose operation outerHelper "smoke"
+call middleCall middleHelper
+run middleCall
+bind ok middleOkValue Int64 middleCall
+bind error middleError ProbeError middleCall
+branch error source middleCall target middleFailed
+return ok middleOkValue
+label middleFailed
+return error middleError
+operation main
+output operation main ExitCode
+purpose operation main "smoke"
+call outerCall outerHelper
+run outerCall
+bind ok outerOkValue Int64 outerCall
+bind error outerError ProbeError outerCall
+branch error source outerCall target outerFailed
+storage local immutable successExit ExitCode 0
+return value successExit
+label outerFailed
 storage local immutable failedExit ExitCode 1
 return value failedExit
 """)
@@ -6249,6 +6730,83 @@ call addCall math.addInt64
 arg addCall left lookupAccountId
 arg addCall right rightValue
 run addCall
+""")
+        self.assertNotIn("SS4301", _codes(diagnostics))
+
+    def test_bcrypt_role_alias_argument_site_coercions_are_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "bcrypt role alias smoke"
+storage local immutable passwordText String "pw"
+storage local immutable costValue Int32 12
+storage local immutable hashBuffer OpaquePointer 0
+storage local immutable hashCapacity Int32 61
+call hashCall bcrypt.hashPasswordResult
+argument hashCall plaintext String passwordText
+argument hashCall cost Int32 costValue
+argument hashCall outBuffer OpaquePointer hashBuffer
+argument hashCall outCapacity Int32 hashCapacity
+run hashCall
+bind ok hashWritten Bool hashCall
+bind error hashError Int32 hashCall
+call verifyCall bcrypt.verifyPasswordResult
+argument verifyCall plaintext String passwordText
+argument verifyCall expectedHash String hashBuffer
+run verifyCall
+bind ok matched Bool verifyCall
+bind error verifyError Int32 verifyCall
+storage local immutable sessionTokenText String "issued-session-token"
+call sessionHashCall bcrypt.hashSessionTokenResult
+argument sessionHashCall token String sessionTokenText
+argument sessionHashCall cost Int32 costValue
+argument sessionHashCall outBuffer OpaquePointer hashBuffer
+argument sessionHashCall outCapacity Int32 hashCapacity
+run sessionHashCall
+bind ok sessionHashWritten Bool sessionHashCall
+bind error sessionHashError Int32 sessionHashCall
+call sessionVerifyCall bcrypt.verifySessionTokenResult
+argument sessionVerifyCall token String sessionTokenText
+argument sessionVerifyCall expectedHash String hashBuffer
+run sessionVerifyCall
+bind ok sessionMatched Bool sessionVerifyCall
+bind error sessionVerifyError Int32 sessionVerifyCall
+""")
+        self.assertNotIn("SS4301", _codes(diagnostics))
+
+    def test_guarded_http_form_password_can_flow_to_bcrypt_plaintext_role(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main Void
+purpose main "hash password from a form field"
+input main request HttpRequest
+storage local immutable bodyText HttpRequestValue "password=secret"
+storage local immutable passwordFieldName String "password"
+storage local immutable scratchBuffer OpaquePointer 0
+storage local immutable scratchCapacity Int64 64
+storage local immutable costValue Int32 12
+storage local immutable hashBuffer OpaquePointer 0
+storage local immutable hashCapacity Int32 61
+call passwordFieldCall http.formField
+argument passwordFieldCall body HttpRequestValue bodyText
+argument passwordFieldCall name String passwordFieldName
+argument passwordFieldCall scratch OpaquePointer scratchBuffer
+argument passwordFieldCall scratchCapacity Int64 scratchCapacity
+run passwordFieldCall
+bind value passwordValue HttpRequestValue passwordFieldCall
+call passwordMissingCall pointer.isNull
+argument passwordMissingCall pointer OpaquePointer passwordValue
+run passwordMissingCall
+bind value passwordMissing Bool passwordMissingCall
+branch if condition passwordMissing target missingPassword
+call hashCall bcrypt.hashPassword
+argument hashCall plaintext BcryptPlaintextPassword passwordValue
+argument hashCall cost Int32 costValue
+argument hashCall outBuffer BcryptHashBuffer hashBuffer
+argument hashCall outCapacity Int32 hashCapacity
+run hashCall
+bind value hashStatus Int32 hashCall
+label missingPassword
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
@@ -6884,14 +7442,14 @@ class TestSecurityRuleParity(unittest.TestCase):
             "purpose operation main \"x\"",
             "call writeCall console.writeLine", "run writeCall",
         ]), "SS4604", True),
-        # Compiler-only (no semlint floor rule) — documented asymmetry:
+        # Compiler strict wall plus semlint floor:
         ("dynamic-format", "\n".join([
             "project P", "operation main", "output operation main Void",
             "purpose operation main \"x\"",
             "storage module mutable runtimeFormat String \"\"",
             "call writeCall c.snprintf",
             "argument writeCall format String runtimeFormat", "run writeCall",
-        ]), "SS3310", False),
+        ]), "SS3310", True),
     ]
 
     def test_compiler_and_linter_agree_per_rule(self) -> None:
@@ -6908,6 +7466,54 @@ class TestSecurityRuleParity(unittest.TestCase):
                                  f"{label}: {code} is compiler-only by design "
                                  f"(no semlint floor rule) — update this harness "
                                  f"if a linter rule is added")
+
+
+class TestFormatStringMustBeConstant(unittest.TestCase):
+    def test_c_snprintf_runtime_format_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+input operation main requestFormat String
+output operation main Void
+purpose operation main "format string injection fixture"
+call writeCall c.snprintf
+argument writeCall format String requestFormat
+run writeCall
+return void
+""")
+        self.assertIn("SS3310", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3310")[0]
+        self.assertEqual(matching.subjectName, "writeCall")
+        self.assertEqual(matching.gapEdge, "constantFormatString")
+
+    def test_mutable_format_storage_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module mutable runtimeFormat String ""
+operation main
+output operation main Void
+purpose operation main "format string injection fixture"
+call writeCall c.snprintf
+argument writeCall format String runtimeFormat
+run writeCall
+return void
+""")
+        self.assertIn("SS3310", _codes(diagnostics))
+
+    def test_immutable_module_and_local_formats_are_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable moduleFormat String "%s"
+operation main
+output operation main Void
+purpose operation main "safe format string fixture"
+storage local immutable localFormat String "%d"
+call moduleWriteCall c.snprintf
+argument moduleWriteCall format String moduleFormat
+run moduleWriteCall
+call localWriteCall c.snprintf
+argument localWriteCall format String localFormat
+run localWriteCall
+return void
+""")
+        self.assertNotIn("SS3310", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -8113,6 +8719,106 @@ returnValue missingWriteStatus
         ))
         self.assertNotIn("SS3603", _codes(diagnostics))
 
+    def _program_passing_nullable_request_param_to_responseText(
+        self,
+        target: str,
+        bindName: str,
+        paramName: str,
+        routePath: str,
+        addGuard: bool,
+    ) -> str:
+        guardBlock = (
+            f"""call valueMissingCheckCall pointer.isNull
+arg valueMissingCheckCall pointer {bindName}
+run valueMissingCheckCall
+bind valueMissing Bool valueMissingCheckCall
+branchIf valueMissing missingPath
+"""
+            if addGuard
+            else ""
+        )
+        return f"""project WebTest
+target webServer
+runtime native 1
+webServer testServer
+serverHost testServer "127.0.0.1"
+serverPort testServer 18099
+route testServer GET "{routePath}" echoHandler
+
+capability httpRequestReader http.request read
+capability httpResponseWriter http.response write
+
+operation echoHandler
+input echoHandler request HttpRequest
+input echoHandler response HttpResponse
+output echoHandler Int32
+effect echoHandler read http.request
+effect echoHandler write http.response
+memory echoHandler arena request
+async echoHandler no
+useCapability echoHandler httpRequestReader
+useCapability echoHandler httpResponseWriter
+purpose echoHandler "echo nullable request parameter"
+invariant echoHandler "static reply on missing value"
+label startEchoHandler
+storage local immutable paramName String "{paramName}"
+storage local immutable okStatus Int32 200
+storage local immutable badStatus Int32 400
+storage local immutable missingBody String "missing\\n"
+call paramReadCall {target}
+arg paramReadCall request request
+arg paramReadCall name paramName
+run paramReadCall
+bind {bindName} String paramReadCall
+{guardBlock}call writeCall http.responseText
+arg writeCall response response
+arg writeCall status okStatus
+arg writeCall body {bindName}
+run writeCall
+bind writeStatus Int32 writeCall
+returnValue writeStatus
+
+label missingPath
+call missingWriteCall http.responseText
+arg missingWriteCall response response
+arg missingWriteCall status badStatus
+arg missingWriteCall body missingBody
+run missingWriteCall
+bind missingWriteStatus Int32 missingWriteCall
+returnValue missingWriteStatus
+"""
+
+    def test_request_path_and_query_params_are_nullable_for_SS3603(self) -> None:
+        cases = [
+            ("http.requestPathParam", "taskIdValue", "taskId", "/tasks/:taskId"),
+            ("http.requestQueryParam", "queryValue", "q", "/search"),
+        ]
+        for target, bindName, paramName, routePath in cases:
+            with self.subTest(target=target):
+                diagnostics = _lint_source(
+                    self._program_passing_nullable_request_param_to_responseText(
+                        target, bindName, paramName, routePath, addGuard=False,
+                    )
+                )
+                self.assertIn("SS3603", _codes(diagnostics))
+                matching = _diagnostics_with_code(diagnostics, "SS3603")[0]
+                self.assertEqual(matching.subjectName, bindName)
+                self.assertEqual(matching.gapEdge, "pointer.isNull")
+
+    def test_pointer_isnull_guard_silences_path_and_query_param_warning(self) -> None:
+        cases = [
+            ("http.requestPathParam", "taskIdValue", "taskId", "/tasks/:taskId"),
+            ("http.requestQueryParam", "queryValue", "q", "/search"),
+        ]
+        for target, bindName, paramName, routePath in cases:
+            with self.subTest(target=target):
+                diagnostics = _lint_source(
+                    self._program_passing_nullable_request_param_to_responseText(
+                        target, bindName, paramName, routePath, addGuard=True,
+                    )
+                )
+                self.assertNotIn("SS3603", _codes(diagnostics))
+
     def test_warning_marker_opt_out_silences_the_warning(self) -> None:
         # The intentional negative-test contract: an op that explicitly
         # opts into the adapter's null-body failure path via a marker
@@ -8236,6 +8942,72 @@ bind writeStatus Int32 writeCall
 returnValue writeStatus
 """)
         self.assertNotIn("SS3603", _codes(diagnostics))
+
+
+# ==========================================================================
+# SS3619  webserver.responseHeaderAfterBody
+# ==========================================================================
+
+class TestResponseHeaderAfterBody(unittest.TestCase):
+    """Headers staged after the first body writer run do not affect the
+    already-latched response."""
+
+    def _program(self, header_after_body: bool) -> str:
+        header_block = """call setCookieCall http.responseHeader
+arg setCookieCall response response
+arg setCookieCall name setCookieHeaderName
+arg setCookieCall value cookieValue
+run setCookieCall
+bind setCookieStatus Int32 setCookieCall
+"""
+        body_block = """call writeCall http.responseText
+arg writeCall response response
+arg writeCall status okStatus
+arg writeCall body bodyText
+run writeCall
+bind writeStatus Int32 writeCall
+"""
+        ordered_blocks = body_block + header_block if header_after_body else header_block + body_block
+        return f"""project WebTest
+target webServer
+runtime native 1
+webServer testServer
+serverHost testServer "127.0.0.1"
+serverPort testServer 18099
+route testServer GET "/cookie" cookieHandler
+
+capability httpResponseWriter http.response write
+
+storage module immutable setCookieHeaderName String "Set-Cookie"
+storage module immutable cookieValue String "sid=abc; HttpOnly"
+
+operation cookieHandler
+input cookieHandler request HttpRequest
+input cookieHandler response HttpResponse
+output cookieHandler Int32
+effect cookieHandler write http.response
+memory cookieHandler arena request
+async cookieHandler no
+useCapability cookieHandler httpResponseWriter
+purpose cookieHandler "write a response with a staged cookie header"
+invariant cookieHandler "headers must be staged before the body writer runs"
+label startCookieHandler
+storage local immutable okStatus Int32 200
+storage local immutable bodyText String "ok\\n"
+{ordered_blocks}returnValue writeStatus
+"""
+
+    def test_header_after_body_is_flagged(self) -> None:
+        diagnostics = _lint_source(self._program(header_after_body=True))
+        self.assertIn("SS3619", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3619")[0]
+        self.assertEqual(matching.subjectName, "setCookieCall")
+        self.assertEqual(matching.gapEdge, "http.responseHeader.order")
+        self.assertIn("writeCall", matching.intentSlogan)
+
+    def test_header_before_body_is_not_flagged(self) -> None:
+        diagnostics = _lint_source(self._program(header_after_body=False))
+        self.assertNotIn("SS3619", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -8669,6 +9441,18 @@ returnValue writeStatus
         # routeMiddleware coverage still drifts; routeTimeout coverage doesn't.
         self.assertNotIn("webserver.routeTimeoutCoverageDrift", coverageDriftKinds)
         self.assertIn("webserver.routeMiddlewareCoverageDrift", coverageDriftKinds)
+
+    def test_route_timeout_warns_when_metadata_only(self) -> None:
+        diagnostics = _lint_source(self._minimal_route_program(
+            'timeoutBudget probeBudget DurationMilliseconds 2000\n'
+            'routeTimeout testServer "/probe" probeBudget\n'
+            'routeMiddlewareOptOut testServer "/probe" "no middleware"\n'
+        ))
+        self.assertIn("SS3618", _codes(diagnostics))
+        matching = _diagnostics_with_code(diagnostics, "SS3618")[0]
+        self.assertEqual(matching.kind, "webserver.routeTimeoutMetadataOnly")
+        self.assertEqual(matching.gapEdge, "preemptiveTimeoutEnforcement")
+        self.assertEqual(matching.subjectName, "/probe")
 
     def test_explicit_timeout_optout_silences_timeout_drift(self) -> None:
         diagnostics = _lint_source(self._minimal_route_program(
@@ -9791,7 +10575,7 @@ class TestUnusedHtmlTemplate(unittest.TestCase):
             "module examples.p\n"
             "html template Orphan\n"
             "html body template Orphan\n"
-            "    <p>{msg}</p>\n"
+            "    <p>{{msg}}</p>\n"
             "operation main\n"
             "output operation main ExitCode\n"
             "async main no\n"
@@ -9809,7 +10593,7 @@ class TestUnusedHtmlTemplate(unittest.TestCase):
             "module examples.p\n"
             "html template Page\n"
             "html body template Page\n"
-            "    <p>{msg}</p>\n"
+            "    <p>{{msg}}</p>\n"
             "operation main\n"
             "output operation main ExitCode\n"
             "async main no\n"

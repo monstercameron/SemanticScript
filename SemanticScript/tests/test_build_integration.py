@@ -159,6 +159,35 @@ class TestNativeExeBuildAndRun(unittest.TestCase):
                                  timeout=30)
             self.assertEqual(run.returncode, 0)
 
+    def test_sem_build_standalone_compiles_single_file(self) -> None:
+        # `sem build --standalone FILE` compiles a lone source to a native exe
+        # without a build.sem project — the single-file native build path the
+        # field log asked for (no scaffolding a throwaway project to prove a snippet).
+        sem_cli = ROOT / "tools" / "sem.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "snippet.sscript"
+            src.write_text(CONSOLE_PROGRAM, encoding="utf-8")
+            exe = Path(tmp) / ("prog.exe" if os.name == "nt" else "prog")
+            build = subprocess.run(
+                [sys.executable, str(sem_cli), "build", "--standalone", str(src),
+                 "--", "--emit-exe", str(exe)],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=180)
+            self.assertEqual(build.returncode, 0, f"standalone build failed:\n{build.stderr}")
+            self.assertTrue(exe.exists(), "standalone build produced no executable")
+            run = subprocess.run([str(exe)], capture_output=True, timeout=30)
+            self.assertEqual(run.returncode, 0)
+
+    def test_sem_build_standalone_rejects_non_file(self) -> None:
+        sem_cli = ROOT / "tools" / "sem.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [sys.executable, str(sem_cli), "build", "--standalone", tmp],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=60)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("not a file", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

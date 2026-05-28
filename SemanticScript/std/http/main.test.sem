@@ -19,6 +19,25 @@ memory main heap no
 async main no
 purpose operation main "Smoke-test the canonical standard.http import path, response capability, and shutdown drain-state capability from its module folder."
 
+storage module immutable sessionNowMillis Int64 1000
+storage module immutable sessionTtlMillis SessionTtlMillis 500
+storage module immutable expectedExpiresAtMillis SessionExpiresAtMillis 1500
+storage module immutable sessionExpiryFailureCode ExitCode 1
+
+call sessionExpiresAtCall http.sessionExpiresAt
+argument sessionExpiresAtCall nowMillis Int64 sessionNowMillis
+argument sessionExpiresAtCall ttlMillis SessionTtlMillis sessionTtlMillis
+run sessionExpiresAtCall
+bind value actualExpiresAtMillis SessionExpiresAtMillis sessionExpiresAtCall
+call sessionExpiresAtOkCall math.equalInt64
+argument sessionExpiresAtOkCall left Int64 actualExpiresAtMillis
+argument sessionExpiresAtOkCall right Int64 expectedExpiresAtMillis
+run sessionExpiresAtOkCall
+bind value sessionExpiresAtOk Bool sessionExpiresAtOkCall
+branch if condition sessionExpiresAtOk target sessionExpiresAtHolds
+branch else target sessionExpiryFailed
+label sessionExpiresAtHolds
+
 call writeCall console.writeLine
 argument writeCall text String okText
 run writeCall
@@ -27,5 +46,7 @@ bind error writeCallError Int32 writeCall
 branch error source writeCall target writeFailed
 
 return value successCode
+label sessionExpiryFailed
+return value sessionExpiryFailureCode
 label writeFailed
 return value writeCallError

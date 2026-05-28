@@ -22,7 +22,7 @@ operation writeStandardOutputLine
 input operation writeStandardOutputLine text String
 output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
-purpose writeStandardOutputLine "Write one line and surface console failures"
+purpose operation writeStandardOutputLine "Write one line and surface console failures"
 ```
 
 `Result OK ERROR` is a type-level contract. In current LLVM lowering, the

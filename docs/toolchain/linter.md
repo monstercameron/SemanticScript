@@ -63,10 +63,19 @@ route metadata selector checks for routeTimeout and routeMiddleware
 routed native HTTP handler ABI checks
 native HTTP call argument checks for request readers, multipart readers, text writers, byte writers, SSE-event writers, JSON writers, and header writers
 nullable HTTP reader flow checks before non-null response/header sinks
+response header ordering (`SS3619`): `http.responseHeader` must run before
+  the first response body/file/redirect writer, because the native response
+  latches staged headers when the body writer runs
 group/endGroup balance
 duplicate domain literals
 semantic comment prefix checks
 ```
+
+Naming-discipline advisories `SS4001`, `SS4002`, and `SS4003` are T4 style
+signals, not build blockers. They are also mechanical: `sem fix --plan --json`
+emits local `replaceLine` edits for adding the `Call`, `Error`, and `Failure`
+role suffixes inside the enclosing operation, and `sem patch --dry-run` should
+be used before applying them on a busy worktree.
 
 ## Structured Output
 
@@ -155,6 +164,7 @@ loop-invariant pure calls (SS3208): a side-effect-free arithmetic/comparison
   iteration and should be hoisted above the loop header
 string accumulator appends in loops
 snprintf byte counts used as i64 offsets without explicit widening
+non-constant printf-family format strings (`SS3310`)
 GUI selection handlers that also append list items
 fixed-capacity row mutations without unchanged-count branches
 bind-then-ignore
@@ -173,7 +183,9 @@ async calls without timeout/cancel boundary
 file handles not closed, accepting defer metadata or explicit close calls
 SQLite database setup failures without close cleanup
 SQLite statements without finalize cleanup
+SQLite column text/blob/name pointers used after same-statement buffer overwrite
 SQL body islands bound to non-`SqlText` storage or containing interpolation holes
+syntax-island errors (`html body template`, `jsonBody`, `sql body`) with body-line primary spans when available
 guard tokens without release
 circular type aliases
 incomplete JSON codecs
@@ -198,11 +210,35 @@ diagnostics such as `SS3610 middlewareReturnNotMiddlewareControl` as release
 blockers, but verify new parser/codegen hardening with `semsc.py --parse-only`
 without `--lint` before marking a TODO item as always-on compiler behavior.
 
+## SQLite Column Pointers
+
+`sqlite.columnText`, `sqlite.columnBlob`, and `sqlite.columnName` return
+SQLite-owned pointers tied to the prepared statement that produced them. The
+value is not a copied SemanticScript string. On the same statement, the next
+pointer-returning column read, `sqlite.stepStatement`, `sqlite.resetStatement`,
+or `sqlite.finalizeStatement` can invalidate the bytes before a later call uses
+the bound value. A different prepared statement does not clobber this pointer.
+
+`semlint.py` reports SS3113
+`resourceLifetime.columnTextOverwrittenBeforeUse` when a borrowed column
+pointer is read, another same-statement read/step/reset happens, and the older
+value is then consumed. Use or copy each borrowed text/blob/name before the next
+same-statement invalidating operation; use by-value readers such as
+`sqlite.columnInt64` where possible.
+
 ## Serialization Checks
 
 Linters treat JSON formatting as a boundary, not as ordinary text output. A
 string format that writes `%s` content inside JSON quotes is flagged because the
 source value may need escaping before it crosses the serialization boundary.
+
+Legacy JSON builder/finder calls are also blocked with replacement guidance:
+`SS3624` points JsonBuilder call chains to `json.stringify.<TypeName>` for typed
+values or to `json.createEmptyDocument` plus `json.setObjectField*` /
+`json.appendArrayElement*` and `json.serializeDocument` for document mutation.
+`SS3625` points `json.find*` / `json.hasField` to `json.createDocument`,
+`json.cursorAtPath` or `json.objectFieldAt`, and typed cursor readers such as
+`json.cursorString`.
 
 High-signal patterns:
 

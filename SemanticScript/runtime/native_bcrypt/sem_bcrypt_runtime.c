@@ -273,3 +273,53 @@ int ss_base64url_encode(
     }
     return SS_BCRYPT_OK;
 }
+
+/* ----- one-step token issue helpers ----- */
+
+#define SS_TOKEN_ENTROPY_BYTE_COUNT 32
+
+static int issue_base64url_token(
+    unsigned char *random_scratch,
+    char *token_buffer,
+    int token_buffer_capacity,
+    int *token_length_out
+) {
+    int random_status = ss_random_bytes(
+        random_scratch,
+        SS_TOKEN_ENTROPY_BYTE_COUNT);
+    if (random_status != SS_BCRYPT_OK) {
+        return random_status;
+    }
+    return ss_base64url_encode(
+        random_scratch,
+        SS_TOKEN_ENTROPY_BYTE_COUNT,
+        token_buffer,
+        token_buffer_capacity,
+        token_length_out);
+}
+
+int ss_issue_session_token(
+    unsigned char *random_scratch,
+    char *token_buffer,
+    int token_buffer_capacity,
+    int *token_length_out
+) {
+    return issue_base64url_token(
+        random_scratch,
+        token_buffer,
+        token_buffer_capacity,
+        token_length_out);
+}
+
+int ss_issue_csrf_token(
+    unsigned char *random_scratch,
+    char *token_buffer,
+    int token_buffer_capacity,
+    int *token_length_out
+) {
+    return issue_base64url_token(
+        random_scratch,
+        token_buffer,
+        token_buffer_capacity,
+        token_length_out);
+}

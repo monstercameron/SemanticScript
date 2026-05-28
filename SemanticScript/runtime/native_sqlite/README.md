@@ -23,7 +23,11 @@ The design mirrors `SemanticScript/runtime/native_http/`:
 - Connections: `ss_sqlite_database_open`, `ss_sqlite_database_close`,
   `ss_sqlite_database_errmsg`, `ss_sqlite_database_last_insert_rowid`,
   `ss_sqlite_database_changes`.
-- One-shot SQL: `ss_sqlite_exec`.
+- One-shot SQL: `ss_sqlite_exec`; WAL mode:
+  `ss_sqlite_database_enable_wal`; scalar Int64 reads:
+  `ss_sqlite_query_scalar_int64`; transaction boundaries:
+  `ss_sqlite_transaction_begin_immediate`, `ss_sqlite_transaction_commit`,
+  `ss_sqlite_transaction_rollback`.
 - Prepared statements: `ss_sqlite_statement_prepare / _step / _reset /
   _finalize`.
 - Bindings (1-based, TRANSIENT-copied): `_bind_int64`, `_bind_double`,
@@ -33,6 +37,35 @@ The design mirrors `SemanticScript/runtime/native_http/`:
   `_column_bytes`.
 - Version: `ss_sqlite_library_version()` returns the underlying
   `sqlite3_libversion()` string.
+
+## Column pointer lifetime
+
+`ss_sqlite_statement_column_text`, `_column_blob`, and `_column_name` expose
+SQLite-owned memory. The pointer belongs to the prepared statement, not to a
+process-global scratch buffer: another statement's column reads do not overwrite
+it. On the same statement, the next pointer-returning column read,
+`ss_sqlite_statement_step`, `ss_sqlite_statement_reset`, or
+`ss_sqlite_statement_finalize` can invalidate the older pointer. Generated code
+that needs multiple text/blob/name values alive at once must copy or consume
+each value before the next same-statement invalidating operation. `semlint`
+surfaces this as SS3113.
+
+## Generated ids
+
+New generated-id code should not use
+`ss_sqlite_database_last_insert_rowid` / `sqlite.lastInsertRowId` as a normal
+dataflow primitive. That value is connection-global state. The native and
+webServer-safe pattern is to prepare the INSERT as `INSERT ... RETURNING id`,
+step it to `rowSqliteStepResult`, read column 0 with `sqlite.columnInt64`, and
+bind that named id into later statements such as an activity-log insert.
+
+When the generated-row insert and activity-log insert must be atomic, wrap them
+with `sqlite.beginImmediateTransaction` / `sqlite.commitTransaction`, finalize
+or drain the RETURNING statement before COMMIT, and call
+`sqlite.rollbackTransaction` on failure paths after BEGIN succeeds. `sem docs
+get sqlite.lastInsertRowId --json` exposes the copyable
+`target.usage.migration.rows` skeleton, and `semlint` reports SS3639 when code
+still depends on `last_insert_rowid()` or `sqlite.lastInsertRowId`.
 
 ## Build profile
 
@@ -89,6 +122,14 @@ This adapter is now wired through the SemanticScript toolchain:
    step / column / finalize / close path through generated SemanticScript
    programs, including the curated TaskForge Web application.
 
-Remaining work is product surface, not initial plumbing: richer typed query
-helpers, statement-cache abstractions, transaction helpers, and broader
-diagnostics around SQL ownership and lifecycle policy.
+Remaining work is product surface, not initial plumbing: broader typed query
+helpers, statement-cache abstractions, richer transaction policy, and broader
+diagnostics around SQL ownership and lifecycle policy. The first helper,
+`sqlite.queryScalarInt64`, covers static no-parameter COUNT/EXISTS-style reads
+without exposing a statement handle. WAL is exposed through
+`sqlite.enableWalMode` and the build-tape `sqliteJournalMode PROJECT wal`
+policy, so apps do not need raw `PRAGMA journal_mode = WAL` SQL constants.
+The flat transaction helpers `sqlite.beginImmediateTransaction`,
+`sqlite.commitTransaction`, and `sqlite.rollbackTransaction` cover ordinary
+explicit transaction boundaries without raw BEGIN/COMMIT/ROLLBACK SQL
+constants.

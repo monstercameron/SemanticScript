@@ -116,6 +116,23 @@ int         ss_sqlite_database_changes(SSSqliteDatabase *database);
  * prepare/step/finalize cycle below.
  */
 int ss_sqlite_exec(SSSqliteDatabase *database, const char *sql_text);
+int ss_sqlite_database_enable_wal(SSSqliteDatabase *database);
+int ss_sqlite_transaction_begin_immediate(SSSqliteDatabase *database);
+int ss_sqlite_transaction_commit(SSSqliteDatabase *database);
+int ss_sqlite_transaction_rollback(SSSqliteDatabase *database);
+
+/*
+ * One-shot scalar read helper for SQL that takes no parameters and returns a
+ * single Int64 value in column 0. This owns prepare/step/column/finalize
+ * internally so simple COUNT(*) / EXISTS-style reads do not need a manual
+ * statement lifecycle in SemanticScript source. Parameterized or multi-column
+ * reads still use the explicit prepared-statement API.
+ */
+int ss_sqlite_query_scalar_int64(
+    SSSqliteDatabase *database,
+    const char *sql_text,
+    long long *out_value
+);
 
 int ss_sqlite_statement_prepare(
     SSSqliteDatabase *database,

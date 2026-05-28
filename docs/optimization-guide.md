@@ -2,6 +2,44 @@
 
 This guide collects optimization rules that preserve SemanticScript's main value: visible dataflow and explicit failure contracts. Performance work should not erase semantic context.
 
+## Build Profiles And Binary Size
+
+SemanticScript's reference backend is LLVM IR plus clang/native linking. Current
+native executables are expected to be multi-hundred-KB artifacts, especially on
+Windows where the MSVC/UCRT link path dominates small programs. This is not a
+self-hosted 10 KiB-style binary pipeline today.
+
+Use the build profile deliberately:
+
+- `--build-profile dev` is the default when no build tape overrides it. It keeps
+  panic context and crash-frame instrumentation so failures explain source
+  operations and call sites. That extra context is useful for development, but
+  it is not a production-size or maximum-throughput profile.
+- `--build-profile prod` switches the default runtime checks to traps, hides
+  source context from emitted panic paths, and avoids the dev crash-context cost.
+  Use it for size/performance measurements unless the benchmark is specifically
+  about diagnostics.
+- `runtimeChecks PROJECT ...` or `--runtime-checks ...` can override the
+  profile default. Document that override in the build tape when a benchmark or
+  release needs a non-default choice.
+
+No smaller-runtime distribution option is currently bundled. If artifact size is
+the priority, measure with `prod`, `optLevel 3`, and the target platform's
+available static/dynamic C runtime choices, then record the linker/toolchain
+used with the result.
+
+Known performance notes:
+
+- Tight arithmetic and loop-heavy code generally tracks optimized C closely
+  once lowered through LLVM.
+- Recursion-heavy cases can still show overhead from SemanticScript call
+  structure and runtime-check profile choices; benchmark recursive kernels under
+  both `dev` and `prod` before treating the gap as algorithmic.
+- `defer` rows, HTML hydration copies, and repeated fragment folds are visible
+  source operations. Hoist invariant work, reuse caller-owned scratch where the
+  contract permits it, and fold fragments linearly rather than repeatedly
+  rebuilding large prefixes.
+
 ## Return Contracts
 
 Do not let raw C return values escape an operation unless the operation's contract explicitly says that raw value is the result.
@@ -355,6 +393,79 @@ without `sqlite.closeDatabase`. It reports SS3906
 `resourceLifecycle.sqliteStatementFinalizeMissing` when
 `sqlite.prepareStatement` lacks a same-operation `sqlite.finalizeStatement`
 defer or explicit cleanup call.
+
+SQLite statement helpers must declare the SQL value they forward. A
+`runStatement` wrapper that takes `input operation runStatement sql SqlText`
+should include `sqliteSqlForwarder runStatement sql` and then pass that value as
+the `sql` argument to `sqlite.prepareStatement`, `sqlite.exec`,
+`sqlite.execStatus`, `sqlite.queryScalarInt64`, or another declared SQL
+forwarder. The compiler and linter use that declaration to validate the
+caller-supplied constants for SS3911 and to follow `BEGIN`/`COMMIT` plus write
+statements for SS3635. Without the row, helper composition is intentionally
+opaque.
+
+### SQLite RETURNING
+
+Do not recover generated ids with `last_insert_rowid()` or
+`sqlite.lastInsertRowId` in new code. That value is connection-global mutable
+state. Prefer a single `INSERT ... RETURNING id` statement, read column 0 from
+that INSERT statement with `sqlite.columnInt64`, then pass the named value into
+dependent writes such as an activity-log insert.
+
+The safe row shape is:
+
+```text
+storage module immutable insertEntitySql SqlText
+sql body insertEntitySql
+  INSERT INTO entity(name) VALUES (?1) RETURNING id
+storage module immutable insertActivityLogSql SqlText
+sql body insertActivityLogSql
+  INSERT INTO activity_log(entity_id, activity_type) VALUES (?1, ?2)
+call prepareGeneratedInsertCall sqlite.prepareStatement
+argument prepareGeneratedInsertCall database SqliteDatabase databaseHandle
+argument prepareGeneratedInsertCall sql SqlText insertEntitySql
+run prepareGeneratedInsertCall
+bind ok generatedInsertStatement SqliteStatement prepareGeneratedInsertCall
+call stepGeneratedInsertCall sqlite.stepStatement
+argument stepGeneratedInsertCall statement SqliteStatement generatedInsertStatement
+run stepGeneratedInsertCall
+bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall
+# require generatedInsertStep == rowSqliteStepResult
+storage local immutable generatedIdColumnIndex Int32 0
+call readGeneratedIdCall sqlite.columnInt64
+argument readGeneratedIdCall statement SqliteStatement generatedInsertStatement
+argument readGeneratedIdCall columnIndex Int32 generatedIdColumnIndex
+run readGeneratedIdCall
+bind value generatedEntityId Int64 readGeneratedIdCall
+call finalizeGeneratedInsertCall sqlite.finalizeStatement
+argument finalizeGeneratedInsertCall statement SqliteStatement generatedInsertStatement
+run finalizeGeneratedInsertCall
+ignore ok source finalizeGeneratedInsertCall type Int32
+call prepareActivityLogCall sqlite.prepareStatement
+argument prepareActivityLogCall database SqliteDatabase databaseHandle
+argument prepareActivityLogCall sql SqlText insertActivityLogSql
+run prepareActivityLogCall
+bind ok activityLogStatement SqliteStatement prepareActivityLogCall
+call bindActivityEntityCall sqlite.bindInt64
+argument bindActivityEntityCall statement SqliteStatement activityLogStatement
+argument bindActivityEntityCall parameterIndex Int32 1
+argument bindActivityEntityCall value Int64 generatedEntityId
+run bindActivityEntityCall
+```
+
+For an atomic generated-row plus activity-log write, wrap the sequence in
+`sqlite.beginImmediateTransaction` and `sqlite.commitTransaction`; every failure
+path after BEGIN succeeds should finalize any acquired statements and then call
+`sqlite.rollbackTransaction`. A RETURNING statement remains active after its row
+is read, so step it once more to `doneSqliteStepResult`, reset it, or finalize
+it before COMMIT. `sqlite.columnInt64` returns the id by value; borrowed column
+readers such as `sqlite.columnText`, `sqlite.columnBlob`, and
+`sqlite.columnName` must be consumed or copied before the same statement steps,
+resets, finalizes, or performs another pointer-returning column read.
+
+`semlint.py` reports SS3639 for both SQL `last_insert_rowid()` and the native
+`sqlite.lastInsertRowId` target. `sem docs get sqlite.lastInsertRowId --json`
+exposes a longer copyable `target.usage.migration.rows` skeleton.
 
 ## Fixed-Capacity Row Mutations
 

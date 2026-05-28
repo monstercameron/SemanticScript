@@ -5,8 +5,8 @@
 # rationale: smoke for the bcrypt native ABI adapter. Hashes a plaintext
 #   at the minimum cost (4 — fast enough for a smoke), then confirms the
 #   produced hash verifies against the correct password and rejects a
-#   wrong one. Exercises bcrypt.hashPassword + bcrypt.verifyPassword end
-#   to end.
+#   wrong one. Exercises the Result-shaped bcrypt.hashPasswordResult +
+#   bcrypt.verifyPasswordResult wrappers end to end.
 #
 # harness note: bcrypt.* are compiler-lowered native ABI calls backed by
 #   the vendored bcrypt runtime, so this smoke is BUILT AND RUN AS A
@@ -15,8 +15,8 @@
 #       SemanticScript/std/bcrypt/main.test.sem --emit-exe bcrypt_smoke.exe
 #     ./bcrypt_smoke.exe   # prints "OK", exit 0
 #
-# invariant: hashPassword returns 0 (ok); verifyPassword returns 1 for the
-#   correct password and a non-1 status for a wrong one.
+# invariant: hashPasswordResult returns OK true; verifyPasswordResult returns
+#   OK true for the correct password and OK false for a wrong one.
 
 project StdBcryptTest
 target console
@@ -42,8 +42,8 @@ effect main allocate heap
 effect main free heap
 memory main heap auto
 async main no
-purpose operation main "Hash a password and verify the correct and a wrong password against it."
-invariant operation main "hash status == 0; verify(correct) == 1; verify(wrong) != 1."
+purpose operation main "Hash a password and verify the correct and a wrong password against it through Result-shaped bcrypt wrappers."
+invariant operation main "hashPasswordResult OK true; verify(correct) OK true; verify(wrong) OK false."
 
 label startMain
 
@@ -61,52 +61,42 @@ storage module immutable wrongPassword String "Tr0ub4dor&3"
 storage module immutable smokeBcryptCost Int32 4
 storage module immutable hashBufferCapacityInt Int32 61
 storage module immutable bcryptStatusOk Int32 0
-storage module immutable bcryptMatchSentinel Int32 1
 
-call hashPasswordCall bcrypt.hashPassword
+call hashPasswordCall bcrypt.hashPasswordResult
 argument hashPasswordCall plaintext String smokePassword
 argument hashPasswordCall cost Int32 smokeBcryptCost
 argument hashPasswordCall outBuffer OpaquePointer hashBuffer
 argument hashPasswordCall outCapacity Int32 hashBufferCapacityInt
 run hashPasswordCall
-bind value hashStatus Int32 hashPasswordCall
-call checkHashStatusCall math.equalInt32
-argument checkHashStatusCall left Int32 hashStatus
-argument checkHashStatusCall right Int32 bcryptStatusOk
-run checkHashStatusCall
-bind value hashStatusOk Bool checkHashStatusCall
-branch if condition hashStatusOk target hashStatusHolds
+bind ok hashWritten Bool hashPasswordCall
+bind error hashError Int32 hashPasswordCall
+branch error source hashPasswordCall target smokeAssertionFailed
+branch if condition hashWritten target hashStatusHolds
 branch else target smokeAssertionFailed
 label hashStatusHolds
 
-# Correct password must verify (status == 1).
-call verifyCorrectCall bcrypt.verifyPassword
+# Correct password must verify (OK Bool true).
+call verifyCorrectCall bcrypt.verifyPasswordResult
 argument verifyCorrectCall plaintext String smokePassword
 argument verifyCorrectCall expectedHash String hashBuffer
 run verifyCorrectCall
-bind value verifyCorrectResult Int32 verifyCorrectCall
-call checkVerifyCorrectCall math.equalInt32
-argument checkVerifyCorrectCall left Int32 verifyCorrectResult
-argument checkVerifyCorrectCall right Int32 bcryptMatchSentinel
-run checkVerifyCorrectCall
-bind value verifyCorrectMatched Bool checkVerifyCorrectCall
+bind ok verifyCorrectMatched Bool verifyCorrectCall
+bind error verifyCorrectError Int32 verifyCorrectCall
+branch error source verifyCorrectCall target smokeAssertionFailed
 branch if condition verifyCorrectMatched target verifyCorrectHolds
 branch else target smokeAssertionFailed
 label verifyCorrectHolds
 
-# Wrong password must NOT verify (status != 1).
-call verifyWrongCall bcrypt.verifyPassword
+# Wrong password must NOT verify (OK Bool false).
+call verifyWrongCall bcrypt.verifyPasswordResult
 argument verifyWrongCall plaintext String wrongPassword
 argument verifyWrongCall expectedHash String hashBuffer
 run verifyWrongCall
-bind value verifyWrongResult Int32 verifyWrongCall
-call checkVerifyWrongCall math.notEqualInt32
-argument checkVerifyWrongCall left Int32 verifyWrongResult
-argument checkVerifyWrongCall right Int32 bcryptMatchSentinel
-run checkVerifyWrongCall
-bind value verifyWrongRejected Bool checkVerifyWrongCall
-branch if condition verifyWrongRejected target verifyWrongHolds
-branch else target smokeAssertionFailed
+bind ok verifyWrongMatched Bool verifyWrongCall
+bind error verifyWrongError Int32 verifyWrongCall
+branch error source verifyWrongCall target smokeAssertionFailed
+branch if condition verifyWrongMatched target smokeAssertionFailed
+branch else target verifyWrongHolds
 label verifyWrongHolds
 
 # issueSessionToken: a fresh CSPRNG token must encode with status 0.
@@ -135,6 +125,32 @@ bind error sessionLengthAllocError Int32 allocSessionLengthCall
 branch error source allocSessionLengthCall target sessionAllocFailedHandler
 defer releaseSessionLengthDefer c.free sessionLengthBuffer
 storage module immutable sessionTokenCapacityInt Int32 44
+
+call randomBytesResultCall bcrypt.randomBytesResult
+argument randomBytesResultCall outBuffer BcryptRandomBuffer sessionRandomBuffer
+argument randomBytesResultCall byteCount Int32 sessionRandomByteCount
+run randomBytesResultCall
+bind ok randomBytesResultOk Bool randomBytesResultCall
+bind error randomBytesResultError Int32 randomBytesResultCall
+branch error source randomBytesResultCall target smokeAssertionFailed
+branch if condition randomBytesResultOk target randomBytesResultHolds
+branch else target smokeAssertionFailed
+label randomBytesResultHolds
+
+call base64UrlEncodeResultCall bcrypt.base64UrlEncodeResult
+argument base64UrlEncodeResultCall inputBuffer BcryptRandomBuffer sessionRandomBuffer
+argument base64UrlEncodeResultCall inputCount Int32 sessionRandomByteCount
+argument base64UrlEncodeResultCall outputBuffer Base64UrlBuffer sessionTokenBuffer
+argument base64UrlEncodeResultCall outputCapacity Int32 sessionTokenCapacityInt
+argument base64UrlEncodeResultCall outputLengthOut OpaquePointer sessionLengthBuffer
+run base64UrlEncodeResultCall
+bind ok base64UrlEncodeResultOk Bool base64UrlEncodeResultCall
+bind error base64UrlEncodeResultError Int32 base64UrlEncodeResultCall
+branch error source base64UrlEncodeResultCall target smokeAssertionFailed
+branch if condition base64UrlEncodeResultOk target base64UrlEncodeResultHolds
+branch else target smokeAssertionFailed
+label base64UrlEncodeResultHolds
+
 call issueSessionTokenCall bcrypt.issueSessionToken
 argument issueSessionTokenCall randomScratch BcryptRandomBuffer sessionRandomBuffer
 argument issueSessionTokenCall tokenBuffer Base64UrlBuffer sessionTokenBuffer
@@ -150,6 +166,48 @@ bind value issueStatusOk Bool checkIssueStatusCall
 branch if condition issueStatusOk target issueStatusHolds
 branch else target smokeAssertionFailed
 label issueStatusHolds
+
+# Session-token-at-rest flow: hash the issued token before persistence,
+# then verify a presented token against the stored hash shape.
+call hashSessionTokenCall bcrypt.hashSessionTokenResult
+argument hashSessionTokenCall token SessionToken sessionTokenBuffer
+argument hashSessionTokenCall cost Int32 smokeBcryptCost
+argument hashSessionTokenCall outBuffer BcryptHashBuffer hashBuffer
+argument hashSessionTokenCall outCapacity Int32 hashBufferCapacityInt
+run hashSessionTokenCall
+bind ok sessionTokenHashWritten Bool hashSessionTokenCall
+bind error sessionTokenHashError Int32 hashSessionTokenCall
+branch error source hashSessionTokenCall target smokeAssertionFailed
+branch if condition sessionTokenHashWritten target sessionTokenHashStatusHolds
+branch else target smokeAssertionFailed
+label sessionTokenHashStatusHolds
+
+call verifySessionTokenCall bcrypt.verifySessionTokenResult
+argument verifySessionTokenCall token SessionToken sessionTokenBuffer
+argument verifySessionTokenCall expectedHash SessionTokenHash hashBuffer
+run verifySessionTokenCall
+bind ok sessionTokenMatched Bool verifySessionTokenCall
+bind error sessionTokenVerifyError Int32 verifySessionTokenCall
+branch error source verifySessionTokenCall target smokeAssertionFailed
+branch if condition sessionTokenMatched target sessionTokenVerifyHolds
+branch else target smokeAssertionFailed
+label sessionTokenVerifyHolds
+
+call issueCsrfTokenCall bcrypt.issueCsrfToken
+argument issueCsrfTokenCall randomScratch BcryptRandomBuffer sessionRandomBuffer
+argument issueCsrfTokenCall tokenBuffer CsrfTokenBuffer sessionTokenBuffer
+argument issueCsrfTokenCall tokenCapacity Int32 sessionTokenCapacityInt
+argument issueCsrfTokenCall tokenLengthOut OpaquePointer sessionLengthBuffer
+run issueCsrfTokenCall
+bind value issueCsrfTokenStatus Int32 issueCsrfTokenCall
+call checkCsrfStatusCall math.equalInt32
+argument checkCsrfStatusCall left Int32 issueCsrfTokenStatus
+argument checkCsrfStatusCall right Int32 bcryptStatusOk
+run checkCsrfStatusCall
+bind value csrfStatusOk Bool checkCsrfStatusCall
+branch if condition csrfStatusOk target csrfStatusHolds
+branch else target smokeAssertionFailed
+label csrfStatusHolds
 
 storage module immutable successMessageText String "OK"
 call writeSuccessLineCall console.writeLine

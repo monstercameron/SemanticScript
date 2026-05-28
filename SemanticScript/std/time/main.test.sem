@@ -4,11 +4,10 @@
 #
 # Companion smoke + extended unit tests for std/time/main.sem.
 # Exercises the deterministic conversions and Gregorian leap-year
-# predicate. The OS-time wrappers (readProcessCpuClockTicks,
-# readCurrentUnixEpochSeconds) are invoked but not value-asserted
-# (non-deterministic across runs); they exist to verify the
-# capability + heap-slot plumbing still wires correctly across the
-# import boundary.
+# predicate. The OS-time wrappers verify the capability + heap-slot
+# plumbing across the import boundary; readCurrentUnixEpochSeconds is
+# also asserted above a stable 2020 epoch floor so a constant-zero
+# lowering regression fails the smoke.
 #
 # Pattern: std/main.sem ships pure-module operations only;
 # std/main.test.sem carries every smoke / unit test for it.
@@ -237,10 +236,10 @@ branch if condition leap2400Result target leap2400Holds
 branch else target smokeAssertionFailed
 label leap2400Holds
 
-# Exercise the OS-time wrappers. We don't assert their values
-# (non-deterministic across runs), but we DO branchIf on each
+# Exercise the OS-time wrappers. The CPU-clock value is only checked
+# for use, but unix epoch seconds must exceed a stable 2020 floor so
 # returned value so the bind is "used" â€” the linter would otherwise
-# flag the bind as dead. Either branch lands at the same label.
+# the historical constant-zero fallback fails the smoke.
 call exerciseCpuClockCall readProcessCpuClockTicks
 run exerciseCpuClockCall
 bind value cpuClockTicksObserved Int64 exerciseCpuClockCall
@@ -257,13 +256,14 @@ label cpuClockExercised
 call exerciseUnixTimeCall readCurrentUnixEpochSeconds
 run exerciseUnixTimeCall
 bind value unixEpochSecondsObserved Int64 exerciseUnixTimeCall
-call unixTimeObservedCall math.greaterThanOrEqualInt64
+storage local immutable unixEpochRegressionFloor Int64 1577836800
+call unixTimeObservedCall math.greaterThanInt64
 argument unixTimeObservedCall left Int64 unixEpochSecondsObserved
-argument unixTimeObservedCall right Int64 observedClockZero
+argument unixTimeObservedCall right Int64 unixEpochRegressionFloor
 run unixTimeObservedCall
 bind value unixTimeObserved Bool unixTimeObservedCall
 branch if condition unixTimeObserved target unixTimeExercised
-branch else target unixTimeExercised
+branch else target smokeAssertionFailed
 label unixTimeExercised
 
 storage module immutable successMessageText String "OK"

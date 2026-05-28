@@ -60,13 +60,13 @@ skills -> check -> graph/slice -> explain -> fix plan -> dry-run patch -> apply 
 Representative commands:
 
 ```powershell
-python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind summary --json PATH
-python SemanticScript\tools\sem.py slice --operation NAME --json PATH
-python SemanticScript\tools\sem.py explain CODE --json
-python SemanticScript\tools\sem.py fix --plan --json PATH
-python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
-python SemanticScript\tools\sem.py test --json PATH
+sem check --json PATH
+sem graph --kind summary --json PATH
+sem slice --operation NAME --json PATH
+sem explain CODE --json
+sem fix --plan --json PATH
+sem patch --dry-run --json PLAN.json
+sem test --json PATH
 ```
 
 ## Public Status

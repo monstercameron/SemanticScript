@@ -313,11 +313,17 @@ data plus canonical text.
 ## HTML Bodies
 
 `html body template TEMPLATE` starts an indentation-sensitive HTML/SSX island.
-Dynamic holes are bare names or dotted record-field paths such as `{titleText}`
-or `{profile.title}`. The compiler records the raw body lines, inferred dynamic
-arguments, and source lines on the `HtmlTemplate`.
+Dynamic holes are double-brace bare names or dotted record-field paths such as
+`{{titleText}}` or `{{profile.title}}`. The old single-brace form, such as
+`{titleText}`, is a hard error with guidance to use `{{titleText}}`. Single
+braces in JavaScript, CSS, and object literals remain literal unless they are
+exactly the old hole syntax. The compiler records the raw body lines, inferred
+dynamic arguments, and source lines on the `HtmlTemplate`.
 
 String holes are escaped according to text or quoted-attribute sink context.
+URL-bearing attributes (`href`, `src`, `action`, `formaction`, and `poster`)
+require the compiler/std-owned `HtmlSafeUrl` role alias; plain `String` is
+rejected in those sinks.
 `HtmlFragment`, `HtmlTrustedFragment`, and `HtmlDocument` insert raw content only
 in text-content positions.
 

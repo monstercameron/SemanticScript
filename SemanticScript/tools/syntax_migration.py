@@ -254,8 +254,9 @@ def migrate_text(source: str, *, global_context: Context | None = None) -> Migra
         pending_branch = False
 
     for line_no, raw in enumerate(source.splitlines(), start=1):
-        raw = re.sub(r"\{\s*(?:htmlArg|parameter)\.([A-Za-z_][A-Za-z0-9_]*)\s*\}", r"{\1}", raw)
-        raw = re.sub(r"\b(?:HtmlText|HtmlClass|SafeUrl)\b", "String", raw)
+        raw = re.sub(r"\{\s*(?:htmlArg|parameter)\.([A-Za-z_][A-Za-z0-9_]*)\s*\}", r"{{\1}}", raw)
+        raw = re.sub(r"\b(?:HtmlText|HtmlClass)\b", "String", raw)
+        raw = re.sub(r"\bSafeUrl\b", "HtmlSafeUrl", raw)
         code, comment = split_code_comment(raw)
         tokens = tokenize_code(code)
         prefix = line_prefix(raw)

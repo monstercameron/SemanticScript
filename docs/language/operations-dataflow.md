@@ -11,10 +11,9 @@ operation addInvoiceAmounts
 input operation addInvoiceAmounts invoiceSubtotal Int64
 input operation addInvoiceAmounts taxAmount Int64
 output operation addInvoiceAmounts Int64
-effect addInvoiceAmounts read memory.none
-memory addInvoiceAmounts noHeapAllocation
+memory addInvoiceAmounts heap no
 async addInvoiceAmounts no
-purpose addInvoiceAmounts "Return subtotal plus tax as a signed integer amount"
+purpose operation addInvoiceAmounts "Return subtotal plus tax as a signed integer amount"
 ```
 
 `input` lines define operation parameters. Opaque dependency inputs are kept as
@@ -96,12 +95,12 @@ argument nextTotalCall left Int64 runningTotal
 argument nextTotalCall right Int64 stepAmount
 run nextTotalCall
 bind value nextTotal Int64 nextTotalCall
-set local runningTotal nextTotal
+set storage runningTotal nextTotal
 ```
 
 `storage local mutable NAME TYPE VALUE` allocates a mutable local slot. Reading
-the name loads its current value. `set local NAME VALUE` stores into that local
-slot.
+the name loads its current value. `set storage NAME VALUE` stores into that
+local slot.
 
 Prefer immutable storage unless mutation is the real behavior being expressed.
 

@@ -216,6 +216,7 @@ def test_parser_syntax_cutover_rows():
         "run addCall",
         "bind value nextLow Int64 addCall",
         "set memory low nextLow",
+        "set storage searchAttempts nextLow",
         "branch if condition nextLow target found",
         "branch else target failed",
         "label found",
@@ -231,6 +232,10 @@ def test_parser_syntax_cutover_rows():
           f"type aliases = {prog.type_aliases!r}")
     check("parser cutover: typed argument row recorded",
           any(verb == "argument" and args == ["addCall", "left", "Int64", "low"]
+              for verb, args, _line in main_lines),
+          f"lines = {main_lines!r}")
+    check("parser cutover: set storage row recorded",
+          any(verb == "set" and args == ["storage", "searchAttempts", "nextLow"]
               for verb, args, _line in main_lines),
           f"lines = {main_lines!r}")
     check("parser cutover: branch variant rows recorded",
@@ -260,6 +265,7 @@ def test_parser_syntax_cutover_rows():
         "let low Int64 0",
         "var high Int64 0",
         "set local high newHigh",
+        "set module high newHigh ownedBy ownerToken",
         "bind lengthValue Int64 lengthCall",
         "bindOk foundIndex Int64 searchCall",
         "bindError searchError SearchError searchCall",
@@ -1233,6 +1239,21 @@ def test_strict_rejects_weak_bcrypt_cost():
           proc.returncode == 3 and "SS4602" in proc.stderr,
           f"returncode={proc.returncode} stderr={proc.stderr!r}")
 
+    weak_result = weak.replace("bcrypt.hashPassword", "bcrypt.hashPasswordResult")
+    proc = run_semsc_source(weak_result, "--strict", "--parse-only", "--quiet")
+    check("strict: bcrypt.hashPasswordResult cost 4 is compile-blocked (SS4602)",
+          proc.returncode == 3 and "SS4602" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
+    weak_session_result = weak.replace("bcrypt.hashPassword", "bcrypt.hashSessionTokenResult").replace(
+        "argument hashCall plaintext String plaintextValue",
+        "argument hashCall token String plaintextValue",
+    )
+    proc = run_semsc_source(weak_session_result, "--strict", "--parse-only", "--quiet")
+    check("strict: bcrypt.hashSessionTokenResult cost 4 is compile-blocked (SS4602)",
+          proc.returncode == 3 and "SS4602" in proc.stderr,
+          f"returncode={proc.returncode} stderr={proc.stderr!r}")
+
     recommended = hash_with("storage module immutable recCost Int32 12", "recCost")
     proc = run_semsc_source(recommended, "--strict", "--parse-only", "--quiet")
     check("strict: bcrypt cost 12 (recommended) is not blocked by SS4602",
@@ -1862,6 +1883,291 @@ def test_text_concat_compiles_and_runs():
           f"rc={run_proc.returncode} stdout={run_proc.stdout!r}")
 
 
+def test_text_ends_with_compiles_and_runs():
+    # text.endsWith value suffix -> Bool with a branchless bounds guard:
+    # offset = select(len_s<=len_v, len_v-len_s, 0); ensures no OOB read when
+    # suffix is longer than value. Used for content-type / extension routing.
+    src = "\n".join([
+        "project EndsWithSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main read memory.buffer",
+        "authority main write console.stdout",
+        "authority main read memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"endsWith smoke\"",
+        "invariant operation main \"prints CSS, NOTCSS, NOTCSS\"",
+        "storage local immutable styleFile String \"/static/main.css\"",
+        "storage local immutable jsFile String \"/static/main.js\"",
+        "storage local immutable shortVal String \"x\"",
+        "storage local immutable cssExt String \".css\"",
+        "storage local immutable yes String \"CSS\"",
+        "storage local immutable no String \"NOTCSS\"",
+        "call e1Call text.endsWith",
+        "argument e1Call value String styleFile",
+        "argument e1Call suffix String cssExt",
+        "run e1Call",
+        "bind value is1 Bool e1Call",
+        "branch if condition is1 target firstCss",
+        "call n1Call c.puts",
+        "argument n1Call stream String no",
+        "run n1Call",
+        "ignore value source n1Call type Int32",
+        "jump target second",
+        "label firstCss",
+        "call y1Call c.puts",
+        "argument y1Call stream String yes",
+        "run y1Call",
+        "ignore value source y1Call type Int32",
+        "label second",
+        "call e2Call text.endsWith",
+        "argument e2Call value String jsFile",
+        "argument e2Call suffix String cssExt",
+        "run e2Call",
+        "bind value is2 Bool e2Call",
+        "branch if condition is2 target secondCss",
+        "call n2Call c.puts",
+        "argument n2Call stream String no",
+        "run n2Call",
+        "ignore value source n2Call type Int32",
+        "jump target third",
+        "label secondCss",
+        "call y2Call c.puts",
+        "argument y2Call stream String yes",
+        "run y2Call",
+        "ignore value source y2Call type Int32",
+        "label third",
+        "call e3Call text.endsWith",
+        "argument e3Call value String shortVal",
+        "argument e3Call suffix String cssExt",
+        "run e3Call",
+        "bind value is3 Bool e3Call",
+        "branch if condition is3 target thirdCss",
+        "call n3Call c.puts",
+        "argument n3Call stream String no",
+        "run n3Call",
+        "ignore value source n3Call type Int32",
+        "jump target done",
+        "label thirdCss",
+        "call y3Call c.puts",
+        "argument y3Call stream String yes",
+        "run y3Call",
+        "ignore value source y3Call type Int32",
+        "label done",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.endsWith compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    lines = [line for line in run_proc.stdout.splitlines() if line]
+    check("text.endsWith: suffix match, mismatch, and OOB-safe short value",
+          run_proc.returncode == 0 and lines == ["CSS", "NOTCSS", "NOTCSS"],
+          f"rc={run_proc.returncode} lines={lines!r}")
+
+
+def test_text_index_of_compiles_and_runs():
+    # text.indexOf haystack needle -> Int64 (offset, or -1): position-returning
+    # search for tokenizing/parsing (e.g. find `=` in `key=value`).
+    src = "\n".join([
+        "project IndexOfSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main read memory.buffer",
+        "authority main write console.stdout",
+        "authority main read memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"indexOf smoke\"",
+        "invariant operation main \"prints found offset 3 then -1\"",
+        "storage local immutable pair String \"key=value\"",
+        "storage local immutable eq String \"=\"",
+        "storage local immutable missing String \"&\"",
+        "call f1Call text.indexOf",
+        "argument f1Call haystack String pair",
+        "argument f1Call needle String eq",
+        "run f1Call",
+        "bind value pos Int64 f1Call",
+        "call printPosCall console.writeIntegerLine",
+        "argument printPosCall value Int64 pos",
+        "run printPosCall",
+        "ignore value source printPosCall type Int32",
+        "call f2Call text.indexOf",
+        "argument f2Call haystack String pair",
+        "argument f2Call needle String missing",
+        "run f2Call",
+        "bind value missingPos Int64 f2Call",
+        "call printMissCall console.writeIntegerLine",
+        "argument printMissCall value Int64 missingPos",
+        "run printMissCall",
+        "ignore value source printMissCall type Int32",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.indexOf compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    lines = [line.strip() for line in run_proc.stdout.splitlines() if line.strip()]
+    check("text.indexOf returns position or -1",
+          run_proc.returncode == 0 and lines == ["3", "-1"],
+          f"rc={run_proc.returncode} lines={lines!r}")
+
+
+def test_text_starts_with_compiles_and_runs():
+    # text.startsWith value prefix -> Bool (strncmp anchored prefix match): for
+    # routing by path prefix. Links in every target.
+    src = "\n".join([
+        "project StartsWithSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main read memory.buffer",
+        "authority main write console.stdout",
+        "authority main read memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"startsWith smoke\"",
+        "invariant operation main \"prints API then NOTAPI\"",
+        "storage local immutable path1 String \"/api/tasks\"",
+        "storage local immutable path2 String \"/health\"",
+        "storage local immutable apiPrefix String \"/api/\"",
+        "storage local immutable yes String \"API\"",
+        "storage local immutable no String \"NOTAPI\"",
+        "call s1Call text.startsWith",
+        "argument s1Call value String path1",
+        "argument s1Call prefix String apiPrefix",
+        "run s1Call",
+        "bind value is1 Bool s1Call",
+        "branch if condition is1 target firstApi",
+        "call n1Call c.puts",
+        "argument n1Call stream String no",
+        "run n1Call",
+        "ignore value source n1Call type Int32",
+        "jump target second",
+        "label firstApi",
+        "call y1Call c.puts",
+        "argument y1Call stream String yes",
+        "run y1Call",
+        "ignore value source y1Call type Int32",
+        "label second",
+        "call s2Call text.startsWith",
+        "argument s2Call value String path2",
+        "argument s2Call prefix String apiPrefix",
+        "run s2Call",
+        "bind value is2 Bool s2Call",
+        "branch if condition is2 target secondApi",
+        "call n2Call c.puts",
+        "argument n2Call stream String no",
+        "run n2Call",
+        "ignore value source n2Call type Int32",
+        "jump target done",
+        "label secondApi",
+        "call y2Call c.puts",
+        "argument y2Call stream String yes",
+        "run y2Call",
+        "ignore value source y2Call type Int32",
+        "label done",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.startsWith compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    out = run_proc.stdout
+    check("text.startsWith anchors prefix match",
+          run_proc.returncode == 0 and "API" in out and "NOTAPI" in out,
+          f"rc={run_proc.returncode} stdout={out!r}")
+
+
+def test_text_contains_compiles_and_runs():
+    # text.contains haystack needle -> Bool (compiler-lowered strstr != NULL):
+    # native substring search, links in every target.
+    src = "\n".join([
+        "project ContainsSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main read memory.buffer",
+        "authority main write console.stdout",
+        "authority main read memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"contains smoke\"",
+        "invariant operation main \"prints YES then NO\"",
+        "storage local immutable body String \"title=Hello&projectId=2\"",
+        "storage local immutable hasTitle String \"title=\"",
+        "storage local immutable hasMissing String \"missing=\"",
+        "storage local immutable yes String \"YES\"",
+        "storage local immutable no String \"NO\"",
+        "call c1Call text.contains",
+        "argument c1Call haystack String body",
+        "argument c1Call needle String hasTitle",
+        "run c1Call",
+        "bind value found1 Bool c1Call",
+        "branch if condition found1 target firstYes",
+        "call n1Call c.puts",
+        "argument n1Call stream String no",
+        "run n1Call",
+        "ignore value source n1Call type Int32",
+        "jump target second",
+        "label firstYes",
+        "call y1Call c.puts",
+        "argument y1Call stream String yes",
+        "run y1Call",
+        "ignore value source y1Call type Int32",
+        "label second",
+        "call c2Call text.contains",
+        "argument c2Call haystack String body",
+        "argument c2Call needle String hasMissing",
+        "run c2Call",
+        "bind value found2 Bool c2Call",
+        "branch if condition found2 target secondYes",
+        "call n2Call c.puts",
+        "argument n2Call stream String no",
+        "run n2Call",
+        "ignore value source n2Call type Int32",
+        "jump target done",
+        "label secondYes",
+        "call y2Call c.puts",
+        "argument y2Call stream String yes",
+        "run y2Call",
+        "ignore value source y2Call type Int32",
+        "label done",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.contains compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    out = run_proc.stdout
+    check("text.contains finds present needle, rejects absent",
+          run_proc.returncode == 0 and "YES" in out and "NO" in out,
+          f"rc={run_proc.returncode} stdout={out!r}")
+
+
 def test_text_from_int64_compiles_and_runs():
     # text.fromInt64 value buffer capacity -> String: the discoverable native
     # int->string formatter (decimal, signed), links in every target.
@@ -2137,6 +2443,58 @@ def test_defer_not_dominated_flags_shared_pre_acquisition_label():
           not safe_fires, "safe per-acquisition idiom must stay clean")
 
 
+def test_defer_edge_cleanup_runs_for_shared_forward_exit_label():
+    # One forward exit label is referenced both before and after the defer.
+    # The first branch is not taken at runtime, but it is enough to make the
+    # label's common defer snapshot empty. Codegen must therefore route the
+    # post-defer branch through an edge cleanup block before entering the label.
+    src = "\n".join([
+        "project DeferEdgeCleanup",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "storage module immutable cleanupText String \"CLEANUP\"",
+        "operation cleanupOperation",
+        "output operation cleanupOperation Int32",
+        "effect cleanupOperation write console.stdout",
+        "authority cleanupOperation write console.stdout",
+        "memory cleanupOperation heap no",
+        "async cleanupOperation no",
+        "purpose operation cleanupOperation \"print cleanup marker\"",
+        "call cleanupWriteCall console.writeLine",
+        "argument cleanupWriteCall text String cleanupText",
+        "run cleanupWriteCall",
+        "ignore void source cleanupWriteCall",
+        "storage local immutable cleanupStatus Int32 0",
+        "return value cleanupStatus",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"exercise path-local defer cleanup\"",
+        "storage local immutable preCondition Bool false",
+        "branch if condition preCondition target sharedExit",
+        "defer cleanupDefer cleanupOperation",
+        "storage local immutable postCondition Bool true",
+        "branch if condition postCondition target sharedExit",
+        "storage local immutable missedExitCode ExitCode 2",
+        "return value missedExitCode",
+        "label sharedExit",
+        "storage local immutable okExitCode ExitCode 0",
+        "return value okExitCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("defer edge cleanup shared label compiles",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    check("defer edge cleanup runs on post-defer branch to shared exit label",
+          run_proc.returncode == 0 and "CLEANUP" in run_proc.stdout,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r}")
+
+
 def _strict_http_route_source(
         route_method="GET",
         handler_inputs=None,
@@ -2267,6 +2625,9 @@ def test_native_http_rejects_invalid_parameter_route_patterns_at_startup():
         "/echo/:",
         "/echo//:slug",
         "/echo/:slug/:",
+        "/echo/{}",
+        "/echo/{slug",
+        "/echo/{slug:[0-9]+}",
         "echo/:slug",
     ]
     for index, route_path in enumerate(invalid_paths, start=1):
@@ -2296,6 +2657,104 @@ def test_native_http_rejects_invalid_parameter_route_patterns_at_startup():
         check(f"native HTTP: invalid route pattern {route_path!r} fails config startup",
               run_proc.returncode == 1,
               f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+
+def test_native_http_brace_path_param_route_echoes_capture():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project BracePathParamSmoke",
+        "target webServer",
+        "runtime native 1",
+        "webServer braceRouteServer",
+        "serverHost braceRouteServer \"127.0.0.1\"",
+        f"serverPort braceRouteServer {port}",
+        "route braceRouteServer GET \"/echo/{slug}\" echoSlugHandler",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable slugParamName String \"slug\"",
+        "operation echoSlugHandler",
+        "input operation echoSlugHandler request HttpRequest",
+        "input operation echoSlugHandler response HttpResponse",
+        "output operation echoSlugHandler Int32",
+        "effect echoSlugHandler read http.request.path",
+        "effect echoSlugHandler write http.response",
+        "memory echoSlugHandler arena request",
+        "async echoSlugHandler no",
+        "call slugReadCall http.requestPathParam",
+        "argument slugReadCall request HttpRequest request",
+        "argument slugReadCall name String slugParamName",
+        "run slugReadCall",
+        "bind value slugValue String slugReadCall",
+        "call slugResponseCall http.responseText",
+        "argument slugResponseCall response HttpResponse response",
+        "argument slugResponseCall status Int32 okStatus",
+        "argument slugResponseCall body String slugValue",
+        "run slugResponseCall",
+        "bind value slugResponseStatus Int32 slugResponseCall",
+        "return value slugResponseStatus",
+    ])
+
+    def request(path):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            body = response.read().decode("utf-8", errors="replace")
+            return response.status, body
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "brace_path_param.sem"
+        exe_path = Path(tmpdir) / ("brace_path_param.exe" if os.name == "nt" else "brace_path_param")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("native HTTP: brace path-param fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            last_error = None
+            echo_response = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    echo_response = request("/echo/brace-value")
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if echo_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("native HTTP: brace path-param fixture starts", False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+
+            check("native HTTP: brace path-param route echoes captured segment",
+                  echo_response == (200, "brace-value"),
+                  repr(echo_response))
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=5)
 
 
 def test_strict_executable_mode_rejects_http_contracts_without_lint_flag():
@@ -3250,6 +3709,188 @@ def test_strict_executable_rejects_multiple_sql_writes_without_transaction():
           f"rc={proc.returncode} stderr={proc.stderr!r}")
 
 
+def test_strict_executable_accepts_transaction_helpers_for_multiple_sql_writes():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlTransactionHelpers",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError BeginFailed",
+        "errorCase MainError CommitFailed",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable insertAuditSql SqlText",
+        "sql body insertAuditSql",
+        "  INSERT INTO audit_events(actor_id, action) VALUES ('user_1', 'login')",
+        "storage module immutable insertLogSql SqlText",
+        "sql body insertLogSql",
+        "  INSERT INTO request_log(route, status) VALUES ('/login', 200)",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL accepts transaction helpers\"",
+        "memory main heap yes",
+        "async main no",
+        "label start",
+        "storage module immutable database SqliteDatabase 0",
+        "call beginTxCall sqlite.beginImmediateTransaction",
+        "argument beginTxCall database SqliteDatabase database",
+        "run beginTxCall",
+        "ignore void source beginTxCall",
+        "bind error beginTxError MainError beginTxCall",
+        "branch error source beginTxCall target beginTxFailed",
+        "call prepareAuditCall sqlite.prepareStatement",
+        "argument prepareAuditCall database SqliteDatabase database",
+        "argument prepareAuditCall sql SqlText insertAuditSql",
+        "run prepareAuditCall",
+        "bind ok auditStatement SqliteStatement prepareAuditCall",
+        "bind error prepareAuditError MainError prepareAuditCall",
+        "branch error source prepareAuditCall target prepareAuditFailed",
+        "defer finalizeAuditDefer sqlite.finalizeStatement auditStatement",
+        "call stepAuditCall sqlite.stepStatement",
+        "argument stepAuditCall statement SqliteStatement auditStatement",
+        "run stepAuditCall",
+        "ignore ok source stepAuditCall type Int32",
+        "bind error stepAuditError MainError stepAuditCall",
+        "branch error source stepAuditCall target stepAuditFailed",
+        "call prepareLogCall sqlite.prepareStatement",
+        "argument prepareLogCall database SqliteDatabase database",
+        "argument prepareLogCall sql SqlText insertLogSql",
+        "run prepareLogCall",
+        "bind ok logStatement SqliteStatement prepareLogCall",
+        "bind error prepareLogError MainError prepareLogCall",
+        "branch error source prepareLogCall target prepareLogFailed",
+        "defer finalizeLogDefer sqlite.finalizeStatement logStatement",
+        "call stepLogCall sqlite.stepStatement",
+        "argument stepLogCall statement SqliteStatement logStatement",
+        "run stepLogCall",
+        "ignore ok source stepLogCall type Int32",
+        "bind error stepLogError MainError stepLogCall",
+        "branch error source stepLogCall target stepLogFailed",
+        "call commitTxCall sqlite.commitTransaction",
+        "argument commitTxCall database SqliteDatabase database",
+        "run commitTxCall",
+        "ignore void source commitTxCall",
+        "bind error commitTxError MainError commitTxCall",
+        "branch error source commitTxCall target commitTxFailed",
+        "return ok noResult",
+        "label beginTxFailed",
+        "return error beginTxError",
+        "label prepareAuditFailed",
+        "return error prepareAuditError",
+        "label stepAuditFailed",
+        "return error stepAuditError",
+        "label prepareLogFailed",
+        "return error prepareLogError",
+        "label stepLogFailed",
+        "return error stepLogError",
+        "label commitTxFailed",
+        "return error commitTxError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: accepts transaction helpers for multi-write operations",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
+def test_strict_executable_accepts_declared_sql_forwarder_helpers():
+    src = "\n".join([
+        "languageMode strictExecutable",
+        "project StrictSqlForwarderHelpers",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "error MainError",
+        "errorCase MainError PrepareFailed",
+        "errorCase MainError StepFailed",
+        "storage module immutable beginSql SqlText",
+        "sql body beginSql",
+        "  BEGIN IMMEDIATE",
+        "storage module immutable commitSql SqlText",
+        "sql body commitSql",
+        "  COMMIT",
+        "storage module immutable insertAuditSql SqlText",
+        "sql body insertAuditSql",
+        "  INSERT INTO audit_events(actor_id, action) VALUES ('user_1', 'login')",
+        "storage module immutable insertLogSql SqlText",
+        "sql body insertLogSql",
+        "  INSERT INTO request_log(route, status) VALUES ('/login', 200)",
+        "operation runStatement",
+        "input operation runStatement database SqliteDatabase",
+        "input operation runStatement sql SqlText",
+        "output operation runStatement Result Int32 MainError",
+        "purpose operation runStatement \"prepare and step one static SQLite statement\"",
+        "memory runStatement heap yes",
+        "async runStatement no",
+        "sqliteSqlForwarder runStatement sql",
+        "call prepareCall sqlite.prepareStatement",
+        "argument prepareCall database SqliteDatabase database",
+        "argument prepareCall sql SqlText sql",
+        "run prepareCall",
+        "bind ok statement SqliteStatement prepareCall",
+        "bind error prepareError MainError prepareCall",
+        "branch error source prepareCall target prepareFailed",
+        "defer finalizeStatementDefer sqlite.finalizeStatement statement",
+        "call stepCall sqlite.stepStatement",
+        "argument stepCall statement SqliteStatement statement",
+        "run stepCall",
+        "bind ok stepStatus Int32 stepCall",
+        "bind error stepError MainError stepCall",
+        "branch error source stepCall target stepFailed",
+        "return ok stepStatus",
+        "label prepareFailed",
+        "return error prepareError",
+        "label stepFailed",
+        "return error stepError",
+        "operation main",
+        "output operation main Result Void MainError",
+        "purpose operation main \"strict SQLite SQL follows runStatement helper declarations\"",
+        "memory main heap yes",
+        "async main no",
+        "storage module immutable database SqliteDatabase 0",
+        "call beginCall runStatement",
+        "argument beginCall database SqliteDatabase database",
+        "argument beginCall sql SqlText beginSql",
+        "run beginCall",
+        "ignore ok source beginCall type Int32",
+        "bind error beginError MainError beginCall",
+        "branch error source beginCall target beginFailed",
+        "call auditCall runStatement",
+        "argument auditCall database SqliteDatabase database",
+        "argument auditCall sql SqlText insertAuditSql",
+        "run auditCall",
+        "ignore ok source auditCall type Int32",
+        "bind error auditError MainError auditCall",
+        "branch error source auditCall target auditFailed",
+        "call logCall runStatement",
+        "argument logCall database SqliteDatabase database",
+        "argument logCall sql SqlText insertLogSql",
+        "run logCall",
+        "ignore ok source logCall type Int32",
+        "bind error logError MainError logCall",
+        "branch error source logCall target logFailed",
+        "call commitCall runStatement",
+        "argument commitCall database SqliteDatabase database",
+        "argument commitCall sql SqlText commitSql",
+        "run commitCall",
+        "ignore ok source commitCall type Int32",
+        "bind error commitError MainError commitCall",
+        "branch error source commitCall target commitFailed",
+        "return ok noResult",
+        "label beginFailed",
+        "return error beginError",
+        "label auditFailed",
+        "return error auditError",
+        "label logFailed",
+        "return error logError",
+        "label commitFailed",
+        "return error commitError",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--quiet")
+    check("strictExecutable SQL: accepts declared SQL forwarder helpers",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+
 def test_strict_executable_rejects_returning_commit_without_drain():
     src = "\n".join([
         "languageMode strictExecutable",
@@ -3812,6 +4453,89 @@ def test_user_result_operation_error_channel_uses_return_variant_status():
               f"expected {expected_exit}, got {rc}")
 
 
+def test_user_result_operation_error_channel_survives_helper_composition():
+    def source_for(return_error: bool) -> str:
+        lines = [
+            "project UserResultCompositionProbe",
+            "target console",
+            "runtime AgentRuntime 0.1",
+            "entry console main",
+            "error ProbeError",
+            "errorCase ProbeError Failed Int32",
+            "operation leafHelper",
+            "output operation leafHelper Result Int64 ProbeError",
+            "memory leafHelper heap no",
+            "async leafHelper no",
+            "purpose operation leafHelper \"Return the first Result channel.\"",
+        ]
+        if return_error:
+            lines.extend([
+                "storage local immutable rawCode Int32 17",
+                "makeError leafFailure ProbeError.Failed rawCode",
+                "return error leafFailure",
+            ])
+        else:
+            lines.extend([
+                "storage local immutable leafValue Int64 33",
+                "return ok leafValue",
+            ])
+        lines.extend([
+            "operation middleHelper",
+            "output operation middleHelper Result Int64 ProbeError",
+            "memory middleHelper heap no",
+            "async middleHelper no",
+            "purpose operation middleHelper \"Forward the leaf Result channel.\"",
+            "call leafCall leafHelper",
+            "run leafCall",
+            "bind ok leafOkValue Int64 leafCall",
+            "bind error leafError ProbeError leafCall",
+            "branch error source leafCall target leafFailed",
+            "return ok leafOkValue",
+            "label leafFailed",
+            "return error leafError",
+            "operation outerHelper",
+            "output operation outerHelper Result Int64 ProbeError",
+            "memory outerHelper heap no",
+            "async outerHelper no",
+            "purpose operation outerHelper \"Forward the middle Result channel.\"",
+            "call middleCall middleHelper",
+            "run middleCall",
+            "bind ok middleOkValue Int64 middleCall",
+            "bind error middleError ProbeError middleCall",
+            "branch error source middleCall target middleFailed",
+            "return ok middleOkValue",
+            "label middleFailed",
+            "return error middleError",
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "purpose operation main \"Branch on a three-deep user Result composition.\"",
+            "call outerCall outerHelper",
+            "run outerCall",
+            "bind ok outerOkValue Int64 outerCall",
+            "bind error outerError ProbeError outerCall",
+            "branch error source outerCall target outerFailed",
+            "storage local immutable successExit ExitCode 0",
+            "return value successExit",
+            "label outerFailed",
+            "storage local immutable failedExit ExitCode 1",
+            "return value failedExit",
+        ])
+        return "\n".join(lines)
+
+    for label, source, expected_exit in (
+        ("ok", source_for(False), 0),
+        ("error", source_for(True), 1),
+    ):
+        prog = semsc.parse(source)
+        mod = semsc.Codegen(prog).compile()
+        rc = semsc.jit_run(str(mod), opt_level=0)
+        check(f"compile: three-deep user Result composition {label} branch status",
+              rc == expected_exit,
+              f"expected {expected_exit}, got {rc}")
+
+
 def test_compile_i32_comparison_to_i32_ir():
     source = "\n".join([
         "project Int32Compare",
@@ -3846,6 +4570,84 @@ def test_compile_i32_comparison_to_i32_ir():
     ir_text = str(mod)
     check("compile: math.lessThanInt32 uses i32 compare",
           "icmp slt i32" in ir_text,
+          f"IR was:\n{ir_text}")
+
+
+def test_math_min_max_clamp_numeric_widths_lower_to_ir():
+    source = "\n".join([
+        "project NumericMinMaxClamp",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"exercise numeric min max clamp intrinsics\"",
+        "storage local immutable i32Left Int32 3",
+        "storage local immutable i32Right Int32 9",
+        "storage local immutable i32Low Int32 4",
+        "storage local immutable i32High Int32 8",
+        "storage local immutable u32Left UInt32 3",
+        "storage local immutable u32Right UInt32 9",
+        "storage local immutable u64Left UInt64 3",
+        "storage local immutable u64Right UInt64 9",
+        "storage local immutable u64Low UInt64 4",
+        "storage local immutable u64High UInt64 8",
+        "storage local immutable f64Left Float64 3.0",
+        "storage local immutable f64Right Float64 9.0",
+        "storage local immutable f64Low Float64 4.0",
+        "storage local immutable f64High Float64 8.0",
+        "call minI32Call math.minInt32",
+        "argument minI32Call left Int32 i32Left",
+        "argument minI32Call right Int32 i32Right",
+        "run minI32Call",
+        "bind value minI32Value Int32 minI32Call",
+        "call clampI32Call math.clampInt32",
+        "argument clampI32Call value Int32 i32Right",
+        "argument clampI32Call low Int32 i32Low",
+        "argument clampI32Call high Int32 i32High",
+        "run clampI32Call",
+        "bind value clampI32Value Int32 clampI32Call",
+        "call minU32Call math.minUInt32",
+        "argument minU32Call left UInt32 u32Left",
+        "argument minU32Call right UInt32 u32Right",
+        "run minU32Call",
+        "bind value minU32Value UInt32 minU32Call",
+        "call maxU64Call math.maxUInt64",
+        "argument maxU64Call left UInt64 u64Left",
+        "argument maxU64Call right UInt64 u64Right",
+        "run maxU64Call",
+        "bind value maxU64Value UInt64 maxU64Call",
+        "call clampU64Call math.clampUInt64",
+        "argument clampU64Call value UInt64 u64Right",
+        "argument clampU64Call low UInt64 u64Low",
+        "argument clampU64Call high UInt64 u64High",
+        "run clampU64Call",
+        "bind value clampU64Value UInt64 clampU64Call",
+        "call minF64Call math.minFloat64",
+        "argument minF64Call left Float64 f64Left",
+        "argument minF64Call right Float64 f64Right",
+        "run minF64Call",
+        "bind value minF64Value Float64 minF64Call",
+        "call clampF64Call math.clampFloat64",
+        "argument clampF64Call value Float64 f64Right",
+        "argument clampF64Call low Float64 f64Low",
+        "argument clampF64Call high Float64 f64High",
+        "run clampF64Call",
+        "bind value clampF64Value Float64 clampF64Call",
+        "storage local immutable okExit ExitCode 0",
+        "return value okExit",
+    ])
+    ir_text = str(semsc.Codegen(semsc.parse(source)).compile())
+    check("compile: signed Int32 min/clamp lower",
+          "icmp slt i32" in ir_text and "clampI32Call_aboveLow" in ir_text,
+          f"IR was:\n{ir_text}")
+    check("compile: unsigned min/max/clamp lower with unsigned comparisons",
+          "icmp ult i32" in ir_text and "icmp ugt i64" in ir_text,
+          f"IR was:\n{ir_text}")
+    check("compile: Float64 min/clamp lower with ordered comparisons",
+          "fcmp olt double" in ir_text and "clampF64Call_aboveLow" in ir_text,
           f"IR was:\n{ir_text}")
 
 
@@ -3954,7 +4756,7 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
         "html template CardTemplate",
         "html body template CardTemplate",
         "  <article class=\"card\">",
-        "    <h1>{titleText}</h1>",
+        "    <h1>{{titleText}}</h1>",
         "  </article>",
         "operation main",
         "output operation main ExitCode",
@@ -3974,7 +4776,7 @@ def test_html_template_parser_records_body_and_rejects_bad_edges():
           template is not None
           and template.body_lines == [
               ("<article class=\"card\">", 7),
-              ("  <h1>{titleText}</h1>", 8),
+              ("  <h1>{{titleText}}</h1>", 8),
               ("</article>", 9),
           ]
           and "main" in prog.operations,
@@ -4061,7 +4863,7 @@ def test_json_body_parser_records_text_and_record_metadata():
         raised = True
         msg = str(exc)
     check("jsonBody parser: rejects invalid JSON",
-          raised and "invalidJsonBody" in msg,
+          raised and "line 5: invalidJsonBody" in msg,
           f"raised={raised} msg={msg!r}")
 
 
@@ -4168,6 +4970,19 @@ def test_sql_body_parser_records_metadata_and_rejects_dynamic_holes():
           ),
           f"sql_bodies={[(body.name, body.sql_text) for body in prog.sql_bodies]!r}")
 
+    brace_literal_source = "\n".join([
+        "project SqlBraceLiteral",
+        "import sqlite standard.sqlite",
+        "storage module immutable createTableSql SqlText",
+        "sql body createTableSql",
+        "  CREATE TABLE events (payload TEXT DEFAULT '{}')",
+    ])
+    brace_literal_prog = parse_semsc_source_with_imports(brace_literal_source)
+    brace_sql = brace_literal_prog.consts.get("createTableSql", ("", ""))[1]
+    check("sql body parser: permits braces inside SQL string literals",
+          "DEFAULT '{}'" in brace_sql,
+          repr(brace_sql))
+
     bad_source = "\n".join([
         "project BadSqlBody",
         "import sqlite standard.sqlite",
@@ -4183,7 +4998,7 @@ def test_sql_body_parser_records_metadata_and_rejects_dynamic_holes():
         raised = True
         msg = str(exc)
     check("sql body parser: rejects dynamic holes",
-          raised and "sqlBodyDynamicHole" in msg,
+          raised and "sqlBodyDynamicHole" in msg and "{userId}" in msg,
           f"raised={raised} msg={msg!r}")
 
 
@@ -4229,7 +5044,7 @@ def test_html_template_simple_jit_output():
         "entry console main",
         "html template GreetingTemplate",
         "html body template GreetingTemplate",
-        "  <h1>{titleText}</h1>",
+        "  <h1>{{titleText}}</h1>",
         "storage module immutable successCode ExitCode 0",
         "storage module immutable greetingTitle String \"Hello HTML\"",
         "operation main",
@@ -4266,9 +5081,9 @@ def test_html_template_edge_output_repeated_adjacent_and_blank_lines():
         "entry console main",
         "html template EdgeTemplate",
         "html body template EdgeTemplate",
-        "  <section class=\"{className}\">{title_text}{title_text}</section>",
+        "  <section class=\"{{className}}\">{{title_text}}{{title_text}}</section>",
         "",
-        "  <footer>{title_text}</footer>",
+        "  <footer>{{title_text}}</footer>",
         "storage module immutable successCode ExitCode 0",
         "storage module immutable edgeTitle String \"Echo\"",
         "storage module immutable edgeClass String \"edge-card\"",
@@ -4319,8 +5134,9 @@ def test_html_template_raw_style_and_script_do_not_hydrate_braces():
         "  <script>",
         "    const template = \"{title-text-static}\";",
         "    const object = { value: \"raw\" };",
+        "    import { initHTMLeX } from \"/assets/app.js\";",
         "  </script>",
-        "  <h1>{titleText}</h1>",
+        "  <h1>{{titleText}}</h1>",
         "storage module immutable successCode ExitCode 0",
         "storage module immutable rawTitle String \"Hydrated Title\"",
         "operation main",
@@ -4348,6 +5164,7 @@ def test_html_template_raw_style_and_script_do_not_hydrate_braces():
         "<script>\n"
         "  const template = \"{title-text-static}\";\n"
         "  const object = { value: \"raw\" };\n"
+        "  import { initHTMLeX } from \"/assets/app.js\";\n"
         "</script>\n"
         "<h1>Hydrated Title</h1>\n"
         "\n"
@@ -4360,6 +5177,104 @@ def test_html_template_raw_style_and_script_do_not_hydrate_braces():
           f"stdout={proc.stdout!r} expected={expected!r}")
 
 
+def test_html_template_double_brace_holes_and_safe_url_contract():
+    valid_title_source = "\n".join([
+        "project HtmlDoubleBraceTitle",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable title String \"Title\"",
+        "html template PageTemplate",
+        "html body template PageTemplate",
+        "  <h1>{{title}}</h1>",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"hydrate a title with double-brace holes\"",
+        "call hydratePageCall html.hydrate.PageTemplate",
+        "argument hydratePageCall title String title",
+        "run hydratePageCall",
+        "bind value pageHtml HtmlDocument hydratePageCall",
+        "return value 0",
+    ])
+    semsc.Codegen(semsc.parse(valid_title_source)).compile()
+
+    legacy_source = "\n".join([
+        "project HtmlLegacyHole",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable title String \"Title\"",
+        "html template PageTemplate",
+        "html body template PageTemplate",
+        "  <h1>{title}</h1>",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"reject a legacy HTML hole\"",
+        "call hydratePageCall html.hydrate.PageTemplate",
+        "argument hydratePageCall title String title",
+        "run hydratePageCall",
+        "return value 0",
+    ])
+    try:
+        semsc.Codegen(semsc.parse(legacy_source)).compile()
+    except (ValueError, semsc.CompilerDiagnosticError) as exc:
+        check("html holes: legacy single-brace title is rejected",
+              "legacy HTML hole {title}; use {{title}}" in str(exc),
+              str(exc))
+    else:
+        check("html holes: legacy single-brace title is rejected",
+              False, "compile unexpectedly succeeded")
+
+    plain_url_source = "\n".join([
+        "project HtmlPlainUrl",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable plainString String \"/unsafe\"",
+        "html template LinkTemplate",
+        "html body template LinkTemplate",
+        "  <a href=\"{{plainString}}\">link</a>",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"reject plain strings in URL attributes\"",
+        "call hydrateLinkCall html.hydrate.LinkTemplate",
+        "argument hydrateLinkCall plainString String plainString",
+        "run hydrateLinkCall",
+        "return value 0",
+    ])
+    try:
+        semsc.Codegen(semsc.parse(plain_url_source)).compile()
+    except (ValueError, semsc.CompilerDiagnosticError) as exc:
+        check("html holes: href plain String is rejected",
+              "requires HtmlSafeUrl" in str(exc)
+              and "plainString" in str(exc),
+              str(exc))
+    else:
+        check("html holes: href plain String is rejected",
+              False, "compile unexpectedly succeeded")
+
+    safe_url_source = "\n".join([
+        "project HtmlSafeUrl",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "storage module immutable safeUrl HtmlSafeUrl \"/safe\"",
+        "html template LinkTemplate",
+        "html body template LinkTemplate",
+        "  <a href=\"{{safeUrl}}\">link</a>",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"accept safe URLs in URL attributes\"",
+        "call hydrateLinkCall html.hydrate.LinkTemplate",
+        "argument hydrateLinkCall safeUrl HtmlSafeUrl safeUrl",
+        "run hydrateLinkCall",
+        "bind value linkHtml HtmlDocument hydrateLinkCall",
+        "return value 0",
+    ])
+    semsc.Codegen(semsc.parse(safe_url_source)).compile()
+    check("html holes: href HtmlSafeUrl is accepted", True, "")
+
+
 def test_html_template_escapes_html_text_by_sink_context():
     source = "\n".join([
         "project HtmlEscaping",
@@ -4368,7 +5283,7 @@ def test_html_template_escapes_html_text_by_sink_context():
         "entry console main",
         "html template EscapeTemplate",
         "html body template EscapeTemplate",
-        "  <p data-label=\"{labelText}\">{labelText}</p>",
+        "  <p data-label=\"{{labelText}}\">{{labelText}}</p>",
         "storage module immutable successCode ExitCode 0",
         "storage module immutable labelText String \"A < B & \\\"C\\\"\"",
         "operation main",
@@ -4415,7 +5330,7 @@ def test_html_template_record_field_holes_infer_root_argument():
         "  {\"title\":\"Agent <One>\",\"badge\":\"ready\"}",
         "html template ProfileTemplate",
         "html body template ProfileTemplate",
-        "  <section class=\"{profile.badge}\"><h1>{profile.title}</h1></section>",
+        "  <section class=\"{{profile.badge}}\"><h1>{{profile.title}}</h1></section>",
         "storage module immutable successCode ExitCode 0",
         "operation main",
         "output operation main ExitCode",
@@ -4456,7 +5371,7 @@ def test_html_standard_module_import_exposes_hydrate_namespace_and_exports():
         "importConstant importedHtmlModuleVersionText html htmlModuleVersionText",
         "html template StandardTemplate",
         "html body template StandardTemplate",
-        "  <h1>{titleText}</h1>",
+        "  <h1>{{titleText}}</h1>",
         "storage module immutable successCode ExitCode 0",
         "storage module immutable titleText String \"Imported HTML\"",
         "operation main",
@@ -4621,7 +5536,7 @@ def test_html_template_long_dynamic_arg_is_bounded_and_terminated():
         "entry console main",
         "html template LongTemplate",
         "html body template LongTemplate",
-        "  <p>{bodyText}</p>",
+        "  <p>{{bodyText}}</p>",
         "storage module immutable successCode ExitCode 0",
         f"storage module immutable longBodyText String \"{long_text}\"",
         "operation main",
@@ -4702,18 +5617,18 @@ def _write_complex_html_project(root: Path) -> Path:
         "  <!doctype html>",
         "  <html lang=\"en\">",
         "    <head>",
-        "      <title>{pageTitleText}</title>",
+        "      <title>{{pageTitleText}}</title>",
         "      <style>",
         "        .meter { width: 100%; content: \"{literal-braces-stay-static}\"; }",
         "        .card[data-state=\"ready\"] { border: 1px solid #ccd4e0; }",
         "      </style>",
         "      <script>const boot = { ready: true, label: \"{literal-script-brace}\" };</script>",
         "    </head>",
-        "    <body data-state=\"{stateClassName}\">",
+        "    <body data-state=\"{{stateClassName}}\">",
         "      <>",
-        "        <section class=\"{cardClassName}\">",
-        "          <h1>{pageTitleText}</h1>",
-        "          <p>{bodyText}</p>",
+        "        <section class=\"{{cardClassName}}\">",
+        "          <h1>{{pageTitleText}}</h1>",
+        "          <p>{{bodyText}}</p>",
         "        </section>",
         "      </>",
         "    </body>",
@@ -4823,6 +5738,56 @@ def test_html_template_lab_runs_from_registered_modules():
           f"stdout={proc.stdout!r}")
 
 
+def test_html_hydrate_helper_can_return_fragment():
+    src = "\n".join([
+        "project HtmlHelperFragment",
+        "target console",
+        "runtime native 1",
+        "entry console main",
+        "html template CardTemplate",
+        "html body template CardTemplate",
+        "  <article class=\"card\"><h2>{{titleText}}</h2></article>",
+        "operation renderCard",
+        "input operation renderCard titleText String",
+        "output operation renderCard HtmlFragment",
+        "memory renderCard heap no",
+        "async renderCard no",
+        "purpose operation renderCard \"hydrate and return one card fragment\"",
+        "call hydrateCardCall html.hydrate.CardTemplate",
+        "argument hydrateCardCall titleText String titleText",
+        "run hydrateCardCall",
+        "bind value cardFragment HtmlFragment hydrateCardCall",
+        "return value cardFragment",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "authority main write console.stdout",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"print fragment returned by helper\"",
+        "storage local immutable titleText String \"Reusable\"",
+        "call renderCardCall renderCard",
+        "argument renderCardCall titleText String titleText",
+        "run renderCardCall",
+        "bind value renderedCard HtmlFragment renderCardCall",
+        "call writeCall console.writeLine",
+        "argument writeCall text String renderedCard",
+        "run writeCall",
+        "ignore void source writeCall",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("html hydrate helper fragment compiles",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    check("html hydrate helper returns a reusable fragment",
+          run_proc.returncode == 0
+          and '<article class="card"><h2>Reusable</h2></article>' in run_proc.stdout,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r}")
+
+
 def test_html_template_codegen_rejects_bad_hydration_edges():
     cases = [
         ("unknown body arg",
@@ -4833,7 +5798,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "entry console main",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <h1>{missingText}</h1>",
+             "  <h1>{{missingText}}</h1>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4852,7 +5817,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Missing arg\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <h1>{titleText}</h1>",
+             "  <h1>{{titleText}}</h1>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4870,7 +5835,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable countValue Int64 42",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <span>{countValue}</span>",
+             "  <span>{{countValue}}</span>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4889,7 +5854,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Title\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <a href=\"{titleText}\">link</a>",
+             "  <a href=\"{{titleText}}\">link</a>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4898,7 +5863,45 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "run hydrateBadCall",
              "return value 0",
          ]),
-         "dynamic `href` attribute hole"),
+         "requires HtmlSafeUrl"),
+        ("text value in src url attribute",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable imagePath String \"/avatar.png\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <img src=\"{{imagePath}}\">",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall imagePath String imagePath",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "requires HtmlSafeUrl"),
+        ("text value in form action url attribute",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "storage module immutable formPath String \"/submit\"",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <form action=\"{{formPath}}\"></form>",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "argument hydrateBadCall formPath String formPath",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "requires HtmlSafeUrl"),
         ("fragment value in attribute",
          "\n".join([
              "project BadHtml",
@@ -4908,7 +5911,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable fragment HtmlFragment \"<b>bad</b>\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <div data-fragment=\"{fragment}\"></div>",
+             "  <div data-fragment=\"{{fragment}}\"></div>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4927,7 +5930,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable checkedText String \"checked\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <input checked=\"{checkedText}\">",
+             "  <input checked=\"{{checkedText}}\">",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4946,7 +5949,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable className String \"card\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <div class={className}></div>",
+             "  <div class={{className}}></div>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4965,7 +5968,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable className String \"card\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <div class=\"{className}\"",
+             "  <div class=\"{{className}}\"",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -4989,7 +5992,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "  {\"title\":\"ok\",\"count\":7}",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <p>{profile.count}</p>",
+             "  <p>{{profile.count}}</p>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5008,7 +6011,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Title\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <script>const title = \"{titleText}\";</script>",
+             "  <script>const title = \"{{titleText}}\";</script>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5027,7 +6030,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Title\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <!-- {titleText} -->",
+             "  <!-- {{titleText}} -->",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5046,7 +6049,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable tagName String \"section\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <{tagName}>bad</{tagName}>",
+             "  <{{tagName}}>bad</{{tagName}}>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5079,7 +6082,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Title\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <h1>{props.titleText}</h1>",
+             "  <h1>{{props.titleText}}</h1>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5098,7 +6101,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Title\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <h1>{titleText + otherText}</h1>",
+             "  <h1>{{titleText + otherText}}</h1>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5117,7 +6120,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable titleText String \"Title\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <h1>{parameter.}</h1>",
+             "  <h1>{{parameter.}}</h1>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5137,7 +6140,7 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "storage module immutable extraText String \"Extra\"",
              "html template BadTemplate",
              "html body template BadTemplate",
-             "  <h1>{titleText}</h1>",
+             "  <h1>{{titleText}}</h1>",
              "operation main",
              "output operation main ExitCode",
              "purpose operation main \"bad html\"",
@@ -5164,6 +6167,27 @@ def test_html_template_codegen_rejects_bad_hydration_edges():
              "return value 0",
          ]),
          "template has no body lines"),
+        ("unsupported each block",
+         "\n".join([
+             "project BadHtml",
+             "target console",
+             "runtime native 1",
+             "entry console main",
+             "html template BadTemplate",
+             "html body template BadTemplate",
+             "  <ul>",
+             "    {{#each rows as row}}",
+             "      <li>{{row.title}}</li>",
+             "    {{/each}}",
+             "  </ul>",
+             "operation main",
+             "output operation main ExitCode",
+             "purpose operation main \"bad html\"",
+             "call hydrateBadCall html.hydrate.BadTemplate",
+             "run hydrateBadCall",
+             "return value 0",
+         ]),
+         "template repetition `{{#each rows as row}}` is not implemented"),
     ]
     oversized_static_source = "\n".join([
         "project BadHtml",
@@ -5579,6 +6603,56 @@ def test_console_http_url_helper_links_native_http_runtime():
     check("inspect-ir: console http.urlDecode links native HTTP runtime",
           "native_http" in components,
           f"components={components}")
+
+
+def test_webserver_time_epoch_read_lowers_to_libc_time():
+    # Regression for the old standard.time zero-stub behavior in webServer
+    # builds: imported std/time bodies must lower through libc time(), not
+    # through the unsupported standard.* fallback that used to return i64 0.
+    src = "\n".join([
+        "project TimeWebServerSmoke",
+        "target webServer",
+        "runtime native 1",
+        "webServer appServer",
+        "serverHost appServer \"127.0.0.1\"",
+        "serverPort appServer 18101",
+        "route appServer GET \"/epoch\" epochHandler",
+        "import time standard.time",
+        "operation epochHandler",
+        "input operation epochHandler request HttpRequest",
+        "input operation epochHandler response HttpResponse",
+        "output operation epochHandler Int32",
+        "memory epochHandler heap yes",
+        "async epochHandler no",
+        "purpose operation epochHandler \"Read current epoch seconds in a webServer handler.\"",
+        "call readEpochCall readCurrentUnixEpochSeconds",
+        "run readEpochCall",
+        "bind value epochSeconds Int64 readEpochCall",
+        "storage local immutable epochFloor Int64 1577836800",
+        "call currentEnoughCall math.greaterThanInt64",
+        "argument currentEnoughCall left Int64 epochSeconds",
+        "argument currentEnoughCall right Int64 epochFloor",
+        "run currentEnoughCall",
+        "bind value currentEnough Bool currentEnoughCall",
+        "branch if condition currentEnough target epochOk",
+        "storage local immutable failedStatus Int32 1",
+        "return value failedStatus",
+        "label epochOk",
+        "storage local immutable okStatus Int32 0",
+        "return value okStatus",
+    ])
+    proc = run_semsc_source(src, "--inspect-ir")
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = {}
+    runtime_symbols = {
+        item.get("symbol")
+        for item in payload.get("llvm", {}).get("runtimeSymbols", [])
+    }
+    check("inspect-ir: webServer standard.time epoch read lowers to libc time",
+          proc.returncode == 0 and "time" in runtime_symbols,
+          f"rc={proc.returncode} stderr={proc.stderr!r} symbols={runtime_symbols}")
 
 
 def test_inspect_ir_preserves_imported_source_origins():
@@ -6266,6 +7340,65 @@ def test_build_tape_validation_rejects_missing_required_rows():
               f"raised={raised} msg={msg!r}")
 
 
+def test_build_tape_validation_webserver_does_not_require_main_operation():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir) / "build.sem"
+        source = "\n".join([
+            "buildProject webApp",
+            "modulePath webApp github.com/example/web-app",
+            "languageVersion webApp \"1.0\"",
+            "projectVersion webApp \"1.0.0\"",
+            "projectLicense webApp MIT",
+            "sourceRoot webApp \".\"",
+            "mainFile webApp \"main.sem\"",
+            "targetRuntime webApp webServer",
+            "buildProfile webApp dev",
+            "runtimeChecks webApp panic",
+            "persistLlvmIr webApp auto",
+            "optLevel webApp 2",
+        ])
+        raised = False
+        msg = ""
+        try:
+            semsc._validate_build_tape_source(source, str(build_path))
+        except SyntaxError as e:
+            raised = True
+            msg = str(e)
+        check("build tape: webServer target does not require mainOperation",
+              not raised,
+              msg)
+
+
+def test_build_tape_validation_points_webserver_rows_to_source_module():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        build_path = Path(tmpdir) / "build.sem"
+        source = "\n".join([
+            "buildProject webApp",
+            "modulePath webApp github.com/example/web-app",
+            "languageVersion webApp \"1.0\"",
+            "projectVersion webApp \"1.0.0\"",
+            "projectLicense webApp MIT",
+            "sourceRoot webApp \".\"",
+            "mainFile webApp \"main.sem\"",
+            "targetRuntime webApp webServer",
+            "buildProfile webApp dev",
+            "runtimeChecks webApp panic",
+            "persistLlvmIr webApp auto",
+            "optLevel webApp 2",
+            "webServer appServer",
+        ])
+        raised = False
+        msg = ""
+        try:
+            semsc._validate_build_tape_source(source, str(build_path))
+        except SyntaxError as e:
+            raised = True
+            msg = str(e)
+        check("build tape: webServer rows point to source module",
+              raised and "source-module row" in msg and "not a build-tape row" in msg,
+              f"raised={raised} msg={msg!r}")
+
+
 def test_build_tape_validation_accepts_dependency_fetch_rows():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
@@ -6798,6 +7931,80 @@ def test_web_codegen_rejects_unsupported_http_target():
           proc.stderr)
 
 
+def test_web_codegen_request_value_presence_helpers_lower():
+    src = "\n".join([
+        "project RequestValueHelpers",
+        "target webServer",
+        "runtime native 1",
+        "module fixture",
+        "webServer fixtureServer",
+        "serverHost fixtureServer \"127.0.0.1\"",
+        "serverPort fixtureServer 18081",
+        "route fixtureServer GET \"/\" cookieHandler",
+        "capability httpRequestReader http.request read",
+        "capability httpResponseWriter http.response write",
+        "operation cookieHandler",
+        "input operation cookieHandler request HttpRequest",
+        "input operation cookieHandler response HttpResponse",
+        "output operation cookieHandler Int32",
+        "effect cookieHandler read http.request",
+        "effect cookieHandler write http.response",
+        "memory cookieHandler arena request",
+        "async cookieHandler no",
+        "useCapability cookieHandler httpRequestReader",
+        "useCapability cookieHandler httpResponseWriter",
+        "purpose operation cookieHandler \"Exercise request value presence helpers\"",
+        "label startCookieHandler",
+        "storage module immutable sessionCookieName String \"sid\"",
+        "call cookieReadCall http.requestCookie",
+        "argument cookieReadCall request HttpRequest request",
+        "argument cookieReadCall cookieName String sessionCookieName",
+        "run cookieReadCall",
+        "bind value sessionCookie HttpRequestValue cookieReadCall",
+        "call emptyCheckCall http.requestValueIsEmpty",
+        "argument emptyCheckCall value HttpRequestValue sessionCookie",
+        "run emptyCheckCall",
+        "bind value cookieMissing Bool emptyCheckCall",
+        "call lengthReadCall http.requestValueLength",
+        "argument lengthReadCall value HttpRequestValue sessionCookie",
+        "run lengthReadCall",
+        "bind value cookieLength HttpBodyLength lengthReadCall",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable bodyText String \"ok\"",
+        "call writeCall http.responseText",
+        "argument writeCall response HttpResponse response",
+        "argument writeCall status Int32 okStatus",
+        "argument writeCall body String bodyText",
+        "run writeCall",
+        "bind value responseStatus Int32 writeCall",
+        "return value responseStatus",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "request_value_helpers.sscript"
+        ir_path = Path(tmpdir) / "request_value_helpers.ll"
+        exe_path = Path(tmpdir) / ("request_value_helpers.exe" if os.name == "nt" else "request_value_helpers")
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-ir", str(ir_path)],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+        native_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path)],
+            capture_output=True, text=True, timeout=180,
+        )
+    check("web codegen: request value presence helpers lower",
+          proc.returncode == 0
+          and "ss_http_request_value_is_empty" in ir_text
+          and "ss_http_request_value_length" in ir_text,
+          f"rc={proc.returncode} stderr={proc.stderr!r} ir={ir_text[:1000]!r}")
+    check("web codegen: request value presence helpers link native HTTP runtime",
+          native_proc.returncode == 0 and exe_path.exists(),
+          f"rc={native_proc.returncode} stderr={native_proc.stderr!r}")
+
+
 def test_web_codegen_response_html_sets_fixed_content_type():
     src = "\n".join([
         "project ResponseHtmlTarget",
@@ -6910,6 +8117,110 @@ def test_webserver_lifecycle_hooks_lower_around_server_run():
           main_ir)
 
 
+def test_webserver_static_route_serves_assets_without_handler():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        asset_dir = root / "assets"
+        asset_dir.mkdir()
+        (asset_dir / "site.css").write_text(
+            "body { color: #123456; }\n", encoding="utf-8", newline="\n")
+        (asset_dir / "index.html").write_text(
+            "<!doctype html><p>assets index</p>\n", encoding="utf-8", newline="\n")
+        src_path = root / "static_route.sem"
+        exe_path = root / ("static_route.exe" if os.name == "nt" else "static_route")
+        source = "\n".join([
+            "project StaticRouteSmoke",
+            "target webServer",
+            "runtime native 1",
+            "webServer staticServer",
+            "purpose webServer staticServer \"Serve public static assets without a handler operation.\"",
+            "serverHost staticServer \"127.0.0.1\"",
+            f"serverPort staticServer {port}",
+            "staticRoute staticServer \"/assets\" \"assets\"",
+        ])
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(root / "build"), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver staticRoute: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+
+        def request(path, headers=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+            try:
+                connection.request("GET", path, headers=headers or {})
+                response = connection.getresponse()
+                body = response.read().decode("utf-8", errors="replace")
+                headers = {key.lower(): value for key, value in response.getheaders()}
+                return response.status, body, headers
+            finally:
+                connection.close()
+
+        server_proc = subprocess.Popen(
+            [str(exe_path)], cwd=str(root.parent),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            css_response = None
+            last_error = None
+            while time.time() < deadline:
+                try:
+                    css_response = request("/assets/site.css")
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if css_response is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver staticRoute: fixture starts", False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+            etag = css_response[2].get("etag")
+            last_modified = css_response[2].get("last-modified")
+            index_response = request("/assets")
+            missing_response = request("/assets/missing.txt")
+            traversal_response = request("/assets/../static_route.sem")
+            etag_response = request("/assets/site.css", {"If-None-Match": etag or ""})
+            modified_response = request("/assets/site.css", {"If-Modified-Since": last_modified or ""})
+            check("webserver staticRoute: serves prefixed asset with content type",
+                  css_response[0] == 200
+                  and css_response[1] == "body { color: #123456; }\n"
+                  and css_response[2].get("content-type") == "text/css; charset=utf-8"
+                  and css_response[2].get("cache-control") == "public, max-age=60"
+                  and bool(etag)
+                  and bool(last_modified),
+                  repr(css_response))
+            check("webserver staticRoute: conditional validators return 304",
+                  etag_response[0] == 304
+                  and etag_response[1] == ""
+                  and modified_response[0] == 304
+                  and modified_response[1] == "",
+                  f"etag={etag_response!r} modified={modified_response!r}")
+            check("webserver staticRoute: prefix maps to index.html",
+                  index_response[0] == 200 and "assets index" in index_response[1],
+                  repr(index_response))
+            check("webserver staticRoute: missing and traversal paths return 404",
+                  missing_response[0] == 404 and traversal_response[0] == 404,
+                  f"missing={missing_response!r} traversal={traversal_response!r}")
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+
+
 def test_webserver_hydrated_html_response_headers_escaping_and_failure():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
         port_socket.bind(("127.0.0.1", 0))
@@ -6926,7 +8237,7 @@ def test_webserver_hydrated_html_response_headers_escaping_and_failure():
         "route htmlServer GET \"/fail\" failHandler",
         "html template EscapeTemplate",
         "html body template EscapeTemplate",
-        "  <p data-label=\"{labelText}\">{labelText}</p>",
+        "  <p data-label=\"{{labelText}}\">{{labelText}}</p>",
         "storage module immutable okStatus Int32 200",
         "storage module immutable failureStatus Int32 7",
         "storage module immutable labelText String \"A < B & \\\"C\\\"\"",
@@ -7318,6 +8629,103 @@ def test_webserver_module_state_persists_across_sequential_requests():
                     server_proc.wait(timeout=3)
 
 
+def test_webserver_query_param_is_url_decoded():
+    # http.requestQueryParam must return a DECODED value (%XX -> byte, + -> space),
+    # not the raw percent-encoded form. Echo handler returns ?greeting=...; a
+    # request for "hello%20world+!" must arrive as "hello world !".
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_socket:
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+
+    source = "\n".join([
+        "project HttpQueryDecode",
+        "target webServer",
+        "runtime native 1",
+        "webServer echoServer",
+        "serverHost echoServer \"127.0.0.1\"",
+        f"serverPort echoServer {port}",
+        "route echoServer GET \"/echo\" echoHandler",
+        "storage module immutable okStatus Int32 200",
+        "storage module immutable paramName String \"greeting\"",
+        "operation echoHandler",
+        "input operation echoHandler request HttpRequest",
+        "input operation echoHandler response HttpResponse",
+        "output operation echoHandler Int32",
+        "effect echoHandler read http.request",
+        "effect echoHandler write http.response",
+        "memory echoHandler arena request",
+        "async echoHandler no",
+        "call qpCall http.requestQueryParam",
+        "argument qpCall request HttpRequest request",
+        "argument qpCall name String paramName",
+        "run qpCall",
+        "bind value greeting HttpTextBody qpCall",
+        "call writeCall http.responseText",
+        "argument writeCall response HttpResponse response",
+        "argument writeCall status Int32 okStatus",
+        "argument writeCall body HttpTextBody greeting",
+        "run writeCall",
+        "bind value writeStatus Int32 writeCall",
+        "return value writeStatus",
+    ])
+
+    def request_echo():
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", "/echo?greeting=hello%20world+!")
+            response = connection.getresponse()
+            return response.status, response.read().decode("utf-8", errors="replace")
+        finally:
+            connection.close()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "http_query_decode.sem"
+        exe_path = Path(tmpdir) / ("http_query_decode.exe" if os.name == "nt" else "http_query_decode")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(source, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("webserver query decode: fixture compiles",
+              compile_proc.returncode == 0 and exe_path.exists(),
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+        server_proc = subprocess.Popen(
+            [str(exe_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.time() + 10
+            result = None
+            last_error = None
+            while time.time() < deadline:
+                if server_proc.poll() is not None:
+                    break
+                try:
+                    result = request_echo()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    last_error = exc
+                    time.sleep(0.1)
+            if result is None:
+                stdout, stderr = server_proc.communicate(timeout=1)
+                check("webserver query decode: fixture starts", False,
+                      f"rc={server_proc.returncode} stdout={stdout!r} stderr={stderr!r} last={last_error!r}")
+                return
+            check("webserver query decode: %20 and + are decoded",
+                  result == (200, "hello world !"), repr(result))
+        finally:
+            if server_proc.poll() is None:
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    server_proc.kill()
+                    server_proc.wait(timeout=3)
+
+
 def test_sqlite_codegen_emits_runtime_externs_and_calls():
     """Deep-audit smoke for the standard.sqlite lowering. Parses the
     canonical syntax sample, runs codegen, and asserts the IR actually
@@ -7380,6 +8788,7 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "storage module immutable databasePath String \":memory:\"",
         "storage module immutable createTableSql SqlText \"CREATE TABLE coverage(i INTEGER, d REAL, b BLOB, n INTEGER)\"",
         "storage module immutable insertSql SqlText \"INSERT INTO coverage(i, d, b, n) VALUES (?1, ?2, ?3, ?4)\"",
+        "storage module immutable countSql SqlText \"SELECT COUNT(*) FROM coverage\"",
         "storage module immutable selectSql SqlText \"SELECT i AS int_col, d AS double_col, b AS blob_col, n AS null_col FROM coverage\"",
         "storage module immutable firstParameterIndex Int32 1",
         "storage module immutable secondParameterIndex Int32 2",
@@ -7417,6 +8826,18 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "argument errorMessageCall database SqliteDatabase database",
         "run errorMessageCall",
         "bind value initialErrorMessage SqliteText errorMessageCall",
+        "call enableWalCall sqlite.enableWalMode",
+        "argument enableWalCall database SqliteDatabase database",
+        "run enableWalCall",
+        "ignore void source enableWalCall",
+        "bind error enableWalError SqliteJournalModeFailure enableWalCall",
+        "branch error source enableWalCall target sqliteFailure",
+        "call beginTxCall sqlite.beginImmediateTransaction",
+        "argument beginTxCall database SqliteDatabase database",
+        "run beginTxCall",
+        "ignore void source beginTxCall",
+        "bind error beginTxError SqliteTransactionFailure beginTxCall",
+        "branch error source beginTxCall target sqliteFailure",
         "call createStatusCall sqlite.execStatus",
         "argument createStatusCall database SqliteDatabase database",
         "argument createStatusCall sql SqlText createTableSql",
@@ -7475,6 +8896,13 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "run finalizeInsertCall",
         "ignore void source finalizeInsertCall",
         "branch error source finalizeInsertCall target sqliteFailure",
+        "call queryCountCall sqlite.queryScalarInt64",
+        "argument queryCountCall database SqliteDatabase database",
+        "argument queryCountCall sql SqlText countSql",
+        "run queryCountCall",
+        "bind ok selectedRowCount Int64 queryCountCall",
+        "bind error queryCountError SqliteQueryFailure queryCountCall",
+        "branch error source queryCountCall target sqliteFailure",
         "call prepareSelectCall sqlite.prepareStatement",
         "argument prepareSelectCall database SqliteDatabase database",
         "argument prepareSelectCall sql SqlText selectSql",
@@ -7520,6 +8948,18 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "run finalizeSelectCall",
         "ignore void source finalizeSelectCall",
         "branch error source finalizeSelectCall target sqliteFailure",
+        "call commitTxCall sqlite.commitTransaction",
+        "argument commitTxCall database SqliteDatabase database",
+        "run commitTxCall",
+        "ignore void source commitTxCall",
+        "bind error commitTxError SqliteTransactionFailure commitTxCall",
+        "branch error source commitTxCall target sqliteFailure",
+        "call rollbackTxCall sqlite.rollbackTransaction",
+        "argument rollbackTxCall database SqliteDatabase database",
+        "run rollbackTxCall",
+        "ignore void source rollbackTxCall",
+        "bind error rollbackTxError SqliteTransactionFailure rollbackTxCall",
+        "branch error source rollbackTxCall target sqliteFailure",
         "call closeCall sqlite.closeDatabase",
         "argument closeCall database SqliteDatabase database",
         "run closeCall",
@@ -7548,6 +8988,11 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "ss_sqlite_database_errmsg",
         "ss_sqlite_database_changes",
         "ss_sqlite_exec",
+        "ss_sqlite_query_scalar_int64",
+        "ss_sqlite_database_enable_wal",
+        "ss_sqlite_transaction_begin_immediate",
+        "ss_sqlite_transaction_commit",
+        "ss_sqlite_transaction_rollback",
         "ss_sqlite_statement_reset",
         "ss_sqlite_statement_bind_int64",
         "ss_sqlite_statement_bind_double",
@@ -7564,6 +9009,77 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         check(f"sqlite extended lowering: IR calls @{symbol}",
               f"@\"{symbol}\"" in ir_text or f"@{symbol}" in ir_text,
               f"missing {symbol}")
+
+
+def test_sqlite_journal_mode_build_opt_in_lowers_wal_after_open():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        build_path = root / "build.sem"
+        main_path = root / "main.sem"
+        ir_path = root / "wal_opt_in.ll"
+        build_path.write_text("\n".join([
+            "buildProject walSmoke",
+            "project WalSmoke",
+            "modulePath walSmoke github.com/example/wal-smoke",
+            "languageVersion walSmoke \"1.0\"",
+            "projectVersion walSmoke \"1.0.0\"",
+            "projectLicense walSmoke MIT",
+            "sourceRoot walSmoke \".\"",
+            "targetRuntime walSmoke nativeExe",
+            "buildProfile walSmoke dev",
+            "optLevel walSmoke 2",
+            "runtimeChecks walSmoke panic",
+            "persistLlvmIr walSmoke auto",
+            "sqliteJournalMode walSmoke wal",
+            "target console",
+            "runtime native 1",
+            "entry console main",
+            "registerModule walSmoke app.wal \".\"",
+            "mainFile walSmoke \"main.sem\"",
+            "mainOperation walSmoke main",
+            "import wal app.wal",
+        ]), encoding="utf-8", newline="\n")
+        main_path.write_text("\n".join([
+            "module app.wal",
+            "import sqlite standard.sqlite",
+            "exportOperation app.wal main",
+            "storage module immutable databasePath String \"wal-smoke.db\"",
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap yes",
+            "async main no",
+            "purpose operation main \"open database with build-time WAL opt-in\"",
+            "call openCall sqlite.openDatabase",
+            "argument openCall path String databasePath",
+            "argument openCall mode SqliteOpenMode readWriteCreateSqliteOpenMode",
+            "run openCall",
+            "bind ok database SqliteDatabase openCall",
+            "bind error openError SqliteDatabaseOpenFailure openCall",
+            "branch error source openCall target openFailed",
+            "call closeCall sqlite.closeDatabase",
+            "argument closeCall database SqliteDatabase database",
+            "run closeCall",
+            "ignore void source closeCall",
+            "storage local immutable successExitCode ExitCode 0",
+            "return value successExitCode",
+            "label openFailed",
+            "storage local immutable failureExitCode ExitCode 1",
+            "return value failureExitCode",
+        ]), encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(build_path), "--emit-ir", str(ir_path), "--quiet"],
+            capture_output=True, text=True,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.exists() else ""
+    check("sqlite WAL opt-in: build row compiles",
+          proc.returncode == 0,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("sqlite WAL opt-in: openDatabase applies runtime WAL helper",
+          "ss_sqlite_database_enable_wal" in ir_text
+          and "openCall_walStatus" in ir_text
+          and "openCall_configuredStatus" in ir_text,
+          ir_text)
 
 
 def test_sqlite_codegen_rejects_unsupported_target():
@@ -8212,6 +9728,114 @@ def test_sqlite_syntax_sample_runs_end_to_end():
               f"rc={run_proc.returncode} stderr={run_proc.stderr!r}")
         check("sqlite e2e: stdout carries selected row body",
               "hello from sqlite syntax sample" in run_proc.stdout,
+              f"stdout={run_proc.stdout!r}")
+
+
+def test_sqlite_query_scalar_int64_runs_end_to_end():
+    src = "\n".join([
+        "project SqliteQueryScalarSmoke",
+        "target console",
+        "runtime native 1",
+        "import sqlite standard.sqlite",
+        "entry console main",
+        "storage module immutable databasePath String \":memory:\"",
+        "storage module immutable createTableSql SqlText \"CREATE TABLE notes(id INTEGER PRIMARY KEY)\"",
+        "storage module immutable insertSql SqlText \"INSERT INTO notes DEFAULT VALUES\"",
+        "storage module immutable countSql SqlText \"SELECT COUNT(*) FROM notes\"",
+        "capability sqliteSmokeDatabaseReadWriter database readWrite",
+        "capability sqliteSmokeStdoutWriter console.stdout write",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main readWrite database",
+        "effect main write console.stdout",
+        "memory main heap yes",
+        "async main no",
+        "useCapability main sqliteSmokeDatabaseReadWriter",
+        "useCapability main sqliteSmokeStdoutWriter",
+        "purpose operation main \"exercise sqlite.queryScalarInt64 end to end\"",
+        "call openCall sqlite.openDatabase",
+        "argument openCall path String databasePath",
+        "argument openCall mode SqliteOpenMode inMemorySqliteOpenMode",
+        "run openCall",
+        "bind ok database SqliteDatabase openCall",
+        "bind error openError SqliteDatabaseOpenFailure openCall",
+        "branch error source openCall target sqliteFailure",
+        "call beginTxCall sqlite.beginImmediateTransaction",
+        "argument beginTxCall database SqliteDatabase database",
+        "run beginTxCall",
+        "ignore void source beginTxCall",
+        "bind error beginTxError SqliteTransactionFailure beginTxCall",
+        "branch error source beginTxCall target sqliteFailure",
+        "call createCall sqlite.exec",
+        "argument createCall database SqliteDatabase database",
+        "argument createCall sql SqlText createTableSql",
+        "run createCall",
+        "ignore void source createCall",
+        "bind error createError SqliteDatabaseExecFailure createCall",
+        "branch error source createCall target sqliteFailure",
+        "call insertCall sqlite.exec",
+        "argument insertCall database SqliteDatabase database",
+        "argument insertCall sql SqlText insertSql",
+        "run insertCall",
+        "ignore void source insertCall",
+        "bind error insertError SqliteDatabaseExecFailure insertCall",
+        "branch error source insertCall target sqliteFailure",
+        "call commitTxCall sqlite.commitTransaction",
+        "argument commitTxCall database SqliteDatabase database",
+        "run commitTxCall",
+        "ignore void source commitTxCall",
+        "bind error commitTxError SqliteTransactionFailure commitTxCall",
+        "branch error source commitTxCall target sqliteFailure",
+        "call countCall sqlite.queryScalarInt64",
+        "argument countCall database SqliteDatabase database",
+        "argument countCall sql SqlText countSql",
+        "run countCall",
+        "bind ok noteCount Int64 countCall",
+        "bind error countError SqliteQueryFailure countCall",
+        "branch error source countCall target sqliteFailure",
+        "call closeCall sqlite.closeDatabase",
+        "argument closeCall database SqliteDatabase database",
+        "run closeCall",
+        "ignore void source closeCall",
+        "bind error closeError SqliteDatabaseCloseFailure closeCall",
+        "branch error source closeCall target sqliteFailure",
+        "call writeCountCall console.writeIntegerLine",
+        "argument writeCountCall value Int64 noteCount",
+        "run writeCountCall",
+        "ignore void source writeCountCall",
+        "bind error writeCountError ConsoleWriteFailure writeCountCall",
+        "branch error source writeCountCall target sqliteFailure",
+        "storage local immutable ok ExitCode 0",
+        "return value ok",
+        "label sqliteFailure",
+        "storage local immutable fail ExitCode 1",
+        "return value fail",
+    ])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = Path(tmpdir) / "sqlite_query_scalar.sem"
+        exe_path = Path(tmpdir) / ("sqlite_query_scalar.exe" if os.name == "nt" else "sqlite_query_scalar")
+        build_dir = Path(tmpdir) / "build"
+        src_path.write_text(src, encoding="utf-8", newline="\n")
+        compile_proc = subprocess.run(
+            [sys.executable, str(COMPILER_DIR / "semsc.py"),
+             str(src_path), "--emit-exe", str(exe_path),
+             "--build-dir", str(build_dir), "--quiet"],
+            capture_output=True, text=True, timeout=300,
+        )
+        check("sqlite queryScalarInt64 e2e: compile-and-link succeeds",
+              compile_proc.returncode == 0,
+              f"rc={compile_proc.returncode} stderr={compile_proc.stderr!r}")
+        if compile_proc.returncode != 0 or not exe_path.exists():
+            return
+        run_proc = subprocess.run(
+            [str(exe_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        check("sqlite queryScalarInt64 e2e: exe exits 0",
+              run_proc.returncode == 0,
+              f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+        check("sqlite queryScalarInt64 e2e: stdout is scalar count",
+              run_proc.stdout.strip() == "1",
               f"stdout={run_proc.stdout!r}")
 
 
@@ -8930,7 +10554,7 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
             "output operation main ExitCode",
             "purpose operation main \"x\"",
             "async main no",
-            "return value 0",
+            "return value okStatus",
         ])
         builtin_prog = semsc.parse(builtin_src)
         builtin_ok = True
@@ -8940,6 +10564,10 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
             builtin_ok = False
         check(f"const check: int-backed builtin alias `{alias}` const lowers",
               builtin_ok, f"{alias} const was wrongly flagged as unlowerable")
+        lower_proc = run_semsc_source(builtin_src, "--lower-check", "--quiet")
+        check(f"codegen: int-backed builtin alias `{alias}` const reaches lowering",
+              lower_proc.returncode == 0,
+              f"rc={lower_proc.returncode} stderr={lower_proc.stderr!r}")
 
     # `HttpStatus` (no `Code`) is a phantom type — not declared anywhere. A const
     # of it must still fail the lowerability gate, not lower silently.
@@ -8961,6 +10589,35 @@ def test_const_lowerability_surfaces_unknown_type_at_check():
         phantom_flagged = True
     check("const check: phantom `HttpStatus` const still fails SSCG004",
           phantom_flagged, "undefined HttpStatus type was wrongly accepted")
+
+    dotted_src = "\n".join([
+        "project ConstCheckDottedStatus",
+        "entry console main",
+        "storage module immutable okStatus HttpStatusCode HttpStatus.Ok",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"x\"",
+        "async main no",
+        "return value okStatus",
+    ])
+    dotted_prog = semsc.parse(dotted_src)
+    dotted_diag = None
+    try:
+        semsc.validate_const_lowerability(dotted_prog)
+    except semsc.CompilerDiagnosticError as exc:
+        dotted_diag = exc.diagnostic
+    check("const check: dotted HttpStatus literal is rejected before codegen fallback",
+          dotted_diag is not None
+          and dotted_diag.code == "SSCG004"
+          and "HttpStatus.Ok" in dotted_diag.message
+          and "dotted literal" in dotted_diag.message,
+          dotted_diag.message if dotted_diag else "no diagnostic raised")
+    dotted_lower = run_semsc_source(dotted_src, "--lower-check", "--quiet")
+    check("codegen: dotted HttpStatus literal does not lower to zero",
+          dotted_lower.returncode != 0
+          and "HttpStatus.Ok" in dotted_lower.stderr
+          and "dotted literal" in dotted_lower.stderr,
+          f"rc={dotted_lower.returncode} stderr={dotted_lower.stderr!r}")
 
 
 def test_unknown_dotted_call_target_is_rejected_not_zeroed():
@@ -9000,6 +10657,39 @@ def test_unknown_dotted_call_target_is_rejected_not_zeroed():
           message)
 
 
+def test_collection_operation_call_is_rejected_not_zeroed():
+    src = "\n".join([
+        "project CollectionRuntimeMissing",
+        "entry console main",
+        "listType TaskList Task",
+        "collectionOperation TaskList.append",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"prove collection metadata is not executable\"",
+        "call appendCall TaskList.append",
+        "run appendCall",
+        "bind value appendedValue Int64 appendCall",
+        "return value appendedValue",
+    ])
+    prog = semsc.parse(src)
+    raised = None
+    try:
+        semsc.Codegen(prog).compile()
+    except Exception as exc:
+        raised = exc
+    message = ""
+    if hasattr(raised, "diagnostic"):
+        message = raised.diagnostic.message
+    else:
+        message = str(raised or "")
+    check("codegen: collection operation call rejected (not silently zeroed)",
+          raised is not None and "unsupported call target" in message
+          and "TaskList.append" in message,
+          message)
+
+
 def test_parse_error_attributed_to_origin_file():
     # A parse error in an imported module (the build tape's mainFile) must be
     # attributed to THAT file+line, not to the entry tape at a flattened line
@@ -9029,36 +10719,129 @@ def test_unlinked_stdlib_call_is_rejected_not_zeroed():
     # failure mode (the call "builds" but silently returns 0 at runtime,
     # masquerading as a logic bug). It must now be a loud build error naming the
     # target, steering the author to an intrinsic.
+    cases = [
+        ("console standard.string", "standard.string", "\n".join([
+            "project UnlinkedStdlib",
+            "entry console main",
+            "import string standard.string",
+            "operation main",
+            "output operation main ExitCode",
+            "memory main heap no",
+            "async main no",
+            "storage local immutable a String \"hello\"",
+            "call lenCall string.stringByteLength",
+            "argument lenCall text String a",
+            "run lenCall",
+            "bind value n Int64 lenCall",
+            "return value 0",
+        ])),
+        ("webServer standard.string", "standard.string", "\n".join([
+            "project UnlinkedWebStdlib",
+            "target webServer",
+            "runtime native 1",
+            "webServer appServer",
+            "serverHost appServer \"127.0.0.1\"",
+            "serverPort appServer 18099",
+            "route appServer GET \"/\" homeHandler",
+            "import string standard.string",
+            "operation homeHandler",
+            "input operation homeHandler request HttpRequest",
+            "input operation homeHandler response HttpResponse",
+            "output operation homeHandler Int32",
+            "memory homeHandler arena request",
+            "async homeHandler no",
+            "storage local immutable bodyText String \"hello\"",
+            "call lenCall string.stringByteLength",
+            "argument lenCall text String bodyText",
+            "run lenCall",
+            "bind value bodyLength Int64 lenCall",
+            "return value 0",
+        ])),
+        ("webServer standard.http helper", "standard.http", "\n".join([
+            "project UnlinkedHttpHelper",
+            "target webServer",
+            "runtime native 1",
+            "webServer appServer",
+            "serverHost appServer \"127.0.0.1\"",
+            "serverPort appServer 18100",
+            "route appServer GET \"/\" homeHandler",
+            "import http standard.http",
+            "operation homeHandler",
+            "input operation homeHandler request HttpRequest",
+            "input operation homeHandler response HttpResponse",
+            "output operation homeHandler Int32",
+            "memory homeHandler arena request",
+            "async homeHandler no",
+            "storage local immutable nowMillis Int64 200",
+            "storage local immutable expiresAtMillis Int64 100",
+            "call expiredCall http.sessionIsExpired",
+            "argument expiredCall nowMillis Int64 nowMillis",
+            "argument expiredCall expiresAtMillis SessionExpiresAtMillis expiresAtMillis",
+            "run expiredCall",
+            "bind value expired Bool expiredCall",
+            "return value 0",
+        ])),
+    ]
+
+    for label, expected_module, src in cases:
+        prog = semsc.parse(src)
+        raised = None
+        try:
+            semsc.Codegen(prog).compile()
+        except Exception as exc:
+            raised = exc
+        message = ""
+        if hasattr(raised, "diagnostic"):
+            message = raised.diagnostic.message
+        else:
+            message = str(raised or "")
+        check(f"codegen: unlinked standard.* call rejected ({label})",
+              raised is not None and "not linked" in message
+              and expected_module in message,
+              message)
+
+
+def test_http_session_expiry_helpers_link_as_native_runtime_bindings():
     src = "\n".join([
-        "project UnlinkedStdlib",
+        "project HttpSessionExpirySmoke",
+        "target console",
+        "runtime native 1",
         "entry console main",
-        "import string standard.string",
+        "import http standard.http",
+        "storage module immutable issuedAtMillis Int64 1000",
+        "storage module immutable sessionTtlMillis SessionTtlMillis 500",
+        "storage module immutable checkAtMillis Int64 1600",
         "operation main",
         "output operation main ExitCode",
         "memory main heap no",
         "async main no",
-        "storage local immutable a String \"hello\"",
-        "call lenCall string.stringByteLength",
-        "argument lenCall text String a",
-        "run lenCall",
-        "bind value n Int64 lenCall",
-        "return value 0",
+        "purpose operation main \"verify standard.http session expiry helpers link and run natively\"",
+        "invariant operation main \"session expires at 1500 and is expired at 1600\"",
+        "call expiresAtCall http.sessionExpiresAt",
+        "argument expiresAtCall nowMillis Int64 issuedAtMillis",
+        "argument expiresAtCall ttlMillis SessionTtlMillis sessionTtlMillis",
+        "run expiresAtCall",
+        "bind value expiresAtMillis SessionExpiresAtMillis expiresAtCall",
+        "call expiredCall http.sessionIsExpired",
+        "argument expiredCall nowMillis Int64 checkAtMillis",
+        "argument expiredCall expiresAtMillis SessionExpiresAtMillis expiresAtMillis",
+        "run expiredCall",
+        "bind value sessionExpired Bool expiredCall",
+        "branch if condition sessionExpired target success",
+        "storage local immutable failureExitCode ExitCode 1",
+        "return value failureExitCode",
+        "label success",
+        "storage local immutable successExitCode ExitCode 0",
+        "return value successExitCode",
     ])
-    prog = semsc.parse(src)
-    raised = None
-    try:
-        semsc.Codegen(prog).compile()
-    except Exception as exc:
-        raised = exc
-    message = ""
-    if hasattr(raised, "diagnostic"):
-        message = raised.diagnostic.message
-    else:
-        message = str(raised or "")
-    check("codegen: unlinked standard.* call rejected (not silently zeroed)",
-          raised is not None and "not linked" in message
-          and "standard.string" in message,
-          message)
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("http session expiry helpers compile and link in native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    check("http session expiry helpers run through native runtime bindings",
+          run_proc.returncode == 0,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
 
 
 def test_backend_diagnostic_detects_locked_output_binary():
@@ -9092,6 +10875,37 @@ def test_backend_diagnostic_detects_locked_output_binary():
     check("diagnostics: ambiguous permission-denied stays SSBE999",
           ambiguous.code == "SSBE999",
           ambiguous.render("agent"))
+
+
+def test_emit_executable_frees_locked_output_path_by_renaming():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        exe_path = root / "server.exe"
+        stale_sidecar = root / "server.exe.dead.old.exe"
+        exe_path.write_bytes(b"old exe")
+        stale_sidecar.write_bytes(b"stale")
+        real_unlink = semsc.os.unlink
+        blocked = {"seen": False}
+
+        def fake_unlink(path):
+            if os.path.abspath(path) == str(exe_path.resolve()) and not blocked["seen"]:
+                blocked["seen"] = True
+                raise PermissionError("file is in use")
+            return real_unlink(path)
+
+        semsc.os.unlink = fake_unlink
+        try:
+            semsc._free_exe_output_path(str(exe_path))
+        finally:
+            semsc.os.unlink = real_unlink
+
+        sidecars = sorted(root.glob("server.exe.*.old.exe"))
+        check("emit-exe: locked output path is renamed aside for rebuild",
+              blocked["seen"] and not exe_path.exists() and len(sidecars) == 1,
+              f"blocked={blocked!r} exe_exists={exe_path.exists()} sidecars={sidecars!r}")
+        check("emit-exe: stale unlocked sidecars are swept",
+              not stale_sidecar.exists(),
+              f"stale_sidecar_exists={stale_sidecar.exists()}")
 
 
 def test_call_lowering_diagnostic_splits_overloaded_code():
@@ -9131,14 +10945,66 @@ def test_call_lowering_diagnostic_splits_overloaded_code():
           generic_diag.code == "SSCG002", generic_diag.render("agent"))
 
 
+def test_compiler_diagnostic_spans_use_imported_source_origin():
+    src = "\n".join([
+        "project OriginProbe",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "purpose operation main \"exercise origin-aware diagnostics\"",
+        "call badCall math.addInt64",
+        "return value 0",
+    ])
+    prog = semsc.parse(src)
+    build_path = str((Path("origin-fixture") / "build.sem").resolve())
+    main_path = str((Path("origin-fixture") / "main.sem").resolve())
+    prog.source_path = build_path
+    prog.source_origins = {
+        line: {
+            "path": main_path,
+            "line": 40 + line,
+            "column": 1,
+            "raw": raw,
+            "imported": True,
+        }
+        for line, raw in prog.source_lines.items()
+    }
+    cg = semsc.Codegen(prog)
+
+    call_diag = cg._diagnostic_for_call_error(
+        ValueError("badCall: unresolved symbol leftValue"),
+        {"name": "badCall", "operation": "main", "line": 6, "target": "math.addInt64"},
+    )
+    check("diagnostics: call-lowering span uses imported source path",
+          os.path.abspath(call_diag.primary.path) == os.path.abspath(main_path)
+          and call_diag.primary.line == 46
+          and call_diag.primary.raw == "call badCall math.addInt64",
+          call_diag.render("agent"))
+
+    generic_diag = semsc._diagnostic_from_codegen_error(
+        prog, ValueError("line 6: lowered source error"))
+    check("diagnostics: codegen line span uses imported source path",
+          os.path.abspath(generic_diag.primary.path) == os.path.abspath(main_path)
+          and generic_diag.primary.line == 46,
+          generic_diag.render("agent"))
+
+    strict_span = semsc._strict_span(prog, 6, role="strictRule")
+    check("diagnostics: strict span uses imported source path",
+          os.path.abspath(strict_span.path) == os.path.abspath(main_path)
+          and strict_span.line == 46,
+          f"{strict_span.path}:{strict_span.line}")
+
+
 def test_purpose_accepts_abstraction_subject_kinds():
-    # `purpose capability X "..."` must parse and satisfy the missingPurpose
+    # `purpose KIND X "..."` must parse and satisfy the missingPurpose
     # advisory the compiler emits for contract-heavy abstractions.
     src = "\n".join([
         "project PurposeSubjects",
         "entry console main",
         "capability stdoutWriter console.stdout write",
         "purpose capability stdoutWriter \"Authorize stdout writes\"",
+        "webServer appServer",
+        "purpose webServer appServer \"Serve the app endpoints\"",
         "operation main",
         "output operation main ExitCode",
         "purpose operation main \"Return a success exit code\"",
@@ -9149,8 +11015,11 @@ def test_purpose_accepts_abstraction_subject_kinds():
     diags = []
     semsc._check_purpose_on_abstractions(prog, diags)
     capability_warnings = [m for _ln, m in diags if "stdoutWriter" in m]
+    web_server_warnings = [m for _ln, m in diags if "appServer" in m]
     check("language: purpose capability clears missingPurpose advisory",
           not capability_warnings, diags)
+    check("language: purpose webServer clears missingPurpose advisory",
+          not web_server_warnings, diags)
 
     # Without the purpose row the advisory must still fire (proves the row is
     # what satisfies it, not a silently dropped check).
@@ -9169,6 +11038,35 @@ def test_purpose_accepts_abstraction_subject_kinds():
     semsc._check_purpose_on_abstractions(prog_missing, diags_missing)
     check("language: missingPurpose still fires for an unannotated capability",
           any("stdoutWriter" in m for _ln, m in diags_missing), diags_missing)
+
+
+def test_strict_webserver_purpose_row_is_satisfiable():
+    src = "\n".join([
+        "project PurposeWebStrict",
+        "target webServer",
+        "runtime native 1",
+        "webServer appServer",
+        "purpose webServer appServer \"Serve the strict web probe.\"",
+        "serverHost appServer \"127.0.0.1\"",
+        "serverPort appServer 18080",
+    ])
+    proc = run_semsc_source(src, "--parse-only", "--strict", "--quiet")
+    check("strict: purpose webServer satisfies missingPurpose gate",
+          proc.returncode == 0 and "missingPurpose" not in proc.stderr,
+          f"rc={proc.returncode} stderr={proc.stderr!r}")
+
+    missing_src = "\n".join([
+        "project PurposeWebStrict",
+        "target webServer",
+        "runtime native 1",
+        "webServer appServer",
+        "serverHost appServer \"127.0.0.1\"",
+        "serverPort appServer 18080",
+    ])
+    missing_proc = run_semsc_source(missing_src, "--parse-only", "--strict", "--quiet")
+    check("strict: missing webServer purpose still gates",
+          missing_proc.returncode == 2 and "missingPurpose: webServer `appServer`" in missing_proc.stderr,
+          f"rc={missing_proc.returncode} stderr={missing_proc.stderr!r}")
 
 
 def test_policy_runtime_binding_is_compile_blocking():
@@ -9358,6 +11256,93 @@ def test_jit_run_refuses_native_runtime_programs():
           f"returncode={hello_proc.returncode} stderr={hello_proc.stderr!r}")
 
 
+def test_jit_runtime_refusal_scans_all_ss_families_and_allows_c_calls():
+    fake_ir = "\n".join((
+        'declare i32 @"ss_http_server_run"()',
+        'declare i32 @"ss_http_client_get"()',
+        'declare i32 @"ss_sqlite_open"()',
+        'declare i32 @"ss_json_document_create"()',
+        'declare i32 @"ss_bcrypt_hash"()',
+        'declare i32 @"ss_gui_application_run"()',
+        'declare i32 @"ss_terminal_read"()',
+        'declare i32 @"ss_async_future_complete"()',
+        'declare i32 @"ss_event_publish"()',
+        'declare i32 @"ss_random_bytes"()',
+        'declare i1 @"ss_json_parse_bool"(i8*)',
+        'define i32 @"ss_http_defined_helper"() { ret i32 0 }',
+    ))
+    unresolved = semsc._unresolved_native_runtime_symbols(fake_ir)
+    labels = semsc._native_runtime_namespaces_for(unresolved)
+
+    for symbol in (
+        "ss_http_server_run",
+        "ss_http_client_get",
+        "ss_sqlite_open",
+        "ss_json_document_create",
+        "ss_bcrypt_hash",
+        "ss_gui_application_run",
+        "ss_terminal_read",
+        "ss_async_future_complete",
+        "ss_event_publish",
+        "ss_random_bytes",
+    ):
+        check(f"jit guard scans native runtime family {symbol}",
+              symbol in unresolved,
+              f"unresolved={unresolved!r}")
+    check("jit guard ignores JIT-shimmed primitive json helper",
+          "ss_json_parse_bool" not in unresolved,
+          f"unresolved={unresolved!r}")
+    check("jit guard ignores module-defined ss_* helpers",
+          "ss_http_defined_helper" not in unresolved,
+          f"unresolved={unresolved!r}")
+    for expected in (
+        "http.*",
+        "http client (net.fetch*)",
+        "sqlite.*",
+        "json.* document/builder/cursor",
+        "bcrypt.*",
+        "gui.*",
+        "terminal.*",
+        "async runtime",
+        "event runtime",
+        "random.*",
+    ):
+        check(f"jit guard labels native runtime namespace {expected}",
+              expected in labels,
+              f"labels={labels!r}")
+
+    c_source = "\n".join((
+        "project CAllocJit",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "memory main heap yes",
+        "async main no",
+        "purpose operation main \"allocate and free through libc under JIT\"",
+        "storage local immutable byteCount ByteCount 16",
+        "call mallocCall c.malloc",
+        "argument mallocCall size ByteCount byteCount",
+        "run mallocCall",
+        "bind ok heapBuffer OpaquePointer mallocCall",
+        "bind error mallocError Int32 mallocCall",
+        "branch error source mallocCall target failed",
+        "call freeCall c.free",
+        "argument freeCall ptr OpaquePointer heapBuffer",
+        "run freeCall",
+        "ignore void source freeCall",
+        "storage local immutable okExit ExitCode 0",
+        "return value okExit",
+        "label failed",
+        "storage local immutable failExit ExitCode 1",
+        "return value failExit",
+    ))
+    c_proc = run_semsc_source(c_source, "--run", "--quiet")
+    check("jit run: c.* libc calls still execute (no native-runtime false positive)",
+          c_proc.returncode == 0
+          and "native runtime intrinsics" not in c_proc.stderr,
+          f"returncode={c_proc.returncode} stderr={c_proc.stderr!r}")
+
+
 # ============================================================
 # Driver
 # ============================================================
@@ -9395,6 +11380,7 @@ def main():
     test_strict_web_contracts_accept_lowercase_route_method()
     test_strict_web_contracts_accept_route_fallback_handlers()
     test_native_http_rejects_invalid_parameter_route_patterns_at_startup()
+    test_native_http_brace_path_param_route_echoes_capture()
     test_strict_executable_mode_rejects_http_contracts_without_lint_flag()
     test_strict_web_contracts_reject_middleware_i32_output()
     test_strict_web_contracts_reject_handler_input_name_mismatch()
@@ -9423,6 +11409,8 @@ def main():
     test_strict_executable_rejects_wide_sql_existence_probe()
     test_strict_executable_rejects_sql_write_then_read_round_trip()
     test_strict_executable_rejects_multiple_sql_writes_without_transaction()
+    test_strict_executable_accepts_transaction_helpers_for_multiple_sql_writes()
+    test_strict_executable_accepts_declared_sql_forwarder_helpers()
     test_strict_executable_rejects_returning_commit_without_drain()
     test_strict_executable_accepts_returning_commit_after_drain()
     test_strict_executable_rejects_sql_last_insert_rowid()
@@ -9437,7 +11425,9 @@ def main():
     test_strict_executable_rejects_unreachable_operation_rows()
     test_compile_hello_world_to_ir()
     test_user_result_operation_error_channel_uses_return_variant_status()
+    test_user_result_operation_error_channel_survives_helper_composition()
     test_compile_i32_comparison_to_i32_ir()
+    test_math_min_max_clamp_numeric_widths_lower_to_ir()
     test_compile_rejects_implicit_i32_to_i64_math()
     test_compile_explicit_i32_to_i64_conversion_lowers_to_sext()
     test_compile_pointer_load_byte_sign_extends_to_i32()
@@ -9449,6 +11439,7 @@ def main():
     test_html_template_simple_jit_output()
     test_html_template_edge_output_repeated_adjacent_and_blank_lines()
     test_html_template_raw_style_and_script_do_not_hydrate_braces()
+    test_html_template_double_brace_holes_and_safe_url_contract()
     test_html_template_escapes_html_text_by_sink_context()
     test_html_standard_module_import_exposes_hydrate_namespace_and_exports()
     test_standard_library_module_relay_exposes_standard_modules()
@@ -9457,6 +11448,7 @@ def main():
     test_html_template_long_dynamic_arg_is_bounded_and_terminated()
     test_html_template_complex_modules_jit_and_aot_output()
     test_html_template_lab_runs_from_registered_modules()
+    test_html_hydrate_helper_can_return_fragment()
     test_html_template_codegen_rejects_bad_hydration_edges()
     test_cli_accepts_sem_alias()
     test_success_message_renderer()
@@ -9483,6 +11475,8 @@ def main():
     test_cli_build_dir_overrides_build_tape_folder_metadata()
     test_build_tape_path_normalization()
     test_build_tape_validation_rejects_missing_required_rows()
+    test_build_tape_validation_webserver_does_not_require_main_operation()
+    test_build_tape_validation_points_webserver_rows_to_source_module()
     test_build_tape_validation_accepts_dependency_fetch_rows()
     test_build_tape_validation_rejects_confusable_github_hosts()
     test_build_tape_validation_rejects_insecure_dependency_fetch()
@@ -9497,13 +11491,18 @@ def main():
     test_sem_build_driver_discovers_build_tape()
     test_codegen_diagnostic_is_agent_readable()
     test_web_codegen_rejects_unsupported_http_target()
+    test_web_codegen_request_value_presence_helpers_lower()
     test_web_codegen_response_html_sets_fixed_content_type()
     test_webserver_lifecycle_hooks_lower_around_server_run()
+    test_webserver_static_route_serves_assets_without_handler()
     test_webserver_hydrated_html_response_headers_escaping_and_failure()
     test_webserver_standard_http_sse_stream_wrappers()
     test_webserver_module_state_persists_across_sequential_requests()
+    test_webserver_query_param_is_url_decoded()
+    test_webserver_time_epoch_read_lowers_to_libc_time()
     test_sqlite_codegen_emits_runtime_externs_and_calls()
     test_sqlite_extended_intrinsic_surface_lowers()
+    test_sqlite_journal_mode_build_opt_in_lowers_wal_after_open()
     test_sqlite_codegen_rejects_unsupported_target()
     test_standard_net_fetch_lowers_and_reports_runtime_link_inputs()
     test_standard_event_lowers_through_generic_runtime_bindings()
@@ -9514,6 +11513,7 @@ def main():
     test_stdlib_intrinsic_contracts_have_runtime_status_coverage()
     test_libc_wrapper_policy_covers_registry()
     test_sqlite_syntax_sample_runs_end_to_end()
+    test_sqlite_query_scalar_int64_runs_end_to_end()
     test_json_runtime_health_demo_runs_clean()
     test_json_codegen_emits_runtime_externs_and_calls()
     test_json_runtime_smoke_runs_end_to_end()
@@ -9531,22 +11531,31 @@ def main():
     test_parser_strips_utf8_bom()
     test_const_lowerability_surfaces_unknown_type_at_check()
     test_unknown_dotted_call_target_is_rejected_not_zeroed()
+    test_collection_operation_call_is_rejected_not_zeroed()
     test_parse_error_attributed_to_origin_file()
     test_unlinked_stdlib_call_is_rejected_not_zeroed()
     test_backend_diagnostic_maps_symbol_to_source_call()
     test_backend_diagnostic_detects_locked_output_binary()
+    test_emit_executable_frees_locked_output_path_by_renaming()
     test_call_lowering_diagnostic_splits_overloaded_code()
+    test_compiler_diagnostic_spans_use_imported_source_origin()
     test_purpose_accepts_abstraction_subject_kinds()
+    test_strict_webserver_purpose_row_is_satisfiable()
     test_policy_runtime_binding_is_compile_blocking()
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
     test_jit_run_refuses_native_runtime_programs()
+    test_jit_runtime_refusal_scans_all_ss_families_and_allows_c_calls()
     test_role_suffix_accepts_recovery_labels_rejects_vague()
     test_defer_not_dominated_flags_shared_pre_acquisition_label()
+    test_defer_edge_cleanup_runs_for_shared_forward_exit_label()
     test_text_concat_compiles_and_runs()
     test_text_concat3_and_length_compile_and_run()
     test_text_equals_compiles_and_runs()
     test_text_from_int64_compiles_and_runs()
+    test_text_contains_compiles_and_runs()
+    test_text_starts_with_compiles_and_runs()
+    test_text_ends_with_compiles_and_runs()
 
     print("=" * 60)
     if FAILURES:

@@ -48,10 +48,12 @@ starts an indented literal island, and the island ends at the next non-empty
 column-0 SemanticScript row.
 
 The exception exists only for data formats whose native syntax would be damaged
-by row tokenization. HTML/SSX keeps tags, attributes, and `{name}` or
-`{record.field}` holes inside `html body template`; JSON keeps braces, brackets,
-strings, and commas inside `jsonBody`; SQL keeps comments, quoted strings,
-semicolons, and `?` placeholders inside `sql body`. Those islands must be
+by row tokenization. HTML/SSX keeps tags, attributes, and `{{name}}` or
+`{{record.field}}` holes inside `html body template`; the old `{name}` form is
+a hard error, while other single braces in JavaScript, CSS, and object literals
+remain literal. JSON keeps braces, brackets, strings, and commas inside
+`jsonBody`; SQL keeps comments, quoted strings, semicolons, and `?`
+placeholders inside `sql body`. Those islands must be
 attached to explicit declaration rows such as `html template`, `storage ...
 JsonText`, or `storage ... SqlText`, so the compiler and linter still see typed
 boundaries around the non-row text.

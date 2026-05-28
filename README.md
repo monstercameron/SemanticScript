@@ -83,6 +83,15 @@ Copy-Item ".\semanticscript-sem-windows-x64-main-<SHORT_SHA>.exe" "$InstallDir\s
 & "$InstallDir\sem.exe" version --json
 ```
 
+Resolve the newest release-channel handoff without relying on GitHub's
+`/releases/latest` endpoint:
+
+```powershell
+sem self latest --channel prerelease --json
+sem self download --channel prerelease --output .\sem.exe
+sem self update --channel prerelease
+```
+
 Install the editor extension from the same release:
 
 ```powershell
@@ -198,6 +207,9 @@ better diagnostic example, smaller demo, or reproduced mismatch is valuable.
 SemanticScript source is a semantic tape. Each row records one fact.
 
 ```semanticscript
+capability httpRequestReader http.request.body read
+capability httpResponseWriter http.response write
+capability sqliteDatabaseReadWriter database readWrite
 operation createTodoHandler
 input operation createTodoHandler request HttpRequest
 input operation createTodoHandler response HttpResponse

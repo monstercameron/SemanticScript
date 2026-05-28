@@ -122,9 +122,9 @@ The extension recognizes the recent syntax families from the refined example:
   `gui.windowClose`.
 - First-class HTML templates:
   `html template`, `html body template`, `String`, `HtmlFragment`,
-  `HtmlTrustedFragment`, `HtmlDocument`, embedded HTML/SSX highlighting,
-  inferred bare or dotted hole hovers such as `{titleText}` and
-  `{profile.title}`, and generated hydration targets such as
+  `HtmlTrustedFragment`, `HtmlDocument`, `HtmlSafeUrl`, embedded HTML/SSX
+  highlighting, inferred bare or dotted hole hovers such as `{{titleText}}`
+  and `{{profile.title}}`, and generated hydration targets such as
   `html.hydrate.TodoDashboardPageTemplate`.
 - First-class SQL text islands:
   `sql body`, `sqlBody`, `SqlText`, placeholder highlighting, and storage-target

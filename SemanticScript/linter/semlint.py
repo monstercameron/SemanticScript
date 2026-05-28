@@ -37,7 +37,7 @@ if sys.platform == "win32":
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, Iterator, List, Optional, Sequence, Set, Tuple
 
 _SEMANTICSCRIPT_ROOT = Path(__file__).resolve().parents[1]
 if str(_SEMANTICSCRIPT_ROOT) not in sys.path:
@@ -346,6 +346,9 @@ BUILTIN_TYPE_ALIASES: Dict[str, str] = {
     "SqliteDatabase": "OpaquePointer",
     "SqliteStatement": "OpaquePointer",
     "SqliteRowId": "Int64",
+    "SqliteQueryFailure": "Int32",
+    "SqliteJournalModeFailure": "Int32",
+    "SqliteTransactionFailure": "Int32",
     "GuiApplication": "OpaquePointer",
     "GuiSession": "OpaquePointer",
     "GuiEvent": "OpaquePointer",
@@ -379,6 +382,18 @@ BUILTIN_TYPE_ALIASES: Dict[str, str] = {
     "JsonPath": "String",
     "JsonScratchBuffer": "OpaquePointer",
     "JsonCapacityBytes": "ByteCount",
+    "BcryptPlaintextPassword": "String",
+    "BcryptPasswordHash": "String",
+    "BcryptHashBuffer": "OpaquePointer",
+    "BcryptRandomBuffer": "OpaquePointer",
+    "SessionToken": "String",
+    "SessionTokenHash": "String",
+    "SessionTokenBuffer": "OpaquePointer",
+    "CsrfToken": "String",
+    "CsrfTokenBuffer": "OpaquePointer",
+    "Base64UrlBuffer": "OpaquePointer",
+    "SessionTtlMillis": "Int64",
+    "SessionExpiresAtMillis": "Int64",
 }
 
 REMOVED_PRIMITIVE_SPELLINGS: Dict[str, str] = {}
@@ -540,7 +555,8 @@ _PARSER_CONTEXT_VERBS: Set[str] = {
     "guarantee", "failure", "security", "timing", "observability",
     "memoryHeap", "memoryArena", "memoryStackLimit",
     "memoryAllocationSource",
-    "pinsNullBodyFailurePath", "responseBodyForwarder", "rationale",
+    "pinsNullBodyFailurePath", "responseBodyForwarder", "sqliteSqlForwarder",
+    "rationale",
 }
 _PARSER_ACTION_VERBS: Set[str] = {
     "set", "call", "arg", "argument", "timeout", "cancelOn", "run", "runChecked", "start", "await",
@@ -1310,9 +1326,16 @@ _OPAQUE_DOMAIN_HANDLE_TYPES: frozenset = frozenset({
 # domain check is meaningful. Only targets whose return type is unambiguous are
 # listed; anything absent is skipped (false-negative over false-positive).
 BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
+    # Compiler-lowered HTML fragment-join primitive: snprintf("%s%s") into a
+    # caller-owned buffer, but the return is typed HtmlFragment so the bind
+    # passes SS4302 (text.concat's String result bound as HtmlFragment is the
+    # documented SIGSEGV class). Lets agents fold a list of fragments in a
+    # plain loop instead of the nested-hydration accumulator idiom.
+    "html.fragmentConcat":    "HtmlFragment",
     # Native HTTP response writers return an Int32 status, NOT a body handle.
     "http.responseHtml":      "Int32",
     "http.responseText":      "Int32",
+    "http.redirect":          "Int32",
     "http.responseBytes":     "Int32",
     "http.responseSseEvent":  "Int32",
     "http.responseHeader":    "Int32",
@@ -1320,6 +1343,8 @@ BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
     # Request readers return text.
     "http.requestMethod":     "String",
     "http.requestPath":       "String",
+    "http.requestValueLength": "HttpBodyLength",
+    "http.requestValueIsEmpty": "Bool",
     # Integer arithmetic returns its width; comparisons return Bool. Binding any
     # of these as an opaque HTML/JSON handle is a domain lie (caught by SS4302).
     "math.addInt64":          "Int64",
@@ -1330,6 +1355,15 @@ BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
     "math.minInt64":          "Int64",
     "math.maxInt64":          "Int64",
     "math.clampInt64":        "Int64",
+    "math.minInt32":          "Int32",
+    "math.maxInt32":          "Int32",
+    "math.clampInt32":        "Int32",
+    "math.minUInt64":         "UInt64",
+    "math.maxUInt64":         "UInt64",
+    "math.clampUInt64":       "UInt64",
+    "math.minUInt32":         "UInt32",
+    "math.maxUInt32":         "UInt32",
+    "math.clampUInt32":       "UInt32",
     "math.bitwiseAndInt64":   "Int64",
     "math.bitwiseOrInt64":    "Int64",
     "math.bitwiseXorInt64":   "Int64",
@@ -1343,12 +1377,20 @@ BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
     "math.greaterThanInt64":      "Bool",
     "math.greaterThanOrEqualInt64": "Bool",
     "math.equalInt32":            "Bool",
+    "math.notEqualInt32":         "Bool",
     "math.lessThanInt32":         "Bool",
+    "math.lessThanOrEqualInt32":  "Bool",
     "math.greaterThanInt32":      "Bool",
+    "math.greaterThanOrEqualInt32": "Bool",
     "math.addFloat64":        "Float64",
     "math.subtractFloat64":   "Float64",
     "math.multiplyFloat64":   "Float64",
     "math.divideFloat64":     "Float64",
+    "math.minFloat64":        "Float64",
+    "math.maxFloat64":        "Float64",
+    "math.clampFloat64":      "Float64",
+    "bcrypt.issueSessionToken": "Int32",
+    "bcrypt.issueCsrfToken":  "Int32",
 }
 
 
@@ -1367,6 +1409,15 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "math.minInt64":                [("left", "Int64"), ("right", "Int64")],
     "math.maxInt64":                [("left", "Int64"), ("right", "Int64")],
     "math.clampInt64":              [("value", "Int64"), ("low", "Int64"), ("high", "Int64")],
+    "math.minInt32":                [("left", "Int32"), ("right", "Int32")],
+    "math.maxInt32":                [("left", "Int32"), ("right", "Int32")],
+    "math.clampInt32":              [("value", "Int32"), ("low", "Int32"), ("high", "Int32")],
+    "math.minUInt64":               [("left", "UInt64"), ("right", "UInt64")],
+    "math.maxUInt64":               [("left", "UInt64"), ("right", "UInt64")],
+    "math.clampUInt64":             [("value", "UInt64"), ("low", "UInt64"), ("high", "UInt64")],
+    "math.minUInt32":               [("left", "UInt32"), ("right", "UInt32")],
+    "math.maxUInt32":               [("left", "UInt32"), ("right", "UInt32")],
+    "math.clampUInt32":             [("value", "UInt32"), ("low", "UInt32"), ("high", "UInt32")],
     "math.equalInt64":              [("left", "Int64"), ("right", "Int64")],
     "math.notEqualInt64":           [("left", "Int64"), ("right", "Int64")],
     "math.lessThanInt64":           [("left", "Int64"), ("right", "Int64")],
@@ -1395,6 +1446,9 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "math.subtractFloat64":           [("left", "Float64"), ("right", "Float64")],
     "math.multiplyFloat64":           [("left", "Float64"), ("right", "Float64")],
     "math.divideFloat64":             [("left", "Float64"), ("right", "Float64")],
+    "math.minFloat64":                [("left", "Float64"), ("right", "Float64")],
+    "math.maxFloat64":                [("left", "Float64"), ("right", "Float64")],
+    "math.clampFloat64":              [("value", "Float64"), ("low", "Float64"), ("high", "Float64")],
     "math.equalFloat64":              [("left", "Float64"), ("right", "Float64")],
     "math.notEqualFloat64":           [("left", "Float64"), ("right", "Float64")],
     "math.lessThanFloat64":           [("left", "Float64"), ("right", "Float64")],
@@ -1412,10 +1466,25 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "pointer.offset":             [("buffer", "OpaquePointer"), ("offset", "ByteCount")],
     "pointer.difference":         [("left", "OpaquePointer"), ("right", "OpaquePointer")],
     "pointer.isNull":             [("pointer", "OpaquePointer")],
+    "http.requestValueLength":    [("value", "HttpRequestValue")],
+    "http.requestValueIsEmpty":   [("value", "HttpRequestValue")],
     # Outbound network
     "net.fetchText":              [("request", "HttpGetRequest")],
     "net.fetchBytes":             [("url", "Url"), ("timeoutMillis", "NetworkTimeoutMilliseconds"), ("maxBodyBytes", "ResponseBodyLimitBytes")],
     "net.freeTextBody":           [("body", "HttpClientBodyText")],
+    # Bcrypt native adapter (raw status and Result-shaped wrappers).
+    "bcrypt.hashPassword":        [("plaintext", "BcryptPlaintextPassword"), ("cost", "Int32"), ("outBuffer", "BcryptHashBuffer"), ("outCapacity", "Int32")],
+    "bcrypt.hashPasswordResult":  [("plaintext", "BcryptPlaintextPassword"), ("cost", "Int32"), ("outBuffer", "BcryptHashBuffer"), ("outCapacity", "Int32")],
+    "bcrypt.hashSessionTokenResult": [("token", "SessionToken"), ("cost", "Int32"), ("outBuffer", "BcryptHashBuffer"), ("outCapacity", "Int32")],
+    "bcrypt.verifyPassword":      [("plaintext", "BcryptPlaintextPassword"), ("expectedHash", "BcryptPasswordHash")],
+    "bcrypt.verifyPasswordResult": [("plaintext", "BcryptPlaintextPassword"), ("expectedHash", "BcryptPasswordHash")],
+    "bcrypt.verifySessionTokenResult": [("token", "SessionToken"), ("expectedHash", "SessionTokenHash")],
+    "bcrypt.randomBytes":         [("outBuffer", "BcryptRandomBuffer"), ("byteCount", "Int32")],
+    "bcrypt.randomBytesResult":   [("outBuffer", "BcryptRandomBuffer"), ("byteCount", "Int32")],
+    "bcrypt.base64UrlEncode":     [("inputBuffer", "BcryptRandomBuffer"), ("inputCount", "Int32"), ("outputBuffer", "Base64UrlBuffer"), ("outputCapacity", "Int32"), ("outputLengthOut", "OpaquePointer")],
+    "bcrypt.base64UrlEncodeResult": [("inputBuffer", "BcryptRandomBuffer"), ("inputCount", "Int32"), ("outputBuffer", "Base64UrlBuffer"), ("outputCapacity", "Int32"), ("outputLengthOut", "OpaquePointer")],
+    "bcrypt.issueSessionToken":   [("randomScratch", "BcryptRandomBuffer"), ("tokenBuffer", "Base64UrlBuffer"), ("tokenCapacity", "Int32"), ("tokenLengthOut", "OpaquePointer")],
+    "bcrypt.issueCsrfToken":      [("randomScratch", "BcryptRandomBuffer"), ("tokenBuffer", "CsrfTokenBuffer"), ("tokenCapacity", "Int32"), ("tokenLengthOut", "OpaquePointer")],
     # C lib
     "c.malloc":                   [("size", "ByteCount")],
     "c.calloc":                   [("count", "ByteCount"), ("size", "ByteCount")],
@@ -1796,6 +1865,7 @@ OPERATION_ATTACHMENT_VERBS: frozenset = frozenset({
     # SS36xx explicit contract verbs — args[0] is the owning operation.
     "pinsNullBodyFailurePath",
     "responseBodyForwarder",
+    "sqliteSqlForwarder",
 })
 
 
@@ -1810,6 +1880,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "mainFile", "mainOperation", "testPattern", "dependency", "dependencySource",
     "dependencyFetch", "dependencyCache", "dependencyLock", "dependencyIntegrity",
     "buildProfile", "runtimeChecks", "asyncRuntime", "guiBackend", "persistLlvmIr",
+    "sqliteJournalMode",
     "nativeOutput", "targetRuntime", "comptimeOperation", "registerModule",
     "buildConstant",
     "projectVersion", "projectLicense", "testRoot", "nativeHttpHost",
@@ -1898,7 +1969,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     "trustBoundary", "trustBoundaryKind", "trustBoundaryInput",
     "trustBoundaryOutput", "trustBoundaryValidator", "trustBoundarySource",
     # Web
-    "webServer", "serverHost", "serverPort", "route",
+    "webServer", "serverHost", "serverPort", "route", "staticRoute",
     "routeNotFound", "routeMethodNotAllowed",
     "webServerStartup", "webServerShutdown",
     "routeTimeout", "routeMiddleware",
@@ -1911,6 +1982,7 @@ KNOWN_AGENT_SCRIPT_VERBS: frozenset = frozenset({
     # arg-name shapes or warning-text marker phrases)
     "pinsNullBodyFailurePath",
     "responseBodyForwarder",
+    "sqliteSqlForwarder",
     # `rationale CALL "text"` — call-site rationale; sister to the
     # `# rationale:` typed comment, but explicit enough that diagnostics
     # can cite it by call-name reference.
@@ -3241,7 +3313,8 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #   AS33xx — memory / resource discipline     (T3 refinement)
 #            SS3301 heapContradiction, SS3302 allocationSourceMissing,
 #            SS3303 allocateFreeUnpaired, SS3304 stackLimitOverrun,
-#            SS3305 uncheckedHeapAllocation
+#            SS3305 uncheckedHeapAllocation,
+#            SS3310 formatStringMustBeConstant
 #   AS34xx — layout / representation          (T3 refinement)
 #            SS3401 recordAlignNotPowerOfTwo, SS3404 arrayLengthZero,
 #            SS3405 inlineCapacityWithoutSpillAllocator,
@@ -3303,6 +3376,9 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS3617 lifecycleHookContract (webServerStartup /
 #                   webServerShutdown handlers must exist, take no inputs,
 #                   and return Int32),
+#            SS3618 routeTimeoutMetadataOnly (routeTimeout is coverage
+#                   metadata today; the native blocking runtime does not
+#                   preempt synchronous handlers),
 #            SS3620 unguardedJsonAccess, SS3621 staleJsonCursor,
 #            SS3622 malformedJsonPath, SS3623 unescapedJsonStringInterpolation,
 #            SS3624 deprecatedJsonBuilderCall,
@@ -4670,10 +4746,18 @@ def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
                     "memory <operation> heap yes|no|auto",
                 ))
         elif verb == "set" and args and args[0] in {"local", "module"}:
+            setScope = args[0]
+            targetName = args[1] if len(args) >= 2 else "<name>"
+            valueName = args[2] if len(args) >= 3 else "<value>"
+            ownerNote = (
+                "; `ownedBy` is not accepted on `set` rows"
+                if "ownedBy" in args[3:] else ""
+            )
             diagnostics.append(_syntax_cutover_diagnostic(
-                sourceLine, "set", "`set local/module` was replaced",
-                "set targets must use declaration families: `memory` or `storage`",
-                "set memory <name> <value>",
+                sourceLine, "set", f"`set {setScope}` was replaced",
+                "set targets must use declaration families: `memory` or `storage`"
+                f"{ownerNote}",
+                f"set storage {targetName} {valueName}",
             ))
         elif verb == "authority" and len(args) >= 3 and args[1] not in _CUTOVER_ACTIONS and args[2] in _CUTOVER_ACTIONS:
             diagnostics.append(_syntax_cutover_diagnostic(
@@ -4686,8 +4770,16 @@ def check_syntax_cutover_rows(facts: ExtendedFacts) -> List[Diagnostic]:
 
 
 _HTML_HOLE_REFERENCE_RE = re.compile(
-    r"\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}")
-_HTML_BRACE_CONTENT_RE = re.compile(r"\{([^{}\n]*)\}")
+    r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}")
+_HTML_DOUBLE_BRACE_CONTENT_RE = re.compile(r"\{\{([^{}\n]*)\}\}")
+_HTML_LEGACY_HOLE_REFERENCE_RE = re.compile(
+    r"(?<!\{)\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}(?!\})")
+_HTML_URL_ATTRIBUTE_HOLE_RE = re.compile(
+    r"\b(href|src|action|formaction|poster)\s*=\s*([\"'])"
+    r"(?:(?!\2).)*?\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}"
+    r"(?:(?!\2).)*?\2",
+    re.IGNORECASE | re.DOTALL,
+)
 _HTML_RAW_TEXT_RE = re.compile(
     r"<(style|script)\b[^>]*>.*?</\1\s*>",
     re.IGNORECASE | re.DOTALL,
@@ -4697,6 +4789,7 @@ _HTML_RAW_HYDRATION_TYPES: frozenset = frozenset({
     "HtmlTrustedFragment",
     "HtmlDocument",
 })
+_HTML_SAFE_URL_TYPE = "HtmlSafeUrl"
 
 
 def _html_line_for(template: HtmlTemplateFact, line_number: int, raw: str) -> SourceLine:
@@ -4706,6 +4799,20 @@ def _html_line_for(template: HtmlTemplateFact, line_number: int, raw: str) -> So
         raw=raw,
         tokens=tokenize_line(raw),
     )
+
+
+def _html_body_source_line_for_offset(
+    template: HtmlTemplateFact,
+    offset: int,
+) -> Optional[SourceLine]:
+    cursor = 0
+    for raw, line_number in template.body_lines:
+        body_text = raw[1:] if raw[:1].isspace() else raw
+        next_cursor = cursor + len(body_text)
+        if cursor <= offset <= next_cursor:
+            return _html_line_for(template, line_number, raw)
+        cursor = next_cursor + 1
+    return template.body_line or template.line
 
 
 def _html_hole_diagnostic(
@@ -4744,10 +4851,11 @@ def _html_body_text(template: HtmlTemplateFact) -> str:
                      for raw, _line in template.body_lines) + "\n"
 
 
-def _html_hole_roots(template: HtmlTemplateFact) -> Tuple[Set[str], List[Diagnostic]]:
+def _html_hole_roots(template: HtmlTemplateFact) -> Tuple[Set[str], Set[str], List[Diagnostic]]:
     diagnostics: List[Diagnostic] = []
     body = _html_body_text(template)
     roots: Set[str] = set()
+    safe_url_roots: Set[str] = set()
     raw_spans = [(match.start(), match.end(), match.group(1).lower())
                  for match in _HTML_RAW_TEXT_RE.finditer(body)]
     for match in _HTML_HOLE_REFERENCE_RE.finditer(body):
@@ -4757,50 +4865,89 @@ def _html_hole_roots(template: HtmlTemplateFact) -> Tuple[Set[str], List[Diagnos
             None,
         )
         if raw_context is not None:
-            sourceLine = template.body_line or template.line
+            sourceLine = _html_body_source_line_for_offset(
+                template, match.start())
             diagnostics.append(_html_hole_diagnostic(
                 sourceLine,
                 subjectName=template.name,
                 intent="raw text hole rejected",
                 rule=f"`{raw_context}` raw text cannot contain dynamic HTML holes",
-                shape=f"# move {{{match.group(1)}}} outside <{raw_context}>",
+                shape=f"# move {{{{{match.group(1)}}}}} outside <{raw_context}>",
             ))
             continue
         roots.add(match.group(1).split(".", 1)[0])
+
+    for match in _HTML_URL_ATTRIBUTE_HOLE_RE.finditer(body):
+        raw_context = next(
+            (name for start, end, name in raw_spans
+             if start < match.start() < end),
+            None,
+        )
+        if raw_context is None:
+            safe_url_roots.add(match.group(3).split(".", 1)[0])
+
+    hole_spans = {(match.start(), match.end())
+                  for match in _HTML_HOLE_REFERENCE_RE.finditer(body)}
+    for match in _HTML_DOUBLE_BRACE_CONTENT_RE.finditer(body):
+        if (match.start(), match.end()) in hole_spans:
+            continue
+        content = match.group(1).strip()
+        if not content:
+            continue
+        sourceLine = _html_body_source_line_for_offset(template, match.start())
+        diagnostics.append(_html_hole_diagnostic(
+            sourceLine,
+            subjectName=template.name,
+            intent="complex hole rejected",
+            rule="HTML dynamic holes must be `{{name}}` or `{{record.field}}`",
+            shape="{{name}} or {{record.field}}",
+        ))
 
     masked = list(body)
     for start, end, _name in raw_spans:
         for index in range(start, end):
             masked[index] = " "
     masked_body = "".join(masked)
-    hole_spans = {(match.start(), match.end())
-                  for match in _HTML_HOLE_REFERENCE_RE.finditer(masked_body)}
-    for match in _HTML_BRACE_CONTENT_RE.finditer(masked_body):
-        if (match.start(), match.end()) in hole_spans:
-            continue
-        content = match.group(1).strip()
-        if not content:
-            continue
-        sourceLine = template.body_line or template.line
+
+    for match in _HTML_LEGACY_HOLE_REFERENCE_RE.finditer(masked_body):
+        sourceLine = _html_body_source_line_for_offset(template, match.start())
+        holeName = match.group(1)
         diagnostics.append(_html_hole_diagnostic(
             sourceLine,
             subjectName=template.name,
-            intent="complex hole rejected",
-            rule="HTML dynamic holes must be a bare name or dotted record-field path",
-            shape="{name} or {record.field}",
+            intent="legacy HTML hole delimiter rejected",
+            rule=(
+                f"`{{{holeName}}}` uses the legacy single-brace HTML hole delimiter; "
+                f"migrate to `{{{{{holeName}}}}}`"
+            ),
+            shape=f"{{{{{holeName}}}}}",
         ))
-    return roots, diagnostics
+    return roots, safe_url_roots, diagnostics
+
+
+def _html_type_is_safe_url(type_name: Optional[str], type_aliases: Dict[str, str]) -> bool:
+    current = type_name
+    visited: Set[str] = set()
+    while current is not None and current not in visited:
+        if current == _HTML_SAFE_URL_TYPE:
+            return True
+        visited.add(current)
+        current = type_aliases.get(current)
+    return False
 
 
 def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
     diagnostics: List[Diagnostic] = []
     template_roots: Dict[str, Set[str]] = {}
+    template_safe_url_roots: Dict[str, Set[str]] = {}
     for template in facts.base.html_templates.values():
-        roots, bodyDiagnostics = _html_hole_roots(template)
+        roots, safeUrlRoots, bodyDiagnostics = _html_hole_roots(template)
         template_roots[template.name] = roots
+        template_safe_url_roots[template.name] = safeUrlRoots
         diagnostics.extend(bodyDiagnostics)
 
     for operation in facts.base.operations.values():
+        valueTypes = _operation_value_types(facts, operation)
         for callFact in collect_operation_calls(operation).values():
             prefix = "html.hydrate."
             if not callFact.target.startswith(prefix):
@@ -4812,6 +4959,12 @@ def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
             provided = {
                 parsed[1]
                 for parsed in (argument_parts(line) for line in callFact.arg_lines)
+                if parsed is not None
+            }
+            provided_arguments = {
+                parsed[1]: (parsed[2], parsed[3], line)
+                for line in callFact.arg_lines
+                for parsed in [argument_parts(line)]
                 if parsed is not None
             }
             for missing in sorted(required - provided):
@@ -4829,6 +4982,21 @@ def check_html_implicit_holes(facts: ExtendedFacts) -> List[Diagnostic]:
                     intent="hydrate arg extra",
                     rule=f"`html.hydrate.{templateName}` has no hole root `{extra}`",
                     shape=f"# remove argument {callFact.name} {extra} ...",
+                ))
+            for safe_url_root in sorted(template_safe_url_roots.get(templateName, set()) & provided):
+                declaredType, valueName, argLine = provided_arguments[safe_url_root]
+                inferredType = declaredType or valueTypes.get(valueName)
+                if inferredType is None or _html_type_is_safe_url(inferredType, facts.base.type_aliases):
+                    continue
+                diagnostics.append(_html_hole_diagnostic(
+                    argLine,
+                    subjectName=templateName,
+                    intent="URL hydrate arg must be HtmlSafeUrl",
+                    rule=(
+                        f"`html.hydrate.{templateName}` argument `{safe_url_root}` feeds a URL-bearing "
+                        f"attribute and must be typed `{_HTML_SAFE_URL_TYPE}`, not `{inferredType}`"
+                    ),
+                    shape=f"argument {callFact.name} {safe_url_root} {_HTML_SAFE_URL_TYPE} <safeUrlValue>",
                 ))
     return diagnostics
 
@@ -5151,6 +5319,21 @@ _SQLITE_BIND_CALL_TARGETS: FrozenSet[str] = frozenset({
 _SQLITE_STATEMENT_LIFECYCLE_TARGETS: FrozenSet[str] = frozenset({
     "sqlite.prepareStatement", "sqlite.stepStatement",
     "sqlite.exec", "sqlite.execStatus",
+    "sqlite.queryScalarInt64", "sqlite.enableWalMode",
+    "sqlite.beginImmediateTransaction",
+    "sqlite.commitTransaction", "sqlite.rollbackTransaction",
+})
+_SQLITE_TRANSACTION_BEGIN_TARGETS: FrozenSet[str] = frozenset({
+    "sqlite.beginImmediateTransaction",
+})
+_SQLITE_TRANSACTION_COMMIT_TARGETS: FrozenSet[str] = frozenset({
+    "sqlite.commitTransaction",
+})
+_SQLITE_SQL_STRING_TARGETS: FrozenSet[str] = frozenset({
+    "sqlite.prepareStatement",
+    "sqlite.exec",
+    "sqlite.execStatus",
+    "sqlite.queryScalarInt64",
 })
 
 
@@ -10620,8 +10803,8 @@ def _collection_type_name_from_target(targetName: str) -> Optional[str]:
 
 
 def check_runtime_backing_missing(facts: ExtendedFacts) -> List[Diagnostic]:
-    """Flag calls whose current compiler path is the zero-value external
-    fallback, not a real codec or collection runtime."""
+    """Flag calls whose current compiler path has no real codec or collection
+    runtime backing."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         operationCitations = narrative_citations_for_operation(facts, operation.name)
@@ -10770,7 +10953,7 @@ def check_runtime_backing_missing(facts: ExtendedFacts) -> List[Diagnostic]:
                     confidence=Confidence.HIGH,
                     effort=Effort.CROSS_FILE,
                     passProvenance="check_runtime_backing_missing",
-                    agentHint="TaskList.append and TaskMap.get currently compile through the zero-stub fallback",
+                    agentHint="TaskList.append and TaskMap.get currently fail codegen until a collection runtime binding or explicit user operation is provided",
                 ))
     return diagnostics
 
@@ -11935,6 +12118,10 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
 
             if expectedType == "GuiControl" and actualType in GUI_CONTROL_HANDLE_TYPES:
                 continue
+            if targetName == "pointer.isNull" and expectedType == "OpaquePointer" and actualType == "HttpRequestValue":
+                continue
+            if expectedType == "BcryptPlaintextPassword" and actualType == "HttpRequestValue":
+                continue
 
             resolvedExpected = _resolve_type_to_canonical(expectedType, typeAliases, enumReprs)
             resolvedActual = _resolve_type_to_canonical(actualType, typeAliases, enumReprs)
@@ -12873,7 +13060,11 @@ def check_insecure_pseudorandom(facts: ExtendedFacts) -> List[Diagnostic]:
 # (a real risk: `hashPassword` is also the std export name). A singular-import
 # alias of the intrinsic is a conservative advisory miss here; the strict wall
 # still catches it via target resolution.
-PASSWORD_HASH_TARGET: str = "bcrypt.hashPassword"
+PASSWORD_HASH_TARGETS: frozenset = frozenset({
+    "bcrypt.hashPassword",
+    "bcrypt.hashPasswordResult",
+    "bcrypt.hashSessionTokenResult",
+})
 SECURE_BCRYPT_COST_FLOOR: int = 10
 
 
@@ -12903,7 +13094,7 @@ def check_weak_password_hash_cost(facts: ExtendedFacts) -> List[Diagnostic]:
                 costValueByCall[argParts[0]] = argParts[3]
 
         for callName, targetName in callTargetByName.items():
-            if targetName != PASSWORD_HASH_TARGET:
+            if targetName not in PASSWORD_HASH_TARGETS:
                 continue
             costValue = costValueByCall.get(callName)
             if costValue is None:
@@ -13053,6 +13244,96 @@ def check_shell_command_not_constant(facts: ExtendedFacts) -> List[Diagnostic]:
                         "never build a shell command from input/runtime values; "
                         "pass a constant string to c.system (strict mode SS4603 "
                         "blocks a non-constant command), or avoid shelling out"
+                    ),
+                ))
+                break
+    return diagnostics
+
+
+FORMAT_STRING_TARGETS: frozenset = frozenset({
+    "c.snprintf",
+    "c.printf",
+    "c.fprintf",
+    "c.sprintf",
+    "c.vsnprintf",
+    "c.vfprintf",
+    "c.vprintf",
+})
+FORMAT_STRING_ARGUMENTS: frozenset = frozenset({"format"})
+
+
+def check_format_string_must_be_constant(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3310 - printf-family format strings must be static constants.
+
+    Runtime format strings are CWE-134. This mirrors the compiler strict wall
+    at the linter layer so editors and `sem check` catch the hazard before a
+    lower/check build.
+    """
+    diagnostics: List[Diagnostic] = []
+    moduleConstants = _module_immutable_constants(facts)
+    allDeclarations = _collect_constant_declarations(facts)
+    for operation in facts.base.operations.values():
+        operationCitations = narrative_citations_for_operation(facts, operation.name)
+        constants = _operation_constant_map(facts, operation, moduleConstants)
+        stringConstants = {
+            name
+            for name, (typeName, _value, _line) in constants.items()
+            if _resolve_type_alias_head(typeName, facts.base.type_aliases) == "String"
+        }
+        for callFact in collect_operation_calls(operation).values():
+            if callFact.target not in FORMAT_STRING_TARGETS:
+                continue
+            for argLine in callFact.arg_lines:
+                parts = argument_parts(argLine)
+                if parts is None:
+                    continue
+                _callName, argumentName, _declaredType, formatValue = parts
+                if argumentName not in FORMAT_STRING_ARGUMENTS:
+                    continue
+                if formatValue in stringConstants:
+                    continue
+                related = [
+                    span_of_line(callFact.line, "formatCall"),
+                    span_of_line(operation.line, "enclosingOperation"),
+                ]
+                declaration = allDeclarations.get(formatValue)
+                if declaration is not None:
+                    related.insert(1, span_of_line(declaration.line, "formatValueDeclaration"))
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T3_REFINEMENT,
+                    code="SS3310",
+                    kind="security.formatStringMustBeConstant",
+                    severity=Severity.WARNING,
+                    subjectName=callFact.name,
+                    subjectKind="call",
+                    gapEdge="constantFormatString",
+                    intentSlogan="non-constant format string",
+                    primary=span_of_line(argLine, "formatArgument"),
+                    related=related,
+                    invariantRule=(
+                        f"`{callFact.target}` uses `{formatValue}` as its format "
+                        "string; the format argument must reference an immutable "
+                        "String constant so `%n` / `%s` conversions cannot be "
+                        "injected from runtime data (CWE-134)."
+                    ),
+                    specAnchor="docs/reference/security-rules.md#rule--layer--cwe-matrix",
+                    citations=operationCitations,
+                    fixCandidates=[
+                        FixCandidate(
+                            name="useImmutableFormatString",
+                            shape='storage module immutable formatText String "<fixed format>"',
+                            evidence=[span_of_line(argLine)],
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    blocksCompile=False,
+                    effort=Effort.LOCAL,
+                    passProvenance="check_format_string_must_be_constant",
+                    agentHint=(
+                        "do not pass input, mutable storage, or other runtime values "
+                        "as a printf-family format string; keep the format in an "
+                        "immutable String row and pass dynamic values through "
+                        "ordinary argument rows"
                     ),
                 ))
                 break
@@ -13871,13 +14152,30 @@ def _find_json_body_storage_line(
     return None
 
 
+def _json_body_source_line(
+    json_body: JsonBodyFact,
+    island_line_number: int,
+) -> SourceLine:
+    if 1 <= island_line_number <= len(json_body.body_lines):
+        raw, source_line_number = json_body.body_lines[island_line_number - 1]
+        return SourceLine(
+            path=json_body.line.path,
+            number=source_line_number,
+            raw=raw,
+            tokens=tokenize_line(raw),
+        )
+    return json_body.line
+
+
 def _json_body_diagnostic(
     json_body: JsonBodyFact,
     kind: str,
     slogan: str,
     rule: str,
     related: Optional[List[Span]] = None,
+    primary_line: Optional[SourceLine] = None,
 ) -> Diagnostic:
+    primary_source = primary_line or json_body.line
     return Diagnostic(
         tier=Tier.T0_PARSE,
         code="SS3626",
@@ -13887,7 +14185,7 @@ def _json_body_diagnostic(
         subjectKind="jsonBody",
         gapEdge=kind,
         intentSlogan=slogan,
-        primary=span_of_line(json_body.line, "jsonBodyDeclaration"),
+        primary=span_of_line(primary_source, "jsonBodyDeclaration" if primary_line is None else "jsonBodyLine"),
         related=related or [],
         invariantRule=rule,
         specAnchor="docs/reference/syntax-inventory.md#jsonBody",
@@ -14006,6 +14304,7 @@ def check_json_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"invalid token at island line {exc.lineno} column {exc.colno}: {exc.msg}"
                 ),
                 related,
+                primary_line=_json_body_source_line(json_body, exc.lineno),
             ))
         except ValueError as exc:
             diagnostics.append(_json_body_diagnostic(
@@ -14080,6 +14379,61 @@ def _sql_body_text(sql_body: SqlBodyFact) -> str:
     while raw_lines and not raw_lines[-1].strip():
         raw_lines.pop()
     return "\n".join(raw_lines).rstrip()
+
+
+def _sql_body_source_line(sql_body: SqlBodyFact, raw: str, line_number: int) -> SourceLine:
+    return SourceLine(
+        path=sql_body.line.path,
+        number=line_number,
+        raw=raw,
+        tokens=tokenize_line(raw),
+    )
+
+
+def _sql_body_first_nonblank_line(sql_body: SqlBodyFact) -> Optional[SourceLine]:
+    for raw, line_number in sql_body.body_lines:
+        if raw.strip():
+            return _sql_body_source_line(sql_body, raw, line_number)
+    return None
+
+
+def _sql_body_line_matching(sql_body: SqlBodyFact, pattern) -> Optional[SourceLine]:
+    for raw, line_number in sql_body.body_lines:
+        if pattern.search(raw):
+            return _sql_body_source_line(sql_body, raw, line_number)
+    return None
+
+
+def _sql_body_trimmed_lines(sql_body: SqlBodyFact) -> List[Tuple[str, int]]:
+    body_lines = list(sql_body.body_lines)
+    while body_lines and not body_lines[0][0].strip():
+        body_lines.pop(0)
+    while body_lines and not body_lines[-1][0].strip():
+        body_lines.pop()
+    return body_lines
+
+
+def _sql_body_line_for_offset(sql_body: SqlBodyFact, offset: int) -> Optional[SourceLine]:
+    cursor = 0
+    for raw, line_number in _sql_body_trimmed_lines(sql_body):
+        line_end = cursor + len(raw)
+        if cursor <= offset <= line_end:
+            return _sql_body_source_line(sql_body, raw, line_number)
+        cursor = line_end + 1
+    return _sql_body_first_nonblank_line(sql_body)
+
+
+def _sql_body_problem_line(
+    sql_body: SqlBodyFact,
+    scan_problem: str,
+) -> Optional[SourceLine]:
+    if "block comment" in scan_problem:
+        return _sql_body_line_matching(sql_body, re.compile(r"/\*"))
+    if "quoted text" in scan_problem:
+        return _sql_body_line_matching(sql_body, re.compile(r"['\"`]"))
+    if "bracket identifier" in scan_problem:
+        return _sql_body_line_matching(sql_body, re.compile(r"\["))
+    return _sql_body_first_nonblank_line(sql_body)
 
 
 def _sql_first_verb_lint(sql_text: str) -> Optional[str]:
@@ -14197,6 +14551,65 @@ def _scan_sql_text_lint(sql_text: str) -> Tuple[int, int, Optional[str]]:
     return placeholder_count, statement_count, None
 
 
+def _find_sql_dynamic_hole_lint(sql_text: str) -> Optional[Tuple[int, int, str]]:
+    """Return a `{hole}` outside SQL literals/comments, if one exists."""
+    index = 0
+    length = len(sql_text)
+    while index < length:
+        ch = sql_text[index]
+        next_ch = sql_text[index + 1] if index + 1 < length else ""
+        if ch == "-" and next_ch == "-":
+            newline = sql_text.find("\n", index + 2)
+            index = length if newline == -1 else newline + 1
+            continue
+        if ch == "/" and next_ch == "*":
+            end = sql_text.find("*/", index + 2)
+            index = length if end == -1 else end + 2
+            continue
+        if ch == "'":
+            index += 1
+            while index < length:
+                if sql_text[index] == "'":
+                    if index + 1 < length and sql_text[index + 1] == "'":
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if ch == '"':
+            index += 1
+            while index < length:
+                if sql_text[index] == '"':
+                    if index + 1 < length and sql_text[index + 1] == '"':
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if ch == "`":
+            index += 1
+            while index < length and sql_text[index] != "`":
+                index += 1
+            index += 1 if index < length else 0
+            continue
+        if ch == "[":
+            index += 1
+            while index < length and sql_text[index] != "]":
+                index += 1
+            index += 1 if index < length else 0
+            continue
+        if ch == "{":
+            match = re.match(r"\{[^{}\n]*\}", sql_text[index:])
+            if match is not None:
+                start = index
+                end = index + match.end()
+                return start, end, sql_text[start:end]
+        index += 1
+    return None
+
+
 SQL_STATEMENT_START_VERBS: frozenset = frozenset({
     "ALTER", "BEGIN", "COMMIT", "CREATE", "DELETE", "DROP", "INSERT",
     "PRAGMA", "REPLACE", "ROLLBACK", "SELECT", "UPDATE", "WITH",
@@ -14286,6 +14699,86 @@ def _sql_body_text_for_name_lint(
     return None
 
 
+def _declared_sql_forwarders_lint(
+    facts: ExtendedFacts,
+) -> Dict[str, Dict[str, object]]:
+    forwarders: Dict[str, Dict[str, object]] = {}
+    for operation in facts.base.operations.values():
+        for sourceLine in operation.lines:
+            if (is_comment(sourceLine) or not sourceLine.tokens
+                    or sourceLine.verb != "sqliteSqlForwarder"
+                    or len(sourceLine.args) < 2):
+                continue
+            if sourceLine.args[0] != operation.name:
+                continue
+            forwarders[operation.name] = {
+                "arg": sourceLine.args[1],
+                "line": sourceLine,
+            }
+    return forwarders
+
+
+def _sqlite_sql_forwarder_targets_lint(
+    facts: ExtendedFacts,
+) -> Dict[str, Dict[str, object]]:
+    declared = _declared_sql_forwarders_lint(facts)
+    targets_by_operation: Dict[str, Set[str]] = {
+        operationName: set() for operationName in declared
+    }
+    for _ in range(len(declared) + 1):
+        changed = False
+        for operationName, claim in declared.items():
+            operation = facts.base.operations.get(operationName)
+            if operation is None:
+                continue
+            operationCalls = collect_operation_calls(operation)
+            declaredSqlArg = str(claim["arg"])
+            for callFact in operationCalls.values():
+                target = callFact.target
+                if (target in _SQLITE_SQL_STRING_TARGETS
+                        and call_arg_value(callFact, "sql") == declaredSqlArg):
+                    if target not in targets_by_operation[operationName]:
+                        targets_by_operation[operationName].add(target)
+                        changed = True
+                    continue
+                calleeClaim = declared.get(target)
+                if not calleeClaim:
+                    continue
+                calleeArg = str(calleeClaim["arg"])
+                if call_arg_value(callFact, calleeArg) != declaredSqlArg:
+                    continue
+                for forwardedTarget in targets_by_operation.get(target, set()):
+                    if forwardedTarget not in targets_by_operation[operationName]:
+                        targets_by_operation[operationName].add(forwardedTarget)
+                        changed = True
+        if not changed:
+            break
+    return {
+        operationName: {
+            "arg": declared[operationName]["arg"],
+            "line": declared[operationName]["line"],
+            "targets": frozenset(targets),
+        }
+        for operationName, targets in targets_by_operation.items()
+        if targets
+    }
+
+
+def _sqlite_forwarded_sql_usages_lint(
+    operationCalls: Dict[str, CallFact],
+    sqlForwarders: Dict[str, Dict[str, object]],
+) -> Iterator[Tuple[CallFact, str, str]]:
+    for callFact in operationCalls.values():
+        forwarder = sqlForwarders.get(callFact.target)
+        if not forwarder:
+            continue
+        sqlName = call_arg_value(callFact, str(forwarder["arg"]))
+        if sqlName is None:
+            continue
+        for target in sorted(forwarder["targets"]):
+            yield callFact, target, sqlName
+
+
 def _sql_is_write_statement_lint(sql_text: str) -> bool:
     return _sql_first_verb_lint(sql_text) in _SQL_WRITE_STATEMENT_VERBS
 
@@ -14337,7 +14830,9 @@ def _sql_body_diagnostic(
     slogan: str,
     rule: str,
     related: Optional[List[Span]] = None,
+    primary_line: Optional[SourceLine] = None,
 ) -> Diagnostic:
+    primary_source = primary_line or sql_body.line
     return Diagnostic(
         tier=Tier.T0_PARSE,
         code="SS3627",
@@ -14347,7 +14842,7 @@ def _sql_body_diagnostic(
         subjectKind="sqlBody",
         gapEdge=kind,
         intentSlogan=slogan,
-        primary=span_of_line(sql_body.line, "sqlBodyDeclaration"),
+        primary=span_of_line(primary_source, "sqlBodyDeclaration" if primary_line is None else "sqlBodyLine"),
         related=related or [],
         invariantRule=rule,
         specAnchor="docs/reference/syntax-inventory.md#sqlBody",
@@ -14467,9 +14962,10 @@ def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
                 "invalid SQL body",
                 "sql body must not contain NUL bytes",
                 related,
+                primary_line=_sql_body_line_matching(sql_body, re.compile("\0")),
             ))
             continue
-        dynamic_hole = re.search(r"\{[^{}\n]*\}", sql_text)
+        dynamic_hole = _find_sql_dynamic_hole_lint(sql_text)
         if dynamic_hole is not None:
             diagnostics.append(_sql_body_diagnostic(
                 sql_body,
@@ -14477,6 +14973,7 @@ def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
                 "SQL interpolation rejected",
                 "sql body does not allow interpolation holes; use ? placeholders and sqlite.bind* rows",
                 related,
+                primary_line=_sql_body_line_for_offset(sql_body, dynamic_hole[0]),
             ))
             continue
         if _sql_first_verb_lint(sql_text) is None:
@@ -14486,6 +14983,7 @@ def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
                 "invalid SQL body",
                 "sql body must start with a SQL statement verb after whitespace/comments",
                 related,
+                primary_line=_sql_body_first_nonblank_line(sql_body),
             ))
             continue
         _placeholder_count, _statement_count, scan_problem = _scan_sql_text_lint(sql_text)
@@ -14496,6 +14994,7 @@ def check_sql_body_literals(facts: ExtendedFacts) -> List[Diagnostic]:
                 "invalid SQL body",
                 f"sql body contains invalid SQL text: {scan_problem}",
                 related,
+                primary_line=_sql_body_problem_line(sql_body, scan_problem),
             ))
 
     return diagnostics
@@ -14673,7 +15172,14 @@ def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnosti
                     name="returnGeneratedId",
                     shape=(
                         "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
-                        "# read sqlite.column* from the INSERT statement and bind it explicitly"
+                        "call prepareGeneratedInsertCall sqlite.prepareStatement\n"
+                        "call stepGeneratedInsertCall sqlite.stepStatement\n"
+                        "bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall\n"
+                        "# require generatedInsertStep == rowSqliteStepResult\n"
+                        "call readGeneratedIdCall sqlite.columnInt64\n"
+                        "bind value generatedEntityId Int64 readGeneratedIdCall\n"
+                        "# step again to doneSqliteStepResult or finalize before COMMIT\n"
+                        "# bind generatedEntityId into the activity-log INSERT"
                     ),
                 ),
             ],
@@ -14684,7 +15190,12 @@ def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnosti
             agentHint=(
                 "`last_insert_rowid()` hides a dependency on connection "
                 "state. Return the generated identifier from the write "
-                "statement and pass it through a named SemanticScript value."
+                "statement and pass it through a named SemanticScript value. "
+                "Use sqlite.prepareStatement, sqlite.stepStatement, "
+                "sqlite.columnInt64, and sqlite.finalizeStatement around "
+                "INSERT ... RETURNING id; wrap the generated-row insert and "
+                "activity-log insert in beginImmediateTransaction/commit with "
+                "rollback on failure when they must be atomic."
             ),
         ))
     for operation in facts.base.operations.values():
@@ -14710,25 +15221,37 @@ def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnosti
                     "later statements"
                 ),
                 specAnchor="docs/optimization-guide.md#sqlite-returning",
-                fixCandidates=[
-                    FixCandidate(
-                        name="returnGeneratedId",
-                        shape=(
-                            "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
-                            "# read sqlite.column* from the INSERT statement and bind it explicitly"
-                        ),
+            fixCandidates=[
+                FixCandidate(
+                    name="returnGeneratedId",
+                    shape=(
+                        "INSERT INTO table_name(...) VALUES (...) RETURNING id\n"
+                        "call prepareGeneratedInsertCall sqlite.prepareStatement\n"
+                        "call stepGeneratedInsertCall sqlite.stepStatement\n"
+                        "bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall\n"
+                        "# require generatedInsertStep == rowSqliteStepResult\n"
+                        "call readGeneratedIdCall sqlite.columnInt64\n"
+                        "bind value generatedEntityId Int64 readGeneratedIdCall\n"
+                        "# step again to doneSqliteStepResult or finalize before COMMIT\n"
+                        "# bind generatedEntityId into the activity-log INSERT"
                     ),
-                ],
+                ),
+            ],
                 confidence=Confidence.HIGH,
                 blocksCompile=False,
                 effort=Effort.LOCAL,
                 passProvenance="check_sql_last_insert_rowid_function",
-                agentHint=(
-                    "`sqlite.lastInsertRowId` hides a dependency on connection "
-                    "state. Return the generated identifier from the write "
-                    "statement and pass it through a named SemanticScript value."
-                ),
-            ))
+            agentHint=(
+                "`sqlite.lastInsertRowId` hides a dependency on connection "
+                "state. Return the generated identifier from the write "
+                "statement and pass it through a named SemanticScript value. "
+                "Use sqlite.prepareStatement, sqlite.stepStatement, "
+                "sqlite.columnInt64, and sqlite.finalizeStatement around "
+                "INSERT ... RETURNING id; wrap the generated-row insert and "
+                "activity-log insert in beginImmediateTransaction/commit with "
+                "rollback on failure when they must be atomic."
+            ),
+        ))
     return diagnostics
 
 
@@ -14923,6 +15446,7 @@ def check_sqlite_multiple_writes_have_transaction(
     """
     diagnostics: List[Diagnostic] = []
     local_sql_bodies = _local_sql_body_texts(facts)
+    sql_forwarders = _sqlite_sql_forwarder_targets_lint(facts)
     for operation in facts.base.operations.values():
         operation_calls = collect_operation_calls(operation)
         write_steps: List[Tuple[CallFact, CallFact, str]] = []
@@ -14944,6 +15468,14 @@ def check_sqlite_multiple_writes_have_transaction(
                 if call_arg_value(step_call, "statement") not in statement_names:
                     continue
                 write_steps.append((prepare_call, step_call, sql_name))
+        for call_fact, target, sql_name in _sqlite_forwarded_sql_usages_lint(
+                operation_calls, sql_forwarders):
+            if target != "sqlite.prepareStatement":
+                continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None or not _sql_is_write_statement_lint(sql_text):
+                continue
+            write_steps.append((call_fact, call_fact, sql_name))
 
         if len(write_steps) < 2:
             continue
@@ -14951,11 +15483,27 @@ def check_sqlite_multiple_writes_have_transaction(
         has_begin = False
         has_commit = False
         for call_fact in operation_calls.values():
+            if call_fact.target in _SQLITE_TRANSACTION_BEGIN_TARGETS:
+                has_begin = True
+                continue
+            if call_fact.target in _SQLITE_TRANSACTION_COMMIT_TARGETS:
+                has_commit = True
+                continue
             if call_fact.target != "sqlite.exec":
                 continue
             sql_name = call_arg_value(call_fact, "sql")
             if sql_name is None:
                 continue
+            sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
+            if sql_text is None:
+                continue
+            verb = _sql_first_verb_lint(sql_text)
+            if verb in {"BEGIN", "SAVEPOINT"}:
+                has_begin = True
+            elif verb in {"COMMIT", "RELEASE"}:
+                has_commit = True
+        for _call_fact, _target, sql_name in _sqlite_forwarded_sql_usages_lint(
+                operation_calls, sql_forwarders):
             sql_text = _sql_body_text_for_name_lint(local_sql_bodies, sql_name)
             if sql_text is None:
                 continue
@@ -14995,11 +15543,11 @@ def check_sqlite_multiple_writes_have_transaction(
                 FixCandidate(
                     name="wrapWritesInTransaction",
                     shape=(
-                        "call beginTxCall sqlite.exec\n"
-                        "argument beginTxCall sql SqlText sqlBeginTransaction\n"
+                        "call beginTxCall sqlite.beginImmediateTransaction\n"
+                        "argument beginTxCall database SqliteDatabase <database>\n"
                         "# write statements\n"
-                        "call commitTxCall sqlite.exec\n"
-                        "argument commitTxCall sql SqlText sqlCommitTransaction"
+                        "call commitTxCall sqlite.commitTransaction\n"
+                        "argument commitTxCall database SqliteDatabase <database>"
                     ),
                 ),
             ],
@@ -15055,6 +15603,9 @@ def check_sqlite_returning_statement_drained_before_commit(
 
         commit_calls: List[CallFact] = []
         for call_fact in operation_calls.values():
+            if call_fact.target in _SQLITE_TRANSACTION_COMMIT_TARGETS:
+                commit_calls.append(call_fact)
+                continue
             if call_fact.target != "sqlite.exec":
                 continue
             sql_name = call_arg_value(call_fact, "sql")
@@ -15545,6 +16096,9 @@ HTTP_RESPONSE_BODY_ARG_SLOTS: Dict[str, frozenset] = {
 # writers, these form the full response-side surface.
 HTTP_RESPONSE_OTHER_WRITERS: frozenset = frozenset({
     "http.responseHeader",
+    # Redirect writes both the Location header and an empty text body. It has no
+    # caller-supplied body slot, so nullable-body propagation does not apply.
+    "http.redirect",
     # File responses write a body, but the linter's nullable-body
     # propagation tracks `body`/`data` arguments specifically. The file
     # writer has root/path arguments and is classified here so target
@@ -15552,11 +16106,19 @@ HTTP_RESPONSE_OTHER_WRITERS: frozenset = frozenset({
     "http.responseFile",
 })
 
+HTTP_RESPONSE_HEADER_LATCH_WRITERS: frozenset = frozenset({
+    *HTTP_RESPONSE_BODY_WRITERS,
+    "http.responseFile",
+    "http.redirect",
+})
+
 # HTTP utility calls that are compiler-dispatched but are neither
 # request readers nor response writers.
 HTTP_UTILITY_TARGETS: frozenset = frozenset({
     "http.nowMillis",
     "http.ensureDirectory",
+    "http.requestValueLength",
+    "http.requestValueIsEmpty",
     "http.urlDecode",
     "http.urlEncode",
 })
@@ -15865,6 +16427,192 @@ def check_response_body_forwarder_missing(facts: ExtendedFacts) -> List[Diagnost
                         "request values that flow through this helper"
                     ),
                 ))
+    return diagnostics
+
+
+_HTTP_BODY_HEAP_ALLOCATION_TARGETS = frozenset({
+    "c.malloc",
+    "c.calloc",
+    "c.realloc",
+    "c.alignedAlloc",
+    "c.aligned_alloc",
+    "memory.allocateMemoryBytes",
+    "standard.memory.allocateMemoryBytes",
+})
+
+_HTTP_BODY_HEAP_DEALLOCATION_TARGETS = frozenset({
+    "c.free",
+    "memory.releaseMemoryBytes",
+    "standard.memory.releaseMemoryBytes",
+})
+
+
+def _call_execution_lines(callFact: CallFact) -> List[SourceLine]:
+    return sorted(
+        callFact.run_lines + callFact.run_checked_lines + callFact.start_lines,
+        key=lambda sourceLine: sourceLine.number,
+    )
+
+
+def _run_checked_success_value_lines(callFact: CallFact) -> List[Tuple[str, SourceLine]]:
+    values: List[Tuple[str, SourceLine]] = []
+    for runCheckedLine in callFact.run_checked_lines:
+        args = runCheckedLine.args
+        if len(args) >= 4 and args[1] == "ok":
+            values.append((args[2], runCheckedLine))
+    return values
+
+
+def _heap_allocation_value_lines(callFact: CallFact) -> List[Tuple[str, SourceLine]]:
+    valueLines = call_success_value_lines(callFact)
+    valueLines.extend(_run_checked_success_value_lines(callFact))
+    # Legacy defer/free examples sometimes use the call name itself as the
+    # ownership token. Keep tracking it so the lifetime lint catches that shape.
+    valueLines.append((callFact.name, callFact.line))
+    return valueLines
+
+
+def _response_body_writer_slots(
+    facts: ExtendedFacts,
+) -> Tuple[Set[str], Dict[str, frozenset]]:
+    writers = _collect_transitive_response_body_writers(facts)
+    slotsByTarget: Dict[str, frozenset] = dict(HTTP_RESPONSE_BODY_ARG_SLOTS)
+    for sourceLine in facts.base.lines:
+        if (is_comment(sourceLine) or not sourceLine.tokens
+                or sourceLine.verb != "responseBodyForwarder"
+                or len(sourceLine.args) < 2):
+            continue
+        if sourceLine.args[0] in writers:
+            slotsByTarget[sourceLine.args[0]] = frozenset({sourceLine.args[1]})
+    return writers, slotsByTarget
+
+
+def check_http_response_body_freed_before_write(
+    facts: ExtendedFacts,
+) -> List[Diagnostic]:
+    """SS3114 - heap response body buffers must outlive the writer run row."""
+    diagnostics: List[Diagnostic] = []
+    responseBodyWriters, writerSlotsByTarget = _response_body_writer_slots(facts)
+
+    for operation in facts.base.operations.values():
+        calls = collect_operation_calls(operation)
+        allocatedValues: Dict[str, Tuple[CallFact, SourceLine]] = {}
+        for callFact in calls.values():
+            if callFact.target not in _HTTP_BODY_HEAP_ALLOCATION_TARGETS:
+                continue
+            for valueName, valueLine in _heap_allocation_value_lines(callFact):
+                allocatedValues[valueName] = (callFact, valueLine)
+        if not allocatedValues:
+            continue
+
+        labelLines = sorted(
+            line.number for line in operation.lines
+            if line.tokens and not is_comment(line) and line.verb == "label"
+        )
+
+        releaseEventsByValue: Dict[str, List[Tuple[CallFact, SourceLine]]] = {}
+        for cleanupCall in calls.values():
+            if cleanupCall.target not in _HTTP_BODY_HEAP_DEALLOCATION_TARGETS:
+                continue
+            cleanupValues: Set[str] = set()
+            for values in call_arg_values(cleanupCall).values():
+                cleanupValues.update(value for value in values if value in allocatedValues)
+            if not cleanupValues:
+                continue
+            for executionLine in _call_execution_lines(cleanupCall):
+                for valueName in cleanupValues:
+                    releaseEventsByValue.setdefault(valueName, []).append(
+                        (cleanupCall, executionLine)
+                    )
+        if not releaseEventsByValue:
+            continue
+
+        for writerCall in calls.values():
+            if writerCall.target not in responseBodyWriters:
+                continue
+            acceptedSlots = writerSlotsByTarget.get(
+                writerCall.target, frozenset({"body"})
+            )
+            writerExecutionLines = _call_execution_lines(writerCall)
+            if not writerExecutionLines:
+                continue
+            for argLine in writerCall.arg_lines:
+                argParts = argument_parts(argLine)
+                if argParts is None:
+                    continue
+                _callName, argumentName, _declaredType, bodyValue = argParts
+                if argumentName not in acceptedSlots or bodyValue not in allocatedValues:
+                    continue
+                allocationCall, allocationLine = allocatedValues[bodyValue]
+                reported = False
+                for writerExecutionLine in writerExecutionLines:
+                    for cleanupCall, cleanupLine in releaseEventsByValue.get(bodyValue, []):
+                        if not (
+                            allocationLine.number
+                            < cleanupLine.number
+                            < writerExecutionLine.number
+                        ):
+                            continue
+                        if any(
+                            cleanupLine.number < labelNumber < writerExecutionLine.number
+                            for labelNumber in labelLines
+                        ):
+                            continue
+                        diagnostics.append(Diagnostic(
+                            tier=Tier.T3_REFINEMENT,
+                            code="SS3114",
+                            kind="resourceLifetime.httpBodyFreedBeforeWrite",
+                            severity=Severity.WARNING,
+                            subjectName=bodyValue,
+                            subjectKind="value",
+                            gapEdge="responseBodyLifetime",
+                            intentSlogan="heap response body freed before writer runs",
+                            primary=span_of_line(argLine, "responseBodyArgument"),
+                            related=[
+                                span_of_line(allocationLine, "heapAllocation"),
+                                span_of_line(cleanupLine, "heapRelease"),
+                                span_of_line(writerExecutionLine, "responseWriterRun"),
+                            ],
+                            invariantRule=(
+                                "caller-owned buffers passed to http.responseText/"
+                                "http.responseHtml/http.responseBytes/"
+                                "http.responseSseEvent must remain live until the "
+                                "response writer executes"
+                            ),
+                            specAnchor="docs/reference/syntax-inventory.md#http-response",
+                            citations=narrative_citations_for_operation(
+                                facts, operation.name),
+                            fixCandidates=[
+                                FixCandidate(
+                                    name="releaseWithDefer",
+                                    shape=(
+                                        f"defer release{allocationCall.name[:1].upper()}"
+                                        f"{allocationCall.name[1:]} "
+                                        f"{cleanupCall.target} {bodyValue}"
+                                    ),
+                                ),
+                                FixCandidate(
+                                    name="writeResponseBeforeRelease",
+                                    shape="# move the response writer run before the free/release rows",
+                                ),
+                            ],
+                            confidence=Confidence.MEDIUM,
+                            blocksCompile=False,
+                            effort=Effort.LOCAL,
+                            passProvenance="check_http_response_body_freed_before_write",
+                            agentHint=(
+                                f"`{bodyValue}` is released at line {cleanupLine.number} "
+                                f"before `{writerCall.name}` writes it at line "
+                                f"{writerExecutionLine.number}; use `defer` for the "
+                                "release or write the response first"
+                            ),
+                        ))
+                        reported = True
+                        break
+                    if reported:
+                        break
+                if reported:
+                    break
     return diagnostics
 
 
@@ -16323,6 +17071,86 @@ def check_unguarded_http_input(facts: ExtendedFacts) -> List[Diagnostic]:
                             "exposes adapter internals to clients"
                         ),
                     ))
+    return diagnostics
+
+
+def check_response_header_after_body_writer(facts: ExtendedFacts) -> List[Diagnostic]:
+    """SS3619 - response headers must run before the first body writer.
+
+    The native response object stages headers until the first body/file/redirect
+    writer latches the response. A later http.responseHeader call is therefore
+    source-order-invalid even though the rows parse and the runtime returns a
+    status. Track run order, not declaration order, so hoisted call declarations
+    remain legal when the header run still precedes the body run.
+    """
+    diagnostics: List[Diagnostic] = []
+    for operationName, operationFact in facts.base.operations.items():
+        callTargetsByName: Dict[str, str] = {}
+        callLinesByName: Dict[str, SourceLine] = {}
+        firstBodyRun: Optional[Tuple[str, str, SourceLine]] = None
+        operationCitations = narrative_citations_for_operation(facts, operationName)
+        for sourceLine in operationFact.lines:
+            if is_comment(sourceLine) or not sourceLine.tokens:
+                continue
+            if sourceLine.verb == "call" and len(sourceLine.args) >= 2:
+                callTargetsByName[sourceLine.args[0]] = sourceLine.args[1]
+                callLinesByName[sourceLine.args[0]] = sourceLine
+                continue
+            if sourceLine.verb not in {"run", "runChecked"} or not sourceLine.args:
+                continue
+            callName = sourceLine.args[0]
+            target = callTargetsByName.get(callName)
+            if target in HTTP_RESPONSE_HEADER_LATCH_WRITERS and firstBodyRun is None:
+                firstBodyRun = (callName, target, sourceLine)
+                continue
+            if target != "http.responseHeader" or firstBodyRun is None:
+                continue
+            bodyCallName, bodyTarget, bodyRunLine = firstBodyRun
+            related = [span_of_line(bodyRunLine, "firstResponseBodyRun")]
+            headerCallLine = callLinesByName.get(callName)
+            if headerCallLine is not None:
+                related.append(span_of_line(headerCallLine, "responseHeaderCall"))
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3619",
+                kind="webserver.responseHeaderAfterBody",
+                severity=Severity.WARNING,
+                subjectName=callName,
+                subjectKind="call",
+                gapEdge="http.responseHeader.order",
+                intentSlogan=(
+                    f"`{callName}` runs after `{bodyCallName}` already wrote "
+                    "the response body"
+                ),
+                primary=span_of_line(sourceLine, "responseHeaderRun"),
+                related=related,
+                invariantRule=(
+                    "`http.responseHeader` must run before the first response "
+                    f"body writer (`{bodyTarget}` here), because body writers "
+                    "latch the staged response headers"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#http.responseHtml",
+                citations=operationCitations,
+                fixCandidates=[
+                    FixCandidate(
+                        name="moveHeaderBeforeBodyWriter",
+                        shape=(
+                            f"# move `run {callName}` before `run {bodyCallName}` "
+                            "and keep its arguments with the header call"
+                        ),
+                        evidence=[span_of_line(sourceLine)],
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                passProvenance="check_response_header_after_body_writer",
+                agentHint=(
+                    "for Set-Cookie, Location, Cache-Control, and custom "
+                    "headers, execute http.responseHeader before responseText, "
+                    "responseHtml, responseBytes, responseSseEvent, responseFile, "
+                    "or http.redirect"
+                ),
+            ))
     return diagnostics
 
 
@@ -17042,6 +17870,34 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
         verb = sourceLine.verb
         if verb == "routeTimeout" and len(sourceLine.args) >= 3:
             timeoutCoverage[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
+            diagnostics.append(Diagnostic(
+                tier=Tier.T3_REFINEMENT,
+                code="SS3618",
+                kind="webserver.routeTimeoutMetadataOnly",
+                severity=Severity.WARNING,
+                subjectName=sourceLine.args[1],
+                subjectKind="routeTimeout",
+                gapEdge="preemptiveTimeoutEnforcement",
+                intentSlogan=(
+                    f"routeTimeout for `{sourceLine.args[1]}` is metadata-only "
+                    "in the native blocking runtime"
+                ),
+                primary=span_of_line(sourceLine, "routeTimeoutMetadata"),
+                invariantRule=(
+                    "`routeTimeout` declares route-budget coverage for tooling "
+                    "and future preemptive runtimes; the current native HTTP "
+                    "blocking runtime does not interrupt synchronous handlers"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#routeTimeout",
+                confidence=Confidence.HIGH,
+                effort=Effort.TRIVIAL,
+                passProvenance="check_route_coverage_drift",
+                agentHint=(
+                    "do not rely on routeTimeout for runtime preemption today; "
+                    "use handler-level checks or an external server/proxy "
+                    "timeout when a synchronous handler must be bounded"
+                ),
+            ))
         elif verb == "routeMiddleware" and len(sourceLine.args) >= 3:
             middlewareCoverage[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
         elif verb == "routeTimeoutOptOut" and len(sourceLine.args) >= 2:
@@ -20476,6 +21332,7 @@ CHECKERS = [
     check_insecure_pseudorandom,
     check_weak_password_hash_cost,
     check_shell_command_not_constant,
+    check_format_string_must_be_constant,
     check_hardcoded_secret,
     check_duplicate_declarations,
     check_unknown_verbs,
@@ -20500,6 +21357,7 @@ CHECKERS = [
     check_authority_effect_mismatch,
     check_column_memory_use_after_free,
     check_column_text_overwritten_before_use,
+    check_http_response_body_freed_before_write,
     check_hidden_failure,
     check_sibling_metadata_drift,
     check_undeclared_body_effect,
@@ -20585,6 +21443,7 @@ CHECKERS = [
     check_placeholder_module_path,
     check_middleware_missing_response_effect,
     check_unguarded_http_input,
+    check_response_header_after_body_writer,
     check_untrusted_http_html_hydration,
     check_route_coverage_drift,
     check_legacy_null_body_marker,
@@ -20891,8 +21750,8 @@ def collect_paths(rawPaths: Sequence[str]) -> List[Path]:
     for rawPath in rawPaths:
         candidatePath = Path(rawPath)
         if candidatePath.is_dir():
-            collected.extend(sorted(candidatePath.rglob("*.sscript")))
-            collected.extend(sorted(candidatePath.rglob("*.sem")))
+            collected.extend(path for path in sorted(candidatePath.rglob("*.sscript")) if path.is_file())
+            collected.extend(path for path in sorted(candidatePath.rglob("*.sem")) if path.is_file())
         elif candidatePath.is_file():
             if candidatePath.suffix in {".sscript", ".sem"}:
                 collected.append(candidatePath)

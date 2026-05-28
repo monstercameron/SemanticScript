@@ -106,6 +106,21 @@ class EvalSnippetTests(unittest.TestCase):
         self.assertIsNone(payload["execution"]["exitCode"])
         self.assertTrue(payload["diagnostics"])
 
+    def test_native_runtime_intrinsics_are_refused_before_jit_run(self) -> None:
+        payload = _eval(
+            'storage local immutable dbPath String "demo.db"\n'
+            "storage local immutable mode Int32 6\n"
+            "call openDatabaseCall sqlite.openDatabase\n"
+            "argument openDatabaseCall path String dbPath\n"
+            "argument openDatabaseCall mode Int32 mode\n"
+            "run openDatabaseCall\n"
+        )
+        self.assertEqual(payload["status"], "native-runtime-unavailable")
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["execution"]["ran"])
+        self.assertIn("sqlite.openDatabase", payload["nativeRuntimeTargets"])
+        self.assertTrue(any(note["code"] == "SSEVAL002" for note in payload["notes"]["linter"]))
+
     def test_full_program_is_passed_through(self) -> None:
         source = HELLO_WORLD_PATH.read_text(encoding="utf-8")
         payload = _eval(source)

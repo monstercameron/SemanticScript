@@ -119,7 +119,8 @@ storage or implement methods such as `TaskList.append`, `TaskMap.get`, or
 
 Until the collection runtime is wired, use explicit operations for executable
 behavior. `semlint.py` flags typed collection calls whose current compiler path
-would fall through to the zero-stub external fallback.
+has no executable storage/runtime backing; current codegen rejects unsupported
+typed collection targets instead of silently returning a zero result.
 
 ## Validators, Mappers, Adapters, Boundaries
 
