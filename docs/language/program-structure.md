@@ -161,9 +161,9 @@ output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main write gui.window
-authority main gui.application allocate
-authority main gui.window allocate
-authority main gui.window write
+authority main allocate gui.application
+authority main allocate gui.window
+authority main write gui.window
 call createApp gui.applicationCreate
 argument createApp title GuiText title
 run createApp
@@ -213,31 +213,42 @@ operation writeStandardOutputLine
 input operation writeStandardOutputLine text String
 output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
-memory writeStandardOutputLine noHeapAllocation
+memory writeStandardOutputLine heap no
 async writeStandardOutputLine no
-purpose writeStandardOutputLine "Emit one newline-terminated text line"
+purpose operation writeStandardOutputLine "Emit one newline-terminated text line"
 ```
 
-Operation header lines repeat the owner operation name as their first argument.
-The parser enforces that ownership for:
+Operation header lines repeat the owner operation name in their owner slot. The
+parser enforces that ownership for these operation contract rows:
 
 ```text
-input output effect memory async purpose invariant warning
-guarantee failure security timing observability
+input operation OP ...
+output operation OP ...
+effect OP ...
+memory OP ...
+async OP ...
+purpose operation OP ...
+invariant operation OP ...
+warning operation OP ...
+guarantee OP ...
+failure OP ...
+security OP ...
+timing OP ...
+observability OP ...
 ```
 
 Bad:
 
 ```semanticscript
 operation writeLine
-purpose otherOperation "wrong owner"
+purpose operation otherOperation "wrong owner"
 ```
 
 Good:
 
 ```semanticscript
 operation writeLine
-purpose writeLine "owner matches operation"
+purpose operation writeLine "owner matches operation"
 ```
 
 The repetition is deliberate. A single retrieved line is independently

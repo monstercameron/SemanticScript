@@ -92,6 +92,17 @@ REPLACED_ROW_VERBS = frozenset({
 })
 
 METADATA_SUBJECT_KINDS = frozenset({"module", "operation"})
+# `purpose` additionally attaches to the contract-heavy abstractions that the
+# compiler's `missingPurpose` advisory asks for (capability, webServer, record,
+# resource, validator, codec, policy). This MUST stay in sync with the parser's
+# `_PURPOSE_SUBJECT_KINDS` in compiler/semsc.py: if the formatter rejects a
+# subject kind the parser accepts, `purpose <kind> NAME` rows become
+# unsatisfiable — `check` demands the row while `fmt --check` rejects it, a loop
+# an agent cannot escape (observed: webServer purpose in the ops-dashboard build).
+PURPOSE_SUBJECT_KINDS = frozenset(METADATA_SUBJECT_KINDS | {
+    "capability", "webServer", "record",
+    "resource", "validator", "codec", "policy",
+})
 SIGNATURE_SUBJECT_KINDS = frozenset({"operation"})
 BIND_VARIANTS = frozenset({"value", "ok", "error"})
 BRANCH_VARIANTS = frozenset({"if", "error", "else"})
@@ -219,9 +230,13 @@ def reject_replaced_syntax(tokens: Sequence[Token], row: str) -> None:
     if head == "type" and len(values) >= 3 and values[2] == "Result":
         _raise_replaced_syntax(row, reason="replaced result type row")
 
-    if head in {"purpose", "invariant"} and len(values) >= 2:
+    if head == "purpose" and len(values) >= 2:
+        if values[1] not in PURPOSE_SUBJECT_KINDS:
+            _raise_replaced_syntax(row, reason="bare purpose row is replaced")
+
+    if head == "invariant" and len(values) >= 2:
         if values[1] not in METADATA_SUBJECT_KINDS:
-            _raise_replaced_syntax(row, reason=f"bare {head} row is replaced")
+            _raise_replaced_syntax(row, reason="bare invariant row is replaced")
 
     if head in {"input", "output"} and len(values) >= 2:
         if values[1] not in SIGNATURE_SUBJECT_KINDS:
@@ -469,6 +484,29 @@ def diff_text(original: str, formatted: str, *, path_label: str) -> str:
     ))
 
 
+def write_format_error_guidance(
+    stderr: TextIO,
+    *,
+    path_label: str,
+    exc: FormatError,
+) -> None:
+    stderr.write(f"semfmt: {path_label}: {exc}\n")
+    stderr.write(
+        "semfmt: recovery: formatter-auto-fixable=false; the formatter did not "
+        "rewrite this row because its current-row shape is ambiguous.\n"
+    )
+    stderr.write(
+        f"semfmt: next: run `sem check --json {path_label}` for the precise "
+        "parser/linter diagnostic, then `sem fix --plan --json "
+        f"{path_label}` when the diagnostic reports a machine-applicable repair.\n"
+    )
+    stderr.write(
+        "semfmt: source pattern: restore a valid space-separated row from "
+        "docs/reference/syntax-inventory.md or `sem reference --json`, then "
+        f"rerun `sem fmt --check {path_label}`.\n"
+    )
+
+
 def format_file(
     path: Path,
     *,
@@ -534,10 +572,18 @@ def _run_stdin_mode(
     normalize_comment_headings: bool,
 ) -> int:
     original = stdin.read()
-    formatted = format_source(
-        original,
-        normalize_comment_headings=normalize_comment_headings,
-    )
+    try:
+        formatted = format_source(
+            original,
+            normalize_comment_headings=normalize_comment_headings,
+        )
+    except FormatError as exc:
+        write_format_error_guidance(
+            stderr,
+            path_label=stdin_file_name,
+            exc=exc,
+        )
+        return 2
     changed = original != formatted
     if diff:
         stdout.write(diff_text(original, formatted, path_label=stdin_file_name))
@@ -594,7 +640,11 @@ def run(
             stderr.write(f"semfmt: {path}: {exc}\n")
             return 2
         except FormatError as exc:
-            stderr.write(f"semfmt: {path}: {exc}\n")
+            write_format_error_guidance(
+                stderr,
+                path_label=str(path),
+                exc=exc,
+            )
             return 2
 
         if changed:

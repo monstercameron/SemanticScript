@@ -10,15 +10,17 @@
 #
 #   html template NAME
 #   html body template TEMPLATE
-#     <p>{valueName}</p>
+#     <p>{{valueName}}</p>
 #
 # Hydration is exposed through generated standard targets:
 #
 #   call hydrateCall html.hydrate.TemplateName
 #
 # This module owns the public standard-library namespace and explicit fragment
-# contracts for that syntax. Plain dynamic holes use String. The compiler owns
-# parsing, sink-context checking, escaping, buffer bounds, and code generation.
+# contracts for that syntax. Plain dynamic text and non-URL quoted-attribute
+# holes use String. URL-bearing attributes such as href/src/action/formaction/
+# poster require HtmlSafeUrl. The compiler owns parsing, sink-context checking,
+# escaping, buffer bounds, and code generation.
 
 # rationale: Standard-library namespace and fragment contracts for first-class SemanticScript HTML templates.
 # invariant: The standard module entry is this file; application modules import it as alias `html` before using generated targets in the `html.hydrate.*` namespace.
@@ -31,14 +33,18 @@ invariant module standard.html "The standard module entry is this file; applicat
 type HtmlFragment String
 type HtmlTrustedFragment String
 type HtmlDocument String
+type HtmlSafeUrl String
 
 exportType standard.html HtmlFragment
 exportType standard.html HtmlTrustedFragment
 exportType standard.html HtmlDocument
+exportType standard.html HtmlSafeUrl
 exportConstant standard.html htmlModuleVersionText
 
-typeInvariant HtmlFragment "Hydrated HTML fragment inserted raw only into text-content positions where markup composition is intentional."
+typeInvariant HtmlFragment "Hydrated HTML fragment inserted raw only into text-content positions where markup composition is intentional; helper operations may return hydrated fragments because hydrate buffers are per call site."
 typeInvariant HtmlTrustedFragment "Trusted HTML fragment inserted raw only into text-content positions where markup composition is intentional."
 typeInvariant HtmlDocument "Full hydrated HTML document value; suitable for console output or future HTML response writers."
+typeInvariant HtmlSafeUrl "Trusted URL text for HTML URL-bearing attributes: href, src, action, formaction, and poster. Plain String is rejected in those sinks."
+typeTrust HtmlSafeUrl trustedAfterCallerValidation
 
 storage module immutable htmlModuleVersionText String "standard.html 0.1"

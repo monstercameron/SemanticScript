@@ -94,6 +94,20 @@ int ss_base64url_encode(
     int *output_length_out
 );
 
+int ss_issue_session_token(
+    unsigned char *random_scratch,
+    char *token_buffer,
+    int token_buffer_capacity,
+    int *token_length_out
+);
+
+int ss_issue_csrf_token(
+    unsigned char *random_scratch,
+    char *token_buffer,
+    int token_buffer_capacity,
+    int *token_length_out
+);
+
 #ifdef __cplusplus
 }
 #endif

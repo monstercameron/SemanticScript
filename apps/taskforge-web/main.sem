@@ -1,4 +1,4 @@
-# TaskForge Web — production web app.
+# TaskForge Web - production web app.
 #
 # This module composes the standard.http + standard.sqlite + standard.json +
 # standard.bcrypt runtimes into a multi-user todo web app. Auth uses bcrypt
@@ -19,6 +19,8 @@ import bcrypt standard.bcrypt
 import html standard.html
 import log standard.log
 
+typeLiteralEncoding SqlText utf8
+
 # HomePageTemplate + homePageHandler live in their own folder module
 # at modules/pages/main.sem. The import line is at the BOTTOM of this
 # file (search for "importModule app.taskforge_web.pages") so the
@@ -27,7 +29,7 @@ import log standard.log
 
 # The webServer declaration verbs take string + int LITERALS today (the
 # parser doesn't yet resolve identifiers in their tail args), so the
-# host + port appear here AS literals — but the values MUST stay in
+# host + port appear here AS literals - but the values MUST stay in
 # sync with the serverHostText / serverPortNumber storage constants
 # above AND with the `nativeHttpHost taskForgeWeb` / `nativeHttpPort
 # taskForgeWeb` rows in build.sem. Drift between those three sites is
@@ -52,18 +54,18 @@ route taskForgeWebServer GET "/api/todos/:id" showTodoHandler
 route taskForgeWebServer DELETE "/api/todos/:id" deleteTodoHandler
 route taskForgeWebServer POST "/api/todos/:id/complete" completeTodoHandler
 route taskForgeWebServer POST "/api/todos/:id/uncomplete" uncompleteTodoHandler
-# Wildcard route — the runtime pulls this out of the route table at
+# Wildcard route - the runtime pulls this out of the route table at
 # config-build time and uses it as the 404 fallback. NOT a real
 # pattern match; the path string "*" is a registered convention.
 # Method GET is also a placeholder (the dispatcher ignores the method
 # when invoking the not-found handler).
 route taskForgeWebServer GET "*" notFoundPageHandler
+routeTimeoutOptOut taskForgeWebServer "*" "The current blocking native HTTP adapter does not enforce source route deadlines; the process supervisor owns request timeouts for this app."
+routeMiddlewareOptOut taskForgeWebServer "*" "TaskForge routes dispatch directly; session and authorization gates are explicit inside the handlers that require them."
 
-# ===== capabilities (locally declared; httpRequestReader / httpResponseWriter
-# / sqliteDatabaseReader / sqliteDatabaseReadWriter come from imported stdlib
-# modules) =====
+# ===== capabilities =====
 
-# capability NAME EFFECT_PATH ACCESS — EFFECT first, ACCESS second, matching
+# capability NAME EFFECT_PATH ACCESS - EFFECT first, ACCESS second, matching
 # the lint's `_check_effect_authority_coverage` lookup shape (the operation
 # effect row is `effect OP ACTION TARGET`, and lint checks
 # `_access_covers(cap.access, action) AND _effect_path_covers(cap.effect, target)`).
@@ -71,7 +73,7 @@ capability bcryptHashCompute bcryptHash compute
 purpose operation bcryptHashCompute "Authority to run the bcrypt password hashing key schedule at cost 12."
 
 capability bcryptRandomCompute bcryptRandom compute
-purpose operation bcryptRandomCompute "Authority to draw bytes from the platform CSPRNG via bcrypt.randomBytes — used to mint session tokens."
+purpose operation bcryptRandomCompute "Authority to draw bytes from the platform CSPRNG via bcrypt.randomBytes - used to mint session tokens."
 
 capability heapAllocCapability heap allocate
 purpose operation heapAllocCapability "Authority to allocate per-request scratch buffers (JSON builder, base64url output, etc.)."
@@ -91,8 +93,23 @@ purpose operation filesystemCreateCapability "Authority to create the build/imag
 capability filesystemReadCapability filesystem read
 purpose operation filesystemReadCapability "Authority to read files from the app assets directory for static response serving."
 
+capability filesystemReadWriteCapability filesystem readWrite
+purpose operation filesystemReadWriteCapability "Authority to append structured log records through standard.log."
+
 capability memoryBufferReadWriteCapability memory.buffer readWrite
-purpose operation memoryBufferReadWriteCapability "Authority to read and write the in-op scratch buffers — register/login zero the password scratch via c.memset before c.free; the JSON document and snprintf paths also touch buffer memory."
+purpose operation memoryBufferReadWriteCapability "Authority to read and write the in-op scratch buffers - register/login zero the password scratch via c.memset before c.free; the JSON document and snprintf paths also touch buffer memory."
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to read request path, headers, cookies, and body text from the incoming HttpRequest."
+
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write status, headers, files, and response bodies to the HttpResponse."
+
+capability sqliteDatabaseReader database read
+purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite statements against the shared database handle."
+
+capability sqliteDatabaseReadWriter database readWrite
+purpose operation sqliteDatabaseReadWriter "Authority to execute schema, read, and write SQLite statements against the shared database handle."
 
 # ===== module-scope constants =====
 
@@ -101,17 +118,17 @@ purpose operation memoryBufferReadWriteCapability "Authority to read and write t
 # These five constants are the only place in the app that names the
 # host, port, database storage path, assets directory, and images
 # directory. Sub-modules (currently just app.taskforge_web.pages, but
-# extensible) read them by referencing the same name — so an env
+# extensible) read them by referencing the same name - so an env
 # change here propagates without per-module shifting. The webServer
 # declaration below ALSO uses serverHostText / serverPortNumber, and
 # build.sem's `nativeHttpHost` / `nativeHttpPort` rows are documented
 # as needing to match (lint enforcement of that linkage is a v1.1
-# follow-up — see SS3612 in the linter spec roadmap).
+# follow-up - see SS3612 in the linter spec roadmap).
 #
 # DATABASE STORAGE MODE: flip databaseUsePersistentStorage between
-#   - "yes" → durable file at databasePath (default; sessions + todos
+#   - "yes" -> durable file at databasePath (default; sessions + todos
 #     survive restarts)
-#   - "no"  → in-memory only via ":memory:" (zero on-disk footprint,
+#   - "no"  -> in-memory only via ":memory:" (zero on-disk footprint,
 #     ideal for tests; every restart resets everything including the
 #     seeded demo user)
 # Currently the runtime uses databasePath unconditionally; the
@@ -126,21 +143,23 @@ storage module immutable databasePath String "taskforge_web.db"
 storage module immutable databaseInMemoryPath String ":memory:"
 
 storage module immutable imagesDirectoryPath String "images"
-# Root directory for static assets — resolved relative to the exe's
-# working directory at run time, so assets/ must live alongside the
-# exe (the post-build step in scripts/test_taskforge_web.py copies the
-# source tree's apps/taskforge-web/assets/ into build/assets/).
+# Root directory for static assets. Native webServer entrypoints switch the
+# process working directory to the executable directory at startup, so assets/
+# must live alongside the exe (the post-build step in scripts/test_taskforge_web.py
+# copies the source tree's apps/taskforge-web/assets/ into build/assets/).
 storage module immutable assetsDirectoryPath String "assets"
 storage module immutable assetFilenameParam String "filename"
 
-storage module immutable httpStatusOk Int32 200
-storage module immutable httpStatusCreated Int32 201
-storage module immutable httpStatusNoContent Int32 204
-storage module immutable httpStatusBadRequest Int32 400
-storage module immutable httpStatusUnauthorized Int32 401
-storage module immutable httpStatusNotFound Int32 404
-storage module immutable httpStatusConflict Int32 409
-storage module immutable httpStatusInternalServerError Int32 500
+storage module immutable httpStatusOk HttpStatusCode 200
+storage module immutable httpStatusCreated HttpStatusCode 201
+storage module immutable httpStatusNoContent HttpStatusCode 204
+storage module immutable httpStatusBadRequest HttpStatusCode 400
+storage module immutable httpStatusUnauthorized HttpStatusCode 401
+storage module immutable httpStatusNotFound HttpStatusCode 404
+storage module immutable httpStatusConflict HttpStatusCode 409
+storage module immutable httpStatusInternalServerError HttpStatusCode 500
+storage module immutable jsonContentType HttpContentType "application/json; charset=utf-8"
+storage module immutable bcryptRecommendedCost Int32 12
 
 storage module immutable jsonResponseCapacity Int64 4096
 storage module immutable jsonDocumentCapacity JsonCapacityBytes 65536
@@ -157,15 +176,16 @@ storage module immutable randomBufferCapacity Int64 32
 storage module immutable randomByteCountArg Int32 32
 storage module immutable tokenBufferCapacity Int64 64
 storage module immutable tokenCapacityArg Int32 64
+storage module immutable lengthOutBufferByteCount ByteCount 8
 # Set-Cookie buffer capacity. Actual content is "session=" (8) + 43-char
 # base64url token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000"
 # (51) = 102 chars + NUL. 128 leaves 25-byte headroom while staying in the
 # small malloc size class. Old value was 256, more than double what's
-# needed — pulled the alloc into a larger slab tier on every register/login.
+# needed - pulled the alloc into a larger slab tier on every register/login.
 storage module immutable cookieHeaderCapacity Int64 128
 
 # Structured-log bootstrap constants. The web server writes one
-# JSON-per-line audit file at `<cwd>/logs/log.log` — for a build/-launched
+# JSON-per-line audit file at `<cwd>/logs/log.log` - for a build/-launched
 # exe that means `apps/taskforge-web/build/logs/log.log`. The directory is
 # created lazily on first request; the log file is opened in append mode
 # so re-running the server preserves history across restarts.
@@ -182,11 +202,11 @@ storage module immutable todoUncompletedLogMessage String "todo.uncompleted"
 storage module immutable todoDeletedLogMessage String "todo.deleted"
 
 # Accumulator for the full {"todos":[...],"count":N} response. Sized at 32 KiB
-# (down from 64 KiB): the SQL LIMIT caps the body at 100 rows × ~200 bytes/row
-# (≈20 KiB typical) and the schema CHECK on title length keeps the per-row
+# (down from 64 KiB): the SQL LIMIT caps the body at 100 rows x ~200 bytes/row
+# (~20 KiB typical) and the schema CHECK on title length keeps the per-row
 # upper bound bounded. 32 KiB is ~60% headroom over typical and ~1.5x the
-# realistic worst case, while staying in the smaller malloc size class —
-# most allocators step 16→32→64 KiB, so 64 KiB pulled a fresh page span on
+# realistic worst case, while staying in the smaller malloc size class -
+# most allocators step 16->32->64 KiB, so 64 KiB pulled a fresh page span on
 # every request where 32 KiB fits in an existing slab. snprintf into the
 # cursor still clamps at remaining capacity, so a degenerate oversized row
 # truncates its tail rather than overflowing the accumulator.
@@ -214,7 +234,7 @@ storage module immutable cookieClearSuffix String "session=; Path=/; HttpOnly; S
 # path performs, so an attacker cannot distinguish "no such user" from
 # "user exists, wrong password" via response latency. The value below
 # is a real bcrypt hash of a long random string the server does not
-# know — it cannot collide with any real password by construction.
+# know - it cannot collide with any real password by construction.
 storage module immutable loginTimingEqualizationDummyHash String "$2b$12$ZzZzZzZzZzZzZzZzZzZzZuQpkkqYZL.YxR5gG3yq2cTQyL3KkLjmS"
 
 # Length of a base64url-encoded 32-byte session token. The schema's
@@ -233,7 +253,7 @@ storage module immutable cookieNameEquals String "session="
 
 # Single format string for the Set-Cookie header. The three %s slots fold in
 # `cookieNameEquals` (cookie prefix), the runtime session token, and
-# `cookieAttributeSuffix` (cookie attribute tail) — all already at module
+# `cookieAttributeSuffix` (cookie attribute tail) - all already at module
 # scope. Composing from existing constants eliminates the duplicated
 # "session=...; Path=...; Max-Age=..." literal the register/login handlers
 # used to each carry as a local immutable string, saving ~75 bytes of
@@ -287,12 +307,13 @@ jsonBody uncompleteOkBody
 # ===== schema (literal-loaded at compile time) =====
 # `literal NAME TYPE` declares the const slot; `literalSource NAME "path"`
 # tells semsc to read the bytes from disk at compile time and replace the
-# stub value. `literalBytes` and `literalTrust` document the size + trust
-# class for tooling.
+# stub value. `literalBytes`, `literalDigest`, and `literalTrust` pin the
+# size, integrity, and trust class for tooling.
 
 literal schemaSqlSource SqlText
 literalSource schemaSqlSource "sql/schema.sql"
-literalBytes schemaSqlSource 2837
+literalBytes schemaSqlSource 2818
+literalDigest schemaSqlSource sha256 7be6b231400defe17895a69ecad2aec2aad4c31cd6025805848819464dabf725
 literalTrust schemaSqlSource trustedStaticAsset
 
 # Dev-only seed data (demo user + sample todos). Loaded into the schema
@@ -301,7 +322,8 @@ literalTrust schemaSqlSource trustedStaticAsset
 # build.sem so the publicly-known demo credentials are never installed.
 literal devSeedSqlSource SqlText
 literalSource devSeedSqlSource "sql/dev-seed.sql"
-literalBytes devSeedSqlSource 1888
+literalBytes devSeedSqlSource 1869
+literalDigest devSeedSqlSource sha256 d8a462c8ae355891b0453883ec8a034c3689f0fe6ff81f514455d5e7b9bc6d72
 literalTrust devSeedSqlSource trustedStaticAsset
 
 # Sentinel string the build constant `applyDevSeed` is compared against
@@ -312,7 +334,7 @@ storage module immutable applyDevSeedEnabledSentinel String "yes"
 # Fallback declaration of `applyDevSeed` for the case where main.sem is
 # parsed standalone (without a build.sem providing the project-wide
 # buildConstant). The build.sem row overrides this at project build
-# time. Default is "no" — fail-safe for direct invocation.
+# time. Default is "no" - fail-safe for direct invocation.
 storage module immutable applyDevSeed String "no"
 
 # ===== shared database handle (lazy-opened on first request) =====
@@ -324,7 +346,7 @@ storage module mutable sharedDatabaseReady Int32 0
 
 storage module immutable sqlInsertUser SqlText
 sql body sqlInsertUser
-  INSERT INTO users (username, password_hash, display_name, created_at_ms, last_login_ms) VALUES (?, ?, ?, ?, ?)
+  INSERT INTO users (username, password_hash, display_name, created_at_ms, last_login_ms) VALUES (?, ?, ?, ?, ?) RETURNING id
 storage module immutable sqlInsertSession SqlText
 sql body sqlInsertSession
   INSERT INTO sessions (token, user_id, issued_at_ms, expires_at_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)
@@ -348,7 +370,7 @@ sql body sqlUpdateLastLogin
   UPDATE users SET last_login_ms = ? WHERE id = ?
 storage module immutable sqlInsertTodo SqlText
 sql body sqlInsertTodo
-  INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?)
+  INSERT INTO todos (user_id, title, body, done, priority, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 0, ?, ?, ?) RETURNING id
 storage module immutable sqlSelectTodosByUser SqlText
 sql body sqlSelectTodosByUser
   SELECT id, title, body, done, priority, created_at_ms, updated_at_ms, completed_at_ms FROM todos WHERE user_id = ? ORDER BY created_at_ms DESC LIMIT 100
@@ -372,7 +394,7 @@ sql body sqlUncompleteTodoByIdAndUser
 # Transaction control statements used by registerHandler so the user
 # INSERT and session INSERT either both commit or both roll back; the
 # old `invariant` admitted "user row may persist if session insert
-# fails — acceptable for v1", which is the race this closes.
+# fails - acceptable for v1", which is the race this closes.
 # `BEGIN IMMEDIATE` acquires the write lock upfront so a second writer
 # in the same process cannot race the pair under WAL mode.
 storage module immutable sqlBeginTransaction SqlText
@@ -410,10 +432,28 @@ storage module immutable defaultPriority Int64 2
 operation openOrReuseDatabase
 output operation openOrReuseDatabase Result SqliteDatabase Int32
 effect openOrReuseDatabase readWrite database
-effect openOrReuseDatabase filesystem create
+effect openOrReuseDatabase create filesystem
+effect openOrReuseDatabase read filesystem
+effect openOrReuseDatabase write filesystem
+effect openOrReuseDatabase readWrite filesystem
+effect openOrReuseDatabase open filesystem
+effect openOrReuseDatabase open file
+effect openOrReuseDatabase close file
+effect openOrReuseDatabase readWrite memory.buffer
+effect openOrReuseDatabase allocate heap
+effect openOrReuseDatabase free heap
 authority openOrReuseDatabase create filesystem
+authority openOrReuseDatabase read filesystem
+authority openOrReuseDatabase write filesystem
+authority openOrReuseDatabase open filesystem
+authority openOrReuseDatabase open file
+authority openOrReuseDatabase close file
 useCapability openOrReuseDatabase sqliteDatabaseReadWriter
 useCapability openOrReuseDatabase filesystemCreateCapability
+useCapability openOrReuseDatabase filesystemReadWriteCapability
+useCapability openOrReuseDatabase memoryBufferReadWriteCapability
+useCapability openOrReuseDatabase heapAllocCapability
+useCapability openOrReuseDatabase heapFreeCapability
 memory openOrReuseDatabase heap auto
 async openOrReuseDatabase no
 purpose operation openOrReuseDatabase "Return the shared SqliteDatabase handle, lazily opening + applying the schema on first call. Idempotent: subsequent calls return the cached handle."
@@ -446,12 +486,12 @@ argument ensureLogsDirCall directoryPath String logsDirectoryPath
 run ensureLogsDirCall
 ignore ok source ensureLogsDirCall type Int32
 
-call openLogFileCall openLogFile
+call openLogFileCall log.openLogFile
 argument openLogFileCall filePath String logFilePath
 run openLogFileCall
 ignore ok source openLogFileCall type Int32
 
-call serverStartLogCall logInfo
+call serverStartLogCall log.logInfo
 argument serverStartLogCall messageText String serverStartLogMessage
 run serverStartLogCall
 ignore ok source serverStartLogCall type Int32
@@ -531,21 +571,21 @@ return error schemaApplyError
 operation writeJsonOkResponse
 input operation writeJsonOkResponse response HttpResponse
 input operation writeJsonOkResponse status HttpStatusCode
-input operation writeJsonOkResponse jsonBody HttpTextBody
+input operation writeJsonOkResponse jsonBody String
 output operation writeJsonOkResponse Int32
 effect writeJsonOkResponse write http.response
 useCapability writeJsonOkResponse httpResponseWriter
 memory writeJsonOkResponse arena request
 async writeJsonOkResponse no
 purpose operation writeJsonOkResponse "Write a JSON body with the application/json content-type header."
-invariant operation writeJsonOkResponse "Always passes jsonContentType to http.responseText. Body forwarded verbatim — caller responsible for JSON validity."
+invariant operation writeJsonOkResponse "Always passes jsonContentType to http.responseText. Body forwarded verbatim - caller responsible for JSON validity."
 responseBodyForwarder writeJsonOkResponse jsonBody
 
 label startWriteJsonOkResponse
 call writeResponseCall http.responseText
 argument writeResponseCall response HttpResponse response
 argument writeResponseCall status HttpStatusCode status
-argument writeResponseCall body HttpTextBody jsonBody
+argument writeResponseCall body String jsonBody
 argument writeResponseCall contentType HttpContentType jsonContentType
 run writeResponseCall
 bind value writeResponseStatus Int32 writeResponseCall
@@ -585,7 +625,7 @@ useCapability requireSessionUserId httpRequestReader
 useCapability requireSessionUserId sqliteDatabaseReader
 memory requireSessionUserId arena request
 async requireSessionUserId no
-purpose operation requireSessionUserId "Resolve the request's session cookie to its owning user id. Returns -1 when the cookie is missing OR the session row is absent OR the session has expired — callers treat any negative value as 'no auth' and respond 401."
+purpose operation requireSessionUserId "Resolve the request's session cookie to its owning user id. Returns -1 when the cookie is missing OR the session row is absent OR the session has expired - callers treat any negative value as 'no auth' and respond 401."
 invariant operation requireSessionUserId "Never throws; returns -1 on every failure path so callers do not need branch-on-error plumbing. Side-effects: reads cookie + does one SELECT against sessions."
 
 label startRequireSessionUserId
@@ -607,7 +647,7 @@ branch if condition sessionTokenMissing target requireSessionAttachedNoCookie
 # Length-cap the cookie value BEFORE handing it to sqlite.bindText so an
 # attacker cannot ship a multi-megabyte cookie and force a giant SQL
 # bind. Real session tokens are exactly 43 chars (base64url of 32 bytes)
-# — anything else is malformed and treated as "no session". This is
+# - anything else is malformed and treated as "no session". This is
 # defense-in-depth alongside the schema's `token CHECK(length = 43)`.
 call sessionTokenLengthCall c.strlen
 argument sessionTokenLengthCall s String sessionTokenFromCookie
@@ -656,10 +696,8 @@ bind ok sessionStepResult SqliteStepResult stepSessionLookupCall
 bind error sessionStepError SqliteStatementStepFailure stepSessionLookupCall
 branch error source stepSessionLookupCall target requireSessionStepFailed
 
-# stepStatement returns rowSqliteStepResult (100) for a hit, doneSqliteStepResult (101) for empty.
-call sessionFoundCheckCall math.equalInt32
-argument sessionFoundCheckCall left Int32 sessionStepResult
-argument sessionFoundCheckCall right Int32 rowSqliteStepResult
+call sessionFoundCheckCall sqlite.stepResultIsRow
+argument sessionFoundCheckCall stepResult SqliteStepResult sessionStepResult
 run sessionFoundCheckCall
 bind value sessionFound Bool sessionFoundCheckCall
 branch if condition sessionFound target sessionFoundLabel
@@ -764,14 +802,14 @@ effect healthHandler write http.response
 useCapability healthHandler httpResponseWriter
 memory healthHandler arena request
 async healthHandler no
-purpose operation healthHandler "Return a JSON liveness body. Does not touch the database — usable by external probes before the DB is ready."
+purpose operation healthHandler "Return a JSON liveness body. Does not touch the database - usable by external probes before the DB is ready."
 invariant operation healthHandler "Always 200; body is a static module-scope constant."
 
 label startHealthHandler
 call writeHealthCall writeJsonOkResponse
 argument writeHealthCall response HttpResponse response
 argument writeHealthCall status HttpStatusCode httpStatusOk
-argument writeHealthCall jsonBody HttpTextBody healthBodyJson
+argument writeHealthCall jsonBody String healthBodyJson
 run writeHealthCall
 bind value writeHealthStatus Int32 writeHealthCall
 return value writeHealthStatus
@@ -791,7 +829,7 @@ label startVersionHandler
 call writeVersionCall writeJsonOkResponse
 argument writeVersionCall response HttpResponse response
 argument writeVersionCall status HttpStatusCode httpStatusOk
-argument writeVersionCall jsonBody HttpTextBody versionBodyJson
+argument writeVersionCall jsonBody String versionBodyJson
 run writeVersionCall
 bind value writeVersionStatus Int32 writeVersionCall
 return value writeVersionStatus
@@ -812,6 +850,8 @@ effect registerHandler free heap
 effect registerHandler read json.document.tree
 effect registerHandler write json.document.tree
 effect registerHandler write memory.buffer
+effect registerHandler readWrite memory.buffer
+effect registerHandler readWrite filesystem
 useCapability registerHandler httpRequestReader
 useCapability registerHandler httpResponseWriter
 useCapability registerHandler sqliteDatabaseReadWriter
@@ -822,10 +862,11 @@ useCapability registerHandler heapFreeCapability
 useCapability registerHandler memoryBufferReadWriteCapability
 useCapability registerHandler jsonDocumentReadCapability
 useCapability registerHandler jsonDocumentWriteCapability
+useCapability registerHandler filesystemReadWriteCapability
 memory registerHandler heap auto
 async registerHandler no
-purpose operation registerHandler "POST /api/auth/register — create a user with bcrypt-cost-12 password, mint an initial session, set the session cookie, return 201 with the user record."
-invariant operation registerHandler "On success, exactly one new row in users + one new row in sessions, and the Set-Cookie header carries the new session token. On any DB or hashing failure, no user row is committed (transaction failure is the natural rollback because we INSERT users and then sessions in two statements; the user row may persist if session insert fails — acceptable for v1)."
+purpose operation registerHandler "POST /api/auth/register - create a user with bcrypt-cost-12 password, mint an initial session, set the session cookie, return 201 with the user record."
+invariant operation registerHandler "On success, exactly one new row in users + one new row in sessions, and the Set-Cookie header carries the new session token. On any DB or hashing failure, no user row is committed (transaction failure is the natural rollback because we INSERT users and then sessions in two statements; the user row may persist if session insert fails - acceptable for v1)."
 warning registerHandler "v1 does not enforce password strength rules other than non-empty; phase-7 will add a minimum length CHECK constraint AT the SQL layer."
 
 label startRegisterHandler
@@ -926,7 +967,7 @@ bind error readRegisterPasswordError JsonAccessError readRegisterPasswordCall
 branch error source readRegisterPasswordCall target registerBadRequestPasswordMissed
 
 # Bound the password length to the bcrypt-meaningful range. Beyond 72
-# bytes, bcrypt silently truncates input — a user supplying a 200-byte
+# bytes, bcrypt silently truncates input - a user supplying a 200-byte
 # "password" is actually authenticated against bytes 0..71 only, which
 # is a security footgun if they expect the entire string to matter.
 # The minimum is a soft floor; the schema does not enforce it.
@@ -972,7 +1013,7 @@ bind error readRegisterDisplayNameError JsonAccessError readRegisterDisplayNameC
 branch error source readRegisterDisplayNameCall target registerDisplayNameResolved
 set memory displayNameForInsert displayNameRecovered
 
-# displayName is optional — if absent, substitute the empty string. We use
+# displayName is optional - if absent, substitute the empty string. We use
 # a const empty string to feed the SQL bind so the column receives '' not NULL.
 label registerDisplayNameResolved
 
@@ -1029,7 +1070,7 @@ run registerWipePasswordScratchCall
 ignore value source registerWipePasswordScratchCall type OpaquePointer
 
 # Now bound 'hashBuffer' actually holds the 60-char hash as a C string.
-# Cast to String conceptually — sqlite.bindText takes
+# Cast to String conceptually - sqlite.bindText takes
 # a const char*, which is what hashBuffer points to.
 bind value hashedPasswordText String allocateHashBufferCall
 
@@ -1047,7 +1088,7 @@ ignore value source pruneRegisterExpiredSessionsCall type Int32
 # Open a write transaction so the user INSERT and session INSERT below
 # either both commit or both roll back. Without this, a session-insert
 # failure leaves a usable user row that can never log in (UNIQUE on
-# username blocks re-register) — the old `invariant` admitted that
+# username blocks re-register) - the old `invariant` admitted that
 # race. ROLLBACK runs via defer on every exit path; the explicit
 # COMMIT below makes the rollback a no-op after success.
 call beginRegisterTxCall sqlite.exec
@@ -1126,12 +1167,33 @@ run stepInsertUserCall
 bind ok insertUserStepResult SqliteStepResult stepInsertUserCall
 bind error insertUserStepError SqliteStatementStepFailure stepInsertUserCall
 branch error source stepInsertUserCall target registerUsernameConflicted
+call insertUserStepIsRowCall sqlite.stepResultIsRow
+argument insertUserStepIsRowCall stepResult SqliteStepResult insertUserStepResult
+run insertUserStepIsRowCall
+bind value insertUserStepIsRow Bool insertUserStepIsRowCall
+branch if condition insertUserStepIsRow target registerInsertedUserReturned
+branch else target registerInsertUserStepFailed
 
 # Capture the new user id.
-call lastUserRowIdCall sqlite.lastInsertRowId
-argument lastUserRowIdCall database SqliteDatabase registerDatabase
-run lastUserRowIdCall
-bind value newUserId Int64 lastUserRowIdCall
+label registerInsertedUserReturned
+call readInsertedUserIdCall sqlite.columnInt64
+argument readInsertedUserIdCall statement SqliteStatement insertUserStatement
+argument readInsertedUserIdCall columnIndex Int32 columnIndex0
+run readInsertedUserIdCall
+bind value newUserId Int64 readInsertedUserIdCall
+call drainInsertUserReturningCall sqlite.stepStatement
+argument drainInsertUserReturningCall statement SqliteStatement insertUserStatement
+run drainInsertUserReturningCall
+bind ok insertUserDoneStepResult SqliteStepResult drainInsertUserReturningCall
+bind error drainInsertUserReturningError SqliteStatementStepFailure drainInsertUserReturningCall
+branch error source drainInsertUserReturningCall target registerInsertUserStepFailed
+call insertUserStepIsDoneCall sqlite.stepResultIsDone
+argument insertUserStepIsDoneCall stepResult SqliteStepResult insertUserDoneStepResult
+run insertUserStepIsDoneCall
+bind value insertUserStepIsDone Bool insertUserStepIsDoneCall
+branch if condition insertUserStepIsDone target registerInsertUserComplete
+branch else target registerInsertUserStepFailed
+label registerInsertUserComplete
 
 # Now mint a session token.
 call allocateRandomBufferCall c.malloc
@@ -1165,13 +1227,20 @@ bind error allocateTokenBufferError OpaquePointer allocateTokenBufferCall
 branch error source allocateTokenBufferCall target registerAllocationFailed
 defer releaseTokenBufferDefer c.free sessionTokenBuffer
 
-storage local mutable encodedTokenLength Int32 0
+call allocateEncodedTokenLengthCall c.malloc
+argument allocateEncodedTokenLengthCall size ByteCount lengthOutBufferByteCount
+run allocateEncodedTokenLengthCall
+bind ok encodedTokenLengthBuffer OpaquePointer allocateEncodedTokenLengthCall
+bind error allocateEncodedTokenLengthError OpaquePointer allocateEncodedTokenLengthCall
+branch error source allocateEncodedTokenLengthCall target registerAllocationFailed
+defer releaseEncodedTokenLengthDefer c.free encodedTokenLengthBuffer
+
 call encodeTokenCall bcrypt.base64UrlEncode
 argument encodeTokenCall inputBuffer OpaquePointer sessionRandomBuffer
 argument encodeTokenCall inputCount Int32 randomByteCountArg
 argument encodeTokenCall outputBuffer OpaquePointer sessionTokenBuffer
 argument encodeTokenCall outputCapacity Int32 tokenCapacityArg
-argument encodeTokenCall outputLengthOut Int32 encodedTokenLength
+argument encodeTokenCall outputLengthOut OpaquePointer encodedTokenLengthBuffer
 run encodeTokenCall
 bind value encodeTokenStatus Int32 encodeTokenCall
 
@@ -1255,6 +1324,13 @@ run stepInsertSessionCall
 bind ok insertSessionStepResult SqliteStepResult stepInsertSessionCall
 bind error insertSessionStepError SqliteStatementStepFailure stepInsertSessionCall
 branch error source stepInsertSessionCall target registerInsertSessionStepFailed
+call insertSessionStepIsDoneCall sqlite.stepResultIsDone
+argument insertSessionStepIsDoneCall stepResult SqliteStepResult insertSessionStepResult
+run insertSessionStepIsDoneCall
+bind value insertSessionStepIsDone Bool insertSessionStepIsDoneCall
+branch if condition insertSessionStepIsDone target registerInsertSessionComplete
+branch else target registerInsertSessionStepFailed
+label registerInsertSessionComplete
 
 # Build the Set-Cookie header.
 call allocateCookieHeaderCall c.malloc
@@ -1267,7 +1343,7 @@ defer releaseCookieHeaderDefer c.free cookieHeaderBuffer
 
 # Compose the cookie header from the existing module-scope constants
 # `cookieNameEquals` ("session="), the runtime token, and the shared
-# `cookieAttributeSuffix` — no duplicate literal needed in this handler.
+# `cookieAttributeSuffix` - no duplicate literal needed in this handler.
 call formatCookieHeaderCall c.snprintf
 argument formatCookieHeaderCall buffer OpaquePointer cookieHeaderBuffer
 argument formatCookieHeaderCall size Int64 cookieHeaderCapacity
@@ -1373,11 +1449,11 @@ branch error source serializeRegisterResponseCall target registerAllocationFaile
 call writeRegisterResponseCall writeJsonOkResponse
 argument writeRegisterResponseCall response HttpResponse response
 argument writeRegisterResponseCall status HttpStatusCode httpStatusCreated
-argument writeRegisterResponseCall jsonBody HttpTextBody responseBodyText
+argument writeRegisterResponseCall jsonBody String responseBodyText
 run writeRegisterResponseCall
 bind value registerResponseStatus Int32 writeRegisterResponseCall
 
-call registerLogCall logInfo
+call registerLogCall log.logInfo
 argument registerLogCall messageText String userRegisteredLogMessage
 run registerLogCall
 ignore ok source registerLogCall type Int32
@@ -1489,12 +1565,23 @@ run writeInsertBindFailedCall
 bind value writeInsertBindFailedStatus Int32 writeInsertBindFailedCall
 return value writeInsertBindFailedStatus
 
+label registerInsertUserStepFailed
+storage local immutable insertUserStepFailedBody String "{\"error\":{\"code\":\"insertUserStepFailed\",\"message\":\"failed to insert user row\"}}\n"
+call writeInsertUserStepFailedCall writeErrorJsonResponse
+argument writeInsertUserStepFailedCall response HttpResponse response
+argument writeInsertUserStepFailedCall status HttpStatusCode httpStatusInternalServerError
+argument writeInsertUserStepFailedCall messageBody HttpTextBody insertUserStepFailedBody
+run writeInsertUserStepFailedCall
+bind value writeInsertUserStepFailedStatus Int32 writeInsertUserStepFailedCall
+return value writeInsertUserStepFailedStatus
+
 label registerUsernameConflicted
 call rollbackRegisterConflictCall sqlite.exec
 argument rollbackRegisterConflictCall database SqliteDatabase registerDatabase
 argument rollbackRegisterConflictCall sql SqlText sqlRollbackTransaction
 run rollbackRegisterConflictCall
 ignore void source rollbackRegisterConflictCall
+ignore error source rollbackRegisterConflictCall
 storage local immutable usernameConflictBody String "{\"error\":{\"code\":\"usernameConflict\",\"message\":\"username already taken\"}}\n"
 call writeUsernameConflictCall writeErrorJsonResponse
 argument writeUsernameConflictCall response HttpResponse response
@@ -1575,8 +1662,8 @@ useCapability meHandler heapFreeCapability
 useCapability meHandler jsonDocumentWriteCapability
 memory meHandler heap auto
 async meHandler no
-purpose operation meHandler "GET /api/auth/me — return the current session's user record. 401 if no valid session."
-invariant operation meHandler "Returns 401 (not 404) when no session — distinguishes 'no auth' from 'auth but no resource'."
+purpose operation meHandler "GET /api/auth/me - return the current session's user record. 401 if no valid session."
+invariant operation meHandler "Returns 401 (not 404) when no session - distinguishes 'no auth' from 'auth but no resource'."
 
 label startMeHandler
 
@@ -1626,9 +1713,8 @@ bind ok selectUserStepResult SqliteStepResult stepSelectUserCall
 bind error selectUserStepError SqliteStatementStepFailure stepSelectUserCall
 branch error source stepSelectUserCall target meSelectUserFailed
 
-call userRowFoundCheckCall math.equalInt32
-argument userRowFoundCheckCall left Int32 selectUserStepResult
-argument userRowFoundCheckCall right Int32 rowSqliteStepResult
+call userRowFoundCheckCall sqlite.stepResultIsRow
+argument userRowFoundCheckCall stepResult SqliteStepResult selectUserStepResult
 run userRowFoundCheckCall
 bind value userRowFound Bool userRowFoundCheckCall
 branch if condition userRowFound target userRowFoundLabel
@@ -1640,18 +1726,6 @@ argument readMeIdCall statement SqliteStatement selectUserStatement
 argument readMeIdCall columnIndex Int32 columnIndex0
 run readMeIdCall
 bind value meRowId Int64 readMeIdCall
-
-call readMeUsernameCall sqlite.columnText
-argument readMeUsernameCall statement SqliteStatement selectUserStatement
-argument readMeUsernameCall columnIndex Int32 columnIndex1
-run readMeUsernameCall
-bind value meUsername String readMeUsernameCall
-
-call readMeDisplayNameCall sqlite.columnText
-argument readMeDisplayNameCall statement SqliteStatement selectUserStatement
-argument readMeDisplayNameCall columnIndex Int32 columnIndex2
-run readMeDisplayNameCall
-bind value meDisplayName String readMeDisplayNameCall
 
 call allocateMeResponseBufferCall c.malloc
 argument allocateMeResponseBufferCall size ByteCount jsonResponseCapacity
@@ -1694,6 +1768,12 @@ ignore ok source setMeUserIdCall type Int32
 bind error setMeUserIdError JsonAccessError setMeUserIdCall
 branch error source setMeUserIdCall target meAllocationFailed
 
+call readMeUsernameCall sqlite.columnText
+argument readMeUsernameCall statement SqliteStatement selectUserStatement
+argument readMeUsernameCall columnIndex Int32 columnIndex1
+run readMeUsernameCall
+bind value meUsername String readMeUsernameCall
+
 call setMeUsernameCall json.setObjectFieldString
 argument setMeUsernameCall document JsonDocument meResponseDocument
 argument setMeUsernameCall cursor JsonCursor meResponseUserCursor
@@ -1703,6 +1783,12 @@ run setMeUsernameCall
 ignore ok source setMeUsernameCall type Int32
 bind error setMeUsernameError JsonAccessError setMeUsernameCall
 branch error source setMeUsernameCall target meAllocationFailed
+
+call readMeDisplayNameCall sqlite.columnText
+argument readMeDisplayNameCall statement SqliteStatement selectUserStatement
+argument readMeDisplayNameCall columnIndex Int32 columnIndex2
+run readMeDisplayNameCall
+bind value meDisplayName String readMeDisplayNameCall
 
 call setMeDisplayNameCall json.setObjectFieldString
 argument setMeDisplayNameCall document JsonDocument meResponseDocument
@@ -1726,7 +1812,7 @@ branch error source serializeMeResponseCall target meAllocationFailed
 call writeMeResponseCall writeJsonOkResponse
 argument writeMeResponseCall response HttpResponse response
 argument writeMeResponseCall status HttpStatusCode httpStatusOk
-argument writeMeResponseCall jsonBody HttpTextBody meResponseBodyText
+argument writeMeResponseCall jsonBody String meResponseBodyText
 run writeMeResponseCall
 bind value writeMeStatus Int32 writeMeResponseCall
 return value writeMeStatus
@@ -1780,12 +1866,20 @@ output operation logoutHandler Int32
 effect logoutHandler read http.request.header
 effect logoutHandler readWrite database
 effect logoutHandler write http.response
+effect logoutHandler allocate heap
+effect logoutHandler free heap
+effect logoutHandler readWrite memory.buffer
+effect logoutHandler readWrite filesystem
 useCapability logoutHandler httpRequestReader
 useCapability logoutHandler httpResponseWriter
 useCapability logoutHandler sqliteDatabaseReadWriter
+useCapability logoutHandler heapAllocCapability
+useCapability logoutHandler heapFreeCapability
+useCapability logoutHandler memoryBufferReadWriteCapability
+useCapability logoutHandler filesystemReadWriteCapability
 memory logoutHandler arena request
 async logoutHandler no
-purpose operation logoutHandler "POST /api/auth/logout — delete the session row (idempotent) and clear the session cookie. Always returns 200 even if no session was present."
+purpose operation logoutHandler "POST /api/auth/logout - delete the session row (idempotent) and clear the session cookie. Always returns 200 even if no session was present."
 invariant operation logoutHandler "Logout is idempotent: a missing cookie or unknown token still returns 200 with the clear-cookie header set."
 
 label startLogoutHandler
@@ -1802,7 +1896,7 @@ run logoutCookieNullCheckCall
 bind value logoutNoCookie Bool logoutCookieNullCheckCall
 branch if condition logoutNoCookie target logoutCookieCleared
 
-# Best-effort DELETE — errors are ignored because logout is idempotent.
+# Best-effort DELETE - errors are ignored because logout is idempotent.
 call openDbForLogoutCall openOrReuseDatabase
 run openDbForLogoutCall
 bind ok logoutDatabase SqliteDatabase openDbForLogoutCall
@@ -1847,11 +1941,11 @@ ignore value source writeLogoutClearCookieCall type Int32
 call writeLogoutOkCall writeJsonOkResponse
 argument writeLogoutOkCall response HttpResponse response
 argument writeLogoutOkCall status HttpStatusCode httpStatusOk
-argument writeLogoutOkCall jsonBody HttpTextBody logoutResponseBody
+argument writeLogoutOkCall jsonBody String logoutResponseBody
 run writeLogoutOkCall
 bind value writeLogoutStatus Int32 writeLogoutOkCall
 
-call logoutLogCall logInfo
+call logoutLogCall log.logInfo
 argument logoutLogCall messageText String userLogoutLogMessage
 run logoutLogCall
 ignore ok source logoutLogCall type Int32
@@ -1874,6 +1968,8 @@ effect loginHandler free heap
 effect loginHandler read json.document.tree
 effect loginHandler write json.document.tree
 effect loginHandler write memory.buffer
+effect loginHandler readWrite memory.buffer
+effect loginHandler readWrite filesystem
 useCapability loginHandler httpRequestReader
 useCapability loginHandler httpResponseWriter
 useCapability loginHandler sqliteDatabaseReadWriter
@@ -1884,9 +1980,10 @@ useCapability loginHandler heapFreeCapability
 useCapability loginHandler memoryBufferReadWriteCapability
 useCapability loginHandler jsonDocumentReadCapability
 useCapability loginHandler jsonDocumentWriteCapability
+useCapability loginHandler filesystemReadWriteCapability
 memory loginHandler heap auto
 async loginHandler no
-purpose operation loginHandler "POST /api/auth/login — verify credentials via bcrypt.verifyPassword + mint a new session. On any failure (unknown user, wrong password, malformed body) return the SAME 401 with a generic message so an attacker cannot distinguish 'no such user' from 'bad password' by status or response shape."
+purpose operation loginHandler "POST /api/auth/login - verify credentials via bcrypt.verifyPassword + mint a new session. On any failure (unknown user, wrong password, malformed body) return the SAME 401 with a generic message so an attacker cannot distinguish 'no such user' from 'bad password' by status or response shape."
 invariant operation loginHandler "Unknown-user, wrong-password, and malformed-body failures all return the same 401 JSON response shape. Timing equalization is a follow-up hardening task; the session row is INSERT'd only on a real password match."
 
 label startLoginHandler
@@ -1976,7 +2073,7 @@ bind ok loginPasswordText String readLoginPasswordCall
 bind error readLoginPasswordError JsonAccessError readLoginPasswordCall
 branch error source readLoginPasswordCall target loginInvalidCredentialsRejected
 
-# SELECT the user row by username (case-insensitive — schema COLLATE NOCASE).
+# SELECT the user row by username (case-insensitive - schema COLLATE NOCASE).
 call prepareSelectUserByUsernameCall sqlite.prepareStatement
 argument prepareSelectUserByUsernameCall database SqliteDatabase loginDatabase
 argument prepareSelectUserByUsernameCall sql SqlText sqlSelectUserByUsername
@@ -2003,9 +2100,8 @@ bind ok selectUserByUsernameStepResult SqliteStepResult stepSelectUserByUsername
 bind error selectUserByUsernameStepError SqliteStatementStepFailure stepSelectUserByUsernameCall
 branch error source stepSelectUserByUsernameCall target loginSelectUserFailed
 
-call loginUserRowFoundCheckCall math.equalInt32
-argument loginUserRowFoundCheckCall left Int32 selectUserByUsernameStepResult
-argument loginUserRowFoundCheckCall right Int32 rowSqliteStepResult
+call loginUserRowFoundCheckCall sqlite.stepResultIsRow
+argument loginUserRowFoundCheckCall stepResult SqliteStepResult selectUserByUsernameStepResult
 run loginUserRowFoundCheckCall
 bind value loginUserRowFound Bool loginUserRowFoundCheckCall
 branch if condition loginUserRowFound target loginUserRowFoundLabel
@@ -2043,23 +2139,60 @@ argument readLoginUserIdCall columnIndex Int32 columnIndex0
 run readLoginUserIdCall
 bind value loginExistingUserId Int64 readLoginUserIdCall
 
+call createLoginResponseDocumentCall json.createEmptyDocument
+argument createLoginResponseDocumentCall capacityBytes Int64 jsonResponseCapacity
+argument createLoginResponseDocumentCall rootKind JsonValueKind jsonObjectRootKind
+run createLoginResponseDocumentCall
+bind ok loginResponseDocument JsonDocument createLoginResponseDocumentCall
+bind error createLoginResponseDocumentError JsonAccessError createLoginResponseDocumentCall
+branch error source createLoginResponseDocumentCall target loginInternalFailed
+defer releaseLoginResponseDocumentDefer json.destroyDocument loginResponseDocument
+
+call loginResponseRootCall json.documentRoot
+argument loginResponseRootCall document JsonDocument loginResponseDocument
+run loginResponseRootCall
+bind value loginResponseRoot JsonCursor loginResponseRootCall
+
+call createLoginUserObjectCall json.setObjectFieldObject
+argument createLoginUserObjectCall document JsonDocument loginResponseDocument
+argument createLoginUserObjectCall cursor JsonCursor loginResponseRoot
+argument createLoginUserObjectCall fieldName String fieldUser
+run createLoginUserObjectCall
+bind ok loginResponseUserCursor JsonCursor createLoginUserObjectCall
+bind error createLoginUserObjectError JsonAccessError createLoginUserObjectCall
+branch error source createLoginUserObjectCall target loginInternalFailed
+
+call setLoginUserIdCall json.setObjectFieldInt64
+argument setLoginUserIdCall document JsonDocument loginResponseDocument
+argument setLoginUserIdCall cursor JsonCursor loginResponseUserCursor
+argument setLoginUserIdCall fieldName String fieldId
+argument setLoginUserIdCall value Int64 loginExistingUserId
+run setLoginUserIdCall
+ignore ok source setLoginUserIdCall type Int32
+bind error setLoginUserIdError JsonAccessError setLoginUserIdCall
+branch error source setLoginUserIdCall target loginInternalFailed
+
 call readLoginUsernameCanonicalCall sqlite.columnText
 argument readLoginUsernameCanonicalCall statement SqliteStatement selectUserByUsernameStatement
 argument readLoginUsernameCanonicalCall columnIndex Int32 columnIndex1
 run readLoginUsernameCanonicalCall
 bind value loginUsernameCanonical String readLoginUsernameCanonicalCall
 
+call setLoginUsernameCall json.setObjectFieldString
+argument setLoginUsernameCall document JsonDocument loginResponseDocument
+argument setLoginUsernameCall cursor JsonCursor loginResponseUserCursor
+argument setLoginUsernameCall fieldName String fieldUsername
+argument setLoginUsernameCall value String loginUsernameCanonical
+run setLoginUsernameCall
+ignore ok source setLoginUsernameCall type Int32
+bind error setLoginUsernameError JsonAccessError setLoginUsernameCall
+branch error source setLoginUsernameCall target loginInternalFailed
+
 call readLoginPasswordHashCall sqlite.columnText
 argument readLoginPasswordHashCall statement SqliteStatement selectUserByUsernameStatement
 argument readLoginPasswordHashCall columnIndex Int32 columnIndex2
 run readLoginPasswordHashCall
 bind value loginStoredHash String readLoginPasswordHashCall
-
-call readLoginDisplayNameCall sqlite.columnText
-argument readLoginDisplayNameCall statement SqliteStatement selectUserByUsernameStatement
-argument readLoginDisplayNameCall columnIndex Int32 columnIndex3
-run readLoginDisplayNameCall
-bind value loginDisplayName String readLoginDisplayNameCall
 
 # Verify the password. bcrypt.verifyPassword returns 1 on match, 0 on
 # mismatch, negative on malformed stored hash.
@@ -2089,6 +2222,22 @@ bind value loginPasswordMatched Bool loginPasswordMatchCheckCall
 branch if condition loginPasswordMatched target loginPasswordMatchedLabel
 branch else target loginInvalidCredentialsRejected
 label loginPasswordMatchedLabel
+
+call readLoginDisplayNameCall sqlite.columnText
+argument readLoginDisplayNameCall statement SqliteStatement selectUserByUsernameStatement
+argument readLoginDisplayNameCall columnIndex Int32 columnIndex3
+run readLoginDisplayNameCall
+bind value loginDisplayName String readLoginDisplayNameCall
+
+call setLoginDisplayNameCall json.setObjectFieldString
+argument setLoginDisplayNameCall document JsonDocument loginResponseDocument
+argument setLoginDisplayNameCall cursor JsonCursor loginResponseUserCursor
+argument setLoginDisplayNameCall fieldName String fieldDisplayName
+argument setLoginDisplayNameCall value String loginDisplayName
+run setLoginDisplayNameCall
+ignore ok source setLoginDisplayNameCall type Int32
+bind error setLoginDisplayNameError JsonAccessError setLoginDisplayNameCall
+branch error source setLoginDisplayNameCall target loginInternalFailed
 
 # Open a write transaction so the last_login update + session insert
 # below either both commit or both roll back. ROLLBACK runs via defer
@@ -2149,7 +2298,7 @@ branch error source stepUpdateLastLoginCall target loginLastLoginUpdated
 
 label loginLastLoginUpdated
 
-# Password matched — mint a fresh session. Same flow as registerHandler.
+# Password matched - mint a fresh session. Same flow as registerHandler.
 call allocateLoginRandomCall c.malloc
 argument allocateLoginRandomCall size ByteCount randomBufferCapacity
 run allocateLoginRandomCall
@@ -2181,13 +2330,20 @@ bind error allocateLoginTokenError OpaquePointer allocateLoginTokenCall
 branch error source allocateLoginTokenCall target loginInternalFailed
 defer releaseLoginTokenDefer c.free loginTokenBuffer
 
-storage local mutable loginEncodedTokenLength Int32 0
+call allocateLoginEncodedTokenLengthCall c.malloc
+argument allocateLoginEncodedTokenLengthCall size ByteCount lengthOutBufferByteCount
+run allocateLoginEncodedTokenLengthCall
+bind ok loginEncodedTokenLengthBuffer OpaquePointer allocateLoginEncodedTokenLengthCall
+bind error allocateLoginEncodedTokenLengthError OpaquePointer allocateLoginEncodedTokenLengthCall
+branch error source allocateLoginEncodedTokenLengthCall target loginInternalFailed
+defer releaseLoginEncodedTokenLengthDefer c.free loginEncodedTokenLengthBuffer
+
 call encodeLoginTokenCall bcrypt.base64UrlEncode
 argument encodeLoginTokenCall inputBuffer OpaquePointer loginRandomBuffer
 argument encodeLoginTokenCall inputCount Int32 randomByteCountArg
 argument encodeLoginTokenCall outputBuffer OpaquePointer loginTokenBuffer
 argument encodeLoginTokenCall outputCapacity Int32 tokenCapacityArg
-argument encodeLoginTokenCall outputLengthOut Int32 loginEncodedTokenLength
+argument encodeLoginTokenCall outputLengthOut OpaquePointer loginEncodedTokenLengthBuffer
 run encodeLoginTokenCall
 bind value loginEncodeStatus Int32 encodeLoginTokenCall
 
@@ -2202,18 +2358,14 @@ label loginEncodeOkLabel
 
 bind value loginSessionTokenText String allocateLoginTokenCall
 
-call loginNowMsCall http.nowMillis
-run loginNowMsCall
-bind value loginNowMs Int64 loginNowMsCall
-
 call pruneLoginExpiredSessionsCall pruneExpiredSessionsBestEffort
 argument pruneLoginExpiredSessionsCall database SqliteDatabase loginDatabase
-argument pruneLoginExpiredSessionsCall nowMs Int64 loginNowMs
+argument pruneLoginExpiredSessionsCall nowMs Int64 loginLastLoginNowMs
 run pruneLoginExpiredSessionsCall
 ignore value source pruneLoginExpiredSessionsCall type Int32
 
 call loginAddExpiresCall math.addInt64
-argument loginAddExpiresCall left Int64 loginNowMs
+argument loginAddExpiresCall left Int64 loginLastLoginNowMs
 argument loginAddExpiresCall right Int64 sessionLifetimeMs
 run loginAddExpiresCall
 bind value loginExpiresAt Int64 loginAddExpiresCall
@@ -2249,7 +2401,7 @@ branch error source bindLoginSessionUserIdCall target loginInsertSessionFailed
 call bindLoginSessionIssuedCall sqlite.bindInt64
 argument bindLoginSessionIssuedCall statement SqliteStatement insertLoginSessionStatement
 argument bindLoginSessionIssuedCall parameterIndex Int32 bindIndex3
-argument bindLoginSessionIssuedCall value Int64 loginNowMs
+argument bindLoginSessionIssuedCall value Int64 loginLastLoginNowMs
 run bindLoginSessionIssuedCall
 ignore void source bindLoginSessionIssuedCall
 bind error bindLoginSessionIssuedError SqliteStatementBindFailure bindLoginSessionIssuedCall
@@ -2267,7 +2419,7 @@ branch error source bindLoginSessionExpiresCall target loginInsertSessionFailed
 call bindLoginSessionLastSeenCall sqlite.bindInt64
 argument bindLoginSessionLastSeenCall statement SqliteStatement insertLoginSessionStatement
 argument bindLoginSessionLastSeenCall parameterIndex Int32 bindIndex5
-argument bindLoginSessionLastSeenCall value Int64 loginNowMs
+argument bindLoginSessionLastSeenCall value Int64 loginLastLoginNowMs
 run bindLoginSessionLastSeenCall
 ignore void source bindLoginSessionLastSeenCall
 bind error bindLoginSessionLastSeenError SqliteStatementBindFailure bindLoginSessionLastSeenCall
@@ -2280,7 +2432,7 @@ ignore ok source stepInsertLoginSessionCall type SqliteStepResult
 bind error stepInsertLoginSessionError SqliteStatementStepFailure stepInsertLoginSessionCall
 branch error source stepInsertLoginSessionCall target loginInsertSessionFailed
 
-# Both writes succeeded — commit. The rollback defer still fires at
+# Both writes succeeded - commit. The rollback defer still fires at
 # op exit but the transaction is already closed, so SQLite returns
 # "no transaction is active" and the ignoreOk swallows it.
 call commitLoginTxCall sqlite.exec
@@ -2329,59 +2481,6 @@ bind error allocateLoginResponseBufferError OpaquePointer allocateLoginResponseB
 branch error source allocateLoginResponseBufferCall target loginInternalFailed
 defer releaseLoginResponseBufferDefer c.free loginResponseBuffer
 
-call createLoginResponseDocumentCall json.createEmptyDocument
-argument createLoginResponseDocumentCall capacityBytes Int64 jsonResponseCapacity
-argument createLoginResponseDocumentCall rootKind JsonValueKind jsonObjectRootKind
-run createLoginResponseDocumentCall
-bind ok loginResponseDocument JsonDocument createLoginResponseDocumentCall
-bind error createLoginResponseDocumentError JsonAccessError createLoginResponseDocumentCall
-branch error source createLoginResponseDocumentCall target loginInternalFailed
-defer releaseLoginResponseDocumentDefer json.destroyDocument loginResponseDocument
-
-call loginResponseRootCall json.documentRoot
-argument loginResponseRootCall document JsonDocument loginResponseDocument
-run loginResponseRootCall
-bind value loginResponseRoot JsonCursor loginResponseRootCall
-
-call createLoginUserObjectCall json.setObjectFieldObject
-argument createLoginUserObjectCall document JsonDocument loginResponseDocument
-argument createLoginUserObjectCall cursor JsonCursor loginResponseRoot
-argument createLoginUserObjectCall fieldName String fieldUser
-run createLoginUserObjectCall
-bind ok loginResponseUserCursor JsonCursor createLoginUserObjectCall
-bind error createLoginUserObjectError JsonAccessError createLoginUserObjectCall
-branch error source createLoginUserObjectCall target loginInternalFailed
-
-call setLoginUserIdCall json.setObjectFieldInt64
-argument setLoginUserIdCall document JsonDocument loginResponseDocument
-argument setLoginUserIdCall cursor JsonCursor loginResponseUserCursor
-argument setLoginUserIdCall fieldName String fieldId
-argument setLoginUserIdCall value Int64 loginExistingUserId
-run setLoginUserIdCall
-ignore ok source setLoginUserIdCall type Int32
-bind error setLoginUserIdError JsonAccessError setLoginUserIdCall
-branch error source setLoginUserIdCall target loginInternalFailed
-
-call setLoginUsernameCall json.setObjectFieldString
-argument setLoginUsernameCall document JsonDocument loginResponseDocument
-argument setLoginUsernameCall cursor JsonCursor loginResponseUserCursor
-argument setLoginUsernameCall fieldName String fieldUsername
-argument setLoginUsernameCall value String loginUsernameCanonical
-run setLoginUsernameCall
-ignore ok source setLoginUsernameCall type Int32
-bind error setLoginUsernameError JsonAccessError setLoginUsernameCall
-branch error source setLoginUsernameCall target loginInternalFailed
-
-call setLoginDisplayNameCall json.setObjectFieldString
-argument setLoginDisplayNameCall document JsonDocument loginResponseDocument
-argument setLoginDisplayNameCall cursor JsonCursor loginResponseUserCursor
-argument setLoginDisplayNameCall fieldName String fieldDisplayName
-argument setLoginDisplayNameCall value String loginDisplayName
-run setLoginDisplayNameCall
-ignore ok source setLoginDisplayNameCall type Int32
-bind error setLoginDisplayNameError JsonAccessError setLoginDisplayNameCall
-branch error source setLoginDisplayNameCall target loginInternalFailed
-
 call serializeLoginResponseCall json.serializeDocument
 argument serializeLoginResponseCall document JsonDocument loginResponseDocument
 argument serializeLoginResponseCall scratch OpaquePointer loginResponseBuffer
@@ -2394,11 +2493,11 @@ branch error source serializeLoginResponseCall target loginInternalFailed
 call writeLoginResponseCall writeJsonOkResponse
 argument writeLoginResponseCall response HttpResponse response
 argument writeLoginResponseCall status HttpStatusCode httpStatusOk
-argument writeLoginResponseCall jsonBody HttpTextBody loginResponseBodyText
+argument writeLoginResponseCall jsonBody String loginResponseBodyText
 run writeLoginResponseCall
 bind value writeLoginStatus Int32 writeLoginResponseCall
 
-call loginSucceededLogCall logInfo
+call loginSucceededLogCall log.logInfo
 argument loginSucceededLogCall messageText String userLoginSucceededLogMessage
 run loginSucceededLogCall
 ignore ok source loginSucceededLogCall type Int32
@@ -2436,7 +2535,7 @@ argument writeLoginInvalidCall messageBody HttpTextBody loginInvalidCredentialsB
 run writeLoginInvalidCall
 bind value writeLoginInvalidStatus Int32 writeLoginInvalidCall
 
-call loginFailedLogCall logWarn
+call loginFailedLogCall log.logWarn
 argument loginFailedLogCall messageText String userLoginFailedLogMessage
 run loginFailedLogCall
 ignore ok source loginFailedLogCall type Int32
@@ -2477,6 +2576,8 @@ effect createTodoHandler allocate heap
 effect createTodoHandler free heap
 effect createTodoHandler read json.document.tree
 effect createTodoHandler write json.document.tree
+effect createTodoHandler readWrite memory.buffer
+effect createTodoHandler readWrite filesystem
 useCapability createTodoHandler httpRequestReader
 useCapability createTodoHandler httpResponseWriter
 useCapability createTodoHandler sqliteDatabaseReadWriter
@@ -2484,9 +2585,11 @@ useCapability createTodoHandler heapAllocCapability
 useCapability createTodoHandler heapFreeCapability
 useCapability createTodoHandler jsonDocumentReadCapability
 useCapability createTodoHandler jsonDocumentWriteCapability
+useCapability createTodoHandler memoryBufferReadWriteCapability
+useCapability createTodoHandler filesystemReadWriteCapability
 memory createTodoHandler heap auto
 async createTodoHandler no
-purpose operation createTodoHandler "POST /api/todos — create a todo for the session user. Body: {\"title\":\"...\",\"body\":\"...\",\"priority\":1-3}."
+purpose operation createTodoHandler "POST /api/todos - create a todo for the session user. Body: {\"title\":\"...\",\"body\":\"...\",\"priority\":1-3}."
 invariant operation createTodoHandler "user_id is bound from the session, never from the request body."
 
 label startCreateTodoHandler
@@ -2679,7 +2782,7 @@ branch error source bindCreateCreatedAtCall target createInsertBindFailed
 # 6 params total because the schema has 6 columns being bound (user_id, title,
 # body, priority, created_at_ms, updated_at_ms). Looking at the SQL again:
 # "INSERT INTO todos (user_id, title, body, done, priority, created_at_ms,
-# updated_at_ms)" — done is hardcoded to 0, so we have 6 bind params: 1-6.
+# updated_at_ms)" - done is hardcoded to 0, so we have 6 bind params: 1-6.
 # Param 5 is created_at_ms; we still need updated_at_ms at param 6.
 storage local immutable bindIndex6 Int32 6
 call bindCreateUpdatedAtCall sqlite.bindInt64
@@ -2694,14 +2797,34 @@ branch error source bindCreateUpdatedAtCall target createInsertBindFailed
 call stepInsertTodoCall sqlite.stepStatement
 argument stepInsertTodoCall statement SqliteStatement insertTodoStatement
 run stepInsertTodoCall
-ignore ok source stepInsertTodoCall type SqliteStepResult
+bind ok insertTodoStepResult SqliteStepResult stepInsertTodoCall
 bind error stepInsertTodoError SqliteStatementStepFailure stepInsertTodoCall
 branch error source stepInsertTodoCall target createInsertStepFailed
-
-call lastTodoRowIdCall sqlite.lastInsertRowId
-argument lastTodoRowIdCall database SqliteDatabase createDatabase
-run lastTodoRowIdCall
-bind value createNewTodoId Int64 lastTodoRowIdCall
+call insertTodoStepIsRowCall sqlite.stepResultIsRow
+argument insertTodoStepIsRowCall stepResult SqliteStepResult insertTodoStepResult
+run insertTodoStepIsRowCall
+bind value insertTodoStepIsRow Bool insertTodoStepIsRowCall
+branch if condition insertTodoStepIsRow target createInsertedTodoReturned
+branch else target createInsertStepFailed
+label createInsertedTodoReturned
+call readInsertedTodoIdCall sqlite.columnInt64
+argument readInsertedTodoIdCall statement SqliteStatement insertTodoStatement
+argument readInsertedTodoIdCall columnIndex Int32 columnIndex0
+run readInsertedTodoIdCall
+bind value createNewTodoId Int64 readInsertedTodoIdCall
+call drainInsertTodoReturningCall sqlite.stepStatement
+argument drainInsertTodoReturningCall statement SqliteStatement insertTodoStatement
+run drainInsertTodoReturningCall
+bind ok insertTodoDoneStepResult SqliteStepResult drainInsertTodoReturningCall
+bind error drainInsertTodoReturningError SqliteStatementStepFailure drainInsertTodoReturningCall
+branch error source drainInsertTodoReturningCall target createInsertStepFailed
+call insertTodoStepIsDoneCall sqlite.stepResultIsDone
+argument insertTodoStepIsDoneCall stepResult SqliteStepResult insertTodoDoneStepResult
+run insertTodoStepIsDoneCall
+bind value insertTodoStepIsDone Bool insertTodoStepIsDoneCall
+branch if condition insertTodoStepIsDone target createInsertTodoComplete
+branch else target createInsertStepFailed
+label createInsertTodoComplete
 
 # Build response body.
 call allocateCreateResponseBufferCall c.malloc
@@ -2797,11 +2920,11 @@ branch error source serializeCreateResponseCall target createAllocationFailed
 call writeCreateResponseCall writeJsonOkResponse
 argument writeCreateResponseCall response HttpResponse response
 argument writeCreateResponseCall status HttpStatusCode httpStatusCreated
-argument writeCreateResponseCall jsonBody HttpTextBody createResponseBodyText
+argument writeCreateResponseCall jsonBody String createResponseBodyText
 run writeCreateResponseCall
 bind value writeCreateStatus Int32 writeCreateResponseCall
 
-call todoCreatedLogCall logInfo
+call todoCreatedLogCall log.logInfo
 argument todoCreatedLogCall messageText String todoCreatedLogMessage
 run todoCreatedLogCall
 ignore ok source todoCreatedLogCall type Int32
@@ -2891,7 +3014,7 @@ run writeCreateStepFailedCall
 bind value writeCreateStepFailedStatus Int32 writeCreateStepFailedCall
 return value writeCreateStepFailedStatus
 
-# ----- listTodosHandler — count only for now -----
+# ----- listTodosHandler - count only for now -----
 
 operation listTodosHandler
 input operation listTodosHandler request HttpRequest
@@ -2911,8 +3034,8 @@ useCapability listTodosHandler heapFreeCapability
 useCapability listTodosHandler jsonDocumentWriteCapability
 memory listTodosHandler heap auto
 async listTodosHandler no
-purpose operation listTodosHandler "GET /api/todos — return the session user's todos. v1 returns just the row count + array of {id, title, done}; full record serialization arrives with the record-codec wiring."
-invariant operation listTodosHandler "SELECT is scoped to WHERE user_id = ? — never lists cross-user rows."
+purpose operation listTodosHandler "GET /api/todos - return the session user's todos. v1 returns just the row count + array of {id, title, done}; full record serialization arrives with the record-codec wiring."
+invariant operation listTodosHandler "SELECT is scoped to WHERE user_id = ? - never lists cross-user rows."
 
 label startListTodosHandler
 
@@ -2999,9 +3122,8 @@ bind ok listStepResult SqliteStepResult stepListCall
 bind error listStepError SqliteStatementStepFailure stepListCall
 branch error source stepListCall target listSelectFailed
 
-call listRowAvailableCheckCall math.equalInt32
-argument listRowAvailableCheckCall left Int32 listStepResult
-argument listRowAvailableCheckCall right Int32 rowSqliteStepResult
+call listRowAvailableCheckCall sqlite.stepResultIsRow
+argument listRowAvailableCheckCall stepResult SqliteStepResult listStepResult
 run listRowAvailableCheckCall
 bind value listRowAvailable Bool listRowAvailableCheckCall
 branch if condition listRowAvailable target listAppendRow
@@ -3113,7 +3235,7 @@ branch error source serializeListResponseCall target listAllocationFailed
 call writeListResponseCall writeJsonOkResponse
 argument writeListResponseCall response HttpResponse response
 argument writeListResponseCall status HttpStatusCode httpStatusOk
-argument writeListResponseCall jsonBody HttpTextBody listResponseBodyText
+argument writeListResponseCall jsonBody String listResponseBodyText
 run writeListResponseCall
 bind value writeListStatus Int32 writeListResponseCall
 return value writeListStatus
@@ -3168,7 +3290,7 @@ effect showTodoHandler write http.response
 useCapability showTodoHandler httpResponseWriter
 memory showTodoHandler arena request
 async showTodoHandler no
-purpose operation showTodoHandler "GET /api/todos/:id — stub for v1."
+purpose operation showTodoHandler "GET /api/todos/:id - stub for v1."
 invariant operation showTodoHandler "Returns 501; phase 5 follow-up."
 
 label startShowTodoHandler
@@ -3190,13 +3312,21 @@ effect deleteTodoHandler read http.request.header
 effect deleteTodoHandler read http.request.path
 effect deleteTodoHandler readWrite database
 effect deleteTodoHandler write http.response
+effect deleteTodoHandler allocate heap
+effect deleteTodoHandler free heap
+effect deleteTodoHandler readWrite memory.buffer
+effect deleteTodoHandler readWrite filesystem
 useCapability deleteTodoHandler httpRequestReader
 useCapability deleteTodoHandler httpResponseWriter
 useCapability deleteTodoHandler sqliteDatabaseReadWriter
+useCapability deleteTodoHandler heapAllocCapability
+useCapability deleteTodoHandler heapFreeCapability
+useCapability deleteTodoHandler memoryBufferReadWriteCapability
+useCapability deleteTodoHandler filesystemReadWriteCapability
 memory deleteTodoHandler arena request
 async deleteTodoHandler no
-purpose operation deleteTodoHandler "DELETE /api/todos/:id — delete the todo with that id IF the session user owns it. WHERE id = ? AND user_id = ? makes cross-user deletes a no-op rather than an error."
-invariant operation deleteTodoHandler "user_id comes from the session, never from the URL. A delete on a row owned by another user produces zero affected rows and returns 200 — the response is intentionally idempotent and does NOT leak existence (no 404 vs 200 oracle)."
+purpose operation deleteTodoHandler "DELETE /api/todos/:id - delete the todo with that id IF the session user owns it. WHERE id = ? AND user_id = ? makes cross-user deletes a no-op rather than an error."
+invariant operation deleteTodoHandler "user_id comes from the session, never from the URL. A delete on a row owned by another user produces zero affected rows and returns 200 - the response is intentionally idempotent and does NOT leak existence (no 404 vs 200 oracle)."
 
 label startDeleteTodoHandler
 
@@ -3289,11 +3419,11 @@ branch error source stepDeleteCall target deleteFailed
 call writeDeleteOkCall writeJsonOkResponse
 argument writeDeleteOkCall response HttpResponse response
 argument writeDeleteOkCall status HttpStatusCode httpStatusOk
-argument writeDeleteOkCall jsonBody HttpTextBody deleteOkBody
+argument writeDeleteOkCall jsonBody String deleteOkBody
 run writeDeleteOkCall
 bind value writeDeleteOkStatus Int32 writeDeleteOkCall
 
-call todoDeletedLogCall logInfo
+call todoDeletedLogCall log.logInfo
 argument todoDeletedLogCall messageText String todoDeletedLogMessage
 run todoDeletedLogCall
 ignore ok source todoDeletedLogCall type Int32
@@ -3348,12 +3478,20 @@ effect completeTodoHandler read http.request.header
 effect completeTodoHandler read http.request.path
 effect completeTodoHandler readWrite database
 effect completeTodoHandler write http.response
+effect completeTodoHandler allocate heap
+effect completeTodoHandler free heap
+effect completeTodoHandler readWrite memory.buffer
+effect completeTodoHandler readWrite filesystem
 useCapability completeTodoHandler httpRequestReader
 useCapability completeTodoHandler httpResponseWriter
 useCapability completeTodoHandler sqliteDatabaseReadWriter
+useCapability completeTodoHandler heapAllocCapability
+useCapability completeTodoHandler heapFreeCapability
+useCapability completeTodoHandler memoryBufferReadWriteCapability
+useCapability completeTodoHandler filesystemReadWriteCapability
 memory completeTodoHandler arena request
 async completeTodoHandler no
-purpose operation completeTodoHandler "POST /api/todos/:id/complete — mark a todo done (done = 1, completed_at_ms = now). Idempotent: re-completing an already-done todo refreshes the completed timestamp but is otherwise a no-op."
+purpose operation completeTodoHandler "POST /api/todos/:id/complete - mark a todo done (done = 1, completed_at_ms = now). Idempotent: re-completing an already-done todo refreshes the completed timestamp but is otherwise a no-op."
 invariant operation completeTodoHandler "user_id comes from the session, never from the URL; the UPDATE's WHERE clause includes user_id = ? so cross-user attempts produce zero affected rows + a 200 (no existence oracle)."
 
 label startCompleteTodoHandler
@@ -3472,11 +3610,11 @@ branch error source stepCompleteCall target completeFailed
 call writeCompleteOkCall writeJsonOkResponse
 argument writeCompleteOkCall response HttpResponse response
 argument writeCompleteOkCall status HttpStatusCode httpStatusOk
-argument writeCompleteOkCall jsonBody HttpTextBody completeOkBody
+argument writeCompleteOkCall jsonBody String completeOkBody
 run writeCompleteOkCall
 bind value writeCompleteOkStatus Int32 writeCompleteOkCall
 
-call todoCompletedLogCall logInfo
+call todoCompletedLogCall log.logInfo
 argument todoCompletedLogCall messageText String todoCompletedLogMessage
 run todoCompletedLogCall
 ignore ok source todoCompletedLogCall type Int32
@@ -3531,12 +3669,20 @@ effect uncompleteTodoHandler read http.request.header
 effect uncompleteTodoHandler read http.request.path
 effect uncompleteTodoHandler readWrite database
 effect uncompleteTodoHandler write http.response
+effect uncompleteTodoHandler allocate heap
+effect uncompleteTodoHandler free heap
+effect uncompleteTodoHandler readWrite memory.buffer
+effect uncompleteTodoHandler readWrite filesystem
 useCapability uncompleteTodoHandler httpRequestReader
 useCapability uncompleteTodoHandler httpResponseWriter
 useCapability uncompleteTodoHandler sqliteDatabaseReadWriter
+useCapability uncompleteTodoHandler heapAllocCapability
+useCapability uncompleteTodoHandler heapFreeCapability
+useCapability uncompleteTodoHandler memoryBufferReadWriteCapability
+useCapability uncompleteTodoHandler filesystemReadWriteCapability
 memory uncompleteTodoHandler arena request
 async uncompleteTodoHandler no
-purpose operation uncompleteTodoHandler "POST /api/todos/:id/uncomplete — flip a previously-completed todo back to open. Sets done = 0 and clears completed_at_ms so the audit trail no longer claims a completion time."
+purpose operation uncompleteTodoHandler "POST /api/todos/:id/uncomplete - flip a previously-completed todo back to open. Sets done = 0 and clears completed_at_ms so the audit trail no longer claims a completion time."
 invariant operation uncompleteTodoHandler "Mirror of completeTodoHandler in every dimension: user_id from session (never URL), idempotent on already-open todos, cross-user attempts return 200 with zero affected rows (no existence oracle)."
 
 label startUncompleteTodoHandler
@@ -3646,11 +3792,11 @@ branch error source stepUncompleteCall target uncompleteFailed
 call writeUncompleteOkCall writeJsonOkResponse
 argument writeUncompleteOkCall response HttpResponse response
 argument writeUncompleteOkCall status HttpStatusCode httpStatusOk
-argument writeUncompleteOkCall jsonBody HttpTextBody uncompleteOkBody
+argument writeUncompleteOkCall jsonBody String uncompleteOkBody
 run writeUncompleteOkCall
 bind value writeUncompleteOkStatus Int32 writeUncompleteOkCall
 
-call todoUncompletedLogCall logInfo
+call todoUncompletedLogCall log.logInfo
 argument todoUncompletedLogCall messageText String todoUncompletedLogMessage
 run todoUncompletedLogCall
 ignore ok source todoUncompletedLogCall type Int32
@@ -3707,7 +3853,7 @@ return value writeUncompleteFailedStatus
 #   - refuses any path that contains `..` or starts with `/` / `\`
 #   - refuses files larger than 16 MiB
 #   - returns SS_HTTP_ERR_CONFIG / SS_HTTP_ERR_ENGINE on failure,
-#     which the dispatcher 500s — we map to a 404 by branching on
+#     which the dispatcher 500s - we map to a 404 by branching on
 #     the failure path.
 #
 # The runtime's :filename matcher is what gives us the value via
@@ -3726,8 +3872,8 @@ useCapability staticAssetHandler httpResponseWriter
 useCapability staticAssetHandler filesystemReadCapability
 memory staticAssetHandler arena request
 async staticAssetHandler no
-purpose operation staticAssetHandler "GET /assets/:filename — serve a single file from the assets/ directory beside the exe, with content-type sniffed by extension. Refuses path traversal at the runtime layer."
-invariant operation staticAssetHandler "The runtime's path-traversal refusal + content-type sniffing are the load-bearing security checks. The :filename capture is a single segment (cannot contain `/`), so multi-component asset paths are not addressable — that's intentional v1 scope; nested asset dirs are a v1.1 follow-up."
+purpose operation staticAssetHandler "GET /assets/:filename - serve a single file from the assets/ directory beside the exe, with content-type sniffed by extension. Refuses path traversal at the runtime layer."
+invariant operation staticAssetHandler "The runtime's path-traversal refusal + content-type sniffing are the load-bearing security checks. The :filename capture is a single segment (cannot contain `/`), so multi-component asset paths are not addressable - that's intentional v1 scope; nested asset dirs are a v1.1 follow-up."
 
 label startStaticAssetHandler
 
@@ -3747,7 +3893,7 @@ branch if condition assetFilenameMissing target staticAssetMissingHandler
 
 call writeAssetFileCall http.responseFile
 argument writeAssetFileCall response HttpResponse response
-argument writeAssetFileCall status Int32 httpStatusOk
+argument writeAssetFileCall status HttpStatusCode httpStatusOk
 argument writeAssetFileCall rootDirectory String assetsDirectoryPath
 argument writeAssetFileCall requestedPath String assetFilename
 run writeAssetFileCall
@@ -3755,7 +3901,7 @@ bind value writeAssetFileStatus Int32 writeAssetFileCall
 
 # http.responseFile returns SS_HTTP_OK (0) on success, non-zero on
 # refusal / file-not-found / oversize. Treat anything non-zero as 404
-# rather than the dispatcher's default 500 — a missing asset is a
+# rather than the dispatcher's default 500 - a missing asset is a
 # routine condition, not an application crash.
 storage local immutable assetWriteOkSentinel Int32 0
 call assetWriteOkCheckCall math.equalInt32
@@ -3778,8 +3924,8 @@ run writeAssetMissingCall
 bind value writeAssetMissingStatus Int32 writeAssetMissingCall
 return value writeAssetMissingStatus
 
-# Pull in the pages module last — after every local operation closes
-# — so the imported html template + handler don't leave dangling
+# Pull in the pages module last - after every local operation closes
+# - so the imported html template + handler don't leave dangling
 # current_op state for any subsequent parent-file row. The route
 # `GET / homePageHandler` and `GET /dashboard dashboardPageHandler`
 # (see the route table near the top of this file) forward-reference

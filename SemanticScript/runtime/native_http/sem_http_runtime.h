@@ -1,7 +1,9 @@
 #ifndef SEM_HTTP_RUNTIME_H
 #define SEM_HTTP_RUNTIME_H
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +20,11 @@ typedef struct SSHttpRoute {
     SSHttpHandler handler;
     SSHttpHandler middleware;
 } SSHttpRoute;
+
+typedef struct SSHttpStaticRoute {
+    const char *prefix;
+    const char *root_directory;
+} SSHttpStaticRoute;
 
 typedef struct SSHttpServerConfig {
     const char *host;
@@ -36,6 +43,11 @@ typedef struct SSHttpServerConfig {
      * NULL keeps the historic behavior where that request falls through
      * to the not-found path. */
     SSHttpHandler method_not_allowed_handler;
+    /* Optional declarative static file prefixes. Each entry serves GET
+     * requests whose path is exactly `prefix` (as index.html) or starts with
+     * `prefix/`, rooted under root_directory. */
+    const SSHttpStaticRoute *static_routes;
+    size_t static_route_count;
 } SSHttpServerConfig;
 
 /* ss_http_server_run() result codes. */
@@ -160,6 +172,14 @@ const char *ss_http_request_path_param(const SSHttpRequest *request, const char 
 const char *ss_http_request_cookie(const SSHttpRequest *request, const char *cookie_name);
 
 /*
+ * Convenience predicates for nullable request-derived string values returned by
+ * requestHeader/query/pathParam/cookie/body readers. NULL is treated as empty so
+ * handlers can test "missing or empty" without touching request memory directly.
+ */
+long long ss_http_request_value_length(const char *value);
+int ss_http_request_value_is_empty(const char *value);
+
+/*
  * Reads `requested_relative_path` from inside `root_directory`,
  * sniffs its content-type by extension, and writes the bytes into
  * `response` with the given status. Refuses any relative path that
@@ -191,6 +211,8 @@ int ss_http_response_file(
  * libc time().
  */
 long long ss_http_now_millis(void);
+long long ss_http_session_expires_at(long long now_millis, long long ttl_millis);
+bool ss_http_session_is_expired(long long now_millis, long long expires_at_millis);
 
 /*
  * Outbound blocking HTTP/1.1 client. Connects to host:port, sends

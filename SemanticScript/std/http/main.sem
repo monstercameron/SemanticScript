@@ -29,6 +29,7 @@ purpose module standard.http "Standard-library namespace and contracts for nativ
 moduleOwns standard.http "The official import path `standard.http`, semantic HTTP type aliases, reusable HTTP capabilities, SSE stream operation wrappers, handler-visible server drain-state wrappers, and the compiler-owned legacy `http.*` intrinsic namespace contract."
 moduleDoesNotOwn standard.http "Application routes, handler implementations, middleware order, native HTTP runtime implementation, or generated route dispatch."
 invariant module standard.http "The standard module entry is this file; new modules may import it as alias `http`; SSE operation bodies delegate through runtimeBinding rows rather than compiler target branches."
+moduleSecurity standard.http "Set-Cookie headers that carry authentication/session tokens SHOULD include HttpOnly and SameSite, and include Secure only when the request is known to have arrived over HTTPS. The native HTTP/1.1 adapter does not terminate TLS; behind a trusted TLS proxy, read X-Forwarded-Proto only after the ingress strips and sets that header."
 
 type HttpStatusCode Int32
 type HttpHeaderName String
@@ -38,6 +39,8 @@ type HttpTextBody String
 type HttpByteBody OpaquePointer
 type HttpBodyLength ByteCount
 type HttpRequestValue String
+type SessionTtlMillis Int64
+type SessionExpiresAtMillis Int64
 type SseEventName String
 type SseEventId Int64
 type SseEventData String
@@ -52,6 +55,8 @@ exportType standard.http HttpTextBody
 exportType standard.http HttpByteBody
 exportType standard.http HttpBodyLength
 exportType standard.http HttpRequestValue
+exportType standard.http SessionTtlMillis
+exportType standard.http SessionExpiresAtMillis
 exportType standard.http SseEventName
 exportType standard.http SseEventId
 exportType standard.http SseEventData
@@ -65,6 +70,18 @@ exportConstant standard.http plainTextContentType
 exportConstant standard.http htmlContentType
 exportConstant standard.http jsonContentType
 exportConstant standard.http sseContentType
+exportConstant standard.http setCookieHeaderName
+exportConstant standard.http cookieSecureHttpOnlySameSiteLaxSuffix
+exportConstant standard.http cookieHttpOnlySameSiteLaxSuffix
+exportConstant standard.http forwardedProtoHeaderName
+exportConstant standard.http forwardedProtoHttpsValue
+exportConstant standard.http sessionDefaultTtlMillis
+exportConstant standard.http cacheControlHeaderName
+exportConstant standard.http etagHeaderName
+exportConstant standard.http lastModifiedHeaderName
+exportConstant standard.http ifNoneMatchHeaderName
+exportConstant standard.http ifModifiedSinceHeaderName
+exportConstant standard.http staticAssetCacheControlHeaderValue
 exportConstant standard.http sseCacheControlHeaderName
 exportConstant standard.http sseCacheControlHeaderValue
 exportConstant standard.http sseAccelBufferingHeaderName
@@ -77,6 +94,8 @@ exportOperation standard.http writeSseHeartbeat
 exportOperation standard.http closeSseStream
 exportOperation standard.http clientDisconnected
 exportOperation standard.http serverIsShuttingDown
+exportOperation standard.http sessionExpiresAt
+exportOperation standard.http sessionIsExpired
 exportOperation standard.http clientGet
 exportOperation standard.http clientPost
 exportOperation standard.http escapeHtml
@@ -86,12 +105,14 @@ exportType standard.http HttpClientResponseBody
 
 typeInvariant HttpStatusCode "HTTP response status code passed to native response writers."
 typeInvariant HttpHeaderName "Header name passed to native response header writers."
-typeInvariant HttpHeaderValue "Header value passed to native response header writers."
+typeInvariant HttpHeaderValue "Header value passed to native response header writers. For Set-Cookie, prefer the exported HttpOnly/SameSite suffix constants and add Secure only after trusted TLS detection (direct HTTPS in a future TLS backend, or trusted-proxy X-Forwarded-Proto = https today)."
 typeInvariant HttpContentType "Content-Type value passed to native response body writers."
 typeInvariant HttpTextBody "Null-terminated text body passed to native text response writers."
 typeInvariant HttpByteBody "Opaque byte buffer passed to native byte response writers with an explicit length."
 typeInvariant HttpBodyLength "Byte count paired with HttpByteBody."
 typeInvariant HttpRequestValue "Request-derived string value returned by native request readers; nullable readers must be guarded before response-body use."
+typeInvariant SessionTtlMillis "Session time-to-live in milliseconds. Prefer immutable Int64 constants passed through SessionTtlMillis argument rows; default policy is sessionDefaultTtlMillis."
+typeInvariant SessionExpiresAtMillis "Absolute Unix epoch millisecond timestamp when a session expires. Produce with http.sessionExpiresAt and test with http.sessionIsExpired."
 typeInvariant SseEventName "Server-Sent Event name without CR, LF, or colon."
 typeInvariant SseEventId "Server-Sent Event id emitted as a decimal cursor value; negative ids are rejected by the native stream writer."
 typeInvariant SseEventData "Server-Sent Event data payload; native framing splits embedded newlines into data lines."
@@ -119,6 +140,18 @@ storage module immutable plainTextContentType HttpContentType "text/plain; chars
 storage module immutable htmlContentType HttpContentType "text/html; charset=utf-8"
 storage module immutable jsonContentType HttpContentType "application/json; charset=utf-8"
 storage module immutable sseContentType HttpContentType "text/event-stream; charset=utf-8"
+storage module immutable setCookieHeaderName HttpHeaderName "Set-Cookie"
+storage module immutable cookieSecureHttpOnlySameSiteLaxSuffix HttpHeaderValue "; Secure; HttpOnly; SameSite=Lax"
+storage module immutable cookieHttpOnlySameSiteLaxSuffix HttpHeaderValue "; HttpOnly; SameSite=Lax"
+storage module immutable forwardedProtoHeaderName HttpHeaderName "x-forwarded-proto"
+storage module immutable forwardedProtoHttpsValue HttpHeaderValue "https"
+storage module immutable sessionDefaultTtlMillis Int64 86400000
+storage module immutable cacheControlHeaderName HttpHeaderName "Cache-Control"
+storage module immutable etagHeaderName HttpHeaderName "ETag"
+storage module immutable lastModifiedHeaderName HttpHeaderName "Last-Modified"
+storage module immutable ifNoneMatchHeaderName HttpHeaderName "If-None-Match"
+storage module immutable ifModifiedSinceHeaderName HttpHeaderName "If-Modified-Since"
+storage module immutable staticAssetCacheControlHeaderValue HttpHeaderValue "public, max-age=60"
 storage module immutable sseCacheControlHeaderName HttpHeaderName "Cache-Control"
 storage module immutable sseCacheControlHeaderValue HttpHeaderValue "no-cache, no-transform"
 storage module immutable sseAccelBufferingHeaderName HttpHeaderName "X-Accel-Buffering"
@@ -129,6 +162,42 @@ storage module immutable shuttingDownCode Int32 1
 storage module immutable httpClientMethodGet String "GET"
 storage module immutable httpClientMethodPost String "POST"
 storage module immutable httpClientEmptyBody String ""
+
+# rationale: Session expiry should be source-visible policy, not ad hoc
+#   timestamp arithmetic hidden in every handler. Apps read now with
+#   http.nowMillis, add a TTL when creating a session, and compare the
+#   stored expires-at value on each authenticated request.
+# invariant: expiresAtMillis = nowMillis + ttlMillis. The helper is pure
+#   integer arithmetic; persistence and clock reads stay in the caller.
+operation sessionExpiresAt
+input operation sessionExpiresAt nowMillis Int64
+input operation sessionExpiresAt ttlMillis SessionTtlMillis
+output operation sessionExpiresAt SessionExpiresAtMillis
+memory sessionExpiresAt heap no
+async sessionExpiresAt no
+operationBody sessionExpiresAt runtimeBinding
+purpose operation sessionExpiresAt "Add a session TTL to a current Unix epoch millisecond timestamp."
+invariant operation sessionExpiresAt "Return value is nowMillis + ttlMillis; caller chooses the TTL policy and persists the result."
+runtimeBindingPrecondition sessionExpiresAt "nowMillis is a Unix epoch millisecond timestamp and ttlMillis is the caller's session lifetime policy."
+runtimeBinding sessionExpiresAt native.ss_http_session_expires_at
+
+# rationale: Auth gates should branch on a named expiry helper instead of
+#   repeating timestamp comparisons. The caller reads now with http.nowMillis,
+#   loads the persisted expires-at timestamp, and rejects when this returns
+#   true.
+# invariant: A session is expired when nowMillis is strictly greater than
+#   expiresAtMillis; equality remains valid until the next millisecond tick.
+operation sessionIsExpired
+input operation sessionIsExpired nowMillis Int64
+input operation sessionIsExpired expiresAtMillis SessionExpiresAtMillis
+output operation sessionIsExpired Bool
+memory sessionIsExpired heap no
+async sessionIsExpired no
+operationBody sessionIsExpired runtimeBinding
+purpose operation sessionIsExpired "Return true when the current Unix epoch millisecond timestamp is past the persisted session expiry."
+invariant operation sessionIsExpired "Expired means nowMillis > expiresAtMillis; equality is still accepted."
+runtimeBindingPrecondition sessionIsExpired "nowMillis and expiresAtMillis are Unix epoch millisecond timestamps from the same clock domain."
+runtimeBinding sessionIsExpired native.ss_http_session_is_expired
 
 # rationale: SSE handlers openSseStream first, then loop while not
 #   clientDisconnected and not serverIsShuttingDown, then write events or

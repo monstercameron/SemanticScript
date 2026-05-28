@@ -39,6 +39,10 @@ capability jsonDocumentWriteCapability json.document.tree write
 purpose operation jsonDocumentWriteCapability "Authority to create and destroy per-request JSON documents."
 capability sqliteDatabaseReader database read
 purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite statements through standard.sqlite."
+capability sqliteDatabaseReadWriter database readWrite
+purpose operation sqliteDatabaseReadWriter "Authority used by shared auth helpers that consult session state."
+capability processEnvironmentReader process.environment read
+purpose operation processEnvironmentReader "Authority used by shared auth helpers to read deployment auth configuration."
 capability jwtTokenSigner jwt.hs256 signVerify
 purpose operation jwtTokenSigner "Authority to verify HS256 access tokens through the server auth context."
 
@@ -123,16 +127,22 @@ effect auctionEventsHandler read http.request.header
 effect auctionEventsHandler read http.request.query
 effect auctionEventsHandler read http.request.path
 effect auctionEventsHandler read database
+effect auctionEventsHandler readWrite database
+effect auctionEventsHandler read process.environment
 effect auctionEventsHandler write http.response
+effect auctionEventsHandler read http.response
 effect auctionEventsHandler allocate heap
 effect auctionEventsHandler free heap
 effect auctionEventsHandler write json.document.tree
 effect auctionEventsHandler read memory.buffer
+effect auctionEventsHandler write memory.buffer
 memory auctionEventsHandler heap yes
 async auctionEventsHandler no
 useCapability auctionEventsHandler httpRequestReader
 useCapability auctionEventsHandler httpResponseWriter
 useCapability auctionEventsHandler sqliteDatabaseReader
+useCapability auctionEventsHandler sqliteDatabaseReadWriter
+useCapability auctionEventsHandler processEnvironmentReader
 useCapability auctionEventsHandler heapAllocCapability
 useCapability auctionEventsHandler heapFreeCapability
 useCapability auctionEventsHandler jsonDocumentWriteCapability
@@ -400,6 +410,7 @@ argument setEventsAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setEventsAuctionIdCall value String eventsAuctionId
 run setEventsAuctionIdCall
 ignore ok source setEventsAuctionIdCall type Int32
+ignore error source setEventsAuctionIdCall
 call setEventsAfterCall json.setObjectFieldInt64
 argument setEventsAfterCall document JsonDocument eventsDocument
 argument setEventsAfterCall cursor JsonCursor eventsData
@@ -407,6 +418,7 @@ argument setEventsAfterCall fieldName String runtime.fieldAfter
 argument setEventsAfterCall value Int64 eventsReplayCursor
 run setEventsAfterCall
 ignore ok source setEventsAfterCall type Int32
+ignore error source setEventsAfterCall
 call setEventsLimitCall json.setObjectFieldInt64
 argument setEventsLimitCall document JsonDocument eventsDocument
 argument setEventsLimitCall cursor JsonCursor eventsData
@@ -414,6 +426,7 @@ argument setEventsLimitCall fieldName String runtime.fieldLimit
 argument setEventsLimitCall value Int64 eventsReplayLimit
 run setEventsLimitCall
 ignore ok source setEventsLimitCall type Int32
+ignore error source setEventsLimitCall
 call createEventsArrayCall json.setObjectFieldArray
 argument createEventsArrayCall document JsonDocument eventsDocument
 argument createEventsArrayCall cursor JsonCursor eventsData
@@ -486,6 +499,7 @@ argument setEventSequenceCall fieldName String runtime.fieldSequence
 argument setEventSequenceCall value Int64 eventSequence
 run setEventSequenceCall
 ignore ok source setEventSequenceCall type Int32
+ignore error source setEventSequenceCall
 call setEventRevisionCall json.setObjectFieldInt64
 argument setEventRevisionCall document JsonDocument eventsDocument
 argument setEventRevisionCall cursor JsonCursor eventObject
@@ -493,6 +507,7 @@ argument setEventRevisionCall fieldName String runtime.fieldAuctionRevision
 argument setEventRevisionCall value Int64 eventRevision
 run setEventRevisionCall
 ignore ok source setEventRevisionCall type Int32
+ignore error source setEventRevisionCall
 call setEventTypeCall json.setObjectFieldString
 argument setEventTypeCall document JsonDocument eventsDocument
 argument setEventTypeCall cursor JsonCursor eventObject
@@ -500,6 +515,7 @@ argument setEventTypeCall fieldName String runtime.fieldEventType
 argument setEventTypeCall value String eventTypeName
 run setEventTypeCall
 ignore ok source setEventTypeCall type Int32
+ignore error source setEventTypeCall
 call setEventTypeCodeCall json.setObjectFieldInt64
 argument setEventTypeCodeCall document JsonDocument eventsDocument
 argument setEventTypeCodeCall cursor JsonCursor eventObject
@@ -507,6 +523,7 @@ argument setEventTypeCodeCall fieldName String runtime.fieldEventTypeCode
 argument setEventTypeCodeCall value Int64 eventTypeCode
 run setEventTypeCodeCall
 ignore ok source setEventTypeCodeCall type Int32
+ignore error source setEventTypeCodeCall
 call setEventPayloadCall json.setObjectFieldJsonText
 argument setEventPayloadCall document JsonDocument eventsDocument
 argument setEventPayloadCall cursor JsonCursor eventObject
@@ -514,6 +531,7 @@ argument setEventPayloadCall fieldName String runtime.fieldPayload
 argument setEventPayloadCall value JsonText eventPayload
 run setEventPayloadCall
 ignore ok source setEventPayloadCall type Int32
+ignore error source setEventPayloadCall
 call setEventCreatedCall json.setObjectFieldInt64
 argument setEventCreatedCall document JsonDocument eventsDocument
 argument setEventCreatedCall cursor JsonCursor eventObject
@@ -521,6 +539,7 @@ argument setEventCreatedCall fieldName String runtime.fieldCreatedAtUtcMillis
 argument setEventCreatedCall value Int64 eventCreatedAt
 run setEventCreatedCall
 ignore ok source setEventCreatedCall type Int32
+ignore error source setEventCreatedCall
 set memory eventsNextAfter eventSequence
 call incrementEventsCountCall math.addInt64
 argument incrementEventsCountCall left Int64 eventsCount
@@ -538,6 +557,7 @@ argument setEventsCountCall fieldName String runtime.fieldCount
 argument setEventsCountCall value Int64 eventsCount
 run setEventsCountCall
 ignore ok source setEventsCountCall type Int32
+ignore error source setEventsCountCall
 call setEventsNextAfterCall json.setObjectFieldInt64
 argument setEventsNextAfterCall document JsonDocument eventsDocument
 argument setEventsNextAfterCall cursor JsonCursor eventsData
@@ -545,12 +565,14 @@ argument setEventsNextAfterCall fieldName String runtime.fieldNextAfter
 argument setEventsNextAfterCall value Int64 eventsNextAfter
 run setEventsNextAfterCall
 ignore ok source setEventsNextAfterCall type Int32
+ignore error source setEventsNextAfterCall
 call setEventsErrorNullCall json.setObjectFieldNull
 argument setEventsErrorNullCall document JsonDocument eventsDocument
 argument setEventsErrorNullCall cursor JsonCursor eventsRoot
 argument setEventsErrorNullCall fieldName String runtime.fieldError
 run setEventsErrorNullCall
 ignore ok source setEventsErrorNullCall type Int32
+ignore error source setEventsErrorNullCall
 call serializeEventsCall json.serializeDocument
 argument serializeEventsCall document JsonDocument eventsDocument
 argument serializeEventsCall scratch OpaquePointer eventsResponseBuffer

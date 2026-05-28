@@ -149,7 +149,17 @@ toolchain. Users distribute one `.exe`; no adjacent folder is required.
 PyInstaller onefile executables still extract their embedded payload into a
 temporary `_MEI...` directory while running, then remove it on normal exit. This
 means the executable requires writable temp space, but it does not require a
-user-managed install directory.
+user-managed install directory. If a process is terminated before normal exit,
+stale `_MEI*` directories can be previewed and removed with:
+
+```powershell
+sem clean --pyinstaller-temp
+sem clean --pyinstaller-temp --force
+```
+
+The shipped `sem.exe` is a PyInstaller-packaged Python toolchain, not a
+self-hosted native SemanticScript compiler binary. `sem version --json` exposes
+that status under `packaging`.
 
 ```powershell
 python -m pip install pyinstaller==6.20.0
@@ -164,6 +174,21 @@ python -m PyInstaller --noconfirm --clean packaging/pyinstaller/sem.spec
 
 Native AOT compilation still depends on a working platform compiler such as
 clang. Set `SEMSC_CLANG` when clang is not discoverable on `PATH`.
+
+Release-channel discovery should use the `sem self` commands, which query the
+GitHub releases API and compare `published_at` values instead of relying on
+`/releases/latest`:
+
+```powershell
+.\dist\sem.exe self latest --channel prerelease --json
+.\dist\sem.exe self download --channel prerelease --output .\sem.exe
+.\dist\sem.exe self update --channel prerelease
+```
+
+The current public distribution channel publishes Windows x64 `sem.exe`
+artifacts. Linux/macOS are validated through CI and the source toolchain; native
+application cross-builds use the documented Zig/clang discovery path, but
+prebuilt Linux/macOS `sem` executables are not published yet.
 
 ## Full Release Validation
 

@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 /* Keep the fallback backend's full-request buffer bounded. Applications should
  * enforce their own smaller body policy with ss_http_request_body_length; this
@@ -18,7 +24,7 @@
 #define SS_HTTP_SHUTDOWN_POLL_MILLIS 250
 
 /* Pattern-route knobs. SS_HTTP_MAX_PATH_PARAMS bounds the number of
- * :name segments per request — 8 is more than any realistic REST path.
+ * :name / {name} segments per request - 8 is more than any realistic REST path.
  * The scratch buffer holds null-terminated copies of every captured
  * segment so the caller can pass them around without lifetime concerns
  * and the original request->path stays intact (so http.requestPath
@@ -71,6 +77,53 @@ static void ss_close_socket(ss_socket_t socket_handle) {
     close(socket_handle);
 }
 #endif
+
+int ss_http_set_cwd_to_executable_dir(void) {
+#ifdef _WIN32
+    char path[MAX_PATH];
+    DWORD length = GetModuleFileNameA(NULL, path, (DWORD)sizeof(path));
+    char *slash;
+    if (length == 0 || length >= sizeof(path)) {
+        return 0;
+    }
+    slash = strrchr(path, '\\');
+    if (slash == NULL) {
+        slash = strrchr(path, '/');
+    }
+    if (slash == NULL) {
+        return 0;
+    }
+    *slash = '\0';
+    return SetCurrentDirectoryA(path) ? 1 : 0;
+#elif defined(__APPLE__)
+    char path[4096];
+    uint32_t size = (uint32_t)sizeof(path);
+    char *slash;
+    if (_NSGetExecutablePath(path, &size) != 0) {
+        return 0;
+    }
+    slash = strrchr(path, '/');
+    if (slash == NULL) {
+        return 0;
+    }
+    *slash = '\0';
+    return chdir(path) == 0 ? 1 : 0;
+#else
+    char path[4096];
+    ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    char *slash;
+    if (length <= 0 || length >= (ssize_t)sizeof(path)) {
+        return 0;
+    }
+    path[length] = '\0';
+    slash = strrchr(path, '/');
+    if (slash == NULL) {
+        return 0;
+    }
+    *slash = '\0';
+    return chdir(path) == 0 ? 1 : 0;
+#endif
+}
 
 typedef struct SSHttpResponseBackend {
     ss_socket_t socket_handle;
@@ -178,10 +231,20 @@ static int has_valid_route_table(const SSHttpServerConfig *config) {
     if (config->route_count > 0 && config->routes == NULL) {
         return 0;
     }
+    if (config->static_route_count > 0 && config->static_routes == NULL) {
+        return 0;
+    }
 
     for (index = 0; index < config->route_count; ++index) {
         const SSHttpRoute *route = &config->routes[index];
         if (route->method == NULL || route->path == NULL || route->handler == NULL) {
+            return 0;
+        }
+    }
+    for (index = 0; index < config->static_route_count; ++index) {
+        const SSHttpStaticRoute *route = &config->static_routes[index];
+        if (route->prefix == NULL || route->root_directory == NULL ||
+                route->prefix[0] != '/') {
             return 0;
         }
     }
@@ -598,6 +661,17 @@ const char *ss_http_request_cookie(const SSHttpRequest *request, const char *coo
     return NULL;
 }
 
+long long ss_http_request_value_length(const char *value) {
+    if (value == NULL) {
+        return 0;
+    }
+    return (long long)strlen(value);
+}
+
+int ss_http_request_value_is_empty(const char *value) {
+    return value == NULL || value[0] == '\0' ? 1 : 0;
+}
+
 /* ----- ss_http_response_file ----- */
 
 #define SS_HTTP_FILE_MAX_BYTES (16 * 1024 * 1024)
@@ -666,12 +740,112 @@ static const char *content_type_for_extension(const char *path) {
     return "application/octet-stream";
 }
 
+static int read_file_cache_metadata(
+    const char *absolute_path,
+    long long *byte_count_out,
+    time_t *modified_at_out
+) {
+#ifdef _WIN32
+    struct _stat64 file_stat;
+    if (_stat64(absolute_path, &file_stat) != 0) {
+        return 0;
+    }
+#else
+    struct stat file_stat;
+    if (stat(absolute_path, &file_stat) != 0) {
+        return 0;
+    }
+#endif
+    if (byte_count_out != NULL) {
+        *byte_count_out = (long long)file_stat.st_size;
+    }
+    if (modified_at_out != NULL) {
+        *modified_at_out = file_stat.st_mtime;
+    }
+    return 1;
+}
+
+static int format_http_date(time_t value, char *out, size_t out_capacity) {
+    struct tm utc_time;
+    if (out == NULL || out_capacity == 0) {
+        return 0;
+    }
+#ifdef _WIN32
+    if (gmtime_s(&utc_time, &value) != 0) {
+        return 0;
+    }
+#else
+    if (gmtime_r(&value, &utc_time) == NULL) {
+        return 0;
+    }
+#endif
+    return strftime(out, out_capacity, "%a, %d %b %Y %H:%M:%S GMT", &utc_time) > 0;
+}
+
+static int build_file_cache_headers(
+    const char *root_directory,
+    const char *requested_relative_path,
+    char *etag_out,
+    size_t etag_capacity,
+    char *last_modified_out,
+    size_t last_modified_capacity
+) {
+    char absolute_path[1024];
+    int written;
+    long long file_size = 0;
+    time_t modified_at = 0;
+
+    if (root_directory == NULL || requested_relative_path == NULL ||
+            etag_out == NULL || etag_capacity == 0 ||
+            last_modified_out == NULL || last_modified_capacity == 0 ||
+            !response_file_path_is_safe(requested_relative_path)) {
+        return 0;
+    }
+
+    written = snprintf(absolute_path, sizeof(absolute_path),
+                       "%s/%s", root_directory, requested_relative_path);
+    if (written < 0 || written >= (int)sizeof(absolute_path)) {
+        return 0;
+    }
+    if (!read_file_cache_metadata(absolute_path, &file_size, &modified_at)) {
+        return 0;
+    }
+    if (snprintf(etag_out, etag_capacity, "\"%llx-%llx\"",
+                 (long long)modified_at, file_size) < 0) {
+        return 0;
+    }
+    if (!format_http_date(modified_at, last_modified_out, last_modified_capacity)) {
+        return 0;
+    }
+    return 1;
+}
+
+static void stage_file_cache_headers(
+    SSHttpResponse *response,
+    const char *etag,
+    const char *last_modified
+) {
+    if (response == NULL) {
+        return;
+    }
+    (void)ss_http_response_header(response, "Cache-Control", "public, max-age=60");
+    if (etag != NULL && *etag != '\0') {
+        (void)ss_http_response_header(response, "ETag", etag);
+    }
+    if (last_modified != NULL && *last_modified != '\0') {
+        (void)ss_http_response_header(response, "Last-Modified", last_modified);
+    }
+}
+
 int ss_http_response_file(
     SSHttpResponse *response,
     int status,
     const char *root_directory,
     const char *requested_relative_path
 ) {
+    char etag[64] = "";
+    char last_modified[64] = "";
+
     if (response == NULL || root_directory == NULL
         || requested_relative_path == NULL) {
         return SS_HTTP_ERR_CONFIG;
@@ -727,7 +901,105 @@ int ss_http_response_file(
     response->body = body_bytes;
     response->body_length = (size_t)file_size;
     response->owned_body = body_bytes;
+    if (build_file_cache_headers(
+            root_directory,
+            requested_relative_path,
+            etag,
+            sizeof(etag),
+            last_modified,
+            sizeof(last_modified))) {
+        stage_file_cache_headers(response, etag, last_modified);
+    }
     return SS_HTTP_OK;
+}
+
+static int static_route_relative_path(
+    const char *prefix,
+    const char *path,
+    const char **relative_path_out
+) {
+    static const char index_path[] = "index.html";
+    size_t prefix_length;
+    const char *relative_path;
+
+    if (prefix == NULL || path == NULL || relative_path_out == NULL ||
+            prefix[0] != '/' || path[0] != '/') {
+        return 0;
+    }
+
+    prefix_length = strlen(prefix);
+    if (prefix_length == 0) {
+        return 0;
+    }
+
+    if (prefix_length == 1 && prefix[0] == '/') {
+        relative_path = path + 1;
+        *relative_path_out = *relative_path != '\0' ? relative_path : index_path;
+        return 1;
+    }
+
+    if (strcmp(path, prefix) == 0) {
+        *relative_path_out = index_path;
+        return 1;
+    }
+
+    if (strncmp(path, prefix, prefix_length) == 0 &&
+            path[prefix_length] == '/') {
+        relative_path = path + prefix_length + 1;
+        *relative_path_out = *relative_path != '\0' ? relative_path : index_path;
+        return 1;
+    }
+
+    return 0;
+}
+
+static const SSHttpStaticRoute *find_static_route(
+    const SSHttpServerConfig *config,
+    const char *method,
+    const char *path,
+    const char **relative_path_out
+) {
+    size_t index;
+
+    if (config == NULL || relative_path_out == NULL ||
+            !(ascii_case_equal(method, "GET") || ascii_case_equal(method, "HEAD"))) {
+        return NULL;
+    }
+
+    for (index = 0; index < config->static_route_count; ++index) {
+        const SSHttpStaticRoute *route = &config->static_routes[index];
+        if (static_route_relative_path(route->prefix, path, relative_path_out)) {
+            return route;
+        }
+    }
+
+    return NULL;
+}
+
+static int request_cache_validator_matches(
+    const SSHttpRequest *request,
+    const char *etag,
+    const char *last_modified
+) {
+    const char *if_none_match;
+    const char *if_modified_since;
+
+    if (request == NULL) {
+        return 0;
+    }
+
+    if_none_match = ss_http_request_header(request, "If-None-Match");
+    if (if_none_match != NULL && etag != NULL && strcmp(if_none_match, etag) == 0) {
+        return 1;
+    }
+
+    if_modified_since = ss_http_request_header(request, "If-Modified-Since");
+    if (if_modified_since != NULL && last_modified != NULL &&
+            strcmp(if_modified_since, last_modified) == 0) {
+        return 1;
+    }
+
+    return 0;
 }
 
 /* ----- ss_http_now_millis ----- */
@@ -752,6 +1024,14 @@ long long ss_http_now_millis(void) {
     return (long long)now_ts.tv_sec * 1000LL
          + (long long)(now_ts.tv_nsec / 1000000L);
 #endif
+}
+
+long long ss_http_session_expires_at(long long now_millis, long long ttl_millis) {
+    return now_millis + ttl_millis;
+}
+
+bool ss_http_session_is_expired(long long now_millis, long long expires_at_millis) {
+    return now_millis > expires_at_millis;
 }
 
 /* ----- outbound HTTP/1.1 client (ss_http_client_fetch) -----
@@ -1646,6 +1926,39 @@ static long parse_content_length(const char *buffer, const char *header_end) {
     return 0;
 }
 
+/* Decode a `&`/`=`-split query segment in place: `+` -> space, `%XX` -> byte.
+ * URL-decoding never grows the string (every escape collapses to one byte), so
+ * decoding into the same buffer is safe. Lenient on a malformed `%` (passes it
+ * through literally) rather than dropping the whole request. Without this,
+ * http.requestQueryParam returned raw percent-encoded values to handlers. */
+static void ss_http_url_decode_in_place(char *segment) {
+    if (segment == NULL) {
+        return;
+    }
+    char *dst = segment;
+    const char *src = segment;
+    while (*src != '\0') {
+        char c = *src;
+        if (c == '+') {
+            *dst++ = ' ';
+            ++src;
+        } else if (c == '%' && src[1] != '\0' && src[2] != '\0') {
+            int hi = 0, lo = 0;
+            if (hex_to_nibble(src[1], &hi) && hex_to_nibble(src[2], &lo)) {
+                *dst++ = (char)((hi << 4) | lo);
+                src += 3;
+            } else {
+                *dst++ = c;
+                ++src;
+            }
+        } else {
+            *dst++ = c;
+            ++src;
+        }
+    }
+    *dst = '\0';
+}
+
 static void parse_query_params(char *query, SSHttpRequest *request) {
     char *cursor = query;
 
@@ -1672,9 +1985,12 @@ static void parse_query_params(char *query, SSHttpRequest *request) {
         equals = strchr(pair, '=');
         if (equals != NULL) {
             *equals = '\0';
+            ss_http_url_decode_in_place(pair);
+            ss_http_url_decode_in_place(equals + 1);
             request->query_params[request->query_param_count].name = pair;
             request->query_params[request->query_param_count].value = equals + 1;
         } else {
+            ss_http_url_decode_in_place(pair);
             request->query_params[request->query_param_count].name = pair;
             request->query_params[request->query_param_count].value = "";
         }
@@ -1734,10 +2050,25 @@ static const char *reason_phrase_for_status(int status) {
         return "OK";
     case 201:
         return "Created";
+    case 202:
+        return "Accepted";
     case 204:
         return "No Content";
+    case 301:
+        return "Moved Permanently";
     case 302:
         return "Found";
+    /* 303 was previously unmapped and fell through to the "OK" default, so a
+     * redirect literally emitted "HTTP/1.1 303 OK". Redirect codes are the
+     * common SSR case (POST -> 303 -> GET), so map the full redirect family. */
+    case 303:
+        return "See Other";
+    case 304:
+        return "Not Modified";
+    case 307:
+        return "Temporary Redirect";
+    case 308:
+        return "Permanent Redirect";
     case 400:
         return "Bad Request";
     case 401:
@@ -1748,14 +2079,34 @@ static const char *reason_phrase_for_status(int status) {
         return "Not Found";
     case 405:
         return "Method Not Allowed";
+    case 409:
+        return "Conflict";
     case 413:
         return "Payload Too Large";
+    case 422:
+        return "Unprocessable Entity";
+    case 429:
+        return "Too Many Requests";
     case 500:
         return "Internal Server Error";
     case 503:
         return "Service Unavailable";
     default:
-        return "OK";
+        /* For an unmapped code, return a phrase matching its status CLASS rather
+         * than the old hard-coded "OK" (which mislabeled e.g. a 418 as "418 OK").
+         * RFC 7231 allows any reason phrase; the class name is honest and never
+         * contradicts the numeric code. */
+        if (status >= 100 && status < 200)
+            return "Informational";
+        if (status >= 200 && status < 300)
+            return "OK";
+        if (status >= 300 && status < 400)
+            return "Redirection";
+        if (status >= 400 && status < 500)
+            return "Client Error";
+        if (status >= 500 && status < 600)
+            return "Server Error";
+        return "Unknown";
     }
 }
 
@@ -2122,6 +2473,39 @@ static void free_compiled_routes(void) {
     g_compiled_route_count = 0;
 }
 
+static int route_param_name_is_valid(const char *name, size_t name_length) {
+    if (name == NULL || name_length == 0) {
+        return 0;
+    }
+    for (size_t index = 0; index < name_length; ++index) {
+        unsigned char ch = (unsigned char)name[index];
+        if (!(isalnum(ch) || ch == '_' || ch == '-')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int compile_route_param_segment(
+    SSCompiledRouteSegment *segment,
+    const char *param_name,
+    size_t param_name_length
+) {
+    if (!route_param_name_is_valid(param_name, param_name_length)) {
+        return SS_HTTP_ERR_CONFIG;
+    }
+    segment->is_param = 1;
+    segment->literal = NULL;
+    segment->literal_length = 0;
+    segment->param_name = (char *)malloc(param_name_length + 1);
+    if (segment->param_name == NULL) {
+        return SS_HTTP_ERR_ENGINE;
+    }
+    memcpy(segment->param_name, param_name, param_name_length);
+    segment->param_name[param_name_length] = '\0';
+    return SS_HTTP_OK;
+}
+
 static int compile_routes(const SSHttpServerConfig *config) {
     free_compiled_routes();
     if (config->route_count == 0) {
@@ -2192,21 +2576,27 @@ static int compile_routes(const SSHttpServerConfig *config) {
             }
             SSCompiledRouteSegment *segment = &compiled->segments[compiled->segment_count++];
             if (*segment_start == ':') {
-                if (segment_length < 2) {
-                    /* Bare ":" with no name. */
+                int param_status = compile_route_param_segment(
+                    segment, segment_start + 1, segment_length - 1);
+                if (param_status != SS_HTTP_OK) {
+                    free_compiled_routes();
+                    return param_status;
+                }
+            } else if (*segment_start == '{') {
+                if (segment_length < 3 || segment_start[segment_length - 1] != '}') {
                     free_compiled_routes();
                     return SS_HTTP_ERR_CONFIG;
                 }
-                segment->is_param = 1;
-                segment->literal = NULL;
-                segment->literal_length = 0;
-                segment->param_name = (char *)malloc(segment_length);
-                if (segment->param_name == NULL) {
+                int param_status = compile_route_param_segment(
+                    segment, segment_start + 1, segment_length - 2);
+                if (param_status != SS_HTTP_OK) {
                     free_compiled_routes();
-                    return SS_HTTP_ERR_ENGINE;
+                    return param_status;
                 }
-                memcpy(segment->param_name, segment_start + 1, segment_length - 1);
-                segment->param_name[segment_length - 1] = '\0';
+            } else if (memchr(segment_start, '{', segment_length) != NULL
+                       || memchr(segment_start, '}', segment_length) != NULL) {
+                free_compiled_routes();
+                return SS_HTTP_ERR_CONFIG;
             } else {
                 segment->is_param = 0;
                 segment->literal = segment_start;
@@ -2447,6 +2837,8 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     SSHttpResponseBackend stream_backend;
     int handler_status;
     int response_status;
+    const SSHttpStaticRoute *static_route;
+    const char *static_relative_path = NULL;
 
     if (read_count <= 0) {
         return SS_HTTP_ERR_ENGINE;
@@ -2540,6 +2932,74 @@ static int handle_client(ss_socket_t client_socket, const SSHttpServerConfig *co
     parse_query_params(query, &request);
     memset(&stream_backend, 0, sizeof(stream_backend));
     stream_backend.socket_handle = client_socket;
+
+    static_route = find_static_route(config, method, path, &static_relative_path);
+    if (static_route != NULL) {
+        char static_etag[64] = "";
+        char static_last_modified[64] = "";
+        int has_static_cache_headers;
+        memset(&response, 0, sizeof(response));
+        response.status = 200;
+        response.body = NULL;
+        response.body_length = 0;
+        response.content_type = "text/plain; charset=utf-8";
+        response.owned_body = NULL;
+        response.owned_content_type = NULL;
+        response.backend_response = &stream_backend;
+
+        has_static_cache_headers = build_file_cache_headers(
+            static_route->root_directory,
+            static_relative_path,
+            static_etag,
+            sizeof(static_etag),
+            static_last_modified,
+            sizeof(static_last_modified)
+        );
+        if (has_static_cache_headers &&
+                request_cache_validator_matches(&request, static_etag, static_last_modified)) {
+            response.status = 304;
+            response.body = "";
+            response.body_length = 0;
+            stage_file_cache_headers(&response, static_etag, static_last_modified);
+            response_status = send_response(
+                client_socket,
+                response.status,
+                response.content_type,
+                response.body,
+                &response
+            );
+            clear_owned_response(&response);
+            free(request_storage);
+            return response_status;
+        }
+
+        handler_status = ss_http_response_file(
+            &response,
+            200,
+            static_route->root_directory,
+            static_relative_path
+        );
+        if (handler_status == SS_HTTP_OK && response.body != NULL) {
+            response_status = send_response(
+                client_socket,
+                response.status,
+                response.content_type,
+                response.body,
+                &response
+            );
+        } else {
+            response_status = send_response(
+                client_socket,
+                404,
+                "text/plain; charset=utf-8",
+                "not found\n",
+                &response
+            );
+        }
+        clear_owned_response(&response);
+        free(request_storage);
+        return response_status;
+    }
 
     route = find_compiled_route(method, path, &request);
     if (route == NULL) {

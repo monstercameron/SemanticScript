@@ -1,16 +1,16 @@
-# TaskForge Web — pages module.
+# TaskForge Web - pages module.
 #
 # Owns every HTML response page served by the app. The parent module's
 # route table binds homePageHandler, dashboardPageHandler, and
 # notFoundPageHandler (all exported here) to GET /, GET /dashboard, and
 # the `*` wildcard respectively. Each page composes its body from the
-# components module's render operations — page templates here are thin
+# components module's render operations - page templates here are thin
 # shells that wire together typed HtmlFragment slots.
 
 module app.taskforge_web.pages
 purpose module app.taskforge_web.pages "Server-rendered HTML pages for TaskForge Web: landing page, dashboard, and 404. Each page hydrates from a standard.html template and writes back via http.responseText with text/html content-type."
 moduleOwns app.taskforge_web.pages "HomePageTemplate, DashboardPageTemplate, and NotFoundPageTemplate html templates plus the three page handlers (homePageHandler / dashboardPageHandler / notFoundPageHandler). Each page handler is responsible for picking the component props and stitching component fragments into the shell."
-moduleDoesNotOwn app.taskforge_web.pages "API route declarations (parent module), session lookup, sqlite interaction, or any of the per-component markup — that lives in app.taskforge_web.components. Tailwind config + design tokens live in the shared PageShellHeadComponent."
+moduleDoesNotOwn app.taskforge_web.pages "API route declarations (parent module), session lookup, sqlite interaction, or any of the per-component markup - that lives in app.taskforge_web.components. Tailwind config + design tokens live in the shared PageShellHeadComponent."
 invariant module app.taskforge_web.pages "Every dynamic hole in every page template is a bare HTML hole reference. Static body chrome (gradient backdrop, brand row) is composed from typed HtmlFragment slots so each page can shuffle components without re-writing the visual chrome."
 moduleSecurity app.taskforge_web.pages "Tailwind + Inter font load from public CDNs (cdn.tailwindcss.com, rsms.me). A vNext refine vendors both under static/ so the app is fully self-contained and immune to CDN drift or supply-chain compromise."
 
@@ -22,7 +22,11 @@ exportOperation app.taskforge_web.pages homePageHandler
 exportOperation app.taskforge_web.pages dashboardPageHandler
 exportOperation app.taskforge_web.pages notFoundPageHandler
 
-storage module immutable httpStatusOkLocal Int32 200
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write server-rendered page bodies to the HttpResponse."
+
+storage module immutable httpStatusOkLocal HttpStatusCode 200
+storage module immutable htmlContentType HttpContentType "text/html; charset=utf-8"
 
 # ===== HomePageTemplate + homePageHandler =====
 # Landing page = split layout. Left column: marketing hero (headline +
@@ -35,29 +39,29 @@ html body template HomePageTemplate
   <!doctype html>
   <html lang="en" class="h-full antialiased">
   <head>
-  {headFragment}
+  {{headFragment}}
   </head>
   <body class="min-h-full text-ink-900">
-  {heroBackgroundFragment}
+  {{heroBackgroundFragment}}
   <main class="mx-auto max-w-7xl px-6 py-8 sm:py-10">
-  {brandHeaderFragment}
+  {{brandHeaderFragment}}
   <section class="mt-6 grid items-start gap-10 lg:mt-10 lg:grid-cols-[1.1fr_minmax(0,420px)] lg:gap-16">
-  {landingHeroFragment}
-  {authCardFragment}
+  {{landingHeroFragment}}
+  {{authCardFragment}}
   </section>
-  {featureGridFragment}
+  {{featureGridFragment}}
   <section class="mt-12 grid gap-5 lg:grid-cols-[1fr_360px]">
   <div class="glass rounded-2xl p-6 shadow-glow-soft">
   <h3 class="text-sm font-semibold uppercase tracking-wider text-ink-500">What you get</h3>
   <ol class="mt-4 space-y-3 text-sm text-ink-700">
-  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">1</span><span><strong class="text-ink-900">Sign in</strong> with the seeded demo account or create your own — bcrypt cost-12 hashing, fresh session per login.</span></li>
-  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">2</span><span><strong class="text-ink-900">Land on your dashboard</strong> — a server-rendered shell that the bundled JS hydrates with your todos from the JSON API.</span></li>
-  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">3</span><span><strong class="text-ink-900">Add, complete, delete</strong> — every change persists to SQLite immediately, scoped to your <code class="font-mono text-xs">user_id</code> via foreign-key constraint.</span></li>
+  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">1</span><span><strong class="text-ink-900">Sign in</strong> with the seeded demo account or create your own - bcrypt cost-12 hashing, fresh session per login.</span></li>
+  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">2</span><span><strong class="text-ink-900">Land on your dashboard</strong> - a server-rendered shell that the bundled JS hydrates with your todos from the JSON API.</span></li>
+  <li class="flex gap-3"><span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">3</span><span><strong class="text-ink-900">Add, complete, delete</strong> - every change persists to SQLite immediately, scoped to your <code class="font-mono text-xs">user_id</code> via foreign-key constraint.</span></li>
   </ol>
   </div>
-  {statusCardFragment}
+  {{statusCardFragment}}
   </section>
-  {appFooterFragment}
+  {{appFooterFragment}}
   </main>
   <script src="/assets/home.js" defer></script>
   </body>
@@ -71,72 +75,72 @@ effect homePageHandler write http.response
 useCapability homePageHandler httpResponseWriter
 memory homePageHandler arena request
 async homePageHandler no
-purpose operation homePageHandler "GET / — hydrate HomePageTemplate into a full HTML document and write it back with text/html content type."
-invariant operation homePageHandler "All dynamic holes flow through scoped bare HTML holes; static copy comes from operation-local storage. The handler is read-only — no SQL, no auth, no cookies — so it can be served before any user has registered."
+purpose operation homePageHandler "GET / - hydrate HomePageTemplate into a full HTML document and write it back with text/html content type."
+invariant operation homePageHandler "All dynamic holes flow through scoped bare HTML holes; static copy comes from operation-local storage. The handler is read-only - no SQL, no auth, no cookies - so it can be served before any user has registered."
 
 label startHomePageHandler
 
-storage local immutable homePageTitleText String "TaskForge Web — Modern multi-user todos"
+storage local immutable homePageTitleText String "TaskForge Web - Modern multi-user todos"
 storage local immutable homeProductNameText String "TaskForge Web"
 storage local immutable homeTaglineText String "Multi-user todos, server-rendered, securely stored."
 storage local immutable homeHeadlineText String "Production-grade todos, built end-to-end in SemanticScript."
-storage local immutable homeLeadText String "A full-stack web app — bcrypt-hashed auth, SQLite-backed state, typed server-rendered HTML, vanilla-JS interactivity. No client framework, no ORM, no surprises."
+storage local immutable homeLeadText String "A full-stack web app - bcrypt-hashed auth, SQLite-backed state, typed server-rendered HTML, vanilla-JS interactivity. No client framework, no ORM, no surprises."
 storage local immutable homeVersionText String "1.1.0"
 storage local immutable homeBcryptCostText String "12"
 storage local immutable homeApiBaseUrlText String "http://127.0.0.1:18090"
 storage local immutable homeDemoUsernameText String "demo"
 storage local immutable homeDemoPasswordText String "demo1234"
 
-call renderHomeHeadCall renderPageShellHead
+call renderHomeHeadCall components.renderPageShellHead
 argument renderHomeHeadCall pageTitleText String homePageTitleText
 run renderHomeHeadCall
 bind value homeHeadFragment HtmlFragment renderHomeHeadCall
 
-call renderHomeBackgroundCall renderHeroBackground
+call renderHomeBackgroundCall components.renderHeroBackground
 run renderHomeBackgroundCall
 bind value homeHeroBackgroundFragment HtmlFragment renderHomeBackgroundCall
 
-call renderHomeBrandCall renderBrandHeader
+call renderHomeBrandCall components.renderBrandHeader
 argument renderHomeBrandCall productNameText String homeProductNameText
 argument renderHomeBrandCall taglineText String homeTaglineText
 run renderHomeBrandCall
 bind value homeBrandHeaderFragment HtmlFragment renderHomeBrandCall
 
-call renderHomeHeroCall renderLandingHero
+call renderHomeHeroCall components.renderLandingHero
 argument renderHomeHeroCall productNameText String homeProductNameText
 argument renderHomeHeroCall headlineText String homeHeadlineText
 argument renderHomeHeroCall leadText String homeLeadText
 run renderHomeHeroCall
 bind value homeLandingHeroFragment HtmlFragment renderHomeHeroCall
 
-call renderHomeLoginPanelCall renderLoginPanel
+call renderHomeLoginPanelCall components.renderLoginPanel
 argument renderHomeLoginPanelCall demoUsernameText String homeDemoUsernameText
 argument renderHomeLoginPanelCall demoPasswordText String homeDemoPasswordText
 run renderHomeLoginPanelCall
 bind value homeLoginPanelFragment HtmlFragment renderHomeLoginPanelCall
 
-call renderHomeRegisterPanelCall renderRegisterPanel
+call renderHomeRegisterPanelCall components.renderRegisterPanel
 run renderHomeRegisterPanelCall
 bind value homeRegisterPanelFragment HtmlFragment renderHomeRegisterPanelCall
 
-call renderHomeAuthCardCall renderAuthCard
+call renderHomeAuthCardCall components.renderAuthCard
 argument renderHomeAuthCardCall loginPanelFragment HtmlFragment homeLoginPanelFragment
 argument renderHomeAuthCardCall registerPanelFragment HtmlFragment homeRegisterPanelFragment
 run renderHomeAuthCardCall
 bind value homeAuthCardFragment HtmlFragment renderHomeAuthCardCall
 
-call renderHomeFeatureGridCall renderFeatureGrid
+call renderHomeFeatureGridCall components.renderFeatureGrid
 run renderHomeFeatureGridCall
 bind value homeFeatureGridFragment HtmlFragment renderHomeFeatureGridCall
 
-call renderHomeStatusCardCall renderStatusCard
+call renderHomeStatusCardCall components.renderStatusCard
 argument renderHomeStatusCardCall versionText String homeVersionText
 argument renderHomeStatusCardCall bcryptCostText String homeBcryptCostText
 argument renderHomeStatusCardCall apiBaseUrlText String homeApiBaseUrlText
 run renderHomeStatusCardCall
 bind value homeStatusCardFragment HtmlFragment renderHomeStatusCardCall
 
-call renderHomeFooterCall renderAppFooter
+call renderHomeFooterCall components.renderAppFooter
 run renderHomeFooterCall
 bind value homeAppFooterFragment HtmlFragment renderHomeFooterCall
 
@@ -154,7 +158,7 @@ bind value homePageHtml HtmlDocument hydrateHomePageCall
 
 call writeHomePageCall http.responseText
 argument writeHomePageCall response HttpResponse response
-argument writeHomePageCall status Int32 httpStatusOkLocal
+argument writeHomePageCall status HttpStatusCode httpStatusOkLocal
 argument writeHomePageCall body HtmlDocument homePageHtml
 argument writeHomePageCall contentType HttpContentType htmlContentType
 run writeHomePageCall
@@ -172,16 +176,16 @@ html body template DashboardPageTemplate
   <!doctype html>
   <html lang="en" class="h-full antialiased">
   <head>
-  {headFragment}
+  {{headFragment}}
   </head>
   <body class="min-h-full text-ink-900">
-  {heroBackgroundFragment}
+  {{heroBackgroundFragment}}
   <main class="mx-auto max-w-5xl px-6 py-8 sm:py-10">
   <header class="flex flex-wrap items-center justify-between gap-3">
   <a href="/" class="group flex items-center gap-3">
   <div class="flex h-11 w-11 items-center justify-center rounded-2xl grad-btn text-xl font-bold text-white shadow-glow-brand transition group-hover:scale-105">T</div>
   <div>
-  <div class="text-base font-semibold tracking-tight text-ink-900">{productNameText}</div>
+  <div class="text-base font-semibold tracking-tight text-ink-900">{{productNameText}}</div>
   <div class="text-xs text-ink-500">Your personal todo workspace</div>
   </div>
   </a>
@@ -208,7 +212,7 @@ html body template DashboardPageTemplate
   <span class="text-xs font-semibold uppercase tracking-wider text-ink-500">Open</span>
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-brand-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
   </div>
-  <div id="statOpen" class="mt-2 text-3xl font-semibold tracking-tight text-ink-900">—</div>
+  <div id="statOpen" class="mt-2 text-3xl font-semibold tracking-tight text-ink-900">-</div>
   <div class="mt-1 text-xs text-ink-500">awaiting your attention</div>
   </div>
   <div class="glass rounded-2xl p-6 shadow-glow-soft">
@@ -216,7 +220,7 @@ html body template DashboardPageTemplate
   <span class="text-xs font-semibold uppercase tracking-wider text-ink-500">Completed</span>
   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
   </div>
-  <div id="statDone" class="mt-2 text-3xl font-semibold tracking-tight text-ink-900">—</div>
+  <div id="statDone" class="mt-2 text-3xl font-semibold tracking-tight text-ink-900">-</div>
   <div class="mt-1 text-xs text-ink-500">already done</div>
   </div>
   </section>
@@ -260,7 +264,7 @@ html body template DashboardPageTemplate
   </ul>
   </section>
 
-  {appFooterFragment}
+  {{appFooterFragment}}
   </main>
   <script src="/assets/dashboard.js" defer></script>
   </body>
@@ -274,24 +278,24 @@ effect dashboardPageHandler write http.response
 useCapability dashboardPageHandler httpResponseWriter
 memory dashboardPageHandler arena request
 async dashboardPageHandler no
-purpose operation dashboardPageHandler "GET /dashboard — render the logged-in dashboard shell. /assets/dashboard.js fetches /api/auth/me + /api/todos and populates the user-specific content."
+purpose operation dashboardPageHandler "GET /dashboard - render the logged-in dashboard shell. /assets/dashboard.js fetches /api/auth/me + /api/todos and populates the user-specific content."
 invariant operation dashboardPageHandler "Server-side auth check is intentionally deferred to the API calls the page makes; an unauthenticated visit returns the shell + a JS-driven redirect to / when /api/auth/me 401s."
 
 label startDashboardPageHandler
 
-storage local immutable dashboardTitleText String "TaskForge Web — Dashboard"
+storage local immutable dashboardTitleText String "TaskForge Web - Dashboard"
 storage local immutable dashboardProductNameText String "TaskForge Web"
 
-call renderDashHeadCall renderPageShellHead
+call renderDashHeadCall components.renderPageShellHead
 argument renderDashHeadCall pageTitleText String dashboardTitleText
 run renderDashHeadCall
 bind value dashHeadFragment HtmlFragment renderDashHeadCall
 
-call renderDashBackgroundCall renderHeroBackground
+call renderDashBackgroundCall components.renderHeroBackground
 run renderDashBackgroundCall
 bind value dashHeroBackgroundFragment HtmlFragment renderDashBackgroundCall
 
-call renderDashFooterCall renderAppFooter
+call renderDashFooterCall components.renderAppFooter
 run renderDashFooterCall
 bind value dashAppFooterFragment HtmlFragment renderDashFooterCall
 
@@ -305,7 +309,7 @@ bind value dashboardPageHtml HtmlDocument hydrateDashboardCall
 
 call writeDashboardCall http.responseText
 argument writeDashboardCall response HttpResponse response
-argument writeDashboardCall status Int32 httpStatusOkLocal
+argument writeDashboardCall status HttpStatusCode httpStatusOkLocal
 argument writeDashboardCall body HtmlDocument dashboardPageHtml
 argument writeDashboardCall contentType HttpContentType htmlContentType
 run writeDashboardCall
@@ -321,10 +325,10 @@ html body template NotFoundPageTemplate
   <!doctype html>
   <html lang="en" class="h-full antialiased">
   <head>
-  {headFragment}
+  {{headFragment}}
   </head>
   <body class="min-h-full text-ink-900">
-  {heroBackgroundFragment}
+  {{heroBackgroundFragment}}
   <main class="mx-auto flex max-w-xl flex-col items-center px-6 py-24 text-center">
   <div class="fade-up glass rounded-3xl p-10 shadow-glow-soft">
   <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl grad-btn text-2xl font-bold text-white shadow-glow-brand">404</div>
@@ -358,15 +362,15 @@ invariant operation notFoundPageHandler "Always returns 404 + an HTML body; the 
 
 label startNotFoundPageHandler
 
-storage local immutable notFoundTitleText String "404 — TaskForge Web"
-storage local immutable notFoundStatusCode Int32 404
+storage local immutable notFoundTitleText String "404 - TaskForge Web"
+storage local immutable notFoundStatusCode HttpStatusCode 404
 
-call renderNotFoundHeadCall renderPageShellHead
+call renderNotFoundHeadCall components.renderPageShellHead
 argument renderNotFoundHeadCall pageTitleText String notFoundTitleText
 run renderNotFoundHeadCall
 bind value notFoundHeadFragment HtmlFragment renderNotFoundHeadCall
 
-call renderNotFoundBackgroundCall renderHeroBackground
+call renderNotFoundBackgroundCall components.renderHeroBackground
 run renderNotFoundBackgroundCall
 bind value notFoundHeroBackgroundFragment HtmlFragment renderNotFoundBackgroundCall
 
@@ -378,7 +382,7 @@ bind value notFoundPageHtml HtmlDocument hydrateNotFoundCall
 
 call writeNotFoundCall http.responseText
 argument writeNotFoundCall response HttpResponse response
-argument writeNotFoundCall status Int32 notFoundStatusCode
+argument writeNotFoundCall status HttpStatusCode notFoundStatusCode
 argument writeNotFoundCall body HtmlDocument notFoundPageHtml
 argument writeNotFoundCall contentType HttpContentType htmlContentType
 run writeNotFoundCall

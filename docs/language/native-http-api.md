@@ -12,11 +12,13 @@ adapter C ABI.
 
 Current implementation status:
 
-- `webServer`, `serverHost`, `serverPort`, and `route` are parsed and indexed.
+- `webServer`, `serverHost`, `serverPort`, `route`, and `staticRoute` are
+  parsed and indexed.
 - Routed `target webServer` programs emit a native `main` that calls the
   SemanticScript HTTP runtime adapter.
 - The SemanticScript-owned C adapter ABI compiles.
-- The default adapter backend serves blocking HTTP/1.1 exact routes.
+- The default adapter backend serves blocking HTTP/1.1 route handlers and
+  declarative static-file prefixes.
 - Request method, path, header, query parameter, bounded body-text, bounded
   body-byte, and multipart part reads are available through native runtime
   calls.
@@ -32,7 +34,10 @@ Current implementation status:
 - The default adapter is blocking and single-threaded today. A long-running
   route handler, middleware operation, or future blocking outbound fetch pins
   the server loop until it returns or the process is stopped.
-- H2O/HTTP2 dispatch is not wired into `semsc.py` yet.
+- H2O/HTTP2 dispatch is not wired into `semsc.py` yet. The source-level
+  `SEM_HTTP_WITH_H2O` branch is a staged backend hook only; `sem` exposes this
+  as the disabled `nativeHttpH2oBackend` runtime feature and the branch returns
+  `SS_HTTP_ERR_RUNTIME_UNAVAILABLE`.
 
 This file describes the API shape implemented by the current adapter plus the
 nearby request/response gaps still needed for a fuller web runtime.
@@ -46,7 +51,9 @@ or slow clients this bites in practice — firing several requests at once
 (especially with some hitting a timeout) can leave sockets lingering and the
 server stops answering *everything*, including `/health`. Recovery is kill +
 restart, then one request at a time. This is expected for the current backend; a
-non-blocking/H2O backend is future work.
+non-blocking/H2O backend is future work. `sem docs search "concurrent dispatch"`
+returns the disabled `nativeHttpConcurrentDispatch` runtime feature so tools do
+not infer concurrency from the `webServer` surface.
 
 A dropped client connection no longer kills the server: the adapter ignores
 `SIGPIPE` on POSIX, so a client that closes/resets mid-response (keep-alive
@@ -77,8 +84,48 @@ Testing guidance (especially on Windows):
   the server dies between calls. To keep one alive out-of-band on Windows,
   launch it parented to the WMI service:
   `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='C:\path\server.exe'}`.
-  The built exe is self-contained (assets are embedded at build time), so it
-  needs no particular working directory.
+  Native webServer entrypoints switch the process working directory to the
+  executable directory at startup, so relative SQLite paths and `staticRoute`
+  roots resolve beside the exe even when the launcher starts elsewhere.
+
+## SQLite Process-Lifetime Handles
+
+Handlers do not need to open and close SQLite on every request when the app can
+share one process-lifetime handle. Use the server lifecycle rows for ownership:
+open the database from `webServerStartup`, store the resulting `SqliteDatabase`
+in `storage module mutable` or `sharedState process mutable`, read that handle
+from route handlers, and close it from `webServerShutdown`.
+
+The shape is:
+
+```semanticscript
+storage module mutable appDatabase SqliteDatabase 0
+
+operation openAppDatabase
+call openDatabaseCall sqlite.openDatabase
+argument openDatabaseCall path String databasePath
+argument openDatabaseCall mode SqliteOpenMode readWriteCreateSqliteOpenMode
+run openDatabaseCall
+bind ok openedDatabase SqliteDatabase openDatabaseCall
+bind error openDatabaseError SqliteDatabaseOpenFailure openDatabaseCall
+branch error source openDatabaseCall target openFailed
+set storage appDatabase openedDatabase
+return value startupOkStatus
+
+operation closeAppDatabase
+call closeDatabaseCall sqlite.closeDatabase
+argument closeDatabaseCall database SqliteDatabase appDatabase
+run closeDatabaseCall
+ignore ok source closeDatabaseCall type Int32
+bind error closeDatabaseError SqliteDatabaseCloseFailure closeDatabaseCall
+return value shutdownOkStatus
+```
+
+This is not a connection pool. It is one handle reused by a single native
+process. That matches the current blocking, single-threaded HTTP adapter. If a
+future backend dispatches handlers concurrently, sharing this handle needs an
+explicit guard/owner contract or a real pool; otherwise keep the per-request
+open/close pattern for isolation.
 
 ## Server Shape
 
@@ -103,12 +150,20 @@ Rules:
 - `serverPort SERVER PORT` sets the bind port.
 - `route SERVER METHOD PATH HANDLER` maps one HTTP method/path pair to one
   operation.
+- `staticRoute SERVER URL_PREFIX ROOT_DIRECTORY` maps GET/HEAD requests under
+  one URL prefix to files under a public root directory without writing a
+  handler. For example, `staticRoute appServer "/assets" "assets"` serves
+  `/assets/site.css` from `assets/site.css` and `/assets` from
+  `assets/index.html` beside the executable.
 - `routeNotFound SERVER HANDLER` registers a JSON/HTML/application fallback for
   unmatched paths.
 - `routeMethodNotAllowed SERVER HANDLER` registers the fallback used when a
   request path matches a route pattern but the HTTP method does not.
-- The first backend should support exact static paths. Path parameters can be
-  added after the exact-route dispatcher is stable.
+- Route paths can be exact literals or contain path-parameter segments in
+  either `:name` or `{name}` form. Regex and constraint forms such as
+  `{id:[0-9]+}` are rejected; the native matcher only captures whole path
+  segments by name. Static routes are prefix routes and are checked before
+  handler routes.
 - Current checked methods are `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`,
   and `OPTIONS`. Keep source methods uppercase unless a test explicitly covers
   compatibility behavior.
@@ -118,7 +173,26 @@ Rules:
   `routeMiddlewareOptOut SERVER PATH "rationale"` declare intentional per-path
   gaps for linter coverage.
 - `routeTimeout SERVER PATH DURATION` is parsed as metadata only. The blocking
-  runtime does not preempt synchronous handlers.
+  runtime does not preempt synchronous handlers; `semlint` SS3618 warns on the
+  row so the limitation is visible during `sem check`.
+
+## HTML Template Islands And Inline JavaScript
+
+`html body template` scans ordinary text and quoted attributes for `{{name}}`
+hydrate holes. The old `{name}` hole form is a hard error; use `{{name}}`.
+Single braces in JavaScript, CSS, and object literals remain literal unless
+they are exactly the old hole syntax, so `import { initHTMLeX } from
+"/assets/app.js"` does not become a template hole. Hydrating directly inside raw
+script/style text is rejected by design; put dynamic values in normal HTML
+text/attributes, a JSON endpoint, or a separate static/script route and have the
+browser code fetch or read those values. URL-bearing attributes (`href`, `src`,
+`action`, `formaction`, and `poster`) require `HtmlSafeUrl`; plain `String`
+continues to escape in text and non-URL quoted attribute sinks, but is rejected
+for those URL sinks.
+
+For larger client scripts, prefer `staticRoute appServer "/assets" "assets"` or
+a dedicated route returning a `String` constant. Keep script source as script
+source, not as SemanticScript row syntax.
 
 ## Handler ABI
 
@@ -203,16 +277,30 @@ return value writeStatus
 `HttpTextBody` is a string-backed role alias. There is no predeclared
 `HttpStatus.Ok` constant, so declare concrete values with `storage` and pass them by name.
 
+Static assets do not need a handler operation when they fit the built-in
+directory-serving contract. Use `staticRoute SERVER URL_PREFIX ROOT_DIRECTORY`;
+the runtime strips the URL prefix, serves the remaining relative path with the
+same safety checks and content-type sniffing as `http.responseFile`, maps the
+prefix itself to `index.html`, and returns the standard plaintext 404 for a
+missing file. Use a hand-written `route` + `http.responseFile` handler only
+when application code must authenticate, rewrite, or audit the asset request.
+Native static file responses now stamp `Cache-Control: public, max-age=60`,
+`ETag`, and `Last-Modified`. `staticRoute` also honors exact
+`If-None-Match` and `If-Modified-Since` validator matches with `304 Not
+Modified`; hand-written handlers can still use the exported header constants
+when they own a custom caching policy.
+
 Initial call targets:
 
 | Target | Inputs | Output | Lowering |
 |---|---|---|---|
 | `http.responseHtml` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody` | `Int32` | `ss_http_response_text` with `text/html; charset=utf-8` |
 | `http.responseText` | `response HttpResponse`, `status HttpStatusCode`, `body HttpTextBody`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_text` |
+| `http.redirect` | `response HttpResponse`, `status HttpStatusCode`, `location HttpHeaderValue` | `Int32` | `ss_http_response_header(Location)` + `ss_http_response_text` with an empty `text/plain` body |
 | `http.responseBytes` | `response HttpResponse`, `status HttpStatusCode`, `body HttpByteBody`, `bodyLength HttpBodyLength`, optional `contentType HttpContentType` | `Int32` | `ss_http_response_bytes` |
 | `http.responseSseEvent` | `response HttpResponse`, `status HttpStatusCode`, `event SseEventName`, `data SseEventData` | `Int32` | `ss_http_response_sse_event` |
 | `http.responseHeader` | `response HttpResponse`, `name HttpHeaderName`, `value HttpHeaderValue` | `Int32` | `ss_http_response_header` |
-| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `rootDirectory String`, `requestedPath String` | `Int32` | `ss_http_response_file`; rejects traversal/absolute paths, sniffs content type by extension, and refuses files over 16 MiB |
+| `http.responseFile` | `response HttpResponse`, `status HttpStatusCode`, `rootDirectory String`, `requestedPath String` | `Int32` | `ss_http_response_file`; rejects traversal/absolute paths, sniffs content type by extension, refuses files over 16 MiB, and stamps Cache-Control/ETag/Last-Modified when file metadata is available |
 | `http.requestMethod` | `request HttpRequest` | `HttpRequestValue` | `ss_http_request_method` |
 | `http.requestPath` | `request HttpRequest` | `HttpRequestValue` | `ss_http_request_path` |
 | `http.requestPathParam` | `request HttpRequest`, `name String` | `HttpRequestValue` | `ss_http_request_path_param` |
@@ -222,6 +310,11 @@ Initial call targets:
 | `http.requestBodyText` | `request HttpRequest` | `HttpTextBody` | `ss_http_request_body_text` |
 | `http.requestBodyBytes` | `request HttpRequest` | `HttpByteBody` | `ss_http_request_body_bytes` |
 | `http.requestBodyLength` | `request HttpRequest` | `HttpBodyLength` | `ss_http_request_body_length` |
+| `http.requestValueLength` | `value HttpRequestValue` | `HttpBodyLength` | `ss_http_request_value_length`; returns `0` for null |
+| `http.requestValueIsEmpty` | `value HttpRequestValue` | `Bool` | `ss_http_request_value_is_empty`; true for null or empty |
+| `http.nowMillis` | none | `Int64` | `ss_http_now_millis` |
+| `http.sessionExpiresAt` | `nowMillis Int64`, `ttlMillis SessionTtlMillis` | `SessionExpiresAtMillis` | `standard.http` runtimeBinding wrapper over `ss_http_session_expires_at`; links in native/webServer builds |
+| `http.sessionIsExpired` | `nowMillis Int64`, `expiresAtMillis SessionExpiresAtMillis` | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_session_is_expired`; links in native/webServer builds |
 | `http.multipartPartText` | `request HttpRequest`, `name String` | `HttpTextBody` | `ss_http_multipart_part_text` |
 | `http.multipartPartBytes` | `request HttpRequest`, `name String` | `HttpByteBody` | `ss_http_multipart_part_bytes` |
 | `http.multipartPartLength` | `request HttpRequest`, `name String` | `HttpBodyLength` | `ss_http_multipart_part_length` |
@@ -235,16 +328,74 @@ Initial call targets:
 | `http.clientDisconnected` | `response HttpResponse` | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_client_disconnected` |
 | `http.serverIsShuttingDown` | none | `Bool` | `standard.http` runtimeBinding wrapper over `ss_http_server_is_shutting_down` |
 
+### Set-Cookie And TLS Detection
+
+Cookies are emitted today with `http.responseHeader` and the exported
+`standard.http` constants:
+
+- `setCookieHeaderName` is the canonical `Set-Cookie` header name.
+- `cookieSecureHttpOnlySameSiteLaxSuffix` is the production session-cookie
+  suffix when the request is known to be HTTPS.
+- `cookieHttpOnlySameSiteLaxSuffix` is the local/plain-HTTP suffix.
+- `forwardedProtoHeaderName` and `forwardedProtoHttpsValue` are the documented
+  proxy-header check for deployments behind a trusted TLS terminator.
+
+The native HTTP/1.1 adapter does not terminate TLS and therefore cannot infer
+the browser-facing scheme by itself. In production, terminate TLS before the
+SemanticScript process and configure that ingress to strip any client-supplied
+`X-Forwarded-Proto` header, then set `X-Forwarded-Proto: https` itself. Handler
+code can read that header with `http.requestHeader`, guard the nullable result
+with `pointer.isNull`, compare it to `forwardedProtoHttpsValue` with
+`text.equals`, and choose the `Secure` cookie suffix only on the HTTPS branch.
+Do not trust `X-Forwarded-Proto` from arbitrary direct clients.
+
 Current request-body behavior is deliberately bounded: the blocking adapter
 buffers at most 64 KiB of headers plus body per request and returns `413` for
 larger payloads. `requestBodyText` is for UTF-8/text demos. `requestBodyBytes`
 and `responseBytes` preserve embedded NUL bytes by carrying an explicit length,
 but the whole request is still buffered before handler dispatch.
 
+Form-urlencoded bodies use `http.requestBodyText` followed by `http.formField`.
+`http.formField` URL-decodes one named field into caller-owned scratch memory;
+it does not allocate its return value. Prefer `memory.allocateMemoryBytes` for
+that scratch, branch on allocation failure with `pointer.isNull`, pass the
+allocated pointer and capacity to `http.formField`, guard the returned
+`HttpRequestValue` with `pointer.isNull`, and release the scratch with
+`memory.releaseMemoryBytes` after all validation, authentication, rendering, or
+persistence has finished. The returned value aliases the scratch buffer, so
+freeing or overwriting the scratch before downstream use is a use-after-free or
+stale-value bug.
+
 Current multipart behavior is a small `multipart/form-data` boundary parser for
 bounded requests. It can read a named part's text, bytes, byte length, filename,
 and content type. It does not stream files to disk, decode nested multipart
 bodies, percent-decode names, or enforce per-part quotas beyond the request cap.
+Multipart readers operate directly on `HttpRequest` and do not use the
+caller-owned scratch pattern. Form-urlencoded readers operate on
+`HttpTextBody` and do use scratch. There is no unified `requestFormValue`
+adapter yet; choose the reader family from the request `Content-Type` instead
+of mixing the two surfaces.
+
+JSON credential POST handlers should not pretend the body is form-urlencoded.
+The supported pattern today is:
+
+1. Read `http.requestBodyText` and branch on `pointer.isNull` before parsing.
+2. Parse the body with `json.createDocument`, using an explicit
+   `JsonCapacityBytes` bound suitable for login payloads.
+3. Register `defer ... json.destroyDocument` immediately after the document is
+   owned.
+4. Use `json.documentRoot`, then `json.objectFieldAt` for fields such as
+   `username` and `password`.
+5. Copy each field with `json.cursorString` into caller-owned scratch buffers,
+   branch on Result errors, then authenticate from those copied values.
+6. Return JSON with `http.responseHeader Content-Type application/json` followed
+   by `http.responseText`, or use the exported `jsonContentType` constant from
+   `standard.http`.
+
+That pattern keeps URL-decoding, JSON parsing, scratch-buffer ownership, and
+document cleanup visible as source data. It also avoids the common mistake of
+feeding a JSON login body to `http.formField`, which only understands
+`application/x-www-form-urlencoded`.
 
 Nullable request readers are still pointer-shaped at the ABI boundary:
 `http.requestHeader`, `http.requestQueryParam`, `http.requestCookie`,
@@ -255,6 +406,10 @@ makes the handler fail. Production handlers should guard nullable reader results
 with `pointer.isNull` and branch to an explicit response. Routes that
 intentionally pin the adapter's null-body 500 path for regression coverage
 should use `pinsNullBodyFailurePath OP "rationale"` rather than a prose warning.
+For scalar presence checks, call `http.requestValueIsEmpty` or
+`http.requestValueLength` on the nullable value after reading it. Both helpers
+treat `NULL` as empty, which is the intended cookie/session existence test
+without a database lookup.
 
 `http.responseSseEvent` remains the one-shot event-stream body formatter. It
 emits a valid `text/event-stream` payload with a fixed `Content-Length` and then
@@ -272,20 +427,33 @@ Graceful shutdown drain state is exposed through `standard.http`, not through
 application-specific compiler lowering. Import `standard.http` and call
 `http.serverIsShuttingDown` from a handler or middleware that declares
 `effect OP read http.server` and uses a capability covering `http.server read`.
-The operation returns only the process drain flag. Application code owns whether
-that flag makes readiness fail, command routes reject, SSE subscribers drain, or
-read-only routes remain available.
+The operation returns only the process drain flag. There is no built-in
+graceful-drain timeout policy yet: application code owns whether that flag makes
+readiness fail, command routes reject, SSE subscribers drain, or read-only
+routes remain available, and an external supervisor/reverse proxy should own
+hard shutdown deadlines.
 
-Current query behavior is raw splitting by `&` and `=`. The blocking adapter's
-lookup returns the first matching duplicate key today. Percent decoding,
-structured form parsing, and a language-level duplicate-key policy are future
-APIs.
+Session expiry policy is explicit source data. Import `standard.http`, read the
+current timestamp with `http.nowMillis`, compute a persisted expiry with
+`http.sessionExpiresAt(nowMillis, sessionDefaultTtlMillis)`, and reject later
+requests when `http.sessionIsExpired(currentNowMillis, storedExpiresAtMillis)`
+returns true. `sessionDefaultTtlMillis` is 24 hours; applications can pass their
+own immutable Int64 value through the `SessionTtlMillis` argument row when their
+auth policy differs. Both helpers are native runtime bindings, so this direct
+pattern links in native and webServer builds.
+
+Current query behavior is splitting by `&` and `=`, then URL-decoding `%XX` and
+`+` into the returned caller-visible value. The blocking adapter's lookup
+returns the first matching duplicate key today. Structured form parsing and a
+language-level duplicate-key policy are future APIs.
 
 Future targets:
 
 | Target | Purpose |
 |---|---|
-| Async stream fanout / cancellation hooks | Nonblocking subscriber queues and request-cancellation-aware long-lived SSE. |
+| Built-in request logger | Emit method/path/status/latency from the adapter without hand-written middleware. |
+| Metrics/tracing surface | First-class counters, timings, spans, and structured application events. |
+| Async stream fanout / cancellation hooks | Nonblocking subscriber queues, backpressure/queue-depth limits, and request-cancellation-aware long-lived SSE. |
 | Request/connection cancellation token | Let long-running handlers and SSE fanout observe client disconnects and shutdown cancellation. |
 
 ## Minimal Example

@@ -677,9 +677,7 @@ const primitiveTypes = new Map([
   ['JsonScratchBuffer', 'Caller-owned JSON scratch buffer.'],
   ['JsonCapacityBytes', 'JSON runtime capacity in bytes.'],
   ['JsonValueKind', 'JSON cursor kind enum.'],
-  ['HtmlText', 'Escaped HTML text value safe for text content and quoted attributes during template hydration.'],
-  ['HtmlClass', 'HTML class attribute value. Template sink checks require this for class attributes.'],
-  ['SafeUrl', 'Trusted URL value for URL-bearing HTML attributes such as href, src, action, formaction, and poster.'],
+  ['HtmlSafeUrl', 'Trusted URL value required for URL-bearing HTML attributes such as href, src, action, formaction, and poster.'],
   ['HtmlFragment', 'Hydrated HTML fragment inserted raw only into text-content positions.'],
   ['HtmlTrustedFragment', 'Trusted HTML fragment inserted raw only into text-content positions.'],
   ['HtmlDocument', 'Full hydrated HTML document value produced by html.hydrate.* targets.'],
@@ -947,7 +945,7 @@ const verbHoverText = new Map([
   ['routeMiddlewareOptOut', 'Web server route middleware opt-out: routeMiddlewareOptOut SERVER PATH "rationale". Used by semlint route coverage checks.'],
   ['html', 'HTML template syntax family: html template NAME, html parameter template TEMPLATE NAME TYPE, or html body template TEMPLATE.'],
   ['htmlTemplate', 'First-class HTML/SSX template declaration: htmlTemplate NAME. The body starts at htmlBody NAME.'],
-  ['htmlArg', 'HTML template hydration input: htmlArg TEMPLATE ARG_NAME TYPE. Body holes must reference declared args as {htmlArg.ARG_NAME}.'],
+  ['htmlArg', 'Legacy HTML template hydration input. Current templates infer holes from `{{name}}` / `{{record.field}}` and pass values with hydrate `argument` rows.'],
   ['htmlBody', 'Starts the indentation-sensitive HTML/SSX body island for a template. The island ends at the next non-empty column-0 SemanticScript line.'],
   ['json', 'JSON syntax family: json body NAME starts an indentation-sensitive JSON literal island.'],
   ['jsonBody', 'Starts an indentation-sensitive JSON literal island bound to a preceding immutable storage binding with the same name.'],
@@ -2998,7 +2996,7 @@ const getTokenAtPosition = (document, position) => {
 
 const getHtmlArgReferenceAtPosition = (document, position) => {
   const lineText = document.lineAt(position.line).text;
-  const referencePattern = /\{\s*(?:htmlArg\.)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}/g;
+  const referencePattern = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}/g;
   let match;
 
   while ((match = referencePattern.exec(lineText)) !== null) {
@@ -3007,7 +3005,7 @@ const getHtmlArgReferenceAtPosition = (document, position) => {
 
     if (position.character >= start && position.character <= end) {
       return {
-        text: match[1],
+        text: match[0],
         rootText: match[1].split('.')[0],
         range: new vscode.Range(position.line, start, position.line, end),
       };
@@ -3220,7 +3218,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
     case 'htmlTemplate':
       return detailHover(`HTML template: ${tokenText(tokens, 1)}`, [
         `Declares first-class HTML/SSX template ${inlineCode(tokenText(tokens, 1))}.`,
-        'Follow with explicit `htmlArg` rows and exactly one `htmlBody` island for the same template name.',
+        'Follow with exactly one `htmlBody` island for the same template name. Dynamic holes are inferred from `{{name}}` / `{{record.field}}`.',
       ]);
 
     case 'htmlArg':
@@ -3228,7 +3226,7 @@ const humanReadableLineHover = (tokens, tokenIndex) => {
         `Template: ${inlineCode(tokenText(tokens, 1))}`,
         `Argument: ${inlineCode(tokenText(tokens, 2))}`,
         `Type: ${inlineCode(tokenText(tokens, 3))}`,
-        'Inside the body, dynamic holes must reference this as `{htmlArg.NAME}`.',
+        'Legacy row: current templates infer dynamic holes from `{{name}}` / `{{record.field}}` and receive values through hydrate `argument` rows.',
       ]);
 
     case 'htmlBody':

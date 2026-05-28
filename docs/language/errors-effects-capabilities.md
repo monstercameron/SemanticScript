@@ -22,7 +22,7 @@ operation writeStandardOutputLine
 input operation writeStandardOutputLine text String
 output operation writeStandardOutputLine Result Void ConsoleWriteError
 effect writeStandardOutputLine write console.stdout
-purpose writeStandardOutputLine "Write one line and surface console failures"
+purpose operation writeStandardOutputLine "Write one line and surface console failures"
 ```
 
 `Result OK ERROR` is a type-level contract. In current LLVM lowering, the
@@ -134,7 +134,7 @@ use site. `authority` is an inline grant form. Compiler strict lint and
 
 - a reusable **`capability` + `useCapability`** pair (declare the grant once,
   attach it to each operation that uses it), or
-- an inline **`authority OP ACCESS EFFECT_PATH`** row (a one-off grant on that
+- an inline **`authority OP ACTION EFFECT_PATH`** row (a one-off grant on that
   operation).
 
 So `authority` is **not** required *in addition* to a capability — it is an

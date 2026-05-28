@@ -25,9 +25,9 @@ re-check
 The corresponding semantic-loop commands are:
 
 ```powershell
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py bootstrap --json
-python SemanticScript\tools\sem.py agent-docs --json PATH
+sem version --json
+sem bootstrap --json
+sem agent-docs --json PATH
 $smoke = @'
 error ConsoleWriteError
 errorCase ConsoleWriteError ConsoleWriteFailed Int32
@@ -43,21 +43,25 @@ label greetingWriteFailed
 makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError
 label greetingDone
 '@
-python SemanticScript\tools\sem.py eval --code $smoke --json
-python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
-python SemanticScript\tools\sem.py docs index --path PATH --include-std --embedding-provider none --json
-python SemanticScript\tools\sem.py docs search "capability, API, type, syntax, or runtime need" --path PATH --json
-python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json
-python SemanticScript\tools\sem.py deps sync --json PATH
-python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind summary --json PATH
-python SemanticScript\tools\sem.py slice --operation NAME --json PATH
-python SemanticScript\tools\sem.py explain CODE --json
-python SemanticScript\tools\sem.py fix --plan --json PATH
-python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
-python SemanticScript\tools\sem.py patch --apply --json PLAN.json
-python SemanticScript\tools\sem.py check --json PATH
+sem eval --code $smoke --json
+sem skills get sem-start sem sem-agent sem-syntax --full --json
+sem docs index --path PATH --include-std --embedding-provider none --json
+sem docs search "capability, API, type, syntax, or runtime need" --path PATH --json
+sem docs get OPERATION_TARGET_TYPE_OR_ENUM --json
+sem deps sync --json PATH
+sem check --json PATH
+sem graph --kind summary --json PATH
+sem slice --operation NAME --json PATH
+sem explain CODE --json
+sem fix --plan --json PATH
+sem patch --dry-run --json PLAN.json
+sem patch --apply --json PLAN.json
+sem check --json PATH
 ```
+
+The examples use the installed `sem` command. In a source checkout, replace
+`sem` with `python SemanticScript/tools/sem.py`; forward-slash paths work on
+Windows, Linux, and macOS.
 
 `sem help --json PATH` and `sem bootstrap --json PATH` also expose a
 `workflows` array for choosing the right action class. Use that before assuming
@@ -84,8 +88,9 @@ server cwd is the project root. It copies live project-local `AGENTS.md` /
 `CLAUDE.md` content into the session; skills remain version-matched tool and
 language guidance.
 
-`skills get --json` now returns a summary/index payload by default. Use
-`--full --json` only when an agent truly needs the raw skill source bodies.
+`skills get --json` returns a summary/index payload by default. Bootstrap and
+first-load commands use `--full --json` so agents receive the actual skill
+bodies immediately; use the default summary mode only for quick inventory.
 Use `docs search` before generating standard-library calls, capability rows,
 failure handling, or cleanup for APIs the agent has not already loaded.
 For CLI search on a fresh checkout, run `docs index --embedding-provider none`
@@ -106,8 +111,8 @@ default. Add `--full` when you explicitly need the entire machine payload.
 Harness loop, only after semantic preflight is clean:
 
 ```powershell
-python SemanticScript\tools\sem.py test --json PATH
-python SemanticScript\tools\sem.py dev --json PATH
+sem test --json PATH
+sem dev --json PATH
 ```
 
 By default the semantic-contract lane (`*.test.sem`) is check-validated only —
@@ -117,7 +122,7 @@ behavioral assertion actually fail the suite, run a contract as a complete
 program (give it `entry console main`) and pass `--execute-contracts`:
 
 ```powershell
-python SemanticScript\tools\sem.py test --json --execute-contracts PATH
+sem test --json --execute-contracts PATH
 ```
 
 This JIT-runs each non-trivial, buildable contract and fails it on a clean
@@ -221,23 +226,23 @@ only then run behavior/watch loops
 Green validation fixture:
 
 ```powershell
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+sem check --json SemanticScript/tests/agent_cli_demo.test.sem
+sem fmt --check SemanticScript/tests/agent_cli_demo.test.sem
+sem test --json SemanticScript/tests/agent_cli_demo.test.sem --skip-python-harnesses
 ```
 
 Copyable PowerShell repair loop on a disposable file:
 
 ```powershell
-Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
-python SemanticScript\tools\sem.py explain SS3104 --json
-python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
-python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
-python SemanticScript\tools\sem.py patch --dry-run --json plan.json
-python SemanticScript\tools\sem.py patch --apply --json plan.json
-python SemanticScript\tools\sem.py fmt --check .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
+Copy-Item SemanticScript/tests/tiny.sem ./scratch.sem
+sem check --json ./scratch.sem
+sem explain SS3104 --json
+sem slice --operation main --json ./scratch.sem
+sem fix --plan --json ./scratch.sem | Out-File plan.json -Encoding utf8
+sem patch --dry-run --json plan.json
+sem patch --apply --json plan.json
+sem fmt --check ./scratch.sem
+sem check --json ./scratch.sem
 ```
 
 ## Version-Matched Skills
@@ -246,9 +251,9 @@ Agents should load repo-backed guidance from the same `sem` binary that will
 validate the project.
 
 ```powershell
-python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
-python SemanticScript\tools\sem.py skills get sem-diagnostics --json
+sem skills list --json
+sem skills get sem-start sem sem-agent sem-syntax --full --json
+sem skills get sem-diagnostics --full --json
 ```
 
 The current public aliases map to canonical bundled skills:
@@ -277,10 +282,10 @@ with the current tool version.
 Run the smallest useful validation set before and after focused edits:
 
 ```powershell
-python -m py_compile SemanticScript\compiler\semsc.py SemanticScript\linter\semlint.py SemanticScript\tools\sem.py
-python SemanticScript\tools\sem.py check --json SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py fmt --check SemanticScript\tests\agent_cli_demo.test.sem
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+python -m py_compile SemanticScript/compiler/semsc.py SemanticScript/linter/semlint.py SemanticScript/tools/sem.py
+sem check --json SemanticScript/tests/agent_cli_demo.test.sem
+sem fmt --check SemanticScript/tests/agent_cli_demo.test.sem
+sem test --json SemanticScript/tests/agent_cli_demo.test.sem --skip-python-harnesses
 ```
 
 Use the broader release commands in `RELEASE.md` when changing compiler,
@@ -291,10 +296,10 @@ runtime, stdlib, package, or editor behavior.
 Primary agent-loop surfaces:
 
 ```powershell
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py bootstrap --json
-python SemanticScript\tools\sem.py agent-docs --json PATH
-python SemanticScript\tools\sem.py doctor --json
+sem --version --json
+sem bootstrap --json
+sem agent-docs --json PATH
+sem doctor --json
 $smoke = @'
 error ConsoleWriteError
 errorCase ConsoleWriteError ConsoleWriteFailed Int32
@@ -310,36 +315,36 @@ label greetingWriteFailed
 makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError
 label greetingDone
 '@
-python SemanticScript\tools\sem.py eval --code $smoke --json
-python SemanticScript\tools\sem.py docs index --path PATH --include-std --embedding-provider none --json
-python SemanticScript\tools\sem.py docs search "capability, API, type, syntax, or runtime need" --path PATH --json
-python SemanticScript\tools\sem.py docs get OPERATION_TARGET_TYPE_OR_ENUM --json
-python SemanticScript\tools\sem.py readiness --json PATH
-python SemanticScript\tools\sem.py check --json PATH
-python SemanticScript\tools\sem.py graph --kind summary --json PATH
-python SemanticScript\tools\sem.py graph --kind routes --json PATH
-python SemanticScript\tools\sem.py slice --operation NAME --json PATH
-python SemanticScript\tools\sem.py slice --route METHOD:/path --json PATH
-python SemanticScript\tools\sem.py size --json PATH
-python SemanticScript\tools\sem.py explain CODE --json
-python SemanticScript\tools\sem.py fix --plan --json PATH
-python SemanticScript\tools\sem.py patch --dry-run --json PLAN.json
-python SemanticScript\tools\sem.py patch --apply --json PLAN.json
-python SemanticScript\tools\sem.py dev --json PATH
-python SemanticScript\tools\sem.py test --json PATH
+sem eval --code $smoke --json
+sem docs index --path PATH --include-std --embedding-provider none --json
+sem docs search "capability, API, type, syntax, or runtime need" --path PATH --json
+sem docs get OPERATION_TARGET_TYPE_OR_ENUM --json
+sem readiness --json PATH
+sem check --json PATH
+sem graph --kind summary --json PATH
+sem graph --kind routes --json PATH
+sem slice --operation NAME --json PATH
+sem slice --route METHOD:/path --json PATH
+sem size --json PATH
+sem explain CODE --json
+sem fix --plan --json PATH
+sem patch --dry-run --json PLAN.json
+sem patch --apply --json PLAN.json
+sem dev --json PATH
+sem test --json PATH
 ```
 
 Lower-level fallback surfaces:
 
 ```powershell
-python SemanticScript\tools\sem.py context --json PATH
-python SemanticScript\tools\sem.py symbols --json PATH
-python SemanticScript\tools\sem.py graph --kind calls --json PATH
-python SemanticScript\tools\sem.py graph --kind effects --json PATH
-python SemanticScript\tools\sem.py graph --kind capabilities --json PATH
-python SemanticScript\tools\sem.py graph --kind dataflow --json PATH
-python SemanticScript\tools\sem.py slice --effect database --json PATH
-python SemanticScript\tools\sem.py slice --capability session.user --json PATH
+sem context --json PATH
+sem symbols --json PATH
+sem graph --kind calls --json PATH
+sem graph --kind effects --json PATH
+sem graph --kind capabilities --json PATH
+sem graph --kind dataflow --json PATH
+sem slice --effect database --json PATH
+sem slice --capability session.user --json PATH
 ```
 
 These payloads should not stop at facts. The core agent surfaces also return a
@@ -426,13 +431,13 @@ authority, or runtime behavior.
 Examples:
 
 ```powershell
-python SemanticScript\tools\sem.py graph --kind calls --json apps\taskforge-web
-python SemanticScript\tools\sem.py graph --kind routes --json apps\taskforge-web
-python SemanticScript\tools\sem.py graph --kind capabilities --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --operation createTodoHandler --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --route POST:/api/todos --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --symbol serverPortNumber --json apps\taskforge-web
-python SemanticScript\tools\sem.py slice --effect database --json apps\taskforge-web
+sem graph --kind calls --json apps/taskforge-web
+sem graph --kind routes --json apps/taskforge-web
+sem graph --kind capabilities --json apps/taskforge-web
+sem slice --operation createTodoHandler --json apps/taskforge-web
+sem slice --route POST:/api/todos --json apps/taskforge-web
+sem slice --symbol serverPortNumber --json apps/taskforge-web
+sem slice --effect database --json apps/taskforge-web
 ```
 
 Use `context --json` for project envelope facts and `symbols --json` for the
@@ -443,11 +448,11 @@ Use `docs` when an agent needs API help for standard-library operations or
 compiler-owned targets without scanning the whole std tree:
 
 ```powershell
-python SemanticScript\tools\sem.py docs list --module http --json
-python SemanticScript\tools\sem.py docs get http.clientGet --json
-python SemanticScript\tools\sem.py docs get gui.applicationCreate --json
-python SemanticScript\tools\sem.py docs get json.createDocument --json
-python SemanticScript\tools\sem.py docs get console.writeLine --json
+sem docs list --module http --json
+sem docs get http.clientGet --json
+sem docs get gui.applicationCreate --json
+sem docs get json.createDocument --json
+sem docs get console.writeLine --json
 ```
 
 For code generation, prefer `docs get --json` over `list`: the full payload
@@ -474,8 +479,8 @@ carry `loweringStatus: "reserved"` and should not be used for generated code.
 For user/generated code lookup, build a SQLite docs cache and search it:
 
 ```powershell
-python SemanticScript\tools\sem.py docs index --path apps\my-app --db .sem\docs.sqlite --include-std --json
-python SemanticScript\tools\sem.py docs search "create task from title" --path apps\my-app --db .sem\docs.sqlite --json
+sem docs index --path apps/my-app --db .sem/docs.sqlite --include-std --json
+sem docs search "create task from title" --path apps/my-app --db .sem/docs.sqlite --json
 ```
 
 The index stores structured docs plus FTS text and real semantic vector blobs.
@@ -514,15 +519,15 @@ buildable surface. When the payload reports `status: "mixed"` together with
 success so an agent can continue into review or dry-run patching.
 
 ```powershell
-Copy-Item SemanticScript\tests\tiny.sem .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
-python SemanticScript\tools\sem.py explain SS3104 --json
-python SemanticScript\tools\sem.py slice --operation main --json .\scratch.sem
-python SemanticScript\tools\sem.py fix --plan --json .\scratch.sem | Out-File plan.json -Encoding utf8
-python SemanticScript\tools\sem.py patch --dry-run --json plan.json
-python SemanticScript\tools\sem.py patch --apply --json plan.json
-python SemanticScript\tools\sem.py fmt --check .\scratch.sem
-python SemanticScript\tools\sem.py check --json .\scratch.sem
+Copy-Item SemanticScript/tests/tiny.sem ./scratch.sem
+sem check --json ./scratch.sem
+sem explain SS3104 --json
+sem slice --operation main --json ./scratch.sem
+sem fix --plan --json ./scratch.sem | Out-File plan.json -Encoding utf8
+sem patch --dry-run --json plan.json
+sem patch --apply --json plan.json
+sem fmt --check ./scratch.sem
+sem check --json ./scratch.sem
 ```
 
 Only auto-apply a plan when the fix payload reports `status: "actionable"` and
@@ -541,7 +546,7 @@ Use readiness when a failure might be environment or backend related instead of
 source-related:
 
 ```powershell
-python SemanticScript\tools\sem.py readiness --json apps\taskforge-web
+sem readiness --json apps/taskforge-web
 ```
 
 `sem check --json` is the source lane. `sem readiness --json` is the
@@ -552,8 +557,8 @@ readiness payload is not `ok`.
 Use the dev payload to hand an agent a stable watch-plan contract:
 
 ```powershell
-python SemanticScript\tools\sem.py dev --json apps\taskforge-web
-python SemanticScript\tools\sem.py dev --trace --json apps\taskforge-web
+sem dev --json apps/taskforge-web
+sem dev --trace --json apps/taskforge-web
 ```
 
 For the current TaskForge checkout, this is a blocked watch-plan example, not a
@@ -563,8 +568,8 @@ follow-up commands while the project is diagnostic-red.
 Use the test payload to discover SemanticScript tests and Python app harnesses:
 
 ```powershell
-python SemanticScript\tools\sem.py test --json apps\taskforge-web
-python SemanticScript\tools\sem.py test --json SemanticScript\tests\agent_cli_demo.test.sem --skip-python-harnesses
+sem test --json apps/taskforge-web
+sem test --json SemanticScript/tests/agent_cli_demo.test.sem --skip-python-harnesses
 ```
 
 Passing a non-test source path is still legal, but it now reports
@@ -605,7 +610,7 @@ that caused them to change.
 Do not patch ignored build output. Use a dry run before cleanup:
 
 ```powershell
-python SemanticScript\tools\sem.py clean
+sem clean
 ```
 
 Expected ignored locations include `build/`, `.semcache/`, native executable

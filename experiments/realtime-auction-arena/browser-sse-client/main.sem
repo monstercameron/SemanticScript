@@ -30,6 +30,8 @@ route realtimeAuctionArenaClientServer GET "/assets/:filename" staticAssetHandle
 route realtimeAuctionArenaClientServer GET "/health" healthHandler
 route realtimeAuctionArenaClientServer GET "/probe-api" probeApiHandler
 route realtimeAuctionArenaClientServer GET "*" notFoundPageHandler
+routeTimeoutOptOut realtimeAuctionArenaClientServer "*" "The current blocking native HTTP adapter does not enforce source route deadlines; the SSR client relies on process-level request limits."
+routeMiddlewareOptOut realtimeAuctionArenaClientServer "*" "The SSR client has no shared middleware stage; auth, fetch, and rendering contracts are declared on each handler."
 
 capability filesystemReadCapability filesystem read
 purpose operation filesystemReadCapability "Authority to read files from the assets directory for static response serving."
@@ -40,9 +42,24 @@ purpose operation heapAllocCapability "Authority to allocate scratch buffers for
 capability heapFreeCapability heap free
 purpose operation heapFreeCapability "Authority to free JSON scratch + fetched response buffers."
 
+capability memoryBufferReadWriteCapability memory.buffer readWrite
+purpose operation memoryBufferReadWriteCapability "Authority to escape API-provided text into HTML-safe scratch buffers."
+
+capability httpRequestReader http.request read
+purpose operation httpRequestReader "Authority to read route parameters from the incoming HttpRequest."
+
+capability httpResponseWriter http.response write
+purpose operation httpResponseWriter "Authority to write SSR page, health, and asset responses to the HttpResponse."
+
+capability httpClientCaller http.client read
+purpose operation httpClientCaller "Authority to make outbound HTTP calls to the auction API server."
+
 # ===== module constants =====
-storage module immutable httpStatusOk Int32 200
-storage module immutable httpStatusNotReady Int32 503
+storage module immutable httpStatusOk HttpStatusCode 200
+storage module immutable httpStatusNotReady HttpStatusCode 503
+storage module immutable plainTextContentType HttpContentType "text/plain; charset=utf-8"
+storage module immutable htmlContentType HttpContentType "text/html; charset=utf-8"
+storage module immutable jsonContentType HttpContentType "application/json; charset=utf-8"
 storage module immutable assetsDirectoryPath String "assets"
 storage module immutable assetFilenameParam String "filename"
 storage module immutable auctionIdParam String "auctionId"
@@ -202,7 +219,7 @@ bind value assetFilenameMissing Bool assetFilenameMissingCall
 branch if condition assetFilenameMissing target staticAssetMissing
 call writeAssetFileCall http.responseFile
 argument writeAssetFileCall response HttpResponse response
-argument writeAssetFileCall status Int32 httpStatusOk
+argument writeAssetFileCall status HttpStatusCode httpStatusOk
 argument writeAssetFileCall rootDirectory String assetsDirectoryPath
 argument writeAssetFileCall requestedPath String assetFilename
 run writeAssetFileCall
@@ -222,7 +239,7 @@ return value writeAssetFileStatus
 label staticAssetMissing
 call writeAssetMissingCall http.responseText
 argument writeAssetMissingCall response HttpResponse response
-argument writeAssetMissingCall status Int32 httpStatusOk
+argument writeAssetMissingCall status HttpStatusCode httpStatusOk
 argument writeAssetMissingCall body HttpTextBody assetMissingBody
 argument writeAssetMissingCall contentType HttpContentType plainTextContentType
 run writeAssetMissingCall
@@ -243,7 +260,7 @@ purpose operation healthHandler "GET /health - process liveness for the SSR clie
 label startHealthHandler
 call writeHealthReadyCall http.responseText
 argument writeHealthReadyCall response HttpResponse response
-argument writeHealthReadyCall status Int32 httpStatusOk
+argument writeHealthReadyCall status HttpStatusCode httpStatusOk
 argument writeHealthReadyCall body HttpTextBody healthReadyBody
 argument writeHealthReadyCall contentType HttpContentType jsonContentType
 run writeHealthReadyCall
@@ -278,7 +295,7 @@ bind value probeBodyMissing Bool probeBodyMissingCall
 branch if condition probeBodyMissing target probeFailed
 call writeProbeCall http.responseText
 argument writeProbeCall response HttpResponse response
-argument writeProbeCall status Int32 httpStatusOk
+argument writeProbeCall status HttpStatusCode httpStatusOk
 argument writeProbeCall body HttpClientResponseBody probeBody
 argument writeProbeCall contentType HttpContentType jsonContentType
 run writeProbeCall
@@ -288,7 +305,7 @@ return value writeProbeStatus
 label probeFailed
 call writeProbeFailedCall http.responseText
 argument writeProbeFailedCall response HttpResponse response
-argument writeProbeFailedCall status Int32 httpStatusNotReady
+argument writeProbeFailedCall status HttpStatusCode httpStatusNotReady
 argument writeProbeFailedCall body HttpTextBody probeFailedBody
 argument writeProbeFailedCall contentType HttpContentType plainTextContentType
 run writeProbeFailedCall
@@ -301,13 +318,13 @@ html body template LobbyPageTemplate
   <!doctype html>
   <html lang="en" class="h-full">
   <head>
-  {headFragment}
+  {{headFragment}}
   </head>
   <body class="min-h-full bg-floor-bg text-ink antialiased">
   <div class="mx-auto max-w-6xl px-4 py-6">
-  {topBarFragment}
-  <p class="mb-4 text-xs text-muted">Live API status (fetched over standard.http): <span class="font-mono text-accent">{apiStatusText}</span></p>
-  {lobbySectionFragment}
+  {{topBarFragment}}
+  <p class="mb-4 text-xs text-muted">Live API status (fetched over standard.http): <span class="font-mono text-accent">{{apiStatusText}}</span></p>
+  {{lobbySectionFragment}}
   </div>
   </body>
   </html>
@@ -321,21 +338,24 @@ effect lobbyPageHandler read json.document.tree
 effect lobbyPageHandler allocate heap
 effect lobbyPageHandler free heap
 effect lobbyPageHandler write http.response
+effect lobbyPageHandler readWrite memory.buffer
 useCapability lobbyPageHandler httpClientCaller
 useCapability lobbyPageHandler jsonDocumentReadCapability
 useCapability lobbyPageHandler heapAllocCapability
 useCapability lobbyPageHandler heapFreeCapability
 useCapability lobbyPageHandler httpResponseWriter
+useCapability lobbyPageHandler memoryBufferReadWriteCapability
 memory lobbyPageHandler heap yes
 async lobbyPageHandler no
 purpose operation lobbyPageHandler "GET / - fetch the open-auction list from the API over standard.http, build the grid HTML by iterating the JSON array, and server-render the lobby."
+invariant operation lobbyPageHandler "The lobby renders from API data only; when the API fetch or JSON parse fails it returns the unavailable state rather than owning auction state."
 
 label startLobbyPageHandler
-call renderLobbyHeadCall renderPageHead
+call renderLobbyHeadCall components.renderPageHead
 argument renderLobbyHeadCall pageTitleText String lobbyTitleText
 run renderLobbyHeadCall
 bind value lobbyHeadFragment HtmlFragment renderLobbyHeadCall
-call renderLobbyTopBarCall renderTopBar
+call renderLobbyTopBarCall components.renderTopBar
 argument renderLobbyTopBarCall brandText String brandText
 run renderLobbyTopBarCall
 bind value lobbyTopBarFragment HtmlFragment renderLobbyTopBarCall
@@ -464,7 +484,8 @@ call lobbyArrayLengthCall json.cursorArrayLength
 argument lobbyArrayLengthCall document JsonDocument lobbyListDoc
 argument lobbyArrayLengthCall cursor JsonCursor lobbyAuctionsCursor
 run lobbyArrayLengthCall
-bind value lobbyArrayLen Int64 lobbyArrayLengthCall
+bind ok lobbyArrayLen Int64 lobbyArrayLengthCall
+ignore error source lobbyArrayLengthCall
 
 storage local mutable lobbyIndex Int64 0
 storage local mutable lobbyOffset ByteCount 0
@@ -600,9 +621,10 @@ set memory lobbyIndex lobbyNextIndex
 jump target lobbyLoop
 
 label lobbyLoopDone
-call renderLobbySectionCall renderListSection
+storage local immutable lobbyGridFragment HtmlFragment lobbyGridBufStr
+call renderLobbySectionCall components.renderListSection
 argument renderLobbySectionCall sectionTitleText String lobbySectionTitle
-argument renderLobbySectionCall listBodyFragment HtmlFragment lobbyGridBufStr
+argument renderLobbySectionCall listBodyFragment HtmlFragment lobbyGridFragment
 run renderLobbySectionCall
 bind value lobbySectionFragment HtmlFragment renderLobbySectionCall
 call hydrateLobbyCall html.hydrate.LobbyPageTemplate
@@ -614,7 +636,7 @@ run hydrateLobbyCall
 bind value lobbyPageHtml HtmlDocument hydrateLobbyCall
 call writeLobbyCall http.responseText
 argument writeLobbyCall response HttpResponse response
-argument writeLobbyCall status Int32 httpStatusOk
+argument writeLobbyCall status HttpStatusCode httpStatusOk
 argument writeLobbyCall body HtmlDocument lobbyPageHtml
 argument writeLobbyCall contentType HttpContentType htmlContentType
 run writeLobbyCall
@@ -622,15 +644,15 @@ bind value writeLobbyStatus Int32 writeLobbyCall
 return value writeLobbyStatus
 
 label lobbyStatusUnknown
-call renderLobbyUnknownHeadCall renderPageHead
+call renderLobbyUnknownHeadCall components.renderPageHead
 argument renderLobbyUnknownHeadCall pageTitleText String lobbyTitleText
 run renderLobbyUnknownHeadCall
 bind value lobbyUnknownHeadFragment HtmlFragment renderLobbyUnknownHeadCall
-call renderLobbyUnknownTopBarCall renderTopBar
+call renderLobbyUnknownTopBarCall components.renderTopBar
 argument renderLobbyUnknownTopBarCall brandText String brandText
 run renderLobbyUnknownTopBarCall
 bind value lobbyUnknownTopBarFragment HtmlFragment renderLobbyUnknownTopBarCall
-call renderLobbyUnknownSectionCall renderListSection
+call renderLobbyUnknownSectionCall components.renderListSection
 argument renderLobbyUnknownSectionCall sectionTitleText String lobbySectionTitle
 argument renderLobbyUnknownSectionCall listBodyFragment HtmlFragment emptyFragmentText
 run renderLobbyUnknownSectionCall
@@ -644,7 +666,7 @@ run hydrateLobbyUnknownCall
 bind value lobbyUnknownHtml HtmlDocument hydrateLobbyUnknownCall
 call writeLobbyUnknownCall http.responseText
 argument writeLobbyUnknownCall response HttpResponse response
-argument writeLobbyUnknownCall status Int32 httpStatusOk
+argument writeLobbyUnknownCall status HttpStatusCode httpStatusOk
 argument writeLobbyUnknownCall body HtmlDocument lobbyUnknownHtml
 argument writeLobbyUnknownCall contentType HttpContentType htmlContentType
 run writeLobbyUnknownCall
@@ -657,15 +679,15 @@ html body template FloorPageTemplate
   <!doctype html>
   <html lang="en" class="h-full">
   <head>
-  {headFragment}
+  {{headFragment}}
   </head>
   <body class="min-h-full bg-floor-bg text-ink antialiased">
   <div class="mx-auto max-w-6xl px-4 py-6">
-  {topBarFragment}
-  {stageFragment}
-  {bidFormFragment}
-  {feedSectionFragment}
-  {chatPanelFragment}
+  {{topBarFragment}}
+  {{stageFragment}}
+  {{bidFormFragment}}
+  {{feedSectionFragment}}
+  {{chatPanelFragment}}
   </div>
   <script src="/assets/floor.js" defer></script>
   </body>
@@ -717,6 +739,7 @@ useCapability ensureApiToken jsonDocumentReadCapability
 useCapability ensureApiToken heapAllocCapability
 useCapability ensureApiToken heapFreeCapability
 purpose operation ensureApiToken "Return a cached API bearer token, logging in as the demo bidder over standard.http on first call. Null on failure. Caching avoids hitting the API login rate limit on every page load."
+invariant operation ensureApiToken "A non-empty cached token is reused as-is; the login flow only updates the cache after a successful API response yields an accessToken field."
 
 label startEnsureApiToken
 call tokenReadyCall math.equalInt32
@@ -816,28 +839,29 @@ useCapability floorPageHandler httpResponseWriter
 memory floorPageHandler heap yes
 async floorPageHandler no
 purpose operation floorPageHandler "GET /floor/:auctionId - log in to the API over standard.http, fetch the auction snapshot, parse it, and server-render the stage with the real auction title."
+invariant operation floorPageHandler "The floor page scopes all fetched state to the route auctionId and falls back to the unavailable page state on fetch or parse failure."
 
 label startFloorPageHandler
-call floorHeadCall renderPageHead
+call floorHeadCall components.renderPageHead
 argument floorHeadCall pageTitleText String floorTitleText
 run floorHeadCall
 bind value floorHeadFragment HtmlFragment floorHeadCall
-call floorTopBarCall renderTopBar
+call floorTopBarCall components.renderTopBar
 argument floorTopBarCall brandText String brandText
 run floorTopBarCall
 bind value floorTopBarFragment HtmlFragment floorTopBarCall
-call floorBidFormCall renderBidForm
+call floorBidFormCall components.renderBidForm
 argument floorBidFormCall minBidText String floorDashText
 argument floorBidFormCall apiBaseUrlText String apiBaseUrlText
 argument floorBidFormCall auctionIdText String floorTitleText
 run floorBidFormCall
 bind value floorBidFormFragment HtmlFragment floorBidFormCall
-call floorFeedSectionCall renderListSection
+call floorFeedSectionCall components.renderListSection
 argument floorFeedSectionCall sectionTitleText String feedSectionTitle
 argument floorFeedSectionCall listBodyFragment HtmlFragment emptyFragmentText
 run floorFeedSectionCall
 bind value floorFeedSectionFragment HtmlFragment floorFeedSectionCall
-call floorChatPanelCall renderChatPanel
+call floorChatPanelCall components.renderChatPanel
 argument floorChatPanelCall chatBodyFragment HtmlFragment emptyFragmentText
 argument floorChatPanelCall apiBaseUrlText String apiBaseUrlText
 argument floorChatPanelCall auctionIdText String floorTitleText
@@ -1167,7 +1191,8 @@ call floorFeedLenCall json.cursorArrayLength
 argument floorFeedLenCall document JsonDocument floorEventsDoc
 argument floorFeedLenCall cursor JsonCursor floorEventsArray
 run floorFeedLenCall
-bind value floorFeedLen Int64 floorFeedLenCall
+bind ok floorFeedLen Int64 floorFeedLenCall
+ignore error source floorFeedLenCall
 
 storage local mutable floorFeedIndex Int64 0
 storage local mutable floorFeedOffset ByteCount 0
@@ -1261,13 +1286,14 @@ set memory floorFeedIndex floorFeedNextIndex
 jump target floorFeedLoop
 
 label floorFeedReady
-call renderFloorFeedFullCall renderListSection
+storage local immutable floorFeedFragment HtmlFragment floorFeedBufStr
+call renderFloorFeedFullCall components.renderListSection
 argument renderFloorFeedFullCall sectionTitleText String feedSectionTitle
-argument renderFloorFeedFullCall listBodyFragment HtmlFragment floorFeedBufStr
+argument renderFloorFeedFullCall listBodyFragment HtmlFragment floorFeedFragment
 run renderFloorFeedFullCall
 bind value floorFeedSectionFull HtmlFragment renderFloorFeedFullCall
 
-call floorStageCall renderAuctionStage
+call floorStageCall components.renderAuctionStage
 argument floorStageCall statusText String floorStatusReal
 argument floorStageCall auctionIdText String floorAuctionId
 argument floorStageCall titleText String floorTitle
@@ -1288,7 +1314,7 @@ run floorHydrateCall
 bind value floorPageHtml HtmlDocument floorHydrateCall
 call writeFloorCall http.responseText
 argument writeFloorCall response HttpResponse response
-argument writeFloorCall status Int32 httpStatusOk
+argument writeFloorCall status HttpStatusCode httpStatusOk
 argument writeFloorCall body HtmlDocument floorPageHtml
 argument writeFloorCall contentType HttpContentType htmlContentType
 run writeFloorCall
@@ -1296,7 +1322,7 @@ bind value writeFloorStatus Int32 writeFloorCall
 return value writeFloorStatus
 
 label floorUnavailable
-call floorUnavailableStageCall renderAuctionStage
+call floorUnavailableStageCall components.renderAuctionStage
 argument floorUnavailableStageCall statusText String apiStatusUnknownText
 argument floorUnavailableStageCall auctionIdText String floorTitleText
 argument floorUnavailableStageCall titleText String floorTitleUnknownText
@@ -1317,7 +1343,7 @@ run floorUnavailableHydrateCall
 bind value floorUnavailableHtml HtmlDocument floorUnavailableHydrateCall
 call writeFloorUnavailableCall http.responseText
 argument writeFloorUnavailableCall response HttpResponse response
-argument writeFloorUnavailableCall status Int32 httpStatusOk
+argument writeFloorUnavailableCall status HttpStatusCode httpStatusOk
 argument writeFloorUnavailableCall body HtmlDocument floorUnavailableHtml
 argument writeFloorUnavailableCall contentType HttpContentType htmlContentType
 run writeFloorUnavailableCall
@@ -1330,13 +1356,13 @@ html body template NotFoundPageTemplate
   <!doctype html>
   <html lang="en" class="h-full">
   <head>
-  {headFragment}
+  {{headFragment}}
   </head>
   <body class="min-h-full bg-floor-bg text-ink antialiased">
   <div class="mx-auto max-w-2xl px-4 py-20 text-center">
-  {topBarFragment}
+  {{topBarFragment}}
   <h2 class="mt-10 text-3xl font-bold text-ink">Not found</h2>
-  <p class="mt-3 text-muted">{messageText}</p>
+  <p class="mt-3 text-muted">{{messageText}}</p>
   <a href="/" class="mt-6 inline-flex rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-floor-bg">Back to lobby</a>
   </div>
   </body>
@@ -1353,11 +1379,11 @@ async notFoundPageHandler no
 purpose operation notFoundPageHandler "Render the branded 404 page."
 
 label startNotFoundPageHandler
-call renderNotFoundHeadCall renderPageHead
+call renderNotFoundHeadCall components.renderPageHead
 argument renderNotFoundHeadCall pageTitleText String notFoundTitleText
 run renderNotFoundHeadCall
 bind value notFoundHeadFragment HtmlFragment renderNotFoundHeadCall
-call renderNotFoundTopBarCall renderTopBar
+call renderNotFoundTopBarCall components.renderTopBar
 argument renderNotFoundTopBarCall brandText String brandText
 run renderNotFoundTopBarCall
 bind value notFoundTopBarFragment HtmlFragment renderNotFoundTopBarCall
@@ -1369,7 +1395,7 @@ run hydrateNotFoundCall
 bind value notFoundPageHtml HtmlDocument hydrateNotFoundCall
 call writeNotFoundCall http.responseText
 argument writeNotFoundCall response HttpResponse response
-argument writeNotFoundCall status Int32 httpStatusOk
+argument writeNotFoundCall status HttpStatusCode httpStatusOk
 argument writeNotFoundCall body HtmlDocument notFoundPageHtml
 argument writeNotFoundCall contentType HttpContentType htmlContentType
 run writeNotFoundCall

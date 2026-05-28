@@ -17,7 +17,7 @@ html body template TodoDashboardPageTemplate
   <html lang="en">
     <head>
       <meta charset="utf-8">
-      <title>{pageTitleText}</title>
+      <title>{{pageTitleText}}</title>
       <style>
         body { font-family: system-ui, sans-serif; margin: 2rem; color: #17202a; background: #f5f7fb; }
         .todo-shell { max-width: 46rem; margin: 0 auto; }
@@ -29,11 +29,11 @@ html body template TodoDashboardPageTemplate
       </style>
     </head>
     <body>
-      <main class="{shellClassName}">
-        <article class="{panelClassName}">
-          <h1>{pageTitleText}</h1>
-          <p>{introText}</p>
-          {todoListFragment}
+      <main class="{{shellClassName}}">
+        <article class="{{panelClassName}}">
+          <h1>{{pageTitleText}}</h1>
+          <p>{{introText}}</p>
+          {{todoListFragment}}
         </article>
       </main>
     </body>

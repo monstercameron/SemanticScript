@@ -22,9 +22,13 @@ type SqliteDatabase OpaquePointer
 type SqliteStatement OpaquePointer
 type SqliteRowId Int64
 type SqlText String
+typeLiteralEncoding SqlText utf8
 type SqliteText String
 type SqliteBlob OpaquePointer
 type SqliteByteCount ByteCount
+type SqliteQueryFailure Int32
+type SqliteJournalModeFailure Int32
+type SqliteTransactionFailure Int32
 
 enum SqliteOpenMode repr Int32
 enumCase SqliteOpenMode readOnlySqliteOpenMode 1
@@ -50,6 +54,9 @@ exportType standard.sqlite SqlText
 exportType standard.sqlite SqliteText
 exportType standard.sqlite SqliteBlob
 exportType standard.sqlite SqliteByteCount
+exportType standard.sqlite SqliteQueryFailure
+exportType standard.sqlite SqliteJournalModeFailure
+exportType standard.sqlite SqliteTransactionFailure
 exportType standard.sqlite SqliteOpenMode
 exportType standard.sqlite SqliteStepResult
 exportType standard.sqlite SqliteColumnType
@@ -72,10 +79,14 @@ exportOperation standard.sqlite closeDatabase
 exportOperation standard.sqlite errorMessage
 exportOperation standard.sqlite lastInsertRowId
 exportOperation standard.sqlite changedRowCount
+exportOperation standard.sqlite queryScalarInt64
+exportOperation standard.sqlite enableWalMode
 exportOperation standard.sqlite prepareStatement
 exportOperation standard.sqlite finalizeStatement
 exportOperation standard.sqlite resetStatement
 exportOperation standard.sqlite stepStatement
+exportOperation standard.sqlite stepResultIsRow
+exportOperation standard.sqlite stepResultIsDone
 exportOperation standard.sqlite bindInt64
 exportOperation standard.sqlite bindDouble
 exportOperation standard.sqlite bindText
@@ -92,13 +103,25 @@ exportOperation standard.sqlite columnByteCount
 exportOperation standard.sqlite libraryVersion
 exportOperation standard.sqlite execStatus
 exportOperation standard.sqlite exec
-typeInvariant SqliteDatabase "Opaque SQLite database handle created by sqlite.openDatabase and closed by sqlite.closeDatabase."
+exportOperation standard.sqlite beginImmediateTransaction
+exportOperation standard.sqlite commitTransaction
+exportOperation standard.sqlite rollbackTransaction
+typeInvariant SqliteDatabase "Opaque SQLite database handle created by sqlite.openDatabase and closed by sqlite.closeDatabase; webServer apps may store one process-lifetime handle in module/shared process state between startup and shutdown."
+# warning: Process-lifetime SqliteDatabase reuse is not a connection pool; guard or replace it before using concurrent handler dispatch.
 typeInvariant SqliteStatement "Opaque prepared-statement handle created by sqlite.prepareStatement and finalized by sqlite.finalizeStatement."
+typeInvariant SqliteStepResult "Opaque step outcome returned by sqlite.stepStatement; branch on it with sqlite.stepResultIsRow or sqlite.stepResultIsDone instead of raw integer sentinels."
 typeInvariant SqliteRowId "Signed 64-bit row identifier returned by sqlite.lastInsertRowId and column readers."
 typeInvariant SqlText "Null-terminated SQL source text passed to sqlite.prepareStatement or sqlite.exec; dynamic values must use ? placeholders plus sqlite.bind* rows."
-typeInvariant SqliteText "Null-terminated SQLite text value; sqlite.columnText returns SQLite-owned memory valid until the statement advances or finalizes."
+invariant module standard.sqlite "sqlite.queryScalarInt64 is the one-shot helper for static no-parameter Int64 scalar reads such as SELECT COUNT(*); parameterized or multi-column reads still use prepare/bind/step/column/finalize."
+invariant module standard.sqlite "sqlite.enableWalMode and build-tape sqliteJournalMode PROJECT wal are the first-class WAL configuration surface; callers do not need raw PRAGMA journal_mode = WAL SqlText constants."
+invariant module standard.sqlite "sqlite.beginImmediateTransaction, sqlite.commitTransaction, and sqlite.rollbackTransaction are the first-class flat transaction boundary helpers; callers do not need raw BEGIN/COMMIT/ROLLBACK SqlText constants for ordinary transactions."
+invariant module standard.sqlite "Generated row identifiers should flow through INSERT ... RETURNING id plus sqlite.columnInt64 on that INSERT statement; sqlite.lastInsertRowId is compatibility-only connection-global state."
+typeInvariant SqliteText "Null-terminated SQLite text value; sqlite.columnText/columnName return SQLite-owned memory valid until the same statement advances, resets, finalizes, or performs another pointer-returning column read."
 typeInvariant SqliteBlob "Opaque SQLite blob pointer paired with SqliteByteCount."
 typeInvariant SqliteByteCount "Byte count paired with SQLite blob/text buffers."
+typeInvariant SqliteQueryFailure "Native SQLite status from sqlite.queryScalarInt64 prepare, empty-result, step, or finalize failure."
+typeInvariant SqliteJournalModeFailure "Native SQLite status from sqlite.enableWalMode failure."
+typeInvariant SqliteTransactionFailure "Native SQLite status from sqlite.beginImmediateTransaction, sqlite.commitTransaction, or sqlite.rollbackTransaction."
 
 capability sqliteDatabaseReader database read
 purpose operation sqliteDatabaseReader "Authority to execute read-only SQL — prepareStatement of SELECT statements, bind*, step, and the column readers — against an open SqliteDatabase handle."

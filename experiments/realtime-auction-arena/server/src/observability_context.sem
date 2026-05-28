@@ -46,7 +46,6 @@ storage module mutable metricsBidAcceptedTotal Int64 0
 storage module mutable metricsRateLimitHitsTotal Int64 0
 storage module mutable metricsActiveSseClients Int64 0
 storage module mutable metricsSseSlowClientDropsTotal Int64 0
-storage module mutable loginRateLimitObservedCount Int64 0
 storage module mutable bidRateLimitObservedCount Int64 0
 
 operation metricsHttpRequestsTotalValue
@@ -117,6 +116,7 @@ output operation incrementHttpRequestsTotal Int64
 memory incrementHttpRequestsTotal heap no
 async incrementHttpRequestsTotal no
 purpose operation incrementHttpRequestsTotal "Increment the HTTP request metric counter and return the new value."
+invariant operation incrementHttpRequestsTotal "The counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsHttpRequestsTotal
@@ -131,6 +131,7 @@ output operation incrementAuthLoginAcceptedTotal Int64
 memory incrementAuthLoginAcceptedTotal heap no
 async incrementAuthLoginAcceptedTotal no
 purpose operation incrementAuthLoginAcceptedTotal "Increment the accepted login metric counter and return the new value."
+invariant operation incrementAuthLoginAcceptedTotal "The accepted-login counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsAuthLoginAcceptedTotal
@@ -145,6 +146,7 @@ output operation incrementAuthLoginRejectedTotal Int64
 memory incrementAuthLoginRejectedTotal heap no
 async incrementAuthLoginRejectedTotal no
 purpose operation incrementAuthLoginRejectedTotal "Increment the rejected login metric counter and return the new value."
+invariant operation incrementAuthLoginRejectedTotal "The rejected-login counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsAuthLoginRejectedTotal
@@ -159,6 +161,7 @@ output operation incrementAuctionCommandsAcceptedTotal Int64
 memory incrementAuctionCommandsAcceptedTotal heap no
 async incrementAuctionCommandsAcceptedTotal no
 purpose operation incrementAuctionCommandsAcceptedTotal "Increment the accepted auction command metric counter and return the new value."
+invariant operation incrementAuctionCommandsAcceptedTotal "The accepted-command counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsAuctionCommandsAcceptedTotal
@@ -173,6 +176,7 @@ output operation incrementAuctionCommandsRejectedTotal Int64
 memory incrementAuctionCommandsRejectedTotal heap no
 async incrementAuctionCommandsRejectedTotal no
 purpose operation incrementAuctionCommandsRejectedTotal "Increment the rejected auction command metric counter and return the new value."
+invariant operation incrementAuctionCommandsRejectedTotal "The rejected-command counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsAuctionCommandsRejectedTotal
@@ -187,6 +191,7 @@ output operation incrementBidAcceptedTotal Int64
 memory incrementBidAcceptedTotal heap no
 async incrementBidAcceptedTotal no
 purpose operation incrementBidAcceptedTotal "Increment the accepted bid metric counter and return the new value."
+invariant operation incrementBidAcceptedTotal "The accepted-bid counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsBidAcceptedTotal
@@ -201,6 +206,7 @@ output operation incrementRateLimitHitsTotal Int64
 memory incrementRateLimitHitsTotal heap no
 async incrementRateLimitHitsTotal no
 purpose operation incrementRateLimitHitsTotal "Increment the rate-limit hit metric counter and return the new value."
+invariant operation incrementRateLimitHitsTotal "The rate-limit hit counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsRateLimitHitsTotal
@@ -215,6 +221,7 @@ output operation incrementBidRateLimitObservedCount Int64
 memory incrementBidRateLimitObservedCount heap no
 async incrementBidRateLimitObservedCount no
 purpose operation incrementBidRateLimitObservedCount "Increment the process-local bid rate-limit probe counter and return the new value."
+invariant operation incrementBidRateLimitObservedCount "The bid rate-limit observation counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 bidRateLimitObservedCount
@@ -229,6 +236,7 @@ output operation incrementActiveSseClients Int64
 memory incrementActiveSseClients heap no
 async incrementActiveSseClients no
 purpose operation incrementActiveSseClients "Increment the active SSE client gauge and return the new value."
+invariant operation incrementActiveSseClients "The active SSE client gauge changes by exactly +1 and the returned value is the stored gauge after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsActiveSseClients
@@ -243,6 +251,7 @@ output operation decrementActiveSseClients Int64
 memory decrementActiveSseClients heap no
 async decrementActiveSseClients no
 purpose operation decrementActiveSseClients "Decrement the active SSE client gauge and return the new value."
+invariant operation decrementActiveSseClients "The active SSE client gauge changes by exactly -1 and the returned value is the stored gauge after the mutation."
 storage local immutable metricStep Int64 1
 call decrementCall math.subtractInt64
 argument decrementCall left Int64 metricsActiveSseClients
@@ -257,6 +266,7 @@ output operation incrementSseSlowClientDropsTotal Int64
 memory incrementSseSlowClientDropsTotal heap no
 async incrementSseSlowClientDropsTotal no
 purpose operation incrementSseSlowClientDropsTotal "Increment the SSE slow-client drop counter and return the new value."
+invariant operation incrementSseSlowClientDropsTotal "The slow-client drop counter changes by exactly +1 and the returned value is the stored total after the mutation."
 storage local immutable metricStep Int64 1
 call incrementCall math.addInt64
 argument incrementCall left Int64 metricsSseSlowClientDropsTotal

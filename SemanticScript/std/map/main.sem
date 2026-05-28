@@ -5,10 +5,20 @@
 module standard.map
 purpose module standard.map "Canonical standard-library module for map size/capacity bookkeeping helpers."
 moduleOwns standard.map "The official import path `standard.map` and the executable `map.*` helper surface."
-moduleDoesNotOwn standard.map "Concrete key hashing, probing, or entry storage."
+moduleDoesNotOwn standard.map "Concrete key hashing, probing, entry storage, put/get lookup, or container allocation."
 invariant module standard.map "This module owns structural map helpers over entry counts, capacity, and known-key facts."
+moduleWarning standard.map "This is bookkeeping only: `standard.map` does not store keys or values, and it does not provide executable `put`/`get` container operations."
 
 exportConstant standard.map mapModuleVersionText
+exportOperation standard.map map.size
+exportOperation standard.map map.isEmpty
+exportOperation standard.map map.remainingCapacity
+exportOperation standard.map map.hasCapacityForNewEntry
+exportOperation standard.map map.canInsertNewEntry
+exportOperation standard.map map.canUpdateExistingEntry
+exportOperation standard.map map.canRemoveExistingEntry
+exportOperation standard.map map.sizeAfterInsert
+exportOperation standard.map map.sizeAfterRemove
 storage module immutable mapModuleVersionText String "standard.map 0.1"
 
 domainLiteral mapZeroValue Int64 0

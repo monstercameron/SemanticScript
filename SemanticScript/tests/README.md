@@ -146,6 +146,26 @@ Baseline (line+branch, 2026-05-24): ~80% overall; every tool ≥ 74%
 syntax_migration 82, bump_version 81, sem 77, semsc 75). Remaining gaps are
 fragmented error/branch paths, not whole untested surfaces.
 
+## Web And Property Testing Boundaries
+
+There is no synthetic web-handler fixture yet: route handlers are exercised by
+building a routed `target webServer` executable, launching it, and sending real
+HTTP requests to the native adapter. That is deliberate for now because
+`HttpRequest` / `HttpResponse` are opaque runtime handles, not plain records.
+
+`sem run` is still a console/JIT proof loop. For web targets, use
+`sem build`/`sem test` or the app-specific smoke harness so the native HTTP
+runtime is linked and a real port is bound.
+
+There is no first-class parametric/property-test syntax in SemanticScript
+source today. Use Python or JS harness loops around generated fixtures when a
+property-style test is needed, and register that harness in `run_suite.py` so it
+is visible in the component/e2e lanes.
+
+When testing a frozen `sem.exe`, Python harnesses are launched with a real
+Python interpreter (`SEM_TEST_PYTHON`, `PYTHON`, or `python`/`python3`/`py -3`
+on PATH), not by recursively invoking the frozen executable.
+
 ## Known-unwired suites
 
 These test suites live outside the global runner and are **not** in any CI lane.

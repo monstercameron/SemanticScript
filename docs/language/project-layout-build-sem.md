@@ -114,7 +114,9 @@ Current responsibilities:
 - `registerModule PROJECT MODULE_PATH "PATH"` registers a module path to a
   source file or folder.
 - `mainFile PROJECT "main.sem"` records the default executable source.
-- `mainOperation PROJECT OPERATION` records the default executable operation.
+- `mainOperation PROJECT OPERATION` records the default executable operation
+  for `nativeExe` builds. Routed `webServer` and `windowsGui` builds omit it;
+  their runtime entrypoints are derived from source-module declarations.
 - `testPattern PROJECT "*.test.sem"` records local test discovery rules.
 - `testRoot PROJECT "PATH"` records the root used by test discovery.
 - `targetRuntime`, `buildProfile`, `optLevel`, `runtimeChecks`, `persistLlvmIr`,
@@ -133,6 +135,14 @@ Current responsibilities:
 `build.sem` must not own public API export rows. Those belong in the module
 source so a module folder can be understood without editing the build entry
 point.
+
+`build.sem` also must not own routed webserver rows. Keep `webServer`,
+`serverHost`, `serverPort`, `route`, `staticRoute`, `routeTimeout`,
+`routeMiddleware`, `routeNotFound`, `routeMethodNotAllowed`,
+`webServerStartup`, and `webServerShutdown` in the source module. The build
+tape may select `targetRuntime PROJECT webServer` and set project defaults such
+as `nativeHttpHost` / `nativeHttpPort`; the route graph stays with the module
+that declares the handlers.
 
 ## build.sem Schema Reference
 
@@ -211,6 +221,31 @@ have exactly one routed server. Multiple routed servers require an explicit
 selection row before codegen. Route handler validation happens after registered
 modules and imports are resolved so handler operations can live in imported
 module sources.
+
+When `build.sem` is the compiler entrypoint, its project rows are authoritative
+for project selection. A registered module source may still contain legacy or
+standalone `project`, `target`, or `entry` rows, but those rows do not override
+the build tape. Prefer omitting them from project-mode module sources so the
+active build identity is not split between two headers. Standalone proof files
+can keep their own header when they are compiled directly instead of through
+`build.sem`.
+
+### Project Name Map
+
+Several names appear in a project build and each has a different job:
+
+| Row | Example | Meaning |
+|---|---|---|
+| `buildProject PROJECT` | `buildProject opsDashboard` | Build-tape handle used by project-scoped rows. |
+| `project NAME` | `project OpsDashboard` | Compiler/display project name. |
+| `modulePath PROJECT PATH` | `modulePath opsDashboard github.com/example/ops-dashboard` | Package identity for dependency and registry tooling. |
+| `registerModule PROJECT MODULE "PATH"` | `registerModule opsDashboard app.ops_dashboard "."` | Maps a module path to source. |
+| `import ALIAS MODULE` | `import opsDashboard app.ops_dashboard` | Compiler bridge that includes the registered module. |
+| `module MODULE` | `module app.ops_dashboard` | Source module identity. |
+
+Routes, static routes, startup/shutdown hooks, exports, and operations belong
+to the source module. Build-output policy, registered source selection, target
+runtime, CPU policy, and artifact paths belong to `build.sem`.
 
 ## CPU Feature Checks
 
@@ -340,9 +375,9 @@ output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main write gui.window
-authority main gui.application allocate
-authority main gui.window allocate
-authority main gui.window write
+authority main allocate gui.application
+authority main allocate gui.window
+authority main write gui.window
 call createApp gui.applicationCreate
 argument createApp title GuiText title
 run createApp

@@ -171,6 +171,77 @@ int ss_sqlite_exec(SSSqliteDatabase *database, const char *sql_text) {
     return SS_SQLITE_OK;
 }
 
+int ss_sqlite_database_enable_wal(SSSqliteDatabase *database) {
+    return ss_sqlite_exec(database, "PRAGMA journal_mode = WAL");
+}
+
+int ss_sqlite_transaction_begin_immediate(SSSqliteDatabase *database) {
+    return ss_sqlite_exec(database, "BEGIN IMMEDIATE");
+}
+
+int ss_sqlite_transaction_commit(SSSqliteDatabase *database) {
+    return ss_sqlite_exec(database, "COMMIT");
+}
+
+int ss_sqlite_transaction_rollback(SSSqliteDatabase *database) {
+    return ss_sqlite_exec(database, "ROLLBACK");
+}
+
+int ss_sqlite_query_scalar_int64(
+    SSSqliteDatabase *database,
+    const char *sql_text,
+    long long *out_value
+) {
+    sqlite3_stmt *statement = NULL;
+    const char *trailing_sql = NULL;
+    int prepare_status = 0;
+    int step_status = 0;
+    int finalize_status = 0;
+
+    if (out_value == NULL) {
+        return SS_SQLITE_ERR_CONFIG;
+    }
+    *out_value = 0;
+
+    if (database == NULL || database->handle == NULL || sql_text == NULL) {
+        return SS_SQLITE_ERR_CONFIG;
+    }
+
+    prepare_status = sqlite3_prepare_v2(
+        database->handle,
+        sql_text,
+        -1,
+        &statement,
+        &trailing_sql
+    );
+    if (prepare_status != SQLITE_OK || statement == NULL) {
+        if (statement != NULL) {
+            sqlite3_finalize(statement);
+        }
+        return SS_SQLITE_ERR_PREPARE;
+    }
+    while (trailing_sql != NULL && *trailing_sql != '\0') {
+        if (!isspace((unsigned char)*trailing_sql)) {
+            sqlite3_finalize(statement);
+            return SS_SQLITE_ERR_PREPARE;
+        }
+        trailing_sql++;
+    }
+
+    step_status = sqlite3_step(statement);
+    if (step_status != SQLITE_ROW) {
+        sqlite3_finalize(statement);
+        return SS_SQLITE_ERR_STEP;
+    }
+
+    *out_value = (long long)sqlite3_column_int64(statement, 0);
+    finalize_status = sqlite3_finalize(statement);
+    if (finalize_status != SQLITE_OK) {
+        return SS_SQLITE_ERR_FINALIZE;
+    }
+    return SS_SQLITE_OK;
+}
+
 int ss_sqlite_statement_prepare(
     SSSqliteDatabase *database,
     const char *sql_text,

@@ -312,7 +312,7 @@ def main():
             assert_response(
                 "/reflect/query?name=semantic%20script",
                 200,
-                "semantic%20script",
+                "semantic script",
                 common_path="/reflect/query",
             )
             assert_response("/reflect/query-empty?empty", 200, "", common_path="/reflect/query-empty")

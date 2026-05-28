@@ -9,6 +9,7 @@ its output.
 
 Coverage:
   - log    : build + run  -> escapeJsonString escapes `"` and `\\` (prints OK)
+  - time   : build + run  -> unix epoch read is not the old constant-zero fallback
   - bcrypt : build + run  -> hash/verify round-trip (prints OK)
   - jwt    : build only    -> links its native HMAC runtime (the runtime
              smoke passes at committed HEAD; it is build-checked here so the
@@ -65,9 +66,84 @@ def _build_and_run(module: str) -> subprocess.CompletedProcess:
         )
 
 
+# Standalone console program exercising the html.fragmentConcat compiler-lowered
+# primitive. Two HtmlFragment-typed storage rows fold into one fragment via
+# `html.fragmentConcat`; the result is bound as HtmlFragment (so SS4302 — the
+# rule that catches a String op's result mislabelled as an opaque HTML handle —
+# accepts the bind) and then written via console.writeLine. Build + run proves
+# the intrinsic lowers (snprintf-backed, links in every target) and produces the
+# expected `<p></p>` concatenation.
+_HTML_FRAGMENT_CONCAT_SOURCE = """project HtmlFragmentConcatSmoke
+target console
+runtime AgentRuntime 0.1
+entry console main
+
+import memory standard.memory
+
+error MainError
+errorCase MainError Failed
+
+capability stdoutWriteCapability console.stdout write
+capability heapAllocationCapability heap allocate
+capability heapFreeCapability heap free
+capability bufferWriteCapability memory.buffer write
+
+storage module immutable capacityBytes ByteCount 64
+storage module immutable openTagText HtmlFragment "<p>"
+storage module immutable closeTagText HtmlFragment "</p>"
+
+operation main
+input operation main console Console
+output operation main Result ExitCode MainError
+useCapability main stdoutWriteCapability
+useCapability main heapAllocationCapability
+useCapability main heapFreeCapability
+useCapability main bufferWriteCapability
+effect main write console.stdout
+effect main allocate heap
+effect main free heap
+effect main write memory.buffer
+memory main heap yes
+async main no
+purpose operation main "smoke-test html.fragmentConcat"
+invariant operation main "prints <p></p>"
+label startMain
+call allocCall memory.allocateMemoryBytes
+argument allocCall byteCount ByteCount capacityBytes
+run allocCall
+bind ok scratchBuffer String allocCall
+bind error allocFailure MemoryAllocationError allocCall
+branch error source allocCall target failed
+defer releaseCall memory.releaseMemoryBytes scratchBuffer
+call concatCall html.fragmentConcat
+argument concatCall left HtmlFragment openTagText
+argument concatCall right HtmlFragment closeTagText
+argument concatCall buffer OpaquePointer scratchBuffer
+argument concatCall capacity ByteCount capacityBytes
+run concatCall
+bind value joinedFragment HtmlFragment concatCall
+call writeCall console.writeLine
+argument writeCall text String joinedFragment
+run writeCall
+ignore void source writeCall
+bind error writeFailure Int32 writeCall
+branch error source writeCall target failed
+storage module immutable okCode ExitCode 0
+return ok okCode
+label failed
+makeError mainFailure MainError.Failed
+return error mainFailure
+"""
+
+
 class TestNativeStdlibSmoke(unittest.TestCase):
     def test_log_escape_json_string_native_smoke(self) -> None:
         result = _build_and_run("log")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("OK", result.stdout)
+
+    def test_time_epoch_native_smoke(self) -> None:
+        result = _build_and_run("time")
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("OK", result.stdout)
 
@@ -99,6 +175,22 @@ class TestNativeStdlibSmoke(unittest.TestCase):
             timeout=120,
         )
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_html_fragment_concat_native_smoke(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ss_html_fragment_smoke_") as temp_dir:
+            root = Path(temp_dir)
+            source = root / "html_fragment_concat.sem"
+            source.write_text(_HTML_FRAGMENT_CONCAT_SOURCE, encoding="utf-8", newline="\n")
+            exe_path = _build_exe(source, root)
+            result = subprocess.run(
+                [str(exe_path)],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                timeout=60,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("<p></p>", result.stdout)
 
 
 if __name__ == "__main__":

@@ -99,8 +99,8 @@ Module export rows are module-local metadata: `exportType`, `exportError`,
 | `effect` | `effect OP ACTION PATH` | checked metadata |
 | `memory` | `memory OP POLICY...` | checked metadata |
 | `async` | `async OP yes/no` | checked metadata |
-| `purpose` | `purpose OP "text"` | checked metadata |
-| `invariant` | `invariant OP "text"` | checked metadata |
+| `purpose` | `purpose operation OP "text"` | checked metadata |
+| `invariant` | `invariant operation OP "text"` | checked metadata |
 | `warning` | `warning OP "text"` | checked metadata |
 | `guarantee` | `guarantee TARGET "text"` | metadata |
 | `failure` | `failure TARGET NAME "text"` | metadata |
@@ -233,13 +233,16 @@ import html standard.html
 `html.hydrate.TemplateName` is a generated call target, not a standalone verb.
 It is exposed through the imported `standard.html` namespace and assembles the
 template body with `argument` rows whose names match inferred hole roots.
-Dynamic holes are bare names or dotted record-field paths, written as
-`{name}` or `{record.field}`. Other brace holes are rejected outside raw
-`<style>` and `<script>` text, and bare-name holes inside raw text are rejected.
-Hydration escapes `String` in text and quoted attribute sinks. URL-bearing
-attributes such as `href` / `src` currently require static values. `HtmlFragment`
-/ `HtmlTrustedFragment` / `HtmlDocument` values can only hydrate text-content
-positions where raw markup is intentional.
+Dynamic holes are bare names or dotted record-field paths, written only as
+`{{name}}` or `{{record.field}}`. The old `{name}` form is a hard error with
+guidance to use `{{name}}`. Single braces in JavaScript, CSS, and object
+literals remain literal unless they are exactly old hole syntax; raw
+`<style>`/`<script>` text still rejects actual dynamic holes. Hydration escapes
+`String` in text and non-URL quoted attribute sinks. URL-bearing attributes
+(`href`, `src`, `action`, `formaction`, and `poster`) require `HtmlSafeUrl`;
+plain `String` is rejected there. `HtmlFragment` / `HtmlTrustedFragment` /
+`HtmlDocument` values can only hydrate text-content positions where raw markup
+is intentional.
 
 ## Native Windows GUI
 
@@ -357,8 +360,7 @@ Collection declarations are metadata/runtime-contract surface today. They do
 not create executable methods by themselves: calls like `TaskList.append`,
 `TaskMap.get`, or a declared `collectionOperation` target still need an
 explicit operation/runtime binding. `semlint.py` reports these as collection
-runtime gaps while the compiler would otherwise use the zero-stub external
-fallback.
+runtime gaps before codegen rejects the unsupported typed collection target.
 
 ## Runtime Bindings and Intrinsics
 

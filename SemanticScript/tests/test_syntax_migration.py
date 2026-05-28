@@ -24,9 +24,9 @@ type SearchResult Result Int64 SearchError
 modulePurpose example.migrate "Search values."
 moduleInvariant example.migrate "Only counter mutates."
 htmlTemplate CardTemplate
-htmlArg CardTemplate titleText HtmlText
+htmlArg CardTemplate titleText String
 htmlBody CardTemplate
-  <h1>{htmlArg.titleText}</h1>
+  <h1>{{titleText}}</h1>
 purpose helper "Compute a candidate."
 invariant helper "Inputs are stable."
 operation helper
@@ -75,7 +75,7 @@ purpose module example.migrate "Search values."
 invariant module example.migrate "Only counter mutates."
 html template CardTemplate
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 purpose operation helper "Compute a candidate."
 invariant operation helper "Inputs are stable."
 operation helper
@@ -149,7 +149,7 @@ type SearchResult result ok Int64 error SearchError
 purpose module example.current "Already current."
 html template CardTemplate
 html body template CardTemplate
-  <h1>{titleText}</h1>
+  <h1>{{titleText}}</h1>
 operation main
 input operation main needle Int64
 output operation main SearchResult

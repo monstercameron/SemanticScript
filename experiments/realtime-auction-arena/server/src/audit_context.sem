@@ -39,6 +39,10 @@ capability jsonDocumentWriteCapability json.document.tree write
 purpose operation jsonDocumentWriteCapability "Authority to create and serialize bounded audit JSON documents."
 capability sqliteDatabaseReader database read
 purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite audit statements."
+capability sqliteDatabaseReadWriter database readWrite
+purpose operation sqliteDatabaseReadWriter "Authority used by shared auth helpers that consult session state."
+capability processEnvironmentReader process.environment read
+purpose operation processEnvironmentReader "Authority used by shared auth helpers to read deployment auth configuration."
 capability jwtTokenSigner jwt.hs256 signVerify
 purpose operation jwtTokenSigner "Authority to verify HS256 bearer tokens through the server auth context."
 
@@ -73,16 +77,21 @@ effect auctionAuditHandler read http.request.header
 effect auctionAuditHandler read http.request.query
 effect auctionAuditHandler read http.request.path
 effect auctionAuditHandler read database
+effect auctionAuditHandler readWrite database
+effect auctionAuditHandler read process.environment
 effect auctionAuditHandler write http.response
 effect auctionAuditHandler allocate heap
 effect auctionAuditHandler free heap
 effect auctionAuditHandler write json.document.tree
 effect auctionAuditHandler read memory.buffer
+effect auctionAuditHandler write memory.buffer
 memory auctionAuditHandler heap yes
 async auctionAuditHandler no
 useCapability auctionAuditHandler httpRequestReader
 useCapability auctionAuditHandler httpResponseWriter
 useCapability auctionAuditHandler sqliteDatabaseReader
+useCapability auctionAuditHandler sqliteDatabaseReadWriter
+useCapability auctionAuditHandler processEnvironmentReader
 useCapability auctionAuditHandler heapAllocCapability
 useCapability auctionAuditHandler heapFreeCapability
 useCapability auctionAuditHandler jsonDocumentWriteCapability
@@ -415,6 +424,7 @@ argument setAuditAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setAuditAuctionIdCall value String auditAuctionId
 run setAuditAuctionIdCall
 ignore ok source setAuditAuctionIdCall type Int32
+ignore error source setAuditAuctionIdCall
 call setAuditAfterCall json.setObjectFieldInt64
 argument setAuditAfterCall document JsonDocument auditDocument
 argument setAuditAfterCall cursor JsonCursor auditData
@@ -422,6 +432,7 @@ argument setAuditAfterCall fieldName String runtime.fieldAfter
 argument setAuditAfterCall value Int64 auditReplayCursor
 run setAuditAfterCall
 ignore ok source setAuditAfterCall type Int32
+ignore error source setAuditAfterCall
 call setAuditCursorCall json.setObjectFieldString
 argument setAuditCursorCall document JsonDocument auditDocument
 argument setAuditCursorCall cursor JsonCursor auditData
@@ -429,6 +440,7 @@ argument setAuditCursorCall fieldName String fieldCursor
 argument setAuditCursorCall value String auditCursorText
 run setAuditCursorCall
 ignore ok source setAuditCursorCall type Int32
+ignore error source setAuditCursorCall
 call setAuditLimitCall json.setObjectFieldInt64
 argument setAuditLimitCall document JsonDocument auditDocument
 argument setAuditLimitCall cursor JsonCursor auditData
@@ -436,6 +448,7 @@ argument setAuditLimitCall fieldName String runtime.fieldLimit
 argument setAuditLimitCall value Int64 auditReplayLimit
 run setAuditLimitCall
 ignore ok source setAuditLimitCall type Int32
+ignore error source setAuditLimitCall
 call createAuditArrayCall json.setObjectFieldArray
 argument createAuditArrayCall document JsonDocument auditDocument
 argument createAuditArrayCall cursor JsonCursor auditData
@@ -544,6 +557,7 @@ argument setAuditEventIdCall fieldName String fieldAuditEventId
 argument setAuditEventIdCall value String auditEventId
 run setAuditEventIdCall
 ignore ok source setAuditEventIdCall type Int32
+ignore error source setAuditEventIdCall
 call setAuditActorCall json.setObjectFieldString
 argument setAuditActorCall document JsonDocument auditDocument
 argument setAuditActorCall cursor JsonCursor auditObject
@@ -551,6 +565,7 @@ argument setAuditActorCall fieldName String fieldActorUserId
 argument setAuditActorCall value String auditActorUserId
 run setAuditActorCall
 ignore ok source setAuditActorCall type Int32
+ignore error source setAuditActorCall
 call setAuditActorRoleCall json.setObjectFieldInt64
 argument setAuditActorRoleCall document JsonDocument auditDocument
 argument setAuditActorRoleCall cursor JsonCursor auditObject
@@ -558,6 +573,7 @@ argument setAuditActorRoleCall fieldName String fieldActorRole
 argument setAuditActorRoleCall value Int64 auditActorRole
 run setAuditActorRoleCall
 ignore ok source setAuditActorRoleCall type Int32
+ignore error source setAuditActorRoleCall
 call setAuditRequestIdCall json.setObjectFieldString
 argument setAuditRequestIdCall document JsonDocument auditDocument
 argument setAuditRequestIdCall cursor JsonCursor auditObject
@@ -565,6 +581,7 @@ argument setAuditRequestIdCall fieldName String runtime.fieldRequestId
 argument setAuditRequestIdCall value String auditRequestId
 run setAuditRequestIdCall
 ignore ok source setAuditRequestIdCall type Int32
+ignore error source setAuditRequestIdCall
 call setAuditIdempotencyCall json.setObjectFieldString
 argument setAuditIdempotencyCall document JsonDocument auditDocument
 argument setAuditIdempotencyCall cursor JsonCursor auditObject
@@ -572,6 +589,7 @@ argument setAuditIdempotencyCall fieldName String fieldIdempotencyKey
 argument setAuditIdempotencyCall value String auditIdempotencyKey
 run setAuditIdempotencyCall
 ignore ok source setAuditIdempotencyCall type Int32
+ignore error source setAuditIdempotencyCall
 call setAuditActionCall json.setObjectFieldString
 argument setAuditActionCall document JsonDocument auditDocument
 argument setAuditActionCall cursor JsonCursor auditObject
@@ -579,6 +597,7 @@ argument setAuditActionCall fieldName String fieldAction
 argument setAuditActionCall value String auditAction
 run setAuditActionCall
 ignore ok source setAuditActionCall type Int32
+ignore error source setAuditActionCall
 call setAuditCommandKindCall json.setObjectFieldInt64
 argument setAuditCommandKindCall document JsonDocument auditDocument
 argument setAuditCommandKindCall cursor JsonCursor auditObject
@@ -586,6 +605,7 @@ argument setAuditCommandKindCall fieldName String fieldCommandKind
 argument setAuditCommandKindCall value Int64 auditCommandKind
 run setAuditCommandKindCall
 ignore ok source setAuditCommandKindCall type Int32
+ignore error source setAuditCommandKindCall
 call setAuditAuctionFieldCall json.setObjectFieldString
 argument setAuditAuctionFieldCall document JsonDocument auditDocument
 argument setAuditAuctionFieldCall cursor JsonCursor auditObject
@@ -593,6 +613,7 @@ argument setAuditAuctionFieldCall fieldName String runtime.fieldAuctionId
 argument setAuditAuctionFieldCall value String auditRowAuctionId
 run setAuditAuctionFieldCall
 ignore ok source setAuditAuctionFieldCall type Int32
+ignore error source setAuditAuctionFieldCall
 call setAuditBidFieldCall json.setObjectFieldString
 argument setAuditBidFieldCall document JsonDocument auditDocument
 argument setAuditBidFieldCall cursor JsonCursor auditObject
@@ -600,6 +621,7 @@ argument setAuditBidFieldCall fieldName String runtime.fieldBidId
 argument setAuditBidFieldCall value String auditBidId
 run setAuditBidFieldCall
 ignore ok source setAuditBidFieldCall type Int32
+ignore error source setAuditBidFieldCall
 call setAuditOutcomeCall json.setObjectFieldInt64
 argument setAuditOutcomeCall document JsonDocument auditDocument
 argument setAuditOutcomeCall cursor JsonCursor auditObject
@@ -607,6 +629,7 @@ argument setAuditOutcomeCall fieldName String fieldOutcome
 argument setAuditOutcomeCall value Int64 auditOutcome
 run setAuditOutcomeCall
 ignore ok source setAuditOutcomeCall type Int32
+ignore error source setAuditOutcomeCall
 call setAuditErrorCall json.setObjectFieldString
 argument setAuditErrorCall document JsonDocument auditDocument
 argument setAuditErrorCall cursor JsonCursor auditObject
@@ -614,6 +637,7 @@ argument setAuditErrorCall fieldName String fieldErrorCode
 argument setAuditErrorCall value String auditErrorCode
 run setAuditErrorCall
 ignore ok source setAuditErrorCall type Int32
+ignore error source setAuditErrorCall
 call setAuditPayloadCall json.setObjectFieldString
 argument setAuditPayloadCall document JsonDocument auditDocument
 argument setAuditPayloadCall cursor JsonCursor auditObject
@@ -621,6 +645,7 @@ argument setAuditPayloadCall fieldName String fieldPayloadJson
 argument setAuditPayloadCall value String auditPayloadJson
 run setAuditPayloadCall
 ignore ok source setAuditPayloadCall type Int32
+ignore error source setAuditPayloadCall
 call setAuditCreatedCall json.setObjectFieldInt64
 argument setAuditCreatedCall document JsonDocument auditDocument
 argument setAuditCreatedCall cursor JsonCursor auditObject
@@ -628,6 +653,7 @@ argument setAuditCreatedCall fieldName String runtime.fieldCreatedAtUtcMillis
 argument setAuditCreatedCall value Int64 auditCreatedAt
 run setAuditCreatedCall
 ignore ok source setAuditCreatedCall type Int32
+ignore error source setAuditCreatedCall
 set memory auditNextAfter auditCreatedAt
 call formatRowAuditNextCursorCall c.snprintf
 argument formatRowAuditNextCursorCall buffer OpaquePointer auditNextCursorBuffer
@@ -653,6 +679,7 @@ argument setAuditCountCall fieldName String runtime.fieldCount
 argument setAuditCountCall value Int64 auditCount
 run setAuditCountCall
 ignore ok source setAuditCountCall type Int32
+ignore error source setAuditCountCall
 call setAuditNextAfterCall json.setObjectFieldInt64
 argument setAuditNextAfterCall document JsonDocument auditDocument
 argument setAuditNextAfterCall cursor JsonCursor auditData
@@ -660,6 +687,7 @@ argument setAuditNextAfterCall fieldName String runtime.fieldNextAfter
 argument setAuditNextAfterCall value Int64 auditNextAfter
 run setAuditNextAfterCall
 ignore ok source setAuditNextAfterCall type Int32
+ignore error source setAuditNextAfterCall
 call setAuditNextCursorCall json.setObjectFieldString
 argument setAuditNextCursorCall document JsonDocument auditDocument
 argument setAuditNextCursorCall cursor JsonCursor auditData
@@ -667,12 +695,14 @@ argument setAuditNextCursorCall fieldName String fieldNextCursor
 argument setAuditNextCursorCall value String auditNextCursorText
 run setAuditNextCursorCall
 ignore ok source setAuditNextCursorCall type Int32
+ignore error source setAuditNextCursorCall
 call setAuditErrorNullCall json.setObjectFieldNull
 argument setAuditErrorNullCall document JsonDocument auditDocument
 argument setAuditErrorNullCall cursor JsonCursor auditRoot
 argument setAuditErrorNullCall fieldName String runtime.fieldError
 run setAuditErrorNullCall
 ignore ok source setAuditErrorNullCall type Int32
+ignore error source setAuditErrorNullCall
 call serializeAuditCall json.serializeDocument
 argument serializeAuditCall document JsonDocument auditDocument
 argument serializeAuditCall scratch OpaquePointer auditResponseBuffer

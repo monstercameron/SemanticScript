@@ -52,6 +52,7 @@ exportConstant app.realtime_auction_arena.server.runtime_constants requestIdRand
 exportConstant app.realtime_auction_arena.server.runtime_constants requestIdRandomByteCount
 exportConstant app.realtime_auction_arena.server.runtime_constants requestIdEncodedBufferCapacity
 exportConstant app.realtime_auction_arena.server.runtime_constants requestIdEncodedCapacityArg
+exportConstant app.realtime_auction_arena.server.runtime_constants requestIdEncodedLengthBufferCapacity
 exportConstant app.realtime_auction_arena.server.runtime_constants maxJsonBodyBytes
 exportConstant app.realtime_auction_arena.server.runtime_constants bcryptPasswordMaxBytes
 exportConstant app.realtime_auction_arena.server.runtime_constants authJsonDocumentCapacity
@@ -74,6 +75,7 @@ exportConstant app.realtime_auction_arena.server.runtime_constants authIssueAcce
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefreshRandomOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefreshTokenOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefreshHashOffset
+exportConstant app.realtime_auction_arena.server.runtime_constants authIssueRefreshLengthOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueResponseBodyOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueJwtIdOffset
 exportConstant app.realtime_auction_arena.server.runtime_constants authIssueArenaCapacity
@@ -305,6 +307,7 @@ exportConstant app.realtime_auction_arena.server.runtime_constants bidRejectedEr
 exportConstant app.realtime_auction_arena.server.runtime_constants routeAuthLogin
 exportConstant app.realtime_auction_arena.server.runtime_constants routeAuctionBid
 exportConstant app.realtime_auction_arena.server.runtime_constants methodPost
+exportConstant app.realtime_auction_arena.server.runtime_constants methodDelete
 exportConstant app.realtime_auction_arena.server.runtime_constants maxManualExtensionMillis
 exportConstant app.realtime_auction_arena.server.runtime_constants createAuctionCommandJsonFieldCount
 exportConstant app.realtime_auction_arena.server.runtime_constants revisionCommandJsonFieldCount
@@ -369,6 +372,7 @@ storage module immutable requestIdRandomBufferCapacity ByteCount 16
 storage module immutable requestIdRandomByteCount Int32 16
 storage module immutable requestIdEncodedBufferCapacity ByteCount 24
 storage module immutable requestIdEncodedCapacityArg Int32 24
+storage module immutable requestIdEncodedLengthBufferCapacity ByteCount 8
 storage module immutable maxJsonBodyBytes ByteCount 65536
 storage module immutable bcryptPasswordMaxBytes Int64 72
 storage module immutable authJsonDocumentCapacity JsonCapacityBytes 4096
@@ -394,7 +398,8 @@ storage module immutable authIssueRefreshHashOffset ByteCount 588
 storage module immutable authIssuePayloadTemplateOffset ByteCount 656
 storage module immutable authIssueJwtIdOffset ByteCount 1184
 storage module immutable authIssueResponseBodyOffset ByteCount 1312
-storage module immutable authIssueArenaCapacity ByteCount 3360
+storage module immutable authIssueRefreshLengthOffset ByteCount 3360
+storage module immutable authIssueArenaCapacity ByteCount 3368
 storage module immutable authBcryptCost Int32 12
 storage module immutable authSuccessCode Int32 0
 storage module immutable authMatchCode Int32 1
@@ -623,6 +628,7 @@ storage module immutable bidRejectedErrorCode String "bid_rejected"
 storage module immutable routeAuthLogin String "POST /api/v1/auth/login"
 storage module immutable routeAuctionBid String "POST /api/v1/auctions/:auctionId/bids"
 storage module immutable methodPost String "POST"
+storage module immutable methodDelete String "DELETE"
 storage module immutable maxManualExtensionMillis Int64 600000
 storage module immutable createAuctionCommandJsonFieldCount Int64 9
 storage module immutable revisionCommandJsonFieldCount Int64 1

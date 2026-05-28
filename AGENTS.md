@@ -3,6 +3,8 @@
 This is the repo-level agent guide for SemanticScript. Keep this file and
 `CLAUDE.md` in sync when the agent contract changes.
 
+Agent contract version: 2026-05-28.
+
 ## Project Overview
 
 SemanticScript is a flat semantic tape language. One line is one record, and
@@ -226,6 +228,14 @@ import sqlite standard.sqlite
 import gui standard.gui
 import document standard.document
 ```
+
+HTML templates use `{{name}}` and `{{record.field}}` for dynamic holes. Legacy
+single-brace holes such as `{title}` are a breaking error, not a migration
+warning. Single braces in JavaScript, CSS, JSON-like text, and other raw HTML
+content are literal unless they exactly match the legacy hole shape. Dynamic
+holes in URL-bearing attributes (`href`, `src`, `action`, `formaction`, and
+`poster`) must be typed `HtmlSafeUrl`; plain `String` is valid for text and
+non-URL quoted attributes only.
 
 `standard.document` is the browser DOM namespace and targets wasm only: its
 `ss_dom_*` runtimeBinding externs resolve against the emscripten js-library
@@ -578,8 +588,8 @@ Reserved gui.* targets live under standard.gui contracts:
   effect OP ACTION PATH
   memory OP POLICY...
   async OP yes|no
-  purpose OP "text"
-  invariant OP "text"
+  purpose operation OP "text"
+  invariant operation OP "text"
   warning OP "text"
   guarantee OP "text"
   failure OP NAME "text"
@@ -647,11 +657,12 @@ Bool tokens: true false yes no 1 0.
   storage module mutable lastRevision Int64 zeroValue
   storage local immutable stepValue Int64 1
   storage local mutable currentRevision Int64 lastRevision
-  set local currentRevision nextRevision
-  set module lastRevision nextRevision ownedBy moduleStateOwner
+  set storage currentRevision nextRevision
+  set storage lastRevision nextRevision
 
-Module mutable => LLVM global. Local mutable => alloca. Owner/protected tails
-metadata today.
+Module mutable => LLVM global. Local mutable => alloca. `set` uses
+`set storage NAME VALUE`; scope-explicit `set local` / `set module` and
+`ownedBy` tails are rejected by the parser.
 
   sharedState process mutable failureCount Int64 zeroValue
   sharedStateOwner failureCount metricsRuntime
@@ -758,7 +769,7 @@ Loop:
   argument nextIndexCall right Int64 indexStep
   run nextIndexCall
   bind value nextIndex Int64 nextIndexCall
-  set local currentIndex nextIndex
+  set storage currentIndex nextIndex
   jump target loopStart
   label loopEnd
 

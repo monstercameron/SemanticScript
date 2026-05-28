@@ -58,6 +58,8 @@ capability sqliteDatabaseReader database read
 purpose operation sqliteDatabaseReader "Authority to execute auction read-only SQLite statements."
 capability sqliteDatabaseReadWriter database readWrite
 purpose operation sqliteDatabaseReadWriter "Authority to execute auction command SQLite transactions."
+capability processEnvironmentReader process.environment read
+purpose operation processEnvironmentReader "Authority used by shared auth helpers to read deployment auth configuration."
 
 exportOperation app.realtime_auction_arena.server.auction_context persistRejectedBidCommand
 exportOperation app.realtime_auction_arena.server.auction_context auctionsListHandler
@@ -359,16 +361,21 @@ input operation auctionsListHandler response HttpResponse
 output operation auctionsListHandler Int32
 effect auctionsListHandler read http.request.header
 effect auctionsListHandler read database
+effect auctionsListHandler readWrite database
+effect auctionsListHandler read process.environment
 effect auctionsListHandler write http.response
 effect auctionsListHandler allocate heap
 effect auctionsListHandler free heap
 effect auctionsListHandler write json.document.tree
 effect auctionsListHandler read memory.buffer
+effect auctionsListHandler write memory.buffer
 memory auctionsListHandler heap yes
 async auctionsListHandler no
 useCapability auctionsListHandler httpRequestReader
 useCapability auctionsListHandler httpResponseWriter
 useCapability auctionsListHandler sqliteDatabaseReader
+useCapability auctionsListHandler sqliteDatabaseReadWriter
+useCapability auctionsListHandler processEnvironmentReader
 useCapability auctionsListHandler heapAllocCapability
 useCapability auctionsListHandler heapFreeCapability
 useCapability auctionsListHandler jsonDocumentWriteCapability
@@ -524,6 +531,7 @@ argument setListAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setListAuctionIdCall value String listAuctionId
 run setListAuctionIdCall
 ignore ok source setListAuctionIdCall type Int32
+ignore error source setListAuctionIdCall
 call setListTitleCall json.setObjectFieldString
 argument setListTitleCall document JsonDocument auctionsListDocument
 argument setListTitleCall cursor JsonCursor listAuctionObject
@@ -531,6 +539,7 @@ argument setListTitleCall fieldName String runtime.fieldTitle
 argument setListTitleCall value String listAuctionTitle
 run setListTitleCall
 ignore ok source setListTitleCall type Int32
+ignore error source setListTitleCall
 call setListStatusCodeCall json.setObjectFieldInt64
 argument setListStatusCodeCall document JsonDocument auctionsListDocument
 argument setListStatusCodeCall cursor JsonCursor listAuctionObject
@@ -538,6 +547,7 @@ argument setListStatusCodeCall fieldName String runtime.fieldStatusCode
 argument setListStatusCodeCall value Int64 listAuctionStatus
 run setListStatusCodeCall
 ignore ok source setListStatusCodeCall type Int32
+ignore error source setListStatusCodeCall
 call setListCurrentBidCall json.setObjectFieldInt64
 argument setListCurrentBidCall document JsonDocument auctionsListDocument
 argument setListCurrentBidCall cursor JsonCursor listAuctionObject
@@ -545,6 +555,7 @@ argument setListCurrentBidCall fieldName String runtime.fieldCurrentBid
 argument setListCurrentBidCall value Int64 listCurrentBid
 run setListCurrentBidCall
 ignore ok source setListCurrentBidCall type Int32
+ignore error source setListCurrentBidCall
 call setListRevisionCall json.setObjectFieldInt64
 argument setListRevisionCall document JsonDocument auctionsListDocument
 argument setListRevisionCall cursor JsonCursor listAuctionObject
@@ -552,6 +563,7 @@ argument setListRevisionCall fieldName String runtime.fieldRevision
 argument setListRevisionCall value Int64 listRevision
 run setListRevisionCall
 ignore ok source setListRevisionCall type Int32
+ignore error source setListRevisionCall
 call setListEventSequenceCall json.setObjectFieldInt64
 argument setListEventSequenceCall document JsonDocument auctionsListDocument
 argument setListEventSequenceCall cursor JsonCursor listAuctionObject
@@ -559,6 +571,7 @@ argument setListEventSequenceCall fieldName String runtime.fieldEventSequence
 argument setListEventSequenceCall value Int64 listEventSequence
 run setListEventSequenceCall
 ignore ok source setListEventSequenceCall type Int32
+ignore error source setListEventSequenceCall
 call setListClosesAtCall json.setObjectFieldInt64
 argument setListClosesAtCall document JsonDocument auctionsListDocument
 argument setListClosesAtCall cursor JsonCursor listAuctionObject
@@ -566,6 +579,7 @@ argument setListClosesAtCall fieldName String runtime.fieldClosesAtUtcMillis
 argument setListClosesAtCall value Int64 listClosesAt
 run setListClosesAtCall
 ignore ok source setListClosesAtCall type Int32
+ignore error source setListClosesAtCall
 call setListAcceptedBidCountCall json.setObjectFieldInt64
 argument setListAcceptedBidCountCall document JsonDocument auctionsListDocument
 argument setListAcceptedBidCountCall cursor JsonCursor listAuctionObject
@@ -573,6 +587,7 @@ argument setListAcceptedBidCountCall fieldName String runtime.fieldAcceptedBidCo
 argument setListAcceptedBidCountCall value Int64 listAcceptedBidCount
 run setListAcceptedBidCountCall
 ignore ok source setListAcceptedBidCountCall type Int32
+ignore error source setListAcceptedBidCountCall
 
 call incrementAuctionsListCountCall math.addInt64
 argument incrementAuctionsListCountCall left Int64 auctionsListCount
@@ -590,6 +605,7 @@ argument setAuctionsListCountCall fieldName String runtime.fieldCount
 argument setAuctionsListCountCall value Int64 auctionsListCount
 run setAuctionsListCountCall
 ignore ok source setAuctionsListCountCall type Int32
+ignore error source setAuctionsListCountCall
 
 call setAuctionsListErrorNullCall json.setObjectFieldNull
 argument setAuctionsListErrorNullCall document JsonDocument auctionsListDocument
@@ -597,6 +613,7 @@ argument setAuctionsListErrorNullCall cursor JsonCursor auctionsListRoot
 argument setAuctionsListErrorNullCall fieldName String runtime.fieldError
 run setAuctionsListErrorNullCall
 ignore ok source setAuctionsListErrorNullCall type Int32
+ignore error source setAuctionsListErrorNullCall
 
 call serializeAuctionsListCall json.serializeDocument
 argument serializeAuctionsListCall document JsonDocument auctionsListDocument
@@ -1224,6 +1241,7 @@ argument setCreateAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setCreateAuctionIdCall value String createdAuctionId
 run setCreateAuctionIdCall
 ignore ok source setCreateAuctionIdCall type Int32
+ignore error source setCreateAuctionIdCall
 call setCreateAuctionTitleCall json.setObjectFieldString
 argument setCreateAuctionTitleCall document JsonDocument auctionCreateResponseDocument
 argument setCreateAuctionTitleCall cursor JsonCursor auctionCreateResponseAuction
@@ -1231,6 +1249,7 @@ argument setCreateAuctionTitleCall fieldName String runtime.fieldTitle
 argument setCreateAuctionTitleCall value String auctionCreateTitleText
 run setCreateAuctionTitleCall
 ignore ok source setCreateAuctionTitleCall type Int32
+ignore error source setCreateAuctionTitleCall
 call setCreateAuctionStatusCall json.setObjectFieldString
 argument setCreateAuctionStatusCall document JsonDocument auctionCreateResponseDocument
 argument setCreateAuctionStatusCall cursor JsonCursor auctionCreateResponseAuction
@@ -1238,6 +1257,7 @@ argument setCreateAuctionStatusCall fieldName String runtime.fieldStatus
 argument setCreateAuctionStatusCall value String runtime.draftStatusText
 run setCreateAuctionStatusCall
 ignore ok source setCreateAuctionStatusCall type Int32
+ignore error source setCreateAuctionStatusCall
 call setCreateAuctionStatusCodeCall json.setObjectFieldInt64
 argument setCreateAuctionStatusCodeCall document JsonDocument auctionCreateResponseDocument
 argument setCreateAuctionStatusCodeCall cursor JsonCursor auctionCreateResponseAuction
@@ -1245,6 +1265,7 @@ argument setCreateAuctionStatusCodeCall fieldName String runtime.fieldStatusCode
 argument setCreateAuctionStatusCodeCall value Int64 1
 run setCreateAuctionStatusCodeCall
 ignore ok source setCreateAuctionStatusCodeCall type Int32
+ignore error source setCreateAuctionStatusCodeCall
 call setCreateAuctionCurrentBidCall json.setObjectFieldInt64
 argument setCreateAuctionCurrentBidCall document JsonDocument auctionCreateResponseDocument
 argument setCreateAuctionCurrentBidCall cursor JsonCursor auctionCreateResponseAuction
@@ -1252,6 +1273,7 @@ argument setCreateAuctionCurrentBidCall fieldName String runtime.fieldCurrentBid
 argument setCreateAuctionCurrentBidCall value Int64 auctionCreateStartingBid
 run setCreateAuctionCurrentBidCall
 ignore ok source setCreateAuctionCurrentBidCall type Int32
+ignore error source setCreateAuctionCurrentBidCall
 call setCreateAuctionRevisionCall json.setObjectFieldInt64
 argument setCreateAuctionRevisionCall document JsonDocument auctionCreateResponseDocument
 argument setCreateAuctionRevisionCall cursor JsonCursor auctionCreateResponseAuction
@@ -1259,6 +1281,7 @@ argument setCreateAuctionRevisionCall fieldName String runtime.fieldRevision
 argument setCreateAuctionRevisionCall value Int64 0
 run setCreateAuctionRevisionCall
 ignore ok source setCreateAuctionRevisionCall type Int32
+ignore error source setCreateAuctionRevisionCall
 call setCreateAuctionSequenceCall json.setObjectFieldInt64
 argument setCreateAuctionSequenceCall document JsonDocument auctionCreateResponseDocument
 argument setCreateAuctionSequenceCall cursor JsonCursor auctionCreateResponseAuction
@@ -1266,6 +1289,7 @@ argument setCreateAuctionSequenceCall fieldName String runtime.fieldEventSequenc
 argument setCreateAuctionSequenceCall value Int64 1
 run setCreateAuctionSequenceCall
 ignore ok source setCreateAuctionSequenceCall type Int32
+ignore error source setCreateAuctionSequenceCall
 call setCreateIdempotentCall json.setObjectFieldBool
 argument setCreateIdempotentCall document JsonDocument auctionCreateResponseDocument
 argument setCreateIdempotentCall cursor JsonCursor auctionCreateResponseData
@@ -1273,12 +1297,14 @@ argument setCreateIdempotentCall fieldName String runtime.fieldIdempotent
 argument setCreateIdempotentCall value Bool runtime.boolFalse
 run setCreateIdempotentCall
 ignore ok source setCreateIdempotentCall type Int32
+ignore error source setCreateIdempotentCall
 call setCreateResponseErrorNullCall json.setObjectFieldNull
 argument setCreateResponseErrorNullCall document JsonDocument auctionCreateResponseDocument
 argument setCreateResponseErrorNullCall cursor JsonCursor auctionCreateResponseRoot
 argument setCreateResponseErrorNullCall fieldName String runtime.fieldError
 run setCreateResponseErrorNullCall
 ignore ok source setCreateResponseErrorNullCall type Int32
+ignore error source setCreateResponseErrorNullCall
 call serializeCreateResponseCall json.serializeDocument
 argument serializeCreateResponseCall document JsonDocument auctionCreateResponseDocument
 argument serializeCreateResponseCall scratch OpaquePointer auctionCreateResponseBuffer
@@ -1543,16 +1569,21 @@ output operation auctionSnapshotHandler Int32
 effect auctionSnapshotHandler read http.request.header
 effect auctionSnapshotHandler read http.request.path
 effect auctionSnapshotHandler read database
+effect auctionSnapshotHandler readWrite database
+effect auctionSnapshotHandler read process.environment
 effect auctionSnapshotHandler write http.response
 effect auctionSnapshotHandler allocate heap
 effect auctionSnapshotHandler free heap
 effect auctionSnapshotHandler write json.document.tree
 effect auctionSnapshotHandler read memory.buffer
+effect auctionSnapshotHandler write memory.buffer
 memory auctionSnapshotHandler heap yes
 async auctionSnapshotHandler no
 useCapability auctionSnapshotHandler httpRequestReader
 useCapability auctionSnapshotHandler httpResponseWriter
 useCapability auctionSnapshotHandler sqliteDatabaseReader
+useCapability auctionSnapshotHandler sqliteDatabaseReadWriter
+useCapability auctionSnapshotHandler processEnvironmentReader
 useCapability auctionSnapshotHandler heapAllocCapability
 useCapability auctionSnapshotHandler heapFreeCapability
 useCapability auctionSnapshotHandler jsonDocumentWriteCapability
@@ -1729,6 +1760,7 @@ argument setSnapshotAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setSnapshotAuctionIdCall value String snapshotAuctionId
 run setSnapshotAuctionIdCall
 ignore ok source setSnapshotAuctionIdCall type Int32
+ignore error source setSnapshotAuctionIdCall
 call setSnapshotTitleCall json.setObjectFieldString
 argument setSnapshotTitleCall document JsonDocument snapshotDocument
 argument setSnapshotTitleCall cursor JsonCursor snapshotAuction
@@ -1736,6 +1768,7 @@ argument setSnapshotTitleCall fieldName String runtime.fieldTitle
 argument setSnapshotTitleCall value String snapshotTitle
 run setSnapshotTitleCall
 ignore ok source setSnapshotTitleCall type Int32
+ignore error source setSnapshotTitleCall
 call setSnapshotDescriptionCall json.setObjectFieldString
 argument setSnapshotDescriptionCall document JsonDocument snapshotDocument
 argument setSnapshotDescriptionCall cursor JsonCursor snapshotAuction
@@ -1743,6 +1776,7 @@ argument setSnapshotDescriptionCall fieldName String runtime.fieldDescription
 argument setSnapshotDescriptionCall value String snapshotDescription
 run setSnapshotDescriptionCall
 ignore ok source setSnapshotDescriptionCall type Int32
+ignore error source setSnapshotDescriptionCall
 call setSnapshotStatusCodeCall json.setObjectFieldInt64
 argument setSnapshotStatusCodeCall document JsonDocument snapshotDocument
 argument setSnapshotStatusCodeCall cursor JsonCursor snapshotAuction
@@ -1750,6 +1784,7 @@ argument setSnapshotStatusCodeCall fieldName String runtime.fieldStatusCode
 argument setSnapshotStatusCodeCall value Int64 snapshotStatus
 run setSnapshotStatusCodeCall
 ignore ok source setSnapshotStatusCodeCall type Int32
+ignore error source setSnapshotStatusCodeCall
 call setSnapshotStartingCall json.setObjectFieldInt64
 argument setSnapshotStartingCall document JsonDocument snapshotDocument
 argument setSnapshotStartingCall cursor JsonCursor snapshotAuction
@@ -1757,6 +1792,7 @@ argument setSnapshotStartingCall fieldName String runtime.fieldStartingBid
 argument setSnapshotStartingCall value Int64 snapshotStartingBid
 run setSnapshotStartingCall
 ignore ok source setSnapshotStartingCall type Int32
+ignore error source setSnapshotStartingCall
 call setSnapshotMinimumCall json.setObjectFieldInt64
 argument setSnapshotMinimumCall document JsonDocument snapshotDocument
 argument setSnapshotMinimumCall cursor JsonCursor snapshotAuction
@@ -1764,6 +1800,7 @@ argument setSnapshotMinimumCall fieldName String runtime.fieldMinimumIncrement
 argument setSnapshotMinimumCall value Int64 snapshotMinimumIncrement
 run setSnapshotMinimumCall
 ignore ok source setSnapshotMinimumCall type Int32
+ignore error source setSnapshotMinimumCall
 call setSnapshotMaxCall json.setObjectFieldInt64
 argument setSnapshotMaxCall document JsonDocument snapshotDocument
 argument setSnapshotMaxCall cursor JsonCursor snapshotAuction
@@ -1771,6 +1808,7 @@ argument setSnapshotMaxCall fieldName String runtime.fieldMaxBidAmount
 argument setSnapshotMaxCall value Int64 snapshotMaxBidAmount
 run setSnapshotMaxCall
 ignore ok source setSnapshotMaxCall type Int32
+ignore error source setSnapshotMaxCall
 call setSnapshotCurrentBidCall json.setObjectFieldInt64
 argument setSnapshotCurrentBidCall document JsonDocument snapshotDocument
 argument setSnapshotCurrentBidCall cursor JsonCursor snapshotAuction
@@ -1778,6 +1816,7 @@ argument setSnapshotCurrentBidCall fieldName String runtime.fieldCurrentBid
 argument setSnapshotCurrentBidCall value Int64 snapshotCurrentBid
 run setSnapshotCurrentBidCall
 ignore ok source setSnapshotCurrentBidCall type Int32
+ignore error source setSnapshotCurrentBidCall
 call setSnapshotRevisionCall json.setObjectFieldInt64
 argument setSnapshotRevisionCall document JsonDocument snapshotDocument
 argument setSnapshotRevisionCall cursor JsonCursor snapshotAuction
@@ -1785,6 +1824,7 @@ argument setSnapshotRevisionCall fieldName String runtime.fieldRevision
 argument setSnapshotRevisionCall value Int64 snapshotRevision
 run setSnapshotRevisionCall
 ignore ok source setSnapshotRevisionCall type Int32
+ignore error source setSnapshotRevisionCall
 call setSnapshotSequenceCall json.setObjectFieldInt64
 argument setSnapshotSequenceCall document JsonDocument snapshotDocument
 argument setSnapshotSequenceCall cursor JsonCursor snapshotAuction
@@ -1792,6 +1832,7 @@ argument setSnapshotSequenceCall fieldName String runtime.fieldEventSequence
 argument setSnapshotSequenceCall value Int64 snapshotEventSequence
 run setSnapshotSequenceCall
 ignore ok source setSnapshotSequenceCall type Int32
+ignore error source setSnapshotSequenceCall
 call setSnapshotStartsCall json.setObjectFieldInt64
 argument setSnapshotStartsCall document JsonDocument snapshotDocument
 argument setSnapshotStartsCall cursor JsonCursor snapshotAuction
@@ -1799,6 +1840,7 @@ argument setSnapshotStartsCall fieldName String runtime.fieldStartsAtUtcMillis
 argument setSnapshotStartsCall value Int64 snapshotStartsAt
 run setSnapshotStartsCall
 ignore ok source setSnapshotStartsCall type Int32
+ignore error source setSnapshotStartsCall
 call setSnapshotClosesCall json.setObjectFieldInt64
 argument setSnapshotClosesCall document JsonDocument snapshotDocument
 argument setSnapshotClosesCall cursor JsonCursor snapshotAuction
@@ -1806,6 +1848,7 @@ argument setSnapshotClosesCall fieldName String runtime.fieldClosesAtUtcMillis
 argument setSnapshotClosesCall value Int64 snapshotClosesAt
 run setSnapshotClosesCall
 ignore ok source setSnapshotClosesCall type Int32
+ignore error source setSnapshotClosesCall
 call setSnapshotAcceptedCall json.setObjectFieldInt64
 argument setSnapshotAcceptedCall document JsonDocument snapshotDocument
 argument setSnapshotAcceptedCall cursor JsonCursor snapshotAuction
@@ -1813,12 +1856,14 @@ argument setSnapshotAcceptedCall fieldName String runtime.fieldAcceptedBidCount
 argument setSnapshotAcceptedCall value Int64 snapshotAcceptedCount
 run setSnapshotAcceptedCall
 ignore ok source setSnapshotAcceptedCall type Int32
+ignore error source setSnapshotAcceptedCall
 call setSnapshotErrorNullCall json.setObjectFieldNull
 argument setSnapshotErrorNullCall document JsonDocument snapshotDocument
 argument setSnapshotErrorNullCall cursor JsonCursor snapshotRoot
 argument setSnapshotErrorNullCall fieldName String runtime.fieldError
 run setSnapshotErrorNullCall
 ignore ok source setSnapshotErrorNullCall type Int32
+ignore error source setSnapshotErrorNullCall
 call serializeSnapshotCall json.serializeDocument
 argument serializeSnapshotCall document JsonDocument snapshotDocument
 argument serializeSnapshotCall scratch OpaquePointer snapshotResponseBuffer
@@ -2260,6 +2305,7 @@ argument setStartAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setStartAuctionIdCall value String startAuctionId
 run setStartAuctionIdCall
 ignore ok source setStartAuctionIdCall type Int32
+ignore error source setStartAuctionIdCall
 call setStartStatusCall json.setObjectFieldString
 argument setStartStatusCall document JsonDocument startResponseDocument
 argument setStartStatusCall cursor JsonCursor startResponseAuction
@@ -2267,6 +2313,7 @@ argument setStartStatusCall fieldName String runtime.fieldStatus
 argument setStartStatusCall value String runtime.runningStatusText
 run setStartStatusCall
 ignore ok source setStartStatusCall type Int32
+ignore error source setStartStatusCall
 call setStartStatusCodeCall json.setObjectFieldInt64
 argument setStartStatusCodeCall document JsonDocument startResponseDocument
 argument setStartStatusCodeCall cursor JsonCursor startResponseAuction
@@ -2274,6 +2321,7 @@ argument setStartStatusCodeCall fieldName String runtime.fieldStatusCode
 argument setStartStatusCodeCall value Int64 2
 run setStartStatusCodeCall
 ignore ok source setStartStatusCodeCall type Int32
+ignore error source setStartStatusCodeCall
 call setStartRevisionCall json.setObjectFieldInt64
 argument setStartRevisionCall document JsonDocument startResponseDocument
 argument setStartRevisionCall cursor JsonCursor startResponseAuction
@@ -2281,6 +2329,7 @@ argument setStartRevisionCall fieldName String runtime.fieldRevision
 argument setStartRevisionCall value Int64 startNextRevision
 run setStartRevisionCall
 ignore ok source setStartRevisionCall type Int32
+ignore error source setStartRevisionCall
 call setStartSequenceCall json.setObjectFieldInt64
 argument setStartSequenceCall document JsonDocument startResponseDocument
 argument setStartSequenceCall cursor JsonCursor startResponseAuction
@@ -2288,12 +2337,14 @@ argument setStartSequenceCall fieldName String runtime.fieldEventSequence
 argument setStartSequenceCall value Int64 startNextSequence
 run setStartSequenceCall
 ignore ok source setStartSequenceCall type Int32
+ignore error source setStartSequenceCall
 call setStartResponseErrorNullCall json.setObjectFieldNull
 argument setStartResponseErrorNullCall document JsonDocument startResponseDocument
 argument setStartResponseErrorNullCall cursor JsonCursor startResponseRoot
 argument setStartResponseErrorNullCall fieldName String runtime.fieldError
 run setStartResponseErrorNullCall
 ignore ok source setStartResponseErrorNullCall type Int32
+ignore error source setStartResponseErrorNullCall
 call serializeStartResponseCall json.serializeDocument
 argument serializeStartResponseCall document JsonDocument startResponseDocument
 argument serializeStartResponseCall scratch OpaquePointer startResponseBuffer
@@ -3003,6 +3054,7 @@ argument setExtendAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setExtendAuctionIdCall value String extendAuctionId
 run setExtendAuctionIdCall
 ignore ok source setExtendAuctionIdCall type Int32
+ignore error source setExtendAuctionIdCall
 call setExtendStatusCall json.setObjectFieldString
 argument setExtendStatusCall document JsonDocument extendResponseDocument
 argument setExtendStatusCall cursor JsonCursor extendResponseAuction
@@ -3010,6 +3062,7 @@ argument setExtendStatusCall fieldName String runtime.fieldStatus
 argument setExtendStatusCall value String runtime.runningStatusText
 run setExtendStatusCall
 ignore ok source setExtendStatusCall type Int32
+ignore error source setExtendStatusCall
 call setExtendStatusCodeCall json.setObjectFieldInt64
 argument setExtendStatusCodeCall document JsonDocument extendResponseDocument
 argument setExtendStatusCodeCall cursor JsonCursor extendResponseAuction
@@ -3017,6 +3070,7 @@ argument setExtendStatusCodeCall fieldName String runtime.fieldStatusCode
 argument setExtendStatusCodeCall value Int64 2
 run setExtendStatusCodeCall
 ignore ok source setExtendStatusCodeCall type Int32
+ignore error source setExtendStatusCodeCall
 call setExtendRevisionCall json.setObjectFieldInt64
 argument setExtendRevisionCall document JsonDocument extendResponseDocument
 argument setExtendRevisionCall cursor JsonCursor extendResponseAuction
@@ -3024,6 +3078,7 @@ argument setExtendRevisionCall fieldName String runtime.fieldRevision
 argument setExtendRevisionCall value Int64 extendNextRevision
 run setExtendRevisionCall
 ignore ok source setExtendRevisionCall type Int32
+ignore error source setExtendRevisionCall
 call setExtendSequenceCall json.setObjectFieldInt64
 argument setExtendSequenceCall document JsonDocument extendResponseDocument
 argument setExtendSequenceCall cursor JsonCursor extendResponseAuction
@@ -3031,6 +3086,7 @@ argument setExtendSequenceCall fieldName String runtime.fieldEventSequence
 argument setExtendSequenceCall value Int64 extendNextSequence
 run setExtendSequenceCall
 ignore ok source setExtendSequenceCall type Int32
+ignore error source setExtendSequenceCall
 call setExtendClosesCall json.setObjectFieldInt64
 argument setExtendClosesCall document JsonDocument extendResponseDocument
 argument setExtendClosesCall cursor JsonCursor extendResponseAuction
@@ -3038,6 +3094,7 @@ argument setExtendClosesCall fieldName String runtime.fieldClosesAtUtcMillis
 argument setExtendClosesCall value Int64 extendNewClosesAt
 run setExtendClosesCall
 ignore ok source setExtendClosesCall type Int32
+ignore error source setExtendClosesCall
 call createExtendObjectCall json.setObjectFieldObject
 argument createExtendObjectCall document JsonDocument extendResponseDocument
 argument createExtendObjectCall cursor JsonCursor extendResponseData
@@ -3053,6 +3110,7 @@ argument setExtendPreviousCall fieldName String runtime.fieldPreviousClosesAtUtc
 argument setExtendPreviousCall value Int64 extendCurrentClosesAt
 run setExtendPreviousCall
 ignore ok source setExtendPreviousCall type Int32
+ignore error source setExtendPreviousCall
 call setExtendNewCall json.setObjectFieldInt64
 argument setExtendNewCall document JsonDocument extendResponseDocument
 argument setExtendNewCall cursor JsonCursor extendResponseExtension
@@ -3060,6 +3118,7 @@ argument setExtendNewCall fieldName String runtime.fieldNewClosesAtUtcMillis
 argument setExtendNewCall value Int64 extendNewClosesAt
 run setExtendNewCall
 ignore ok source setExtendNewCall type Int32
+ignore error source setExtendNewCall
 call setExtendMillisCall json.setObjectFieldInt64
 argument setExtendMillisCall document JsonDocument extendResponseDocument
 argument setExtendMillisCall cursor JsonCursor extendResponseExtension
@@ -3067,6 +3126,7 @@ argument setExtendMillisCall fieldName String runtime.fieldExtendByMillis
 argument setExtendMillisCall value Int64 extendByMillis
 run setExtendMillisCall
 ignore ok source setExtendMillisCall type Int32
+ignore error source setExtendMillisCall
 call setExtendReasonCall json.setObjectFieldString
 argument setExtendReasonCall document JsonDocument extendResponseDocument
 argument setExtendReasonCall cursor JsonCursor extendResponseExtension
@@ -3074,12 +3134,14 @@ argument setExtendReasonCall fieldName String runtime.fieldReason
 argument setExtendReasonCall value String runtime.manualExtendReasonText
 run setExtendReasonCall
 ignore ok source setExtendReasonCall type Int32
+ignore error source setExtendReasonCall
 call setExtendResponseErrorNullCall json.setObjectFieldNull
 argument setExtendResponseErrorNullCall document JsonDocument extendResponseDocument
 argument setExtendResponseErrorNullCall cursor JsonCursor extendResponseRoot
 argument setExtendResponseErrorNullCall fieldName String runtime.fieldError
 run setExtendResponseErrorNullCall
 ignore ok source setExtendResponseErrorNullCall type Int32
+ignore error source setExtendResponseErrorNullCall
 call serializeExtendResponseCall json.serializeDocument
 argument serializeExtendResponseCall document JsonDocument extendResponseDocument
 argument serializeExtendResponseCall scratch OpaquePointer extendResponseBuffer
@@ -3771,6 +3833,7 @@ argument setCloseAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setCloseAuctionIdCall value String closeAuctionId
 run setCloseAuctionIdCall
 ignore ok source setCloseAuctionIdCall type Int32
+ignore error source setCloseAuctionIdCall
 call setCloseStatusCall json.setObjectFieldString
 argument setCloseStatusCall document JsonDocument closeResponseDocument
 argument setCloseStatusCall cursor JsonCursor closeResponseAuction
@@ -3778,6 +3841,7 @@ argument setCloseStatusCall fieldName String runtime.fieldStatus
 argument setCloseStatusCall value String runtime.closedStatusText
 run setCloseStatusCall
 ignore ok source setCloseStatusCall type Int32
+ignore error source setCloseStatusCall
 call setCloseStatusCodeCall json.setObjectFieldInt64
 argument setCloseStatusCodeCall document JsonDocument closeResponseDocument
 argument setCloseStatusCodeCall cursor JsonCursor closeResponseAuction
@@ -3785,6 +3849,7 @@ argument setCloseStatusCodeCall fieldName String runtime.fieldStatusCode
 argument setCloseStatusCodeCall value Int64 3
 run setCloseStatusCodeCall
 ignore ok source setCloseStatusCodeCall type Int32
+ignore error source setCloseStatusCodeCall
 call setCloseRevisionCall json.setObjectFieldInt64
 argument setCloseRevisionCall document JsonDocument closeResponseDocument
 argument setCloseRevisionCall cursor JsonCursor closeResponseAuction
@@ -3792,6 +3857,7 @@ argument setCloseRevisionCall fieldName String runtime.fieldRevision
 argument setCloseRevisionCall value Int64 closeNextRevision
 run setCloseRevisionCall
 ignore ok source setCloseRevisionCall type Int32
+ignore error source setCloseRevisionCall
 call setCloseSequenceCall json.setObjectFieldInt64
 argument setCloseSequenceCall document JsonDocument closeResponseDocument
 argument setCloseSequenceCall cursor JsonCursor closeResponseAuction
@@ -3799,6 +3865,7 @@ argument setCloseSequenceCall fieldName String runtime.fieldEventSequence
 argument setCloseSequenceCall value Int64 closeNextSequence
 run setCloseSequenceCall
 ignore ok source setCloseSequenceCall type Int32
+ignore error source setCloseSequenceCall
 call setCloseCurrentBidCall json.setObjectFieldInt64
 argument setCloseCurrentBidCall document JsonDocument closeResponseDocument
 argument setCloseCurrentBidCall cursor JsonCursor closeResponseAuction
@@ -3806,6 +3873,7 @@ argument setCloseCurrentBidCall fieldName String runtime.fieldCurrentBid
 argument setCloseCurrentBidCall value Int64 closeCurrentBid
 run setCloseCurrentBidCall
 ignore ok source setCloseCurrentBidCall type Int32
+ignore error source setCloseCurrentBidCall
 call setCloseWinnerCall json.setObjectFieldString
 argument setCloseWinnerCall document JsonDocument closeResponseDocument
 argument setCloseWinnerCall cursor JsonCursor closeResponseAuction
@@ -3813,6 +3881,7 @@ argument setCloseWinnerCall fieldName String runtime.fieldWinnerUserId
 argument setCloseWinnerCall value String closeWinnerUserId
 run setCloseWinnerCall
 ignore ok source setCloseWinnerCall type Int32
+ignore error source setCloseWinnerCall
 call setCloseClosedAtCall json.setObjectFieldInt64
 argument setCloseClosedAtCall document JsonDocument closeResponseDocument
 argument setCloseClosedAtCall cursor JsonCursor closeResponseAuction
@@ -3820,6 +3889,7 @@ argument setCloseClosedAtCall fieldName String runtime.fieldClosedAtUtcMillis
 argument setCloseClosedAtCall value Int64 closeReplayNow
 run setCloseClosedAtCall
 ignore ok source setCloseClosedAtCall type Int32
+ignore error source setCloseClosedAtCall
 call setCloseReasonCall json.setObjectFieldString
 argument setCloseReasonCall document JsonDocument closeResponseDocument
 argument setCloseReasonCall cursor JsonCursor closeResponseAuction
@@ -3827,12 +3897,14 @@ argument setCloseReasonCall fieldName String runtime.fieldReason
 argument setCloseReasonCall value String runtime.manualCloseReasonText
 run setCloseReasonCall
 ignore ok source setCloseReasonCall type Int32
+ignore error source setCloseReasonCall
 call setCloseResponseErrorNullCall json.setObjectFieldNull
 argument setCloseResponseErrorNullCall document JsonDocument closeResponseDocument
 argument setCloseResponseErrorNullCall cursor JsonCursor closeResponseRoot
 argument setCloseResponseErrorNullCall fieldName String runtime.fieldError
 run setCloseResponseErrorNullCall
 ignore ok source setCloseResponseErrorNullCall type Int32
+ignore error source setCloseResponseErrorNullCall
 call serializeCloseResponseCall json.serializeDocument
 argument serializeCloseResponseCall document JsonDocument closeResponseDocument
 argument serializeCloseResponseCall scratch OpaquePointer closeResponseBuffer
@@ -4758,6 +4830,7 @@ argument setBidIdCall fieldName String runtime.fieldBidId
 argument setBidIdCall value String acceptedBidId
 run setBidIdCall
 ignore ok source setBidIdCall type Int32
+ignore error source setBidIdCall
 call setBidAuctionIdCall json.setObjectFieldString
 argument setBidAuctionIdCall document JsonDocument bidResponseDocument
 argument setBidAuctionIdCall cursor JsonCursor bidResponseBid
@@ -4765,6 +4838,7 @@ argument setBidAuctionIdCall fieldName String runtime.fieldAuctionId
 argument setBidAuctionIdCall value String bidAuctionId
 run setBidAuctionIdCall
 ignore ok source setBidAuctionIdCall type Int32
+ignore error source setBidAuctionIdCall
 call setBidAmountCall json.setObjectFieldInt64
 argument setBidAmountCall document JsonDocument bidResponseDocument
 argument setBidAmountCall cursor JsonCursor bidResponseBid
@@ -4772,6 +4846,7 @@ argument setBidAmountCall fieldName String runtime.fieldAmount
 argument setBidAmountCall value Int64 bidAmount
 run setBidAmountCall
 ignore ok source setBidAmountCall type Int32
+ignore error source setBidAmountCall
 call setBidAcceptedCall json.setObjectFieldBool
 argument setBidAcceptedCall document JsonDocument bidResponseDocument
 argument setBidAcceptedCall cursor JsonCursor bidResponseBid
@@ -4779,6 +4854,7 @@ argument setBidAcceptedCall fieldName String runtime.fieldAccepted
 argument setBidAcceptedCall value Bool runtime.boolTrue
 run setBidAcceptedCall
 ignore ok source setBidAcceptedCall type Int32
+ignore error source setBidAcceptedCall
 call createBidAuctionObjectCall json.setObjectFieldObject
 argument createBidAuctionObjectCall document JsonDocument bidResponseDocument
 argument createBidAuctionObjectCall cursor JsonCursor bidResponseData
@@ -4794,6 +4870,7 @@ argument setBidAuctionRevisionCall fieldName String runtime.fieldRevision
 argument setBidAuctionRevisionCall value Int64 bidNextRevision
 run setBidAuctionRevisionCall
 ignore ok source setBidAuctionRevisionCall type Int32
+ignore error source setBidAuctionRevisionCall
 call setBidAuctionSequenceCall json.setObjectFieldInt64
 argument setBidAuctionSequenceCall document JsonDocument bidResponseDocument
 argument setBidAuctionSequenceCall cursor JsonCursor bidResponseAuction
@@ -4801,6 +4878,7 @@ argument setBidAuctionSequenceCall fieldName String runtime.fieldEventSequence
 argument setBidAuctionSequenceCall value Int64 bidNextSequence
 run setBidAuctionSequenceCall
 ignore ok source setBidAuctionSequenceCall type Int32
+ignore error source setBidAuctionSequenceCall
 call setBidAuctionCurrentCall json.setObjectFieldInt64
 argument setBidAuctionCurrentCall document JsonDocument bidResponseDocument
 argument setBidAuctionCurrentCall cursor JsonCursor bidResponseAuction
@@ -4808,12 +4886,14 @@ argument setBidAuctionCurrentCall fieldName String runtime.fieldCurrentBid
 argument setBidAuctionCurrentCall value Int64 bidAmount
 run setBidAuctionCurrentCall
 ignore ok source setBidAuctionCurrentCall type Int32
+ignore error source setBidAuctionCurrentCall
 call setBidErrorNullCall json.setObjectFieldNull
 argument setBidErrorNullCall document JsonDocument bidResponseDocument
 argument setBidErrorNullCall cursor JsonCursor bidResponseRoot
 argument setBidErrorNullCall fieldName String runtime.fieldError
 run setBidErrorNullCall
 ignore ok source setBidErrorNullCall type Int32
+ignore error source setBidErrorNullCall
 call serializeBidResponseCall json.serializeDocument
 argument serializeBidResponseCall document JsonDocument bidResponseDocument
 argument serializeBidResponseCall scratch OpaquePointer bidResponseBuffer

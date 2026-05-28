@@ -113,7 +113,18 @@ PyInstaller onefile embeds the bundled folders inside the executable. At
 runtime, PyInstaller extracts that payload into a temporary `_MEI...` directory
 and runs from there. The user still downloads and launches one `.exe`, but the
 process requires writable temp space. The temporary directory is removed on
-normal exit.
+normal exit. If a process is killed or the host shuts down during execution,
+stale `_MEI*` directories can remain in the system temp directory. Preview and
+remove stale extraction directories with:
+
+```powershell
+sem clean --pyinstaller-temp
+sem clean --pyinstaller-temp --force
+```
+
+`sem version --json` exposes this packaging status under `packaging`: release
+artifacts are currently PyInstaller onefile Windows executables, not a
+self-hosted native compiler binary.
 
 The launcher also handles subprocess calls shaped like:
 
@@ -139,3 +150,26 @@ toolchain.
 
 For this release, PyInstaller is the lowest-risk path because it preserves the
 existing Python tooling and turns release packaging into a CI concern.
+
+## Release Discovery
+
+Use `sem self latest --json` to resolve the current release-channel artifact.
+The command queries the GitHub releases API and sorts matching releases by
+`published_at`; it does not rely on `/releases/latest`, which does not cover the
+main-channel prerelease handoff artifacts.
+
+```powershell
+sem self latest --channel prerelease --json
+sem self download --channel prerelease --output .\sem.exe
+sem self update --channel prerelease
+```
+
+`sem self update` stages the replacement executable next to the current
+executable as `sem.exe.new`. On Windows the running executable is locked, so the
+payload includes the explicit replacement command to run after `sem` exits.
+
+The standard release channel currently publishes a Windows x64 `sem.exe`, the
+VSIX, manifests, and the MCP bundle. Linux and macOS source/toolchain validation
+run in CI, and application cross-builds can use Zig as documented in
+`docs/toolchain/compiler.md`; prebuilt Linux/macOS `sem` release binaries are
+not part of the current distribution channel.

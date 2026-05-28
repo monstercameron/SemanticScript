@@ -57,7 +57,7 @@ EXPECTED_STDIO_OUTPUT = (
 )
 
 
-def test_path(module_name: str) -> Path:
+def stdlib_test_path(module_name: str) -> Path:
     return STDLIB_DIR / module_name / "main.test.sem"
 
 
@@ -93,7 +93,7 @@ def main() -> None:
     slowest_elapsed = 0.0
 
     for module_name in OK_MODULES:
-        target = test_path(module_name)
+        target = stdlib_test_path(module_name)
         ok, elapsed, within_budget = run(target, "OK\n")
         total_elapsed += elapsed
         if elapsed > slowest_elapsed:
@@ -104,7 +104,7 @@ def main() -> None:
         if not within_budget:
             over_budget += 1
 
-    stdio_target = test_path("stdio")
+    stdio_target = stdlib_test_path("stdio")
     ok, elapsed, within_budget = run(stdio_target, EXPECTED_STDIO_OUTPUT)
     total_elapsed += elapsed
     if elapsed > slowest_elapsed:
@@ -120,7 +120,7 @@ def main() -> None:
     strict_quarantine = bool(os.environ.get("SEM_STDLIB_STRICT"))
     quarantine_failures = 0
     for module_name, reason in QUARANTINED_MODULES.items():
-        target = test_path(module_name)
+        target = stdlib_test_path(module_name)
         print(f"[QUAR] {module_name}: {reason}")
         ok, elapsed, _within_budget = run(target, "OK\n")
         total_elapsed += elapsed
@@ -150,6 +150,10 @@ def main() -> None:
         )
         sys.exit(2)
     print(f"All {total} stdlib self-tests passed.")
+
+
+def test_stdlib_self_tests() -> None:
+    main()
 
 
 if __name__ == "__main__":

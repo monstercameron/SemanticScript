@@ -51,7 +51,7 @@ html body template PageShellHeadComponent
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
-  <title>{pageTitleText}</title>
+  <title>{{pageTitleText}}</title>
   <link rel="preconnect" href="https://rsms.me/" />
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
   <script src="https://cdn.tailwindcss.com"></script>
@@ -167,8 +167,8 @@ html body template BrandHeaderComponent
     <a href="/" class="group flex items-center gap-3">
       <div class="flex h-11 w-11 items-center justify-center rounded-2xl grad-btn text-xl font-bold text-white shadow-glow-brand transition group-hover:scale-105">T</div>
       <div>
-        <div class="text-base font-semibold tracking-tight text-ink-900">{productNameText}</div>
-        <div class="text-xs text-ink-500">{taglineText}</div>
+        <div class="text-base font-semibold tracking-tight text-ink-900">{{productNameText}}</div>
+        <div class="text-xs text-ink-500">{{taglineText}}</div>
       </div>
     </a>
     <div class="flex items-center gap-2 rounded-full border border-emerald-200/70 bg-emerald-50/70 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm">
@@ -207,15 +207,15 @@ html body template LandingHeroComponent
   <section class="fade-up flex flex-col justify-center">
     <div class="inline-flex w-fit items-center gap-2 rounded-full border border-brand-200/60 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 shadow-sm">
       <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-      {productNameText}
+      {{productNameText}}
       <span class="text-ink-400">&middot;</span>
       <span class="font-mono text-[10px] tracking-wide text-ink-500">SemanticScript demo</span>
     </div>
     <h1 class="mt-6 text-4xl font-semibold leading-[1.05] tracking-tight text-ink-900 sm:text-5xl md:text-[3.25rem]">
-      {headlineText}
+      {{headlineText}}
     </h1>
     <p class="mt-6 max-w-xl text-base leading-relaxed text-ink-600">
-      {leadText}
+      {{leadText}}
     </p>
     <ul class="mt-8 flex flex-wrap gap-2 text-xs font-medium">
       <li class="rounded-full border border-ink-200 bg-white/70 px-3 py-1.5 text-ink-700 shadow-sm">bcrypt cost 12</li>
@@ -303,9 +303,9 @@ html body template LoginPanelComponent
           <div class="text-sm font-semibold text-ink-900">Try the demo account</div>
           <div class="mt-0.5 text-xs text-ink-600">Pre-seeded with three sample todos.</div>
           <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-            <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{demoUsernameText}</code>
+            <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{{demoUsernameText}}</code>
             <span class="text-ink-400">/</span>
-            <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{demoPasswordText}</code>
+            <code class="rounded-md bg-white px-2 py-0.5 font-mono text-ink-800 shadow-sm">{{demoPasswordText}}</code>
           </div>
         </div>
       </div>
@@ -324,7 +324,7 @@ html body template LoginPanelComponent
         <label class="text-xs font-semibold uppercase tracking-wide text-ink-500" for="login-username">Username</label>
         <div class="mt-1.5 relative">
           <svg xmlns="http://www.w3.org/2000/svg" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <input id="login-username" name="username" type="text" required class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="{demoUsernameText}" />
+          <input id="login-username" name="username" type="text" required class="block w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200" placeholder="{{demoUsernameText}}" />
         </div>
       </div>
       <div>
@@ -430,8 +430,8 @@ html body template AuthCardComponent
         <button id="tab-register" type="button" data-active="false" class="rounded-xl px-3 py-2 text-sm font-medium text-ink-500 transition hover:text-ink-700">Create account</button>
       </div>
     </div>
-    {loginPanelFragment}
-    {registerPanelFragment}
+    {{loginPanelFragment}}
+    {{registerPanelFragment}}
   </article>
 
 operation renderAuthCard
@@ -466,15 +466,15 @@ html body template StatusCardComponent
     <dl class="mt-5 space-y-2.5 text-sm">
       <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
         <dt class="text-ink-600">Version</dt>
-        <dd class="font-mono text-ink-900">{versionText}</dd>
+        <dd class="font-mono text-ink-900">{{versionText}}</dd>
       </div>
       <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
         <dt class="text-ink-600">Bcrypt cost</dt>
-        <dd class="font-mono text-ink-900">{bcryptCostText}</dd>
+        <dd class="font-mono text-ink-900">{{bcryptCostText}}</dd>
       </div>
       <div class="flex items-center justify-between rounded-xl bg-ink-50/70 px-3 py-2">
         <dt class="text-ink-600">API base</dt>
-        <dd class="font-mono text-xs text-ink-900">{apiBaseUrlText}</dd>
+        <dd class="font-mono text-xs text-ink-900">{{apiBaseUrlText}}</dd>
       </div>
     </dl>
     <details class="mt-5 group">

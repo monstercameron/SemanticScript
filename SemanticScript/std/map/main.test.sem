@@ -31,6 +31,7 @@ storage module immutable entryCapacityFour Int64 4
 storage module immutable entryCountZero Int64 0
 storage module immutable expectedFour Int64 4
 storage module immutable expectedTwo Int64 2
+storage module immutable expectedOne Int64 1
 storage module immutable expectedFailure Int64 -1
 storage module immutable keyPresent Bool true
 storage module immutable keyAbsent Bool false
@@ -51,6 +52,46 @@ bind value mapHasCapacityResult Bool mapHasCapacityCall
 branch if condition mapHasCapacityResult target mapHasCapacityHolds
 branch else target smokeAssertionFailed
 label mapHasCapacityHolds
+
+call mapRemainingCapacityCall map.remainingCapacity
+argument mapRemainingCapacityCall entryCount Int64 entryCountThree
+argument mapRemainingCapacityCall entryCapacity Int64 entryCapacityFour
+run mapRemainingCapacityCall
+bind value mapRemainingCapacityResult Int64 mapRemainingCapacityCall
+call mapRemainingCapacityOkCall math.equalInt64
+argument mapRemainingCapacityOkCall left Int64 mapRemainingCapacityResult
+argument mapRemainingCapacityOkCall right Int64 expectedOne
+run mapRemainingCapacityOkCall
+bind value mapRemainingCapacityOk Bool mapRemainingCapacityOkCall
+branch if condition mapRemainingCapacityOk target mapRemainingCapacityHolds
+branch else target smokeAssertionFailed
+label mapRemainingCapacityHolds
+
+call mapCanInsertNewEntryCall map.canInsertNewEntry
+argument mapCanInsertNewEntryCall entryCount Int64 entryCountThree
+argument mapCanInsertNewEntryCall entryCapacity Int64 entryCapacityFour
+argument mapCanInsertNewEntryCall keyPresent Bool keyAbsent
+run mapCanInsertNewEntryCall
+bind value mapCanInsertNewEntryResult Bool mapCanInsertNewEntryCall
+branch if condition mapCanInsertNewEntryResult target mapCanInsertNewEntryHolds
+branch else target smokeAssertionFailed
+label mapCanInsertNewEntryHolds
+
+call mapCanUpdateExistingEntryCall map.canUpdateExistingEntry
+argument mapCanUpdateExistingEntryCall keyPresent Bool keyPresent
+run mapCanUpdateExistingEntryCall
+bind value mapCanUpdateExistingEntryResult Bool mapCanUpdateExistingEntryCall
+branch if condition mapCanUpdateExistingEntryResult target mapCanUpdateExistingEntryHolds
+branch else target smokeAssertionFailed
+label mapCanUpdateExistingEntryHolds
+
+call mapCanRemoveExistingEntryCall map.canRemoveExistingEntry
+argument mapCanRemoveExistingEntryCall keyPresent Bool keyPresent
+run mapCanRemoveExistingEntryCall
+bind value mapCanRemoveExistingEntryResult Bool mapCanRemoveExistingEntryCall
+branch if condition mapCanRemoveExistingEntryResult target mapCanRemoveExistingEntryHolds
+branch else target smokeAssertionFailed
+label mapCanRemoveExistingEntryHolds
 
 call mapSizeAfterInsertGrowCall map.sizeAfterInsert
 argument mapSizeAfterInsertGrowCall entryCount Int64 entryCountThree

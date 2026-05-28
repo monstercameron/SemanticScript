@@ -27,6 +27,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +50,9 @@ DOCS_DEFAULT_EMBEDDING_PROVIDER = "sentence-transformers"
 DOCS_DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 DOCS_DEFAULT_ALLOW_MODEL_DOWNLOAD = False
 DOCS_SEARCH_MAX_LIMIT = 50
+SELF_PAYLOAD_VERSION = "sem.self.v1"
+DEFAULT_RELEASE_REPOSITORY = "monstercameron/SemanticScript"
+DEFAULT_RELEASE_PLATFORM = "windows-x64"
 MCP_BOOTSTRAP_SKILLS = ("sem-start", "sem", "sem-agent", "sem-syntax")
 MCP_BOOTSTRAP_EVAL_CODE = "\n".join((
     "error ConsoleWriteError",
@@ -64,7 +69,8 @@ MCP_BOOTSTRAP_EVAL_CODE = "\n".join((
     "makeError greetingWriteFailure ConsoleWriteError.ConsoleWriteFailed greetingWriteError",
     "label greetingDone",
 ))
-MCP_BOOTSTRAP_TOOL_CALL = "skills_get " + json.dumps({"names": list(MCP_BOOTSTRAP_SKILLS)}, separators=(",", ":"))
+MCP_BOOTSTRAP_SKILLS_MCP_ARGS = {"names": list(MCP_BOOTSTRAP_SKILLS), "full": True}
+MCP_BOOTSTRAP_TOOL_CALL = "skills_get " + json.dumps(MCP_BOOTSTRAP_SKILLS_MCP_ARGS, separators=(",", ":"))
 MCP_BOOTSTRAP_AGENT_DOCS_CALL = 'agent_docs {"path":"."}'
 MCP_BOOTSTRAP_DOCS_SEARCH = 'docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}'
 MCP_BOOTSTRAP_EVAL_CALL = "eval " + json.dumps({"code": MCP_BOOTSTRAP_EVAL_CODE}, separators=(",", ":"))
@@ -81,7 +87,7 @@ MCP_BOOTSTRAP_HELP = """MCP bootstrap:
     help {"path":"."}
   Capability/API/type/syntax/runtime discovery:
     """ + MCP_BOOTSTRAP_DOCS_SEARCH + """
-  Optional language smoke:
+  Optional language smoke (writes one line and demonstrates explicit console failure handling):
     """ + MCP_BOOTSTRAP_EVAL_CALL + """
 """
 MCP_HANDSHAKE_INSTRUCTIONS = """SemanticScript MCP server ready.
@@ -100,7 +106,7 @@ For standard-library/API/capability/type/syntax/runtime discovery before generat
 
 For exact usage rows after discovery, call docs_get for the selected operation, target, type, or enum.
 
-To prove the language/runtime surface works before opening a project, optionally call:
+To prove the language/runtime surface works before opening a project, optionally call this smoke snippet; it writes one line and shows the explicit error branch shape:
 """ + MCP_BOOTSTRAP_EVAL_CALL + """
 """
 SYNTAX_INVENTORY_PATH = ROOT.parent / "docs" / "reference" / "syntax-inventory.md"
@@ -119,6 +125,170 @@ STD_DOC_COMMENT_TAGS = (
     "test",
     "todo",
 )
+SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
+    "title": "SQLite generated-id replacement: INSERT RETURNING",
+    "summary": (
+        "Do not recover generated ids through connection-global "
+        "sqlite.lastInsertRowId or last_insert_rowid(). Prepare the INSERT as "
+        "INSERT ... RETURNING id, verify sqlite.stepResultIsRow, read column 0 "
+        "with sqlite.columnInt64, pass that named value into any activity-log "
+        "INSERT, finalize the RETURNING statement before COMMIT, and rollback "
+        "on any failure after BEGIN succeeds."
+    ),
+    "nativeSafe": True,
+    "webServerSafe": True,
+    "replacementTargets": [
+        "sqlite.prepareStatement",
+        "sqlite.bindText",
+        "sqlite.stepStatement",
+        "sqlite.stepResultIsRow",
+        "sqlite.stepResultIsDone",
+        "sqlite.columnInt64",
+        "sqlite.finalizeStatement",
+        "sqlite.beginImmediateTransaction",
+        "sqlite.commitTransaction",
+        "sqlite.rollbackTransaction",
+    ],
+    "searchTerms": [
+        "sqlite insert returning generated id",
+        "SQLite RETURNING row id",
+        "activity log insert generated id",
+        "SS3639 migration",
+        "lastInsertRowId replacement",
+        "last_insert_rowid replacement",
+        "native webServer safe SQLite generated id",
+    ],
+    "sqlRows": [
+        "storage module immutable insertEntitySql SqlText",
+        "sql body insertEntitySql",
+        "  INSERT INTO entity(name) VALUES (?1) RETURNING id",
+        "storage module immutable insertActivityLogSql SqlText",
+        "sql body insertActivityLogSql",
+        "  INSERT INTO activity_log(entity_id, activity_type) VALUES (?1, ?2)",
+    ],
+    "rows": [
+        "effect <callerOperation> readWrite database",
+        "useCapability <callerOperation> sqliteDatabaseReadWriter",
+        "call beginGeneratedIdTransactionCall sqlite.beginImmediateTransaction",
+        "argument beginGeneratedIdTransactionCall database SqliteDatabase <database>",
+        "run beginGeneratedIdTransactionCall",
+        "bind ok beginGeneratedIdTransactionResult Int32 beginGeneratedIdTransactionCall",
+        "bind error beginGeneratedIdTransactionError SqliteTransactionFailure beginGeneratedIdTransactionCall",
+        "branch error source beginGeneratedIdTransactionCall target <beginFailedLabel>",
+        "call prepareGeneratedInsertCall sqlite.prepareStatement",
+        "argument prepareGeneratedInsertCall database SqliteDatabase <database>",
+        "argument prepareGeneratedInsertCall sql SqlText insertEntitySql",
+        "run prepareGeneratedInsertCall",
+        "bind ok generatedInsertStatement SqliteStatement prepareGeneratedInsertCall",
+        "bind error prepareGeneratedInsertError SqliteStatementPrepareFailure prepareGeneratedInsertCall",
+        "branch error source prepareGeneratedInsertCall target <rollbackLabel>",
+        "call bindGeneratedNameCall sqlite.bindText",
+        "argument bindGeneratedNameCall statement SqliteStatement generatedInsertStatement",
+        "argument bindGeneratedNameCall parameterIndex Int32 1",
+        "argument bindGeneratedNameCall value SqliteText <entityName>",
+        "run bindGeneratedNameCall",
+        "bind ok bindGeneratedNameResult Int32 bindGeneratedNameCall",
+        "bind error bindGeneratedNameError SqliteStatementBindFailure bindGeneratedNameCall",
+        "branch error source bindGeneratedNameCall target <finalizeInsertThenRollbackLabel>",
+        "call stepGeneratedInsertCall sqlite.stepStatement",
+        "argument stepGeneratedInsertCall statement SqliteStatement generatedInsertStatement",
+        "run stepGeneratedInsertCall",
+        "bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall",
+        "bind error stepGeneratedInsertError SqliteStatementStepFailure stepGeneratedInsertCall",
+        "branch error source stepGeneratedInsertCall target <finalizeInsertThenRollbackLabel>",
+        "call generatedInsertHasRowCall sqlite.stepResultIsRow",
+        "argument generatedInsertHasRowCall stepResult SqliteStepResult generatedInsertStep",
+        "run generatedInsertHasRowCall",
+        "bind value generatedInsertHasRow Bool generatedInsertHasRowCall",
+        "branch if condition generatedInsertHasRow target <readGeneratedIdLabel>",
+        "branch else target <finalizeInsertThenRollbackLabel>",
+        "label <readGeneratedIdLabel>",
+        "storage local immutable generatedIdColumnIndex Int32 0",
+        "call readGeneratedIdCall sqlite.columnInt64",
+        "argument readGeneratedIdCall statement SqliteStatement generatedInsertStatement",
+        "argument readGeneratedIdCall columnIndex Int32 generatedIdColumnIndex",
+        "run readGeneratedIdCall",
+        "bind value generatedEntityId Int64 readGeneratedIdCall",
+        "call drainGeneratedInsertCall sqlite.stepStatement",
+        "argument drainGeneratedInsertCall statement SqliteStatement generatedInsertStatement",
+        "run drainGeneratedInsertCall",
+        "bind ok generatedInsertDone SqliteStepResult drainGeneratedInsertCall",
+        "bind error drainGeneratedInsertError SqliteStatementStepFailure drainGeneratedInsertCall",
+        "branch error source drainGeneratedInsertCall target <finalizeInsertThenRollbackLabel>",
+        "call generatedInsertDoneCheckCall sqlite.stepResultIsDone",
+        "argument generatedInsertDoneCheckCall stepResult SqliteStepResult generatedInsertDone",
+        "run generatedInsertDoneCheckCall",
+        "bind value generatedInsertDrained Bool generatedInsertDoneCheckCall",
+        "branch if condition generatedInsertDrained target <finalizeGeneratedInsertLabel>",
+        "branch else target <finalizeInsertThenRollbackLabel>",
+        "label <finalizeGeneratedInsertLabel>",
+        "call finalizeGeneratedInsertCall sqlite.finalizeStatement",
+        "argument finalizeGeneratedInsertCall statement SqliteStatement generatedInsertStatement",
+        "run finalizeGeneratedInsertCall",
+        "ignore ok source finalizeGeneratedInsertCall type Int32",
+        "bind error finalizeGeneratedInsertError SqliteStatementFinalizeFailure finalizeGeneratedInsertCall",
+        "branch error source finalizeGeneratedInsertCall target <rollbackLabel>",
+        "call prepareActivityLogCall sqlite.prepareStatement",
+        "argument prepareActivityLogCall database SqliteDatabase <database>",
+        "argument prepareActivityLogCall sql SqlText insertActivityLogSql",
+        "run prepareActivityLogCall",
+        "bind ok activityLogStatement SqliteStatement prepareActivityLogCall",
+        "bind error prepareActivityLogError SqliteStatementPrepareFailure prepareActivityLogCall",
+        "branch error source prepareActivityLogCall target <rollbackLabel>",
+        "call bindActivityEntityCall sqlite.bindInt64",
+        "argument bindActivityEntityCall statement SqliteStatement activityLogStatement",
+        "argument bindActivityEntityCall parameterIndex Int32 1",
+        "argument bindActivityEntityCall value Int64 generatedEntityId",
+        "run bindActivityEntityCall",
+        "bind ok bindActivityEntityResult Int32 bindActivityEntityCall",
+        "bind error bindActivityEntityError SqliteStatementBindFailure bindActivityEntityCall",
+        "branch error source bindActivityEntityCall target <finalizeActivityThenRollbackLabel>",
+        "call stepActivityLogCall sqlite.stepStatement",
+        "argument stepActivityLogCall statement SqliteStatement activityLogStatement",
+        "run stepActivityLogCall",
+        "bind ok activityLogStep SqliteStepResult stepActivityLogCall",
+        "bind error stepActivityLogError SqliteStatementStepFailure stepActivityLogCall",
+        "branch error source stepActivityLogCall target <finalizeActivityThenRollbackLabel>",
+        "call activityLogDoneCheckCall sqlite.stepResultIsDone",
+        "argument activityLogDoneCheckCall stepResult SqliteStepResult activityLogStep",
+        "run activityLogDoneCheckCall",
+        "bind value activityLogDone Bool activityLogDoneCheckCall",
+        "branch if condition activityLogDone target <finalizeActivityLogLabel>",
+        "branch else target <finalizeActivityThenRollbackLabel>",
+        "label <finalizeActivityLogLabel>",
+        "call finalizeActivityLogCall sqlite.finalizeStatement",
+        "argument finalizeActivityLogCall statement SqliteStatement activityLogStatement",
+        "run finalizeActivityLogCall",
+        "ignore ok source finalizeActivityLogCall type Int32",
+        "bind error finalizeActivityLogError SqliteStatementFinalizeFailure finalizeActivityLogCall",
+        "branch error source finalizeActivityLogCall target <rollbackLabel>",
+        "call commitGeneratedIdTransactionCall sqlite.commitTransaction",
+        "argument commitGeneratedIdTransactionCall database SqliteDatabase <database>",
+        "run commitGeneratedIdTransactionCall",
+        "bind ok commitGeneratedIdTransactionResult Int32 commitGeneratedIdTransactionCall",
+        "bind error commitGeneratedIdTransactionError SqliteTransactionFailure commitGeneratedIdTransactionCall",
+        "branch error source commitGeneratedIdTransactionCall target <commitFailedLabel>",
+        "return value generatedEntityId",
+        "label <rollbackLabel>",
+        "call rollbackGeneratedIdTransactionCall sqlite.rollbackTransaction",
+        "argument rollbackGeneratedIdTransactionCall database SqliteDatabase <database>",
+        "run rollbackGeneratedIdTransactionCall",
+        "ignore ok source rollbackGeneratedIdTransactionCall type Int32",
+        "bind error rollbackGeneratedIdTransactionError SqliteTransactionFailure rollbackGeneratedIdTransactionCall",
+        "branch error source rollbackGeneratedIdTransactionCall target <rollbackFailedLabel>",
+        "return error <failureValue>",
+    ],
+    "lifetimeRules": [
+        "columnInt64 returns an Int64 by value, so the generated id may be used after finalize.",
+        "columnText, columnBlob, and columnName are borrowed from the same statement; consume or copy them before the next same-statement pointer column read, step, reset, finalize, or closeDatabase.",
+        "A RETURNING statement remains active after the first row. Step it once more and require sqlite.stepResultIsDone, reset it, or finalize it before COMMIT.",
+    ],
+    "transactionRules": [
+        "Use sqlite.beginImmediateTransaction when the generated row and activity-log row must commit atomically.",
+        "After BEGIN succeeds, every prepare/bind/step/finalize failure path should finalize any acquired statement and then call sqlite.rollbackTransaction.",
+        "Commit only after the RETURNING statement has been drained or finalized and the activity-log statement has reached sqlite.stepResultIsDone.",
+    ],
+}
 STD_DOC_STATIC_TARGETS = {
     "standard.gui": {
         "gui.applicationCreate": {
@@ -350,7 +520,7 @@ STD_DOC_STATIC_TARGETS = {
     },
     "standard.bcrypt": {
         "bcrypt.hashPassword": {
-            "summary": "Hash a plaintext password into a caller-owned bcrypt hash buffer.",
+            "summary": "Hash a plaintext password into a caller-owned bcrypt hash buffer. Returns Int32 0 on success, negative on error (NOTE: opposite of verifyPassword, where 1 means match) — check for negative before trusting the buffer.",
             "inputs": [
                 {"name": "plaintext", "type": "BcryptPlaintextPassword"},
                 {"name": "cost", "type": "Int32"},
@@ -362,7 +532,7 @@ STD_DOC_STATIC_TARGETS = {
             "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports bad cost, undersized output, random-source failure, or hash failure."},
         },
         "bcrypt.verifyPassword": {
-            "summary": "Verify a plaintext password against a trusted bcrypt hash.",
+            "summary": "Verify a plaintext password against a trusted bcrypt hash. Returns Int32 1 on MATCH, 0 on mismatch, negative on error (inverted from the C 0==success idiom) — branch on negative before treating 0 as a mismatch, or auth ships silently broken.",
             "inputs": [{"name": "plaintext", "type": "BcryptPlaintextPassword"}, {"name": "expectedHash", "type": "BcryptPasswordHash"}],
             "outputs": [{"type": "Int32", "values": ["Int32"]}],
             "effects": [{"action": "read", "path": "memory.buffer"}],
@@ -387,6 +557,88 @@ STD_DOC_STATIC_TARGETS = {
             "outputs": [{"type": "Int32", "values": ["Int32"]}],
             "effects": [{"action": "read", "path": "memory.buffer"}, {"action": "write", "path": "memory.buffer"}],
             "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports invalid pointers, capacity failure, or encoder failure."},
+        },
+        "bcrypt.hashPasswordResult": {
+            "summary": "Result-shaped hashPassword wrapper. OK Bool true means the hash buffer was filled; Err Int32 carries the negative bcrypt status. Prefer this over raw hashPassword when caller control flow already uses `bind ok` / `bind error`.",
+            "inputs": [
+                {"name": "plaintext", "type": "BcryptPlaintextPassword"},
+                {"name": "cost", "type": "Int32"},
+                {"name": "outBuffer", "type": "BcryptHashBuffer"},
+                {"name": "outCapacity", "type": "Int32"},
+            ],
+            "outputs": [{"type": "Result", "values": ["Result", "Bool", "Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}, {"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "system.random"}],
+            "failureMode": {"kind": "result", "text": "OK true means the output buffer contains a bcrypt hash; Err carries the negative SS_BCRYPT_ERR_* status."},
+        },
+        "bcrypt.hashSessionTokenResult": {
+            "summary": "Result-shaped session-token-at-rest hash primitive. OK Bool true means the hash buffer contains a SessionTokenHash suitable for persistence; Err Int32 carries the negative bcrypt status. Store this value instead of the raw SessionToken.",
+            "inputs": [
+                {"name": "token", "type": "SessionToken"},
+                {"name": "cost", "type": "Int32"},
+                {"name": "outBuffer", "type": "BcryptHashBuffer"},
+                {"name": "outCapacity", "type": "Int32"},
+            ],
+            "outputs": [{"type": "Result", "values": ["Result", "Bool", "Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}, {"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "system.random"}],
+            "failureMode": {"kind": "result", "text": "OK true means the output buffer contains a SessionTokenHash; Err carries the negative SS_BCRYPT_ERR_* status."},
+        },
+        "bcrypt.verifyPasswordResult": {
+            "summary": "Result-shaped verifyPassword wrapper. OK Bool true means password match; OK Bool false means a clean mismatch; Err Int32 carries malformed-hash/config/runtime failure. Prefer this for authentication branches so mismatch and runtime failure are not conflated.",
+            "inputs": [{"name": "plaintext", "type": "BcryptPlaintextPassword"}, {"name": "expectedHash", "type": "BcryptPasswordHash"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Bool", "Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}],
+            "failureMode": {"kind": "result", "text": "OK Bool is the match decision; Err Int32 is a negative SS_BCRYPT_ERR_* status."},
+        },
+        "bcrypt.verifySessionTokenResult": {
+            "summary": "Result-shaped session-token verifier. OK Bool true means the presented SessionToken matches the stored SessionTokenHash; OK Bool false is a clean mismatch; Err Int32 carries malformed-hash/config/runtime failure.",
+            "inputs": [{"name": "token", "type": "SessionToken"}, {"name": "expectedHash", "type": "SessionTokenHash"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Bool", "Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}],
+            "failureMode": {"kind": "result", "text": "OK Bool is the token-match decision; Err Int32 is a negative SS_BCRYPT_ERR_* status."},
+        },
+        "bcrypt.randomBytesResult": {
+            "summary": "Result-shaped randomBytes wrapper. OK Bool true means the buffer was filled with platform CSPRNG bytes; Err Int32 carries the negative status.",
+            "inputs": [{"name": "outBuffer", "type": "BcryptRandomBuffer"}, {"name": "byteCount", "type": "Int32"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Bool", "Int32"]}],
+            "effects": [{"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "system.random"}],
+            "failureMode": {"kind": "result", "text": "OK true means random bytes were written; Err carries the negative SS_BCRYPT_ERR_* status."},
+        },
+        "bcrypt.base64UrlEncodeResult": {
+            "summary": "Result-shaped base64UrlEncode wrapper. OK Bool true means outputBuffer and outputLengthOut were written; Err Int32 carries the negative status.",
+            "inputs": [
+                {"name": "inputBuffer", "type": "BcryptRandomBuffer"},
+                {"name": "inputCount", "type": "Int32"},
+                {"name": "outputBuffer", "type": "Base64UrlBuffer"},
+                {"name": "outputCapacity", "type": "Int32"},
+                {"name": "outputLengthOut", "type": "OpaquePointer"},
+            ],
+            "outputs": [{"type": "Result", "values": ["Result", "Bool", "Int32"]}],
+            "effects": [{"action": "read", "path": "memory.buffer"}, {"action": "write", "path": "memory.buffer"}],
+            "failureMode": {"kind": "result", "text": "OK true means encoding succeeded; Err carries the negative SS_BCRYPT_ERR_* status."},
+        },
+        "bcrypt.issueSessionToken": {
+            "summary": "Native-linkable one-step session-token issuer. Fills caller-owned tokenBuffer with a fresh 43-character base64url SessionToken from 32 bytes of platform CSPRNG entropy.",
+            "inputs": [
+                {"name": "randomScratch", "type": "BcryptRandomBuffer"},
+                {"name": "tokenBuffer", "type": "Base64UrlBuffer"},
+                {"name": "tokenCapacity", "type": "Int32"},
+                {"name": "tokenLengthOut", "type": "OpaquePointer"},
+            ],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "system.random"}, {"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "memory.buffer"}],
+            "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports invalid scratch/output pointers, insufficient token capacity, or CSPRNG failure. randomScratch must hold at least 32 bytes; tokenBuffer must hold at least 44 bytes."},
+        },
+        "bcrypt.issueCsrfToken": {
+            "summary": "Native-linkable one-step CSRF-token issuer. Fills caller-owned tokenBuffer with a fresh 43-character base64url CsrfToken from 32 bytes of platform CSPRNG entropy.",
+            "inputs": [
+                {"name": "randomScratch", "type": "BcryptRandomBuffer"},
+                {"name": "tokenBuffer", "type": "CsrfTokenBuffer"},
+                {"name": "tokenCapacity", "type": "Int32"},
+                {"name": "tokenLengthOut", "type": "OpaquePointer"},
+            ],
+            "outputs": [{"type": "Int32", "values": ["Int32"]}],
+            "effects": [{"action": "read", "path": "system.random"}, {"action": "write", "path": "memory.buffer"}, {"action": "read", "path": "memory.buffer"}],
+            "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports invalid scratch/output pointers, insufficient token capacity, or CSPRNG failure. randomScratch must hold at least 32 bytes; tokenBuffer must hold at least 44 bytes."},
         },
     },
     "standard.net": {
@@ -418,13 +670,17 @@ STD_DOC_STATIC_TARGETS = {
     },
     "standard.sqlite": {
         "sqlite.openDatabase": {
-            "summary": "Open a SQLite database handle using the requested open mode.",
+            "summary": "Open a SQLite database handle using the requested open mode. For webServer apps that should not open and close SQLite on every request, open once from webServerStartup, store the SqliteDatabase in module mutable or sharedState process storage, reuse that process-lifetime handle from handlers, and close it from webServerShutdown.",
             "inputs": [{"name": "path", "type": "String"}, {"name": "mode", "type": "SqliteOpenMode"}],
             "outputs": [{"type": "Result", "values": ["Result", "SqliteDatabase", "SqliteDatabaseOpenFailure"]}],
             "effects": [{"action": "readWrite", "path": "database"}],
             "capabilities": ["sqliteDatabaseReadWriter"],
             "failureMode": {"kind": "result", "text": "SqliteDatabaseOpenFailure carries the native status when the path, mode, or SQLite runtime rejects the open."},
             "cleanup": {"required": True, "strategy": "call sqlite.closeDatabase or defer it for every successfully opened database handle", "callTarget": "sqlite.closeDatabase", "argumentName": "database", "argumentType": "SqliteDatabase", "resultType": "Int32", "ignoreKind": "ok", "errorType": "SqliteDatabaseCloseFailure"},
+            "agentWarnings": [
+                "For webServer apps, the documented reuse pattern is webServerStartup -> sqlite.openDatabase -> set module/sharedState SqliteDatabase -> handlers reuse that handle -> webServerShutdown -> sqlite.closeDatabase. This is a process-lifetime single-handle pattern, not a connection pool; the current native HTTP adapter is blocking and single-threaded.",
+                "Do not share one SqliteDatabase across future concurrent dispatch without an explicit guard/owner contract or a real pool. Keep per-request open/close when handler isolation matters more than open cost.",
+            ],
         },
         "sqlite.closeDatabase": {
             "summary": "Close an open SQLite database handle.",
@@ -443,19 +699,74 @@ STD_DOC_STATIC_TARGETS = {
             "failureMode": {"kind": "none", "text": "The returned pointer is SQLite-owned and valid until SQLite changes the connection error state."},
         },
         "sqlite.lastInsertRowId": {
-            "summary": "Read the connection-global row id from the most recent successful insert.",
+            "summary": "Compatibility-only reader for the connection-global row id from the most recent successful insert. New native and webServer code should use INSERT ... RETURNING id and read the returned column from the INSERT statement instead.",
             "inputs": [{"name": "database", "type": "SqliteDatabase"}],
             "outputs": [{"type": "SqliteRowId", "values": ["SqliteRowId"]}],
             "effects": [{"action": "read", "path": "database"}],
             "capabilities": ["sqliteDatabaseReader"],
-            "failureMode": {"kind": "sentinel-value", "text": "The value is connection-global state; prefer RETURNING when concurrent writes or triggers could hide the intended row."},
+            "failureMode": {"kind": "sentinel-value", "text": "The value is connection-global state. For generated ids, prefer INSERT ... RETURNING id so the id is returned by the write statement, bound to a named SemanticScript value, and passed explicitly into later statements such as activity-log inserts."},
+            "agentWarnings": [
+                "SS3639 flags sqlite.lastInsertRowId because it hides generated-id state on the connection. Use usage.migration.rows for the native/webServer-safe INSERT ... RETURNING id pattern.",
+                "Do not generate new app code around sqlite.lastInsertRowId unless compatibility with an existing SQL shape is explicitly required.",
+            ],
+            "migration": SQLITE_GENERATED_ID_RETURNING_GUIDANCE,
         },
         "sqlite.changedRowCount": {
-            "summary": "Read SQLite's changed-row count for the most recent write on the connection.",
+            "summary": "Read how many rows the most recent INSERT/UPDATE/DELETE on the connection changed. Use this to detect a SILENT no-op: an `UPDATE … WHERE id = ?` (or DELETE) that matches no row succeeds with a 0 changed-row count, so without checking this an agent reports success while nothing changed — e.g. toggling a task that does not exist.",
             "inputs": [{"name": "database", "type": "SqliteDatabase"}],
             "outputs": [{"type": "Int32", "values": ["Int32"]}],
             "effects": [{"action": "read", "path": "database"}],
             "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "status-count", "text": "A return of 0 after an UPDATE/DELETE means the WHERE clause matched nothing — branch on `changedRowCount == 0` to surface a not-found instead of a false success. Connection-global: read it immediately after the step on the same connection, before any other write."},
+        },
+        "sqlite.queryScalarInt64": {
+            "summary": "Run one static no-parameter SQL read and return column 0 from the first row as Int64. Use this for COUNT(*) / EXISTS-style scalar reads instead of hand-writing prepare/step/column/finalize. Parameterized, multi-column, or multi-row reads still use sqlite.prepareStatement plus bind/step/column/finalize.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}, {"name": "sql", "type": "SqlText"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int64", "SqliteQueryFailure"]}],
+            "effects": [{"action": "read", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "result", "text": "SqliteQueryFailure carries the native status for prepare, empty result, step, or finalize failure. SQL must be a single static SqlText statement with no bind placeholders."},
+            "agentWarnings": [
+                "sqlite.queryScalarInt64 owns prepare/step/column/finalize internally, so do not add a separate sqlite.finalizeStatement for it.",
+                "This helper intentionally does not bind parameters. Use prepareStatement + bind* for untrusted values.",
+            ],
+        },
+        "sqlite.enableWalMode": {
+            "summary": "Enable SQLite WAL journaling on an open database handle without carrying a raw `PRAGMA journal_mode = WAL` SqlText constant in app source. Project builds can also opt in globally with `sqliteJournalMode PROJECT wal`, which applies this after each successful sqlite.openDatabase lowering.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteJournalModeFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteJournalModeFailure carries the native status when SQLite cannot apply WAL mode to the connection."},
+            "agentWarnings": [
+                "Prefer `sqliteJournalMode PROJECT wal` in build.sem when every opened database for the project should use WAL.",
+                "Call sqlite.enableWalMode once during startup, immediately after sqlite.openDatabase, when only a specific handle should opt in.",
+            ],
+        },
+        "sqlite.beginImmediateTransaction": {
+            "summary": "Begin a SQLite IMMEDIATE transaction without carrying a raw `BEGIN IMMEDIATE` SqlText constant in app source.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteTransactionFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteTransactionFailure carries the native status when SQLite cannot begin the transaction."},
+            "agentWarnings": ["Use with sqlite.commitTransaction on the success path and sqlite.rollbackTransaction on failure paths that happen after BEGIN succeeds."],
+        },
+        "sqlite.commitTransaction": {
+            "summary": "Commit the current SQLite transaction without carrying a raw `COMMIT` SqlText constant in app source.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteTransactionFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteTransactionFailure carries the native status when SQLite cannot commit the current transaction."},
+        },
+        "sqlite.rollbackTransaction": {
+            "summary": "Rollback the current SQLite transaction without carrying a raw `ROLLBACK` SqlText constant in app source.",
+            "inputs": [{"name": "database", "type": "SqliteDatabase"}],
+            "outputs": [{"type": "Result", "values": ["Result", "Int32", "SqliteTransactionFailure"]}],
+            "effects": [{"action": "readWrite", "path": "database"}],
+            "capabilities": ["sqliteDatabaseReadWriter"],
+            "failureMode": {"kind": "result", "text": "SqliteTransactionFailure carries the native status when SQLite cannot rollback the current transaction."},
         },
         "sqlite.exec": {
             "summary": "Execute a complete SQL statement directly against a database handle.",
@@ -504,7 +815,23 @@ STD_DOC_STATIC_TARGETS = {
             "outputs": [{"type": "Result", "values": ["Result", "SqliteStepResult", "SqliteStatementStepFailure"]}],
             "effects": [{"action": "readWrite", "path": "database"}],
             "capabilities": ["sqliteDatabaseReadWriter"],
-            "failureMode": {"kind": "result", "text": "SqliteStatementStepFailure covers native statuses below the row/done range; compare ok values to rowSqliteStepResult or doneSqliteStepResult."},
+            "failureMode": {"kind": "result", "text": "SqliteStatementStepFailure covers native statuses below the row/done range; inspect ok values with sqlite.stepResultIsRow or sqlite.stepResultIsDone."},
+        },
+        "sqlite.stepResultIsRow": {
+            "summary": "Return true when a sqlite.stepStatement ok value means a row is available.",
+            "inputs": [{"name": "stepResult", "type": "SqliteStepResult"}],
+            "outputs": [{"type": "Bool", "values": ["Bool"]}],
+            "effects": [],
+            "capabilities": [],
+            "failureMode": {"kind": "none", "text": "Pure compiler-lowered comparison against the SQLite ROW step result."},
+        },
+        "sqlite.stepResultIsDone": {
+            "summary": "Return true when a sqlite.stepStatement ok value means statement iteration is complete.",
+            "inputs": [{"name": "stepResult", "type": "SqliteStepResult"}],
+            "outputs": [{"type": "Bool", "values": ["Bool"]}],
+            "effects": [],
+            "capabilities": [],
+            "failureMode": {"kind": "none", "text": "Pure compiler-lowered comparison against the SQLite DONE step result."},
         },
         "sqlite.bindInt64": {
             "summary": "Bind one Int64 value to a 1-based SQLite parameter index.",
@@ -561,12 +888,15 @@ STD_DOC_STATIC_TARGETS = {
             "capabilities": ["sqliteDatabaseReader"],
         },
         "sqlite.columnName": {
-            "summary": "Return the SQLite-owned name for a 0-based result column index.",
+            "summary": "Return the SQLite-owned name for a 0-based result column index. The pointer belongs to this prepared statement, not a process-global scratch buffer.",
             "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
             "outputs": [{"type": "SqliteText", "values": ["SqliteText"]}],
             "effects": [{"action": "read", "path": "database"}],
             "capabilities": ["sqliteDatabaseReader"],
-            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned and valid only while the statement remains alive and positioned."},
+            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned by the same statement and is invalidated by that statement's next pointer-returning column read, step, reset, or finalize; copy before retaining it. Other prepared statements do not overwrite this pointer."},
+            "agentWarnings": [
+                "SS3113 flags using this borrowed pointer after a later same-statement columnText/columnBlob/columnName read, step, or reset. Use or copy it before the next invalidating operation on the same statement.",
+            ],
         },
         "sqlite.columnInt64": {
             "summary": "Read a 0-based result column as Int64.",
@@ -583,20 +913,26 @@ STD_DOC_STATIC_TARGETS = {
             "capabilities": ["sqliteDatabaseReader"],
         },
         "sqlite.columnText": {
-            "summary": "Read a 0-based result column as SQLite-owned text.",
+            "summary": "Read a 0-based result column as SQLite-owned text. The pointer is owned by the same prepared statement; another statement's column reads do not overwrite it.",
             "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
             "outputs": [{"type": "SqliteText", "values": ["SqliteText"]}],
             "effects": [{"action": "read", "path": "database"}],
             "capabilities": ["sqliteDatabaseReader"],
-            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned and valid until the statement advances, resets, or finalizes; copy before then if needed."},
+            "failureMode": {"kind": "caller-precondition", "text": "Valid only until the same statement's next pointer-returning column read, step, reset, or finalize; closeDatabase also invalidates it. Copy before then if needed."},
+            "agentWarnings": [
+                "SS3113 flags using this borrowed pointer after a later same-statement columnText/columnBlob/columnName read, step, or reset. Use or copy it before the next invalidating operation on the same statement.",
+            ],
         },
         "sqlite.columnBlob": {
-            "summary": "Read a 0-based result column as a SQLite-owned blob pointer.",
+            "summary": "Read a 0-based result column as a SQLite-owned blob pointer. The pointer is owned by the same prepared statement; another statement's column reads do not overwrite it.",
             "inputs": [{"name": "statement", "type": "SqliteStatement"}, {"name": "columnIndex", "type": "Int32"}],
             "outputs": [{"type": "SqliteBlob", "values": ["SqliteBlob"]}],
             "effects": [{"action": "read", "path": "database"}],
             "capabilities": ["sqliteDatabaseReader"],
-            "failureMode": {"kind": "caller-precondition", "text": "The returned pointer is SQLite-owned and valid until the statement advances, resets, or finalizes; pair with sqlite.columnByteCount before consuming."},
+            "failureMode": {"kind": "caller-precondition", "text": "Valid only until the same statement's next pointer-returning column read, step, reset, or finalize; closeDatabase also invalidates it. Pair with sqlite.columnByteCount before consuming."},
+            "agentWarnings": [
+                "SS3113 flags using this borrowed pointer after a later same-statement columnText/columnBlob/columnName read, step, or reset. Use or copy it before the next invalidating operation on the same statement.",
+            ],
         },
         "sqlite.columnByteCount": {
             "summary": "Read the byte count for the current text or blob column value.",
@@ -665,6 +1001,12 @@ def _register_http_static_targets() -> None:
     request_effect = [{"action": "read", "path": "http.request"}]
     response_effect = [{"action": "write", "path": "http.response"}]
     status_failure = "Non-zero status reports native HTTP adapter failure."
+    form_urlencoded_warning = (
+        "This is the application/x-www-form-urlencoded path only. multipart/form-data uses the http.multipartPart* request readers directly against HttpRequest, without caller scratch; the two body-reader families are intentionally separate today."
+    )
+    multipart_warning = (
+        "This is the multipart/form-data path only. application/x-www-form-urlencoded forms use http.requestBodyText followed by http.formField into caller-owned scratch; the two body-reader families are intentionally separate today."
+    )
     http_docs.update({
         "http.responseHtml": _static_target_contract(
             "Write an HTML response body with the standard text/html content type.",
@@ -678,6 +1020,18 @@ def _register_http_static_targets() -> None:
         "http.responseText": _static_target_contract(
             "Write a text response body with an explicit content type.",
             inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("body", "HttpTextBody"), ("contentType", "HttpContentType")),
+            outputs=_static_value_output("Int32"),
+            effects=response_effect,
+            capabilities=["httpResponseWriter"],
+            failure_kind="status-code",
+            failure_text=status_failure,
+        ),
+        "http.redirect": _static_target_contract(
+            "Send a redirect response in one call: writes the Location header and "
+            "then an empty text/plain body with the provided status (usually 303 "
+            "See Other for POST/redirect/GET). This replaces the repeated "
+            "http.responseHeader(Location) + http.responseText(status, \"\") pair.",
+            inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("location", "HttpHeaderValue")),
             outputs=_static_value_output("Int32"),
             effects=response_effect,
             capabilities=["httpResponseWriter"],
@@ -703,16 +1057,19 @@ def _register_http_static_targets() -> None:
             failure_text=status_failure,
         ),
         "http.responseHeader": _static_target_contract(
-            "Write one HTTP response header before the response body is sent.",
+            "Write one HTTP response header before the response body is sent. For Set-Cookie session headers, include Secure only after trusted TLS detection; the native HTTP/1.1 adapter does not itself terminate TLS.",
             inputs=_static_inputs(("response", "HttpResponse"), ("name", "HttpHeaderName"), ("value", "HttpHeaderValue")),
             outputs=_static_value_output("Int32"),
             effects=response_effect,
             capabilities=["httpResponseWriter"],
             failure_kind="status-code",
             failure_text=status_failure,
+            agent_warnings=[
+                "Set-Cookie values for session/auth tokens should use HttpOnly and SameSite. Add Secure only when the request is known HTTPS: either a future direct TLS backend, or a trusted TLS terminator that strips/sets X-Forwarded-Proto before the app reads it with http.requestHeader.",
+            ],
         ),
         "http.responseFile": _static_target_contract(
-            "Serve a file under a public root directory without allowing path traversal.",
+            "Serve a file under a public root directory without allowing path traversal. The native file path stamps Cache-Control, ETag, and Last-Modified when metadata is available; staticRoute also honors exact If-None-Match / If-Modified-Since validators with 304.",
             inputs=_static_inputs(("response", "HttpResponse"), ("status", "HttpStatusCode"), ("rootDirectory", "String"), ("requestedPath", "String")),
             outputs=_static_value_output("Int32"),
             effects=response_effect,
@@ -733,6 +1090,16 @@ def _register_http_static_targets() -> None:
             outputs=_static_value_output("Int64"),
             effects=[{"action": "read", "path": "clock"}],
         ),
+        "http.sessionExpiresAt": _static_target_contract(
+            "Add a session TTL to a current Unix epoch millisecond timestamp.",
+            inputs=_static_inputs(("nowMillis", "Int64"), ("ttlMillis", "SessionTtlMillis")),
+            outputs=_static_value_output("SessionExpiresAtMillis"),
+        ),
+        "http.sessionIsExpired": _static_target_contract(
+            "Return true when the current Unix epoch millisecond timestamp is past the persisted session expiry.",
+            inputs=_static_inputs(("nowMillis", "Int64"), ("expiresAtMillis", "SessionExpiresAtMillis")),
+            outputs=_static_value_output("Bool"),
+        ),
     })
     for target, summary in {
         "http.requestMethod": "Read the dispatched HTTP request method.",
@@ -748,7 +1115,7 @@ def _register_http_static_targets() -> None:
     for target, input_name, summary in (
         ("http.requestHeader", "name", "Read a named request header value."),
         ("http.requestQueryParam", "name", "Read a named query parameter value."),
-        ("http.requestPathParam", "name", "Read a named route path parameter value."),
+        ("http.requestPathParam", "name", "Read a named `:name` or `{name}` route path parameter value."),
         ("http.requestCookie", "cookieName", "Read a named cookie value from the Cookie header."),
     ):
         http_docs[target] = _static_target_contract(
@@ -761,13 +1128,18 @@ def _register_http_static_targets() -> None:
             failure_text="Returns null when the named request value is absent or overflows native request scratch.",
         )
     http_docs["http.formField"] = _static_target_contract(
-        "Parse an application/x-www-form-urlencoded body for one named field, URL-decode the value, and write it into caller-owned scratch memory.",
+        "Parse an application/x-www-form-urlencoded body for one named field, URL-decode the value, and write it into caller-owned scratch memory. Allocate scratch with memory.allocateMemoryBytes (preferred) or c.malloc, keep it live until all consumers finish, then release it.",
         inputs=_static_inputs(("bodyText", "HttpTextBody"), ("fieldName", "String"), ("scratch", "OpaquePointer"), ("scratchCapacity", "ByteCount")),
         outputs=_static_value_output("HttpRequestValue"),
         effects=request_effect + [{"action": "write", "path": "memory.buffer"}],
         capabilities=["httpRequestReader"],
         failure_kind="null-sentinel",
         failure_text="Returns null when the field is absent, the body is null, percent escapes are malformed, or scratch is too small. Repeated keys return the first matching field.",
+        agent_warnings=[
+            form_urlencoded_warning,
+            "http.formField does not allocate its result. Allocate caller-owned scratch with memory.allocateMemoryBytes (or c.malloc when interop is the point), branch on allocation failure with pointer.isNull, pass the pointer as scratch, and release it with memory.releaseMemoryBytes/c.free after the parsed value is no longer used.",
+            "The returned HttpRequestValue aliases that scratch buffer. Do not release or overwrite scratch before validating, authenticating, rendering, or persisting the field value.",
+        ],
     )
     http_docs["http.urlDecode"] = _static_target_contract(
         "URL-decode one form/query component into caller-owned scratch memory.",
@@ -786,9 +1158,18 @@ def _register_http_static_targets() -> None:
         failure_text="Returns null when input or scratch is null or scratch is too small. Unreserved RFC 3986 bytes pass through; spaces encode as %20.",
     )
     for target, output_type, summary in (
-        ("http.requestBodyText", "HttpTextBody", "Read the request body as text."),
+        (
+            "http.requestBodyText",
+            "HttpTextBody",
+            "Read the request body as text. For JSON credential POST handlers, guard null, parse with json.createDocument, read fields with json.objectFieldAt plus json.cursorString into caller-owned scratch, then destroy the document on every path.",
+        ),
         ("http.requestBodyBytes", "HttpByteBody", "Read the request body as bytes."),
     ):
+        body_agent_warnings = []
+        if target == "http.requestBodyText":
+            body_agent_warnings.append(
+                "JSON login/credentials POST pattern: read http.requestBodyText, guard with pointer.isNull, parse with json.createDocument, get the root with json.documentRoot, find username/password with json.objectFieldAt, copy values with json.cursorString into caller-owned scratch, and defer json.destroyDocument."
+            )
         http_docs[target] = _static_target_contract(
             summary,
             inputs=_static_inputs(("request", "HttpRequest")),
@@ -797,11 +1178,26 @@ def _register_http_static_targets() -> None:
             capabilities=["httpRequestReader"],
             failure_kind="null-sentinel",
             failure_text="Returns null when the body is absent or not available in the requested representation.",
+            agent_warnings=body_agent_warnings,
         )
     http_docs["http.requestBodyLength"] = _static_target_contract(
         "Read the request body byte length.",
         inputs=_static_inputs(("request", "HttpRequest")),
         outputs=_static_value_output("HttpBodyLength"),
+        effects=request_effect,
+        capabilities=["httpRequestReader"],
+    )
+    http_docs["http.requestValueLength"] = _static_target_contract(
+        "Read the byte length of a nullable request-derived value. Null returns 0, so handlers can test cookie/header/query presence without touching request memory directly.",
+        inputs=_static_inputs(("value", "HttpRequestValue")),
+        outputs=_static_value_output("HttpBodyLength"),
+        effects=request_effect,
+        capabilities=["httpRequestReader"],
+    )
+    http_docs["http.requestValueIsEmpty"] = _static_target_contract(
+        "Return true when a nullable request-derived value is null or an empty string.",
+        inputs=_static_inputs(("value", "HttpRequestValue")),
+        outputs=_static_value_output("Bool"),
         effects=request_effect,
         capabilities=["httpRequestReader"],
     )
@@ -812,20 +1208,22 @@ def _register_http_static_targets() -> None:
         ("http.multipartPartContentType", "HttpContentType", "Read one multipart part content type."),
     ):
         http_docs[target] = _static_target_contract(
-            summary,
+            f"{summary} This reads multipart/form-data directly from HttpRequest and does not parse application/x-www-form-urlencoded bodies.",
             inputs=_static_inputs(("request", "HttpRequest"), ("name", "String")),
             outputs=_static_value_output(output_type),
             effects=request_effect,
             capabilities=["httpRequestReader"],
             failure_kind="null-sentinel",
             failure_text="Returns null when the named multipart part or requested field is absent.",
+            agent_warnings=[multipart_warning],
         )
     http_docs["http.multipartPartLength"] = _static_target_contract(
-        "Read one multipart part byte length.",
+        "Read one multipart part byte length. This reads multipart/form-data directly from HttpRequest and does not parse application/x-www-form-urlencoded bodies.",
         inputs=_static_inputs(("request", "HttpRequest"), ("name", "String")),
         outputs=_static_value_output("HttpBodyLength"),
         effects=request_effect,
         capabilities=["httpRequestReader"],
+        agent_warnings=[multipart_warning],
     )
 
 
@@ -836,9 +1234,32 @@ def _register_json_static_targets() -> None:
         "Int64", "UInt64", "Int32", "UInt32", "Int16", "UInt16", "Int8", "UInt8",
         "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds", "Bool", "Float64", "Float32", "String",
     ]
+    numeric_types = {
+        "Int64", "UInt64", "Int32", "UInt32", "Int16", "UInt16", "Int8", "UInt8",
+        "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds",
+        "Float64", "Float32",
+    }
     for type_name in primitive_types:
+        if type_name in numeric_types:
+            # For a number, JSON text IS the plain decimal string, so this is the
+            # native, link-in-native/webServer NUMBER-TO-STRING formatter. Agents
+            # reach for this instead of c.snprintf or reading integers as TEXT from
+            # SQLite (the dashboard field-feedback forced workaround). Searchable as
+            # "integer to string" / "format number as text".
+            stringify_summary = (
+                f"Format one {type_name} as text. For numbers the JSON encoding is "
+                f"the plain decimal string, so this is the native {type_name}-to-String "
+                f"formatter (integer/number to string, format number as text) — it links "
+                f"in native and webServer builds, unlike a standard-library converter. "
+                f"Result-shaped (bind ok/error)."
+            )
+        else:
+            stringify_summary = (
+                f"Encode one {type_name} value as JSON text using the high-level "
+                f"Result-shaped stringify alias."
+            )
         json_docs.setdefault(f"json.stringify.{type_name}", _static_target_contract(
-            f"Encode one {type_name} value as JSON text using the high-level Result-shaped stringify alias.",
+            stringify_summary,
             inputs=_static_inputs(("value", type_name)),
             outputs=_static_result_output("JsonText", "JsonEncodeError"),
             failure_kind="result",
@@ -1064,6 +1485,31 @@ def _register_compiler_static_targets() -> None:
             inputs=_static_inputs(("left", "Int64"), ("right", "Int64")),
             outputs=_static_value_output("Bool"),
         )
+    for value_type, targets in (
+        ("Int64", ("math.minInt64", "math.maxInt64")),
+        ("Int32", ("math.minInt32", "math.maxInt32")),
+        ("UInt64", ("math.minUInt64", "math.maxUInt64")),
+        ("UInt32", ("math.minUInt32", "math.maxUInt32")),
+        ("Float64", ("math.minFloat64", "math.maxFloat64")),
+    ):
+        for target in targets:
+            math_docs[target] = _static_target_contract(
+                f"Return the {'smaller' if '.min' in target else 'larger'} of two {value_type} operands.",
+                inputs=_static_inputs(("left", value_type), ("right", value_type)),
+                outputs=_static_value_output(value_type),
+            )
+    for value_type, target in (
+        ("Int64", "math.clampInt64"),
+        ("Int32", "math.clampInt32"),
+        ("UInt64", "math.clampUInt64"),
+        ("UInt32", "math.clampUInt32"),
+        ("Float64", "math.clampFloat64"),
+    ):
+        math_docs[target] = _static_target_contract(
+            f"Clamp one {value_type} value into the inclusive [low, high] range.",
+            inputs=_static_inputs(("value", value_type), ("low", value_type), ("high", value_type)),
+            outputs=_static_value_output(value_type),
+        )
     for target in (
         "math.equalInt32", "math.notEqualInt32", "math.lessThanInt32", "math.lessThanOrEqualInt32",
         "math.greaterThanInt32", "math.greaterThanOrEqualInt32",
@@ -1176,6 +1622,160 @@ def _register_compiler_static_targets() -> None:
         ),
     })
 
+    text_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.text", {})
+    text_docs["text.concat"] = _static_target_contract(
+        "Concatenate two strings into a caller-owned buffer and return it as a "
+        "String (string builder / append / join two strings / build a string). "
+        "Lowers to a bounded snprintf with a fixed compiler-owned format, so there "
+        "is no format-string-injection risk (unlike hand-written c.snprintf) and it "
+        "links in EVERY target including native and webServer (unlike a standard-"
+        "library converter that fails native links). Provide a buffer (e.g. from "
+        "c.malloc) of `capacity` bytes; output is truncated to fit and null-terminated.",
+        inputs=_static_inputs(
+            ("left", "String"), ("right", "String"),
+            ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "read", "path": "memory.buffer"},
+                 {"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is non-null and writable for `capacity` bytes; "
+                     "if the combined length exceeds capacity-1 the result is truncated.",
+    )
+    text_docs["text.concat3"] = _static_target_contract(
+        "Concatenate three strings into a caller-owned buffer and return it as a "
+        "String — the prefix + value + suffix shape (e.g. building a Set-Cookie "
+        "header) in one bounded call. Same safety/linking as text.concat.",
+        inputs=_static_inputs(
+            ("first", "String"), ("second", "String"), ("third", "String"),
+            ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "read", "path": "memory.buffer"},
+                 {"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is writable for `capacity` bytes; output is truncated to fit.",
+    )
+    text_docs["text.fromInt64"] = _static_target_contract(
+        "Format an Int64 as a decimal String into a caller-owned buffer (integer "
+        "to string / number to text / format number as text / itoa). The discoverable native int→string "
+        "formatter; links in every target. Avoids reading integers as TEXT from "
+        "SQLite or dropping to c.snprintf. (json.stringify.Int64 does the same job.)",
+        inputs=_static_inputs(("value", "Int64"), ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is writable for `capacity` bytes (>= 21 covers any Int64).",
+    )
+    text_docs["text.fromFloat64"] = _static_target_contract(
+        "Format a Float64 as a String into a caller-owned buffer (float/number to "
+        "string / format number as text) using %g. The discoverable native float→string formatter; links in "
+        "every target.",
+        inputs=_static_inputs(("value", "Float64"), ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is writable for `capacity` bytes.",
+    )
+    text_docs["text.contains"] = _static_target_contract(
+        "Return true when `needle` occurs anywhere in `haystack` (compiler-lowered "
+        "strstr != NULL). Native substring search / string contains; links in every "
+        "target. Use it to check a request body contains a field, route by a path "
+        "fragment, etc., without a stdlib op or a hand-rolled byte scan.",
+        inputs=_static_inputs(("haystack", "String"), ("needle", "String")),
+        outputs=_static_value_output("Bool"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure both values are non-null, null-terminated Strings.",
+    )
+    text_docs["text.substring"] = _static_target_contract(
+        "Copy a bounded substring (`length` bytes starting at `start`) from `value` "
+        "into a caller-owned buffer, null-terminate, and return the buffer as a "
+        "String. Bounded — truncates to capacity-1 if length is too large, so the "
+        "result is always safe. Pair with text.indexOf to extract the part before/"
+        "after a delimiter (e.g. split `key=value` at the `=` offset). Compiler-"
+        "lowered memcpy + null-terminator; links in every target.",
+        inputs=_static_inputs(
+            ("value", "String"), ("start", "Int64"), ("length", "Int64"),
+            ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "read", "path": "memory.buffer"},
+                 {"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure start + length is in bounds for `value` and "
+                     "buffer is writable for capacity bytes; length truncates to capacity-1 if larger.",
+    )
+    text_docs["text.indexOf"] = _static_target_contract(
+        "Return the byte offset of the first occurrence of `needle` in `haystack`, "
+        "or -1 if not found (compiler-lowered strstr position). Use for tokenizing "
+        "/ parsing where text.contains (Bool) is not enough — e.g. splitting "
+        "`key=value` by finding the `=` index. Links in every target.",
+        inputs=_static_inputs(("haystack", "String"), ("needle", "String")),
+        outputs=_static_value_output("Int64"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="sentinel-value",
+        failure_text="Returns -1 when `needle` is not present in `haystack`.",
+    )
+    text_docs["text.endsWith"] = _static_target_contract(
+        "Return true when `value` ends with `suffix` (compiler-lowered branchless "
+        "tail match: strncmp(value + (len_v - len_s), suffix, len_s) == 0, with a "
+        "bounds guard for len_s > len_v). Anchored suffix match for content-type / "
+        "extension routing (does this path end with `.css`). Links in every target.",
+        inputs=_static_inputs(("value", "String"), ("suffix", "String")),
+        outputs=_static_value_output("Bool"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure both values are non-null, null-terminated Strings.",
+    )
+    text_docs["text.startsWith"] = _static_target_contract(
+        "Return true when `value` begins with `prefix` (compiler-lowered "
+        "strncmp(value, prefix, strlen(prefix)) == 0). Anchored prefix match for "
+        "routing (does this path start with /api/) — unlike text.contains, which "
+        "matches anywhere. Links in every target.",
+        inputs=_static_inputs(("value", "String"), ("prefix", "String")),
+        outputs=_static_value_output("Bool"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure both values are non-null, null-terminated Strings.",
+    )
+    text_docs["text.equals"] = _static_target_contract(
+        "Return true when two strings are byte-equal (compiler-lowered strcmp == 0). "
+        "Native string equality / compare strings that links in every target — unlike "
+        "stdlib.string.compareCString, which fails native/webServer links. Lets app "
+        "logic branch on `status == \"open\"` without libc or a SQL round-trip.",
+        inputs=_static_inputs(("left", "String"), ("right", "String")),
+        outputs=_static_value_output("Bool"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure both values are non-null, null-terminated Strings.",
+    )
+    text_docs["text.length"] = _static_target_contract(
+        "Return the byte length of a String (compiler-lowered strlen). Use "
+        "`text.length(value)` then compare to 0 to validate emptiness instead of "
+        "hand-rolling a pointer.loadByte check; links in every target.",
+        inputs=_static_inputs(("value", "String")),
+        outputs=_static_value_output("Int64"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure value is a non-null, null-terminated String.",
+    )
+
+    html_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.html", {})
+    html_docs["html.fragmentConcat"] = _static_target_contract(
+        "Concatenate two HtmlFragment values into a caller-owned buffer and "
+        "return the buffer as HtmlFragment. This is the HTML-typed sibling of "
+        "text.concat for reusable fragment helpers, render variable length list "
+        "folds, and html fragment join workflows: it links in "
+        "native/webServer builds, avoids binding a String result as HtmlFragment, "
+        "and keeps SS4302's domain check meaningful.",
+        inputs=_static_inputs(
+            ("left", "HtmlFragment"), ("right", "HtmlFragment"),
+            ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("HtmlFragment"),
+        effects=[{"action": "read", "path": "memory.buffer"},
+                 {"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is non-null and writable for `capacity` bytes; output is truncated to fit and null-terminated.",
+    )
+
     c_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.c", {})
     heap_cleanup = {"required": True, "strategy": "call c.free on every non-null ownership path", "callTarget": "c.free", "argumentName": "ptr", "argumentType": "OpaquePointer", "resultType": "Void"}
     c_docs.update({
@@ -1255,7 +1855,7 @@ def _register_compiler_static_targets() -> None:
             effects=[{"action": "write", "path": "memory.buffer"}],
             failure_kind="snprintf-status",
             failure_text="A negative return reports formatting failure; a return value greater than or equal to bufferSize means truncation. Extra varargs follow the format argument.",
-            agent_warnings=["The linter requires format to reference a module-scope immutable String. Never pass request/runtime data as the format string."],
+            agent_warnings=["The linter requires format to reference an immutable String constant. Never pass request/runtime data as the format string."],
         ),
         "c.strlen": _static_target_contract(
             "Return the byte length of a null-terminated string, excluding the terminator.",
@@ -1328,6 +1928,62 @@ _register_http_static_targets()
 _register_json_static_targets()
 _register_compiler_static_targets()
 STD_DOC_STATIC_TYPES = {
+    "standard.html": {
+        "HtmlFragment": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Hydrated HTML fragment role alias inserted raw only into text-content positions where markup composition is intentional.",
+            "usage": [
+                "Use values produced by `html.hydrate.*` or trusted fragment helpers.",
+                "Do not bind ordinary String concatenation results as `HtmlFragment`; use `html.fragmentConcat` for fragment folds.",
+                "Fragments cannot hydrate quoted attributes or URL-bearing attributes.",
+            ],
+            "source": "standard.html type alias",
+            "sourceFile": "SemanticScript/std/html/main.sem",
+            "line": 33,
+        },
+        "HtmlTrustedFragment": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Trusted HTML fragment role alias for caller-reviewed markup inserted raw only into text-content positions.",
+            "usage": [
+                "Reserve for reviewed or sanitized markup where raw insertion is intentional.",
+                "Do not use for quoted attributes or URL-bearing attributes.",
+            ],
+            "source": "standard.html type alias",
+            "sourceFile": "SemanticScript/std/html/main.sem",
+            "line": 34,
+        },
+        "HtmlDocument": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Full hydrated HTML document role alias, suitable for HTML response bodies after hydration.",
+            "usage": [
+                "Use as a rendered document/body value, not as an attribute value.",
+                "Document values insert raw only in text-content positions when composed into another template.",
+            ],
+            "source": "standard.html type alias",
+            "sourceFile": "SemanticScript/std/html/main.sem",
+            "line": 35,
+        },
+        "HtmlSafeUrl": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Trusted URL text role alias required for HTML URL-bearing attributes.",
+            "usage": [
+                "Use `HtmlSafeUrl` for dynamic holes in `href`, `src`, `action`, `formaction`, and `poster` attributes.",
+                "Plain `String` remains valid for text and non-URL quoted attribute holes, where hydration escapes it, but plain `String` is rejected in URL-bearing attributes.",
+                "Create `HtmlSafeUrl` values only through std/compiler-owned validation or another explicit trust boundary; do not relabel arbitrary user input.",
+            ],
+            "exampleRows": [
+                "storage local immutable profileHref HtmlSafeUrl \"/profile\"",
+                "argument hydratePageCall profileHref HtmlSafeUrl profileHref",
+            ],
+            "source": "standard.html type alias",
+            "sourceFile": "SemanticScript/std/html/main.sem",
+            "line": 36,
+        },
+    },
     "standard.http": {
         "HttpStatusCode": {
             "kind": "typeAlias",
@@ -1344,6 +2000,28 @@ STD_DOC_STATIC_TYPES = {
             "source": "standard.http type alias",
             "sourceFile": "SemanticScript/std/http/main.sem",
             "line": 33,
+        },
+        "HttpHeaderValue": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "HTTP response/request header value role type used by `http.responseHeader` and header constants.",
+            "usage": [
+                "For Set-Cookie session/auth headers, include HttpOnly and SameSite by default.",
+                "Append the `Secure` cookie attribute only when HTTPS is known: with today's native HTTP adapter that means a trusted TLS terminator strips and sets `X-Forwarded-Proto: https`; otherwise omit Secure for local HTTP or serve behind HTTPS.",
+                "Use `http.requestHeader` with `forwardedProtoHeaderName`, guard null with `pointer.isNull`, then compare with `text.equals` against `forwardedProtoHttpsValue` before choosing the Secure suffix.",
+                "For static assets, `staticRoute` and `http.responseFile` stamp `cacheControlHeaderName`, `etagHeaderName`, and `lastModifiedHeaderName`; custom handlers can read `ifNoneMatchHeaderName` / `ifModifiedSinceHeaderName` and choose their own 304 policy.",
+            ],
+            "exampleRows": [
+                "storage local immutable cookieHeaderName HttpHeaderName setCookieHeaderName",
+                "storage local immutable forwardedProtoName HttpHeaderName forwardedProtoHeaderName",
+                "storage local immutable cacheHeaderName HttpHeaderName cacheControlHeaderName",
+                "storage local immutable cacheHeaderValue HttpHeaderValue staticAssetCacheControlHeaderValue",
+                "argument forwardedProtoReadCall name String forwardedProtoName",
+                "argument protoHttpsCheckCall right String forwardedProtoHttpsValue",
+            ],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 35,
         },
         "HttpTextBody": {
             "kind": "typeAlias",
@@ -1371,6 +2049,38 @@ STD_DOC_STATIC_TYPES = {
             "source": "standard.http type alias",
             "sourceFile": "SemanticScript/std/http/main.sem",
             "line": 40,
+        },
+        "SessionTtlMillis": {
+            "kind": "typeAlias",
+            "underlyingType": "Int64",
+            "summary": "Session time-to-live duration in milliseconds for `http.sessionExpiresAt`.",
+            "usage": [
+                "Use immutable Int64 constants such as `sessionDefaultTtlMillis` as the value passed to a `SessionTtlMillis` argument row.",
+                "Call `http.nowMillis`, then `http.sessionExpiresAt`, when creating a session.",
+            ],
+            "exampleRows": [
+                "call nowCall http.nowMillis",
+                "argument expiresAtCall ttlMillis SessionTtlMillis sessionDefaultTtlMillis",
+            ],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 41,
+        },
+        "SessionExpiresAtMillis": {
+            "kind": "typeAlias",
+            "underlyingType": "Int64",
+            "summary": "Absolute Unix epoch millisecond timestamp when a session expires.",
+            "usage": [
+                "Persist the value returned by `http.sessionExpiresAt` with the session record.",
+                "On authenticated requests, read `http.nowMillis` and call `http.sessionIsExpired`; reject the session when the result is true.",
+            ],
+            "exampleRows": [
+                "bind value expiresAtMillis SessionExpiresAtMillis expiresAtCall",
+                "argument sessionExpiredCall expiresAtMillis SessionExpiresAtMillis storedExpiresAtMillis",
+            ],
+            "source": "standard.http type alias",
+            "sourceFile": "SemanticScript/std/http/main.sem",
+            "line": 42,
         },
         "HttpByteBody": {
             "kind": "typeAlias",
@@ -1424,7 +2134,7 @@ STD_DOC_STATIC_TYPES = {
                 {"name": "rowSqliteStepResult", "value": 100},
                 {"name": "doneSqliteStepResult", "value": 101},
             ],
-            "usage": ["Compare step results against the named cases to distinguish row availability from completion."],
+            "usage": ["Use sqlite.stepResultIsRow and sqlite.stepResultIsDone to distinguish row availability from completion."],
             "source": "built-in enum and standard.sqlite export",
             "sourceFile": "SemanticScript/std/sqlite/main.sem",
             "line": 35,
@@ -1461,7 +2171,11 @@ STD_DOC_STATIC_TYPES = {
             "kind": "typeAlias",
             "underlyingType": "OpaquePointer",
             "summary": "Opaque SQLite database handle returned by `sqlite.openDatabase` and closed by `sqlite.closeDatabase`.",
-            "usage": ["Close each successfully opened database on every ownership path."],
+            "usage": [
+                "Close each successfully opened database on every ownership path.",
+                "For a webServer process-lifetime handle, open in webServerStartup, assign the SqliteDatabase to module mutable storage or sharedState process storage, reuse it from handlers, and close it in webServerShutdown.",
+                "This is single-process handle reuse, not a connection pool. The current native HTTP adapter is blocking and single-threaded; future concurrent dispatch needs an explicit guard, owner, or pool contract before sharing the handle.",
+            ],
             "source": "standard.sqlite type alias",
             "sourceFile": "SemanticScript/std/sqlite/main.sem",
             "line": 21,
@@ -1474,6 +2188,163 @@ STD_DOC_STATIC_TYPES = {
             "source": "standard.sqlite type alias",
             "sourceFile": "SemanticScript/std/sqlite/main.sem",
             "line": 22,
+        },
+        "SqliteQueryFailure": {
+            "kind": "typeAlias",
+            "underlyingType": "Int32",
+            "summary": "SQLite status code role returned on the error leg of `sqlite.queryScalarInt64`.",
+            "usage": [
+                "Treat nonzero values as prepare, empty-result, step, or finalize failures from the one-shot scalar helper.",
+                "Read `sqlite.errorMessage` on the same database when native detail is needed.",
+            ],
+            "source": "standard.sqlite type alias",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 28,
+        },
+        "SqliteJournalModeFailure": {
+            "kind": "typeAlias",
+            "underlyingType": "Int32",
+            "summary": "SQLite status code role returned on the error leg of `sqlite.enableWalMode`.",
+            "usage": [
+                "Use `sqliteJournalMode PROJECT wal` in build.sem for project-wide WAL opt-in.",
+                "Use `sqlite.enableWalMode` during startup when WAL applies to one explicit database handle.",
+                "Read `sqlite.errorMessage` on the same database when native detail is needed.",
+            ],
+            "source": "standard.sqlite type alias",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 30,
+        },
+        "SqliteTransactionFailure": {
+            "kind": "typeAlias",
+            "underlyingType": "Int32",
+            "summary": "SQLite status code role returned on transaction helper error legs.",
+            "usage": [
+                "Use with sqlite.beginImmediateTransaction, sqlite.commitTransaction, and sqlite.rollbackTransaction.",
+                "On a failure after BEGIN succeeds, route cleanup through sqlite.rollbackTransaction before returning the original error where possible.",
+            ],
+            "source": "standard.sqlite type alias",
+            "sourceFile": "SemanticScript/std/sqlite/main.sem",
+            "line": 29,
+        },
+    },
+    "standard.bcrypt": {
+        "BcryptPlaintextPassword": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Untrusted plaintext-password role accepted by bcrypt.hashPassword and bcrypt.verifyPassword.",
+            "usage": [
+                "This is a String-backed role at argument sites: a value declared as `String` can be passed to a `BcryptPlaintextPassword` argument row.",
+                "A guarded `HttpRequestValue` returned by `http.formField` for a password field may also be passed directly at the bcrypt plaintext argument row; the row is the trust-boundary evidence and the value must not be logged or persisted.",
+                "Prefer `String` storage for literals when module-scope role-alias string constants are not supported by codegen; the role applies at the bcrypt argument slot.",
+                "Never persist or log plaintext password values.",
+            ],
+            "exampleRows": [
+                "call passwordFieldCall http.formField",
+                "argument passwordFieldCall body HttpRequestValue requestBodyText",
+                "argument passwordFieldCall name String passwordFieldName",
+                "argument passwordFieldCall scratch OpaquePointer passwordScratchBuffer",
+                "argument passwordFieldCall scratchCapacity Int64 passwordScratchCapacity",
+                "run passwordFieldCall",
+                "bind value passwordValue HttpRequestValue passwordFieldCall",
+                "call passwordMissingCall pointer.isNull",
+                "argument passwordMissingCall pointer OpaquePointer passwordValue",
+                "run passwordMissingCall",
+                "bind value passwordMissing Bool passwordMissingCall",
+                "branch if condition passwordMissing target <missingPasswordLabel>",
+                "argument hashPasswordCall plaintext BcryptPlaintextPassword passwordValue",
+                "storage local immutable passwordText String \"correct-horse-battery-staple\"",
+                "argument hashPasswordCall plaintext BcryptPlaintextPassword passwordText",
+            ],
+            "source": "standard.bcrypt type alias",
+            "sourceFile": "SemanticScript/std/bcrypt/main.sem",
+            "line": 29,
+        },
+        "BcryptPasswordHash": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Trusted bcrypt `$2b$NN$...` hash role accepted by bcrypt.verifyPassword.",
+            "usage": [
+                "This is a String-backed role at argument sites: a database String/SqliteText value that is trusted by schema or prior validation can be passed as `BcryptPasswordHash`.",
+                "A successful bcrypt.hashPassword output buffer is a null-terminated hash string; it may be passed as the expected hash while the caller-owned buffer remains live.",
+                "Validate persisted hashes with length 60 and `$2b$` prefix policy before treating them as trusted.",
+            ],
+            "exampleRows": [
+                "argument verifyPasswordCall expectedHash BcryptPasswordHash storedPasswordHash",
+            ],
+            "source": "standard.bcrypt type alias",
+            "sourceFile": "SemanticScript/std/bcrypt/main.sem",
+            "line": 30,
+        },
+        "BcryptHashBuffer": {
+            "kind": "typeAlias",
+            "underlyingType": "OpaquePointer",
+            "summary": "Caller-owned output buffer role for bcrypt.hashPassword.",
+            "usage": [
+                "This is an OpaquePointer-backed role at argument sites: a buffer returned by c.malloc or memory.allocateMemoryBytes can be passed as `BcryptHashBuffer`.",
+                "Allocate at least bcryptHashBufferRequiredBytes (61) bytes and keep the buffer live until all hash reads, persistence, or verify calls are complete.",
+                "Release the buffer with c.free or memory.releaseMemoryBytes, preferably via defer.",
+            ],
+            "exampleRows": [
+                "call allocateHashBufferCall c.malloc",
+                "argument hashPasswordCall outBuffer BcryptHashBuffer hashBuffer",
+                "defer releaseHashBufferDefer c.free hashBuffer",
+            ],
+            "source": "standard.bcrypt type alias",
+            "sourceFile": "SemanticScript/std/bcrypt/main.sem",
+            "line": 31,
+        },
+        "SessionTokenHash": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Trusted at-rest verifier for a SessionToken, produced by bcrypt.hashSessionTokenResult and checked by bcrypt.verifySessionTokenResult.",
+            "usage": [
+                "This is a String-backed role at argument sites: persisted token hashes can be passed as `SessionTokenHash` after schema or prior validation.",
+                "Store SessionTokenHash values produced by bcrypt.hashSessionTokenResult instead of raw SessionToken values; leaked hashes still require bcrypt work to test.",
+                "Use bcrypt.verifySessionTokenResult for presented-token checks so mismatch and runtime failure stay distinct.",
+            ],
+            "exampleRows": [
+                "argument hashSessionTokenCall token SessionToken sessionToken",
+                "argument hashSessionTokenCall outBuffer BcryptHashBuffer sessionHashBuffer",
+                "argument verifySessionTokenCall expectedHash SessionTokenHash storedSessionTokenHash",
+            ],
+            "source": "standard.bcrypt type alias",
+            "sourceFile": "SemanticScript/std/bcrypt/main.sem",
+            "line": 35,
+        },
+        "CsrfToken": {
+            "kind": "typeAlias",
+            "underlyingType": "String",
+            "summary": "Trusted URL-safe anti-CSRF nonce produced by bcrypt.issueCsrfToken.",
+            "usage": [
+                "Issue with native-linkable bcrypt.issueCsrfToken, store server-side or inside an integrity-protected session, and embed the token in forms.",
+                "Compare submitted form values with text.equals before mutating requests.",
+                "Do not reuse SessionToken values as CSRF tokens; the separate role keeps bearer credentials and form nonces distinct.",
+            ],
+            "exampleRows": [
+                "call issueCsrfTokenCall bcrypt.issueCsrfToken",
+                "argument issueCsrfTokenCall tokenBuffer CsrfTokenBuffer csrfTokenBuffer",
+                "argument csrfCompareCall right CsrfToken storedCsrfToken",
+            ],
+            "source": "standard.bcrypt type alias",
+            "sourceFile": "SemanticScript/std/bcrypt/main.sem",
+            "line": 38,
+        },
+        "CsrfTokenBuffer": {
+            "kind": "typeAlias",
+            "underlyingType": "OpaquePointer",
+            "summary": "Caller-owned output buffer role for bcrypt.issueCsrfToken.",
+            "usage": [
+                "Allocate at least csrfTokenBufferRequiredBytes (44) bytes and keep the buffer live until form rendering or persistence is complete.",
+                "Release the buffer with c.free or memory.releaseMemoryBytes, preferably via defer.",
+            ],
+            "exampleRows": [
+                "call allocateCsrfTokenBufferCall c.malloc",
+                "argument issueCsrfTokenCall tokenBuffer CsrfTokenBuffer csrfTokenBuffer",
+                "defer releaseCsrfTokenBufferDefer c.free csrfTokenBuffer",
+            ],
+            "source": "standard.bcrypt type alias",
+            "sourceFile": "SemanticScript/std/bcrypt/main.sem",
+            "line": 39,
         },
     },
     "standard.json": {
@@ -1735,15 +2606,29 @@ DIAGNOSTIC_EXPLAINERS = {
     },
     "SS4105": {
         "title": "reference integrity: unresolved value or wrong attachment subject kind",
-        "summary": "A row references a value that is not declared in the current operation, or an operation-body verb is attached to a subject that is not an operation. Every argument value must be a named `storage`/`bind`/input value (or an integer / true / false literal) declared before use; inline enum members and string literals are rejected.",
+        "summary": "A row references a value that is not declared in the current operation, or an operation-body verb is attached to a subject that is not an operation. Every argument value must be a named `storage`/`bind`/input value, an integer / true / false literal, or a bare enum case constant; string literals and stale dotted enum-like values are rejected.",
         "whyItMatters": [
             "Argument values that are not declared names are the most common source of silent narrative drift during agent edits.",
-            "Inline literals (`HttpStatus.Ok`, `\"application/json\"`) read like other languages but bypass the explicit-dataflow contract, so the linter forces them into named declarations."
+            "Dotted enum-like values (`HttpStatus.Ok`) and inline strings (`\"application/json\"`) read like other languages but bypass the explicit-dataflow contract, so the linter forces them into supported named declarations."
         ],
         "commonFixes": [
             "Declare the value first, e.g. `storage local immutable contentType String \"application/json\"`, then reference `contentType` in the argument row.",
-            "For enum members, declare a typed value (`storage local immutable okStatus HttpStatus HttpStatus.Ok`) and reference the name.",
+            "For real enums, use the bare case constant reported by `sem docs get TYPENAME --json`, for example `readWriteCreateSqliteOpenMode`.",
+            "For HTTP status roles, declare numeric `HttpStatusCode` constants such as `storage local immutable okStatus HttpStatusCode 200`; there is no `HttpStatus.Ok` value syntax.",
             "When the diagnostic is `attachmentSubjectKindMismatch`, point the verb at an actual operation, or use a subject-flexible verb (`purpose`, `invariant`, `warning`)."
+        ],
+    },
+    "SS3804": {
+        "title": "typed collection runtime missing",
+        "summary": "A call such as `TaskList.append` or `TaskMap.get` names a typed collection operation, but collection declarations are metadata today and do not allocate storage or implement methods.",
+        "whyItMatters": [
+            "The linter warning is the early signal; current codegen rejects the call instead of silently returning a zero result.",
+            "Using collection metadata as if it were executable hides where storage, bounds checks, mutation, and failure handling must actually live."
+        ],
+        "commonFixes": [
+            "Implement the behavior as an explicit SemanticScript operation and call that operation directly.",
+            "Provide a real `runtimeBinding` only when a native collection backend exists.",
+            "Keep `listType`, `mapType`, and `collectionOperation` rows as schema/contract metadata until executable collection support is wired."
         ],
     },
     "SS4107": {
@@ -1759,6 +2644,189 @@ DIAGNOSTIC_EXPLAINERS = {
             "Remove the `branch error source` row when the target truly cannot fail."
         ],
     },
+    "SS3113": {
+        "title": "column value used after a later same-statement read clobbered it",
+        "summary": "A value from sqlite.columnText/columnBlob/columnName points into the prepared statement's own scratch buffer. A later columnText/columnBlob/columnName on the SAME statement overwrites that buffer, so the earlier value is silently corrupted by the time it is used (rendered, bound, written).",
+        "whyItMatters": [
+            "The corruption is invisible to a casual read — the value looks captured but the bytes are shared and get reused.",
+            "Reading several text columns from one row and using them all later is the natural shape that triggers it."
+        ],
+        "commonFixes": [
+            "Use each columnText value immediately (hydrate / copy / bind) BEFORE the next columnText on the same statement.",
+            "Read integer columns with sqlite.columnInt64 (returned by value — no borrowed buffer) where possible.",
+            "Split the read into one single-column statement per value when several texts must coexist."
+        ],
+    },
+    "SS3114": {
+        "title": "heap response body freed before write",
+        "summary": "A buffer returned by c.malloc/calloc/realloc or memory.allocateMemoryBytes is passed as an HTTP response body after an explicit c.free or memory.releaseMemoryBytes has already run. The call rows look ordered, but the response writer dereferences freed memory when its `run` row executes.",
+        "whyItMatters": [
+            "This is the malloc-backed version of the response-body use-after-free: build succeeds, but the native HTTP adapter may SIGSEGV or send corrupted bytes.",
+            "Argument rows only wire dataflow; the body is consumed by the response writer's execution row, so freeing between `argument ... body ...` and `run writeCall` is still unsafe."
+        ],
+        "commonFixes": [
+            "Use `defer <name> c.free <buffer>` or `defer <name> memory.releaseMemoryBytes <buffer>` so cleanup runs at operation exit after the response writer.",
+            "Or move the response writer's `run` row before the explicit free/release rows.",
+            "Prefer standard.memory.allocateMemoryBytes/releaseMemoryBytes for new app code, but keep the same lifetime ordering."
+        ],
+    },
+    "SS3635": {
+        "title": "multiple SQLite writes should be atomic",
+        "summary": "An operation performs more than one SQLite write (INSERT/UPDATE/DELETE) without wrapping them in a transaction. A failure between writes leaves the database half-updated.",
+        "whyItMatters": [
+            "Multi-step writes that are not atomic are the classic source of partial/corrupt state after an error.",
+            "A task insert plus its activity-event insert must both commit or both roll back."
+        ],
+        "commonFixes": [
+            "Wrap the writes in `BEGIN IMMEDIATE` … `COMMIT` (with a `ROLLBACK` on the failure path) via sqlite.exec.",
+            "If the writes flow through a helper the linter can't see across, keep the BEGIN/COMMIT in the same operation as the writes."
+        ],
+    },
+    "SS3639": {
+        "title": "connection-global SQLite generated id",
+        "summary": "Code uses `last_insert_rowid()` or `sqlite.lastInsertRowId` to recover an id from a prior INSERT. New code should make the INSERT return the id directly with `INSERT ... RETURNING id`, read column 0 from that INSERT statement, and pass the named id into later statements such as activity-log inserts.",
+        "whyItMatters": [
+            "The last-insert row id is mutable connection state, so triggers, helper writes, shared handles, or future concurrent dispatch can make the read observe the wrong row.",
+            "A returned id is normal SemanticScript dataflow: prepare, bind, step, require sqlite.stepResultIsRow, read sqlite.columnInt64, drain/finalize, then bind the id explicitly into dependent writes.",
+            "When the generated row and activity-log row must stay atomic, the migration belongs inside sqlite.beginImmediateTransaction / commitTransaction with rollback on failure paths."
+        ],
+        "commonFixes": [
+            "Replace `last_insert_rowid()` and `sqlite.lastInsertRowId` with `INSERT INTO ... VALUES (...) RETURNING id`.",
+            "Use `sem docs get sqlite.lastInsertRowId --json` and copy `target.usage.migration.sqlRows` plus `target.usage.migration.rows` for the prepare/bind/step/column/finalize/transaction skeleton.",
+            "After reading the RETURNING column, step again and require sqlite.stepResultIsDone or finalize/reset before COMMIT. For borrowed text/blob columns, consume or copy before the same statement steps/resets/finalizes."
+        ],
+    },
+    "SS3201": {
+        "title": "dead store: a bound/stored value is never read",
+        "summary": "A `bind` or `storage`/`set` produces a value that no later row reads on any path. Either a use is missing (the value was meant to be consumed) or the row is leftover.",
+        "whyItMatters": [
+            "A dead store is usually a dropped result — e.g. binding a value you forgot to branch on, or a rename that left the old name unused.",
+            "It is also narrative drift: the row claims to matter but nothing depends on it."
+        ],
+        "commonFixes": [
+            "Consume the value (branch on it, pass it as an argument, return it), or remove the row if it is genuinely unused.",
+            "For a deliberately ignored call result, use `ignore value source CALL type T` instead of binding a name."
+        ],
+    },
+    "SS3630": {
+        "title": "unreachable row after terminal control flow",
+        "summary": "A row sits after a `return`/`jump` (or an exhaustive branch) with no label that could route control back to it, so it can never execute.",
+        "whyItMatters": [
+            "Unreachable rows are dead narrative — a reader trusts them but they never run.",
+            "They usually mean a missing label, a misplaced row, or a branch that should have fallen through."
+        ],
+        "commonFixes": [
+            "Add the `label` that should precede the row, or move the row above the terminal transfer.",
+            "Delete the row if it is genuinely dead."
+        ],
+    },
+    "SS3106": {
+        "title": "hidden failure: a fallible call's error channel is not handled",
+        "summary": "A call that can fail has its error left unbound/unbranched, so a failure is silently dropped and execution continues as if it succeeded.",
+        "whyItMatters": [
+            "Silently dropping a failure is the fastest way to ship a program that 'succeeds' while its side effect never happened.",
+            "Every fallible call needs an explicit disposition for both legs."
+        ],
+        "commonFixes": [
+            "Add `bind error <name>Error <ErrorType> <call>` then `branch error source <call> target <failureLabel>`.",
+            "If the call genuinely cannot fail in this context, use the value-only contract and document why."
+        ],
+    },
+    "SS3624": {
+        "title": "legacy JsonBuilder call",
+        "summary": "A source row calls the legacy manual JsonBuilder API. New JSON output should use typed `json.stringify.<TypeName>` for scalar/record values, or the JsonDocument mutator API when the code needs to build or edit a document.",
+        "whyItMatters": [
+            "The builder surface hides state-machine and capacity failures behind status codes and borrowed output buffers.",
+            "Typed stringify and JsonDocument mutators give the linter explicit failure, cleanup, and cursor-lifetime rows to verify."
+        ],
+        "commonFixes": [
+            "For a known value type, replace the builder sequence with `json.stringify.<TypeName>`, then `bind ok`, `bind error`, and `branch error`.",
+            "For incremental object/array construction, use `json.createEmptyDocument`, mutate with `json.setObjectField*` or `json.appendArrayElement*`, serialize with `json.serializeDocument`, and destroy with `json.destroyDocument` on every ownership path.",
+            "Run `sem docs get json.stringify.String --json`, `sem docs get json.createEmptyDocument --json`, or `sem docs get json.serializeDocument --json` for row-level call, failure, and cleanup shapes."
+        ],
+    },
+    "SS3625": {
+        "title": "legacy JSON finder call",
+        "summary": "A source row calls the legacy flat-object finder API (`json.findString`, `json.findInt64`, `json.findDouble`, `json.findBool`, or `json.hasField`). New JSON reads should parse once into JsonDocument, navigate with cursors, and read through typed cursor accessors.",
+        "whyItMatters": [
+            "The finder calls collapse absent fields, wrong types, malformed JSON, and scratch-buffer failures into sentinel values.",
+            "JsonDocument cursor calls expose traversal and type failures as `JsonAccessError`, so source rows can branch explicitly."
+        ],
+        "commonFixes": [
+            "Use `json.createDocument` with failure handling, bind the ok `JsonDocument`, and clean it up with `json.destroyDocument`.",
+            "Navigate with `json.documentRoot` plus `json.objectFieldAt` or with `json.cursorAtPath`, then handle `JsonAccessError` before reading the cursor.",
+            "Read with `json.cursorString`, `json.cursorInt64`, `json.cursorDouble`, or `json.cursorBool` as appropriate; use `sem docs get json.cursorAtPath --json` and `sem docs get json.cursorString --json` for exact rows."
+        ],
+    },
+    "SS4001": {
+        "title": "vague call name (missing `Call` role suffix)",
+        "summary": "A `call <name> <target>` binding should end in the `Call` role suffix so call rows are visually distinct from values and labels (spec §6 naming roles).",
+        "whyItMatters": [
+            "Role suffixes let a reader (and repair tools) tell at a glance whether a name is a call, a value, an error, or a label.",
+            "Consistent suffixes keep multi-file agent edits coherent."
+        ],
+        "commonFixes": [
+            "Rename the call binding to end in `Call` (e.g. `open` -> `openCall`) and update its `run`/`argument`/`bind` references.",
+            "(A `sem fix --apply-conventions` codemod for these mechanical renames is a planned follow-up.)"
+        ],
+    },
+    "SS4002": {
+        "title": "vague error name (missing `Error` role suffix)",
+        "summary": "A `bind error <name> …` binding should end in the `Error` role suffix so error values are distinguishable from ok values at the call site.",
+        "whyItMatters": [
+            "The error suffix signals the failure channel explicitly, which the failure-flow rules and reviewers rely on.",
+        ],
+        "commonFixes": [
+            "Rename the error binding to end in `Error` (e.g. `openErr` -> `openError`)."
+        ],
+    },
+    "SS4003": {
+        "title": "vague failure name (missing `Failure` role suffix)",
+        "summary": "A `makeError <name> …` output should end in the `Failure` role suffix so constructed error values read as failures.",
+        "whyItMatters": [
+            "The `Failure` suffix marks a value that represents an error cause, distinct from the `Error` binding that captured one.",
+        ],
+        "commonFixes": [
+            "Rename the makeError output to end in `Failure` (e.g. `notFound` -> `notFoundFailure`)."
+        ],
+    },
+    "SS0106": {
+        "title": "unused bind slot",
+        "summary": "A `bind value`/`bind ok`/`bind error` introduces a name that no later row uses. The slot is declared but never consumed.",
+        "whyItMatters": [
+            "An unused bind is usually a forgotten branch or a leftover from an edit.",
+            "For error binds specifically, an unused error often means the failure is being dropped."
+        ],
+        "commonFixes": [
+            "Use the bound name (branch on it, pass it, return it), or drop the bind.",
+            "To discard a call result deliberately, use `ignore value source CALL type T` instead of binding it."
+        ],
+    },
+    "deferNotDominated": {
+        "title": "cleanup defer does not dominate the exit it protects",
+        "summary": "A resource is acquired, an all-paths `defer close...` is registered, and a later failure branches to a reject/fail label, but that same label is also reached from a failure edge before the resource was acquired. Current lowering inserts a path-local edge cleanup block for this forward exit-label shape, while the diagnostic still points out the ambiguous lifetime.",
+        "whyItMatters": [
+            "A shared exit label reached from both pre-acquisition and post-acquisition paths makes the resource lifetime hard to read and hard for older tooling to lower correctly.",
+            "The compiler now emits edge cleanup for lowered defers in this shape, but split labels still make the ownership boundary explicit for reviewers and tools."
+        ],
+        "commonFixes": [
+            "Give each pre-acquisition failure its OWN exit label (e.g. `openFailed`) so the shared post-acquisition reject label is dominated by the defer.",
+            "Scope the cleanup to the paths where the resource is live with `deferRunOn <name> <label>`.",
+            "Acquire the resource before any branch that can also target the shared cleanup label, so every path to that label has registered the defer."
+        ],
+    },
+    "roleSuffixMismatch": {
+        "title": "branch-error label should name a failure or recovery role",
+        "summary": "A label targeted by `branch error` / `branchIfError` is where a failure lands, so its name should read as a recognized control role: a past-tense / `Failed` outcome (`openFailed`, `parseFailed`) OR a recovery/response role (`loginReject`, `importRollback`, `registerRedirect`, `retry`, `cleanup`). A vague target (`fooHandler`, `nextThing`) hides what the failure edge does.",
+        "whyItMatters": [
+            "Error-edge targets are read most during review and repair; a role-named label makes the control-flow graph self-documenting (spec §12).",
+            "Recovery/response labels are legitimate failure targets — the rule accepts them, so you do not need to force a `*Failed` suffix onto a label that rejects a request or rolls back a transaction."
+        ],
+        "commonFixes": [
+            "Name the label for its outcome (`…Failed`, or a past-tense `-ed` form) or its recovery role (reject, rollback, redirect, retry, fallback, cleanup, abort, cancel, unauthorized, notFound, timeout, recover, respond, done, exit).",
+            "If the label genuinely just returns an error, a `*Failed` name is clearest; if it recovers (redirect/rollback), name it for that role."
+        ],
+    },
     "SS3617": {
         "title": "web server lifecycle hook contract mismatch",
         "summary": "`webServerStartup SERVER HANDLER` and `webServerShutdown SERVER HANDLER` handlers must name an existing operation, declare no inputs, and return bare `Int32`.",
@@ -1770,6 +2838,31 @@ DIAGNOSTIC_EXPLAINERS = {
             "Define the named hook operation if it is missing.",
             "Remove all `input operation HOOK ...` rows from startup and shutdown hook operations.",
             "Declare `output operation HOOK Int32` and return zero for success or a nonzero status for failure."
+        ],
+    },
+    "SS3618": {
+        "title": "route timeout is metadata-only",
+        "summary": "`routeTimeout SERVER PATH BUDGET` records coverage intent, but the current native HTTP blocking runtime does not preempt a synchronous handler when that budget expires.",
+        "whyItMatters": [
+            "The row is still useful as coverage metadata for tools and future preemptive runtimes.",
+            "A source file that only declares `routeTimeout` can otherwise look runtime-protected when no in-process timeout is enforced today."
+        ],
+        "commonFixes": [
+            "Keep the row when you want coverage metadata, but do not rely on it for runtime preemption.",
+            "Use handler-level checks or an external server/proxy timeout for actual synchronous-handler bounds.",
+            "If the route intentionally has no timeout coverage, use `routeTimeoutOptOut SERVER PATH \"rationale\"` instead."
+        ],
+    },
+    "SS3619": {
+        "title": "response header runs after body writer",
+        "summary": "`http.responseHeader` must run before the first response body/file/redirect writer. Once a body writer runs, the native response has latched its staged headers.",
+        "whyItMatters": [
+            "Set-Cookie, Location, Cache-Control, and custom headers written after the body writer can look source-valid while having no useful runtime effect.",
+            "The linter tracks `run` order rather than declaration order, so hoisted call declarations are still legal when the header execution precedes the body execution."
+        ],
+        "commonFixes": [
+            "Move the `http.responseHeader` run and its arguments before `http.responseText`, `http.responseHtml`, `http.responseBytes`, `http.responseSseEvent`, `http.responseFile`, or `http.redirect`.",
+            "For redirects, prefer the single `http.redirect` target when it fits instead of manually pairing `Location` and an empty body."
         ],
     },
     "SSCG001": {
@@ -2085,12 +3178,12 @@ DIAGNOSTIC_EXPLAINERS = {
     },
     "SS3310": {
         "title": "non-constant format string - format-string injection (CWE-134)",
-        "summary": "A c.snprintf/printf-family `format` argument that is not a module-scope immutable String. A runtime format string allows %n/%s injection. Strict-blocked; advisory on default builds.",
+        "summary": "A c.snprintf/printf-family `format` argument that is not an immutable String constant. A runtime format string allows %n/%s injection. Reported by semlint, strict-blocked, and advisory on default builds.",
         "whyItMatters": [
             "An attacker-influenced format string can read or corrupt memory via %n/%s.",
         ],
         "commonFixes": [
-            "Use a `storage * immutable String` format and pass values as arguments, never as the format itself.",
+            "Use a `storage * immutable String` or `const` String format and pass values as arguments, never as the format itself.",
         ],
     },
     "SS3911": {
@@ -2547,6 +3640,14 @@ def _starter_gitignore_text(meta: dict) -> str:
         "__pycache__/",
         ".sem/docs.sqlite",
         ".sem/docs.sqlite-*",
+        "",
+        "# Local SQLite databases an app creates at runtime, including the WAL",
+        "# sidecars (-wal/-shm) that `PRAGMA journal_mode = WAL` leaves on disk.",
+        "# These are runtime state, not source; without the sidecars a `sem new`",
+        "# project that enables WAL leaks *.db-wal/*.db-shm into git status.",
+        "*.db",
+        "*.db-wal",
+        "*.db-shm",
         "",
         "# Keep sem.lock committed: it pins resolved dependency versions and",
         "# checksums so `sem deps sync` is reproducible across machines.",
@@ -3093,6 +4194,62 @@ def _remove_clean_target(path: Path, repo_root: Path) -> None:
         resolved.unlink()
 
 
+def _directory_size_bytes(path: Path) -> int:
+    total = 0
+    for current, _, files in os.walk(path):
+        for filename in files:
+            try:
+                total += (Path(current) / filename).stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _collect_pyinstaller_temp_targets(
+    temp_root: Path | None = None,
+    *,
+    min_age_seconds: int = 3600,
+) -> tuple[Path, list[dict]]:
+    root = (temp_root or Path(tempfile.gettempdir())).resolve()
+    now = time.time()
+    current_meipass = getattr(sys, "_MEIPASS", None)
+    current_meipass_path = Path(current_meipass).resolve() if current_meipass else None
+    targets: list[dict] = []
+    if not root.exists():
+        return root, []
+    for child in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+        if not child.is_dir() or child.is_symlink() or not child.name.startswith("_MEI"):
+            continue
+        try:
+            resolved = child.resolve()
+            stat = child.stat()
+        except OSError:
+            continue
+        if current_meipass_path is not None and resolved == current_meipass_path:
+            continue
+        if resolved.parent != root:
+            continue
+        age_seconds = int(max(0, now - stat.st_mtime))
+        if age_seconds < min_age_seconds:
+            continue
+        targets.append({
+            "path": resolved,
+            "ageSeconds": age_seconds,
+            "sizeBytes": _directory_size_bytes(resolved),
+        })
+    return root, targets
+
+
+def _remove_pyinstaller_temp_target(path: Path, temp_root: Path) -> None:
+    resolved = path.resolve()
+    root = temp_root.resolve()
+    if resolved.parent != root or not resolved.name.startswith("_MEI"):
+        raise ValueError(f"refusing to clean non-PyInstaller temp path: {path}")
+    if not resolved.is_dir() or resolved.is_symlink():
+        raise ValueError(f"refusing to clean non-directory temp path: {path}")
+    shutil.rmtree(resolved)
+
+
 def _version_command(command: list[str]) -> tuple[bool, str]:
     try:
         proc = subprocess.run(
@@ -3356,6 +4513,8 @@ def _runtime_feature_flags() -> dict:
     third_party_root = ROOT.parent / "third_party"
     return {
         "nativeHttpRuntime": (runtime_root / "native_http" / "sem_http_runtime.c").exists(),
+        "nativeHttpH2oBackend": False,
+        "nativeHttpConcurrentDispatch": False,
         "nativeJsonRuntime": (runtime_root / "native_json" / "sem_json_runtime.c").exists(),
         "nativeSqliteRuntime": (runtime_root / "native_sqlite" / "sem_sqlite_runtime.c").exists(),
         "nativeWin32GuiRuntime": (
@@ -3376,12 +4535,55 @@ def _runtime_feature_docs() -> list[dict]:
     specs = [
         {
             "name": "nativeHttpRuntime",
-            "summary": "Native HTTP/1.1 runtime adapter for routed target webServer programs.",
+            "summary": (
+                "Native HTTP/1.1 runtime adapter for routed target webServer "
+                "programs. The current dispatcher is blocking and single-threaded."
+            ),
             "path": runtime_root / "native_http" / "sem_http_runtime.c",
             "terms": [
                 "target webServer", "route", "routeMiddleware", "HttpRequest",
                 "HttpResponse", "native HTTP runtime", "SSE", "multipart",
-                "cookies", "headers", "query parameters",
+                "cookies", "headers", "query parameters", "blocking",
+                "single-threaded", "slow handler",
+            ],
+        },
+        {
+            "name": "nativeHttpConcurrentDispatch",
+            "summary": (
+                "Concurrent/nonblocking HTTP request dispatch is not implemented. "
+                "The current native HTTP adapter accepts one connection, runs one "
+                "handler synchronously, closes it, then accepts the next connection."
+            ),
+            "path": runtime_root / "native_http" / "sem_http_runtime.c",
+            "availability": "unavailable-staged",
+            "enabled": False,
+            "terms": [
+                "concurrent dispatch", "nonblocking HTTP", "async dispatch",
+                "single-threaded", "blocking accept loop", "slow handler",
+                "load testing", "request cancellation", "backpressure",
+            ],
+            "usage": [
+                "Serialize current webServer smoke tests; do not fan out parallel clients against the blocking adapter.",
+                "Use an external reverse proxy timeout or process supervisor for production-style concurrency until a nonblocking runtime lands.",
+            ],
+        },
+        {
+            "name": "nativeHttpH2oBackend",
+            "summary": (
+                "HTTP/2/H2O backend is staged only: the source has a guarded "
+                "SEM_HTTP_WITH_H2O branch, but semsc.py does not wire HTTP/2 "
+                "dispatch and the branch returns SS_HTTP_ERR_RUNTIME_UNAVAILABLE."
+            ),
+            "path": runtime_root / "native_http" / "sem_http_runtime.c",
+            "availability": "unavailable-staged",
+            "enabled": False,
+            "terms": [
+                "HTTP/2", "HTTP2", "H2O", "libh2o", "SEM_HTTP_WITH_H2O",
+                "target webServer", "native HTTP runtime", "runtime unavailable",
+            ],
+            "usage": [
+                "Use the default nativeHttpRuntime feature for current webServer builds; it is HTTP/1.1 and blocking.",
+                "Do not set SEM_HTTP_WITH_H2O expecting a working server: the staged branch intentionally returns runtime-unavailable.",
             ],
         },
         {
@@ -3438,13 +4640,16 @@ def _runtime_feature_docs() -> list[dict]:
             "module": "runtime",
             "moduleName": "runtime",
             "summary": spec["summary"],
-            "availability": "available" if flags.get(spec["name"], False) else "missing",
-            "enabled": bool(flags.get(spec["name"], False)),
+            "availability": spec.get(
+                "availability",
+                "available" if flags.get(spec["name"], False) else "missing",
+            ),
+            "enabled": bool(spec.get("enabled", flags.get(spec["name"], False))),
             "terms": spec["terms"],
-            "usage": [
+            "usage": spec.get("usage", [
                 "Use docs_search/docs_get for the standard-library operations related to this feature before generating calls.",
                 "Use readiness or doctor to separate source diagnostics from environment/runtime availability.",
-            ],
+            ]),
             "location": {
                 "path": str(path.resolve()) if path.exists() else str(path),
                 "line": 1,
@@ -3502,6 +4707,84 @@ def _syntax_feature_docs(limit: int | None = None) -> list[dict]:
         if limit is not None and len(docs) >= limit:
             break
     return docs
+
+
+def _language_guide_docs() -> list[dict]:
+    operations_dataflow_path = ROOT.parent / "docs" / "language" / "operations-dataflow.md"
+    optimization_guide_path = ROOT.parent / "docs" / "optimization-guide.md"
+    return [
+        {
+            "name": "howDoILoop",
+            "qualifiedName": "language.guide.howDoILoop",
+            "fullName": "How do I loop",
+            "module": "language.guide",
+            "moduleName": "language.guide",
+            "summary": (
+                "Loop with explicit control-flow rows: declare a loopStart label, "
+                "compute a Bool done condition, branch to the exit label when it is true, "
+                "update loop state with set, then jump back to loopStart."
+            ),
+            "terms": [
+                "how do I loop",
+                "loop",
+                "while loop",
+                "for loop",
+                "iteration",
+                "control flow",
+                "label loopStart",
+                "branch if condition",
+                "jump target loopStart",
+                "set local",
+                "mutable storage",
+            ],
+            "usage": [
+                "Use `label NAME` for the loop head and exit target.",
+                "Use a math comparison call to bind a Bool condition before `branch if condition CONDITION target LABEL`.",
+                "Update the loop counter or accumulator with `set local NAME VALUE` before `jump target loopStart`.",
+                "SemanticScript has no expression-level for/while syntax; loops are explicit rows.",
+            ],
+            "exampleRows": [
+                "label loopStart",
+                "call doneCheckCall math.greaterThanInt64",
+                "argument doneCheckCall left Int64 currentIndex",
+                "argument doneCheckCall right Int64 finalIndex",
+                "run doneCheckCall",
+                "bind value isDone Bool doneCheckCall",
+                "branch if condition isDone target loopDone",
+                "set local currentIndex nextIndex",
+                "jump target loopStart",
+                "label loopDone",
+            ],
+            "location": {
+                "path": str(operations_dataflow_path.resolve()),
+                "line": 109,
+            },
+        },
+        {
+            "name": "sqliteInsertReturningGeneratedId",
+            "qualifiedName": "language.guide.sqliteInsertReturningGeneratedId",
+            "fullName": "SQLite INSERT RETURNING generated id migration",
+            "module": "language.guide",
+            "moduleName": "language.guide",
+            "summary": SQLITE_GENERATED_ID_RETURNING_GUIDANCE["summary"],
+            "terms": SQLITE_GENERATED_ID_RETURNING_GUIDANCE["searchTerms"],
+            "usage": [
+                "Use this for SS3639, sqlite.lastInsertRowId, last_insert_rowid(), generated row ids, and activity-log inserts.",
+                "The pattern is native/webServer-safe because the id flows through the INSERT statement result row, not connection-global state.",
+                "Use sem docs get sqlite.lastInsertRowId --json and copy usage.migration.rows for the complete row group.",
+                *SQLITE_GENERATED_ID_RETURNING_GUIDANCE["lifetimeRules"],
+                *SQLITE_GENERATED_ID_RETURNING_GUIDANCE["transactionRules"],
+            ],
+            "exampleRows": [
+                *SQLITE_GENERATED_ID_RETURNING_GUIDANCE["sqlRows"],
+                *SQLITE_GENERATED_ID_RETURNING_GUIDANCE["rows"],
+            ],
+            "location": {
+                "path": str(optimization_guide_path.resolve()),
+                "line": 397,
+            },
+        },
+    ]
 
 
 def _build_context_payload(path: Path) -> dict:
@@ -4037,6 +5320,59 @@ def _operation_symbol(operation, semlint, facts=None) -> dict:
     }
 
 
+def _enum_case_value_payload(raw_value, next_value: int) -> tuple[dict, int]:
+    payload = {}
+    if raw_value is not None:
+        payload["rawValue"] = raw_value
+    try:
+        value = next_value if raw_value is None else int(str(raw_value), 0)
+    except (TypeError, ValueError):
+        value = next_value
+    payload["value"] = value
+    return payload, value + 1
+
+
+def _enum_symbol_payloads(facts) -> list[dict]:
+    enums: dict[str, dict] = {}
+    order: list[str] = []
+    next_values: dict[str, int] = {}
+    for source_line in facts.lines:
+        if not source_line.tokens or source_line.verb != "enum" or not source_line.args:
+            continue
+        enum_name = source_line.args[0]
+        repr_type = "Int32"
+        if len(source_line.args) >= 3 and source_line.args[1] == "repr":
+            repr_type = source_line.args[2]
+        if enum_name not in enums:
+            order.append(enum_name)
+        enums[enum_name] = {
+            "name": enum_name,
+            "repr": repr_type,
+            "location": _line_payload(source_line),
+            "cases": [],
+        }
+        next_values[enum_name] = 0
+
+    for source_line in facts.lines:
+        if (not source_line.tokens or source_line.verb != "enumCase"
+                or len(source_line.args) < 2):
+            continue
+        enum_name = source_line.args[0]
+        enum_payload = enums.get(enum_name)
+        if enum_payload is None:
+            continue
+        raw_value = source_line.args[2] if len(source_line.args) >= 3 else None
+        value_payload, next_value = _enum_case_value_payload(
+            raw_value, next_values.get(enum_name, 0))
+        next_values[enum_name] = next_value
+        enum_payload["cases"].append({
+            "name": source_line.args[1],
+            **value_payload,
+            "location": _line_payload(source_line),
+        })
+    return [enums[name] for name in order]
+
+
 def _symbol_payload_for_file(path: Path, semlint) -> tuple[dict, list[dict]]:
     facts = semlint.parse_file(path)
     operations = [
@@ -4101,6 +5437,7 @@ def _symbol_payload_for_file(path: Path, semlint) -> tuple[dict, list[dict]]:
             for item in facts.module_imports
         ],
         "operations": operations,
+        "enums": _enum_symbol_payloads(facts),
         "routes": routes,
     }
     return file_payload, unresolved
@@ -4171,6 +5508,12 @@ def _symbol_graph_payload(path: Path) -> dict:
                 for operation in file["operations"]
             ),
             "routeCount": sum(len(file["routes"]) for file in files),
+            "enumCount": sum(len(file.get("enums", [])) for file in files),
+            "enumCaseCount": sum(
+                len(enum.get("cases", []))
+                for file in files
+                for enum in file.get("enums", [])
+            ),
             "unresolvedReferenceCount": len(unresolved),
         },
         "unresolvedReferences": unresolved,
@@ -4411,6 +5754,58 @@ def _capability_details(facts, module_name: str, capabilities: list[dict]) -> li
     return details
 
 
+NATIVE_LINKABLE_STDLIB_OPERATION_TARGETS: frozenset[str] = frozenset({
+    "standard.bcrypt.issueSessionToken",
+    "standard.bcrypt.issueCsrfToken",
+})
+
+
+def _operation_native_linkability(
+    runtime_rows: dict[str, list[dict]],
+    module_name: str = "",
+    operation_name: str = "",
+) -> dict:
+    """Tell an agent whether a standard-library operation links in a native /
+    webServer build, BEFORE they design around it.
+
+    Native and webServer targets do not link the SemanticScript standard
+    library object; only native runtime intrinsics (sqlite.*, json.*, http.*,
+    math.* / memory.* / pointer.* primitives, bcrypt.*) and operations that
+    lower to a runtime binding are callable there. A standard-library operation
+    with an ordinary SemanticScript body (e.g. convert.convertSignedInt64ToString)
+    compiles and `check`s clean but fails the native build loudly with SSCG002.
+    The dashboard field log ranked discovering this late as a top time-sink.
+    """
+    lowers_to_binding = bool(runtime_rows.get("runtimeBinding")) or any(
+        "runtimeBinding" in row.get("values", []) or row.get("text") == "runtimeBinding"
+        for row in runtime_rows.get("operationBody", [])
+    )
+    if lowers_to_binding:
+        return {
+            "linksInNativeBuild": True,
+            "note": "Lowers to a native runtime binding (runtimeBinding); links "
+                    "in native and webServer builds.",
+        }
+    qualified_operation = f"{module_name}.{operation_name}" if module_name and operation_name else ""
+    if qualified_operation in NATIVE_LINKABLE_STDLIB_OPERATION_TARGETS:
+        return {
+            "linksInNativeBuild": True,
+            "note": "Compiler-owned native runtime lowering exists for this "
+                    "standard-library operation target; it links in native and "
+                    "webServer builds.",
+        }
+    return {
+        "linksInNativeBuild": False,
+        "note": "Standard-library operation with a SemanticScript body. Native "
+                "and webServer builds link only native intrinsics and "
+                "compiler-lowered DSLs, so calling this from a native/webServer "
+                "target fails the build with SSCG002 (it works under console/JIT "
+                "builds). Prefer a native intrinsic (sqlite.*, json.*, http.*, "
+                "math.*, memory.*, bcrypt.*) or a lowered DSL (sql body / "
+                "jsonBody / html template) on those targets.",
+    }
+
+
 def _operation_visibility(operation, exports: list[dict], runtime_rows: dict[str, list[dict]]) -> dict:
     runtime_internal = bool(runtime_rows.get("runtimeBinding") or runtime_rows.get("runtimeBindingPrecondition"))
     operation_body_runtime = any(
@@ -4429,10 +5824,33 @@ def _operation_visibility(operation, exports: list[dict], runtime_rows: dict[str
     }
 
 
-def _operation_agent_warnings(visibility: dict, capability_details: list[dict]) -> list[str]:
+def _operation_agent_warnings(
+    visibility: dict,
+    capability_details: list[dict],
+    native_linkability: dict | None = None,
+    module_name: str = "",
+    operation_name: str = "",
+) -> list[str]:
     warnings = []
+    if native_linkability is not None and not native_linkability.get("linksInNativeBuild", True):
+        # Keep this string free of call-target tokens (the intrinsic list lives
+        # in nativeLinkability.note, which is NOT indexed for search). agentWarnings
+        # IS part of the FTS search text, so naming specific targets here would
+        # make every library op match a search for that target.
+        warnings.append(
+            "Not linkable in native or webServer builds (SSCG002): standard-library "
+            "operation with a SemanticScript body. On those targets use a native "
+            "runtime intrinsic or a compiler-lowered DSL instead; available under "
+            "interpreter and just-in-time builds."
+        )
     if visibility.get("apiTier") == "helper":
         warnings.append("Unexported helper API: prefer exported standard-library operations when one exists.")
+    if module_name == "standard.map" and operation_name.startswith("map."):
+        warnings.append(
+            "standard.map is structural bookkeeping only: it tracks entry counts, "
+            "capacity, and key-present facts, but it does not store keys/values "
+            "or provide executable put/get container operations."
+        )
     hidden_capabilities = [detail["name"] for detail in capability_details if not detail.get("exported", False)]
     if hidden_capabilities:
         warnings.append(
@@ -4890,6 +6308,7 @@ def _std_operation_doc_payload(facts, path: Path, operation, summary_tag: str) -
     purpose_rows = text_rows.get("purpose", [])
     invariant_rows = text_rows.get("invariant", [])
     visibility = _operation_visibility(operation, exports, runtime_rows)
+    native_linkability = _operation_native_linkability(runtime_rows, module_name, operation.name)
     return {
         "module": module_name,
         "moduleName": module_short_name,
@@ -4899,7 +6318,19 @@ def _std_operation_doc_payload(facts, path: Path, operation, summary_tag: str) -
         "location": _line_payload(operation.line),
         "sourceFile": str(path.resolve()),
         "visibility": visibility,
-        "agentWarnings": _operation_agent_warnings(visibility, capability_details),
+        "nativeLinkability": native_linkability,
+        "implementationStatus": "lowered",
+        "statusTaxonomy": _docs_status_taxonomy(
+            "lowered",
+            detail="Operation rows are parsed and lowered as callable SemanticScript operations; runtime linkability is reported separately.",
+        ),
+        "agentWarnings": _operation_agent_warnings(
+            visibility,
+            capability_details,
+            native_linkability,
+            module_name,
+            operation.name,
+        ),
         "summary": summary,
         "summarySource": summary_source,
         "purpose": _first_text(purpose_rows),
@@ -4958,6 +6389,15 @@ def _std_doc_list_item(operation_doc: dict) -> dict:
         "location": operation_doc["location"],
         "sourceFile": operation_doc["sourceFile"],
         "visibility": operation_doc["visibility"],
+        "implementationStatus": operation_doc.get("implementationStatus", ""),
+        "statusTaxonomy": operation_doc.get("statusTaxonomy", {}),
+        # Carry the STRUCTURED native-link signal into the compact match list,
+        # not just the prose agentWarning: agents commonly read matches[0]
+        # directly (docs get returns {matches:[...]}) and a machine consumer must
+        # be able to filter "links in native/webServer build" without parsing the
+        # SSCG002 warning text. See TODOS hit-list #1 / the "checks clean, won't
+        # link" trust gap.
+        "nativeLinkability": operation_doc.get("nativeLinkability"),
         "agentWarnings": operation_doc.get("agentWarnings", []),
         "purpose": operation_doc.get("purpose", ""),
         "invariants": operation_doc.get("invariants", []),
@@ -4993,6 +6433,42 @@ def _std_target_matches(target_doc: dict, query: str) -> bool:
     return query in candidates
 
 
+DOCS_STATUS_TAXONOMY_LEGEND = {
+    "lowered": "Current compiler/runtime lowering supports executable code generation for this surface.",
+    "metadata": "Parsed/indexed as semantic contract data; it does not by itself emit runtime behavior.",
+    "sync-fallback": "Runtime meaning exists, but the current backend collapses the async/concurrent shape to synchronous behavior.",
+    "partial": "Mixed or incomplete support; inspect summary, warnings, usage, and readiness before generating code.",
+    "refined": "Future/refined tooling surface; do not assume current parser/codegen support.",
+    "unknown": "Status was not classified; inspect the source location before generating code.",
+}
+
+
+def _docs_status_taxonomy(value: str, *, detail: str = "") -> dict:
+    raw_value = (value or "unknown").strip()
+    lowered = raw_value.lower()
+    aliases = {
+        "impl'd": "lowered",
+        "implemented": "lowered",
+        "lowered": "lowered",
+        "metadata": "metadata",
+        "checked metadata": "metadata",
+        "sync-fallback": "sync-fallback",
+        "synchronous fallback": "sync-fallback",
+        "partial": "partial",
+        "reserved": "partial",
+        "not impl'd": "refined",
+        "proposed": "refined",
+        "refined": "refined",
+    }
+    category = aliases.get(lowered, "unknown")
+    return {
+        "value": raw_value,
+        "category": category,
+        "meaning": DOCS_STATUS_TAXONOMY_LEGEND[category],
+        "detail": detail,
+    }
+
+
 def _target_list_item(target_doc: dict) -> dict:
     item = {
         "kind": "callTarget",
@@ -5003,6 +6479,7 @@ def _target_list_item(target_doc: dict) -> dict:
         "qualifiedName": target_doc.get("qualifiedName", target_doc.get("target", "")),
         "fullName": target_doc.get("fullName", ""),
         "loweringStatus": target_doc.get("loweringStatus", ""),
+        "statusTaxonomy": target_doc.get("statusTaxonomy", {}),
         "visibility": target_doc.get("visibility", {}),
         "agentWarnings": target_doc.get("agentWarnings", []),
         "signature": target_doc.get("signature", {}),
@@ -5015,6 +6492,8 @@ def _target_list_item(target_doc: dict) -> dict:
         "failureMode": target_doc.get("failureMode", {}),
         "cleanup": target_doc.get("cleanup", {}),
     }
+    if target_doc.get("migration"):
+        item["migration"] = target_doc.get("migration")
     if target_doc.get("wrapperPolicy"):
         item["wrapperPolicy"] = target_doc.get("wrapperPolicy")
     return item
@@ -5027,6 +6506,7 @@ def _type_doc_payload(module_name: str, type_name: str, type_doc: dict) -> dict:
         candidate = ROOT.parent / source_file
         location_path = str(candidate.resolve() if candidate.exists() else candidate)
     qualified_name = f"{_std_module_short_name(module_name)}.{type_name}"
+    implementation_status = type_doc.get("implementationStatus", "metadata")
     return {
         "kind": type_doc.get("kind", "type"),
         "module": module_name,
@@ -5041,6 +6521,11 @@ def _type_doc_payload(module_name: str, type_name: str, type_doc: dict) -> dict:
         "cases": type_doc.get("cases", []),
         "usage": type_doc.get("usage", []),
         "exampleRows": type_doc.get("exampleRows", []),
+        "implementationStatus": implementation_status,
+        "statusTaxonomy": _docs_status_taxonomy(
+            implementation_status,
+            detail="Curated type/enum/record docs are schema metadata unless a row says otherwise.",
+        ),
         "source": type_doc.get("source", "static-type-contract"),
         "visibility": {
             "exported": not module_name.startswith("compiler."),
@@ -5093,6 +6578,8 @@ def _type_list_item(type_doc: dict) -> dict:
         "cases": type_doc.get("cases", []),
         "usage": type_doc.get("usage", []),
         "exampleRows": type_doc.get("exampleRows", []),
+        "implementationStatus": type_doc.get("implementationStatus", ""),
+        "statusTaxonomy": type_doc.get("statusTaxonomy", {}),
         "visibility": type_doc.get("visibility", {}),
         "location": type_doc.get("location", {}),
     }
@@ -5111,7 +6598,7 @@ def _module_text_row(source_line, module_name: str) -> dict | None:
             "text": " ".join(args[2:]).strip(),
             "location": _line_payload(source_line),
         }
-    if verb in {"moduleOwns", "moduleDoesNotOwn"} and len(args) >= 2 and args[0] == module_name:
+    if verb in {"moduleOwns", "moduleDoesNotOwn", "moduleWarning", "moduleSecurity"} and len(args) >= 2 and args[0] == module_name:
         return {
             "tag": verb,
             "text": " ".join(args[1:]).strip(),
@@ -5218,6 +6705,8 @@ def _target_usage_payload(
         *_effect_authority_rows(effects, capability_details),
     ]))
     return {
+        "availableForCodegen": True,
+        "reason": "target loweringStatus is lowered; this call target has compiler/runtime codegen support",
         "importRequired": bool(_docs_import_row(module_name)),
         "importRow": _docs_import_row(module_name),
         "call": call,
@@ -5274,6 +6763,16 @@ def _target_doc_payload(
             "availableForCodegen": False,
             "reason": f"target loweringStatus is {lowering_status}; do not generate calls without backend support",
         }
+    migration = copy.deepcopy(static_doc.get("migration", {}))
+    if migration:
+        usage["migration"] = migration
+        usage["recommendedForNewCode"] = False
+        usage["availableForCodegen"] = False
+        usage["reason"] = (
+            "Compatibility target only for generated-id recovery; use "
+            "usage.migration.rows with INSERT ... RETURNING id for new "
+            "native/webServer-safe code."
+        )
     target_visibility = {
         "exported": exported,
         "internal": False,
@@ -5332,6 +6831,11 @@ def _target_doc_payload(
         "agentWarnings": agent_warnings,
         "source": "storage" if location_source is not None else "static-target-contract",
         "loweringStatus": lowering_status,
+        "implementationStatus": lowering_status,
+        "statusTaxonomy": _docs_status_taxonomy(
+            lowering_status,
+            detail="Call-target lowering status controls whether usage rows are safe to generate directly.",
+        ),
         "summary": static_doc.get("summary", _first_text(comments_by_tag.get("rationale", []))),
         "invariants": [comment["text"] for comment in comments_by_tag.get("invariant", []) if comment.get("text")],
         "commentsByTag": comments_by_tag,
@@ -5341,6 +6845,7 @@ def _target_doc_payload(
         "capabilityDetails": capability_details,
         "failureMode": failure_mode,
         "cleanup": cleanup,
+        "migration": migration,
         "wrapperPolicy": wrapper_policy,
         "usage": usage,
         "comments": comments,
@@ -5383,6 +6888,46 @@ def _module_call_targets(facts, module_name: str) -> list[dict]:
     return targets
 
 
+def _module_record_type_docs(facts, module_name: str, path: Path) -> list[dict]:
+    """Build type-doc payloads for the records a module declares so that
+    `docs get <RecordName>` returns the record's fields. `facts.records` maps a
+    record name to a list of (fieldName, fieldType) pairs."""
+    short = _std_module_short_name(module_name)
+    records = getattr(facts, "records", {}) or {}
+    docs = []
+    for record_name in sorted(records):
+        fields = [{"name": field_name, "type": field_type}
+                  for field_name, field_type in records[record_name]]
+        field_summary = ", ".join(f"{f['name']}:{f['type']}" for f in fields)
+        docs.append({
+            "kind": "record",
+            "module": module_name,
+            "moduleName": short,
+            "name": record_name,
+            "qualifiedName": f"{short}.{record_name}",
+            "fullName": f"{module_name}.{record_name}",
+            "summary": f"Record `{record_name}` {{ {field_summary} }}." if fields
+                       else f"Record `{record_name}` (no fields).",
+            "representation": "record",
+            "repr": "record",
+            "underlyingType": "",
+            "cases": [],
+            "fields": fields,
+            "usage": [],
+            "exampleRows": [],
+            "implementationStatus": "metadata",
+            "statusTaxonomy": _docs_status_taxonomy(
+                "metadata",
+                detail="Module record docs expose parsed schema shape; record rows are semantic metadata unless a lowering path consumes them.",
+            ),
+            "source": "module-record",
+            "visibility": {"exported": True, "public": True, "internal": False,
+                           "apiTier": "type-contract", "reason": "module-record"},
+            "sourceFile": str(path.resolve()),
+        })
+    return docs
+
+
 def _std_module_doc_payload(facts, path: Path, operations: list[dict], summary_tag: str) -> dict:
     module_name = _row_value(facts, "module")
     module_short_name = _std_module_short_name(module_name)
@@ -5415,6 +6960,7 @@ def _std_module_doc_payload(facts, path: Path, operations: list[dict], summary_t
         "operationCount": len(operations),
         "publicOperationCount": len(public_operations),
         "callTargets": call_targets,
+        "records": _module_record_type_docs(facts, module_name, path),
     }
 
 
@@ -5423,6 +6969,7 @@ def _compiler_module_summary(module_name: str) -> str:
         "compiler.console": "Compiler-lowered console stdout targets that do not require a standard-library import.",
         "compiler.math": "Compiler-lowered arithmetic, comparison, conversion, and checked arithmetic targets.",
         "compiler.pointer": "Compiler-lowered pointer and byte-buffer primitives.",
+        "compiler.text": "Compiler-lowered string primitives (e.g. text.concat) that link in every target.",
         "compiler.c": "Selected compiler-lowered C runtime targets that require explicit effects and ownership handling.",
     }
     return summaries.get(module_name, "Compiler-lowered call targets.")
@@ -5572,9 +7119,9 @@ def _docs_next_commands(
             _next_command_entry(
                 "skills",
                 "load the syntax reference when the missing name may be a row, verb, type, or enum form",
-                argv=["sem", "skills", "get", "sem-syntax", "--json"],
+                argv=["sem", "skills", "get", "sem-syntax", "--full", "--json"],
                 mcp_tool="skills_get",
-                mcp_args={"names": ["sem-syntax"]},
+                mcp_args={"names": ["sem-syntax"], "full": True},
             ),
         ]
     if status == "ambiguous":
@@ -5770,6 +7317,11 @@ def _libc_target_doc(operation_name: str) -> dict | None:
         "agentWarnings": agent_warnings,
         "source": "libc-registry",
         "loweringStatus": "lowered",
+        "implementationStatus": "lowered",
+        "statusTaxonomy": _docs_status_taxonomy(
+            "lowered",
+            detail="libc registry targets lower through the compiler C interop path unless wrapperPolicy blocks public app generation.",
+        ),
         "summary": summary,
         "invariants": [],
         "signature": {"inputs": inputs, "outputs": outputs, "text": signature_text},
@@ -5806,6 +7358,7 @@ def _docs_payload(
         "stdRoot": str(root),
         "query": query,
         "errors": errors,
+        "statusTaxonomyLegend": DOCS_STATUS_TAXONOMY_LEGEND,
     }
     inventory_blocked = bool(errors) and not operations and not modules
     if command == "list":
@@ -5853,7 +7406,8 @@ def _docs_payload(
     ]
     matches = [operation for operation in searchable_operations if _std_operation_matches(operation, operation_name)]
     target_matches = [] if matches else [target for target in _module_targets(modules) if _std_target_matches(target, operation_name)]
-    type_docs = _static_type_docs(module_name)
+    record_type_docs = [record for module in modules for record in module.get("records", [])]
+    type_docs = _static_type_docs(module_name) + record_type_docs
     type_matches = [] if matches or target_matches else [type_doc for type_doc in type_docs if _type_doc_matches(type_doc, operation_name)]
     if not matches and not target_matches and not type_matches and not inventory_blocked:
         libc_target = _libc_target_doc(operation_name)
@@ -6079,6 +7633,7 @@ def _docs_entry_search_text(payload: dict) -> str:
         "target", "summary", "purpose", "invariants", "agentWarnings",
         "representation", "repr", "underlyingType", "cases", "usage", "exampleRows",
         "status", "implementationStatus", "availability", "enabled", "terms",
+        "migration",
     ):
         add(payload.get(key))
     add(payload.get("signature", {}).get("text"))
@@ -6103,6 +7658,7 @@ def _docs_entry_search_text(payload: dict) -> str:
         add(usage.get("failureHandling", {}))
         add(usage.get("preconditions", {}))
         add(usage.get("cleanup", {}))
+        add(usage.get("migration", {}))
     else:
         add(usage)
     return "\n".join(parts)
@@ -6216,7 +7772,10 @@ def _docs_collect_index_entries(
             entries.append(_docs_entry_from_payload("type", type_doc, resolved_std_root, type_source_kind))
         if include_compiler:
             roots["syntax"] = str(SYNTAX_INVENTORY_PATH.parent.resolve())
+            roots["language"] = str((ROOT.parent / "docs" / "language").resolve())
             roots["runtime"] = str((ROOT / "runtime").resolve())
+            for guide_doc in _language_guide_docs():
+                entries.append(_docs_entry_from_payload("languageGuide", guide_doc, ROOT.parent, "language"))
             for feature_doc in _syntax_feature_docs():
                 entries.append(_docs_entry_from_payload("syntaxFeature", feature_doc, ROOT.parent, "syntax"))
             for feature_doc in _runtime_feature_docs():
@@ -6900,6 +8459,7 @@ def _docs_structured_boost(row: sqlite3.Row, query_tokens: list[str]) -> float:
         "module": row["module"].lower(),
         "signature": row["signature_text"].lower(),
     }
+    target = row["target"].lower()
     boost = 0.0
     for token in query_tokens:
         if token in haystacks["qualified"]:
@@ -6913,6 +8473,20 @@ def _docs_structured_boost(row: sqlite3.Row, query_tokens: list[str]) -> float:
     joined = " ".join(query_tokens)
     if joined and joined in haystacks["qualified"]:
         boost += 5.0
+    query_set = set(query_tokens)
+    if target == "html.fragmentconcat":
+        if {"html", "fragment"} <= query_set or {"fragment", "join"} <= query_set:
+            boost += 8.0
+        if {"render", "list"} <= query_set or {"variable", "length", "list"} <= query_set:
+            boost += 8.0
+    if target in {"text.concat", "text.concat3"}:
+        if {"string", "concat"} <= query_set or {"string", "builder"} <= query_set:
+            boost += 6.0
+    if target in {"text.fromint64", "text.fromfloat64"}:
+        if {"int", "string"} <= query_set or {"integer", "format"} <= query_set:
+            boost += 7.0
+        if {"format", "number", "text"} <= query_set or {"number", "string"} <= query_set:
+            boost += 7.0
     return boost
 
 
@@ -7178,25 +8752,94 @@ def _docs_search_payload(
 
 
 def _version_payload() -> dict:
+    frozen = bool(getattr(sys, "frozen", False))
+    def component_path(relative_path: str) -> str:
+        if frozen:
+            return f"packaged://SemanticScript/{relative_path}"
+        return str((ROOT / relative_path).resolve())
+
+    def component_payload(relative_path: str) -> dict:
+        payload = {
+            "path": component_path(relative_path),
+            "version": VERSION,
+        }
+        if frozen:
+            payload["pathKind"] = "packaged-logical"
+            payload["pathsEphemeral"] = False
+        else:
+            payload["pathKind"] = "source-file"
+        return payload
+
+    emitted_schemas = [
+        "sem.agentDocs.v1",
+        "sem.bootstrap.v1",
+        "sem.check.v1",
+        "sem.context.v1",
+        "sem.deps.v1",
+        "sem.dev.v1",
+        "sem.docs.v1",
+        "sem.docsIndex.v1",
+        "sem.docsSearch.v1",
+        "sem.doctor.v0",
+        "sem.eval.v1",
+        "sem.explain.v1",
+        "sem.fixPlan.v1",
+        "sem.graph.v1",
+        "sem.help.v1",
+        "sem.literalRepin.v1",
+        "sem.newProject.v1",
+        "sem.patch.v1",
+        "sem.readiness.v1",
+        "sem.reference.v1",
+        "sem.run.v1",
+        "sem.self.v1",
+        "sem.size.v1",
+        "sem.skills.v1",
+        "sem.symbols.v1",
+        "sem.test.v1",
+        "sem.version.v1",
+    ]
     return {
         "schemaVersion": "sem.version.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "compiler": {
-            "path": str((ROOT / "compiler" / "semsc.py").resolve()),
-            "version": VERSION,
+        "emittedSchemas": emitted_schemas,
+        "schemaManifest": {
+            "stable": [schema for schema in emitted_schemas if schema.endswith(".v1")],
+            "provisional": [schema for schema in emitted_schemas if not schema.endswith(".v1")],
+            "policy": "docs/reference/contract-stability.md",
         },
-        "linter": {
-            "path": str((ROOT / "linter" / "semlint.py").resolve()),
-            "version": VERSION,
-        },
-        "formatter": {
-            "path": str((ROOT / "formatter" / "semfmt.py").resolve()),
-            "version": VERSION,
-        },
+        "compiler": component_payload("compiler/semsc.py"),
+        "linter": component_payload("linter/semlint.py"),
+        "formatter": component_payload("formatter/semfmt.py"),
         "runtimeFeatureFlags": _runtime_feature_flags(),
         "syntax": {
             "schemaVersion": SYNTAX_PAYLOAD_VERSION,
             "statusCounts": _syntax_status_counts(),
+        },
+        "packaging": {
+            "frozen": frozen,
+            "kind": "pyinstaller-onefile" if frozen else "source-python",
+            "selfHostedNative": False,
+            "executable": str(Path(sys.executable).resolve()),
+            "releaseRepository": DEFAULT_RELEASE_REPOSITORY,
+            "releaseArtifacts": [
+                {
+                    "platform": DEFAULT_RELEASE_PLATFORM,
+                    "kind": "single-file-windows-exe",
+                    "assetNames": [
+                        "sem.exe",
+                        "semanticscript-sem-windows-x64-<TAG>.exe",
+                    ],
+                }
+            ],
+            "tempExtraction": {
+                "directoryPattern": "_MEI*",
+                "cleanupCommand": "sem clean --pyinstaller-temp --force",
+                "note": (
+                    "PyInstaller onefile extracts its embedded payload on each "
+                    "invocation; source checkouts do not."
+                ),
+            },
         },
     }
 
@@ -8474,9 +10117,35 @@ def _explain_next_commands(code: str, *, repeatable: bool = True) -> list[dict]:
         _next_command_entry(
             "skills",
             "load the current diagnostic and repair workflow guidance for this tool version",
-            argv=["sem", "skills", "get", "sem-diagnostics", "--json"],
+            argv=["sem", "skills", "get", "sem-diagnostics", "--full", "--json"],
+            mcp_tool="skills_get",
+            mcp_args={"names": ["sem-diagnostics"], "full": True},
         ),
     ]
+    if code == "SS3639":
+        entries.extend([
+            _next_command_entry(
+                "docs-get",
+                "open the generated-id migration rows attached to the deprecated sqlite.lastInsertRowId target",
+                argv=["sem", "docs", "get", "sqlite.lastInsertRowId", "--json"],
+                mcp_tool="docs_get",
+                mcp_args={"operation": "sqlite.lastInsertRowId"},
+            ),
+            _next_command_entry(
+                "docs-search",
+                "discover the native/webServer-safe INSERT RETURNING generated-id guide",
+                argv=[
+                    "sem", "docs", "search", "insert returning generated id sqlite",
+                    "--embedding-provider", "none", "--json",
+                ],
+                mcp_tool="docs_search",
+                mcp_args={
+                    "query": "insert returning generated id sqlite",
+                    "include_std": True,
+                    "embedding_provider": "none",
+                },
+            ),
+        ])
     if repeatable:
         entries.append(
             _next_command_entry(
@@ -9172,7 +10841,17 @@ def _slice_type_payload(path: Path, type_name: str) -> dict:
     record_fields = []
     result_types = []
     alias_declarations = []
+    enum_declarations = []
+    enum_cases = []
     for file_payload in symbols["files"]:
+        for enum_payload in file_payload.get("enums", []):
+            if enum_payload.get("name") == type_name:
+                enum_declarations.append({
+                    "name": type_name,
+                    "repr": enum_payload.get("repr", ""),
+                    "location": enum_payload.get("location", {}),
+                })
+                enum_cases = list(enum_payload.get("cases", []))
         for operation in file_payload["operations"]:
             for item in operation["inputs"]:
                 if item.get("type") == type_name:
@@ -9205,13 +10884,16 @@ def _slice_type_payload(path: Path, type_name: str) -> dict:
     return {
         "schemaVersion": "sem.slice.v1",
         "tool": {"name": "sem", "version": VERSION},
-        "ok": bool(matches or record_fields or result_types or alias_declarations),
+        "ok": bool(matches or record_fields or result_types or alias_declarations
+                   or enum_declarations or enum_cases),
         "completeContext": not slice_errors,
         "errors": slice_errors,
         "scope": _payload_scope(path, retrievalScope=_scope_label_from_sources(symbols["sourceFiles"])),
         "anchor": {"kind": "type", "name": type_name},
         "uses": matches,
         "aliasDeclarations": alias_declarations,
+        "enumDeclarations": enum_declarations,
+        "enumCases": enum_cases,
         "recordFields": record_fields,
         "resultTypes": result_types,
     }
@@ -9848,28 +11530,186 @@ def _execute_semantic_contract(test_path: Path, timeout: int = 20) -> dict:
     if any(marker in stderr for marker in compile_failure_markers):
         return {"executed": False, "exitCode": proc.returncode,
                 "reason": "not standalone-runnable under --run (no entry/context or codegen-only failure); check-validated only"}
+    # A contract that reaches a native runtime intrinsic (sqlite.*, http.*,
+    # bcrypt.*, json document API, …) cannot JIT-run: the in-process JIT links
+    # no native adapters and refuses with a clear message + exit 3. That is NOT
+    # an assertion failure — the contract is behaviorally untested under JIT, so
+    # report not-executed (it must be exercised from a built exe / runtime
+    # harness). Without this, gating-on would falsely fail every native test.
+    if "native runtime intrinsics" in stderr and "in-process JIT" in stderr:
+        return {"executed": False, "exitCode": proc.returncode,
+                "reason": "uses native runtime intrinsics not available under the in-process JIT; "
+                          "exercise it from a built executable or a runtime harness instead"}
     if proc.returncode == 0:
         return {"executed": True, "exitCode": 0, "reason": "exited 0"}
     return {"executed": True, "exitCode": proc.returncode,
             "reason": f"assertion failure - main returned nonzero exit code {proc.returncode}"}
 
 
+def _semantic_contract_requests_native_exe(test_path: Path) -> bool:
+    """Return true when test metadata asks sem test to use the native exe lane.
+
+    Standard-library smokes can be valid source contracts while still being
+    wrong for the in-process JIT. Keep this metadata-driven so native-only
+    tests do not have to crash first before `sem test` chooses the right lane.
+    """
+    try:
+        text = test_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    lowered = text.lower()
+    return (
+        "native exe" in lowered
+        and ("built and run" in lowered or "build and run" in lowered)
+    )
+
+
+def _execute_native_semantic_contract(test_path: Path, timeout: int = 120) -> dict:
+    """Build a `.test.sem` as a native executable and run it once.
+
+    Native build/link gaps are reported as `unsupported`, not as semantic
+    assertion failures. A successfully built executable that exits nonzero is a
+    real runtime assertion failure.
+    """
+    with tempfile.TemporaryDirectory(prefix="sem-native-test-") as temp_dir:
+        exe_path = Path(temp_dir) / f"{test_path.stem}.exe"
+        try:
+            compile_proc = _capture_compiler(
+                test_path,
+                ["--emit-exe", str(exe_path)],
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "attempted": True,
+                "built": False,
+                "executed": False,
+                "exitCode": None,
+                "status": "unsupported",
+                "reason": f"native executable build timed out after {timeout}s",
+            }
+        except OSError as exc:
+            return {
+                "attempted": True,
+                "built": False,
+                "executed": False,
+                "exitCode": None,
+                "status": "unsupported",
+                "reason": f"could not launch native build: {exc}",
+            }
+        if compile_proc.returncode != 0:
+            return {
+                "attempted": True,
+                "built": False,
+                "executed": False,
+                "exitCode": compile_proc.returncode,
+                "status": "unsupported",
+                "reason": "native executable build failed; runtime harness unsupported for this surface in the current environment",
+                "stdoutSnippet": (compile_proc.stdout or "")[:2000],
+                "stderrSnippet": (compile_proc.stderr or "")[:2000],
+            }
+        try:
+            run_proc = subprocess.run(
+                [str(exe_path)],
+                cwd=str(test_path.resolve().parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "attempted": True,
+                "built": True,
+                "executed": False,
+                "exitCode": None,
+                "status": "failed",
+                "reason": f"native executable timed out after {int(exc.timeout or timeout)}s",
+                "stdoutSnippet": (exc.stdout or "")[:2000],
+                "stderrSnippet": (exc.stderr or "")[:2000],
+            }
+        except OSError as exc:
+            return {
+                "attempted": True,
+                "built": True,
+                "executed": False,
+                "exitCode": None,
+                "status": "unsupported",
+                "reason": f"could not run native executable: {exc}",
+            }
+        return {
+            "attempted": True,
+            "built": True,
+            "executed": True,
+            "exitCode": run_proc.returncode,
+            "status": "passed" if run_proc.returncode == 0 else "failed",
+            "reason": "native executable exited 0" if run_proc.returncode == 0 else
+                      f"native executable returned nonzero exit code {run_proc.returncode}",
+            "stdoutSnippet": (run_proc.stdout or "")[:2000],
+            "stderrSnippet": (run_proc.stderr or "")[:2000],
+        }
+
+
+def _semantic_execution_status(execution: dict | None) -> str:
+    if execution is None:
+        return "not-attempted"
+    if not execution.get("executed"):
+        reason = str(execution.get("reason", "")).lower()
+        if "native runtime intrinsics" in reason or "in-process jit" in reason:
+            return "unavailable"
+        return "skipped"
+    return "passed" if execution.get("exitCode") in (0, None) else "failed"
+
+
+def _python_harness_command(harness_path: Path) -> tuple[list[str], str, str]:
+    configured = os.environ.get("SEM_TEST_PYTHON") or os.environ.get("PYTHON")
+    if configured:
+        try:
+            configured_argv = shlex.split(configured, posix=(os.name != "nt"))
+        except ValueError:
+            configured_argv = [configured]
+        return [*configured_argv, str(harness_path)], "environment", ""
+    if getattr(sys, "frozen", False):
+        current_executable = Path(sys.executable).resolve()
+        for executable_name, prefix_args in (
+            ("python", []),
+            ("python3", []),
+            ("py", ["-3"]),
+        ):
+            resolved = shutil.which(executable_name)
+            if not resolved:
+                continue
+            try:
+                if Path(resolved).resolve() == current_executable:
+                    continue
+            except OSError:
+                pass
+            return [resolved, *prefix_args, str(harness_path)], "path", ""
+        return [], "missing", (
+            "no Python interpreter found for project harness execution from packaged sem.exe; "
+            "set SEM_TEST_PYTHON or install python/py on PATH"
+        )
+    return [sys.executable, str(harness_path)], "current-process", ""
+
+
 def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False, execute_contracts: bool = False) -> dict:
     preflight = _build_check_payload(path, [], include_readiness=False)
     preflight_ok = bool(preflight.get("ok", False))
-    # A test run's pass/fail must reflect whether the project COMPILES and whether
-    # the selected tests pass — not whether the linter is silent. `preflight.ok`
-    # is False for any non-blocking advisory, so gating the overall result on it
-    # made a buildable project with passing tests report ok:false /
-    # status:diagnostics. Gate on `buildable` instead; advisories stay visible via
-    # `compositeStatus` and the per-test diagnostics.
+    preflight_status = str(preflight.get("status", ""))
+    preflight_clean = preflight_ok or preflight_status == "ok-with-warnings"
+    # Runtime harnesses can hide a broken source surface: a generated app may
+    # still build/run while project-level lint or semantic preflight is red.
+    # Keep default harness execution behind a clean preflight; use
+    # --allow-red-preflight-harnesses when runtime signal is explicitly desired.
+    # `buildable` still controls whether semantic contract checks can proceed.
     preflight_buildable = bool(preflight.get("buildable", preflight_ok))
     discovered = _discover_test_entries(path)
     build_tape = _find_build_tape(path)
     requested = path.resolve()
     runtime_probe_mode = bool(
         allow_red_preflight_harnesses
-        and not preflight_ok
+        and not preflight_clean
         and (build_tape is not None or requested.is_dir())
     )
     runtime_cwd = str(
@@ -9890,9 +11730,19 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     semantic_contract_executed = 0
     semantic_contract_failed = 0
     trivial_semantic_tests = 0
-    runtime_harness_discovered = 0
-    runtime_harness_executed = 0
-    runtime_harness_failed = 0
+    source_checks_executed = 0
+    jit_contracts_attempted = 0
+    jit_contracts_executed = 0
+    jit_contracts_failed = 0
+    jit_contracts_unavailable = 0
+    native_harness_discovered = 0
+    native_harness_attempted = 0
+    native_harness_executed = 0
+    native_harness_failed = 0
+    native_harness_unsupported = 0
+    python_harness_discovered = 0
+    python_harness_executed = 0
+    python_harness_failed = 0
     for entry in discovered:
         start = time.time()
         if entry["kind"] == "semantic":
@@ -9913,6 +11763,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             semantic_contract_executed += 1
             payload = _build_check_payload(entry["path"], [])
             ok = bool(payload["ok"])
+            source_checks_executed += 1
             selected += 1
             trivial = _semantic_test_is_trivial(Path(entry["path"]))
             if trivial:
@@ -9921,22 +11772,62 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             # assertion (main returning a nonzero ExitCode) actually fails the
             # suite, instead of the check-only lane silently passing it.
             execution = None
+            native_execution = None
+            native_required = _semantic_contract_requests_native_exe(Path(entry["path"]))
             if execute_contracts and ok and not trivial:
-                execution = _execute_semantic_contract(Path(entry["path"]))
+                if native_required:
+                    native_harness_discovered += 1
+                    native_harness_attempted += 1
+                    native_execution = _execute_native_semantic_contract(Path(entry["path"]))
+                else:
+                    jit_contracts_attempted += 1
+                    execution = _execute_semantic_contract(Path(entry["path"]))
+                    jit_status = _semantic_execution_status(execution)
+                    if jit_status == "passed":
+                        jit_contracts_executed += 1
+                    elif jit_status == "failed":
+                        jit_contracts_executed += 1
+                        jit_contracts_failed += 1
+                    elif jit_status == "unavailable":
+                        jit_contracts_unavailable += 1
+                        native_harness_discovered += 1
+                        native_harness_attempted += 1
+                        native_execution = _execute_native_semantic_contract(Path(entry["path"]))
             assertion_failed = bool(
                 execution and execution["executed"]
                 and execution["exitCode"] not in (0, None)
             )
-            final_ok = ok and not assertion_failed
+            native_failed = bool(native_execution and native_execution.get("status") == "failed")
+            native_unsupported = bool(native_execution and native_execution.get("status") == "unsupported")
+            if native_execution is not None:
+                if native_execution.get("executed"):
+                    native_harness_executed += 1
+                if native_failed:
+                    native_harness_failed += 1
+                elif native_unsupported:
+                    native_harness_unsupported += 1
+            final_ok = ok and not assertion_failed and not native_failed
             duration_ms = int((time.time() - start) * 1000)
+            if native_execution and native_execution.get("executed"):
+                execution_model = "semantic-check+native-exe"
+                runtime_coverage = "native-runtime-exercised"
+            elif native_execution and native_execution.get("status") == "unsupported":
+                execution_model = "semantic-check+native-exe-unsupported"
+                runtime_coverage = "native-runtime-unsupported"
+            elif execution and execution.get("executed"):
+                execution_model = "semantic-check+jit-run"
+                runtime_coverage = "jit-executed"
+            elif execution and _semantic_execution_status(execution) == "unavailable":
+                execution_model = "semantic-check+jit-unavailable"
+                runtime_coverage = "runtime-unavailable"
+            else:
+                execution_model = "semantic-check"
+                runtime_coverage = "source-checked"
             result = {
                 "name": entry["name"],
                 "kind": entry["kind"],
                 "lane": "semantic-contract",
-                "executionModel": (
-                    "semantic-check+jit-run"
-                    if execution and execution["executed"] else "semantic-check"
-                ),
+                "executionModel": execution_model,
                 "path": str(entry["path"]),
                 "status": "passed" if final_ok else "failed",
                 "durationMs": duration_ms,
@@ -9948,6 +11839,24 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 # nothing behaviorally. Surfaced so a green run isn't mistaken for
                 # behavioral coverage.
                 "exercisesAssertions": not trivial,
+                "sourceCheck": {
+                    "executed": True,
+                    "status": payload["status"],
+                },
+                "jitExecution": {
+                    "attempted": bool(execution),
+                    "executed": bool(execution and execution.get("executed")),
+                    "status": _semantic_execution_status(execution),
+                    "reason": execution.get("reason") if execution else "",
+                },
+                "nativeExecution": native_execution or {
+                    "attempted": False,
+                    "built": False,
+                    "executed": False,
+                    "status": "not-required" if not native_required else "not-attempted",
+                    "reason": "",
+                },
+                "runtimeCoverage": runtime_coverage,
                 "warning": (
                     "test exercises no assertions (no call/branch rows) — it only "
                     "proves the file parses, checks, and is buildable"
@@ -9963,20 +11872,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 failed += 1
                 semantic_contract_failed += 1
             continue
-        runtime_harness_discovered += 1
-        if entry["kind"] == "python" and not preflight_ok and not allow_red_preflight_harnesses:
-            results.append({
-                "name": entry["name"],
-                "kind": entry["kind"],
-                "lane": "runtime-harness",
-                "executionModel": "process-harness",
-                "path": str(entry["path"]),
-                "cwd": runtime_cwd,
-                "status": "skipped",
-                "reason": "python harness execution deferred until semantic preflight is clean",
-            })
-            skipped += 1
-            continue
+        python_harness_discovered += 1
         if entry["kind"] == "python" and not include_python_harnesses:
             results.append({
                 "name": entry["name"],
@@ -9990,11 +11886,45 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             })
             skipped += 1
             continue
+        if entry["kind"] == "python" and not preflight_clean and not allow_red_preflight_harnesses:
+            results.append({
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "lane": "runtime-harness",
+                "executionModel": "process-harness",
+                "path": str(entry["path"]),
+                "cwd": runtime_cwd,
+                "status": "skipped",
+                "reason": "python harness execution deferred until semantic preflight is clean",
+            })
+            skipped += 1
+            continue
         selected += 1
-        runtime_harness_executed += 1
+        python_harness_executed += 1
+        command, interpreter_source, command_error = _python_harness_command(Path(entry["path"]))
+        if command_error:
+            duration_ms = int((time.time() - start) * 1000)
+            failed += 1
+            python_harness_failed += 1
+            results.append({
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "lane": "runtime-harness",
+                "executionModel": "process-harness",
+                "path": str(entry["path"]),
+                "cwd": runtime_cwd,
+                "status": "error",
+                "durationMs": duration_ms,
+                "stdoutSnippet": "",
+                "stderrSnippet": "",
+                "pythonInterpreterSource": interpreter_source,
+                "command": [],
+                "error": command_error,
+            })
+            continue
         try:
             proc = subprocess.run(
-                [sys.executable, str(entry["path"])],
+                command,
                 cwd=runtime_cwd,
                 capture_output=True,
                 text=True,
@@ -10005,7 +11935,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         except subprocess.TimeoutExpired as exc:
             duration_ms = int((time.time() - start) * 1000)
             failed += 1
-            runtime_harness_failed += 1
+            python_harness_failed += 1
             results.append({
                 "name": entry["name"],
                 "kind": entry["kind"],
@@ -10018,13 +11948,15 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 "timeoutSeconds": int(exc.timeout or 600),
                 "stdoutSnippet": (exc.stdout or "")[:2000],
                 "stderrSnippet": (exc.stderr or "")[:2000],
+                "pythonInterpreterSource": interpreter_source,
+                "command": _display_command(command),
                 "error": "python harness timed out",
             })
             continue
         except OSError as exc:
             duration_ms = int((time.time() - start) * 1000)
             failed += 1
-            runtime_harness_failed += 1
+            python_harness_failed += 1
             results.append({
                 "name": entry["name"],
                 "kind": entry["kind"],
@@ -10036,6 +11968,8 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 "durationMs": duration_ms,
                 "stdoutSnippet": "",
                 "stderrSnippet": "",
+                "pythonInterpreterSource": interpreter_source,
+                "command": _display_command(command),
                 "error": str(exc),
             })
             continue
@@ -10050,12 +11984,17 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             "durationMs": duration_ms,
             "stdoutSnippet": proc.stdout[:2000],
             "stderrSnippet": proc.stderr[:2000],
+            "pythonInterpreterSource": interpreter_source,
+            "command": _display_command(command),
         })
         if ok:
             passed += 1
         else:
             failed += 1
-            runtime_harness_failed += 1
+            python_harness_failed += 1
+    runtime_harness_discovered = python_harness_discovered + native_harness_discovered
+    runtime_harness_executed = python_harness_executed + native_harness_executed
+    runtime_harness_failed = python_harness_failed + native_harness_failed
     runtime_signal_status = (
         "deferred"
         if any(
@@ -10064,10 +12003,14 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             and "semantic preflight" in result.get("reason", "")
             for result in results
         ) else
+        "failed"
+        if runtime_harness_failed else
         "executed"
         if runtime_harness_executed else
+        "unsupported"
+        if native_harness_unsupported else
         "not-requested"
-        if runtime_harness_discovered and not include_python_harnesses else
+        if python_harness_discovered and not include_python_harnesses else
         "none"
     )
     runtime_harness_status = (
@@ -10077,6 +12020,8 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         if runtime_harness_failed else
         "passed"
         if runtime_harness_executed else
+        "unsupported"
+        if runtime_signal_status == "unsupported" else
         "not-requested"
         if runtime_signal_status == "not-requested" else
         "none"
@@ -10093,7 +12038,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     status = "passed"
     if not preflight_buildable:
         status = "diagnostics"
-    elif not preflight_ok and selected == 0 and skipped:
+    elif not preflight_clean and selected == 0 and skipped:
         status = "diagnostics"
     elif selected == 0:
         status = "no-tests"
@@ -10105,11 +12050,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         "inputPath": str(path.resolve()),
         "ok": status == "passed" and preflight_buildable,
         "status": status,
-        "compositeStatus": (
-            f"{preflight.get('status', 'ok')}/runtime-{runtime_harness_status}"
-            if not preflight_ok else
-            f"ok/runtime-{runtime_harness_status}"
-        ),
+        "compositeStatus": f"{preflight_status or 'ok'}/runtime-{runtime_harness_status}",
         "scope": _payload_scope(
             path,
             preflightScope=preflight["scope"]["diagnosticsScope"],
@@ -10136,13 +12077,26 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
             for result in results
         ),
         "coverageSummary": {
+            "sourceChecksExecuted": source_checks_executed,
             "semanticContractsDiscovered": semantic_contract_discovered,
             "semanticContractsExecuted": semantic_contract_executed,
             "semanticContractsFailed": semantic_contract_failed,
             "trivialSemanticTests": trivial_semantic_tests,
+            "jitContractsAttempted": jit_contracts_attempted,
+            "jitContractsExecuted": jit_contracts_executed,
+            "jitContractsFailed": jit_contracts_failed,
+            "jitContractsUnavailable": jit_contracts_unavailable,
             "runtimeHarnessesDiscovered": runtime_harness_discovered,
             "runtimeHarnessesExecuted": runtime_harness_executed,
             "runtimeHarnessesFailed": runtime_harness_failed,
+            "pythonHarnessesDiscovered": python_harness_discovered,
+            "pythonHarnessesExecuted": python_harness_executed,
+            "pythonHarnessesFailed": python_harness_failed,
+            "nativeHarnessesDiscovered": native_harness_discovered,
+            "nativeHarnessesAttempted": native_harness_attempted,
+            "nativeHarnessesExecuted": native_harness_executed,
+            "nativeHarnessesFailed": native_harness_failed,
+            "nativeHarnessesUnsupported": native_harness_unsupported,
             "runtimeSignalStatus": runtime_signal_status,
         },
         "results": results,
@@ -10156,7 +12110,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     payload["nextCommands"] = _test_next_commands(
         path,
         failed,
-        source_ok=preflight_ok,
+        source_ok=preflight_clean,
         python_harnesses_deferred=payload["pythonHarnessesDeferred"],
     )
     return payload
@@ -10167,14 +12121,23 @@ def _skill_registry_payload() -> list[dict]:
     for alias, canonical in SKILL_ALIASES.items():
         alias_groups.setdefault(canonical, []).append(alias)
     payload = []
+    paths_ephemeral = bool(getattr(sys, "frozen", False))
     for entry in SKILL_REGISTRY:
         files = [str((ROOT.parent / relative).resolve()) for relative in entry["files"]]
-        payload.append({
+        item = {
             "name": entry["name"],
             "description": entry["description"],
             "files": files,
+            "fileSources": list(entry["files"]),
             "aliases": sorted(alias_groups.get(entry["name"], [])),
-        })
+            "pathsEphemeral": paths_ephemeral,
+        }
+        if paths_ephemeral:
+            item["contentHint"] = (
+                "`files` resolve inside the packaged executable's temporary extraction directory. "
+                "Use `sem skills get NAME --full --json` for durable inline skill bodies."
+            )
+        payload.append(item)
     return payload
 
 
@@ -10227,8 +12190,10 @@ def _skill_content(name: str, *, include_full_content: bool = False) -> dict | N
                 sections.append(f"# Source: {relative}\n\n{text.strip()}\n")
         payload = {
             "name": entry["name"],
+            "resolvedName": entry["name"],
             "description": entry["description"],
             "files": [str((ROOT.parent / relative).resolve()) for relative in entry["files"]],
+            "fileSources": list(entry["files"]),
             "aliases": aliases,
             "contentMode": "full" if include_full_content else "summary",
             "contentBytes": total_bytes,
@@ -10470,6 +12435,103 @@ def _migrated_file_lines(file_path: str) -> tuple[tuple[str, ...], tuple[str, ..
     return tuple(before), tuple(after)
 
 
+_CALL_NAME_LEADING_VERBS = {
+    # Verbs where the call name is at args[0] (the call site is the leading
+    # identifier). Renaming a call binding must rewrite every such row that
+    # references it inside the enclosing operation.
+    "call", "run", "runChecked", "start", "await",
+    "startInGroup", "timeout", "cancelOn",
+    "argument", "arg", "case",
+}
+
+
+def _line_references_call_subject(verb: str, args: list, name: str) -> bool:
+    """True if this row attaches to a call binding named NAME — used by the
+    SS4001 rename codemod to identify every call-attachment row inside an
+    operation that must be rewritten when the call's name changes. Covers the
+    standard grammar: call/argument/run*/start/await/bind*/branch error
+    source/ignore */case/startInGroup/timeout/cancelOn."""
+    if not args:
+        return False
+    if verb in _CALL_NAME_LEADING_VERBS and args[0] == name:
+        return True
+    if verb == "ignore" and len(args) >= 3 and args[1] == "source" and args[2] == name:
+        return True
+    if verb == "bind" and len(args) >= 4 and args[3] == name:
+        return True
+    if verb in {"bindOk", "bindError"} and len(args) >= 3 and args[2] == name:
+        return True
+    if verb == "branch" and len(args) >= 4 and args[0] == "error" and args[1] == "source" and args[2] == name:
+        return True
+    return False
+
+
+def _rename_local_name_edits(source: Path, operation: object, old_name: str, new_name: str) -> list[dict]:
+    """Return replaceLine edits for a local value/error/failure rename.
+
+    The rename is intentionally scoped to the enclosing operation and to rows
+    whose tokenized args mention OLD_NAME. That keeps the codemod useful for
+    mechanical role-suffix repairs without turning it into a global refactor.
+    """
+    try:
+        file_text = Path(source).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    file_lines = file_text.split("\n")
+    pattern = re.compile(r"\b" + re.escape(old_name) + r"\b")
+    edits: list[dict] = []
+    file_path_str = str(Path(source).resolve())
+    for source_line in operation.lines:
+        if not source_line.tokens or source_line.verb.startswith("#"):
+            continue
+        if old_name not in source_line.args:
+            continue
+        idx = source_line.number - 1
+        if not (0 <= idx < len(file_lines)):
+            continue
+        original = file_lines[idx]
+        rewritten = pattern.sub(new_name, original)
+        if rewritten != original:
+            edits.append({
+                "op": "replaceLine",
+                "file": file_path_str,
+                "line": source_line.number,
+                "text": rewritten,
+            })
+    return edits
+
+
+def _enclosing_operation_for_diagnostic(diagnostic: dict, operation_lookup: dict) -> tuple | None:
+    """Locate the operation that contains the diagnostic's primary span line.
+    Used by per-call style rules (SS4001) where the diagnostic's subject is the
+    call name, not the operation, so subject_name cannot key operation_lookup
+    directly. The check-payload's serialized form strips the linter's `related`
+    field, so we identify the enclosing operation by scanning each operation's
+    own .lines for the diagnostic's line number — robust to that filtering."""
+    span = diagnostic.get("span") or diagnostic.get("primary") or {}
+    if not isinstance(span, dict):
+        return None
+    file_str = span.get("file") or span.get("path") or ""
+    line_no = int(span.get("line", 0) or 0)
+    if not file_str or not line_no:
+        return None
+    try:
+        target_path = Path(file_str).resolve()
+    except (OSError, ValueError):
+        return None
+    for source, facts, operation in operation_lookup.values():
+        try:
+            source_path = Path(source).resolve()
+        except (OSError, ValueError, TypeError):
+            continue
+        if source_path != target_path:
+            continue
+        for source_line in operation.lines:
+            if source_line.number == line_no:
+                return (Path(source), facts, operation)
+    return None
+
+
 def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, operation_lookup: dict[str, tuple[Path, object, object]] | None = None) -> dict:
     lookup = operation_lookup if operation_lookup is not None else _facts_operation_lookup(bundle)
     code = diagnostic.get("code", "")
@@ -10568,6 +12630,79 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, o
             "afterLine": _operation_insert_anchor(operation),
             "text": f'invariant operation {subject_name} "<state the key invariant for {subject_name}>"',
         })
+    elif code == "SS4001" and subject_name and not subject_name.endswith("Call"):
+        # Mechanical rename codemod: vague call names (SS4001) → append `Call`
+        # suffix on the binding AND every reference inside the enclosing
+        # operation. The dashboard logged 57+ such renames in one cycle; doing
+        # them by hand is the boilerplate the field log ranked the #3 pain.
+        # Subject is the call name, so locate the enclosing operation via the
+        # diagnostic's `related[role=enclosingOperation]` span rather than
+        # operation_lookup (which keys on operation name, not call name).
+        enclosing = _enclosing_operation_for_diagnostic(diagnostic, lookup)
+        if enclosing is not None:
+            source, _facts, operation = enclosing
+            new_name = subject_name + "Call"
+            try:
+                file_text = Path(source).read_text(encoding="utf-8")
+            except OSError:
+                file_text = None
+            if file_text is not None:
+                file_lines = file_text.split("\n")
+                # `\b` word-boundary regex with count=1 rewrites only the first
+                # whole-word occurrence on the line. On a call-attachment row
+                # the call name is the first identifier of that name (after the
+                # verb keyword), so a single replacement is precise and avoids
+                # rewriting any unrelated later token that happens to share the
+                # name (e.g. a value arg that coincidentally matches).
+                pattern = re.compile(r"\b" + re.escape(subject_name) + r"\b")
+                file_path_str = str(Path(source).resolve())
+                for source_line in operation.lines:
+                    if not source_line.tokens:
+                        continue
+                    if not _line_references_call_subject(
+                            source_line.verb, source_line.args, subject_name):
+                        continue
+                    idx = source_line.number - 1
+                    if not (0 <= idx < len(file_lines)):
+                        continue
+                    original = file_lines[idx]
+                    rewritten = pattern.sub(new_name, original, count=1)
+                    if rewritten != original:
+                        repair["edits"].append({
+                            "op": "replaceLine",
+                            "file": file_path_str,
+                            "line": source_line.number,
+                            "text": rewritten,
+                        })
+                if repair["edits"]:
+                    repair["fixSafety"] = "local-edit"
+                    for suggestion in repair["suggestions"]:
+                        if suggestion.get("name") == "renameToDescriptive":
+                            suggestion["autoApplicable"] = True
+    elif code == "SS4002" and subject_name and not subject_name.endswith("Error"):
+        enclosing = _enclosing_operation_for_diagnostic(diagnostic, lookup)
+        if enclosing is not None:
+            source, _facts, operation = enclosing
+            repair["edits"].extend(
+                _rename_local_name_edits(Path(source), operation, subject_name, subject_name + "Error")
+            )
+            if repair["edits"]:
+                repair["fixSafety"] = "local-edit"
+                for suggestion in repair["suggestions"]:
+                    if suggestion.get("name") == "renameToDescriptive":
+                        suggestion["autoApplicable"] = True
+    elif code == "SS4003" and subject_name and not subject_name.endswith("Failure"):
+        enclosing = _enclosing_operation_for_diagnostic(diagnostic, lookup)
+        if enclosing is not None:
+            source, _facts, operation = enclosing
+            repair["edits"].extend(
+                _rename_local_name_edits(Path(source), operation, subject_name, subject_name + "Failure")
+            )
+            if repair["edits"]:
+                repair["fixSafety"] = "local-edit"
+                for suggestion in repair["suggestions"]:
+                    if suggestion.get("name") == "renameToDescriptive":
+                        suggestion["autoApplicable"] = True
     return repair
 
 
@@ -11298,13 +13433,30 @@ def _explain_crash(source: Path, compiler_args: list[str]) -> int:
 
 def command_build(args: argparse.Namespace) -> int:
     requested = Path(args.path)
+    # --standalone: compile a single source file straight to a native exe via the
+    # compiler's single-file path, skipping build.sem discovery. This closes the
+    # "no single-file native build / scratch run" gap — agents proving a native
+    # snippet no longer have to scaffold a throwaway project.
+    if getattr(args, "standalone", False):
+        if not requested.is_file():
+            print(f"sem build --standalone: `{args.path}` is not a file. Pass a single "
+                  f".sem/.sscript source to build it directly.", file=sys.stderr)
+            return 2
+        standalone_args = _strip_separator(list(args.compiler_args))
+        trailing_strict, standalone_args = _extract_flag(standalone_args, "--strict")
+        if (bool(getattr(args, "strict", False)) or trailing_strict) and "--strict" not in standalone_args:
+            standalone_args = list(standalone_args) + ["--strict"]
+        if not _has_compiler_action(standalone_args):
+            standalone_args = ["--emit-exe", *standalone_args]
+        return _run_compiler(requested, standalone_args)
     build_tape = _find_build_tape(requested)
     if build_tape is None:
         print(
             f"sem build: no build.sem found from {args.path}. `sem build` builds "
             f"a project (a directory with a build.sem tape), not a lone source "
-            f"file. Pass the project directory or add a build.sem; to compile a "
-            f"single file use `sem check {args.path}` or `sem run {args.path}`.",
+            f"file. Pass the project directory or add a build.sem; to compile this "
+            f"single file to a native exe use `sem build --standalone {args.path}`, "
+            f"or `sem check {args.path}` / `sem run {args.path}`.",
             file=sys.stderr,
         )
         return 2
@@ -11750,8 +13902,36 @@ def _eval_next_commands(status: str, library_mode: bool) -> list[dict]:
     return commands
 
 
+EVAL_NATIVE_RUNTIME_PREFIXES = (
+    "sqlite.",
+    "http.",
+    "bcrypt.",
+    "json.",
+    "net.",
+    "event.",
+    "gui.",
+)
+
+
+def _eval_native_runtime_targets(source_text: str) -> list[str]:
+    targets: list[str] = []
+    seen: set[str] = set()
+    for raw_line in source_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split()
+        if len(parts) < 3 or parts[0] != "call":
+            continue
+        target = parts[2]
+        if target.startswith(EVAL_NATIVE_RUNTIME_PREFIXES) and target not in seen:
+            seen.add(target)
+            targets.append(target)
+    return targets
+
+
 def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
-                  show_source: bool) -> dict:
+                  show_source: bool, source_path: Path | None = None) -> dict:
     """Compile and JIT-run a snippet (or full program), returning sem.eval.v1."""
     mode = "program" if _snippet_looks_like_full_program(text) else "snippet"
     if mode == "program":
@@ -11778,11 +13958,14 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
     # mapped on Windows; a cleanup PermissionError must not mask the result.
     with tempfile.TemporaryDirectory(prefix="sem-eval-",
                                      ignore_cleanup_errors=True) as tmp:
-        source_path = Path(tmp) / "snippet.sem"
-        source_path.write_text(wrapped, encoding="utf-8", newline="\n")
+        if source_path is not None and mode == "program":
+            run_source_path = Path(source_path)
+        else:
+            run_source_path = Path(tmp) / "snippet.sem"
+            run_source_path.write_text(wrapped, encoding="utf-8", newline="\n")
         build_root = Path(tmp) / "build"
 
-        check = _build_check_payload(source_path, [])
+        check = _build_check_payload(run_source_path, [])
         diagnostics = _remap_diagnostics(
             list(check.get("diagnostics", [])), mode, offset)
         payload["diagnostics"] = diagnostics
@@ -11813,6 +13996,29 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
         # tolerates them (e.g. deprecated rows), so the authoritative signal is
         # whether codegen + JIT actually completed. Diagnostics are reported
         # regardless; the outcome is classified from the run below.
+        native_targets = _eval_native_runtime_targets(wrapped)
+        if native_targets:
+            payload["ok"] = False
+            payload["status"] = "native-runtime-unavailable"
+            payload["execution"] = execution
+            payload["output"] = output
+            payload["nativeRuntimeTargets"] = native_targets
+            _add_eval_advisory(
+                payload,
+                "SSEVAL002",
+                "sem eval uses the JIT runner and does not link native runtime "
+                "adapters for targets such as " + ", ".join(native_targets[:5])
+            )
+            payload["nextCommands"] = [
+                _next_command_entry(
+                    "build",
+                    "build the project or file through the native target pipeline instead of eval",
+                    command="sem build <project> -- --emit-exe",
+                    replayable=False,
+                )
+            ]
+            return payload
+
         run_args = ["--run", "--run-metrics", "--quiet",
                     "--persist-llvm-ir", "no",
                     "--build-root", str(build_root)]
@@ -11824,7 +14030,7 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
         run_env["SEM_RUN_METRICS_NONCE"] = nonce
         total_start = time.perf_counter_ns()
         try:
-            proc = _capture_compiler(source_path, run_args,
+            proc = _capture_compiler(run_source_path, run_args,
                                      timeout=timeout, env=run_env)
         except subprocess.TimeoutExpired:
             payload["ok"] = False
@@ -11915,33 +14121,36 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
         return payload
 
 
-def _read_eval_source(args: argparse.Namespace) -> tuple[str | None, str | None]:
+def _read_eval_source(args: argparse.Namespace) -> tuple[str | None, str | None, Path | None]:
     """Resolve snippet text from --code, a path, or stdin (`-`).
 
-    Returns ``(text, error)``; exactly one is non-None."""
+    Returns ``(text, error, source_path)``; exactly one of text/error is non-None.
+    ``source_path`` is set only when the input came from an existing file so
+    full-program eval can preserve normal compiler import and asset resolution.
+    """
     code = getattr(args, "code", None)
     if code is not None:
-        return code, None
+        return code, None, None
     path = getattr(args, "path", None)
     if path in (None, "-"):
-        return sys.stdin.read(), None
+        return sys.stdin.read(), None, None
     candidate = Path(path)
     if candidate.exists():
         try:
-            return candidate.read_text(encoding="utf-8"), None
+            return candidate.read_text(encoding="utf-8"), None, candidate.resolve()
         except OSError as exc:
-            return None, f"cannot read snippet: {exc}"
+            return None, f"cannot read snippet: {exc}", None
     # The positional did not resolve to a file. If it looks like inline
     # SemanticScript source (multi-token or multi-line), treat it as code so
     # `sem eval "operation main ..."` works without --code — the common reach
     # for a quick probe. A bare path-like token (no whitespace) still reports a
     # clear file error rather than silently compiling a mistyped filename.
     if "\n" in path or " " in path.strip():
-        return path, None
+        return path, None, None
     return None, (
         f"cannot read snippet: {path}: no such file "
         "(pass an existing path, use --code for inline source, or '-' for stdin)"
-    )
+    ), None
 
 
 def _emit_eval_input_error(message: str, human: bool) -> int:
@@ -11960,7 +14169,7 @@ def _emit_eval_input_error(message: str, human: bool) -> int:
 
 def command_eval(args: argparse.Namespace) -> int:
     human = bool(getattr(args, "human", False))
-    text, error = _read_eval_source(args)
+    text, error, source_path = _read_eval_source(args)
     if error is not None:
         return _emit_eval_input_error(error, human)
 
@@ -11981,6 +14190,7 @@ def command_eval(args: argparse.Namespace) -> int:
         max_output_bytes=max_output_bytes,
         timeout=timeout,
         show_source=bool(getattr(args, "show_source", False)),
+        source_path=source_path,
     )
 
     if human:
@@ -12062,21 +14272,56 @@ def command_check(args: argparse.Namespace) -> int:
         else:
             print(f"sem check: {message}", file=sys.stderr)
         return 2
+    # Build the same project-scoped payload the --json path uses, so the human
+    # surface no longer diverges from --json — the field log flagged this as a
+    # real bug: missingInvariant appeared in the streamed compiler output but
+    # not in --json's diagnostics; SS2516 appeared in --json but not human. The
+    # underlying compiler still runs --lower-check + --lint (so this matches
+    # the prior `buildable` semantics); only the surface format changes.
+    payload = _build_check_payload(Path(args.path), compiler_args,
+                                   include_readiness=include_readiness, lower_check=True)
+    if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
+        payload["ok"] = False
+        if payload["status"] in {"ok", "ok-with-warnings"}:
+            payload["status"] = payload["targetReadiness"].get("status", "partial")
     if json_output:
-        payload = _build_check_payload(Path(args.path), compiler_args, include_readiness=include_readiness, lower_check=True)
-        if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
-            payload["ok"] = False
-            if payload["status"] in {"ok", "ok-with-warnings"}:
-                payload["status"] = payload["targetReadiness"].get("status", "partial")
         payload = _compact_check_payload_for_cli(Path(args.path), payload, full=full_output)
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["ok"] else 1
-    build_tape = _find_build_tape(Path(args.path))
-    source = build_tape if build_tape is not None else Path(args.path)
-    # `--lower-check` (not `--parse-only`) so human `sem check` agrees with the
-    # `--json` `buildable` field: both run the codegen preflight and report
-    # SSCG/SSBE codegen errors, so a green check predicts a green build.
-    return _run_compiler(source, ["--lower-check", "--lint", *compiler_args])
+    # Human emit: same diagnostics as --json, formatted compactly. The summary
+    # footer is the headline P10 asked for ("blocking:N, warnings:M rather than
+    # a bare boolean") so `ok` alone is no longer the only signal.
+    for diag in payload.get("diagnostics", []) or []:
+        severity = diag.get("severity") or "warning"
+        code = diag.get("code") or ""
+        span = diag.get("span") or diag.get("primary") or {}
+        location_text = ""
+        if isinstance(span, dict):
+            span_file = span.get("file") or ""
+            span_line = span.get("line") or 0
+            if span_file:
+                location_text = f"{Path(span_file).name}:{span_line}"
+            elif span_line:
+                location_text = f"line {span_line}"
+        message = diag.get("message") or ""
+        prefix = severity if not code else f"{severity} [{code}]"
+        if location_text:
+            print(f"{prefix} {location_text}: {message}")
+        else:
+            print(f"{prefix}: {message}")
+    for tool_error in payload.get("toolErrors", []) or []:
+        print(f"tool-error: {tool_error}", file=sys.stderr)
+    summary = payload.get("summary", {}) or {}
+    blocking = int(summary.get("compileBlocking", 0) or 0)
+    warnings_count = int(summary.get("warnings", 0) or 0)
+    total_errors = int(summary.get("errors", 0) or 0)
+    non_blocking_errors = max(0, total_errors - blocking)
+    print(
+        f"sem check: status={payload.get('status', 'unknown')}, "
+        f"blocking={blocking}, warnings={warnings_count}, "
+        f"errors={non_blocking_errors}"
+    )
+    return 0 if payload.get("ok") else 1
 
 
 def command_emit_ir(args: argparse.Namespace) -> int:
@@ -12086,6 +14331,27 @@ def command_emit_ir(args: argparse.Namespace) -> int:
 
 
 def command_clean(args: argparse.Namespace) -> int:
+    if getattr(args, "pyinstaller_temp", False):
+        temp_root, targets = _collect_pyinstaller_temp_targets(
+            min_age_seconds=max(0, int(getattr(args, "min_age_seconds", 3600))),
+        )
+        if not targets:
+            print(f"sem clean: no stale PyInstaller _MEI* temp directories found under {temp_root}")
+            return 0
+        for target in targets:
+            prefix = "Removing" if args.force else "Would remove"
+            size_mb = target["sizeBytes"] / (1024 * 1024)
+            print(f"{prefix} {target['path']} ({size_mb:.1f} MiB, age {target['ageSeconds']}s)")
+        if not args.force:
+            print("sem clean: dry run; pass --force to remove listed PyInstaller temp directories")
+            return 0
+        try:
+            for target in targets:
+                _remove_pyinstaller_temp_target(Path(target["path"]), temp_root)
+        except (OSError, ValueError) as exc:
+            print(f"sem clean: {exc}", file=sys.stderr)
+            return 2
+        return 0
     if args.all_ignored:
         mode = "-Xdf" if args.force else "-Xdn"
         pathspecs = list(args.paths) or ["."]
@@ -12426,11 +14692,19 @@ def _agent_docs_payload(path: Path, *, max_bytes: int = DEFAULT_AGENT_DOC_MAX_BY
             "content": content,
         })
     status = "found" if documents else "not-found"
+    no_docs_guidance = (
+        "Fresh `sem new` projects do not scaffold AGENTS.md or CLAUDE.md. "
+        "A not-found result is expected unless the repository has project-local agent rules; "
+        "continue by loading version-matched sem skills."
+    )
     return {
         "schemaVersion": "sem.agentDocs.v1",
         "tool": {"name": "sem", "version": VERSION},
         "ok": True,
         "status": status,
+        "severity": "info",
+        "emptyIsExpected": not documents,
+        "absenceMeaning": "" if documents else no_docs_guidance,
         "requestedPath": str(path),
         "projectRoot": str(root),
         "searchStart": str(_agent_doc_search_start(path)),
@@ -12447,9 +14721,9 @@ def _agent_docs_payload(path: Path, *, max_bytes: int = DEFAULT_AGENT_DOC_MAX_BY
             _next_command_entry(
                 "skills",
                 "load version-matched SemanticScript guidance after project-local agent docs",
-                argv=["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--json"],
+                argv=["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--full", "--json"],
                 mcp_tool="skills_get",
-                mcp_args={"names": list(MCP_BOOTSTRAP_SKILLS)},
+                mcp_args=dict(MCP_BOOTSTRAP_SKILLS_MCP_ARGS),
             ),
             _next_command_entry(
                 "help",
@@ -12512,7 +14786,7 @@ def _project_workflows(path: Path) -> list[dict]:
             "steps": [
                 step("bootstrap", "load the plain-executable startup contract", ["sem", "bootstrap", "--json", resolved]),
                 step("agent-docs", "load project-local AGENTS.md / CLAUDE.md instructions", ["sem", "agent-docs", "--json", resolved], mcp_tool="agent_docs", mcp_args={"path": resolved}),
-                step("skills", "load getting-started, language, agent workflow, and syntax guidance", ["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--json"], mcp_tool="skills_get", mcp_args={"names": list(MCP_BOOTSTRAP_SKILLS)}),
+                step("skills", "load getting-started, language, agent workflow, and syntax guidance", ["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--full", "--json"], mcp_tool="skills_get", mcp_args=dict(MCP_BOOTSTRAP_SKILLS_MCP_ARGS)),
                 step("help", "inspect state and ordered next steps for this path", ["sem", "help", "--json", resolved], mcp_tool="help", mcp_args={"path": resolved}),
                 step("eval", "run a zero-project smoke snippet when no project is open yet", ["sem", "eval", "--code", MCP_BOOTSTRAP_EVAL_CODE, "--json"], command="sem eval --code <semantic smoke snippet> --json", mcp_tool="eval", mcp_args={"code": MCP_BOOTSTRAP_EVAL_CODE}),
             ],
@@ -12537,7 +14811,7 @@ def _project_workflows(path: Path) -> list[dict]:
             "when": "Writing rows, changing parser/linter/editor support, or checking if a syntax feature exists.",
             "goal": "Resolve current row forms and implementation status before editing or inventing syntax.",
             "steps": [
-                step("skills", "load the compact syntax and language rules", ["sem", "skills", "get", "sem", "sem-syntax", "--json"], mcp_tool="skills_get", mcp_args={"names": ["sem", "sem-syntax"]}),
+                step("skills", "load the compact syntax and language rules", ["sem", "skills", "get", "sem", "sem-syntax", "--full", "--json"], mcp_tool="skills_get", mcp_args={"names": ["sem", "sem-syntax"], "full": True}),
                 step("docs-search", "search current syntax features and implementation status", ["sem", "docs", "search", "languageMode strictExecutable", "--path", resolved, "--db", docs_db_path, "--json"], mcp_tool="docs_search", mcp_args={"query": "languageMode strictExecutable", "path": resolved, "watch": True, "include_std": True}),
                 step("explain", "load rule guidance when diagnostics name the syntax problem", ["sem", "explain", "SEMSC_PARSE", "--json"], mcp_tool="explain", mcp_args={"code": "SEMSC_PARSE"}),
             ],
@@ -12641,7 +14915,7 @@ def _project_workflows(path: Path) -> list[dict]:
             "goal": "Convert old syntax intentionally and verify parser/linter/docs/editor surfaces stay aligned.",
             "steps": [
                 step("migrate-syntax", "rewrite supported legacy rows to current cutover forms", ["sem", "migrate-syntax", resolved, "--json"], command="sem migrate-syntax PATH --json"),
-                step("skills", "reload current syntax rules after migration", ["sem", "skills", "get", "sem-syntax", "--json"], mcp_tool="skills_get", mcp_args={"names": ["sem-syntax"]}),
+                step("skills", "reload current syntax rules after migration", ["sem", "skills", "get", "sem-syntax", "--full", "--json"], mcp_tool="skills_get", mcp_args={"names": ["sem-syntax"], "full": True}),
                 step("check", "verify migrated source", ["sem", "check", "--json", resolved], mcp_tool="check", mcp_args={"path": resolved}),
             ],
             "doneWhen": "Legacy forms are gone and current parser/linter/docs agree.",
@@ -12658,6 +14932,46 @@ def _project_workflows(path: Path) -> list[dict]:
                 step("compare-profiles", "compare agent/runtime profile JSON files", ["sem", "compare-profiles", "BASELINE.json", "CANDIDATE.json"], command="sem compare-profiles BASELINE.json CANDIDATE.json", replayable=False, required_args=[{"name": "baseline", "position": "first", "description": "baseline profile JSON"}, {"name": "candidate", "position": "second", "description": "candidate profile JSON"}]),
             ],
             "doneWhen": "Artifacts are intentional, performance signal is captured when relevant, and review diffs are clean.",
+        },
+    ]
+
+
+def _help_goal_pointers(path: Path) -> list[dict]:
+    resolved = str(path.resolve())
+    docs_db_path = str(_docs_default_db_path(path))
+    return [
+        {
+            "goal": "build a web app",
+            "capabilities": ["http", "html", "sqlite", "webServer lifecycle"],
+            "skills": ["taskforge-web-patterns", "http-html-patterns", "sqlite-patterns"],
+            "startCommands": [
+                "sem new --template web PROJECT_PATH",
+                f"sem docs search \"webServerStartup http.responseText sqlite.openDatabase html.hydrate\" --path {resolved} --db {docs_db_path} --json",
+            ],
+            "docsGet": ["http.responseText", "sqlite.openDatabase", "sqlite.queryScalarInt64", "http.formField"],
+            "workflowId": "discover-apis-capabilities-runtime",
+        },
+        {
+            "goal": "fix diagnostics",
+            "capabilities": ["explain", "fix plan", "patch dry-run"],
+            "skills": ["sem-diagnostics"],
+            "startCommands": [
+                f"sem check --json {resolved}",
+                "sem explain CODE --json",
+                f"sem fix --plan --json {resolved}",
+            ],
+            "workflowId": "diagnose-repair",
+        },
+        {
+            "goal": "inspect a codebase",
+            "capabilities": ["graph", "slice", "symbols"],
+            "skills": ["sem-agent"],
+            "startCommands": [
+                f"sem graph --kind summary --json {resolved}",
+                f"sem graph --kind routes --json {resolved}",
+                f"sem slice --operation NAME --json {resolved}",
+            ],
+            "workflowId": "inspect-understand",
         },
     ]
 
@@ -12688,11 +15002,11 @@ def _help_payload(start: Path) -> dict:
         mcp_args={"path": resolved})
     _append_next_command(
         entries, seen, "skills",
-        "sem skills get sem-start sem sem-agent sem-syntax --json",
+        "sem skills get sem-start sem sem-agent sem-syntax --full --json",
         "load version-matched getting-started, agent workflow, and syntax rules before editing",
-        argv=["sem", "skills", "get", *start_skill_args, "--json"],
+        argv=["sem", "skills", "get", *start_skill_args, "--full", "--json"],
         mcp_tool="skills_get",
-        mcp_args={"names": start_skill_args})
+        mcp_args={"names": start_skill_args, "full": True})
     docs_db_path = str(_docs_default_db_path(start))
     _append_next_command(
         entries, seen, "docs-index",
@@ -12772,6 +15086,7 @@ def _help_payload(start: Path) -> dict:
                     "Run the first nextCommand entry next."),
         "loop": ["skills", "docs search/get", "deps sync", "check", "graph/slice", "explain",
                  "fix", "patch", "test"],
+        "goalPointers": _help_goal_pointers(start),
         "workflows": _project_workflows(start),
         "state": state,
         "nextCommands": entries,
@@ -12791,6 +15106,9 @@ def command_help(args: argparse.Namespace) -> int:
     print("workflow modes:")
     for workflow in payload.get("workflows", []):
         print(f"- {workflow['id']}: {workflow['goal']}")
+    print("goal pointers:")
+    for pointer in payload.get("goalPointers", []):
+        print(f"- {pointer['goal']}: skills {', '.join(pointer['skills'])}; workflow {pointer['workflowId']}")
     print("next steps:")
     for item in payload["nextCommands"]:
         label = item.get("command") or " ".join(item.get("argv", []))
@@ -12806,16 +15124,19 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
         {
             "tool": "agent_docs",
             "args": {"path": "."},
+            "cli": "sem agent-docs --json .",
             "reason": "load project-local AGENTS.md / CLAUDE.md instructions from the MCP server cwd",
         },
         {
             "tool": "skills_get",
-            "args": {"names": start_skill_args},
+            "args": {"names": start_skill_args, "full": True},
+            "cli": "sem skills get sem-start sem sem-agent sem-syntax --full --json",
             "reason": "load version-matched getting-started, language, agent workflow, and syntax rules",
         },
         {
             "tool": "help",
             "args": {"path": "."},
+            "cli": "sem help --json .",
             "reason": "inspect project state and get replayable next steps",
         },
         {
@@ -12826,11 +15147,13 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
                 "watch": True,
                 "include_std": True,
             },
+            "cli": 'sem docs search "<capability, API, type, syntax, or runtime need>" --path . --json',
             "reason": "discover stdlib/user APIs, capability rows, syntax rows, and runtime features before generating calls",
         },
         {
             "tool": "eval",
             "args": {"code": MCP_BOOTSTRAP_EVAL_CODE},
+            "cli": "sem eval --code <semantic smoke snippet> --json",
             "reason": "optional zero-project smoke test for the language and runtime path",
         },
     ]
@@ -12844,7 +15167,7 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
             "available": True,
             "serverCommand": f"{_display_command(source_sem)} mcp",
             "versionCommand": f"{_display_command(source_sem)} --version --json",
-            "skillsCommand": f"{_display_command(source_sem)} skills get sem-start sem sem-agent sem-syntax --json",
+            "skillsCommand": f"{_display_command(source_sem)} skills get sem-start sem sem-agent sem-syntax --full --json",
         }
     next_commands = [
         _next_command_entry(
@@ -12863,9 +15186,9 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
         _next_command_entry(
             "skills",
             "load the same getting-started guidance through the CLI",
-            argv=["sem", "skills", "get", *start_skill_args, "--json"],
+            argv=["sem", "skills", "get", *start_skill_args, "--full", "--json"],
             mcp_tool="skills_get",
-            mcp_args={"names": start_skill_args},
+            mcp_args={"names": start_skill_args, "full": True},
         ),
         _next_command_entry(
             "docs-index",
@@ -12916,7 +15239,7 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
             "serverCommand": "sem.exe mcp",
             "versionCommand": "sem.exe version --json",
             "agentDocsCommand": "sem.exe agent-docs --json .",
-            "skillsCommand": "sem.exe skills get sem-start sem sem-agent sem-syntax --json",
+            "skillsCommand": "sem.exe skills get sem-start sem sem-agent sem-syntax --full --json",
         },
         "sourceCheckout": source_checkout,
         "mcp": {
@@ -12939,6 +15262,7 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
         "docs": {
             "purpose": "Use docs_search for capability/API/type/syntax/runtime discovery and docs_get for exact usage rows before generating standard-library calls.",
             "cliIndex": "sem docs index --path . --include-std --embedding-provider none --json",
+            "modelFreeDefault": True,
             "mcpSearch": {
                 "tool": "docs_search",
                 "args": {
@@ -12951,11 +15275,13 @@ def _bootstrap_payload(start: Path | None = None) -> dict:
             "mcpGet": {"tool": "docs_get", "args": {"operation": "<selected operation, target, type, or enum>"}},
             "cliSearch": 'sem docs search "<capability, API, type, syntax, or runtime need>" --path . --json',
             "cliGet": "sem docs get OPERATION_TARGET_TYPE_OR_ENUM --json",
-            "freshInstallNote": "CLI docs search needs a SQLite index first; MCP docs_search with watch=true starts or reuses the background index worker.",
+            "freshInstallNote": "CLI docs search needs a model-free SQLite index first; run `sem docs index --embedding-provider none`, or use MCP docs_search with watch=true to start or reuse the background index worker.",
         },
         "languageSmoke": {
             "mcp": {"tool": "eval", "args": {"code": MCP_BOOTSTRAP_EVAL_CODE}},
             "cli": "sem eval --code <semantic smoke snippet> --json",
+            "explanation": "Writes `semantic tools ready` and demonstrates the explicit console write error branch before any project is open.",
+            "rowSummary": ["declare ConsoleWriteError", "write one line", "branch on write failure", "make an explicit error value"],
             "expectedStdout": "semantic tools ready\n",
         },
         "skills": {
@@ -12990,7 +15316,7 @@ def command_bootstrap(args: argparse.Namespace) -> int:
         print(f"  {source_checkout.get('note', 'not available from this executable')}")
     print()
     print("Exact CLI fallback:")
-    print("  sem.exe skills get sem-start sem sem-agent sem-syntax --json")
+    print("  sem.exe skills get sem-start sem sem-agent sem-syntax --full --json")
     print("  sem.exe docs index --path . --include-std --embedding-provider none --json")
     print('  sem.exe docs search "<capability, API, type, syntax, or runtime need>" --path . --json')
     return 0
@@ -13001,7 +15327,24 @@ def command_version(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
+        # Plain `sem version` previously printed only `sem 0.0.1`, hiding the one
+        # thing an agent checks version for first: which native runtimes exist
+        # (they decide whether an HTTP/SQLite/JSON/auth app is achievable in
+        # native builds at all). Surface the enabled runtimes + syntax cutover
+        # here so the capability check no longer requires --json.
         print(f"sem {VERSION}")
+        flags = payload.get("runtimeFeatureFlags", {})
+        enabled = sorted(name for name, on in flags.items() if on)
+        print("native runtimes: " + (", ".join(enabled) if enabled else "none detected"))
+        counts = payload.get("syntax", {}).get("statusCounts", {})
+        if counts:
+            print(
+                "syntax cutover: "
+                f"{counts.get('implemented', 0)} implemented, "
+                f"{counts.get('partial', 0)} partial, "
+                f"{counts.get('notImplemented', 0)} not implemented"
+            )
+        print("(run `sem version --json` for the full machine-readable report)")
     return 0
 
 
@@ -13311,6 +15654,188 @@ def command_size(args: argparse.Namespace) -> int:
     return 0 if not payload.get("errors") else 1
 
 
+def _split_markdown_table_row(line: str) -> list[str]:
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|"):
+        body = body[:-1]
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    in_code = False
+    for ch in body:
+        if escaped:
+            current.append(ch)
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == "`":
+            in_code = not in_code
+            current.append(ch)
+            continue
+        if ch == "|" and not in_code:
+            cells.append("".join(current).strip())
+            current = []
+            continue
+        current.append(ch)
+    if escaped:
+        current.append("\\")
+    cells.append("".join(current).strip())
+    return cells
+
+
+_REFERENCE_STATUS_LEGEND = {
+    "impl'd": {
+        "category": "implemented",
+        "meaning": "Implemented in the Python reference compiler unless the row description narrows the surface.",
+    },
+    "partial": {
+        "category": "partial",
+        "meaning": "Parsed, metadata-only, stubbed, linter-only, or otherwise incomplete; read each row description for the specific unfinished part.",
+        "nextCommand": "sem reference --status Partial --json",
+    },
+    "not impl'd": {
+        "category": "notImplemented",
+        "meaning": "Committed syntax or runtime surface with no meaningful implementation yet.",
+        "nextCommand": "sem reference --status \"Not impl'd\" --json",
+    },
+    "proposed": {
+        "category": "proposed",
+        "meaning": "Candidate refined syntax, not committed to the compiler surface.",
+        "nextCommand": "sem reference --status Proposed --json",
+    },
+}
+
+
+_REFERENCE_DIAGNOSTIC_SYNTAX_LINKS = (
+    {
+        "code": "SS3104",
+        "syntax": (
+            "`effect OP ACTION PATH`",
+            "`capability NAME EFFECT_PATH ACCESS`",
+            "`useCapability TARGET CAPABILITY`",
+            "`authority OP ACTION PATH`",
+        ),
+        "reason": "Effect rows must be covered by a capability/useCapability edge or an inline authority row.",
+    },
+    {
+        "code": "SS3109",
+        "syntax": ("`effect OP ACTION PATH`", "`authority OP ACTION PATH`"),
+        "reason": "Authority rows must use the same action/path direction as the effect they prove.",
+    },
+    {
+        "code": "SS3612",
+        "syntax": ("`output operation OP TYPE...`", "`return value VALUE`", "`return void`"),
+        "reason": "Void-output operations should end with return void, not an ABI-sentinel return value row.",
+    },
+    {
+        "code": "SS4001",
+        "syntax": ("`call CALL TARGET`",),
+        "reason": "Call bindings should use the Call role suffix so call rows are visually distinct from values.",
+    },
+    {
+        "code": "SS4002",
+        "syntax": ("`bind error ERROR TYPE CALL`",),
+        "reason": "Error bindings should use the Error role suffix.",
+    },
+    {
+        "code": "SS4003",
+        "syntax": ("`makeError NAME ERROR.VARIANT [SOURCE]`",),
+        "reason": "Constructed error values should use the Failure role suffix.",
+    },
+    {
+        "code": "SS4101",
+        "syntax": ("`call CALL TARGET`", "`run CALL`", "`argument CALL ARG_NAME TYPE VALUE`"),
+        "reason": "Call attachment rows must reference a declared call object or resolvable operation target.",
+    },
+    {
+        "code": "SS4102",
+        "syntax": (
+            "`label NAME`",
+            "`jump target LABEL`",
+            "`branch if condition CONDITION target LABEL`",
+            "`branch error source CALL target LABEL`",
+        ),
+        "reason": "Control-flow rows must target declared labels in the current operation.",
+    },
+    {
+        "code": "SS4105",
+        "syntax": (
+            "`argument CALL ARG_NAME TYPE VALUE`",
+            "`branch if condition CONDITION target LABEL`",
+            "`return value VALUE`",
+            "`set SCOPE NAME VALUE ...`",
+        ),
+        "reason": "Rows that consume values must point at declared inputs, storage, binds, literals, or enum cases.",
+    },
+    {
+        "code": "SS4301",
+        "syntax": ("`argument CALL ARG_NAME TYPE VALUE`",),
+        "reason": "Argument rows carry declared types and are checked against the callee signature.",
+    },
+)
+
+
+def _reference_status_info(status: str) -> dict:
+    lowered = status.strip().lower()
+    for marker in ("not impl'd", "impl'd", "partial", "proposed"):
+        info = _REFERENCE_STATUS_LEGEND[marker]
+        if marker in lowered:
+            return dict(info)
+    return {"category": "unknown", "meaning": "Status not recognized; inspect the inventory source row."}
+
+
+def _reference_diagnostic_links_for_row(syntax: str, description: str) -> list[dict]:
+    haystack = f"{syntax} {description}".lower()
+    links = []
+    for spec in _REFERENCE_DIAGNOSTIC_SYNTAX_LINKS:
+        markers = spec["syntax"]
+        if not any(marker.lower() in haystack for marker in markers):
+            continue
+        code = spec["code"]
+        explainer = DIAGNOSTIC_EXPLAINERS.get(code, {})
+        links.append({
+            "code": code,
+            "title": explainer.get("title", ""),
+            "reason": spec["reason"],
+            "explainCommand": f"sem explain {code} --json",
+        })
+    return links
+
+
+def _reference_diagnostic_index(rows: list[dict]) -> list[dict]:
+    index = []
+    for spec in _REFERENCE_DIAGNOSTIC_SYNTAX_LINKS:
+        code = spec["code"]
+        syntax_rows = []
+        for row in rows:
+            if code not in row.get("diagnosticCodes", []):
+                continue
+            syntax_rows.append({
+                "syntax": row["syntax"],
+                "description": row["description"],
+                "status": row["status"],
+                "statusCategory": row["statusCategory"],
+            })
+        explainer = DIAGNOSTIC_EXPLAINERS.get(code, {})
+        index.append({
+            "code": code,
+            "title": explainer.get("title", ""),
+            "url": f"docs/reference/diagnostic-codes.md#{code.lower()}",
+            "reason": spec["reason"],
+            "rowCount": len(syntax_rows),
+            "syntaxRows": syntax_rows,
+            "nextCommands": [
+                f"sem explain {code} --json",
+                f"sem reference {code} --json",
+            ],
+        })
+    return index
+
+
 def _syntax_inventory_rows() -> list[dict]:
     """Parse docs/reference/syntax-inventory.md's markdown table into
     {syntax, description, status} rows. The grammar is otherwise only reachable
@@ -13326,7 +15851,7 @@ def _syntax_inventory_rows() -> list[dict]:
         stripped = line.strip()
         if not stripped.startswith("|"):
             continue
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        cells = _split_markdown_table_row(stripped)
         if len(cells) < 3:
             continue
         syntax = cells[0]
@@ -13335,7 +15860,17 @@ def _syntax_inventory_rows() -> list[dict]:
         # Skip the header row and the |---|---|---| separator.
         if syntax in ("Syntax", "") or set(syntax) <= {"-", ":", " "}:
             continue
-        rows.append({"syntax": syntax, "description": description, "status": status})
+        row = {"syntax": syntax, "description": description, "status": status}
+        status_info = _reference_status_info(status)
+        row["statusCategory"] = status_info["category"]
+        if status_info["category"] == "partial":
+            row["unfinishedDetails"] = description
+            row["statusNextCommand"] = status_info.get("nextCommand", "")
+        diagnostic_links = _reference_diagnostic_links_for_row(syntax, description)
+        if diagnostic_links:
+            row["diagnosticCodes"] = [link["code"] for link in diagnostic_links]
+            row["diagnosticLinks"] = diagnostic_links
+        rows.append(row)
     return rows
 
 
@@ -13345,7 +15880,13 @@ def command_reference(args: argparse.Namespace) -> int:
     status_filter = (getattr(args, "status", None) or "").strip().lower()
     matched = []
     for row in rows:
-        haystack = f"{row['syntax']} {row['description']}".lower()
+        diagnostic_haystack = " ".join(
+            [
+                *row.get("diagnosticCodes", []),
+                *[link.get("title", "") for link in row.get("diagnosticLinks", [])],
+            ]
+        )
+        haystack = f"{row['syntax']} {row['description']} {diagnostic_haystack}".lower()
         if query and query not in haystack:
             continue
         if status_filter and status_filter not in row["status"].lower():
@@ -13360,6 +15901,27 @@ def command_reference(args: argparse.Namespace) -> int:
         "matchCount": len(matched),
         "rows": matched,
         "source": str(SYNTAX_INVENTORY_PATH),
+        "statusLegend": _REFERENCE_STATUS_LEGEND,
+        "diagnosticIndex": _reference_diagnostic_index(rows),
+        "diagnosticLookup": (
+            "Rows with known diagnostic triggers include diagnosticCodes and diagnosticLinks. "
+            "Query a code directly, for example `sem reference SS3104 --json`, then use "
+            "`sem explain CODE --json` for repair guidance."
+        ),
+        "examples": [
+            {
+                "goal": "show implemented syntax rows",
+                "command": "sem reference --status \"Impl'd\" --json",
+            },
+            {
+                "goal": "show partial syntax rows",
+                "command": "sem reference --status Partial --json",
+            },
+            {
+                "goal": "cross-reference a diagnostic to syntax rows",
+                "command": "sem reference SS3104 --json",
+            },
+        ],
         # `reference` indexes language SYNTAX FORMS only. Standard-library
         # operations (e.g. memory.allocateMemoryBytes, string.appendCStringTo
         # DestinationBuffer) are NOT here — find them with `docs search <need>`
@@ -13371,7 +15933,7 @@ def command_reference(args: argparse.Namespace) -> int:
         ),
     }
     if getattr(args, "json", False):
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True))
         return 0 if rows else 1
     if not rows:
         print("sem reference: syntax inventory not found", file=sys.stderr)
@@ -13389,8 +15951,13 @@ def command_reference(args: argparse.Namespace) -> int:
     for row in matched:
         print(row["syntax"])
         print(f"    {row['description']}  [{row['status']}]")
+        if row.get("diagnosticCodes"):
+            print(f"    diagnostics: {', '.join(row['diagnosticCodes'])}")
     print(f"\n{len(matched)} of {len(rows)} rows"
           + (f" matching {query!r}" if query else "") + "; use --json for structured output")
+    print("examples: sem reference --status Partial --json; sem reference SS3104 --json")
+    print("note: sem reference is syntax-only. For standard-library operations/APIs, "
+          "use `sem docs search \"<need>\"` or `sem docs get <target>`.")
     return 0
 
 
@@ -13411,7 +15978,7 @@ def command_test(args: argparse.Namespace) -> int:
         Path(args.path),
         include_python_harnesses=not args.skip_python_harnesses,
         allow_red_preflight_harnesses=bool(getattr(args, "allow_red_preflight_harnesses", False)),
-        execute_contracts=bool(getattr(args, "execute_contracts", False)),
+        execute_contracts=not bool(getattr(args, "no_execute_contracts", False)),
     )
     if args.json:
         payload = _compact_test_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
@@ -13596,13 +16163,14 @@ def command_skills(args: argparse.Namespace) -> int:
             "status": "ok",
             "skills": _skill_registry_payload(),
             "aliasIndex": dict(sorted(SKILL_ALIASES.items())),
+            "recommendedFirstNames": list(MCP_BOOTSTRAP_SKILLS),
             "nextCommands": [
                 _next_command_entry(
                     "skills",
                     "load getting-started, core, agent workflow, and syntax guidance from the current tool version",
-                    argv=["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--json"],
+                    argv=["sem", "skills", "get", *MCP_BOOTSTRAP_SKILLS, "--full", "--json"],
                     mcp_tool="skills_get",
-                    mcp_args={"names": list(MCP_BOOTSTRAP_SKILLS)},
+                    mcp_args=dict(MCP_BOOTSTRAP_SKILLS_MCP_ARGS),
                 )
             ],
         }
@@ -13614,18 +16182,35 @@ def command_skills(args: argparse.Namespace) -> int:
         return 0
     if args.skills_command in ("get", "load"):
         requested_names = list(args.names)
-        names = [SKILL_ALIASES.get(name, name) for name in args.names]
+        requested_pairs = [
+            (requested_name, SKILL_ALIASES.get(requested_name, requested_name))
+            for requested_name in args.names
+        ]
         if args.all:
-            names = [skill["name"] for skill in _skill_registry_payload()]
-            requested_names = list(names)
+            requested_pairs = [
+                (skill["name"], skill["name"])
+                for skill in _skill_registry_payload()
+            ]
+            requested_names = [requested for requested, _resolved in requested_pairs]
         entries = []
         include_full_content = bool(args.full or not args.json)
-        for name in names:
+        for requested_name, name in requested_pairs:
             skill = _skill_content(name, include_full_content=include_full_content)
             if skill is not None:
+                skill = dict(skill)
+                skill["requestedName"] = requested_name
+                skill["displayName"] = requested_name
                 entries.append(skill)
-        resolved_names = [skill["name"] for skill in entries]
-        missing_names = [name for name in names if name not in resolved_names]
+        resolved_names = [skill["resolvedName"] for skill in entries]
+        found_pairs = {
+            (skill["requestedName"], skill["resolvedName"])
+            for skill in entries
+        }
+        missing_names = [
+            requested_name
+            for requested_name, resolved_name in requested_pairs
+            if (requested_name, resolved_name) not in found_pairs
+        ]
         payload = {
             "schemaVersion": "sem.skills.v1",
             "tool": {"name": "sem", "version": VERSION},
@@ -13641,6 +16226,10 @@ def command_skills(args: argparse.Namespace) -> int:
             "aliasIndex": dict(sorted(SKILL_ALIASES.items())),
             "requestedNames": requested_names,
             "resolvedNames": resolved_names,
+            "requestMap": [
+                {"requested": requested, "resolved": resolved}
+                for requested, resolved in requested_pairs
+            ],
             "missingNames": missing_names,
             "contentMode": "full" if include_full_content else "summary",
             "nextCommands": [
@@ -13666,7 +16255,11 @@ def command_skills(args: argparse.Namespace) -> int:
             print(json.dumps(payload, indent=2, sort_keys=True))
         else:
             for skill in entries:
-                print(f"== {skill['name']} ==")
+                requested_name = skill.get("requestedName") or skill["name"]
+                if requested_name != skill["name"]:
+                    print(f"== {requested_name} ({skill['name']}) ==")
+                else:
+                    print(f"== {skill['name']} ==")
                 _print_text_for_console(skill["content"])
         return 0 if entries and not missing_names else 1
     print("sem skills requires a subcommand", file=sys.stderr)
@@ -13800,6 +16393,225 @@ def command_literal_repin(args: argparse.Namespace) -> int:
     return 0 if payload["ok"] else 1
 
 
+def _github_releases_api_url(repository: str) -> str:
+    return f"https://api.github.com/repos/{repository}/releases"
+
+
+def _fetch_github_releases(repository: str) -> list[dict]:
+    url = _github_releases_api_url(repository)
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"SemanticScript-sem/{VERSION}",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _release_channel_matches(release: dict, channel: str) -> bool:
+    if release.get("draft"):
+        return False
+    prerelease = bool(release.get("prerelease"))
+    tag = str(release.get("tag_name", ""))
+    if channel == "stable":
+        return not prerelease
+    if channel == "prerelease":
+        return prerelease
+    if channel == "main":
+        return prerelease and tag.startswith("main-")
+    return True
+
+
+def _release_asset_for_platform(release: dict, platform: str) -> dict | None:
+    assets = list(release.get("assets") or [])
+    if platform == DEFAULT_RELEASE_PLATFORM:
+        for asset in assets:
+            if asset.get("name") == "sem.exe":
+                return asset
+        for asset in assets:
+            name = str(asset.get("name", ""))
+            if name.startswith("semanticscript-sem-windows-x64-") and name.endswith(".exe"):
+                return asset
+    return None
+
+
+def _select_release(releases: list[dict], *, channel: str) -> dict | None:
+    candidates = [release for release in releases if _release_channel_matches(release, channel)]
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda release: str(release.get("published_at") or release.get("created_at") or ""),
+        reverse=True,
+    )[0]
+
+
+def _self_release_payload_from_releases(
+    releases: list[dict],
+    *,
+    repository: str,
+    channel: str,
+    platform: str,
+) -> dict:
+    release = _select_release(releases, channel=channel)
+    if release is None:
+        return {
+            "schemaVersion": SELF_PAYLOAD_VERSION,
+            "ok": False,
+            "status": "release-not-found",
+            "repository": repository,
+            "channel": channel,
+            "platform": platform,
+            "apiUrl": _github_releases_api_url(repository),
+            "latestEndpointUsed": False,
+            "reason": "no non-draft GitHub release matched the requested channel",
+        }
+    asset = _release_asset_for_platform(release, platform)
+    return {
+        "schemaVersion": SELF_PAYLOAD_VERSION,
+        "ok": asset is not None,
+        "status": "ok" if asset is not None else "asset-not-found",
+        "repository": repository,
+        "channel": channel,
+        "platform": platform,
+        "apiUrl": _github_releases_api_url(repository),
+        "latestEndpointUsed": False,
+        "release": {
+            "tag": release.get("tag_name", ""),
+            "name": release.get("name", ""),
+            "prerelease": bool(release.get("prerelease")),
+            "draft": bool(release.get("draft")),
+            "publishedAt": release.get("published_at", ""),
+            "htmlUrl": release.get("html_url", ""),
+        },
+        "asset": (
+            {
+                "name": asset.get("name", ""),
+                "size": asset.get("size", 0),
+                "browserDownloadUrl": asset.get("browser_download_url", ""),
+            }
+            if asset is not None else None
+        ),
+        "availableAssets": [
+            {
+                "name": item.get("name", ""),
+                "size": item.get("size", 0),
+                "browserDownloadUrl": item.get("browser_download_url", ""),
+            }
+            for item in release.get("assets", [])
+        ],
+    }
+
+
+def _self_latest_payload(repository: str, channel: str, platform: str) -> dict:
+    try:
+        releases = _fetch_github_releases(repository)
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        return {
+            "schemaVersion": SELF_PAYLOAD_VERSION,
+            "ok": False,
+            "status": "release-query-failed",
+            "repository": repository,
+            "channel": channel,
+            "platform": platform,
+            "apiUrl": _github_releases_api_url(repository),
+            "latestEndpointUsed": False,
+            "error": str(exc),
+        }
+    return _self_release_payload_from_releases(
+        releases,
+        repository=repository,
+        channel=channel,
+        platform=platform,
+    )
+
+
+def _download_release_asset(url: str, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(url, headers={"User-Agent": f"SemanticScript-sem/{VERSION}"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        with output_path.open("wb") as out:
+            shutil.copyfileobj(response, out)
+
+
+def _self_download_payload(args: argparse.Namespace, *, update_mode: bool) -> dict:
+    repository = getattr(args, "repo", DEFAULT_RELEASE_REPOSITORY)
+    channel = getattr(args, "channel", "prerelease")
+    platform = getattr(args, "platform", DEFAULT_RELEASE_PLATFORM)
+    payload = _self_latest_payload(repository, channel, platform)
+    output_arg = getattr(args, "output", None)
+    if update_mode and output_arg is None:
+        output_path = Path(sys.executable).with_name(Path(sys.executable).name + ".new")
+    elif output_arg is None:
+        asset_name = (payload.get("asset") or {}).get("name") or "sem.exe"
+        output_path = Path.cwd() / asset_name
+    else:
+        output_path = Path(output_arg)
+    payload["action"] = "update" if update_mode else "download"
+    payload["outputPath"] = str(output_path.resolve())
+    payload["applied"] = False
+    payload["nextCommands"] = []
+    if not payload.get("ok"):
+        return payload
+    asset = payload.get("asset") or {}
+    download_url = asset.get("browserDownloadUrl", "")
+    if not download_url:
+        payload["ok"] = False
+        payload["status"] = "asset-url-missing"
+        return payload
+    if getattr(args, "dry_run", False):
+        payload["status"] = "preview"
+        payload["nextCommands"].append(_next_command_entry(
+            "self-download",
+            "download the selected release artifact",
+            argv=["sem", "self", "download", "--channel", channel, "--output", str(output_path)],
+        ))
+        return payload
+    try:
+        _download_release_asset(download_url, output_path)
+    except (OSError, urllib.error.URLError) as exc:
+        payload["ok"] = False
+        payload["status"] = "download-failed"
+        payload["error"] = str(exc)
+        return payload
+    payload["status"] = "downloaded"
+    payload["applied"] = True
+    if update_mode:
+        payload["nextCommands"].append(_next_command_entry(
+            "replace-executable",
+            "replace the running sem executable after this process exits; Windows locks the current exe while it is running",
+            argv=["powershell", "-NoProfile", "-Command", f"Move-Item -Force {str(output_path)!r} {str(Path(sys.executable))!r}"],
+            replayable=False,
+        ))
+    return payload
+
+
+def command_self(args: argparse.Namespace) -> int:
+    if args.self_command == "latest":
+        payload = _self_latest_payload(args.repo, args.channel, args.platform)
+    elif args.self_command == "download":
+        payload = _self_download_payload(args, update_mode=False)
+    elif args.self_command == "update":
+        payload = _self_download_payload(args, update_mode=True)
+    else:
+        print("sem self requires a subcommand", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        if payload.get("status") in {"ok", "downloaded", "preview"}:
+            release = payload.get("release") or {}
+            asset = payload.get("asset") or {}
+            print(f"{payload['status']}: {release.get('tag', '<unknown>')} {asset.get('name', '')}".strip())
+            if payload.get("outputPath"):
+                print(f"output: {payload['outputPath']}")
+        else:
+            print(f"sem self: {payload.get('status', 'error')}: {payload.get('error') or payload.get('reason', '')}", file=sys.stderr)
+    return 0 if payload.get("ok") else 1
+
+
 def command_mcp(args: argparse.Namespace) -> int:
     try:
         from tools import sem_mcp
@@ -13848,7 +16660,7 @@ def build_parser() -> argparse.ArgumentParser:
             f"  Then load versioned skills: {MCP_BOOTSTRAP_TOOL_CALL}\n"
             '  Then: help {"path":"."}\n'
             f"  Capability/API/type/syntax/runtime discovery: {MCP_BOOTSTRAP_DOCS_SEARCH}\n"
-            f"  Optional language smoke: {MCP_BOOTSTRAP_EVAL_CALL}\n"
+            f"  Optional language smoke (writes one line and shows the explicit error branch): {MCP_BOOTSTRAP_EVAL_CALL}\n"
             "\n"
             "For the full startup contract, run: sem bootstrap --json"
         ),
@@ -13863,6 +16675,10 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--strict", action="store_true",
                        help="gate the build on the strict executable wall "
                             "(fallible-contract, effect/authority, SS3xxx rules)")
+    build.add_argument("--standalone", action="store_true",
+                       help="compile a single source file to a native exe directly "
+                            "(no build.sem project required) — tightens the proof loop "
+                            "for one-off snippets instead of scaffolding a throwaway project")
     build.add_argument("path", nargs="?", default=".")
     build.add_argument(
         "--platform", default=None,
@@ -13921,6 +16737,63 @@ def build_parser() -> argparse.ArgumentParser:
     version.add_argument("--json", action="store_true",
                          help="emit machine-readable version facts")
     version.set_defaults(func=command_version)
+
+    self_cmd = subparsers.add_parser(
+        "self",
+        help="discover, download, or stage a release sem executable",
+    )
+    self_cmd.add_argument("--json", action="store_true",
+                          help="emit machine-readable self-management facts")
+    self_subparsers = self_cmd.add_subparsers(dest="self_command", required=True)
+    self_latest = self_subparsers.add_parser(
+        "latest",
+        help="query GitHub releases for the newest matching sem artifact",
+    )
+    self_latest.add_argument("--json", action="store_true",
+                             help="emit machine-readable release facts")
+    self_latest.add_argument("--repo", default=DEFAULT_RELEASE_REPOSITORY,
+                             help="GitHub owner/repo to query")
+    self_latest.add_argument("--channel", choices=("stable", "prerelease", "main", "any"), default="prerelease",
+                             help="release channel to select; uses the releases API, not /releases/latest")
+    self_latest.add_argument("--platform", default=DEFAULT_RELEASE_PLATFORM,
+                             help="artifact platform to select")
+    self_latest.set_defaults(func=command_self)
+
+    self_download = self_subparsers.add_parser(
+        "download",
+        help="download the selected release artifact",
+    )
+    self_download.add_argument("--json", action="store_true",
+                               help="emit machine-readable download facts")
+    self_download.add_argument("--repo", default=DEFAULT_RELEASE_REPOSITORY,
+                               help="GitHub owner/repo to query")
+    self_download.add_argument("--channel", choices=("stable", "prerelease", "main", "any"), default="prerelease",
+                               help="release channel to select")
+    self_download.add_argument("--platform", default=DEFAULT_RELEASE_PLATFORM,
+                               help="artifact platform to select")
+    self_download.add_argument("--output", default=None,
+                               help="destination path; defaults to the asset name in the current directory")
+    self_download.add_argument("--dry-run", action="store_true",
+                               help="resolve the selected release without downloading")
+    self_download.set_defaults(func=command_self)
+
+    self_update = self_subparsers.add_parser(
+        "update",
+        help="download a replacement executable next to the current sem executable",
+    )
+    self_update.add_argument("--json", action="store_true",
+                             help="emit machine-readable update facts")
+    self_update.add_argument("--repo", default=DEFAULT_RELEASE_REPOSITORY,
+                             help="GitHub owner/repo to query")
+    self_update.add_argument("--channel", choices=("stable", "prerelease", "main", "any"), default="prerelease",
+                             help="release channel to select")
+    self_update.add_argument("--platform", default=DEFAULT_RELEASE_PLATFORM,
+                             help="artifact platform to select")
+    self_update.add_argument("--output", default=None,
+                             help="staging path; defaults to the current executable name plus .new")
+    self_update.add_argument("--dry-run", action="store_true",
+                             help="resolve the selected release without downloading")
+    self_update.set_defaults(func=command_self)
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
@@ -13997,6 +16870,10 @@ def build_parser() -> argparse.ArgumentParser:
                        help="delete artifacts instead of printing a dry run")
     clean.add_argument("--all-ignored", action="store_true",
                        help="target all ignored files under the provided paths")
+    clean.add_argument("--pyinstaller-temp", action="store_true",
+                       help="preview or remove stale PyInstaller _MEI* extraction directories from the system temp directory")
+    clean.add_argument("--min-age-seconds", type=int, default=3600,
+                       help="minimum age for --pyinstaller-temp targets (default 3600)")
     clean.add_argument("paths", nargs="*",
                        help="optional git pathspecs; defaults to known generated artifact patterns")
     clean.set_defaults(func=command_clean)
@@ -14370,9 +17247,18 @@ def build_parser() -> argparse.ArgumentParser:
                       help="skip Python-based app harnesses and run only SemanticScript test files")
     test.add_argument("--allow-red-preflight-harnesses", action="store_true",
                       help="run Python harnesses even when semantic preflight diagnostics are still red")
+    # Behavioral gating is ON by default: a non-trivial *.test.sem whose `main`
+    # returns a nonzero ExitCode now FAILS the suite (it is JIT-run and the exit
+    # code observed). Contracts that reach native runtime intrinsics can't JIT-run
+    # and are reported not-executed (never a spurious failure). --execute-contracts
+    # is kept as a no-op for back-compat; --no-execute-contracts restores the old
+    # check-only behavior.
     test.add_argument("--execute-contracts", action="store_true",
-                      help="JIT-run non-trivial *.test.sem contracts and fail on a nonzero exit "
-                           "(behavioral assertion), instead of only check-validating them")
+                      help="(default) JIT-run non-trivial *.test.sem contracts and fail on a nonzero "
+                           "exit (behavioral assertion); kept for back-compat — gating is now on by default")
+    test.add_argument("--no-execute-contracts", action="store_true",
+                      help="restore check-only semantic tests (do not JIT-run contracts; a nonzero "
+                           "main exit will NOT fail the suite)")
     test.add_argument("path", nargs="?", default=".")
     test.set_defaults(func=command_test)
 

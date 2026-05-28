@@ -17,7 +17,7 @@ For an MCP client, start with:
 
 ```json
 agent_docs {"path":"."}
-skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}
+skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"],"full":true}
 help {"path":"."}
 docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}
 ```
