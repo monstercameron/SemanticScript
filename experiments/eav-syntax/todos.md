@@ -59,18 +59,18 @@ Checked items below cite the proving test in `test_eavc.py`.
 # WS1 — Front end & core semantics  (L1, then L2 semantics)
 
 ## 1A. Lexer (§2, §33.1–33.2)
-- [ ] WS1-001 Tokenizer: whitespace-split, trim, ignore blank lines. →test: row tokenization goldens. §2
+- [x] WS1-001 Tokenizer: whitespace-split, trim, ignore blank lines. →test: row tokenization goldens. §2 _(eavc: `test_tokenize_basic_row`, `test_tokenize_string_keeps_spaces_and_quotes`)_
 - [ ] WS1-002 Identifiers `[a-zA-Z][a-zA-Z0-9]*`; reject `_`/`-`/leading-digit in names. →test: invalid-name corpus rejects. §2
 - [ ] WS1-003 Integer literals: decimal, `0x`, `0b`, `_` separator; reject octal/`0`-prefix; leading/trailing/doubled `_` error. →test: each base parses; bad-separator rejects. §2/§33.1
 - [ ] WS1-004 Float `[0-9]+\.[0-9]+`; no leading/trailing dot. →test: `1.5` ok, `.5`/`5.` reject. §2
 - [ ] WS1-005 Negative literals `-N`/`-N.N`, no space after `-`; only in let-init/arg. →test: `-42` ok, `- 42` reject. §2
-- [ ] WS1-006 String literals + escapes `\" \\ \n \t \xNN`; reject `\r \0`; `\u{}` reserved-deferred error. →test: escape table; banned escapes reject. §2/§33.1
+- [x] WS1-006 String literals + escapes `\" \\ \n \t \xNN`; reject `\r \0`; `\u{}` reserved-deferred error. →test: escape table; banned escapes reject. §2/§33.1 _(eavc: `test_tokenize_supported_escapes`, `test_tokenize_hex_escape_ok`, `test_tokenize_banned_escapes_reject`, `test_tokenize_unicode_escape_deferred`)_
 - [ ] WS1-007 Duration literals `<int>{ns,us,ms,s,m,h}` (reserved class; no v0.3 use). →test: lexes, flagged unused. §2/§30.1.2
 - [ ] WS1-008 Repo-path / semver `v…` / `sha256 <64hex>` tokens — manifest positions only. →test: accepted in build.sem, rejected as names. §2/§28
-- [ ] WS1-009 Comments: `#` full-line + trailing; typed-comment tags (`# rationale:` …); `#` literal inside strings. →test: trailing-comment preserved; `#`-in-string not a comment. §2
+- [x] WS1-009 Comments: `#` full-line + trailing; typed-comment tags (`# rationale:` …); `#` literal inside strings. →test: trailing-comment preserved; `#`-in-string not a comment. §2 _(eavc: `test_tokenize_full_line_comment_is_empty`, `test_tokenize_trailing_comment_stripped`, `test_tokenize_hash_inside_string_is_literal`; typed-comment classification treated as plain comments for now)_
 - [ ] WS1-010 Punctuation gate: allow `"… # . / - _ +` (per position); **reject `=`** with "let is positional" hint; `->` unused. →test: `let x T = v` errors. §2/§12
 - [ ] WS1-011 Source format: UTF-8 no BOM; CRLF→LF normalize. →test: CRLF file lexes identically. §33.2
-- [ ] WS1-012 Island indentation: spaces-only (tab = hard error), common-prefix strip, dedent at column-1 token row, mixed = error. →test: tab-indent island rejects; dedent boundary golden. §16/§33.2
+- [x] WS1-012 Island indentation: spaces-only (tab = hard error), common-prefix strip, dedent at column-1 token row, mixed = error. →test: tab-indent island rejects; dedent boundary golden. §16/§33.2 _(eavc: `test_parse_island_body_strips_common_indent`, `test_parse_tab_indent_island_rejected`; mixed-indent error not yet tested)_
 
 ## 1B. Parser & row model (§1, §5)
 - [ ] WS1-020 Four row classes: entity/fact/step/labeled-step; column-1 subject, column-2 predicate. →test: each class parses to correct node. §1
