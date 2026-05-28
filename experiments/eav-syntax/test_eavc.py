@@ -112,6 +112,19 @@ def test_parse_unknown_kind_rejected():
         eavc.parse("x is widget\n")
 
 
+@pytest.mark.parametrize("bad", ["my_op", "my-op", "2bad", "_lead"])
+def test_parse_invalid_entity_names_rejected(bad):
+    # README ss2: identifiers are [a-zA-Z][a-zA-Z0-9]*.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(f"{bad} is operation\n")
+    assert "invalid entity name" in exc.value.message
+
+
+def test_parse_valid_camelcase_name_ok():
+    prog = eavc.parse("myOperation2 is operation\n")
+    assert "myOperation2" in prog.entities
+
+
 def test_parse_labeled_step_row():
     prog = eavc.parse(
         "main is operation\nmain at failed return code\n"

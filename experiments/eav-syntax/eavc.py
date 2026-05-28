@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -191,6 +192,10 @@ STEP_PREDICATES = {
 # Island-introducing predicate: indentation after `body <kind>` is semantic
 # (README ss2). `storage ... body sql` and `htmlTemplate ... body` are islands.
 ISLAND_PREDICATE = "body"
+
+# Internal identifier grammar (README ss2): camelCase, letter-first, no
+# underscores/hyphens/leading digits.
+_IDENT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9]*\Z")
 
 # Universal metadata predicates (README ss6) + universal ss30 declaration
 # predicates, valid on every entity kind.
@@ -378,6 +383,13 @@ def parse(source_text: str) -> Program:
             kind = payload[0]
             if kind not in ENTITY_KINDS:
                 raise EavError(f"unknown entity kind {kind!r} (README ss5)", lineno)
+            if not _IDENT_RE.match(subject):
+                raise EavError(
+                    f"invalid entity name {subject!r}: names are "
+                    f"[a-zA-Z][a-zA-Z0-9]* — no underscores, hyphens, or leading "
+                    f"digits (README ss2)",
+                    lineno,
+                )
             if subject in program.entities:
                 raise EavError(
                     f"duplicate `is` row for entity {subject!r} (README ss17 #1)",

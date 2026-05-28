@@ -60,7 +60,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## 1A. Lexer (§2, §33.1–33.2)
 - [x] WS1-001 Tokenizer: whitespace-split, trim, ignore blank lines. →test: row tokenization goldens. §2 _(eavc: `test_tokenize_basic_row`, `test_tokenize_string_keeps_spaces_and_quotes`)_
-- [ ] WS1-002 Identifiers `[a-zA-Z][a-zA-Z0-9]*`; reject `_`/`-`/leading-digit in names. →test: invalid-name corpus rejects. §2
+- [x] WS1-002 Identifiers `[a-zA-Z][a-zA-Z0-9]*`; reject `_`/`-`/leading-digit in names. →test: invalid-name corpus rejects. §2 _(eavc: `_IDENT_RE` on `is`-row subjects; `test_parse_invalid_entity_names_rejected`, `test_parse_valid_camelcase_name_ok`)_
 - [ ] WS1-003 Integer literals: decimal, `0x`, `0b`, `_` separator; reject octal/`0`-prefix; leading/trailing/doubled `_` error. →test: each base parses; bad-separator rejects. §2/§33.1
 - [ ] WS1-004 Float `[0-9]+\.[0-9]+`; no leading/trailing dot. →test: `1.5` ok, `.5`/`5.` reject. §2
 - [ ] WS1-005 Negative literals `-N`/`-N.N`, no space after `-`; only in let-init/arg. →test: `-42` ok, `- 42` reject. §2
