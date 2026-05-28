@@ -73,11 +73,11 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-012 Island indentation: spaces-only (tab = hard error), common-prefix strip, dedent at column-1 token row, mixed = error. →test: tab-indent island rejects; dedent boundary golden. §16/§33.2 _(eavc: `test_parse_island_body_strips_common_indent`, `test_parse_tab_indent_island_rejected`; mixed-indent error not yet tested)_
 
 ## 1B. Parser & row model (§1, §5)
-- [ ] WS1-020 Four row classes: entity/fact/step/labeled-step; column-1 subject, column-2 predicate. →test: each class parses to correct node. §1
-- [ ] WS1-021 Every entity's first row is `is <kind>`; missing/duplicate `is` errors. →test: §17 #1. §1
+- [x] WS1-020 Four row classes: entity/fact/step/labeled-step; column-1 subject, column-2 predicate. →test: each class parses to correct node. §1 _(eavc: `test_parse_entity_kinds_and_rows`, `test_parse_labeled_step_row`)_
+- [x] WS1-021 Every entity's first row is `is <kind>`; missing/duplicate `is` errors. →test: §17 #1. §1 _(eavc: `test_parse_first_row_must_be_is`, `test_parse_duplicate_is_rejected`, `test_parse_unknown_kind_rejected`)_
 - [ ] WS1-022 Per-kind predicate dispatch from §5 table; unknown predicate for kind = hard parse error. →test: each kind's legal set; one illegal each. §5
 - [ ] WS1-023 Reserved-word table (§2) enforced for entity/var/type names; **exempt** arg-slot/field/variant labels. →test: `arg path …` ok, `path is record` errors. §2
-- [ ] WS1-024 `at LABEL <stepPred> …` labeled-step (one model, §1 row-class 4); label col 3, step col 4+. →test: labeled step parses; `at` not usable as bare predicate. §1/§13
+- [x] WS1-024 `at LABEL <stepPred> …` labeled-step (one model, §1 row-class 4); label col 3, step col 4+. →test: labeled step parses; `at` not usable as bare predicate. §1/§13 _(eavc: `test_parse_labeled_step_row`)_
 - [ ] WS1-025 `async`-on-`call` tolerated-deprecated exception (promotes to task on fmt). →test: `call … async yes` parses with deprecation note. §5
 - [ ] WS1-026 EBNF grammar doc + invalid-example corpus (§29 #1). →test: corpus all-reject. §29#1
 
