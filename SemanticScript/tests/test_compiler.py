@@ -16,6 +16,7 @@ Exits non-zero on first failure, prints a summary otherwise.
 
 import os
 import http.client
+import io
 import json
 import re
 import socket
@@ -96,6 +97,19 @@ def parse_semsc_file_with_imports(path):
     source = path.read_text(encoding="utf-8")
     resolved = semsc._resolve_imports(source, str(path))
     return semsc.parse(resolved)
+
+
+def lint_diag_lines(source):
+    """Parse `source` and return the linter warning lines (stderr) as a list."""
+    prog = semsc.parse(source)
+    buf = io.StringIO()
+    saved = sys.stderr
+    sys.stderr = buf
+    try:
+        semsc.lint(prog)
+    finally:
+        sys.stderr = saved
+    return [line for line in buf.getvalue().splitlines() if line.strip()]
 
 
 def _gui_support_pending_message(message):
@@ -1743,6 +1757,384 @@ def test_strict_requires_effect_capability_or_authority():
     check("strict lint: inline authority covers effect",
           authorized.returncode == 0,
           f"rc={authorized.returncode} stderr={authorized.stderr!r}")
+
+
+def test_role_suffix_accepts_recovery_labels_rejects_vague():
+    # An error edge routed to a recovery/response label (reject the request,
+    # roll back, redirect) names a real control role and must NOT trip
+    # roleSuffixMismatch. A genuinely vague target still fires so the rule
+    # keeps its teeth. Regression guard for the dashboard field-feedback churn
+    # (35 spurious roleSuffixMismatch warnings on correctly-named handlers).
+    src = "\n".join([
+        "operation demo",
+        "output operation demo Int32",
+        "effect demo write database",
+        "authority demo write database",
+        "purpose operation demo \"repro\"",
+        "invariant operation demo \"repro\"",
+        "call openCall sqlite.openDatabase",
+        "argument openCall path String dbPath",
+        "argument openCall mode SqliteOpenMode dbMode",
+        "run openCall",
+        "bind ok db SqliteDatabase openCall",
+        "bind error openError SqliteDatabaseOpenFailure openCall",
+        "branch error source openCall target loginReject",
+        "branch error source openCall target importRollback",
+        "branch error source openCall target registerRedirect",
+        "branch error source openCall target somethingVague",
+        "return value okStatus",
+        "label loginReject",
+        "label importRollback",
+        "label registerRedirect",
+        "label somethingVague",
+        "return value okStatus",
+    ])
+    role_lines = [ln for ln in lint_diag_lines(src) if "roleSuffixMismatch" in ln]
+    accepted_ok = not any(
+        name in " ".join(role_lines)
+        for name in ("loginReject", "importRollback", "registerRedirect"))
+    vague_fires = any("somethingVague" in ln for ln in role_lines)
+    check("lint: recovery labels (reject/rollback/redirect) do not trip roleSuffixMismatch",
+          accepted_ok, f"unexpected role warnings: {role_lines!r}")
+    check("lint: a genuinely vague error-edge label still fires roleSuffixMismatch",
+          vague_fires, f"expected somethingVague to fire; got {role_lines!r}")
+
+
+def test_text_concat_compiles_and_runs():
+    # Native compiler-lowered string concatenation: text.concat left right
+    # buffer capacity -> String, lowering to snprintf("%s%s") into the caller
+    # buffer. No runtime symbol, so it links in every target; fixed format
+    # string, so no injection risk. Closes the "no native string builder" gap.
+    src = "\n".join([
+        "project TextConcatSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main allocate heap",
+        "effect main free heap",
+        "authority main write console.stdout",
+        "authority main allocate heap",
+        "authority main free heap",
+        "memory main heap yes",
+        "async main no",
+        "purpose operation main \"concat smoke\"",
+        "invariant operation main \"prints the concatenation of two string literals\"",
+        "storage local immutable bufBytes ByteCount 64",
+        "storage local immutable leftStr String \"Hello, \"",
+        "storage local immutable rightStr String \"World!\"",
+        "call allocCall c.malloc",
+        "argument allocCall size ByteCount bufBytes",
+        "run allocCall",
+        "bind value buf OpaquePointer allocCall",
+        "call nullCheckCall pointer.isNull",
+        "argument nullCheckCall pointer OpaquePointer buf",
+        "run nullCheckCall",
+        "bind value bufIsNull Bool nullCheckCall",
+        "branch if condition bufIsNull target failed",
+        "defer freeBuf c.free buf",
+        "call concatCall text.concat",
+        "argument concatCall left String leftStr",
+        "argument concatCall right String rightStr",
+        "argument concatCall buffer OpaquePointer buf",
+        "argument concatCall capacity ByteCount bufBytes",
+        "run concatCall",
+        "bind value combined String concatCall",
+        "call putsCall c.puts",
+        "argument putsCall stream String combined",
+        "run putsCall",
+        "ignore value source putsCall type Int32",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+        "label failed",
+        "storage local immutable failCode ExitCode 1",
+        "return value failCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.concat compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    check("text.concat concatenates at runtime",
+          run_proc.returncode == 0 and "Hello, World!" in run_proc.stdout,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r}")
+
+
+def test_text_from_int64_compiles_and_runs():
+    # text.fromInt64 value buffer capacity -> String: the discoverable native
+    # int->string formatter (decimal, signed), links in every target.
+    src = "\n".join([
+        "project FromIntSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main allocate heap",
+        "effect main free heap",
+        "effect main write memory.buffer",
+        "authority main write console.stdout",
+        "authority main allocate heap",
+        "authority main free heap",
+        "authority main write memory.buffer",
+        "memory main heap yes",
+        "async main no",
+        "purpose operation main \"fromInt smoke\"",
+        "invariant operation main \"prints 42 then -7\"",
+        "storage local immutable bufBytes ByteCount 32",
+        "storage local immutable answer Int64 42",
+        "storage local immutable neg Int64 -7",
+        "call allocCall c.malloc",
+        "argument allocCall size ByteCount bufBytes",
+        "run allocCall",
+        "bind value buf OpaquePointer allocCall",
+        "call nullCheckCall pointer.isNull",
+        "argument nullCheckCall pointer OpaquePointer buf",
+        "run nullCheckCall",
+        "bind value bufIsNull Bool nullCheckCall",
+        "branch if condition bufIsNull target failed",
+        "defer freeBuf c.free buf",
+        "call fmtCall text.fromInt64",
+        "argument fmtCall value Int64 answer",
+        "argument fmtCall buffer OpaquePointer buf",
+        "argument fmtCall capacity ByteCount bufBytes",
+        "run fmtCall",
+        "bind value answerStr String fmtCall",
+        "call putsCall c.puts",
+        "argument putsCall stream String answerStr",
+        "run putsCall",
+        "ignore value source putsCall type Int32",
+        "call fmt2Call text.fromInt64",
+        "argument fmt2Call value Int64 neg",
+        "argument fmt2Call buffer OpaquePointer buf",
+        "argument fmt2Call capacity ByteCount bufBytes",
+        "run fmt2Call",
+        "bind value negStr String fmt2Call",
+        "call puts2Call c.puts",
+        "argument puts2Call stream String negStr",
+        "run puts2Call",
+        "ignore value source puts2Call type Int32",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+        "label failed",
+        "storage local immutable failCode ExitCode 1",
+        "return value failCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.fromInt64 compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    out = run_proc.stdout
+    check("text.fromInt64 formats signed decimals",
+          run_proc.returncode == 0 and "42" in out and "-7" in out,
+          f"rc={run_proc.returncode} stdout={out!r}")
+
+
+def test_text_equals_compiles_and_runs():
+    # text.equals left right -> Bool (compiler-lowered strcmp == 0): native
+    # string equality that links in every target.
+    src = "\n".join([
+        "project TextEqualsSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main read memory.buffer",
+        "authority main write console.stdout",
+        "authority main read memory.buffer",
+        "memory main heap no",
+        "async main no",
+        "purpose operation main \"text.equals smoke\"",
+        "invariant operation main \"prints MATCH then NOMATCH\"",
+        "storage local immutable statusOpen String \"open\"",
+        "storage local immutable wantOpen String \"open\"",
+        "storage local immutable wantDone String \"done\"",
+        "storage local immutable matchMsg String \"MATCH\"",
+        "storage local immutable noMsg String \"NOMATCH\"",
+        "call eq1Call text.equals",
+        "argument eq1Call left String statusOpen",
+        "argument eq1Call right String wantOpen",
+        "run eq1Call",
+        "bind value isOpen Bool eq1Call",
+        "branch if condition isOpen target firstMatched",
+        "call no1Call c.puts",
+        "argument no1Call stream String noMsg",
+        "run no1Call",
+        "ignore value source no1Call type Int32",
+        "jump target second",
+        "label firstMatched",
+        "call yes1Call c.puts",
+        "argument yes1Call stream String matchMsg",
+        "run yes1Call",
+        "ignore value source yes1Call type Int32",
+        "label second",
+        "call eq2Call text.equals",
+        "argument eq2Call left String statusOpen",
+        "argument eq2Call right String wantDone",
+        "run eq2Call",
+        "bind value isDone Bool eq2Call",
+        "branch if condition isDone target secondMatched",
+        "call no2Call c.puts",
+        "argument no2Call stream String noMsg",
+        "run no2Call",
+        "ignore value source no2Call type Int32",
+        "jump target done",
+        "label secondMatched",
+        "call yes2Call c.puts",
+        "argument yes2Call stream String matchMsg",
+        "run yes2Call",
+        "ignore value source yes2Call type Int32",
+        "label done",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.equals compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    out = run_proc.stdout
+    check("text.equals: equal strings MATCH, unequal NOMATCH",
+          run_proc.returncode == 0 and "MATCH" in out and "NOMATCH" in out,
+          f"rc={run_proc.returncode} stdout={out!r}")
+
+
+def test_text_concat3_and_length_compile_and_run():
+    # text.concat3 (prefix+value+suffix, the Set-Cookie shape) and text.length
+    # (compiler-lowered strlen) — both link in every target.
+    src = "\n".join([
+        "project TextFamilySmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main allocate heap",
+        "effect main free heap",
+        "effect main read memory.buffer",
+        "effect main write memory.buffer",
+        "authority main write console.stdout",
+        "authority main allocate heap",
+        "authority main free heap",
+        "authority main read memory.buffer",
+        "authority main write memory.buffer",
+        "memory main heap yes",
+        "async main no",
+        "purpose operation main \"text family smoke\"",
+        "invariant operation main \"prints a cookie line then its length\"",
+        "storage local immutable bufBytes ByteCount 128",
+        "storage local immutable cookiePrefix String \"session=\"",
+        "storage local immutable cookieValue String \"abc123\"",
+        "storage local immutable cookieSuffix String \"; HttpOnly\"",
+        "call allocCall c.malloc",
+        "argument allocCall size ByteCount bufBytes",
+        "run allocCall",
+        "bind value buf OpaquePointer allocCall",
+        "call nullCheckCall pointer.isNull",
+        "argument nullCheckCall pointer OpaquePointer buf",
+        "run nullCheckCall",
+        "bind value bufIsNull Bool nullCheckCall",
+        "branch if condition bufIsNull target failed",
+        "defer freeBuf c.free buf",
+        "call cookieCall text.concat3",
+        "argument cookieCall first String cookiePrefix",
+        "argument cookieCall second String cookieValue",
+        "argument cookieCall third String cookieSuffix",
+        "argument cookieCall buffer OpaquePointer buf",
+        "argument cookieCall capacity ByteCount bufBytes",
+        "run cookieCall",
+        "bind value cookie String cookieCall",
+        "call putsCall c.puts",
+        "argument putsCall stream String cookie",
+        "run putsCall",
+        "ignore value source putsCall type Int32",
+        "call lenCall text.length",
+        "argument lenCall value String cookie",
+        "run lenCall",
+        "bind value cookieLen Int64 lenCall",
+        "call printLenCall console.writeIntegerLine",
+        "argument printLenCall value Int64 cookieLen",
+        "run printLenCall",
+        "ignore value source printLenCall type Int32",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+        "label failed",
+        "storage local immutable failCode ExitCode 1",
+        "return value failCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("text.concat3/length compile to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    out = run_proc.stdout
+    check("text.concat3 builds prefix+value+suffix and text.length measures it",
+          run_proc.returncode == 0 and "session=abc123; HttpOnly" in out and "24" in out,
+          f"rc={run_proc.returncode} stdout={out!r}")
+
+
+def test_defer_not_dominated_flags_shared_pre_acquisition_label():
+    # A cleanup defer that does not dominate the exit it cleans up — the
+    # logout-after-failed-login leak class: the reject label is reached both
+    # before the resource is acquired (the open's own failure edge) and after,
+    # so codegen skips the close on the post-acquisition path and leaks.
+    head = "\n".join([
+        "operation {name}",
+        "output operation {name} Int32",
+        "effect {name} read database",
+        "authority {name} read database",
+        "purpose operation {name} \"x\"",
+        "invariant operation {name} \"x\"",
+        "call openCall sqlite.openDatabase",
+        "argument openCall path String dbPath",
+        "argument openCall mode SqliteOpenMode dbMode",
+        "run openCall",
+        "bind ok db SqliteDatabase openCall",
+        "bind error openError SqliteDatabaseOpenFailure openCall",
+    ])
+    leak = head.format(name="leak") + "\n" + "\n".join([
+        "branch error source openCall target sharedReject",
+        "defer closeDb sqlite.closeDatabase db",
+        "call prepCall sqlite.prepareStatement",
+        "argument prepCall database SqliteDatabase db",
+        "argument prepCall sql SqlText someSql",
+        "run prepCall",
+        "bind ok stmt SqliteStatement prepCall",
+        "bind error prepError SqliteStatementPrepareFailure prepCall",
+        "branch error source prepCall target sharedReject",
+        "return value okStatus",
+        "label sharedReject",
+        "return value failStatus",
+    ])
+    safe = head.format(name="safe") + "\n" + "\n".join([
+        "branch error source openCall target openFailed",
+        "defer closeDb sqlite.closeDatabase db",
+        "call prepCall sqlite.prepareStatement",
+        "argument prepCall database SqliteDatabase db",
+        "argument prepCall sql SqlText someSql",
+        "run prepCall",
+        "bind ok stmt SqliteStatement prepCall",
+        "bind error prepError SqliteStatementPrepareFailure prepCall",
+        "branch error source prepCall target dbFailed",
+        "return value okStatus",
+        "label openFailed",
+        "return value failStatus",
+        "label dbFailed",
+        "return value failStatus",
+    ])
+    leak_fires = any("deferNotDominated" in ln for ln in lint_diag_lines(leak))
+    safe_fires = any("deferNotDominated" in ln for ln in lint_diag_lines(safe))
+    check("lint: defer not dominated by shared pre-acquisition reject label fires",
+          leak_fires, "expected deferNotDominated on the shared-reject leak pattern")
+    check("lint: distinct pre-acquisition failure label does not trip deferNotDominated",
+          not safe_fires, "safe per-acquisition idiom must stay clean")
 
 
 def _strict_http_route_source(
@@ -9149,6 +9541,12 @@ def main():
     test_runtime_check_resolution_profiles()
     test_runtime_profiles_control_panic_context()
     test_jit_run_refuses_native_runtime_programs()
+    test_role_suffix_accepts_recovery_labels_rejects_vague()
+    test_defer_not_dominated_flags_shared_pre_acquisition_label()
+    test_text_concat_compiles_and_runs()
+    test_text_concat3_and_length_compile_and_run()
+    test_text_equals_compiles_and_runs()
+    test_text_from_int64_compiles_and_runs()
 
     print("=" * 60)
     if FAILURES:

@@ -323,6 +323,31 @@ class TestFormatSource(unittest.TestCase):
                 with self.assertRaises(semfmt.FormatError):
                     semfmt.format_source(row)
 
+    def test_purpose_accepts_abstraction_subject_kinds(self) -> None:
+        # `purpose <abstraction> NAME "..."` must format cleanly: the compiler's
+        # missingPurpose advisory demands these rows, so the formatter rejecting
+        # them creates an unsatisfiable loop (check wants the row, fmt --check
+        # rejects it). Keep in sync with semsc._PURPOSE_SUBJECT_KINDS.
+        accepted = [
+            'purpose webServer appServer "Serve the dashboard."\n',
+            'purpose capability stdoutWriter "Authorize stdout writes."\n',
+            'purpose record TaskRow "A task row."\n',
+            'purpose resource dbHandle "The database handle."\n',
+            'purpose validator inputCheck "Validate input."\n',
+            'purpose codec taskCodec "Encode a task."\n',
+            'purpose policy retryPolicy "Retry policy."\n',
+        ]
+        for row in accepted:
+            with self.subTest(row=row.strip()):
+                # Should not raise; formatting is a no-op for an already-clean row.
+                semfmt.format_source(row)
+
+    def test_invariant_still_requires_module_or_operation(self) -> None:
+        # invariant accepts only module|operation in the parser, so the formatter
+        # must keep rejecting abstraction subjects for invariant.
+        with self.assertRaises(semfmt.FormatError):
+            semfmt.format_source('invariant webServer appServer "x"\n')
+
 
 class TestCollectPaths(unittest.TestCase):
     def test_collects_supported_files_from_directory_and_skips_third_party(self) -> None:

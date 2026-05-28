@@ -163,6 +163,40 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertIn("capacity writable bytes", operation["runtime"]["runtimeBindingPrecondition"][0]["text"])
         self.assertIn("call escapeHtmlCall http.escapeHtml", operation["usage"]["call"]["rows"])
 
+    def test_docs_get_flags_native_linkability(self) -> None:
+        # A standard-library operation with a SemanticScript body does NOT link
+        # in native/webServer builds (SSCG002). docs get must say so up front so
+        # agents stop designing around it (dashboard field-feedback top time-sink).
+        library = sem._docs_payload("get", operation_name="convert.convertSignedInt64ToString")
+        library_op = library["operation"]
+        self.assertFalse(library_op["nativeLinkability"]["linksInNativeBuild"])
+        self.assertTrue(any("SSCG002" in w for w in library_op["agentWarnings"]))
+        # The STRUCTURED signal must also ride in the compact match list, since
+        # agents commonly read matches[0] directly and must be able to filter on
+        # linksInNativeBuild without parsing the prose warning.
+        self.assertFalse(library["matches"][0]["nativeLinkability"]["linksInNativeBuild"])
+
+        # An operation that lowers to a native runtime binding links fine.
+        native = sem._docs_payload("get", operation_name="http.escapeHtml")
+        native_op = native["operation"]
+        self.assertTrue(native_op["nativeLinkability"]["linksInNativeBuild"])
+        self.assertFalse(any("SSCG002" in w for w in native_op["agentWarnings"]))
+
+    def test_docs_get_returns_record_fields_and_enum_members(self) -> None:
+        # docs get TYPENAME must expose the type's shape so agents stop guessing
+        # magic numbers / field names. Enum members were already covered; record
+        # fields (module-defined records) were not addressable.
+        record = sem._docs_payload("get", operation_name="HttpFetchPolicy")
+        record_type = record["type"]
+        self.assertEqual(record["status"], "ok")
+        self.assertEqual(record_type.get("kind"), "record")
+        field_names = {f["name"] for f in record_type.get("fields", [])}
+        self.assertIn("timeoutMillis", field_names)
+
+        enum = sem._docs_payload("get", operation_name="SqliteOpenMode")
+        case_values = {c["name"]: c["value"] for c in enum["type"].get("cases", [])}
+        self.assertEqual(case_values.get("readWriteCreateSqliteOpenMode"), 6)
+
     def test_docs_get_includes_failure_and_cleanup_rows(self) -> None:
         payload = sem._docs_payload("get", operation_name="http.clientGet")
 
@@ -1632,6 +1666,11 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertIn(".semcache/", gitignore_text)
             self.assertIn(".sem/docs.sqlite", gitignore_text)
             self.assertIn("!sem.lock", gitignore_text)  # lockfile stays committed
+            # WAL sidecars: a project that enables `PRAGMA journal_mode = WAL`
+            # leaves *.db-wal/*.db-shm on disk; the scaffold must ignore them so
+            # they do not leak into git status (dashboard field-feedback).
+            self.assertIn("*.db-wal", gitignore_text)
+            self.assertIn("*.db-shm", gitignore_text)
 
             build_text = (root / "build.sem").read_text(encoding="utf-8")
             # build.sem documents the dependency workflow this scaffold aligns with.
@@ -1959,6 +1998,21 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertTrue(payload["whyItMatters"])
         self.assertTrue(payload["commonFixes"])
         self.assertTrue(payload["nextCommands"])
+
+    def test_explain_covers_defer_and_role_suffix_lints(self) -> None:
+        # The named (non-SS-coded) lints an agent meets while writing handlers
+        # must be discoverable via `sem explain` — they previously returned
+        # "unknown", undercutting the linter's precision.
+        codes = ("deferNotDominated", "roleSuffixMismatch",
+                 "SS3113", "SS3635", "SS3201", "SS3630", "SS3106",
+                 "SS4001", "SS4002", "SS4003", "SS0106")
+        for code in codes:
+            payload = sem._diagnostic_explain_payload(code)
+            self.assertTrue(payload["found"], f"{code} not discoverable via sem explain")
+            self.assertTrue(payload["title"], f"{code} has no title")
+            self.assertTrue(payload["summary"], f"{code} has no summary")
+            self.assertTrue(payload["whyItMatters"], f"{code} has no whyItMatters")
+            self.assertTrue(payload["commonFixes"], f"{code} has no commonFixes")
 
     def test_explain_finds_every_security_rule(self) -> None:
         # Capstone Rec 4: every security rule must be discoverable via
@@ -2977,6 +3031,42 @@ return value 0
         self.assertEqual(payload["executedTests"], 1)
         self.assertTrue(any(item["kind"] == "check" for item in payload["nextCommands"]))
 
+    def test_execute_contracts_gates_on_failing_assertion(self) -> None:
+        # A non-trivial *.test.sem whose main returns a nonzero ExitCode must
+        # FAIL under behavioral gating (execute_contracts=True, the `sem test`
+        # default) and still "pass" under check-only (execute_contracts=False).
+        # Closes the silent-pass gap: a failing assertion previously never gated.
+        failing = (
+            "project FailContract\n"
+            "target console\n"
+            "runtime AgentRuntime 0.1\n"
+            "entry console main\n"
+            "operation main\n"
+            "output operation main ExitCode\n"
+            "async main no\n"
+            "call cmpCall math.equalInt64\n"
+            "argument cmpCall left Int64 oneVal\n"
+            "argument cmpCall right Int64 twoVal\n"
+            "run cmpCall\n"
+            "bind value eq Bool cmpCall\n"
+            "branch if condition eq target ok\n"
+            "storage local immutable failCode ExitCode 1\n"
+            "return value failCode\n"
+            "label ok\n"
+            "storage local immutable okCode ExitCode 0\n"
+            "return value okCode\n"
+            "storage local immutable oneVal Int64 1\n"
+            "storage local immutable twoVal Int64 2\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "fail.test.sem"
+            source.write_text(failing, encoding="utf-8")
+            gated = sem._run_test_payload(source, include_python_harnesses=False, execute_contracts=True)
+            checkonly = sem._run_test_payload(source, include_python_harnesses=False, execute_contracts=False)
+        self.assertEqual(gated["failedTests"], 1, "failing assertion must gate under execute_contracts")
+        self.assertEqual(checkonly["failedTests"], 0, "check-only must not observe the exit code")
+        self.assertEqual(checkonly["passedTests"], 1)
+
     def test_test_payload_tracks_selected_and_skipped_harnesses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3154,6 +3244,20 @@ return value 0
             result = sem.main(["--version", "--json"])
         self.assertEqual(result, 0)
         self.assertTrue(stdout.write.called)
+
+    def test_plain_version_surfaces_runtime_capabilities(self) -> None:
+        # Plain `sem version` must show the native runtimes + syntax cutover, not
+        # just `sem 0.0.1`: an agent checks version to decide whether an
+        # HTTP/SQLite/JSON/auth app is buildable in native at all, and should not
+        # have to reach for --json to learn that.
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            result = sem.main(["version"])
+        self.assertEqual(result, 0)
+        out = buffer.getvalue()
+        self.assertIn(f"sem {sem.VERSION}", out)
+        self.assertIn("native runtimes:", out)
+        self.assertIn("syntax cutover:", out)
 
     def test_release_launcher_routes_internal_tool_script_paths(self) -> None:
         launcher = load_sem_launcher()

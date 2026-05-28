@@ -161,9 +161,9 @@ output operation main ExitCode
 effect main allocate gui.application
 effect main allocate gui.window
 effect main write gui.window
-authority main gui.application allocate
-authority main gui.window allocate
-authority main gui.window write
+authority main allocate gui.application
+authority main allocate gui.window
+authority main write gui.window
 call createApp gui.applicationCreate
 argument createApp title GuiText title
 run createApp

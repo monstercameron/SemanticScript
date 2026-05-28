@@ -350,7 +350,7 @@ STD_DOC_STATIC_TARGETS = {
     },
     "standard.bcrypt": {
         "bcrypt.hashPassword": {
-            "summary": "Hash a plaintext password into a caller-owned bcrypt hash buffer.",
+            "summary": "Hash a plaintext password into a caller-owned bcrypt hash buffer. Returns Int32 0 on success, negative on error (NOTE: opposite of verifyPassword, where 1 means match) — check for negative before trusting the buffer.",
             "inputs": [
                 {"name": "plaintext", "type": "BcryptPlaintextPassword"},
                 {"name": "cost", "type": "Int32"},
@@ -362,7 +362,7 @@ STD_DOC_STATIC_TARGETS = {
             "failureMode": {"kind": "status-code", "text": "Zero means success; negative status reports bad cost, undersized output, random-source failure, or hash failure."},
         },
         "bcrypt.verifyPassword": {
-            "summary": "Verify a plaintext password against a trusted bcrypt hash.",
+            "summary": "Verify a plaintext password against a trusted bcrypt hash. Returns Int32 1 on MATCH, 0 on mismatch, negative on error (inverted from the C 0==success idiom) — branch on negative before treating 0 as a mismatch, or auth ships silently broken.",
             "inputs": [{"name": "plaintext", "type": "BcryptPlaintextPassword"}, {"name": "expectedHash", "type": "BcryptPasswordHash"}],
             "outputs": [{"type": "Int32", "values": ["Int32"]}],
             "effects": [{"action": "read", "path": "memory.buffer"}],
@@ -451,11 +451,12 @@ STD_DOC_STATIC_TARGETS = {
             "failureMode": {"kind": "sentinel-value", "text": "The value is connection-global state; prefer RETURNING when concurrent writes or triggers could hide the intended row."},
         },
         "sqlite.changedRowCount": {
-            "summary": "Read SQLite's changed-row count for the most recent write on the connection.",
+            "summary": "Read how many rows the most recent INSERT/UPDATE/DELETE on the connection changed. Use this to detect a SILENT no-op: an `UPDATE … WHERE id = ?` (or DELETE) that matches no row succeeds with a 0 changed-row count, so without checking this an agent reports success while nothing changed — e.g. toggling a task that does not exist.",
             "inputs": [{"name": "database", "type": "SqliteDatabase"}],
             "outputs": [{"type": "Int32", "values": ["Int32"]}],
             "effects": [{"action": "read", "path": "database"}],
             "capabilities": ["sqliteDatabaseReader"],
+            "failureMode": {"kind": "status-count", "text": "A return of 0 after an UPDATE/DELETE means the WHERE clause matched nothing — branch on `changedRowCount == 0` to surface a not-found instead of a false success. Connection-global: read it immediately after the step on the same connection, before any other write."},
         },
         "sqlite.exec": {
             "summary": "Execute a complete SQL statement directly against a database handle.",
@@ -836,9 +837,32 @@ def _register_json_static_targets() -> None:
         "Int64", "UInt64", "Int32", "UInt32", "Int16", "UInt16", "Int8", "UInt8",
         "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds", "Bool", "Float64", "Float32", "String",
     ]
+    numeric_types = {
+        "Int64", "UInt64", "Int32", "UInt32", "Int16", "UInt16", "Int8", "UInt8",
+        "DurationMilliseconds", "MonotonicMilliseconds", "UtcMilliseconds",
+        "Float64", "Float32",
+    }
     for type_name in primitive_types:
+        if type_name in numeric_types:
+            # For a number, JSON text IS the plain decimal string, so this is the
+            # native, link-in-native/webServer NUMBER-TO-STRING formatter. Agents
+            # reach for this instead of c.snprintf or reading integers as TEXT from
+            # SQLite (the dashboard field-feedback forced workaround). Searchable as
+            # "integer to string" / "format number as text".
+            stringify_summary = (
+                f"Format one {type_name} as text. For numbers the JSON encoding is "
+                f"the plain decimal string, so this is the native {type_name}-to-String "
+                f"formatter (integer/number to string, format number as text) — it links "
+                f"in native and webServer builds, unlike a standard-library converter. "
+                f"Result-shaped (bind ok/error)."
+            )
+        else:
+            stringify_summary = (
+                f"Encode one {type_name} value as JSON text using the high-level "
+                f"Result-shaped stringify alias."
+            )
         json_docs.setdefault(f"json.stringify.{type_name}", _static_target_contract(
-            f"Encode one {type_name} value as JSON text using the high-level Result-shaped stringify alias.",
+            stringify_summary,
             inputs=_static_inputs(("value", type_name)),
             outputs=_static_result_output("JsonText", "JsonEncodeError"),
             failure_kind="result",
@@ -1175,6 +1199,81 @@ def _register_compiler_static_targets() -> None:
             outputs=_static_value_output("Bool"),
         ),
     })
+
+    text_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.text", {})
+    text_docs["text.concat"] = _static_target_contract(
+        "Concatenate two strings into a caller-owned buffer and return it as a "
+        "String (string builder / append / join two strings / build a string). "
+        "Lowers to a bounded snprintf with a fixed compiler-owned format, so there "
+        "is no format-string-injection risk (unlike hand-written c.snprintf) and it "
+        "links in EVERY target including native and webServer (unlike a standard-"
+        "library converter that fails native links). Provide a buffer (e.g. from "
+        "c.malloc) of `capacity` bytes; output is truncated to fit and null-terminated.",
+        inputs=_static_inputs(
+            ("left", "String"), ("right", "String"),
+            ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "read", "path": "memory.buffer"},
+                 {"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is non-null and writable for `capacity` bytes; "
+                     "if the combined length exceeds capacity-1 the result is truncated.",
+    )
+    text_docs["text.concat3"] = _static_target_contract(
+        "Concatenate three strings into a caller-owned buffer and return it as a "
+        "String — the prefix + value + suffix shape (e.g. building a Set-Cookie "
+        "header) in one bounded call. Same safety/linking as text.concat.",
+        inputs=_static_inputs(
+            ("first", "String"), ("second", "String"), ("third", "String"),
+            ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "read", "path": "memory.buffer"},
+                 {"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is writable for `capacity` bytes; output is truncated to fit.",
+    )
+    text_docs["text.fromInt64"] = _static_target_contract(
+        "Format an Int64 as a decimal String into a caller-owned buffer (integer "
+        "to string / number to text / itoa). The discoverable native int→string "
+        "formatter; links in every target. Avoids reading integers as TEXT from "
+        "SQLite or dropping to c.snprintf. (json.stringify.Int64 does the same job.)",
+        inputs=_static_inputs(("value", "Int64"), ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is writable for `capacity` bytes (>= 21 covers any Int64).",
+    )
+    text_docs["text.fromFloat64"] = _static_target_contract(
+        "Format a Float64 as a String into a caller-owned buffer (float/number to "
+        "string) using %g. The discoverable native float→string formatter; links in "
+        "every target.",
+        inputs=_static_inputs(("value", "Float64"), ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
+        outputs=_static_value_output("String"),
+        effects=[{"action": "write", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure buffer is writable for `capacity` bytes.",
+    )
+    text_docs["text.equals"] = _static_target_contract(
+        "Return true when two strings are byte-equal (compiler-lowered strcmp == 0). "
+        "Native string equality / compare strings that links in every target — unlike "
+        "stdlib.string.compareCString, which fails native/webServer links. Lets app "
+        "logic branch on `status == \"open\"` without libc or a SQL round-trip.",
+        inputs=_static_inputs(("left", "String"), ("right", "String")),
+        outputs=_static_value_output("Bool"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure both values are non-null, null-terminated Strings.",
+    )
+    text_docs["text.length"] = _static_target_contract(
+        "Return the byte length of a String (compiler-lowered strlen). Use "
+        "`text.length(value)` then compare to 0 to validate emptiness instead of "
+        "hand-rolling a pointer.loadByte check; links in every target.",
+        inputs=_static_inputs(("value", "String")),
+        outputs=_static_value_output("Int64"),
+        effects=[{"action": "read", "path": "memory.buffer"}],
+        failure_kind="caller-precondition",
+        failure_text="Caller must ensure value is a non-null, null-terminated String.",
+    )
 
     c_docs = STD_DOC_STATIC_TARGETS.setdefault("compiler.c", {})
     heap_cleanup = {"required": True, "strategy": "call c.free on every non-null ownership path", "callTarget": "c.free", "argumentName": "ptr", "argumentType": "OpaquePointer", "resultType": "Void"}
@@ -1757,6 +1856,136 @@ DIAGNOSTIC_EXPLAINERS = {
             "If the target operation is intended to be fallible, declare `output operation OP Result OkType ErrorType` and use `bind ok`, `bind error`, then `branch error source CALL target LABEL`.",
             "For ordinary status/sentinel calls, bind the returned value and branch with an explicit comparison.",
             "Remove the `branch error source` row when the target truly cannot fail."
+        ],
+    },
+    "SS3113": {
+        "title": "column value used after a later same-statement read clobbered it",
+        "summary": "A value from sqlite.columnText/columnBlob/columnName points into the prepared statement's own scratch buffer. A later columnText/columnBlob/columnName on the SAME statement overwrites that buffer, so the earlier value is silently corrupted by the time it is used (rendered, bound, written).",
+        "whyItMatters": [
+            "The corruption is invisible to a casual read — the value looks captured but the bytes are shared and get reused.",
+            "Reading several text columns from one row and using them all later is the natural shape that triggers it."
+        ],
+        "commonFixes": [
+            "Use each columnText value immediately (hydrate / copy / bind) BEFORE the next columnText on the same statement.",
+            "Read integer columns with sqlite.columnInt64 (returned by value — no borrowed buffer) where possible.",
+            "Split the read into one single-column statement per value when several texts must coexist."
+        ],
+    },
+    "SS3635": {
+        "title": "multiple SQLite writes should be atomic",
+        "summary": "An operation performs more than one SQLite write (INSERT/UPDATE/DELETE) without wrapping them in a transaction. A failure between writes leaves the database half-updated.",
+        "whyItMatters": [
+            "Multi-step writes that are not atomic are the classic source of partial/corrupt state after an error.",
+            "A task insert plus its activity-event insert must both commit or both roll back."
+        ],
+        "commonFixes": [
+            "Wrap the writes in `BEGIN IMMEDIATE` … `COMMIT` (with a `ROLLBACK` on the failure path) via sqlite.exec.",
+            "If the writes flow through a helper the linter can't see across, keep the BEGIN/COMMIT in the same operation as the writes."
+        ],
+    },
+    "SS3201": {
+        "title": "dead store: a bound/stored value is never read",
+        "summary": "A `bind` or `storage`/`set` produces a value that no later row reads on any path. Either a use is missing (the value was meant to be consumed) or the row is leftover.",
+        "whyItMatters": [
+            "A dead store is usually a dropped result — e.g. binding a value you forgot to branch on, or a rename that left the old name unused.",
+            "It is also narrative drift: the row claims to matter but nothing depends on it."
+        ],
+        "commonFixes": [
+            "Consume the value (branch on it, pass it as an argument, return it), or remove the row if it is genuinely unused.",
+            "For a deliberately ignored call result, use `ignore value source CALL type T` instead of binding a name."
+        ],
+    },
+    "SS3630": {
+        "title": "unreachable row after terminal control flow",
+        "summary": "A row sits after a `return`/`jump` (or an exhaustive branch) with no label that could route control back to it, so it can never execute.",
+        "whyItMatters": [
+            "Unreachable rows are dead narrative — a reader trusts them but they never run.",
+            "They usually mean a missing label, a misplaced row, or a branch that should have fallen through."
+        ],
+        "commonFixes": [
+            "Add the `label` that should precede the row, or move the row above the terminal transfer.",
+            "Delete the row if it is genuinely dead."
+        ],
+    },
+    "SS3106": {
+        "title": "hidden failure: a fallible call's error channel is not handled",
+        "summary": "A call that can fail has its error left unbound/unbranched, so a failure is silently dropped and execution continues as if it succeeded.",
+        "whyItMatters": [
+            "Silently dropping a failure is the fastest way to ship a program that 'succeeds' while its side effect never happened.",
+            "Every fallible call needs an explicit disposition for both legs."
+        ],
+        "commonFixes": [
+            "Add `bind error <name>Error <ErrorType> <call>` then `branch error source <call> target <failureLabel>`.",
+            "If the call genuinely cannot fail in this context, use the value-only contract and document why."
+        ],
+    },
+    "SS4001": {
+        "title": "vague call name (missing `Call` role suffix)",
+        "summary": "A `call <name> <target>` binding should end in the `Call` role suffix so call rows are visually distinct from values and labels (spec §6 naming roles).",
+        "whyItMatters": [
+            "Role suffixes let a reader (and repair tools) tell at a glance whether a name is a call, a value, an error, or a label.",
+            "Consistent suffixes keep multi-file agent edits coherent."
+        ],
+        "commonFixes": [
+            "Rename the call binding to end in `Call` (e.g. `open` -> `openCall`) and update its `run`/`argument`/`bind` references.",
+            "(A `sem fix --apply-conventions` codemod for these mechanical renames is a planned follow-up.)"
+        ],
+    },
+    "SS4002": {
+        "title": "vague error name (missing `Error` role suffix)",
+        "summary": "A `bind error <name> …` binding should end in the `Error` role suffix so error values are distinguishable from ok values at the call site.",
+        "whyItMatters": [
+            "The error suffix signals the failure channel explicitly, which the failure-flow rules and reviewers rely on.",
+        ],
+        "commonFixes": [
+            "Rename the error binding to end in `Error` (e.g. `openErr` -> `openError`)."
+        ],
+    },
+    "SS4003": {
+        "title": "vague failure name (missing `Failure` role suffix)",
+        "summary": "A `makeError <name> …` output should end in the `Failure` role suffix so constructed error values read as failures.",
+        "whyItMatters": [
+            "The `Failure` suffix marks a value that represents an error cause, distinct from the `Error` binding that captured one.",
+        ],
+        "commonFixes": [
+            "Rename the makeError output to end in `Failure` (e.g. `notFound` -> `notFoundFailure`)."
+        ],
+    },
+    "SS0106": {
+        "title": "unused bind slot",
+        "summary": "A `bind value`/`bind ok`/`bind error` introduces a name that no later row uses. The slot is declared but never consumed.",
+        "whyItMatters": [
+            "An unused bind is usually a forgotten branch or a leftover from an edit.",
+            "For error binds specifically, an unused error often means the failure is being dropped."
+        ],
+        "commonFixes": [
+            "Use the bound name (branch on it, pass it, return it), or drop the bind.",
+            "To discard a call result deliberately, use `ignore value source CALL type T` instead of binding it."
+        ],
+    },
+    "deferNotDominated": {
+        "title": "cleanup defer does not dominate the exit it protects",
+        "summary": "A resource is acquired, an all-paths `defer close…` is registered, and a later failure branches to a reject/fail label — but that SAME label is also reached from a failure edge BEFORE the resource was acquired (typically the acquisition's own failure branch). Because the defer does not dominate the shared label, codegen cannot prove the resource is live there, so the cleanup is skipped on the post-acquisition path and the handle/lock leaks.",
+        "whyItMatters": [
+            "The leak is invisible to `check` and `build`; it only shows up at runtime — e.g. a logout that returns 303 yet never deletes the session because a lingering read lock from a prior failed login blocked the DELETE.",
+            "A defer registered after acquisition only fires at exits it dominates; a shared reject label reachable from before the acquisition is not dominated, so its cleanup is ambiguous and gets dropped."
+        ],
+        "commonFixes": [
+            "Give each pre-acquisition failure its OWN exit label (e.g. `openFailed`) so the shared post-acquisition reject label is dominated by the defer.",
+            "Scope the cleanup to the paths where the resource is live with `deferRunOn <name> <label>`.",
+            "Acquire the resource before any branch that can also target the shared cleanup label, so every path to that label has registered the defer."
+        ],
+    },
+    "roleSuffixMismatch": {
+        "title": "branch-error label should name a failure or recovery role",
+        "summary": "A label targeted by `branch error` / `branchIfError` is where a failure lands, so its name should read as a recognized control role: a past-tense / `Failed` outcome (`openFailed`, `parseFailed`) OR a recovery/response role (`loginReject`, `importRollback`, `registerRedirect`, `retry`, `cleanup`). A vague target (`fooHandler`, `nextThing`) hides what the failure edge does.",
+        "whyItMatters": [
+            "Error-edge targets are read most during review and repair; a role-named label makes the control-flow graph self-documenting (spec §12).",
+            "Recovery/response labels are legitimate failure targets — the rule accepts them, so you do not need to force a `*Failed` suffix onto a label that rejects a request or rolls back a transaction."
+        ],
+        "commonFixes": [
+            "Name the label for its outcome (`…Failed`, or a past-tense `-ed` form) or its recovery role (reject, rollback, redirect, retry, fallback, cleanup, abort, cancel, unauthorized, notFound, timeout, recover, respond, done, exit).",
+            "If the label genuinely just returns an error, a `*Failed` name is clearest; if it recovers (redirect/rollback), name it for that role."
         ],
     },
     "SS3617": {
@@ -2547,6 +2776,14 @@ def _starter_gitignore_text(meta: dict) -> str:
         "__pycache__/",
         ".sem/docs.sqlite",
         ".sem/docs.sqlite-*",
+        "",
+        "# Local SQLite databases an app creates at runtime, including the WAL",
+        "# sidecars (-wal/-shm) that `PRAGMA journal_mode = WAL` leaves on disk.",
+        "# These are runtime state, not source; without the sidecars a `sem new`",
+        "# project that enables WAL leaks *.db-wal/*.db-shm into git status.",
+        "*.db",
+        "*.db-wal",
+        "*.db-shm",
         "",
         "# Keep sem.lock committed: it pins resolved dependency versions and",
         "# checksums so `sem deps sync` is reproducible across machines.",
@@ -4411,6 +4648,40 @@ def _capability_details(facts, module_name: str, capabilities: list[dict]) -> li
     return details
 
 
+def _operation_native_linkability(runtime_rows: dict[str, list[dict]]) -> dict:
+    """Tell an agent whether a standard-library operation links in a native /
+    webServer build, BEFORE they design around it.
+
+    Native and webServer targets do not link the SemanticScript standard
+    library object; only native runtime intrinsics (sqlite.*, json.*, http.*,
+    math.* / memory.* / pointer.* primitives, bcrypt.*) and operations that
+    lower to a runtime binding are callable there. A standard-library operation
+    with an ordinary SemanticScript body (e.g. convert.convertSignedInt64ToString)
+    compiles and `check`s clean but fails the native build loudly with SSCG002.
+    The dashboard field log ranked discovering this late as a top time-sink.
+    """
+    lowers_to_binding = bool(runtime_rows.get("runtimeBinding")) or any(
+        "runtimeBinding" in row.get("values", []) or row.get("text") == "runtimeBinding"
+        for row in runtime_rows.get("operationBody", [])
+    )
+    if lowers_to_binding:
+        return {
+            "linksInNativeBuild": True,
+            "note": "Lowers to a native runtime binding (runtimeBinding); links "
+                    "in native and webServer builds.",
+        }
+    return {
+        "linksInNativeBuild": False,
+        "note": "Standard-library operation with a SemanticScript body. Native "
+                "and webServer builds link only native intrinsics and "
+                "compiler-lowered DSLs, so calling this from a native/webServer "
+                "target fails the build with SSCG002 (it works under console/JIT "
+                "builds). Prefer a native intrinsic (sqlite.*, json.*, http.*, "
+                "math.*, memory.*, bcrypt.*) or a lowered DSL (sql body / "
+                "jsonBody / html template) on those targets.",
+    }
+
+
 def _operation_visibility(operation, exports: list[dict], runtime_rows: dict[str, list[dict]]) -> dict:
     runtime_internal = bool(runtime_rows.get("runtimeBinding") or runtime_rows.get("runtimeBindingPrecondition"))
     operation_body_runtime = any(
@@ -4429,8 +4700,19 @@ def _operation_visibility(operation, exports: list[dict], runtime_rows: dict[str
     }
 
 
-def _operation_agent_warnings(visibility: dict, capability_details: list[dict]) -> list[str]:
+def _operation_agent_warnings(visibility: dict, capability_details: list[dict], native_linkability: dict | None = None) -> list[str]:
     warnings = []
+    if native_linkability is not None and not native_linkability.get("linksInNativeBuild", True):
+        # Keep this string free of call-target tokens (the intrinsic list lives
+        # in nativeLinkability.note, which is NOT indexed for search). agentWarnings
+        # IS part of the FTS search text, so naming specific targets here would
+        # make every library op match a search for that target.
+        warnings.append(
+            "Not linkable in native or webServer builds (SSCG002): standard-library "
+            "operation with a SemanticScript body. On those targets use a native "
+            "runtime intrinsic or a compiler-lowered DSL instead; available under "
+            "interpreter and just-in-time builds."
+        )
     if visibility.get("apiTier") == "helper":
         warnings.append("Unexported helper API: prefer exported standard-library operations when one exists.")
     hidden_capabilities = [detail["name"] for detail in capability_details if not detail.get("exported", False)]
@@ -4890,6 +5172,7 @@ def _std_operation_doc_payload(facts, path: Path, operation, summary_tag: str) -
     purpose_rows = text_rows.get("purpose", [])
     invariant_rows = text_rows.get("invariant", [])
     visibility = _operation_visibility(operation, exports, runtime_rows)
+    native_linkability = _operation_native_linkability(runtime_rows)
     return {
         "module": module_name,
         "moduleName": module_short_name,
@@ -4899,7 +5182,8 @@ def _std_operation_doc_payload(facts, path: Path, operation, summary_tag: str) -
         "location": _line_payload(operation.line),
         "sourceFile": str(path.resolve()),
         "visibility": visibility,
-        "agentWarnings": _operation_agent_warnings(visibility, capability_details),
+        "nativeLinkability": native_linkability,
+        "agentWarnings": _operation_agent_warnings(visibility, capability_details, native_linkability),
         "summary": summary,
         "summarySource": summary_source,
         "purpose": _first_text(purpose_rows),
@@ -4958,6 +5242,13 @@ def _std_doc_list_item(operation_doc: dict) -> dict:
         "location": operation_doc["location"],
         "sourceFile": operation_doc["sourceFile"],
         "visibility": operation_doc["visibility"],
+        # Carry the STRUCTURED native-link signal into the compact match list,
+        # not just the prose agentWarning: agents commonly read matches[0]
+        # directly (docs get returns {matches:[...]}) and a machine consumer must
+        # be able to filter "links in native/webServer build" without parsing the
+        # SSCG002 warning text. See TODOS hit-list #1 / the "checks clean, won't
+        # link" trust gap.
+        "nativeLinkability": operation_doc.get("nativeLinkability"),
         "agentWarnings": operation_doc.get("agentWarnings", []),
         "purpose": operation_doc.get("purpose", ""),
         "invariants": operation_doc.get("invariants", []),
@@ -5383,6 +5674,41 @@ def _module_call_targets(facts, module_name: str) -> list[dict]:
     return targets
 
 
+def _module_record_type_docs(facts, module_name: str, path: Path) -> list[dict]:
+    """Build type-doc payloads for the records a module declares so that
+    `docs get <RecordName>` returns the record's fields. `facts.records` maps a
+    record name to a list of (fieldName, fieldType) pairs."""
+    short = _std_module_short_name(module_name)
+    records = getattr(facts, "records", {}) or {}
+    docs = []
+    for record_name in sorted(records):
+        fields = [{"name": field_name, "type": field_type}
+                  for field_name, field_type in records[record_name]]
+        field_summary = ", ".join(f"{f['name']}:{f['type']}" for f in fields)
+        docs.append({
+            "kind": "record",
+            "module": module_name,
+            "moduleName": short,
+            "name": record_name,
+            "qualifiedName": f"{short}.{record_name}",
+            "fullName": f"{module_name}.{record_name}",
+            "summary": f"Record `{record_name}` {{ {field_summary} }}." if fields
+                       else f"Record `{record_name}` (no fields).",
+            "representation": "record",
+            "repr": "record",
+            "underlyingType": "",
+            "cases": [],
+            "fields": fields,
+            "usage": [],
+            "exampleRows": [],
+            "source": "module-record",
+            "visibility": {"exported": True, "public": True, "internal": False,
+                           "apiTier": "type-contract", "reason": "module-record"},
+            "sourceFile": str(path.resolve()),
+        })
+    return docs
+
+
 def _std_module_doc_payload(facts, path: Path, operations: list[dict], summary_tag: str) -> dict:
     module_name = _row_value(facts, "module")
     module_short_name = _std_module_short_name(module_name)
@@ -5415,6 +5741,7 @@ def _std_module_doc_payload(facts, path: Path, operations: list[dict], summary_t
         "operationCount": len(operations),
         "publicOperationCount": len(public_operations),
         "callTargets": call_targets,
+        "records": _module_record_type_docs(facts, module_name, path),
     }
 
 
@@ -5423,6 +5750,7 @@ def _compiler_module_summary(module_name: str) -> str:
         "compiler.console": "Compiler-lowered console stdout targets that do not require a standard-library import.",
         "compiler.math": "Compiler-lowered arithmetic, comparison, conversion, and checked arithmetic targets.",
         "compiler.pointer": "Compiler-lowered pointer and byte-buffer primitives.",
+        "compiler.text": "Compiler-lowered string primitives (e.g. text.concat) that link in every target.",
         "compiler.c": "Selected compiler-lowered C runtime targets that require explicit effects and ownership handling.",
     }
     return summaries.get(module_name, "Compiler-lowered call targets.")
@@ -5853,7 +6181,8 @@ def _docs_payload(
     ]
     matches = [operation for operation in searchable_operations if _std_operation_matches(operation, operation_name)]
     target_matches = [] if matches else [target for target in _module_targets(modules) if _std_target_matches(target, operation_name)]
-    type_docs = _static_type_docs(module_name)
+    record_type_docs = [record for module in modules for record in module.get("records", [])]
+    type_docs = _static_type_docs(module_name) + record_type_docs
     type_matches = [] if matches or target_matches else [type_doc for type_doc in type_docs if _type_doc_matches(type_doc, operation_name)]
     if not matches and not target_matches and not type_matches and not inventory_blocked:
         libc_target = _libc_target_doc(operation_name)
@@ -9848,6 +10177,16 @@ def _execute_semantic_contract(test_path: Path, timeout: int = 20) -> dict:
     if any(marker in stderr for marker in compile_failure_markers):
         return {"executed": False, "exitCode": proc.returncode,
                 "reason": "not standalone-runnable under --run (no entry/context or codegen-only failure); check-validated only"}
+    # A contract that reaches a native runtime intrinsic (sqlite.*, http.*,
+    # bcrypt.*, json document API, …) cannot JIT-run: the in-process JIT links
+    # no native adapters and refuses with a clear message + exit 3. That is NOT
+    # an assertion failure — the contract is behaviorally untested under JIT, so
+    # report not-executed (it must be exercised from a built exe / runtime
+    # harness). Without this, gating-on would falsely fail every native test.
+    if "native runtime intrinsics" in stderr and "in-process JIT" in stderr:
+        return {"executed": False, "exitCode": proc.returncode,
+                "reason": "uses native runtime intrinsics not available under the in-process JIT; "
+                          "exercise it from a built executable or a runtime harness instead"}
     if proc.returncode == 0:
         return {"executed": True, "exitCode": 0, "reason": "exited 0"}
     return {"executed": True, "exitCode": proc.returncode,
@@ -13001,7 +13340,24 @@ def command_version(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
+        # Plain `sem version` previously printed only `sem 0.0.1`, hiding the one
+        # thing an agent checks version for first: which native runtimes exist
+        # (they decide whether an HTTP/SQLite/JSON/auth app is achievable in
+        # native builds at all). Surface the enabled runtimes + syntax cutover
+        # here so the capability check no longer requires --json.
         print(f"sem {VERSION}")
+        flags = payload.get("runtimeFeatureFlags", {})
+        enabled = sorted(name for name, on in flags.items() if on)
+        print("native runtimes: " + (", ".join(enabled) if enabled else "none detected"))
+        counts = payload.get("syntax", {}).get("statusCounts", {})
+        if counts:
+            print(
+                "syntax cutover: "
+                f"{counts.get('implemented', 0)} implemented, "
+                f"{counts.get('partial', 0)} partial, "
+                f"{counts.get('notImplemented', 0)} not implemented"
+            )
+        print("(run `sem version --json` for the full machine-readable report)")
     return 0
 
 
@@ -13411,7 +13767,7 @@ def command_test(args: argparse.Namespace) -> int:
         Path(args.path),
         include_python_harnesses=not args.skip_python_harnesses,
         allow_red_preflight_harnesses=bool(getattr(args, "allow_red_preflight_harnesses", False)),
-        execute_contracts=bool(getattr(args, "execute_contracts", False)),
+        execute_contracts=not bool(getattr(args, "no_execute_contracts", False)),
     )
     if args.json:
         payload = _compact_test_payload_for_cli(Path(args.path), payload, full=bool(getattr(args, "full", False)))
@@ -14370,9 +14726,18 @@ def build_parser() -> argparse.ArgumentParser:
                       help="skip Python-based app harnesses and run only SemanticScript test files")
     test.add_argument("--allow-red-preflight-harnesses", action="store_true",
                       help="run Python harnesses even when semantic preflight diagnostics are still red")
+    # Behavioral gating is ON by default: a non-trivial *.test.sem whose `main`
+    # returns a nonzero ExitCode now FAILS the suite (it is JIT-run and the exit
+    # code observed). Contracts that reach native runtime intrinsics can't JIT-run
+    # and are reported not-executed (never a spurious failure). --execute-contracts
+    # is kept as a no-op for back-compat; --no-execute-contracts restores the old
+    # check-only behavior.
     test.add_argument("--execute-contracts", action="store_true",
-                      help="JIT-run non-trivial *.test.sem contracts and fail on a nonzero exit "
-                           "(behavioral assertion), instead of only check-validating them")
+                      help="(default) JIT-run non-trivial *.test.sem contracts and fail on a nonzero "
+                           "exit (behavioral assertion); kept for back-compat — gating is now on by default")
+    test.add_argument("--no-execute-contracts", action="store_true",
+                      help="restore check-only semantic tests (do not JIT-run contracts; a nonzero "
+                           "main exit will NOT fail the suite)")
     test.add_argument("path", nargs="?", default=".")
     test.set_defaults(func=command_test)
 

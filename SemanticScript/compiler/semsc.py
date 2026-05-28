@@ -3473,9 +3473,17 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         prog.capabilities[args[0]] = {"effect": args[1], "access": args[2]}
         return
     if verb == "authority":
-        # authority OPERATION EFFECT_PATH ACCESS  (top-level grant form)
+        # authority OPERATION ACTION EFFECT_PATH  (ACTION first — the SAME order
+        # as the operation-body `authority` form and as `effect` rows). The order
+        # is enforced for every authority row by `_canonicalize_syntax_row`
+        # (which rejects the legacy PATH-ACTION order and points at
+        # `sem migrate-syntax`); by the time a row reaches here it is already
+        # ACTION-first, and the coverage consumer reads the stored text as
+        # "ACTION EFFECT_PATH" (access=parts[0], effect=parts[1]). The previous
+        # comment here claimed `EFFECT_PATH ACCESS`, which never matched the
+        # consumer and described a grant that silently never applied.
         if len(args) < 3:
-            raise SyntaxError("authority requires: authority TARGET EFFECT_PATH ACCESS")
+            raise SyntaxError("authority requires: authority OPERATION ACTION EFFECT_PATH")
         prog.hard_metadata.setdefault(args[0], {}).setdefault(
             "authority", []).append(" ".join(args[1:]))
         return
@@ -11313,6 +11321,126 @@ class Codegen:
                                                         name=f"{call_name}_res")
             return
 
+        # Compiler-lowered safe string concatenation:
+        #   text.concat left:String right:String buffer:OpaquePointer
+        #               capacity:ByteCount -> String
+        # Lowers to snprintf(buffer, capacity, "%s%s", left, right) and returns
+        # the (bounded, null-terminated) buffer as a String. Because the format
+        # string is fixed and compiler-owned there is no format-string-injection
+        # risk (unlike hand-written c.snprintf), and because it emits no runtime
+        # symbol it links in EVERY target — native and webServer included —
+        # unlike a standard-library converter that fails native links (SSCG002).
+        # This is the native string-builder the field log kept reaching for.
+        if target == "text.concat":
+            args_map = call["args"]
+
+            def _concat_arg(arg_name):
+                arg_sym = args_map.get(arg_name)
+                if arg_sym is None:
+                    raise ValueError(
+                        f"{call_name}: text.concat requires args left, right, "
+                        f"buffer, capacity (missing `{arg_name}`)")
+                return resolve(arg_sym)
+
+            left_str = self._coerce_for_libc(builder, _concat_arg("left"), "OpaquePointer")
+            right_str = self._coerce_for_libc(builder, _concat_arg("right"), "OpaquePointer")
+            out_buffer = self._coerce_for_libc(builder, _concat_arg("buffer"), "OpaquePointer")
+            out_capacity = self._coerce_for_libc(builder, _concat_arg("capacity"), "Int64")
+            concat_snprintf = self._libc_func("snprintf")
+            concat_fmt = self._i8p(builder, "%s%s")
+            builder.call(concat_snprintf,
+                         [out_buffer, out_capacity, concat_fmt, left_str, right_str])
+            self.provenance.record_external("snprintf", call)
+            call["result"] = out_buffer
+            return
+
+        # text.concat3 first:String second:String third:String
+        #              buffer:OpaquePointer capacity:ByteCount -> String
+        # Three-way variant for the common prefix + value + suffix shape (e.g.
+        # building a `Set-Cookie` header) in one bounded call. Same safety as
+        # text.concat: fixed compiler-owned format, links in every target.
+        if target == "text.concat3":
+            args_map = call["args"]
+
+            def _concat3_arg(arg_name):
+                arg_sym = args_map.get(arg_name)
+                if arg_sym is None:
+                    raise ValueError(
+                        f"{call_name}: text.concat3 requires args first, second, "
+                        f"third, buffer, capacity (missing `{arg_name}`)")
+                return resolve(arg_sym)
+
+            first_str = self._coerce_for_libc(builder, _concat3_arg("first"), "OpaquePointer")
+            second_str = self._coerce_for_libc(builder, _concat3_arg("second"), "OpaquePointer")
+            third_str = self._coerce_for_libc(builder, _concat3_arg("third"), "OpaquePointer")
+            c3_buffer = self._coerce_for_libc(builder, _concat3_arg("buffer"), "OpaquePointer")
+            c3_capacity = self._coerce_for_libc(builder, _concat3_arg("capacity"), "Int64")
+            c3_snprintf = self._libc_func("snprintf")
+            c3_fmt = self._i8p(builder, "%s%s%s")
+            builder.call(c3_snprintf,
+                         [c3_buffer, c3_capacity, c3_fmt, first_str, second_str, third_str])
+            self.provenance.record_external("snprintf", call)
+            call["result"] = c3_buffer
+            return
+
+        # text.length value:String -> Int64
+        # Compiler-lowered strlen. Replaces the hand-written pointer.loadByte
+        # empty-check boilerplate (length == 0 means empty) and links everywhere.
+        if target == "text.length":
+            len_sym = call["args"].get("value")
+            if len_sym is None:
+                raise ValueError(f"{call_name}: text.length requires arg `value`")
+            len_str = self._coerce_for_libc(builder, resolve(len_sym), "OpaquePointer")
+            strlen_fn = self._libc_func("strlen")
+            self.provenance.record_external("strlen", call)
+            call["result"] = builder.call(strlen_fn, [len_str], name=f"{call_name}_len")
+            return
+
+        # text.equals left:String right:String -> Bool
+        # Compiler-lowered strcmp(left, right) == 0. Native string equality that
+        # links in every target — unlike stdlib.string.compareCString, which is a
+        # standard-library op and fails native/webServer links (SSCG002). Lets app
+        # logic branch on `status == "open"` without dropping to libc or SQL.
+        if target == "text.equals":
+            eq_args = call["args"]
+            eq_left_sym = eq_args.get("left")
+            eq_right_sym = eq_args.get("right")
+            if eq_left_sym is None or eq_right_sym is None:
+                raise ValueError(f"{call_name}: text.equals requires args `left` and `right`")
+            eq_left = self._coerce_for_libc(builder, resolve(eq_left_sym), "OpaquePointer")
+            eq_right = self._coerce_for_libc(builder, resolve(eq_right_sym), "OpaquePointer")
+            strcmp_fn = self._libc_func("strcmp")
+            self.provenance.record_external("strcmp", call)
+            cmp_result = builder.call(strcmp_fn, [eq_left, eq_right], name=f"{call_name}_cmp")
+            call["result"] = builder.icmp_signed(
+                "==", cmp_result, ir.Constant(cmp_result.type, 0), name=f"{call_name}_eq")
+            return
+
+        # text.fromInt64 value:Int64 buffer:OpaquePointer capacity:ByteCount -> String
+        # text.fromFloat64 value:Float64 buffer:OpaquePointer capacity:ByteCount -> String
+        # The discoverable native number-to-string formatter, in the namespace an
+        # agent actually looks in (json.stringify.Int64 does the same job but is
+        # undiscoverable for "format a number"). Compiler-lowered snprintf into the
+        # caller buffer; links in every target.
+        if target in ("text.fromInt64", "text.fromFloat64"):
+            fmt_args = call["args"]
+            if "value" not in fmt_args or "buffer" not in fmt_args or "capacity" not in fmt_args:
+                raise ValueError(
+                    f"{call_name}: {target} requires args value, buffer, capacity")
+            fmt_buffer = self._coerce_for_libc(builder, resolve(fmt_args["buffer"]), "OpaquePointer")
+            fmt_capacity = self._coerce_for_libc(builder, resolve(fmt_args["capacity"]), "Int64")
+            if target == "text.fromInt64":
+                fmt_value = coerce_i64_for_non_math_abi(resolve(fmt_args["value"]))
+                fmt_spec = self._i8p(builder, "%lld")
+            else:
+                fmt_value = self._coerce_for_libc(builder, resolve(fmt_args["value"]), "Float64")
+                fmt_spec = self._i8p(builder, "%g")
+            fmt_snprintf = self._libc_func("snprintf")
+            builder.call(fmt_snprintf, [fmt_buffer, fmt_capacity, fmt_spec, fmt_value])
+            self.provenance.record_external("snprintf", call)
+            call["result"] = fmt_buffer
+            return
+
         # C standard library call. Targets of the form `c.<name>` look up the
         # signature in libc_registry, declare the LLVM extern on demand, and
         # emit a direct call. The args are matched by source-order: each
@@ -17013,6 +17141,119 @@ def validate_strict_executable(prog: Program) -> None:
         _strict_validate_secret_zeroing(prog, op, calls)
 
 
+# Branch labels reached from a failure edge (`branch error` / `branchIfError`)
+# should read as a recognized control role so the control-flow graph is
+# self-documenting (spec §12). The original rule accepted only past-tense /
+# `Failed` forms, which fired spuriously on the most common handler idiom:
+# routing a failure to a shared *recovery/response* label (reject the request,
+# roll back the transaction, redirect to a safe page). Those labels name a real
+# control role, not a failure cause, so they are legitimate. We accept them
+# explicitly here in addition to past-tense forms. A label that names neither a
+# past-tense outcome nor a known recovery/response role (e.g. `target foo`)
+# still fires, so the rule keeps its teeth against genuinely vague targets.
+_BRANCH_LABEL_RECOVERY_ROLES = frozenset({
+    "reject", "rollback", "redirect", "retry", "fallback", "cleanup",
+    "abort", "cancel", "unauthorized", "forbidden", "notfound",
+    "timeout", "unavailable", "recover", "respond", "response",
+    "error", "failure", "done", "exit",
+})
+
+
+def _branch_transfer_target(verb: str, args: list) -> str | None:
+    """Return the label a control-transfer row jumps to, or None."""
+    if verb == "branch" and len(args) >= 5 and args[0] in ("if", "error") and args[3] == "target":
+        return args[4]
+    if verb == "branch" and len(args) >= 3 and args[0] == "else" and args[1] == "target":
+        return args[2]
+    if verb == "branchIfError" and len(args) >= 2:
+        return args[1]
+    if verb == "branchIf" and len(args) >= 2:
+        return args[1]
+    if verb == "jump" and len(args) >= 2 and args[0] == "target":
+        return args[1]
+    if verb == "case" and len(args) >= 2:
+        return args[1]
+    if verb == "done" and args:
+        return args[0]
+    return None
+
+
+def _check_defer_dominates_exit_labels(op: Operation, diags) -> None:
+    """Flag a cleanup defer that does not dominate an exit it should clean up.
+
+    The hazard (a real silent-failure class observed in the field — a logout
+    that returned 303 while leaking the DB connection and skipping the DELETE):
+    a resource is acquired, an all-paths `defer close…` is registered, and a
+    later failure branches to a SHARED reject/fail label — but that same label
+    is ALSO reached from a failure branch BEFORE the resource was acquired (the
+    acquisition's own failure edge). The defer therefore does not dominate the
+    label: codegen cannot prove the resource is live there, so the cleanup is
+    skipped on the post-acquisition path and the handle/lock leaks.
+
+    The safe idiom is to give the pre-acquisition failure its OWN exit label so
+    the shared cleanup label is dominated by the defer (or to scope the defer
+    with `deferRunOn`). We fire when a label is targeted both strictly before
+    and strictly after an all-paths defer, the label is declared after the
+    defer (a forward exit handler), and its body returns.
+    """
+    defers = _strict_collect_defers(op)
+    if not defers:
+        return
+    label_decl_line = {}
+    for verb, args, lineno in op.lines:
+        if verb == "label" and args:
+            label_decl_line[args[0]] = lineno
+    transfers = []  # (label, lineno)
+    for verb, args, lineno in op.lines:
+        target = _branch_transfer_target(verb, args)
+        if target is not None:
+            transfers.append((target, lineno))
+
+    def label_body_returns(label_name: str) -> bool:
+        return any(v == "return" for v, _a, _ln in _strict_label_body_lines(op, label_name))
+
+    reported = set()
+    for defer_info in defers:
+        if not _strict_defer_is_all_paths(defer_info):
+            continue  # deferRunOn-scoped cleanup is intentionally path-filtered
+        d_line = defer_info["line"]
+        targeted_before = {lbl for lbl, ln in transfers if ln < d_line}
+        targeted_after = {lbl for lbl, ln in transfers if ln > d_line}
+        for lbl in sorted(targeted_before & targeted_after):
+            if lbl in reported:
+                continue
+            decl = label_decl_line.get(lbl)
+            if decl is None or decl <= d_line:
+                continue  # only forward exit handlers, not loop heads above the defer
+            if not label_body_returns(lbl):
+                continue
+            reported.add(lbl)
+            earlier = min(ln for l2, ln in transfers if l2 == lbl and ln < d_line)
+            diags.append((d_line,
+                f"deferNotDominated: defer `{defer_info['name']}` may be skipped at "
+                f"label `{lbl}`, which is also reached before the resource is "
+                f"acquired (line {earlier}); the cleanup does not dominate that exit "
+                f"so the resource can leak. Give the pre-acquisition failure its own "
+                f"exit label, or scope the defer with `deferRunOn`."))
+
+
+def _branch_label_names_a_role(label: str) -> bool:
+    """True when an error-edge target label reads as a recognized control role.
+
+    Accepts past-tense / `Failed` forms (the original contract) plus a curated
+    set of recovery/response roles, matched against the label's TRAILING
+    camelCase word only (not a substring), so `loginReject` / `importRollback`
+    / `registerRedirect` pass while a genuinely vague target (`fooHandler`,
+    `nextThing`) still fires. Exact-word matching keeps the rule's teeth: a
+    label must actually END IN a role word, not merely contain its letters.
+    """
+    if label.endswith("Failed") or label.endswith("ed"):
+        return True
+    trailing_word = re.search(r"[A-Z][a-z0-9]*$", label)
+    last = (trailing_word.group(0) if trailing_word else label).lower()
+    return last in _BRANCH_LABEL_RECOVERY_ROLES
+
+
 def lint(prog: Program, strict: bool = False):
     """Walk the parsed Program and emit linter diagnostics to stderr.
 
@@ -17146,9 +17387,9 @@ def lint(prog: Program, strict: bool = False):
                     lbl = args[1]
                     label_references.append((lbl, lineno, "branchIfError"))
                     branchIfError_targets.setdefault(lbl, []).append((call_name, lineno))
-                    if not (lbl.endswith("Failed") or lbl.endswith("ed")):
+                    if not _branch_label_names_a_role(lbl):
                         diags.append((lineno,
-                            f"roleSuffixMismatch: branch label `{lbl}` should end with Failed or a past-tense -ed form"))
+                            f"roleSuffixMismatch: branch label `{lbl}` should name a failure (Failed / past-tense -ed) or a recovery role (reject, rollback, redirect, ...)"))
             elif verb == "branchIf" and len(args) >= 2:
                 label_references.append((args[1], lineno, "branchIf"))
                 # branchIf 3-arg legacy form: also record the false-leg label
@@ -17165,9 +17406,9 @@ def lint(prog: Program, strict: bool = False):
                     calls[call_name]["related_lines"].append(lineno)
                 label_references.append((args[4], lineno, "branch error"))
                 branchIfError_targets.setdefault(args[4], []).append((call_name, lineno))
-                if not (args[4].endswith("Failed") or args[4].endswith("ed")):
+                if not _branch_label_names_a_role(args[4]):
                     diags.append((lineno,
-                        f"roleSuffixMismatch: branch label `{args[4]}` should end with Failed or a past-tense -ed form"))
+                        f"roleSuffixMismatch: branch label `{args[4]}` should name a failure (Failed / past-tense -ed) or a recovery role (reject, rollback, redirect, ...)"))
                 if args[4] in labels_declared:
                     operation_has_loop = True
             elif verb == "branch" and len(args) >= 3 and args[0] == "else" and args[1] == "target":
@@ -17263,6 +17504,10 @@ def lint(prog: Program, strict: bool = False):
                 diags.append((callers[0][1],
                     f"failureLabelAggregation: label `{lbl}` is targeted by {len(distinct)} distinct calls; "
                     f"makeError at the shared label cannot pin the cause (§12)"))
+
+    # ---- per-operation: defer must dominate the exits it cleans up ----
+    for op in prog.operations.values():
+        _check_defer_dominates_exit_labels(op, diags)
 
     # ---- module-level: purpose on contract-heavy abstractions ----
     _check_purpose_on_abstractions(prog, diags)

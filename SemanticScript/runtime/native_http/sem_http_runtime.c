@@ -1734,10 +1734,25 @@ static const char *reason_phrase_for_status(int status) {
         return "OK";
     case 201:
         return "Created";
+    case 202:
+        return "Accepted";
     case 204:
         return "No Content";
+    case 301:
+        return "Moved Permanently";
     case 302:
         return "Found";
+    /* 303 was previously unmapped and fell through to the "OK" default, so a
+     * redirect literally emitted "HTTP/1.1 303 OK". Redirect codes are the
+     * common SSR case (POST -> 303 -> GET), so map the full redirect family. */
+    case 303:
+        return "See Other";
+    case 304:
+        return "Not Modified";
+    case 307:
+        return "Temporary Redirect";
+    case 308:
+        return "Permanent Redirect";
     case 400:
         return "Bad Request";
     case 401:
@@ -1748,14 +1763,34 @@ static const char *reason_phrase_for_status(int status) {
         return "Not Found";
     case 405:
         return "Method Not Allowed";
+    case 409:
+        return "Conflict";
     case 413:
         return "Payload Too Large";
+    case 422:
+        return "Unprocessable Entity";
+    case 429:
+        return "Too Many Requests";
     case 500:
         return "Internal Server Error";
     case 503:
         return "Service Unavailable";
     default:
-        return "OK";
+        /* For an unmapped code, return a phrase matching its status CLASS rather
+         * than the old hard-coded "OK" (which mislabeled e.g. a 418 as "418 OK").
+         * RFC 7231 allows any reason phrase; the class name is honest and never
+         * contradicts the numeric code. */
+        if (status >= 100 && status < 200)
+            return "Informational";
+        if (status >= 200 && status < 300)
+            return "OK";
+        if (status >= 300 && status < 400)
+            return "Redirection";
+        if (status >= 400 && status < 500)
+            return "Client Error";
+        if (status >= 500 && status < 600)
+            return "Server Error";
+        return "Unknown";
     }
 }
 

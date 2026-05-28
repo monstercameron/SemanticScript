@@ -92,6 +92,17 @@ REPLACED_ROW_VERBS = frozenset({
 })
 
 METADATA_SUBJECT_KINDS = frozenset({"module", "operation"})
+# `purpose` additionally attaches to the contract-heavy abstractions that the
+# compiler's `missingPurpose` advisory asks for (capability, webServer, record,
+# resource, validator, codec, policy). This MUST stay in sync with the parser's
+# `_PURPOSE_SUBJECT_KINDS` in compiler/semsc.py: if the formatter rejects a
+# subject kind the parser accepts, `purpose <kind> NAME` rows become
+# unsatisfiable — `check` demands the row while `fmt --check` rejects it, a loop
+# an agent cannot escape (observed: webServer purpose in the ops-dashboard build).
+PURPOSE_SUBJECT_KINDS = frozenset(METADATA_SUBJECT_KINDS | {
+    "capability", "webServer", "record",
+    "resource", "validator", "codec", "policy",
+})
 SIGNATURE_SUBJECT_KINDS = frozenset({"operation"})
 BIND_VARIANTS = frozenset({"value", "ok", "error"})
 BRANCH_VARIANTS = frozenset({"if", "error", "else"})
@@ -219,9 +230,13 @@ def reject_replaced_syntax(tokens: Sequence[Token], row: str) -> None:
     if head == "type" and len(values) >= 3 and values[2] == "Result":
         _raise_replaced_syntax(row, reason="replaced result type row")
 
-    if head in {"purpose", "invariant"} and len(values) >= 2:
+    if head == "purpose" and len(values) >= 2:
+        if values[1] not in PURPOSE_SUBJECT_KINDS:
+            _raise_replaced_syntax(row, reason="bare purpose row is replaced")
+
+    if head == "invariant" and len(values) >= 2:
         if values[1] not in METADATA_SUBJECT_KINDS:
-            _raise_replaced_syntax(row, reason=f"bare {head} row is replaced")
+            _raise_replaced_syntax(row, reason="bare invariant row is replaced")
 
     if head in {"input", "output"} and len(values) >= 2:
         if values[1] not in SIGNATURE_SUBJECT_KINDS:
