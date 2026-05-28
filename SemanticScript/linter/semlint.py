@@ -16929,6 +16929,13 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
     `routeTimeoutOptOut SERVER PATH "rationale"` /
     `routeMiddlewareOptOut SERVER PATH "rationale"`.
 
+    A server-wide default opt-out is available via the wildcard path `"*"`:
+    `routeMiddlewareOptOut SERVER "*" "rationale"` (or the timeout form) opts
+    out every route on that server in one row, so an app that intentionally has
+    no per-route middleware does not carry one opt-out row per route (the field
+    log hit 28 boilerplate rows across 14 routes). A per-path row still applies
+    on top for the routes that do declare coverage.
+
     The native dispatcher accepts routes without timeouts or middleware
     bindings, but coverage drift is exactly the kind of silent gap the
     spec calls out: missing routeTimeout means the future preemptive
@@ -16960,9 +16967,15 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
             middlewareOptOuts[(sourceLine.args[0], sourceLine.args[1])] = sourceLine
 
     for serverName, pathsByName in routesPerServer.items():
+        # A `... SERVER "*" "rationale"` row is a server-wide default opt-out:
+        # it covers every route on the server, so consult it as a fallback to
+        # the per-path opt-out before reporting drift.
+        serverTimeoutOptOut = (serverName, "*") in timeoutOptOuts
+        serverMiddlewareOptOut = (serverName, "*") in middlewareOptOuts
         for routePath, routeLine in pathsByName.items():
             key = (serverName, routePath)
-            if key not in timeoutCoverage and key not in timeoutOptOuts:
+            if (key not in timeoutCoverage and key not in timeoutOptOuts
+                    and not serverTimeoutOptOut):
                 diagnostics.append(Diagnostic(
                     tier=Tier.T3_REFINEMENT,
                     code="SS3604",
@@ -16993,13 +17006,21 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                                 f"\"<why this route has no timeout>\""
                             ),
                         ),
+                        FixCandidate(
+                            name="declareServerWideTimeoutOptOut",
+                            shape=(
+                                f"routeTimeoutOptOut {serverName} \"*\" "
+                                f"\"<why this server opts out of route timeouts by default>\""
+                            ),
+                        ),
                     ],
                     confidence=Confidence.HIGH,
                     effort=Effort.TRIVIAL,
                     passProvenance="check_route_coverage_drift",
                     agentHint="the native runtime does not enforce route timeouts yet, but declaring them now lets a preemptive runtime inherit complete coverage without a sweep",
                 ))
-            if key not in middlewareCoverage and key not in middlewareOptOuts:
+            if (key not in middlewareCoverage and key not in middlewareOptOuts
+                    and not serverMiddlewareOptOut):
                 diagnostics.append(Diagnostic(
                     tier=Tier.T3_REFINEMENT,
                     code="SS3604",
@@ -17029,6 +17050,13 @@ def check_route_coverage_drift(facts: ExtendedFacts) -> List[Diagnostic]:
                             shape=(
                                 f"routeMiddlewareOptOut {serverName} \"{routePath}\" "
                                 f"\"<why this route skips middleware (e.g., bare healthcheck)>\""
+                            ),
+                        ),
+                        FixCandidate(
+                            name="declareServerWideMiddlewareOptOut",
+                            shape=(
+                                f"routeMiddlewareOptOut {serverName} \"*\" "
+                                f"\"<why this server opts out of route middleware by default>\""
                             ),
                         ),
                     ],

@@ -8649,6 +8649,28 @@ returnValue writeStatus
         ))
         self.assertEqual(_diagnostics_with_code(diagnostics, "SS3604"), [])
 
+    def test_server_wide_wildcard_optouts_cover_every_route(self) -> None:
+        # A single `... SERVER "*" "rationale"` row is a server-wide default
+        # opt-out, so an app with no per-route middleware/timeout does not need
+        # one opt-out row per route (the field-log 28-rows-across-14-routes pain).
+        diagnostics = _lint_source(self._minimal_route_program(
+            'routeTimeoutOptOut testServer "*" "this server opts out of route timeouts by default"\n'
+            'routeMiddlewareOptOut testServer "*" "this server opts out of route middleware by default"\n'
+        ))
+        self.assertEqual(_diagnostics_with_code(diagnostics, "SS3604"), [])
+
+    def test_server_wide_middleware_wildcard_leaves_timeout_drift(self) -> None:
+        # The wildcard is per-contract: a middleware-only server-wide opt-out
+        # silences middleware drift but not the still-missing timeout coverage.
+        diagnostics = _lint_source(self._minimal_route_program(
+            'routeMiddlewareOptOut testServer "*" "no middleware anywhere"\n'
+        ))
+        coverageDriftKinds = {
+            d.kind for d in _diagnostics_with_code(diagnostics, "SS3604")
+        }
+        self.assertNotIn("webserver.routeMiddlewareCoverageDrift", coverageDriftKinds)
+        self.assertIn("webserver.routeTimeoutCoverageDrift", coverageDriftKinds)
+
 
 # ==========================================================================
 # SS3617  webserver.lifecycleHookContract
