@@ -17324,6 +17324,11 @@ def lint(prog: Program, strict: bool = False):
         operation_uses_console_write = False
         operation_has_loop = False     # any `branch` to an earlier label = loop
         operation_has_effect = False   # any `effect` line at all
+        # `operationBody OP runtimeBinding` / `runtimeBinding OP native.SYMBOL`
+        # marks an op whose body IS the native binding — its safety contract
+        # lives in `runtimeBindingPrecondition`, not in a SemanticScript
+        # `invariant` row over a body that has no SemanticScript lines.
+        operation_is_runtime_binding = False
 
         for entry in op.lines:
             verb, args, lineno = entry[0], entry[1], entry[2]
@@ -17331,6 +17336,11 @@ def lint(prog: Program, strict: bool = False):
                 purpose_present = True
             elif verb == "invariant":
                 invariant_present = True
+            elif verb == "runtimeBinding" and len(args) >= 2:
+                operation_is_runtime_binding = True
+            elif (verb == "operationBody" and len(args) >= 2
+                    and args[1] == "runtimeBinding"):
+                operation_is_runtime_binding = True
             elif verb == "effect" and len(args) >= 3:
                 # effect OP_NAME ACTION PATH
                 action = args[1]
@@ -17463,7 +17473,14 @@ def lint(prog: Program, strict: bool = False):
         # should carry at least one invariant. Loops need a termination
         # invariant; effectful operations need at least one safety invariant
         # over their external behavior (spec §8 hard metadata).
-        if (operation_has_loop or operation_has_effect) and not invariant_present:
+        # `runtimeBinding` ops are exempt: their body IS the native binding
+        # (no SemanticScript rows to hold an invariant about), and their
+        # safety contract lives in `runtimeBindingPrecondition`. Firing here
+        # would force filler invariants on every std-http Native hook (the
+        # scaffold-noise the field log flagged).
+        if ((operation_has_loop or operation_has_effect)
+                and not invariant_present
+                and not operation_is_runtime_binding):
             decl_lineno = op.lines[0][2] if op.lines else 0
             reason = "loop" if operation_has_loop else "effect"
             diags.append((decl_lineno,
