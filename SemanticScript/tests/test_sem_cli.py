@@ -1840,9 +1840,11 @@ class TestSemAgentPayloads(unittest.TestCase):
             self.assertEqual(check_proc.returncode, 0, check_proc.stderr)
             check_payload = json.loads(check_proc.stdout)
             self.assertEqual(check_payload["schemaVersion"], "sem.check.v1")
-            # The default scaffold is buildable and free of blocking lint errors;
-            # its only finding is the SS2516 placeholder-modulePath nudge (the
-            # intended "set your real modulePath" reminder right after `sem new`).
+            # The default scaffold is buildable and check-clean out of the box:
+            # SS2516 (placeholder modulePath) is gated on the project declaring a
+            # dependency, so a fresh `sem new` with no deps has no findings. The
+            # subset assertion below stays tolerant of the SS2516 nudge for the
+            # case where a scaffold variant ships with a dependency.
             self.assertIn(check_payload["status"], {"ok", "ok-with-warnings"})
             self.assertTrue(check_payload["buildable"])
             self.assertTrue(check_payload["noBlockingLintErrors"])

@@ -15836,8 +15836,22 @@ def check_placeholder_module_path(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS2516 — advisory. `sem new` scaffolds `modulePath PROJECT
     github.com/example/<name>` as a placeholder. Left unchanged it can resolve
     imports/dependencies against a bogus origin, so nudge the author to set the
-    real module path before publishing or adding dependencies."""
+    real module path.
+
+    Gated on the project actually declaring a `dependency` row: the harm this
+    rule names (dependency resolution against a bogus origin) does not exist
+    until there is a dependency to resolve, and firing on every freshly
+    scaffolded project made `sem new` -> `sem check` noisy out of the box (a
+    top agent-feedback friction). The nudge now appears exactly when it starts
+    to matter; publishing-readiness, which is not statically detectable, stays
+    the author's call."""
     diagnostics: List[Diagnostic] = []
+    declares_dependency = any(
+        line.tokens and not is_comment(line) and line.verb == "dependency"
+        for line in facts.base.lines
+    )
+    if not declares_dependency:
+        return diagnostics
     for sourceLine in facts.base.lines:
         if (not sourceLine.tokens or is_comment(sourceLine)
                 or sourceLine.verb != "modulePath" or len(sourceLine.args) < 2):

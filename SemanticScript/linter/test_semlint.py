@@ -9761,16 +9761,28 @@ class TestUnusedHtmlTemplate(unittest.TestCase):
 # ==========================================================================
 
 class TestPlaceholderModulePath(unittest.TestCase):
-    def test_placeholder_module_path_is_flagged(self) -> None:
+    def test_placeholder_module_path_is_flagged_once_a_dependency_exists(self) -> None:
+        # The placeholder only causes the harm this rule names (dependency
+        # resolution against a bogus origin) once the project declares a
+        # dependency, so the nudge is gated on that.
         diagnostics = _lint_source_at("build.sem",
-            "project Demo\nmodulePath Demo github.com/example/demo\n")
+            "project Demo\nmodulePath Demo github.com/example/demo\n"
+            "dependency Demo dep github.com/example/dep v1.0.0\n")
         self.assertIn("SS2516", _codes(diagnostics))
         diag = _diagnostics_with_code(diagnostics, "SS2516")[0]
         self.assertFalse(diag.blocksCompile)
 
+    def test_placeholder_module_path_clean_without_dependencies(self) -> None:
+        # A freshly-scaffolded project (placeholder modulePath, no dependencies)
+        # must be check-clean so `sem new` -> `sem check` is green out of the box.
+        diagnostics = _lint_source_at("build.sem",
+            "project Demo\nmodulePath Demo github.com/example/demo\n")
+        self.assertNotIn("SS2516", _codes(diagnostics))
+
     def test_real_module_path_is_clean(self) -> None:
         diagnostics = _lint_source_at("build.sem",
-            "project Demo\nmodulePath Demo github.com/acme/demo\n")
+            "project Demo\nmodulePath Demo github.com/acme/demo\n"
+            "dependency Demo dep github.com/acme/dep v1.0.0\n")
         self.assertNotIn("SS2516", _codes(diagnostics))
 
 
