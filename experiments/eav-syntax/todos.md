@@ -94,10 +94,10 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-039 Record fieldwise equality; ordering on records invalid; layout compiler-chosen. →test: record `equals` deep; `greaterThan` reject. §33.7
 
 ## 1D. Operation / call / task / cleanup model (§11, §15, §15.5, §15.6, §34.4)
-- [ ] WS1-040 Operation decl rows `in/out/effect/uses/memory/async/label/let/body`; order-independent except `in` order. →test: reorder-stable parse. §11
+- [x] WS1-040 Operation decl rows `in/out/effect/uses/memory/async/label/let/body`; order-independent except `in` order. →test: reorder-stable parse. §11 _(eavc: `test_operation_decl_rows_reorder_stable`; `in` order preserved via `op.facts("in")`)_
 - [ ] WS1-041 `body steps|runtimeBinding <t>|intrinsic <n>`; non-step body has no steps. →test: runtimeBinding op has no step rows. §11
 - [ ] WS1-042 Return arity from `out` (void/single/Result one-nil-slot). →test: §17 #10; both-nil + both-value reject. §13
-- [ ] WS1-043 `call` structure (invokes/arg/out/catch/owns/cleanedBy/effect/discards). →test: infallible vs fallible parse. §15
+- [x] WS1-043 `call` structure (invokes/arg/out/catch/owns/cleanedBy/effect/discards). →test: infallible vs fallible parse. §15 _(eavc: `test_lower_value_call_binds_value` (infallible out → bind value), `test_lower_hello_world_key_rows` (fallible catch → ignore void + bind error); owns/cleanedBy/discards parsed, console lowering ignores them)_
 - [ ] WS1-044 **Split**: `do`→call, `start/join/poll/cancel/detach`→task, `defer`→cleanup; cross-use = hard error (§34.4, non-negotiable). →test: `do <task>` reject; `start <call>` reject; `defer <call>` reject. §13/§34.4
 - [ ] WS1-045 Task entity (async counterpart) + lifecycle state machine (RUNNING/COMPLETED/CONSUMED/CANCELED/…); illegal transitions reject. →test: lifecycle table goldens; `ifError` before `join` reject. §13/§15.5
 - [ ] WS1-046 Cleanup entity (`call/cleans/onFailure/because`); `cleans`↔`owns` cross-check; exactly one `cleans`+`call`; `onFailure` iff worker `catch`; worker not also `do`-activated. →test: §17 #41–#44. §15.6

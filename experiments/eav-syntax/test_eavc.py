@@ -208,6 +208,24 @@ def test_lower_capability_grants_resource_action_order():
     assert "capability stdoutWriter console.stdout write" in v01
 
 
+def test_operation_decl_rows_reorder_stable():
+    # README ss11: operation declaration rows are order-independent; only `in`
+    # order is significant. Lowering must be identical when decls are shuffled.
+    head = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+    )
+    a = head + (
+        "main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n"
+        'main purpose "x"\nmain let c immutable ExitCode 0\nmain return c\n'
+    )
+    b = head + (
+        "main is operation\nmain purpose \"x\"\nmain memory heap no\nmain async no\n"
+        "main out ExitCode\nmain let c immutable ExitCode 0\nmain return c\n"
+    )
+    assert eavc.lower_to_v01(eavc.parse(a)) == eavc.lower_to_v01(eavc.parse(b))
+
+
 def test_lower_value_call_binds_value():
     v01 = _run_example("add_two.sem")
     assert "bind value answerValue Int64 answerCall" in v01
