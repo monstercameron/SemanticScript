@@ -35,6 +35,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import platform
 import shutil
 import sqlite3
 import subprocess
@@ -45,7 +46,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BUILD_TAPE = REPO_ROOT / "apps" / "taskforge-web" / "build.sem"
 BUILD_DIR = REPO_ROOT / "apps" / "taskforge-web" / "build"
-EXE_PATH = BUILD_DIR / "taskforge-web.exe"
 DB_PATH = BUILD_DIR / "taskforge_web.db"
 ASSET_SOURCE_DIR = REPO_ROOT / "apps" / "taskforge-web" / "assets"
 BUILD_ASSET_DIR = BUILD_DIR / "assets"
@@ -53,6 +53,23 @@ SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 18090
 READY_DEADLINE_SECONDS = 12.0
 REQUEST_TIMEOUT_SECONDS = 5.0
+
+
+def host_platform_build():
+    if sys.platform.startswith("win"):
+        return "windows/x86_64", "taskforge-web.exe"
+    if sys.platform.startswith("linux"):
+        return "linux/x86_64", "taskforge-web-linux"
+    if sys.platform == "darwin":
+        machine = platform.machine().lower()
+        if machine in {"arm64", "aarch64"}:
+            return "macos/arm64", "taskforge-web"
+        return "macos/x86_64", "taskforge-web-x86_64"
+    return None, "taskforge-web"
+
+
+HOST_PLATFORM_FILTER, EXE_NAME = host_platform_build()
+EXE_PATH = BUILD_DIR / EXE_NAME
 
 
 class TestFailure(AssertionError):
@@ -121,6 +138,12 @@ def assert_equal(actual, expected, label):
         raise TestFailure(f"{label}: expected {expected!r}, got {actual!r}")
 
 
+def remove_existing_database():
+    for path in (DB_PATH, Path(str(DB_PATH) + "-wal"), Path(str(DB_PATH) + "-shm")):
+        if path.exists():
+            path.unlink()
+
+
 def assert_in(needle, haystack, label):
     if needle not in haystack:
         raise TestFailure(f"{label}: {needle!r} not found in {haystack!r}")
@@ -133,12 +156,14 @@ def main():
     ], timeout=60)
     print("[OK]  lint clean")
 
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-    run_command([
+    remove_existing_database()
+    build_command = [
         sys.executable, "-m", "SemanticScript.compiler.semsc",
         str(BUILD_TAPE), "--emit-exe", "--quiet",
-    ], timeout=300)
+    ]
+    if HOST_PLATFORM_FILTER:
+        build_command.extend(["--platform-filter", HOST_PLATFORM_FILTER])
+    run_command(build_command, timeout=300)
     if not EXE_PATH.exists():
         raise TestFailure(f"build did not produce {EXE_PATH}")
     print(f"[OK]  build produced {EXE_PATH.name}")

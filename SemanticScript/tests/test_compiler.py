@@ -11017,7 +11017,11 @@ def test_emit_executable_frees_locked_output_path_by_renaming():
         blocked = {"seen": False}
 
         def fake_unlink(path):
-            if os.path.abspath(path) == str(exe_path.resolve()) and not blocked["seen"]:
+            try:
+                is_target_exe = Path(path).resolve() == exe_path.resolve()
+            except OSError:
+                is_target_exe = os.path.abspath(path) == os.path.abspath(str(exe_path))
+            if is_target_exe and not blocked["seen"]:
                 blocked["seen"] = True
                 raise PermissionError("file is in use")
             return real_unlink(path)
