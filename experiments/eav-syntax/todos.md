@@ -114,7 +114,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-056 Operation references: `operationType` binding invoked indirectly via `invokes <binding>`; binding-vs-op name rule. →test: indirect call type-checked; shadow warns. §33.9
 
 ## 1F. Control flow & guards (§13, §33.4)
-- [ ] WS1-060 `do/branch/goto/return/at`. →test: CFG goldens. §13
+- [x] WS1-060 `do/branch/goto/return/at`. →test: CFG goldens. §13 _(eavc: `examples/countdown.sem` exercises `at`/`do`/`branch ifFalse`/`goto`/`return`; `test_e2e_countdown_runs`, `test_lower_branch_iffalse_inverts`)_
 - [ ] WS1-061 Guard `if`/`ifFalse` (Bool in scope). →test: §17 #8. §13
 - [ ] WS1-062 `ifError CALL` (after `do`) / `ifError TASK` (after `join`); needs `catch`; `poll` not a predecessor. →test: §17 #6; ifError w/o catch reject. §13
 - [ ] WS1-063 `ifVariant VALUE VARIANT [bind PAYLOAD] goto`; payload catch-style scope; exhaustiveness; canonical default `goto`. →test: §17 #52/#53; non-exhaustive warns; bind-off-path reject. §13/§10.5
@@ -127,8 +127,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-070 Recursion permitted (direct/mutual); unbounded → trap; `memory stack` bound. →test: recursion lowers; deep-recursion traps. §33.3
 
 ## 1G. State, storage, locals (§12)
-- [ ] WS1-080 `let NAME mutable|immutable TYPE [VALUE]` positional; forward-ref rule. →test: forward-ref reject; mutable/immutable. §12
-- [ ] WS1-081 `out`-rebind of `let mutable`; rebind immutable = error; module-storage mutation via out + effect+capability. →test: §17 #28/#29; immutable rebind reject. §12
+- [ ] WS1-080 `let NAME mutable|immutable TYPE [VALUE]` positional; forward-ref rule. →test: forward-ref reject; mutable/immutable. §12 _(partial: positional mutable/immutable lowered — `examples/countdown.sem`, `test_lower_mutable_rebind_uses_set_storage`; forward-ref reject not yet implemented)_
+- [x] WS1-081 `out`-rebind of `let mutable`; rebind immutable = error; module-storage mutation via out + effect+capability. →test: §17 #28/#29; immutable rebind reject. §12 _(eavc: `test_lower_mutable_rebind_uses_set_storage` (rebind → set storage), `test_lower_immutable_rebind_rejected` (immutable reject); module-storage mutation via out pending)_
 - [ ] WS1-082 Module `storage` entity (scope/type/mutability/value/body); module-global read scope. →test: cross-op read; §25 scope. §12/§25
 - [ ] WS1-083 Module-storage initializers **effect-free** (literal/constant/prior-storage); effectful → reject. →test: effectful init reject. §30.2.1
 - [ ] WS1-084 Storage `literalSource`/`literalDigest` compile-time asset embedding. →test: asset bytes embedded, digest checked. §30.3.2

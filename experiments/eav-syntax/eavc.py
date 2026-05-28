@@ -511,16 +511,25 @@ def _lower_operation(program: Program, op: Entity, out: list[str]) -> None:
         if row.payload:
             out.append(f"useCapability {op.name} {row.payload[0]}")
 
+    # Mutability of each `let` name in this op. An `out` to a `let mutable` is a
+    # rebind (README ss12) lowered via `set storage`; an `out` to a `let
+    # immutable` is a hard error (README ss12, ss17 #28).
+    let_mut = {
+        r.payload[0]: r.payload[1]
+        for r in op.facts("let")
+        if len(r.payload) >= 2 and r.payload[1] in ("mutable", "immutable")
+    }
+
     # Body rows in document order. `let` -> storage; steps -> verb rows.
     for row in op.rows:
         if row.label is not None:
             out.append(f"label {row.label}")
-            _lower_step(program, op, row, out)
+            _lower_step(program, op, row, out, let_mut)
             continue
         if row.predicate == "let":
             _lower_let(op, row, out)
         elif row.predicate in STEP_PREDICATES:
-            _lower_step(program, op, row, out)
+            _lower_step(program, op, row, out, let_mut)
         # declaration predicates already emitted; ignore here.
 
 
@@ -539,7 +548,9 @@ def _lower_let(op: Entity, row: Row, out: list[str]) -> None:
         out.append(f"storage local {mut} {name} {typ}")
 
 
-def _lower_step(program: Program, op: Entity, row: Row, out: list[str]) -> None:
+def _lower_step(
+    program: Program, op: Entity, row: Row, out: list[str], let_mut: dict[str, str]
+) -> None:
     pred = row.predicate
     p = row.payload
     if pred == "do":
@@ -557,7 +568,7 @@ def _lower_step(program: Program, op: Entity, row: Row, out: list[str]) -> None:
                 "(README ss34.4)",
                 row.line,
             )
-        _lower_call(call, out)
+        _lower_call(call, out, let_mut)
         return
     if pred == "branch":
         _lower_branch(row, out)
@@ -579,7 +590,7 @@ def _lower_step(program: Program, op: Entity, row: Row, out: list[str]) -> None:
     raise EavError(f"unsupported step predicate {pred!r}", row.line)
 
 
-def _lower_call(call: Entity, out: list[str]) -> None:
+def _lower_call(call: Entity, out: list[str], let_mut: dict[str, str]) -> None:
     invokes_row = call.fact("invokes")
     if not invokes_row or not invokes_row.payload:
         raise EavError(f"call {call.name!r} missing `invokes` (README ss15)", call.line)
@@ -601,17 +612,27 @@ def _lower_call(call: Entity, out: list[str]) -> None:
     has_out = out_row is not None and bool(out_row.payload)
     has_catch = catch_row is not None and bool(catch_row.payload)
 
+    # An `out` to a `let mutable` name is a rebind (README ss12): bind to a fresh
+    # temp, then `set storage` the mutable binding. An `out` to a `let immutable`
+    # is a hard error (README ss12, ss17 #28). Otherwise it is a fresh bind.
+    out_name = out_row.payload[0] if has_out else None
+    out_type = out_row.payload[1] if has_out and len(out_row.payload) >= 2 else None
+    if has_out and let_mut.get(out_name) == "immutable":
+        raise EavError(
+            f"call {call.name!r} rebinds immutable `let {out_name}` via out "
+            "(README ss12, ss17 #28); declare it `let mutable`",
+            call.line,
+        )
+    is_rebind = has_out and let_mut.get(out_name) == "mutable"
+    bind_target = f"{out_name}Rebind{call.line}" if is_rebind else out_name
+
     if has_out and has_catch:
-        out.append(f"bind ok {out_row.payload[0]} {out_row.payload[1]} {call.name}")
+        out.append(f"bind ok {bind_target} {out_type} {call.name}")
         out.append(
             f"bind error {catch_row.payload[0]} {catch_row.payload[1]} {call.name}"
         )
     elif has_out:
-        out.append(f"bind value {out_row.payload[0]} {out_row.payload[1]} {call.name}")
-        if has_catch:  # unreachable, kept for clarity
-            out.append(
-                f"bind error {catch_row.payload[0]} {catch_row.payload[1]} {call.name}"
-            )
+        out.append(f"bind value {bind_target} {out_type} {call.name}")
     elif has_catch:
         out.append(f"ignore void source {call.name}")
         out.append(
@@ -619,6 +640,9 @@ def _lower_call(call: Entity, out: list[str]) -> None:
         )
     else:
         out.append(f"ignore void source {call.name}")
+
+    if is_rebind:
+        out.append(f"set storage {out_name} {bind_target}")
 
 
 def _lower_branch(row: Row, out: list[str]) -> None:
@@ -641,6 +665,20 @@ def _lower_branch(row: Row, out: list[str]) -> None:
                 "expected `branch if COND goto LABEL` (README ss13)", row.line
             )
         out.append(f"branch if condition {p[1]} target {p[3]}")
+        return
+    if guard == "ifFalse":
+        # branch ifFalse COND goto LABEL — jump to LABEL when COND is false.
+        # v0.1 has only "branch if condition ... target" (true-taken), so invert
+        # via a deterministic skip label: take the goto only on the false path.
+        if len(p) != 4 or p[2] != "goto":
+            raise EavError(
+                "expected `branch ifFalse COND goto LABEL` (README ss13)", row.line
+            )
+        cond, label = p[1], p[3]
+        skip = f"ifFalseSkip{row.line}"
+        out.append(f"branch if condition {cond} target {skip}")
+        out.append(f"jump target {label}")
+        out.append(f"label {skip}")
         return
     raise EavError(
         f"branch guard {guard!r} is not modeled by the console lowering slice "

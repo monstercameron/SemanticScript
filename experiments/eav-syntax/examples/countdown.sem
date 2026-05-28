@@ -1,0 +1,61 @@
+# countdown — loop with control flow + mutable rebinding.
+# Counts 3, 2, 1, printing each. Exercises: `let mutable` + out-rebind (§12),
+# `at LABEL` loop head, `branch ifFalse ... goto`, and `goto` back-edge (§13).
+# (todos WS1-060, WS1-080, WS1-081)
+
+Countdown is project
+Countdown module examplesCountdown
+Countdown target console
+Countdown entry main
+
+examplesCountdown is module
+examplesCountdown path examples.countdown
+examplesCountdown exports main
+examplesCountdown purpose "Count down from 3 to 1, one integer per line"
+examplesCountdown invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Print 3, 2, 1 using a decrement loop"
+main invariant "Loop terminates when the counter falls below the lower bound"
+main let counter mutable Int64 3
+main let lowerBound immutable Int64 1
+main let oneStep immutable Int64 1
+main let successExitCode immutable ExitCode 0
+main at loopHead do checkContinue
+main branch ifFalse shouldContinue goto loopExit
+main do printCounter
+main do decrementCounter
+main goto loopHead
+main at loopExit return successExitCode
+
+checkContinue is call
+checkContinue in main
+checkContinue invokes math.greaterThanOrEqualInt64
+checkContinue arg left Int64 counter
+checkContinue arg right Int64 lowerBound
+checkContinue out shouldContinue Bool
+
+printCounter is call
+printCounter in main
+printCounter invokes console.writeIntegerLine
+printCounter arg value Int64 counter
+
+decrementCounter is call
+decrementCounter in main
+decrementCounter invokes math.subtractInt64
+decrementCounter arg left Int64 counter
+decrementCounter arg right Int64 oneStep
+decrementCounter out counter Int64

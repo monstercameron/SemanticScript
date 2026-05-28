@@ -182,6 +182,39 @@ def test_lower_webserver_target_rejected():
     assert "console lowering" in exc.value.message
 
 
+def test_lower_mutable_rebind_uses_set_storage():
+    # README ss12: `out` to a `let mutable` rebinds via bind-to-temp + set storage.
+    v01 = _run_example("countdown.sem")
+    assert "storage local mutable counter Int64 3" in v01
+    assert "set storage counter " in v01
+    # the rebind binds a fresh temp, not the mutable name directly
+    assert "bind value counter Int64 decrementCounter" not in v01
+
+
+def test_lower_immutable_rebind_rejected():
+    # README ss12 / ss17 #28: `out` to a `let immutable` is a hard error.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let total immutable Int64 0\n"
+        "main do addCall\nmain return total\n"
+        "addCall is call\naddCall in main\naddCall invokes math.addInt64\n"
+        "addCall arg left Int64 total\naddCall arg right Int64 total\n"
+        "addCall out total Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.lower_to_v01(eavc.parse(src))
+    assert "immutable" in exc.value.message
+
+
+def test_lower_branch_iffalse_inverts():
+    # README ss13: `branch ifFalse COND goto L` inverts to a true-taken skip.
+    v01 = _run_example("countdown.sem")
+    assert "branch if condition shouldContinue target ifFalseSkip" in v01
+    assert "jump target loopExit" in v01
+
+
 def test_lower_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
     src = (
@@ -220,6 +253,12 @@ def test_e2e_add_two_runs():
     proc = _eavc_run("add_two.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
+
+
+def test_e2e_countdown_runs():
+    proc = _eavc_run("countdown.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert [ln for ln in proc.stdout.splitlines() if ln.strip()] == ["3", "2", "1"]
 
 
 def test_noop_lowering_would_fail():
