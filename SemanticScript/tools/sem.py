@@ -10809,6 +10809,68 @@ def _migrated_file_lines(file_path: str) -> tuple[tuple[str, ...], tuple[str, ..
     return tuple(before), tuple(after)
 
 
+_CALL_NAME_LEADING_VERBS = {
+    # Verbs where the call name is at args[0] (the call site is the leading
+    # identifier). Renaming a call binding must rewrite every such row that
+    # references it inside the enclosing operation.
+    "call", "run", "runChecked", "start", "await",
+    "startInGroup", "timeout", "cancelOn",
+    "argument", "arg", "case",
+}
+
+
+def _line_references_call_subject(verb: str, args: list, name: str) -> bool:
+    """True if this row attaches to a call binding named NAME — used by the
+    SS4001 rename codemod to identify every call-attachment row inside an
+    operation that must be rewritten when the call's name changes. Covers the
+    standard grammar: call/argument/run*/start/await/bind*/branch error
+    source/ignore */case/startInGroup/timeout/cancelOn."""
+    if not args:
+        return False
+    if verb in _CALL_NAME_LEADING_VERBS and args[0] == name:
+        return True
+    if verb == "ignore" and len(args) >= 3 and args[1] == "source" and args[2] == name:
+        return True
+    if verb == "bind" and len(args) >= 4 and args[3] == name:
+        return True
+    if verb in {"bindOk", "bindError"} and len(args) >= 3 and args[2] == name:
+        return True
+    if verb == "branch" and len(args) >= 4 and args[0] == "error" and args[1] == "source" and args[2] == name:
+        return True
+    return False
+
+
+def _enclosing_operation_for_diagnostic(diagnostic: dict, operation_lookup: dict) -> tuple | None:
+    """Locate the operation that contains the diagnostic's primary span line.
+    Used by per-call style rules (SS4001) where the diagnostic's subject is the
+    call name, not the operation, so subject_name cannot key operation_lookup
+    directly. The check-payload's serialized form strips the linter's `related`
+    field, so we identify the enclosing operation by scanning each operation's
+    own .lines for the diagnostic's line number — robust to that filtering."""
+    span = diagnostic.get("span") or diagnostic.get("primary") or {}
+    if not isinstance(span, dict):
+        return None
+    file_str = span.get("file") or span.get("path") or ""
+    line_no = int(span.get("line", 0) or 0)
+    if not file_str or not line_no:
+        return None
+    try:
+        target_path = Path(file_str).resolve()
+    except (OSError, ValueError):
+        return None
+    for source, facts, operation in operation_lookup.values():
+        try:
+            source_path = Path(source).resolve()
+        except (OSError, ValueError, TypeError):
+            continue
+        if source_path != target_path:
+            continue
+        for source_line in operation.lines:
+            if source_line.number == line_no:
+                return (Path(source), facts, operation)
+    return None
+
+
 def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, operation_lookup: dict[str, tuple[Path, object, object]] | None = None) -> dict:
     lookup = operation_lookup if operation_lookup is not None else _facts_operation_lookup(bundle)
     code = diagnostic.get("code", "")
@@ -10907,6 +10969,55 @@ def _repair_plan_for_diagnostic(path: Path, diagnostic: dict, bundle: dict, *, o
             "afterLine": _operation_insert_anchor(operation),
             "text": f'invariant operation {subject_name} "<state the key invariant for {subject_name}>"',
         })
+    elif code == "SS4001" and subject_name and not subject_name.endswith("Call"):
+        # Mechanical rename codemod: vague call names (SS4001) → append `Call`
+        # suffix on the binding AND every reference inside the enclosing
+        # operation. The dashboard logged 57+ such renames in one cycle; doing
+        # them by hand is the boilerplate the field log ranked the #3 pain.
+        # Subject is the call name, so locate the enclosing operation via the
+        # diagnostic's `related[role=enclosingOperation]` span rather than
+        # operation_lookup (which keys on operation name, not call name).
+        enclosing = _enclosing_operation_for_diagnostic(diagnostic, lookup)
+        if enclosing is not None:
+            source, _facts, operation = enclosing
+            new_name = subject_name + "Call"
+            try:
+                file_text = Path(source).read_text(encoding="utf-8")
+            except OSError:
+                file_text = None
+            if file_text is not None:
+                file_lines = file_text.split("\n")
+                # `\b` word-boundary regex with count=1 rewrites only the first
+                # whole-word occurrence on the line. On a call-attachment row
+                # the call name is the first identifier of that name (after the
+                # verb keyword), so a single replacement is precise and avoids
+                # rewriting any unrelated later token that happens to share the
+                # name (e.g. a value arg that coincidentally matches).
+                pattern = re.compile(r"\b" + re.escape(subject_name) + r"\b")
+                file_path_str = str(Path(source).resolve())
+                for source_line in operation.lines:
+                    if not source_line.tokens:
+                        continue
+                    if not _line_references_call_subject(
+                            source_line.verb, source_line.args, subject_name):
+                        continue
+                    idx = source_line.number - 1
+                    if not (0 <= idx < len(file_lines)):
+                        continue
+                    original = file_lines[idx]
+                    rewritten = pattern.sub(new_name, original, count=1)
+                    if rewritten != original:
+                        repair["edits"].append({
+                            "op": "replaceLine",
+                            "file": file_path_str,
+                            "line": source_line.number,
+                            "text": rewritten,
+                        })
+                if repair["edits"]:
+                    repair["fixSafety"] = "local-edit"
+                    for suggestion in repair["suggestions"]:
+                        if suggestion.get("name") == "renameToDescriptive":
+                            suggestion["autoApplicable"] = True
     return repair
 
 

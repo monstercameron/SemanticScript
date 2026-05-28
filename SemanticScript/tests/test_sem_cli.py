@@ -2298,6 +2298,62 @@ return value request
         self.assertEqual(inline_authority["shape"], "authority main write console.stdout")
         self.assertTrue(any(item["kind"] == "patch" for item in payload["nextCommands"]))
 
+    def test_fix_plan_renames_vague_call_with_call_suffix(self) -> None:
+        # SS4001 (call name lacks `Call` suffix) is one of the highest-volume
+        # mechanical rename diagnostics — the field log logged 57+ renames in
+        # one cycle. The codemod must rewrite the call binding AND every
+        # call-attachment reference (argument/run/bind*/branch error source)
+        # inside the enclosing operation, so an agent can `sem fix --plan` +
+        # `sem patch --apply` instead of hand-editing 6 rows per offender.
+        source_text = """\
+project SS4001Codemod
+target console
+runtime AgentRuntime 0.1
+entry console main
+capability heapAllocationCapability heap allocate
+operation main
+input operation main console Console
+output operation main ExitCode
+useCapability main heapAllocationCapability
+effect main allocate heap
+memory main heap no
+async main no
+purpose operation main "exercise SS4001 vague call name."
+invariant operation main "returns ExitCode 0."
+storage module immutable defaultCapacity ByteCount 16
+storage module immutable okExitCode ExitCode 0
+label startMain
+call alloc memory.allocateMemoryBytes
+argument alloc byteCount ByteCount defaultCapacity
+run alloc
+bind ok scratchBuffer String alloc
+bind error allocFailure MemoryAllocationError alloc
+branch error source alloc target failed
+return value okExitCode
+label failed
+return value okExitCode
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "main.sem"
+            source.write_text(source_text, encoding="utf-8")
+            payload = sem._build_fix_plan_payload(source, [], include_warnings=True)
+
+        ss4001_repairs = [r for r in payload["repairs"] if r["diagnostic"] == "SS4001"]
+        self.assertTrue(ss4001_repairs, "expected an SS4001 repair for the vague call name `alloc`")
+        repair = next(r for r in ss4001_repairs if r["subjectName"] == "alloc")
+        self.assertEqual(repair["fixSafety"], "local-edit")
+        # The 6 rows that reference `alloc`: the call, the argument, the run,
+        # the two binds (ok+error), and the branch-error-source.
+        self.assertEqual(len(repair["edits"]), 6)
+        for edit in repair["edits"]:
+            self.assertEqual(edit["op"], "replaceLine")
+            self.assertIn("allocCall", edit["text"])
+            self.assertNotRegex(edit["text"], r"\balloc\b(?!Call)")
+        rename_suggestion = next(
+            s for s in repair["suggestions"] if s["name"] == "renameToDescriptive"
+        )
+        self.assertTrue(rename_suggestion["autoApplicable"])
+
     def test_fix_plan_marks_metadata_repairs_as_human_review(self) -> None:
         source_text = """\
 module demo.agent
