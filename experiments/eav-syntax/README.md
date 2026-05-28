@@ -15,6 +15,18 @@ cleanup registration, universal metadata attachment, HTML hydration/binding,
 full web-server handler ABIs, type/record/enum entities, mutable rebinding via
 call output, and lexical rules. Worked examples are fully updated.
 
+> **Prototype status (this repo).** A keystone front end now exists at
+> `experiments/eav-syntax/eavc.py`: it lexes (§2), parses (§1/§5), and *lowers*
+> canonical EAV into the existing v0.1 verb-led source the reference compiler
+> already runs — a second front end, not a backend fork. Hello World (§18),
+> an arithmetic program, and a control-flow loop run end to end (e.g.
+> `python eavc.py run examples/hello_world.sem` → `hello world`). The parser
+> enforces the §5 per-kind predicate table and accepts the full grammar (the
+> 66-entity webServer demo `main.sem` parses). See `todos.md` for per-item
+> status and the proving tests in `test_eavc.py`. The linter (§17/MD rules),
+> stdlib (§3B), formatter (§22), editor (§29 #7), and webServer/wasm/sqlite/http
+> lowering remain unbuilt.
+
 ### Adoption framing
 
 EAV-Steps is the **canonical normalized representation** of SemanticScript
