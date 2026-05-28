@@ -430,7 +430,13 @@ call stepGeneratedInsertCall sqlite.stepStatement
 argument stepGeneratedInsertCall statement SqliteStatement generatedInsertStatement
 run stepGeneratedInsertCall
 bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall
-# require generatedInsertStep == rowSqliteStepResult
+call generatedInsertHasRowCall sqlite.stepResultIsRow
+argument generatedInsertHasRowCall stepResult SqliteStepResult generatedInsertStep
+run generatedInsertHasRowCall
+bind value generatedInsertHasRow Bool generatedInsertHasRowCall
+branch if condition generatedInsertHasRow target readGeneratedId
+branch else target generatedInsertFailed
+label readGeneratedId
 storage local immutable generatedIdColumnIndex Int32 0
 call readGeneratedIdCall sqlite.columnInt64
 argument readGeneratedIdCall statement SqliteStatement generatedInsertStatement
@@ -457,8 +463,8 @@ For an atomic generated-row plus activity-log write, wrap the sequence in
 `sqlite.beginImmediateTransaction` and `sqlite.commitTransaction`; every failure
 path after BEGIN succeeds should finalize any acquired statements and then call
 `sqlite.rollbackTransaction`. A RETURNING statement remains active after its row
-is read, so step it once more to `doneSqliteStepResult`, reset it, or finalize
-it before COMMIT. `sqlite.columnInt64` returns the id by value; borrowed column
+is read, so step it once more and require `sqlite.stepResultIsDone`, reset it,
+or finalize it before COMMIT. `sqlite.columnInt64` returns the id by value; borrowed column
 readers such as `sqlite.columnText`, `sqlite.columnBlob`, and
 `sqlite.columnName` must be consumed or copied before the same statement steps,
 resets, finalizes, or performs another pointer-returning column read.

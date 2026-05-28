@@ -1442,6 +1442,8 @@ _SQLITE_INTRINSIC_EXPORT_NAMES = frozenset({
     "finalizeStatement",
     "resetStatement",
     "stepStatement",
+    "stepResultIsRow",
+    "stepResultIsDone",
     "bindInt64",
     "bindDouble",
     "bindText",
@@ -3365,15 +3367,28 @@ def handle_top(prog: Program, verb: str, args, lineno: int):
         prog.type_aliases[args[0]] = list(args[1:])
         return
     if verb in ("typeInvariant", "typeRepresentation", "typeTrust",
-                "typeMemory", "typeLayout"):
+                "typeMemory", "typeLayout", "typeParameter",
+                "typeLiteralEncoding", "typeLiteralTerminator"):
         # All record type-level metadata under a single map indexed by type
         if not args:
             raise SyntaxError(f"{verb} requires a target type name")
         meta = prog.type_metadata.setdefault(args[0], {})
-        key = verb[4:].lower() if verb != "typeInvariant" else "invariant"
-        # typeInvariant is multi-valued, the rest are scalar latest-wins
+        if verb == "typeInvariant":
+            key = "invariant"
+        elif verb == "typeParameter":
+            key = "parameter"
+        elif verb == "typeLiteralEncoding":
+            key = "literalEncoding"
+        elif verb == "typeLiteralTerminator":
+            key = "literalTerminator"
+        else:
+            key = verb[4:].lower()
+        # typeInvariant and typeParameter are multi-valued, the rest are
+        # scalar latest-wins metadata.
         if verb == "typeInvariant":
             meta.setdefault("invariant", []).append(_unwrap(args[1]) if len(args) > 1 else "")
+        elif verb == "typeParameter":
+            meta.setdefault("parameter", []).append([_unwrap(t) for t in args[1:]])
         else:
             meta[key] = [_unwrap(t) for t in args[1:]]
         return
@@ -4503,6 +4518,8 @@ HTTP_INTRINSIC_TARGETS = (
         "http.formField",
         "http.urlDecode",
         "http.urlEncode",
+        "http.sessionExpiresAt",
+        "http.sessionIsExpired",
     })
 )
 
@@ -14060,6 +14077,26 @@ class Codegen:
             call["result"] = builder.call(fn, [], name=f"{call_name}_millis")
             return
 
+        if target == "http.sessionExpiresAt":
+            now_millis = arg_val_named("nowMillis")
+            ttl_millis = arg_val_named("ttlMillis")
+            fn = self._runtime_func(
+                "ss_http_session_expires_at", Int64, [Int64, Int64])
+            self.provenance.record_external("ss_http_session_expires_at", call)
+            call["result"] = builder.call(
+                fn, [now_millis, ttl_millis], name=f"{call_name}_expiresAt")
+            return
+
+        if target == "http.sessionIsExpired":
+            now_millis = arg_val_named("nowMillis")
+            expires_at_millis = arg_val_named("expiresAtMillis")
+            fn = self._runtime_func(
+                "ss_http_session_is_expired", Bool, [Int64, Int64])
+            self.provenance.record_external("ss_http_session_is_expired", call)
+            call["result"] = builder.call(
+                fn, [now_millis, expires_at_millis], name=f"{call_name}_isExpired")
+            return
+
         if target == "http.ensureDirectory":
             directory_path = arg_val_named("directoryPath")
             if isinstance(directory_path.type, ir.IntType):
@@ -14469,6 +14506,34 @@ class Codegen:
             call["result"] = status
             call["error_value"] = status
             call["error_cond"] = is_error
+            return
+
+        if target in (
+            "sqlite.stepResultIsRow",
+            "sqlite.stepResultIsDone",
+            "stepResultIsRow",
+            "stepResultIsDone",
+        ):
+            step_result = arg_val_named("stepResult")
+            if (isinstance(step_result.type, ir.IntType)
+                    and step_result.type.width != 32):
+                step_result = (
+                    builder.trunc(step_result, Int32)
+                    if step_result.type.width > 32
+                    else builder.sext(step_result, Int32))
+            expected_value = 100 if target in (
+                "sqlite.stepResultIsRow",
+                "stepResultIsRow",
+            ) else 101
+            result_name = (
+                f"{call_name}_isRow"
+                if expected_value == 100
+                else f"{call_name}_isDone")
+            call["result"] = builder.icmp_signed(
+                "==",
+                step_result,
+                ir.Constant(Int32, expected_value),
+                name=result_name)
             return
 
         if target in (
@@ -17249,15 +17314,14 @@ def _check_strict_step_result_disposition(prog: Program, diags) -> None:
             if verb == "bind" and len(args) >= 4:
                 if args[0] in ("value", "ok") and args[3] in step_calls:
                     dispositions[args[3]] = "bind"
+                elif args[0] == "error" and args[3] in step_calls:
+                    has_bind_error.add(args[3])
             elif (verb == "runChecked" and len(args) >= 9
                     and args[0] in step_calls):
                 dispositions[args[0]] = "runChecked"
             elif verb == "ignore" and len(args) >= 3 and args[2] in step_calls:
                 if args[0] in ("ok", "value", "void"):
                     dispositions.setdefault(args[2], "ignore")
-            elif verb == "bind" and len(args) >= 4 and args[0] == "error":
-                if args[3] in step_calls:
-                    has_bind_error.add(args[3])
             elif (verb == "branch" and len(args) >= 5 and args[0] == "error"
                   and args[2] in step_calls):
                 has_branch_if_error.add(args[2])
@@ -21885,6 +21949,12 @@ def _native_gui_link_inputs(prog: Program):
     return [runtime_source], link_args
 
 
+_SQLITE_PURE_COMPILER_TARGETS = frozenset({
+    "sqlite.stepResultIsRow",
+    "sqlite.stepResultIsDone",
+})
+
+
 def _program_uses_sqlite_runtime(prog: Program) -> bool:
     """True if any operation contains a `sqlite.*` call. We trigger on
     real call sites rather than the dependency declaration because a
@@ -21895,7 +21965,9 @@ def _program_uses_sqlite_runtime(prog: Program) -> bool:
         for verb, args, _lineno in op.lines:
             if verb != "call" or len(args) < 2:
                 continue
-            if args[1].startswith("sqlite."):
+            target = _TARGET_ALIASES.get(args[1], args[1])
+            target = prog.operation_aliases.get(target, target)
+            if target.startswith("sqlite.") and target not in _SQLITE_PURE_COMPILER_TARGETS:
                 return True
     return False
 
@@ -21903,8 +21975,8 @@ def _program_uses_sqlite_runtime(prog: Program) -> bool:
 def _native_sqlite_link_inputs(prog: Program):
     """Return the (extra_sources, extra_link_args) tuple for linking the
     native_sqlite adapter + vendored amalgamation into an --emit-exe
-    build. Mirrors `_native_http_link_inputs` but triggered by any
-    sqlite.* call site rather than by `target webServer`.
+    build. Mirrors `_native_http_link_inputs` but triggered by sqlite.*
+    runtime call sites rather than by `target webServer`.
 
     The amalgamation `sqlite3.c` is compiled with the same conservative
     defines documented in

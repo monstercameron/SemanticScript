@@ -1326,6 +1326,7 @@ class TestSemAgentPayloads(unittest.TestCase):
         sqlite_wal_payload = sem._docs_payload("get", operation_name="sqlite.enableWalMode")
         sqlite_begin_payload = sem._docs_payload("get", operation_name="sqlite.beginImmediateTransaction")
         sqlite_last_rowid_payload = sem._docs_payload("get", operation_name="sqlite.lastInsertRowId")
+        sqlite_step_row_payload = sem._docs_payload("get", operation_name="sqlite.stepResultIsRow")
         sqlite_column_text_payload = sem._docs_payload("get", operation_name="sqlite.columnText")
         bcrypt_payload = sem._docs_payload("get", operation_name="bcrypt.hashPassword")
         bcrypt_result_payload = sem._docs_payload("get", operation_name="bcrypt.verifyPasswordResult")
@@ -1417,8 +1418,13 @@ class TestSemAgentPayloads(unittest.TestCase):
             "call prepareActivityLogCall sqlite.prepareStatement",
             migration["rows"],
         )
-        self.assertTrue(any("doneSqliteStepResult" in row for row in migration["rows"]))
+        self.assertTrue(any("sqlite.stepResultIsDone" in row for row in migration["rows"]))
         self.assertTrue(any("rollbackTransaction" in row for row in migration["rows"]))
+        self.assertTrue(sqlite_step_row_payload["ok"])
+        sqlite_step_row = sqlite_step_row_payload["target"]
+        self.assertTrue(sqlite_step_row["usage"]["availableForCodegen"])
+        self.assertEqual(sqlite_step_row["usage"]["failureHandling"]["kind"], "none")
+        self.assertEqual(sqlite_step_row["signature"]["text"], "(stepResult:SqliteStepResult) -> Bool")
         self.assertTrue(sqlite_column_text_payload["ok"])
         sqlite_column_text = sqlite_column_text_payload["target"]
         self.assertIn(

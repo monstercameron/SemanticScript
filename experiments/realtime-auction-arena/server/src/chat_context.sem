@@ -369,6 +369,14 @@ run stepChatRateCall
 bind ok chatRateStep Int32 stepChatRateCall
 bind error chatRateStepError SqliteStatementStepFailure stepChatRateCall
 branch error source stepChatRateCall target chatDatabaseUnavailable
+call chatRateStepIsRowCall math.equalInt32
+argument chatRateStepIsRowCall left Int32 chatRateStep
+argument chatRateStepIsRowCall right Int32 runtime.sqliteRowStepStatus
+run chatRateStepIsRowCall
+bind value chatRateStepIsRow Bool chatRateStepIsRowCall
+branch if condition chatRateStepIsRow target chatRateRowReady
+branch else target chatDatabaseUnavailable
+label chatRateRowReady
 call readChatRateCountCall sqlite.columnInt64
 argument readChatRateCountCall statement SqliteStatement chatRateStatement
 argument readChatRateCountCall columnIndex Int32 runtime.columnIndex0
@@ -403,7 +411,6 @@ branch else target chatDatabaseUnavailable
 label beginChatTxCallOpened
 defer rollbackChatTxDefer rollbackSqliteCommandTransaction chatDatabase
 
-label chatRateInsertActive
 call prepareChatRateInsertCall sqlite.prepareStatement
 argument prepareChatRateInsertCall database SqliteDatabase chatDatabase
 argument prepareChatRateInsertCall sql SqlText sql.sqlInsertChatRateBucket
@@ -473,7 +480,6 @@ ignore ok source stepInsertChatRateCall type Int32
 bind error stepInsertChatRateError SqliteStatementStepFailure stepInsertChatRateCall
 branch error source stepInsertChatRateCall target chatDatabaseUnavailable
 
-label chatSkipRateInsert
 call prepareInsertChatCall sqlite.prepareStatement
 argument prepareInsertChatCall database SqliteDatabase chatDatabase
 argument prepareInsertChatCall sql SqlText sql.sqlInsertChatMessage
@@ -750,12 +756,6 @@ argument chatValidationWriteCall response HttpResponse response
 run chatValidationWriteCall
 bind value chatValidationWriteStatus Int32 chatValidationWriteCall
 return value chatValidationWriteStatus
-label chatRejected
-call chatRejectedWriteCall helpers.writeChatRejectedEnvelope
-argument chatRejectedWriteCall response HttpResponse response
-run chatRejectedWriteCall
-bind value chatRejectedWriteStatus Int32 chatRejectedWriteCall
-return value chatRejectedWriteStatus
 label chatRateLimited
 call incrementChatRateLimitHitsMetricCall incrementRateLimitHitsTotal
 run incrementChatRateLimitHitsMetricCall
@@ -1234,10 +1234,9 @@ branch if condition chatDeleteAuditInserted target chatDeleteAuditAccepted
 branch else target chatDeleteDatabaseUnavailable
 label chatDeleteAuditAccepted
 
-storage local immutable chatDeleteRouteMethod String "DELETE"
 call insertChatDeleteRequestLogCall insertRequestLogRow
 argument insertChatDeleteRequestLogCall database SqliteDatabase chatDeleteDatabase
-argument insertChatDeleteRequestLogCall method String chatDeleteRouteMethod
+argument insertChatDeleteRequestLogCall method String runtime.methodDelete
 argument insertChatDeleteRequestLogCall path String runtime.chatDeleteRoutePatternText
 argument insertChatDeleteRequestLogCall routePattern String runtime.chatDeleteRoutePatternText
 argument insertChatDeleteRequestLogCall status Int64 runtime.okStatusInt64

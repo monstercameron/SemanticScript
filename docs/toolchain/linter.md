@@ -226,6 +226,14 @@ value is then consumed. Use or copy each borrowed text/blob/name before the next
 same-statement invalidating operation; use by-value readers such as
 `sqlite.columnInt64` where possible.
 
+## External Literal Pins
+
+`literalSource` rows are build inputs, not documentation. `semlint.py` reports
+compile-blocking `SS1204` when a source path cannot be read using the compiler's
+source-file-relative resolution rules. It also verifies normalized UTF-8
+`literalBytes` and `literalDigest ... sha256` pins, reporting `SS1205` or
+`SS1206` when the checked-in metadata no longer matches the resolved asset.
+
 ## Serialization Checks
 
 Linters treat JSON formatting as a boundary, not as ordinary text output. A

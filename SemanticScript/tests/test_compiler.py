@@ -89,14 +89,28 @@ def parse_semsc_source_with_imports(source, *, suffix=".sscript"):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = Path(tmpdir) / f"sample{suffix}"
         src_path.write_text(source, encoding="utf-8", newline="\n")
-        resolved = semsc._resolve_imports(source, str(src_path))
-        return semsc.parse(resolved)
+        resolved, origins = semsc._resolve_imports(source, str(src_path), return_origins=True)
+        try:
+            prog = semsc.parse(resolved)
+        except SyntaxError as exc:
+            _path, message = semsc._translate_parse_error_location(str(exc), origins, str(src_path))
+            raise SyntaxError(message) from exc
+        prog.source_path = str(src_path)
+        prog.source_origins = origins
+        return prog
 
 
 def parse_semsc_file_with_imports(path):
     source = path.read_text(encoding="utf-8")
-    resolved = semsc._resolve_imports(source, str(path))
-    return semsc.parse(resolved)
+    resolved, origins = semsc._resolve_imports(source, str(path), return_origins=True)
+    try:
+        prog = semsc.parse(resolved)
+    except SyntaxError as exc:
+        _path, message = semsc._translate_parse_error_location(str(exc), origins, str(path))
+        raise SyntaxError(message) from exc
+    prog.source_path = str(path)
+    prog.source_origins = origins
+    return prog
 
 
 def lint_diag_lines(source):
@@ -518,6 +532,12 @@ def test_parser_language_mode_strict_executable():
     strict_source = "\n".join([
         "languageMode strictExecutable",
         "project StrictMode",
+        "type StrictSqlText String",
+        "typeLiteralEncoding StrictSqlText utf8",
+        "typeLiteralTerminator StrictSqlText nullByte",
+        "type StrictPair Pair",
+        "typeParameter StrictPair 0 ExitCode",
+        "typeParameter StrictPair 1 MainError",
         "operation main",
         "output operation main Result ExitCode MainError",
         "precondition main \"caller validates inputs\"",
@@ -529,6 +549,11 @@ def test_parser_language_mode_strict_executable():
     check("parser: strictExecutable language mode recorded",
           prog.language_modes == ["strictExecutable"],
           f"got {prog.language_modes!r}")
+    check("parser: documented strict top-level type metadata still parses",
+          prog.type_metadata.get("StrictSqlText", {}).get("literalEncoding") == ["utf8"]
+          and prog.type_metadata.get("StrictSqlText", {}).get("literalTerminator") == ["nullByte"]
+          and prog.type_metadata.get("StrictPair", {}).get("parameter") == [["0", "ExitCode"], ["1", "MainError"]],
+          f"type_metadata = {prog.type_metadata!r}")
     main_op = prog.operations.get("main")
     check("parser: documented strict body metadata still parses",
           main_op is not None
@@ -8070,13 +8095,14 @@ def test_web_codegen_request_value_presence_helpers_lower():
              str(src_path), "--emit-exe", str(exe_path)],
             capture_output=True, text=True, timeout=180,
         )
+        native_exe_exists = exe_path.exists()
     check("web codegen: request value presence helpers lower",
           proc.returncode == 0
           and "ss_http_request_value_is_empty" in ir_text
           and "ss_http_request_value_length" in ir_text,
           f"rc={proc.returncode} stderr={proc.stderr!r} ir={ir_text[:1000]!r}")
     check("web codegen: request value presence helpers link native HTTP runtime",
-          native_proc.returncode == 0 and exe_path.exists(),
+          native_proc.returncode == 0 and native_exe_exists,
           f"rc={native_proc.returncode} stderr={native_proc.stderr!r}")
 
 
@@ -8959,8 +8985,12 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "call stepInsertCall sqlite.stepStatement",
         "argument stepInsertCall statement SqliteStatement insertStatement",
         "run stepInsertCall",
-        "ignore ok source stepInsertCall type SqliteStepResult",
+        "bind ok insertStepResult SqliteStepResult stepInsertCall",
         "branch error source stepInsertCall target sqliteFailure",
+        "call insertStepDoneCheckCall sqlite.stepResultIsDone",
+        "argument insertStepDoneCheckCall stepResult SqliteStepResult insertStepResult",
+        "run insertStepDoneCheckCall",
+        "bind value insertStepDone Bool insertStepDoneCheckCall",
         "call resetInsertCall sqlite.resetStatement",
         "argument resetInsertCall statement SqliteStatement insertStatement",
         "run resetInsertCall",
@@ -8987,8 +9017,12 @@ def test_sqlite_extended_intrinsic_surface_lowers():
         "call stepSelectCall sqlite.stepStatement",
         "argument stepSelectCall statement SqliteStatement selectStatement",
         "run stepSelectCall",
-        "ignore ok source stepSelectCall type SqliteStepResult",
+        "bind ok selectStepResult SqliteStepResult stepSelectCall",
         "branch error source stepSelectCall target sqliteFailure",
+        "call selectStepRowCheckCall sqlite.stepResultIsRow",
+        "argument selectStepRowCheckCall stepResult SqliteStepResult selectStepResult",
+        "run selectStepRowCheckCall",
+        "bind value selectStepHasRow Bool selectStepRowCheckCall",
         "call columnCountCall sqlite.columnCount",
         "argument columnCountCall statement SqliteStatement selectStatement",
         "run columnCountCall",
@@ -9059,6 +9093,10 @@ def test_sqlite_extended_intrinsic_surface_lowers():
     check("sqlite extended lowering: codegen succeeds",
           proc.returncode == 0 and bool(ir_text),
           f"rc={proc.returncode} stderr={proc.stderr!r}")
+    check("sqlite extended lowering: step-result predicates lower",
+          "insertStepDoneCheckCall_isDone" in ir_text
+          and "selectStepRowCheckCall_isRow" in ir_text,
+          ir_text)
     for symbol in (
         "ss_sqlite_database_errmsg",
         "ss_sqlite_database_changes",
@@ -10832,30 +10870,6 @@ def test_unlinked_stdlib_call_is_rejected_not_zeroed():
             "bind value bodyLength Int64 lenCall",
             "return value 0",
         ])),
-        ("webServer standard.http helper", "standard.http", "\n".join([
-            "project UnlinkedHttpHelper",
-            "target webServer",
-            "runtime native 1",
-            "webServer appServer",
-            "serverHost appServer \"127.0.0.1\"",
-            "serverPort appServer 18100",
-            "route appServer GET \"/\" homeHandler",
-            "import http standard.http",
-            "operation homeHandler",
-            "input operation homeHandler request HttpRequest",
-            "input operation homeHandler response HttpResponse",
-            "output operation homeHandler Int32",
-            "memory homeHandler arena request",
-            "async homeHandler no",
-            "storage local immutable nowMillis Int64 200",
-            "storage local immutable expiresAtMillis Int64 100",
-            "call expiredCall http.sessionIsExpired",
-            "argument expiredCall nowMillis Int64 nowMillis",
-            "argument expiredCall expiresAtMillis SessionExpiresAtMillis expiresAtMillis",
-            "run expiredCall",
-            "bind value expired Bool expiredCall",
-            "return value 0",
-        ])),
     ]
 
     for label, expected_module, src in cases:
@@ -10917,6 +10931,46 @@ def test_http_session_expiry_helpers_link_as_native_runtime_bindings():
     check("http session expiry helpers run through native runtime bindings",
           run_proc.returncode == 0,
           f"rc={run_proc.returncode} stdout={run_proc.stdout!r} stderr={run_proc.stderr!r}")
+
+    web_src = "\n".join([
+        "project HttpSessionExpiryWebSmoke",
+        "target webServer",
+        "runtime native 1",
+        "webServer appServer",
+        "serverHost appServer \"127.0.0.1\"",
+        "serverPort appServer 18100",
+        "route appServer GET \"/\" homeHandler",
+        "import http standard.http",
+        "operation homeHandler",
+        "input operation homeHandler request HttpRequest",
+        "input operation homeHandler response HttpResponse",
+        "output operation homeHandler Int32",
+        "memory homeHandler arena request",
+        "async homeHandler no",
+        "storage local immutable nowMillis Int64 200",
+        "storage local immutable ttlMillis SessionTtlMillis 50",
+        "call expiresAtCall http.sessionExpiresAt",
+        "argument expiresAtCall nowMillis Int64 nowMillis",
+        "argument expiresAtCall ttlMillis SessionTtlMillis ttlMillis",
+        "run expiresAtCall",
+        "bind value expiresAtMillis SessionExpiresAtMillis expiresAtCall",
+        "call expiredCall http.sessionIsExpired",
+        "argument expiredCall nowMillis Int64 nowMillis",
+        "argument expiredCall expiresAtMillis SessionExpiresAtMillis expiresAtMillis",
+        "run expiredCall",
+        "bind value expired Bool expiredCall",
+        "return value 0",
+    ])
+    try:
+        web_ir = str(semsc.Codegen(semsc.parse(web_src)).compile())
+        web_error = ""
+    except Exception as exc:
+        web_ir = ""
+        web_error = str(exc)
+    check("http session expiry helpers lower in webServer codegen",
+          "ss_http_session_expires_at" in web_ir
+          and "ss_http_session_is_expired" in web_ir,
+          web_error or web_ir[-400:])
 
 
 def test_backend_diagnostic_detects_locked_output_binary():

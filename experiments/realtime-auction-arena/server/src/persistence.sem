@@ -8,6 +8,8 @@ moduleWarning app.realtime_auction_arena.server.persistence "Runtime integration
 
 import sqlite standard.sqlite
 
+typeLiteralEncoding SqlText utf8
+
 record PersistencePlan
 field PersistencePlan schemaVersion Int64
 field PersistencePlan databasePathEnv String
@@ -78,8 +80,9 @@ jsonBody persistenceTransactionPlan
   }
 
 literal sqliteSchemaV1 SqlText
-literalSource sqliteSchemaV1 "sql/schema.sql"
-literalBytes sqliteSchemaV1 11038
+literalSource sqliteSchemaV1 "../sql/schema.sql"
+literalBytes sqliteSchemaV1 12142
+literalDigest sqliteSchemaV1 sha256 3322f651762fe1609155512da55d183a03a9675e12d11f900b5e5fa2dfc1e68d
 literalTrust sqliteSchemaV1 trustedStaticAsset
 
 storage module immutable sqliteReadinessProbeV1 SqlText

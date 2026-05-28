@@ -15,17 +15,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 SERVER_DIR = ROOT / "experiments" / "realtime-auction-arena" / "server"
-EXE = SERVER_DIR / "build" / "realtime_auction_arena_server.exe"
+BUILD_DIR = SERVER_DIR / "build"
+EXE = BUILD_DIR / "realtime_auction_arena_server.exe"
+DB_PATH = BUILD_DIR / "auction_arena.sqlite3"
+LEGACY_DB_PATH = SERVER_DIR / "auction_arena.sqlite3"
 BASE_URL = os.environ.get("AUCTION_ARENA_BASE_URL", "http://127.0.0.1:18083")
 REQUEST_ID = "req_e2e_smoke"
 TEST_JWT_SECRET = "e2e-secret-with-at-least-thirty-two-bytes"
 
 
 def delete_db_files():
-    for suffix in ["", "-wal", "-shm"]:
-        db_path = SERVER_DIR / f"auction_arena.sqlite3{suffix}"
-        if db_path.exists():
-            db_path.unlink()
+    for base_path in [DB_PATH, LEGACY_DB_PATH]:
+        for suffix in ["", "-wal", "-shm"]:
+            db_path = Path(str(base_path) + suffix)
+            if db_path.exists():
+                db_path.unlink()
 
 
 def run_build():
@@ -190,8 +194,7 @@ def expect_sse(path, status, headers=None, route_path=None):
 
 
 def assert_rate_limit_probe_bucket():
-    db_path = SERVER_DIR / "auction_arena.sqlite3"
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(DB_PATH) as conn:
         bucket = conn.execute(
             "SELECT count, limit_count, reset_at FROM rate_limit_buckets WHERE bucket_key = 'rate-limit-probe'"
         ).fetchone()
@@ -1056,8 +1059,7 @@ def test_auth_and_api_fail_closed():
         False,
         code="idempotency_conflict",
     )
-    db_path = SERVER_DIR / "auction_arena.sqlite3"
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(DB_PATH) as conn:
         chat_message_id = conn.execute(
             """
             SELECT message_id FROM chat_messages
@@ -1397,8 +1399,7 @@ def test_auth_and_api_fail_closed():
         code="auction_not_found",
         headers=audit_headers,
     )
-    db_path = SERVER_DIR / "auction_arena.sqlite3"
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(DB_PATH) as conn:
         seed_users = set(conn.execute("SELECT user_id, username, role FROM users").fetchall())
         assert ("user_auctioneer_001", "auctioneer", 20) in seed_users
         assert ("user_bidder_demo", "bidder", 10) in seed_users
@@ -1619,7 +1620,7 @@ def test_auth_and_api_fail_closed():
     )
     assert logout["data"]["loggedOut"] is True
 
-    with sqlite3.connect(SERVER_DIR / "auction_arena.sqlite3") as conn:
+    with sqlite3.connect(DB_PATH) as conn:
         logout_audit = conn.execute(
             "SELECT outcome, error_code FROM audit_events WHERE action = 'auth.logout'"
         ).fetchall()
@@ -1658,7 +1659,7 @@ def test_audit_cursor_tiebreak_endpoint_preseeded():
     finally:
         stop_server(init_process)
 
-    db_path = SERVER_DIR / "auction_arena.sqlite3"
+    db_path = DB_PATH
     auction_id = "auc_audit_cursor_tiebreak"
     same_millis = int(time.time() * 1000) + 100000
     cursor_audit_id_a = "aud_cursor_tiebreak_a"

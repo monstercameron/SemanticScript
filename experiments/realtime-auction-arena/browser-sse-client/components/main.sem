@@ -35,7 +35,7 @@ html body template PageHeadComponent
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <title>{pageTitleText}</title>
+  <title>{{pageTitleText}}</title>
   <link rel="stylesheet" href="/assets/app.css" />
 
 operation renderPageHead
@@ -60,7 +60,7 @@ html body template TopBarComponent
   <header class="mb-6 flex items-center justify-between gap-4">
   <a href="/" class="block">
   <p class="text-xs font-semibold uppercase tracking-widest text-accent">Bidder floor</p>
-  <h1 class="text-2xl font-bold text-ink">{brandText}</h1>
+  <h1 class="text-2xl font-bold text-ink">{{brandText}}</h1>
   </a>
   <span id="connectionPill" class="pill inline-flex items-center gap-2 rounded-full border border-floor-edge bg-floor-raised px-3 py-1 text-sm font-medium text-muted" data-conn="offline">
   <span class="h-2 w-2 rounded-full bg-current"></span>
@@ -91,24 +91,24 @@ html template AuctionStageComponent
 html body template AuctionStageComponent
   <section class="rounded-2xl border border-floor-edge bg-floor-panel p-6" aria-labelledby="auctionTitle">
   <div class="mb-3 flex items-center gap-3">
-  <span id="auctionStatus" class="status-chip inline-flex items-center gap-1.5 rounded-md bg-floor-raised px-2 py-0.5 text-xs font-semibold uppercase tracking-wide" data-status="{statusText}">{statusText}</span>
-  <span class="font-mono text-xs text-muted">{auctionIdText}</span>
+  <span id="auctionStatus" class="status-chip inline-flex items-center gap-1.5 rounded-md bg-floor-raised px-2 py-0.5 text-xs font-semibold uppercase tracking-wide" data-status="{{statusText}}">{{statusText}}</span>
+  <span class="font-mono text-xs text-muted">{{auctionIdText}}</span>
   </div>
-  <h2 id="auctionTitle" class="text-2xl font-bold text-ink">{titleText}</h2>
-  <p id="auctionDescription" class="mt-1 text-sm text-muted">{descriptionText}</p>
+  <h2 id="auctionTitle" class="text-2xl font-bold text-ink">{{titleText}}</h2>
+  <p id="auctionDescription" class="mt-1 text-sm text-muted">{{descriptionText}}</p>
   <div class="mt-6 grid grid-cols-2 gap-4">
   <div aria-live="polite">
   <p class="text-xs uppercase tracking-wide text-muted">Current bid</p>
-  <p id="currentBid" class="price font-mono text-3xl font-bold tabular-nums text-ink">{currentBidText}</p>
+  <p id="currentBid" class="price font-mono text-3xl font-bold tabular-nums text-ink">{{currentBidText}}</p>
   </div>
   <div>
   <p class="text-xs uppercase tracking-wide text-muted">Winner</p>
-  <p id="currentWinner" class="mt-1 text-lg font-semibold text-ink">{winnerText}</p>
+  <p id="currentWinner" class="mt-1 text-lg font-semibold text-ink">{{winnerText}}</p>
   </div>
   </div>
   <div id="timerBlock" class="mt-6 rounded-xl border border-floor-edge bg-floor-raised p-4">
   <p class="text-xs uppercase tracking-wide text-muted">Closes in</p>
-  <p id="countdown" class="countdown font-mono text-2xl font-bold tabular-nums text-ink" data-phase="normal" data-closes-at="{closesAtText}">--:--</p>
+  <p id="countdown" class="countdown font-mono text-2xl font-bold tabular-nums text-ink" data-phase="normal" data-closes-at="{{closesAtText}}">--:--</p>
   </div>
   </section>
 
@@ -147,9 +147,9 @@ html body template BidFormComponent
   <section class="mt-6 rounded-2xl border border-floor-edge bg-floor-panel p-6" aria-labelledby="bidHeading">
   <div class="mb-4 flex items-center justify-between">
   <h2 id="bidHeading" class="text-base font-semibold text-ink">Place a bid</h2>
-  <span id="minimumBidLabel" class="rounded-md bg-floor-raised px-2 py-0.5 text-xs font-medium text-muted">{minBidText}</span>
+  <span id="minimumBidLabel" class="rounded-md bg-floor-raised px-2 py-0.5 text-xs font-medium text-muted">{{minBidText}}</span>
   </div>
-  <form id="bidForm" class="flex flex-col gap-3" data-api="{apiBaseUrlText}" data-auction="{auctionIdText}">
+  <form id="bidForm" class="flex flex-col gap-3" data-api="{{apiBaseUrlText}}" data-auction="{{auctionIdText}}">
   <label class="flex flex-col gap-1.5 text-sm text-muted">Amount
   <input id="bidAmountInput" type="number" min="0" step="0.01" inputmode="decimal" required class="rounded-lg border border-floor-edge bg-floor-bg px-3 py-2 text-ink" />
   </label>
@@ -184,8 +184,8 @@ html template ChatPanelComponent
 html body template ChatPanelComponent
   <section class="mt-6 rounded-2xl border border-floor-edge bg-floor-panel p-6" aria-labelledby="chatHeading">
   <h2 id="chatHeading" class="mb-3 text-base font-semibold text-ink">Floor chat</h2>
-  <div id="chatMessages" class="flex max-h-56 flex-col gap-2 overflow-y-auto" aria-live="polite">{chatBodyFragment}</div>
-  <form id="chatForm" class="mt-3 flex gap-2" data-api="{apiBaseUrlText}" data-auction="{auctionIdText}">
+  <div id="chatMessages" class="flex max-h-56 flex-col gap-2 overflow-y-auto" aria-live="polite">{{chatBodyFragment}}</div>
+  <form id="chatForm" class="mt-3 flex gap-2" data-api="{{apiBaseUrlText}}" data-auction="{{auctionIdText}}">
   <input id="chatInput" maxlength="500" placeholder="Message the floor" class="flex-1 rounded-lg border border-floor-edge bg-floor-bg px-3 py-2 text-ink" />
   <button id="chatButton" type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-floor-bg">Send</button>
   </form>
@@ -216,8 +216,8 @@ return value chatPanelFragment
 html template ListSectionComponent
 html body template ListSectionComponent
   <section class="mt-6">
-  <h2 class="mb-4 text-lg font-semibold text-ink">{sectionTitleText}</h2>
-  <div class="grid gap-4 sm:grid-cols-2">{listBodyFragment}</div>
+  <h2 class="mb-4 text-lg font-semibold text-ink">{{sectionTitleText}}</h2>
+  <div class="grid gap-4 sm:grid-cols-2">{{listBodyFragment}}</div>
   </section>
 
 operation renderListSection

@@ -10,6 +10,7 @@ Run from repo root: `python -m unittest SemanticScript/linter/test_semlint.py -v
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import unittest
@@ -185,6 +186,34 @@ label lowPath
 return value lowExit
 label highPath
 return value highExit
+""")
+        self.assertNotIn("SS3630", _codes(diagnostics))
+
+    def test_top_level_import_after_operation_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+storage local immutable success ExitCode 0
+return value success
+import pages app.example.pages
+""")
+        self.assertNotIn("SS3630", _codes(diagnostics))
+
+    def test_wait_set_case_rows_are_not_unreachable_rows(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation main
+output main ExitCode
+purpose main "smoke"
+label waitNextFetch
+await nextFetch
+case healthFetchCall printHealthResponse
+done allFetchesPrinted
+label printHealthResponse
+jump target waitNextFetch
+label allFetchesPrinted
+storage local immutable success ExitCode 0
+return value success
 """)
         self.assertNotIn("SS3630", _codes(diagnostics))
 
@@ -408,6 +437,59 @@ literalSource embeddedConfig "config.json"
 literalDigest embeddedConfig sha256 abc123
 """)
         self.assertNotIn("SS1203", _codes(diagnostics))
+
+
+class TestLiteralSourcePins(unittest.TestCase):
+    def test_missing_literal_source_is_compile_blocking(self) -> None:
+        diagnostics = _lint_source_at("src/main.sem", """project Test
+literal embeddedConfig String
+literalSource embeddedConfig "../config.json"
+literalBytes embeddedConfig 2
+literalDigest embeddedConfig sha256 44136fa355b3678a1146ad16f7e8649e94fb4f0c4f2d2276f7e9d9a7a08f8894
+""")
+        matching = _diagnostics_with_code(diagnostics, "SS1204")[0]
+        self.assertTrue(matching.blocksCompile)
+
+    def test_literal_source_resolves_relative_to_source_file(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            sourceDir = root / "src"
+            sourceDir.mkdir()
+            (root / "config.json").write_text("{}\n", encoding="utf-8")
+            normalizedBytes = "{}\n".encode("utf-8")
+            digest = hashlib.sha256(normalizedBytes).hexdigest()
+            fixturePath = sourceDir / "main.sem"
+            fixturePath.write_text(f"""project Test
+literal embeddedConfig String
+literalSource embeddedConfig "../config.json"
+literalBytes embeddedConfig {len(normalizedBytes)}
+literalDigest embeddedConfig sha256 {digest}
+""", encoding="utf-8")
+
+            diagnostics = semlint.lint_path(fixturePath)
+
+        self.assertNotIn("SS1204", _codes(diagnostics))
+        self.assertNotIn("SS1205", _codes(diagnostics))
+        self.assertNotIn("SS1206", _codes(diagnostics))
+
+    def test_literal_byte_and_digest_pins_must_match_resolved_source(self) -> None:
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            sourceDir = root / "src"
+            sourceDir.mkdir()
+            (root / "config.json").write_text("{}\n", encoding="utf-8")
+            fixturePath = sourceDir / "main.sem"
+            fixturePath.write_text("""project Test
+literal embeddedConfig String
+literalSource embeddedConfig "../config.json"
+literalBytes embeddedConfig 99
+literalDigest embeddedConfig sha256 deadbeef
+""", encoding="utf-8")
+
+            diagnostics = semlint.lint_path(fixturePath)
+
+        self.assertIn("SS1205", _codes(diagnostics))
+        self.assertIn("SS1206", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -2541,9 +2623,9 @@ run titleCall
 bind value titleValue String titleCall
 """
 
-    def test_column_value_used_after_next_same_statement_read_is_flagged(self) -> None:
-        # Reading column 1 overwrites the buffer column 0's pointer aliases, so
-        # using titleValue AFTER the second columnText corrupts output.
+    def test_column_value_used_after_next_same_statement_read_is_not_flagged(self) -> None:
+        # SQLite keeps sibling column values valid until the statement advances
+        # or resets; reading column 1 does not invalidate column 0's pointer.
         diagnostics = _lint_source(self._PREAMBLE + """call projectCall sqlite.columnText
 argument projectCall statement SqliteStatement selectStatement
 argument projectCall columnIndex Int32 columnIndexOne
@@ -2556,9 +2638,7 @@ run writeCall
 bind value writeStatus Int32 writeCall
 return value writeStatus
 """)
-        self.assertIn("SS3113", _codes(diagnostics))
-        matching = _diagnostics_with_code(diagnostics, "SS3113")[0]
-        self.assertEqual(matching.subjectName, "titleValue")
+        self.assertNotIn("SS3113", _codes(diagnostics))
 
     def test_consume_before_next_read_is_not_flagged(self) -> None:
         # The idiomatic fix: use/copy titleValue BEFORE the second columnText.
@@ -2967,7 +3047,7 @@ returnError writeLineError
             diagnostics,
         )
 
-    def test_non_wait_set_ignore_error_does_not_hide_missing_branch(self) -> None:
+    def test_non_wait_set_ignore_error_counts_as_error_disposition(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
 output main Void
@@ -2975,15 +3055,15 @@ purpose main "smoke"
 call firstFetchCall net.fetchText
 start firstFetchCall
 await firstFetchCall
-ignoreError firstFetchCall
+ignore error source firstFetchCall
 """)
         matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
         self.assertTrue(
             any(
                 diagnostic.subjectName == "firstFetchCall"
                 and "bind/ignore ok" in diagnostic.gapEdge
-                and "bind error" in diagnostic.gapEdge
-                and "branch error" in diagnostic.gapEdge
+                and "bind error" not in diagnostic.gapEdge
+                and "branch error" not in diagnostic.gapEdge
                 for diagnostic in matchingDiagnostics
             ),
             diagnostics,
@@ -3077,25 +3157,25 @@ return void
     def test_pre_wait_call_ignore_error_inside_wait_handler_is_still_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 operation main
-output main Void
-purpose main "smoke"
+output operation main Void
+purpose operation main "smoke"
 effect main write console.stdout
+storage local immutable someMessageText String "hello"
 call writeLineCall console.writeLine
-arg writeLineCall console console
-arg writeLineCall text someMessageText
+argument writeLineCall text String someMessageText
 run writeLineCall
-ignoreOk writeLineCall Void
-call asyncCall math.addInt64
+ignore ok source writeLineCall type Void
+call asyncCall net.fetchText
 start asyncCall
 label waitNextResult
 await nextResult
 case asyncCall asyncReady
 done allDone
 label asyncReady
-ignoreError writeLineCall
+ignore error source writeLineCall
 jump target waitNextResult
 label allDone
-returnValue noResult
+return void
 """)
         matchingDiagnostics = _diagnostics_with_code(diagnostics, "SS3106")
         self.assertTrue(
@@ -4041,6 +4121,34 @@ returnVoid
 """)
         self.assertNotIn("SS3207", _codes(diagnostics))
 
+    def test_insert_empty_row_with_current_branch_syntax_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+operation handleEnter
+output operation handleEnter Void
+purpose operation handleEnter "insert row"
+storage local mutable activeRowCount Int64 4
+storage local immutable maxRows Int64 4
+call addEmptyAtEndCall insertEmptyRowAt
+argument addEmptyAtEndCall rowsBuffer OpaquePointer rowsBuffer
+argument addEmptyAtEndCall rowLengths OpaquePointer rowLengths
+argument addEmptyAtEndCall activeRowCount Int64 activeRowCount
+argument addEmptyAtEndCall rowIndex Int64 activeRowCount
+argument addEmptyAtEndCall maxRows Int64 maxRows
+argument addEmptyAtEndCall rowCapacity Int64 rowCapacity
+run addEmptyAtEndCall
+bind value rowsAfterAddEmpty Int64 addEmptyAtEndCall
+call addEmptyAtEndFailedCheckCall math.equalInt64
+argument addEmptyAtEndFailedCheckCall left Int64 rowsAfterAddEmpty
+argument addEmptyAtEndFailedCheckCall right Int64 activeRowCount
+run addEmptyAtEndFailedCheckCall
+bind value addEmptyAtEndFailed Bool addEmptyAtEndFailedCheckCall
+branch if condition addEmptyAtEndFailed target noMutation
+set memory activeRowCount rowsAfterAddEmpty
+label noMutation
+return void
+""")
+        self.assertNotIn("SS3207", _codes(diagnostics))
+
 
 class TestBindThenIgnore(unittest.TestCase):
     def test_bind_then_ignore_value_flagged(self) -> None:
@@ -4253,6 +4361,25 @@ call freeAllocationCall c.free
 arg freeAllocationCall ptr allocatedBuffer
 run freeAllocationCall
 ignoreValue freeAllocationCall Void
+""")
+        self.assertNotIn("SS3303", _codes(diagnostics))
+
+    def test_allocator_transferred_to_storage_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module mutable cachedBuffer OpaquePointer null
+operation main
+output main Void
+purpose main "initialize a process-lifetime buffer cache"
+effect main allocate heap
+memoryHeap main yes
+memoryAllocationSource main allocationCall
+storage local immutable eightBytes ByteCount 8
+call allocationCall c.malloc
+arg allocationCall size eightBytes
+run allocationCall
+bindOk allocatedBuffer OpaquePointer allocationCall
+set storage cachedBuffer allocatedBuffer
+returnVoid
 """)
         self.assertNotIn("SS3303", _codes(diagnostics))
 
@@ -5529,12 +5656,18 @@ sql body selectSql
 
     def test_inline_sql_literal_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
-storage module immutable selectSql String "SELECT 1"
+storage module immutable selectSql SqlText "SELECT 1"
 """)
         self.assertIn("SS3628", _codes(diagnostics))
         matching = _diagnostics_with_code(diagnostics, "SS3628")[0]
         self.assertEqual(matching.kind, "sql.inlineLiteral")
         self.assertEqual(matching.subjectName, "selectSql")
+
+    def test_http_method_delete_string_is_not_inline_sql(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable methodDelete String "DELETE"
+""")
+        self.assertNotIn("SS3628", _codes(diagnostics))
 
     def test_sql_body_redundant_case_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5578,7 +5711,7 @@ bind value insertedRowId SqliteRowId rowidCall
         self.assertEqual(matching.kind, "sqlite.lastInsertRowIdCall")
         self.assertEqual(matching.subjectName, "rowidCall")
         self.assertIn("beginImmediateTransaction/commit", matching.agentHint)
-        self.assertIn("doneSqliteStepResult", matching.fixCandidates[0].shape)
+        self.assertIn("sqlite.stepResultIsDone", matching.fixCandidates[0].shape)
 
     def test_sql_body_returning_generated_id_is_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
@@ -5817,6 +5950,37 @@ ignore void source commitTxCall
 """)
         self.assertNotIn("SS3635", _codes(diagnostics))
 
+    def test_returning_statement_drain_is_not_counted_as_second_write(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+storage module immutable insertReturningSql SqlText
+sql body insertReturningSql
+  INSERT INTO todo(title) VALUES (?) RETURNING id
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call prepareInsertCall sqlite.prepareStatement
+argument prepareInsertCall database SqliteDatabase databaseHandle
+argument prepareInsertCall sql SqlText insertReturningSql
+run prepareInsertCall
+bind ok insertStatement SqliteStatement prepareInsertCall
+call stepInsertCall sqlite.stepStatement
+argument stepInsertCall statement SqliteStatement insertStatement
+run stepInsertCall
+bind ok insertRowStatus SqliteStepResult stepInsertCall
+call readInsertedIdCall sqlite.columnInt64
+argument readInsertedIdCall statement SqliteStatement insertStatement
+argument readInsertedIdCall columnIndex Int32 0
+run readInsertedIdCall
+bind value insertedId Int64 readInsertedIdCall
+call drainInsertCall sqlite.stepStatement
+argument drainInsertCall statement SqliteStatement insertStatement
+run drainInsertCall
+ignore ok source drainInsertCall type SqliteStepResult
+""")
+        self.assertNotIn("SS3635", _codes(diagnostics))
+
     def test_multiple_sql_writes_with_transaction_helpers_is_not_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 import sqlite standard.sqlite
@@ -5853,6 +6017,49 @@ argument stepRequestLogCall statement SqliteStatement requestLogStatement
 run stepRequestLogCall
 ignore ok source stepRequestLogCall type Int32
 call commitTxCall sqlite.commitTransaction
+argument commitTxCall database SqliteDatabase databaseHandle
+run commitTxCall
+ignore void source commitTxCall
+""")
+        self.assertNotIn("SS3635", _codes(diagnostics))
+
+    def test_multiple_sql_writes_with_project_transaction_helpers_is_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+import tx app.server.persistence_tx
+storage module immutable insertAuditSql SqlText
+sql body insertAuditSql
+  INSERT INTO audit_events(actor_id, action) VALUES (?, ?)
+storage module immutable insertRequestLogSql SqlText
+sql body insertRequestLogSql
+  INSERT INTO request_log(route, status) VALUES (?, ?)
+operation main
+input operation main databaseHandle SqliteDatabase
+output operation main Void
+purpose operation main "smoke"
+call beginTxCall tx.beginSqliteCommandTransaction
+argument beginTxCall database SqliteDatabase databaseHandle
+run beginTxCall
+ignore void source beginTxCall
+call prepareAuditCall sqlite.prepareStatement
+argument prepareAuditCall database SqliteDatabase databaseHandle
+argument prepareAuditCall sql SqlText insertAuditSql
+run prepareAuditCall
+bind ok auditStatement SqliteStatement prepareAuditCall
+call stepAuditCall sqlite.stepStatement
+argument stepAuditCall statement SqliteStatement auditStatement
+run stepAuditCall
+ignore ok source stepAuditCall type Int32
+call prepareRequestLogCall sqlite.prepareStatement
+argument prepareRequestLogCall database SqliteDatabase databaseHandle
+argument prepareRequestLogCall sql SqlText insertRequestLogSql
+run prepareRequestLogCall
+bind ok requestLogStatement SqliteStatement prepareRequestLogCall
+call stepRequestLogCall sqlite.stepStatement
+argument stepRequestLogCall statement SqliteStatement requestLogStatement
+run stepRequestLogCall
+ignore ok source stepRequestLogCall type Int32
+call commitTxCall tx.commitSqliteCommandTransaction
 argument commitTxCall database SqliteDatabase databaseHandle
 run commitTxCall
 ignore void source commitTxCall
@@ -6825,6 +7032,27 @@ run statusCheckCall
 """)
         self.assertNotIn("SS4301", _codes(diagnostics))
 
+    def test_sqlite_step_result_predicates_accept_step_result(self) -> None:
+        diagnostics = _lint_source("""project Test
+import sqlite standard.sqlite
+operation main
+output operation main Bool
+purpose operation main "smoke"
+memory main heap no
+async main no
+call rowCheckCall sqlite.stepResultIsRow
+argument rowCheckCall stepResult SqliteStepResult rowSqliteStepResult
+run rowCheckCall
+bind value isRow Bool rowCheckCall
+call doneCheckCall sqlite.stepResultIsDone
+argument doneCheckCall stepResult SqliteStepResult doneSqliteStepResult
+run doneCheckCall
+bind value isDone Bool doneCheckCall
+return value isRow
+""")
+        self.assertNotIn("SS4301", _codes(diagnostics))
+        self.assertNotIn("SS4105", _codes(diagnostics))
+
     def test_enum_case_to_wrong_width_builtin_is_flagged(self) -> None:
         diagnostics = _lint_source("""project Test
 enum SaveStatus repr Int32
@@ -6972,6 +7200,43 @@ run widenCall
         self.assertIn("SS4303", _codes(diagnostics))
         diagnostic = _diagnostics_with_code(diagnostics, "SS4303")[0]
         self.assertEqual(diagnostic.kind, "typeIntegrity.mathOperandWidthDrift")
+
+    def test_imported_repr_int32_enum_constant_passes_integer_comparison(self) -> None:
+        # rowSqliteStepResult is a builtin constant of type SqliteStepResult
+        # (repr Int32). Passing it to math.equalInt32 must NOT fire SS4301:
+        # the enum's repr must be visible via the import contract index once
+        # the caller has `importType SqliteStepResult sqlite SqliteStepResult`.
+        # Without that import, typeAliases["SqliteStepResult"]="SqliteStepResult"
+        # (a self-alias from the import loop) puts "SqliteStepResult" in the
+        # visited set, which historically blocked the enumReprs lookup.
+        with TemporaryDirectory() as tempDir:
+            root = Path(tempDir)
+            (root / "build.sem").write_text(
+                "buildProject enumReprFix\n"
+                "registerModule enumReprFix app.enum_repr_fix \"main.sem\"\n"
+                "mainFile enumReprFix \"main.sem\"\n",
+                encoding="utf-8",
+            )
+            (root / "main.sem").write_text(
+                "module app.enum_repr_fix\n"
+                "import sqlite standard.sqlite\n"
+                "importType SqliteStepResult sqlite SqliteStepResult\n"
+                "storage module immutable expectedCode Int32 100\n"
+                "operation main\n"
+                "output operation main Bool\n"
+                "async main no\n"
+                "purpose operation main"
+                " \"Verify imported repr Int32 enum const passes integer comparison.\"\n"
+                "call eqCall math.equalInt32\n"
+                "argument eqCall left Int32 rowSqliteStepResult\n"
+                "argument eqCall right Int32 expectedCode\n"
+                "run eqCall\n"
+                "bind value isMatch Bool eqCall\n"
+                "return value isMatch\n",
+                encoding="utf-8",
+            )
+            diagnostics = semlint.lint_path(root / "main.sem")
+        self.assertNotIn("SS4301", _codes(diagnostics))
 
 
 # ==========================================================================
@@ -7514,6 +7779,38 @@ run localWriteCall
 return void
 """)
         self.assertNotIn("SS3310", _codes(diagnostics))
+
+    def test_mutable_local_format_selected_from_immutable_constants_not_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable defaultFormat String "%s"
+storage module immutable alternateFormat String "%lld"
+operation main
+output operation main Void
+purpose operation main "safe selected format string fixture"
+storage local mutable selectedFormat String defaultFormat
+set memory selectedFormat alternateFormat
+call writeCall c.snprintf
+argument writeCall format String selectedFormat
+run writeCall
+return void
+""")
+        self.assertNotIn("SS3310", _codes(diagnostics))
+
+    def test_mutable_local_format_assigned_runtime_value_is_flagged(self) -> None:
+        diagnostics = _lint_source("""project Test
+storage module immutable defaultFormat String "%s"
+operation main
+input operation main requestFormat String
+output operation main Void
+purpose operation main "unsafe selected format string fixture"
+storage local mutable selectedFormat String defaultFormat
+set memory selectedFormat requestFormat
+call writeCall c.snprintf
+argument writeCall format String selectedFormat
+run writeCall
+return void
+""")
+        self.assertIn("SS3310", _codes(diagnostics))
 
 
 # ==========================================================================

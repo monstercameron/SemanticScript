@@ -46,6 +46,7 @@ storage module immutable singleQuoteByte Int32 39
 storage module immutable backslashByte Int32 92
 storage module immutable underscoreByte Int32 95
 storage module immutable kiloTabStop Int64 8
+storage module immutable stringFormat String "%s"
 
 storage module immutable ctrlF KiloKeyCode 6
 storage module immutable ctrlH KiloKeyCode 8
@@ -79,7 +80,8 @@ argument escapeCall character Int32 escapeByte
 run escapeCall
 ignore value source escapeCall type Int32
 call codeCall c.printf
-argument codeCall format String code
+argument codeCall format String stringFormat
+argument codeCall text String code
 run codeCall
 ignore value source codeCall type Int32
 return value zeroInt32
@@ -2898,7 +2900,8 @@ argument clearMessageCall code String clearLineText
 run clearMessageCall
 ignore value source clearMessageCall type Int32
 call messageCall c.printf
-argument messageCall format String statusMessage
+argument messageCall format String stringFormat
+argument messageCall text String statusMessage
 run messageCall
 ignore value source messageCall type Int32
 call cursorRowCall math.addInt64

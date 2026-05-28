@@ -205,23 +205,23 @@ exact target lookups, use the first exact match. For enum and record discovery,
 prefer the type payload when available and fall back to `syntax-inventory.md`
 until `docs get TYPE --members` lands.
 
-## Enum Comparisons
+## Enum And Status Predicates
 
-Enums declared with `enum NAME repr TYPE` can be compared through generated
-domain methods:
+Use standard-library predicates when a status enum has one. For SQLite step
+results, branch through the `standard.sqlite` helpers instead of comparing raw
+representation integers or hand-written constants:
 
 ```text
-call doneCheckCall SqliteStepResult.equal
-argument doneCheckCall left SqliteStepResult stepResult
-argument doneCheckCall right SqliteStepResult doneSqliteStepResult
+call doneCheckCall sqlite.stepResultIsDone
+argument doneCheckCall stepResult SqliteStepResult stepResult
 run doneCheckCall
 bind value stepDone Bool doneCheckCall
 ```
 
-The compiler resolves the enum representation and dispatches to the matching
-primitive comparison. This keeps executable code on named enum cases instead of
-hard-coded representation integers such as SQLite row/done status codes or JSON
-value-kind codes.
+Enums declared with `enum NAME repr TYPE` still lower through their
+representation, but helper predicates keep executable code on the standard
+contract instead of hard-coded representation integers such as SQLite row/done
+status codes or JSON value-kind codes.
 
 ## Label Roles
 

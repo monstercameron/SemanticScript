@@ -130,7 +130,7 @@ SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
     "summary": (
         "Do not recover generated ids through connection-global "
         "sqlite.lastInsertRowId or last_insert_rowid(). Prepare the INSERT as "
-        "INSERT ... RETURNING id, step it to rowSqliteStepResult, read column 0 "
+        "INSERT ... RETURNING id, verify sqlite.stepResultIsRow, read column 0 "
         "with sqlite.columnInt64, pass that named value into any activity-log "
         "INSERT, finalize the RETURNING statement before COMMIT, and rollback "
         "on any failure after BEGIN succeeds."
@@ -141,6 +141,8 @@ SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
         "sqlite.prepareStatement",
         "sqlite.bindText",
         "sqlite.stepStatement",
+        "sqlite.stepResultIsRow",
+        "sqlite.stepResultIsDone",
         "sqlite.columnInt64",
         "sqlite.finalizeStatement",
         "sqlite.beginImmediateTransaction",
@@ -194,7 +196,13 @@ SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
         "bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall",
         "bind error stepGeneratedInsertError SqliteStatementStepFailure stepGeneratedInsertCall",
         "branch error source stepGeneratedInsertCall target <finalizeInsertThenRollbackLabel>",
-        "# require generatedInsertStep == rowSqliteStepResult before reading column 0",
+        "call generatedInsertHasRowCall sqlite.stepResultIsRow",
+        "argument generatedInsertHasRowCall stepResult SqliteStepResult generatedInsertStep",
+        "run generatedInsertHasRowCall",
+        "bind value generatedInsertHasRow Bool generatedInsertHasRowCall",
+        "branch if condition generatedInsertHasRow target <readGeneratedIdLabel>",
+        "branch else target <finalizeInsertThenRollbackLabel>",
+        "label <readGeneratedIdLabel>",
         "storage local immutable generatedIdColumnIndex Int32 0",
         "call readGeneratedIdCall sqlite.columnInt64",
         "argument readGeneratedIdCall statement SqliteStatement generatedInsertStatement",
@@ -207,7 +215,13 @@ SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
         "bind ok generatedInsertDone SqliteStepResult drainGeneratedInsertCall",
         "bind error drainGeneratedInsertError SqliteStatementStepFailure drainGeneratedInsertCall",
         "branch error source drainGeneratedInsertCall target <finalizeInsertThenRollbackLabel>",
-        "# require generatedInsertDone == doneSqliteStepResult before COMMIT",
+        "call generatedInsertDoneCheckCall sqlite.stepResultIsDone",
+        "argument generatedInsertDoneCheckCall stepResult SqliteStepResult generatedInsertDone",
+        "run generatedInsertDoneCheckCall",
+        "bind value generatedInsertDrained Bool generatedInsertDoneCheckCall",
+        "branch if condition generatedInsertDrained target <finalizeGeneratedInsertLabel>",
+        "branch else target <finalizeInsertThenRollbackLabel>",
+        "label <finalizeGeneratedInsertLabel>",
         "call finalizeGeneratedInsertCall sqlite.finalizeStatement",
         "argument finalizeGeneratedInsertCall statement SqliteStatement generatedInsertStatement",
         "run finalizeGeneratedInsertCall",
@@ -235,7 +249,13 @@ SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
         "bind ok activityLogStep SqliteStepResult stepActivityLogCall",
         "bind error stepActivityLogError SqliteStatementStepFailure stepActivityLogCall",
         "branch error source stepActivityLogCall target <finalizeActivityThenRollbackLabel>",
-        "# require activityLogStep == doneSqliteStepResult for an activity-log INSERT without RETURNING",
+        "call activityLogDoneCheckCall sqlite.stepResultIsDone",
+        "argument activityLogDoneCheckCall stepResult SqliteStepResult activityLogStep",
+        "run activityLogDoneCheckCall",
+        "bind value activityLogDone Bool activityLogDoneCheckCall",
+        "branch if condition activityLogDone target <finalizeActivityLogLabel>",
+        "branch else target <finalizeActivityThenRollbackLabel>",
+        "label <finalizeActivityLogLabel>",
         "call finalizeActivityLogCall sqlite.finalizeStatement",
         "argument finalizeActivityLogCall statement SqliteStatement activityLogStatement",
         "run finalizeActivityLogCall",
@@ -261,12 +281,12 @@ SQLITE_GENERATED_ID_RETURNING_GUIDANCE = {
     "lifetimeRules": [
         "columnInt64 returns an Int64 by value, so the generated id may be used after finalize.",
         "columnText, columnBlob, and columnName are borrowed from the same statement; consume or copy them before the next same-statement pointer column read, step, reset, finalize, or closeDatabase.",
-        "A RETURNING statement remains active after the first row. Step it once more to doneSqliteStepResult, reset it, or finalize it before COMMIT.",
+        "A RETURNING statement remains active after the first row. Step it once more and require sqlite.stepResultIsDone, reset it, or finalize it before COMMIT.",
     ],
     "transactionRules": [
         "Use sqlite.beginImmediateTransaction when the generated row and activity-log row must commit atomically.",
         "After BEGIN succeeds, every prepare/bind/step/finalize failure path should finalize any acquired statement and then call sqlite.rollbackTransaction.",
-        "Commit only after the RETURNING statement has been drained or finalized and the activity-log statement has reached doneSqliteStepResult.",
+        "Commit only after the RETURNING statement has been drained or finalized and the activity-log statement has reached sqlite.stepResultIsDone.",
     ],
 }
 STD_DOC_STATIC_TARGETS = {
@@ -795,7 +815,23 @@ STD_DOC_STATIC_TARGETS = {
             "outputs": [{"type": "Result", "values": ["Result", "SqliteStepResult", "SqliteStatementStepFailure"]}],
             "effects": [{"action": "readWrite", "path": "database"}],
             "capabilities": ["sqliteDatabaseReadWriter"],
-            "failureMode": {"kind": "result", "text": "SqliteStatementStepFailure covers native statuses below the row/done range; compare ok values to rowSqliteStepResult or doneSqliteStepResult."},
+            "failureMode": {"kind": "result", "text": "SqliteStatementStepFailure covers native statuses below the row/done range; inspect ok values with sqlite.stepResultIsRow or sqlite.stepResultIsDone."},
+        },
+        "sqlite.stepResultIsRow": {
+            "summary": "Return true when a sqlite.stepStatement ok value means a row is available.",
+            "inputs": [{"name": "stepResult", "type": "SqliteStepResult"}],
+            "outputs": [{"type": "Bool", "values": ["Bool"]}],
+            "effects": [],
+            "capabilities": [],
+            "failureMode": {"kind": "none", "text": "Pure compiler-lowered comparison against the SQLite ROW step result."},
+        },
+        "sqlite.stepResultIsDone": {
+            "summary": "Return true when a sqlite.stepStatement ok value means statement iteration is complete.",
+            "inputs": [{"name": "stepResult", "type": "SqliteStepResult"}],
+            "outputs": [{"type": "Bool", "values": ["Bool"]}],
+            "effects": [],
+            "capabilities": [],
+            "failureMode": {"kind": "none", "text": "Pure compiler-lowered comparison against the SQLite DONE step result."},
         },
         "sqlite.bindInt64": {
             "summary": "Bind one Int64 value to a 1-based SQLite parameter index.",
@@ -1053,6 +1089,16 @@ def _register_http_static_targets() -> None:
             "Read the native HTTP runtime clock in milliseconds.",
             outputs=_static_value_output("Int64"),
             effects=[{"action": "read", "path": "clock"}],
+        ),
+        "http.sessionExpiresAt": _static_target_contract(
+            "Add a session TTL to a current Unix epoch millisecond timestamp.",
+            inputs=_static_inputs(("nowMillis", "Int64"), ("ttlMillis", "SessionTtlMillis")),
+            outputs=_static_value_output("SessionExpiresAtMillis"),
+        ),
+        "http.sessionIsExpired": _static_target_contract(
+            "Return true when the current Unix epoch millisecond timestamp is past the persisted session expiry.",
+            inputs=_static_inputs(("nowMillis", "Int64"), ("expiresAtMillis", "SessionExpiresAtMillis")),
+            outputs=_static_value_output("Bool"),
         ),
     })
     for target, summary in {
@@ -2088,7 +2134,7 @@ STD_DOC_STATIC_TYPES = {
                 {"name": "rowSqliteStepResult", "value": 100},
                 {"name": "doneSqliteStepResult", "value": 101},
             ],
-            "usage": ["Compare step results against the named cases to distinguish row availability from completion."],
+            "usage": ["Use sqlite.stepResultIsRow and sqlite.stepResultIsDone to distinguish row availability from completion."],
             "source": "built-in enum and standard.sqlite export",
             "sourceFile": "SemanticScript/std/sqlite/main.sem",
             "line": 35,
@@ -2641,13 +2687,13 @@ DIAGNOSTIC_EXPLAINERS = {
         "summary": "Code uses `last_insert_rowid()` or `sqlite.lastInsertRowId` to recover an id from a prior INSERT. New code should make the INSERT return the id directly with `INSERT ... RETURNING id`, read column 0 from that INSERT statement, and pass the named id into later statements such as activity-log inserts.",
         "whyItMatters": [
             "The last-insert row id is mutable connection state, so triggers, helper writes, shared handles, or future concurrent dispatch can make the read observe the wrong row.",
-            "A returned id is normal SemanticScript dataflow: prepare, bind, step to rowSqliteStepResult, read sqlite.columnInt64, drain/finalize, then bind the id explicitly into dependent writes.",
+            "A returned id is normal SemanticScript dataflow: prepare, bind, step, require sqlite.stepResultIsRow, read sqlite.columnInt64, drain/finalize, then bind the id explicitly into dependent writes.",
             "When the generated row and activity-log row must stay atomic, the migration belongs inside sqlite.beginImmediateTransaction / commitTransaction with rollback on failure paths."
         ],
         "commonFixes": [
             "Replace `last_insert_rowid()` and `sqlite.lastInsertRowId` with `INSERT INTO ... VALUES (...) RETURNING id`.",
             "Use `sem docs get sqlite.lastInsertRowId --json` and copy `target.usage.migration.sqlRows` plus `target.usage.migration.rows` for the prepare/bind/step/column/finalize/transaction skeleton.",
-            "After reading the RETURNING column, step again to doneSqliteStepResult or finalize/reset before COMMIT. For borrowed text/blob columns, consume or copy before the same statement steps/resets/finalizes."
+            "After reading the RETURNING column, step again and require sqlite.stepResultIsDone or finalize/reset before COMMIT. For borrowed text/blob columns, consume or copy before the same statement steps/resets/finalizes."
         ],
     },
     "SS3201": {
@@ -11650,19 +11696,20 @@ def _python_harness_command(harness_path: Path) -> tuple[list[str], str, str]:
 def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_red_preflight_harnesses: bool = False, execute_contracts: bool = False) -> dict:
     preflight = _build_check_payload(path, [], include_readiness=False)
     preflight_ok = bool(preflight.get("ok", False))
-    # A test run's pass/fail must reflect whether the project COMPILES and whether
-    # the selected tests pass — not whether the linter is silent. `preflight.ok`
-    # is False for any non-blocking advisory, so gating the overall result on it
-    # made a buildable project with passing tests report ok:false /
-    # status:diagnostics. Gate on `buildable` instead; advisories stay visible via
-    # `compositeStatus` and the per-test diagnostics.
+    preflight_status = str(preflight.get("status", ""))
+    preflight_clean = preflight_ok or preflight_status == "ok-with-warnings"
+    # Runtime harnesses can hide a broken source surface: a generated app may
+    # still build/run while project-level lint or semantic preflight is red.
+    # Keep default harness execution behind a clean preflight; use
+    # --allow-red-preflight-harnesses when runtime signal is explicitly desired.
+    # `buildable` still controls whether semantic contract checks can proceed.
     preflight_buildable = bool(preflight.get("buildable", preflight_ok))
     discovered = _discover_test_entries(path)
     build_tape = _find_build_tape(path)
     requested = path.resolve()
     runtime_probe_mode = bool(
         allow_red_preflight_harnesses
-        and not preflight_ok
+        and not preflight_clean
         and (build_tape is not None or requested.is_dir())
     )
     runtime_cwd = str(
@@ -11826,19 +11873,6 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 semantic_contract_failed += 1
             continue
         python_harness_discovered += 1
-        if entry["kind"] == "python" and not preflight_ok and not allow_red_preflight_harnesses:
-            results.append({
-                "name": entry["name"],
-                "kind": entry["kind"],
-                "lane": "runtime-harness",
-                "executionModel": "process-harness",
-                "path": str(entry["path"]),
-                "cwd": runtime_cwd,
-                "status": "skipped",
-                "reason": "python harness execution deferred until semantic preflight is clean",
-            })
-            skipped += 1
-            continue
         if entry["kind"] == "python" and not include_python_harnesses:
             results.append({
                 "name": entry["name"],
@@ -11849,6 +11883,19 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 "cwd": runtime_cwd,
                 "status": "skipped",
                 "reason": "python harness execution disabled",
+            })
+            skipped += 1
+            continue
+        if entry["kind"] == "python" and not preflight_clean and not allow_red_preflight_harnesses:
+            results.append({
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "lane": "runtime-harness",
+                "executionModel": "process-harness",
+                "path": str(entry["path"]),
+                "cwd": runtime_cwd,
+                "status": "skipped",
+                "reason": "python harness execution deferred until semantic preflight is clean",
             })
             skipped += 1
             continue
@@ -11991,7 +12038,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     status = "passed"
     if not preflight_buildable:
         status = "diagnostics"
-    elif not preflight_ok and selected == 0 and skipped:
+    elif not preflight_clean and selected == 0 and skipped:
         status = "diagnostics"
     elif selected == 0:
         status = "no-tests"
@@ -12003,11 +12050,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
         "inputPath": str(path.resolve()),
         "ok": status == "passed" and preflight_buildable,
         "status": status,
-        "compositeStatus": (
-            f"{preflight.get('status', 'ok')}/runtime-{runtime_harness_status}"
-            if not preflight_ok else
-            f"ok/runtime-{runtime_harness_status}"
-        ),
+        "compositeStatus": f"{preflight_status or 'ok'}/runtime-{runtime_harness_status}",
         "scope": _payload_scope(
             path,
             preflightScope=preflight["scope"]["diagnosticsScope"],
@@ -12067,7 +12110,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
     payload["nextCommands"] = _test_next_commands(
         path,
         failed,
-        source_ok=preflight_ok,
+        source_ok=preflight_clean,
         python_harnesses_deferred=payload["pythonHarnessesDeferred"],
     )
     return payload

@@ -56,8 +56,9 @@ New generated-id code should not use
 `ss_sqlite_database_last_insert_rowid` / `sqlite.lastInsertRowId` as a normal
 dataflow primitive. That value is connection-global state. The native and
 webServer-safe pattern is to prepare the INSERT as `INSERT ... RETURNING id`,
-step it to `rowSqliteStepResult`, read column 0 with `sqlite.columnInt64`, and
-bind that named id into later statements such as an activity-log insert.
+step it, require `sqlite.stepResultIsRow`, read column 0 with
+`sqlite.columnInt64`, and bind that named id into later statements such as an
+activity-log insert.
 
 When the generated-row insert and activity-log insert must be atomic, wrap them
 with `sqlite.beginImmediateTransaction` / `sqlite.commitTransaction`, finalize

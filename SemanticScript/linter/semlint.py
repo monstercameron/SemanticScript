@@ -20,6 +20,7 @@ playground for evolving the diagnostic schema before migration.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -1345,6 +1346,8 @@ BUILTIN_TARGET_RETURN_TYPES: Dict[str, str] = {
     "http.requestPath":       "String",
     "http.requestValueLength": "HttpBodyLength",
     "http.requestValueIsEmpty": "Bool",
+    "sqlite.stepResultIsRow":  "Bool",
+    "sqlite.stepResultIsDone": "Bool",
     # Integer arithmetic returns its width; comparisons return Bool. Binding any
     # of these as an opaque HTML/JSON handle is a domain lie (caught by SS4302).
     "math.addInt64":          "Int64",
@@ -1468,6 +1471,9 @@ BUILTIN_TARGET_SIGNATURES: Dict[str, List[Tuple[str, str]]] = {
     "pointer.isNull":             [("pointer", "OpaquePointer")],
     "http.requestValueLength":    [("value", "HttpRequestValue")],
     "http.requestValueIsEmpty":   [("value", "HttpRequestValue")],
+    # SQLite step-result predicates
+    "sqlite.stepResultIsRow":      [("stepResult", "SqliteStepResult")],
+    "sqlite.stepResultIsDone":     [("stepResult", "SqliteStepResult")],
     # Outbound network
     "net.fetchText":              [("request", "HttpGetRequest")],
     "net.fetchBytes":             [("url", "Url"), ("timeoutMillis", "NetworkTimeoutMilliseconds"), ("maxBodyBytes", "ResponseBodyLimitBytes")],
@@ -2211,6 +2217,13 @@ class LiteralFact:
     hasDigest: bool = False
     hasTrust: bool = False
     hasBytes: bool = False
+    sourceLine: Optional[SourceLine] = None
+    sourcePath: str = ""
+    bytesLine: Optional[SourceLine] = None
+    declaredBytes: Optional[int] = None
+    digestLine: Optional[SourceLine] = None
+    digestAlgorithm: str = ""
+    digestValue: str = ""
 
 
 @dataclass
@@ -2496,21 +2509,35 @@ def gather_extended(baseFacts: ProgramFacts) -> ExtendedFacts:
         elif verb == "literal" and len(args) >= 2:
             facts.literals[args[0]] = LiteralFact(args[0], sourceLine, args[1])
         elif verb == "literalSource" and args:
-            literalFact = facts.literals.get(args[0])
+            literalFact = facts.literals.setdefault(
+                args[0], LiteralFact(args[0], sourceLine, ""))
             if literalFact:
                 literalFact.hasExternalSource = True
+                literalFact.sourceLine = sourceLine
+                literalFact.sourcePath = args[1] if len(args) >= 2 else ""
         elif verb == "literalDigest" and args:
-            literalFact = facts.literals.get(args[0])
+            literalFact = facts.literals.setdefault(
+                args[0], LiteralFact(args[0], sourceLine, ""))
             if literalFact:
                 literalFact.hasDigest = True
+                literalFact.digestLine = sourceLine
+                literalFact.digestAlgorithm = args[1] if len(args) >= 2 else ""
+                literalFact.digestValue = args[2] if len(args) >= 3 else ""
         elif verb == "literalTrust" and args:
-            literalFact = facts.literals.get(args[0])
+            literalFact = facts.literals.setdefault(
+                args[0], LiteralFact(args[0], sourceLine, ""))
             if literalFact:
                 literalFact.hasTrust = True
         elif verb == "literalBytes" and args:
-            literalFact = facts.literals.get(args[0])
+            literalFact = facts.literals.setdefault(
+                args[0], LiteralFact(args[0], sourceLine, ""))
             if literalFact:
                 literalFact.hasBytes = True
+                literalFact.bytesLine = sourceLine
+                try:
+                    literalFact.declaredBytes = int(args[1]) if len(args) >= 2 else None
+                except ValueError:
+                    literalFact.declaredBytes = None
         elif verb == "effect" and len(args) >= 3:
             facts.operationEffects.setdefault(args[0], []).append(sourceLine)
         elif verb in {"memory", "memoryHeap", "memoryArena", "memoryStackLimit"}:
@@ -3042,6 +3069,10 @@ def call_has_value_disposition(callFact: CallFact) -> bool:
     )
 
 
+def call_success_value_names(callFact: CallFact) -> Set[str]:
+    return {name for name, _line in call_success_value_lines(callFact)}
+
+
 def call_result_success_disposition_lines(callFact: CallFact) -> List[SourceLine]:
     """Rows that explicitly dispose the success side of a Result-shaped call."""
     return callFact.bind_ok_lines + callFact.ignore_ok_lines + callFact.ignore_void_lines
@@ -3054,6 +3085,24 @@ def call_consumes_any_value(callFact: CallFact, valueNames: Set[str]) -> bool:
         parsed = argument_parts(argLine)
         if parsed is not None and parsed[3] in valueNames:
             return True
+    return False
+
+
+def operation_sets_storage_from_any_value(
+    operation: OperationFact,
+    valueNames: Set[str],
+    *,
+    afterLine: Optional[int] = None,
+) -> bool:
+    if not valueNames:
+        return False
+    for sourceLine in operation.lines:
+        if afterLine is not None and sourceLine.number <= afterLine:
+            continue
+        if sourceLine.verb == "set" and len(sourceLine.args) >= 3:
+            setScope, _targetName, valueName = sourceLine.args[:3]
+            if setScope == "storage" and valueName in valueNames:
+                return True
     return False
 
 
@@ -3293,7 +3342,9 @@ def _format_contains_json_string_percent_s(formatText: str) -> bool:
 #            SS0105 mutableStorage, SS0106 bindSlot,
 #            SS0107 const, SS0108 input
 #   AS12xx — partial declarations             (T3 refinement)
-#            SS1201 retryPolicy, SS1202 trustBoundary, SS1203 externalLiteral
+#            SS1201 retryPolicy, SS1202 trustBoundary, SS1203 externalLiteral,
+#            SS1204 literalSourceMissing, SS1205 literalBytesMismatch,
+#            SS1206 literalDigestMismatch
 #   AS31xx — operation / coverage gaps        (T3 refinement)
 #            SS3101 missing purpose, SS3102 missing invariant,
 #            SS3104 capabilityCoverage, SS3105 unprotectedSharedState,
@@ -3528,7 +3579,13 @@ def check_unused_labels(facts: ExtendedFacts) -> List[Diagnostic]:
 def _is_unreachable_operation_row_candidate(sourceLine: SourceLine) -> bool:
     if is_comment(sourceLine) or not sourceLine.tokens:
         return False
-    if sourceLine.verb in {"__typedComment__", "__groupAnchor__"}:
+    if sourceLine.verb in {
+        "__typedComment__", "__groupAnchor__",
+        "case", "done",
+        "import", "importModule", "exportOperation", "exportType",
+        "exportConstant", "exportCapability", "module", "project",
+        "target", "runtime", "entry", "section",
+    }:
         return False
     return True
 
@@ -3864,6 +3921,164 @@ def check_literal_without_digest(facts: ExtendedFacts) -> List[Diagnostic]:
             passProvenance="check_literal_without_digest",
             agentHint="run the digest at the same time you commit the source file so they stay in lockstep",
         ))
+    return diagnostics
+
+
+def _literal_source_candidates(facts: ExtendedFacts, literalFact: LiteralFact) -> List[Path]:
+    sourcePath = literalFact.sourcePath
+    if not sourcePath:
+        return []
+    rawPath = Path(sourcePath)
+    candidates: List[Path] = []
+    if rawPath.is_absolute():
+        candidates.append(rawPath)
+    else:
+        sourceLine = literalFact.sourceLine or literalFact.line
+        if sourceLine.path:
+            candidates.append(sourceLine.path.parent / rawPath)
+        candidates.append(facts.base.path.parent / rawPath)
+        candidates.append(rawPath)
+
+    uniqueCandidates: List[Path] = []
+    seen: Set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniqueCandidates.append(candidate)
+    return uniqueCandidates
+
+
+def _read_literal_source_bytes(path: Path) -> Optional[bytes]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    return text.encode("utf-8")
+
+
+def _resolved_literal_source_bytes(
+    facts: ExtendedFacts,
+    literalFact: LiteralFact,
+) -> Tuple[Optional[Path], Optional[bytes], List[Path]]:
+    candidates = _literal_source_candidates(facts, literalFact)
+    for candidate in candidates:
+        sourceBytes = _read_literal_source_bytes(candidate)
+        if sourceBytes is not None:
+            return candidate, sourceBytes, candidates
+    return None, None, candidates
+
+
+def check_literal_source_resolves(facts: ExtendedFacts) -> List[Diagnostic]:
+    """`literalSource` is executable input: if the file is not readable the
+    compiler falls back to the empty literal stub. That is never a safe build."""
+    diagnostics: List[Diagnostic] = []
+    for literalName, literalFact in facts.literals.items():
+        if not literalFact.hasExternalSource:
+            continue
+        sourceLine = literalFact.sourceLine or literalFact.line
+        resolvedPath, sourceBytes, candidates = _resolved_literal_source_bytes(
+            facts, literalFact)
+        if resolvedPath is None or sourceBytes is None:
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS1204",
+                kind="partiallyDeclared.literalSourceMissing",
+                severity=Severity.ERROR,
+                subjectName=literalName,
+                subjectKind="literal",
+                gapEdge="literalSource.file",
+                intentSlogan="external literal source missing",
+                primary=span_of_line(sourceLine, "literalSource"),
+                invariantRule=(
+                    f"`literalSource {literalName}` must resolve to a readable "
+                    "UTF-8 file before code generation"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#literalSource",
+                fixCandidates=[
+                    FixCandidate(
+                        name="fixLiteralSourcePath",
+                        shape=f"literalSource {literalName} \"path/to/existing-file\"",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.LOCAL,
+                blocksCompile=True,
+                passProvenance="check_literal_source_resolves",
+                agentHint=(
+                    "tried: "
+                    + ", ".join(str(candidate) for candidate in candidates)
+                    + "; unresolved sources compile as empty stubs"
+                ),
+            ))
+            continue
+
+        if literalFact.declaredBytes is not None and literalFact.declaredBytes != len(sourceBytes):
+            diagnostics.append(Diagnostic(
+                tier=Tier.T1_SPEC,
+                code="SS1205",
+                kind="partiallyDeclared.literalBytesMismatch",
+                severity=Severity.ERROR,
+                subjectName=literalName,
+                subjectKind="literal",
+                gapEdge="literalBytes",
+                intentSlogan="external literal byte pin stale",
+                primary=span_of_line(literalFact.bytesLine or sourceLine, "literalBytes"),
+                related=[span_of_line(sourceLine, "literalSource")],
+                invariantRule=(
+                    f"`literalBytes {literalName}` declares "
+                    f"{literalFact.declaredBytes} bytes but the resolved asset "
+                    f"contains {len(sourceBytes)} normalized UTF-8 bytes"
+                ),
+                specAnchor="docs/reference/syntax-inventory.md#literalBytes",
+                fixCandidates=[
+                    FixCandidate(
+                        name="refreshLiteralBytes",
+                        shape=f"literalBytes {literalName} {len(sourceBytes)}",
+                    ),
+                ],
+                confidence=Confidence.HIGH,
+                effort=Effort.TRIVIAL,
+                blocksCompile=True,
+                passProvenance="check_literal_source_resolves",
+                agentHint="literalSource bytes are read as UTF-8 with CRLF normalized to LF",
+            ))
+
+        if literalFact.digestAlgorithm == "sha256" and literalFact.digestValue:
+            actualDigest = hashlib.sha256(sourceBytes).hexdigest()
+            if literalFact.digestValue.lower() != actualDigest:
+                diagnostics.append(Diagnostic(
+                    tier=Tier.T1_SPEC,
+                    code="SS1206",
+                    kind="partiallyDeclared.literalDigestMismatch",
+                    severity=Severity.ERROR,
+                    subjectName=literalName,
+                    subjectKind="literal",
+                    gapEdge="literalDigest",
+                    intentSlogan="external literal digest stale",
+                    primary=span_of_line(literalFact.digestLine or sourceLine, "literalDigest"),
+                    related=[span_of_line(sourceLine, "literalSource")],
+                    invariantRule=(
+                        f"`literalDigest {literalName} sha256` declares "
+                        f"{literalFact.digestValue} but the resolved asset hashes "
+                        f"to {actualDigest}"
+                    ),
+                    specAnchor="docs/reference/syntax-inventory.md#literalDigest",
+                    fixCandidates=[
+                        FixCandidate(
+                            name="refreshLiteralDigest",
+                            shape=f"literalDigest {literalName} sha256 {actualDigest}",
+                        ),
+                    ],
+                    confidence=Confidence.HIGH,
+                    effort=Effort.TRIVIAL,
+                    blocksCompile=True,
+                    passProvenance="check_literal_source_resolves",
+                    agentHint="refresh the digest in the same change as the asset update",
+                ))
     return diagnostics
 
 
@@ -4348,25 +4563,22 @@ def check_column_memory_use_after_free(facts: ExtendedFacts) -> List[Diagnostic]
     return diagnostics
 
 
-# A live `columnText`/`columnBlob`/`columnName` pointer is invalidated by the
-# NEXT pointer-returning column read, or by step/reset, on the SAME statement —
-# even before the statement is finalized (which is SS3110's separate case). The
-# SQLite contract: the pointer is valid only until the next such call.
+# A live `columnText`/`columnBlob`/`columnName` pointer is invalidated by
+# step/reset on the SAME statement.
+# SQLite owns each result value until step/reset/finalize or a type conversion
+# on that value; sibling column reads are not invalidators.
 _COLUMN_TEXT_INVALIDATORS = frozenset({
-    "sqlite.columnText", "sqlite.columnBlob", "sqlite.columnName",
     "sqlite.stepStatement", "sqlite.resetStatement",
 })
 
 
 def check_column_text_overwritten_before_use(facts: ExtendedFacts) -> List[Diagnostic]:
-    """SS3113 — a `sqlite.columnText`/`columnBlob`/`columnName` value points into
-    a per-statement buffer that the NEXT pointer-returning column read (or a
-    step/reset) on the same statement overwrites. Reading a second text column,
-    then using the first, yields CORRUPT OUTPUT — not an error — at runtime
-    (the devlog's documented footgun). The idiomatic fix is to consume/copy each
-    column value (e.g. hydrate it into a template) before reading the next one.
-    Flag a column value used as a call argument that linearly follows an
-    invalidating call on the same statement, within one straight-line block."""
+    """SS3113 - a `sqlite.columnText`/`columnBlob`/`columnName` value points into
+    SQLite-owned memory that a later step/reset on the same statement
+    invalidates. The idiomatic fix is to consume/copy each column value before
+    advancing or resetting the statement. Flag a column value used as a call
+    argument that linearly follows an invalidating call on the same statement,
+    within one straight-line block."""
     diagnostics: List[Diagnostic] = []
     for operation in facts.base.operations.values():
         calls = collect_operation_calls(operation)
@@ -4411,7 +4623,7 @@ def check_column_text_overwritten_before_use(facts: ExtendedFacts) -> List[Diagn
             owning_statement, bind_line_number = column_values[used_value]
             for invalidation_statement, invalidation_line in invalidations:
                 # The value's own producing read sits at its bind line; only a
-                # LATER call on the SAME statement overwrites the buffer.
+                # LATER step/reset on the SAME statement invalidates it.
                 if not (bind_line_number < invalidation_line < use_line.number):
                     continue
                 if (invalidation_statement is not None and owning_statement is not None
@@ -4429,16 +4641,16 @@ def check_column_text_overwritten_before_use(facts: ExtendedFacts) -> List[Diagn
                     subjectName=used_value,
                     subjectKind="value",
                     gapEdge="columnConsumeOrder",
-                    intentSlogan="column value used after a later same-statement read overwrote it",
+                    intentSlogan="column value used after a later same-statement step/reset invalidated it",
                     primary=span_of_line(use_line, "columnValueUse"),
                     related=[span_of_line(operation.line, "enclosingOperation")],
-                    invariantRule="a sqlite.columnText/columnBlob/columnName pointer is valid only until the next column read or step/reset on the same statement; consume or copy it first",
+                    invariantRule="a sqlite.columnText/columnBlob/columnName pointer is valid only until step/reset/finalize on the same statement; consume or copy it first",
                     specAnchor="docs/reference/syntax-inventory.md#sqlite",
                     citations=narrative_citations_for_operation(facts, operation.name),
                     fixCandidates=[
                         FixCandidate(
                             name="consumeBeforeNextRead",
-                            shape="# copy/hydrate this column value before the next sqlite.column* read on the same statement",
+                            shape="# copy/hydrate this column value before the next sqlite.stepStatement/sqlite.resetStatement on the same statement",
                         ),
                     ],
                     confidence=Confidence.MEDIUM,
@@ -4447,8 +4659,8 @@ def check_column_text_overwritten_before_use(facts: ExtendedFacts) -> List[Diagn
                     passProvenance="check_column_text_overwritten_before_use",
                     agentHint=(
                         f"`{used_value}` points into statement `{owning_statement or '<statement>'}`'s "
-                        f"buffer, which was overwritten at line {invalidation_line} by a later column "
-                        f"read/step; consume or copy `{used_value}` before that row"
+                        f"buffer, which was invalidated at line {invalidation_line} by a later "
+                        f"step/reset; consume or copy `{used_value}` before that row"
                     ),
                 ))
                 break  # one diagnostic per use site
@@ -5325,9 +5537,11 @@ _SQLITE_STATEMENT_LIFECYCLE_TARGETS: FrozenSet[str] = frozenset({
 })
 _SQLITE_TRANSACTION_BEGIN_TARGETS: FrozenSet[str] = frozenset({
     "sqlite.beginImmediateTransaction",
+    "tx.beginSqliteCommandTransaction",
 })
 _SQLITE_TRANSACTION_COMMIT_TARGETS: FrozenSet[str] = frozenset({
     "sqlite.commitTransaction",
+    "tx.commitSqliteCommandTransaction",
 })
 _SQLITE_SQL_STRING_TARGETS: FrozenSet[str] = frozenset({
     "sqlite.prepareStatement",
@@ -5561,9 +5775,13 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
             waitSetCompletionContext = in_wait_set_completion_context(callFact)
             relevantIgnoreError = any(
                 after_last_execution(line, uncheckedExecutionLines)
-                and is_wait_set_handler_line(line)
+                and (
+                    is_wait_set_handler_line(line)
+                    if waitSetCompletionContext
+                    else not is_wait_set_handler_line(line)
+                )
                 for line in callFact.ignore_error_lines
-            ) if waitSetCompletionContext else False
+            )
             hasBindError = has_ordered_bind_error(
                 callFact,
                 uncheckedExecutionLines,
@@ -5580,6 +5798,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 missingDisposition.append("bind error")
             if (
                 not waitSetCompletionContext
+                and not relevantIgnoreError
                 and not has_ordered_branch_error(callFact, uncheckedExecutionLines)
             ):
                 missingDisposition.append("branch error")
@@ -5609,6 +5828,7 @@ def check_hidden_failure(facts: ExtendedFacts) -> List[Diagnostic]:
                 fixShape = (
                     f"bind error {callFact.name}Error <ErrorType> {callFact.name}\n"
                     f"branch error source {callFact.name} target <handlerLabel>\n"
+                    f"# or: ignore error source {callFact.name}\n"
                     f"# ...success continuation...\n"
                     f"label <handlerLabel>\n"
                     f"return error {callFact.name}Error"
@@ -7297,7 +7517,7 @@ def check_loop_invariant_pure_call(facts: ExtendedFacts) -> List[Diagnostic]:
                     tier=Tier.T3_REFINEMENT,
                     code="SS3208",
                     kind="performanceDiscipline.loopInvariantPureCall",
-                    severity=Severity.WARNING,
+                    severity=Severity.INFO,
                     subjectName=callName,
                     subjectKind="call",
                     gapEdge="loopHoist",
@@ -7597,10 +7817,18 @@ def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]
             hasBranch = False
             if comparisonBoolNames:
                 for sourceLine in operation.lines:
-                    if (not is_comment(sourceLine) and sourceLine.tokens
-                            and sourceLine.verb == "branchIf"
+                    if is_comment(sourceLine) or not sourceLine.tokens:
+                        continue
+                    if (sourceLine.verb == "branchIf"
                             and len(sourceLine.args) >= 2
                             and sourceLine.args[0] in comparisonBoolNames):
+                        hasBranch = True
+                        break
+                    if (sourceLine.verb == "branch"
+                            and len(sourceLine.args) >= 5
+                            and sourceLine.args[:2] == ["if", "condition"]
+                            and sourceLine.args[2] in comparisonBoolNames
+                            and sourceLine.args[3] == "target"):
                         hasBranch = True
                         break
             if hasBranch:
@@ -7631,11 +7859,11 @@ def check_row_count_mutation_unchecked(facts: ExtendedFacts) -> List[Diagnostic]
                         name="branchOnUnchangedRowCount",
                         shape=(
                             f"call {callFact.name}FailedCheckCall math.equalInt64\n"
-                            f"arg {callFact.name}FailedCheckCall left <rowsAfterMutation>\n"
-                            f"arg {callFact.name}FailedCheckCall right {activeCountName}\n"
+                            f"argument {callFact.name}FailedCheckCall left Int64 <rowsAfterMutation>\n"
+                            f"argument {callFact.name}FailedCheckCall right Int64 {activeCountName}\n"
                             f"run {callFact.name}FailedCheckCall\n"
-                            f"bind {callFact.name}Failed Bool {callFact.name}FailedCheckCall\n"
-                            f"branchIf {callFact.name}Failed <noMutationLabel>"
+                            f"bind value {callFact.name}Failed Bool {callFact.name}FailedCheckCall\n"
+                            f"branch if condition {callFact.name}Failed target <noMutationLabel>"
                         ),
                         evidence=[span_of_line(callFact.line)],
                     ),
@@ -7900,6 +8128,15 @@ def check_allocate_free_unpaired(facts: ExtendedFacts) -> List[Diagnostic]:
                 operationCalls,
                 set(HEAP_DEALLOCATION_CALL_TARGETS),
             ):
+                continue
+            if operation_sets_storage_from_any_value(
+                operation,
+                call_success_value_names(callFact),
+                afterLine=callFact.line.number,
+            ):
+                # The pointer is intentionally transferred to module storage.
+                # That storage slot owns a process-lifetime cache; requiring a
+                # same-operation free would invalidate the stored pointer.
                 continue
             # Skip ops whose declared purpose IS to allocate-and-return (the
             # alloc moves ownership to the caller). Heuristic: op output type
@@ -11621,7 +11858,10 @@ def _resolve_type_to_canonical(
     while currentName in typeAliases and currentName not in visited:
         visited.add(currentName)
         currentName = typeAliases[currentName]
-    if currentName in enumReprs and currentName not in visited:
+    # Do not gate on `currentName not in visited`: an imported enum type gets
+    # a self-alias (typeAliases["T"]="T") which puts "T" into visited, but
+    # the repr lookup still needs to run to collapse e.g. SqliteStepResult→Int32.
+    if currentName in enumReprs:
         visited.add(currentName)
         currentName = enumReprs[currentName]
         while currentName in typeAliases and currentName not in visited:
@@ -11658,7 +11898,9 @@ def _resolve_type_head(
     while currentName in typeAliases and currentName not in visited:
         visited.add(currentName)
         currentName = typeAliases[currentName]
-    if currentName in enumReprs and currentName not in visited:
+    # Mirror the fix in _resolve_type_to_canonical: don't gate on visited here
+    # either, so imported enum types with a self-alias resolve through repr.
+    if currentName in enumReprs:
         visited.add(currentName)
         currentName = enumReprs[currentName]
         while currentName in typeAliases and currentName not in visited:
@@ -11947,6 +12189,22 @@ def check_argument_type_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
 
     # Build per-user-op signature: argName → declared type
     enumReprs, _enumCasesByType, _enumCaseValuesByType, _enumTypeByCase = _enum_context(facts)
+    # Extend enumReprs with imported enum types so cross-module enum values
+    # (e.g. SqliteStepResult from standard.sqlite) resolve to their repr when
+    # compared against integer-typed parameters. _enum_context only reads the
+    # current module's source lines; imported enums are absent without this.
+    for _importedEnumSym in (
+        list(importIndex.qualifiedSymbols.values())
+        + list(importIndex.singularSymbols.values())
+    ):
+        if _importedEnumSym.kind != "type":
+            continue
+        for _edge in _importedEnumSym.edges:
+            if (_edge.edgeKind == "type.enum"
+                    and len(_edge.values) >= 3
+                    and _edge.values[1] == "repr"):
+                enumReprs.setdefault(_importedEnumSym.localName, _edge.values[2])
+                break
 
     userOperationSignatures: Dict[str, Dict[str, str]] = {}
     for operation in facts.base.operations.values():
@@ -13262,6 +13520,38 @@ FORMAT_STRING_TARGETS: frozenset = frozenset({
 FORMAT_STRING_ARGUMENTS: frozenset = frozenset({"format"})
 
 
+def _operation_static_string_aliases(
+    operation: OperationFact,
+    stringConstants: Set[str],
+    facts: ExtendedFacts,
+) -> Set[str]:
+    """Local mutable string slots that are assigned only immutable strings."""
+    safeAliases: Set[str] = set()
+    candidateAliases: Set[str] = set()
+    unsafeAliases: Set[str] = set()
+    for sourceLine in operation.lines:
+        if sourceLine.verb == "storage" and len(sourceLine.args) >= 5:
+            scope, mutability, name, typeName, initialValue = sourceLine.args[:5]
+            if (scope == "local" and mutability == "mutable"
+                    and _resolve_type_alias_head(typeName, facts.base.type_aliases) == "String"
+                    and initialValue in stringConstants):
+                candidateAliases.add(name)
+                if name not in unsafeAliases:
+                    safeAliases.add(name)
+            continue
+        if sourceLine.verb == "set" and len(sourceLine.args) >= 3:
+            setScope, targetName, valueName = sourceLine.args[:3]
+            if setScope != "memory" or targetName not in candidateAliases:
+                continue
+            if valueName in stringConstants:
+                if targetName not in unsafeAliases:
+                    safeAliases.add(targetName)
+            else:
+                safeAliases.discard(targetName)
+                unsafeAliases.add(targetName)
+    return safeAliases
+
+
 def check_format_string_must_be_constant(facts: ExtendedFacts) -> List[Diagnostic]:
     """SS3310 - printf-family format strings must be static constants.
 
@@ -13280,6 +13570,9 @@ def check_format_string_must_be_constant(facts: ExtendedFacts) -> List[Diagnosti
             for name, (typeName, _value, _line) in constants.items()
             if _resolve_type_alias_head(typeName, facts.base.type_aliases) == "String"
         }
+        staticStringAliases = _operation_static_string_aliases(
+            operation, stringConstants, facts)
+        safeFormatValues = stringConstants | staticStringAliases
         for callFact in collect_operation_calls(operation).values():
             if callFact.target not in FORMAT_STRING_TARGETS:
                 continue
@@ -13290,7 +13583,7 @@ def check_format_string_must_be_constant(facts: ExtendedFacts) -> List[Diagnosti
                 _callName, argumentName, _declaredType, formatValue = parts
                 if argumentName not in FORMAT_STRING_ARGUMENTS:
                     continue
-                if formatValue in stringConstants:
+                if formatValue in safeFormatValues:
                     continue
                 related = [
                     span_of_line(callFact.line, "formatCall"),
@@ -15057,7 +15350,7 @@ def check_inline_sql_literals(facts: ExtendedFacts) -> List[Diagnostic]:
         scope, mutability, name, type_name, value = source_line.args[:5]
         if mutability != "immutable":
             continue
-        if type_name not in {"String", "SqlText"}:
+        if type_name != "SqlText":
             continue
         first_verb = _sql_first_verb_lint(value)
         if first_verb not in SQL_STATEMENT_START_VERBS:
@@ -15175,10 +15468,12 @@ def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnosti
                         "call prepareGeneratedInsertCall sqlite.prepareStatement\n"
                         "call stepGeneratedInsertCall sqlite.stepStatement\n"
                         "bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall\n"
-                        "# require generatedInsertStep == rowSqliteStepResult\n"
+                        "call generatedInsertHasRowCall sqlite.stepResultIsRow\n"
+                        "argument generatedInsertHasRowCall stepResult SqliteStepResult generatedInsertStep\n"
+                        "bind value generatedInsertHasRow Bool generatedInsertHasRowCall\n"
                         "call readGeneratedIdCall sqlite.columnInt64\n"
                         "bind value generatedEntityId Int64 readGeneratedIdCall\n"
-                        "# step again to doneSqliteStepResult or finalize before COMMIT\n"
+                        "# step again and require sqlite.stepResultIsDone or finalize before COMMIT\n"
                         "# bind generatedEntityId into the activity-log INSERT"
                     ),
                 ),
@@ -15229,10 +15524,12 @@ def check_sql_last_insert_rowid_function(facts: ExtendedFacts) -> List[Diagnosti
                         "call prepareGeneratedInsertCall sqlite.prepareStatement\n"
                         "call stepGeneratedInsertCall sqlite.stepStatement\n"
                         "bind ok generatedInsertStep SqliteStepResult stepGeneratedInsertCall\n"
-                        "# require generatedInsertStep == rowSqliteStepResult\n"
+                        "call generatedInsertHasRowCall sqlite.stepResultIsRow\n"
+                        "argument generatedInsertHasRowCall stepResult SqliteStepResult generatedInsertStep\n"
+                        "bind value generatedInsertHasRow Bool generatedInsertHasRowCall\n"
                         "call readGeneratedIdCall sqlite.columnInt64\n"
                         "bind value generatedEntityId Int64 readGeneratedIdCall\n"
-                        "# step again to doneSqliteStepResult or finalize before COMMIT\n"
+                        "# step again and require sqlite.stepResultIsDone or finalize before COMMIT\n"
                         "# bind generatedEntityId into the activity-log INSERT"
                     ),
                 ),
@@ -15462,12 +15759,17 @@ def check_sqlite_multiple_writes_have_transaction(
             statement_names = call_success_value_names(prepare_call)
             if not statement_names:
                 continue
-            for step_call in operation_calls.values():
-                if step_call.target != "sqlite.stepStatement":
-                    continue
-                if call_arg_value(step_call, "statement") not in statement_names:
-                    continue
-                write_steps.append((prepare_call, step_call, sql_name))
+            matching_step_calls = [
+                step_call for step_call in operation_calls.values()
+                if step_call.target == "sqlite.stepStatement"
+                and call_arg_value(step_call, "statement") in statement_names
+            ]
+            if matching_step_calls:
+                first_step_call = min(
+                    matching_step_calls,
+                    key=lambda step_call: step_call.line.number,
+                )
+                write_steps.append((prepare_call, first_step_call, sql_name))
         for call_fact, target, sql_name in _sqlite_forwarded_sql_usages_lint(
                 operation_calls, sql_forwarders):
             if target != "sqlite.prepareStatement":
@@ -16119,6 +16421,8 @@ HTTP_UTILITY_TARGETS: frozenset = frozenset({
     "http.ensureDirectory",
     "http.requestValueLength",
     "http.requestValueIsEmpty",
+    "http.sessionExpiresAt",
+    "http.sessionIsExpired",
     "http.urlDecode",
     "http.urlEncode",
 })
@@ -21162,7 +21466,7 @@ def check_module_import_contracts(facts: ExtendedFacts) -> List[Diagnostic]:
             if importLine is not None:
                 diagnostics.append(_module_import_diagnostic(
                     importLine, "SS2538", "moduleImport.tooManySingularImports",
-                    Severity.WARNING, moduleAlias, "moduleAlias",
+                    Severity.INFO, moduleAlias, "moduleAlias",
                     "qualifiedReadability", "many singular imports reduce clarity",
                     "When a source pulls many names from one provider, "
                     "qualified calls usually preserve more context for agents "
@@ -21350,6 +21654,7 @@ CHECKERS = [
     check_partial_retry_policies,
     check_partial_trust_boundaries,
     check_literal_without_digest,
+    check_literal_source_resolves,
     check_operation_metadata_gaps,
     check_shared_state_protection,
     check_supported_shared_state_scope,
