@@ -482,6 +482,13 @@ def _validate_program(program: Program) -> None:
             )
         elif ent.kind == "enum":
             _validate_enum(ent)
+        for row in ent.facts("out"):
+            if row.payload and row.payload[0] == "Result" and len(row.payload) != 3:
+                raise EavError(
+                    "`out Result` needs exactly an OK type and an ERR type "
+                    f"(README ss10), got {row.payload!r}",
+                    row.line,
+                )
 
 
 def _validate_enum(ent: Entity) -> None:

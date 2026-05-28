@@ -87,7 +87,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-032 `record` + `field`; duplicate field = error; doc-order = field order. →test: dup-field reject. §10 _(eavc: `_validate_program`; `test_parse_record_duplicate_field_rejected`, `test_parse_record_fields_keep_doc_order`)_
 - [x] WS1-033 `enum` + `variant [payload]` + `repr`; all-or-none repr; repr only on payloadless; dup variant = error. →test: mixed-repr reject; data-variant repr reject. §10 _(eavc: `_validate_enum`; `test_parse_enum_duplicate_variant_rejected`, `test_parse_enum_repr_on_data_variant_rejected`, `test_parse_enum_mixed_repr_rejected`, `test_parse_enum_full_repr_ok`)_
 - [x] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9 _(eavc: `test_lower_error_cases_and_void_payload` (of/payload, Void = no data), `test_lower_hello_world_key_rows`)_
-- [ ] WS1-035 `Result OK ERR` (only generic). →test: arity. §10
+- [x] WS1-035 `Result OK ERR` (only generic). →test: arity. §10 _(eavc: `_validate_program` out-arity check; `test_parse_result_arity_enforced`)_
 - [ ] WS1-036 `operationType` (`is in out`) function-pointer type. →test: §5 row; indirect-call type-check. §33.9
 - [ ] WS1-037 Literal width: literal takes annotated-position type, compile-time range-check; un-annotated = Int64. →test: `let s HttpStatusCode 200` ok, `… 99999` (out of Int32) error. §33.6
 - [ ] WS1-038 Type resolution for imported types by bare name; ambiguous-bare = error; alias `for importAlias.Type` disambiguates. →test: two imports same type → error → alias fixes. §7

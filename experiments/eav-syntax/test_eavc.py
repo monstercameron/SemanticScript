@@ -161,6 +161,18 @@ def test_parse_legal_predicate_sets_accepted():
     assert prog.entities["A"].fact("for").payload == ["Int32"]
 
 
+def test_parse_result_arity_enforced():
+    # README ss10: Result takes exactly OK and ERR.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("op is operation\nop out Result Task\n")
+    assert "OK type and an ERR type" in exc.value.message
+    with pytest.raises(eavc.EavError):
+        eavc.parse("op is operation\nop out Result A B C\n")
+    # well-formed Result parses
+    prog = eavc.parse("op is operation\nop out Result Task LookupError\n")
+    assert prog.entities["op"].fact("out").payload == ["Result", "Task", "LookupError"]
+
+
 def test_parse_enum_duplicate_variant_rejected():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse("E is enum\nE variant open\nE variant open\n")
