@@ -484,6 +484,29 @@ def diff_text(original: str, formatted: str, *, path_label: str) -> str:
     ))
 
 
+def write_format_error_guidance(
+    stderr: TextIO,
+    *,
+    path_label: str,
+    exc: FormatError,
+) -> None:
+    stderr.write(f"semfmt: {path_label}: {exc}\n")
+    stderr.write(
+        "semfmt: recovery: formatter-auto-fixable=false; the formatter did not "
+        "rewrite this row because its current-row shape is ambiguous.\n"
+    )
+    stderr.write(
+        f"semfmt: next: run `sem check --json {path_label}` for the precise "
+        "parser/linter diagnostic, then `sem fix --plan --json "
+        f"{path_label}` when the diagnostic reports a machine-applicable repair.\n"
+    )
+    stderr.write(
+        "semfmt: source pattern: restore a valid space-separated row from "
+        "docs/reference/syntax-inventory.md or `sem reference --json`, then "
+        f"rerun `sem fmt --check {path_label}`.\n"
+    )
+
+
 def format_file(
     path: Path,
     *,
@@ -549,10 +572,18 @@ def _run_stdin_mode(
     normalize_comment_headings: bool,
 ) -> int:
     original = stdin.read()
-    formatted = format_source(
-        original,
-        normalize_comment_headings=normalize_comment_headings,
-    )
+    try:
+        formatted = format_source(
+            original,
+            normalize_comment_headings=normalize_comment_headings,
+        )
+    except FormatError as exc:
+        write_format_error_guidance(
+            stderr,
+            path_label=stdin_file_name,
+            exc=exc,
+        )
+        return 2
     changed = original != formatted
     if diff:
         stdout.write(diff_text(original, formatted, path_label=stdin_file_name))
@@ -609,7 +640,11 @@ def run(
             stderr.write(f"semfmt: {path}: {exc}\n")
             return 2
         except FormatError as exc:
-            stderr.write(f"semfmt: {path}: {exc}\n")
+            write_format_error_guidance(
+                stderr,
+                path_label=str(path),
+                exc=exc,
+            )
             return 2
 
         if changed:

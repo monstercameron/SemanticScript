@@ -435,6 +435,37 @@ class TestCli(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("would reformat stdin.sem", stderr.getvalue())
 
+    def test_check_mode_reports_malformed_row_recovery_guidance(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sample.sem"
+            path.write_text("arg elementCall index mid\n", encoding="utf-8")
+            stderr = io.StringIO()
+
+            exit_code = semfmt.run(["--check", str(path)], stderr=stderr)
+
+            err = stderr.getvalue()
+            self.assertEqual(exit_code, 2)
+            self.assertIn("formatter-auto-fixable=false", err)
+            self.assertIn("sem check --json", err)
+            self.assertIn("sem fix --plan --json", err)
+            self.assertIn("docs/reference/syntax-inventory.md", err)
+            self.assertIn("sem fmt --check", err)
+
+    def test_stdin_mode_reports_malformed_row_recovery_guidance(self) -> None:
+        stderr = io.StringIO()
+
+        exit_code = semfmt.run(
+            ["--stdin-file-name", "stdin.sem"],
+            stdin=io.StringIO('storage local immutable bad String "unterminated\n'),
+            stderr=stderr,
+        )
+
+        err = stderr.getvalue()
+        self.assertEqual(exit_code, 2)
+        self.assertIn("stdin.sem", err)
+        self.assertIn("formatter-auto-fixable=false", err)
+        self.assertIn("sem check --json stdin.sem", err)
+
 
 class TestCutoverOutput(unittest.TestCase):
     def test_idempotent_cutover_sample_has_no_replaced_row_verbs(self) -> None:

@@ -1610,7 +1610,7 @@ def _register_compiler_static_targets() -> None:
     )
     text_docs["text.fromInt64"] = _static_target_contract(
         "Format an Int64 as a decimal String into a caller-owned buffer (integer "
-        "to string / number to text / itoa). The discoverable native int→string "
+        "to string / number to text / format number as text / itoa). The discoverable native int→string "
         "formatter; links in every target. Avoids reading integers as TEXT from "
         "SQLite or dropping to c.snprintf. (json.stringify.Int64 does the same job.)",
         inputs=_static_inputs(("value", "Int64"), ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
@@ -1621,7 +1621,7 @@ def _register_compiler_static_targets() -> None:
     )
     text_docs["text.fromFloat64"] = _static_target_contract(
         "Format a Float64 as a String into a caller-owned buffer (float/number to "
-        "string) using %g. The discoverable native float→string formatter; links in "
+        "string / format number as text) using %g. The discoverable native float→string formatter; links in "
         "every target.",
         inputs=_static_inputs(("value", "Float64"), ("buffer", "OpaquePointer"), ("capacity", "ByteCount")),
         outputs=_static_value_output("String"),
@@ -1716,7 +1716,8 @@ def _register_compiler_static_targets() -> None:
     html_docs["html.fragmentConcat"] = _static_target_contract(
         "Concatenate two HtmlFragment values into a caller-owned buffer and "
         "return the buffer as HtmlFragment. This is the HTML-typed sibling of "
-        "text.concat for reusable fragment helpers and list folds: it links in "
+        "text.concat for reusable fragment helpers, render variable length list "
+        "folds, and html fragment join workflows: it links in "
         "native/webServer builds, avoids binding a String result as HtmlFragment, "
         "and keeps SS4302's domain check meaningful.",
         inputs=_static_inputs(
@@ -8412,6 +8413,7 @@ def _docs_structured_boost(row: sqlite3.Row, query_tokens: list[str]) -> float:
         "module": row["module"].lower(),
         "signature": row["signature_text"].lower(),
     }
+    target = row["target"].lower()
     boost = 0.0
     for token in query_tokens:
         if token in haystacks["qualified"]:
@@ -8425,6 +8427,20 @@ def _docs_structured_boost(row: sqlite3.Row, query_tokens: list[str]) -> float:
     joined = " ".join(query_tokens)
     if joined and joined in haystacks["qualified"]:
         boost += 5.0
+    query_set = set(query_tokens)
+    if target == "html.fragmentconcat":
+        if {"html", "fragment"} <= query_set or {"fragment", "join"} <= query_set:
+            boost += 8.0
+        if {"render", "list"} <= query_set or {"variable", "length", "list"} <= query_set:
+            boost += 8.0
+    if target in {"text.concat", "text.concat3"}:
+        if {"string", "concat"} <= query_set or {"string", "builder"} <= query_set:
+            boost += 6.0
+    if target in {"text.fromint64", "text.fromfloat64"}:
+        if {"int", "string"} <= query_set or {"integer", "format"} <= query_set:
+            boost += 7.0
+        if {"format", "number", "text"} <= query_set or {"number", "string"} <= query_set:
+            boost += 7.0
     return boost
 
 
@@ -11810,7 +11826,7 @@ def _run_test_payload(path: Path, include_python_harnesses: bool = True, allow_r
                 semantic_contract_failed += 1
             continue
         python_harness_discovered += 1
-        if entry["kind"] == "python" and not preflight_buildable and not allow_red_preflight_harnesses:
+        if entry["kind"] == "python" and not preflight_ok and not allow_red_preflight_harnesses:
             results.append({
                 "name": entry["name"],
                 "kind": entry["kind"],
@@ -13872,7 +13888,7 @@ def _eval_native_runtime_targets(source_text: str) -> list[str]:
 
 
 def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
-                  show_source: bool) -> dict:
+                  show_source: bool, source_path: Path | None = None) -> dict:
     """Compile and JIT-run a snippet (or full program), returning sem.eval.v1."""
     mode = "program" if _snippet_looks_like_full_program(text) else "snippet"
     if mode == "program":
@@ -13899,11 +13915,14 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
     # mapped on Windows; a cleanup PermissionError must not mask the result.
     with tempfile.TemporaryDirectory(prefix="sem-eval-",
                                      ignore_cleanup_errors=True) as tmp:
-        source_path = Path(tmp) / "snippet.sem"
-        source_path.write_text(wrapped, encoding="utf-8", newline="\n")
+        if source_path is not None and mode == "program":
+            run_source_path = Path(source_path)
+        else:
+            run_source_path = Path(tmp) / "snippet.sem"
+            run_source_path.write_text(wrapped, encoding="utf-8", newline="\n")
         build_root = Path(tmp) / "build"
 
-        check = _build_check_payload(source_path, [])
+        check = _build_check_payload(run_source_path, [])
         diagnostics = _remap_diagnostics(
             list(check.get("diagnostics", [])), mode, offset)
         payload["diagnostics"] = diagnostics
@@ -13968,7 +13987,7 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
         run_env["SEM_RUN_METRICS_NONCE"] = nonce
         total_start = time.perf_counter_ns()
         try:
-            proc = _capture_compiler(source_path, run_args,
+            proc = _capture_compiler(run_source_path, run_args,
                                      timeout=timeout, env=run_env)
         except subprocess.TimeoutExpired:
             payload["ok"] = False
@@ -14059,33 +14078,36 @@ def _eval_payload(text: str, *, max_output_bytes: int, timeout: int,
         return payload
 
 
-def _read_eval_source(args: argparse.Namespace) -> tuple[str | None, str | None]:
+def _read_eval_source(args: argparse.Namespace) -> tuple[str | None, str | None, Path | None]:
     """Resolve snippet text from --code, a path, or stdin (`-`).
 
-    Returns ``(text, error)``; exactly one is non-None."""
+    Returns ``(text, error, source_path)``; exactly one of text/error is non-None.
+    ``source_path`` is set only when the input came from an existing file so
+    full-program eval can preserve normal compiler import and asset resolution.
+    """
     code = getattr(args, "code", None)
     if code is not None:
-        return code, None
+        return code, None, None
     path = getattr(args, "path", None)
     if path in (None, "-"):
-        return sys.stdin.read(), None
+        return sys.stdin.read(), None, None
     candidate = Path(path)
     if candidate.exists():
         try:
-            return candidate.read_text(encoding="utf-8"), None
+            return candidate.read_text(encoding="utf-8"), None, candidate.resolve()
         except OSError as exc:
-            return None, f"cannot read snippet: {exc}"
+            return None, f"cannot read snippet: {exc}", None
     # The positional did not resolve to a file. If it looks like inline
     # SemanticScript source (multi-token or multi-line), treat it as code so
     # `sem eval "operation main ..."` works without --code — the common reach
     # for a quick probe. A bare path-like token (no whitespace) still reports a
     # clear file error rather than silently compiling a mistyped filename.
     if "\n" in path or " " in path.strip():
-        return path, None
+        return path, None, None
     return None, (
         f"cannot read snippet: {path}: no such file "
         "(pass an existing path, use --code for inline source, or '-' for stdin)"
-    )
+    ), None
 
 
 def _emit_eval_input_error(message: str, human: bool) -> int:
@@ -14104,7 +14126,7 @@ def _emit_eval_input_error(message: str, human: bool) -> int:
 
 def command_eval(args: argparse.Namespace) -> int:
     human = bool(getattr(args, "human", False))
-    text, error = _read_eval_source(args)
+    text, error, source_path = _read_eval_source(args)
     if error is not None:
         return _emit_eval_input_error(error, human)
 
@@ -14125,6 +14147,7 @@ def command_eval(args: argparse.Namespace) -> int:
         max_output_bytes=max_output_bytes,
         timeout=timeout,
         show_source=bool(getattr(args, "show_source", False)),
+        source_path=source_path,
     )
 
     if human:

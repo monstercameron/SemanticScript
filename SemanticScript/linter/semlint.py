@@ -4074,7 +4074,7 @@ def _build_capability_coverage_fix_candidates(
         evidence=[span_of_line(effectLine)],
     ))
     fixCandidates.append(FixCandidate(
-        # `authority` is access-first (`authority OP ACCESS PATH`), mirroring the
+        # `authority` is action-first (`authority OP ACTION PATH`), mirroring the
         # `effect OP ACCESS PATH` row it backs — unlike `capability`, which is
         # path-first. Emitting it path-first produced a grant that matched no
         # effect and tripped SS3109.
@@ -4168,7 +4168,7 @@ def _authority_path_related_to_effect(grantPath: str, effectPath: str) -> bool:
 
 
 def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
-    """An inline `authority OP PATH ACCESS` grant should back a declared effect
+    """An inline `authority OP PATH ACTION` grant should back a declared effect
     on that operation. SS3104 treats the mere PRESENCE of an authority row as
     coverage, so a grant whose access verb or path matches no declared effect (a
     typo such as `read` for a `write` effect, or a stale path) silently passes as
@@ -4185,7 +4185,7 @@ def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
             authorityArgs = authorityLine.args
             if len(authorityArgs) < 3:
                 continue
-            # Canonical grammar is `authority OP ACCESS PATH`, parallel to
+            # Canonical grammar is `authority OP ACTION PATH`, parallel to
             # `effect OP ACCESS PATH` (access first, then the dotted path).
             grantAccess, grantPath = authorityArgs[1], authorityArgs[2]
             covers = any(
@@ -4223,7 +4223,7 @@ def check_authority_effect_mismatch(facts: ExtendedFacts) -> List[Diagnostic]:
                     f"`authority {operationName} {grantAccess} {grantPath}` authorizes nothing on "
                     f"{operationName}; align its access verb and path to a declared "
                     f"`effect {operationName} <action> <path>` row (order is access-first: "
-                    f"`authority OP ACCESS PATH`)"
+                    f"`authority OP ACTION PATH`)"
                 ),
             ))
     return diagnostics

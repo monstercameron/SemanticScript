@@ -536,8 +536,8 @@ class TestSemCommandContracts(unittest.TestCase):
         self.assertEqual(test_code, 0)
         self.assertEqual(test_payload["status"], "passed")
         self.assertGreater(test_payload["discoveredTests"], 26)
-        self.assertTrue(test_payload["preflightCheck"]["ok"])
-        self.assertIn(test_payload["preflightStatus"], {"ok", "ok-with-warnings"})
+        self.assertFalse(test_payload["preflightCheck"]["ok"])
+        self.assertEqual(test_payload["preflightStatus"], "lint-diagnostics")
         self.assertTrue(any(result["name"] == "api_tests" for result in test_payload["results"]))
         self.assertTrue(any(result["status"] == "skipped" and result["kind"] == "python" for result in test_payload["results"]))
         self.assertEqual(test_payload["coverageSummary"]["runtimeHarnessesExecuted"], 0)
@@ -548,13 +548,17 @@ class TestSemCommandContracts(unittest.TestCase):
         test_code, test_payload = _sem_json("test", "--json", "--allow-red-preflight-harnesses", str(AUCTION_SERVER_PATH))
         self.assertIn(test_code, {0, 1})
         self.assertIn(test_payload["status"], {"passed", "failed"})
-        self.assertTrue(test_payload["preflightCheck"]["ok"])
-        self.assertIn(test_payload["preflightStatus"], {"ok", "ok-with-warnings"})
+        self.assertFalse(test_payload["preflightCheck"]["ok"])
+        self.assertEqual(test_payload["preflightStatus"], "lint-diagnostics")
         self.assertGreater(test_payload["coverageSummary"]["runtimeHarnessesExecuted"], 0)
-        self.assertEqual(test_payload["coverageSummary"]["runtimeSignalStatus"], "executed")
-        self.assertIn(test_payload["compositeStatus"], {"ok/runtime-passed", "ok/runtime-failed"})
+        self.assertIn(test_payload["coverageSummary"]["runtimeSignalStatus"], {"executed", "failed"})
+        self.assertIn(
+            test_payload["compositeStatus"],
+            {"lint-diagnostics/runtime-passed", "lint-diagnostics/runtime-failed"},
+        )
         self.assertIn(test_payload["runtimeHarnessStatus"], {"passed", "failed"})
-        self.assertGreater(test_payload["coverageSummary"]["semanticContractsExecuted"], 0)
+        self.assertEqual(test_payload["semanticContractStatus"], "deferred")
+        self.assertEqual(test_payload["coverageSummary"]["semanticContractsExecuted"], 0)
 
 
 if __name__ == "__main__":

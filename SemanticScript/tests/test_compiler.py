@@ -1883,6 +1883,70 @@ def test_text_concat_compiles_and_runs():
           f"rc={run_proc.returncode} stdout={run_proc.stdout!r}")
 
 
+def test_html_fragment_concat_compiles_and_runs():
+    # html.fragmentConcat is the HtmlFragment-typed sibling of text.concat. It
+    # should lower directly to native snprintf into a caller-owned buffer, so
+    # generated list rendering can fold fragments without a runtime symbol.
+    src = "\n".join([
+        "project HtmlFragmentConcatSmoke",
+        "target console",
+        "runtime AgentRuntime 0.1",
+        "entry console main",
+        "operation main",
+        "output operation main ExitCode",
+        "effect main write console.stdout",
+        "effect main allocate heap",
+        "effect main free heap",
+        "effect main write memory.buffer",
+        "authority main write console.stdout",
+        "authority main allocate heap",
+        "authority main free heap",
+        "authority main write memory.buffer",
+        "memory main heap yes",
+        "async main no",
+        "purpose operation main \"fragment concat smoke\"",
+        "invariant operation main \"prints two joined list-item fragments\"",
+        "storage local immutable bufBytes ByteCount 96",
+        "storage local immutable leftFragment HtmlFragment \"<li>Alpha</li>\"",
+        "storage local immutable rightFragment HtmlFragment \"<li>Beta</li>\"",
+        "call allocCall c.malloc",
+        "argument allocCall size ByteCount bufBytes",
+        "run allocCall",
+        "bind value buf OpaquePointer allocCall",
+        "call nullCheckCall pointer.isNull",
+        "argument nullCheckCall pointer OpaquePointer buf",
+        "run nullCheckCall",
+        "bind value bufIsNull Bool nullCheckCall",
+        "branch if condition bufIsNull target failed",
+        "defer freeBuf c.free buf",
+        "call concatCall html.fragmentConcat",
+        "argument concatCall left HtmlFragment leftFragment",
+        "argument concatCall right HtmlFragment rightFragment",
+        "argument concatCall buffer OpaquePointer buf",
+        "argument concatCall capacity ByteCount bufBytes",
+        "run concatCall",
+        "bind value joinedFragment HtmlFragment concatCall",
+        "call putsCall c.puts",
+        "argument putsCall stream String joinedFragment",
+        "run putsCall",
+        "ignore value source putsCall type Int32",
+        "storage local immutable okCode ExitCode 0",
+        "return value okCode",
+        "label failed",
+        "storage local immutable failCode ExitCode 1",
+        "return value failCode",
+    ])
+    compile_proc, run_proc = compile_and_run_semsc_source(src)
+    if run_proc is None:
+        check("html.fragmentConcat compiles to a native exe",
+              False, f"build failed: {compile_proc.stderr[-400:]!r}")
+        return
+    check("html.fragmentConcat joins fragments at runtime",
+          run_proc.returncode == 0
+          and "<li>Alpha</li><li>Beta</li>" in run_proc.stdout,
+          f"rc={run_proc.returncode} stdout={run_proc.stdout!r}")
+
+
 def test_text_ends_with_compiles_and_runs():
     # text.endsWith value suffix -> Bool with a branchless bounds guard:
     # offset = select(len_s<=len_v, len_v-len_s, 0); ensures no OOB read when
@@ -2168,9 +2232,9 @@ def test_text_contains_compiles_and_runs():
           f"rc={run_proc.returncode} stdout={out!r}")
 
 
-def test_text_from_int64_compiles_and_runs():
-    # text.fromInt64 value buffer capacity -> String: the discoverable native
-    # int->string formatter (decimal, signed), links in every target.
+def test_text_from_number_formatters_compile_and_run():
+    # text.fromInt64 / text.fromFloat64 are the discoverable native number-to-
+    # string formatters. Both lower without runtime symbols and link everywhere.
     src = "\n".join([
         "project FromIntSmoke",
         "target console",
@@ -2189,10 +2253,11 @@ def test_text_from_int64_compiles_and_runs():
         "memory main heap yes",
         "async main no",
         "purpose operation main \"fromInt smoke\"",
-        "invariant operation main \"prints 42 then -7\"",
+        "invariant operation main \"prints 42 then -7 then 3.5\"",
         "storage local immutable bufBytes ByteCount 32",
         "storage local immutable answer Int64 42",
         "storage local immutable neg Int64 -7",
+        "storage local immutable floatValue Float64 3.5",
         "call allocCall c.malloc",
         "argument allocCall size ByteCount bufBytes",
         "run allocCall",
@@ -2223,6 +2288,16 @@ def test_text_from_int64_compiles_and_runs():
         "argument puts2Call stream String negStr",
         "run puts2Call",
         "ignore value source puts2Call type Int32",
+        "call fmtFloatCall text.fromFloat64",
+        "argument fmtFloatCall value Float64 floatValue",
+        "argument fmtFloatCall buffer OpaquePointer buf",
+        "argument fmtFloatCall capacity ByteCount bufBytes",
+        "run fmtFloatCall",
+        "bind value floatStr String fmtFloatCall",
+        "call putsFloatCall c.puts",
+        "argument putsFloatCall stream String floatStr",
+        "run putsFloatCall",
+        "ignore value source putsFloatCall type Int32",
         "storage local immutable okCode ExitCode 0",
         "return value okCode",
         "label failed",
@@ -2231,12 +2306,12 @@ def test_text_from_int64_compiles_and_runs():
     ])
     compile_proc, run_proc = compile_and_run_semsc_source(src)
     if run_proc is None:
-        check("text.fromInt64 compiles to a native exe",
+        check("text.fromInt64/text.fromFloat64 compile to a native exe",
               False, f"build failed: {compile_proc.stderr[-400:]!r}")
         return
     out = run_proc.stdout
-    check("text.fromInt64 formats signed decimals",
-          run_proc.returncode == 0 and "42" in out and "-7" in out,
+    check("text.fromInt64/text.fromFloat64 format native numbers",
+          run_proc.returncode == 0 and "42" in out and "-7" in out and "3.5" in out,
           f"rc={run_proc.returncode} stdout={out!r}")
 
 
@@ -11550,9 +11625,10 @@ def main():
     test_defer_not_dominated_flags_shared_pre_acquisition_label()
     test_defer_edge_cleanup_runs_for_shared_forward_exit_label()
     test_text_concat_compiles_and_runs()
+    test_html_fragment_concat_compiles_and_runs()
     test_text_concat3_and_length_compile_and_run()
     test_text_equals_compiles_and_runs()
-    test_text_from_int64_compiles_and_runs()
+    test_text_from_number_formatters_compile_and_run()
     test_text_contains_compiles_and_runs()
     test_text_starts_with_compiles_and_runs()
     test_text_ends_with_compiles_and_runs()

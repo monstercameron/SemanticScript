@@ -806,6 +806,46 @@ class TestSemAgentPayloads(unittest.TestCase):
         self.assertIn("call readGeneratedIdCall sqlite.columnInt64", guide["doc"]["exampleRows"])
         self.assertTrue(any("activity-log" in row for row in guide["doc"]["usage"]))
 
+    def test_docs_search_surfaces_native_composition_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / ".sem" / "docs.sqlite"
+            index_payload = sem._docs_index_payload(
+                root,
+                db_path=db_path,
+                include_std=True,
+                include_compiler=True,
+                embedding_provider="none",
+                enable_sqlite_vec=False,
+            )
+
+            def qualified_names(query: str) -> list[str]:
+                payload = sem._docs_search_payload(
+                    query,
+                    db_path=db_path,
+                    limit=5,
+                    embedding_provider="none",
+                    include_docs=True,
+                )
+                self.assertTrue(payload["ok"], payload)
+                return [result["qualifiedName"] for result in payload["results"]]
+
+            fragment_results = qualified_names("render variable length list")
+            html_results = qualified_names("html fragment join")
+            concat_results = qualified_names("string concat")
+            int_results = qualified_names("int to string")
+            number_results = qualified_names("format number as text")
+
+        self.assertTrue(index_payload["ok"])
+        self.assertIn("html.fragmentConcat", fragment_results)
+        self.assertEqual(html_results[0], "html.fragmentConcat")
+        self.assertEqual(concat_results[0], "text.concat")
+        self.assertEqual(int_results[0], "text.fromInt64")
+        self.assertTrue(
+            {"text.fromInt64", "text.fromFloat64"} & set(number_results),
+            number_results,
+        )
+
     def test_docs_default_db_path_treats_missing_non_source_path_as_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -4266,12 +4306,16 @@ return value 0
     def test_eval_positional_inline_source_and_missing_file_guidance(self) -> None:
         inline = "storage local immutable n Int64 42"
 
-        text, error = sem._read_eval_source(argparse.Namespace(code=None, path=inline))
-        missing_text, missing_error = sem._read_eval_source(argparse.Namespace(code=None, path="missingSnippet.sem"))
+        text, error, source_path = sem._read_eval_source(argparse.Namespace(code=None, path=inline))
+        missing_text, missing_error, missing_source_path = sem._read_eval_source(
+            argparse.Namespace(code=None, path="missingSnippet.sem")
+        )
 
         self.assertEqual(text, inline)
         self.assertIsNone(error)
+        self.assertIsNone(source_path)
         self.assertIsNone(missing_text)
+        self.assertIsNone(missing_source_path)
         self.assertIn("--code", missing_error)
         self.assertIn("no such file", missing_error)
 
