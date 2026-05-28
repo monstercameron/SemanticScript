@@ -122,6 +122,45 @@ def test_parse_labeled_step_row():
     assert row.payload == ["code"]
 
 
+def test_parse_unknown_predicate_for_kind_rejected():
+    # README ss5/ss17 #22: step predicate `do` is illegal on a record.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("r is record\nr do something\n")
+    assert "not valid for a record" in exc.value.message
+
+
+def test_parse_unknown_predicate_name_rejected():
+    with pytest.raises(eavc.EavError):
+        eavc.parse("main is operation\nmain frobnicate x\n")
+
+
+def test_parse_at_only_on_operations():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("r is record\nr at someLabel return x\n")
+    assert "only valid on operations" in exc.value.message
+
+
+def test_parse_universal_metadata_on_any_kind():
+    # README ss6: purpose/invariant/tag are valid on every entity kind.
+    prog = eavc.parse(
+        'c is capability\nc grants write console.stdout\nc purpose "ok"\nc tag publicApi\n'
+    )
+    assert prog.entities["c"].fact("purpose").payload == ['"ok"']
+
+
+def test_parse_legal_predicate_sets_accepted():
+    # One representative legal predicate per several kinds parses cleanly.
+    src = (
+        "E is enum\nE variant open\nE repr open 1\n"
+        "A is alias\nA for Int32\n"
+        "Rec is record\nRec field id Int64\n"
+        "cap is capability\ncap grants read database\n"
+    )
+    prog = eavc.parse(src)
+    assert prog.entities["E"].fact("variant").payload == ["open"]
+    assert prog.entities["A"].fact("for").payload == ["Int32"]
+
+
 def test_parse_island_body_strips_common_indent():
     src = (
         "q is storage\n"
@@ -173,6 +212,24 @@ def test_lower_value_call_binds_value():
     v01 = _run_example("add_two.sem")
     assert "bind value answerValue Int64 answerCall" in v01
     assert "argument writeAnswer value Int64 answerValue" in v01
+
+
+def test_lower_error_cases_and_void_payload():
+    # README ss9: errorCase `of`/`payload`; a Void payload carries no data.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "E is error\n"
+        "Failed is errorCase\nFailed of E\nFailed payload Int32\n"
+        "Closed is errorCase\nClosed of E\nClosed payload Void\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let c immutable ExitCode 0\nmain return c\n"
+    )
+    v01 = eavc.lower_to_v01(eavc.parse(src))
+    assert "error E" in v01
+    assert "errorCase E Failed Int32" in v01
+    assert "errorCase E Closed" in v01
+    assert "errorCase E Closed Void" not in v01
 
 
 def test_lower_webserver_target_rejected():

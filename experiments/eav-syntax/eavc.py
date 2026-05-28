@@ -192,6 +192,69 @@ STEP_PREDICATES = {
 # (README ss2). `storage ... body sql` and `htmlTemplate ... body` are islands.
 ISLAND_PREDICATE = "body"
 
+# Universal metadata predicates (README ss6) + universal ss30 declaration
+# predicates, valid on every entity kind.
+UNIVERSAL_PREDICATES = {
+    "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "deprecated", "owner", "forTarget", "forPlatform", "suppress",
+}
+
+# Structural + step predicates allowed per entity kind (README ss5). `is` is
+# implicit (handled before dispatch); `at` labeled steps are operation-only and
+# handled separately. Unknown predicate for a kind is a hard parse error.
+ALLOWED_PREDICATES: dict[str, set[str]] = {
+    "project": {
+        "module", "target", "entry", "mode", "languageVersion", "toolchain",
+        "require", "replace", "allowEffect", "platform", "constant", "configure",
+        "nativeLibrary", "nativeHeader", "nativeLinkFlag",
+        "resolved", "toolchainResolved", "effectSurface",
+    },
+    "module": {"path", "imports", "exports"},
+    "capability": {"grants"},
+    "error": set(),
+    "errorCase": {"of", "payload"},
+    "record": {"field"},
+    "enum": {"variant", "repr"},
+    "alias": {"for"},
+    "operation": {
+        "in", "out", "effect", "uses", "memory", "async", "label", "let",
+        "body", "export",
+        "do", "defer", "start", "join", "poll", "cancel", "detach",
+        "branch", "return", "goto",
+    },
+    "function": {
+        "in", "out", "effect", "uses", "memory", "async", "label", "let",
+        "body", "export",
+        "do", "defer", "start", "join", "poll", "cancel", "detach",
+        "branch", "return", "goto",
+    },
+    "call": {
+        "in", "invokes", "arg", "out", "catch", "discards", "owns",
+        "cleanedBy", "effect", "async",  # async = tolerated-deprecated (ss5)
+    },
+    "task": {
+        "in", "invokes", "arg", "out", "catch", "discards", "owns",
+        "cleanedBy", "effect",
+    },
+    "cleanup": {"in", "call", "onFailure", "because", "cleans"},
+    "storage": {
+        "scope", "type", "mutability", "value", "body", "literalSource",
+        "literalDigest",
+    },
+    "htmlTemplate": {"body"},
+    "webServer": {
+        "host", "port", "startup", "shutdown", "notFound", "methodNotAllowed",
+        "route", "middleware",
+    },
+    "platform": {
+        "os", "arch", "targetRuntime", "output", "override",
+        "nativeLibrary", "nativeHeader", "nativeLinkFlag",
+    },
+    "intrinsic": {"target", "arg", "out", "catch", "async", "owns", "trustConstraint"},
+    "semsig": {"version", "generatedBy", "describes"},
+    "operationType": {"in", "out"},
+}
+
 
 @dataclass
 class Row:
@@ -236,6 +299,12 @@ class Program:
             if k == norm:
                 out.append(ent)
         return out
+
+
+def _predicate_allowed(kind: str, predicate: str) -> bool:
+    if predicate in UNIVERSAL_PREDICATES:
+        return True
+    return predicate in ALLOWED_PREDICATES.get(kind, set())
 
 
 def _leading_spaces(raw: str) -> int:
@@ -317,6 +386,12 @@ def parse(source_text: str) -> Program:
 
         # Labeled step row: `<op> at <label> <stepPred> <payload...>`
         if predicate == "at":
+            if entity.kind not in ("operation", "function"):
+                raise EavError(
+                    f"`at` labeled steps are only valid on operations, not a "
+                    f"{entity.kind} entity (README ss1/ss5)",
+                    lineno,
+                )
             if len(payload) < 2:
                 raise EavError(
                     "`at` row needs a label and a step predicate (README ss1)",
@@ -324,11 +399,26 @@ def parse(source_text: str) -> Program:
                 )
             label = payload[0]
             step_pred = payload[1]
+            if step_pred not in ALLOWED_PREDICATES[entity.kind]:
+                raise EavError(
+                    f"step predicate {step_pred!r} is not valid for an "
+                    f"operation (README ss5)",
+                    lineno,
+                )
             entity.rows.append(
                 Row(subject, step_pred, payload[2:], lineno, label=label)
             )
             i += 1
             continue
+
+        # Per-kind predicate dispatch (README ss5, ss17 #22): a predicate must be
+        # in the kind's structural/step set or be a universal metadata predicate.
+        if not _predicate_allowed(entity.kind, predicate):
+            raise EavError(
+                f"predicate {predicate!r} is not valid for a {entity.kind} "
+                f"entity (README ss5)",
+                lineno,
+            )
 
         # Island body: `body <kind>` followed by indented lines (README ss2).
         if predicate == ISLAND_PREDICATE and entity.kind in ("storage", "htmlTemplate"):

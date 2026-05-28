@@ -75,7 +75,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1B. Parser & row model (§1, §5)
 - [x] WS1-020 Four row classes: entity/fact/step/labeled-step; column-1 subject, column-2 predicate. →test: each class parses to correct node. §1 _(eavc: `test_parse_entity_kinds_and_rows`, `test_parse_labeled_step_row`)_
 - [x] WS1-021 Every entity's first row is `is <kind>`; missing/duplicate `is` errors. →test: §17 #1. §1 _(eavc: `test_parse_first_row_must_be_is`, `test_parse_duplicate_is_rejected`, `test_parse_unknown_kind_rejected`)_
-- [ ] WS1-022 Per-kind predicate dispatch from §5 table; unknown predicate for kind = hard parse error. →test: each kind's legal set; one illegal each. §5
+- [x] WS1-022 Per-kind predicate dispatch from §5 table; unknown predicate for kind = hard parse error. →test: each kind's legal set; one illegal each. §5 _(eavc: `ALLOWED_PREDICATES`/`UNIVERSAL_PREDICATES`; `test_parse_unknown_predicate_for_kind_rejected`, `test_parse_unknown_predicate_name_rejected`, `test_parse_at_only_on_operations`, `test_parse_universal_metadata_on_any_kind`, `test_parse_legal_predicate_sets_accepted`)_
 - [ ] WS1-023 Reserved-word table (§2) enforced for entity/var/type names; **exempt** arg-slot/field/variant labels. →test: `arg path …` ok, `path is record` errors. §2
 - [x] WS1-024 `at LABEL <stepPred> …` labeled-step (one model, §1 row-class 4); label col 3, step col 4+. →test: labeled step parses; `at` not usable as bare predicate. §1/§13 _(eavc: `test_parse_labeled_step_row`)_
 - [ ] WS1-025 `async`-on-`call` tolerated-deprecated exception (promotes to task on fmt). →test: `call … async yes` parses with deprecation note. §5
@@ -86,7 +86,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-031 `alias … for T` newtype, no silent coercion. →test: pass base where alias required = type error. §10
 - [ ] WS1-032 `record` + `field`; duplicate field = error; doc-order = field order. →test: dup-field reject. §10
 - [ ] WS1-033 `enum` + `variant [payload]` + `repr`; all-or-none repr; repr only on payloadless; dup variant = error. →test: mixed-repr reject; data-variant repr reject. §10
-- [ ] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9
+- [x] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9 _(eavc: `test_lower_error_cases_and_void_payload` (of/payload, Void = no data), `test_lower_hello_world_key_rows`)_
 - [ ] WS1-035 `Result OK ERR` (only generic). →test: arity. §10
 - [ ] WS1-036 `operationType` (`is in out`) function-pointer type. →test: §5 row; indirect-call type-check. §33.9
 - [ ] WS1-037 Literal width: literal takes annotated-position type, compile-time range-check; un-annotated = Int64. →test: `let s HttpStatusCode 200` ok, `… 99999` (out of Int32) error. §33.6
