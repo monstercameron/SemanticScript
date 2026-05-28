@@ -3,11 +3,10 @@
 # rationale: Canonical standard-library module for conversion helpers.
 # invariant: The standard module entry is this file; tests live beside it as `main.test.sem`.
 module standard.convert
-nativeRuntimeSource standard.convert "SemanticScript/runtime/native_convert/sem_convert_runtime.c"
 purpose module standard.convert "Canonical standard-library module for conversion helpers."
 moduleOwns standard.convert "The official import path `standard.convert` and this module's implementation body."
 moduleDoesNotOwn standard.convert "App-specific wrappers, compatibility aliases, or generated build artifacts."
-invariant module standard.convert "The standard module entry is this file; tests live beside it as `main.test.sem`; the native-formatter operations delegate through runtimeBinding rows to sem_convert_runtime.c so they link in native/webServer builds."
+invariant module standard.convert "The standard module entry is this file; tests live beside it as `main.test.sem`."
 
 import json standard.json
 import memory standard.memory
@@ -25,8 +24,6 @@ exportOperation standard.convert convertSignedInt64ToBool
 exportOperation standard.convert convertSignedInt64ToString
 exportOperation standard.convert convertSignedInt32ToString
 exportOperation standard.convert convertFloat64ToString
-exportOperation standard.convert formatSignedInt64IntoBuffer
-exportOperation standard.convert formatFloat64IntoBuffer
 exportOperation standard.convert convertBoolToString
 exportOperation standard.convert parseStringToSignedInt64
 exportOperation standard.convert parseStringToSignedInt32
@@ -386,54 +383,6 @@ return error float64OwnedStringError
 label convertFloat64ToStringFailed
 makeError float64StringFailure ConversionError.TextEncodeFailed float64StringError
 return error float64StringFailure
-
-# section convert.nativeTextFormatters
-
-# rationale: Native, allocation-free Int64 -> decimal text into a caller-owned
-#   scratch buffer. convertSignedInt64ToString has a SemanticScript body and so
-#   does NOT link in native/webServer builds (SSCG002), which forced apps onto
-#   c.snprintf (format-string crash risk) or reading integer columns as SQL TEXT.
-#   This delegates to a runtimeBinding shim, so it links in those builds.
-# invariant: Returns the scratch pointer on success; null when capacity is too
-#   small. A truncated number is a wrong number, so it fails closed rather than
-#   returning partial text.
-operation formatSignedInt64IntoBuffer
-input operation formatSignedInt64IntoBuffer inputValue Int64
-input operation formatSignedInt64IntoBuffer scratch OpaquePointer
-input operation formatSignedInt64IntoBuffer capacity Int32
-output operation formatSignedInt64IntoBuffer String
-effect formatSignedInt64IntoBuffer write memory.buffer
-memory formatSignedInt64IntoBuffer heap no
-async formatSignedInt64IntoBuffer no
-useCapability formatSignedInt64IntoBuffer conversionMemoryBufferWriteCapability
-operationBody formatSignedInt64IntoBuffer runtimeBinding
-purpose operation formatSignedInt64IntoBuffer "Format an Int64 as null-terminated decimal text into the caller-provided scratch buffer; returns the buffer, or null if capacity is insufficient."
-invariant operation formatSignedInt64IntoBuffer "Returns the scratch pointer on success, or null when capacity is too small; a 64-bit decimal needs up to 21 bytes (sign + 19 digits + NUL); never overflows the buffer."
-warning formatSignedInt64IntoBuffer "A null return means the buffer was too small - the caller must check before using the result as a String."
-runtimeBindingPrecondition formatSignedInt64IntoBuffer "scratch points to at least capacity writable bytes."
-runtimeBinding formatSignedInt64IntoBuffer native.ss_convert_int64_to_string
-
-# rationale: Native, allocation-free Float64 -> shortest round-trippable decimal
-#   text into a caller-owned scratch buffer. The native sibling of
-#   formatSignedInt64IntoBuffer for doubles; links in native/webServer builds
-#   where convertFloat64ToString (a SemanticScript body) does not.
-# invariant: Emits the shortest decimal that round-trips to the same double
-#   (0.1 -> "0.1"); returns null when capacity is too small.
-operation formatFloat64IntoBuffer
-input operation formatFloat64IntoBuffer inputValue Float64
-input operation formatFloat64IntoBuffer scratch OpaquePointer
-input operation formatFloat64IntoBuffer capacity Int32
-output operation formatFloat64IntoBuffer String
-effect formatFloat64IntoBuffer write memory.buffer
-memory formatFloat64IntoBuffer heap no
-async formatFloat64IntoBuffer no
-useCapability formatFloat64IntoBuffer conversionMemoryBufferWriteCapability
-operationBody formatFloat64IntoBuffer runtimeBinding
-purpose operation formatFloat64IntoBuffer "Format a Float64 as the shortest null-terminated decimal text that round-trips to the same value, into the caller-provided scratch buffer; returns the buffer, or null if capacity is insufficient."
-invariant operation formatFloat64IntoBuffer "Emits the shortest decimal that round-trips to the input double; non-finite inputs render as nan/inf/-inf; returns null when capacity is too small; never overflows the buffer."
-warning formatFloat64IntoBuffer "A null return means the buffer was too small - the caller must check before using the result as a String."
-runtimeBindingPrecondition formatFloat64IntoBuffer "scratch points to at least capacity writable bytes."
-runtimeBinding formatFloat64IntoBuffer native.ss_convert_float64_to_string
 
 # rationale: Format a Bool as the null-terminated token true or false.
 # invariant: OK result is heap-owned by the caller and must be released with memory.releaseMemoryBytes.
