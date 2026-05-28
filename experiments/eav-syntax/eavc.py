@@ -197,6 +197,49 @@ ISLAND_PREDICATE = "body"
 # underscores/hyphens/leading digits.
 _IDENT_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9]*\Z")
 
+# Reserved words (README ss2). May not be used as entity, variable, or type
+# names. Arg-slot/field/variant *labels* are payload tokens and are exempt
+# (they are never validated against this set).
+RESERVED_WORDS = {
+    # literals
+    "nil", "true", "false",
+    # core syntax
+    "is", "at",
+    # step predicates and guards
+    "do", "defer", "start", "join", "poll", "cancel", "detach", "branch",
+    "return", "goto", "if", "ifFalse", "ifOut", "ifValue", "ifVariant",
+    "ifError", "ifReady", "ifPending", "ifCanceled", "else", "onFailure",
+    "equals", "notEquals", "greaterThan", "lessThan", "bind",
+    "propagate", "logAndSuppress", "because",
+    # mutability and declaration tokens
+    "immutable", "mutable", "yes", "no",
+    # entity kind names
+    "project", "module", "capability", "error", "errorCase", "record", "enum",
+    "alias", "operation", "function", "call", "task", "cleanup", "storage",
+    "htmlTemplate", "webServer", "intrinsic", "platform", "operationType",
+    "semsig",
+    # structural predicate tokens
+    "in", "out", "effect", "uses", "memory", "async", "let", "label",
+    "field", "variant", "repr", "for", "of", "path", "imports", "exports",
+    "scope", "type", "mutability", "value", "body", "literalSource",
+    "literalDigest", "grants", "invokes", "arg", "discards", "catch",
+    "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "deprecated", "owner", "target", "owns", "cleanedBy", "cleans",
+    "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
+    "version", "generatedBy", "describes",
+    # manifest predicate tokens
+    "languageVersion", "toolchain", "require", "replace", "allowEffect",
+    "constant", "configure", "nativeLibrary", "nativeHeader", "nativeLinkFlag",
+    "os", "arch", "targetRuntime", "output", "override",
+    # generated lock predicate tokens
+    "resolved", "toolchainResolved", "effectSurface",
+    # interop annotation tokens
+    "export", "c",
+    # primitive type names
+    "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
+    "Float32", "Float64", "Bool", "String", "Void", "Byte", "Result",
+}
+
 # Universal metadata predicates (README ss6) + universal ss30 declaration
 # predicates, valid on every entity kind.
 UNIVERSAL_PREDICATES = {
@@ -383,6 +426,12 @@ def parse(source_text: str) -> Program:
             kind = payload[0]
             if kind not in ENTITY_KINDS:
                 raise EavError(f"unknown entity kind {kind!r} (README ss5)", lineno)
+            if subject in RESERVED_WORDS:
+                raise EavError(
+                    f"reserved word {subject!r} may not be an entity name "
+                    f"(README ss2); arg-slot/field/variant labels are exempt",
+                    lineno,
+                )
             if not _IDENT_RE.match(subject):
                 raise EavError(
                     f"invalid entity name {subject!r}: names are "
@@ -494,6 +543,14 @@ def _validate_program(program: Program) -> None:
             )
         elif ent.kind == "enum":
             _validate_enum(ent)
+        if ent.kind in ("operation", "function"):
+            for row in ent.facts("let"):
+                if row.payload and row.payload[0] in RESERVED_WORDS:
+                    raise EavError(
+                        f"reserved word {row.payload[0]!r} may not be a variable "
+                        f"name (README ss2)",
+                        row.line,
+                    )
         for row in ent.facts("out"):
             if row.payload and row.payload[0] == "Result" and len(row.payload) != 3:
                 raise EavError(

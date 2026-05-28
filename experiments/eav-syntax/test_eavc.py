@@ -125,6 +125,28 @@ def test_parse_valid_camelcase_name_ok():
     assert "myOperation2" in prog.entities
 
 
+def test_parse_reserved_word_as_entity_name_rejected():
+    # README ss2/ss23: `path is record` errors (path is a reserved predicate).
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("path is record\n")
+    assert "reserved word" in exc.value.message
+
+
+def test_parse_reserved_word_as_variable_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("main is operation\nmain let type immutable Int64 0\n")
+    assert "reserved word" in exc.value.message
+
+
+def test_parse_reserved_word_ok_as_arg_slot_label():
+    # The slot label `path` is a payload token and is exempt from reservation.
+    prog = eavc.parse(
+        "openDb is call\nopenDb invokes sqlite.openDatabase\n"
+        "openDb arg path String dbPath\n"
+    )
+    assert prog.entities["openDb"].fact("arg").payload == ["path", "String", "dbPath"]
+
+
 def test_parse_labeled_step_row():
     prog = eavc.parse(
         "main is operation\nmain at failed return code\n"
@@ -156,9 +178,10 @@ def test_parse_at_only_on_operations():
 def test_parse_universal_metadata_on_any_kind():
     # README ss6: purpose/invariant/tag are valid on every entity kind.
     prog = eavc.parse(
-        'c is capability\nc grants write console.stdout\nc purpose "ok"\nc tag publicApi\n'
+        'writer is capability\nwriter grants write console.stdout\n'
+        'writer purpose "ok"\nwriter tag publicApi\n'
     )
-    assert prog.entities["c"].fact("purpose").payload == ['"ok"']
+    assert prog.entities["writer"].fact("purpose").payload == ['"ok"']
 
 
 def test_parse_legal_predicate_sets_accepted():
@@ -187,7 +210,7 @@ def test_byte_lowers_to_uint8():
         "m is module\nm path a.b\n"
         "R is record\nR field flags Byte\n"
         "main is operation\nmain out ExitCode\n"
-        "main let mask immutable Byte 7\nmain let c immutable ExitCode 0\nmain return c\n"
+        "main let mask immutable Byte 7\nmain let okCode immutable ExitCode 0\nmain return okCode\n"
     )
     v01 = eavc.lower_to_v01(eavc.parse(src))
     assert "storage local immutable mask UInt8 7" in v01
@@ -305,11 +328,11 @@ def test_operation_decl_rows_reorder_stable():
     )
     a = head + (
         "main is operation\nmain out ExitCode\nmain async no\nmain memory heap no\n"
-        'main purpose "x"\nmain let c immutable ExitCode 0\nmain return c\n'
+        'main purpose "x"\nmain let okCode immutable ExitCode 0\nmain return okCode\n'
     )
     b = head + (
         "main is operation\nmain purpose \"x\"\nmain memory heap no\nmain async no\n"
-        "main out ExitCode\nmain let c immutable ExitCode 0\nmain return c\n"
+        "main out ExitCode\nmain let okCode immutable ExitCode 0\nmain return okCode\n"
     )
     assert eavc.lower_to_v01(eavc.parse(a)) == eavc.lower_to_v01(eavc.parse(b))
 
@@ -329,7 +352,7 @@ def test_lower_error_cases_and_void_payload():
         "Failed is errorCase\nFailed of E\nFailed payload Int32\n"
         "Closed is errorCase\nClosed of E\nClosed payload Void\n"
         "main is operation\nmain out ExitCode\n"
-        "main let c immutable ExitCode 0\nmain return c\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
     )
     v01 = eavc.lower_to_v01(eavc.parse(src))
     assert "error E" in v01
