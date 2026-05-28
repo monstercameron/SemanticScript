@@ -82,7 +82,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-026 EBNF grammar doc + invalid-example corpus (§29 #1). →test: corpus all-reject. §29#1
 
 ## 1C. Types (§10, §33.6–33.7)
-- [ ] WS1-030 Primitives Int8–64/UInt8–64/Float32/64/Bool/String/Void/Byte (Byte alias UInt8). →test: lowering widths. §10
+- [x] WS1-030 Primitives Int8–64/UInt8–64/Float32/64/Bool/String/Void/Byte (Byte alias UInt8). →test: lowering widths. §10 _(eavc: `PRIMITIVE_TYPES`, `_norm_type` Byte→UInt8; `test_primitive_types_complete`, `test_byte_lowers_to_uint8`)_
 - [ ] WS1-031 `alias … for T` newtype, no silent coercion. →test: pass base where alias required = type error. §10
 - [x] WS1-032 `record` + `field`; duplicate field = error; doc-order = field order. →test: dup-field reject. §10 _(eavc: `_validate_program`; `test_parse_record_duplicate_field_rejected`, `test_parse_record_fields_keep_doc_order`)_
 - [x] WS1-033 `enum` + `variant [payload]` + `repr`; all-or-none repr; repr only on payloadless; dup variant = error. →test: mixed-repr reject; data-variant repr reject. §10 _(eavc: `_validate_enum`; `test_parse_enum_duplicate_variant_rejected`, `test_parse_enum_repr_on_data_variant_rejected`, `test_parse_enum_mixed_repr_rejected`, `test_parse_enum_full_repr_ok`)_

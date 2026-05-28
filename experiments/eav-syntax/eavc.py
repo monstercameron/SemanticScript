@@ -546,8 +546,19 @@ _OP_DECL_PREDS = {"in", "out", "effect", "uses", "memory", "async", "purpose",
                   "deprecated", "owner", "label", "export", "body"}
 
 
-def _unquote(tok: str) -> str:
-    return tok
+# Built-in primitive types (README ss10) — usable with no `is` row. `Byte` is a
+# primitive synonym for `UInt8` (same width, freely interchangeable at the ABI).
+PRIMITIVE_TYPES = {
+    "Int8", "Int16", "Int32", "Int64",
+    "UInt8", "UInt16", "UInt32", "UInt64",
+    "Float32", "Float64",
+    "Bool", "String", "Void", "Byte",
+}
+
+
+def _norm_type(tok: str) -> str:
+    """Normalize a type token for lowering. `Byte` lowers to `UInt8` (README ss10)."""
+    return "UInt8" if tok == "Byte" else tok
 
 
 def lower_to_v01(program: Program) -> str:
@@ -613,7 +624,7 @@ def lower_to_v01(program: Program) -> str:
         out.append(f"record {rec.name}")
         for fr in rec.facts("field"):
             if len(fr.payload) >= 2:
-                out.append(f"field {rec.name} {fr.payload[0]} {fr.payload[1]}")
+                out.append(f"field {rec.name} {fr.payload[0]} {_norm_type(fr.payload[1])}")
 
     # Errors and error cases (README ss9).
     for err in program.of_kind("error"):
@@ -706,7 +717,7 @@ def _lower_let(op: Entity, row: Row, out: list[str]) -> None:
     p = row.payload
     if len(p) < 3:
         raise EavError(f"`let` row needs NAME MUT TYPE [VALUE], got {p!r}", row.line)
-    name, mut, typ = p[0], p[1], p[2]
+    name, mut, typ = p[0], p[1], _norm_type(p[2])
     if mut not in ("mutable", "immutable"):
         raise EavError(f"`let` mutability must be mutable|immutable, got {mut!r}", row.line)
     value = " ".join(p[3:]) if len(p) > 3 else ""
@@ -770,7 +781,7 @@ def _lower_call(call: Entity, out: list[str], let_mut: dict[str, str]) -> None:
             raise EavError(
                 f"`arg` row needs SLOT TYPE VALUE, got {arg.payload!r}", arg.line
             )
-        slot, typ = arg.payload[0], arg.payload[1]
+        slot, typ = arg.payload[0], _norm_type(arg.payload[1])
         value = " ".join(arg.payload[2:])
         out.append(f"argument {call.name} {slot} {typ} {value}")
     out.append(f"run {call.name}")
@@ -784,7 +795,11 @@ def _lower_call(call: Entity, out: list[str], let_mut: dict[str, str]) -> None:
     # temp, then `set storage` the mutable binding. An `out` to a `let immutable`
     # is a hard error (README ss12, ss17 #28). Otherwise it is a fresh bind.
     out_name = out_row.payload[0] if has_out else None
-    out_type = out_row.payload[1] if has_out and len(out_row.payload) >= 2 else None
+    out_type = (
+        _norm_type(out_row.payload[1])
+        if has_out and len(out_row.payload) >= 2
+        else None
+    )
     if has_out and let_mut.get(out_name) == "immutable":
         raise EavError(
             f"call {call.name!r} rebinds immutable `let {out_name}` via out "

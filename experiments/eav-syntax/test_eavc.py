@@ -161,6 +161,27 @@ def test_parse_legal_predicate_sets_accepted():
     assert prog.entities["A"].fact("for").payload == ["Int32"]
 
 
+def test_primitive_types_complete():
+    for t in ("Int8", "Int64", "UInt8", "UInt64", "Float32", "Float64",
+              "Bool", "String", "Void", "Byte"):
+        assert t in eavc.PRIMITIVE_TYPES
+
+
+def test_byte_lowers_to_uint8():
+    # README ss10: Byte is a primitive synonym for UInt8.
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "R is record\nR field flags Byte\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let mask immutable Byte 7\nmain let c immutable ExitCode 0\nmain return c\n"
+    )
+    v01 = eavc.lower_to_v01(eavc.parse(src))
+    assert "storage local immutable mask UInt8 7" in v01
+    assert "field R flags UInt8" in v01
+    assert "Byte" not in v01
+
+
 def test_parse_result_arity_enforced():
     # README ss10: Result takes exactly OK and ERR.
     with pytest.raises(eavc.EavError) as exc:
