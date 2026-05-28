@@ -6,22 +6,22 @@ toolchain, package, or runtime guidance.
 
 ## First Commands
 
-From a source checkout:
-
-```powershell
-python SemanticScript\tools\sem.py --version --json
-python SemanticScript\tools\sem.py bootstrap --json
-python SemanticScript\tools\sem.py skills list --json
-python SemanticScript\tools\sem.py skills get sem-start sem sem-agent sem-syntax --json
-```
-
 From an installed release executable:
 
 ```powershell
 sem.exe version --json
 sem.exe bootstrap --json
 sem.exe skills list --json
-sem.exe skills get sem-start sem sem-agent sem-syntax --json
+sem.exe skills get sem-start sem sem-agent sem-syntax --full --json
+```
+
+From a source checkout:
+
+```powershell
+python SemanticScript/tools/sem.py --version --json
+python SemanticScript/tools/sem.py bootstrap --json
+python SemanticScript/tools/sem.py skills list --json
+python SemanticScript/tools/sem.py skills get sem-start sem sem-agent sem-syntax --full --json
 ```
 
 ## MCP Bootstrap
@@ -44,7 +44,7 @@ surface handshake instructions, call these tools manually:
 
 ```json
 agent_docs {"path":"."}
-skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}
+skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"],"full":true}
 help {"path":"."}
 ```
 
@@ -89,7 +89,7 @@ sem test --json hello-world
 ```
 
 For source-checkout development, replace `sem` with
-`python SemanticScript\tools\sem.py`.
+`python SemanticScript/tools/sem.py`.
 
 ## Existing Project Start
 

@@ -88,35 +88,7 @@ route httpRuntimeGauntletServer DELETE "/empty" emptyDeleteHandler
 route httpRuntimeGauntletServer PATCH "/patch" patchHandler
 route httpRuntimeGauntletServer GET "/middleware-short-circuit" shortCircuitProbeHandler
 
-timeoutBudget requestTimeoutBudget DurationMilliseconds 2000
-purpose operation requestTimeoutBudget "Document the desired per-route timeout budget; the blocking native adapter does not enforce it yet"
-# invariant: routeTimeout is metadata-only in the current blocking adapter
-# but every route path is still listed so a future preemptive runtime can
-# inherit complete coverage without a follow-up sweep. The POST and PUT
-# variants of /reflect/body-size share one path entry by adapter design.
-routeTimeout httpRuntimeGauntletServer "/" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/health" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/method" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/path" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/header" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/required-header-or-fail" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/query" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/query-empty" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/query-repeat" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/body" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/body-bytes" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/reflect/body-size" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/multipart/text" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/multipart/file-name" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/multipart/file-type" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/multipart/file-bytes" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/events/one" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/capabilities" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/content/custom" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/redirect" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/empty" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/patch" requestTimeoutBudget
-routeTimeout httpRuntimeGauntletServer "/middleware-short-circuit" requestTimeoutBudget
+routeTimeoutOptOut httpRuntimeGauntletServer "*" "The gauntlet exercises the blocking native HTTP adapter, which does not enforce source route deadlines; the Python harness owns request timeouts."
 # invariant: routeMiddleware is path-scoped AND now actually executes —
 # semsc.py wires the middleware function pointer into the dispatcher so
 # gauntletMiddleware fires before each handler. The
@@ -172,6 +144,8 @@ storage module immutable badRequestStatus Int32 400
 # as i64 for the math.greaterThanOrEqualInt64 comparison below.
 storage module immutable largeBodyThreshold ByteCount 12
 purpose operation largeBodyThreshold "Split body-size tests between the small fixture `small` and the large fixture `0123456789abcdef`"
+storage module immutable indexBody String "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware (the route's handler is intentionally skipped by the MiddlewareControl short-circuit contract)\n"
+purpose operation indexBody "Static index response listing the HTTP Runtime Gauntlet routes and pinned edge-case behavior."
 
 operation addGauntletHeaders
 input operation addGauntletHeaders response HttpResponse
@@ -254,7 +228,6 @@ invariant operation indexHandler "The route map lists every current API family c
 
 label startIndexHandler
 
-storage local immutable indexBody String "http api gauntlet\nroutes: /health /reflect/method /reflect/path /reflect/header /reflect/required-header-or-fail /reflect/query /reflect/query-empty /reflect/query-repeat /reflect/body /reflect/body-bytes /reflect/body-size /multipart/text /multipart/file-name /multipart/file-type /multipart/file-bytes /events/one /capabilities /content/custom /redirect /empty /patch /middleware-short-circuit\nmissing-input routes respond 400; /reflect/required-header-or-fail intentionally still 500s on missing X-Gauntlet-Required; /middleware-short-circuit returns 418 from its middleware (the route's handler is intentionally skipped by the MiddlewareControl short-circuit contract)\n"
 call indexResponseCall writeTextResponse
 argument indexResponseCall response HttpResponse response
 argument indexResponseCall status Int32 okStatus

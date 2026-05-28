@@ -5,6 +5,8 @@ real compiler, so they assert on observable program output, execution metrics,
 and diagnostic remapping rather than on a mocked lowering.
 """
 
+import argparse
+import contextlib
 import io
 import json
 import subprocess
@@ -106,6 +108,21 @@ class EvalSnippetTests(unittest.TestCase):
         self.assertIsNone(payload["execution"]["exitCode"])
         self.assertTrue(payload["diagnostics"])
 
+    def test_native_runtime_intrinsics_are_refused_before_jit_run(self) -> None:
+        payload = _eval(
+            'storage local immutable dbPath String "demo.db"\n'
+            "storage local immutable mode Int32 6\n"
+            "call openDatabaseCall sqlite.openDatabase\n"
+            "argument openDatabaseCall path String dbPath\n"
+            "argument openDatabaseCall mode Int32 mode\n"
+            "run openDatabaseCall\n"
+        )
+        self.assertEqual(payload["status"], "native-runtime-unavailable")
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["execution"]["ran"])
+        self.assertIn("sqlite.openDatabase", payload["nativeRuntimeTargets"])
+        self.assertTrue(any(note["code"] == "SSEVAL002" for note in payload["notes"]["linter"]))
+
     def test_full_program_is_passed_through(self) -> None:
         source = HELLO_WORLD_PATH.read_text(encoding="utf-8")
         payload = _eval(source)
@@ -113,6 +130,59 @@ class EvalSnippetTests(unittest.TestCase):
         self.assertEqual(payload["lineOffset"], 0)
         self.assertEqual(payload["status"], "ok")
         self.assertIn("Hello, world!", payload["output"]["stdout"])
+
+    def test_eval_path_preserves_source_relative_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture_dir = root / "fixtures"
+            fixture_dir.mkdir()
+            (fixture_dir / "message.txt").write_text("path-local eval\n", encoding="utf-8")
+            source = root / "main.sem"
+            source.write_text(
+                "\n".join([
+                    "project EvalPathAssets",
+                    "target console",
+                    "runtime AgentRuntime 0.1",
+                    "entry console main",
+                    "literal messageText String",
+                    "literalSource messageText \"fixtures/message.txt\"",
+                    "literalBytes messageText 16",
+                    "literalDigest messageText sha256 unused",
+                    "literalTrust messageText trustedStaticLiteral",
+                    "operation main",
+                    "output operation main ExitCode",
+                    "effect main write console.stdout",
+                    "authority main write console.stdout",
+                    "memory main heap no",
+                    "async main no",
+                    "purpose operation main \"print a source-relative literal\"",
+                    "call printCall console.writeLine",
+                    "argument printCall text String messageText",
+                    "run printCall",
+                    "ignore void source printCall",
+                    "storage local immutable okCode ExitCode 0",
+                    "return value okCode",
+                ]) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            args = argparse.Namespace(
+                code=None,
+                path=str(source),
+                human=False,
+                timeout=sem.EVAL_DEFAULT_TIMEOUT_SECONDS,
+                max_output_bytes=sem.EVAL_DEFAULT_MAX_OUTPUT_BYTES,
+                show_source=False,
+            )
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                rc = sem.command_eval(args)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["status"], "ok")
+        self.assertIn("path-local eval", payload["output"]["stdout"])
 
     def test_diagnostics_are_remapped_to_snippet_lines(self) -> None:
         # An un-disposed fallible console.writeLine raises SS3106 on the `call`

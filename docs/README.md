@@ -76,6 +76,10 @@ matrix. The release-level boundary is:
 | [language/native-http-api.md](language/native-http-api.md) | Current native HTTP server API, route metadata, request readers, response writers, and route-handler ABI. |
 | [language/native-http-client-api.md](language/native-http-client-api.md) | Prototype outbound HTTP client API, `standard.net`, `net.fetch*`, effects, and libuv/libcurl runtime shape. |
 | [reference/call-targets.md](reference/call-targets.md) | Built-in call targets, domain methods, c.* calls. |
+| [reference/contract-stability.md](reference/contract-stability.md) | Agent contract, JSON schema, diagnostic, syntax status, and release-channel stability policy. |
+| [reference/diagnostic-codes.md](reference/diagnostic-codes.md) | Stable URL anchors for diagnostic codes surfaced by `sem reference`. |
+| [reference/field-feedback-roadmap.md](reference/field-feedback-roadmap.md) | Ops Dashboard field-feedback fixes, keep/change decisions, and planned tools/APIs. |
+| [reference/language-ergonomics.md](reference/language-ergonomics.md) | Supported verbosity reducers, rejected sugar, and naming codemod boundaries. |
 | [reference/install-policy.md](reference/install-policy.md) | Initial archive install shape and future version-manager plan. |
 | [reference/verb-index.md](reference/verb-index.md) | Verb families and schema index. |
 | [reference/release-hygiene.md](reference/release-hygiene.md) | Release repository-state, package-metadata, and mirror-file policy. |
@@ -83,6 +87,7 @@ matrix. The release-level boundary is:
 | [reference/package-management.md](reference/package-management.md) | Package layout, dependency syntax, and registry deferral policy. |
 | [toolchain/compiler.md](toolchain/compiler.md) | semsc.py CLI, parsing, import resolution, codegen modes. |
 | [toolchain/llvm-compiler-install.md](toolchain/llvm-compiler-install.md) | LLVM/clang installation for native executable builds. |
+| [toolchain/cross-platform-shell-scripting.md](toolchain/cross-platform-shell-scripting.md) | Shell-safe test harness and SemanticScript fragment writing patterns. |
 | [toolchain/linter.md](toolchain/linter.md) | semlint.py commands, diagnostics, tiers. |
 | [toolchain/native-async-runtime.md](toolchain/native-async-runtime.md) | Optional libuv async runtime experiment, build flags, timer/work/future ABI, and await model. |
 | [toolchain/vscode-extension.md](toolchain/vscode-extension.md) | Extension behavior, hover expectations, packaging. |
@@ -92,6 +97,9 @@ matrix. The release-level boundary is:
 
 - Keep one semantic topic per file.
 - Put exact line schemas in fenced `semanticscript` or `text` blocks.
+- For non-executable or partially-lowered examples, state the status next to the
+  block (`lowered`, `metadata`, `sync-fallback`, `partial`, or `refined`) rather
+  than letting readers infer support from highlighting.
 - Mark runtime behavior explicitly: parsed metadata, lowered synchronously,
   lowered to real LLVM, or future runtime work.
 - Prefer examples from `SemanticScript/sem/feature_tests/` when possible.

@@ -18,11 +18,14 @@
 # security: BcryptPasswordHash values MUST always carry the `$2b$NN$...` prefix and exactly 60 chars; the native runtime adapter refuses to verify against any other format so a deployment cannot silently drift to a weaker variant by writing legacy `$2a$`/`$2x$`/`$2y$` strings to the database.
 module standard.bcrypt
 purpose module standard.bcrypt "Standard-library namespace and trust contracts for password hashing (bcrypt $2b$ with caller-chosen cost), cryptographic randomness, and base64url encoding intrinsics."
-moduleOwns standard.bcrypt "The official import path `standard.bcrypt`, the BcryptPasswordHash / BcryptPlaintextPassword / SessionToken trust types, the recommended cost-factor default, the session-token byte-count default, and the required-output-buffer-size constants for hash + base64url."
+moduleOwns standard.bcrypt "The official import path `standard.bcrypt`, the BcryptPasswordHash / BcryptPlaintextPassword / SessionToken / CsrfToken trust types, the recommended cost-factor default, the session-token and CSRF-token byte-count defaults, and the required-output-buffer-size constants for hash + base64url."
 moduleDoesNotOwn standard.bcrypt "The bcrypt algorithm implementation (crypt_blowfish.c lives under third_party/bcrypt/), the native CSPRNG (platform-specific entries in sem_bcrypt_runtime.c), caller-owned scratch-buffer allocation (apps must c.malloc the buffers themselves and defer c.free), or user-facing session storage (apps own the sessions SQL table)."
 invariant module standard.bcrypt "The standard module entry is this file; downstream modules may import it as alias `bcrypt` before using compiler-owned targets in the `bcrypt.*` namespace."
 moduleSecurity standard.bcrypt "BcryptPasswordHash values MUST always carry the `$2b$NN$...` prefix and exactly 60 chars; the native runtime adapter refuses to verify against any other format so a deployment cannot silently drift to a weaker variant by writing legacy `$2a$`/`$2x$`/`$2y$` strings to the database."
 moduleSecurity standard.bcrypt "Authentication flows SHOULD keep bcrypt cost as an immutable source constant, use bcryptRecommendedCost unless the application policy chooses otherwise, and equalize public verification paths in `.sem` with a dummy bcrypt.verifyPassword when user-existence timing would leak account state. The compiler only lowers bcrypt.* ABI calls."
+moduleSecurity standard.bcrypt "Prefer the Result-shaped targets (`bcrypt.hashPasswordResult`, `bcrypt.verifyPasswordResult`, `bcrypt.randomBytesResult`, `bcrypt.base64UrlEncodeResult`) when caller flow uses bind ok / bind error; raw status targets remain for low-level interop."
+moduleSecurity standard.bcrypt "Persistent sessions SHOULD store only SessionTokenHash values produced by bcrypt.hashSessionTokenResult; compare presented SessionToken values with bcrypt.verifySessionTokenResult and never persist the raw token."
+moduleSecurity standard.bcrypt "Session and CSRF tokens SHOULD be issued with bcrypt.issueSessionToken / bcrypt.issueCsrfToken or, when writing the primitive pattern manually, bcrypt.randomBytes followed by bcrypt.base64UrlEncode. Both one-step helpers are native-linkable in native and webServer builds."
 
 # ----- trust types -----
 
@@ -31,7 +34,10 @@ type BcryptPasswordHash String
 type BcryptHashBuffer OpaquePointer
 type BcryptRandomBuffer OpaquePointer
 type SessionToken String
+type SessionTokenHash String
 type SessionTokenBuffer OpaquePointer
+type CsrfToken String
+type CsrfTokenBuffer OpaquePointer
 type Base64UrlBuffer OpaquePointer
 
 exportType standard.bcrypt BcryptPlaintextPassword
@@ -39,21 +45,31 @@ exportType standard.bcrypt BcryptPasswordHash
 exportType standard.bcrypt BcryptHashBuffer
 exportType standard.bcrypt BcryptRandomBuffer
 exportType standard.bcrypt SessionToken
+exportType standard.bcrypt SessionTokenHash
 exportType standard.bcrypt SessionTokenBuffer
+exportType standard.bcrypt CsrfToken
+exportType standard.bcrypt CsrfTokenBuffer
 exportType standard.bcrypt Base64UrlBuffer
 
-typeInvariant BcryptPlaintextPassword "Untrusted user input. Must NEVER be written to any persistent storage; only passed through bcrypt.hashPassword or bcrypt.verifyPassword."
+typeInvariant BcryptPlaintextPassword "Untrusted user input. String-backed role alias at bcrypt argument sites: declare literals as String when module-scope role-alias constants do not lower, then pass the value to a BcryptPlaintextPassword argument row. Must NEVER be written to persistent storage."
 typeTrust BcryptPlaintextPassword untrusted
 
-typeInvariant BcryptPasswordHash "Exactly 60 characters with the `$2b$NN$...` prefix (cost NN in [4,31]). The native verify path rejects every other format so legacy `$2a$`/`$2x$`/`$2y$` hashes never validate. Storage CHECK constraints in app SQL should enforce length(password_hash) = 60."
+typeInvariant BcryptPasswordHash "String-backed trusted role alias at bcrypt.verifyPassword argument sites. Exactly 60 characters with the `$2b$NN$...` prefix (cost NN in [4,31]). A successful BcryptHashBuffer is also a null-terminated hash string while the buffer remains live. Storage CHECK constraints in app SQL should enforce length(password_hash) = 60."
 typeTrust BcryptPasswordHash trusted
 
-typeInvariant BcryptHashBuffer "Caller-owned byte buffer with at least bcryptHashBufferRequiredBytes (61) bytes of capacity for the bcrypt.hashPassword output. Smaller buffers are rejected with SS_BCRYPT_ERR_CONFIG."
+typeInvariant BcryptHashBuffer "OpaquePointer-backed role alias at bcrypt.hashPassword argument sites. Caller-owned byte buffer with at least bcryptHashBufferRequiredBytes (61) bytes of capacity for the output; smaller buffers are rejected with SS_BCRYPT_ERR_CONFIG. Keep it live until all BcryptPasswordHash/String reads are complete, then release with c.free or memory.releaseMemoryBytes."
 typeInvariant BcryptRandomBuffer "Caller-owned byte buffer of arbitrary capacity. Filled by bcrypt.randomBytes with platform-CSPRNG bytes; caller must c.free the buffer when done."
 typeInvariant SessionToken "URL-safe opaque session identifier (43-char base64url, no padding). Always issued by encoding bcrypt.randomBytes output through bcrypt.base64UrlEncode — never derived from user input or any predictable source."
 typeTrust SessionToken trusted
 
+typeInvariant SessionTokenHash "String-backed at-rest session-token verifier. Store this value instead of the raw SessionToken; produce it with bcrypt.hashSessionTokenResult and verify presented tokens with bcrypt.verifySessionTokenResult."
+typeTrust SessionTokenHash trusted
+
 typeInvariant SessionTokenBuffer "Caller-owned byte buffer of at least sessionTokenBufferRequiredBytes (44) bytes capacity — the 43-char base64url payload plus the null terminator."
+typeInvariant CsrfToken "URL-safe opaque anti-CSRF nonce (43-char base64url, no padding). Issue with bcrypt.issueCsrfToken, store server-side or in an integrity-protected session, embed in forms, and compare submitted values with text.equals."
+typeTrust CsrfToken trusted
+
+typeInvariant CsrfTokenBuffer "Caller-owned byte buffer of at least csrfTokenBufferRequiredBytes (44) bytes capacity — the 43-char base64url payload plus the null terminator."
 typeInvariant Base64UrlBuffer "Caller-owned byte buffer for base64url output. Required capacity is ((inputBytes * 4) + 2) / 3 + 1 bytes — see bcrypt.base64UrlEncode for the rounding rule."
 
 # ----- recommended defaults -----
@@ -83,6 +99,8 @@ storage module immutable bcryptHashBufferRequiredBytes Int32 61
 # output, base64url-encoded to a 43-char string + null terminator.
 storage module immutable sessionTokenEntropyByteCount Int32 32
 storage module immutable sessionTokenBufferRequiredBytes Int32 44
+storage module immutable csrfTokenEntropyByteCount Int32 32
+storage module immutable csrfTokenBufferRequiredBytes Int32 44
 
 exportConstant standard.bcrypt bcryptModuleVersionText
 exportConstant standard.bcrypt bcryptRecommendedCost
@@ -91,12 +109,21 @@ exportConstant standard.bcrypt bcryptMaximumCost
 exportConstant standard.bcrypt bcryptHashBufferRequiredBytes
 exportConstant standard.bcrypt sessionTokenEntropyByteCount
 exportConstant standard.bcrypt sessionTokenBufferRequiredBytes
+exportConstant standard.bcrypt csrfTokenEntropyByteCount
+exportConstant standard.bcrypt csrfTokenBufferRequiredBytes
 
 exportOperation standard.bcrypt hashPassword
+exportOperation standard.bcrypt hashPasswordResult
+exportOperation standard.bcrypt hashSessionTokenResult
 exportOperation standard.bcrypt verifyPassword
+exportOperation standard.bcrypt verifyPasswordResult
+exportOperation standard.bcrypt verifySessionTokenResult
 exportOperation standard.bcrypt randomBytes
+exportOperation standard.bcrypt randomBytesResult
 exportOperation standard.bcrypt base64UrlEncode
+exportOperation standard.bcrypt base64UrlEncodeResult
 exportOperation standard.bcrypt issueSessionToken
+exportOperation standard.bcrypt issueCsrfToken
 
 # rationale: Issue a fresh URL-safe session token by composing the two CSPRNG
 #   primitives apps previously wired by hand. Field experience shows callers
@@ -125,6 +152,7 @@ async issueSessionToken no
 purpose operation issueSessionToken "Compose bcrypt.randomBytes + bcrypt.base64UrlEncode into one call that fills tokenBuffer with a fresh 43-char base64url session token."
 invariant operation issueSessionToken "On success returns 0 and tokenBuffer holds a null-terminated 43-char base64url token; randomScratch must be >= sessionTokenEntropyByteCount bytes and tokenBuffer >= sessionTokenBufferRequiredBytes bytes."
 security issueSessionToken "Token entropy comes only from bcrypt.randomBytes (platform CSPRNG); never derive a session token from user input or a predictable source."
+failure issueSessionToken TokenIssueFailed "Returns a negative Int32 status when randomScratch is null/undersized, tokenBuffer or tokenLengthOut is invalid, tokenCapacity is below sessionTokenBufferRequiredBytes, or the platform CSPRNG fails."
 label startIssueSessionToken
 call sessionTokenRandomCall bcrypt.randomBytes
 argument sessionTokenRandomCall outBuffer BcryptRandomBuffer randomScratch
@@ -149,3 +177,57 @@ argument sessionTokenEncodeCall outputLengthOut OpaquePointer tokenLengthOut
 run sessionTokenEncodeCall
 bind value sessionTokenEncodeStatus Int32 sessionTokenEncodeCall
 return value sessionTokenEncodeStatus
+
+# rationale: Issue a fresh URL-safe CSRF token by composing CSPRNG bytes with
+#   base64url encoding. The token shape matches session-token entropy but is a
+#   separate semantic role so form tokens do not get confused with login
+#   bearer/session credentials.
+# invariant: On success returns 0; tokenBuffer holds a null-terminated 43-char
+#   base64url token and tokenLengthOut receives its length. randomScratch needs
+#   >= csrfTokenEntropyByteCount (32) bytes; tokenBuffer needs
+#   >= csrfTokenBufferRequiredBytes (44) bytes.
+# security: Store the issued value server-side or inside an integrity-protected
+#   session, embed it in the form, and compare the submitted token with
+#   text.equals before mutating requests.
+operation issueCsrfToken
+input operation issueCsrfToken randomScratch BcryptRandomBuffer
+input operation issueCsrfToken tokenBuffer CsrfTokenBuffer
+input operation issueCsrfToken tokenCapacity Int32
+input operation issueCsrfToken tokenLengthOut OpaquePointer
+output operation issueCsrfToken Int32
+effect issueCsrfToken read system.random
+effect issueCsrfToken write memory.buffer
+effect issueCsrfToken read memory.buffer
+authority issueCsrfToken read system.random
+authority issueCsrfToken write memory.buffer
+authority issueCsrfToken read memory.buffer
+memory issueCsrfToken heap no
+async issueCsrfToken no
+purpose operation issueCsrfToken "Compose bcrypt.randomBytes + bcrypt.base64UrlEncode into one call that fills tokenBuffer with a fresh 43-char base64url CSRF token."
+invariant operation issueCsrfToken "On success returns 0 and tokenBuffer holds a null-terminated 43-char base64url token; randomScratch must be >= csrfTokenEntropyByteCount bytes and tokenBuffer >= csrfTokenBufferRequiredBytes bytes."
+security issueCsrfToken "CSRF token entropy comes only from bcrypt.randomBytes (platform CSPRNG); compare submitted form values with text.equals before mutating requests."
+failure issueCsrfToken TokenIssueFailed "Returns a negative Int32 status when randomScratch is null/undersized, tokenBuffer or tokenLengthOut is invalid, tokenCapacity is below csrfTokenBufferRequiredBytes, or the platform CSPRNG fails."
+label startIssueCsrfToken
+call csrfTokenRandomCall bcrypt.randomBytes
+argument csrfTokenRandomCall outBuffer BcryptRandomBuffer randomScratch
+argument csrfTokenRandomCall byteCount Int32 csrfTokenEntropyByteCount
+run csrfTokenRandomCall
+bind value csrfTokenRandomStatus Int32 csrfTokenRandomCall
+storage local immutable csrfTokenStatusOk Int32 0
+call csrfTokenRandomOkCall math.equalInt32
+argument csrfTokenRandomOkCall left Int32 csrfTokenRandomStatus
+argument csrfTokenRandomOkCall right Int32 csrfTokenStatusOk
+run csrfTokenRandomOkCall
+bind value csrfTokenRandomOk Bool csrfTokenRandomOkCall
+branch if condition csrfTokenRandomOk target csrfTokenEncodeStep
+return value csrfTokenRandomStatus
+label csrfTokenEncodeStep
+call csrfTokenEncodeCall bcrypt.base64UrlEncode
+argument csrfTokenEncodeCall inputBuffer BcryptRandomBuffer randomScratch
+argument csrfTokenEncodeCall inputCount Int32 csrfTokenEntropyByteCount
+argument csrfTokenEncodeCall outputBuffer Base64UrlBuffer tokenBuffer
+argument csrfTokenEncodeCall outputCapacity Int32 tokenCapacity
+argument csrfTokenEncodeCall outputLengthOut OpaquePointer tokenLengthOut
+run csrfTokenEncodeCall
+bind value csrfTokenEncodeStatus Int32 csrfTokenEncodeCall
+return value csrfTokenEncodeStatus

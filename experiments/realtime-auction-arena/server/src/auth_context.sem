@@ -969,6 +969,7 @@ input operation requestHasValidBearerToken request HttpRequest
 output operation requestHasValidBearerToken Bool
 effect requestHasValidBearerToken read http.request.header
 effect requestHasValidBearerToken read memory.buffer
+effect requestHasValidBearerToken write memory.buffer
 effect requestHasValidBearerToken allocate heap
 effect requestHasValidBearerToken free heap
 effect requestHasValidBearerToken read process.environment
@@ -1535,6 +1536,7 @@ operation authLoginHandler
 input operation authLoginHandler request HttpRequest
 input operation authLoginHandler response HttpResponse
 output operation authLoginHandler Int32
+effect authLoginHandler read http.request.header
 effect authLoginHandler read http.request.body
 effect authLoginHandler write http.response
 effect authLoginHandler read json.document.tree
@@ -1840,6 +1842,11 @@ argument loginRefreshTokenBufferCall base OpaquePointer loginIssueArena
 argument loginRefreshTokenBufferCall offset ByteCount runtime.authIssueRefreshTokenOffset
 run loginRefreshTokenBufferCall
 bind value loginRefreshTokenBuffer OpaquePointer loginRefreshTokenBufferCall
+call loginRefreshLengthBufferCall pointer.offset
+argument loginRefreshLengthBufferCall base OpaquePointer loginIssueArena
+argument loginRefreshLengthBufferCall offset ByteCount runtime.authIssueRefreshLengthOffset
+run loginRefreshLengthBufferCall
+bind value loginRefreshTokenLengthBuffer OpaquePointer loginRefreshLengthBufferCall
 call loginRefreshHashBufferCall pointer.offset
 argument loginRefreshHashBufferCall base OpaquePointer loginIssueArena
 argument loginRefreshHashBufferCall offset ByteCount runtime.authIssueRefreshHashOffset
@@ -1932,14 +1939,12 @@ bind value loginRefreshRandomOk Bool loginRefreshRandomOkCall
 branch if condition loginRefreshRandomOk target loginRefreshRandomReady
 branch else target loginInternalErrorFailed
 label loginRefreshRandomReady
-memory authLoginHandler mutable loginRefreshTokenLength Int32 0
-set memory loginRefreshTokenLength runtime.authSuccessCode
 call loginRefreshEncodeCall bcrypt.base64UrlEncode
 argument loginRefreshEncodeCall inputBuffer OpaquePointer loginRefreshRandomBuffer
 argument loginRefreshEncodeCall inputCount Int32 runtime.authRefreshRandomByteCount
 argument loginRefreshEncodeCall outputBuffer OpaquePointer loginRefreshTokenBuffer
 argument loginRefreshEncodeCall outputCapacity Int32 runtime.authRefreshTokenCapacityArg
-argument loginRefreshEncodeCall outputLengthOut Int32 loginRefreshTokenLength
+argument loginRefreshEncodeCall outputLengthOut OpaquePointer loginRefreshTokenLengthBuffer
 run loginRefreshEncodeCall
 bind value loginRefreshEncodeStatus Int32 loginRefreshEncodeCall
 call loginRefreshEncodeOkCall math.equalInt32
@@ -2228,6 +2233,7 @@ operation authRefreshHandler
 input operation authRefreshHandler request HttpRequest
 input operation authRefreshHandler response HttpResponse
 output operation authRefreshHandler Int32
+effect authRefreshHandler read http.request.header
 effect authRefreshHandler read http.request.body
 effect authRefreshHandler write http.response
 effect authRefreshHandler read json.document.tree
@@ -2388,6 +2394,11 @@ argument refreshNewTokenBufferCall base OpaquePointer refreshIssueArena
 argument refreshNewTokenBufferCall offset ByteCount runtime.authIssueRefreshTokenOffset
 run refreshNewTokenBufferCall
 bind value refreshNewTokenBuffer OpaquePointer refreshNewTokenBufferCall
+call refreshNewTokenLengthBufferCall pointer.offset
+argument refreshNewTokenLengthBufferCall base OpaquePointer refreshIssueArena
+argument refreshNewTokenLengthBufferCall offset ByteCount runtime.authIssueRefreshLengthOffset
+run refreshNewTokenLengthBufferCall
+bind value refreshNewTokenLengthBuffer OpaquePointer refreshNewTokenLengthBufferCall
 call refreshHashBufferCall pointer.offset
 argument refreshHashBufferCall base OpaquePointer refreshIssueArena
 argument refreshHashBufferCall offset ByteCount runtime.authIssueRefreshHashOffset
@@ -2483,14 +2494,12 @@ bind value refreshRandomOk Bool refreshRandomOkCall
 branch if condition refreshRandomOk target refreshRandomReady
 branch else target refreshInternalErrorFailed
 label refreshRandomReady
-memory authRefreshHandler mutable refreshNewTokenLength Int32 0
-set memory refreshNewTokenLength runtime.authSuccessCode
 call refreshEncodeCall bcrypt.base64UrlEncode
 argument refreshEncodeCall inputBuffer OpaquePointer refreshRandomBuffer
 argument refreshEncodeCall inputCount Int32 runtime.authRefreshRandomByteCount
 argument refreshEncodeCall outputBuffer OpaquePointer refreshNewTokenBuffer
 argument refreshEncodeCall outputCapacity Int32 runtime.authRefreshTokenCapacityArg
-argument refreshEncodeCall outputLengthOut Int32 refreshNewTokenLength
+argument refreshEncodeCall outputLengthOut OpaquePointer refreshNewTokenLengthBuffer
 run refreshEncodeCall
 bind value refreshEncodeStatus Int32 refreshEncodeCall
 call refreshEncodeOkCall math.equalInt32
@@ -2645,9 +2654,6 @@ argument refreshRejectedAuditDatabaseMissingCall ptr OpaquePointer refreshReject
 run refreshRejectedAuditDatabaseMissingCall
 bind value refreshRejectedAuditDatabaseMissing Bool refreshRejectedAuditDatabaseMissingCall
 branch if condition refreshRejectedAuditDatabaseMissing target refreshInvalidRejectedWrite
-call refreshRejectedNowCall http.nowMillis
-run refreshRejectedNowCall
-bind value refreshRejectedNow Int64 refreshRejectedNowCall
 call insertRefreshRejectedAuditCall insertAuthAuditEvent
 argument insertRefreshRejectedAuditCall database SqliteDatabase refreshRejectedAuditDatabase
 argument insertRefreshRejectedAuditCall actorUserId String currentAuthUserId
@@ -2657,7 +2663,7 @@ argument insertRefreshRejectedAuditCall action String authAuditActionRefreshReje
 argument insertRefreshRejectedAuditCall outcome Int64 authAuditOutcomeRejectedCode
 argument insertRefreshRejectedAuditCall errorCode String authAuditErrorInvalidRefreshToken
 argument insertRefreshRejectedAuditCall payloadJson String authAuditPayloadEmpty
-argument insertRefreshRejectedAuditCall createdAt Int64 refreshRejectedNow
+argument insertRefreshRejectedAuditCall createdAt Int64 refreshNowMillis
 run insertRefreshRejectedAuditCall
 ignore value source insertRefreshRejectedAuditCall type Bool
 label refreshInvalidRejectedWrite
@@ -2671,6 +2677,7 @@ operation authLogoutHandler
 input operation authLogoutHandler request HttpRequest
 input operation authLogoutHandler response HttpResponse
 output operation authLogoutHandler Int32
+effect authLogoutHandler read http.request.header
 effect authLogoutHandler read http.request.body
 effect authLogoutHandler write http.response
 effect authLogoutHandler read json.document.tree
@@ -2893,6 +2900,7 @@ output operation sessionHandler Int32
 effect sessionHandler read http.request.header
 effect sessionHandler write http.response
 effect sessionHandler read memory.buffer
+effect sessionHandler write memory.buffer
 effect sessionHandler allocate heap
 effect sessionHandler free heap
 effect sessionHandler read process.environment
@@ -3049,11 +3057,8 @@ bind value sessionTokenMatches Bool sessionTokenMatchesCall
 branch if condition sessionTokenMatches target sessionTokenAccepted
 branch else target sessionUnauthorized
 label sessionTokenAccepted
-call sessionNowMillisCall http.nowMillis
-run sessionNowMillisCall
-bind value sessionNowMillis Int64 sessionNowMillisCall
 call sessionNowSecondsCall math.divideInt64
-argument sessionNowSecondsCall left Int64 sessionNowMillis
+argument sessionNowSecondsCall left Int64 sessionClaimNowMillis
 argument sessionNowSecondsCall right Int64 runtime.authMillisPerSecond
 run sessionNowSecondsCall
 bind value sessionNowSeconds Int64 sessionNowSecondsCall
@@ -3120,9 +3125,6 @@ bind value sessionJwtRevoked Bool sessionJwtRevokedCall
 branch if condition sessionJwtRevoked target sessionUnauthorized
 branch else target sessionAccepted
 label sessionAccepted
-call sessionAuditNowCall http.nowMillis
-run sessionAuditNowCall
-bind value sessionAuditNow Int64 sessionAuditNowCall
 call insertSessionAuditCall insertAuthAuditEvent
 argument insertSessionAuditCall database SqliteDatabase sessionDatabase
 argument insertSessionAuditCall actorUserId String currentAuthUserId
@@ -3132,7 +3134,7 @@ argument insertSessionAuditCall action String authAuditActionSessionChecked
 argument insertSessionAuditCall outcome Int64 runtime.auditOutcomeAcceptedCode
 argument insertSessionAuditCall errorCode String authAuditErrorNone
 argument insertSessionAuditCall payloadJson String authAuditPayloadEmpty
-argument insertSessionAuditCall createdAt Int64 sessionAuditNow
+argument insertSessionAuditCall createdAt Int64 sessionClaimNowMillis
 run insertSessionAuditCall
 ignore value source insertSessionAuditCall type Bool
 call sessionBidderRoleCall math.equalInt64

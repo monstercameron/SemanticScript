@@ -71,6 +71,7 @@ exportOperation app.realtime_auction_arena.server.http_helpers writeServerShutti
 storage module mutable currentRequestId String runtime.fallbackRequestId
 storage module mutable requestIdRandomBuffer OpaquePointer 0
 storage module mutable requestIdEncodedBuffer OpaquePointer 0
+storage module mutable requestIdEncodedLengthBuffer OpaquePointer 0
 
 operation addCommonHeaders
 input operation addCommonHeaders response HttpResponse
@@ -249,6 +250,21 @@ bind error allocateEncodedBufferError OpaquePointer allocateEncodedBufferCall
 branch error source allocateEncodedBufferCall target fallbackRequestId
 set storage requestIdEncodedBuffer allocatedEncodedBuffer
 label requestIdEncodedBufferReady
+call encodedLengthBufferMissingCall pointer.isNull
+argument encodedLengthBufferMissingCall ptr OpaquePointer requestIdEncodedLengthBuffer
+run encodedLengthBufferMissingCall
+bind value encodedLengthBufferMissing Bool encodedLengthBufferMissingCall
+branch if condition encodedLengthBufferMissing target allocateRequestIdEncodedLengthBuffer
+jump target requestIdEncodedLengthBufferReady
+label allocateRequestIdEncodedLengthBuffer
+call allocateEncodedLengthBufferCall c.malloc
+argument allocateEncodedLengthBufferCall size ByteCount runtime.requestIdEncodedLengthBufferCapacity
+run allocateEncodedLengthBufferCall
+bind ok allocatedEncodedLengthBuffer OpaquePointer allocateEncodedLengthBufferCall
+bind error allocateEncodedLengthBufferError OpaquePointer allocateEncodedLengthBufferCall
+branch error source allocateEncodedLengthBufferCall target fallbackRequestId
+set storage requestIdEncodedLengthBuffer allocatedEncodedLengthBuffer
+label requestIdEncodedLengthBufferReady
 call requestIdRandomCall bcrypt.randomBytes
 argument requestIdRandomCall outBuffer OpaquePointer requestIdRandomBuffer
 argument requestIdRandomCall byteCount Int32 runtime.requestIdRandomByteCount
@@ -262,14 +278,12 @@ bind value requestIdRandomOk Bool requestIdRandomOkCall
 branch if condition requestIdRandomOk target requestIdRandomReady
 branch else target fallbackRequestId
 label requestIdRandomReady
-memory stampRequestIdHeader mutable requestIdEncodedLength Int32 0
-set memory requestIdEncodedLength runtime.authSuccessCode
 call requestIdEncodeCall bcrypt.base64UrlEncode
 argument requestIdEncodeCall inputBuffer OpaquePointer requestIdRandomBuffer
 argument requestIdEncodeCall inputCount Int32 runtime.requestIdRandomByteCount
 argument requestIdEncodeCall outputBuffer OpaquePointer requestIdEncodedBuffer
 argument requestIdEncodeCall outputCapacity Int32 runtime.requestIdEncodedCapacityArg
-argument requestIdEncodeCall outputLengthOut Int32 requestIdEncodedLength
+argument requestIdEncodeCall outputLengthOut OpaquePointer requestIdEncodedLengthBuffer
 run requestIdEncodeCall
 bind value requestIdEncodeStatus Int32 requestIdEncodeCall
 call requestIdEncodeOkCall math.equalInt32
@@ -341,6 +355,7 @@ argument seedApiVersionCall fieldName String runtime.fieldApiVersion
 argument seedApiVersionCall value String runtime.apiVersionText
 run seedApiVersionCall
 ignore ok source seedApiVersionCall type Int32
+ignore error source seedApiVersionCall
 call seedRequestIdCall json.setObjectFieldString
 argument seedRequestIdCall document JsonDocument document
 argument seedRequestIdCall cursor JsonCursor cursor
@@ -348,6 +363,7 @@ argument seedRequestIdCall fieldName String runtime.fieldRequestId
 argument seedRequestIdCall value String currentRequestId
 run seedRequestIdCall
 ignore ok source seedRequestIdCall type Int32
+ignore error source seedRequestIdCall
 call seedOkCall json.setObjectFieldBool
 argument seedOkCall document JsonDocument document
 argument seedOkCall cursor JsonCursor cursor
@@ -355,6 +371,7 @@ argument seedOkCall fieldName String runtime.fieldOk
 argument seedOkCall value Bool runtime.boolTrue
 run seedOkCall
 ignore ok source seedOkCall type Int32
+ignore error source seedOkCall
 return void
 
 operation writeHealthEnvelope

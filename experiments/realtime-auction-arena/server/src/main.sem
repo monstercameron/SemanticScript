@@ -77,27 +77,7 @@ route realtimeAuctionArenaServer POST "/api/v1/auctions/:auctionId/chat/messages
 routeNotFound realtimeAuctionArenaServer apiNotFoundHandler
 routeMethodNotAllowed realtimeAuctionArenaServer methodNotAllowedHandler
 
-timeoutBudget requestTimeoutBudget DurationMilliseconds 2000
-purpose operation requestTimeoutBudget "Document the desired per-route timeout; the current blocking adapter parses this as metadata only."
-routeTimeout realtimeAuctionArenaServer "/healthz" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/readyz" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/metrics" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auth/login" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auth/refresh" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auth/logout" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/session" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/start" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/extend" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/close" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/bids" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/events" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/audit" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId" requestTimeoutBudget
-routeTimeout realtimeAuctionArenaServer "/api/v1/auctions/:auctionId/chat/messages/:messageId/report" requestTimeoutBudget
+routeTimeoutOptOut realtimeAuctionArenaServer "*" "The current blocking native HTTP adapter does not enforce source route deadlines; deployment-level request deadlines own runtime preemption."
 
 routeMiddleware realtimeAuctionArenaServer "/healthz" requestContextMiddleware
 routeMiddleware realtimeAuctionArenaServer "/readyz" requestContextMiddleware
@@ -123,26 +103,6 @@ capability httpRequestReader http.request read
 purpose operation httpRequestReader "Authority to inspect incoming request path, method, headers, and bounded bodies."
 capability httpResponseWriter http.response write
 purpose operation httpResponseWriter "Authority to write native HTTP response headers and bodies."
-capability heapAllocCapability heap allocate
-purpose operation heapAllocCapability "Authority to allocate per-request JSON scratch buffers."
-capability heapFreeCapability heap free
-purpose operation heapFreeCapability "Authority to release per-request JSON scratch buffers."
-capability memoryBufferReadWriteCapability memory.buffer readWrite
-purpose operation memoryBufferReadWriteCapability "Authority to read parsed text buffers, compare token strings, and wipe password scratch memory."
-capability jsonDocumentReadCapability json.document.tree read
-purpose operation jsonDocumentReadCapability "Authority to read parsed JSON document cursors."
-capability jsonDocumentWriteCapability json.document.tree write
-purpose operation jsonDocumentWriteCapability "Authority to create and destroy per-request JSON documents."
-capability bcryptHashCompute bcrypt.hash compute
-purpose operation bcryptHashCompute "Authority to verify login passwords and hash/verify refresh tokens through the native bcrypt runtime."
-capability jwtTokenSigner jwt.hs256 signVerify
-purpose operation jwtTokenSigner "Authority to issue and verify HS256 access tokens through the native JWT runtime."
-capability sqliteDatabaseReader database read
-purpose operation sqliteDatabaseReader "Authority to execute read-only SQLite statements through standard.sqlite."
-capability sqliteDatabaseReadWriter database readWrite
-purpose operation sqliteDatabaseReadWriter "Authority to execute SQLite schema, transaction, and command statements through standard.sqlite."
-capability processEnvironmentReader process.environment read
-purpose operation processEnvironmentReader "Authority to read deployment configuration from process environment variables."
 
 # Executable behavior is split by context module:
 # - server_context.sem owns database bootstrap, health/readiness/metrics, and common shell handlers.

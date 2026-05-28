@@ -10,6 +10,8 @@ import runtime app.realtime_auction_arena.server.runtime_constants
 import helpers app.realtime_auction_arena.server.http_helpers
 import observability_context app.realtime_auction_arena.server.observability_context
 
+typeLiteralEncoding SqlText utf8
+
 importOperation metricsHttpRequestsTotalValue observability_context metricsHttpRequestsTotalValue
 importOperation metricsAuthLoginAcceptedTotalValue observability_context metricsAuthLoginAcceptedTotalValue
 importOperation metricsAuthLoginRejectedTotalValue observability_context metricsAuthLoginRejectedTotalValue
@@ -55,7 +57,7 @@ storage module mutable arenaDatabaseReady Int32 0
 storage module immutable metricsFormat String "# HELP auction_server_bootstrap_info Realtime Auction Arena server scaffold info\n# TYPE auction_server_bootstrap_info gauge\nauction_server_bootstrap_info{api_version=\"v1\",runtime=\"native_http_exact_routes\"} 1\n# HELP http_requests_total Total routed HTTP requests observed by request middleware\n# TYPE http_requests_total counter\nhttp_requests_total %lld\n# HELP auth_attempts_total Login attempts by outcome\n# TYPE auth_attempts_total counter\nauth_attempts_total{route=\"POST /api/v1/auth/login\",outcome=\"accepted\"} %lld\nauth_attempts_total{route=\"POST /api/v1/auth/login\",outcome=\"rejected\"} %lld\n# HELP auction_commands_total Auction command outcomes\n# TYPE auction_commands_total counter\nauction_commands_total{outcome=\"accepted\"} %lld\nauction_commands_total{outcome=\"rejected\"} %lld\n# HELP auction_bids_total Bid outcomes\n# TYPE auction_bids_total counter\nauction_bids_total{outcome=\"accepted\"} %lld\n# HELP rate_limit_hits_total Rate limit rejections\n# TYPE rate_limit_hits_total counter\nrate_limit_hits_total %lld\n# HELP active_sse_clients Active SSE replay streams\n# TYPE active_sse_clients gauge\nactive_sse_clients %lld\n# HELP auction_server_sse_slow_client_drops_total Slow SSE client drops\n# TYPE auction_server_sse_slow_client_drops_total counter\nauction_server_sse_slow_client_drops_total %lld\n# HELP auction_server_sse_subscriber_queue_capacity Target per-client SSE queue capacity\n# TYPE auction_server_sse_subscriber_queue_capacity gauge\nauction_server_sse_subscriber_queue_capacity 256\n# HELP auction_server_sse_heartbeat_millis Target SSE heartbeat interval\n# TYPE auction_server_sse_heartbeat_millis gauge\nauction_server_sse_heartbeat_millis 15000\n# HELP auction_server_runtime_gap Runtime-backed feature gap marker\n# TYPE auction_server_runtime_gap gauge\nauction_server_runtime_gap{feature=\"long_lived_sse\"} 1\nauction_server_runtime_gap{feature=\"durable_auth_sessions\"} 1\n"
 
 literal arenaSchemaSqlSource SqlText
-literalSource arenaSchemaSqlSource "sql/schema.sql"
+literalSource arenaSchemaSqlSource "../sql/schema.sql"
 literalBytes arenaSchemaSqlSource 12142
 literalDigest arenaSchemaSqlSource sha256 3322f651762fe1609155512da55d183a03a9675e12d11f900b5e5fa2dfc1e68d
 literalTrust arenaSchemaSqlSource trustedStaticAsset
@@ -398,10 +400,9 @@ argument postMethodMatchesCall right Int32 runtime.authSuccessCode
 run postMethodMatchesCall
 bind value postMethodMatches Bool postMethodMatchesCall
 branch if condition postMethodMatches target requestContextCommandMethod
-storage local immutable deleteMethodText String "DELETE"
 call deleteMethodCompareCall c.strcmp
 argument deleteMethodCompareCall left String requestMethod
-argument deleteMethodCompareCall right String deleteMethodText
+argument deleteMethodCompareCall right String runtime.methodDelete
 run deleteMethodCompareCall
 bind value deleteMethodCompareResult Int32 deleteMethodCompareCall
 call deleteMethodMatchesCall math.equalInt32

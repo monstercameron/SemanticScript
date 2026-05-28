@@ -50,7 +50,10 @@ python -m SemanticScript.compiler.semsc apps/taskforge-web/build.sem --emit-exe 
 .\apps\taskforge-web\build\taskforge-web.exe
 ```
 
-The server listens on `http://127.0.0.1:18090` and writes `taskforge_web.db`, logs, copied assets, and future image uploads under `build/`.
+The server listens on `http://127.0.0.1:18090`. Native webServer entrypoints
+switch the process working directory to the executable directory at startup, so
+`taskforge_web.db`, logs, copied assets, and future image uploads resolve under
+`build/` even when the exe is launched from another directory.
 
 ## Test Harness
 

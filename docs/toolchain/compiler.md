@@ -43,12 +43,24 @@ The `sem` driver also exposes `run`, `inspect-ir`, `compare-profiles`, `bench`,
 and `mcp` (see "MCP server" below). `context --json` reports project roots, entrypoints, tool versions,
 runtime feature flags, syntax support counts, and known deferred feature counts.
 `symbols --json` reports source files, modules, imports, operations, calls,
-inputs, outputs, effects, routes, source locations, and unresolved references.
+inputs, outputs, effects, enum declarations/cases, routes, source locations,
+and unresolved references.
 `clean` previews ignored generated artifacts by default and only deletes them
 with `--force`. `lint` currently supports the canonical `--engine semlint`
 backend; `fmt` delegates to `SemanticScript/formatter/semfmt.py`; `doctor`
 checks Python, llvmlite, clang, Node.js, and native HTTP runtime build
 prerequisites.
+
+`test --json` returns `sem.test.v1`. Read `preflightStatus` for source
+diagnostics, `semanticContractStatus` for `.test.sem` source/JIT/native contract
+results, and `runtimeHarnessStatus` for Python or native executable harness
+coverage. Per-result `sourceCheck`, `jitExecution`, `nativeExecution`, and
+`runtimeCoverage` fields distinguish "source checked" from "JIT executed" and
+"native/runtime exercised". Native-only stdlib tests can opt into the native
+lane with test metadata that says the smoke is built and run as a native exe;
+when native build support is unavailable, the payload reports
+`runtimeHarnessStatus: "unsupported"` instead of treating an in-process JIT
+fault as an assertion failure.
 
 ### MCP server
 
@@ -108,7 +120,7 @@ server instructions:
 
 ```json
 agent_docs {"path":"."}
-skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"]}
+skills_get {"names":["sem-start","sem","sem-agent","sem-syntax"],"full":true}
 help {"path":"."}
 docs_search {"query":"<capability, API, type, syntax, or runtime need>","path":".","watch":true,"include_std":true}
 ```
@@ -213,6 +225,11 @@ The compiler selects a toolchain for each platform in order:
 If no toolchain is found for a given platform, that entry is skipped with a
 one-line reason in the build summary. Other platforms in the same build run
 are unaffected.
+
+This cross-build path is for SemanticScript application executables. The
+current public `sem` toolchain distribution publishes a Windows x64
+PyInstaller `sem.exe`; prebuilt Linux/macOS `sem` executables are not part of
+the release channel yet.
 
 ### Filtering platforms
 
@@ -349,6 +366,7 @@ repeatable without TOML/YAML sidecars:
 | `cpuFeature PROJECT FEATURE on\|off` | `--cpu-feature FEATURE=on\|off` |
 | `cpuFeatureCheck PROJECT auto\|off\|warn\|require` | `--cpu-feature-check auto\|off\|warn\|require` |
 | `guiBackend PROJECT win32\|winui3` | No CLI flag; native GUI backend selector. `win32` is active/default, `winui3` is recognized but currently rejected with a toolchain diagnostic. |
+| `sqliteJournalMode PROJECT default\|wal` | No CLI flag; `wal` applies `sqlite.enableWalMode` automatically after compiler-lowered `sqlite.openDatabase` calls. Regular BuildPlan JSON uses `target.sqliteJournalMode`. |
 
 CLI flags win over build-tape defaults for one-off invocations.
 
@@ -517,11 +535,16 @@ Compiler-owned call-target boundary:
 2. Resolve `import ALIAS MODULE_PATH` lines and inline imported files. For
    build tapes, registered modules are resolved before filesystem/stdlib
    fallbacks.
-3. Tokenize line by line.
-4. Build the `Program` object and current-operation body tapes.
-5. Load external literals from `literalSource` metadata.
-6. Optionally run compiler lint.
-7. Stop for `--parse-only`, otherwise emit LLVM.
+3. Preserve an origin map for every flattened row so parse, strict, and codegen
+   diagnostics point at the authoring file/line rather than the entry
+   `build.sem` line.
+4. Localize syntax-island parse errors (`jsonBody`, `sql body`) to the
+   indented body row when the parser can identify the failing island line.
+5. Tokenize line by line.
+6. Build the `Program` object and current-operation body tapes.
+7. Load external literals from `literalSource` metadata.
+8. Optionally run compiler lint.
+9. Stop for `--parse-only`, otherwise emit LLVM.
 
 ## Import Resolution
 
@@ -587,9 +610,9 @@ build tapes should use `entry console main` and run the GUI through
 Run the committed GUI smoke app from a Windows shell with LLVM/clang available:
 
 ```powershell
-python SemanticScript\tools\sem.py check apps\desktop-window-smoke --quiet
-python SemanticScript\tools\sem.py build apps\desktop-window-smoke --quiet
-apps\desktop-window-smoke\build\desktop_window_smoke.exe
+sem check apps/desktop-window-smoke --quiet
+sem build apps/desktop-window-smoke --quiet
+apps/desktop-window-smoke/build/desktop_window_smoke.exe
 ```
 
 Expected behavior: a top-level window titled `Desktop Window Smoke` appears. Closing the
