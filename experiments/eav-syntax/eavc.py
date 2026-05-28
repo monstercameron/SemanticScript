@@ -480,6 +480,49 @@ def _validate_program(program: Program) -> None:
             _check_unique_labels(
                 ent, "field", "field name", "README ss10/ss17 #29"
             )
+        elif ent.kind == "enum":
+            _validate_enum(ent)
+
+
+def _validate_enum(ent: Entity) -> None:
+    """Enum invariants (README ss10): unique variants; `repr` only on payloadless
+    variants; all-or-none `repr`."""
+    _check_unique_labels(ent, "variant", "variant name", "README ss10/ss17 #29")
+    payloadless: set[str] = set()
+    data_carrying: set[str] = set()
+    for row in ent.facts("variant"):
+        if not row.payload:
+            continue
+        name = row.payload[0]
+        if len(row.payload) >= 2 and row.payload[1] != "Void":
+            data_carrying.add(name)
+        else:
+            payloadless.add(name)
+    repr_rows = ent.facts("repr")
+    repr_names = {r.payload[0] for r in repr_rows if r.payload}
+    for row in repr_rows:
+        if not row.payload:
+            continue
+        vname = row.payload[0]
+        if vname in data_carrying:
+            raise EavError(
+                f"`repr` is only valid on payloadless variants; {vname!r} carries "
+                f"a payload (README ss10)",
+                row.line,
+            )
+        if vname not in payloadless:
+            raise EavError(
+                f"`repr` names unknown variant {vname!r} of enum {ent.name!r} "
+                f"(README ss10)",
+                row.line,
+            )
+    if repr_names and repr_names != payloadless:
+        missing = payloadless - repr_names
+        raise EavError(
+            f"enum {ent.name!r} mixes explicit and auto-assigned discriminants; "
+            f"add `repr` for {sorted(missing)} or remove all (README ss10)",
+            ent.line,
+        )
 
 
 # --------------------------------------------------------------------------

@@ -161,6 +161,33 @@ def test_parse_legal_predicate_sets_accepted():
     assert prog.entities["A"].fact("for").payload == ["Int32"]
 
 
+def test_parse_enum_duplicate_variant_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse("E is enum\nE variant open\nE variant open\n")
+    assert "duplicate variant name" in exc.value.message
+
+
+def test_parse_enum_repr_on_data_variant_rejected():
+    src = "E is enum\nE variant timeout Int32\nE repr timeout 1\n"
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert "payloadless" in exc.value.message
+
+
+def test_parse_enum_mixed_repr_rejected():
+    src = "E is enum\nE variant a\nE variant b\nE repr a 1\n"
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert "mixes explicit and auto-assigned" in exc.value.message
+
+
+def test_parse_enum_full_repr_ok():
+    prog = eavc.parse(
+        "E is enum\nE variant a\nE variant b\nE repr a 1\nE repr b 2\n"
+    )
+    assert len(prog.entities["E"].facts("repr")) == 2
+
+
 def test_parse_record_duplicate_field_rejected():
     # README ss10: duplicate field names within one record are a hard error.
     with pytest.raises(eavc.EavError) as exc:

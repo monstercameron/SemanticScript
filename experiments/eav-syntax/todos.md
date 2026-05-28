@@ -85,7 +85,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-030 Primitives Int8–64/UInt8–64/Float32/64/Bool/String/Void/Byte (Byte alias UInt8). →test: lowering widths. §10
 - [ ] WS1-031 `alias … for T` newtype, no silent coercion. →test: pass base where alias required = type error. §10
 - [x] WS1-032 `record` + `field`; duplicate field = error; doc-order = field order. →test: dup-field reject. §10 _(eavc: `_validate_program`; `test_parse_record_duplicate_field_rejected`, `test_parse_record_fields_keep_doc_order`)_
-- [ ] WS1-033 `enum` + `variant [payload]` + `repr`; all-or-none repr; repr only on payloadless; dup variant = error. →test: mixed-repr reject; data-variant repr reject. §10
+- [x] WS1-033 `enum` + `variant [payload]` + `repr`; all-or-none repr; repr only on payloadless; dup variant = error. →test: mixed-repr reject; data-variant repr reject. §10 _(eavc: `_validate_enum`; `test_parse_enum_duplicate_variant_rejected`, `test_parse_enum_repr_on_data_variant_rejected`, `test_parse_enum_mixed_repr_rejected`, `test_parse_enum_full_repr_ok`)_
 - [x] WS1-034 `error`/`errorCase`/`of`/`payload` (full profile; enum-equivalent). →test: case enumeration. §9 _(eavc: `test_lower_error_cases_and_void_payload` (of/payload, Void = no data), `test_lower_hello_world_key_rows`)_
 - [ ] WS1-035 `Result OK ERR` (only generic). →test: arity. §10
 - [ ] WS1-036 `operationType` (`is in out`) function-pointer type. →test: §5 row; indirect-call type-check. §33.9
