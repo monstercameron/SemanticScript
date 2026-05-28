@@ -12401,21 +12401,56 @@ def command_check(args: argparse.Namespace) -> int:
         else:
             print(f"sem check: {message}", file=sys.stderr)
         return 2
+    # Build the same project-scoped payload the --json path uses, so the human
+    # surface no longer diverges from --json — the field log flagged this as a
+    # real bug: missingInvariant appeared in the streamed compiler output but
+    # not in --json's diagnostics; SS2516 appeared in --json but not human. The
+    # underlying compiler still runs --lower-check + --lint (so this matches
+    # the prior `buildable` semantics); only the surface format changes.
+    payload = _build_check_payload(Path(args.path), compiler_args,
+                                   include_readiness=include_readiness, lower_check=True)
+    if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
+        payload["ok"] = False
+        if payload["status"] in {"ok", "ok-with-warnings"}:
+            payload["status"] = payload["targetReadiness"].get("status", "partial")
     if json_output:
-        payload = _build_check_payload(Path(args.path), compiler_args, include_readiness=include_readiness, lower_check=True)
-        if include_readiness and "targetReadiness" in payload and not payload["targetReadiness"].get("ok", False):
-            payload["ok"] = False
-            if payload["status"] in {"ok", "ok-with-warnings"}:
-                payload["status"] = payload["targetReadiness"].get("status", "partial")
         payload = _compact_check_payload_for_cli(Path(args.path), payload, full=full_output)
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["ok"] else 1
-    build_tape = _find_build_tape(Path(args.path))
-    source = build_tape if build_tape is not None else Path(args.path)
-    # `--lower-check` (not `--parse-only`) so human `sem check` agrees with the
-    # `--json` `buildable` field: both run the codegen preflight and report
-    # SSCG/SSBE codegen errors, so a green check predicts a green build.
-    return _run_compiler(source, ["--lower-check", "--lint", *compiler_args])
+    # Human emit: same diagnostics as --json, formatted compactly. The summary
+    # footer is the headline P10 asked for ("blocking:N, warnings:M rather than
+    # a bare boolean") so `ok` alone is no longer the only signal.
+    for diag in payload.get("diagnostics", []) or []:
+        severity = diag.get("severity") or "warning"
+        code = diag.get("code") or ""
+        span = diag.get("span") or diag.get("primary") or {}
+        location_text = ""
+        if isinstance(span, dict):
+            span_file = span.get("file") or ""
+            span_line = span.get("line") or 0
+            if span_file:
+                location_text = f"{Path(span_file).name}:{span_line}"
+            elif span_line:
+                location_text = f"line {span_line}"
+        message = diag.get("message") or ""
+        prefix = severity if not code else f"{severity} [{code}]"
+        if location_text:
+            print(f"{prefix} {location_text}: {message}")
+        else:
+            print(f"{prefix}: {message}")
+    for tool_error in payload.get("toolErrors", []) or []:
+        print(f"tool-error: {tool_error}", file=sys.stderr)
+    summary = payload.get("summary", {}) or {}
+    blocking = int(summary.get("compileBlocking", 0) or 0)
+    warnings_count = int(summary.get("warnings", 0) or 0)
+    total_errors = int(summary.get("errors", 0) or 0)
+    non_blocking_errors = max(0, total_errors - blocking)
+    print(
+        f"sem check: status={payload.get('status', 'unknown')}, "
+        f"blocking={blocking}, warnings={warnings_count}, "
+        f"errors={non_blocking_errors}"
+    )
+    return 0 if payload.get("ok") else 1
 
 
 def command_emit_ir(args: argparse.Namespace) -> int:

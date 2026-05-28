@@ -1182,15 +1182,23 @@ class TestSemAgentPayloads(unittest.TestCase):
         )
 
     def test_check_command_delegates_without_migration_flag(self) -> None:
+        # The human path now goes through `_build_check_payload` (same as
+        # --json), so the human and --json surfaces no longer diverge on which
+        # diagnostics they report. The codegen-honesty intent is preserved:
+        # the payload is built with `lower_check=True`, which runs the lowering
+        # preflight + linter (not the cheap parse probe).
         args = argparse.Namespace(path="example.sem", compiler_args=[])
-        with mock.patch.object(sem, "_run_compiler", return_value=0) as run_compiler:
+        fake_payload = {
+            "ok": True, "status": "ok",
+            "diagnostics": [], "toolErrors": [],
+            "summary": {"compileBlocking": 0, "warnings": 0, "errors": 0},
+        }
+        with mock.patch.object(sem, "_build_check_payload", return_value=fake_payload) as build_payload:
             result = sem.command_check(args)
 
         self.assertEqual(result, 0)
-        compiler_args = run_compiler.call_args.args[1]
-        # human `sem check` is codegen-honest: it runs the lowering preflight
-        # (`--lower-check`) plus the linter, rather than the cheap parse probe.
-        self.assertEqual(compiler_args[:2], ["--lower-check", "--lint"])
+        self.assertTrue(build_payload.call_args.kwargs.get("lower_check", False))
+        compiler_args = build_payload.call_args.args[1]
         self.assertNotIn("migrate", " ".join(compiler_args).lower())
         self.assertNotIn("convert", " ".join(compiler_args).lower())
 
