@@ -145,10 +145,10 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## 1I. **Lowering (KEYSTONE — §29 #3)**
 - [x] WS1-100 Decide & document: EAV → existing `semsc.py` AST (shared AST vs pre-parser-normalizer vs second front-end). →test: design doc + ADR. §29#3 _(ADR: **second front end** lowering EAV→v0.1 text; documented in `eavc.py` module docstring.)_
 - [x] WS1-101 Vertical slice: parse→lower→run **Hello World (§18)** end to end. →test: program prints + exit code; no-op lowering fails. §18 _(eavc: `test_e2e_hello_world_runs`, `test_noop_lowering_would_fail`)_
-- [ ] WS1-102 Lower entity/fact/step rows → AST nodes. →test: AST snapshot per row class.
+- [x] WS1-102 Lower entity/fact/step rows → AST nodes. →test: AST snapshot per row class. _(eavc: lowered via v0.1 normalization rather than a forked AST; structural row assertions in `test_lower_hello_world_key_rows`)_
 - [ ] WS1-103 Lower types/records/enums/Result/operationType → backend types. →test: width/discriminant goldens.
 - [ ] WS1-104 Lower control flow (goto/branch/if/return/labels) → CFG. →test: irreducible-flow warn; CFG golden.
-- [ ] WS1-105 Lower calls/args/out/catch → call sites + error slots. →test: fallible call lowering.
+- [x] WS1-105 Lower calls/args/out/catch → call sites + error slots. →test: fallible call lowering. _(eavc: `test_lower_hello_world_key_rows` (void+catch → ignore void + bind error), `test_lower_value_call_binds_value` (out → bind value); `test_lower_do_on_task_rejected` keeps the call/task split, §34.4)_
 - [ ] WS1-106 Lower defer/cleanup (reverse-order, before each return; trap-during-cleanup fatal). →test: defer order; §33.8 abort.
 - [ ] WS1-107 Lower async lifecycle on single-thread backend (start eager, poll always-ready, ifPending never). →test: §13 backend-semantics goldens.
 - [ ] WS1-108 Lower construction/access/compare derived targets. →test: `Task.new` round-trips.
@@ -290,8 +290,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 
 ## X1. Conformance & test matrix (§29 #6, project rule)
 - [ ] X-001 Conformance matrix tying parser/formatter/linter/lowering/editor goldens together. →test: matrix harness runs all lanes.
-- [ ] X-002 Promote §18 + §19 worked examples to executable golden programs. →test: both run to expected output/exit.
-- [ ] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red.
+- [ ] X-002 Promote §18 + §19 worked examples to executable golden programs. →test: both run to expected output/exit. _(partial: §18 done — `examples/hello_world.sem`, `test_e2e_hello_world_runs`; §19 webServer pending console-lowering scope)_
+- [ ] X-003 No-op-lowering-fails guard for every L1 feature (a stub must break the test). →test: mutation/stub run is red. _(partial: guard in place for the keystone slice — `test_noop_lowering_would_fail`; not yet every L1 feature)_
 - [ ] X-004 Test taxonomy wired: unit/component/integration/e2e/golden + `tag test` discovery + `sem test --lane`. →test: each lane discovered & run. §28.7/§30.5
 - [ ] X-005 §2↔§5↔§22↔§30.7 **token-sync drift guard**: every reserved word has a §5 predicate-table home (or is a literal/value), a §22 order slot, and (if §30) a §30.7 entry. →test: automated drift check fails on unsynced token.
 - [ ] X-006 Invalid-example corpus (one rejecting fixture per hard-error rule). →test: all reject with the right code.
