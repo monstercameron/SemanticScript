@@ -233,8 +233,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS3-030 `build.sem` parser (project rows: module/target/entry/mode/languageVersion/toolchain/require/replace/allowEffect/platform/constant/configure/native*). →test: full-grammar golden. §28.1 _(eavc: project manifest predicates + platform entity parse via `ALLOWED_PREDICATES`; `manifests/build.sem`, `test_build_sem_full_grammar_parses`)_
 - [x] WS3-031 `build.sem.lock` (generated; `PROJECT is project` + resolved/toolchainResolved/effectSurface). →test: lock is valid EAV; hand-edit refused. §28.1 _(eavc: lock-only `resolved`/`toolchainResolved`/`effectSurface` parse as valid EAV with sha256 digest tokens; `manifests/build.sem.lock`, `test_build_sem_lock_parses_with_lock_predicates`. Hand-edit-refusal (digest re-verify) pending the resolver.)_
 - [ ] WS3-032 Module discovery by directory (dir+main.sem = module; root named by PROJECT module; internal/ visibility). →test: submodule import path = repo+reldir; internal/ leak rejected. §28.3
-- [ ] WS3-033 MVS resolver (highest required; no solver). →test: MVS selection golden. §28.4
-- [ ] WS3-034 sha256 content-addressed integrity; digest mismatch = hard error. →test: tampered dep rejects. §28.4
+- [x] WS3-033 MVS resolver (highest required; no solver). →test: MVS selection golden. §28.4 _(eavc: `mvs_select` picks the highest required semver per module (release > pre-release), no solver; `test_mvs_selects_highest`, `test_mvs_release_beats_prerelease`)_
+- [x] WS3-034 sha256 content-addressed integrity; digest mismatch = hard error. →test: tampered dep rejects. §28.4 _(eavc: `sha256_hex`/`verify_digest` — mismatch is SS2804 hard error; `test_sha256_digest_verify_and_mismatch`)_
 - [ ] WS3-035 `sem mod tidy` lock gen; `sem vendor`; module cache. →test: tidy reproducible; vendor build. §28.4
 - [ ] WS3-036 Supply-chain capability allowlist (`allowEffect`); dep requesting un-allowed cap refused. →test: socket-requesting dep rejected. §28.5
 - [ ] WS3-037 Platform entity (os/arch/targetRuntime/output/override + per-platform native rows); native-link merge order/dedup. →test: per-platform output + flag dedup. §28.1

@@ -44,6 +44,25 @@ def test_invalid_corpus_is_populated():
 MANIFESTS = os.path.join(HERE, "manifests")
 
 
+def test_mvs_selects_highest():
+    # WS3-033: minimal version selection picks the highest required version.
+    reqs = [("a", "v1.2.0"), ("a", "v1.3.0"), ("a", "v1.2.9"), ("b", "v2.0.0")]
+    assert eavc.mvs_select(reqs) == {"a": "v1.3.0", "b": "v2.0.0"}
+
+
+def test_mvs_release_beats_prerelease():
+    assert eavc.mvs_select([("a", "v1.0.0-rc.1"), ("a", "v1.0.0")]) == {"a": "v1.0.0"}
+
+
+def test_sha256_digest_verify_and_mismatch():
+    # WS3-034: content-addressed integrity; tampered content rejects.
+    data = b"dependency bytes"
+    eavc.verify_digest(data, eavc.sha256_hex(data))  # ok
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.verify_digest(b"tampered", eavc.sha256_hex(data))
+    assert exc.value.code == "SS2804"
+
+
 def test_build_sem_full_grammar_parses():
     # WS3-030: the full build.sem manifest grammar parses.
     prog = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())

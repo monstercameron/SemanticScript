@@ -138,6 +138,9 @@ DIAGNOSTICS.update({
     "SS0900": {"tier": "T3", "summary": "Advisory lint warning.",
                "found": "A design/usage caution accumulated during parsing.",
                "suggested": "See the message text (effect coverage, dead label, …)."},
+    "SS2804": {"tier": "T0", "summary": "Dependency sha256 digest mismatch.",
+               "found": "A resolved dependency's content hash != its lock digest.",
+               "suggested": "Re-fetch the dependency; a mismatch is a tamper signal (§28.4)."},
     "SS1140": {"tier": "T0", "summary": "`start` in a non-async operation.",
                "found": "A `start` step in an operation that is not `async yes`.",
                "suggested": "Mark the operation `async yes`, or use `do` (README §11)."},
@@ -372,6 +375,49 @@ def is_semver(tok: str) -> bool:
 def is_sha256_digest(tok: str) -> bool:
     """True for the 64-lowercase-hex body of a `sha256 <hex>` digest token."""
     return bool(_SHA256_HEX_RE.match(tok))
+
+
+def _parse_semver(v: str) -> tuple:
+    """Sort key for a `v`-prefixed semver (README ss28.4). Release sorts above an
+    otherwise-equal pre-release; build metadata is ignored for ordering."""
+    if not v.startswith("v"):
+        raise EavError(f"version {v!r} must be v-prefixed (README ss2)")
+    core = v[1:].split("+", 1)[0]
+    num, _, pre = core.partition("-")
+    parts = num.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        raise EavError(f"malformed semver {v!r} (README ss2)")
+    major, minor, patch = (int(p) for p in parts)
+    pre_key = (1,) if pre == "" else (0, pre)  # release > pre-release
+    return (major, minor, patch) + pre_key
+
+
+def mvs_select(requirements: list) -> dict:
+    """Minimal Version Selection (README ss28.4): pick the highest required
+    version per module — no SAT/solver, just the max of the requirements."""
+    best: dict = {}
+    for name, ver in requirements:
+        key = _parse_semver(ver)
+        if name not in best or key > best[name][0]:
+            best[name] = (key, ver)
+    return {name: ver for name, (key, ver) in best.items()}
+
+
+def sha256_hex(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
+
+
+def verify_digest(data: bytes, expected_hex: str) -> None:
+    """Content-addressed integrity (README ss28.4): a digest mismatch is a hard
+    error (tampered dependency)."""
+    actual = sha256_hex(data)
+    if actual != expected_hex:
+        raise EavError(
+            f"sha256 digest mismatch: expected {expected_hex}, got {actual} "
+            f"(tampered dependency, README ss28.4)",
+            code="SS2804",
+        )
 
 
 def _validate_int_literal(tok: str, line: int) -> None:
