@@ -2177,6 +2177,80 @@ def test_consistent_predecessor_bind_ok():
     eavc.parse(src)  # no raise
 
 
+_CLOCK_CONV_MAIN = """
+ClockConv is project
+ClockConv module appClock
+ClockConv target console
+ClockConv entry main
+
+appClock is module
+appClock path examples.clockConv
+appClock exports main
+appClock purpose "Convert seconds to minutes via standard.clock"
+appClock invariant "Prints the whole-minute count"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Convert 120 seconds to minutes and print it"
+main invariant "Prints 2"
+main let seconds immutable Int64 120
+main let okCode immutable ExitCode 0
+main do convert
+main do show
+main return okCode
+
+convert is call
+convert in main
+convert invokes secondsToMinutes
+convert arg seconds Int64 seconds
+convert out minutes Int64
+
+show is call
+show in main
+show invokes console.writeIntegerLine
+show arg value Int64 minutes
+"""
+
+
+def test_clock_pure_conversion_jit_runs():
+    # WS3-102: pure time-unit conversions JIT-run (no clock authority needed).
+    stdlib = open(os.path.join(STD, "standard.clock.sem"), encoding="utf-8").read()
+    composed = stdlib + "\n" + _CLOCK_CONV_MAIN
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "2"  # 120s -> 2min
+
+
+def test_clock_read_requires_capability():
+    # WS3-102: a wall-clock read is capability-mediated — a caller that activates
+    # nowMillis without a covering capability is flagged.
+    stdlib = open(os.path.join(STD, "standard.clock.sem"), encoding="utf-8").read()
+    main = (
+        "ClockRead is project\nClockRead module appClockRead\n"
+        "ClockRead target console\nClockRead entry main\n"
+        "appClockRead is module\nappClockRead path examples.clockRead\n"
+        'appClockRead exports main\nappClockRead purpose "p"\nappClockRead invariant "i"\n'
+        "ExitCode is alias\nExitCode for Int32\n"
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\n'
+        "main let okCode immutable ExitCode 0\n"
+        "main do readClock\nmain do show\nmain return okCode\n"
+        "readClock is call\nreadClock in main\nreadClock invokes nowMillis\n"
+        "readClock out t Int64\n"
+        "show is call\nshow in main\nshow invokes console.writeIntegerLine\n"
+        "show arg value Int64 t\n"
+    )
+    prog = eavc.parse(stdlib + "\n" + main)
+    assert any("read clock.wall" in w and "not covered" in w for w in prog.warnings)
+
+
 _PROCESS_EXIT_MAIN = """
 ProcExit is project
 ProcExit module appProc

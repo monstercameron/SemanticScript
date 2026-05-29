@@ -1,0 +1,56 @@
+# standard.clock — EAV-native clock binding (§27 planned; §30.5.3 authority model).
+#
+# Parity with semsc's `std/time` surface, the EAV-clean way: time is authority,
+# so a wall-clock read is a capability-mediated effect (injected for determinism,
+# §30.5.3; captured under `mode capturedOutputReplay`, §30.1.1). `nowMillis` is a
+# `body runtimeBinding` read over the in-process runtime; the unit conversions are
+# ordinary pure step-body operations (no effect, no capability) — they compute
+# values and so are deterministic and need no authority.
+
+standardClock is module
+standardClock path standard.clock
+standardClock purpose "Capability-gated wall-clock reads plus pure time-unit conversions"
+standardClock invariant "Reading the clock is a capability-mediated effect; conversions are pure"
+
+wallClock is capability
+wallClock grants read clock.wall
+wallClock purpose "Authority to read the wall clock (inject a fixed clock for deterministic tests)"
+
+nowMillis is operation
+nowMillis out Int64
+nowMillis effect read clock.wall
+nowMillis uses wallClock
+nowMillis body runtimeBinding eav_http_now_millis
+nowMillis purpose "Current wall-clock time in milliseconds since the Unix epoch (capability-gated)"
+
+secondsToMinutes is operation
+secondsToMinutes in seconds Int64
+secondsToMinutes out Int64
+secondsToMinutes async no
+secondsToMinutes purpose "Whole minutes contained in a second count (pure)"
+secondsToMinutes let secondsPerMinute immutable Int64 60
+secondsToMinutes do divideToMinutes
+secondsToMinutes return minutesValue
+
+divideToMinutes is call
+divideToMinutes in secondsToMinutes
+divideToMinutes invokes math.divideInt64
+divideToMinutes arg left Int64 seconds
+divideToMinutes arg right Int64 secondsPerMinute
+divideToMinutes out minutesValue Int64
+
+minutesToSeconds is operation
+minutesToSeconds in minutes Int64
+minutesToSeconds out Int64
+minutesToSeconds async no
+minutesToSeconds purpose "Seconds in a minute count (pure)"
+minutesToSeconds let secondsPerMinute immutable Int64 60
+minutesToSeconds do multiplyToSeconds
+minutesToSeconds return secondsValue
+
+multiplyToSeconds is call
+multiplyToSeconds in minutesToSeconds
+multiplyToSeconds invokes math.multiplyInt64
+multiplyToSeconds arg left Int64 minutes
+multiplyToSeconds arg right Int64 secondsPerMinute
+multiplyToSeconds out secondsValue Int64
