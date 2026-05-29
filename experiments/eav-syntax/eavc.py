@@ -653,6 +653,7 @@ def _validate_program(program: Program) -> None:
                 ent.line,
             )
         if ent.kind in ("operation", "function"):
+            _validate_body_kind(ent)
             _validate_labels(ent, program)
             _validate_return_arity(ent)
             for row in ent.facts("let"):
@@ -675,6 +676,36 @@ def _validate_program(program: Program) -> None:
                     f"(README ss10), got {row.payload!r}",
                     row.line,
                 )
+
+
+def _op_has_steps(op: Entity) -> bool:
+    return any(r.label is not None or r.predicate in STEP_PREDICATES for r in op.rows)
+
+
+def _op_body_kind(op: Entity) -> str:
+    """`steps` (default), `runtimeBinding`, or `intrinsic` (README ss11)."""
+    row = op.fact("body")
+    if row and row.payload:
+        return row.payload[0]
+    return "steps"
+
+
+def _validate_body_kind(op: Entity) -> None:
+    """An operation with a `runtimeBinding`/`intrinsic` body has no step rows;
+    `body steps` (default) is the stepful form (README ss11)."""
+    kind = _op_body_kind(op)
+    if kind in ("runtimeBinding", "intrinsic") and _op_has_steps(op):
+        raise EavError(
+            f"operation {op.name!r} has a `{kind}` body but also carries step rows "
+            f"(README ss11); a non-step body has no steps",
+            op.line,
+        )
+    if kind not in ("steps", "runtimeBinding", "intrinsic"):
+        raise EavError(
+            f"operation {op.name!r} body must be steps|runtimeBinding|intrinsic, "
+            f"got {kind!r} (README ss11)",
+            op.line,
+        )
 
 
 def _validate_return_arity(op: Entity) -> None:
@@ -973,7 +1004,10 @@ class EavCodegen:
         for op in ops:
             self.functions[op.name] = self._declare_function(op)
         for op in ops:
-            self._define_function(op)
+            # runtimeBinding/intrinsic bodies stay bare declarations (extern);
+            # full FFI symbol binding is WS3-052/053. Only `body steps` defines.
+            if _op_body_kind(op) == "steps":
+                self._define_function(op)
         return self.module
 
     def _signature(self, op: Entity):

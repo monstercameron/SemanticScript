@@ -548,6 +548,30 @@ def test_branch_if_lowers_and_unbound_condition_rejected():
     assert "not in scope" in exc.value.message
 
 
+def test_body_runtimebinding_rejects_steps():
+    # README ss11: a non-step body has no step rows.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "cmp is operation\ncmp body runtimeBinding runtime.cstring.compare\n"
+            "cmp let x immutable Int64 0\ncmp do someCall\n"
+        )
+    assert "non-step body has no steps" in exc.value.message
+
+
+def test_body_runtimebinding_is_declaration_only():
+    src = (
+        "P is project\nP module m\nP target console\nP entry main\n"
+        "m is module\nm path a.b\n"
+        "cmp is operation\ncmp in a Int64\ncmp out Int64\n"
+        "cmp body runtimeBinding runtime.thing\n"
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\nmain return okCode\n"
+    )
+    ir_text = _ir_for_source(src)
+    # declared (extern), not defined with a body
+    assert 'declare i64 @"cmp"(i64' in ir_text
+
+
 def test_return_arity_void_op_rejects_value():
     with pytest.raises(eavc.EavError) as exc:
         eavc.parse(
