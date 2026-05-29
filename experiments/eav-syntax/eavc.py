@@ -1035,6 +1035,26 @@ def verify_supply_chain(build_program: Program, lock_program: Program) -> None:
         )
 
 
+def _effect_surface(lock_program: Program) -> set:
+    return {
+        (r.payload[0], r.payload[1])
+        for proj in lock_program.of_kind("project")
+        for r in proj.facts("effectSurface")
+        if len(r.payload) >= 2
+    }
+
+
+def supply_chain_diff(old_lock: Program, new_lock: Program) -> list:
+    """X-081 / README §28.5 (WS4-020): the effects newly present in `new_lock`'s
+    resolved `effectSurface` that were absent from `old_lock`. A dependency newly
+    requesting an effect is a reviewable supply-chain change (a `sem diff`
+    finding) on top of the fail-closed allowlist (verify_supply_chain / SS2805).
+    Because the effect surface is the transitive closure, a transitive dependency
+    that newly asks for authority surfaces here too — and is still blocked by the
+    root allowlist (no transitive capability escalation)."""
+    return sorted(_effect_surface(new_lock) - _effect_surface(old_lock))
+
+
 def sha256_hex(data: bytes) -> str:
     import hashlib
     return hashlib.sha256(data).hexdigest()

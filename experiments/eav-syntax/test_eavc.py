@@ -196,6 +196,28 @@ def test_supply_chain_allowlist():
     assert exc.value.code == "SS2805"
 
 
+def test_supply_chain_diff_flags_new_effect():
+    # X-081 / §28.5: a dependency newly requesting an effect is a sem-diff finding.
+    old_lock = eavc.parse("P is project\nP effectSurface read database\n")
+    new_lock = eavc.parse(
+        "P is project\nP effectSurface read database\nP effectSurface connect socket\n")
+    assert eavc.supply_chain_diff(old_lock, new_lock) == [("connect", "socket")]
+    # no spurious finding when nothing changed
+    assert eavc.supply_chain_diff(old_lock, old_lock) == []
+
+
+def test_supply_chain_transitive_escalation_rejected():
+    # X-081: no transitive capability escalation — a transitive dep's effect that
+    # exceeds the root allowlist is fail-closed (the surface is the transitive
+    # closure, so it is caught by verify_supply_chain / SS2805).
+    build = eavc.parse("P is project\nP allowEffect read database\n")
+    transitive_lock = eavc.parse(
+        "P is project\nP effectSurface read database\nP effectSurface write filesystem\n")
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.verify_supply_chain(build, transitive_lock)
+    assert exc.value.code == "SS2805"
+
+
 def test_supply_chain_manifest_goldens_consistent():
     build = eavc.parse(open(os.path.join(MANIFESTS, "build.sem"), encoding="utf-8").read())
     lock = eavc.parse(open(os.path.join(MANIFESTS, "build.sem.lock"), encoding="utf-8").read())
