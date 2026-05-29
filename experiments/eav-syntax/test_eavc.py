@@ -3742,6 +3742,19 @@ def test_e2e_sqlite_roundtrip_through_real_engine():
     assert proc.stdout.strip() == "eav"
 
 
+def test_app_taskforge_api_client_console_core_runs():
+    # X-041: the client's console scaffolding JIT-runs; net is deferred (§27).
+    src = open(os.path.join(APPS, "taskforge-api-client", "main.sem"), encoding="utf-8").read()
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(src)))
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=src, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "started TaskForge fetches" in proc.stdout
+    assert proc.stdout.count("response:") == 3
+
+
 def test_app_event_stream_smoke_console_scaffolding_runs():
     # X-046: console scaffolding JIT-runs; event targets resolve against the stub.
     src = open(os.path.join(APPS, "event-stream-smoke", "main.sem"), encoding="utf-8").read()

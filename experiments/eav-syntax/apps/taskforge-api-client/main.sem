@@ -1,0 +1,65 @@
+# taskforge-api-client — EAV port (apps/taskforge-api-client, semsc v0.1).
+#
+# The original probes a running TaskForge server over standard.net. Per README
+# §27 the network client is DEFERRED (its contract is sigs/standard.net.semsig),
+# so this ports the console-observable scaffolding: the startup line and the
+# three response section labels the client prints. It JIT-runs and builds to an
+# exe today; the net.fetchText flow (and its capability-gated network effect)
+# lands with the standard.net runtime. (X-041)
+
+TaskforgeApiClient is project
+TaskforgeApiClient module appTaskforgeApiClient
+TaskforgeApiClient target console
+TaskforgeApiClient entry main
+
+appTaskforgeApiClient is module
+appTaskforgeApiClient path apps.taskforgeApiClient
+appTaskforgeApiClient exports main
+appTaskforgeApiClient purpose "Print the client's console scaffolding (net fetch deferred)"
+appTaskforgeApiClient invariant "Writes the startup line and the three response labels in order"
+
+ExitCode is alias
+ExitCode for Int32
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main async no
+main memory heap no
+main purpose "Announce the fetches and print the response section labels"
+main invariant "Console scaffolding only; net fetches are deferred"
+main let startedText immutable String "started TaskForge fetches before awaiting"
+main let healthLabelText immutable String "TaskForge /health response:"
+main let versionLabelText immutable String "TaskForge /api/version response:"
+main let todosLabelText immutable String "TaskForge /api/todos unauthenticated response:"
+main let okCode immutable ExitCode 0
+main do writeStarted
+main do writeHealthLabel
+main do writeVersionLabel
+main do writeTodosLabel
+main return okCode
+
+writeStarted is call
+writeStarted in main
+writeStarted invokes console.writeLine
+writeStarted arg text String startedText
+
+writeHealthLabel is call
+writeHealthLabel in main
+writeHealthLabel invokes console.writeLine
+writeHealthLabel arg text String healthLabelText
+
+writeVersionLabel is call
+writeVersionLabel in main
+writeVersionLabel invokes console.writeLine
+writeVersionLabel arg text String versionLabelText
+
+writeTodosLabel is call
+writeTodosLabel in main
+writeTodosLabel invokes console.writeLine
+writeTodosLabel arg text String todosLabelText
