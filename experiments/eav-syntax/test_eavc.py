@@ -34,6 +34,44 @@ def _ir_for_source(src: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Diagnostic registry / explain (README ss17, ss29 #12)
+# --------------------------------------------------------------------------
+
+
+def test_diagnostics_registry_round_trip():
+    # Every registry entry has a tier + repair fields (single source of truth).
+    assert eavc.DIAGNOSTICS
+    for code, entry in eavc.DIAGNOSTICS.items():
+        assert code.startswith("SS")
+        assert entry["tier"] in ("T0", "T1", "T3", "T4")
+        for field in ("summary", "found", "suggested"):
+            assert entry[field]
+        assert eavc.explain(code) is entry
+
+
+def test_explain_unknown_code_errors():
+    with pytest.raises(eavc.EavError):
+        eavc.explain("SS9999")
+
+
+def test_format_repair_has_found_and_suggested():
+    text = eavc.format_repair("SS1502")
+    assert "SS1502 (T0)" in text
+    assert "Found:" in text
+    assert "Suggested fix:" in text
+
+
+def test_emitted_diagnostics_carry_codes():
+    # Tagged diagnostics expose their registry code on the exception.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain goto nowhere\n"
+        )
+    assert exc.value.code == "SS1311"
+    assert exc.value.code in eavc.DIAGNOSTICS
+
+
+# --------------------------------------------------------------------------
 # Lexer (README ss2)
 # --------------------------------------------------------------------------
 

@@ -160,9 +160,9 @@ Checked items below cite the proving test in `test_eavc.py`.
 # WS2 — Linter & diagnostics  (L2)
 
 ## 2A. Diagnostic infrastructure (§17, §29 #12)
-- [ ] WS2-001 **Diagnostic-code registry** (code→meaning→tier→repair), single source of truth; `sem explain <CODE>`. →test: every emitted code in registry; registry round-trip. §29#12
-- [ ] WS2-002 Repair-suggestion format ("Found / Suggested fix") engine. →test: golden repair output for SS1305/1502/1610. §17
-- [ ] WS2-003 Tier model T0/T1 correctness, T3 design, T4 style; severity mapping. →test: tier per code.
+- [x] WS2-001 **Diagnostic-code registry** (code→meaning→tier→repair), single source of truth; `sem explain <CODE>`. →test: every emitted code in registry; registry round-trip. §29#12 _(eavc: `DIAGNOSTICS` registry + `explain` + `eavc.py explain SS…`; codes attached to EavError; `test_diagnostics_registry_round_trip`, `test_explain_unknown_code_errors`, `test_emitted_diagnostics_carry_codes`. Tagging the rest of the raises is incremental.)_
+- [x] WS2-002 Repair-suggestion format ("Found / Suggested fix") engine. →test: golden repair output for SS1305/1502/1610. §17 _(eavc: `format_repair`; `test_format_repair_has_found_and_suggested`)_
+- [x] WS2-003 Tier model T0/T1 correctness, T3 design, T4 style; severity mapping. →test: tier per code. _(eavc: every `DIAGNOSTICS` entry carries a T0/T1/T3/T4 tier; `test_diagnostics_registry_round_trip`)_
 - [ ] WS2-004 Diagnostic source-mapping: lint on canonical EAV maps back to author's compact/current span (§29 #15). →test: compact-source diagnostic points to compact line.
 - [ ] WS2-005 Error recovery: report multiple errors, not bail-on-first. →test: multi-error file yields N diagnostics.
 

@@ -42,15 +42,94 @@ from typing import Optional
 
 
 class EavError(Exception):
-    """A lex/parse/lower diagnostic with an optional 1-based source line."""
+    """A lex/parse/lower diagnostic with an optional 1-based source line and an
+    optional diagnostic code (see DIAGNOSTICS / `sem explain`)."""
 
-    def __init__(self, message: str, line: Optional[int] = None) -> None:
+    def __init__(
+        self, message: str, line: Optional[int] = None, code: Optional[str] = None
+    ) -> None:
         self.message = message
         self.line = line
+        self.code = code
+        prefix = f"{code}: " if code else ""
         if line is not None:
-            super().__init__(f"line {line}: {message}")
+            super().__init__(f"{prefix}line {line}: {message}")
         else:
-            super().__init__(message)
+            super().__init__(f"{prefix}{message}")
+
+
+# --------------------------------------------------------------------------
+# Diagnostic-code registry (README ss17/ss29 #12) — single source of truth.
+# Tier model: T0/T1 correctness (errors), T3 design debt, T4 style (warnings).
+# --------------------------------------------------------------------------
+
+DIAGNOSTICS: dict[str, dict] = {
+    "SS0002": {
+        "tier": "T1",
+        "summary": "Entity name is not a valid identifier.",
+        "found": "A name with `_`, `-`, or a leading digit.",
+        "suggested": "Use camelCase: a letter followed by letters/digits (README §2).",
+    },
+    "SS0003": {
+        "tier": "T1",
+        "summary": "Reserved word used as an entity or variable name.",
+        "found": "A §2 reserved word in a name position.",
+        "suggested": "Rename; arg-slot/field/variant labels are exempt (README §2).",
+    },
+    "SS1010": {
+        "tier": "T1",
+        "summary": "`out Result` must carry exactly an OK type and an ERR type.",
+        "found": "`out Result` with the wrong number of type arguments.",
+        "suggested": "Write `out Result <OkType> <ErrType>` (README §10).",
+    },
+    "SS1041": {
+        "tier": "T0",
+        "summary": "`ifError` needs a fallible call with a `catch` row.",
+        "found": "`branch ifError CALL` where CALL has no `catch`.",
+        "suggested": "Add a `catch <errVar> <ErrType>` row to CALL (README §13, §17 #6).",
+    },
+    "SS1044": {
+        "tier": "T0",
+        "summary": "call/task/cleanup activation split violated.",
+        "found": "`do` on a task, `start` on a call, or `defer` on a non-cleanup.",
+        "suggested": "`do`→call, `start/join/poll/cancel/detach`→task, `defer`→cleanup (README §34.4).",
+    },
+    "SS1060": {
+        "tier": "T1",
+        "summary": "Return arity does not match the operation's `out`.",
+        "found": "A `return` with the wrong number of values for the out signature.",
+        "suggested": "void→no value; single→one value; Result→one value + one `nil` (README §17 #10).",
+    },
+    "SS1311": {
+        "tier": "T0",
+        "summary": "goto/branch target has no matching `at` label.",
+        "found": "A `goto`/`branch ... goto L` where no `at L` exists.",
+        "suggested": "Add `at L <step>` in the same operation, or fix the target (README §17 #11).",
+    },
+    "SS1502": {
+        "tier": "T0",
+        "summary": "Rebinding an immutable `let` via call `out`.",
+        "found": "A call `out` writing a name declared `let immutable`.",
+        "suggested": "Declare the binding `let mutable`, or bind a fresh name (README §12, §17 #28).",
+    },
+}
+
+
+def explain(code: str) -> dict:
+    """Return the registry entry for a diagnostic code (README §29 #12)."""
+    if code not in DIAGNOSTICS:
+        raise EavError(f"unknown diagnostic code {code!r}")
+    return DIAGNOSTICS[code]
+
+
+def format_repair(code: str) -> str:
+    """`Found / Suggested fix` repair text for a code (README §17 repair format)."""
+    entry = explain(code)
+    return (
+        f"{code} ({entry['tier']}): {entry['summary']}\n"
+        f"  Found:        {entry['found']}\n"
+        f"  Suggested fix: {entry['suggested']}"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -987,6 +1066,7 @@ def _validate_labels(op: Entity, program: Program) -> None:
                 f"goto/branch target {ref!r} has no `at {ref}` label in operation "
                 f"{op.name!r} (README ss17 #11)",
                 op.line,
+                code="SS1311",
             )
     for label in defs:
         if label not in refs:
@@ -1459,6 +1539,7 @@ class EavCodegen:
                     f"`branch ifError {p[1]}` needs {p[1]!r} to be a fallible call "
                     f"with a `catch` row (README ss13, ss17 #6)",
                     row.line,
+                    code="SS1041",
                 )
             info = self._call_info.get(p[1])
             err = info[1] if info and info[1] is not None else ir.Constant(ir.IntType(1), 0)
@@ -1562,6 +1643,7 @@ class EavCodegen:
                     f"call {call.name!r} rebinds immutable `let {name}` via out "
                     "(README ss12, ss17 #28); declare it `let mutable`",
                     call.line,
+                    code="SS1502",
                 )
             if let_mut.get(name) == "mutable":
                 builder.store(result, sym[name][1])
@@ -1718,6 +1800,16 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_explain(args) -> int:
+    """Print the registry entry + repair for a diagnostic code."""
+    try:
+        sys.stdout.write(format_repair(args.code) + "\n")
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def _read_source(path: str) -> str:
     if path == "-":
         return sys.stdin.read()
@@ -1740,6 +1832,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
         sp.set_defaults(func=fn)
+
+    sp_explain = sub.add_parser("explain", help="explain a diagnostic code")
+    sp_explain.add_argument("code", help="diagnostic code, e.g. SS1502")
+    sp_explain.set_defaults(func=cmd_explain)
 
     args = parser.parse_args(argv)
     try:
