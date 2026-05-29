@@ -41,6 +41,11 @@ from typing import Optional
 # --------------------------------------------------------------------------
 
 
+# Contract version for the EAV-Steps front end. Bumping this requires updating
+# GOVERNANCE.md (the change-protocol lockstep check, X-020).
+CONTRACT_VERSION = "eav-0.3"
+
+
 class EavError(Exception):
     """A lex/parse/lower diagnostic with an optional 1-based source line and an
     optional diagnostic code (see DIAGNOSTICS / `sem explain`)."""

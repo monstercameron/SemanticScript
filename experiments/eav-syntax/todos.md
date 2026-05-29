@@ -309,11 +309,11 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] X-018 Shrink §2 reserved set to minimal-core as each section migrates; keep §2↔§5 in sync (X-005). →test: drift guard green after each migration.
 
 ## X3. Docs, governance, rollout (§29 #8/#13, change protocol)
-- [ ] X-020 Keep CLAUDE.md / AGENTS.md / syntax-inventory.md in lockstep with grammar (change protocol). →test: contract-version bump check.
-- [ ] X-021 Spec coherence: normative/informative labels, single-source-of-truth per topic, glossary (§29 #13).
-- [ ] X-022 Versioning & rollout: feature flags, compatibility mode, deprecation policy, milestones (§29 #8).
+- [x] X-020 Keep CLAUDE.md / AGENTS.md / syntax-inventory.md in lockstep with grammar (change protocol). →test: contract-version bump check. _(eavc: `CONTRACT_VERSION` + `GOVERNANCE.md` change-protocol section; `test_contract_version_lockstep` fails if the doc drifts from the code version. token-sync drift guard (X-005) enforces §2↔§5 automatically.)_
+- [x] X-021 Spec coherence: normative/informative labels, single-source-of-truth per topic, glossary (§29 #13). _(eavc: `GOVERNANCE.md` spec-coherence section — normative/informative labels, single-source-of-truth map, glossary; `test_governance_covers_versioning_glossary_freeze`)_
+- [x] X-022 Versioning & rollout: feature flags, compatibility mode, deprecation policy, milestones (§29 #8). _(eavc: `GOVERNANCE.md` versioning & rollout section — CONTRACT_VERSION, compatibility mode, deprecation policy, L1–L5 milestones)_
 - [x] X-023 Adoption gate instrumentation: row-count (compact +20% / EAV +35%), edit-locality, friction logs, **gate-0 round-trip** (§21). _(eavc: `normalize_preview` reports row count/delta + the gate-0 round-trip (entity set + per-entity row counts preserved through fmt); `test_normalize_preview_round_trip_preserved`. Compact-surface +20%/+35% thresholds + friction logs pending the compact↔EAV surface.)_
-- [ ] X-024 Reconcile §31 "freeze §§1–17" vs §33/§34 (note post-freeze exceptions). docs-only.
+- [x] X-024 Reconcile §31 "freeze §§1–17" vs §33/§34 (note post-freeze exceptions). docs-only. _(eavc: `GOVERNANCE.md` §31-freeze reconciliation — §33/§34 are additive/keyword-shrink post-freeze exceptions that don't touch the frozen row model/split/boundary; `test_governance_covers_versioning_glossary_freeze`)_
 
 ## X4. Roadmap-tracked gaps (§29 #14–#25) — spec-then-build, not blocking L1–L4
 - [x] X-030 #14 runtime value semantics — backend mechanism (region/arena/refcount) for value lifetime. _(ROADMAP.md #14; spec→stub→defer; `test_roadmap_registers_all_gaps`)_

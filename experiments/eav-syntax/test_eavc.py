@@ -566,6 +566,22 @@ def _ir_helper_program():
     )
 
 
+def test_contract_version_lockstep():
+    # X-020: the code contract version must appear in GOVERNANCE.md (bumping the
+    # version requires updating the doc).
+    gov = open(os.path.join(HERE, "GOVERNANCE.md"), encoding="utf-8").read()
+    assert eavc.CONTRACT_VERSION in gov
+
+
+def test_governance_covers_versioning_glossary_freeze():
+    # X-021/X-022/X-024: governance doc covers versioning, glossary, and the
+    # §31-freeze vs §33/§34 reconciliation.
+    gov = open(os.path.join(HERE, "GOVERNANCE.md"), encoding="utf-8").read()
+    assert "Versioning & rollout" in gov
+    assert "Glossary" in gov
+    assert "freeze" in gov and "§34" in gov
+
+
 def test_roadmap_registers_all_gaps():
     # X-030..X-037: every §29 roadmap gap #14–#25 has a register entry.
     roadmap = open(os.path.join(HERE, "ROADMAP.md"), encoding="utf-8").read()
