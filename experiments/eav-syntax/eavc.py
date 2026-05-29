@@ -8334,7 +8334,7 @@ def cmd_eval(args) -> int:
 
 def cmd_deps(args) -> int:
     """Dependency graph (sem.deps.v1): module `imports` + project `require` rows."""
-    program = parse_compact(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     imports, requires = [], []
     for n in program.order:
         ent = program.entities[n]
@@ -8354,7 +8354,7 @@ def cmd_deps(args) -> int:
 
 def cmd_context(args) -> int:
     """Project envelope (sem.context.v1): target(s), entry, mode, modules."""
-    program = parse_compact(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     projects = program.of_kind("project")
     proj = projects[0] if projects else None
 
@@ -8377,7 +8377,7 @@ def cmd_context(args) -> int:
 
 def cmd_symbols(args) -> int:
     """Full source graph (sem.symbols.v1): every entity with kind + row count."""
-    program = parse_compact(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     symbols = [
         {"name": program.entities[n].name, "kind": program.entities[n].kind,
          "rows": len(program.entities[n].rows), "line": program.entities[n].line}
@@ -8400,7 +8400,7 @@ def _doc_entries(program: Program) -> list:
 def cmd_docs(args) -> int:
     """Docs catalog over program entities (no third-party dep): list / get / a
     keyword-ranked `--search` (sem.docsIndex.v1 / sem.docs.v1 / sem.docsSearch.v1)."""
-    entries = _doc_entries(parse_compact(_read_source(args.path)))
+    entries = _doc_entries(parse_compact(_read_program_source(args.path)))
     if getattr(args, "search", None):
         terms = [t for t in args.search.lower().split() if t]
         scored = []
@@ -8426,7 +8426,7 @@ def cmd_docs(args) -> int:
 def cmd_dev(args) -> int:
     """Dev contract (sem.dev.v1): one check+runnability cycle reporting whether
     the surface is close to runnable (a single tick of the watch/restart loop)."""
-    program = parse_compact(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     diags = lint(program)
     errors = [d for d in diags if d.severity == "error"]
     projects = program.of_kind("project")
@@ -8446,7 +8446,7 @@ def cmd_dev(args) -> int:
 
 def cmd_size(args) -> int:
     """Cheap footprint probe (sem.size.v1): entity + row counts by kind."""
-    program = parse_compact(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     by_kind: dict = {}
     rows = 0
     for n in program.order:
@@ -8762,7 +8762,7 @@ def cmd_slice(args) -> int:
 
 def cmd_test(args) -> int:
     """Discover (--discover) or execute `tag test` operations (sem.test.v1)."""
-    program = parse_compact(_read_source(args.path))
+    program = parse_compact(_read_program_source(args.path))
     if getattr(args, "discover", False):
         lanes = discover_tests(program)
         selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
@@ -8839,8 +8839,19 @@ def cmd_explain(args) -> int:
 def _read_source(path: str) -> str:
     if path == "-":
         return sys.stdin.read()
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError as exc:
+        # R-001: turn a directory/unreadable-path OSError (e.g. PermissionError or
+        # IsADirectoryError on a project dir) into an EavError so `main` reports a
+        # stable `eavc: …` message and exit 2 instead of a raw Python traceback.
+        import os
+        if os.path.isdir(path):
+            raise EavError(
+                f"{path!r} is a directory; this command reads a single file — "
+                f"pass a .sem file, or use a project-aware command (README ss24)")
+        raise EavError(f"cannot read {path!r}: {exc.strerror or exc}")
 
 
 def main(argv: Optional[list[str]] = None) -> int:

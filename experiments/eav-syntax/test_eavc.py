@@ -3701,6 +3701,52 @@ def test_new_project_scaffold(tmp_path, capsys):
     eavc.parse((root / "build.sem").read_text(encoding="utf-8"))
 
 
+def test_project_aware_commands_accept_app_directories(capsys):
+    """R-001: every project-aware command must operate on a project directory
+    (composing it via _read_program_source), not open() the directory and crash
+    with PermissionError/IsADirectoryError. For each ported app dir, each command
+    must emit valid JSON on its own surface and raise no uncaught exception.
+
+    Under the old code deps/context/symbols/size/dev/docs/test all called
+    _read_source(dir), which raised an OSError that main does not catch — so the
+    eavc.main call below raised (a Python traceback) instead of returning JSON."""
+    import glob
+    import json
+    app_dirs = sorted(
+        d for d in glob.glob(os.path.join(APPS, "*"))
+        if os.path.isdir(d) and (
+            os.path.isfile(os.path.join(d, "build.sem"))
+            or os.path.isdir(os.path.join(d, "src")))
+    )
+    assert app_dirs, "expected at least one ported app project directory"
+    expected_surface = {
+        "check": "sem.check.v1", "deps": "sem.deps.v1",
+        "context": "sem.context.v1", "symbols": "sem.symbols.v1",
+        "size": "sem.size.v1", "dev": "sem.dev.v1", "docs": "sem.docsIndex.v1",
+    }
+    for app in app_dirs:
+        for command, surface in expected_surface.items():
+            ctx = f"{command} {os.path.basename(app)}"
+            # an uncaught OSError here is itself the regression (R-001)
+            eavc.main([command, app])
+            out = capsys.readouterr().out
+            payload = json.loads(out)
+            assert payload["surface"] == surface, ctx
+        # `test` composes + runs; assert its surface separately (it spawns the
+        # JIT, so keep it out of the tight loop above)
+        eavc.main(["test", app])
+        test_payload = json.loads(capsys.readouterr().out)
+        assert test_payload["surface"] == "sem.test.v1", f"test {os.path.basename(app)}"
+
+    # the MCP tools/call wrappers delegate to the same commands, so a directory
+    # path must round-trip to the matching JSON surface there too (R-001).
+    sample = app_dirs[0]
+    for tool, surface in (("deps", "sem.deps.v1"), ("context", "sem.context.v1"),
+                          ("symbols", "sem.symbols.v1"), ("size", "sem.size.v1")):
+        out = eavc._mcp_dispatch(tool, {"path": sample})
+        assert json.loads(out)["surface"] == surface, f"mcp:{tool}"
+
+
 def test_new_project_refuses_to_clobber_without_force(tmp_path, capsys):
     """R-005: `eavc new` must not destroy existing source. A mistyped path that
     already holds `src/main.sem` returns nonzero with a collision list and leaves
