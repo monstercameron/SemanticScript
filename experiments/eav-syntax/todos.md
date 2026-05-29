@@ -300,7 +300,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 ## X2. Minimal-core migration (§34) — L5, split PRESERVED
 - [ ] X-010 §14 webServer → `HttpServer` record + `http.route`/`http.serve` calls; delete webServer keywords from §2; add `.semsig`. →test: migrated handler runs; old keywords gone.
 - [ ] X-011 §16 htmlTemplate/`body` → `String`/`storage` + `html.render`/`sql.exec` calls. →test: render equivalence.
-- [ ] X-012 §9 error/errorCase → `enum`/`variant`. →test: error programs run as enums.
+- [x] X-012 §9 error/errorCase → `enum`/`variant`. →test: error programs run as enums. _(eavc: `<Error>.<case>` lowers to the case's declaration-order discriminant, exactly like `<Enum>.<variant>`; error types are i32 discriminants; `test_error_case_is_enum_equivalent_discriminant`)_
 - [ ] X-013 comparators + ifOut/ifValue → `compare.*` + `branch if` (already fmt-lowered). →test: no comparator keyword needed.
 - [ ] X-014 §6 metadata → typed comments. →test: docs still generated from comments.
 - [ ] X-015 §28 manifest → build record + `standard.build` (project/target/.../platform/forTarget/forPlatform demoted). →test: build from record.

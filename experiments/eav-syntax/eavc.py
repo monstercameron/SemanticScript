@@ -2483,10 +2483,18 @@ class EavCodegen:
         ent = self.program.entities.get(resolved)
         if ent is not None and ent.kind == "record":
             return self._record_layout(ent)[0]
-        if ent is not None and ent.kind == "enum":
-            return ir.IntType(32)  # discriminant
-        # errors and other named types: opaque i64 handle in the console model.
+        if ent is not None and ent.kind in ("enum", "error"):
+            return ir.IntType(32)  # discriminant (errors are enum-equivalent, §9)
+        # other named types: opaque i64 handle in the console model.
         return ir.IntType(64)
+
+    def _error_cases(self, error_name: str) -> list:
+        return [
+            self.program.entities[n].name
+            for n in self.program.order
+            if self.program.entities[n].kind == "errorCase"
+            and (self.program.entities[n].fact("of") or Row("", "", [], 0)).payload[:1] == [error_name]
+        ]
 
     def _const_value(self, resolved: str, tokens: list):
         """A module-storage initializer constant (README ss12, ss30.2.1):
@@ -3082,6 +3090,16 @@ class EavCodegen:
             }
             disc = repr_map.get(tail, variants.index(tail))
             return ir.Constant(ir.IntType(32), disc)
+        if ent is not None and ent.kind == "error":
+            # README ss9/ss34: error cases are enum-equivalent — `<Error>.<case>`
+            # lowers to the case's discriminant (declaration order).
+            cases = self._error_cases(head)
+            if tail not in cases:
+                raise EavError(
+                    f"{target!r}: error {head!r} has no case {tail!r} (README ss9)",
+                    call.line,
+                )
+            return ir.Constant(ir.IntType(32), cases.index(tail))
         raise EavError(
             f"call target {target!r} is not modeled by the LLVM console code "
             "generator (todos WS3 stdlib)",

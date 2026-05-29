@@ -1860,6 +1860,19 @@ def test_e2e_record_demo_runs():
     assert "11" in proc.stdout
 
 
+def test_error_case_is_enum_equivalent_discriminant():
+    # X-012 / README §9: error cases lower like enum variants (a discriminant).
+    src = (
+        "P is project\nP module m\nP target console\nm is module\nm path a.b\n"
+        "ParseError is error\n"
+        "BadJson is errorCase\nBadJson of ParseError\n"
+        "Timeout is errorCase\nTimeout of ParseError\n"
+        "makeErr is operation\nmakeErr out Int32\nmakeErr do mk\nmakeErr return e\n"
+        "mk is call\nmk in makeErr\nmk invokes ParseError.Timeout\nmk out e Int32\n"
+    )
+    assert "ret i32 1" in _ir_for_source(src)  # Timeout is the 2nd case -> disc 1
+
+
 def test_enum_variant_discriminant_lowers():
     # README ss10.5: a payloadless <Enum>.<variant> lowers to its discriminant.
     src = (
