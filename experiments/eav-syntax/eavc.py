@@ -7866,8 +7866,12 @@ def captured_output_replay(source: str) -> dict:
     out2, exit2 = _record_run(source)
     deterministic = (out1 == out2) and (exit1 == exit2)
     transcript = out1.split("\n")[:-1] if out1.endswith("\n") else out1.split("\n")
-    return {
-        "ok": True,
+    result = {
+        # R-009: a non-reproducible record is not a valid replay. `ok` follows
+        # `deterministic` instead of being unconditionally true, so a caller
+        # cannot mistake a clock/random-backed divergence for a clean replay.
+        "ok": deterministic,
+        "status": "ok" if deterministic else "nondeterministic",
         "mode": mode,
         "transcript": transcript,
         "exitCode": exit1,
@@ -7877,6 +7881,14 @@ def captured_output_replay(source: str) -> dict:
         "replayStdout": out1,
         "sideEffectFree": True,
     }
+    if not deterministic:
+        # surface both record runs so the divergence is diagnosable rather than
+        # collapsed into a single buried boolean (R-009).
+        result["records"] = [
+            {"stdout": out1, "exitCode": exit1},
+            {"stdout": out2, "exitCode": exit2},
+        ]
+    return result
 
 
 def _entry_name(program: Program) -> str:

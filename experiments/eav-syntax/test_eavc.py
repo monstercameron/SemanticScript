@@ -585,9 +585,38 @@ def test_captured_output_replay_deterministic_and_side_effect_free():
     assert result["transcript"] == ["replay me"]
     assert result["exitCode"] == 0
     assert result["deterministic"] is True
+    assert result["ok"] is True  # R-009: a deterministic record replays cleanly
+    assert result["status"] == "ok"
     assert result["sideEffectFree"] is True
     # replay reproduces the recorded transcript exactly
     assert result["replayStdout"].strip() == "replay me"
+
+
+def test_captured_output_replay_nondeterministic_stdout_reports_failure(monkeypatch):
+    """R-009: when two record runs produce different stdout (the clock/random-
+    backed case), the replay is not reproducible. `ok` must follow
+    `deterministic` and both record transcripts must be surfaced. Under the old
+    unconditional `ok: True` this divergence was reported as a clean replay."""
+    src = open(os.path.join(EXAMPLES, "replay_demo.sem"), encoding="utf-8").read()
+    runs = iter([("first record\n", 0), ("second record\n", 0)])
+    monkeypatch.setattr(eavc, "_record_run", lambda source: next(runs))
+    result = eavc.captured_output_replay(src)
+    assert result["deterministic"] is False
+    assert result["ok"] is False
+    assert result["status"] == "nondeterministic"
+    assert [r["stdout"] for r in result["records"]] == ["first record\n", "second record\n"]
+
+
+def test_captured_output_replay_nondeterministic_exit_code_reports_failure(monkeypatch):
+    """R-009: exit-code divergence alone (identical stdout) is also a
+    non-reproducible replay."""
+    src = open(os.path.join(EXAMPLES, "replay_demo.sem"), encoding="utf-8").read()
+    runs = iter([("same\n", 0), ("same\n", 1)])
+    monkeypatch.setattr(eavc, "_record_run", lambda source: next(runs))
+    result = eavc.captured_output_replay(src)
+    assert result["ok"] is False
+    assert result["status"] == "nondeterministic"
+    assert [r["exitCode"] for r in result["records"]] == [0, 1]
 
 
 def test_captured_output_replay_requires_mode():
