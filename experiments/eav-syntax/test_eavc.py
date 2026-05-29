@@ -1710,6 +1710,39 @@ def test_return_arity_single_rejects_void_return():
         eavc.parse("get is operation\nget out Int64\nget return void\n")
 
 
+def test_mixed_predecessor_bind_rejected():
+    # README §13 / WS1-064: a name bound to two different types on two branches
+    # that merge at a shared label is a definite-assignment error.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let flag immutable Bool true\n"
+        "main branch if flag goto elseBlock\n"
+        "main do bindInt\nmain goto joinBlock\n"
+        "main at elseBlock do bindStr\nmain goto joinBlock\n"
+        "main at joinBlock let okCode immutable ExitCode 0\nmain return okCode\n"
+        "bindInt is call\nbindInt in main\nbindInt invokes x.a\nbindInt out merged Int64\n"
+        "bindStr is call\nbindStr in main\nbindStr invokes x.b\nbindStr out merged String\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS1064"
+
+
+def test_consistent_predecessor_bind_ok():
+    # Same name + same type on both branches merges cleanly.
+    src = (
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        "main let flag immutable Bool true\n"
+        "main branch if flag goto elseBlock\n"
+        "main do bindA\nmain goto joinBlock\n"
+        "main at elseBlock do bindB\nmain goto joinBlock\n"
+        "main at joinBlock let okCode immutable ExitCode 0\nmain return okCode\n"
+        "bindA is call\nbindA in main\nbindA invokes x.a\nbindA out merged Int64\n"
+        "bindB is call\nbindB in main\nbindB invokes x.b\nbindB out merged Int64\n"
+    )
+    eavc.parse(src)  # no raise
+
+
 def test_alias_newtype_no_silent_coercion():
     # README §10 / WS1-031: passing the base type where an alias newtype is
     # required is a hard type error (no silent coercion).

@@ -219,6 +219,9 @@ DIAGNOSTICS.update({
     "SS3501": {"tier": "T3", "summary": "Fallible call with no error path.",
                "found": "A call with a `catch` but no `branch ifError` for it.",
                "suggested": "Add a `branch ifError CALL goto …`, or `discards` (README §17 #35)."},
+    "SS1064": {"tier": "T1", "summary": "Inconsistent binding type across a merge.",
+               "found": "A name is bound to incompatible types on different paths to a label.",
+               "suggested": "Bind the same name/type on every predecessor path (README §13)."},
     "SS3710": {"tier": "T1", "summary": "Silent newtype coercion across an alias.",
                "found": "An arg type differs from the callee input but resolves to the same base.",
                "suggested": "Pass the alias newtype itself; aliases do not coerce (README §10)."},
@@ -2239,6 +2242,7 @@ def _validate_program(program: Program) -> None:
                     row.line,
                 )
     _validate_calls(program)
+    _validate_binding_consistency(program)
     _validate_module_init_order(program)
     _validate_configure(program)
 
@@ -2788,6 +2792,44 @@ def _validate_calls(program: Program) -> None:
                     f"{target!r} requires {in_type!r}; an alias is a distinct "
                     f"newtype and does not silently coerce (README ss10, WS1-031)",
                     arg.line, code="SS3710",
+                )
+
+
+def _validate_binding_consistency(program: Program) -> None:
+    """README ss13 / WS1-064: a value reaching a shared label must have the same
+    name and type on every predecessor path (definite assignment).
+
+    `let` names cannot shadow (see `_validate_no_shadow`), so the only way a name
+    acquires two declared types within one operation is by being bound on
+    distinct branches that merge at a label — once via `let`, once via a call
+    `out`, or by two different calls' `out`. A merge that binds one name to
+    incompatible types is a definite-assignment error."""
+    binds: dict = {}  # opName -> {bindName -> {type -> line}}
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind in ("operation", "function"):
+            d = binds.setdefault(op.name, {})
+            for r in op.facts("let"):
+                if len(r.payload) >= 3:
+                    d.setdefault(r.payload[0], {}).setdefault(r.payload[2], r.line)
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind in ("call", "task"):
+            owner = ent.fact("in")
+            outr = ent.fact("out")
+            if (owner and owner.payload and outr and len(outr.payload) >= 2
+                    and outr.payload[0] != "Result"):
+                d = binds.setdefault(owner.payload[0], {})
+                d.setdefault(outr.payload[0], {}).setdefault(outr.payload[1], ent.line)
+    for opname, d in binds.items():
+        for name, types in d.items():
+            if len(types) > 1:
+                line = min(types.values())
+                raise EavError(
+                    f"binding {name!r} in {opname!r} is assigned incompatible types "
+                    f"{sorted(types)} across paths; a value reaching a shared label "
+                    f"must have one type on every predecessor (README ss13, WS1-064)",
+                    line, code="SS1064",
                 )
 
 
