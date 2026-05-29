@@ -548,6 +548,33 @@ def test_branch_if_lowers_and_unbound_condition_rejected():
     assert "not in scope" in exc.value.message
 
 
+def test_label_undefined_target_rejected():
+    # README ss17 #11: a goto target needs a matching `at` label.
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\nmain goto nowhere\n"
+        )
+    assert "has no `at nowhere`" in exc.value.message
+
+
+def test_label_duplicate_rejected():
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(
+            "main is operation\nmain out ExitCode\n"
+            "main at dup return one\nmain at dup return two\n"
+        )
+    assert "duplicate label" in exc.value.message
+
+
+def test_label_dead_warns():
+    prog = eavc.parse(
+        "main is operation\nmain out ExitCode\n"
+        "main let okCode immutable ExitCode 0\n"
+        "main at unused return okCode\nmain return okCode\n"
+    )
+    assert any("dead label" in w and "unused" in w for w in prog.warnings)
+
+
 def test_iferror_requires_catch():
     # README ss13/ss17 #6: ifError needs a fallible call with a catch row.
     src = (

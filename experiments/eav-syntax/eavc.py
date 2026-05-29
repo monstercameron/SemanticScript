@@ -653,6 +653,7 @@ def _validate_program(program: Program) -> None:
                 ent.line,
             )
         if ent.kind in ("operation", "function"):
+            _validate_labels(ent, program)
             for row in ent.facts("let"):
                 if row.payload and row.payload[0] in RESERVED_WORDS:
                     raise EavError(
@@ -673,6 +674,40 @@ def _validate_program(program: Program) -> None:
                     f"(README ss10), got {row.payload!r}",
                     row.line,
                 )
+
+
+def _validate_labels(op: Entity, program: Program) -> None:
+    """Label invariants (README ss13, ss17 #11/#12/#13): every goto/branch target
+    has exactly one `at` definition; duplicate labels error; dead labels warn."""
+    defs: list[str] = []
+    for row in op.rows:
+        if row.label is not None:
+            if row.label in defs:
+                raise EavError(
+                    f"duplicate label {row.label!r} in operation {op.name!r} "
+                    f"(README ss17 #12)",
+                    row.line,
+                )
+            defs.append(row.label)
+    refs: set[str] = set()
+    for row in op.rows:
+        if row.predicate == "goto" and row.payload:
+            refs.add(row.payload[0])
+        elif row.predicate == "branch" and len(row.payload) >= 4 and row.payload[2] == "goto":
+            refs.add(row.payload[3])
+    for ref in refs:
+        if ref not in defs:
+            raise EavError(
+                f"goto/branch target {ref!r} has no `at {ref}` label in operation "
+                f"{op.name!r} (README ss17 #11)",
+                op.line,
+            )
+    for label in defs:
+        if label not in refs:
+            program.warnings.append(
+                f"{op.name}: label {label!r} is never targeted (dead label, "
+                f"README ss17 #13)"
+            )
 
 
 def _validate_enum(ent: Entity) -> None:

@@ -124,7 +124,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS1-066 Non-canonical sugar lowering: `ifOut`/`ifValue` → comparison call + `branch if`; `branch else` → `goto`; deterministic generated names + reuse + collision suffix. →test: fmt(sugar) golden; fmt idempotent. §13
 - [ ] WS1-067 Comparator-lowering table → `compare.<cmp><Type>`; Bool/enum equals/notEquals only. →test: §17 #45; `greaterThan Bool` reject. §13
 - [ ] WS1-068 Compound conditions = sequential guards (no and/or). →test: A∧B / A∨B goldens. §33.4
-- [ ] WS1-069 Label lint: every goto/branch target has one `at`; unique; referenced; dead-label warn. →test: §17 #11/#12/#13. §13
+- [x] WS1-069 Label lint: every goto/branch target has one `at`; unique; referenced; dead-label warn. →test: §17 #11/#12/#13. §13 _(eavc: `_validate_labels`; `test_label_undefined_target_rejected`, `test_label_duplicate_rejected`, `test_label_dead_warns`)_
 - [ ] WS1-070 Recursion permitted (direct/mutual); unbounded → trap; `memory stack` bound. →test: recursion lowers; deep-recursion traps. §33.3
 
 ## 1G. State, storage, locals (§12)
