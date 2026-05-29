@@ -3057,6 +3057,40 @@ def test_entity_scoped_slice_json(capsys):
     assert env["slice"]
 
 
+_HTML_RENDER_SRC = (
+    "P is project\nP module m\nP target console\nP entry main\n"
+    'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\nm exports main\n'
+    "ExitCode is alias\nExitCode for Int32\n"
+    "PageTemplate is htmlTemplate\nPageTemplate body html\n"
+    "    <h1>{{title}}</h1><p>{{body}}</p>\n"
+    "main is operation\nmain out ExitCode\nmain async no\n"
+    'main purpose "p"\nmain invariant "i"\n'
+    'main let titleText immutable String "Hi <b>x</b>"\n'
+    'main let bodyText immutable String "A & B"\n'
+    "main let okCode immutable ExitCode 0\n"
+    "main do renderPage\nmain do showPage\nmain return okCode\n"
+    "renderPage is call\nrenderPage in main\nrenderPage invokes html.render\n"
+    "renderPage arg template HtmlTemplate PageTemplate\n"
+    "renderPage arg title String titleText\nrenderPage arg body String bodyText\n"
+    "renderPage out pageHtml String\n"
+    "showPage is call\nshowPage in main\nshowPage invokes console.writeLine\n"
+    "showPage arg text String pageHtml\n"
+)
+
+
+def test_html_render_full_document():
+    # X-011: html.render renders the full htmlTemplate document, auto-escaping
+    # text holes (not a single string.concat line).
+    assert not any(d.severity == "error" for d in eavc.lint(eavc.parse(_HTML_RENDER_SRC)))
+    ir = str(eavc.lower_to_llvm(eavc.parse(_HTML_RENDER_SRC)))
+    assert "eav_http_html_escape" in ir  # holes are auto-escaped
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=_HTML_RENDER_SRC, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "<h1>Hi &lt;b&gt;x&lt;/b&gt;</h1><p>A &amp; B</p>"
+
+
 def test_frozen_executable_packaging():
     # X-025: the packager exists and eavc is frozen-path-aware; if a built exe is
     # present (dist/eavc[.exe] from `python package.py`), it runs standalone.

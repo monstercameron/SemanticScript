@@ -4666,6 +4666,9 @@ class EavCodegen:
         elif name == "strcmp":
             fn = ir.Function(self.module, ir.FunctionType(ir.IntType(32), [i8p, i8p]),
                              name="strcmp")
+        elif name == "eav_http_html_escape":
+            fn = ir.Function(self.module, ir.FunctionType(i8p, [i8p]),
+                             name="eav_http_html_escape")
         else:
             raise EavError(f"no runtime declaration for {name!r}")
         self._runtime[name] = fn
@@ -5098,6 +5101,42 @@ class EavCodegen:
                                   builder.sub(zero, diff), diff)
         raise EavError(f"unhandled computed math target {target!r}")
 
+    def _concat(self, builder, left, right):
+        """Heap-concatenate two NUL-terminated i8* strings (README ss30.2.2)."""
+        la = builder.call(self.runtime("strlen"), [left])
+        lb = builder.call(self.runtime("strlen"), [right])
+        total = builder.add(builder.add(la, lb), ir.Constant(ir.IntType(64), 1))
+        buf = builder.call(self.runtime("malloc"), [total])
+        builder.call(self.runtime("strcpy"), [buf, left])
+        builder.call(self.runtime("strcat"), [buf, right])
+        return buf
+
+    def _emit_html_render(self, call, args, builder, sym):
+        """Lower `html.render`: interleave the template's literal segments with
+        its hole values (text holes auto-escaped, HtmlSafeUrl passed through),
+        concatenated into one rendered HTML string (README ss16, X-011)."""
+        tmpl_arg = args.get("template")
+        tmpl_name = tmpl_arg.payload[2] if tmpl_arg and len(tmpl_arg.payload) >= 3 else None
+        island = self.program.islands.get((tmpl_name, "html"), [])
+        text = "\n".join(island)
+        parts = __import__("re").split(r"\{\{\s*([\w.]+)\s*\}\}", text)
+        result = None
+        for i, part in enumerate(parts):
+            if i % 2 == 0:  # literal segment
+                if part == "":
+                    continue
+                piece = self.global_string(part.encode("utf-8") + b"\x00")
+            else:  # hole name -> its (escaped) value
+                a = args.get(part)
+                if a is None or len(a.payload) < 3:
+                    continue
+                val = self._resolve(a.payload[2], a.payload[1], builder, sym)
+                if a.payload[1] != "HtmlSafeUrl":
+                    val = builder.call(self.runtime("eav_http_html_escape"), [val])
+                piece = val
+            result = piece if result is None else self._concat(builder, result, piece)
+        return result if result is not None else self.global_string(b"\x00")
+
     def _emit_call(self, call, builder, sym, let_mut) -> None:
         target_row = call.fact("invokes")
         if not target_row or not target_row.payload:
@@ -5178,15 +5217,12 @@ class EavCodegen:
             result = self._emit_convert(target, args, builder, sym, call)
         elif target == "string.concat":
             # README ss30.2.2: heap-concatenate two NUL-terminated strings.
-            left = arg("left", "String")
-            right = arg("right", "String")
-            la = builder.call(self.runtime("strlen"), [left])
-            lb = builder.call(self.runtime("strlen"), [right])
-            total = builder.add(builder.add(la, lb), ir.Constant(ir.IntType(64), 1))
-            buf = builder.call(self.runtime("malloc"), [total])
-            builder.call(self.runtime("strcpy"), [buf, left])
-            builder.call(self.runtime("strcat"), [buf, right])
-            result = buf
+            result = self._concat(builder, arg("left", "String"), arg("right", "String"))
+        elif target == "html.render":
+            # README ss16: render an htmlTemplate island, auto-escaping `{{holes}}`
+            # by sink context. Split the template on holes and concat the literal
+            # segments with the (escaped) hole values in order.
+            result = self._emit_html_render(call, args, builder, sym)
         elif target in sym:
             # README ss33.9: indirect call through an operationType binding.
             fnptr = self._load(sym[target], builder)
@@ -5510,7 +5546,8 @@ def _ensure_runtime_lib(lib: dict):
 
 
 def _referenced_runtime_symbols(program: Program) -> set:
-    """The ABI symbols a program's `body runtimeBinding` operations reference."""
+    """The ABI symbols a program needs: every `body runtimeBinding` symbol, plus
+    `eav_http_html_escape` when any call lowers `html.render` (auto-escape)."""
     out: set = set()
     for n in program.order:
         ent = program.entities[n]
@@ -5519,6 +5556,10 @@ def _referenced_runtime_symbols(program: Program) -> set:
             if (body and body.payload and body.payload[0] == "runtimeBinding"
                     and len(body.payload) >= 2):
                 out.add(body.payload[1])
+        if ent.kind in ("call", "task"):
+            inv = ent.fact("invokes")
+            if inv and inv.payload and inv.payload[0] == "html.render":
+                out.add("eav_http_html_escape")
     return out
 
 
