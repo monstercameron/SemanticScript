@@ -4204,6 +4204,13 @@ must carry a `timeout` or `budget` row, so a slow/hostile peer cannot stall the
 process; an unbounded untrusted external call is a hard error (**SS3078**). (The
 untrusted-decode size cap is X-077's `limit maximumBytes`.)
 
+**Error-disclosure boundary (X-079).** An internal error/trap detail
+(`typeTrust trustedInternal` on the error type) may not reach a client-response
+sink (a `clientResponse arg <slot>` parameter) without an explicit
+`errorBoundary <InternalError> <ClientError>` mapping on the calling op;
+returning a raw internal error to a client is an information-disclosure hard
+error (**SS3079**).
+
 ### Async intrinsics
 
 ```sem

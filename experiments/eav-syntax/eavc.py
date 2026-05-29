@@ -201,6 +201,9 @@ DIAGNOSTICS.update({
     "SS3078": {"tier": "T1", "summary": "Unbounded external call over untrusted input.",
                "found": "A `net.*`/`http.*`/`sqlite.*`/`db.*`/`fs.*` call with a `rawExternal` arg and no `timeout`/`budget` row.",
                "suggested": "Bound external I/O over untrusted input with a `timeout <budget>` (or `budget …`) row so a slow/hostile peer cannot stall the process (README §27)."},
+    "SS3079": {"tier": "T1", "summary": "Internal error disclosed to a client.",
+               "found": "A `typeTrust trustedInternal` error reaches a `clientResponse` sink slot with no `errorBoundary` mapping.",
+               "suggested": "Map the internal error to a client-safe error with `errorBoundary <InternalError> <ClientError>` before it reaches the response (information-disclosure defense, README §16/§25)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -1101,6 +1104,7 @@ RESERVED_WORDS = {
     "typeTrust",                           # X-070 trust label on a type
     "limit",                               # X-077 decode-limit row
     "timeout", "budget",                   # X-078 DoS-bound rows
+    "clientResponse", "errorBoundary",     # X-079 error-disclosure rows
     "trustConstraint", "using", "mode", "forTarget", "forPlatform", "suppress",
     "version", "generatedBy", "describes",
     # manifest predicate tokens
@@ -1144,13 +1148,13 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
-        "branch", "return", "goto", "set", "trustConstraint",
+        "branch", "return", "goto", "set", "trustConstraint", "errorBoundary",
     },
     "function": {
         "in", "out", "effect", "uses", "memory", "async", "label", "let",
         "body", "export",
         "do", "defer", "start", "join", "poll", "cancel", "detach",
-        "branch", "return", "goto", "set",
+        "branch", "return", "goto", "set", "errorBoundary",
     },
     "call": {
         "in", "invokes", "arg", "out", "catch", "discards", "owns",
@@ -1182,7 +1186,8 @@ ALLOWED_PREDICATES: dict[str, set[str]] = {
         "os", "arch", "targetRuntime", "output", "override",
         "nativeLibrary", "nativeHeader", "nativeLinkFlag",
     },
-    "intrinsic": {"target", "arg", "out", "catch", "async", "owns", "trustConstraint"},
+    "intrinsic": {"target", "arg", "out", "catch", "async", "owns",
+                  "trustConstraint", "clientResponse"},
     "semsig": {"version", "generatedBy", "describes"},
     "operationType": {"in", "out"},
 }
@@ -3236,6 +3241,7 @@ def _validate_program(program: Program) -> None:
     _validate_path_traversal(program)
     _validate_ssrf(program)
     _validate_dos_bounds(program)
+    _validate_error_disclosure(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4717,6 +4723,52 @@ def _validate_dos_bounds(program: Program) -> None:
                 f"input but declares no `timeout`/`budget`; bound it so a slow or "
                 f"hostile peer cannot stall the process (README §27)",
                 ent.line, code="SS3078")
+
+
+def _validate_error_disclosure(program: Program) -> None:
+    """X-079 / README §16/§25: an internal error/trap detail (`typeTrust
+    trustedInternal` error) may not reach a client-facing response sink (a
+    `clientResponse arg <slot>`) without an explicit `errorBoundary
+    <InternalError> <ClientError>` mapping on the calling op. Returning a raw
+    internal error to a client is an information-disclosure hard error (SS3079)."""
+    internal_errors = {program.entities[n].name for n in program.order
+                       if program.entities[n].kind == "error"
+                       for r in program.entities[n].facts("typeTrust")
+                       if r.payload and r.payload[0] == "trustedInternal"}
+    if not internal_errors:
+        return
+    client_slots = {}
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function", "intrinsic"):
+            continue
+        slots = {r.payload[1] for r in ent.facts("clientResponse")
+                 if len(r.payload) >= 2 and r.payload[0] == "arg"}
+        if slots:
+            client_slots[_sink_key(ent)] = slots
+    if not client_slots:
+        return
+    for n in program.order:
+        call = program.entities[n]
+        if call.kind not in ("call", "task"):
+            continue
+        inv = call.fact("invokes")
+        callee = inv.payload[0] if inv and inv.payload else ""
+        slots = client_slots.get(callee)
+        if not slots:
+            continue
+        owner = call.fact("in")
+        op = program.entities.get(owner.payload[0]) if owner and owner.payload else None
+        mapped = {b.payload[0] for b in (op.facts("errorBoundary") if op else [])
+                  if b.payload}
+        for a in call.facts("arg"):
+            if (len(a.payload) >= 3 and a.payload[0] in slots
+                    and a.payload[1] in internal_errors and a.payload[1] not in mapped):
+                raise EavError(
+                    f"call {call.name!r} sends the internal error {a.payload[1]!r} to the "
+                    f"client-response slot {a.payload[0]!r} of {callee!r}; map it with "
+                    f"`errorBoundary {a.payload[1]} <ClientError>` first (README §16/§25)",
+                    call.line, code="SS3079")
 
 
 def _validate_time_safety(program: Program) -> None:

@@ -4758,6 +4758,36 @@ def test_bounded_untrusted_external_call_accepted():
     assert "proxy" in prog.entities
 
 
+def _disclosure_src(boundary_row=""):
+    return (
+        "DbError is error\nDbError typeTrust trustedInternal\n"
+        "sendToClient is intrinsic\nsendToClient target http.writeResponse\n"
+        "sendToClient arg body DbError\nsendToClient clientResponse arg body\n"
+        "sendToClient out written Int32\n"
+        "handler is operation\nhandler out ExitCode\nhandler async no\n"
+        'handler purpose "p"\nhandler invariant "i"\n'
+        "handler in failure DbError\n" + boundary_row +
+        "handler let okCode immutable ExitCode 0\nhandler do leak\nhandler return okCode\n"
+        "leak is call\nleak in handler\nleak invokes http.writeResponse\n"
+        "leak arg body DbError failure\nleak out w Int32\n"
+    )
+
+
+def test_internal_error_to_client_rejected():
+    # X-079 / §16/§25: a trustedInternal error reaching a clientResponse sink with
+    # no errorBoundary mapping is an information-disclosure error (SS3079).
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(_disclosure_src())
+    assert getattr(exc.value, "code", None) == "SS3079"
+
+
+def test_internal_error_with_boundary_accepted():
+    # X-079: an `errorBoundary` mapping to a client-safe error clears it.
+    src = _disclosure_src("handler errorBoundary DbError ClientError\n")
+    prog = eavc.parse(src)
+    assert "handler" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:
