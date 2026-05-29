@@ -1816,8 +1816,10 @@ def test_body_runtimebinding_is_declaration_only():
         "main let okCode immutable ExitCode 0\nmain return okCode\n"
     )
     ir_text = _ir_for_source(src)
-    # declared (extern), not defined with a body
-    assert 'declare i64 @"cmp"(i64' in ir_text
+    # README ss11/ss26: a runtimeBinding op lowers to a bare extern *named after
+    # the bound ABI symbol* (not the op), so a call to it links to that symbol.
+    assert 'declare i64 @"runtime.thing"(i64' in ir_text
+    assert 'define i64 @"cmp"' not in ir_text  # not defined with a body
 
 
 def test_return_arity_void_op_rejects_value():
@@ -2618,6 +2620,23 @@ def test_e2e_add_two_runs():
     proc = _eavc_run("add_two.sem")
     assert proc.returncode == 0, proc.stderr
     assert "42" in proc.stdout
+
+
+def test_e2e_runtime_binding_calls_libc_symbol():
+    # README §11/§26: a `body runtimeBinding abs` op lowers to an extern named
+    # after the bound symbol and is called directly; the JIT resolves libc `abs`
+    # in-process, so abs(-7) == 7. A no-op lowering (or one that named the extern
+    # after the op, leaving the symbol unresolved) could not produce 7.
+    proc = _eavc_run("runtime_binding.sem")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "7"
+
+
+def test_runtime_binding_extern_named_after_symbol():
+    # The extern is named after the bound ABI symbol, and a call targets it.
+    ir_text = _ir_for("runtime_binding.sem")
+    assert 'declare i32 @"abs"(i32' in ir_text
+    assert 'call i32 @"abs"' in ir_text
 
 
 def test_e2e_ifvalue_comparison_branch():

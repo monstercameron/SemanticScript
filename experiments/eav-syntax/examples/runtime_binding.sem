@@ -1,0 +1,56 @@
+# runtime_binding — generic `body runtimeBinding <symbol>` lowering (README ss11/ss26).
+# The compiler is domain-agnostic: a runtimeBinding operation lowers to a bare
+# extern declaration named after the bound ABI symbol, and calls to it become
+# direct calls to that symbol. Here `cAbs` binds the libc `abs` symbol (resolved
+# in-process by the JIT), so abs(-7) == 7 is computed through real machine code,
+# not a compiler-special-cased target. This is the seam stdlib `.sem` modules use
+# to reach C ABIs (sqlite/http/…) without per-library knowledge in the compiler.
+# (todos WS3-016 foundation; full sqlite/http runtime is blocked on the deferred
+# FFI ABI for C out-params, README ss27.)
+
+RuntimeBindingDemo is project
+RuntimeBindingDemo module examplesRuntimeBinding
+RuntimeBindingDemo target console
+RuntimeBindingDemo entry main
+
+examplesRuntimeBinding is module
+examplesRuntimeBinding path examples.runtimeBinding
+examplesRuntimeBinding exports main
+examplesRuntimeBinding purpose "Call a libc ABI symbol through a runtimeBinding op"
+examplesRuntimeBinding invariant "Prints the absolute value computed by libc abs"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status: 0 for success, non-zero for failure"
+
+cAbs is operation
+cAbs in n Int32
+cAbs out Int32
+cAbs body runtimeBinding abs
+cAbs purpose "Absolute value via the libc abs ABI symbol"
+cAbs invariant "Returns the non-negative magnitude of n"
+cAbs suppress SS5000 because "demonstration of the compiler's runtimeBinding seam; the real home is a .semsig-backed stdlib module"
+
+main is operation
+main out ExitCode
+main async no
+main purpose "Compute abs(-7) through a runtimeBinding op and print it"
+main invariant "Prints 7 and exits zero"
+main let negativeInput immutable Int32 -7
+main let okCode immutable ExitCode 0
+main do computeAbs
+main do showAbs
+main return okCode
+
+computeAbs is call
+computeAbs in main
+computeAbs invokes cAbs
+computeAbs arg n Int32 negativeInput
+computeAbs out absoluteValue Int32
+computeAbs purpose "Compute the magnitude of the input"
+
+showAbs is call
+showAbs in main
+showAbs invokes console.writeIntegerLine
+showAbs arg value Int64 absoluteValue
+showAbs purpose "Print the computed magnitude"

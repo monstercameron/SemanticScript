@@ -3902,6 +3902,22 @@ class EavCodegen:
 
     def _declare_function(self, op: Entity) -> ir.Function:
         ret, params = self._signature(op)
+        body = op.fact("body")
+        if (body and body.payload and body.payload[0] == "runtimeBinding"
+                and len(body.payload) >= 2):
+            # README ss11/ss26: a `body runtimeBinding <symbol>` operation lowers
+            # to a bare extern declaration named after the bound ABI symbol;
+            # calls to the operation become direct calls to that symbol. The
+            # compiler stays domain-agnostic — it carries no per-library (sqlite/
+            # http/…) knowledge; the stdlib `.sem`/`.semsig` owns that. The op's
+            # `in` types are the parameter ABI and `out` the return ABI.
+            symbol = body.payload[1]
+            existing = self.module.globals.get(symbol)
+            if isinstance(existing, ir.Function):
+                return existing
+            return ir.Function(
+                self.module, ir.FunctionType(ret, params), name=symbol
+            )
         fn = ir.Function(self.module, ir.FunctionType(ret, params), name=op.name)
         for param, in_row in zip(fn.args, op.facts("in")):
             param.name = in_row.payload[0]
