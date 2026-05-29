@@ -4922,6 +4922,65 @@ def test_defect_ledger_markdown_renders():
     assert md.count("\n|") >= len(eavc.DEFECT_LEDGER)
 
 
+def test_operand_width_drift_rejected():
+    # WS2-085 / §10.6: mixing integer operand widths in a math op is rejected.
+    src = (
+        "calc is operation\ncalc out Int64\ncalc async no\n"
+        'calc purpose "p"\ncalc invariant "i"\n'
+        "calc let small immutable Int32 1\ncalc let big immutable Int64 2\n"
+        "calc do add\ncalc return sum\n"
+        "add is call\nadd in calc\nadd invokes math.addInt64\n"
+        "add arg left Int32 small\nadd arg right Int64 big\nadd out sum Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3110"
+
+
+def test_constant_division_by_zero_rejected():
+    # WS2-085 / §33.5: division by a constant 0 is undefined -> SS3111.
+    src = (
+        "calc is operation\ncalc out Int64\ncalc async no\n"
+        'calc purpose "p"\ncalc invariant "i"\n'
+        "calc let n immutable Int64 10\ncalc let zero immutable Int64 0\n"
+        "calc do div\ncalc return q\n"
+        "div is call\ndiv in calc\ndiv invokes math.divideInt64\n"
+        "div arg left Int64 n\ndiv arg right Int64 zero\ndiv out q Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3111"
+
+
+def test_constant_overwide_shift_rejected():
+    # WS2-085 / §33.5: a shift by a constant >= operand width is undefined.
+    src = (
+        "calc is operation\ncalc out Int64\ncalc async no\n"
+        'calc purpose "p"\ncalc invariant "i"\n'
+        "calc let n immutable Int64 1\ncalc let amt immutable Int64 99\n"
+        "calc do sh\ncalc return r\n"
+        "sh is call\nsh in calc\nsh invokes math.shiftLeftInt64\n"
+        "sh arg left Int64 n\nsh arg right Int64 amt\nsh out r Int64\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS3111"
+
+
+def test_same_width_nonzero_division_accepted():
+    # WS2-085: matching widths + a non-zero divisor are fine.
+    src = (
+        "calc is operation\ncalc out Int64\ncalc async no\n"
+        'calc purpose "p"\ncalc invariant "i"\n'
+        "calc let n immutable Int64 10\ncalc let d immutable Int64 2\n"
+        "calc do div\ncalc return q\n"
+        "div is call\ndiv in calc\ndiv invokes math.divideInt64\n"
+        "div arg left Int64 n\ndiv arg right Int64 d\ndiv out q Int64\n"
+    )
+    prog = eavc.parse(src)
+    assert "calc" in prog.entities
+
+
 def test_label_undefined_target_rejected():
     # README ss17 #11: a goto target needs a matching `at` label.
     with pytest.raises(eavc.EavError) as exc:

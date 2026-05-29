@@ -210,6 +210,12 @@ DIAGNOSTICS.update({
     "SS3080": {"tier": "T1", "summary": "Security opt-out without a `because`.",
                "found": "An `optOut <protection>` row (disable-auto-escape / allow-plaintext / skip-csrf / widen-allowlist) with no `because` rationale.",
                "suggested": "Every protection opt-out must be explicit and justified: `optOut <protection> because \"…\"` (README §14)."},
+    "SS3110": {"tier": "T1", "summary": "Integer operand width drift.",
+               "found": "A math.* op whose two operands have different declared integer widths.",
+               "suggested": "Convert one operand explicitly (e.g. math.convert*) so both operands share a width; EAV has no implicit integer widening (README §10.6)."},
+    "SS3111": {"tier": "T1", "summary": "Constant integer UB (div-by-zero / over-wide shift).",
+               "found": "A divide/modulo by a constant 0, or a shift by a constant >= the operand width.",
+               "suggested": "Constant division/modulo by zero and shifts >= the type width are undefined — fix the constant (README §10.6/§33.5)."},
     "SS3093": {"tier": "T1", "summary": "Float mixed with exact decimal/money math.",
                "found": "A decimal.* op with a Float operand, or a Float math.* op with a Decimal/Money operand.",
                "suggested": "Keep money/exact values in `Decimal`/`Money` and compute with `decimal.*`; never route them through binary Float arithmetic (README §10.6)."},
@@ -3397,6 +3403,7 @@ def _validate_program(program: Program) -> None:
     _validate_error_disclosure(program)
     _validate_utf8_boundary(program)
     _validate_protection_optout(program)
+    _validate_numeric_ub(program)
     _validate_constants(program)
     _validate_overrides(program)
     _validate_entry_scope(program)
@@ -4983,6 +4990,79 @@ def _validate_protection_optout(program: Program) -> None:
                     f"without a `because`; every security opt-out must be explicit and "
                     f"justified (README §14)",
                     r.line, code="SS3080")
+
+
+_INT_WIDTHS = {"Int8": 8, "UInt8": 8, "Byte": 8, "Int16": 16, "UInt16": 16,
+               "Int32": 32, "UInt32": 32, "ExitCode": 32, "Int64": 64, "UInt64": 64}
+
+
+def _validate_numeric_ub(program: Program) -> None:
+    """WS2-085 / README §10.6/§33.5: numeric undefined-behavior parity. A `math.*`
+    op whose two operands have different declared integer widths is rejected
+    (SS3110 — EAV has no implicit widening); a divide/modulo by a constant 0 or a
+    shift by a constant >= the operand width is rejected (SS3111). (The runtime
+    div-by-zero guard remains for non-constant divisors.)"""
+    int_const = {}  # binding name -> int value
+    for n in program.order:
+        ent = program.entities[n]
+        rows = []
+        if ent.kind == "storage":
+            tr, vr = ent.fact("type"), ent.fact("value")
+            if tr and tr.payload and vr and vr.payload:
+                rows.append((ent.name, tr.payload[0], vr.payload[0]))
+        if ent.kind in ("operation", "function"):
+            for r in ent.facts("let"):
+                if len(r.payload) >= 4:
+                    rows.append((r.payload[0], r.payload[2], r.payload[3]))
+        for name, typ, val in rows:
+            if typ in _INT_WIDTHS:
+                t = val.lstrip("-")
+                if t.isdigit():
+                    int_const[name] = int(val)
+
+    def const_int(tok):
+        t = tok.lstrip("-")
+        if t.isdigit():
+            return int(tok)
+        return int_const.get(tok)
+
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("call", "task"):
+            continue
+        inv = ent.fact("invokes")
+        target = inv.payload[0] if inv and inv.payload else ""
+        if not target.startswith("math."):
+            continue
+        by_slot = {a.payload[0]: a.payload for a in ent.facts("arg")
+                   if len(a.payload) >= 3}
+        left, right = by_slot.get("left"), by_slot.get("right")
+        # width drift
+        if left and right:
+            lw, rw = _INT_WIDTHS.get(left[1]), _INT_WIDTHS.get(right[1])
+            if lw and rw and lw != rw:
+                raise EavError(
+                    f"call {ent.name!r} mixes operand widths ({left[1]} vs {right[1]}) "
+                    f"in {target!r}; convert one operand explicitly — EAV has no "
+                    f"implicit integer widening (README §10.6)",
+                    ent.line, code="SS3110")
+        # constant divide/modulo by zero
+        if right and ("divide" in target.lower() or "modulo" in target.lower()):
+            if const_int(right[2]) == 0:
+                raise EavError(
+                    f"call {ent.name!r} divides by the constant 0 in {target!r}; "
+                    f"constant division/modulo by zero is undefined (README §33.5)",
+                    ent.line, code="SS3111")
+        # constant shift >= operand width
+        if right and "shift" in target.lower():
+            width = 64 if "64" in target else 32 if "32" in target else None
+            amt = const_int(right[2])
+            if width is not None and amt is not None and amt >= width:
+                raise EavError(
+                    f"call {ent.name!r} shifts by the constant {amt} in {target!r} "
+                    f"(>= the {width}-bit operand width); the result is undefined "
+                    f"(README §33.5)",
+                    ent.line, code="SS3111")
 
 
 def _validate_time_safety(program: Program) -> None:
