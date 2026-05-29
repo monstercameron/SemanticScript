@@ -1303,6 +1303,37 @@ def query(program: Program, dimension: str) -> list:
     return rows
 
 
+def slice_entity(program: Program, name: str, with_calls: bool = True) -> str:
+    """The semantic neighborhood of an entity (README ss24 `slice`): the entity
+    plus the calls/tasks/cleanups it activates (and cleanup workers), formatted in
+    canonical EAV so every activated call has its definition in the slice."""
+    root = program.entities.get(name)
+    if root is None:
+        raise EavError(f"no entity named {name!r}")
+    included = [name]
+    seen = {name}
+
+    def add(n):
+        if n in program.entities and n not in seen:
+            seen.add(n)
+            included.append(n)
+
+    if with_calls and root.kind in ("operation", "function"):
+        for row in root.rows:
+            if row.predicate in _STEP_SPLIT and row.payload:
+                ref = program.entities.get(row.payload[0])
+                if ref is None:
+                    continue
+                add(ref.name)
+                if ref.kind == "cleanup":
+                    cr = ref.fact("call")
+                    if cr and cr.payload:
+                        add(cr.payload[0])
+    blocks = [format_entity(program.entities[n], program)
+              for n in sorted(included, key=lambda n: (_kind_rank(program.entities[n].kind),))]
+    return "\n\n".join(blocks) + "\n"
+
+
 def doctor(program: Program) -> dict:
     """Severity-grouped lint report with per-code suggested fixes (README ss24)."""
     groups: dict = {"error": [], "warning": [], "info": []}
@@ -2998,6 +3029,17 @@ def cmd_query(args) -> int:
     return 0
 
 
+def cmd_slice(args) -> int:
+    """Print the semantic slice of an entity."""
+    program = parse(_read_source(args.path))
+    try:
+        sys.stdout.write(slice_entity(program, args.entity))
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_doctor(args) -> int:
     """Print a severity-grouped diagnostic report with suggested fixes."""
     groups = doctor(parse(_read_source(args.path)))
@@ -3113,6 +3155,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_diff.add_argument("old", help="old EAV source file")
     sp_diff.add_argument("new", help="new EAV source file")
     sp_diff.set_defaults(func=cmd_diff)
+
+    sp_slice = sub.add_parser("slice", help="semantic slice of an entity")
+    sp_slice.add_argument("path", help="EAV source file, or - for stdin")
+    sp_slice.add_argument("entity", help="entity name")
+    sp_slice.set_defaults(func=cmd_slice)
 
     sp_describe = sub.add_parser("describe", help="summarize an entity's contract")
     sp_describe.add_argument("path", help="EAV source file, or - for stdin")

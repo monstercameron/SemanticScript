@@ -414,6 +414,24 @@ def test_scaffold_console_program_runs():
     assert 'call i32 @"puts"' in ir_text
 
 
+def test_slice_includes_activated_calls():
+    # WS4-010: a slice of an op includes the calls it activates (with defs).
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    text = eavc.slice_entity(prog, "main")
+    assert "main is operation" in text
+    assert "answerCall is call" in text   # activated call definition present
+    assert "writeAnswer is call" in text
+    assert "addTwoValues is operation" not in text  # not directly activated by main
+
+
+def test_slice_reparses():
+    # The slice is valid EAV (every activated call has its definition).
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "countdown.sem"), encoding="utf-8").read())
+    text = eavc.slice_entity(prog, "main")
+    re = eavc.parse(text)
+    assert "main" in re.entities and "checkContinue" in re.entities
+
+
 def test_doctor_groups_by_severity():
     # WS4-013: doctor groups diagnostics by severity.
     prog = eavc.parse("m is module\nm path a.b\n")  # missing purpose + invariant
