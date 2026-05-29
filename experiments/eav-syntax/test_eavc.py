@@ -2729,6 +2729,87 @@ def test_e2e_add_two_runs():
     assert "42" in proc.stdout
 
 
+_HTTP_CODEC_MAIN = """
+HttpRoundTrip is project
+HttpRoundTrip module appHttpRoundTrip
+HttpRoundTrip target console
+HttpRoundTrip entry main
+
+appHttpRoundTrip is module
+appHttpRoundTrip path examples.httpRoundTrip
+appHttpRoundTrip exports main
+appHttpRoundTrip purpose "Exercise the standard.http url codec round-trip"
+appHttpRoundTrip invariant "Prints the decoded value, equal to the original"
+
+ExitCode is alias
+ExitCode for Int32
+
+main is operation
+main out ExitCode
+main async no
+main purpose "URL-encode a component then decode it and print the round-tripped value"
+main invariant "Prints the original text after an encode/decode round-trip"
+main let original immutable String "a b&c=d"
+main let okCode immutable ExitCode 0
+main do encodeIt
+main do decodeIt
+main do showIt
+main return okCode
+
+encodeIt is call
+encodeIt in main
+encodeIt invokes urlEncode
+encodeIt arg component String original
+encodeIt out encoded String
+
+decodeIt is call
+decodeIt in main
+decodeIt invokes urlDecode
+decodeIt arg component String encoded
+decodeIt out decoded String
+
+showIt is call
+showIt in main
+showIt invokes console.writeLine
+showIt arg text String decoded
+"""
+
+
+def test_http_stdlib_parses_lints_and_has_surface():
+    # WS3-017: standard.http is an EAV-native runtimeBinding wrapper over the
+    # eav_http_* runtime ABI (pure request/codec/session helpers).
+    src = open(os.path.join(STD, "standard.http.sem"), encoding="utf-8").read()
+    prog = eavc.parse(src)
+    assert not any(d.severity == "error" for d in eavc.lint(prog))
+    ops = {n for n in prog.order if prog.entities[n].kind == "operation"}
+    surface = {
+        "urlEncode", "urlDecode", "htmlEscape", "nowMillis", "sessionExpiresAt",
+        "sessionIsExpired", "requestValueLength", "requestValueIsEmpty",
+        "ensureDirectory",
+    }
+    assert surface.issubset(ops), surface - ops
+    for n in ops:
+        body = prog.entities[n].fact("body")
+        assert body and body.payload[0] == "runtimeBinding"
+        assert body.payload[1].startswith("eav_http_")
+
+
+@pytest.mark.skipif(not _have_c_compiler(), reason="no C compiler to build the http runtime")
+def test_e2e_http_url_codec_roundtrip_through_real_runtime():
+    # WS3-017: compose standard.http with a driver main and JIT-run a URL
+    # encode->decode round-trip against the real SemanticScript HTTP runtime
+    # (built standalone from sem_http_runtime.c, no h2o). A no-op lowering or an
+    # unlinked runtime cannot reproduce the original string.
+    stdlib = open(os.path.join(STD, "standard.http.sem"), encoding="utf-8").read()
+    composed = stdlib + "\n" + _HTTP_CODEC_MAIN
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "run", "-"],
+        input=composed, capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "a b&c=d"
+
+
 def test_sqlite_stdlib_parses_lints_and_has_parity_surface():
     # WS3-016: standard.sqlite is an EAV-native runtimeBinding wrapper over the
     # eav_sqlite_* runtime ABI; it parses, lints clean, and covers the original

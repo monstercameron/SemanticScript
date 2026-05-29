@@ -14,6 +14,19 @@
         "../../../third_party/sqlite"
       ],
       "defines": ["SQLITE_THREADSAFE=0", "SQLITE_OMIT_LOAD_EXTENSION"]
+    },
+    {
+      "name": "eav_http",
+      "provides": ["eav_http_"],
+      "sources": [
+        "eav_http.c",
+        "../../../SemanticScript/runtime/native_http/sem_http_runtime.c"
+      ],
+      "include": [
+        "../../../SemanticScript/runtime/native_http"
+      ],
+      "defines": ["_CRT_SECURE_NO_WARNINGS"],
+      "libs": ["ws2_32"]
     }
   ]
 }

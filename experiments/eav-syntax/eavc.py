@@ -4573,8 +4573,7 @@ def _ensure_runtime_lib(lib: dict):
     out = os.path.join(build_dir, lib["name"] + _shared_lib_suffix())
     sources = [os.path.normpath(os.path.join(rt, s)) for s in lib["sources"]]
     manifest = os.path.join(rt, "manifest.json")
-    inputs = sources + [manifest, os.path.join(rt, "eav_sqlite.c")]
-    inputs = [p for p in inputs if os.path.exists(p)]
+    inputs = [p for p in (sources + [manifest]) if os.path.exists(p)]
     if os.path.exists(out) and all(
         os.path.getmtime(out) >= os.path.getmtime(p) for p in inputs
     ):
@@ -4588,6 +4587,8 @@ def _ensure_runtime_lib(lib: dict):
         cmd.append("-I" + os.path.normpath(os.path.join(rt, inc)))
     for d in lib.get("defines", []):
         cmd.append("-D" + d)
+    for libname in lib.get("libs", []):
+        cmd.append("-l" + libname)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise EavError(
