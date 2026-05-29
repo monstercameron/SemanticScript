@@ -3806,6 +3806,37 @@ def test_check_next_commands_are_replayable_on_scaffold(tmp_path):
     assert saw_test, "check should emit a replayable `test <root>` command"
 
 
+def test_build_output_defaults_to_dist(tmp_path):
+    """R-014: a project-directory build defaults under the gitignored dist/ dir,
+    not the project root. The old default was <dir>/app.exe, which .gitignore
+    (only `dist/`) does not cover. This is compiler-free (path logic only)."""
+    suffix = ".exe" if sys.platform == "win32" else ""
+    proj = str(tmp_path / "proj")
+    os.makedirs(proj)
+    assert eavc._default_build_output(proj, None) == os.path.join(proj, "dist", "app" + suffix)
+    # a single-file build sits beside its source, not in dist/
+    single = str(tmp_path / "solo.sem")
+    assert eavc._default_build_output(single, None) == str(tmp_path / "solo") + suffix
+    # explicit --output always wins
+    assert eavc._default_build_output(proj, "custom/bin") == "custom/bin"
+
+
+def test_build_lands_in_ignored_dist(tmp_path):
+    """R-014 end-to-end: scaffold -> build -> the binary is under dist/ (ignored
+    by the scaffold .gitignore) and the project root holds no generated binary."""
+    if eavc._find_c_compiler() is None:
+        pytest.skip("no C compiler available to build a native exe")
+    root = tmp_path / "buildapp"
+    assert eavc.main(["new", str(root)]) == 0
+    assert eavc.main(["build", str(root)]) == 0
+    suffix = ".exe" if sys.platform == "win32" else ""
+    assert (root / "dist" / ("app" + suffix)).is_file()
+    # no generated binary sits directly in the project root
+    assert not (root / ("app" + suffix)).exists()
+    # .gitignore covers dist/
+    assert "dist/" in (root / ".gitignore").read_text(encoding="utf-8")
+
+
 def test_new_project_refuses_to_clobber_without_force(tmp_path, capsys):
     """R-005: `eavc new` must not destroy existing source. A mistyped path that
     already holds `src/main.sem` returns nonzero with a collision list and leaves

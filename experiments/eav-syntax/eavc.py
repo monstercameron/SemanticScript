@@ -8515,14 +8515,27 @@ def cmd_readiness(args) -> int:
     return 0 if ok else 1
 
 
+def _default_build_output(path: str, explicit_output: Optional[str]) -> str:
+    """Resolve the build output path (README §28.2). R-014: a project-directory
+    build lands under the gitignored `dist/` directory (`<dir>/dist/app`), never
+    the project root, so a replayed `build <root>` does not drop an unignored
+    binary beside the source. A single-file build sits next to its source, and an
+    explicit `--output` always wins."""
+    import os
+    if explicit_output:
+        return explicit_output
+    suffix = ".exe" if sys.platform == "win32" else ""
+    if path == "-":
+        return "a" + suffix
+    if os.path.isdir(path):
+        return os.path.join(path, "dist", "app" + suffix)
+    return os.path.splitext(path)[0] + suffix
+
+
 def cmd_build(args) -> int:
     """Compile a program to a native executable (IR -> clang -> exe)."""
-    import os
     program = parse_compact(_read_program_source(args.path))
-    default = (os.path.splitext(args.path)[0] if args.path != "-"
-               and not os.path.isdir(args.path) else
-               os.path.join(args.path, "app") if os.path.isdir(args.path) else "a")
-    out_path = args.output or (default + (".exe" if sys.platform == "win32" else ""))
+    out_path = _default_build_output(args.path, args.output)
     try:
         sys.stdout.write(build_executable(program, out_path) + "\n")
         return 0
