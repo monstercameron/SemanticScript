@@ -676,6 +676,59 @@ def test_invokes_arg_name_mismatch_rejected():
         eavc.parse(base + "invokeAdd arg leftValue Int64 one\ninvokeAdd out v Int64\n")
 
 
+_CLEANUP_BASE = (
+    "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+    "openDb arg path String dbPath\nopenDb out db Int64\nopenDb owns db\n"
+    "openDb cleanedBy closeCleanup\n"
+    "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
+    "closeDb arg database Int64 db\n"
+)
+
+
+def test_cleanup_logandsuppress_requires_because():
+    # README ss15.6 / ss17 #19.
+    src = _CLEANUP_BASE + (
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        "closeCleanup onFailure logAndSuppress\ncloseCleanup cleans db\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert "because" in exc.value.message
+
+
+def test_cleanup_cleans_must_be_owned():
+    src = (
+        "closeDb is call\ncloseDb in main\ncloseDb invokes sqlite.closeDatabase\n"
+        "closeDb arg database Int64 db\n"
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        "closeCleanup cleans ghostResource\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert "no call `owns`" in exc.value.message
+
+
+def test_dangling_cleanedby_rejected():
+    src = (
+        "openDb is call\nopenDb in main\nopenDb invokes sqlite.openDatabase\n"
+        "openDb out db Int64\nopenDb owns db\nopenDb cleanedBy noSuchCleanup\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert "dangling cleanedBy" in exc.value.message
+
+
+def test_cleanup_well_formed_accepts():
+    src = _CLEANUP_BASE + (
+        "closeCleanup is cleanup\ncloseCleanup in main\ncloseCleanup call closeDb\n"
+        "closeCleanup onFailure logAndSuppress\n"
+        'closeCleanup because "db handle must close on every path"\n'
+        "closeCleanup cleans db\n"
+    )
+    prog = eavc.parse(src)
+    assert prog.entities["closeCleanup"].kind == "cleanup"
+
+
 def test_lower_do_on_task_rejected():
     # README ss34.4: `do <task>` is a hard error — call/task/cleanup split.
     src = (

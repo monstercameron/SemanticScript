@@ -677,6 +677,62 @@ def _validate_program(program: Program) -> None:
                     row.line,
                 )
     _validate_calls(program)
+    _validate_cleanup(program)
+
+
+def _validate_cleanup(program: Program) -> None:
+    """Cleanup/ownership invariants (README ss15.6, ss17 #41/#42/#44; ss15).
+
+    Each cleanup entity has exactly one `call` and one `cleans`; `logAndSuppress`
+    requires `because`; the cleaned resource must be `owns`-ed by some call; and
+    a producer's `cleanedBy` must point to a real cleanup entity."""
+    owned = {
+        r.payload[0]
+        for n in program.order
+        for r in program.entities[n].facts("owns")
+        if r.payload
+    }
+    cleanups = {n for n in program.order if program.entities[n].kind == "cleanup"}
+    for name in program.order:
+        ent = program.entities[name]
+        if ent.kind == "cleanup":
+            calls = ent.facts("call")
+            cleans = ent.facts("cleans")
+            if len(calls) != 1:
+                raise EavError(
+                    f"cleanup {ent.name!r} needs exactly one `call` row "
+                    f"(README ss17 #41)",
+                    ent.line,
+                )
+            if len(cleans) != 1:
+                raise EavError(
+                    f"cleanup {ent.name!r} needs exactly one `cleans` row "
+                    f"(README ss15.6)",
+                    ent.line,
+                )
+            onfail = ent.fact("onFailure")
+            if onfail and onfail.payload and onfail.payload[0] == "logAndSuppress":
+                if ent.fact("because") is None:
+                    raise EavError(
+                        f"cleanup {ent.name!r} uses `logAndSuppress` but has no "
+                        f"`because` rationale (README ss15.6, ss17 #19)",
+                        ent.line,
+                    )
+            resource = cleans[0].payload[0] if cleans[0].payload else None
+            if resource is not None and resource not in owned:
+                raise EavError(
+                    f"cleanup {ent.name!r} cleans {resource!r}, which no call "
+                    f"`owns` (README ss15.6, ss17 #41)",
+                    ent.line,
+                )
+        if ent.kind in ("call", "task"):
+            cb = ent.fact("cleanedBy")
+            if cb and cb.payload and cb.payload[0] not in cleanups:
+                raise EavError(
+                    f"{ent.kind} {ent.name!r} cleanedBy {cb.payload[0]!r}, which is "
+                    f"not a cleanup entity (dangling cleanedBy, README ss15)",
+                    ent.line,
+                )
 
 
 def _validate_calls(program: Program) -> None:

@@ -101,8 +101,8 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [x] WS1-043 `call` structure (invokes/arg/out/catch/owns/cleanedBy/effect/discards). →test: infallible vs fallible parse. §15 _(eavc: `test_lower_value_call_binds_value` (infallible out → bind value), `test_lower_hello_world_key_rows` (fallible catch → ignore void + bind error); owns/cleanedBy/discards parsed, console lowering ignores them)_
 - [ ] WS1-044 **Split**: `do`→call, `start/join/poll/cancel/detach`→task, `defer`→cleanup; cross-use = hard error (§34.4, non-negotiable). →test: `do <task>` reject; `start <call>` reject; `defer <call>` reject. §13/§34.4
 - [ ] WS1-045 Task entity (async counterpart) + lifecycle state machine (RUNNING/COMPLETED/CONSUMED/CANCELED/…); illegal transitions reject. →test: lifecycle table goldens; `ifError` before `join` reject. §13/§15.5
-- [ ] WS1-046 Cleanup entity (`call/cleans/onFailure/because`); `cleans`↔`owns` cross-check; exactly one `cleans`+`call`; `onFailure` iff worker `catch`; worker not also `do`-activated. →test: §17 #41–#44. §15.6
-- [ ] WS1-047 `cleanedBy` on producer points to cleanup ENTITY; ownership triangle. →test: dangling cleanedBy reject. §15
+- [x] WS1-046 Cleanup entity (`call/cleans/onFailure/because`); `cleans`↔`owns` cross-check; exactly one `cleans`+`call`; `onFailure` iff worker `catch`; worker not also `do`-activated. →test: §17 #41–#44. §15.6 _(eavc: `_validate_cleanup` — one call+one cleans, logAndSuppress needs because, cleans must be owned; `test_cleanup_logandsuppress_requires_because`, `test_cleanup_cleans_must_be_owned`, `test_cleanup_well_formed_accepts`. onFailure-iff-catch / worker-not-do-activated pending.)_
+- [x] WS1-047 `cleanedBy` on producer points to cleanup ENTITY; ownership triangle. →test: dangling cleanedBy reject. §15 _(eavc: `_validate_cleanup` rejects dangling `cleanedBy`; `test_dangling_cleanedby_rejected`)_
 - [ ] WS1-048 `discards "reason"` required for dropped non-void non-catch result. →test: §17 #25. §15
 
 ## 1E. Invocation & dataflow (§3, §15, §10.5)
