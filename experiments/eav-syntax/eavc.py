@@ -858,6 +858,62 @@ def _kind_rank(kind: str) -> int:
     return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
 
 
+GRAPH_KINDS = ("calls", "control")
+
+
+def _call_graph_edges(program: Program) -> list:
+    """(callerOp, calleeOp) edges via each op's activated user-op calls."""
+    edges: list = []
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        for row in op.rows:
+            if row.predicate in ("do", "start") and row.payload:
+                call = program.entities.get(row.payload[0])
+                if call and call.kind in ("call", "task"):
+                    inv = call.fact("invokes")
+                    if inv and inv.payload and "." not in inv.payload[0]:
+                        callee = program.entities.get(inv.payload[0])
+                        if callee and callee.kind in ("operation", "function"):
+                            edges.append((op.name, callee.name))
+    return edges
+
+
+def _control_edges(program: Program) -> list:
+    """(op, fromLabel|entry, toLabel) control-flow edges from goto/branch."""
+    edges: list = []
+    for n in program.order:
+        op = program.entities[n]
+        if op.kind not in ("operation", "function"):
+            continue
+        current = "entry"
+        for row in op.rows:
+            if row.label is not None:
+                current = row.label
+            if row.predicate == "goto" and row.payload:
+                edges.append((op.name, current, row.payload[0]))
+            elif row.predicate == "branch" and len(row.payload) >= 4 and row.payload[2] == "goto":
+                edges.append((op.name, current, row.payload[3]))
+    return edges
+
+
+def graph(program: Program, kind: str, fmt: str = "dot") -> str:
+    """Emit a `calls` or `control` graph as DOT or mermaid (README ss24)."""
+    if kind == "calls":
+        edges = [(a, b) for a, b in _call_graph_edges(program)]
+        pairs = [(a, b) for a, b in edges]
+    elif kind == "control":
+        pairs = [(f"{op}:{src}", f"{op}:{dst}") for op, src, dst in _control_edges(program)]
+    else:
+        raise EavError(f"unknown graph kind {kind!r}")
+    if fmt == "mermaid":
+        body = "\n".join(f"  {a} --> {b}" for a, b in pairs)
+        return f"graph TD\n{body}\n"
+    body = "\n".join(f'  "{a}" -> "{b}";' for a, b in pairs)
+    return f"digraph {kind} {{\n{body}\n}}\n"
+
+
 SCAFFOLD_PATTERNS = ("console-program", "fallible-write")
 
 
@@ -2285,6 +2341,17 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_graph(args) -> int:
+    """Emit a calls/control graph as DOT or mermaid."""
+    program = parse(_read_source(args.path))
+    try:
+        sys.stdout.write(graph(program, args.kind, args.format))
+        return 0
+    except EavError as exc:
+        sys.stderr.write(f"eavc: {exc}\n")
+        return 2
+
+
 def cmd_scaffold(args) -> int:
     """Print a canonical scaffold for a pattern."""
     try:
@@ -2385,6 +2452,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     sp_scaffold = sub.add_parser("scaffold", help="emit a canonical pattern")
     sp_scaffold.add_argument("pattern", help=f"one of: {', '.join(SCAFFOLD_PATTERNS)}")
     sp_scaffold.set_defaults(func=cmd_scaffold)
+
+    sp_graph = sub.add_parser("graph", help="emit a calls/control graph")
+    sp_graph.add_argument("path", help="EAV source file, or - for stdin")
+    sp_graph.add_argument("--kind", default="calls", choices=GRAPH_KINDS)
+    sp_graph.add_argument("--format", default="dot", choices=("dot", "mermaid"))
+    sp_graph.set_defaults(func=cmd_graph)
 
     args = parser.parse_args(argv)
     try:

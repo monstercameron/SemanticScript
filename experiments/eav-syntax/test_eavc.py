@@ -103,6 +103,21 @@ def test_fmt_output_still_runs():
     assert 'call i64 @"addTwoValues"' in ir_text
 
 
+def test_graph_calls_dot():
+    ir = eavc.parse(open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read())
+    dot = eavc.graph(ir, "calls", "dot")
+    assert "digraph calls {" in dot
+    assert '"main" -> "addTwoValues";' in dot
+
+
+def test_graph_control_and_mermaid():
+    prog = eavc.parse(open(os.path.join(EXAMPLES, "countdown.sem"), encoding="utf-8").read())
+    control = eavc.graph(prog, "control", "dot")
+    assert "loopHead" in control and "loopExit" in control
+    mer = eavc.graph(prog, "calls", "mermaid")
+    assert mer.startswith("graph TD")
+
+
 @pytest.mark.parametrize("pattern", list(eavc.SCAFFOLD_PATTERNS))
 def test_scaffold_parses_and_lints_clean(pattern):
     # WS4-021: scaffold output parses and lints with no error-severity diagnostics.

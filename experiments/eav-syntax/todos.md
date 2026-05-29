@@ -267,7 +267,7 @@ Checked items below cite the proving test in `test_eavc.py`.
 - [ ] WS4-013 `sem doctor` (severity-grouped + suggested `sem add`). →test: SS1502/SS1610 surfaced + fix cmds. §24
 - [ ] WS4-014 `sem add` / `sem rename` (structured edits; arg-type validation; semantic rename). →test: add validates signature; rename updates refs, rejects ambiguous. §24
 - [ ] WS4-015 `sem trace` (path simulation: steps/live bindings/defers/return). →test: trace per path golden. §24
-- [ ] WS4-016 `sem graph` (control/cleanup/async/effects/bindings; DOT/mermaid). →test: graph emit. §24
+- [x] WS4-016 `sem graph` (control/cleanup/async/effects/bindings; DOT/mermaid). →test: graph emit. §24 _(eavc: `graph(program, kind, fmt)` — `calls` (call-graph) + `control` (label CFG), DOT + mermaid; `eavc.py graph`; `test_graph_calls_dot`, `test_graph_control_and_mermaid`. cleanup/async/effects/bindings graph kinds pending.)_
 - [ ] WS4-017 `sem normalize --preview` (row delta + edit-locality). →test: row count + gate eval. §24/§21
 - [ ] WS4-018 `sem verify-patch` (entities exist; names collision-free; ownership closes; tasks resolved; arity; cap coverage). →test: each failure class. §24
 - [ ] WS4-019 `sem pack` (cached-prefix + task-slice + diagnostics + edit-contract; budget). →test: budget respected; prefix stable. §24
