@@ -3844,6 +3844,66 @@ def test_new_project_scaffold(tmp_path, capsys):
     eavc.parse((root / "build.sem").read_text(encoding="utf-8"))
 
 
+def test_test_project_composes_runtime_with_companion_tests(tmp_path):
+    """R-007: `load_test_project` composes the runtime program with co-located
+    `*.test.sem` sources. `load_project` excludes test files, so a scaffold's
+    `checkGreetingLength` (which lives in src/main.test.sem) would otherwise be
+    absent. The merge must keep the runtime project + ops AND add the test op,
+    deduping the test file's throwaway project/ExitCode so the program still
+    lints clean."""
+    root = tmp_path / "composeapp"
+    eavc.main(["new", str(root)])
+    # runtime-only composition does NOT contain the test op (the bug's root cause)
+    runtime_only = eavc.parse(eavc.load_project(str(root)))
+    assert "checkGreetingLength" not in runtime_only.entities
+    # the test-project composition DOES, alongside the runtime main/writeGreeting
+    composed = eavc.load_test_project(str(root))
+    assert "checkGreetingLength" in composed.entities
+    assert "main" in composed.entities and "writeGreeting" in composed.entities
+    # exactly one project entity survives (the runtime project, not the test's)
+    assert len(composed.of_kind("project")) == 1
+    # the merged program still lints clean (no duplicate ExitCode/project errors)
+    assert not any(d.severity == "error" for d in eavc.lint(composed))
+
+
+def test_eavc_test_runs_generated_unit_test_on_project_dir(tmp_path, capsys):
+    """R-007 no-op-failing test: `eavc test <root> --json` must execute the
+    generated `checkGreetingLength` unit test and report exactly one pass.
+
+    Before the fix, cmd_test composed the project via `load_project`, which omits
+    `*.test.sem`, so the test runner saw an empty program and returned
+    `tests: []` — a vacuous green. This asserts one real passing unit test, so it
+    is red under the old behavior. `--discover`/`--lane` are honored too."""
+    import json
+    root = tmp_path / "runtestapp"
+    eavc.main(["new", str(root)])
+    capsys.readouterr()
+
+    # execute: exactly one passing unit test
+    rc = eavc.main(["test", "--json", str(root)])
+    report = json.loads(capsys.readouterr().out)
+    assert report["surface"] == "sem.test.v1"
+    assert report["preflightStatus"] == "ok"
+    assert report["compositeStatus"] == "pass" and rc == 0
+    assert report["tests"] == [{
+        "name": "checkGreetingLength", "lane": "unit",
+        "status": "pass", "exitCode": 0}]
+
+    # --discover lists the same single unit test
+    eavc.main(["test", str(root), "--discover"])
+    discovered = capsys.readouterr().out
+    assert "unit: checkGreetingLength" in discovered
+    assert "1 test operation(s)" in discovered
+
+    # --lane unit selects it; --lane integration selects nothing (lane honored)
+    eavc.main(["test", "--json", str(root), "--lane", "unit"])
+    unit_report = json.loads(capsys.readouterr().out)
+    assert [t["name"] for t in unit_report["tests"]] == ["checkGreetingLength"]
+    eavc.main(["test", "--json", str(root), "--lane", "integration"])
+    integration_report = json.loads(capsys.readouterr().out)
+    assert integration_report["tests"] == []
+
+
 def test_project_aware_commands_accept_app_directories(capsys):
     """R-001: every project-aware command must operate on a project directory
     (composing it via _read_program_source), not open() the directory and crash

@@ -932,6 +932,48 @@ def discover_project_tests(root: str) -> dict:
     }
 
 
+def load_test_project(root: str) -> Program:
+    """R-007: compose a project's *runtime* program with its companion test
+    sources into one `Program`, so `tag test` operations that live in
+    `src/**/*.test.sem` are actually executable.
+
+    `load_project` deliberately excludes `*.test.sem` (tests are not part of the
+    shipped runtime program), so `cmd_test` on a project directory previously ran
+    zero generated tests — a scaffold's `checkGreetingLength` was discovered by
+    layout but never composed in, so the test runner saw an empty program.
+
+    The composition runs `load_project` for the runtime program, then merges each
+    co-located test file (discovered via `discover_project_tests`, which recurses
+    per R-006) at the Program level. A test file is its own standalone program —
+    it carries a throwaway `project` entity (so it can be checked alone) and may
+    redeclare shared types like `ExitCode`. Those would collide on a flat text
+    concat (duplicate `is` row, two `project` entities), so the merge:
+      * drops the test file's `project` entity (the runtime project from
+        `build.sem` is authoritative); and
+      * skips any entity whose name already exists in the runtime program
+        (runtime declarations win — e.g. the shared `ExitCode` alias).
+    The remaining test-only entities (the `tag test` operations and any test
+    helper types/modules) are appended, along with their indentation islands."""
+    runtime = parse_compact(load_project(root))
+    discovered = discover_project_tests(root)
+    for rel in discovered["coLocated"]:
+        import os
+        test_source = open(os.path.join(root, rel), encoding="utf-8").read()
+        test_program = parse_compact(test_source)
+        for name in test_program.order:
+            entity = test_program.entities[name]
+            # the runtime project (build.sem) is authoritative; a test file's own
+            # project/duplicate entity is throwaway scaffolding for standalone runs.
+            if entity.kind == "project" or name in runtime.entities:
+                continue
+            runtime.add(entity)
+            # carry the merged entity's indentation islands (body sql/html/...).
+            for island_key, island_lines in test_program.islands.items():
+                if island_key[0] == name:
+                    runtime.islands[island_key] = island_lines
+    return runtime
+
+
 def app_layout_plan(app_dir: str) -> dict:
     """Plan the §28.8 relayout of a flat app into the framework layout: source +
     co-located tests under `src/`, the manifest at the root, output under
@@ -7856,13 +7898,18 @@ def jit_run(program: Program, entry: Optional[str] = None) -> int:
     return cmain()
 
 
-def run_tests(program: Program) -> dict:
+def run_tests(program: Program, lane: Optional[str] = None) -> dict:
     """Execute every `tag test` operation by JIT-running it as an entry and
     treating a 0 exit as a pass (sem.test.v1; WS3-026/WS4-119). Project semantic
-    preflight (lint errors) runs first and blocks the runtime lane."""
+    preflight (lint errors) runs first and blocks the runtime lane.
+
+    R-007: an optional `lane` restricts execution to one discovered lane (the
+    `--lane` flag), so `eavc test <root> --lane unit` runs only the unit lane."""
     diags = lint(program)
     preflight_ok = not any(d.severity == "error" for d in diags)
     lanes = discover_tests(program)
+    if lane is not None:
+        lanes = {lane: lanes.get(lane, [])}
     tests: list = []
     if preflight_ok:
         for lane in sorted(lanes):
@@ -8902,8 +8949,25 @@ def cmd_slice(args) -> int:
 
 
 def cmd_test(args) -> int:
-    """Discover (--discover) or execute `tag test` operations (sem.test.v1)."""
-    program = parse_compact(_read_program_source(args.path))
+    """Discover (--discover) or execute `tag test` operations (sem.test.v1).
+
+    R-007: when the path is a project directory, compose the runtime program with
+    its companion `*.test.sem` sources (`load_test_project`) so co-located test
+    operations are actually executed — `load_project` alone excludes test files,
+    so a scaffold's `checkGreetingLength` would otherwise never run."""
+    import os
+    try:
+        if (args.path != "-" and os.path.isdir(args.path)
+                and is_project_root(args.path)):
+            program = load_test_project(args.path)
+        else:
+            program = parse_compact(_read_program_source(args.path))
+    except EavError as exc:
+        sys.stdout.write(_json_envelope(
+            "sem.test.v1", ok=False, status="compiler-error",
+            preflightStatus="compiler-error", runtimeHarnessStatus="not-run",
+            compositeStatus="blocked", tests=[], diagnostics=[str(exc)]) + "\n")
+        return 1
     if getattr(args, "discover", False):
         lanes = discover_tests(program)
         selected = {args.lane: lanes.get(args.lane, [])} if args.lane else lanes
@@ -8914,7 +8978,7 @@ def cmd_test(args) -> int:
                 total += 1
         sys.stdout.write(f"{total} test operation(s)\n")
         return 0
-    report = run_tests(program)
+    report = run_tests(program, lane=getattr(args, "lane", None))
     sys.stdout.write(_json_envelope(
         "sem.test.v1", ok=(report["compositeStatus"] in ("pass", "blocked")),
         **report) + "\n")
