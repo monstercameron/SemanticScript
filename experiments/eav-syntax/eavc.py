@@ -141,6 +141,15 @@ DIAGNOSTICS.update({
     "SS5000": {"tier": "T3", "summary": "Primitive body in application source.",
                "found": "An app operation with a runtimeBinding/intrinsic body.",
                "suggested": "Move it to a .semsig-backed stdlib module (README §17 #50)."},
+    "SS3041": {"tier": "T1", "summary": "Multiple `export c` rows on one operation.",
+               "found": "An operation with more than one `export c` symbol.",
+               "suggested": "Use a single `export c <symbol>` per op (README §30.4.2)."},
+    "SS3042": {"tier": "T1", "summary": "`export c` symbol is not a C identifier.",
+               "found": "An `export c` symbol with non-C-identifier characters.",
+               "suggested": "Use [A-Za-z_][A-Za-z0-9_]* (README §30.4.2)."},
+    "SS3043": {"tier": "T1", "summary": "Duplicate `export c` symbol.",
+               "found": "Two operations exporting the same C symbol.",
+               "suggested": "Export symbols must be unique (README §30.4.2)."},
     "SS2601": {"tier": "T1", "summary": "Unknown .semsig schema version.",
                "found": "A `semsig` header with an unsupported version.",
                "suggested": "Regenerate with a supported toolchain (README §26)."},
@@ -1359,10 +1368,43 @@ def lint(program: Program) -> list:
                 f"stdlib module (README ss17 #50)",
                 ent.line, ent.name))
     diags.extend(_lint_gates(program))
+    diags.extend(_lint_c_exports(program))
     for w in program.warnings:
         diags.append(Diagnostic("SS0900", "warning", w))
     diags.extend(_suppress_diagnostics(program, diags))
     return _apply_suppressions(program, diags)
+
+
+_C_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def _lint_c_exports(program: Program) -> list:
+    """`OP export c <symbol>` interop annotation (README ss30.4.2): the symbol is
+    a C identifier, at most one per operation, and unique across operations."""
+    out: list[Diagnostic] = []
+    seen: dict[str, str] = {}  # symbol -> op name
+    for n in program.order:
+        ent = program.entities[n]
+        if ent.kind not in ("operation", "function"):
+            continue
+        exports = [r for r in ent.facts("export") if r.payload and r.payload[0] == "c"]
+        if len(exports) > 1:
+            out.append(Diagnostic("SS3041", "error",
+                                  f"operation {ent.name!r} has multiple `export c` rows "
+                                  f"(one per op)", ent.line, ent.name))
+        for r in exports:
+            sym = r.payload[1] if len(r.payload) >= 2 else ""
+            if not _C_IDENT_RE.match(sym):
+                out.append(Diagnostic("SS3042", "error",
+                                      f"export symbol {sym!r} is not a valid C identifier",
+                                      r.line, ent.name))
+            elif sym in seen:
+                out.append(Diagnostic("SS3043", "error",
+                                      f"export symbol {sym!r} is already used by "
+                                      f"{seen[sym]!r} (must be unique)", r.line, ent.name))
+            else:
+                seen[sym] = ent.name
+    return out
 
 
 def _lint_gates(program: Program) -> list:

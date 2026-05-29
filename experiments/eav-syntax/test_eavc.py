@@ -66,6 +66,32 @@ def test_supply_chain_manifest_goldens_consistent():
 SIGS = os.path.join(HERE, "sigs")
 
 
+def test_export_c_duplicate_symbol_rejected():
+    # WS3-054 / README §30.4.2: export symbols must be unique C identifiers.
+    src = (
+        "a is operation\na out Int64\na export c shared_sym\n"
+        "b is operation\nb out Int64\nb export c shared_sym\n"
+    )
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "SS3043" in codes
+
+
+def test_export_c_bad_identifier_rejected():
+    src = "a is operation\na out Int64\na export c bad-name\n"
+    # `bad-name` won't even tokenize cleanly as one token? It will: bad-name is one bare token.
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "SS3042" in codes
+
+
+def test_export_c_valid_unique_ok():
+    src = (
+        "a is operation\na out Int64\na export c alpha_sym\n"
+        "b is operation\nb out Int64\nb export c beta_sym\n"
+    )
+    codes = {d.code for d in eavc.lint(eavc.parse(src))}
+    assert "SS3043" not in codes and "SS3042" not in codes
+
+
 def test_semsig_loads_and_indexes_targets():
     # WS3-050/051/052: load a .semsig, validate header, index intrinsic targets.
     prog = eavc.load_semsig(open(os.path.join(SIGS, "standard.sqlite.semsig"),
