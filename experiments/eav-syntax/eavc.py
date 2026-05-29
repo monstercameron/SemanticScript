@@ -264,6 +264,9 @@ DIAGNOSTICS.update({
     "SS1029": {"tier": "T1", "summary": "Bare return into an alias needs exact type.",
                "found": "A return of a base/sibling type where the out is an alias newtype.",
                "suggested": "Return the alias type itself, or annotate via a typed binding (README §10)."},
+    "SS0744": {"tier": "T1", "summary": "Reserved target windowsGui is unspecified.",
+               "found": "A project targeting `windowsGui` (GUI module not defined in v0.3).",
+               "suggested": "Remove the windowsGui target until the GUI spec lands (README §27)."},
     "SS1085": {"tier": "T1", "summary": "out rebinds immutable module storage.",
                "found": "A call `out` targeting an `immutable` module storage entity.",
                "suggested": "Declare the storage `mutability mutable` (README §12)."},
@@ -2687,6 +2690,7 @@ def _validate_program(program: Program) -> None:
     _validate_variant_positions(program)
     _validate_return_exactness(program)
     _validate_storage_mutation(program)
+    _validate_reserved_targets(program)
     _validate_entry_scope(program)
     _validate_module_init_order(program)
     _validate_configure(program)
@@ -3320,6 +3324,21 @@ def _storage_entities(program: Program) -> dict:
 def _is_module_storage(st: Entity) -> bool:
     scope = st.fact("scope")
     return bool(scope and scope.payload and scope.payload[0] == "module")
+
+
+def _validate_reserved_targets(program: Program) -> None:
+    """README ss7/ss27 / WS3-044: `target windowsGui` is reserved but unspecified
+    in v0.3 — using it is a hard compile error (GUI module not defined), not a
+    silent fallthrough."""
+    for proj in program.of_kind("project"):
+        for t in proj.facts("target"):
+            if t.payload and t.payload[0] == "windowsGui":
+                raise EavError(
+                    f"project {proj.name!r} targets `windowsGui`, which is reserved "
+                    f"but not defined in v0.3 — the GUI module is unspecified "
+                    f"(README ss27, WS3-044)",
+                    t.line, code="SS0744",
+                )
 
 
 def _validate_storage_mutation(program: Program) -> None:

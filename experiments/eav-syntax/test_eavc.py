@@ -2591,6 +2591,20 @@ def test_bare_variant_outside_type_directed_position_rejected():
     assert getattr(exc.value, "code", None) == "SS1028"
 
 
+def test_windows_gui_target_reserved_error():
+    # WS3-044 / X-045: `target windowsGui` is a hard reserved-target error.
+    src = (
+        "GuiApp is project\nGuiApp module m\nGuiApp target windowsGui\nGuiApp entry main\n"
+        'm is module\nm path a.b\nm purpose "p"\nm invariant "i"\n'
+        "main is operation\nmain out ExitCode\nmain async no\n"
+        'main purpose "p"\nmain invariant "i"\nmain let okCode immutable ExitCode 0\n'
+        "main return okCode\nExitCode is alias\nExitCode for Int32\n"
+    )
+    with pytest.raises(eavc.EavError) as exc:
+        eavc.parse(src)
+    assert getattr(exc.value, "code", None) == "SS0744"
+
+
 def test_function_normalizes_to_operation():
     # WS1-027 / README §11: `is function` normalizes to an operation at parse and
     # reuses operation checks; legacy bare `function NAME` is rejected.
