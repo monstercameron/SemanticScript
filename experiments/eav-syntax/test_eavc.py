@@ -55,6 +55,54 @@ def test_query_ownership_leaked():
     assert any("openDb" in r for r in leaked)
 
 
+@pytest.mark.parametrize("name", ["hello_world.sem", "add_two.sem", "countdown.sem",
+                                   "factorial.sem", "record_demo.sem"])
+def test_fmt_is_idempotent(name):
+    # WS4-002: fmt(fmt(x)) == fmt(x).
+    src = open(os.path.join(EXAMPLES, name), encoding="utf-8").read()
+    once = eavc.format_program(eavc.parse(src))
+    twice = eavc.format_program(eavc.parse(once))
+    assert once == twice
+
+
+def test_fmt_metadata_sorts_after_structural():
+    # WS4-001 / README §22: metadata rows sort after structural rows.
+    src = (
+        "main is operation\n"
+        'main purpose "p"\n'         # metadata declared before structural
+        "main out ExitCode\n"
+        "main effect write console.stdout\n"
+    )
+    out = eavc.format_program(eavc.parse(src))
+    lines = out.splitlines()
+    out_idx = lines.index("main out ExitCode")
+    eff_idx = lines.index("main effect write console.stdout")
+    pur_idx = next(i for i, l in enumerate(lines) if l.startswith("main purpose"))
+    assert out_idx < pur_idx and eff_idx < pur_idx
+
+
+def test_fmt_preserves_island_indentation():
+    # WS4-005: an island body must not be de-indented.
+    src = (
+        "q is storage\nq scope module\nq type SqlText\nq mutability immutable\n"
+        "q body sql\n    SELECT id, title\n    FROM tasks\n"
+    )
+    out = eavc.format_program(eavc.parse(src))
+    assert "    SELECT id, title" in out
+    assert "    FROM tasks" in out
+    # idempotent over islands too
+    assert eavc.format_program(eavc.parse(out)) == out
+
+
+def test_fmt_output_still_runs():
+    # Formatting must be semantics-preserving: the formatted golden still JITs.
+    src = open(os.path.join(EXAMPLES, "add_two.sem"), encoding="utf-8").read()
+    formatted = eavc.format_program(eavc.parse(src))
+    prog = eavc.parse(formatted)
+    ir_text = str(eavc.lower_to_llvm(prog))
+    assert 'call i64 @"addTwoValues"' in ir_text
+
+
 def test_summarize_counts_by_kind():
     prog = eavc.parse(_ir_helper_program())
     counts = eavc.summarize(prog)

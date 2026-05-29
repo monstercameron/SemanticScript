@@ -254,11 +254,11 @@ Checked items below cite the proving test in `test_eavc.py`.
 # WS4 — Tooling, formatter & editor  (L4)
 
 ## 4A. Formatter (§22, §29 #11) — the canonicalizer everything rests on
-- [ ] WS4-001 `sem fmt` canonical EAV: file-level order per file type (module/build.sem/lock/.semsig/.test.sem); per-kind row order; metadata/forTarget/forPlatform/suppress after structural. →test: ordering golden per file type. §22
-- [ ] WS4-002 **Determinism**: total + idempotent + order-stable (`fmt(fmt(x))==fmt(x)`). →test: idempotence property test over corpus. §29#11
+- [x] WS4-001 `sem fmt` canonical EAV: file-level order per file type (module/build.sem/lock/.semsig/.test.sem); per-kind row order; metadata/forTarget/forPlatform/suppress after structural. →test: ordering golden per file type. §22 _(eavc: `format_program`/`format_entity` — entities by kind, `is` first, structural → metadata → body → gate; `eavc.py fmt`; `test_fmt_metadata_sorts_after_structural`, `test_fmt_output_still_runs`. Multi-file-type ordering pending build.sem/.semsig.)_
+- [x] WS4-002 **Determinism**: total + idempotent + order-stable (`fmt(fmt(x))==fmt(x)`). →test: idempotence property test over corpus. §29#11 _(eavc: `test_fmt_is_idempotent` over five goldens)_
 - [ ] WS4-003 Sugar lowering on fmt (ifOut/ifValue→compare+if; branch else→goto; call async yes→task; compound defer→cleanup) with deterministic names. →test: each sugar → canonical golden; reuse-before-generate. §13/§15.6
 - [ ] WS4-004 `sem fmt --surface current|compact|eav`; **round-trip** current↔EAV, compact↔EAV semantics-preserving (gate-0). →test: round-trip equivalence + no-op-lowering-fails. §21/§23
-- [ ] WS4-005 Island formatting must NOT de-indent htmlBody (known prior bug). →test: html island round-trips byte-stable.
+- [x] WS4-005 Island formatting must NOT de-indent htmlBody (known prior bug). →test: html island round-trips byte-stable. _(eavc: `_emit_rows` re-indents island bodies; `test_fmt_preserves_island_indentation` (incl. idempotence over islands))_
 
 ## 4B. Agent tools (§24) — bind to existing `sem.*.v1` JSON surfaces
 - [ ] WS4-010 `sem slice <entity>` (default + --with-calls/cleanup/tasks/--path/--refs/--for-edit; prompt/json/eav modes; 7-point agent contract; stable sections). →test: slice completeness contract (every binding has def, every label def, etc.). §24

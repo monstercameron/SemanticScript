@@ -792,6 +792,72 @@ def parse(source_text: str) -> Program:
     return program
 
 
+# Formatter ordering (README ss22). Metadata + universal gate rows sort after an
+# entity's structural rows; entities sort by kind then document order.
+_META_PREDS = (
+    "purpose", "invariant", "note", "rationale", "risk", "example", "tag",
+    "deprecated", "owner",
+)
+_GATE_PREDS = ("forTarget", "forPlatform", "suppress")
+_KIND_ORDER = [
+    "project", "module", "capability", "error", "errorCase", "alias", "record",
+    "enum", "operationType", "storage", "htmlTemplate", "webServer", "operation",
+    "function", "call", "task", "cleanup", "intrinsic", "platform", "semsig",
+]
+
+
+def _emit_rows(ent: Entity, row: Row, program: Program) -> list:
+    """Render one row to source line(s), preserving island bodies indented
+    (README ss22; never de-indent an island — the known fmt bug, WS4-005)."""
+    if row.label is not None:
+        return [f"{ent.name} at {row.label} {row.predicate} {' '.join(row.payload)}".rstrip()]
+    line = f"{ent.name} {row.predicate} {' '.join(row.payload)}".rstrip()
+    if row.predicate == "body" and ent.kind in ("storage", "htmlTemplate"):
+        island_kind = row.payload[0] if row.payload else ""
+        island = program.islands.get((ent.name, island_kind))
+        if island is not None:
+            return [line] + [("    " + b if b else "") for b in island]
+    return [line]
+
+
+def format_entity(ent: Entity, program: Program) -> str:
+    is_op = ent.kind in ("operation", "function")
+    meta, gate, body, decl = [], [], [], []
+    for r in ent.rows:
+        if r.label is not None or (is_op and r.predicate in STEP_PREDICATES) or (
+            is_op and r.predicate == "let"
+        ):
+            body.append(r)
+        elif r.predicate in _META_PREDS:
+            meta.append(r)
+        elif r.predicate in _GATE_PREDS:
+            gate.append(r)
+        else:
+            decl.append(r)
+    meta.sort(key=lambda r: (_META_PREDS.index(r.predicate),))  # stable within
+    lines = [f"{ent.name} is {ent.kind}"]
+    for group in (decl, meta, body, gate):
+        for r in group:
+            lines.extend(_emit_rows(ent, r, program))
+    return "\n".join(lines)
+
+
+def format_program(program: Program) -> str:
+    """Canonicalize a parsed Program to EAV text (README ss22). Deterministic and
+    idempotent: `format(parse(format(parse(x)))) == format(parse(x))`."""
+    ordered = sorted(
+        program.order,
+        key=lambda n: (_kind_rank(program.entities[n].kind), program.order.index(n)),
+    )
+    blocks = [format_entity(program.entities[n], program) for n in ordered]
+    return "\n\n".join(blocks).rstrip() + "\n"
+
+
+def _kind_rank(kind: str) -> int:
+    k = "operation" if kind == "function" else kind
+    return _KIND_ORDER.index(k) if k in _KIND_ORDER else len(_KIND_ORDER)
+
+
 QUERY_DIMENSIONS = (
     "effects", "uses", "labels", "calls", "types", "ownership-leaked",
 )
@@ -2160,6 +2226,13 @@ def cmd_run(args) -> int:
     return jit_run(program)
 
 
+def cmd_fmt(args) -> int:
+    """Print the canonical EAV formatting of a program."""
+    program = parse(_read_source(args.path))
+    sys.stdout.write(format_program(program))
+    return 0
+
+
 def cmd_query(args) -> int:
     """Print the result of a structural query (`--dimension`)."""
     program = parse(_read_source(args.path))
@@ -2225,6 +2298,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         ("run", cmd_run),
         ("lint", cmd_lint),
         ("inventory", cmd_inventory),
+        ("fmt", cmd_fmt),
     ):
         sp = sub.add_parser(name)
         sp.add_argument("path", help="EAV source file, or - for stdin")
