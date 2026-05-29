@@ -8562,3 +8562,63 @@ def test_runtime_lib_cache_lives_in_cache_dir(tmp_path, monkeypatch):
     cache = os.path.realpath(eavc._runtime_cache_dir())
     assert os.path.realpath(path).startswith(cache)
     assert not os.path.realpath(path).startswith(os.path.realpath(eavc._runtime_dir()))
+
+
+# === X-110: MCP server initialize + stdio session ===
+
+def test_mcp_initialize_handshake():
+    """X-110: `initialize` returns the protocol version + server info naming the
+    contract version, advertising tool capabilities."""
+    resp = eavc.mcp_handle({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    assert resp["id"] == 1
+    result = resp["result"]
+    assert result["protocolVersion"]
+    assert result["serverInfo"]["name"] == "eavc"
+    assert result["serverInfo"]["version"] == eavc.CONTRACT_VERSION
+    assert "tools" in result["capabilities"]
+
+
+def test_mcp_unknown_method_is_method_not_found():
+    """X-110: an unknown JSON-RPC method returns -32601 (method not found)."""
+    resp = eavc.mcp_handle({"jsonrpc": "2.0", "id": 9, "method": "no/such/method"})
+    assert resp["error"]["code"] == -32601
+
+
+def test_mcp_stdio_session_round_trips_and_errors():
+    """X-110: a full `eavc mcp` stdio session — initialize, tools/list, a
+    tools/call that round-trips to its sem.*.v1 envelope, the fix_plan tool, an
+    unknown tool (JSON-RPC error, not text), and a malformed line (-32700 parse
+    error rather than a silent drop). Exercises cmd_mcp end to end."""
+    import json
+    hello = os.path.join(EXAMPLES, "hello_world.sem")
+    requests = [
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                    "params": {"name": "check", "arguments": {"path": hello}}}),
+        json.dumps({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                    "params": {"name": "fix_plan", "arguments": {"path": hello}}}),
+        json.dumps({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                    "params": {"name": "definitely-not-a-tool", "arguments": {}}}),
+        "{ this is not valid json",
+    ]
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "eavc.py"), "mcp"],
+        input="\n".join(requests) + "\n", capture_output=True, text=True)
+    assert "Traceback (most recent call last)" not in proc.stderr, proc.stderr
+    responses = [json.loads(ln) for ln in proc.stdout.splitlines() if ln.strip()]
+    by_id = {r.get("id"): r for r in responses}
+    # initialize + tools/list
+    assert by_id[1]["result"]["serverInfo"]["name"] == "eavc"
+    assert {t["name"] for t in by_id[2]["result"]["tools"]} == set(eavc.EAV_MCP_TOOLS)
+    # tools/call check round-trips to the sem.check.v1 envelope (as text content)
+    check_text = by_id[3]["result"]["content"][0]["text"]
+    assert json.loads(check_text)["surface"] == "sem.check.v1"
+    # the repair-plan tool is fix_plan and returns the sem.fixPlan.v1 envelope
+    plan_text = by_id[4]["result"]["content"][0]["text"]
+    assert json.loads(plan_text)["surface"] == "sem.fixPlan.v1"
+    # unknown tool -> JSON-RPC invalid-params error
+    assert by_id[5]["error"]["code"] == -32602
+    # the malformed line is surfaced as a parse error (id null), not dropped
+    parse_errors = [r for r in responses if r.get("error", {}).get("code") == -32700]
+    assert parse_errors and parse_errors[0]["id"] is None
